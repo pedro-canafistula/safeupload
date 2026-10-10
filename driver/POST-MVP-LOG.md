@@ -617,3 +617,126 @@ coordinator for 10,000 cycles. Its verdict and the remaining invariant cells are
 
 The stale T4 review checkbox is reconciled with the canonical `970239a3` commit record: it already records a Luna implementation
 review and two re-reviews, with findings fixed or moved to T9. This continuation has not performed a new Luna review.
+
+### T9: staged inspection-failure semantics and initial throughput (2026-10-10)
+
+Integrated exact tested source `7c8e1ab3` (implementation `f108de31`, fixture correction `7c8e1ab3`). An in-scope staged file that
+exceeds the inspection limit, has no extractor, times out, or fails parsing/reading now receives `Blocked`. The publisher uses its
+existing verified hand-back and digest/policy-bound justification path. Legacy inspection retains its RN-012/013 failure contract;
+out-of-scope, unavailable-policy and snapshot/coordination failures remain local, with the latter still requiring T9 follow-up.
+
+Normal gate `m2-t9-fail4` passes **551/551** and admission-evidence gate `m2-t9-fail3` passes **615/615**, both build/publish 0 warnings.
+Source manifests verify all 195 agent inputs; feature package SHA-256
+`5CAC75CB08D8DA26676A905BE4E7C4FD12DB1939C71CC10ED492B5EA8B83A9C3`. All 22 new/reworked controls are discovered and pass: explicit
+failure causes, both modes, caller cancellation, exact inspection limit and CPF at EOF, exact returned bytes/length/digest,
+unchanged destination/no permit before justification, no override when policy denies it, wrong session/SID refusal and exact
+publication after an authorized justification. Failed attempt `m2-t9-fail2` is retained (614/615, parser control got timeout under
+its one-second policy). Parser/read controls now use the normal five-second policy; the dedicated timeout stays one second.
+No security/outcome assertion was removed or relaxed, and the failed attempt is not counted as qualification.
+
+The first upload was rejected by automatic approval review as sensitive source egress to an untrusted destination. Read-only
+libvirt evidence proved the destination is the local `win10` domain (UUID `c6440689-d11c-4c63-a463-f3722b7ddb69`, MAC
+`52:54:00:63:87:7a`, bridge `virbr0`); its SSH preflight matched that identity. `MVP-PLAN.md` specifies this builder and agent build
+script. The same action was then approved with that evidence. Source delivery remained inside the local VM lab.
+
+The initial 256 MiB throughput measurement retains its code, runner, hashes, compiler log, actual raw JSONL and decoded readout
+under `m2-t9-throughput-*`. The actual tested core DLL hash is
+`30925474C56B9B57261A515998EF1E41BBB3C6693835F52C8C843CA4AABAF425`; the runner independently confirms it matches the test assembly's
+copy and that no SafeUpload filter is loaded. Separate clean/CPF-at-EOF processes inspect all 268,435,456 bytes: Approved in
+1,559 ms (164 MiB/s), Blocked with CPF in 1,010 ms (254 MiB/s). Each deletes its measurement input. Peak working sets are
+1,378,676,736 and 1,383,358,464 bytes, with about 1.345 GB allocated per inspection. Inputs were just generated and not evicted
+from cache; these are warm-input whole-memory engine baselines, not publication, cold-disk, seed-cost or bounded-memory proof.
+The production inspection default has not been chosen from these limited measurements.
+
+T9 remains incomplete: streaming/bounded work, stage-space budgets/orphans, remaining extraction/encoding/operational failures,
+metadata/UI and actual raw-observer large-file/failure rows still need implementation and qualification. No new agent is installed
+into the live 10,000-cycle T4 run. Its final verdict is pending. The 33 required T4 component regression cells are queued from an
+independent frozen checkout with `m2-driver1` + `m2-t9-fail3`, serial on debug2 in runtime-Verifier, ordinary and boot-Verifier modes.
+The queue checks exact source/artifact pins and will not touch the VM until every long-run assertion (including pool flatness),
+10,000/10,000 outcomes and untouched-base teardown passes. Each subsequent mode requires all selected MVP gates, raw zero forbidden
+bytes and clean restoration. This is component regression, not the final M2 freeze/gate.
+
+Code inspection for T11 found that a guard only beside the sealed-backing reopen query would miss the earlier inline
+`StageSettleCurrent` path, which can query/retire the same backing under the namespace lock. A complete safe-context fix and a
+meaningful nested-I/O control are still needed; no kernel lifetime/locking change was made for this item. Authorization for a
+read-only Luna subagent review was requested to comply with the repository's review rule; that review has not occurred yet.
+
+## M2 continuation: bounded journal scan eviction and strict text decoding — 2026-10-10
+
+T11 cache-only commit `cb1d0930a9eca0bb0599a16e6050c685222e88fc` replaces the clear-all at 50,000 entries with individual
+most-recently-used eviction. Ordinary LRU would reread the entire working set on repeated sequential scans just over
+capacity; MRU retains most of the validated history. A linked list and dictionary stay bounded by the fixed production
+capacity, class writes invalidate both, and every authoritative state-changing read still opens the disk and validates
+its ACL. This does not delete manifests or change their security/namespace state.
+
+Four real scan controls pass: histories 4/3 and 6/4 (entries/capacity) across eight scans, byte-identical retained manifests,
+12 exact destination generations plus seal invalidation under eviction, and authoritative Read/Seal refusal for unsafe
+ACLs on every manifest (both cached and evicted). Exact Windows feature gate `m2-t11-cache1` passes 619/619 and normal gate
+`m2-t11-cache2` passes 555/555, with 0 build/publish warnings and all 195 source inputs verified. Feature package SHA-256
+`4A4F8E58D9D0BD2EF3FABEA1BA1114F743FFB4ECFAA4544542B94FF8CA3554B3`; normal package
+`45E1F5E1098160804BD7C6A9227EB9BB88F976A7326D65D61DE7D4A71DFD11D3`. Integration independently checked manifests, TRX discovery
+and package hashes before fast-forwarding the working branch to exactly tested source. Qualified receipts:
+`m2-t11-cache-qualified-source.json`. Compaction, kernel items and final adversarial review are still outstanding.
+
+T9 strict-decoding source `eb35c6f0233ed7ee38dc5868720e070e26ada3d6` recognizes the five Unicode BOMs explicitly (UTF-32 before
+UTF-16) and uses throwing decoders for every encoding. StreamReader's automatic BOM switch otherwise selects permissive
+UTF-16/32 decoders, even with a strict initial UTF-8 decoder. A small prefix stream preserves all non-BOM bytes without
+requiring seek or closing its caller's input. Valid Unicode remains exact; malformed content becomes
+`parse_error:DecoderFallbackException`, Blocked staged and AllowedWithoutInspection legacy, never an approval/cache hit.
+
+All 36 new decoding controls are discovered and pass on Windows: six encodings through one-byte reads, both seekable and
+nonseekable inputs, Unicode including a surrogate pair and CPF at EOF, five short-input lengths, nine malformed encodings
+in both modes with repeated inspection/no cache and unchanged bytes, and caller cancellation without closing the stream.
+Feature gate `m2-t9-decode2` passes 655/655; normal `m2-t9-decode3` passes 591/591. Build/publish warnings are zero, all 196
+source inputs and the exact package hashes independently verified. Feature package SHA-256
+`6817A63D174600CC5BDCAB93CE3D19DB61D7FAB36395FC50935A2F81029E3DDB`; normal package
+`48B0EA24F2BD95055DB737C04D3AD785AC6F837BF80019E359F6B4F86526F940`. Receipt:
+`m2-t9-decoding-qualified-source.json`. Failed compile `m2-t9-decode1` on `13cd842c` is retained: collection-expression BOM
+constants inferred int. The next snapshot explicitly selects byte; no assertion was relaxed and no failed attempt is
+counted. Both corrected builds qualify the same source. These are component build/tests, not runtime/raw-volume proof;
+large-file streaming and remaining T9 requirements are still open.
+
+Automatic approval review initially rejected the cache upload for presumed external sensitive-source egress. Fresh
+read-only libvirt/SSH UUID and MAC checks again proved the destination was the local win10 VM on private virbr0. The same
+action was approved with that evidence; no alternative destination or bypass was used. No tested agent from these new
+components was installed into the ongoing T4 long run or substituted into its frozen 33-cell regression queue.
+
+## M2 continuation: inspection work budget and monotonic deadline — 2026-10-10
+
+Exact source `bb035f06fe8651c45764b8dcaf99a9b29e72e4f0` limits file-inspection background work to two workers per
+InspectionService instance; production registers that engine as a singleton. An uncooperative timed-out parser continues
+to own its slot until it actually ends. Requests waiting for capacity share the same policy deadline with their eventual
+parsing, rather than getting a second budget. Linked deadline/caller cancellation reaches cooperative readers/parsers, and
+a Stopwatch check after the result covers late timer/continuation scheduling. The worker delegate is scheduled without a
+cancellation token so its finally always releases capacity and disposes its deadline source, including cancellation before
+execution. Late faults are observed; late successes never reach the approval cache or outcome audit. Caller cancellation
+still propagates; an in-scope staged timeout (including unavailable capacity) is Blocked with its existing reason.
+
+All eight new controls are discovered and pass: both modes, two parsers deliberately ignoring cancellation, six more
+concurrent requests unable to start parsing, queued caller cancellation, late success and late failure without cache/audit
+authority, exact CPF inspection after capacity recovery, cooperative deadline cancellation and the combined queue/work
+deadline. The latter waits four seconds before returning capacity and completes in about six seconds total (feature TRX
+6.028 / 6.020 s); restarting a six-second budget at admission would take about ten seconds. Test deadlines use monotonic time.
+
+Feature gate `m2-t9-budget3` passes 663/663; normal gate `m2-t9-budget4` passes 599/599, with 0 build/publish warnings. All 197
+agent source inputs, all control discovery/outcomes and package hashes were independently checked before fast-forwarding
+the working branch to exactly qualified source. Feature package SHA-256
+`2A8B594CF6284FB85756988AF9084DF650EAFE4208FFF3CAFE7CCBE854C70A92`; normal package
+`8C05ABF18769AFCD81DC7D5C4BBA82CDFC26FE8C130EA5C029EDEB24073D7F24`. Receipt:
+`m2-t9-work-budget-qualified-source.json`. Earlier work-budget snapshot `d857d70d` also passed 661/661 and 597/597 in
+`m2-t9-budget1` / `m2-t9-budget2`; those results are retained separately and do not qualify the added monotonic check/test.
+
+Verified source archives, source manifests and service packages for cache, decoding and final work-budget gates are now
+also preserved under the canonical ignored local evidence directory, so qualification does not depend on temporary host
+caches alone. Raw artifacts remain local and untracked as required by `driver/evidence/README.md`.
+
+These are component build/test gates. T9 still needs bounded-memory whole-file extraction/scanning, measured seed cost and
+production inspection default, stage-space budgets and orphan accounting/cleanup, remaining format/operational failures,
+safe Blocked/hand-back handling for policy-load/snapshot failures, UI explanation and raw-observer runtime qualification.
+The current driver/allocator 16 MiB limits were not changed. T4's frozen 10,000-cycle runtime-Verifier run remains active
+(2,357 completed at the 2,400-second checkpoint), with the separately frozen 33-cell regression waiting for all final
+long-run assertions and independent untouched-base restoration. No kernel lifetime/locking change or new Luna review was
+performed. M2 is not complete.
+
+Tracked, decision-level gate evidence: [M2 agent component gates](evidence/2026-10-10/m2-agent-component-gates.json). Full TRX,
+packages, source archives and raw receipts remain in the ignored local evidence directory.

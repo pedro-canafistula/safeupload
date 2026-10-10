@@ -222,6 +222,9 @@ on something Windows does not signal (owner decision 2026-10-10). The cycle row 
 blocked hand-backs. Idle worker passes/timer fires stay zero for 60 s; the discarded run disk leaves the base untouched.
 Runtime-Verifier (special pool) run `m2t4long2` is now executing the required 10,000 cycles on the same frozen pair/harness.
 The cycle row samples public names; it does not replace the required raw-observer invariant regression.
+The 33 C01-C04/B01/B02/X01 component cells are queued serially in all three modes (`m2t4rv`, `m2t4ro`, `m2t4rb`), conditional on
+every long-run assertion and the independent disk teardown passing. That regression uses the same `m2-driver1` kernel with the
+new, separately tested `m2-t9-fail3` agent, from a frozen checkout; it is not the final M2 milestone gate.
 
 ### T5. Notepad Save As
 
@@ -322,6 +325,35 @@ threat model: a standard user pads a file past the limit, or puts the CPF after 
 **Done when** a file at the inspection limit is approved and published byte-exact, one over it is blocked and handed back, a CPF placed at
 the end of a large file is found, and a stage-space exhaustion attempt by a standard user fails closed without affecting other users.
 
+**Partial implementation 2026-10-10:** `7c8e1ab3` makes the in-scope staged size-limit, unsupported-format, timeout and parser/read
+failure results `Blocked`, using the existing digest/policy-bound hand-back and justification path. The normal and admission-evidence
+agent gates pass 551/551 and 615/615 tests, respectively, with build/publish at 0 warnings. Twenty-two controls cover both inspection
+modes, cancellation, the exact limit/CPF at EOF, complete hand-back bytes, unchanged public content and policy/session/SID-bound
+justification. This is build/test qualification; the failure cases still need their raw-observer runtime rows.
+
+`eb35c6f0` additionally rejects malformed plain-text Unicode instead of silently replacing undecodable bytes. Strict UTF-8
+(with/without BOM), UTF-16 LE/BE and UTF-32 LE/BE preserve complete valid text; malformed encodings reach the staged Blocked
+parse-error path. Thirty-six new controls cover fragmented/nonseekable reads, CPF at EOF, short inputs, all BOMs, malformed
+code units, cancellation and no cached approval. Exact agent gates `m2-t9-decode2` / `m2-t9-decode3` pass 655/655 feature and
+591/591 normal tests with 0 build/publish warnings. Whole-file extraction still uses memory and needs streaming.
+
+`bb035f06` bounds file-inspection workers at two per engine instance (the service registers one singleton), including parsers
+that ignore cancellation after a timeout. Queueing and parsing share one policy deadline; a linked token cancels cooperative
+work, and a post-result Stopwatch check rejects delayed results even if timer scheduling was late. The worker retains its
+slot until it actually ends; late results cannot enter approval cache/audit. Eight controls cover noncooperative late success
+and failure, six concurrent queued calls, caller cancellation while queued, cooperative cancellation/recovery, complete CPF
+inspection after recovery and a four-second queue wait inside a six-second total budget in both modes. Exact gates
+`m2-t9-budget3` / `m2-t9-budget4` pass 663/663 feature and 599/599 normal tests, 0 build/publish warnings. This bounds concurrency;
+it does not yet make each extraction use bounded memory or qualify publication under load.
+
+The requested initial 256 MiB measurement uses the tested core on the builder with no SafeUpload filter loaded: clean text Approved
+in 1.56 s (164 MiB/s), CPF at EOF Blocked in 1.01 s (254 MiB/s). Inputs were just generated and the file cache was not evicted;
+these are separate single-process baseline measurements, not cold-disk or staged-publication results. Peak working sets are
+1.28-1.29 GiB, confirming that the current whole-memory extraction must be replaced before choosing a large-file default.
+Whole-file streaming, remaining format/encoding/extraction limits, stage-space accounting and orphan
+cleanup, seeding cost, the UI explanation and runtime qualification remain open. Policy-load/snapshot failures still retain
+locally and need their own safe Blocked/hand-back treatment; the agent does not claim a complete T9 implementation.
+
 ### T10. Permission and owner changes reach the real file or folder
 
 **Problem.** With the driver loaded nobody, administrators included, can change the permissions of the protected folder or its files
@@ -351,6 +383,17 @@ Small, independent fixes from the Phase 5 and gen4b reviews:
   eviction, and add journal compaction so it stops growing.
 
 **Done when** each item has its own commit with a test or a suite row, and the M2 review closes them.
+
+**Partial implementation 2026-10-10:** journal cache eviction is implemented in its own commit `cb1d0930`. At capacity it
+evicts one most-recently-used scan entry, preserving the rest across full sequential scans. Production capacity remains
+50,000; authoritative state-changing reads still open and ACL-check the disk. Four controls use the actual journal scan
+path at small capacities to prove reduced rereads, unchanged manifest bytes, exact generations/state invalidation and
+unsafe-ACL refusal through authoritative reads. Exact Windows gates `m2-t11-cache1` / `m2-t11-cache2` pass 619/619 feature
+and 555/555 normal tests, 0 build/publish warnings. Journal compaction and all kernel conditions remain open; the M2 Luna
+review has not occurred.
+
+Curated build receipts for these agent components: [M2 agent component gates](evidence/2026-10-10/m2-agent-component-gates.json).
+They qualify exact source and Windows build/tests; they do not claim runtime qualification or completion of M2.
 
 ## P1: release candidate (M3)
 

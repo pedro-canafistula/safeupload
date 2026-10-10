@@ -1,0 +1,109 @@
+{
+  "schema": "SafeUploadM2AgentComponentGates/1",
+  "date": "2026-10-10",
+  "runtimeQualified": false,
+  "milestoneComplete": false,
+  "components": [
+    {
+      "component": "T11 journal scan eviction",
+      "sourceCommit": "cb1d0930a9eca0bb0599a16e6050c685222e88fc",
+      "sourceFiles": {
+        "agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs": "ce464d92a19686f5d9137d6e157d4ee9c28644468473f0c84e16f4b56a8346f6",
+        "agente/SafeUpload.Agent.Tests/StagedTransferJournalTests.cs": "4b92f8abddc7767e34720dfe526b78f537f861fab29038ea56987e3b97a09db8"
+      },
+      "rawLocalReceipt": "driver/evidence/2026-10-10/m2-t11-cache-qualified-source.json",
+      "gates": [
+        {
+          "label": "m2-t11-cache1",
+          "admissionEvidence": true,
+          "testsPassed": 619,
+          "newControlsPassed": 4,
+          "sourceManifestVerified": 195,
+          "buildAndPublishWarnings": 0,
+          "packageSha256": "4A4F8E58D9D0BD2EF3FABEA1BA1114F743FFB4ECFAA4544542B94FF8CA3554B3",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t11-cache1-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t11-cache1-agent-tests.trx"
+        },
+        {
+          "label": "m2-t11-cache2",
+          "admissionEvidence": false,
+          "testsPassed": 555,
+          "newControlsPassed": 4,
+          "sourceManifestVerified": 195,
+          "buildAndPublishWarnings": 0,
+          "packageSha256": "45E1F5E1098160804BD7C6A9227EB9BB88F976A7326D65D61DE7D4A71DFD11D3",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t11-cache2-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t11-cache2-agent-tests.trx"
+        }
+      ]
+    },
+    {
+      "component": "T9 strict Unicode decoding",
+      "sourceCommit": "eb35c6f0233ed7ee38dc5868720e070e26ada3d6",
+      "sourceFiles": {
+        "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/PlainTextExtractor.cs": "b81b1dd3373645083eb73cc5d52aeb348f9098a906b38fb8d3fb8406615b9439",
+        "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ITextExtractor.cs": "5d63e8167d5ea635c54c4e39995e1a7cfa035db7a0caf7ff999061800ea56a92",
+        "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ExtractorRegistry.cs": "1402cfa9000ffcda0a71e9dcf4a32696360f2ad97487c879cd1ea637b4e56e16",
+        "agente/SafeUpload.Agent.Tests/PlainTextDecodingTests.cs": "8430e9fd72b0804035dddf34a7ee3c428f90a3560985c3232095f5d3d9a9b465"
+      },
+      "rawLocalReceipt": "driver/evidence/2026-10-10/m2-t9-decoding-qualified-source.json",
+      "gates": [
+        {
+          "label": "m2-t9-decode2",
+          "admissionEvidence": true,
+          "testsPassed": 655,
+          "newControlsPassed": 36,
+          "sourceManifestVerified": 196,
+          "buildAndPublishWarnings": 0,
+          "packageSha256": "6817A63D174600CC5BDCAB93CE3D19DB61D7FAB36395FC50935A2F81029E3DDB",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-decode2-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-decode2-agent-tests.trx"
+        },
+        {
+          "label": "m2-t9-decode3",
+          "admissionEvidence": false,
+          "testsPassed": 591,
+          "newControlsPassed": 36,
+          "sourceManifestVerified": 196,
+          "buildAndPublishWarnings": 0,
+          "packageSha256": "48B0EA24F2BD95055DB737C04D3AD785AC6F837BF80019E359F6B4F86526F940",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-decode3-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-decode3-agent-tests.trx"
+        }
+      ]
+    },
+    {
+      "component": "T9 inspection work budget",
+      "sourceCommit": "bb035f06fe8651c45764b8dcaf99a9b29e72e4f0",
+      "sourceFiles": {
+        "agente/SafeUpload.Agent.Core/Application/InspectionService.cs": "d05d4be1b9d7e3b68a170b4419b06b2de6ec9f8bfc687414a07e149d19b68527",
+        "agente/SafeUpload.Agent.Tests/InspectionWorkBudgetTests.cs": "b09e832420e8c71923ea03785f83a54474e42892682e3dbc6a76bdaec795b51c"
+      },
+      "rawLocalReceipt": "driver/evidence/2026-10-10/m2-t9-work-budget-qualified-source.json",
+      "gates": [
+        {
+          "label": "m2-t9-budget3",
+          "admissionEvidence": true,
+          "testsPassed": 663,
+          "newControlsPassed": 8,
+          "sourceManifestVerified": 197,
+          "buildAndPublishWarnings": 0,
+          "packageSha256": "2A8B594CF6284FB85756988AF9084DF650EAFE4208FFF3CAFE7CCBE854C70A92",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-budget3-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-budget3-agent-tests.trx"
+        },
+        {
+          "label": "m2-t9-budget4",
+          "admissionEvidence": false,
+          "testsPassed": 599,
+          "newControlsPassed": 8,
+          "sourceManifestVerified": 197,
+          "buildAndPublishWarnings": 0,
+          "packageSha256": "8C05ABF18769AFCD81DC7D5C4BBA82CDFC26FE8C130EA5C029EDEB24073D7F24",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-budget4-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-budget4-agent-tests.trx"
+        }
+      ]
+    }
+  ]
+}
