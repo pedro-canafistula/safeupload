@@ -86,6 +86,25 @@ static volatile LONG SafeUploadVolumeScopeCacheIndex;
 static volatile LONG64 SafeUploadScopeRenameLossGeneration;
 
 static volatile LONG SafeUploadPolicyGeneration = 0;
+
+/* T11: the policy generation is a 32-bit serial number. Every consumer compares it for equality, except the writer registry's
+ * activation stamp, which may run one ahead and uses serial-number arithmetic (StageRegistryPrepareActivation). 0 still means
+ * "no policy committed" (the agent waits on it). The first commit starts just below the old signed limit, so every boot crosses
+ * it on its second commit (the Phase 5 review found a signed comparison there), and a wrap skips 0. Callers hold the policy
+ * lock exclusively. */
+#define SAFEUPLOAD_POLICY_GENERATION_FIRST ((LONG)0x7FFFFFFF)
+LONG SafeUploadNextPolicyGeneration(_In_ LONG Current)
+{
+    /* The one rule for "the generation the next commit publishes": scope apply stamps entries with it ahead of the commit. */
+    LONG next = Current == 0 ? SAFEUPLOAD_POLICY_GENERATION_FIRST : (LONG)((ULONG)Current + 1);
+    return next == 0 ? 1 : next;
+}
+
+static VOID SafeUploadPolicyGenerationAdvance(VOID)
+{
+    (VOID)InterlockedExchange(&SafeUploadPolicyGeneration,
+        SafeUploadNextPolicyGeneration(InterlockedCompareExchange(&SafeUploadPolicyGeneration, 0, 0)));
+}
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 /* Independent generation for the exact policy/boot scope pointers published
  * to admission readers. It is not the epoch or writer-registry sequence. */
@@ -1158,7 +1177,7 @@ SafeUploadSetPolicy (
     previous = SafeUploadPolicy;
     SafeUploadPolicyPrepareAndPublishScopeState(snapshot, NULL,
         SafeUploadBootScopesActive, FALSE, FALSE);
-    (VOID)InterlockedIncrement(&SafeUploadPolicyGeneration);
+    SafeUploadPolicyGenerationAdvance();
     FltReleasePushLock(&SafeUploadPolicyLock);
     if (previous != NULL && previous != &SafeUploadBootSnapshot)
         ExFreePoolWithTag(previous, SAFEUPLOAD_POOL_TAG);
@@ -1213,7 +1232,7 @@ NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Mess
         SafeUploadPolicyPrepareAndPublishScopeState(
             (PSAFEUPLOAD_POLICY)SafeUploadPendingPolicy, NULL, FALSE, TRUE, TRUE);
         SafeUploadData.BootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_VALID;
-        (VOID)InterlockedIncrement(&SafeUploadPolicyGeneration);
+        SafeUploadPolicyGenerationAdvance();
         FltReleasePushLock(&SafeUploadPolicyLock);
         for (;;) {
             ULONGLONG renameLossSnapshot;

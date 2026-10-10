@@ -5493,7 +5493,8 @@ __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REG
         {
             LONG live = SafeUploadCurrentPolicyGeneration();
             LONG stamped = InterlockedCompareExchange(&Entry->ActivationGeneration, 0, 0);
-            while (stamped < live) {
+            /* Serial-number order (T11): correct across the 32-bit wrap while the stamp is within 2^31 of the live value. */
+            while ((LONG)((ULONG)live - (ULONG)stamped) > 0) {
                 LONG seen = InterlockedCompareExchange(&Entry->ActivationGeneration, live, stamped);
                 if (seen == stamped) break;
                 stamped = seen;
@@ -7469,7 +7470,7 @@ NTSTATUS SafeUploadStageWritersApplyPendingScope(VOID)
         }
         if (StageRegistryBeginAliasProbe(entry)) {
             InterlockedExchange(&entry->ActivationGeneration,
-                (LONG)((ULONG)SafeUploadCurrentPolicyGeneration() + 1));
+                SafeUploadNextPolicyGeneration(SafeUploadCurrentPolicyGeneration()));
             InterlockedIncrement64(&RegistryChangeSequence);
             queued = TRUE;
         }

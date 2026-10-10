@@ -734,6 +734,9 @@ SafeUploadCurrentPolicyGeneration (
     VOID
     );
 
+/* The generation the next policy commit publishes (a 32-bit serial number; see Policy.c). */
+LONG SafeUploadNextPolicyGeneration(_In_ LONG Current);
+
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 VOID SafeUploadPolicyReadLiveSnapshot(_Out_ PULONG Generation, _Out_ PULONG Flags);
 BOOLEAN SafeUploadPolicyTestDisablesTaint(VOID);
