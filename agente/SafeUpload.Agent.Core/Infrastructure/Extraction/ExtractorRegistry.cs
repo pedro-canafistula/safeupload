@@ -4,8 +4,9 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 /// Resolve qual <see cref="ITextExtractor"/> atende cada extensão.
 ///
 /// É também a definição operacional de "formato suportado" da RN-013: se
-/// nenhum extrator reivindica a extensão, a operação é liberada sem inspeção
-/// com o motivo <c>unsupported_format</c>, nunca bloqueada.
+/// nenhum extrator reivindica a extensão, a inspeção legada libera sem
+/// inspecionar; staged bloqueia conteúdo em escopo. Ambas preservam o motivo
+/// <c>unsupported_format</c>.
 ///
 /// PDF está fora desta entrega por decisão de escopo. Adicioná-lo depois é
 /// escrever um <see cref="ITextExtractor"/> e registrá-lo aqui; nada mais no
