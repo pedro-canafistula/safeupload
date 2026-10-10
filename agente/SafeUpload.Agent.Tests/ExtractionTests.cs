@@ -112,6 +112,66 @@ public class ExtractionTests : IDisposable
         Assert.Contains("529.982.247-25", await ExtractAsync(path), StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("image-only", false)]
+    [InlineData("image-only", true)]
+    [InlineData("clean-then-image", false)]
+    [InlineData("clean-then-image", true)]
+    [InlineData("text-on-image", false)]
+    [InlineData("text-on-image", true)]
+    [InlineData("cpf-then-image", false)]
+    [InlineData("cpf-then-image", true)]
+    public async Task Pdf_image_content_never_becomes_an_approval_from_partial_text(string layout, bool staged)
+    {
+        string path = _workspace.WritePdfWithImage("unsupported.pdf",
+            firstPageText: layout switch { "clean-then-image" => "Clean cover page.", "cpf-then-image" => "CPF: 529.982.247-25", _ => null },
+            imagePageText: layout == "text-on-image" ? "Clean text over an uninspected image." : null);
+        byte[] original = await File.ReadAllBytesAsync(path);
+        var inspector = new InspectionService(new LocalPolicyStore(_workspace.PolicyFile),
+            new LocalQueueAuditSink(_workspace.QueueFile), _registry, new VerdictCache());
+        var operation = TestWorkspace.Operation(path);
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            var result = staged
+                ? await inspector.InspectStagedAsync(operation, CancellationToken.None)
+                : await inspector.InspectAsync(operation, CancellationToken.None);
+            Assert.Equal(staged ? Verdict.Blocked : Verdict.AllowedWithoutInspection, result.Verdict);
+            Assert.True(result.InScope);
+            Assert.True(result.PolicyVersion > 0);
+            Assert.False(result.FromCache);
+            Assert.Empty(result.Findings);
+            Assert.Equal("unsupported_format", result.Reason);
+            Assert.Equal(InspectionFailureKind.UnsupportedFormat, result.FailureKind);
+            Assert.Equal(original, await File.ReadAllBytesAsync(path));
+        }
+    }
+
+    [Theory]
+    [InlineData("blank", false)]
+    [InlineData("blank", true)]
+    [InlineData("clean", false)]
+    [InlineData("clean", true)]
+    [InlineData("cpf", false)]
+    [InlineData("cpf", true)]
+    public async Task Pdf_text_or_blank_content_keeps_its_complete_inspection_verdict(string content, bool staged)
+    {
+        string path = content == "blank" ? _workspace.WritePdf("text.pdf") :
+            _workspace.WritePdf("text.pdf", content == "cpf" ? "CPF: 529.982.247-25" : "Clean PDF content.");
+        var inspector = new InspectionService(new LocalPolicyStore(_workspace.PolicyFile),
+            new LocalQueueAuditSink(_workspace.QueueFile), _registry, new VerdictCache());
+        var operation = TestWorkspace.Operation(path);
+        var result = staged
+            ? await inspector.InspectStagedAsync(operation, CancellationToken.None)
+            : await inspector.InspectAsync(operation, CancellationToken.None);
+        Assert.Equal(content == "cpf" ? Verdict.Blocked : Verdict.Approved, result.Verdict);
+        Assert.True(result.InScope);
+        Assert.False(result.FromCache);
+        Assert.Null(result.Reason);
+        Assert.Null(result.FailureKind);
+        if (content == "cpf") Assert.Equal(Category.Cpf, Assert.Single(result.Findings).Category);
+        else Assert.Empty(result.Findings);
+    }
+
     [Fact]
     public async Task Csv_e_varrido()
     {

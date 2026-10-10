@@ -627,6 +627,8 @@ public sealed class StagedTransferPublisherTests : IDisposable
     [InlineData("size", "file_too_large", true)]
     [InlineData("format", "unsupported_format", false)]
     [InlineData("format", "unsupported_format", true)]
+    [InlineData("image", "unsupported_format", false)]
+    [InlineData("image", "unsupported_format", true)]
     [InlineData("parser", "parse_error:InvalidDataException", false)]
     [InlineData("parser", "parse_error:InvalidDataException", true)]
     [InlineData("timeout", "inspection_timeout", false)]
@@ -657,7 +659,13 @@ public sealed class StagedTransferPublisherTests : IDisposable
             handbackCopier: new VerifiedSnapshotHandbackCopier(_workspace.Root),
             sessionUserSidResolver: _ => TestRequestorSid);
         string content = failure == "size" ? new string('x', 1024 * 1024 + 1) : "Clean fixture bytes.";
-        var transfer = Transfer("negative-" + failure + ".txt", content);
+        var transfer = Transfer("negative-" + failure + (failure == "image" ? ".pdf" : ".txt"), content);
+        if (failure == "image")
+        {
+            string imagePdf = _workspace.WritePdfWithImage("image-source.pdf", imagePageText: "Clean cover text.");
+            File.Copy(imagePdf, transfer.StagePath, overwrite: true);
+        }
+        byte[] inspectedBytes = await File.ReadAllBytesAsync(transfer.StagePath);
         await File.WriteAllTextAsync(transfer.DestinationPath, "public original");
         using var subscription = _notifications.Subscribe(7, TestRequestorSid);
         try
@@ -666,15 +674,15 @@ public sealed class StagedTransferPublisherTests : IDisposable
                 await publisher.PublishAsync(transfer, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.False(gate.Called);
             Assert.Equal("public original", await File.ReadAllTextAsync(transfer.DestinationPath));
-            Assert.Equal(content, await File.ReadAllTextAsync(transfer.StagePath));
+            Assert.Equal(inspectedBytes, await File.ReadAllBytesAsync(transfer.StagePath));
             var entry = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
             Assert.Equal(TransferJournalState.Blocked, entry.State);
             Assert.Equal(StagedHandbackState.Verified, entry.HandbackState);
-            Assert.Equal(content, await File.ReadAllTextAsync(entry.HandbackPath!));
+            Assert.Equal(inspectedBytes, await File.ReadAllBytesAsync(entry.HandbackPath!));
             InspectionFailureKind expectedFailure = failure switch
             {
                 "size" => InspectionFailureKind.TooLarge,
-                "format" => InspectionFailureKind.UnsupportedFormat,
+                "format" or "image" => InspectionFailureKind.UnsupportedFormat,
                 "timeout" => InspectionFailureKind.Timeout,
                 _ => InspectionFailureKind.ReadOrParse
             };
@@ -735,7 +743,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
                 Assert.True(await justify!(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
                 Assert.True(gate.Called);
                 Assert.Equal(digest, gate.Digest);
-                Assert.Equal(content, await File.ReadAllTextAsync(transfer.DestinationPath));
+                Assert.Equal(inspectedBytes, await File.ReadAllBytesAsync(transfer.DestinationPath));
                 Assert.Equal(TransferJournalState.Released,
                     (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
             }
@@ -763,7 +771,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         {
             string directory = Path.Combine(root, "handback");
             Directory.CreateDirectory(directory);
-            string path = Path.Combine(directory, transfer.TransferId.ToString("N") + ".txt");
+            string path = Path.Combine(directory, transfer.TransferId.ToString("N") + Path.GetExtension(transfer.DestinationPath));
             snapshot.Position = 0;
             await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 await snapshot.CopyToAsync(output, token);

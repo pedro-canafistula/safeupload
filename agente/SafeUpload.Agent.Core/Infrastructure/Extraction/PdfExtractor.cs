@@ -15,9 +15,10 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 /// <para><b>O que este extrator não faz.</b> PDF de digitalização é imagem:
 /// não há texto para extrair e nenhum achado sai dele. Reconhecimento óptico
 /// resolveria e não está aqui — é outro projeto, com outro custo de tempo por
-/// arquivo. Um PDF sem texto extraível cai como <c>unsupported_format</c> na
-/// prática, e desde a mudança de "não consegui inspecionar marca o processo"
-/// isso deixou de significar passagem livre.</para>
+/// arquivo. Qualquer página com imagem precisa dessa capacidade, mesmo que
+/// também tenha texto: texto limpo não prova que a imagem é inspecionável.
+/// O arquivo inteiro recebe <c>unsupported_format</c>; staged bloqueia e
+/// devolve a versão. Uma página realmente vazia continua válida.</para>
 /// </summary>
 public sealed class PdfExtractor : ITextExtractor
 {
@@ -39,6 +40,11 @@ public sealed class PdfExtractor : ITextExtractor
         foreach (Page page in document.GetPages())
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // Scanning the text layer cannot approve an uninspected raster image.
+            // A clean cover page or a token of text on the image page does not
+            // turn partial extraction into whole-file inspection.
+            if (page.NumberOfImages != 0) throw new UnsupportedContentException();
 
             // ContentOrderTextExtractor respeita a ordem em que o texto foi
             // desenhado, e não a posição na página. Para varredura é o que se

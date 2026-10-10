@@ -182,6 +182,12 @@ public sealed class InspectionService
                 return fromCache;
             }
         }
+        catch (UnsupportedContentException)
+        {
+            return await CompleteAsync(
+                    operation, policy, stopwatch, inspectionFailure, [], "unsupported_format", auditAndCache, cancellationToken)
+                .ConfigureAwait(false);
+        }
         catch (TimeoutException)
         {
             // The caller's mode determines the failure verdict; the reason is retained.

@@ -26,3 +26,10 @@ public interface ITextExtractor
     /// </summary>
     Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken);
 }
+
+/// <summary>Content requires an inspection capability this extractor does not provide.</summary>
+public sealed class UnsupportedContentException : NotSupportedException
+{
+    /// <summary>Creates a failure without carrying source content or parser diagnostics.</summary>
+    public UnsupportedContentException() : base("The file contains unsupported inspection content.") { }
+}
