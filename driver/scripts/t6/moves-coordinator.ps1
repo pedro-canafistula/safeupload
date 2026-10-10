@@ -21,6 +21,22 @@ function Write-T6ResultLine([string]$Path, [string]$Line) {
     $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]'ReadWrite, Delete')
     try { $stream.Write($bytes, 0, $bytes.Length); $stream.Flush() } finally { $stream.Dispose() }
 }
+function Read-ControlText([string]$Path) {
+    # The actor publishes an ack by rename; for a moment its handle can still deny sharing. Retry only sharing violations.
+    $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 5 * [Diagnostics.Stopwatch]::Frequency
+    for (;;) {
+        try {
+            $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+            try { $reader = [IO.StreamReader]::new($stream); try { return $reader.ReadToEnd() } finally { $reader.Dispose() } }
+            finally { $stream.Dispose() }
+        } catch [IO.IOException] {
+            $ioFailure = $_.Exception
+            while ($ioFailure.InnerException) { $ioFailure = $ioFailure.InnerException }
+            if (($ioFailure.HResult -band 0xffff) -notin @(32,33) -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $deadline) { throw }
+            Start-Sleep -Milliseconds 2
+        }
+    }
+}
 function Read-Public([string]$Path) {
     try {
         $stream = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
@@ -46,7 +62,7 @@ function Invoke-ActorCommand([string]$Pattern, [string]$Source, [string]$Target,
     $ack = Join-Path $control ('ack-' + $script:n + '.txt')
     $started = [Diagnostics.Stopwatch]::GetTimestamp(); $deadline = $started + 120 * $frequency
     while (-not (Test-Path $ack)) { if ([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline) { break }; Start-Sleep -Milliseconds 5 }
-    $text = if (Test-Path $ack) { (Get-Content -LiteralPath $ack -Raw).Trim() } else { 'timeout' }
+    $text = if (Test-Path $ack) { (Read-ControlText $ack).Trim() } else { 'timeout' }
     Remove-Item -LiteralPath $payload, $ack -Force -ErrorAction SilentlyContinue
     if ($text -eq 'timeout') { throw ('actor command ' + $script:n + ' (' + $Pattern + ') timed out; task state ' + (Get-ScheduledTask -TaskName $ActorTask).State) }
     [pscustomobject]@{ N = $script:n; Ack = $text; AckMs = [math]::Round(([Diagnostics.Stopwatch]::GetTimestamp() - $started) * 1000.0 / $frequency, 1) }
@@ -73,7 +89,7 @@ try {
         }
         Start-Sleep -Milliseconds 200
     }
-    $result.Actor = (Get-Content -LiteralPath (Join-Path $control 'actor-started.txt') -Raw).Trim()
+    $result.Actor = (Read-ControlText (Join-Path $control 'actor-started.txt')).Trim()
     $sid = (New-Object Security.Principal.NTAccount($env:COMPUTERNAME, $ActorUser)).Translate([Security.Principal.SecurityIdentifier]).Value
     $profile = (Get-CimInstance Win32_UserProfile | Where-Object { $_.SID -eq $sid }).LocalPath
     if (-not $profile) { throw "no profile for $ActorUser ($sid)" }

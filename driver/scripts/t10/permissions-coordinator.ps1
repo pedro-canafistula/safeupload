@@ -17,6 +17,22 @@ $ErrorActionPreference = 'Stop'
 $out = 'C:\T10'; $control = Join-Path $out 'control'; $root = 'C:\Protected\t10'; $file = Join-Path $root 'existing.txt'
 $stageDir = 'C:\ProgramData\SafeUpload\staging'
 $frequency = [Diagnostics.Stopwatch]::Frequency
+function Read-ControlText([string]$Path) {
+    # The actor publishes an ack by rename; for a moment its handle can still deny sharing. Retry only sharing violations.
+    $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 5 * [Diagnostics.Stopwatch]::Frequency
+    for (;;) {
+        try {
+            $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+            try { $reader = [IO.StreamReader]::new($stream); try { return $reader.ReadToEnd() } finally { $reader.Dispose() } }
+            finally { $stream.Dispose() }
+        } catch [IO.IOException] {
+            $ioFailure = $_.Exception
+            while ($ioFailure.InnerException) { $ioFailure = $ioFailure.InnerException }
+            if (($ioFailure.HResult -band 0xffff) -notin @(32,33) -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $deadline) { throw }
+            Start-Sleep -Milliseconds 2
+        }
+    }
+}
 function Read-Public([string]$Path) {
     try {
         $stream = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
@@ -41,7 +57,7 @@ function Invoke-Actor([string]$Op, [string]$Path, [byte[]]$Bytes, [string[]]$Arg
     $ack = Join-Path $control ('ack-' + $script:n + '.txt')
     $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 120 * $frequency
     while (-not (Test-Path $ack)) { if ([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline) { throw ("actor $Op timed out") }; Start-Sleep -Milliseconds 5 }
-    $text = (Get-Content -LiteralPath $ack -Raw).Trim(); Remove-Item -LiteralPath $ack -Force
+    $text = (Read-ControlText $ack).Trim(); Remove-Item -LiteralPath $ack -Force
     $text
 }
 function Wait-HandBack([string]$Dir, [int]$Before, [byte[]]$Bytes) {
