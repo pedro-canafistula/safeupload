@@ -74,5 +74,13 @@ public enum AuditChannel
     File,
 
     /// <summary>Colagem a partir da área de transferência.</summary>
-    Clipboard
+    Clipboard,
+
+    /// <summary>
+    /// Envio pela web, visto pelo proxy de inspeção TLS. <c>FileName</c> e
+    /// <c>Extension</c> são os do arquivo enviado (vazios quando o achado está
+    /// em texto digitado), <c>ProcessName</c> é o navegador e
+    /// <c>DestinationPath</c> é o endereço de destino, sem a query string.
+    /// </summary>
+    Web
 }

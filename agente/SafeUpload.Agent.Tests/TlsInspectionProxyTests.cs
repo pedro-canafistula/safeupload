@@ -5,10 +5,16 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using Microsoft.Extensions.Logging.Abstractions;
+using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Core.Infrastructure;
+using SafeUpload.Agent.Core.Infrastructure.Extraction;
 using SafeUpload.Agent.Network.Bypass;
 using SafeUpload.Agent.Network.Certificates;
 using SafeUpload.Agent.Network.Http;
 using SafeUpload.Agent.Network.Proxy;
+using SafeUpload.Agent.Service.Network;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -186,6 +192,51 @@ public sealed class TlsInspectionProxyTests : IAsyncLifetime
         Assert.Equal("POST /upload 18", await response.Content.ReadAsStringAsync());
         Assert.Equal(_internetCa.Subject, seen()!.Issuer);
         Assert.Empty(inspector.Requests);
+    }
+
+    /// <summary>
+    /// Fase 5, de ponta a ponta: o navegador envia um formulário com um
+    /// arquivo; o proxy segura o corpo, o motor acha o CPF dentro do arquivo e
+    /// o site nunca recebe a requisição. O mesmo formulário sem o CPF passa.
+    /// </summary>
+    [Fact]
+    public async Task Upload_com_dado_sensivel_e_barrado_pelo_motor_e_o_limpo_passa()
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        var engine = new WebInspectionService(new LocalPolicyStore(workspace.PolicyFile), sink, ExtractorRegistry.CreateDefault());
+        var inspector = new WebUploadInspector(engine, NullLogger<WebUploadInspector>.Instance);
+
+        await using TlsInspectionProxy proxy = StartProxy(inspector);
+        using HttpClient browser = Browser(proxy, out _);
+
+        using var sensitive = new MultipartFormDataContent
+        {
+            { new StringContent("folha de maio"), "observacao" },
+            { new ByteArrayContent(Encoding.UTF8.GetBytes("nome;cpf\nAna;529.982.247-25\n")), "arquivo", "folha.csv" },
+        };
+
+        HttpResponseMessage blocked = await browser.PostAsync(_site.Url("/upload?token=segredo"), sensitive);
+
+        Assert.Equal(HttpStatusCode.Forbidden, blocked.StatusCode);
+        Assert.Contains("Cpf", await blocked.Content.ReadAsStringAsync());
+        Assert.Empty(_site.Requests);
+
+        AuditEvent audit = Assert.Single(await sink.ReadRecentAsync(10, CancellationToken.None));
+        Assert.Equal(AuditChannel.Web, audit.Channel);
+        Assert.Equal("folha.csv", audit.FileName);
+        Assert.EndsWith("/upload", audit.DestinationPath);
+        Assert.DoesNotContain("segredo", audit.DestinationPath);
+
+        using var clean = new MultipartFormDataContent
+        {
+            { new ByteArrayContent(Encoding.UTF8.GetBytes("nome;setor\nAna;RH\n")), "arquivo", "setores.csv" },
+        };
+
+        HttpResponseMessage allowed = await browser.PostAsync(_site.Url("/upload"), clean);
+
+        Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        Assert.Single(_site.Requests);
     }
 
     /// <summary>

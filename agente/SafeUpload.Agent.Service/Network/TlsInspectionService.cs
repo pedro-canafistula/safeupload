@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using SafeUpload.Agent.Network.Bypass;
@@ -34,7 +33,8 @@ namespace SafeUpload.Agent.Service.Network;
 public sealed class TlsInspectionService(
     IConfiguration configuration,
     ILogger<TlsInspectionService> logger,
-    ILogger<TlsInspectionProxy> proxyLogger) : IHostedService, IAsyncDisposable
+    ILogger<TlsInspectionProxy> proxyLogger,
+    WebUploadInspector inspector) : IHostedService, IAsyncDisposable
 {
     private X509Certificate2? _authority;
     private HostCertificateFactory? _certificates;
@@ -62,7 +62,7 @@ public sealed class TlsInspectionService(
 
         _proxy = new TlsInspectionProxy(
             _certificates,
-            new LoggingInspector(logger),
+            inspector,
             new TlsInspectionProxyOptions
             {
                 Listen = new IPEndPoint(IPAddress.Loopback, port),
@@ -169,52 +169,5 @@ public sealed class TlsInspectionService(
         categories.Add(new(DefaultExceptionLists.Configured, configured));
 
         return new InterceptionExceptions(categories);
-    }
-
-    /// <summary>
-    /// Inspetor provisório da Fase 2: registra o que passaria pela inspeção
-    /// e libera. Nunca registra o conteúdo, só os metadados (RN-006). A Fase 5
-    /// troca por um que chama o motor de inspeção.
-    /// </summary>
-    private sealed class LoggingInspector(ILogger logger) : IUploadInspector
-    {
-        public ValueTask<UploadDecision> InspectAsync(UploadRequest request, CancellationToken cancellationToken)
-        {
-            logger.LogInformation(
-                "Envio visto: {Method} {Host}{Path} ({Bytes} bytes, {ContentType}) por {Process}.",
-                request.Head.Method,
-                request.Host,
-                PathOnly(request.Head.Target),
-                request.Body.Length,
-                request.Head.Headers.Get("Content-Type") ?? "sem tipo",
-                ProcessName(request.ProcessId));
-
-            return ValueTask.FromResult(UploadDecision.Allow);
-        }
-
-        /// <summary>Sem a query string, que pode carregar tokens e dados.</summary>
-        private static string PathOnly(string target)
-        {
-            int query = target.IndexOf('?');
-            return query < 0 ? target : target[..query];
-        }
-
-        private static string ProcessName(int? processId)
-        {
-            if (processId is not { } pid)
-            {
-                return "processo desconhecido";
-            }
-
-            try
-            {
-                using var process = Process.GetProcessById(pid);
-                return $"{process.ProcessName} (PID {pid})";
-            }
-            catch (ArgumentException)
-            {
-                return $"PID {pid}";
-            }
-        }
     }
 }

@@ -175,6 +175,13 @@ canal web das Fases 5 e 6. Detalhes em
   barrar a requisição que finaliza (conforme a Fase 0).
 - Limite de tamanho do que é segurado em memória ou disco.
 
+Estado: implementada e testada na VM. O proxy chama o motor
+(`WebInspectionService`, no Core) e responde 403 quando há achado; o evento de
+auditoria sai no canal `Web`. O bloqueio com 403 e o evento, previstos para a
+Fase 6, vieram junto, porque sem eles a inspeção não teria efeito. Não entrou o
+acúmulo de upload em pedaços por sessão. Detalhes em
+[ARQUITETURA-INSPECAO-TLS.md](ARQUITETURA-INSPECAO-TLS.md), seção 4.6.
+
 ### Fase 6 — Decisão, aviso e auditoria
 
 - Bloqueio: 403 ao site; o app WPF mostra o motivo pelo `NotificationPipeServer`.
