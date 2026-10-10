@@ -1,0 +1,135 @@
+{
+  "sourceCommit": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+  "coreSha256": "8A1E8EDB8AA32C96D05F52B1D21D4570CFF8B57FAAE0A2D3A706A030567AD491",
+  "cases": [
+    {
+      "Case": "word-missing-body",
+      "InputBytes": 820,
+      "Verdict": "Approved",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+      "CoreSHA256": "8A1E8EDB8AA32C96D05F52B1D21D4570CFF8B57FAAE0A2D3A706A030567AD491",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    },
+    {
+      "Case": "word-empty-valid",
+      "InputBytes": 790,
+      "Verdict": "Approved",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+      "CoreSHA256": "8A1E8EDB8AA32C96D05F52B1D21D4570CFF8B57FAAE0A2D3A706A030567AD491",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    },
+    {
+      "Case": "word-cpf-valid",
+      "InputBytes": 829,
+      "Verdict": "Blocked",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [
+        "Cpf"
+      ],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+      "CoreSHA256": "8A1E8EDB8AA32C96D05F52B1D21D4570CFF8B57FAAE0A2D3A706A030567AD491",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    },
+    {
+      "Case": "sheet-invalid-shared-index",
+      "InputBytes": 1669,
+      "Verdict": "Approved",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+      "CoreSHA256": "8A1E8EDB8AA32C96D05F52B1D21D4570CFF8B57FAAE0A2D3A706A030567AD491",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    },
+    {
+      "Case": "sheet-missing-inline-value",
+      "InputBytes": 1668,
+      "Verdict": "Approved",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+      "CoreSHA256": "8A1E8EDB8AA32C96D05F52B1D21D4570CFF8B57FAAE0A2D3A706A030567AD491",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    },
+    {
+      "Case": "sheet-empty-valid",
+      "InputBytes": 1677,
+      "Verdict": "Approved",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+      "CoreSHA256": "8A1E8EDB8AA32C96D05F52B1D21D4570CFF8B57FAAE0A2D3A706A030567AD491",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    },
+    {
+      "Case": "sheet-cpf-valid",
+      "InputBytes": 1668,
+      "Verdict": "Blocked",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [
+        "Cpf"
+      ],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+      "CoreSHA256": "8A1E8EDB8AA32C96D05F52B1D21D4570CFF8B57FAAE0A2D3A706A030567AD491",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    }
+  ],
+  "silentApprovalsConfirmed": [
+    "word-missing-body",
+    "sheet-invalid-shared-index",
+    "sheet-missing-inline-value"
+  ],
+  "inputsDeleted": true,
+  "probeBuildWarnings": 0,
+  "probeBuildErrors": 0,
+  "runtimeQualified": false,
+  "publicationAttempted": false,
+  "inputManifest": {
+    "sourceCommit": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+    "files": {
+      "OfficeIntegrityProbe.csproj": "71B2DB5644858E2FF21185E90ECE61E955B0CBCDE4F187AFAF4C7329903640A3",
+      "Program.cs": "CDAF3C065813D9904F42B2F93E9B012D5868C052BC7BC4F5F19643E948F93AEE"
+    },
+    "archiveSha256": "3CD1BC544904912F2A43CD38570C3A03139BA3F6877713A5D6E78FBF65CD1BDF",
+    "runtimeQualification": false,
+    "productionModification": false
+  }
+}

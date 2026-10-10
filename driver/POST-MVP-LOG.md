@@ -872,3 +872,41 @@ not interactive or raw-volume runtime proof. The first six-image control run is 
 The working branch fast-forwarded only after exact source hashes, both complete TRX outcomes/control discovery and WPF
 checks were verified. Decision-level evidence is in [M2 agent component gates](evidence/2026-10-10/m2-agent-component-gates.json)
 and [T4 telemetry correction](evidence/2026-10-10/m2-t4-telemetry-status.json). M2 remains active and incomplete.
+
+## M2: authorized Luna reviews and Office parser-integrity component — 2026-10-10
+
+The user explicitly authorized read-only Luna reviews of M2, starting the agent changes validated in `7c8e1ab3`, and
+separately approved the concrete T4 candidate `60fecdbc`. Implementation remains here. Luna's pre-boot T4 review found no
+P0/P1/P2 in context/entry ownership, WriterLock serialization, prune witness/reset, sticky Unknown, cleanup or unchanged
+policy/nested mutation paths. Receipt: `m2-t4-pruned-cache-luna-review.json`. Fresh runtime-Verifier comparison `m2t4prune1`
+uses `m2-driver2` with the same `t4-af1` agent and hash-identical Windows-qualified attribution harness as `m2t4stat2`, 256
+cycles and sample interval 64, no extra guest queries or relaxed assertions. Exact pins were rechecked before the run disk
+started. This is a short diagnostic, not the required 10,000-cycle gate; its outcome/restoration are pending.
+
+Luna also reviewed the cumulative staged-failure, Unicode, worker-budget, UI/journal metadata, scan-cache and snapshot-read
+changes through `dbbd6bc1`, with no remaining findings. An initial P1 alleging a shared publication/inspection stream cursor
+was withdrawn after tracing the API: FileOperation carries snapshot.Path, and the inspector opens its own read FileStream;
+the publisher's snapshot stream retains an independent offset. Existing exact-content and published-digest publisher tests
+already pass on the qualified source. The corrected review and its limitations are retained in
+`m2-agent-component-luna-review.json`. These are component reviews, not the final working-system milestone review.
+
+A no-publication probe on the qualified normal `dbbd6bc1` Core reproduced three malformed Office approvals: Word CPF text
+outside any document body, a CPF shared string referenced by index 999, and an inline-string cell without its string payload.
+Valid empty Word/Excel cases Approved and valid CPF controls Blocked. All seven generated inputs were deleted; raw build,
+program, pinned archive and results are retained under `m2-t9-office-integrity-probe/`. The decision record is
+`m2-t9-office-integrity-baseline-readout.json`.
+
+Qualified source `d559e812ad5fe63bd6ddf7563bb9f80fe13767bb` requires Word's main part/body and Excel's workbook part, and
+throws for invalid/missing shared or inline cell strings. Eight malformed-document controls (four damage modes, staged and
+legacy) verify failure verdict, typed read/parse reason, no findings/cache, unchanged source digest and a second inspection;
+six valid-empty controls remain Approved. Feature `m2-t9-office1` passes 693/693 and normal `m2-t9-office2` 629/629, build and
+publish warnings zero. All 197 committed/frozen/archive inputs, every TRX outcome/control and package/executable hash were
+independently checked; the three previous files were backed up before exact fast-forward integration.
+
+Archive SHA-256: `7DE3436B25E71C31CFE0991DD53DB8DF96E1E36798E680ED06A9FF96BC35E83C`; manifest:
+`488655E8CAE244E95E1E58991A8B9A8C6DFC700ADDC969CCBED14C45850DCECB`. Feature package:
+`FF2043AFE8BDB7502FEE5D5F4C2DE5DB737F20CF32F5611DF3C027D6C3148D16`; normal package:
+`1E19C86A24250FC7715CAD4E5930D1D42299D5A6FCD854E7A42D4C197AD9086C`. Luna's scoped parser-integrity review passes without
+findings (`m2-t9-office-integrity-luna-review.json`). The qualified receipt is `m2-t9-office-integrity-qualified-source.json`,
+and the component index now has six entries. This closes only the measured malformed core-part/cell cases; whole-format
+coverage, bounded-memory extraction, disk budgets, seeding and raw-volume/live publication gates remain open. M2 stays active.

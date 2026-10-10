@@ -206,6 +206,57 @@
       "streamingExtractionComplete": false,
       "boundedMemoryQualified": false,
       "runtimeQualified": false
+    },
+    {
+      "component": "T9 Office parser integrity",
+      "sourceCommit": "d559e812ad5fe63bd6ddf7563bb9f80fe13767bb",
+      "sourceFiles": {
+        "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/OpenXmlWordExtractor.cs": "0b384e01ccb7f398369f2e33af2ea0c4ca241c5bea64c933c1264900c7fe0352",
+        "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/OpenXmlSheetExtractor.cs": "5236ab2a18d98914f80babc9ae02e0655c1f86c8cb31c5c18d7b8c87b5fdcf32",
+        "agente/SafeUpload.Agent.Tests/ExtractionTests.cs": "dd32dea1e3c83b87911d2141a5fd1c1d3e2ab6d508d3ecc68bd42570b0483bca"
+      },
+      "gates": [
+        {
+          "label": "m2-t9-office1",
+          "admissionEvidence": true,
+          "testsPassed": 693,
+          "newControlsPassed": 14,
+          "controls": {
+            "Malformed_office_content_is_never_an_approved_empty_extraction": 8,
+            "Valid_empty_office_content_remains_approved": 6
+          },
+          "sourceManifestVerified": 197,
+          "buildAndPublishWarnings": 0,
+          "packageSha256": "FF2043AFE8BDB7502FEE5D5F4C2DE5DB737F20CF32F5611DF3C027D6C3148D16",
+          "exeSha256": "F3AB1AAF8936A8E4E9833084CDCC64CB58EF3970684A4E959E1DB9884B686D20",
+          "archiveSha256": "7DE3436B25E71C31CFE0991DD53DB8DF96E1E36798E680ED06A9FF96BC35E83C",
+          "manifestSha256": "488655E8CAE244E95E1E58991A8B9A8C6DFC700ADDC969CCBED14C45850DCECB",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-office1-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-office1-agent-tests.trx"
+        },
+        {
+          "label": "m2-t9-office2",
+          "admissionEvidence": false,
+          "testsPassed": 629,
+          "newControlsPassed": 14,
+          "controls": {
+            "Malformed_office_content_is_never_an_approved_empty_extraction": 8,
+            "Valid_empty_office_content_remains_approved": 6
+          },
+          "sourceManifestVerified": 197,
+          "buildAndPublishWarnings": 0,
+          "packageSha256": "1E19C86A24250FC7715CAD4E5930D1D42299D5A6FCD854E7A42D4C197AD9086C",
+          "exeSha256": "9629F1FF6B09FAB45A0754204FC2DC150A87C3244A01FD377451B939DCAC416B",
+          "archiveSha256": "7DE3436B25E71C31CFE0991DD53DB8DF96E1E36798E680ED06A9FF96BC35E83C",
+          "manifestSha256": "488655E8CAE244E95E1E58991A8B9A8C6DFC700ADDC969CCBED14C45850DCECB",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-office2-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-office2-agent-tests.trx"
+        }
+      ],
+      "rawLocalReceipt": "driver/evidence/2026-10-10/m2-t9-office-integrity-qualified-source.json",
+      "lunaReview": "driver/evidence/2026-10-10/m2-t9-office-integrity-luna-review.json"
     }
-  ]
+  ],
+  "scopedLunaReview": "driver/evidence/2026-10-10/m2-agent-component-luna-review.json",
+  "finalMilestoneReviewPerformed": false
 }

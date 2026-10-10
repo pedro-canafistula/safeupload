@@ -114,11 +114,12 @@
     }
   },
   "qualifiedForBuildOnly": true,
-  "lunaReviewPerformed": false,
+  "lunaReviewPerformed": true,
   "debuggeeBootedWithCandidate": false,
   "poolGrowthCorrected": false,
   "requiredLongRunPassed": false,
   "milestoneComplete": false,
   "reviewRequirement": "driver/POST-MVP-PLAN.md:29",
-  "next": "Luna adversarial review before first VM boot, then unchanged short pool test, raw-volume regressions, and 10000-cycle gate."
+  "next": "Unchanged 256-cycle runtime-Verifier pool comparison, then affected raw-volume regressions and 10000-cycle gate after short-test success.",
+  "lunaReviewReceipt": "driver/evidence/2026-10-10/m2-t4-pruned-cache-luna-review.json"
 }

@@ -236,8 +236,10 @@ reference on retired registry entries in idle stream contexts until replacement/
 path to investigate, not a confirmed runtime root cause or a passed long-run gate. No new 10,000-cycle run/regression starts yet.
 Candidate `60fecdbc` releases that exact idle cache only after the existing prune gate succeeds, preserving its H=0 census with
 a context-local witness and leaving sticky Unknown in force. Exact worktree build `m2-driver2` passes all four WDK/PREfast/
-ApiValidator configurations at 0/0; all 28 frozen inputs match the committed and detached source. Luna review before first VM
-boot is requested and pending. No debuggee has run this candidate; no pool correction or T4 completion is claimed.
+ApiValidator configurations at 0/0; all 28 frozen inputs match the committed and detached source. The user authorized Luna
+reviews; the scoped pre-boot lifetime review passed without P0/P1/P2 findings. Fresh short run `m2t4prune1` is starting on a
+disposable debuggee disk, using the same tested agent and unchanged Windows-qualified harness as `m2t4stat2`. It changes only
+the signed kernel for the pool comparison; no pool correction or T4 completion is claimed before the result and restoration.
 Build-only receipt: [T4 pruned-cache candidate](evidence/2026-10-10/m2-t4-pruned-cache-qualified-source.json).
 The cycle row samples public names; it does not replace the required raw-observer invariant regression.
 The stopped 33 C01-C04/B01/B02/X01 component queue (`m2t4rv`, `m2t4ro`, `m2t4rb`) and its frozen inputs remain preserved:
@@ -389,6 +391,16 @@ both expected verdicts and all generated inputs deleted. Peak memory is still ab
 whole-text memory, so this does not qualify bounded memory, throughput, runtime publication or a production default.
 Receipts: [input-copy component](evidence/2026-10-10/m2-t9-snapshot-stream-qualified-source.json),
 [matched memory measurement](evidence/2026-10-10/m2-t9-copy-throughput-readout.json).
+
+**Office parser-integrity update 2026-10-10:** an actual baseline probe confirmed silent approvals for a Word document with
+no body, an invalid spreadsheet shared-string index and an inline-string cell with no value. `d559e812` requires the main
+Word body and workbook part and rejects missing/invalid cell string data. Four damaged-document cases in both modes now
+reach staged Blocked / legacy AllowedWithoutInspection without cache reuse; three valid empty formats remain Approved in
+both modes. Gates `m2-t9-office1` / `office2` pass 693/693 feature and 629/629 normal tests at zero warnings, with all 197
+source inputs independently matched. Luna's scoped parser review passes without findings. This closes the measured parser
+integrity cases; whole-format coverage, bounded memory and runtime publication qualification remain open.
+Receipts: [Office parser component](evidence/2026-10-10/m2-t9-office-integrity-qualified-source.json),
+[component reviews](evidence/2026-10-10/m2-agent-component-luna-review.json).
 
 ### T10. Permission and owner changes reach the real file or folder
 

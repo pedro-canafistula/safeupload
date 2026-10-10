@@ -1,0 +1,54 @@
+{
+  "schema": "SafeUploadM2T4PoolCandidateInputs/1",
+  "tag": "m2t4prune1",
+  "driverSourceCommit": "60fecdbc4b00badf6c953ec9c91207c8188d848a",
+  "driverBuildLabel": "m2-driver2",
+  "driverSha256": "0F7F0751F5D33B0547B67D93CF67A926E8307C95304B903F88659B57E92A43D6",
+  "agentSourceCommit": "970239a328b11878a5131ee022d7e671644aae5c",
+  "agentBuildLabel": "t4-af1",
+  "agentSha256": "FAFDE24D92ECCADC2D36AB6C886348543DAF94313EA2AA797F00F4128EF4A789",
+  "harnessSourceCommit": "439f08fbf0fb5a18998de49a647ae8a19729aa87",
+  "harnessFiles": {
+    "driver/scripts/Invoke-HarnessWindowsGate.sh": "f6c31ce28a59c02716cfb42f7209c3eaaaadf0adcc6275aef2b06c36100c5c4a",
+    "driver/scripts/Invoke-StageCycles.sh": "4fd39f0fb7d9c0e6cf8586fca15455c0000fe45e4f890e7ae6d7ee8275cb3503",
+    "driver/scripts/StagedInvariantT4Ipc.SelfCheck.ps1": "af41aa53f16390f023911d519c9493f15658274c1381aef6532c4dcf48b45513",
+    "driver/scripts/StagedInvariantT4Verifier.SelfCheck.ps1": "a0282ae55b388dc19db5e3976d773faeb06992026b0ade17cebf9d118454f02c",
+    "driver/scripts/t4/cycles-coordinator.ps1": "e7b5349888eeaeefd7dfc09fd92e23447ba142fb70a67892ee3a9c3c4ff7c677",
+    "driver/scripts/t4/cycles-progress.ps1": "dfa5d200c5778d3025ed57e8440b400d0bff5e6c8de4781f22435e691aafaf6b"
+  },
+  "windowsGate": "harness-windows-gate-m2-t4-pool1.txt",
+  "lunaReview": {
+    "schema": "SafeUploadLunaM2Review/1",
+    "sourceCommit": "60fecdbc4b00badf6c953ec9c91207c8188d848a",
+    "model": "gpt-6-luna",
+    "task": "/root/luna_t4_lifetime_review",
+    "userAuthorized": true,
+    "reviewOnly": true,
+    "beforeFirstDebuggeeBoot": true,
+    "findings": [],
+    "verdict": "PASS_SCOPED_SOURCE_DELTA",
+    "reviewedPaths": [
+      "driver/SafeUpload.Minifilter/Filter.h",
+      "driver/SafeUpload.Minifilter/StageWriters.c",
+      "driver/T4-STAGE-LIFETIME.md section 10"
+    ],
+    "checks": [
+      "Flt stream-context pin acquired after existing quiescence; release on both prune outcomes",
+      "No RegistryLock held by cache helper; WriterLock protects identity, retired state, list/counter/Unknown checks",
+      "Cache entry dereference after WriterLock release; readers reference or finish while locked",
+      "Insertion clears prune witness; overflow and writer Unknown remain sticky",
+      "Cleanup retains responsibility for remaining cache reference; prune predicate, policy/nested mutation unchanged"
+    ],
+    "limitations": [
+      "Build/source review only; no runtime or pool/10000-cycle qualification"
+    ],
+    "recordedUtc": "2026-10-10T20:10:36.146633+00:00"
+  },
+  "cycles": 256,
+  "sampleEvery": 64,
+  "mode": "runtime-verifier",
+  "extraGuestQueriesAllowed": false,
+  "assertionsRelaxed": false,
+  "causalComparison": "Only signed kernel artifact changed from m2t4stat2; same agent and hash-identical Windows-qualified harness.",
+  "milestoneComplete": false
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "SafeUploadLunaM2Review/1",
+  "model": "gpt-6-luna",
+  "userAuthorized": true,
+  "reviewOnly": true,
+  "milestoneFinalReview": false,
+  "verdict": "PASS_SCOPED_SOURCE_DELTA",
+  "findings": [],
+  "sourceCommit": "d559e812ad5fe63bd6ddf7563bb9f80fe13767bb",
+  "task": "/root/luna_t9_office_review",
+  "checks": [
+    "Required Word main part and body; required workbook part",
+    "Invalid shared-string index and absent inline-string payload refuse parsing",
+    "Valid empty Office strings remain empty"
+  ],
+  "limitations": [
+    "No runtime qualification",
+    "Inherited image/OCR/comments/embedded-content coverage is outside this measured parser-integrity delta"
+  ],
+  "recordedUtc": "2026-10-10T20:11:28.346419+00:00"
+}
