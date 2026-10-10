@@ -165,6 +165,73 @@ public sealed class WebInspectionServiceTests : IDisposable
     }
 
     /// <summary>
+    /// Fase 6: o evento sai em nome do dono do navegador, e não da conta do
+    /// serviço, e volta no resultado para ser anunciado ao usuário.
+    /// </summary>
+    [Fact]
+    public async Task Evento_leva_o_usuario_do_navegador_e_volta_no_resultado()
+    {
+        WebInspectionResult result = await _service.InspectAsync(
+            new WebUpload(Destino, "msedge", 4242, [Text($"cpf {Cpf}")], UserName: "ana.silva"), CancellationToken.None);
+
+        WebAuditRecord record = Assert.Single(result.Records);
+        Assert.Equal("ana.silva", record.Event.UserName);
+        Assert.NotEmpty(record.Findings);
+        Assert.Equal(record.Event.EventId, Assert.Single(await EventsAsync()).EventId);
+
+        WebInspectionResult semDono = await InspectAsync(File("limpo.txt", Encoding.UTF8.GetBytes("nada")));
+        Assert.Equal("usuario.teste", Assert.Single(semDono.Records).Event.UserName);
+    }
+
+    /// <summary>
+    /// Fase 6: site que envia o texto a cada tecla. Todo envio é barrado, mas
+    /// o mesmo achado para o mesmo site vira um evento só dentro do intervalo.
+    /// </summary>
+    [Fact]
+    public async Task Bloqueio_repetido_de_texto_gera_um_evento_so()
+    {
+        var clock = new RelogioControlado(DateTimeOffset.UnixEpoch);
+        var service = new WebInspectionService(
+            new LocalPolicyStore(_workspace.PolicyFile), _sink, ExtractorRegistry.CreateDefault(), clock: clock);
+
+        Task<WebInspectionResult> Digitar(string texto, string caminho = "/autocomplete") =>
+            service.InspectAsync(new WebUpload($"https://chat.example{caminho}", "msedge", 7, [Text(texto)]), CancellationToken.None);
+
+        Assert.Single((await Digitar($"meu cpf {Cpf}")).Records);
+
+        WebInspectionResult repetido = await Digitar($"meu cpf {Cpf} e preciso de", "/conversation");
+        Assert.True(repetido.IsBlocked);
+        Assert.Empty(repetido.Records);
+        Assert.Single(await EventsAsync());
+
+        clock.Avancar(service.RepeatWindow + TimeSpan.FromSeconds(1));
+        Assert.Single((await Digitar($"meu cpf {Cpf}")).Records);
+        Assert.Equal(2, (await EventsAsync()).Count);
+    }
+
+    /// <summary>Arquivo não é agrupado: cada upload é um evento.</summary>
+    [Fact]
+    public async Task Arquivo_enviado_duas_vezes_gera_dois_eventos()
+    {
+        byte[] csv = Encoding.UTF8.GetBytes($"cpf\n{Cpf}\n");
+
+        await InspectAsync(File("dados.csv", csv));
+        await InspectAsync(File("dados.csv", csv));
+
+        Assert.Equal(2, (await EventsAsync()).Count);
+    }
+
+    /// <summary>Relógio de teste, avançado à mão.</summary>
+    private sealed class RelogioControlado(DateTimeOffset inicio) : TimeProvider
+    {
+        private DateTimeOffset _agora = inicio;
+
+        public void Avancar(TimeSpan intervalo) => _agora += intervalo;
+
+        public override DateTimeOffset GetUtcNow() => _agora;
+    }
+
+    /// <summary>
     /// A política é reaproveitada por um intervalo: com o painel configurado,
     /// carregá-la é uma chamada de rede, e uma página faz muitos POST.
     /// </summary>

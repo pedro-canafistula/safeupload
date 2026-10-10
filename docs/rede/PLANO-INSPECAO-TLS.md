@@ -188,6 +188,12 @@ acúmulo de upload em pedaços por sessão. Detalhes em
 - Evento de auditoria com domínio, processo, usuário e categorias encontradas.
 - Justificativa: reaproveitar o fluxo atual em versão posterior.
 
+Estado: implementada. O 403 e o evento vieram na Fase 5; aqui entraram o
+usuário real no evento, o aviso na bandeja só para o dono do navegador e o
+agrupamento de bloqueios repetidos de texto. A justificativa continua para
+versão posterior. A janela de aviso ainda não foi verificada na tela. Detalhes
+em [ARQUITETURA-INSPECAO-TLS.md](ARQUITETURA-INSPECAO-TLS.md), seção 4.7.
+
 ### Fase 7 — Qualificação
 
 Matriz de sites × navegadores, latência adicionada, apps que quebram e

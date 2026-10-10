@@ -18,7 +18,7 @@ public sealed class QueueRowViewModel
         ArgumentNullException.ThrowIfNull(auditEvent);
 
         OccurredAt = auditEvent.OccurredAtUtc.ToLocalTime().ToString("dd/MM HH:mm:ss");
-        FileName = auditEvent.FileName;
+        FileName = AuditSubject.Describe(auditEvent);
         Verdict = VerdictLabels.Describe(auditEvent.Verdict);
         Categories = auditEvent.Categories.Count == 0
             ? "—"
