@@ -36,6 +36,12 @@ public sealed class InspectionService
     private readonly VerdictCache _cache;
     private readonly string _endpointId;
     private readonly string _userName;
+    // A timeout must not admit unbounded background parsing work. A parser
+    // that ignores cancellation keeps its slot until it actually finishes.
+    // This is a concurrency budget, independent of the file-size policy.
+    private const int MaximumConcurrentInspections = 2;
+    private readonly SemaphoreSlim _inspectionSlots = new(MaximumConcurrentInspections, MaximumConcurrentInspections);
+    internal int ActiveInspectionWorkers => MaximumConcurrentInspections - _inspectionSlots.CurrentCount;
 
     /// <summary>Compõe o motor com suas dependências.</summary>
     public InspectionService(
@@ -158,15 +164,8 @@ public sealed class InspectionService
 
         try
         {
-            // A leitura e o parsing são síncronos por natureza; jogá-los numa
-            // tarefa de fundo é o que permite ao WaitAsync devolver o controle
-            // no prazo mesmo que a análise continue presa. O trabalho abandonado
-            // morre sozinho, porque não escreve nada em lugar nenhum.
-            var inspection = Task.Run(
-                () => ExtractAndScanAsync(extractor, operation, policy, auditAndCache, cancellationToken),
-                cancellationToken);
-
-            var inspected = await inspection.WaitAsync(policy.InspectionTimeout, cancellationToken).ConfigureAwait(false);
+            var inspected = await InspectWithBudgetAsync(extractor, operation, policy, auditAndCache, cancellationToken)
+                .ConfigureAwait(false);
             fingerprint = inspected.Fingerprint;
             findings = inspected.Findings;
             if (inspected.Cached is not null)
@@ -212,6 +211,61 @@ public sealed class InspectionService
         // 8. Cache e auditoria.
         return await CompleteAsync(operation, policy, stopwatch, verdict, findings, null, auditAndCache, cancellationToken, fingerprint)
             .ConfigureAwait(false);
+    }
+
+    private async Task<(IReadOnlyList<Finding> Findings, string? Fingerprint, InspectionResult? Cached)> InspectWithBudgetAsync(
+        ITextExtractor extractor, FileOperation operation, Policy policy, bool useCache, CancellationToken cancellationToken)
+    {
+        var budget = Stopwatch.StartNew();
+        if (!await _inspectionSlots.WaitAsync(policy.InspectionTimeout, cancellationToken).ConfigureAwait(false))
+            throw new TimeoutException("No inspection worker became available within the policy budget.");
+        bool workerOwnsSlot = false;
+        CancellationTokenSource? deadline = null;
+        try
+        {
+            TimeSpan remaining = policy.InspectionTimeout - budget.Elapsed;
+            if (remaining <= TimeSpan.Zero) throw new TimeoutException("The inspection budget was exhausted while waiting.");
+            deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(remaining);
+            var workerDeadline = deadline;
+            var workerToken = workerDeadline.Token;
+            // The delegate must run even if the caller cancels before it is
+            // scheduled: its finally owns the slot and cancellation source.
+            var inspection = Task.Run(async () =>
+            {
+                try
+                {
+                    return await ExtractAndScanAsync(extractor, operation, policy, useCache, workerToken)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    workerDeadline.Dispose();
+                    _inspectionSlots.Release();
+                }
+            }, CancellationToken.None);
+            workerOwnsSlot = true;
+            // A caller can leave before a noncooperative parser faults. Observe
+            // that fault without allowing its late result to reach cache/audit.
+            _ = inspection.ContinueWith(static task => { _ = task.Exception; }, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            try
+            {
+                return await inspection.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && workerToken.IsCancellationRequested)
+            {
+                throw new TimeoutException("The inspection exceeded the policy budget.");
+            }
+        }
+        finally
+        {
+            if (!workerOwnsSlot)
+            {
+                deadline?.Dispose();
+                _inspectionSlots.Release();
+            }
+        }
     }
 
     /// <summary>
