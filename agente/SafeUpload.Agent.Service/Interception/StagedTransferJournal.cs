@@ -26,14 +26,27 @@ public sealed class StagedTransferJournal
     // entry (Create/Replace), and ReadAsync/ReadCoreAsync, which every state change starts from, always read the disk.
     private readonly record struct ManifestStamp(long Length, long LastWriteTicks, long CreationTicks,
         FileAttributes Attributes);
-    private readonly Dictionary<Guid, (ManifestStamp Stamp, TransferJournalEntry Entry)> _scanCache = new();
+    private readonly Dictionary<Guid, (ManifestStamp Stamp, TransferJournalEntry Entry, LinkedListNode<Guid> Use)> _scanCache = new();
+    private readonly LinkedList<Guid> _scanUses = new();
     private const int MaximumScanCacheEntries = 50_000;
+    private readonly int _scanCacheCapacity;
     private long _scanManifestReads;
+    private long _scanCacheEvictions;
     /// <summary>Manifests a scan had to read, ACL-check and parse (cache misses); test observability.</summary>
     internal long ScanManifestReads => Interlocked.Read(ref _scanManifestReads);
+    internal long ScanCacheEvictions => Interlocked.Read(ref _scanCacheEvictions);
+    internal int ScanCacheEntries { get { lock (_scanCache) return _scanCache.Count; } }
 
     public StagedTransferJournal(string directory, bool requireProtectedParent = false)
+        : this(directory, requireProtectedParent, MaximumScanCacheEntries) { }
+
+    // Small capacities let tests exercise the actual disk-reading scan path at
+    // its bound; production always uses the fixed maximum above.
+    internal StagedTransferJournal(string directory, bool requireProtectedParent, int scanCacheCapacity)
     {
+        if (scanCacheCapacity <= 0 || scanCacheCapacity > MaximumScanCacheEntries)
+            throw new ArgumentOutOfRangeException(nameof(scanCacheCapacity));
+        _scanCacheCapacity = scanCacheCapacity;
         _directory = Path.GetFullPath(directory);
         for (string? path = _directory; path is not null; path = Path.GetDirectoryName(path))
         {
@@ -221,22 +234,43 @@ public sealed class StagedTransferJournal
         {
             lock (_scanCache)
             {
-                if (_scanCache.TryGetValue(id, out var cached) && cached.Stamp == stamp) return cached.Entry;
+                if (_scanCache.TryGetValue(id, out var cached) && cached.Stamp == stamp)
+                {
+                    _scanUses.Remove(cached.Use);
+                    _scanUses.AddLast(cached.Use);
+                    return cached.Entry;
+                }
             }
         }
         Interlocked.Increment(ref _scanManifestReads);
         var entry = await ReadCoreAsync(id, token).ConfigureAwait(false);
         lock (_scanCache)
         {
-            if (_scanCache.Count >= MaximumScanCacheEntries) _scanCache.Clear();
-            _scanCache[id] = (stamp, entry);
+            if (_scanCache.Remove(id, out var prior)) _scanUses.Remove(prior.Use);
+            if (_scanCache.Count >= _scanCacheCapacity)
+            {
+                // Scans walk the full history repeatedly. LRU would evict the
+                // next item the scan needs and reread every manifest when the
+                // history exceeds capacity. Evict just the most recently used
+                // scan entry instead, preserving the rest of the validated
+                // history. Authoritative reads still bypass this cache.
+                var victim = _scanUses.Last!;
+                _scanCache.Remove(victim.Value);
+                _scanUses.Remove(victim);
+                Interlocked.Increment(ref _scanCacheEvictions);
+            }
+            var use = _scanUses.AddLast(id);
+            _scanCache[id] = (stamp, entry, use);
         }
         return entry;
     }
 
     private void ForgetScanned(Guid id)
     {
-        lock (_scanCache) _scanCache.Remove(id);
+        lock (_scanCache)
+        {
+            if (_scanCache.Remove(id, out var entry)) _scanUses.Remove(entry.Use);
+        }
     }
 
     private static void ValidateEntry(TransferJournalEntry? entry, Guid id)

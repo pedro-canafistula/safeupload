@@ -836,4 +836,93 @@ public sealed class StagedTransferJournalTests : IDisposable
         Assert.Equal(Enumerable.Range(1, 12).Select(n => (long)n), entries.Select(e => e.DestinationGeneration));
         Assert.True(journal.ScanManifestReads <= 12L * 3, $"scan reads: {journal.ScanManifestReads}");
     }
+
+    [Theory]
+    [InlineData(3, 4)]
+    [InlineData(4, 6)]
+    public async Task Full_history_scans_above_capacity_evict_individual_entries_without_a_reread_cliff(
+        int capacity, int count)
+    {
+        var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"),
+            requireProtectedParent: false, scanCacheCapacity: capacity);
+        var transfers = Enumerable.Range(0, count).Select(_ => Transfer()).ToArray();
+        foreach (var transfer in transfers) await journal.CreateAsync(transfer, CancellationToken.None);
+        string directory = Path.Combine(_workspace.Root, "journal");
+        var originals = Directory.GetFiles(directory, "*.json")
+            .ToDictionary(path => path, File.ReadAllBytes);
+        await journal.ReadPendingAsync(CancellationToken.None);
+        long reads = journal.ScanManifestReads;
+
+        const int scans = 8;
+        for (int scan = 0; scan < scans; scan++)
+        {
+            var entries = await journal.ReadPendingAsync(CancellationToken.None);
+            Assert.Equal(transfers.Select(transfer => transfer.TransferId).Order(),
+                entries.Select(entry => entry.Transfer.TransferId).Order());
+            Assert.All(entries, entry => Assert.Equal(TransferJournalState.Allocated, entry.State));
+            Assert.Equal(capacity, journal.ScanCacheEntries);
+        }
+        // A stable full traversal retains most of the working set even when
+        // it cannot all fit. Clear-all and ordinary LRU both reread it all.
+        Assert.InRange(journal.ScanManifestReads - reads, 1, (count - capacity + 1L) * scans);
+        Assert.True(journal.ScanManifestReads - reads < (long)count * scans);
+        Assert.True(journal.ScanCacheEvictions > 0);
+        foreach (var (path, bytes) in originals) Assert.Equal(bytes, await File.ReadAllBytesAsync(path));
+    }
+
+    [Fact]
+    public async Task Eviction_keeps_destination_generations_and_state_invalidation_exact()
+    {
+        var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"),
+            requireProtectedParent: false, scanCacheCapacity: 3);
+        var transfers = Enumerable.Range(0, 12).Select(_ => Transfer()).ToArray();
+        for (int i = 0; i < transfers.Length; i++)
+        {
+            var created = await journal.CreateAsync(transfers[i], CancellationToken.None);
+            Assert.Equal(i + 1L, created.DestinationGeneration);
+        }
+        await journal.ReadPendingAsync(CancellationToken.None);
+        foreach (var transfer in transfers)
+            await journal.SealAsync(transfer.TransferId, transfer.ProcessId, transfer.StagePath, CancellationToken.None);
+
+        var entries = await journal.ReadPendingAsync(CancellationToken.None);
+        Assert.Equal(transfers.Length, entries.Count);
+        Assert.All(entries, entry => Assert.Equal(TransferJournalState.Sealed, entry.State));
+        Assert.Equal(Enumerable.Range(1, 12).Select(i => (long)i),
+            entries.Select(entry => entry.DestinationGeneration).Order());
+        Assert.Equal(3, journal.ScanCacheEntries);
+        Assert.True(journal.ScanCacheEvictions > 0);
+    }
+
+    [Fact]
+    public async Task A_warm_bounded_scan_cache_never_authorizes_a_manifest_with_an_unsafe_acl()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"),
+            requireProtectedParent: false, scanCacheCapacity: 3);
+        var transfers = Enumerable.Range(0, 4).Select(_ => Transfer()).ToArray();
+        foreach (var transfer in transfers) await journal.CreateAsync(transfer, CancellationToken.None);
+        await journal.ReadPendingAsync(CancellationToken.None);
+        Assert.Equal(3, journal.ScanCacheEntries);
+        foreach (var transfer in transfers)
+        {
+            var file = new FileInfo(Path.Combine(_workspace.Root, "journal", transfer.TransferId.ToString("N") + ".json"));
+            byte[] bytes = await File.ReadAllBytesAsync(file.FullName);
+            var original = file.GetAccessControl();
+            var unsafeSecurity = file.GetAccessControl();
+            unsafeSecurity.AddAccessRule(new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+                FileSystemRights.Write, AccessControlType.Allow));
+            file.SetAccessControl(unsafeSecurity);
+            try
+            {
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                    journal.ReadAsync(transfer.TransferId, CancellationToken.None));
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() => journal.SealAsync(
+                    transfer.TransferId, transfer.ProcessId, transfer.StagePath, CancellationToken.None));
+                Assert.Equal(bytes, await File.ReadAllBytesAsync(file.FullName));
+            }
+            finally { file.SetAccessControl(original); }
+        }
+    }
 }
