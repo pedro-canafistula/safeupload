@@ -11,7 +11,8 @@ Omitting --cases/--modes expands the entire immutable table x three modes.
 NOT_READY and INCONCLUSIVE fail; subset runs never print Phase4Suite=PASS.
 Guest case.json is provisional until the wrapper's separate baseline returns;
 its bytes are retained as case.guest-export.txt before the ONE authoritative
-host case.json export. Failed overlays/artifacts are never removed.
+host case.json export. Artifacts are never removed; the VM disk a case ran on is
+discarded by Invoke-StagedSuiteBatch.sh (run-disk.sh) after the evidence is copied.
 """
 from pathlib import Path
 import argparse
@@ -1083,7 +1084,7 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
             pre += '$p=Join-Path $d ' + ps_literal(leaf) + ';'
             if leaf == 'stage-service-publish.zip':
                 pre += ("if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne " + ps_literal(sha(path)) + "){$old=(Get-FileHash $p).Hash;"
-                        "$keep=$p+'.preserved-'+$old;if(Test-Path -LiteralPath $keep){throw 'Preserved package collision'};Move-Item -LiteralPath $p -Destination $keep};\n")
+                        "$keep=$p+'.preserved-'+$old;if(Test-Path -LiteralPath $keep){if((Get-FileHash $keep).Hash -ne $old){throw 'Preserved package collision'};Remove-Item -LiteralPath $p -Force}else{Move-Item -LiteralPath $p -Destination $keep}};\n")
             else:
                 pre += 'if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne ' + ps_literal(sha(path)) + "){throw 'Input collision'};\n"
         for leaf in [name + '-artifacts', 'SafeUpload-invariant-state-' + name, *[name + '-' + phase + suffix for phase in ('prepare', 'afterboot', 'finalize') for suffix in ('.out', '.err')]]:

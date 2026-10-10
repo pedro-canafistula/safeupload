@@ -4,13 +4,27 @@
 param(
     [Parameter(Mandatory = $true)]
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
-    [string] $ServiceExecutablePath
+    [string] $ServiceExecutablePath,
+
+    # Central policy server. Empty (the default) keeps the agent autonomous: it reads C:\ProgramData\SafeUpload\policy.json.
+    # appsettings.json ships a panel address, and with any address configured the agent takes its policy from the
+    # panel and falls back to a built-in default (other folder, removable and network scopes) when it cannot reach
+    # it, so the installer states the choice explicitly instead of inheriting the shipped address.
+    [string] $AdminBaseUrl = '',
+
+    # The staged-write driver only works with the agent in staged minifilter mode. Without these arguments the
+    # agent runs outside staged mode (admissionCoverage NotAvailable, auditOnly true) and the driver, which fails
+    # closed, refuses every standard-user save into a protected folder.
+    [string[]] $ServiceArguments = @('--Interception:Mode=Minifilter', '--Interception:StagingPrototype=true',
+        ('--CentroAdministracao:BaseUrl=' + $AdminBaseUrl))
 )
 
 $ErrorActionPreference = 'Stop'
 $serviceName = 'SafeUploadAgent'
 $serviceExecutable = (Resolve-Path -LiteralPath $ServiceExecutablePath).Path
-$binaryPath = '"' + $serviceExecutable + '"'
+$quotedExecutable = '"' + $serviceExecutable + '"'
+$binaryPath = (@($quotedExecutable) + $ServiceArguments) -join ' '
+$agentServiceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent'
 $driverServiceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload'
 
 function Invoke-ScChecked([string[]] $Arguments, [string] $Description) {
@@ -19,6 +33,22 @@ function Invoke-ScChecked([string[]] $Arguments, [string] $Description) {
         throw "$Description failed (sc.exe $LASTEXITCODE): $($output -join ' ')"
     }
     $output | Out-Host
+}
+
+# sc.exe on Windows 10 prints "SERVICE_SID_TYPE:  UNRESTRICTED"; other builds and docs use "SERVICE_SID_TYPE_UNRESTRICTED".
+function Test-ServiceSidTypeUnrestricted([string] $QueryOutput) {
+    return $QueryOutput -match 'SERVICE_SID_TYPE[_:\s]+UNRESTRICTED'
+}
+
+# Windows PowerShell 5.1 mangles embedded quotes when it passes an argument to sc.exe, so the command line (quoted
+# executable plus arguments) is written to the ImagePath value directly and read back.
+function Set-SafeUploadAgentImagePath {
+    Set-ItemProperty -LiteralPath $agentServiceKey -Name ImagePath -Value $binaryPath -Type ExpandString
+    $written = [string](Get-ItemProperty -LiteralPath $agentServiceKey -Name ImagePath).ImagePath
+    if ($written -ne $binaryPath) {
+        throw "SafeUploadAgent ImagePath was not written as expected: $written"
+    }
+    Write-Output "ServiceCommandLine=$written"
 }
 
 function Invoke-BootPolicySeedAsSystem {
@@ -92,22 +122,23 @@ Set-SafeUploadDriverBootStart
 
 $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if ($null -eq $existing) {
-    Invoke-ScChecked @('create', $serviceName, 'binPath=', $binaryPath,
+    Invoke-ScChecked @('create', $serviceName, 'binPath=', $quotedExecutable,
         'start=', 'auto', 'obj=', 'LocalSystem') 'Creating SafeUploadAgent'
 }
 else {
     if ($existing.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
         throw 'Stop SafeUploadAgent before changing its image path.'
     }
-    Invoke-ScChecked @('config', $serviceName, 'binPath=', $binaryPath,
+    Invoke-ScChecked @('config', $serviceName, 'binPath=', $quotedExecutable,
         'start=', 'auto', 'obj=', 'LocalSystem') 'Configuring SafeUploadAgent'
 }
+Set-SafeUploadAgentImagePath
 
 # SCM adds this service SID to the service process token. Unrestricted mode
 # retains the LocalSystem token while including NT SERVICE\SafeUploadAgent.
 Invoke-ScChecked @('sidtype', $serviceName, 'unrestricted') 'Configuring the service SID'
 $sidType = (& sc.exe qsidtype $serviceName 2>&1 | Out-String)
-if ($LASTEXITCODE -ne 0 -or $sidType -notmatch 'SERVICE_SID_TYPE_UNRESTRICTED') {
+if ($LASTEXITCODE -ne 0 -or -not (Test-ServiceSidTypeUnrestricted $sidType)) {
     throw "SafeUploadAgent does not have an unrestricted service SID: $sidType"
 }
 

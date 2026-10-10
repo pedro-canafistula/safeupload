@@ -6,9 +6,7 @@ using SafeUpload.Agent.Minifilter;
 using SafeUpload.Agent.Service.Notifications;
 using SafeUpload.Agent.Core.Infrastructure;
 using PortVerdict = SafeUpload.Agent.Minifilter.Verdict;
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
 using SafeUpload.Agent.Service.Diagnostics;
-#endif
 
 namespace SafeUpload.Agent.Service.Interception;
 
@@ -52,6 +50,7 @@ public sealed class MinifilterInterceptor : BackgroundService
     private readonly NotificationHub _hub;
     private readonly PendingOverrides _pending;
     private readonly OverrideGrantDispatcher _grants;
+    private readonly DriverDiagnosticsSource _diagnostics;
     private readonly StagedJustifications _stagedJustifications;
     private readonly ILogger<MinifilterInterceptor> _logger;
     private readonly bool _stagingEnabled;
@@ -81,6 +80,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         NotificationHub hub,
         PendingOverrides pending,
         OverrideGrantDispatcher grants,
+        DriverDiagnosticsSource diagnostics,
         StagedJustifications stagedJustifications,
         IConfiguration configuration,
         ILogger<MinifilterInterceptor> logger
@@ -95,6 +95,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _pending = pending ?? throw new ArgumentNullException(nameof(pending));
         _grants = grants ?? throw new ArgumentNullException(nameof(grants));
+        _diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
         _stagedJustifications = stagedJustifications ?? throw new ArgumentNullException(nameof(stagedJustifications));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _stagingEnabled = configuration.GetValue<bool>("Interception:StagingPrototype");
@@ -207,6 +208,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             }
 
             _grants.Bind(port);
+            _diagnostics.Bind(port);
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
             IAdmissionEvidenceSender? evidenceSender = port as IAdmissionEvidenceSender;
             bool evidenceBound = false;
@@ -332,6 +334,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     }
                 }
                 _grants.Unbind(port);
+                _diagnostics.Unbind(port);
                 _stagedJustifications.Clear();
                 _hub.Publish(new StatusNotification(
                     _policyVersion, _activeCategories, ProtectionActive: false,

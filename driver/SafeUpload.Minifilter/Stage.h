@@ -28,8 +28,17 @@ VOID SafeUploadStageInitializeProtocol(VOID);
 BOOLEAN SafeUploadStageProtectedName(_In_ PFLT_FILE_NAME_INFORMATION Name, _In_ SAFEUPLOAD_VOLUME_KIND Kind);
 BOOLEAN SafeUploadStageTouchesProtectedNamespace(_In_ PFLT_FILE_NAME_INFORMATION Name, _In_ SAFEUPLOAD_VOLUME_KIND Kind);
 BOOLEAN SafeUploadStageProtectedPath(_In_ PUNICODE_STRING Name, _In_ USHORT VolumeLength, _In_ SAFEUPLOAD_VOLUME_KIND Kind);
+/* What the create gate's alias check proved about a writer open of a name outside every scope (T3d): no link of the file at that
+ * name is inside a current or pending scope (or no file had the name), checked against policy scope sequence ScopeSequence. The
+ * writer registry turns it into the entry's OUTSIDE classification when the same file is bound under the same sequence. */
+typedef struct _SAFEUPLOAD_CREATE_ALIAS_PROOF {
+    BOOLEAN Valid;
+    BOOLEAN Absent;                 /* no file had the name: valid only for the open that creates the file */
+    ULONGLONG ScopeSequence;        /* SafeUploadPolicyScopeSequenceSnapshot() read before the check */
+    FILE_ID_INFORMATION Identity;   /* the file the check examined, when it existed */
+} SAFEUPLOAD_CREATE_ALIAS_PROOF, *PSAFEUPLOAD_CREATE_ALIAS_PROOF;
 NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance, _In_ PFLT_FILE_NAME_INFORMATION Name,
-    _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected);
+    _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected, _Inout_opt_ PSAFEUPLOAD_CREATE_ALIAS_PROOF Proof);
 NTSTATUS SafeUploadStageCheckObjectAliases(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Object,
     _In_ PUNICODE_STRING Volume, _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected);
 BOOLEAN SafeUploadPublicationCreate(_In_ PUNICODE_STRING Name, _In_ ULONG Disposition, _In_ BOOLEAN Writer);
@@ -52,6 +61,15 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageTxfFsctlPreOperation(
     _Out_ PVOID *CompletionContext);
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+/* DenyRing.c: always-on record of operations completed with an error status. */
+VOID SafeUploadDenyRingInitialize(VOID);
+VOID SafeUploadDenySiteHint(_In_ PFLT_CALLBACK_DATA Data, _In_ PVOID Site);
+VOID SafeUploadDenyDetail(_In_ PFLT_CALLBACK_DATA Data, _In_ UINT32 Reason, _In_ NTSTATUS Aux, _In_opt_ PCUNICODE_STRING Name);
+VOID SafeUploadDenyNote(_In_ PFLT_CALLBACK_DATA Data, _In_opt_ PCFLT_RELATED_OBJECTS Objects,
+    _In_ NTSTATUS Status, _In_ BOOLEAN PostOperation);
+NTSTATUS SafeUploadDenyRingReadBatch(_In_ UINT64 AfterSequence, _Out_ PSAFEUPLOAD_DENY_RING_BATCH Batch);
+VOID SafeUploadDenyGetCounters(_Out_ PSAFEUPLOAD_DIAG_COUNTERS Counters);
+
 extern volatile LONG SafeUploadAdmissionTraceControlState;
 extern volatile LONG SafeUploadAdmissionTraceSectionEvents;
 BOOLEAN SafeUploadStageAdmissionTraceBegin(_In_ LONG TraceState);
@@ -108,7 +126,7 @@ VOID SafeUploadStageAdmissionStopWorker(VOID);
 BOOLEAN SafeUploadStageWritersWantPostCreate(_In_ PFLT_CALLBACK_DATA Data);
 NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects, _Outptr_result_maybenull_ PVOID *Reservation,
-    _Out_ PBOOLEAN Required);
+    _Out_ PBOOLEAN Required, _In_opt_ const SAFEUPLOAD_CREATE_ALIAS_PROOF *AliasProof);
 VOID SafeUploadStageWritersTrackingLostAt(_In_opt_ PFLT_INSTANCE Instance, _In_ LONG Reason,
     _In_ ULONG OriginSite);
 #define SafeUploadStageWritersTrackingLost(Instance, Reason) \
@@ -155,6 +173,30 @@ LONG SafeUploadStageWritersObserverTicketsOutstanding(VOID);
 _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersAttachMutatingIo(_In_opt_ PVOID RenameContext,
     _Inout_ PVOID *MutatingIoContext);
+/* Result of SafeUploadStageWritersSopOutsideWhy: why a stream is not known to be outside every scope. The low byte is the reason; for STATE,
+ * CLASS and UNKNOWN the byte above it holds the entry's value. A refusal in the deny ring carries 0xE5000000 | value in its aux status. */
+#define SAFEUPLOAD_SOP_OUTSIDE_KNOWN           0x00
+#define SAFEUPLOAD_SOP_OUTSIDE_NO_OBJECT       0x01   /* no instance, file object or section-object pointer */
+#define SAFEUPLOAD_SOP_OUTSIDE_NO_ENTRY        0x02   /* no registry entry for this stream: it was never seen opened for writing */
+#define SAFEUPLOAD_SOP_OUTSIDE_RETIRED         0x03
+#define SAFEUPLOAD_SOP_OUTSIDE_OTHER_INSTANCE  0x04
+#define SAFEUPLOAD_SOP_OUTSIDE_OTHER_SOP       0x05
+#define SAFEUPLOAD_SOP_OUTSIDE_STATE           0x06
+#define SAFEUPLOAD_SOP_OUTSIDE_CLASS           0x07
+#define SAFEUPLOAD_SOP_OUTSIDE_UNKNOWN         0x08
+#define SAFEUPLOAD_SOP_OUTSIDE_ALIAS_PENDING   0x09
+#define SAFEUPLOAD_SOP_OUTSIDE_SCAN_PENDING    0x0A
+#define SAFEUPLOAD_SOP_OUTSIDE_RENAME          0x0B
+#define SAFEUPLOAD_SOP_OUTSIDE_TRANSITION      0x0C   /* a scope that may grow the union is published and not yet applied */
+_IRQL_requires_max_(APC_LEVEL)
+ULONG SafeUploadStageWritersSopOutsideWhy(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject);
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadStageWritersSopKnownOutside(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject);
+_IRQL_requires_max_(APC_LEVEL)
+ULONG SafeUploadStageWritersAdmitNestedMutation(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject,
+    _Outptr_result_maybenull_ PVOID *Context);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageWritersAwaitClassification(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject);
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
     _In_opt_ PFILE_OBJECT FileObject, _In_ BOOLEAN IncludeAncestors);
@@ -202,6 +244,8 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
 UINT32 SafeUploadStageSectionsInFlight(_In_opt_ PVOID SectionObjectPointer);
 _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status);
+VOID SafeUploadStageWritersGetReclaimStats(_Out_ PUINT64 Passes, _Out_ PUINT64 ParkedPasses, _Out_ PUINT64 MoreWorkRequeues,
+    _Out_ PUINT64 WakeupsSkipped);
 NTSTATUS SafeUploadStageWritersPromotionTraceReadBatch(
     _In_ const SAFEUPLOAD_PROMOTION_TRACE_REQUEST *Request,
     _Out_ PSAFEUPLOAD_PROMOTION_TRACE_BATCH Batch);

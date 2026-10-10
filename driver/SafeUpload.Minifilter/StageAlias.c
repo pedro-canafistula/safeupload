@@ -137,8 +137,27 @@ Exit:
     return status;
 }
 
+/* The paging, swap and hibernation files at the volume root cannot be hard links of a protected file (NTFS gives them one link
+ * and refuses to open them with the access and sharing a probe asks for: the probe answered STATUS_SHARING_VIOLATION and the
+ * create was refused). Matching the three names at the root is exact and needs no file system access. */
+static BOOLEAN StageAliasIsVolumeSystemFile(_In_ PFLT_FILE_NAME_INFORMATION Name)
+{
+    static const UNICODE_STRING files[] = {
+        RTL_CONSTANT_STRING(L"\\pagefile.sys"), RTL_CONSTANT_STRING(L"\\swapfile.sys"), RTL_CONSTANT_STRING(L"\\hiberfil.sys") };
+    UNICODE_STRING relative;
+    ULONG index;
+    if (Name->Name.Length <= Name->Volume.Length || Name->Stream.Length > Name->Name.Length - Name->Volume.Length) return FALSE;
+    relative.Buffer = (PWCH)((PUCHAR)Name->Name.Buffer + Name->Volume.Length);
+    relative.Length = (USHORT)(Name->Name.Length - Name->Volume.Length - Name->Stream.Length);
+    relative.MaximumLength = relative.Length;
+    for (index = 0; index < RTL_NUMBER_OF(files); ++index)
+        if (RtlEqualUnicodeString(&relative, &files[index], TRUE)) return TRUE;
+    return FALSE;
+}
+
 NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance,
-    _In_ PFLT_FILE_NAME_INFORMATION Name, _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected)
+    _In_ PFLT_FILE_NAME_INFORMATION Name, _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected,
+    _Inout_opt_ PSAFEUPLOAD_CREATE_ALIAS_PROOF Proof)
 {
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
@@ -149,9 +168,11 @@ NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance,
     NTSTATUS status;
     PAGED_CODE();
     *Protected = FALSE;
+    if (Proof != NULL) Proof->Valid = FALSE;
     if (IoGetTopLevelIrp() != NULL) return STATUS_ACCESS_DENIED;
     status = FltGetFileSystemType(Instance, &fs);
     if (!NT_SUCCESS(status) || fs != FLT_FSTYPE_NTFS) return status;
+    if (StageAliasIsVolumeSystemFile(Name)) return STATUS_SUCCESS;
     /* Classify the base object even when an outside alias names an ADS. */
     if (Name->Stream.Length > path.Length) return STATUS_OBJECT_NAME_INVALID;
     path.Length -= Name->Stream.Length; path.MaximumLength = path.Length;
@@ -159,12 +180,32 @@ NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance,
     status = FltCreateFileEx2(SafeUploadData.Filter, Instance, &handle, &object,
         FILE_READ_ATTRIBUTES | SYNCHRONIZE, &attributes, &io, NULL, 0,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
-        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_COMPLETE_IF_OPLOCKED,
+        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_COMPLETE_IF_OPLOCKED | FILE_OPEN_REPARSE_POINT,
         NULL, 0, IO_IGNORE_SHARE_ACCESS_CHECK | IO_STOP_ON_SYMLINK, NULL);
+    /* FILE_OPEN_REPARSE_POINT: the probe wants the object's identity and link count, not what a reparse point resolves to.
+     * Following it failed with STATUS_IO_REPARSE_TAG_NOT_HANDLED for every app-execution alias under WindowsApps (and with
+     * STATUS_STOPPED_ON_SYMLINK for a symbolic link), so any writer open of such a name outside every scope was refused. A
+     * create that really goes through a symbolic link re-enters this filter under the target's name and is classified there. */
     if (status == STATUS_STOPPED_ON_SYMLINK && io.Information != 0) ExFreePool((PVOID)io.Information);
-    if (status == STATUS_SUCCESS) status = StageAliasQuery(Instance, object, &Name->Volume, Kind, Protected);
-    else if (status == STATUS_OBJECT_NAME_NOT_FOUND || status == STATUS_OBJECT_PATH_NOT_FOUND ||
-        status == STATUS_FILE_IS_A_DIRECTORY) status = STATUS_SUCCESS;
+    if (status == STATUS_SUCCESS) {
+        status = StageAliasQuery(Instance, object, &Name->Volume, Kind, Protected);
+        /* The proof names the file this check examined, so a name re-pointed before the create cannot inherit it. */
+        if (status == STATUS_SUCCESS && !*Protected && Proof != NULL) {
+            ULONG returned = 0;
+            RtlZeroMemory(&Proof->Identity, sizeof(Proof->Identity));
+            Proof->Absent = FALSE;
+            Proof->Valid = NT_SUCCESS(FltQueryInformationFile(Instance, object, &Proof->Identity,
+                sizeof(Proof->Identity), FileIdInformation, &returned)) && returned == sizeof(Proof->Identity);
+        }
+    } else if (status == STATUS_OBJECT_NAME_NOT_FOUND || status == STATUS_OBJECT_PATH_NOT_FOUND ||
+        status == STATUS_FILE_IS_A_DIRECTORY) {
+        if (status != STATUS_FILE_IS_A_DIRECTORY && Proof != NULL) {
+            RtlZeroMemory(&Proof->Identity, sizeof(Proof->Identity));
+            Proof->Absent = TRUE;
+            Proof->Valid = TRUE;
+        }
+        status = STATUS_SUCCESS;
+    }
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
     return status;

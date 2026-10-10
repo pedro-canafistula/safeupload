@@ -1366,6 +1366,65 @@ Return Value:
             *ReturnOutputBufferLength = sizeof( writerStatus );
             leave;
         }
+
+        if (command == SAFEUPLOAD_CONTROL_DENY_RING_READ) {
+            PSAFEUPLOAD_DENY_RING_BATCH denyBatch = (PSAFEUPLOAD_DENY_RING_BATCH)policy;
+            UINT64 afterSequence;
+
+            /* The reply is built in the pool scratch buffer allocated above, never on the stack, and the header
+             * fields are validated from the copy taken at the top of this routine: this routine is already close
+             * to the stack-use limit (C6262). */
+            C_ASSERT( sizeof( SAFEUPLOAD_DENY_RING_BATCH ) <= sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );
+            if (InputBufferLength != sizeof( SAFEUPLOAD_DENY_RING_REQUEST )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (OutputBuffer == NULL || OutputBufferLength != sizeof( SAFEUPLOAD_DENY_RING_BATCH )) {
+                status = OutputBufferLength < sizeof( SAFEUPLOAD_DENY_RING_BATCH ) ?
+                    STATUS_BUFFER_TOO_SMALL : STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof( SAFEUPLOAD_DENY_RING_REQUEST ) ||
+                controlHeader.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+            RtlCopyMemory( &afterSequence,
+                           (PUCHAR)InputBuffer + FIELD_OFFSET( SAFEUPLOAD_DENY_RING_REQUEST, AfterSequence ),
+                           sizeof( afterSequence ) );
+#pragma warning( suppress: 6001 )
+            ProbeForWrite( OutputBuffer, sizeof( SAFEUPLOAD_DENY_RING_BATCH ), __alignof( SAFEUPLOAD_DENY_RING_BATCH ) );
+            status = SafeUploadDenyRingReadBatch( afterSequence, denyBatch );
+            if (NT_SUCCESS( status )) {
+                RtlCopyMemory( OutputBuffer, denyBatch, sizeof( *denyBatch ) );
+                *ReturnOutputBufferLength = sizeof( *denyBatch );
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_DIAG_COUNTERS) {
+            PSAFEUPLOAD_DIAG_COUNTERS diagCounters = (PSAFEUPLOAD_DIAG_COUNTERS)policy;
+
+            C_ASSERT( sizeof( SAFEUPLOAD_DIAG_COUNTERS ) <= sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );
+            if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL ) ||
+                OutputBuffer == NULL || OutputBufferLength != sizeof( SAFEUPLOAD_DIAG_COUNTERS )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||
+                controlHeader.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite( OutputBuffer, sizeof( SAFEUPLOAD_DIAG_COUNTERS ), __alignof( SAFEUPLOAD_DIAG_COUNTERS ) );
+            SafeUploadDenyGetCounters( diagCounters );
+            RtlCopyMemory( OutputBuffer, diagCounters, sizeof( *diagCounters ) );
+            *ReturnOutputBufferLength = sizeof( *diagCounters );
+            leave;
+        }
 #endif
 
         if (command == SAFEUPLOAD_CONTROL_GET_COUNTERS) {

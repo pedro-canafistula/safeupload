@@ -1762,7 +1762,10 @@ static NTSTATUS StageQuery(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream, PSTAGE
             RtlCopyMemory(output, &Stream->View->Identity, sizeof(FILE_ID_INFORMATION));
             Data->IoStatus.Information = sizeof(FILE_ID_INFORMATION);
         } else if (cls == FileBasicInformation || cls == FileStandardInformation ||
-            cls == FileNetworkOpenInformation || cls == FileAttributeTagInformation) {
+            cls == FileNetworkOpenInformation || cls == FileAttributeTagInformation ||
+            cls == FileStandardLinkInformation) {
+            /* Link counts, delete-pending and directory come from the backing file like FileStandardInformation's
+             * (U01: a first sign-in queries FileStandardLinkInformation on a staged stream; reads are never refused). */
             status = FltQueryInformationFile(Stream->BackingInstance, Stream->BackingObject,
                 output, length, cls, &returned);
             Data->IoStatus.Information = returned;
@@ -2591,6 +2594,16 @@ static BOOLEAN StageDirectoryCreateCanMutate(_In_ PFLT_CALLBACK_DATA Data)
         GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED)) != 0;
 }
 
+/* A normalized-name lookup that fails because the path does not exist proves the request cannot touch an existing protected
+ * object: the file system will answer not-found itself, or the create can only succeed one component at a time under a parent
+ * that does exist (and then the lookup resolves). Refusing these made every multi-level create on a volume that hosts a scope
+ * fail with ACCESS_DENIED instead of PATH_NOT_FOUND, so Windows could not build a new user's profile tree (it creates the
+ * deepest folder first and its parents on PATH_NOT_FOUND). Any other lookup failure stays "the whole volume may be in scope". */
+static BOOLEAN StageNameLookupProvesAbsent(_In_ NTSTATUS Status)
+{
+    return SafeUploadNameLookupProvesAbsent(Status);
+}
+
 /* Directory creates and metadata opens can change namespace state without a later SET_INFORMATION.
  * Resolve the target at PASSIVE_LEVEL; an unresolved name on a scoped volume is an admission refusal. */
 static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
@@ -2598,18 +2611,25 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
-    NTSTATUS status;
+    NTSTATUS status, lookup = STATUS_SUCCESS;
     BOOLEAN deny;
+    UINT32 reason = SAFEUPLOAD_DENY_REASON_NONE;
     if (!StageDirectoryCreateCanMutate(Data)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     status = FltGetFileNameInformation(Data,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (NT_SUCCESS(status)) status = FltParseFileNameInformation(name);
     if (!NT_SUCCESS(status)) {
-        deny = SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
+        deny = !StageNameLookupProvesAbsent(status) && SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
+        reason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        lookup = status;
+    } else if (SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, TRUE)) {
+        deny = TRUE;
+        reason = SAFEUPLOAD_DENY_REASON_POLICY_SCOPE;
     } else {
-        deny = SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, TRUE) ||
-            SafeUploadStageTouchesProtectedNamespace(name, kind);
+        deny = SafeUploadStageTouchesProtectedNamespace(name, kind);
+        reason = SAFEUPLOAD_DENY_REASON_PROTECTED_NAMESPACE;
     }
+    if (deny) SafeUploadDenyDetail(Data, reason, lookup, name != NULL ? &name->Name : NULL);
     if (name != NULL) FltReleaseFileNameInformation(name);
     if (!deny) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
@@ -2619,7 +2639,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
 #endif
 
 static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
-    PCFLT_RELATED_OBJECTS Objects)
+    PCFLT_RELATED_OBJECTS Objects, PSAFEUPLOAD_CREATE_ALIAS_PROOF AliasProof)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     PFLT_FILE_NAME_INFORMATION privateName = NULL;
@@ -2634,6 +2654,9 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     ULONGLONG zeroId = 0;
     SAFEUPLOAD_VOLUME_KIND kind;
     NTSTATUS status = STATUS_SUCCESS;
+    UINT32 denyReason = SAFEUPLOAD_DENY_REASON_NONE;   /* recorded in the deny ring when the create is refused */
+    NTSTATUS denyAux = STATUS_SUCCESS;
+    UNREFERENCED_PARAMETER(AliasProof);   /* only the prototype's writer registry consumes it */
     /* StageAdmit owns the single by-ID classification in the prototype; do
      * not repeat the TxF helper's bounded open before its common by-ID path. */
     if (!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID) &&
@@ -2700,6 +2723,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
                     &zeroId, sizeof(zeroId)) != sizeof(zeroId)) {
                 /* Documented exception: on a possibly scoped volume, an
                  * unresolvable high-half mutating ID is refused. */
+                denyReason = SAFEUPLOAD_DENY_REASON_BY_ID_HIGH_HALF;
                 status = STATUS_ACCESS_DENIED; goto Complete;
             }
             /* One bounded PASSIVE attempt classifies every hard link through
@@ -2711,6 +2735,12 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
             if (NT_SUCCESS(status) && !inScope) {
                 handled = FALSE;
                 goto Complete;
+            }
+            if (NT_SUCCESS(status)) {
+                denyReason = SAFEUPLOAD_DENY_REASON_POLICY_SCOPE;   /* a by-ID write to a scoped file: refused by design */
+            } else {
+                denyReason = SAFEUPLOAD_DENY_REASON_BY_ID_UNDECIDABLE;
+                denyAux = status;
             }
             status = STATUS_ACCESS_DENIED;
             goto Complete;
@@ -2728,10 +2758,14 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     }
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (!NT_SUCCESS(status)) {
+        /* The path does not exist: nothing protected can be touched, so let the file system answer. */
+        if (StageNameLookupProvesAbsent(status)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         /* A name-resolution failure is relevant only for a request that can mutate.
          * Early boot image/manifest reads must pass even when C: has a boot scope. */
         if (writer && SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
+            denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+            denyAux = status;
             status = STATUS_ACCESS_DENIED; goto Complete;
         }
 #endif
@@ -2750,8 +2784,18 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
             FltReleaseFileNameInformation(name);
             return FLT_PREOP_SUCCESS_NO_CALLBACK;
         }
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
         goto Complete;
     }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* A volume no current, pending or boot scope can match has nothing to protect. Without this a name the classifier
+     * cannot place on a volume (the redirector's own device, \;LanmanRedirector) read as "protected" and was refused. */
+    if (!SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
+        handled = FALSE;
+        goto Complete;
+    }
+#endif
     relative.Buffer = (PWCH)((PUCHAR)name->Name.Buffer + name->Volume.Length);
     relative.Length = name->Name.Length - name->Volume.Length;
     relative.MaximumLength = relative.Length;
@@ -2762,18 +2806,24 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         StageRelease(&StageNamespaceResource);
     }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (writer && !privateNamespace && SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
+    /* The gate protects a name that may be inside a scope while its entry is classified. A name outside every current and
+     * pending scope is decided below by the create's own alias check (a link inside a scope is refused there), and
+     * refusing it here only broke unrelated writers during the classification window (FontCache, the licensing store). */
+    if (writer && !privateNamespace && SafeUploadStageProtectedName(name, kind) &&
+        SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_ACTIVATING_NAME;
         status = STATUS_ACCESS_DENIED; goto Complete;
     }
 #endif
     if (RtlPrefixUnicodeString(&privatePrefix, &relative, TRUE)) {
-        if (!service) { status = STATUS_ACCESS_DENIED; goto Complete; }
+        if (!service) { denyReason = SAFEUPLOAD_DENY_REASON_PRIVATE_NAMESPACE; status = STATUS_ACCESS_DENIED; goto Complete; }
         handled = FALSE; goto Complete;
     }
     if (!privateNamespace && writer && SafeUploadStageProtectedName(name, kind) &&
         (!SafeUploadInstanceTrustGateSatisfied(Objects->Instance) || !SafeUploadIsAuthenticatedClient())) {
         /* Canary results describe the primitive only; trust is assigned from
          * the immutable setup flags and can never be upgraded on this mount. */
+        denyReason = SAFEUPLOAD_DENY_REASON_TRUST_GATE;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
@@ -2781,8 +2831,31 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         BOOLEAN protectedAlias = FALSE;
         if (writerAccess || disposition == FILE_SUPERSEDE || disposition == FILE_OVERWRITE ||
             disposition == FILE_OVERWRITE_IF) {
-            status = SafeUploadStageCheckNamedAliases(Objects->Instance, name, kind, &protectedAlias);
-            if (status != STATUS_SUCCESS || protectedAlias) { status = STATUS_ACCESS_DENIED; goto Complete; }
+            PSAFEUPLOAD_CREATE_ALIAS_PROOF proof = NULL;
+            ULONGLONG scopeSequence = 0;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+            /* T3d: the writer registry classifies this file OUTSIDE from the check below, but only in the plain case its entry
+             * describes (a non-transacted open of the default stream by name); the sequence is read before the check, so a
+             * scope published during it cannot validate the result. */
+            if (AliasProof != NULL && Objects->Transaction == NULL && name->Stream.Length == 0 &&
+                !FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID)) {
+                proof = AliasProof;
+                scopeSequence = SafeUploadPolicyScopeSequenceSnapshot();
+            }
+#endif
+            status = SafeUploadStageCheckNamedAliases(Objects->Instance, name, kind, &protectedAlias, proof);
+            if (proof != NULL && proof->Valid) proof->ScopeSequence = scopeSequence;
+            if (status == STATUS_DELETE_PENDING) {
+                /* The probe found the file deleted-pending: no write can reach it, whatever its other names are, and the file
+                 * system refuses the open itself. Refusing here turned that answer into ACCESS_DENIED (servicing opens the
+                 * old printer-driver files this way). */
+                handled = FALSE; goto Complete;
+            }
+            if (status != STATUS_SUCCESS || protectedAlias) {
+                denyReason = protectedAlias ? SAFEUPLOAD_DENY_REASON_PROTECTED_ALIAS : SAFEUPLOAD_DENY_REASON_ALIAS_CHECK_FAILED;
+                denyAux = status;
+                status = STATUS_ACCESS_DENIED; goto Complete;
+            }
         }
         handled = FALSE; goto Complete;
     }
@@ -2801,6 +2874,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     /* FILE_DELETE_ON_CLOSE on a protected name deletes the physical file at cleanup without any SET_INFORMATION, so
      * the disposition gate never sees it; a DELETE-only open is not a writer and would fall through to NTFS. */
     if (!privateNamespace && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_DELETE_ON_CLOSE;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
@@ -2808,6 +2882,8 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     Data->IoStatus.Information = 0;
     status = StageCreate(Data, Objects, name, kind, writer, expectedView, privateNamespace, &handled);
 Complete:
+    if (handled && !NT_SUCCESS(status) && denyReason != SAFEUPLOAD_DENY_REASON_NONE)
+        SafeUploadDenyDetail(Data, denyReason, denyAux, name != NULL ? &name->Name : NULL);
     if (name != NULL) FltReleaseFileNameInformation(name);
     if (privateName != NULL) ExFreePoolWithTag(privateName, STAGE_TAG);
     if (!handled) return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -2817,10 +2893,12 @@ Complete:
 }
 
 static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data,
-    PCFLT_RELATED_OBJECTS Objects, BOOLEAN IncludeAncestors, BOOLEAN TrackedWriter);
+    PCFLT_RELATED_OBJECTS Objects, BOOLEAN IncludeAncestors, BOOLEAN TrackedWriter, PVOID *MutatingIoContext);
 
+/* *MutatingIoContext is the caller's mutating-I/O context (NULL for an untracked file object); a nested operation admitted by its
+ * stream's registry entry gets its W count there, and the caller hands it to the post-operation as usual. */
 static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data,
-    PCFLT_RELATED_OBJECTS Objects, BOOLEAN IncludeAncestors, BOOLEAN TrackedWriter)
+    PCFLT_RELATED_OBJECTS Objects, BOOLEAN IncludeAncestors, BOOLEAN TrackedWriter, PVOID *MutatingIoContext)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
@@ -2830,6 +2908,8 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId;
     FLT_FILESYSTEM_TYPE fs;
     NTSTATUS status = STATUS_ACCESS_DENIED;
+    UINT32 denyReason = SAFEUPLOAD_DENY_REASON_NONE;   /* recorded in the deny ring when the request is refused */
+    NTSTATUS denyAux = STATUS_SUCCESS;
     if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     /* Querying lower metadata is forbidden in fast I/O, paging/section paths
      * or with a top-level IRP. This direct-mutation path never gates paging I/O. */
@@ -2837,14 +2917,48 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
     /* H(F) keeps an admitted writer usable through cleanup. Its mutating IRP
      * was counted before this check and is paired by post-operation. */
     if (TrackedWriter) return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) goto Complete;
-    status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
-    if (!NT_SUCCESS(status)) goto Complete;
-    status = FltParseFileNameInformation(name);
-    if (!NT_SUCCESS(status)) goto Complete;
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
+        /* The name cannot be queried in this context (a write issued from inside another file-system call, for example a
+         * filter above this one compressing a file). A stream whose registry entry is validated and classified outside every
+         * scope is decided by that entry; everything else keeps the volume-wide answer below. */
+        if (KeGetCurrentIrql() <= APC_LEVEL) {
+            ULONG why;
+            if (*MutatingIoContext == NULL) {
+                why = SafeUploadStageWritersAdmitNestedMutation(Objects->Instance, Objects->FileObject, MutatingIoContext);
+            } else {
+                /* Already counted by the caller's context. */
+                why = SafeUploadStageWritersSopOutsideWhy(Objects->Instance, Objects->FileObject);
+            }
+            if (why == SAFEUPLOAD_SOP_OUTSIDE_KNOWN) {
+                status = STATUS_SUCCESS;
+                goto Complete;
+            }
+            denyAux = (NTSTATUS)(0xE5000000UL | why);   /* the ring shows why the stream was not known outside */
+        }
+#endif
+        denyReason = SAFEUPLOAD_DENY_REASON_TOP_LEVEL_IRP;
+        goto Complete;
+    }
+    status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
+    if (!NT_SUCCESS(status)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
+        goto Complete;
+    }
+    status = FltParseFileNameInformation(name);
+    if (!NT_SUCCESS(status)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
+        goto Complete;
+    }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* Same rule as the create gate: only a name that may be inside a scope waits for its entry; the policy and alias
+     * checks below decide every other name. */
+    if ((IncludeAncestors ? SafeUploadStageTouchesProtectedNamespace(name, kind) : SafeUploadStageProtectedName(name, kind)) &&
+        SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
         unresolved = FALSE;
+        denyReason = SAFEUPLOAD_DENY_REASON_ACTIVATING_NAME;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
@@ -2853,17 +2967,23 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
      * other handles use the current+pending policy and alias checks. */
     if (SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, IncludeAncestors)) {
         unresolved = FALSE;
+        denyReason = SAFEUPLOAD_DENY_REASON_POLICY_SCOPE;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
     if (!service && (IncludeAncestors ? SafeUploadStageTouchesProtectedNamespace(name, kind) :
         SafeUploadStageProtectedName(name, kind))) {
         unresolved = FALSE;
+        denyReason = SAFEUPLOAD_DENY_REASON_PROTECTED_NAMESPACE;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
     status = FltGetFileSystemType(Objects->Instance, &fs);
-    if (!NT_SUCCESS(status)) goto Complete;
+    if (!NT_SUCCESS(status)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
+        goto Complete;
+    }
     if (fs != FLT_FSTYPE_NTFS) {
         status = STATUS_SUCCESS;
         goto Complete;
@@ -2872,12 +2992,20 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
         &name->Volume, kind, &protectedAlias);
     if (NT_SUCCESS(status)) {
         unresolved = FALSE;
-        if (protectedAlias) status = STATUS_ACCESS_DENIED;
+        if (protectedAlias) {
+            denyReason = SAFEUPLOAD_DENY_REASON_PROTECTED_ALIAS;
+            status = STATUS_ACCESS_DENIED;
+        }
+    } else {
+        denyReason = SAFEUPLOAD_DENY_REASON_ALIAS_CHECK_FAILED;
+        denyAux = status;
     }
 Complete:
-    if (name != NULL) FltReleaseFileNameInformation(name);
     if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance))
         status = STATUS_SUCCESS;
+    if (status != STATUS_SUCCESS)
+        SafeUploadDenyDetail(Data, denyReason, denyAux, name != NULL ? &name->Name : NULL);
+    if (name != NULL) FltReleaseFileNameInformation(name);
     if (status == STATUS_SUCCESS) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
@@ -3089,8 +3217,11 @@ static BOOLEAN StageReparseFsctl(ULONG Code)
     return Code == FSCTL_SET_REPARSE_POINT || Code == FSCTL_DELETE_REPARSE_POINT;
 }
 
-static FLT_PREOP_CALLBACK_STATUS StageCompleteAccessDenied(_Inout_ PFLT_CALLBACK_DATA Data)
+/* The deny ring names the refusing code by the caller of this helper (the choke point in SafeUploadStageDispatch
+ * records the refusal and picks the hint up), so the helper must not be inlined into its callers. */
+__declspec(noinline) static FLT_PREOP_CALLBACK_STATUS StageCompleteAccessDenied(_Inout_ PFLT_CALLBACK_DATA Data)
 {
+    SafeUploadDenySiteHint(Data, _ReturnAddress());
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
     return FLT_PREOP_COMPLETE;
@@ -3191,12 +3322,15 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedWritableSection(PFLT_CALLBACK_DATA 
     FLT_FILESYSTEM_TYPE fs;
     BOOLEAN unresolved = TRUE;
     NTSTATUS status;
+    UINT32 denyReason = SAFEUPLOAD_DENY_REASON_NONE;
+    NTSTATUS denyAux = STATUS_SUCCESS;
 
     if (Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (!FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection,
             PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.AllocationAttributes, SEC_IMAGE)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
+        denyReason = SAFEUPLOAD_DENY_REASON_TOP_LEVEL_IRP;
         goto Deny;
     }
     status = FltGetFileSystemType(Objects->Instance, &fs);
@@ -3209,24 +3343,65 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedWritableSection(PFLT_CALLBACK_DATA 
         SafeUploadTrace("writable section outside the qualified registry; checking protected-name policy\n");
     }
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
-    if (!NT_SUCCESS(status)) goto Deny;
+    if (!NT_SUCCESS(status)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
+        goto Deny;
+    }
     /* The current+pending union is read under one shared policy-lock hold. Separate checks can straddle a shrink:
      * pending misses the old-only scope, then the swap publishes the new current policy before the current check. */
-    if (!NT_SUCCESS(FltParseFileNameInformation(name))) goto Deny;
-    if (SafeUploadStageWritersSopMatchesPolicy(Objects->Instance, Objects->FileObject, FALSE) ||
-        SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name) ||
-        SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, FALSE) ||
+    status = FltParseFileNameInformation(name);
+    if (!NT_SUCCESS(status)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
+        goto Deny;
+    }
+    if (SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, FALSE) ||
         SafeUploadStageProtectedName(name, kind)) {
         unresolved = FALSE;
+        denyReason = SAFEUPLOAD_DENY_REASON_POLICY_SCOPE;
+        goto Deny;
+    }
+    if (SafeUploadStageWritersSopMatchesPolicy(Objects->Instance, Objects->FileObject, FALSE)) {
+        /* T2c: the opened name is outside every scope but the stream's entry says it may match. If that is only a pending alias
+         * probe (a writer from before the policy apply) or a scope transition, wait a bounded time and decide again: the opened
+         * name and the entry, under a scope sequence that does not change during that decision (a publication meanwhile
+         * refuses; Luna T2c review P1). */
+        ULONGLONG sequence;
+        SafeUploadStageWritersAwaitClassification(Objects->Instance, Objects->FileObject);
+        sequence = SafeUploadPolicyScopeSequenceSnapshot();
+        if (SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, FALSE) ||
+            SafeUploadStageProtectedName(name, kind) ||
+            SafeUploadStageWritersSopMatchesPolicy(Objects->Instance, Objects->FileObject, FALSE) ||
+            SafeUploadPolicyScopeSequenceSnapshot() != sequence) {
+            unresolved = FALSE;
+            denyReason = SAFEUPLOAD_DENY_REASON_POLICY_SCOPE;
+            goto Deny;
+        }
+    }
+    if (SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
+        unresolved = FALSE;
+        denyReason = SAFEUPLOAD_DENY_REASON_ACTIVATING_NAME;
         goto Deny;
     }
     unresolved = FALSE;
     FltReleaseFileNameInformation(name);
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
  Deny:
-    if (name != NULL) FltReleaseFileNameInformation(name);
-    if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance))
+    if (unresolved && KeGetCurrentIrql() <= APC_LEVEL &&
+        SafeUploadStageWritersSopKnownOutside(Objects->Instance, Objects->FileObject)) {
+        /* The name cannot be queried here (a nested call, or the lookup failed), but this stream has a registry entry
+         * that recorded its name and was classified outside every scope: decide by that, not by "the volume may hold a
+         * scope". Entries that are Activating, alias-pending, renamed, Unknown or in scope still answer "matches". */
+        if (name != NULL) FltReleaseFileNameInformation(name);
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+    if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
+        if (name != NULL) FltReleaseFileNameInformation(name);
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+    SafeUploadDenyDetail(Data, denyReason, denyAux, name != NULL ? &name->Name : NULL);
+    if (name != NULL) FltReleaseFileNameInformation(name);
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
     return FLT_PREOP_COMPLETE;
@@ -3319,8 +3494,9 @@ static BOOLEAN StageEpochOperationTouchesUnion(_In_ PFLT_CALLBACK_DATA Data,
     return matched;
 }
 
-static FLT_PREOP_CALLBACK_STATUS StageCompleteEpochRetry(_Inout_ PFLT_CALLBACK_DATA Data)
+__declspec(noinline) static FLT_PREOP_CALLBACK_STATUS StageCompleteEpochRetry(_Inout_ PFLT_CALLBACK_DATA Data)
 {
+    SafeUploadDenySiteHint(Data, _ReturnAddress());
     Data->IoStatus.Status = STATUS_RETRY;
     Data->IoStatus.Information = 0;
     return FLT_PREOP_COMPLETE;
@@ -3354,12 +3530,14 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_CREATE:
         {
         PVOID legacyCompletionContext = NULL;
+        SAFEUPLOAD_CREATE_ALIAS_PROOF aliasProof;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         PVOID writerReservation = NULL;
         BOOLEAN reservationRequired = FALSE;
         NTSTATUS reserveStatus;
 #endif
-        result = StageAdmit(Data, Objects);
+        RtlZeroMemory(&aliasProof, sizeof(aliasProof));
+        result = StageAdmit(Data, Objects, &aliasProof);
         if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
         result = SafeUploadPreCreate(Data, Objects, &legacyCompletionContext);
         if (result == FLT_PREOP_COMPLETE) return result;
@@ -3367,7 +3545,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
         /* Reserve bounded registry capacity before a physical writer create reaches NTFS. A
          * tracking failure records Unknown and leaves this admission decision unchanged. */
         reserveStatus = SafeUploadStageWritersReserveCreate(Data, Objects,
-            &writerReservation, &reservationRequired);
+            &writerReservation, &reservationRequired, &aliasProof);
         if (!NT_SUCCESS(reserveStatus)) {
             if (writerReservation != NULL)
                 SafeUploadStageWritersCancelReservation(writerReservation);
@@ -3417,7 +3595,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_CLOSE:
         StageTraceFileLifetime(Data, Objects, SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLOSE);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        SafeUploadStageWritersQueueLifetimeRecheck();
+        SafeUploadStageWritersQueueLifetimeRecheck(Objects->Instance, Objects->FileObject);
 #endif
         break;
     case IRP_MJ_MDL_READ_COMPLETE:
@@ -3495,7 +3673,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
             (VOID)SafeUploadStageWritersBeginMutatingIo(Data, Objects->Instance, Objects->FileObject,
                 &mutatingIoContext, &trackedWriter);
-            result = StagePhysicalMutationEx(Data, Objects, FALSE, trackedWriter);
+            result = StagePhysicalMutationEx(Data, Objects, FALSE, trackedWriter, &mutatingIoContext);
             if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
                 SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
                 return result;
@@ -3531,7 +3709,12 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             /* Publication rename is checked/consumed by StageExternalRename. */
             if (cls != FileRenameInformation && cls != FileRenameInformationEx &&
                 cls != FileLinkInformation && cls != FileLinkInformationEx) {
-                result = StagePhysicalMutationEx(Data, Objects, TRUE, trackedWriter);
+                /* Only a delete can remove a directory above a protected scope from under it (renames and links went
+                 * through StageExternalRename above). Attribute, time and size changes of an ancestor leave the scope's
+                 * bytes alone, and refusing them broke every caller that touches the volume root: the Profile Service
+                 * sets basic information on C:\ while it builds a new profile, so first sign-in failed. */
+                result = StagePhysicalMutationEx(Data, Objects,
+                    cls == FileDispositionInformation || cls == FileDispositionInformationEx, trackedWriter, &mutatingIoContext);
                 if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
                     SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
                     SafeUploadStageWritersCompleteRename(Objects->Instance,
@@ -3567,7 +3750,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
             (VOID)SafeUploadStageWritersBeginMutatingIo(Data, Objects->Instance, Objects->FileObject,
                 &mutatingIoContext, &trackedWriter);
-            result = StagePhysicalMutationEx(Data, Objects, FALSE, trackedWriter);
+            result = StagePhysicalMutationEx(Data, Objects, FALSE, trackedWriter, &mutatingIoContext);
             if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
                 SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
                 return result;
@@ -3649,7 +3832,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
 }
 
-FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
+static FLT_PREOP_CALLBACK_STATUS StageDispatchEpoch(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext)
 {
     *CompletionContext = NULL;
@@ -3707,6 +3890,17 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
 #endif
 }
 
+/* The choke point for refusals: every operation is registered through here, so an operation this driver completes
+ * itself with an error status is noted in the deny ring whichever code path chose it. */
+FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
+    PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext)
+{
+    FLT_PREOP_CALLBACK_STATUS result = StageDispatchEpoch(Data, Objects, CompletionContext);
+
+    if (result == FLT_PREOP_COMPLETE) SafeUploadDenyNote(Data, Objects, Data->IoStatus.Status, FALSE);
+    return result;
+}
+
 static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PVOID CompletionContext, FLT_POST_OPERATION_FLAGS Flags)
 {
@@ -3752,7 +3946,7 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
                 Objects->FileObject != NULL ? Objects->FileObject->SectionObjectPointer : NULL);
         } else if (NT_SUCCESS(Data->IoStatus.Status)) {
             SafeUploadStageWritersOnCleanup(Data, Objects);
-            SafeUploadStageWritersQueueLifetimeRecheck();
+            SafeUploadStageWritersQueueLifetimeRecheck(Objects->Instance, Objects->FileObject);
         }
     }
 #endif

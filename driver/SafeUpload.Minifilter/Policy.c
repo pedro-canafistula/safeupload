@@ -71,6 +71,7 @@ typedef struct _SAFEUPLOAD_VOLUME_SCOPE_CACHE {
     ULONG Flags;
     BOOLEAN Overflow;
     BOOLEAN ScopeApplyActive;
+    BOOLEAN NetworkPrefix;       /* some cached prefix is itself a network path; computed at PASSIVE_LEVEL when the cache is built */
     SAFEUPLOAD_VOLUME_SCOPE_PREFIX Prefixes[SAFEUPLOAD_VOLUME_SCOPE_PREFIX_LIMIT];
 } SAFEUPLOAD_VOLUME_SCOPE_CACHE, *PSAFEUPLOAD_VOLUME_SCOPE_CACHE;
 
@@ -457,6 +458,8 @@ __declspec(noinline) static BOOLEAN SafeUploadVolumeCachePathUnderPrefix(
         Path->Buffer[prefixChars] == L'\\');
 }
 
+static BOOLEAN SafeUploadPolicyPrefixIsNetwork(_In_ PCUNICODE_STRING Prefix);
+
 static VOID SafeUploadPolicyCacheAddPrefix(_Inout_ PSAFEUPLOAD_VOLUME_SCOPE_CACHE Cache,
     _In_ PCUNICODE_STRING Prefix)
 {
@@ -470,6 +473,8 @@ static VOID SafeUploadPolicyCacheAddPrefix(_Inout_ PSAFEUPLOAD_VOLUME_SCOPE_CACH
     cached = &Cache->Prefixes[Cache->PrefixCount++];
     cached->Length = Prefix->Length;
     RtlCopyMemory(cached->Text, Prefix->Buffer, Prefix->Length);
+    /* PASSIVE_LEVEL (the cache is built before it is published): the locked readers only read this flag. */
+    if (SafeUploadPolicyPrefixIsNetwork(Prefix)) Cache->NetworkPrefix = TRUE;
 }
 
 static VOID SafeUploadPolicyCacheAddSnapshot(_Inout_ PSAFEUPLOAD_VOLUME_SCOPE_CACHE Cache,
@@ -594,6 +599,9 @@ __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheMatchesLocked(
             prefix.Length = prefix.MaximumLength = Cache->Prefixes[index].Length;
             mayMatch = SafeUploadVolumeCachePathUnderPrefix(VolumeName, &prefix);
         }
+        /* A share's scope is written as a UNC or provider path, not as a path under the volume's device name, so the
+         * comparison above cannot see it: a network volume may match when any prefix is itself a network path. */
+        if (!mayMatch && VolumeKind == SafeUploadVolumeNetwork && Cache->NetworkPrefix) mayMatch = TRUE;
     }
     return mayMatch;
 }
@@ -653,6 +661,21 @@ __declspec(noinline) ULONGLONG SafeUploadPolicyScopeSequenceSnapshot(VOID)
 {
     return (ULONGLONG)InterlockedCompareExchange64(&SafeUploadPolicyCoverageSequence, 0, 0);
 }
+
+/* TRUE from the publication of a scope that may grow the current+pending union (it is published with the apply active) until the
+ * apply or reconcile that begins a probe on every live entry ends the transition (SafeUploadPolicyTryEndScopeTransition); it stays
+ * TRUE when that apply fails. An OUTSIDE classification proven before the publication must not be trusted meanwhile: the apply has
+ * not reset it yet, and ordinary writes are not held by the epoch drain (Luna T3d review, P0). */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+__declspec(noinline) BOOLEAN SafeUploadPolicyScopeTransitionActive(VOID)
+{
+    BOOLEAN active;
+    KIRQL irql;
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
+    active = SafeUploadVolumeScopeCaches[(ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0)].ScopeApplyActive;
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
+    return active;
+}
 #endif
 
 /* Returns FALSE while leaving the apply active if a relevant rename loss
@@ -696,6 +719,9 @@ __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheQueryNoInline(
     return mayMatch;
 }
 
+volatile LONG64 SafeUploadVolumeWideQueries;
+volatile LONG64 SafeUploadVolumeWideAnswers;
+
 BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
@@ -714,6 +740,8 @@ BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance)
     }
     mayMatch = SafeUploadPolicyVolumeCacheQueryNoInline(kind, volumeNamePointer);
     if (context != NULL) FltReleaseContext(context);
+    InterlockedIncrement64(&SafeUploadVolumeWideQueries);
+    if (mayMatch) InterlockedIncrement64(&SafeUploadVolumeWideAnswers);
     return mayMatch;
 }
 
@@ -1715,6 +1743,67 @@ BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeK
     return hasScopes;
 }
 
+/* A prefix that can only be reached through a network provider: a UNC path, or an NT name under MUP, the redirectors or DFS. A
+ * network volume cannot hold any other prefix, so a policy whose prefixes are all local paths never matches one. */
+/* Does Prefix start with Root (ASCII case-insensitive, resident code only: no Rtl string routine, so it is safe at any IRQL)? */
+static BOOLEAN SafeUploadPolicyPrefixStartsWith(_In_ PCUNICODE_STRING Prefix, _In_reads_(RootChars) const WCHAR *Root,
+    _In_ ULONG RootChars)
+{
+    ULONG index;
+    if (Prefix->Buffer == NULL || Prefix->Length < RootChars * sizeof(WCHAR)) return FALSE;
+    for (index = 0; index < RootChars; ++index) {
+        WCHAR left = Prefix->Buffer[index], right = Root[index];
+        if (left >= L'a' && left <= L'z') left -= L'a' - L'A';
+        if (right >= L'a' && right <= L'z') right -= L'a' - L'A';
+        if (left != right) return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOLEAN SafeUploadPolicyPrefixIsNetwork(_In_ PCUNICODE_STRING Prefix)
+{
+    static const WCHAR unc[] = L"\\\\";
+    static const WCHAR mup[] = L"\\Device\\Mup";
+    static const WCHAR lanman[] = L"\\Device\\LanmanRedirector";
+    static const WCHAR dfs[] = L"\\Device\\DfsClient";
+    static const WCHAR webdav[] = L"\\Device\\WebDavRedirector";
+    static const WCHAR uncDevice[] = L"\\??\\UNC";
+    static const struct { const WCHAR *Root; ULONG Chars; } providerRoots[] = {
+        { mup, RTL_NUMBER_OF(mup) - 1 }, { lanman, RTL_NUMBER_OF(lanman) - 1 }, { dfs, RTL_NUMBER_OF(dfs) - 1 },
+        { webdav, RTL_NUMBER_OF(webdav) - 1 }, { uncDevice, RTL_NUMBER_OF(uncDevice) - 1 } };
+    ULONG index, chars = Prefix->Length / sizeof(WCHAR);
+    /* A UNC prefix names a server: more than the two backslashes. */
+    if (SafeUploadPolicyPrefixStartsWith(Prefix, unc, RTL_NUMBER_OF(unc) - 1) && chars > RTL_NUMBER_OF(unc) - 1) return TRUE;
+    /* A provider root is matched at a component boundary (\Device\MupFoo is not MUP). */
+    for (index = 0; index < RTL_NUMBER_OF(providerRoots); ++index) {
+        if (SafeUploadPolicyPrefixStartsWith(Prefix, providerRoots[index].Root, providerRoots[index].Chars) &&
+            (chars == providerRoots[index].Chars || Prefix->Buffer[providerRoots[index].Chars] == L'\\')) return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOLEAN SafeUploadPolicyHasNetworkPrefix(_In_opt_ const SAFEUPLOAD_POLICY *Policy)
+{
+    UINT32 index;
+    if (Policy == NULL) return FALSE;
+    for (index = 0; index < Policy->PrefixCount; ++index)
+        if (SafeUploadPolicyPrefixIsNetwork(&Policy->Prefixes[index])) return TRUE;
+    return FALSE;
+}
+
+static BOOLEAN SafeUploadBootScopesHaveNetworkPrefix(VOID)
+{
+    UINT32 index;
+    for (index = 0; index < SafeUploadBootScopes.PrefixCount; ++index) {
+        UNICODE_STRING prefix;
+        prefix.Buffer = SafeUploadBootScopes.Prefixes[index];
+        prefix.Length = (USHORT)(SafeUploadBootScopes.PrefixChars[index] * sizeof(WCHAR));
+        prefix.MaximumLength = prefix.Length;
+        if (SafeUploadPolicyPrefixIsNetwork(&prefix)) return TRUE;
+    }
+    return FALSE;
+}
+
 BOOLEAN SafeUploadPolicyMayMatchVolume(
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_opt_ PFLT_VOLUME Volume)
@@ -1764,8 +1853,8 @@ BOOLEAN SafeUploadPolicyMayMatchVolume(
                     FlagOn(SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
                     FlagOn(SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK)) ||
-                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
-                    SafeUploadPolicy->PrefixCount != 0);
+                (VolumeKind == SafeUploadVolumeUnknown && SafeUploadPolicy->PrefixCount != 0) ||
+                (VolumeKind == SafeUploadVolumeNetwork && SafeUploadPolicyHasNetworkPrefix(SafeUploadPolicy));
             for (index = 0; !mayMatch && index < SafeUploadPolicy->PrefixCount; ++index) {
                 mayMatch = SafeUploadPathUnderPrefix(&volumeName, &SafeUploadPolicy->Prefixes[index]);
             }
@@ -1776,8 +1865,8 @@ BOOLEAN SafeUploadPolicyMayMatchVolume(
                     FlagOn(SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
                     FlagOn(SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK)) ||
-                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
-                    SafeUploadPendingPolicy->PrefixCount != 0);
+                (VolumeKind == SafeUploadVolumeUnknown && SafeUploadPendingPolicy->PrefixCount != 0) ||
+                (VolumeKind == SafeUploadVolumeNetwork && SafeUploadPolicyHasNetworkPrefix(SafeUploadPendingPolicy));
             for (index = 0; !mayMatch && index < SafeUploadPendingPolicy->PrefixCount; ++index) {
                 mayMatch = SafeUploadPathUnderPrefix(&volumeName, &SafeUploadPendingPolicy->Prefixes[index]);
             }
@@ -1788,8 +1877,8 @@ BOOLEAN SafeUploadPolicyMayMatchVolume(
                     FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_REMOVABLE)) ||
                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
                     FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_NETWORK)) ||
-                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
-                    SafeUploadBootScopes.PrefixCount != 0);
+                (VolumeKind == SafeUploadVolumeUnknown && SafeUploadBootScopes.PrefixCount != 0) ||
+                (VolumeKind == SafeUploadVolumeNetwork && SafeUploadBootScopesHaveNetworkPrefix());
             for (index = 0; !mayMatch && index < SafeUploadBootScopes.PrefixCount; ++index) {
                 UNICODE_STRING prefix;
                 prefix.Buffer = SafeUploadBootScopes.Prefixes[index];

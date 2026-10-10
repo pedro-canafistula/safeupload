@@ -56,7 +56,9 @@ echo "== 2. checkpoint"
 depth=$(virsh -c qemu:///system dumpxml "$dom" | grep -c '<backingStore type')
 echo "BackingChainDepth=$depth"
 [ "$depth" -lt 190 ] || { echo "BACKING CHAIN TOO DEEP ($depth layers); flatten it (virsh blockpull) before more runs"; exit 13; }
-snap="safeupload-pre-$name-$stamp"; overlay="/var/lib/libvirt/images/$dom.$snap"
+source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"; V="virsh -c qemu:///system"
+IMGDIR=$(image_dir_of_domain "$dom"); image_dir_check "$IMGDIR" || exit 13
+snap="safeupload-pre-$name-$stamp"; overlay="$IMGDIR/$dom.$snap"
 [ -e "$overlay" ] && { echo "overlay already exists: $overlay"; exit 11; }
 {
   echo "UTC=$(date -u +%FT%TZ)"

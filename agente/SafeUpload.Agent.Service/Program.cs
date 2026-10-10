@@ -8,9 +8,7 @@ using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
 using System.Runtime.Versioning;
 using System.Security.Principal;
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
 using SafeUpload.Agent.Service.Diagnostics;
-#endif
 
 namespace SafeUpload.Agent.Service;
 
@@ -113,6 +111,7 @@ public static class Program
         builder.Services.AddSingleton<PendingOverrides>();
         builder.Services.AddSingleton<StagedJustifications>();
         builder.Services.AddSingleton<OverrideGrantDispatcher>();
+        builder.Services.AddSingleton<DriverDiagnosticsSource>();
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
         builder.Services.AddSingleton<AdmissionEvidenceEndpoint>();
 #endif
@@ -202,6 +201,10 @@ public static class Program
         if (string.Equals(mode, "Minifilter", StringComparison.OrdinalIgnoreCase))
         {
             builder.Services.AddHostedService<MinifilterInterceptor>();
+
+            // Administrator-only field diagnostics relayed over the interceptor's own filter-port connection
+            // (the port accepts a single client, so no other tool can read the driver while the service runs).
+            builder.Services.AddHostedService<DiagnosticsPipeServer>();
         }
         else
         {

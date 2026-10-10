@@ -114,9 +114,8 @@ Product (all fail closed unless stated):
   all timestamps of a manifest could keep a stale scan projection until the next write.
 
 Installer and tooling:
-- `Install-SafeUploadAgent.ps1` registers the service without `--Interception:Mode=Minifilter --Interception:StagingPrototype=true`. Without
-  them the agent runs outside staged mode (`admissionCoverage` `NotAvailable`, `auditOnly` true) and every standard-user save into a protected
-  folder is refused. Its last check also throws on Windows 10's `SERVICE_SID_TYPE:  UNRESTRICTED` output after configuring everything.
+- ~~`Install-SafeUploadAgent.ps1` registered the service without the staged-mode arguments and threw on Windows 10's
+  `SERVICE_SID_TYPE:  UNRESTRICTED` output.~~ Fixed on `feat/driver-post-mvp` (POST-MVP-PLAN T0); to be verified by an install on a clean VM.
 - Main's TLS-inspection tests (`CertificateAuthorityTests`, `TlsInspectionProxyTests`) fail with "Access denied" when run without rights to
   create machine CNG keys (the same 21 tests fail on `main` itself on the builder).
 
@@ -131,9 +130,9 @@ Verified on 2026-10-08 on `win10-debug`; details and screenshots in the manual-t
 3. Write `C:\ProgramData\SafeUpload\policy.json` (example: `activeCategories ["Cpf"]`, `extensions [".txt"]`, `destinationPaths
    ["C:\\Protected"]`, `failOpen false`, `auditOnly false`). The directory and the file must be owned by SYSTEM with a protected DACL granting
    full control to SYSTEM and Administrators only.
-4. Run `agente\scripts\Install-SafeUploadAgent.ps1 -ServiceExecutablePath <path>\SafeUpload.Agent.Service.exe` (ignore its final SID-type
-   error), then set the service command line to the staged mode, for example by setting the service's `ImagePath` registry value to
-   `"<path>\SafeUpload.Agent.Service.exe" --Interception:Mode=Minifilter --Interception:StagingPrototype=true`.
+4. Run `agente\scripts\Install-SafeUploadAgent.ps1 -ServiceExecutablePath <path>\SafeUpload.Agent.Service.exe`. It registers the service
+   in staged minifilter mode (`--Interception:Mode=Minifilter --Interception:StagingPrototype=true`, written to the service's `ImagePath`
+   and read back); `-ServiceArguments` overrides the arguments.
 5. Grant the test users Modify on the protected folder now: with the driver loaded even administrators cannot change its ACL.
 6. Reboot. The agent's status on the `SafeUpload.Agent` pipe must read `"auditOnly":false,"admissionCoverage":"Ready"`.
 7. As a standard user: copy a clean `.txt` into the folder (published) and one containing `CPF: 529.982.247-25` (blocked, handed back to
@@ -166,11 +165,11 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
 - 2026-10-08: freeze at `5ebe139a` + `51ba5873` (product changes only for a leak, a crash or a Verifier hit); two-tier gate; latency reported
   only; the five boot-Verifier cells are a known gap.
 
-## Next steps (post-MVP, in order)
+## Next steps (post-MVP)
 
-1. Bound the reclaim-worker rescan (backoff or event-driven), then rerun boot-Verifier B02 and the BLOCK rows.
-2. Find the operation denied during new-profile creation and fix it; make large installers (Microsoft 365) work with the driver loaded.
-3. Application compatibility: Notepad Save As, then Word/Excel save patterns (temporary file plus rename), with suite rows for each.
-4. Installer: set the staged-mode arguments, fix the SID-type check, qualify the install on a clean VM; package the notification app.
-5. The other section-4.1 variants of each suite row, P01-P06 and RV4, dedicated latency runs.
-6. Destinations beyond local NTFS (USB, SMB, sync clients) and Windows 11, each with its own qualification.
+The prioritized plan is in [POST-MVP-PLAN.md](POST-MVP-PLAN.md). In short: M1 makes the driver safe to leave loaded (reclaim-worker
+rescan, new-profile creation, large installers and Windows Update); M2 makes everyday file work behave like Windows plus inspection (stage
+slot reuse, Notepad and Office saves, moves inspected like copies, reads and permission changes left to Windows, large files, the review
+conditions); M3 is the release candidate (release build configuration, install/upgrade/uninstall; still test-signed); M4 is full
+qualification. Production signing, other Windows builds and destinations come later (owner decisions 2026-10-08: test mode only, stay on
+19045.2965 for now).

@@ -219,7 +219,12 @@ function Invoke-CapturedProcess([string]$Exe,[string]$Arguments,[string]$Prefix,
         $p=Start-Process @start
         $null=$p.Handle
         if(-not $p.WaitForExit($Timeout)){throw 'Child process timed out'}
-        $p.WaitForExit();if($null -eq $p.ExitCode){throw 'Child process exit code absent'}
+        $p.WaitForExit()
+        # Under load Windows PowerShell 5.1 sometimes returns before the process object has its exit code (seen as 'Child process exit code
+        # absent' in the first coverage receipt of a case, which cost A01/A04/R02 their LiveTaintFlags window). The process has exited, so the code
+        # exists: refresh and read it again a few times before treating it as missing.
+        for($exitTry=0;$exitTry -lt 25 -and $null -eq $p.ExitCode;$exitTry++){Start-Sleep -Milliseconds 200;$p.Refresh()}
+        if($null -eq $p.ExitCode){throw 'Child process exit code absent'}
         if($p.ExitCode -ne 0){throw "Child process failed: $($p.ExitCode); $([IO.File]::ReadAllText($Prefix+'.err'))"}
         return [IO.File]::ReadAllText($Prefix+'.out')
     }finally {if($null -ne $p){if(-not $p.HasExited){$p.Kill();$p.WaitForExit()};$p.Dispose()}}
@@ -367,6 +372,108 @@ function Restore-PolicyFile {
     if ($actual -ne $ExpectedOriginalPolicySha256.ToUpperInvariant()) { throw 'Original policy hash failed restoration.' }
 }
 
+
+function Invoke-DiagnosticsQuery([hashtable]$Request) {
+    # One request line to the service's administrator-only diagnostics pipe (the filter port accepts one client and the
+    # service holds it, so this is the only way to read the driver while the product runs). Returns the reply's data;
+    # throws when the pipe is missing (an older agent) or refuses the query.
+    $client=New-Object System.IO.Pipes.NamedPipeClientStream('.','SafeUpload.Agent.Diagnostics',[System.IO.Pipes.PipeDirection]::InOut)
+    try{
+        $client.Connect(5000)
+        $utf8=New-Object System.Text.UTF8Encoding($false)
+        $writer=New-Object System.IO.StreamWriter($client,$utf8,1024,$true);$writer.NewLine="`n"
+        $writer.WriteLine(($Request | ConvertTo-Json -Compress));$writer.Flush()
+        $reader=New-Object System.IO.StreamReader($client,$utf8,$false,1024,$true)
+        $line=$reader.ReadLine()
+    }finally{$client.Dispose()}
+    if([string]::IsNullOrEmpty($line)){throw 'Diagnostics pipe closed without a reply'}
+    $reply=$line | ConvertFrom-Json
+    if(-not $reply.ok){throw ('Diagnostics pipe refused the query: '+$reply.error)}
+    $reply.data
+}
+
+function Get-DiagnosticsDenyRing {
+    # Status is OK only if every page was read; an agent without the pipe (an older pair) is Unavailable, which callers
+    # must report as INCONCLUSIVE, never as absence of a refusal.
+    $result=@{Status='Unavailable';Records=@();Gap=$false;Error=$null}
+    try{
+        $cursor=[uint64]0;$records=@()
+        for($page=0;$page -lt 64;$page++){
+            $data=Invoke-DiagnosticsQuery @{query='deny-ring';after=$cursor}
+            if($data.gap){$result.Gap=$true}
+            $batch=@($data.records)
+            if(-not $batch.Count){break}
+            $records+=$batch;$cursor=[uint64]$batch[-1].sequence
+        }
+        $result.Records=$records;$result.Status='OK'
+    }catch{$result.Error=$_.Exception.Message}
+    $result
+}
+
+function Test-ReclaimWorkerIdle([int]$Seconds=15,[double]$MaxPassesPerSecond=100,[int]$WritesPerSecond=200) {
+    # The reclaim worker must go quiet when nothing can change. Before the event-driven fix a scan or alias probe that was
+    # only waiting made it requeue itself thousands of times a second (guest CPU at 100% under boot Verifier). The sample
+    # runs after the trial, with the service up, so a spinning worker shows as passes with nobody asking for them.
+    # Calibration (guest, ordinary mode, measured 2026-10-09): the spin was 1,700-3,100 passes/s; the event-driven worker
+    # runs 8-12 passes/s after a trial (targeted wake-ups for entries that are still waiting). 100/s keeps a margin of
+    # about 8x above the clean runs and 17x below the spin.
+    # A steady writer runs through the sample: one small write every 1/WritesPerSecond s to a fresh file outside every
+    # scope. A completed write on an entry that is not waiting changes nothing the worker acts on, so it must not wake
+    # the worker. Until 2026-10-09 every completed write queued a pass: whatever happened to be writing set the rate
+    # (156/s in C03-approve-existing m14v13, 4-9/s elsewhere), so the sample now brings its own writer.
+    $path=Join-Path $env:SystemRoot ('Temp\safeupload-idle-writer-'+[guid]::NewGuid().ToString('N')+'.bin')
+    $writer=$null;$handle=$null;$written=$null
+    try{
+        $writer=[PowerShell]::Create()
+        [void]$writer.AddScript({param($Path,[double]$Seconds,[int]$Rate)
+            # Buffer size 1 disables FileStream buffering: each Write is one WriteFile, so one IRP_MJ_WRITE.
+            $stream=New-Object IO.FileStream($Path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,1,[IO.FileOptions]::None)
+            try{
+                $buffer=New-Object byte[] 64;$interval=[Diagnostics.Stopwatch]::Frequency/[double]$Rate;$count=0
+                $limit=[long]($Seconds*[Diagnostics.Stopwatch]::Frequency);$clock=[Diagnostics.Stopwatch]::StartNew()
+                while($clock.ElapsedTicks -lt $limit){
+                    $stream.Position=0;$stream.Write($buffer,0,$buffer.Length);$count++
+                    $next=[long]($count*$interval)
+                    while($clock.ElapsedTicks -lt $next){[Threading.Thread]::SpinWait(100)}
+                }
+                $count
+            }finally{$stream.Dispose()}
+        }).AddArgument($path).AddArgument([double]($Seconds+4)).AddArgument($WritesPerSecond)
+        $handle=$writer.BeginInvoke()
+        Start-Sleep -Seconds 2
+        if($handle.IsCompleted){throw ('the idle writer stopped before the sample: '+(@($writer.Streams.Error) -join '; '))}
+        $first=Invoke-DiagnosticsQuery @{query='counters'};$started=[Diagnostics.Stopwatch]::GetTimestamp()
+        Start-Sleep -Seconds $Seconds
+        $second=Invoke-DiagnosticsQuery @{query='counters'};$elapsed=([Diagnostics.Stopwatch]::GetTimestamp()-$started)/[double][Diagnostics.Stopwatch]::Frequency
+        $written=@($writer.EndInvoke($handle))
+        if($writer.HadErrors -or $written.Count -ne 1){throw ('the idle writer failed: '+(@($writer.Streams.Error) -join '; '))}
+    }catch{return @{Name='ReclaimWorkerIdleRate';Verdict='INCONCLUSIVE';Reason=('Driver counters or the idle writer unavailable: '+$_.Exception.Message)}}
+    finally{
+        if($null -ne $writer){$writer.Dispose()}
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+    $passes=[uint64]$second.writerState.registryReclaimPasses-[uint64]$first.writerState.registryReclaimPasses
+    $rate=$passes/$elapsed
+    $writeRate=[double]$written[0]/($Seconds+4)
+    $detail=('passes='+$passes+' over '+[math]::Round($elapsed,1)+' s ('+[math]::Round($rate,2)+'/s, limit '+$MaxPassesPerSecond+'/s); writer '+$written[0]+' writes ('+[math]::Round($writeRate,1)+'/s)')
+    $detail+=('; entries '+$second.writerState.registryEntries+' (name tier '+$second.writerState.registryNameTierEntries+', compact '+$second.writerState.registryCompactTierEntries+'), pruned +'+([int64]$second.writerState.registryPruned-[int64]$first.writerState.registryPruned))
+    if($null -ne $second.reclaimWorker -and $null -ne $first.reclaimWorker){
+        $detail+=('; parked +'+([int64]$second.reclaimWorker.parkedPasses-[int64]$first.reclaimWorker.parkedPasses)+'; moreWorkRequeues +'+([int64]$second.reclaimWorker.moreWorkRequeues-[int64]$first.reclaimWorker.moreWorkRequeues)+'; wakeupsSkipped +'+([int64]$second.reclaimWorker.wakeupsSkipped-[int64]$first.reclaimWorker.wakeupsSkipped))
+    }
+    # The writer must have run near its rate, or the sample did not exercise the write path.
+    $verdict=if($rate -gt $MaxPassesPerSecond){'FAIL'}elseif($writeRate -lt $WritesPerSecond/2){'INCONCLUSIVE'}else{'PASS'}
+    @{Name='ReclaimWorkerIdleRate';Verdict=$verdict;Reason=('Reclaim worker idle rate after the trial, with a steady outside writer: '+$detail)}
+}
+
+function Test-C05DenyRingRecord($Ring,[int]$ActorPid,[string]$TargetLeaf) {
+    # The exact refusal of the external rename: a SET_INFORMATION completed STATUS_ACCESS_DENIED for the actor process
+    # whose rename-target name ends with the protected target's name.
+    if($Ring.Status -cne 'OK'){return @{Name='C05DenialLedger';Verdict='INCONCLUSIVE';Reason=('Driver deny ring unavailable through the service diagnostics pipe: '+$Ring.Error)}}
+    $hit=@($Ring.Records | Where-Object {$_.processId -eq $ActorPid -and $_.major -ceq 'SET_INFORMATION' -and $_.status -ceq '0xC0000022' -and
+        $null -ne $_.name -and $_.name.EndsWith($TargetLeaf,[StringComparison]::OrdinalIgnoreCase) -and @($_.flags) -contains 'nameIsRenameTarget'})
+    if($hit.Count){return @{Name='C05DenialLedger';Verdict='PASS';Reason=('Driver deny ring recorded the denied rename: sequence '+$hit[0].sequence+', status '+$hit[0].status+', site '+$hit[0].siteOffset+', target '+$hit[0].name+'; records read='+$Ring.Records.Count)}}
+    return @{Name='C05DenialLedger';Verdict='FAIL';Reason=('Driver deny ring is readable but holds no STATUS_ACCESS_DENIED SET_INFORMATION record for pid '+$ActorPid+' with target '+$TargetLeaf+'; gap='+$Ring.Gap)}
+}
 
 function Get-BootPolicyReadback {
     $body = @'
@@ -3530,6 +3637,7 @@ function Invoke-CachedObservation {
             $trial.RenameReceipt=$renamed;$trial.Operations=@($renamed.Calls);$renameCalls=@($renamed.Calls | Where-Object Class -ceq 'rename-ex')
             $wantedCode=if($cachedDenial){5}else{0}
             $verdict=if($renameCalls.Count -ne 1 -or $null -eq $renameCalls[0].NativeCode){'INCONCLUSIVE'}elseif($renameCalls[0].NativeCode -ne $wantedCode -or $renameCalls[0].StartQpc -lt $trial.RenameBarrierQpc){'FAIL'}else{'PASS'}
+            if($cachedDenial){$trial.DenyRing=Get-DiagnosticsDenyRing;$trial.C05DenialLedger=Test-C05DenyRingRecord $trial.DenyRing $actor.Pid 'cached.txt'}
             $trial.Assertions+=@{Name='NativeRenameStatus';Verdict=$verdict;Reason=('FileRenameInfoEx REPLACE_IF_EXISTS|POSIX via old held source: expected Win32:'+ $wantedCode+'; receipt count='+$renameCalls.Count)}
             $trial.Assertions+=@{Name='C01PrivateReadAfterRename';Verdict=$(if($null -eq $renamed.PrivateSha256){'INCONCLUSIVE'}elseif($renamed.PrivateSha256 -ceq $digest){'PASS'}else{'FAIL'});Reason='Held source image remains exact A after the native rename attempt.'}
             for($n=0;$n -lt 3;$n++){
@@ -3647,10 +3755,14 @@ function Invoke-CachedObservation {
         $trial.ServiceEvidence=@{JournalDelta=$delta;NotificationProof=$proof;OperationFence=$fence;TrustBoundary='Existing SYSTEM/Administrators same-handle proof adapters'}
         $trial.Journal=$trial.ServiceAfter.Journal;$trial.Notifications=$proof.Emissions
         $trial.Assertions+=@{Name='JournalDelta';Verdict=$(if($delta.Findings.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason=(@($delta.Failures)+@($delta.Findings) -join '; ')}
+        $trial.Assertions+=Test-ReclaimWorkerIdle
         if($cachedDenial){
             $trial.ServiceEvidence=Get-ServiceTimeline $trial.ServiceBefore $trial.ServiceAfter $fence;$trial.Assertions+=@($trial.ServiceEvidence.Assertions)
             $trial.Assertions+=@{Name='C05NoAnyNewTransfer';Verdict=$(if($delta.NewEntries.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason=('Physical external source and denied target rename must create no transfer anywhere in the authenticated journal window; new entries='+$delta.NewEntries.Count+'; '+(@($delta.Failures)+@($delta.Findings) -join '; '))}
-            $trial.Assertions+=@{Name='C05DenialLedger';Verdict='INCONCLUSIVE';Reason='Win32:5 is recorded on the exact native rename with a successful physical source open/read; exact driver denial reason/lower-admission ledger unavailable.'}
+            if($null -ne $trial.C05DenialLedger -and $trial.C05DenialLedger.Verdict -ceq 'PASS'){$trial.Assertions+=$trial.C05DenialLedger}
+            else{
+                $trial.Assertions+=@{Name='C05DenialLedger';Verdict=$(if($null -ne $trial.C05DenialLedger -and $trial.C05DenialLedger.Verdict -ceq 'FAIL'){'FAIL'}else{'INCONCLUSIVE'});Reason=('Win32:5 is recorded on the exact native rename with a successful physical source open/read; '+$(if($null -ne $trial.C05DenialLedger){$trial.C05DenialLedger.Reason}else{'driver deny ring not queried'}))}
+            }
         }elseif($CaseId -ceq 'B01'){
             $trial.Assertions+=Test-B01FailureNotification $proof $terminal.TransferId $actor.SessionId $digest
             $trial.B01FailureLog=Read-AgentLogWindow $trial.ServiceBefore.Application $trial.ServiceAfter.Application 'Application'
@@ -5125,7 +5237,7 @@ function Initialize-R03DisabledAgent {
     }
     $state.CachedAgent=@{ServiceCreated=(-not $exists);OriginalService=$original};Save-State $state $statePath
     if(-not $exists){
-        $binary='"'+(Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe')+'" --Interception:Mode=Minifilter --Interception:StagingPrototype=true'
+        $binary='"'+(Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe')+'" --Interception:Mode=Minifilter --Interception:StagingPrototype=true --CentroAdministracao:BaseUrl='
         & sc.exe create SafeUploadAgent binPath= $binary start= disabled obj= LocalSystem | Out-Host
         if($LASTEXITCODE -ne 0){throw 'R03 disabled boot service creation failed'}
     }else{Set-AgentServiceStart 4}
@@ -6965,7 +7077,9 @@ $value=$b.ToString().Split([char]0)[0]
     # A dedicated latency trial is about 100 MB as JSON. Windows PowerShell 5.1's pretty-printer re-indents every
     # array element at depth and ran the 4 GB guest out of memory (C05 l4b3, v4a2: OutOfMemoryException in
     # ConvertToPrettyJsonString); the compact form of the same trial converts in 11 s at a 1.6 GB peak on that guest.
-    $caseJson=if($null -ne $trial.DedicatedLatency){$result | ConvertTo-Json -Depth 32 -Compress}else{$result | ConvertTo-Json -Depth 32}
+    # Always the compact form: the same content, without the indentation pass that runs the 4 GB guest out of memory on a large
+    # trial (also seen on C03-block-existing under the boot Verifier, whose special pool leaves the guest less memory).
+    $caseJson=$result | ConvertTo-Json -Depth 32 -Compress
     Write-DurableFile (Join-Path $evidenceDirectory 'case.json') $caseJson -New
     'InvariantVerdict='+$result.Verdict
     'INVARIANT_FINAL_STATE=True'

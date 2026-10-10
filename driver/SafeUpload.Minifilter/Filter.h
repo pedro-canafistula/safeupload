@@ -705,7 +705,7 @@ BOOLEAN SafeUploadPolicyAdmissionMustRetry(VOID);
 NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_STATUS Status);
 VOID SafeUploadPolicyAdmissionForceNextTimeout(VOID);
 VOID SafeUploadStageWritersQueueRecheck(VOID);
-VOID SafeUploadStageWritersQueueLifetimeRecheck(VOID);
+VOID SafeUploadStageWritersQueueLifetimeRecheck(_In_opt_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject);
 BOOLEAN SafeUploadPolicyEntryIsNewlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_ PCUNICODE_STRING NormalizedPath);
 BOOLEAN SafeUploadPolicyEntryIsCurrentlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
@@ -782,6 +782,18 @@ SafeUploadPolicyMayMatchVolume (
     );
 
 BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance);
+
+/* A name lookup that fails with one of these statuses proves the path does not exist, so the request touches nothing protected and the
+ * file system can answer it. Every other failure leaves the target unknown (and, on a volume that may hold a scope, fail closed). */
+FORCEINLINE BOOLEAN SafeUploadNameLookupProvesAbsent(_In_ NTSTATUS Status)
+{
+    return Status == STATUS_OBJECT_PATH_NOT_FOUND || Status == STATUS_OBJECT_NAME_NOT_FOUND ||
+        Status == STATUS_NO_SUCH_FILE || Status == STATUS_NOT_A_DIRECTORY;
+}
+/* Calls of the function above and how many answered TRUE. Every caller is a path that could not resolve a name and
+ * fell back to "the whole volume may be in scope", so these counters measure how often that fallback is taken. */
+extern volatile LONG64 SafeUploadVolumeWideQueries;
+extern volatile LONG64 SafeUploadVolumeWideAnswers;
 VOID SafeUploadPolicyRenameLossAdvance(_Inout_ volatile LONG64 *InstanceGeneration,
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING VolumeName);
 VOID SafeUploadPolicyRenameLossSnapshot(_Out_ PULONGLONG Generation);
@@ -793,6 +805,8 @@ VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ _IRQL_restores_ KIRQL OldIrq
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 _IRQL_requires_max_(DISPATCH_LEVEL)
 ULONGLONG SafeUploadPolicyScopeSequenceSnapshot(VOID);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN SafeUploadPolicyScopeTransitionActive(VOID);
 #endif
 BOOLEAN SafeUploadPolicyTryEndScopeTransition(_In_ ULONGLONG RenameLossSnapshot,
     _In_ BOOLEAN Finalizing);
