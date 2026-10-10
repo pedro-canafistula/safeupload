@@ -101,8 +101,11 @@ function Start-T4RuntimePairBeforeFirstLoad([string]$ExpectedDriverSha256, [stri
 function Set-T4VerifierFromBoot {
     $state = Get-T4RuntimeInstallState
     if ($state.FilterLoaded -or $state.DriverStart -ne 0) { throw 'Verifier from boot requires the installed boot-start filter, not yet loaded.' }
-    $null = Invoke-T4RuntimeNative 'verifier.exe' @('/flags', '0x13B', '/driver', 'SafeUpload.sys')
-    $settings = Invoke-T4RuntimeNative 'verifier.exe' @('/querysettings')
+    # A persistent setting answers 2 ("reboot required"), as in the suite's boot-Verifier setup; anything else is a failure.
+    $text = (& verifier.exe /flags 0x13B /driver SafeUpload.sys 2>&1 | Out-String)
+    if ($LASTEXITCODE -notin 0, 2) { throw "verifier.exe failed ($LASTEXITCODE): $text" }
+    $settings = (& verifier.exe /querysettings 2>&1 | Out-String)
+    if ($LASTEXITCODE -notin 0, 2) { throw "verifier.exe /querysettings failed ($LASTEXITCODE): $settings" }
     if (-not [regex]::IsMatch($settings, '(?im)^\s*Verifier Flags:\s*0x0*13b\s*$') -or
         -not [regex]::IsMatch($settings, '(?im)^\s*SafeUpload\.sys\s*$')) { throw 'Persistent Verifier 0x13B for SafeUpload.sys was not configured.' }
     'VERIFIER_FROM_BOOT_CONFIGURED=True'
