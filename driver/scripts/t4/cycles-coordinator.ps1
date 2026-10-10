@@ -13,7 +13,8 @@ param(
     [int]$SampleEvery = 500,
     [string]$ActorUser = 't4actor',
     [string]$ActorTask = 't4-actor',
-    [string]$Diagnostics = 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1'
+    [string]$Diagnostics = 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1',
+    [switch]$RequireVerifierPool
 )
 $ErrorActionPreference = 'Stop'
 function Read-T4ControlText([string]$Path) {
@@ -30,6 +31,15 @@ function Read-T4ControlText([string]$Path) {
             Start-Sleep -Milliseconds 2
         }
     }
+}
+function Write-T4ResultLine([string]$Path, [string]$Line) {
+    # One coordinator owns each append log. PowerShell 5.1 Add-Content opens
+    # with sharing that refuses an already-open reader, even a share-all one.
+    # Write exactly once through an explicitly shared stream; no I/O retry can
+    # duplicate an outcome record or hide a diagnostic write failure.
+    $bytes = [Text.UTF8Encoding]::new($false).GetBytes($Line + "`r`n")
+    $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]'ReadWrite, Delete')
+    try { $stream.Write($bytes, 0, $bytes.Length); $stream.Flush() } finally { $stream.Dispose() }
 }
 $out = 'C:\T4'; $control = Join-Path $out 'control'; $root = 'C:\Protected\t4'
 $handback = $null   # the actor's profile, resolved from its SID once the actor has logged on
@@ -67,24 +77,44 @@ public static class T4Pool {
 }
 '@
 
-function Get-VerifierPool {
-    $text = (& verifier.exe /query 2>&1 | Out-String)
-    $section = [regex]::Match($text, '(?is)MODULE:\s*SafeUpload\.sys.*?(?=MODULE:|\z)').Value
+function ConvertFrom-T4VerifierPool([string]$Text) {
+    $sections = [regex]::Matches($Text, '(?ims)^\s*MODULE:\s*SafeUpload\.sys\b.*?(?=^\s*MODULE:|\z)')
+    if ($sections.Count -gt 1) { throw 'Ambiguous SafeUpload Verifier module statistics.' }
+    $section = if ($sections.Count -eq 1) { $sections[0].Value } else { '' }
     $value = { param($label) $m = [regex]::Match($section, '(?im)^\s*' + $label + '\s*:\s*(\d+)'); if ($m.Success) { [int64]$m.Groups[1].Value } else { $null } }
-    [ordered]@{
+    # Actual Windows 19045 verifier.exe /query uses ordered (NonPaged / Paged)
+    # pairs, not the old separate-label format. Never take another module's
+    # bytes or the global summary as this driver's own pool.
+    $pairs = @{}
+    foreach ($label in 'Current Pool Bytes', 'Current Pool Allocations', 'Peak Pool Bytes') {
+        $match = [regex]::Match($section, '(?im)^\s*' + $label + '\s*:\s*\(\s*(\d+)\s*/\s*(\d+)\s*\)\s*$')
+        if ($match.Success) { $pairs[$label] = @([int64]$match.Groups[1].Value, [int64]$match.Groups[2].Value) }
+    }
+    $pool = [ordered]@{
         Verified = $section.Length -gt 0
-        Flags = [regex]::Match($text, '(?im)^\s*Verifier Flags:\s*(0x[0-9a-f]+)').Groups[1].Value
-        NonPagedBytes = & $value 'Current Non-?Paged Pool Usage \(bytes\)'
-        NonPagedAllocations = & $value 'Current Non-?Paged Pool Allocations'
-        PagedBytes = & $value 'Current Paged Pool Usage \(bytes\)'
-        PeakNonPagedBytes = & $value 'Peak Non-?Paged Pool Usage \(bytes\)'
+        Flags = [regex]::Match($Text, '(?im)^\s*Verifier Flags:\s*(0x[0-9a-f]+)').Groups[1].Value
+        PoolFormat = $(if ($pairs.Count) { 'NonPaged/Paged pairs' } else { 'Separate labels' })
+        NonPagedBytes = $(if ($pairs.ContainsKey('Current Pool Bytes')) { $pairs['Current Pool Bytes'][0] } else { & $value 'Current Non-?Paged Pool Usage \(bytes\)' })
+        NonPagedAllocations = $(if ($pairs.ContainsKey('Current Pool Allocations')) { $pairs['Current Pool Allocations'][0] } else { & $value 'Current Non-?Paged Pool Allocations' })
+        PagedBytes = $(if ($pairs.ContainsKey('Current Pool Bytes')) { $pairs['Current Pool Bytes'][1] } else { & $value 'Current Paged Pool Usage \(bytes\)' })
+        PeakNonPagedBytes = $(if ($pairs.ContainsKey('Peak Pool Bytes')) { $pairs['Peak Pool Bytes'][0] } else { & $value 'Peak Non-?Paged Pool Usage \(bytes\)' })
         AllocationFailures = & $value 'Pool Allocation Failures'
     }
+    if ($pool.Verified -and @('NonPagedBytes', 'NonPagedAllocations', 'PagedBytes', 'PeakNonPagedBytes' | Where-Object { $null -eq $pool[$_] }).Count) {
+        throw 'Incomplete SafeUpload Verifier pool statistics.'
+    }
+    return $pool
 }
 
 function Get-Sample([int]$Cycle, [string]$Label) {
     $sample = [ordered]@{ Cycle = $Cycle; Label = $Label; Utc = [DateTime]::UtcNow.ToString('o'); Qpc = [Diagnostics.Stopwatch]::GetTimestamp() }
-    try { $sample.Verifier = Get-VerifierPool } catch { $sample.VerifierError = $_.Exception.Message }
+    try {
+        $raw = Join-Path $out ('verifier-' + $Cycle + '-' + $Label + '.txt')
+        $text = (& verifier.exe /query 2>&1 | Out-String)
+        [IO.File]::WriteAllText($raw, $text, [Text.UTF8Encoding]::new($false))
+        $sample.VerifierOutputFile = $raw
+        $sample.Verifier = ConvertFrom-T4VerifierPool $text
+    } catch { $sample.VerifierError = $_.Exception.Message }
     try {
         foreach ($tag in 'SpUs', 'SUfl') { $t = [T4Pool]::Tag($tag); $sample['Tag' + $tag] = [ordered]@{ NonPagedAllocs = $t[0]; NonPagedFrees = $t[1]; NonPagedUsed = $t[2]; PagedAllocs = $t[3]; PagedFrees = $t[4]; PagedUsed = $t[5] } }
     } catch { $sample.TagError = $_.Exception.Message }
@@ -93,7 +123,7 @@ function Get-Sample([int]$Cycle, [string]$Label) {
     $sample.StageFiles = @(Get-ChildItem -LiteralPath $stageDir -File -Force -ErrorAction SilentlyContinue).Count
     $sample.JournalFiles = @(Get-ChildItem -LiteralPath $journalDir -Filter *.json -File -Force -ErrorAction SilentlyContinue).Count
     $sample.Handbacks = @(Get-ChildItem -LiteralPath $handback -File -Force -ErrorAction SilentlyContinue).Count
-    ($sample | ConvertTo-Json -Depth 6 -Compress) | Add-Content -LiteralPath (Join-Path $out 'samples.jsonl')
+    Write-T4ResultLine (Join-Path $out 'samples.jsonl') ($sample | ConvertTo-Json -Depth 6 -Compress)
     $sample
 }
 
@@ -126,7 +156,11 @@ try {
     if (-not $profile) { throw "no profile for $ActorUser ($sid)" }
     $handback = Join-Path $profile 'SafeUpload\_bloqueados'
     $result.Handback = $handback
-    $null = Get-Sample 0 'start'
+    $startSample = Get-Sample 0 'start'
+    if ($RequireVerifierPool -and (-not $startSample.Verifier.Verified -or
+        $startSample.Verifier.Flags -notmatch '^0x0*13b$' -or $null -eq $startSample.Verifier.NonPagedBytes)) {
+        throw 'Runtime Verifier pool evidence unavailable at the start; no cycles executed.'
+    }
     $patterns = 'resave', 'new', 'replace', 'mapped'
     for ($i = 1; $i -le $Cycles; ++$i) {
         $pattern = $patterns[($i - 1) % 4]
@@ -173,7 +207,7 @@ try {
         $key = $pattern + '-' + $(if ($sensitive) { 'block' } else { 'approve' })
         if (-not $result.Outcomes.Contains($key)) { $result.Outcomes[$key] = [ordered]@{ Ok = 0; Failed = 0 } }
         if ($ok) { $result.Completed++; $result.Outcomes[$key].Ok++ } else { $result.Outcomes[$key].Failed++; if ($result.Failures.Count -lt 50) { $result.Failures += ("$i $key $why") } }
-        ([ordered]@{ I = $i; Pattern = $pattern; Sensitive = $sensitive; Ok = $ok; Why = $why; AckMs = [math]::Round(($acked - $started) * 1000.0 / $frequency, 1); OutcomeMs = [math]::Round(($done - $acked) * 1000.0 / $frequency, 1) } | ConvertTo-Json -Compress) | Add-Content -LiteralPath (Join-Path $out 'cycles.jsonl')
+        Write-T4ResultLine (Join-Path $out 'cycles.jsonl') ([ordered]@{ I = $i; Pattern = $pattern; Sensitive = $sensitive; Ok = $ok; Why = $why; AckMs = [math]::Round(($acked - $started) * 1000.0 / $frequency, 1); OutcomeMs = [math]::Round(($done - $acked) * 1000.0 / $frequency, 1) } | ConvertTo-Json -Compress)
         if ($i % $SampleEvery -eq 0) { $null = Get-Sample $i 'cycle' }
         if (-not $ok -and $why -eq 'BLOCKED BYTES PUBLISHED') { break }
         # Once a command times out, its actor may still be using the payload.
@@ -183,7 +217,9 @@ try {
     # Settle: hand-backs, cleanups and disposals finish; the stage worker releases what nothing holds.
     Start-Sleep -Seconds 30
     $result.Settled = Get-Sample $Cycles 'settled'
-    Set-Content -LiteralPath (Join-Path $control 'cmd-stop.txt') -Value 'stop'
+    $stopPart = Join-Path $control 'stop.part'
+    [IO.File]::WriteAllText($stopPart, 'stop')
+    [IO.File]::Move($stopPart, (Join-Path $control 'cmd-stop.txt'))
     $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 60 * $frequency
     while (-not (Test-Path (Join-Path $control 'actor-stopped.txt'))) { if ([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline) { break }; Start-Sleep -Milliseconds 200 }
     $result.ActorStopped = Test-Path (Join-Path $control 'actor-stopped.txt')
@@ -193,7 +229,11 @@ try {
     $result.Idle = Get-Sample $Cycles 'idle'
 } catch {
     $result.Error = $_.Exception.Message
+    $result.ErrorDetail = $_.Exception.ToString()
+    $result.ErrorScriptStackTrace = $_.ScriptStackTrace
 } finally {
     $result.Finished = [DateTime]::UtcNow.ToString('o')
-    ($result | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath (Join-Path $out 'result.json')
+    $resultPart = Join-Path $out 'result.part'
+    [IO.File]::WriteAllText($resultPart, ($result | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+    [IO.File]::Move($resultPart, (Join-Path $out 'result.json'))
 }

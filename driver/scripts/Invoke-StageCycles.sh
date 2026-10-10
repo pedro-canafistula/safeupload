@@ -3,7 +3,7 @@
 # always deleted afterwards; the base disk is never written). Proves that staged versions are released (no 128-per-boot ceiling),
 # that the driver's pool stays flat and that the event-driven stage worker goes idle.
 #
-# Usage: driver/scripts/Invoke-StageCycles.sh <debuggee domain> <tag> <driver.sys> <agent zip> [cycles=10000] [ordinary|runtime-verifier]
+# Usage: driver/scripts/Invoke-StageCycles.sh <debuggee domain> <tag> <driver.sys> <agent zip> [cycles=10000] [ordinary|runtime-verifier] [sample_every=500]
 #   Installs the pair like the manual install, reboots, waits for Ready, creates a standard user, arms runtime Verifier (flags 0x13B:
 #   special pool, IRQL checking, pool tracking, I/O, deadlock, DDI) unless ordinary, and runs t4/cycles-coordinator.ps1 as SYSTEM with
 #   t4/cycles-actor.ps1 as the standard user.
@@ -12,9 +12,10 @@
 # line passes.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; cycles="${5:-10000}"; mode="${6:-runtime-verifier}"
+dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; cycles="${5:-10000}"; mode="${6:-runtime-verifier}"; sample_every="${7:-500}"
 [[ "$tag" =~ ^[A-Za-z0-9]{3,30}$ ]] || { echo 'Invalid tag'; exit 2; }
 [[ "$cycles" =~ ^[0-9]{1,6}$ ]] || { echo 'Invalid cycle count'; exit 2; }
+[[ "$sample_every" =~ ^[1-9][0-9]{0,5}$ ]] || { echo 'Invalid sample interval'; exit 2; }
 case "$mode" in ordinary|runtime-verifier) ;; *) echo 'Unknown mode'; exit 2;; esac
 [ -f "$sys" ] && [ -f "$zip" ] || { echo 'needs the signed driver and the agent zip'; exit 2; }
 host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt); [ -n "$host" ] || { echo "Unknown debuggee $dom"; exit 2; }
@@ -84,7 +85,8 @@ scp "${opts[@]}" "$sys" "vika@$host:$guest/SafeUpload-t4.sys" && scp "${opts[@]}
   && scp "${opts[@]}" agente/scripts/Protect-SafeUploadPolicy.ps1 "vika@$host:$guest/Protect-SafeUploadPolicy.ps1" \
   && scp "${opts[@]}" agente/scripts/Get-SafeUploadDiagnostics.ps1 "vika@$host:$guest/Get-SafeUploadDiagnostics.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-actor.ps1 "vika@$host:$guest/t4-cycles-actor.ps1" \
-  && scp "${opts[@]}" driver/scripts/t4/cycles-coordinator.ps1 "vika@$host:$guest/t4-cycles-coordinator.ps1" || { echo 'copy failed'; exit 14; }
+  && scp "${opts[@]}" driver/scripts/t4/cycles-coordinator.ps1 "vika@$host:$guest/t4-cycles-coordinator.ps1" \
+  && scp "${opts[@]}" driver/scripts/t4/cycles-progress.ps1 "vika@$host:$guest/t4-cycles-progress.ps1" || { echo 'copy failed'; exit 14; }
 remote <<'PS' | tee "$ev/$tag-install.txt"
 $ErrorActionPreference = 'Stop'
 $d = 'C:\Users\vika\Documents'
@@ -174,13 +176,15 @@ if ('__MODE__' -eq 'runtime-verifier') {
     'VERIFIER_ARMED=' + ($q -match 'SafeUpload\.sys' -and $q -match '(?im)^\s*Verifier Flags:\s*0x0*13b')
 }
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-$coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t4-cycles-coordinator.ps1" -Cycles __CYCLES__')
+$coordinatorArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t4-cycles-coordinator.ps1" -Cycles __CYCLES__ -SampleEvery __SAMPLE_EVERY__'
+if ('__MODE__' -eq 'runtime-verifier') { $coordinatorArgs += ' -RequireVerifierPool' }
+$coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $coordinatorArgs
 Register-ScheduledTask -TaskName 't4-coordinator' -Principal $principal -Action $coordinator -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 't4-coordinator'
 'COORDINATOR_STARTED=True'
 PS
 )
-setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}
+setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 if [ "$mode" = runtime-verifier ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
@@ -190,7 +194,7 @@ limit=$(( cycles * 4 + 600 )); [ "$limit" -lt 3600 ] && limit=3600
 waited=0; state=RUNNING; alive=yes
 while [ "$waited" -lt "$limit" ]; do
     sleep 60; waited=$((waited + 60))
-    if ! state=$(remote <<<'if (Test-Path C:\T4\result.json) { "DONE" } else { "RUNNING " + @(Get-Content C:\T4\cycles.jsonl -ErrorAction SilentlyContinue).Count }' | tail -1); then state=UNREACHABLE; fi
+    if ! state=$(remote <<<"& 'C:\Users\vika\Documents\t4-cycles-progress.ps1'" | tail -1); then state=UNREACHABLE; fi
     case "$state" in DONE*) break;; RUNNING*) alive=yes;; *) # a bugcheck looks like a hang: the guest stops answering
         if ! ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1; then alive=no; echo "guest unreachable after ${waited}s"; break; fi;;
     esac
@@ -210,6 +214,8 @@ try { $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query
 PS
     scp "${opts[@]}" "vika@$host:C:/T4/samples.jsonl" "$ev/$tag-samples.jsonl" >/dev/null 2>&1 || true
     scp "${opts[@]}" "vika@$host:C:/T4/cycles.jsonl" "$ev/$tag-cycles.jsonl" >/dev/null 2>&1 || true
+    mkdir -p "$ev/$tag-verifier"
+    scp "${opts[@]}" "vika@$host:C:/T4/verifier-*.txt" "$ev/$tag-verifier/" >/dev/null 2>&1 || true
     scp "${opts[@]}" "vika@$host:C:/T4/control/actor-error.txt" "$ev/$tag-actor-error.txt" >/dev/null 2>&1 || true
     remote <<'PS' > "$ev/$tag-service-events.txt"
 $base = [long](Get-Content -LiteralPath 'C:\T4\event-baseline.txt')

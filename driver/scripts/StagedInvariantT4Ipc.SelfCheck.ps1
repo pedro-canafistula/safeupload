@@ -48,5 +48,42 @@ try {
         $missing=$false;try{$null=Read-T4ControlText (Join-Path $root 'absent')}catch [IO.FileNotFoundException]{$missing=$true}
         Assert-Control $missing ($leaf+' never hides a missing command')
     }
+    $tokens=$null;$errors=$null
+    $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 't4\cycles-coordinator.ps1'),[ref]$tokens,[ref]$errors)
+    $writer=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Write-T4ResultLine'},$false))
+    Assert-Control ($writer.Count -eq 1) 'actual shared append writer available'
+    Invoke-Expression $writer[0].Extent.Text
+    $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 't4\cycles-progress.ps1'),[ref]$tokens,[ref]$errors)
+    Assert-Control ($errors.Count -eq 0) 'actual progress script parses'
+    $progress=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Get-T4Progress'},$false))
+    Assert-Control ($progress.Count -eq 1) 'actual progress reader available'
+    Invoke-Expression $progress[0].Extent.Text
+    $file=Join-Path $root 'cycles.jsonl'
+    Write-T4ResultLine $file '{"i":1}'
+    $reader=[IO.FileStream]::new($file,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]'ReadWrite, Delete')
+    try{
+        $refused=$false
+        try{Add-Content -LiteralPath $file -Value '{"i":2}'}catch [IO.IOException]{$cause=$_.Exception;while($cause.InnerException){$cause=$cause.InnerException};$refused=($cause.HResult -band 0xffff) -eq 32}
+        Assert-Control $refused 'PS5.1 Add-Content reproduces refusal with an already-open share-all reader'
+        Write-T4ResultLine $file '{"i":2}'
+        Assert-Control ((Read-T4ControlText $file) -ceq "{`"i`":1}`r`n{`"i`":2}`r`n") 'actual shared writer appends each outcome exactly once'
+    }finally{$reader.Dispose()}
+    $writer=[IO.FileStream]::new($file,[IO.FileMode]::Append,[IO.FileAccess]::Write,[IO.FileShare]'ReadWrite, Delete')
+    try{Assert-Control ((Get-T4Progress $root) -ceq 'RUNNING 2') 'actual progress reader works while the producer holds write access'}
+    finally{$writer.Dispose()}
+    $unicode='{"text":"'+[char]0xE7+[char]0xE3+'"}'
+    Write-T4ResultLine $file $unicode
+    $expected="{`"i`":1}`r`n{`"i`":2}`r`n"+$unicode+"`r`n"
+    Assert-Control ((Read-T4ControlText $file) -ceq $expected) 'UTF-8 outcome text round-trips without replacement or BOM bytes'
+    $exclusive=[IO.FileStream]::new($file,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None)
+    try{
+        $failed=$false;try{Write-T4ResultLine $file 'must not appear'}catch [IO.IOException]{$failed=$true}
+        Assert-Control $failed 'writer does not hide or retry a real exclusive-lock failure'
+    }finally{$exclusive.Dispose()}
+    Assert-Control ((Read-T4ControlText $file) -ceq $expected) 'failed append creates no duplicate or partial outcome'
+    [IO.File]::WriteAllText((Join-Path $root 'result.part'),'{partial')
+    Assert-Control ((Get-T4Progress $root) -ceq 'RUNNING 3') 'partial result does not release the host completion barrier'
+    [IO.File]::Move((Join-Path $root 'result.part'),(Join-Path $root 'result.json'))
+    Assert-Control ((Get-T4Progress $root) -ceq 'DONE') 'atomic result publication releases the host completion barrier'
 }finally{Remove-Item -LiteralPath $root -Recurse -Force}
 'T4IpcSelfCheck=PASS;Controls='+$count+';Qualification=False'
