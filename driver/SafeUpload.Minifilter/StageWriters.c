@@ -2391,12 +2391,23 @@ __declspec(noinline) static BOOLEAN StageWritersInsertNode(
 
     StageAcquireSpinLock(&StreamContext->WriterLock, &irql);
     if (StreamContext->WriterRegistryEntry != NULL && StreamContext->WriterRegistryEntry != Node->Entry &&
-        ((PSTAGE_REGISTRY_ENTRY)StreamContext->WriterRegistryEntry)->Retired &&
         IsListEmpty(&StreamContext->WriterObjects)) {
-        /* The cached entry was pruned (or retired) while this stream had no writer; the file's history now lives in
-         * Node->Entry. Retired is monotonic, so a stale FALSE only refuses (and records Unknown), never misbinds. */
-        previous = (PSTAGE_REGISTRY_ENTRY)StreamContext->WriterRegistryEntry;
-        StreamContext->WriterRegistryEntry = NULL;
+        PSTAGE_REGISTRY_ENTRY cached = (PSTAGE_REGISTRY_ENTRY)StreamContext->WriterRegistryEntry;
+        /* The stream has no writer, so the cached entry binds nothing here and the new writer's entry takes the cache:
+         * - the cached entry was pruned (or retired); the file's history now lives in Node->Entry. Retired is monotonic, so a
+         *   stale FALSE only refuses (and records Unknown), never misbinds;
+         * - or it is an idle entry of this same file (volume serial and file ID, both fixed at insertion) keyed by another
+         *   section-object pointer, which one stream can carry (CU t3cus: a writer refused against such an entry, so
+         *   the volume went Unknown and its servicing writes were refused). It used to be pruned within moments by the reclaim
+         *   pass every completed write queued; it stays listed under its own pointer. The readers that take an entry from
+         *   this cache (nested mutation, outside-why, the policy match, the paging-write fallback) check that pointer before
+         *   trusting it, and the stream's writer census is this list, whose nodes all belong to the cached entry. */
+        if (cached->Retired ||
+            (InterlockedCompareExchange(&cached->H, 0, 0) == 0 && cached->VolumeSerial == Node->Entry->VolumeSerial &&
+             RtlEqualMemory(&cached->FileId, &Node->Entry->FileId, sizeof(cached->FileId)))) {
+            previous = cached;
+            StreamContext->WriterRegistryEntry = NULL;
+        }
     }
     if (StreamContext->WriterRegistryEntry == NULL) {
         StageRegistryReference(Node->Entry);
@@ -2800,9 +2811,16 @@ UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OB
         if (status != STATUS_NOT_FOUND) result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
         return result;
     }
-    entry = (PSTAGE_REGISTRY_ENTRY)streamContext->WriterRegistryEntry;
-    if (entry == NULL) result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
-    else result |= (UINT32)InterlockedCompareExchange(&entry->H, 0, 0) & ~SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+    {
+        /* Under WriterLock: StageWritersInsertNode can let the cached entry yield and drops the cache's reference to it
+         * after releasing this lock, so the entry is only pinned while the lock is held. */
+        KIRQL irql;
+        StageAcquireSpinLock(&streamContext->WriterLock, &irql);
+        entry = (PSTAGE_REGISTRY_ENTRY)streamContext->WriterRegistryEntry;
+        if (entry == NULL) result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+        else result |= (UINT32)InterlockedCompareExchange(&entry->H, 0, 0) & ~SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+        StageReleaseSpinLock(&streamContext->WriterLock, irql);
+    }
     if (InterlockedCompareExchange(&streamContext->WritersUntracked, 0, 0) != 0) {
         result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
     }
