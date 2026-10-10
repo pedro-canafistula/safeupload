@@ -45,6 +45,8 @@ function Reset-Fake {
     $script:wrongHash = $false
     $script:ignoreDriverDemand = $false
     $script:ignoreAgentAuto = $false
+    $script:selected = $false
+    $script:flagsActive = $false
 }
 function Get-T4RuntimeInstallState { $script:state }
 function Get-T4RuntimeDriverHash { if ($script:wrongHash) { 'B' * 64 } else { $expected } }
@@ -61,24 +63,31 @@ function Invoke-T4RuntimeNative([string]$File, [string[]]$Arguments) {
         'fltmc.exe load SafeUpload' { $script:state.FilterLoaded = $true; $script:state.DriverStopped = $false }
         'verifier.exe /query' {
             $loads = if ($script:state.FilterLoaded) { 1 } else { 0 }
-            $flags = if ($script:badVerifier) { '0x00000008' } else { '0x0000013b' }
+            $flags = if (-not $script:flagsActive) { '0x00000000' } elseif ($script:badVerifier) { '0x00000008' } else { '0x0000013b' }
             $unloads = if ($script:badAfterLoad -and $script:state.FilterLoaded) { 1 } else { 0 }
             return "Verifier Flags: $flags`r`nMODULE: SafeUpload.sys (load: $loads / unload: $unloads)`r`n"
         }
-        'verifier.exe /volatile /flags 0x13B' { }
-        'verifier.exe /volatile /adddriver SafeUpload.sys' { }
+        'verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys' { $script:selected = $true; $script:flagsActive = $true }
+        'verifier.exe /volatile /flags 0x13B' { $script:flagsActive = $script:selected }
+        'verifier.exe /volatile /adddriver SafeUpload.sys' { $script:selected = $true }
         default { throw ('Unexpected native operation: ' + $command) }
     }
     return ''
 }
 try {
     Reset-Fake
+    $null = Invoke-T4RuntimeNative 'verifier.exe' @('/volatile', '/flags', '0x13B')
+    $null = Invoke-T4RuntimeNative 'verifier.exe' @('/volatile', '/adddriver', 'SafeUpload.sys')
+    $refused = $false
+    try { Assert-T4RuntimeVerifierState (Invoke-T4RuntimeNative 'verifier.exe' @('/query')) $false } catch { $refused = $true }
+    Assert-Control $refused 'observed flags-zero after separate flags-first/add commands is refused'
+    Reset-Fake
     $held = @(Set-T4RuntimeDemandBeforeReboot)
     Assert-Control ($state.DriverStart -eq 3 -and $state.AgentStart -eq 3 -and $held -contains 'RUNTIME_DEMAND_HELD=True') 'both services held while still stopped'
     Assert-Control (($events -join '|') -ceq 'sc.exe config SafeUpload start= demand|sc.exe config SafeUploadAgent start= demand') 'hold never loads filter or starts agent'
     $started = @(Start-T4RuntimePairBeforeFirstLoad $expected (Join-Path $scratch 'ok'))
     $sequence = @('sc.exe config SafeUpload start= demand', 'sc.exe config SafeUploadAgent start= demand',
-        'verifier.exe /volatile /flags 0x13B', 'verifier.exe /volatile /adddriver SafeUpload.sys', 'verifier.exe /query',
+        'verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys', 'verifier.exe /query',
         'fltmc.exe load SafeUpload', 'verifier.exe /query', 'agent-start', 'sc.exe config SafeUpload start= boot',
         'sc.exe config SafeUploadAgent start= auto', 'verifier.exe /query')
     Assert-Control (($events -join '|') -ceq ($sequence -join '|')) 'arm and query before one load; agent starts afterwards; no late re-arm'
@@ -87,7 +96,7 @@ try {
     foreach ($phase in 'before-load', 'after-load', 'after-agent') {
         Assert-Control (Test-Path -LiteralPath (Join-Path $scratch ('ok-' + $phase + '.txt'))) 'each actual query retained'
     }
-    foreach ($scenario in 'loaded', 'driver-running', 'agent-running', 'bad-driver-start', 'bad-agent-start', 'wrong-hash', 'bad-flags', 'add-failed', 'flags-failed') {
+    foreach ($scenario in 'loaded', 'driver-running', 'agent-running', 'bad-driver-start', 'bad-agent-start', 'wrong-hash', 'bad-flags', 'arm-failed') {
         Reset-Fake; $state.DriverStart = 3; $state.AgentStart = 3
         switch ($scenario) {
             'loaded' { $state.FilterLoaded = $true }
@@ -97,8 +106,7 @@ try {
             'bad-agent-start' { $state.AgentStart = 2 }
             'wrong-hash' { $script:wrongHash = $true }
             'bad-flags' { $script:badVerifier = $true }
-            'add-failed' { $script:failNative = 'verifier.exe /volatile /adddriver SafeUpload.sys' }
-            'flags-failed' { $script:failNative = 'verifier.exe /volatile /flags 0x13B' }
+            'arm-failed' { $script:failNative = 'verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys' }
         }
         $refused = $false
         try { $null = Start-T4RuntimePairBeforeFirstLoad $expected (Join-Path $scratch $scenario) } catch { $refused = $true }

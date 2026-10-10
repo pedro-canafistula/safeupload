@@ -70,8 +70,10 @@ function Start-T4RuntimePairBeforeFirstLoad([string]$ExpectedDriverSha256, [stri
     'PRELOAD_FILTER_UNLOADED=True'
     'PRELOAD_BOTH_SERVICES_STOPPED=True'
     'PRELOAD_DRIVER_SHA256=' + $ExpectedDriverSha256.ToUpperInvariant()
-    $null = Invoke-T4RuntimeNative 'verifier.exe' @('/volatile', '/flags', '0x13B')
-    $null = Invoke-T4RuntimeNative 'verifier.exe' @('/volatile', '/adddriver', 'SafeUpload.sys')
+    # Set target and flags in the same invocation. On the measured 19045
+    # guest, flags-first with an empty list then a separate add returned zero
+    # but /query still reported flags 0. Never infer activation from exit0.
+    $null = Invoke-T4RuntimeNative 'verifier.exe' @('/volatile', '/flags', '0x13B', '/adddriver', 'SafeUpload.sys')
     Assert-T4RuntimeVerifierState (Save-T4RuntimeVerifierQuery ($RawPrefix + '-before-load.txt')) $false
     'VERIFIER_BEFORE_FIRST_LOAD=True'
     $null = Invoke-T4RuntimeNative 'fltmc.exe' @('load', 'SafeUpload')
