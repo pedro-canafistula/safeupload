@@ -46,27 +46,27 @@ public sealed class PlainTextExtractor : ITextExtractor
     private static Encoding DetectEncoding(ReadOnlySpan<byte> header, out int bomLength)
     {
         // UTF-32 LE starts with the UTF-16 LE marker; test the longer BOM first.
-        if (header.StartsWith([0xFF, 0xFE, 0x00, 0x00]))
+        if (header.StartsWith<byte>([0xFF, 0xFE, 0x00, 0x00]))
         {
             bomLength = 4;
             return new UTF32Encoding(bigEndian: false, byteOrderMark: false, throwOnInvalidCharacters: true);
         }
-        if (header.StartsWith([0x00, 0x00, 0xFE, 0xFF]))
+        if (header.StartsWith<byte>([0x00, 0x00, 0xFE, 0xFF]))
         {
             bomLength = 4;
             return new UTF32Encoding(bigEndian: true, byteOrderMark: false, throwOnInvalidCharacters: true);
         }
-        if (header.StartsWith([0xEF, 0xBB, 0xBF]))
+        if (header.StartsWith<byte>([0xEF, 0xBB, 0xBF]))
         {
             bomLength = 3;
             return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
         }
-        if (header.StartsWith([0xFF, 0xFE]))
+        if (header.StartsWith<byte>([0xFF, 0xFE]))
         {
             bomLength = 2;
             return new UnicodeEncoding(bigEndian: false, byteOrderMark: false, throwOnInvalidBytes: true);
         }
-        if (header.StartsWith([0xFE, 0xFF]))
+        if (header.StartsWith<byte>([0xFE, 0xFF]))
         {
             bomLength = 2;
             return new UnicodeEncoding(bigEndian: true, byteOrderMark: false, throwOnInvalidBytes: true);
