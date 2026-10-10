@@ -472,3 +472,28 @@ counters. Before: C01-approve-absent `m15a1` on `m1-driver14` with the new check
 intermediate builds `m1-driver15` to `m1-driver18` (each 4 WDK configs 0/0) were superseded by review rounds before running on a VM.
 Verification of `m1-driver19` + agent `4d02039a`: `m1-final19.sh` (Microsoft 365, CU, MSI, Defender, U01 both modes, the 69 cells, a
 retry round, the gate).
+
+### The cumulative update on the wake-filter driver: a stream's idle cached entry, then TrkWks (`498f4ed7`, build `m1-driver21`)
+
+On `m1-driver19` (`a7a69d1c`) Microsoft 365 (`t3m365h`, 399 s, high-water 8,039, no overflow), MSI (9.1 s) and Defender (164.6 s) pass, but
+the cumulative update failed 4 of 4 (`t3cun`, `t3cuo`, `t3cup`, `t3cuq`): the system volume went Unknown (`ALLOCATION|CLEANUP`) at a burst
+(entries 253 to 509 in one sample), after which the volume's writers went untracked (ReserveCreate returns early on an Unknown instance) and
+17-18 nested servicing writes on `\Windows\servicing\Sessions\*.xml` were refused (`noRegistryEntry`). The T3 harness now reads the per-volume
+admission status (the inspector run once as SYSTEM with the agent stopped, since the driver's port takes one client): first Unknown
+`StageRegistryTrackUnknownWriter` (`t3cuq`). Two diagnostic builds on branch `diag/cu-unknown-site` (not for the branch) encoded the path in the
+site: `t3cur` showed post-create's `StageWritersInsertNode` refused the node and the unknown-writer fallback found the right entry and was
+refused again; `t3cus` packed the stream context's cached entry: not retired, listed, same file ID, another section-object pointer, H 0, no node
+listed. While every completed write queued a reclaim pass such an idle entry was pruned within moments; with the wake filter it stays, and the
+insert only let a retired entry yield. Fix: with no writer on the stream, an idle entry of the same file (volume serial and file ID) yields
+too; readers that take an entry from the cache already check its pointer, and `SafeUploadStageWritersSnapshot` now reads it under
+`WriterLock` (Luna P2). Two writers open at once on two pointers of one stream remain unsupported, as before. Luna: no P0/P1.
+
+Driver21, CU `t3cu21` and `t3cu21b`: no Unknown, no servicing refusal, coverage Ready, high-water 1,108-1,124. One refusal remained, in every
+CU run since 00:44 on every build: a CREATE by 16-byte ID (an NTFS object ID) asking for `FILE_WRITE_ATTRIBUTES`, from the link-tracking
+service (`svchost -k LocalSystemNetworkRestricted -s TrkWks`, named by the harness in `t3cu21b`), refused as `byIdHighHalf`. A classifier for
+object IDs (`f848bda0`, parked on branch `wip/objid-gate`) was rejected by Luna (P0: the object ID can move to a protected file between the
+check and the open; P2: a zero-padded 16-byte file reference). Owner decision 2026-10-10: the write stays refused for M1 and T3 lists it as a
+known refusal when the process is identified as TrkWks (`815ea9e8`); `t3cu21b` re-judged under that rule passes every line.
+
+I removed the `safeupload-run-m2b` worktree with `git worktree remove --force`, which deleted driver19's raw evidence (ring, samples, the
+`m19c1` case export); the T3 verdict lines survive in the tool logs and the figures above come from them.
