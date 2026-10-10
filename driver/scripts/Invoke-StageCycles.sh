@@ -3,7 +3,7 @@
 # always deleted afterwards; the base disk is never written). Proves that staged versions are released (no 128-per-boot ceiling),
 # that the driver's pool stays flat and that the event-driven stage worker goes idle.
 #
-# Usage: driver/scripts/Invoke-StageCycles.sh <debuggee domain> <tag> <driver.sys> <agent zip> [cycles=10000] [ordinary|runtime-verifier] [sample_every=500]
+# Usage: driver/scripts/Invoke-StageCycles.sh <debuggee domain> <tag> <driver.sys> <agent zip> [cycles=10000] [ordinary|runtime-verifier|verifier-from-boot] [sample_every=500]
 #   Installs the pair like the manual install and reboots. Runtime mode holds both services at demand start across that reboot,
 #   arms volatile Verifier while the filter is still unloaded (flags 0x13B: special pool, IRQL, pool tracking, I/O, deadlock,
 #   security checks), loads it once, starts the agent, restores product start modes, and waits for Ready. Creates a standard
@@ -18,7 +18,10 @@ dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?
 [[ "$tag" =~ ^[A-Za-z0-9]{3,30}$ ]] || { echo 'Invalid tag'; exit 2; }
 [[ "$cycles" =~ ^[0-9]{1,6}$ ]] || { echo 'Invalid cycle count'; exit 2; }
 [[ "$sample_every" =~ ^[1-9][0-9]{0,5}$ ]] || { echo 'Invalid sample interval'; exit 2; }
-case "$mode" in ordinary|runtime-verifier) ;; *) echo 'Unknown mode'; exit 2;; esac
+case "$mode" in ordinary|runtime-verifier|verifier-from-boot) ;; *) echo 'Unknown mode'; exit 2;; esac
+# verifier-from-boot: the same Verifier flags (0x13B) configured persistently before the install reboot, so pool tracking covers the
+# driver from its first allocation and the agent reaches Ready through the normal boot path (runtime-verifier's fltmc load after
+# boot is a late attach, which never reports Ready).
 [ -f "$sys" ] && [ -f "$zip" ] || { echo 'needs the signed driver and the agent zip'; exit 2; }
 driver_sha=$(sha256sum "$sys" | cut -d' ' -f1) || exit 2
 host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt); [ -n "$host" ] || { echo "Unknown debuggee $dom"; exit 2; }
@@ -120,6 +123,14 @@ Set-T4RuntimeDemandBeforeReboot
 PS
     grep -qx 'RUNTIME_DEMAND_HELD=True' "$ev/$tag-demand-held.txt" || { echo 'runtime demand-start hold failed'; exit 16; }
 fi
+if [ "$mode" = verifier-from-boot ]; then
+    remote <<'PS' | tee "$ev/$tag-verifier-from-boot.txt"
+$ErrorActionPreference = 'Stop'
+. 'C:\Users\vika\Documents\t4-runtime-verifier.ps1'
+Set-T4VerifierFromBoot
+PS
+    grep -qx 'VERIFIER_FROM_BOOT_CONFIGURED=True' "$ev/$tag-verifier-from-boot.txt" || { echo 'persistent Verifier configuration failed'; exit 16; }
+fi
 echo "== reboot"
 remote <<<'& shutdown.exe /r /t 5 /c "T4 install"' >/dev/null; sleep 60; wait_ssh || { echo 'guest did not return'; exit 17; }
 if [ "$mode" = runtime-verifier ]; then
@@ -136,6 +147,15 @@ PS
     for phase in before-load after-load after-agent; do
         [ -s "$ev/$tag-verifier-$phase.txt" ] || { echo "missing runtime Verifier $phase query"; exit 18; }
     done
+fi
+if [ "$mode" = verifier-from-boot ]; then
+    remote <<PS | tee "$ev/$tag-first-load-verifier.txt"
+\$ErrorActionPreference = 'Stop'
+. 'C:\Users\vika\Documents\t4-runtime-verifier.ps1'
+Assert-T4VerifierFromFirstLoad '$driver_sha' 'C:\Users\vika\Documents\t4-verifier'
+PS
+    scp "${opts[@]}" "vika@$host:$guest/t4-verifier-after-boot.txt" "$ev/$tag-verifier-after-boot.txt" >/dev/null 2>&1 || true
+    grep -qx 'VERIFIER_FROM_FIRST_LOAD=True' "$ev/$tag-first-load-verifier.txt" || { echo 'Verifier not active from the first load'; exit 18; }
 fi
 remote <<'PS' | tee "$ev/$tag-ready.txt"
 $ErrorActionPreference = 'Continue'
@@ -197,14 +217,14 @@ Copy-Item -LiteralPath "$d\t4-cycles-actor.ps1" -Destination 'C:\T4\cycles-actor
 $actor = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\T4\cycles-actor.ps1"'
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 12) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName 't4-actor' -Action $actor -User ($env:COMPUTERNAME + '\' + $name) -Password $password -RunLevel Limited -Settings $settings -Force | Out-Null
-if ('__MODE__' -eq 'runtime-verifier') {
+if ('__MODE__' -in 'runtime-verifier', 'verifier-from-boot') {
     . "$d\t4-runtime-verifier.ps1"
     Assert-T4RuntimeVerifierState (Invoke-T4RuntimeNative 'verifier.exe' @('/query')) $true
     'VERIFIER_ARMED=True'
 }
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $coordinatorArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t4-cycles-coordinator.ps1" -Cycles __CYCLES__ -SampleEvery __SAMPLE_EVERY__'
-if ('__MODE__' -eq 'runtime-verifier') { $coordinatorArgs += ' -RequireVerifierPool' }
+if ('__MODE__' -in 'runtime-verifier', 'verifier-from-boot') { $coordinatorArgs += ' -RequireVerifierPool' }
 $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $coordinatorArgs
 Register-ScheduledTask -TaskName 't4-coordinator' -Principal $principal -Action $coordinator -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 't4-coordinator'
@@ -214,7 +234,7 @@ PS
 setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
-if [ "$mode" = runtime-verifier ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
+if [ "$mode" != ordinary ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
 
 # The earlier run's median was 2.2 s per cycle. Allow 4 s each on the fast run disk, plus settle and idle samples, at least an hour.
 limit=$(( cycles * 4 + 600 )); [ "$limit" -lt 3600 ] && limit=3600
@@ -280,7 +300,7 @@ try:
 except FileNotFoundError: pass
 verdict('T4GuestAlive', alive == 'yes', 'the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)')
 verdict('T4DriverLoaded', 'DRIVER_LOADED=True' in after, 'the filter is still loaded after the cycles')
-if mode == 'runtime-verifier':
+if mode in ('runtime-verifier', 'verifier-from-boot'):
     v = re.search(r'^VERIFIER=(.*)$', after, re.M)
     vt = v.group(1) if v else ''
     verdict('T4VerifierActive', 'SafeUpload.sys' in vt and re.search(r'Verifier Flags:\s*0x0*13b', vt, re.I) is not None, 'runtime Verifier 0x13B still verifies SafeUpload.sys')
@@ -292,7 +312,7 @@ verdict('T4CyclesCompleted', result is not None and completed == cycles and not 
 leak = [f for f in (result.get('Failures') or []) if 'BLOCKED BYTES PUBLISHED' in f] if result else []
 verdict('T4NoBlockedBytesPublished', result is not None and not leak, 'no blocked version reached its public name' if not leak else '; '.join(leak[:5]))
 cyc = [s for s in samples if s.get('Label') == 'cycle' and isinstance(s.get('Verifier'), dict) and s['Verifier'].get('NonPagedBytes') is not None]
-if mode == 'runtime-verifier' and len(cyc) >= 4:
+if mode in ('runtime-verifier', 'verifier-from-boot') and len(cyc) >= 4:
     warm = [s for s in cyc if s['Cycle'] >= min(1000, cycles // 4)]
     xs = [s['Cycle'] for s in warm]; ys = [s['Verifier']['NonPagedBytes'] for s in warm]
     n = len(xs); mx = sum(xs) / n; my = sum(ys) / n
@@ -304,7 +324,7 @@ if mode == 'runtime-verifier' and len(cyc) >= 4:
     ok = slope < 4.0 and final is not None and final <= first + 65536
     verdict('T4PoolFlat', ok, f"driver nonpaged bytes (Verifier pool tracking) from cycle {xs[0]}: {first} -> {ys[-1]} at cycle {xs[-1]}, "
             f"after idle {final}; slope {slope:.3f} B/cycle (limit 4); peak {(settled.get('Verifier') or {}).get('PeakNonPagedBytes')}")
-elif mode == 'runtime-verifier':
+elif mode in ('runtime-verifier', 'verifier-from-boot'):
     verdict('T4PoolFlat', False, f"only {len(cyc)} Verifier pool samples")
 def stage(s, k):
     return ((s or {}).get('StageWorker') or {}).get(k)

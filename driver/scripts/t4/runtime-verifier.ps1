@@ -93,3 +93,23 @@ function Start-T4RuntimePairBeforeFirstLoad([string]$ExpectedDriverSha256, [stri
     'PRODUCT_START_MODES_RESTORED=True'
     'RUNTIME_PAIR_STARTED=True'
 }
+
+# Verifier from the first load: the same flags configured persistently before the install reboot, so the boot-start driver is
+# verified from DriverEntry and reaches Ready through the normal boot path. (A filter loaded after boot with fltmc is a late
+# attach: it cannot prove that no writer predates it, so the agent never reports Ready.) The disposable run disk discards the
+# persistent setting with everything else.
+function Set-T4VerifierFromBoot {
+    $state = Get-T4RuntimeInstallState
+    if ($state.FilterLoaded -or $state.DriverStart -ne 0) { throw 'Verifier from boot requires the installed boot-start filter, not yet loaded.' }
+    $null = Invoke-T4RuntimeNative 'verifier.exe' @('/flags', '0x13B', '/driver', 'SafeUpload.sys')
+    $settings = Invoke-T4RuntimeNative 'verifier.exe' @('/querysettings')
+    if (-not [regex]::IsMatch($settings, '(?im)^\s*Verifier Flags:\s*0x0*13b\s*$') -or
+        -not [regex]::IsMatch($settings, '(?im)^\s*SafeUpload\.sys\s*$')) { throw 'Persistent Verifier 0x13B for SafeUpload.sys was not configured.' }
+    'VERIFIER_FROM_BOOT_CONFIGURED=True'
+}
+
+function Assert-T4VerifierFromFirstLoad([string]$ExpectedDriverSha256, [string]$RawPrefix) {
+    if ((Get-T4RuntimeDriverHash) -ine $ExpectedDriverSha256) { throw 'Installed driver differs from the frozen signed artifact.' }
+    Assert-T4RuntimeVerifierState (Save-T4RuntimeVerifierQuery ($RawPrefix + '-after-boot.txt')) $true
+    'VERIFIER_FROM_FIRST_LOAD=True'
+}

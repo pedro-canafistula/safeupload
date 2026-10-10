@@ -960,7 +960,7 @@ $notification.Emissions[0].Entry.HandBackPath='wrong-handback'
 Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'BLOCK' $digest $hb)[2].Verdict -ceq 'FAIL') 'Wrong Blocked hand-back path fails.'
 Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'BLOCK' $digest)[2].Verdict -ceq 'INCONCLUSIVE') 'Unverified hand-back path stays inconclusive.'
 function Make-NativeCalls([string[]]$Names,[bool]$DenyRename=$false){
-    return ,@(for($i=0;$i -lt $Names.Count;$i++){@{Class=$Names[$i];NativeCode=$(if($DenyRename -and $Names[$i] -ceq 'rename-ex'){5}else{0});StartQpc=100+$i*10;EndQpc=101+$i*10}})
+    return ,@(for($i=0;$i -lt $Names.Count;$i++){@{Class=$Names[$i];NativeCode=$(if($DenyRename -and $Names[$i] -ceq 'rename-ex'){17}else{0});StartQpc=100+$i*10;EndQpc=101+$i*10}})
 }
 $mapped=Make-NativeCalls @('writer-open','create-mapping','map-view','close-source','mapped-store','flush-view','unmap-view','close-section')
 Check ((Test-CachedActorCalls $mapped 'mapped' 90 160)[0].Verdict -ceq 'PASS') 'C02 store after source close, flush, then view/section release passes.'
@@ -971,9 +971,11 @@ Check ((Test-CachedActorCalls $mapped[0..6] 'mapped' 90 160)[0].Verdict -ceq 'IN
 $replacement=Make-NativeCalls @('writer-open','cached-write','flush','rename-ex','close')
 Check ((Test-CachedActorCalls $replacement 'replacement' 90 140)[0].Verdict -ceq 'PASS') 'C04 rename before source cleanup passes.'
 $denied=Make-NativeCalls @('writer-open','rename-ex','close') $true
-Check ((Test-CachedActorCalls $denied 'external-rename' 90 120)[0].Verdict -ceq 'PASS') 'C05 exact access denial belongs to rename, with successful source open and cleanup.'
+Check ((Test-CachedActorCalls $denied 'external-rename' 90 120)[0].Verdict -ceq 'PASS') 'C05 exact ERROR_NOT_SAME_DEVICE refusal (T6) belongs to rename, with successful source open and cleanup.'
 $bad=Clone $denied;$bad[1].NativeCode=32
-Check ((Test-CachedActorCalls $bad 'external-rename' 90 120)[0].Verdict -ceq 'FAIL') 'C05 sharing failure cannot substitute for access denial.'
+Check ((Test-CachedActorCalls $bad 'external-rename' 90 120)[0].Verdict -ceq 'FAIL') 'C05 sharing failure cannot substitute for the not-same-device refusal.'
+$bad=Clone $denied;$bad[1].NativeCode=5
+Check ((Test-CachedActorCalls $bad 'external-rename' 90 120)[0].Verdict -ceq 'FAIL') 'C05 access denial no longer qualifies: T6 requires ERROR_NOT_SAME_DEVICE so callers fall back to an inspected copy.'
 $bad=Clone $denied;$bad[1].NativeCode=0
 Check ((Test-CachedActorCalls $bad 'external-rename' 90 120)[0].Verdict -ceq 'FAIL') 'C05 successful external rename violates D.'
 $bad=Clone $denied;$bad[0].NativeCode=5

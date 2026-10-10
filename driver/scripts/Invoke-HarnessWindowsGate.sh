@@ -8,13 +8,13 @@ label="${1:?label}"; tree="${2:-.}"
 [[ "$label" =~ ^[A-Za-z0-9._-]{3,60}$ ]] || { echo 'Invalid label'; exit 2; }
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 src="$(cd "$tree" && pwd)/driver/scripts"
-files=(Test-StagedInvariantSuite.ps1 StagedInvariantObserver.psm1 StagedInvariantCases.psd1 Build-ExactAgent.ps1 t4/cycles-actor.ps1 t4/cycles-coordinator.ps1 t4/cycles-progress.ps1 t4/runtime-verifier.ps1)
+files=(Test-StagedInvariantSuite.ps1 StagedInvariantObserver.psm1 StagedInvariantCases.psd1 Build-ExactAgent.ps1 t4/cycles-actor.ps1 t4/cycles-coordinator.ps1 t4/cycles-progress.ps1 t4/runtime-verifier.ps1 t6/moves-actor.ps1 t6/moves-coordinator.ps1)
 checks=()
 for f in "$src"/*.SelfCheck.ps1; do [[ "$(basename "$f")" == StagedInvariant*.SelfCheck.ps1 ]] && checks+=("$(basename "$f")"); done
 host=192.168.122.210; dest="C:/Users/vika/Documents/harness-gate-$label"
 ev="$repo/driver/evidence/$(date +%F)/harness-windows-gate-$label.txt"; mkdir -p "$(dirname "$ev")"
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=yes)
-python3 "$repo/driver/scripts/remote_ps.py" "$host" <<<"if(Test-Path -LiteralPath '$dest'){throw 'gate directory exists'}; [void](New-Item -ItemType Directory -Path '$dest/t4')" || exit 3
+python3 "$repo/driver/scripts/remote_ps.py" "$host" <<<"if(Test-Path -LiteralPath '$dest'){throw 'gate directory exists'}; [void](New-Item -ItemType Directory -Path '$dest/t4'); [void](New-Item -ItemType Directory -Path '$dest/t6')" || exit 3
 for f in "${files[@]}" "${checks[@]}"; do scp "${opts[@]}" "$src/$f" "vika@$host:$dest/$f" || exit 3; done
 list="$(printf "'%s'," "${files[@]}" "${checks[@]}")"; checklist="$(printf "'%s'," "${checks[@]}")"
 python3 "$repo/driver/scripts/remote_ps.py" "$host" > "$ev" 2>&1 <<PS
