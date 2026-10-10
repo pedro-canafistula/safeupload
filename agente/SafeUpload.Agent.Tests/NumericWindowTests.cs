@@ -63,8 +63,11 @@ public class NumericWindowTests
         var categories = Active(7);
         // Input allocation is outside the measured scanner interval. This is
         // only numeric scratch-space qualification, not whole-file streaming.
-        var text = new string('0', 2 * 1024 * 1024);
-        Assert.Empty(ContentScanner.Scan(new string('0', 128), categories));
+        // Ones, not zeros: every 13-19 digit window of zeros passes Luhn, so a
+        // zero run is a (correct) payment-card match; a run of ones fails Luhn
+        // at every length and CPF/CNPJ reject repeated digits.
+        var text = new string('1', 2 * 1024 * 1024);
+        Assert.Empty(ContentScanner.Scan(new string('1', 128), categories));
         var before = GC.GetAllocatedBytesForCurrentThread();
         var findings = ContentScanner.Scan(text, categories);
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
