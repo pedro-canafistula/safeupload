@@ -74,21 +74,13 @@ public sealed class InspectionSharingTests
     }
 
     [Fact]
-    public async Task Legacy_hash_and_scan_use_one_capture_when_an_existing_mapping_changes_the_source()
+    public async Task Legacy_hash_and_scan_use_one_capture_when_a_mapping_changes_the_source_during_extraction()
     {
         if (!OperatingSystem.IsWindows()) return;
         using var workspace = new TestWorkspace();
         string path = Path.Combine(workspace.Root, "mapped.txt");
         byte[] clean = Encoding.UTF8.GetBytes("ordinary report".PadRight(64));
         File.WriteAllBytes(path, clean);
-        using var source = new FileStream(path, FileMode.Open, FileAccess.ReadWrite,
-            FileShare.ReadWrite | FileShare.Delete);
-        using var mapping = MemoryMappedFile.CreateFromFile(source, null, 0,
-            MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, leaveOpen: true);
-        using var view = mapping.CreateViewAccessor();
-        // Keep only the writable view, as an actor can after closing its handle.
-        source.Dispose();
-        mapping.Dispose();
         var operation = TestWorkspace.Operation(path);
         var extractor = new PausedExtractor(new PlainTextExtractor());
         var service = new InspectionService(new LocalPolicyStore(workspace.PolicyFile),
@@ -98,6 +90,15 @@ public sealed class InspectionSharingTests
         try
         {
             await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            // Legacy extraction starts after the input capture closes its read
+            // handle. The actor can now mutate the name while parsing continues.
+            // Mapping before that point correctly prevents opening the reader.
+            using var source = new FileStream(path, FileMode.Open, FileAccess.ReadWrite,
+                FileShare.ReadWrite | FileShare.Delete);
+            using var mapping = MemoryMappedFile.CreateFromFile(source, null, 0,
+                MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, leaveOpen: true);
+            using var view = mapping.CreateViewAccessor();
+            source.Dispose();
             byte[] sensitive = Encoding.UTF8.GetBytes("CPF: 529.982.247-25".PadRight(clean.Length));
             view.WriteArray(0, sensitive, 0, sensitive.Length);
             view.Flush();
