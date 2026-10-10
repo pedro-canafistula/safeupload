@@ -237,9 +237,12 @@ path to investigate, not a confirmed runtime root cause or a passed long-run gat
 Candidate `60fecdbc` releases that exact idle cache only after the existing prune gate succeeds, preserving its H=0 census with
 a context-local witness and leaving sticky Unknown in force. Exact worktree build `m2-driver2` passes all four WDK/PREfast/
 ApiValidator configurations at 0/0; all 28 frozen inputs match the committed and detached source. The user authorized Luna
-reviews; the scoped pre-boot lifetime review passed without P0/P1/P2 findings. Fresh short run `m2t4prune1` is starting on a
-disposable debuggee disk, using the same tested agent and unchanged Windows-qualified harness as `m2t4stat2`. It changes only
-the signed kernel for the pool comparison; no pool correction or T4 completion is claimed before the result and restoration.
+reviews; the scoped pre-boot lifetime review passed without P0/P1/P2 findings. Fresh short run `m2t4prune1` completed all 256 cycles on the same tested agent and unchanged Windows-qualified harness
+as `m2t4stat2`, changing only the signed kernel. Versions/views/tombstones/stage files returned to zero and the worker stayed
+idle, but the unchanged pool gate failed at 452.1 B/cycle (limit 4), versus 14,464.9 previously. Restoration deleted the run
+disk and verified the base untouched. The 10,000-cycle and 33-cell follow-up queue stopped before any cell. Luna found no
+concrete source defect explaining residual growth; the harness armed volatile Verifier after the initial driver load, so a
+new Windows-qualified repeat will arm it before first load. That attribution hypothesis does not invalidate the failed gate.
 Build-only receipt: [T4 pruned-cache candidate](evidence/2026-10-10/m2-t4-pruned-cache-qualified-source.json).
 The cycle row samples public names; it does not replace the required raw-observer invariant regression.
 The stopped 33 C01-C04/B01/B02/X01 component queue (`m2t4rv`, `m2t4ro`, `m2t4rb`) and its frozen inputs remain preserved:
@@ -401,6 +404,16 @@ source inputs independently matched. Luna's scoped parser review passes without 
 integrity cases; whole-format coverage, bounded memory and runtime publication qualification remain open.
 Receipts: [Office parser component](evidence/2026-10-10/m2-t9-office-integrity-qualified-source.json),
 [component reviews](evidence/2026-10-10/m2-agent-component-luna-review.json).
+
+
+T9 PDF coverage component `8619b690` refuses any raster image detected by PdfPig before accumulated text can yield an
+approval. A pinned baseline on qualified `d559e812` reproduced Approved image-only and clean-text-then-image PDFs. Four
+image layouts in both inspection modes now take the typed unsupported-format failure path without cache reuse; blank/clean
+text remains Approved and CPF text remains Blocked. Two publisher image controls prove exact hand-back and policy-bound
+justification with unchanged digest/SID/session requirements. Feature `m2-t9-pdf1` passes 709/709 and normal `m2-t9-pdf2`
+645/645, both zero build/publish warnings; all 197 archive/manifest/committed/frozen inputs and artifact hashes were checked.
+Luna's scoped review passes without findings. This qualifies the detected raster cases, not every inline image/Form XObject
+encoding, OCR, full-format coverage or raw-volume publication. Receipt: `m2-t9-pdf-coverage-qualified-source.json`.
 
 ### T10. Permission and owner changes reach the real file or folder
 

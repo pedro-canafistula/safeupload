@@ -910,3 +910,43 @@ Archive SHA-256: `7DE3436B25E71C31CFE0991DD53DB8DF96E1E36798E680ED06A9FF96BC35E8
 findings (`m2-t9-office-integrity-luna-review.json`). The qualified receipt is `m2-t9-office-integrity-qualified-source.json`,
 and the component index now has six entries. This closes only the measured malformed core-part/cell cases; whole-format
 coverage, bounded-memory extraction, disk budgets, seeding and raw-volume/live publication gates remain open. M2 stays active.
+
+## M2 T4: idle-cache short gate fails; T9 detected PDF raster content blocked — 2026-10-10
+
+`m2t4prune1` completed 256/256 mixed saves using the reviewed `60fecdbc` kernel, the same `t4-af1` agent and
+hash-identical Windows-qualified attribution harness as `m2t4stat2`. Every version/view released; live versions/views,
+tombstones, stage files, capacity refusals and delete failures returned to zero. The worker performed zero passes/timer
+wakes during the final 60-second idle interval. All eight outcome buckets passed, with 192 stage deletions and 64
+hand-backs. Only T4PoolFlat failed: samples at 64/128/192/256 cycles were 55,760/105,488/166,256/131,952 driver-owned
+nonpaged bytes; after idle 102,576. Slope 452.100 B/cycle exceeds the unchanged 4 B/cycle limit. The prior isolated slope
+was 14,464.9 B/cycle. Eight raw Verifier queries and all 256 consecutive successful records remain retained. Run-disk
+teardown at 20:20:35Z deleted only the run overlay and verified the base untouched. Decision readout:
+`m2-t4-prune1-pool-readout.json`. The prepared `m2t4prune10k1`/33-cell Office-agent queue stopped before starting any cell
+(`m2-t4-pruned-office-queue-status.json`); its exact frozen inputs are retained.
+
+Luna's follow-up found no concrete lifetime-source defect. The initial driver load precedes volatile Verifier in this
+harness: the first module sample accounts for only 38 allocations/56,528 bytes, while global SwUr is already 6,338,688.
+Idle SwUr is 12,160 bytes above start, supporting the measured reduction in old registry-cache growth. This incomplete
+pre-arm baseline does not itself explain later module growth or erase the failure. The next diagnostic will instrument
+before first load, retain the same assertions/fixtures/policy and record its setup explicitly. No long-run qualification
+or driver change is inferred from that hypothesis.
+
+A no-publication PDF probe on the qualified normal `d559e812` Core reproduced Approved image-only and
+clean-text-then-image PDFs, with valid blank/clean/CPF text controls. The synthetic one-pixel image tests unsupported
+raster behavior, not OCR. All generated inputs were removed; source, archive, build, DLL hash verification and results
+remain under `m2-t9-pdf-image-probe/`, readout `m2-t9-pdf-image-baseline-readout.json`.
+
+Qualified source `8619b690e3f9b0c8017291a5d68ab673b76a7529` refuses any image reported by PdfPig before returning partial
+page text. The typed unsupported-content exception reaches the existing staged Blocked/legacy AllowedWithoutInspection
+contract and cannot populate approval cache. Four layouts in both modes, six blank/clean/CPF controls and two image
+publisher controls pass; exact hand-back and justified publication compare binary bytes and retain all existing
+positive-policy, sealed-digest, verified-copy and session/SID checks. Feature `m2-t9-pdf1` passes 709/709 and normal
+`m2-t9-pdf2` 645/645, zero build/publish warnings. All 197 inputs and every TRX outcome/control, package and executable
+hash were independently checked before the six-file backup and exact fast-forward integration. Archive
+`E0E73B70AF3B22B8FD4C7A3110A4216B3763CFB44458F75B6F5EB30957B8D00B`, manifest
+`BBDE7A44530B53A94168CE21B9E904681B28F590EEF91EB575C3697EF78200D6`; feature package
+`490E1507D54FB267ABCACB3E9D4813C5A63F0B802F797D08C77F9460C656FF5B`, normal package
+`7E12E0BB16AE3477E9B2AB78E78B119D5A2A4D10E07A7EC2432B66653AB96470`. Luna's scoped source review passes without findings,
+but does not independently establish inline-image/nested Form XObject coverage. Receipts:
+`m2-t9-pdf-coverage-qualified-source.json` and `m2-t9-pdf-coverage-luna-review.json`; component index now has seven entries.
+Whole-format/bounded-memory/disk-budget/runtime qualification and the full frozen M2 working-system gate remain open.

@@ -1,0 +1,23 @@
+{
+  "schema": "SafeUploadLunaM2Review/1",
+  "model": "gpt-6-luna",
+  "userAuthorized": true,
+  "reviewOnly": true,
+  "milestoneFinalReview": false,
+  "sourceCommit": "8619b690e3f9b0c8017291a5d68ab673b76a7529",
+  "task": "/root/luna_t9_office_review",
+  "verdict": "PASS_SCOPED_SOURCE_DELTA",
+  "findings": [],
+  "checks": [
+    "Detected raster images refuse extraction before partial page text can yield an approval",
+    "Typed unsupported content uses staged Blocked and legacy AllowedWithoutInspection failure contract without caching",
+    "Mixed clean text and raster images are refused, including images after a sensitive page",
+    "Positive policy, sealed digest, exact hand-back and session-bound justification requirements unchanged"
+  ],
+  "limitations": [
+    "Source-only component review; runtime/raw-volume publication qualification pending",
+    "Reviewer did not independently prove PdfPig NumberOfImages covers every inline-image or nested Form XObject encoding",
+    "Not the final working-system milestone review"
+  ],
+  "recordedUtc": "2026-10-10T20:26:15.533366+00:00"
+}

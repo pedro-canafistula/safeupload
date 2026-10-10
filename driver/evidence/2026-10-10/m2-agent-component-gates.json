@@ -255,6 +255,62 @@
       ],
       "rawLocalReceipt": "driver/evidence/2026-10-10/m2-t9-office-integrity-qualified-source.json",
       "lunaReview": "driver/evidence/2026-10-10/m2-t9-office-integrity-luna-review.json"
+    },
+    {
+      "component": "T9 PDF raster coverage refusal",
+      "sourceCommit": "8619b690e3f9b0c8017291a5d68ab673b76a7529",
+      "sourceFiles": {
+        "agente/SafeUpload.Agent.Core/Application/InspectionService.cs": "0fab4f38105728751113b6a87bb1292367db3670acfde09975c0a7dbb6effe51",
+        "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ITextExtractor.cs": "528b62b88a9e5417d09b75ec5b50c5e9fcdec65885ff28be9b67ca9836ab9681",
+        "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/PdfExtractor.cs": "3fd666ca7d20e5746d807e7a6f46a5c954f7dcd4b38931559081147168d9dbc3",
+        "agente/SafeUpload.Agent.Tests/ExtractionTests.cs": "28483dd4eb7392e107de0f1dcdd3ace2a8309d190083ddaceacbd5763dab21f2",
+        "agente/SafeUpload.Agent.Tests/StagedTransferPublisherTests.cs": "923ddba2f88b0be974927a754d83829868beaf84f1b4f34838454cb07760b150",
+        "agente/SafeUpload.Agent.Tests/TestWorkspace.cs": "8e7cb393bbafc475bc96fe154083cfba371279ffea2e47bc18a166dab9ebfa64"
+      },
+      "gates": [
+        {
+          "label": "m2-t9-pdf1",
+          "admissionEvidence": true,
+          "testsPassed": 709,
+          "newControlsPassed": 16,
+          "controls": {
+            "Pdf_image_content_never_becomes_an_approval_from_partial_text": 8,
+            "Pdf_text_or_blank_content_keeps_its_complete_inspection_verdict": 6,
+            "Publisher_image_failure_exact_handback_and_justification": 2
+          },
+          "sourceManifestVerified": 197,
+          "buildAndPublishWarnings": 0,
+          "archiveSha256": "E0E73B70AF3B22B8FD4C7A3110A4216B3763CFB44458F75B6F5EB30957B8D00B",
+          "manifestSha256": "BBDE7A44530B53A94168CE21B9E904681B28F590EEF91EB575C3697EF78200D6",
+          "packageSha256": "490E1507D54FB267ABCACB3E9D4813C5A63F0B802F797D08C77F9460C656FF5B",
+          "exeSha256": "D90241AF64031018E15D43486565727F0C0D94A693D43B0D16EA03700CBB142E",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-pdf1-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-pdf1-agent-tests.trx"
+        },
+        {
+          "label": "m2-t9-pdf2",
+          "admissionEvidence": false,
+          "testsPassed": 645,
+          "newControlsPassed": 16,
+          "controls": {
+            "Pdf_image_content_never_becomes_an_approval_from_partial_text": 8,
+            "Pdf_text_or_blank_content_keeps_its_complete_inspection_verdict": 6,
+            "Publisher_image_failure_exact_handback_and_justification": 2
+          },
+          "sourceManifestVerified": 197,
+          "buildAndPublishWarnings": 0,
+          "archiveSha256": "E0E73B70AF3B22B8FD4C7A3110A4216B3763CFB44458F75B6F5EB30957B8D00B",
+          "manifestSha256": "BBDE7A44530B53A94168CE21B9E904681B28F590EEF91EB575C3697EF78200D6",
+          "packageSha256": "7E12E0BB16AE3477E9B2AB78E78B119D5A2A4D10E07A7EC2432B66653AB96470",
+          "exeSha256": "578A4AB5B19331D105155517120F21492E45CD2934F892C4A10A8A50D118BFC2",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-pdf2-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-pdf2-agent-tests.trx"
+        }
+      ],
+      "lunaReview": "driver/evidence/2026-10-10/m2-t9-pdf-coverage-luna-review.json",
+      "runtimeQualified": false,
+      "wholeFormatCoverageComplete": false,
+      "rawLocalReceipt": "driver/evidence/2026-10-10/m2-t9-pdf-coverage-qualified-source.json"
     }
   ],
   "scopedLunaReview": "driver/evidence/2026-10-10/m2-agent-component-luna-review.json",

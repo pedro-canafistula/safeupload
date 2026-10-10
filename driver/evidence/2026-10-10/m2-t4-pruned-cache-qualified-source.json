@@ -115,11 +115,12 @@
   },
   "qualifiedForBuildOnly": true,
   "lunaReviewPerformed": true,
-  "debuggeeBootedWithCandidate": false,
+  "debuggeeBootedWithCandidate": true,
   "poolGrowthCorrected": false,
   "requiredLongRunPassed": false,
   "milestoneComplete": false,
   "reviewRequirement": "driver/POST-MVP-PLAN.md:29",
-  "next": "Unchanged 256-cycle runtime-Verifier pool comparison, then affected raw-volume regressions and 10000-cycle gate after short-test success.",
-  "lunaReviewReceipt": "driver/evidence/2026-10-10/m2-t4-pruned-cache-luna-review.json"
+  "next": "Instrument-before-first-load repeat with unchanged pool assertions to distinguish residual allocation growth from incomplete runtime attribution",
+  "lunaReviewReceipt": "driver/evidence/2026-10-10/m2-t4-pruned-cache-luna-review.json",
+  "shortRuntimeReadout": "driver/evidence/2026-10-10/m2-t4-prune1-pool-readout.json"
 }

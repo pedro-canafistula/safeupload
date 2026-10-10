@@ -1,0 +1,14 @@
+{
+  "schema": "SafeUploadM2T4FollowupQueue/1",
+  "preparedScript": "/tmp/safeupload-m2-resume/run-t4-pruned-office-qualification.sh",
+  "status": "stopped_before_start",
+  "cellsStarted": 0,
+  "reason": "Required short T4PoolFlat failed; no10000-cycle or33 raw-regression cell started",
+  "plannedLongTag": "m2t4prune10k1",
+  "plannedRegressions": [
+    "m2t4pv",
+    "m2t4po",
+    "m2t4pb"
+  ],
+  "inputs": "m2-t4-pruned-office-regression-frozen-inputs.json"
+}

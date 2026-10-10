@@ -1,0 +1,149 @@
+{
+  "sourceCommit": "d559e812ad5fe63bd6ddf7563bb9f80fe13767bb",
+  "qualifiedCoreSha256": "AFFC43B5D9EF081C60167999D9AD9DF6A967C7B716CB723BCCF722AA86B68F8A",
+  "cases": [
+    {
+      "Case": "blank",
+      "Pages": [
+        {
+          "Number": 1,
+          "ImageCount": 0,
+          "TextCharacters": 0
+        }
+      ],
+      "InputBytes": 774,
+      "Verdict": "Approved",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "d559e812ad5fe63bd6ddf7563bb9f80fe13767bb",
+      "CoreSHA256": "AFFC43B5D9EF081C60167999D9AD9DF6A967C7B716CB723BCCF722AA86B68F8A",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    },
+    {
+      "Case": "image-only",
+      "Pages": [
+        {
+          "Number": 1,
+          "ImageCount": 1,
+          "TextCharacters": 0
+        }
+      ],
+      "InputBytes": 1038,
+      "Verdict": "Approved",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "d559e812ad5fe63bd6ddf7563bb9f80fe13767bb",
+      "CoreSHA256": "AFFC43B5D9EF081C60167999D9AD9DF6A967C7B716CB723BCCF722AA86B68F8A",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    },
+    {
+      "Case": "clean-then-image",
+      "Pages": [
+        {
+          "Number": 1,
+          "ImageCount": 0,
+          "TextCharacters": 25
+        },
+        {
+          "Number": 2,
+          "ImageCount": 1,
+          "TextCharacters": 0
+        }
+      ],
+      "InputBytes": 1434,
+      "Verdict": "Approved",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "d559e812ad5fe63bd6ddf7563bb9f80fe13767bb",
+      "CoreSHA256": "AFFC43B5D9EF081C60167999D9AD9DF6A967C7B716CB723BCCF722AA86B68F8A",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    },
+    {
+      "Case": "clean-text",
+      "Pages": [
+        {
+          "Number": 1,
+          "ImageCount": 0,
+          "TextCharacters": 19
+        }
+      ],
+      "InputBytes": 881,
+      "Verdict": "Approved",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "d559e812ad5fe63bd6ddf7563bb9f80fe13767bb",
+      "CoreSHA256": "AFFC43B5D9EF081C60167999D9AD9DF6A967C7B716CB723BCCF722AA86B68F8A",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    },
+    {
+      "Case": "cpf-text",
+      "Pages": [
+        {
+          "Number": 1,
+          "ImageCount": 0,
+          "TextCharacters": 19
+        }
+      ],
+      "InputBytes": 886,
+      "Verdict": "Blocked",
+      "Reason": null,
+      "InScope": true,
+      "FromCache": false,
+      "FailureKind": null,
+      "Categories": [
+        "Cpf"
+      ],
+      "ObservedExpectedBaseline": true,
+      "SourceCommit": "d559e812ad5fe63bd6ddf7563bb9f80fe13767bb",
+      "CoreSHA256": "AFFC43B5D9EF081C60167999D9AD9DF6A967C7B716CB723BCCF722AA86B68F8A",
+      "PublicationAttempted": false,
+      "RuntimeQualification": false
+    }
+  ],
+  "inputsDeleted": true,
+  "buildWarnings": 0,
+  "buildErrors": 0,
+  "silentPartialApprovalsConfirmed": [
+    "image-only",
+    "clean-then-image"
+  ],
+  "fixtureLimit": "One white RGB raster pixel proves unsupported-content behavior, not optical detection of sensitive data.",
+  "inputManifest": {
+    "sourceCommit": "d559e812ad5fe63bd6ddf7563bb9f80fe13767bb",
+    "normalGateLabel": "m2-t9-office2",
+    "qualifiedCoreSha256": "AFFC43B5D9EF081C60167999D9AD9DF6A967C7B716CB723BCCF722AA86B68F8A",
+    "files": {
+      "Program.cs": "9D3BDEF8884C614AA0101C51DD66477120DC609938EDA36DCD17E69E116AB3B4",
+      "PdfImageProbe.csproj": "BB15B442D2DD95A8D2166C32AB414D4A3208032018108FFD19ACECF2035F8BEA"
+    },
+    "archiveSha256": "6A80FEA6ECDC9C5AC434D3D02C30500D2FD48F85B733AB6F8A62B561E7C25195",
+    "publicationAttempted": false,
+    "runtimeQualification": false,
+    "primarySource": [
+      "https://github.com/UglyToad/PdfPig/blob/v0.1.16/src/UglyToad.PdfPig/Content/Page.cs",
+      "https://github.com/UglyToad/PdfPig/blob/v0.1.16/src/UglyToad.PdfPig/Writer/PdfPageBuilder.cs"
+    ]
+  },
+  "publicationAttempted": false,
+  "runtimeQualified": false
+}

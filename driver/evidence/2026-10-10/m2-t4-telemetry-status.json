@@ -20,7 +20,7 @@
   "tag": "m2t4stat1",
   "milestoneComplete": false,
   "schema": "SafeUploadM2T4TelemetryStatus/1",
-  "updatedUtc": "2026-10-10T19:36:02.838876+00:00",
+  "updatedUtc": "2026-10-10T20:26:15.533366+00:00",
   "previousRun": {
     "tag": "m2t4long2",
     "passed": false,
@@ -110,5 +110,28 @@
     "restoration": "m2t4stat2-final-restored-state.txt"
   },
   "poolGrowthReproducedWithoutExtraQueries": true,
-  "nextInvestigation": "Retired writer-registry cache references in idle stream contexts; no lifetime fix booted or qualified"
+  "nextInvestigation": "Windows-qualified runtime Verifier setup before first driver load; residual growth remains unexplained and failed short gate retained",
+  "prunedCacheCandidate": {
+    "sourceCommit": "60fecdbc4b00badf6c953ec9c91207c8188d848a",
+    "tag": "m2t4prune1",
+    "status": "finished",
+    "passed": false,
+    "qualified": false,
+    "cycles": 256,
+    "completedOutcomes": 256,
+    "cycleRecords": 256,
+    "rawQueriesRetained": 8,
+    "failedAssertions": [
+      "T4PoolFlat"
+    ],
+    "poolSlopeBytesPerCycle": 452.1,
+    "baseUntouched": true,
+    "restoredUtc": "2026-10-10T20:20:35Z",
+    "rawReadout": "m2-t4-prune1-pool-readout.json"
+  },
+  "prunedOfficeQueue": {
+    "status": "stopped_before_start",
+    "cellsStarted": 0,
+    "rawReceipt": "m2-t4-pruned-office-queue-status.json"
+  }
 }

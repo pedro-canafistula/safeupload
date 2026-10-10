@@ -1,0 +1,127 @@
+{
+  "schema": "SafeUploadM2T4PoolCandidateReadout/1",
+  "tag": "m2t4prune1",
+  "driverSourceCommit": "60fecdbc4b00badf6c953ec9c91207c8188d848a",
+  "driverBuildLabel": "m2-driver2",
+  "agentBuildLabel": "t4-af1",
+  "completedCycles": 256,
+  "cycleRecords": 256,
+  "passed": false,
+  "failedAssertions": [
+    "T4PoolFlat"
+  ],
+  "poolSlopeBytesPerCycle": 452.1,
+  "priorIsolatedSlopeBytesPerCycle": 14464.9,
+  "samples": [
+    {
+      "cycle": 0,
+      "label": "start",
+      "modulePool": 56528,
+      "moduleAllocations": 38,
+      "SwUrBytes": 6338688,
+      "SwUrLiveAllocations": 236,
+      "registryEntries": 227,
+      "registryPruned": 634,
+      "SpUsBytes": 0
+    },
+    {
+      "cycle": 64,
+      "label": "cycle",
+      "modulePool": 55760,
+      "moduleAllocations": 39,
+      "SwUrBytes": 6331392,
+      "SwUrLiveAllocations": 233,
+      "registryEntries": 227,
+      "registryPruned": 2413,
+      "SpUsBytes": 4032
+    },
+    {
+      "cycle": 128,
+      "label": "cycle",
+      "modulePool": 105488,
+      "moduleAllocations": 81,
+      "SwUrBytes": 6367872,
+      "SwUrLiveAllocations": 248,
+      "registryEntries": 243,
+      "registryPruned": 4245,
+      "SpUsBytes": 4032
+    },
+    {
+      "cycle": 192,
+      "label": "cycle",
+      "modulePool": 166256,
+      "moduleAllocations": 112,
+      "SwUrBytes": 6433536,
+      "SwUrLiveAllocations": 275,
+      "registryEntries": 270,
+      "registryPruned": 10614,
+      "SpUsBytes": 4032
+    },
+    {
+      "cycle": 256,
+      "label": "cycle",
+      "modulePool": 131952,
+      "moduleAllocations": 114,
+      "SwUrBytes": 6365440,
+      "SwUrLiveAllocations": 247,
+      "registryEntries": 249,
+      "registryPruned": 14291,
+      "SpUsBytes": 0
+    },
+    {
+      "cycle": 256,
+      "label": "settled",
+      "modulePool": 110016,
+      "moduleAllocations": 102,
+      "SwUrBytes": 6358144,
+      "SwUrLiveAllocations": 244,
+      "registryEntries": 243,
+      "registryPruned": 14370,
+      "SpUsBytes": 0
+    },
+    {
+      "cycle": 256,
+      "label": "actor-exited",
+      "modulePool": 107536,
+      "moduleAllocations": 100,
+      "SwUrBytes": 6355712,
+      "SwUrLiveAllocations": 243,
+      "registryEntries": 242,
+      "registryPruned": 14410,
+      "SpUsBytes": 0
+    },
+    {
+      "cycle": 256,
+      "label": "idle",
+      "modulePool": 102576,
+      "moduleAllocations": 96,
+      "SwUrBytes": 6350848,
+      "SwUrLiveAllocations": 241,
+      "registryEntries": 240,
+      "registryPruned": 14529,
+      "SpUsBytes": 0
+    }
+  ],
+  "rawQueriesRetained": 8,
+  "baseUntouched": true,
+  "restoredUtc": "2026-10-10T20:20:35Z",
+  "extraGuestQueriesUsed": false,
+  "lunaPreBootReview": "m2-t4-pruned-cache-luna-review.json",
+  "lunaFollowup": {
+    "task": "/root/luna_t4_lifetime_review",
+    "verdict": "Measured failure retained; residual growth unexplained",
+    "facts": [
+      "Harness first loads driver at install reboot and waits Ready before volatile Verifier is armed",
+      "Start module pool tracks 38 allocations/56528 bytes while global SwUr already uses6338688",
+      "Idle global SwUr only12160 bytes above start; old large retired-cache growth is substantially reduced"
+    ],
+    "limits": [
+      "Incomplete pre-arm allocation baseline does not itself explain post-arm module growth",
+      "No pool-flat,10k or T4 qualification claim"
+    ]
+  },
+  "next": "Instrument-before-first-load repeat with unchanged pool assertions to distinguish residual allocation growth from incomplete runtime attribution",
+  "requiredLongRunPassed": false,
+  "milestoneComplete": false,
+  "recordedUtc": "2026-10-10T20:22:52.662004+00:00"
+}
