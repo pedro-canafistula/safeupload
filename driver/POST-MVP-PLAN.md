@@ -234,6 +234,11 @@ harness `439f08fb`, also Windows-gated, and no extra guest queries: module pool 
 listed registry entries remain near 242 with over 14,000 prunes and zero Unknown/capacity failures. The code retains a
 reference on retired registry entries in idle stream contexts until replacement/context cleanup. This is the next lifetime
 path to investigate, not a confirmed runtime root cause or a passed long-run gate. No new 10,000-cycle run/regression starts yet.
+Candidate `60fecdbc` releases that exact idle cache only after the existing prune gate succeeds, preserving its H=0 census with
+a context-local witness and leaving sticky Unknown in force. Exact worktree build `m2-driver2` passes all four WDK/PREfast/
+ApiValidator configurations at 0/0; all 28 frozen inputs match the committed and detached source. Luna review before first VM
+boot is requested and pending. No debuggee has run this candidate; no pool correction or T4 completion is claimed.
+Build-only receipt: [T4 pruned-cache candidate](evidence/2026-10-10/m2-t4-pruned-cache-qualified-source.json).
 The cycle row samples public names; it does not replace the required raw-observer invariant regression.
 The stopped 33 C01-C04/B01/B02/X01 component queue (`m2t4rv`, `m2t4ro`, `m2t4rb`) and its frozen inputs remain preserved:
 `m2-driver1` kernel + separately tested `m2-t9-fail3` agent. A fresh serial queue may start only after every required

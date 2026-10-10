@@ -788,6 +788,34 @@ cached reference until a subsequent writer replaces it or Filter Manager cleans 
 needs to preserve the existing known-zero census, sticky loss markers and concurrent reader references; it is a lifetime
 change requiring Luna review before its first VM boot. This is a code-supported lead, not a claimed runtime fix.
 
+## M2 T4: qualified idle registry-cache candidate, runtime review pending — 2026-10-10
+
+`60fecdbc4b00badf6c953ec9c91207c8188d848a` retains a referenced stream context from the existing quiescence reopen. After
+`StageRegistryPruneLocked` succeeds and releases `RegistryLock`, a resident helper takes `WriterLock` and clears only a cache
+still pointing to that retired entry, with an empty writer list, H/W/T zero and no entry/context Unknown. It drops that cache's
+reference after unlocking; the worker still owns its pass reference. An empty-cache witness preserves the old H=0 census and
+is cleared on the next cache binding. Global/instance/context sticky Unknown checks remain; no context is detached, no prune
+exclusion is removed, and scope/nested-I/O admission does not use the witness. All acquired context references are released,
+including when a writer arriving between quiescence and prune makes the prune fail.
+
+Exact build `m2-driver2` captured the dirty worktree before this local source commit: archive
+`ED470FE3D0AB137E91073E27F70C27748B7ACF78D34CD7A5EF70FFE3E35C8410`, manifest
+`B3D5C6EA662C339117B4FCAED6CC070FA548866DEAD2E7DCB644BDAB070600BC`. Independent verification matches all 28 archive inputs
+to the eventual committed and detached source. Debug and Release, normal and feature WDK/PREfast/ApiValidator configurations
+all pass at zero warnings/errors; both Inspectors and the writer fixture also pass. The separately signed feature-debug driver
+is `0F7F0751F5D33B0547B67D93CF67A926E8307C95304B903F88659B57E92A43D6`, signer
+`A6D6CE1AA28835D509160A80ADB7894869AADF38` in LocalMachine, with the unsigned output unchanged.
+
+Automatic approval initially rejected private-source delivery as unapproved external egress. Read-only libvirt and SSH checks
+proved the destination is the existing local `win10` domain on `virbr0`: UUID `c6440689-d11c-4c63-a463-f3722b7ddb69`, MAC
+`52:54:00:63:87:7a`, private IPv4 `192.168.122.210/24`, no loaded SafeUpload filter. The same build action was then approved.
+No destination substitution or indirect execution was used.
+
+Build-only receipt: `m2-t4-pruned-cache-qualified-source.json`; raw build/source/signature records retain the `exact-m2-driver2`
+label. This is a lifetime change, so authorization for a read-only Luna subagent review of the concrete compiled source was
+requested before its first VM boot. That review is pending. No debuggee has booted this candidate, and the short/10,000-cycle
+pool assertions, raw-observer component regressions and full M2 milestone remain unpassed.
+
 T9 source `ed5a2c6d833d6bf0c57a5fc16d8b54dab9092461` adds typed incomplete-inspection metadata to the blocked notification,
 with only four classes (size, format, timeout, read/parse). Parser diagnostics do not cross this UI boundary. The journal
 stores the class, validates it and restores it on blocked recovery. The WPF message explains incomplete analysis and the

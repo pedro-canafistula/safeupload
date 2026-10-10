@@ -1,0 +1,124 @@
+{
+  "component": "M2 T4 registry cache lifetime candidate",
+  "sourceCommit": "60fecdbc4b00badf6c953ec9c91207c8188d848a",
+  "buildLabel": "m2-driver2",
+  "sourceKind": "worktree",
+  "sourceProvenance": {
+    "SourceKind": "worktree",
+    "BaseCommit": "f8e5fbb9538d6fcdd611ca085109f1187eb948b3",
+    "CapturedUTC": "2026-10-10T19:42:03.848119+00:00",
+    "ArchiveSHA256": "ed470fe3d0ab137e91073e27f70c27748b7acf78d34cd7a5ef70ffe3e35c8410",
+    "ManifestSHA256": "b3d5c6ea662c339117b4fcaed6cc070fa548866dead2e7dcb644bdab070600bc",
+    "ProjectIndexSHA256": "54e700a0115ec7928e478c99940b782be7e2534eb03e9ffa1972d38be28a8b94",
+    "Files": 28,
+    "ChangedFromBaseCommit": [
+      "driver/SafeUpload.Minifilter/Filter.h",
+      "driver/SafeUpload.Minifilter/StageWriters.c"
+    ],
+    "BuildToolsSHA256": {
+      "driver/scripts/Build-ExactSource.ps1": "ff537d9426c5539fdfbd976ed77e55ee90f2a64501f17d463aa926f09cebd5d6",
+      "driver/scripts/remote_ps.py": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b",
+      "driver/scripts/Invoke-ExactSourceBuild.sh": "5630091e233d34a5df4e4411d318663ea46e36a232e2fc9cd1189eb42b747a3e",
+      "driver/scripts/Prepare-ExactWorktreeSource.py": "67386727e63ac8ff961548101276bdaa4b9bf0d0f970d23e801a915e6adff107"
+    },
+    "ReviewedUntrackedSHA256": {},
+    "CaptureCheck": "two reads; byte and file metadata equality",
+    "NetworkOperationsDuringPreparation": 0
+  },
+  "allCommittedAndFrozenSourceInputsMatchBuildManifest": true,
+  "sourceInputs": 28,
+  "builds": [
+    {
+      "name": "driver:normal",
+      "configuration": "Debug",
+      "feature": "false",
+      "owner_fsp": "false",
+      "exit": "0",
+      "succeeded": "True",
+      "warnings": "0",
+      "errors": "0",
+      "apivalidator": "True",
+      "prefast": "True",
+      "artifact_sha256": "1B71C22BA5676A7CA60AC20162B656A33866B1CAE68A85F2150799C004388077"
+    },
+    {
+      "name": "driver:owned-feature",
+      "configuration": "Debug",
+      "feature": "true",
+      "owner_fsp": "false",
+      "exit": "0",
+      "succeeded": "True",
+      "warnings": "0",
+      "errors": "0",
+      "apivalidator": "True",
+      "prefast": "True",
+      "artifact_sha256": "DC665B6098031FEF892CD2E37A24C88CCAAADF98353DC376191E2D4A0F1DEDD3"
+    },
+    {
+      "name": "driver:normal-release",
+      "configuration": "Release",
+      "feature": "false",
+      "owner_fsp": "false",
+      "exit": "0",
+      "succeeded": "True",
+      "warnings": "0",
+      "errors": "0",
+      "apivalidator": "True",
+      "prefast": "True",
+      "artifact_sha256": "5D8D87F17F00C5EE3290E8C46233D224BD94084A03145E84FC2864B03811E962"
+    },
+    {
+      "name": "driver:owned-feature-release",
+      "configuration": "Release",
+      "feature": "true",
+      "owner_fsp": "false",
+      "exit": "0",
+      "succeeded": "True",
+      "warnings": "0",
+      "errors": "0",
+      "apivalidator": "True",
+      "prefast": "True",
+      "artifact_sha256": "402BB7FF289B43DCF849BB3FEB9AFFD5BE93959D2F1F56DFF25955E6755086DC"
+    }
+  ],
+  "signature": {
+    "SignExit": 0,
+    "UnsignedArtifactUnchanged": true,
+    "SigningCopySHA256Before": "DC665B6098031FEF892CD2E37A24C88CCAAADF98353DC376191E2D4A0F1DEDD3",
+    "ActualSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+    "UTC": "2026-10-10T15:43:13.2544766Z",
+    "OutputSHA256": "0F7F0751F5D33B0547B67D93CF67A926E8307C95304B903F88659B57E92A43D6",
+    "UnsignedSHA256": "DC665B6098031FEF892CD2E37A24C88CCAAADF98353DC376191E2D4A0F1DEDD3",
+    "CertificateStoreLocation": "LocalMachine",
+    "SignatureStatus": "Valid",
+    "SignedSHA256": "0F7F0751F5D33B0547B67D93CF67A926E8307C95304B903F88659B57E92A43D6",
+    "ExpectedSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+    "SignatureValid": true
+  },
+  "retainedArtifacts": {
+    "src.zip": {
+      "path": "driver/evidence/2026-10-10/exact-m2-driver2-src.zip",
+      "sha256": "ed470fe3d0ab137e91073e27f70c27748b7acf78d34cd7a5ef70ffe3e35c8410"
+    },
+    "src.manifest": {
+      "path": "driver/evidence/2026-10-10/exact-m2-driver2-src.manifest",
+      "sha256": "b3d5c6ea662c339117b4fcaed6cc070fa548866dead2e7dcb644bdab070600bc"
+    },
+    "source-provenance.json": {
+      "path": "driver/evidence/2026-10-10/exact-m2-driver2-source-provenance.json",
+      "sha256": "ecb441669c2dc71447b95cd9529e123b5ef7a9223d01875dfbb6cfac675d42bc"
+    },
+    "SafeUpload-stage-prototype.sys": {
+      "path": "driver/evidence/2026-10-10/exact-m2-driver2-SafeUpload-stage-prototype.sys",
+      "sha256": "0f7f0751f5d33b0547b67d93cf67a926e8307c95304b903f88659b57e92a43d6"
+    }
+  },
+  "qualifiedForBuildOnly": true,
+  "lunaReviewPerformed": false,
+  "debuggeeBootedWithCandidate": false,
+  "poolGrowthCorrected": false,
+  "requiredLongRunPassed": false,
+  "milestoneComplete": false,
+  "reviewRequirement": "driver/POST-MVP-PLAN.md:29",
+  "next": "Luna adversarial review before first VM boot, then unchanged short pool test, raw-volume regressions, and 10000-cycle gate."
+}
