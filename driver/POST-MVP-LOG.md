@@ -526,3 +526,94 @@ and `m1-extra21.sh`.
 - Latency, informational (worst p95 / max over the measured cells): cached write 8.4 / 73 ms, close 2.9 / 665 ms, flush 12.2 / 598 ms,
   writer open 3.7 / 209 ms, writer open refused 21.4 / 143 ms.
 Overhead for the owner: Microsoft 365 +8 %, cumulative update +10-13 %, Defender none measurable, an MSI about 4 s.
+
+### M2 resumed: T4 harness fixes and cycle qualification (2026-10-10)
+
+M2 (T4-T11) is active; implementation continues on `feat/driver-m2`. The T4 pair remains at source `970239a3`, driver build `t4-f1`
+and agent build `t4-af1`. Recovered the builder artifacts after the host's temporary caches disappeared: driver SHA-256
+`504DD38E76304CB3CC905ED43868138A56BEB61A68B230E1324E6382BBE50657`, agent package
+`FAFDE24D92ECCADC2D36AB6C886348543DAF94313EA2AA797F00F4128EF4A789`. All 28 driver and 194 agent source-manifest entries match the current
+sources; the invariant wrapper's complete build-input checks pass, including the four WDK configurations and agent TRX.
+
+Fixed the cycle harness: execute the standard user's actor from readable `C:\T4`; include delete sharing on its held-handle rename;
+count and read only completed `.txt` hand-backs, excluding the service's still-open temporary files. The native rename and mapped-write
+controls pass on the builder. Windows PowerShell 5.1 gates `m2-t4-resume` and `m2-t4-resume2` pass; the gate now parses both T4 scripts.
+The runner's seven embedded PowerShell scripts also parse without errors.
+
+Ordinary smoke `m2t4sm2` on the cold-storage overlay: **31/32**, with cycle 24's mapped reopen refused (`STATUS_ACCESS_DENIED`, actor
+ack 5.636 s). A contemporaneous agent `FilterReplyMessage` failure `0x801F0020` is consistent with the request's waiter timing out;
+the precise cause of the delay remains unmeasured. Every rename and all eight blocked hand-backs passed. After settling, all 31
+versions and views were released, stage files and tombstones were zero, no cap refusal occurred, and stage-worker passes and timer
+fires stayed flat for 60 s. No blocked bytes were observed at the public names. The run disk was discarded with
+`RunDiskBaseUntouched=True`. This smoke does not satisfy the required raw-observer invariant regression.
+
+The runner now synchronizes the cold-boot clock as the invariant batch does, includes Win32 codes in actor errors, records service
+warnings/errors by event record ID (so a clock step cannot hide them), and fails if discarding the run disk fails or the base changes.
+Four restoration controls pass, covering successful restoration, preserving a test failure, a restoration error and a changed base.
+The host wait allows four seconds per cycle plus settlement, based on the earlier 2.2-second median; outcome and pool assertions are
+unchanged.
+
+Next, a frozen harness runs `m2t4fast1` (256 ordinary cycles) with the overlay on the fast system disk. Only if that run and its
+restoration pass does it start `m2t4long1` (10,000 cycles under runtime Verifier). T4 still requires C01-C04, B01,
+B02 and X01 in all three modes; T5-T11 and the final M2 freeze/review/gate remain pending.
+
+The fast ordinary gate `m2t4fast1` reached 81 successful cycles, then the actor task exited with result 1. The run was explicitly
+aborted as diagnostic-only; no qualification was claimed, the long gate did not start, and the base was restored unchanged. The next
+diagnostic run `m2t4diag2` captured the actual actor failure: `Get-Content` could not open `control\cmd-107.txt` because another process
+held it. It also identified an independent fixture error at cycle 10: the hexadecimal nonce in the nominally clean payload contained
+the valid CPF `98847614503`. The service correctly recorded Blocked, returned the exact 52-byte hand-back, and deleted the stage;
+the hand-back digest matched the journal. Both diagnostic run disks were discarded with `RunDiskBaseUntouched=True`.
+
+The corrected corpus encodes nonce digits as letters, keeping unique payloads while excluding accidental CPF matches. Commands and
+acks use native atomic file moves; both control readers share READ/WRITE/DELETE and retry only control-file sharing/lock conflicts
+for at most five QPC seconds. Protected-file operations are not retried. Fatal actor exceptions are retained, and an ack timeout
+ends the run rather than queuing further commands. `StagedInvariantT4Ipc.SelfCheck.ps1` reproduces the missing-delete-sharing refusal,
+requires exact reads while the producer holds DELETE access, exercises a brief exclusive hold, and rejects a missing command.
+The final PS5.1 gate `m2-t4-ipc2` passes, with the current actor/coordinator/self-check hashes checked against the remote receipts.
+The corrected 256/10,000-cycle qualification remains pending.
+
+### T7 implementation and proof preparation (2026-10-10)
+
+The legacy post-create destination cancellation now requires `SafeUploadCreateIsWriter`: published read-only opens are left to
+Windows permissions, while write/delete/metadata-change requests keep their existing gates. The staging, TxF, directory and
+fail-closed admission paths were inspected for their mutating-access checks; the private stage namespace remains protected.
+
+B02 revision 5 (table revision 22) requires all raw/fresh/uncached channels to finish with the exact justified sensitive v2; the
+previous refused-reader exception is removed. The standard interactive actor must independently read that whole v2 with
+GENERIC_READ, exact length and SHA-256. The same actor must get Win32 5 and no bytes from a benign sibling with an explicit preboot
+Windows READ_DATA denial; the denial's readback SDDL must remain exact and the sibling's retained raw bytes must be unchanged.
+Negative controls reject missing final reader channels, wrong/stale/short reads, a successful denied read, returned denied bytes,
+the wrong path, or a changed ACL.
+
+Exact build `m2-driver1` passes all four WDK/PREfast/ApiValidator gates at 0 warnings/errors; signed SHA-256
+`3FDACF83FA2D892B4D52BD833D13444DCD4D70A059E59B5D1B6998C815B422E7`. Windows PS5.1 gate `m2-t7-read2` and 20 Python adapter controls
+pass. A disposable qualification checkout pins source `4a438b36a68ac06cbed49d19950d0e6ac0b1e8de` and the unchanged `t4-af1` agent;
+the wrapper verifies its archived source against that commit and the current checkout, all build gates and package hashes.
+The user's branch is still uncommitted while runtime/raw evidence is pending.
+
+Debug3 booted but did not answer SSH at its recorded static address or observed DHCP lease; no new driver was installed. Its
+launcher was cancelled and its overlay discarded with the base unchanged. B02 runtime-Verifier qualification is now running
+serially on debug2 as `m2t7v1`. Its selected MVP gate **passes**, with `ForbiddenByteCount=0` and clean independent restoration.
+The standard user read all 12,288 justified-v2 bytes (exact SHA-256), the same actor's denied read returned Win32 5 with zero bytes,
+and raw/fresh/uncached final-v2 coverage plus the denied sibling's whole raw image/extent checks pass. The disk base is unchanged.
+The deferred continuous lower-mutation coverage keeps the absolute invariant verdict INCONCLUSIVE, as in the M1 core gate; this
+subset is not the full M2 milestone gate. T7's ordinary and boot-Verifier B02 cells are queued serially. Only after those authoritative
+gates and disk restorations pass does the queue run corrected T4 ordinary 256 cycles, then 10,000 runtime-Verifier cycles, on
+`m2-driver1` plus `t4-af1`. The queue stops on any failed prerequisite.
+
+The ordinary (`m2t7o1`) and boot-Verifier (`m2t7b1`) selected MVP gates now also pass. Every mode has the authorized whole-v2 read,
+the zero-byte Windows ACL denial, final raw/fresh/uncached v2, unchanged denied-sibling raw bytes, `ForbiddenByteCount=0`, independent
+clean restoration and an untouched base. The current five T7 source/harness files were checked byte-identical to the qualified
+snapshot, backed up, and `feat/driver-m2` fast-forwarded to that exact `4a438b36` commit. The unrelated T4 changes and local memory
+configuration were preserved. T7 is marked complete; the full M2 milestone remains active and incomplete. Corrected T4 256-cycle
+ordinary gate `m2t4clean1` is running; only its success and disk restoration start `m2t4long2` (10,000 runtime-Verifier cycles).
+
+Corrected ordinary `m2t4clean1` now passes **256/256** with no failed outcome: 192 approvals and 64 exact blocked hand-backs.
+All 256 versions and views are released, tombstones/stage files/cap refusals are zero, stage deletions have no failure, and the
+worker has zero passes/timer fires during 60 s idle. Median cycle time is 1,069 ms, p95 1,558 ms and maximum 1,609 ms; total duration
+536 s. Public-name sampling sees no blocked bytes; this is not the raw-observer regression. The independent run-disk teardown
+records `RunDiskBaseUntouched=True`. Frozen `m2t4long2` has booted, loaded the filter, armed runtime Verifier and started its
+coordinator for 10,000 cycles. Its verdict and the remaining invariant cells are still pending.
+
+The stale T4 review checkbox is reconciled with the canonical `970239a3` commit record: it already records a Luna implementation
+review and two re-reviews, with findings fixed or moved to T9. This continuation has not performed a new Luna review.

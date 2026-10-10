@@ -16,6 +16,21 @@ param(
     [string]$Diagnostics = 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1'
 )
 $ErrorActionPreference = 'Stop'
+function Read-T4ControlText([string]$Path) {
+    $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 5 * [Diagnostics.Stopwatch]::Frequency
+    for (;;) {
+        try {
+            $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+            try { $reader = [IO.StreamReader]::new($stream); try { return $reader.ReadToEnd() } finally { $reader.Dispose() } }
+            finally { $stream.Dispose() }
+        } catch [IO.IOException] {
+            $ioFailure = $_.Exception
+            while ($ioFailure.InnerException) { $ioFailure = $ioFailure.InnerException }
+            if (($ioFailure.HResult -band 0xffff) -notin @(32,33) -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $deadline) { throw }
+            Start-Sleep -Milliseconds 2
+        }
+    }
+}
 $out = 'C:\T4'; $control = Join-Path $out 'control'; $root = 'C:\Protected\t4'
 $handback = $null   # the actor's profile, resolved from its SID once the actor has logged on
 $stageDir = 'C:\ProgramData\SafeUpload\staging'; $journalDir = 'C:\ProgramData\SafeUpload\staging-journal'
@@ -117,28 +132,35 @@ try {
         $pattern = $patterns[($i - 1) % 4]
         $sensitive = ([math]::Floor(($i - 1) / 4) % 4) -eq 3          # one cycle in four, rotating through the patterns
         $name = switch ($pattern) { 'resave' { 'same-' + ($i % 8) + '.txt' } 'new' { 'new-' + $i + '.txt' } 'replace' { 'rep-' + ($i % 8) + '.txt' } 'mapped' { 'map-' + ($i % 8) + '.txt' } }
-        $text = if ($sensitive) { "T4 cycle $i CPF: 529.982.247-25`r`n" } else { "T4 cycle $i clean " + [guid]::NewGuid().ToString('N') + "`r`n" }
+        # A hexadecimal GUID can contain an eleven-digit valid CPF (diag2,
+        # cycle 10). Encode its digits as letters so APPROVE fixtures cannot
+        # accidentally satisfy the product's CPF detector. The cycle number
+        # has at most five digits in the required 10,000-cycle corpus.
+        $cleanNonce = [guid]::NewGuid().ToString('N')
+        for ($digit = 0; $digit -lt 10; ++$digit) { $cleanNonce = $cleanNonce.Replace([string]$digit, [string][char](103 + $digit)) }
+        $text = if ($sensitive) { "T4 cycle $i CPF: 529.982.247-25`r`n" } else { "T4 cycle $i clean " + $cleanNonce + "`r`n" }
         $bytes = [Text.Encoding]::ASCII.GetBytes($text)
         $payload = Join-Path $control ('payload-' + $i + '.bin'); [IO.File]::WriteAllBytes($payload, $bytes)
         $target = Join-Path $root $name
-        $before = @(Get-ChildItem -LiteralPath $handback -File -Force -ErrorAction SilentlyContinue).Count
+        # Hand-back publishes a GUID.txt atomically after writing .safeupload-*.tmp. Only completed copies count.
+        $before = @(Get-ChildItem -LiteralPath $handback -Filter '*.txt' -File -Force -ErrorAction SilentlyContinue).Count
         $started = [Diagnostics.Stopwatch]::GetTimestamp()
         $command = Join-Path $control ('cmd-' + $i + '.txt')
         $staging = Join-Path $control ('next-' + $i + '.part')   # the actor only picks up cmd-*.txt
-        Set-Content -LiteralPath $staging -Value ("$i $pattern $name $payload"); Move-Item -LiteralPath $staging -Destination $command -Force
+        Set-Content -LiteralPath $staging -Value ("$i $pattern $name $payload"); [IO.File]::Move($staging, $command)
         $ack = Join-Path $control ('ack-' + $i + '.txt')
         $deadline = $started + 60 * $frequency
         while (-not (Test-Path $ack)) { if ([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline) { break }; Start-Sleep -Milliseconds 2 }
         $acked = [Diagnostics.Stopwatch]::GetTimestamp()
-        $ackText = if (Test-Path $ack) { (Get-Content -LiteralPath $ack -Raw).Trim() } else { 'timeout' }
+        $ackText = if (Test-Path $ack) { (Read-T4ControlText $ack).Trim() } else { 'timeout' }
         $ok = $false; $why = $null
         if ($ackText -ne 'ok') { $why = 'actor: ' + $ackText }
         else {
             $deadline = $acked + 120 * $frequency
             do {
                 if ($sensitive) {
-                    $files = @(Get-ChildItem -LiteralPath $handback -File -Force -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc)
-                    if ($files.Count -gt $before -and (Same ([IO.File]::ReadAllBytes($files[-1].FullName)) $bytes)) { $ok = $true }
+                    $files = @(Get-ChildItem -LiteralPath $handback -Filter '*.txt' -File -Force -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc)
+                    if ($files.Count -gt $before -and (Same (Read-Public $files[-1].FullName) $bytes)) { $ok = $true }
                 } else { if (Same (Read-Public $target) $bytes) { $ok = $true } }
                 if (-not $ok) { Start-Sleep -Milliseconds 20 }
             } while (-not $ok -and [Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
@@ -154,6 +176,9 @@ try {
         ([ordered]@{ I = $i; Pattern = $pattern; Sensitive = $sensitive; Ok = $ok; Why = $why; AckMs = [math]::Round(($acked - $started) * 1000.0 / $frequency, 1); OutcomeMs = [math]::Round(($done - $acked) * 1000.0 / $frequency, 1) } | ConvertTo-Json -Compress) | Add-Content -LiteralPath (Join-Path $out 'cycles.jsonl')
         if ($i % $SampleEvery -eq 0) { $null = Get-Sample $i 'cycle' }
         if (-not $ok -and $why -eq 'BLOCKED BYTES PUBLISHED') { break }
+        # Once a command times out, its actor may still be using the payload.
+        # Do not enqueue another command or treat later replies as evidence.
+        if ($ackText -eq 'timeout') { throw ('actor command '+$i+' timed out; task state '+(Get-ScheduledTask -TaskName $ActorTask).State) }
     }
     # Settle: hand-backs, cleanups and disposals finish; the stage worker releases what nothing holds.
     Start-Sleep -Seconds 30

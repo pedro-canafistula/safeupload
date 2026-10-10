@@ -37,9 +37,17 @@ echo "== run disk"
 source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"; source "$(dirname "${BASH_SOURCE[0]}")/run-disk.sh"
 run_disk_begin "$dom" "$tag" > "$ev/$tag-checkpoint.txt" 2>&1 || { cat "$ev/$tag-checkpoint.txt"; exit 12; }
 finish() {
+    local test_status=$?
+    trap - EXIT
     echo "== discard the run disk"
-    run_disk_end "$dom" "$tag" > "$ev/$tag-final-restored-state.txt" 2>&1
+    if ! run_disk_end "$dom" "$tag" > "$ev/$tag-final-restored-state.txt" 2>&1 ||
+        ! grep -qx 'RunDiskBaseUntouched=True' "$ev/$tag-final-restored-state.txt"; then
+        cat "$ev/$tag-final-restored-state.txt"
+        echo 'T4Restoration=FAIL'
+        exit 22
+    fi
     grep -E 'RunDiskBaseUntouched|deleted|nothing deleted' "$ev/$tag-final-restored-state.txt"
+    exit "$test_status"
 }
 trap finish EXIT
 wait_ssh || { echo 'guest did not boot on the run disk'; exit 3; }
@@ -48,6 +56,26 @@ echo "== baseline"
 scp "${opts[@]}" driver/scripts/Get-StagedBaseline.ps1 "vika@$host:$guest/Get-StagedBaseline.ps1" || exit 3
 echo "& 'C:\\Users\\vika\\Documents\\Get-StagedBaseline.ps1'" | remote | tee "$ev/$tag-baseline.txt" >/dev/null
 grep -q '^BaselineClean=True' "$ev/$tag-baseline.txt" || { echo 'BASELINE NOT CLEAN on a fresh run disk: the base changed'; exit 10; }
+
+# As in the invariant batch, settle the guest's cold-boot clock before the install reboot. Deadlines remain monotonic.
+clock_now=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+remote <<PS > "$ev/$tag-clock.txt"
+\$target = [DateTime]::Parse('$clock_now', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AdjustToUniversal -bor [Globalization.DateTimeStyles]::AssumeUniversal)
+'GuestSkewSecondsBefore=' + [math]::Round(([DateTime]::UtcNow - \$target).TotalSeconds, 1)
+Start-Service w32time -ErrorAction SilentlyContinue
+\$ok = \$false
+for (\$i = 0; \$i -lt 15 -and -not \$ok; \$i++) { \$r = (& w32tm.exe /resync /force 2>&1 | Out-String); if (\$LASTEXITCODE -eq 0 -and \$r -notmatch 'did not resync') { \$ok = \$true } else { Start-Sleep -Seconds 2 } }
+'GuestTimeServiceResync=' + \$ok
+if (-not \$ok) { Set-Date -Date \$target.ToLocalTime() | Out-Null; 'GuestClockSetFromHost=True' }
+PS
+clock_now=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+remote <<PS >> "$ev/$tag-clock.txt"
+\$target = [DateTime]::Parse('$clock_now', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AdjustToUniversal -bor [Globalization.DateTimeStyles]::AssumeUniversal)
+\$skew = ([DateTime]::UtcNow - \$target).TotalSeconds
+'GuestSkewSecondsAfter=' + [math]::Round(\$skew, 1)
+'GuestClockSynced=' + ([math]::Abs(\$skew) -le 10)
+PS
+grep -qx 'GuestClockSynced=True' "$ev/$tag-clock.txt" || { echo 'guest clock not synchronized'; exit 11; }
 
 echo "== stage files and install"
 sleep 5
@@ -101,6 +129,7 @@ setup_ps=$(cat <<'PS'
 $ErrorActionPreference = 'Stop'
 $d = 'C:\Users\vika\Documents'
 New-Item -ItemType Directory -Force -Path C:\T4\control | Out-Null
+[string](Get-WinEvent -LogName Application -MaxEvents 1).RecordId | Set-Content -LiteralPath 'C:\T4\event-baseline.txt'
 & icacls.exe 'C:\T4\control' /grant 'BUILTIN\Users:(OI)(CI)M' | Out-Null
 $name = 't4actor'; $password = 'T4!' + [guid]::NewGuid().ToString('N').Substring(0, 20)
 if (-not (Get-LocalUser -Name $name -ErrorAction SilentlyContinue)) {
@@ -134,7 +163,9 @@ $code = [T4Lsa]::Grant($sid, 'SeBatchLogonRight'); if ($code -ne 0) { throw "SeB
 $profilePath = New-Object Text.StringBuilder 260
 $hr = [T4Lsa]::CreateProfile($sid, $name, $profilePath, 260)
 'ACTOR_PROFILE=' + $profilePath.ToString() + ' hr=0x' + $hr.ToString('X8')
-$actor = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t4-cycles-actor.ps1"')
+# The actor cannot read the admin's Documents: run it from C:\T4 (readable by Users).
+Copy-Item -LiteralPath "$d\t4-cycles-actor.ps1" -Destination 'C:\T4\cycles-actor.ps1' -Force
+$actor = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\T4\cycles-actor.ps1"'
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 12) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName 't4-actor' -Action $actor -User ($env:COMPUTERNAME + '\' + $name) -Password $password -RunLevel Limited -Settings $settings -Force | Out-Null
 if ('__MODE__' -eq 'runtime-verifier') {
@@ -154,8 +185,8 @@ printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 if [ "$mode" = runtime-verifier ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
 
-# A cycle takes a fraction of a second; allow about 2 s each plus the settle and idle samples, and at least an hour.
-limit=$(( cycles * 2 + 600 )); [ "$limit" -lt 3600 ] && limit=3600
+# The earlier run's median was 2.2 s per cycle. Allow 4 s each on the fast run disk, plus settle and idle samples, at least an hour.
+limit=$(( cycles * 4 + 600 )); [ "$limit" -lt 3600 ] && limit=3600
 waited=0; state=RUNNING; alive=yes
 while [ "$waited" -lt "$limit" ]; do
     sleep 60; waited=$((waited + 60))
@@ -179,6 +210,15 @@ try { $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query
 PS
     scp "${opts[@]}" "vika@$host:C:/T4/samples.jsonl" "$ev/$tag-samples.jsonl" >/dev/null 2>&1 || true
     scp "${opts[@]}" "vika@$host:C:/T4/cycles.jsonl" "$ev/$tag-cycles.jsonl" >/dev/null 2>&1 || true
+    scp "${opts[@]}" "vika@$host:C:/T4/control/actor-error.txt" "$ev/$tag-actor-error.txt" >/dev/null 2>&1 || true
+    remote <<'PS' > "$ev/$tag-service-events.txt"
+$base = [long](Get-Content -LiteralPath 'C:\T4\event-baseline.txt')
+# Record IDs survive the clock step: a timestamp filter would miss the earlier failure.
+$xpath = "*[System[Provider[@Name='SafeUpload.Agent.Service'] and EventRecordID > $base and (Level=1 or Level=2 or Level=3)]]"
+Get-WinEvent -LogName Application -FilterXPath $xpath -ErrorAction SilentlyContinue | ForEach-Object {
+    [ordered]@{ RecordId = $_.RecordId; TimeCreated = $_.TimeCreated.ToString('o'); Level = $_.Level; Message = $_.Message } | ConvertTo-Json -Compress
+}
+PS
 else
     $V screenshot "$dom" "$ev/$tag-unreachable.ppm" >/dev/null 2>&1 || true
     : > "$ev/$tag-after.txt"

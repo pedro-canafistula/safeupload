@@ -13,6 +13,21 @@ Patterns:
 #>
 param([string]$Control = 'C:\T4\control', [string]$Root = 'C:\Protected\t4')
 $ErrorActionPreference = 'Stop'
+function Read-T4ControlText([string]$Path) {
+    $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 5 * [Diagnostics.Stopwatch]::Frequency
+    for (;;) {
+        try {
+            $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+            try { $reader = [IO.StreamReader]::new($stream); try { return $reader.ReadToEnd() } finally { $reader.Dispose() } }
+            finally { $stream.Dispose() }
+        } catch [IO.IOException] {
+            $ioFailure = $_.Exception
+            while ($ioFailure.InnerException) { $ioFailure = $ioFailure.InnerException }
+            if (($ioFailure.HResult -band 0xffff) -notin @(32,33) -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $deadline) { throw }
+            Start-Sleep -Milliseconds 2
+        }
+    }
+}
 Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
@@ -40,10 +55,15 @@ public static class T4Native {
     static extern bool UnmapViewOfFile(IntPtr view);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool CloseHandle(IntPtr h);
-    static void Check(bool ok, string step) { if (!ok) throw new Win32Exception(Marshal.GetLastWin32Error(), step); }
+    static void Check(bool ok, string step) {
+        if (!ok) {
+            int error = Marshal.GetLastWin32Error();
+            throw new Win32Exception(error, step + " Win32=" + error);
+        }
+    }
     public static void Replace(string temporary, string target, byte[] bytes) {
-        // GENERIC_WRITE | DELETE, CREATE_ALWAYS; the rename goes through this handle before it closes.
-        IntPtr file = CreateFileW(temporary, 0x40000000 | 0x00010000, 0, IntPtr.Zero, 2, 0x80, IntPtr.Zero);
+        // GENERIC_WRITE | DELETE, CREATE_ALWAYS; include delete sharing for the held-handle rename (as in C04).
+        IntPtr file = CreateFileW(temporary, 0x40000000 | 0x00010000, 7 /* READ | WRITE | DELETE */, IntPtr.Zero, 2, 0x80, IntPtr.Zero);
         Check(file != new IntPtr(-1), "CreateFile");
         try {
             int written;
@@ -86,12 +106,13 @@ public static class T4Native {
     }
 }
 '@
+try {
 if (-not (Test-Path -LiteralPath $Root)) { throw "missing $Root (created before the driver loads)" }
 'ACTOR_STARTED pid=' + $PID + ' user=' + [Security.Principal.WindowsIdentity]::GetCurrent().Name | Set-Content -LiteralPath (Join-Path $Control 'actor-started.txt')
 for (;;) {
     $command = Get-ChildItem -LiteralPath $Control -Filter 'cmd-*.txt' -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $command) { Start-Sleep -Milliseconds 5; continue }
-    $line = (Get-Content -LiteralPath $command.FullName -Raw).Trim()
+    $line = (Read-T4ControlText $command.FullName).Trim()
     if ($line -eq 'stop') { Remove-Item -LiteralPath $command.FullName -Force; break }
     $parts = $line -split ' ', 4
     $n = $parts[0]; $pattern = $parts[1]; $name = $parts[2]; $bytes = [IO.File]::ReadAllBytes($parts[3])
@@ -108,7 +129,14 @@ for (;;) {
     } catch { $result = 'error ' + ($_.Exception.Message -replace '\s+', ' ') }
     $ack = Join-Path $Control ('ack-' + $n + '.txt')
     Set-Content -LiteralPath ($ack + '.tmp') -Value $result
-    Move-Item -LiteralPath ($ack + '.tmp') -Destination $ack -Force
+    [IO.File]::Move(($ack + '.tmp'), $ack)
     Remove-Item -LiteralPath $command.FullName -Force
 }
 'ACTOR_STOPPED' | Set-Content -LiteralPath (Join-Path $Control 'actor-stopped.txt')
+} catch {
+    # A task exit alone loses the failing operation. Preserve the exception and
+    # source line before rethrowing; this receipt never substitutes for an ack.
+    ($_ | Format-List * -Force | Out-String) + "`n" + $_.ScriptStackTrace |
+        Set-Content -LiteralPath (Join-Path $Control 'actor-error.txt')
+    throw
+}

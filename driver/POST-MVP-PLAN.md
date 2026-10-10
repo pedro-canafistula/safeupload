@@ -213,9 +213,15 @@ service's new DISPOSE message, service connect, process exit, inline settling in
 on something Windows does not signal (owner decision 2026-10-10). The cycle row is `driver/scripts/Invoke-StageCycles.sh`.
 - [x] design note; owner decision on the timer; Luna design review (0 P0, 2 P1, 7 P2: fixed, or moved to T9)
 - [x] driver and agent implementation; 4 WDK builds 0/0; agent gate PASS (596 tests)
-- [ ] Luna implementation review before the first VM boot
+- [x] Luna implementation review and two re-reviews recorded in `970239a3`; findings fixed or assigned to T9 (no new lifetime change in `4a438b36`)
 - [ ] 10,000 cycles under runtime Verifier (special pool), pool flat, versions/views/tombstones/stage files back to zero, worker idle
 - [ ] C01-C04, B01, B02, X01 in all three modes
+
+**Qualification update 2026-10-10.** Corrected ordinary run `m2t4clean1` passes 256/256 mixed approve/block saves on `m2-driver1` +
+`t4-af1`: all 256 versions/views released, zero tombstones/stage files/cap refusals, 192 approved stage deletions and 64 exact
+blocked hand-backs. Idle worker passes/timer fires stay zero for 60 s; the discarded run disk leaves the base untouched.
+Runtime-Verifier (special pool) run `m2t4long2` is now executing the required 10,000 cycles on the same frozen pair/harness.
+The cycle row samples public names; it does not replace the required raw-observer invariant regression.
 
 ### T5. Notepad Save As
 
@@ -265,6 +271,13 @@ metadata-change access. Writes are unaffected: they still go through staging.
 
 **Done when** a justified sensitive file can be opened and read by a standard user with read permission, a user without read permission
 still gets the normal Windows denial, and a suite row covers both.
+
+**Complete 2026-10-10:** `4a438b36`, exact build `m2-driver1` plus unchanged agent `t4-af1`. B02 revision 5 passes its selected MVP
+gate in ordinary (`m2t7o1`), runtime-Verifier (`m2t7v1`) and boot-Verifier (`m2t7b1`), with `ForbiddenByteCount=0` and clean independent
+restoration/base checks in every mode. All raw/fresh/uncached readers reach the complete justified sensitive v2; the standard interactive
+actor independently reads its exact length/digest and gets Win32 5 with no bytes from the unchanged explicit Windows READ_DATA-denied
+sibling. Four WDK/PREfast/ApiValidator configurations pass at 0/0. This component gate retains the M1 core's deferred continuous
+mutation-ledger coverage; the full M2 freeze/review/gate is still pending.
 
 ### T8. Office and common applications
 
