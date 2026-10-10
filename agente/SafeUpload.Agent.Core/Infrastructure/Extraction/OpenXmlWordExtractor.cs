@@ -27,12 +27,10 @@ public sealed class OpenXmlWordExtractor : ITextExtractor
         cancellationToken.ThrowIfCancellationRequested();
 
         using var document = WordprocessingDocument.Open(content, isEditable: false);
-        var mainPart = document.MainDocumentPart;
-
-        if (mainPart is null)
-        {
-            return Task.FromResult(string.Empty);
-        }
+        var mainPart = document.MainDocumentPart
+            ?? throw new InvalidDataException("The Word package has no main document part.");
+        var body = mainPart.Document?.Body
+            ?? throw new InvalidDataException("The Word document has no body.");
 
         var builder = new StringBuilder();
 
@@ -41,7 +39,7 @@ public sealed class OpenXmlWordExtractor : ITextExtractor
             AppendParagraphs(builder, header.Header, cancellationToken);
         }
 
-        AppendParagraphs(builder, mainPart.Document?.Body, cancellationToken);
+        AppendParagraphs(builder, body, cancellationToken);
 
         foreach (var footer in mainPart.FooterParts)
         {

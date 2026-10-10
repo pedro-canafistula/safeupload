@@ -28,12 +28,8 @@ public sealed class OpenXmlSheetExtractor : ITextExtractor
         cancellationToken.ThrowIfCancellationRequested();
 
         using var document = SpreadsheetDocument.Open(content, isEditable: false);
-        var workbookPart = document.WorkbookPart;
-
-        if (workbookPart is null)
-        {
-            return Task.FromResult(string.Empty);
-        }
+        var workbookPart = document.WorkbookPart
+            ?? throw new InvalidDataException("The spreadsheet package has no workbook part.");
 
         var sharedStrings = LoadSharedStrings(workbookPart);
         var builder = new StringBuilder();
@@ -95,12 +91,13 @@ public sealed class OpenXmlSheetExtractor : ITextExtractor
                 return sharedStrings[index];
             }
 
-            return null;
+            throw new InvalidDataException("The cell has an invalid shared-string reference.");
         }
 
         if (cell.DataType?.Value == CellValues.InlineString)
         {
-            return cell.InlineString?.InnerText;
+            return cell.InlineString?.InnerText
+                ?? throw new InvalidDataException("The inline-string cell has no string value.");
         }
 
         return raw;
