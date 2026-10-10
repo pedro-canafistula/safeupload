@@ -30,8 +30,11 @@ for (;;) {
             }
             'release' { if ($null -eq $held) { throw 'no held handle' }; $held.Dispose(); $held = $null }
             'icacls' {
-                $out = (& icacls.exe $c.Path @($c.Args) 2>&1 | Out-String)
-                if ($LASTEXITCODE -ne 0) { $result = 'exit ' + $LASTEXITCODE + ' ' + ($out -replace '\s+', ' ') }
+                # Windows PowerShell 5.1 turns redirected native stderr into a terminating error under 'Stop'; a refusal is a result.
+                $ErrorActionPreference = 'Continue'
+                $out = (& icacls.exe $c.Path @($c.Args) 2>&1 | Out-String); $code = $LASTEXITCODE
+                $ErrorActionPreference = 'Stop'
+                if ($code -ne 0) { $result = 'exit ' + $code + ' ' + ($out -replace '\s+', ' ') }
             }
             default { throw ('unknown op ' + $c.Op) }
         }

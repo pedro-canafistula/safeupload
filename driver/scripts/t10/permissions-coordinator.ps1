@@ -48,8 +48,12 @@ function Get-Sddl([string]$Path) { (Get-Acl -LiteralPath $Path).Sddl }
 function Get-StageFiles { @(Get-ChildItem -LiteralPath $stageDir -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) }
 function Test-StageAclClosed([string]$Path) {
     $read = try { $null = Get-Acl -LiteralPath $Path; 'readable' } catch { 'refused' }
-    $out = (& icacls.exe $Path /grant '*S-1-1-0:(F)' 2>&1 | Out-String)
-    [ordered]@{ Path = $Path; Read = $read; GrantExit = $LASTEXITCODE; Grant = ($out -replace '\s+', ' ') }
+    # Windows PowerShell 5.1 turns a native command's redirected stderr into a terminating error under 'Stop': the expected
+    # "Access is denied" must be recorded, not thrown.
+    $ErrorActionPreference = 'Continue'
+    $out = (& icacls.exe $Path /grant '*S-1-1-0:(F)' 2>&1 | Out-String); $code = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    [ordered]@{ Path = $Path; Read = $read; GrantExit = $code; Grant = ($out -replace '\s+', ' ') }
 }
 $script:n = 0
 function Invoke-Actor([string]$Op, [string]$Path, [byte[]]$Bytes, [string[]]$Arguments) {
@@ -103,8 +107,10 @@ try {
     Check 'T10VersionHeld' ($ack -eq 'ok') ('actor holds a staged version: ' + $ack)
     $newStages = @(Get-StageFiles | Where-Object { $filesBefore -notcontains $_ })
     Check 'T10StageFilePresent' ($newStages.Count -ge 1) ("new stage files: " + ($newStages -join ', '))
+    $ErrorActionPreference = 'Continue'
     $fileOut = (& icacls.exe $file /grant '*S-1-5-32-545:(F)' 2>&1 | Out-String); $fileExit = $LASTEXITCODE
     $dirOut = (& icacls.exe $root /grant '*S-1-5-32-545:(OI)(CI)(RX)' 2>&1 | Out-String); $dirExit = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
     Check 'T10AdminFileAclChanged' ($fileExit -eq 0 -and (Get-Sddl $file) -match '\(A;[^)]*;FA;;;BU\)') ("icacls exit $fileExit; " + ($fileOut -replace '\s+', ' '))
     Check 'T10AdminFolderAclChanged' ($dirExit -eq 0) ("icacls exit $dirExit; " + ($dirOut -replace '\s+', ' '))
     $probes = @($newStages | ForEach-Object { Test-StageAclClosed $_ })
