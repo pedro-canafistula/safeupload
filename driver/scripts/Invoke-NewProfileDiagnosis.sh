@@ -179,6 +179,8 @@ try {
     $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query deny-ring)
     'RING_SINCE_BOOT=' + $ring.Count
     foreach ($r in $ring) { 'RING=' + ($r | ConvertTo-Json -Compress) }
+    # Who was refused: each ring PID's process and hosted services, if it is still running.
+    foreach ($p in @($ring | ForEach-Object { $_.processId } | Sort-Object -Unique)) { $w = Get-CimInstance Win32_Process -Filter "ProcessId=$p" -ErrorAction SilentlyContinue; $svc = @(Get-CimInstance Win32_Service -Filter "ProcessId=$p" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ','; 'RING_PROCESS=' + $p + ' ' + $(if ($w) { $w.Name + ' services=' + $svc + ' cmd=' + $w.CommandLine } else { 'exited' }) }
 } catch { 'RING_ERROR=' + $_.Exception.Message }
 'PHASE2_DONE=True'
 PS
@@ -227,7 +229,16 @@ verdict('U01RingRead', n_ring is not None and int(n_ring.group(1)) == len(ring),
 def inside(r): return '\\protected\\' in (r.get('name') or '').lower() + '\\' or (r.get('name') or '').lower().endswith('\\protected')
 # The driver's own staging directory is a private namespace: refusing every process but the service there is the design.
 def own_namespace(r): return r.get('reason') == 'privateNamespace' or '\\safeupload\\staging\\' in (r.get('name') or '').lower()
-outside = [r for r in ring if r.get('major') != 'QUERY_INFORMATION' and not inside(r) and not own_namespace(r)]
+# Owner decision 2026-10-10 (M1): the link-tracking service's write by NTFS object ID stays refused and is a known refusal; exempt only a
+# CREATE refused as byIdHighHalf whose process is identified as the svchost hosting TrkWks (as in the T3 verdict).
+procs = {}
+for line in re.findall(r'^RING_PROCESS=(.*)$', phase2, re.M):
+    pid, _, rest = line.partition(' ')
+    procs[pid] = rest
+def known(r): return r.get('major') == 'CREATE' and r.get('reason') == 'byIdHighHalf' and re.match(r'svchost\.exe services=TrkWks( |$)', procs.get(str(r.get('processId')), '')) is not None
+known_refusals = [r for r in ring if known(r)]
+outside = [r for r in ring if r.get('major') != 'QUERY_INFORMATION' and not inside(r) and not own_namespace(r) and not known(r)]
+out.append('U01KnownRefusals INFO ' + (str(len(known_refusals)) + ' TrkWks write(s) by object ID refused (owner decision 2026-10-10)' if known_refusals else 'none'))
 verdict('U01NoRefusalOutsideScope', not outside,
         'no refusal outside the protected folder' if not outside else '; '.join(f"#{r['sequence']} {r.get('statusName')} {r.get('major')} {r.get('reason') or 'noReason'} {r.get('name')}" for r in outside[:12]))
 unsupported = [r for r in ring if r.get('major') == 'QUERY_INFORMATION']
