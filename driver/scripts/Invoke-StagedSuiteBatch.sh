@@ -28,15 +28,22 @@ baseline() {  # $1 evidence path
 source "$(dirname "${BASH_SOURCE[0]}")/run-disk.sh"
 # The guest's wall clock starts about 4 h behind after each cold start, and the Windows time service steps it a few minutes later; a
 # step inside a trial moves last-access times outside every allowed transition (C01 and C02 BLOCK, m21v10 and m21v12:
-# DirectoryMetadata at the first samples after the step, nothing else changed). Once the fresh disk is up, set the guest clock from
-# the host's UTC (Windows writes the hardware clock with it, so the case's own reboots keep it) and record the skew before and after.
+# DirectoryMetadata at the first samples after the step, nothing else changed). Once the fresh disk is up, make the time service
+# synchronize now (w32tm /resync /force, retried while it has no samples yet), so the case's own reboots start from a correct clock and
+# later corrections are small. Setting the clock from the host over the remote channel left it about 1 s behind (the channel's delay),
+# and the service's later correction moved boot identities by that second (R03 boot-Verifier m21b22: notification boot ID 1.1 s off),
+# so that is only the fallback when no time source answers. The skew to the host is recorded before and after.
 clock_sync() {  # $1 evidence path
     local now
     now=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
     remote > "$1" 2>&1 <<PS
 \$target = [DateTime]::Parse('$now', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AdjustToUniversal -bor [Globalization.DateTimeStyles]::AssumeUniversal)
 'GuestSkewSecondsBefore=' + [math]::Round(([DateTime]::UtcNow - \$target).TotalSeconds, 1)
-Set-Date -Date \$target.ToLocalTime() | Out-Null
+Start-Service w32time -ErrorAction SilentlyContinue
+\$ok = \$false
+for (\$i = 0; \$i -lt 15 -and -not \$ok; \$i++) { \$r = (& w32tm.exe /resync /force 2>&1 | Out-String); if (\$LASTEXITCODE -eq 0 -and \$r -notmatch 'did not resync') { \$ok = \$true } else { Start-Sleep -Seconds 2 } }
+'GuestTimeServiceResync=' + \$ok + ' tries=' + \$i
+if (-not \$ok) { Set-Date -Date \$target.ToLocalTime() | Out-Null; 'GuestClockSetFromHost=True' }
 PS
     now=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
     remote >> "$1" 2>&1 <<PS
