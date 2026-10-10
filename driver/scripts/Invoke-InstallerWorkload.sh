@@ -60,7 +60,8 @@ if [ "$mode" = driver ]; then
     scp "${opts[@]}" "$sys" "vika@$host:$guest/SafeUpload-t3.sys" && scp "${opts[@]}" "$zip" "vika@$host:$guest/stage-service-publish.zip" \
       && scp "${opts[@]}" agente/scripts/Install-SafeUploadAgent.ps1 "vika@$host:$guest/Install-SafeUploadAgent.ps1" \
       && scp "${opts[@]}" agente/scripts/Protect-SafeUploadPolicy.ps1 "vika@$host:$guest/Protect-SafeUploadPolicy.ps1" \
-      && scp "${opts[@]}" agente/scripts/Get-SafeUploadDiagnostics.ps1 "vika@$host:$guest/Get-SafeUploadDiagnostics.ps1" || { echo 'copy failed'; exit 14; }
+      && scp "${opts[@]}" agente/scripts/Get-SafeUploadDiagnostics.ps1 "vika@$host:$guest/Get-SafeUploadDiagnostics.ps1" \
+      && scp "${opts[@]}" "$(dirname "$sys")/inspector-feature-release.exe" "vika@$host:$guest/SafeUpload-inspector.exe" || { echo 'copy failed'; exit 14; }
     remote <<'PS' | tee "$ev/$tag-install.txt"
 $ErrorActionPreference = 'Stop'
 $d = 'C:\Users\vika\Documents'
@@ -151,6 +152,23 @@ function Read-AgentFrame {
 try { $f = Read-AgentFrame; 'AGENT_FRAME=' + $f } catch { 'AGENT_FRAME_ERROR=' + $_.Exception.Message }
 try { $c = & "$d\Get-SafeUploadDiagnostics.ps1" -Query counters; 'COUNTERS_AFTER=' + ($c | ConvertTo-Json -Depth 6 -Compress) } catch { 'COUNTERS_AFTER_ERROR=' + $_.Exception.Message }
 try { $ring = @(& "$d\Get-SafeUploadDiagnostics.ps1" -Query deny-ring); 'RING_TOTAL=' + $ring.Count; foreach ($e in $ring) { 'RING=' + ($e | ConvertTo-Json -Compress) } } catch { 'RING_ERROR=' + $_.Exception.Message }
+# Per-volume admission status: which instance is Unknown, the first reason and the driver source line that set it (sticky until reboot).
+# The driver's port takes one client (the agent holds it) and admits SYSTEM: stop the agent for the read (the workload is over), run the
+# inspector once as SYSTEM through a scheduled task, then start the agent again.
+if (Test-Path "$d\SafeUpload-inspector.exe") {
+    try {
+        $vsOut = 'C:\T3\volume-status.txt'; Remove-Item -LiteralPath $vsOut -Force -ErrorAction SilentlyContinue
+        Stop-Service SafeUploadAgent -Force; Start-Sleep -Seconds 2
+        $act = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c ""' + $d + '\SafeUpload-inspector.exe" --admission-volume-status > ' + $vsOut + ' 2>&1"')
+        Register-ScheduledTask -TaskName t3-volume-status -Action $act -User SYSTEM -RunLevel Highest -Force | Out-Null
+        Start-ScheduledTask -TaskName t3-volume-status
+        for ($i = 0; $i -lt 30; $i++) { Start-Sleep -Seconds 1; if ((Get-ScheduledTask -TaskName t3-volume-status).State -eq 'Ready' -and (Test-Path $vsOut)) { break } }
+        Unregister-ScheduledTask -TaskName t3-volume-status -Confirm:$false
+        $v = if (Test-Path $vsOut) { Get-Content -LiteralPath $vsOut -Raw } else { 'no output' }
+        'VOLUME_STATUS=' + ($v -replace '\s+', ' ').Trim()
+    } catch { 'VOLUME_STATUS_ERROR=' + $_.Exception.Message }
+    finally { Start-Service SafeUploadAgent -ErrorAction SilentlyContinue; Start-Sleep -Seconds 5 }
+}
 $samples = if (Test-Path C:\T3\samples.jsonl) { @(Get-Content C:\T3\samples.jsonl) } else { @() }
 'SAMPLES=' + $samples.Count
 $max = 0; $maxPasses = 0; $overflow = 0; $unk = 0
@@ -232,6 +250,17 @@ if mode == 'driver':
     out.append(f"T3RegistryHighWater INFO {mx.group(1) if mx else 'unknown'} of 4096")
     unk = re.search(r'^REGISTRY_UNKNOWN_SEEN=(\d+)', after, re.M)
     verdict('T3NoUnknownReason', unk is not None and int(unk.group(1)) == 0, f"unknown reasons seen {unk.group(1) if unk else 'unknown'}")
+    # Where Unknown came from: per-volume reason mask, first reason and source line, read before the reboot and after it.
+    for label, text in (('before reboot', open(sys.argv[7], encoding='utf-8', errors='replace').read() if len(sys.argv) > 7 and os.path.exists(sys.argv[7]) else ''), ('after', after)):
+        vs = re.search(r'^VOLUME_STATUS=(.*)$', text, re.M)
+        if not vs: continue
+        try:
+            st = json.loads(vs.group(1)[vs.group(1).index('{'):])
+            bad = [v for v in st.get('admissionVolumes', []) if v.get('instanceRegistryUnknownReasons') not in (None, '0x00000000')]
+            out.append(f"T3UnknownSites INFO {label}: writerGlobalUnknown={st.get('writerGlobalUnknown')}; " +
+                       ('; '.join(f"volumeKind {v.get('volumeKind')} fs {v.get('fileSystemType')} trust {v.get('protectionStatus')} reasons {v.get('instanceRegistryUnknownReasons')} first {v.get('firstUnknownReason')} at line {v.get('firstUnknownSite')} {v.get('volumeGuid')}" for v in bad) or 'no volume Unknown'))
+        except Exception as e:
+            out.append(f"T3UnknownSites INFO {label}: status not parsed ({e})")
     cnt = re.search(r'^COUNTERS_AFTER=(.*)$', after, re.M)
     if cnt:
         try:
