@@ -220,11 +220,19 @@ on something Windows does not signal (owner decision 2026-10-10). The cycle row 
 **Qualification update 2026-10-10.** Corrected ordinary run `m2t4clean1` passes 256/256 mixed approve/block saves on `m2-driver1` +
 `t4-af1`: all 256 versions/views released, zero tombstones/stage files/cap refusals, 192 approved stage deletions and 64 exact
 blocked hand-backs. Idle worker passes/timer fires stay zero for 60 s; the discarded run disk leaves the base untouched.
-Runtime-Verifier (special pool) run `m2t4long2` is now executing the required 10,000 cycles on the same frozen pair/harness.
+Runtime-Verifier (special pool) run `m2t4long2` failed after 2,713/10,000 outcomes: PowerShell 5.1 `Add-Content` refused
+the concurrent host progress reader of `cycles.jsonl`. All eight outcome buckets had zero failures, but only 2,712 log
+records were appended, final settle/idle evidence was absent, and no Verifier pool sample was parsed. This is a failed run.
+The disposable overlay was deleted and the base verified untouched; the conditional 33-cell queue stopped before any cell.
+Harness-only commit `9472b1cd` uses explicitly shared append/read streams, atomic final-result publication and the actual
+Windows 19045 Verifier `(NonPaged/Paged)` tuple format, retaining each raw query. Its Windows 5.1 gate passes all existing
+controls plus 23 IPC and 11 parser controls. A fresh 256-cycle runtime-Verifier diagnostic (`m2t4stat1`, sample every 64)
+uses the unchanged `m2-driver1` + `t4-af1` pair before another long run; pool flatness and every original assertion remain required.
 The cycle row samples public names; it does not replace the required raw-observer invariant regression.
-The 33 C01-C04/B01/B02/X01 component cells are queued serially in all three modes (`m2t4rv`, `m2t4ro`, `m2t4rb`), conditional on
-every long-run assertion and the independent disk teardown passing. That regression uses the same `m2-driver1` kernel with the
-new, separately tested `m2-t9-fail3` agent, from a frozen checkout; it is not the final M2 milestone gate.
+The stopped 33 C01-C04/B01/B02/X01 component queue (`m2t4rv`, `m2t4ro`, `m2t4rb`) and its frozen inputs remain preserved:
+`m2-driver1` kernel + separately tested `m2-t9-fail3` agent. A fresh serial queue may start only after every required
+10,000-cycle assertion and independent disk teardown passes. These component rows are not the final M2 milestone gate.
+Decision-level receipt: [T4 telemetry correction](evidence/2026-10-10/m2-t4-telemetry-status.json).
 
 ### T5. Notepad Save As
 

@@ -1,0 +1,71 @@
+{
+  "base": "6a8c290551b3b5d36b081e536118852d5078afcc",
+  "sourceCommit": "9472b1cdfe3f3ae376f463f99ed3831d9b768ddc",
+  "files": {
+    "driver/scripts/Invoke-HarnessWindowsGate.sh": "f6c31ce28a59c02716cfb42f7209c3eaaaadf0adcc6275aef2b06c36100c5c4a",
+    "driver/scripts/Invoke-StageCycles.sh": "4fd39f0fb7d9c0e6cf8586fca15455c0000fe45e4f890e7ae6d7ee8275cb3503",
+    "driver/scripts/StagedInvariantT4Ipc.SelfCheck.ps1": "af41aa53f16390f023911d519c9493f15658274c1381aef6532c4dcf48b45513",
+    "driver/scripts/StagedInvariantT4Verifier.SelfCheck.ps1": "a0282ae55b388dc19db5e3976d773faeb06992026b0ade17cebf9d118454f02c",
+    "driver/scripts/t4/cycles-coordinator.ps1": "1ed2c0bda8ed1cb23194d1b4b4a90374fa67a681c567cbeda05dc66236cf3e36",
+    "driver/scripts/t4/cycles-progress.ps1": "dfa5d200c5778d3025ed57e8440b400d0bff5e6c8de4781f22435e691aafaf6b"
+  },
+  "driverSha256": "3FDACF83FA2D892B4D52BD833D13444DCD4D70A059E59B5D1B6998C815B422E7",
+  "agentSha256": "FAFDE24D92ECCADC2D36AB6C886348543DAF94313EA2AA797F00F4128EF4A789",
+  "driverSourceCommit": "4a438b36a68ac06cbed49d19950d0e6ac0b1e8de",
+  "agentSourceCommit": "970239a328b11878a5131ee022d7e671644aae5c",
+  "harnessGate": "harness-windows-gate-m2-t4-telemetry1.txt",
+  "plannedCycles": 256,
+  "sampleEvery": 64,
+  "mode": "runtime-verifier",
+  "tag": "m2t4stat1",
+  "milestoneComplete": false,
+  "schema": "SafeUploadM2T4TelemetryStatus/1",
+  "updatedUtc": "2026-10-10T19:09:05.871118+00:00",
+  "previousRun": {
+    "tag": "m2t4long2",
+    "passed": false,
+    "requestedCycles": 10000,
+    "completedOutcomes": 2713,
+    "cycleRecords": 2712,
+    "sharingError": "The process cannot access the file 'C:\\T4\\cycles.jsonl' because it is being used by another process.",
+    "parsedVerifierCycleSamples": 0,
+    "finalSettleIdleEvidence": false,
+    "baseUntouched": true,
+    "restoredUtc": "2026-10-10T18:52:21Z",
+    "failedAssertions": [
+      "T4CyclesCompleted",
+      "T4PoolFlat",
+      "T4VersionsReleased",
+      "T4TombstonesReleased",
+      "T4NoCapRefusal",
+      "T4StageFilesDeleted"
+    ],
+    "rawVerdict": "m2t4long2-verdict.txt",
+    "restoration": "m2t4long2-final-restored-state.txt"
+  },
+  "regressionQueue": {
+    "status": "stopped",
+    "cellsStarted": 0,
+    "rawReceipt": "m2-t4-regression-queue.txt",
+    "originalFrozenInputs": "m2-t4-regression-frozen-inputs.json"
+  },
+  "windowsGate": {
+    "pass": true,
+    "powerShellVersion": "5.1.19041.6456",
+    "ipcControls": 23,
+    "verifierParserControls": 11,
+    "runtimeQualification": false,
+    "rawReceipt": "harness-windows-gate-m2-t4-telemetry1.txt"
+  },
+  "diagnostic": {
+    "tag": "m2t4stat1",
+    "cycles": 256,
+    "sampleEvery": 64,
+    "mode": "runtime-verifier",
+    "status": "running",
+    "qualified": false
+  },
+  "assertionsRelaxed": false,
+  "kernelOrAgentChanged": false,
+  "requiredLongRunPassed": false
+}

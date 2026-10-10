@@ -740,3 +740,31 @@ performed. M2 is not complete.
 
 Tracked, decision-level gate evidence: [M2 agent component gates](evidence/2026-10-10/m2-agent-component-gates.json). Full TRX,
 packages, source archives and raw receipts remain in the ignored local evidence directory.
+
+## T4 long-run failure and Windows telemetry correction — 2026-10-10
+
+This supersedes the earlier active-run/queued-regression status. `m2t4long2` ended in failure at 2,713/10,000 completed
+outcomes, with only 2,712 appended cycle records. PowerShell 5.1 `Add-Content` threw a sharing violation on `C:\T4\cycles.jsonl`
+while the host progress reader was active. All eight outcome buckets had zero failures, but final settle/idle/stage-file
+assertions were missing and required pool flatness failed with zero parsed Verifier samples. The surviving guest and later
+zero-live-version counters do not replace those missing assertions. Runtime Verifier still verified the driver with 0x13B;
+the run disk was deleted, the base verified untouched at 18:52:21Z, and the conditional 33-cell regression queue stopped
+before its first cell. No failed attempt is counted as qualification.
+
+A disposable control on the Windows builder reproduced the actual PS5.1 sharing violation even with a FileShare
+ReadWriteDelete reader. Harness-only source `9472b1cdfe3f3ae376f463f99ed3831d9b768ddc` replaces log append and progress read
+with explicitly shared streams, performs one append without retry/duplicate records, and publishes the closed final result
+by atomic rename. Exclusive-access write errors still fail. Progress never treats a partial result as completion. The
+coordinator parses the actual Windows 19045 module-local `(NonPaged/Paged)` pool tuples, refuses incomplete/ambiguous target
+statistics, records each raw Verifier query, and refuses a runtime run without start-of-run pool evidence. No kernel or
+agent source changed and no pool, outcome, cleanup, idle or restoration assertion was relaxed.
+
+`harness-windows-gate-m2-t4-telemetry1` passes on PS5.1.19041.6456: every input parses and every self-check exits zero,
+including 23 IPC controls and 11 Verifier parser controls. The latter are fixture controls, not runtime pool qualification.
+Exact harness and old product pair hashes were verified before a fresh short runtime-Verifier diagnostic, `m2t4stat1`
+(256 mixed cycles, sample every 64), on restored debug2 with a disposable overlay. The earlier `SUfl` tag growth remains a
+measurement to explain, not a confirmed stage-slot leak or a reason to relax the flat-pool gate. A new 10,000-cycle run and
+fresh regression queue require this diagnostic and any necessary corrections first.
+
+Decision-level receipt: [T4 telemetry correction](evidence/2026-10-10/m2-t4-telemetry-status.json). Failed run output,
+sharing control, corrected gate, per-query raw output and run restoration remain local evidence. M2 remains incomplete.
