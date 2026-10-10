@@ -73,8 +73,11 @@ function Invoke-NotepadSaveAs([string]$Path, [string]$Text) {
         $main = Wait-Element { $root.FindFirst([Windows.Automation.TreeScope]::Children, $byPid) }
         if ($null -eq $main) { throw 'Notepad window did not appear' }
         $edit = $main.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ClassNameProperty, 'Edit')))
-        $edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($Text)
+        # Notepad's multi-line edit control has no ValuePattern: type the text as a user would. SendKeys metacharacters are escaped.
         [void][T5Native]::SetForegroundWindow([IntPtr]$main.Current.NativeWindowHandle)
+        if ($null -ne $edit) { $edit.SetFocus() }
+        Start-Sleep -Milliseconds 300
+        [Windows.Forms.SendKeys]::SendWait(($Text -replace '([+^%~(){}\[\]])', '{$1}'))
         Start-Sleep -Milliseconds 300
         [Windows.Forms.SendKeys]::SendWait('^+s')
         $dialog = Wait-Element {

@@ -152,6 +152,7 @@ setup_ps=$(cat <<'PS'
 $ErrorActionPreference = 'Stop'
 $d = 'C:\Users\vika\Documents'
 New-Item -ItemType Directory -Force -Path C:\T5\control | Out-Null
+[string](Get-WinEvent -LogName Application -MaxEvents 1).RecordId | Set-Content -LiteralPath 'C:\T5\event-baseline.txt'
 & icacls.exe 'C:\T5\control' /grant 'BUILTIN\Users:(OI)(CI)M' | Out-Null
 Copy-Item -LiteralPath "$d\t5-notepad-actor.ps1" -Destination 'C:\T5\notepad-actor.ps1' -Force
 & icacls.exe 'C:\T5\notepad-actor.ps1' /grant 'BUILTIN\Users:(R)' | Out-Null
@@ -190,6 +191,14 @@ try { $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query
 'AFTER_DONE=True'
 PS
     scp "${opts[@]}" "vika@$host:C:/T5/control/actor-error.txt" "$ev/$tag-actor-error.txt" >/dev/null 2>&1 || true
+    # The agent's own warnings and errors explain slow or refused publications (record IDs survive the guest clock step).
+    remote <<'PS' > "$ev/$tag-service-events.txt"
+$base = [long](Get-Content -LiteralPath 'C:\T5\event-baseline.txt')
+$xpath = "*[System[Provider[@Name='SafeUpload.Agent.Service'] and EventRecordID > $base and (Level=1 or Level=2 or Level=3 or Level=4)]]"
+Get-WinEvent -LogName Application -FilterXPath $xpath -ErrorAction SilentlyContinue | ForEach-Object {
+    [ordered]@{ RecordId = $_.RecordId; TimeCreated = $_.TimeCreated.ToString('o'); Level = $_.Level; Message = $_.Message } | ConvertTo-Json -Compress
+}
+PS
 else
     $V screenshot "$dom" "$ev/$tag-unreachable.ppm" >/dev/null 2>&1 || true
     : > "$ev/$tag-after.txt"
