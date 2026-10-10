@@ -25,6 +25,11 @@ public static class T5Native {
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     static extern bool DeleteFileW(string name);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessageW(IntPtr hwnd, uint msg, IntPtr w, string l);
+    [DllImport("user32.dll")] static extern bool PostMessageW(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
+    // .NET Framework SendKeys uses a journal hook that Windows refuses without UI access: set the text and post the command.
+    public static void SetText(IntPtr hwnd, string text) { SendMessageW(hwnd, 0x000C /* WM_SETTEXT */, IntPtr.Zero, text); }
+    public static bool PostCommand(IntPtr hwnd, int id) { return PostMessageW(hwnd, 0x0111 /* WM_COMMAND */, new IntPtr(id), IntPtr.Zero); }
     static int Err() { return Marshal.GetLastWin32Error(); }
     // Returns "step=code" pairs; 0 is success.
     public static string Probe(string path, byte[] bytes, bool deleteOnClose) {
@@ -73,18 +78,30 @@ function Invoke-NotepadSaveAs([string]$Path, [string]$Text) {
         $main = Wait-Element { $root.FindFirst([Windows.Automation.TreeScope]::Children, $byPid) }
         if ($null -eq $main) { throw 'Notepad window did not appear' }
         $edit = $main.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ClassNameProperty, 'Edit')))
-        # Notepad's multi-line edit control has no ValuePattern: type the text as a user would. SendKeys metacharacters are escaped.
-        [void][T5Native]::SetForegroundWindow([IntPtr]$main.Current.NativeWindowHandle)
-        if ($null -ne $edit) { $edit.SetFocus() }
-        Start-Sleep -Milliseconds 300
-        [Windows.Forms.SendKeys]::SendWait(($Text -replace '([+^%~(){}\[\]])', '{$1}'))
-        Start-Sleep -Milliseconds 300
-        [Windows.Forms.SendKeys]::SendWait('^+s')
-        $dialog = Wait-Element {
+        # Notepad's multi-line edit control has no ValuePattern, and SendKeys needs UI access: set the edit control's text, then post
+        # Notepad's Save As command (WM_COMMAND 4, which does not block on the modal dialog); the File menu through UI Automation is
+        # the fallback when no dialog appears.
+        if ($null -eq $edit) { throw 'Notepad edit control not found' }
+        [T5Native]::SetText([IntPtr]$edit.Current.NativeWindowHandle, $Text)
+        $findDialog = {
             foreach ($w in $root.FindAll([Windows.Automation.TreeScope]::Children, $byPid)) { if ($w.Current.Name -eq 'Save As') { return $w } }
             foreach ($w in $main.FindAll([Windows.Automation.TreeScope]::Children, [Windows.Automation.Condition]::TrueCondition)) { if ($w.Current.Name -eq 'Save As') { return $w } }
             $null
         }
+        $obs.MenuPath = 'command'
+        [void][T5Native]::PostCommand([IntPtr]$main.Current.NativeWindowHandle, 4)
+        if ($null -eq (Wait-Element $findDialog 5)) {
+            $obs.MenuPath = 'uia'
+            $menuBar = $main.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::MenuBar)))
+            $fileMenu = $menuBar.FindFirst([Windows.Automation.TreeScope]::Children, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'File')))
+            $fileMenu.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+            $saveAs = Wait-Element { $root.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.AndCondition(
+                (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)),
+                (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Save As...'))))) } 5
+            if ($null -eq $saveAs) { throw 'Save As could not be opened' }
+            $saveAs.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+        }
+        $dialog = Wait-Element $findDialog
         if ($null -eq $dialog) { throw 'Save As dialog did not appear' }
         $nameBox = Wait-Element { $dialog.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.AndCondition(
             (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::AutomationIdProperty, '1001')),
