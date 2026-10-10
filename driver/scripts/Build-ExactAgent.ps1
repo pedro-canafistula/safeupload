@@ -133,8 +133,9 @@ try {
     if ($testExit -eq 0) {
         $testDll = Get-ChildItem (Join-Path $src 'agente\SafeUpload.Agent.Tests\bin\Release') -Recurse -Filter 'SafeUpload.Agent.Tests.dll' | Select-Object -First 1
         if ($null -eq $testDll) { throw 'The built test assembly was not found.' }
-        $systemGroup = 'FullyQualifiedName~CertificateAuthorityTests|FullyQualifiedName~TlsInspectionProxyTests'
-        $userGroup = 'FullyQualifiedName!~CertificateAuthorityTests&FullyQualifiedName!~TlsInspectionProxyTests'
+        # TrafficDiversionTests (main's TLS phase 3: browser policies and WFP egress filters) are MachineFact tests too.
+        $systemGroup = 'FullyQualifiedName~CertificateAuthorityTests|FullyQualifiedName~TlsInspectionProxyTests|FullyQualifiedName~TrafficDiversionTests'
+        $userGroup = 'FullyQualifiedName!~CertificateAuthorityTests&FullyQualifiedName!~TlsInspectionProxyTests&FullyQualifiedName!~TrafficDiversionTests'
         $testsLog = Join-Path $out 'tests.txt'
 
         $nativePreference=$ErrorActionPreference;$ErrorActionPreference='Continue'
