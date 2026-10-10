@@ -218,3 +218,34 @@ returns.
 - After a block's cleanup and the last close, the owner sees the pre-save public content (unchanged from today's retirement).
 - Approved stage files are now deleted. Nothing reads a `Released` entry's stage again: justified cleanup tolerates a missing stage, and
   recovery handles only `Blocked` and `Publishing`.
+
+## 10. Registry-cache retention measured during T4 qualification (2026-10-10)
+
+The implemented stage worker released all 256 versions and views, left no tombstones, and stayed idle for 60 seconds in both
+`m2t4stat1` and the repeat `m2t4stat2`. The repeat had no extra guest diagnostics between coordinator samples. Its Driver Verifier
+module pool still grew from 389,168 bytes at cycle 64 to 3,368,496 at cycle 256 and remained at 3,284,448 after idle. The `SwUr`
+registry tag grew from 6,557,568 to 9,770,240 bytes while listed entries stayed near 242. `SpUs` returned to zero. These results fail
+the existing pool assertion; they do not qualify the required 10,000-cycle run.
+
+The next candidate is an entry that passed `StageRegistryPruneLocked` but is retained by `WriterRegistryEntry` on an idle stream
+context. That cache takes its own reference when the first writer is inserted and previously dropped it only on replacement or
+context cleanup. Pruning removes registry/map ownership and instance/volume references, but NTFS can retain the stream context.
+The observed tag growth supports investigating this path; runtime attribution is still needed before calling it the cause.
+
+The candidate correction keeps the existing identity reopen, exact-SOP memory-manager predicate and locked prune exclusions.
+After a quiescent reopen, it acquires an existing stream-context reference with
+[`FltGetStreamContext`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltgetstreamcontext).
+Only after the locked prune succeeds does a resident helper take `WriterLock` and remove the cache when it still points to that
+retired entry, the writer list is empty, H/W/T are zero, and neither the context nor entry is Unknown. It drops the cache reference
+after releasing the spin lock, while the worker still owns its independent entry reference. Every successful context acquisition
+is matched by `FltReleaseContext`, including a failed prune.
+
+An empty-cache witness under `WriterLock` preserves the retired entry's previous H=0 census. A newly allocated context has no
+witness; a new cache binding clears it; an overflow node or sticky `WritersUntracked` still makes the census Unknown. The witness
+is not consulted for scope classification, nested mutation admission or policy matching. Their existing missing/stale-entry
+fallbacks remain in force. No context is detached, no counter is decremented as a substitute for exact cleanup, no Unknown is
+cleared, and no timer or rescan is added. The registry lock is released before the helper takes `WriterLock`.
+
+Qualification still requires all four WDK/PREfast/ApiValidator builds, Luna review before the first VM boot of this lifetime
+change, runtime Verifier plus the unchanged short and 10,000-cycle pool assertions, raw-volume regression rows, and untouched-base
+restoration. This candidate has not run on a debuggee and M2 remains incomplete.

@@ -399,6 +399,7 @@ typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
     LIST_ENTRY WriterObjects;
     volatile LONG WritersUntracked;
     PVOID WriterRegistryEntry; /* Identity history is owned by StageWriters; H nodes reference it. */
+    BOOLEAN WriterRegistryCachePruned; /* Under WriterLock: an exact, empty cache passed the existing prune gate. */
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
 
 #endif

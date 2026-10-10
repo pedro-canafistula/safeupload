@@ -295,7 +295,7 @@ _IRQL_requires_max_(APC_LEVEL)
 static BOOLEAN StageRegistryEntryHoldsNoWriterState(_In_ PSTAGE_REGISTRY_ENTRY Entry);
 _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
-    _In_ PFLT_VOLUME Volume);
+    _In_ PFLT_VOLUME Volume, _Outptr_result_maybenull_ PSAFEUPLOAD_STREAM_CONTEXT *StreamContext);
 _IRQL_requires_max_(APC_LEVEL)
 static VOID StageRegistryPrepareActivation(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Unknown);
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -2412,6 +2412,7 @@ __declspec(noinline) static BOOLEAN StageWritersInsertNode(
     if (StreamContext->WriterRegistryEntry == NULL) {
         StageRegistryReference(Node->Entry);
         StreamContext->WriterRegistryEntry = Node->Entry;
+        StreamContext->WriterRegistryCachePruned = FALSE;
     }
     compatible = StreamContext->WriterRegistryEntry == Node->Entry;
     if (compatible) {
@@ -2422,6 +2423,35 @@ __declspec(noinline) static BOOLEAN StageWritersInsertNode(
     StageReleaseSpinLock(&StreamContext->WriterLock, irql);
     if (previous != NULL) StageRegistryDereference(previous);
     return compatible;
+}
+
+/* A successful prune has already proved the exact identity quiescent and, under RegistryLock, excluded every writer,
+ * reservation, transaction and section slot. Drop only that retired entry's idle context-cache reference. The caller pins
+ * both objects and holds no registry lock. A replacement writer either installs its cache first (this comparison refuses)
+ * or installs it afterwards and clears the empty-cache witness. Never detach the context: that could orphan a concurrent
+ * writer's cleanup list. This helper is resident because WriterLock raises IRQL. */
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static VOID StageWritersReleasePrunedCache(
+    _In_ PSAFEUPLOAD_STREAM_CONTEXT StreamContext, _In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    KIRQL irql;
+    PSTAGE_REGISTRY_ENTRY released = NULL;
+
+    StageAcquireSpinLock(&StreamContext->WriterLock, &irql);
+    if (StreamContext->WriterRegistryEntry == Entry && Entry->Retired &&
+        IsListEmpty(&StreamContext->WriterObjects) &&
+        InterlockedCompareExchange(&StreamContext->WritersUntracked, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->H, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->W, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->T, 0, 0) == 0) {
+        StreamContext->WriterRegistryEntry = NULL;
+        StreamContext->WriterRegistryCachePruned = TRUE;
+        released = Entry;
+    }
+    StageReleaseSpinLock(&StreamContext->WriterLock, irql);
+    /* Borrowers either took their own entry reference under WriterLock, or finish reading before this unlock. */
+    StageRegistryDereference(released);
 }
 
 static NTSTATUS StageRegistryEnlistTransaction(_In_ PFLT_INSTANCE Instance,
@@ -2817,7 +2847,12 @@ UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OB
         KIRQL irql;
         StageAcquireSpinLock(&streamContext->WriterLock, &irql);
         entry = (PSTAGE_REGISTRY_ENTRY)streamContext->WriterRegistryEntry;
-        if (entry == NULL) result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+        if (entry == NULL) {
+            /* Preserve the retired entry's known H == 0 after releasing its allocation. A fresh or lost context has no
+             * such witness; an overflow marker also leaves the sticky WritersUntracked bit set below. */
+            if (!streamContext->WriterRegistryCachePruned || !IsListEmpty(&streamContext->WriterObjects))
+                result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+        }
         else result |= (UINT32)InterlockedCompareExchange(&entry->H, 0, 0) & ~SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
         StageReleaseSpinLock(&streamContext->WriterLock, irql);
     }
@@ -4100,15 +4135,17 @@ __declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTR
  * longer exists is quiescent too: nothing can write to it. */
 _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
-    _In_ PFLT_VOLUME Volume)
+    _In_ PFLT_VOLUME Volume, _Outptr_result_maybenull_ PSAFEUPLOAD_STREAM_CONTEXT *StreamContext)
 {
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
+    PSAFEUPLOAD_STREAM_CONTEXT context = NULL;
     BOOLEAN quiescent = FALSE;
     BOOLEAN noNamesProven = FALSE;
     NTSTATUS status;
 
     PAGED_CODE();
+    *StreamContext = NULL;
     if (InterlockedCompareExchange(&Entry->H, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->W, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
@@ -4138,6 +4175,10 @@ static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In
      * section remains. */
     quiescent = MmCanFileBeTruncated(object->SectionObjectPointer, NULL);
 Exit:
+    /* Pin the live context before closing the identity handle. This adds no allocation, name query or file open. A missing
+     * context, or one now bound to a different entry, leaves pruning unchanged and cannot release the wrong cache. */
+    if (quiescent && object != NULL && NT_SUCCESS(FltGetStreamContext(Instance, object, (PFLT_CONTEXT *)&context)))
+        *StreamContext = context;
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
     return quiescent;
@@ -6507,6 +6548,7 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
             PSTAGE_REGISTRY_ENTRY mapReference = NULL;
             PFLT_INSTANCE entryInstance = NULL;
             PFLT_VOLUME entryVolume = NULL;
+            PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
             BOOLEAN pruned = FALSE;
             BOOLEAN activationCandidate = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) ==
                 SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
@@ -6536,18 +6578,20 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
                 SAFEUPLOAD_REGISTRY_STATE_ACTIVATING &&
                 InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) == 0 &&
                 InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) == 0 &&
-                StageRegistryEntryQuiescent(entry, instances[index], volumes[index])) {
+                StageRegistryEntryQuiescent(entry, instances[index], volumes[index], &streamContext)) {
                 FltAcquirePushLockExclusive(&RegistryLock);
                 pruned = StageRegistryPruneLocked(entry, &mapReference, &entryInstance, &entryVolume);
                 FltReleasePushLock(&RegistryLock);
             }
             if (pruned) {
                 InterlockedIncrement64(&RegistryPruned);
+                if (streamContext != NULL) StageWritersReleasePrunedCache(streamContext, entry);
                 if (entryVolume != NULL) FltObjectDereference(entryVolume);
                 if (entryInstance != NULL) FltObjectDereference(entryInstance);
                 StageRegistryDereference(mapReference);
                 StageRegistryDereference(entry); /* the registry-history reference */
             }
+            if (streamContext != NULL) FltReleaseContext(streamContext);
             FltObjectDereference(volumes[index]);
             FltObjectDereference(instances[index]);
             StageRegistryDereference(entry);     /* this pass's reference */
