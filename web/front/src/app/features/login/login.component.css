@@ -1,0 +1,13 @@
+.auth-page { min-height: 100vh; display: grid; place-items: center; background: linear-gradient(120deg,#0b2b54,#123d71); }
+.auth-box { width: 380px; }
+h1 { margin: 0 0 4px; }
+p { margin: 0 0 18px; color: #7a8ea6; }
+form { display: grid; gap: 8px; }
+label { font-size: 12px; font-weight: 600; }
+input { border: 1px solid #d9e5f2; border-radius: 8px; padding: 10px; margin-bottom: 4px; }
+button { margin-top: 8px; }
+.msg { font-size: 13px; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+.msg.ok { background: #ddf8ea; color: #19643b; }
+.msg.erro { background: #ffe3e3; color: #8f1a1a; }
+a { display: inline-block; margin-top: 14px; color: #2f5fa8; }
+
