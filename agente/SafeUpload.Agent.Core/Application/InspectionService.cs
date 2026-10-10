@@ -69,6 +69,8 @@ public sealed class InspectionService
     /// outcome: the caller records the outcome after publication or retention.
     /// Never reuse a cached decision for a staged file.
     /// An in-scope file that cannot be fully inspected is Blocked.
+    /// The staged publisher supplies its separate, service-only snapshot;
+    /// readers consume that file directly without a second whole-file copy.
     /// </summary>
     public Task<InspectionResult> InspectStagedAsync(FileOperation operation, CancellationToken cancellationToken)
         => InspectCoreAsync(operation, staged: true, cancellationToken);
@@ -275,10 +277,11 @@ public sealed class InspectionService
     }
 
     /// <summary>
-    /// RN-006 — o conteúdo é lido para memória, extraído, varrido e descartado
-    /// no mesmo escopo. Não há arquivo temporário em nenhum caminho, nem no de
-    /// erro: se a extração lançar, os bytes e o texto saem de escopo junto com
-    /// a pilha e nada chegou a ser gravado.
+    /// RN-006 — a extração não grava conteúdo em arquivo temporário. Staged lê
+    /// diretamente o snapshot privado fornecido pelo publicador. A inspeção
+    /// legada captura os bytes uma vez para vincular hash, cache e varredura,
+    /// mesmo quando uma seção gravável já mapeada muda o arquivo durante a
+    /// extração. O texto extraído é descartado no mesmo escopo.
     /// </summary>
     private async Task<(IReadOnlyList<Finding> Findings, string? Fingerprint, InspectionResult? Cached)> ExtractAndScanAsync(
         ITextExtractor extractor,
@@ -287,30 +290,42 @@ public sealed class InspectionService
         bool useCache,
         CancellationToken cancellationToken)
     {
-        byte[] bytes;
-        // Keep the opened file's bytes stable while allowing an approved save
-        // to replace its directory entry. A source classification triggered by
-        // a reader must not transiently veto the publisher's final rename.
-        await using (var input = new FileStream(operation.FilePath, FileMode.Open,
-            FileAccess.Read, FileShare.Read | FileShare.Delete, 64 * 1024,
-            FileOptions.Asynchronous | FileOptions.SequentialScan))
+        string text;
+        string? fingerprint = null;
+        if (useCache)
         {
-            bytes = new byte[checked((int)input.Length)];
-            await input.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+            byte[] bytes;
+            await using (var input = OpenInspectionInput(operation.FilePath))
+            {
+                bytes = new byte[checked((int)input.Length)];
+                await input.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+            }
+            // A read handle does not revoke an existing writable mapping.
+            // Hash and scan the same captured bytes for legacy cache authority.
+            fingerprint = Convert.ToHexString(SHA256.HashData(bytes));
+            if (_cache.TryGet(operation, policy.Version, out var cached, fingerprint) && cached is not null)
+                return (cached.Findings, fingerprint, cached);
+            using var content = new MemoryStream(bytes, writable: false);
+            text = await extractor.ExtractAsync(content, cancellationToken).ConfigureAwait(false);
         }
-
-        // Hash and scan the same in-memory bytes. Size and timestamps alone
-        // can collide (or be restored), so they cannot authorize cache reuse.
-        string? fingerprint = useCache ? Convert.ToHexString(SHA256.HashData(bytes)) : null;
-        if (useCache && _cache.TryGet(operation, policy.Version, out var cached, fingerprint) && cached is not null)
-            return (cached.Findings, fingerprint, cached);
-        using var content = new MemoryStream(bytes, writable: false);
-        var text = await extractor.ExtractAsync(content, cancellationToken).ConfigureAwait(false);
+        else
+        {
+            // Staged publication owns a separate service-only snapshot and
+            // never reuses approval cache entries. Keep this exact file object
+            // open through extraction; a replaced name cannot change its bytes.
+            await using var input = OpenInspectionInput(operation.FilePath);
+            text = await extractor.ExtractAsync(input, cancellationToken).ConfigureAwait(false);
+        }
 
         // O que sai daqui já é só achado mascarado. O texto em claro não
         // atravessa esta fronteira.
         return (ContentScanner.Scan(text, policy.ActiveCategories), fingerprint, null);
     }
+
+    private static FileStream OpenInspectionInput(string path) => new(path, FileMode.Open,
+        // A source reader must coexist with the publisher's final rename.
+        FileAccess.Read, FileShare.Read | FileShare.Delete, 64 * 1024,
+        FileOptions.Asynchronous | FileOptions.SequentialScan);
 
     private async Task<InspectionResult> CompleteAsync(
         FileOperation operation,
