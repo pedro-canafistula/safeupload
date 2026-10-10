@@ -364,6 +364,38 @@ test-only code. CodeQL, PREfast and ApiValidator at 0/0 on the release configura
 - **T19. Continuous evidence.** If customers or audits need it: a driver-side mutation ledger proving no unapproved byte reached a
   destination continuously (the MVP proves it with sampled raw reads and the final image), and the deferred C05 denial ledger.
 
+## Lessons from the minifilter study (2026-10-10)
+
+Source: a static reverse-engineering study of Microsoft's MsSecFlt, WdFilter, FileInfo and Filter Manager and of Purview's endpoint DLP
+user-mode components (`~/Projects/Study-MsSecFlt.sys`, `analysis/comparison.md` and `analysis/Purview/study.md`), compared with this
+staging design at `4f30a36d`. It is evidence for design and qualification, not runtime proof: none of its experiments has run, and its
+decompiled pseudocode is not used here. Each lesson lands in an existing task:
+
+- **T4 (stage slots).** The stage worker polls every 250 ms (`StageWorker`, `StageStream.c`, a `KeWaitForSingleObject` timeout loop over
+  every staged stream): the same kind of timer the owner ruled out for T1. Make it event-driven with T4's reclamation (seal, rename finish
+  and retire are each caused by an event).
+- **T1 follow-up (diagnostics).** Count reclaim wake-ups by source, so a spike names its cause (the C03 churn took a hunt to find).
+- **T6, T8, T9 (moves, applications, large files).** Every unusual route gets an explicit, documented coverage state (supported, or a
+  conservative refusal with its deny-ring reason): rename/replace/link, relative-to-directory opens, by-ID and object-ID opens (object IDs
+  are refused for now, owner decision 2026-10-10), mixed-case ADS, delete-on-close, clone/offload FSCTLs, MDL paths (study E4). Record
+  Notepad and Office save sequences and check that the published file keeps the decided ACL, owner, ADS and timestamps (E8).
+- **T16 (soak and fault injection).** Add the study's uncovered experiments:
+  - mapped dirty writes racing retirement, observed on the raw destination (E1);
+  - service death and dropped, duplicate, short or stale replies at each protocol step: an unanswered or stale reply never becomes an
+    approval or a permit, and readiness, "empty policy" and an explicit allow stay distinct states (E3, Purview lesson);
+  - voluntary and mandatory unload and every allocation failure during active I/O, under Verifier (E5);
+  - a bounded fuzz of our own service-protocol parser with truncated, cyclic and extreme nested lengths (E6).
+- **T17 (coexistence).** Defender (WdFilter 4.18.1909.6 matches the test guest's platform), VSS, backup and indexing (E9). Check whether a
+  protected save keeps kernel extended-attribute labels such as `$Kernel.SEC.EndpointDlp`, which Purview and MsSecFlt use for
+  classification; SafeUpload has no extended-attribute handling today, so a staged publication may drop them.
+- **Agent (outside the driver).** Check the caller on every privileged operation of the agent's pipe and the driver port, not once per
+  connection; classification metadata (EA labels, timestamps, window titles) is evidence, never approval for specific bytes (Purview
+  lessons).
+- **Harness.** Flush the volume before the observer's raw read of a private snapshot (C01-block-absent `m1w2` and `m21y2` saw the stage
+  file's creation-time MFT record); make the process inventory tolerate a process that exits while it is listed, without weakening what it
+  proves (it cost a rerun in 3 of about 30 cells). Asking the owner first: the study suggests reporting a last-access mismatch after a
+  wall-clock step as INCONCLUSIVE instead of FAIL (the clock sync now removes the cause).
+
 ## Later
 
 - **Network scopes (from the M1 review, F1).** A destination written as a UNC path is stored as given; the driver compares it with the
