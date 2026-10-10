@@ -26,6 +26,27 @@ baseline() {  # $1 evidence path
     grep -q 'BaselineClean=True' "$1"
 }
 source "$(dirname "${BASH_SOURCE[0]}")/run-disk.sh"
+# The guest's wall clock starts about 4 h behind after each cold start, and the Windows time service steps it a few minutes later; a
+# step inside a trial moves last-access times outside every allowed transition (C01 and C02 BLOCK, m21v10 and m21v12:
+# DirectoryMetadata at the first samples after the step, nothing else changed). Once the fresh disk is up, set the guest clock from
+# the host's UTC (Windows writes the hardware clock with it, so the case's own reboots keep it) and record the skew before and after.
+clock_sync() {  # $1 evidence path
+    local now
+    now=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+    remote > "$1" 2>&1 <<PS
+\$target = [DateTime]::Parse('$now', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AdjustToUniversal -bor [Globalization.DateTimeStyles]::AssumeUniversal)
+'GuestSkewSecondsBefore=' + [math]::Round(([DateTime]::UtcNow - \$target).TotalSeconds, 1)
+Set-Date -Date \$target.ToLocalTime() | Out-Null
+PS
+    now=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+    remote >> "$1" 2>&1 <<PS
+\$target = [DateTime]::Parse('$now', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AdjustToUniversal -bor [Globalization.DateTimeStyles]::AssumeUniversal)
+\$skew = ([DateTime]::UtcNow - \$target).TotalSeconds
+'GuestSkewSecondsAfter=' + [math]::Round(\$skew, 1)
+if ([math]::Abs(\$skew) -le 10) { 'GuestClockSynced=True' } else { 'GuestClockSynced=False' }
+PS
+    grep -q '^GuestClockSynced=True' "$1"   # remote output lines end in CR LF
+}
 day=$(date +%F); ev=driver/evidence/$day; mkdir -p "$ev"
 for i in $(seq 1 $#); do  # refuse reused suite tags before touching the guest
     tag="${prefix}${i}"
@@ -40,6 +61,7 @@ for case in "$@"; do
     wait_up || { log "STOP: guest did not boot on the run disk of $tag"; run_disk_end "$dom" "$tag" >> "$disk" 2>&1; exit 4; }
     baseline "$ev/batch-$tag-pre-baseline.txt" ||
         { log "STOP: baseline not clean on a fresh run disk before $tag: the base changed"; run_disk_end "$dom" "$tag" >> "$disk" 2>&1; exit 2; }
+    clock_sync "$ev/batch-$tag-clock.txt" || log "clock of $tag not confirmed in sync with the host ($ev/batch-$tag-clock.txt)"
     log "run $tag $case $mode on $dom"
     python3 driver/scripts/Invoke-StagedInvariantQualification.py "$tag" "$driver_label" "$driver_commit" "$agent_label" "$policy" \
         --cases "$case" --modes "$mode" --agent-source-commit "$agent_commit" ${EXTRA_RUNNER_ARGS:-} > "$ev/batch-$tag-runner.log" 2>&1
