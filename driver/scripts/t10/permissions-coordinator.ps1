@@ -3,8 +3,9 @@ T10 permissions coordinator (SYSTEM, an administrator-equivalent). With permissi
 permission and owner changes reach the real file or folder while the private backing never changes, and that a permission change
 gives a standard user no way to put unapproved bytes into the protected folder:
   1. the actor holds a version of existing.txt in progress (CPF bytes in its private stage);
-  2. the administrator grants Users full control on the real existing.txt and read on the folder: both succeed, the real ACLs
-     change, and the private stage directory and every stage file keep their exact security descriptors;
+  2. the administrator grants Users full control on the real existing.txt and read on the folder: both succeed and the real ACLs
+     change, while the private stage file stays closed to them (its security can be neither read nor changed) and the private
+     stage directory keeps its exact security descriptor;
   3. the held version is blocked and handed back; the public file keeps its approved bytes;
   4. the actor, now with full control of existing.txt, grants Everyone full control on it (Windows allows it), then writes CPF:
      blocked and handed back, never public;
@@ -41,10 +42,14 @@ function Read-Public([string]$Path) {
 }
 function Same([byte[]]$A, [byte[]]$B) { if ($null -eq $A -or $null -eq $B -or $A.Length -ne $B.Length) { return $false }; for ($i = 0; $i -lt $A.Length; ++$i) { if ($A[$i] -ne $B[$i]) { return $false } }; $true }
 function Get-Sddl([string]$Path) { (Get-Acl -LiteralPath $Path).Sddl }
-function Get-PrivateAcls {
-    $map = [ordered]@{ '.' = Get-Sddl $stageDir }
-    foreach ($f in Get-ChildItem -LiteralPath $stageDir -Force -ErrorAction SilentlyContinue) { $map[$f.Name] = Get-Sddl $f.FullName }
-    $map
+# The driver refuses every non-service open inside the private staging folder, SYSTEM's included, so a stage file's security can
+# be neither read nor changed from here: that refusal is what is checked. The folder itself (opened without a trailing component)
+# stays readable, and its descriptor must not change.
+function Get-StageFiles { @(Get-ChildItem -LiteralPath $stageDir -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) }
+function Test-StageAclClosed([string]$Path) {
+    $read = try { $null = Get-Acl -LiteralPath $Path; 'readable' } catch { 'refused' }
+    $out = (& icacls.exe $Path /grant '*S-1-1-0:(F)' 2>&1 | Out-String)
+    [ordered]@{ Path = $Path; Read = $read; GrantExit = $LASTEXITCODE; Grant = ($out -replace '\s+', ' ') }
 }
 $script:n = 0
 function Invoke-Actor([string]$Op, [string]$Path, [byte[]]$Bytes, [string[]]$Arguments) {
@@ -91,19 +96,20 @@ try {
     $clean = [Text.Encoding]::ASCII.GetBytes("T10 clean final " + [guid]::NewGuid().ToString('N').Replace('0','g').Replace('1','h').Replace('2','i').Replace('3','j').Replace('4','k').Replace('5','l').Replace('6','m').Replace('7','n').Replace('8','o').Replace('9','p') + "`r`n")
 
     # 1-2: a version in progress, then the administrator changes the real file's and the folder's permissions.
-    $privateBefore = Get-PrivateAcls
+    $dirBefore = Get-Sddl $stageDir
+    $filesBefore = Get-StageFiles
     $before = @(Get-ChildItem -LiteralPath $handback -Filter '*.txt' -File -Force -ErrorAction SilentlyContinue).Count
     $ack = Invoke-Actor 'hold' $file $cpf1 $null
     Check 'T10VersionHeld' ($ack -eq 'ok') ('actor holds a staged version: ' + $ack)
-    $privateHeld = Get-PrivateAcls
-    Check 'T10StageFilePresent' ($privateHeld.Count -gt $privateBefore.Count) ("stage entries $($privateBefore.Count) -> $($privateHeld.Count)")
+    $newStages = @(Get-StageFiles | Where-Object { $filesBefore -notcontains $_ })
+    Check 'T10StageFilePresent' ($newStages.Count -ge 1) ("new stage files: " + ($newStages -join ', '))
     $fileOut = (& icacls.exe $file /grant '*S-1-5-32-545:(F)' 2>&1 | Out-String); $fileExit = $LASTEXITCODE
     $dirOut = (& icacls.exe $root /grant '*S-1-5-32-545:(OI)(CI)(RX)' 2>&1 | Out-String); $dirExit = $LASTEXITCODE
     Check 'T10AdminFileAclChanged' ($fileExit -eq 0 -and (Get-Sddl $file) -match '\(A;[^)]*;FA;;;BU\)') ("icacls exit $fileExit; " + ($fileOut -replace '\s+', ' '))
     Check 'T10AdminFolderAclChanged' ($dirExit -eq 0) ("icacls exit $dirExit; " + ($dirOut -replace '\s+', ' '))
-    $privateAfter = Get-PrivateAcls
-    $changed = @($privateHeld.Keys | Where-Object { $privateAfter.Contains($_) -and $privateAfter[$_] -ne $privateHeld[$_] })
-    Check 'T10PrivateBackingAclUnchanged' ($changed.Count -eq 0 -and $privateAfter.Count -ge $privateHeld.Count) ('changed: ' + ($changed -join ', '))
+    $probes = @($newStages | ForEach-Object { Test-StageAclClosed $_ })
+    $result.StageProbes = $probes
+    Check 'T10PrivateBackingClosedToSecurityChanges' ($probes.Count -ge 1 -and @($probes | Where-Object { $_.Read -ne 'refused' -or $_.GrantExit -eq 0 }).Count -eq 0) ('an administrator-equivalent can neither read nor change a stage file''s security: ' + (($probes | ForEach-Object { $_.Read + '/' + $_.GrantExit }) -join ', '))
 
     # 3: the held CPF version is blocked; the public file keeps its approved bytes.
     $ack = Invoke-Actor 'release' $file $null $null
@@ -130,8 +136,7 @@ try {
     $result.AclAfterPublication = Get-Sddl $file
     $result.AdminAceSurvivedPublication = $result.AclAfterPublication -match '\(A;[^)]*;FA;;;BU\)'
     Start-Sleep -Seconds 5
-    $privateEnd = Get-PrivateAcls
-    Check 'T10PrivateDirectoryAclUnchanged' ($privateEnd['.'] -eq $privateBefore['.']) 'the private stage directory keeps its security descriptor'
+    Check 'T10PrivateDirectoryAclUnchanged' ((Get-Sddl $stageDir) -eq $dirBefore) 'the private stage directory keeps its security descriptor'
     $stop = Join-Path $control 'stop.part'; [IO.File]::WriteAllText($stop, '{"Op":"stop"}'); [IO.File]::Move($stop, (Join-Path $control 'cmd-stop.json'))
 } catch {
     $result.Error = $_.Exception.Message
