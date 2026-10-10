@@ -250,6 +250,14 @@ The stopped 33 C01-C04/B01/B02/X01 component queue (`m2t4rv`, `m2t4ro`, `m2t4rb`
 10,000-cycle assertion and independent disk teardown passes. These component rows are not the final M2 milestone gate.
 Decision-level receipt: [T4 telemetry correction](evidence/2026-10-10/m2-t4-telemetry-status.json).
 
+**Update 2026-10-10 evening (Claude, after the Codex session was paused).** The short 256-cycle runs cannot pass the pool-flat check by
+construction: the harness measures the slope from cycle `min(1000, cycles/4)`, which for 256 cycles is inside warm-up, and `m2t4prune1`'s
+samples (166 k -> 132 k -> 102 k after idle) are a bounded cache, not growth. Decision: go straight to the required 10,000-cycle run. The
+"Verifier before the first load" setup (load with `fltmc` after boot) can never reach Ready: a filter attached after boot cannot prove that
+no writer predates it (`m2t4pre10k1`: READY=False, no cycle ran). `Invoke-StageCycles.sh` gains `verifier-from-boot`: Verifier 0x13B
+configured persistently before the install reboot, so pool tracking covers the driver from DriverEntry and Ready comes through the normal
+boot path (`9c90a835`, `d9d0c5d3`). The 10,000-cycle run is queued on `m2-driver5-t11` (T6 + T10 + T11 on `60fecdbc`).
+
 ### T5. Notepad Save As
 
 **Problem.** Save As to `C:\Protected\ok.txt` published a 0-byte, SYSTEM-owned file (journal: State 5, SHA-256 of empty input) and Notepad
@@ -263,6 +271,13 @@ recorded Notepad sequence.
 
 **Done when** Save As of clean content publishes that content, Save As of CPF content hands it back, no empty version is published, and
 the new row passes in all three modes.
+
+**Status 2026-10-10.** Diagnostic row `driver/scripts/Invoke-StageNotepad.sh` (`b7ed2eb5`): a standard user signs in interactively
+(one-boot autologon on the run disk); the common file dialog's test create is replayed natively (CREATE_NEW + close + DeleteFile, and
+FILE_FLAG_DELETE_ON_CLOSE) before the save, then real Notepad Save As is driven with UI Automation, clean and CPF, recording public bytes,
+owner, journal entries and the deny ring. Working hypothesis: unless `OFN_NOTESTFILECREATE` is set the dialog creates the target and
+deletes it; under staging that empty test version is sealed, approved and published (the SYSTEM-owned 0-byte file) and Notepad's save
+then meets that version. First run queued (`m2t5rv2`); the fix follows its trace.
 
 ### T6. Moves into a protected folder are inspected like copies
 
@@ -286,6 +301,16 @@ path (Explorer then copies the tree).
 
 **Done when** Explorer drag, `Move-Item`, `cmd move` and `MoveFileEx` of a clean file end with it published and the source removed; the same
 with a CPF file ends with it handed back; C05 is rewritten from "refused" to "inspected", and no move publishes uninspected bytes (observer).
+
+**Status 2026-10-10.** Approach 1 implemented: `baec933f` answers a rename or hard link from outside every protected scope into one with
+STATUS_NOT_SAME_DEVICE (renames by the service and renames whose source is inside or above a scope keep ACCESS_DENIED). C05 revision 6
+expects Win32 17. Row `driver/scripts/Invoke-StageMoves.sh` (`9c90a835`, `d54aadae`): `m2t6rv4` (runtime Verifier, `m2-driver4-t10`)
+passes 28/28: `MoveFileEx(COPY_ALLOWED)`, `Move-Item`, `cmd move` and the Explorer copy engine (Shell.Application `MoveHere`), clean
+and CPF, three rounds each: clean bytes published exactly, CPF handed back and never public, source removed; raw rename and hard link
+fail with Win32 17 and change nothing. The fallback copy is an ordinary staged create and write, whose raw-volume no-leak proof is the
+C01 rows'. Known limit: a whole folder moved by Explorer is not created inside the protected folder (staging does not create
+directories there); the source folder stays intact. Remaining: ordinary and boot-Verifier modes; Explorer drag by hand (the copy engine
+is the same one `MoveHere` uses).
 
 ### T7. Reads are never refused
 
@@ -415,6 +440,11 @@ justification with unchanged digest/SID/session requirements. Feature `m2-t9-pdf
 Luna's scoped review passes without findings. This qualifies the detected raster cases, not every inline image/Form XObject
 encoding, OCR, full-format coverage or raw-volume publication. Receipt: `m2-t9-pdf-coverage-qualified-source.json`.
 
+Numeric scanner scratch space `77f9a4d3` (Codex, Luna-reviewed) keeps a small window instead of every digit position, with rule
+precedence unchanged against a reference copy of the old scanner. Its allocation test used a run of zeros, which is a correct payment-card
+match (every 13-19 digit window of zeros passes Luhn); `0ea835ae` uses ones. Gates `m2-t9-numwin3` / `numwin4` pass 729/729 feature and
+665/665 normal tests at zero warnings. Open product question for the owner: whether an all-zero number should count as a card.
+
 ### T10. Permission and owner changes reach the real file or folder
 
 **Problem.** With the driver loaded nobody, administrators included, can change the permissions of the protected folder or its files
@@ -430,6 +460,15 @@ for administrators only, as Windows does.
 private backing's ACL never changes, and a standard user still cannot get unapproved bytes into the folder through a permission change
 (suite row with the observer).
 
+**Status 2026-10-10.** `771a551b`: WRITE_DAC and WRITE_OWNER are no longer writer access (staged-create and directory admission, the
+writer registry, the legacy create gate), so a security-only open reaches the real file or folder, and IRP_MJ_SET_SECURITY on such a
+handle passes; the I/O manager's check of the handle's rights decides. Staged handles still never get those rights, and non-service opens
+inside the private staging folder stay refused, so the private backing cannot change. Row `driver/scripts/Invoke-StagePermissions.sh`
+(`b1ee2037`, `c71215a1`). `m2t10rv2` phase A passed every administrator change on the protected file and folder (icacls grant,
+/setowner, takeown, Set-Acl, folder grant and /reset with /T); phase B (standard user cannot publish CPF through a permission change,
+Windows refuses the user's folder ACL change, private stage closed to security changes) reruns as `m2t10rv5`. Recorded for T8: a
+publication replaces the destination with the stage file, so ACL changes made on the old destination do not carry over yet.
+
 ### T11. Review conditions
 
 Small, independent fixes from the Phase 5 and gen4b reviews:
@@ -444,6 +483,13 @@ Small, independent fixes from the Phase 5 and gen4b reviews:
   eviction, and add journal compaction so it stops growing.
 
 **Done when** each item has its own commit with a test or a suite row, and the M2 review closes them.
+
+**Kernel items 2026-10-10.** `203d31e9`: the sealed-stage delete-pending query no longer runs from a create nested inside another
+file-system call (retryable sharing violation instead). `b8394357`: the policy generation stays a 32-bit serial number (protocol and agent
+are 32-bit and compare for equality); the activation stamp's ordered comparison uses serial-number arithmetic, one function defines the
+next commit's value for commit and apply, 0 still means "no policy", and the first commit starts at 0x7FFFFFFF so every VM row crosses
+the old signed limit (the "test near the old limit"). Build `m2-driver5-t11`: four configurations 0/0. Open: SOP-lifetime start-up probe,
+retiring changed-SOP entries (a registry lifetime change: Luna review before its first boot), journal compaction.
 
 **Partial implementation 2026-10-10:** journal cache eviction is implemented in its own commit `cb1d0930`. At capacity it
 evicts one most-recently-used scan entry, preserving the rest across full sequential scans. Production capacity remains
