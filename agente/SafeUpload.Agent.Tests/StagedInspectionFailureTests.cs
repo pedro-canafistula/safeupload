@@ -27,7 +27,10 @@ public sealed class StagedInspectionFailureTests : IDisposable
     {
         var policy = LocalPolicyStore.CreateDefault() with
         {
-            Version = 7, MaxFileSizeMb = 1, InspectionTimeoutSeconds = 1, OverrideAllowed = true
+            Version = 7, MaxFileSizeMb = 1,
+            // Only the timeout fixture has a one-second policy. Other cases
+            // test their own failure reason under the normal five-second policy.
+            InspectionTimeoutSeconds = failure == "timeout" ? 1 : 5, OverrideAllowed = true
         };
         using var release = new CancellationTokenSource();
         var registry = failure switch

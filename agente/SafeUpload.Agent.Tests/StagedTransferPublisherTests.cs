@@ -638,7 +638,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         await store.LoadAsync(CancellationToken.None);
         var policy = JsonNode.Parse(await File.ReadAllTextAsync(_workspace.PolicyFile))!;
         policy["maxFileSizeMb"] = 1;
-        policy["inspectionTimeoutSeconds"] = 1;
+        policy["inspectionTimeoutSeconds"] = failure == "timeout" ? 1 : 5;
         policy["overrideAllowed"] = overrideAllowed;
         await File.WriteAllTextAsync(_workspace.PolicyFile, policy.ToJsonString());
         var paused = new PausingExtractor();
