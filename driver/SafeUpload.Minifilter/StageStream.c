@@ -3674,6 +3674,8 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     BOOLEAN quarantineRefused = FALSE;
     BOOLEAN unresolved = TRUE;
     BOOLEAN destinationProtected = FALSE;
+    BOOLEAN sourceProtected = TRUE;
+    BOOLEAN publication = FALSE;
     BOOLEAN linkOperation = cls == FileLinkInformation || cls == FileLinkInformationEx;
     NTSTATUS status;
     if (RegistryRenameContext != NULL) *RegistryRenameContext = NULL;
@@ -3694,15 +3696,14 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     if (!NT_SUCCESS(status)) goto Complete;
     status = FltParseFileNameInformation(destination);
     if (!NT_SUCCESS(status)) goto Complete;
-    allow = TrackedWriter || (!SafeUploadStageTouchesProtectedNamespace(source, kind) &&
-        !SafeUploadStageTouchesProtectedNamespace(destination, kind) &&
-        !SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &source->Name, TRUE) &&
-        !SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &destination->Name, TRUE));
+    sourceProtected = SafeUploadStageTouchesProtectedNamespace(source, kind) ||
+        SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &source->Name, TRUE);
+    destinationProtected = SafeUploadStageTouchesProtectedNamespace(destination, kind) ||
+        SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &destination->Name, TRUE);
+    allow = TrackedWriter || (!sourceProtected && !destinationProtected);
     /* A pre-existing tracked handle does not authorize adding a fresh name
      * under a current or pending protected destination. Refuse before the
      * filesystem can publish the new link or rename. */
-    destinationProtected = SafeUploadStageTouchesProtectedNamespace(destination, kind) ||
-        SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &destination->Name, TRUE);
     if (destinationProtected) {
         allow = FALSE;
         unresolved = FALSE;
@@ -3723,6 +3724,7 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
         SafeUploadIsAuthenticatedClient() &&
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId &&
         (cls == FileRenameInformation || cls == FileRenameInformationEx)) {
+        publication = TRUE;
         allow = SafeUploadPublicationRename(Objects->Volume, &source->Name, &destination->Name,
             &quarantineRefused);
     }
@@ -3752,7 +3754,12 @@ Complete:
     if (!allow && unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance))
         allow = TRUE;
     if (allow) return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    Data->IoStatus.Status = quarantineRefused ? STATUS_SHARING_VIOLATION : STATUS_ACCESS_DENIED;
+    /* T6 (owner decision 2026-10-08): moves into a protected folder are inspected like copies. A rename or hard link
+     * from outside every protected scope into one is answered the way Windows answers a move to another volume, so
+     * callers that allow that (MoveFileEx with MOVEFILE_COPY_ALLOWED, the Explorer copy engine) copy the file instead,
+     * through staging and inspection like any copy. The rename itself still never reaches the file system. */
+    Data->IoStatus.Status = quarantineRefused ? STATUS_SHARING_VIOLATION :
+        (destinationProtected && !sourceProtected && !publication) ? STATUS_NOT_SAME_DEVICE : STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
     return FLT_PREOP_COMPLETE;
 }

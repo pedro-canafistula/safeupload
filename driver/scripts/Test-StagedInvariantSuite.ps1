@@ -466,13 +466,14 @@ function Test-ReclaimWorkerIdle([int]$Seconds=15,[double]$MaxPassesPerSecond=100
 }
 
 function Test-C05DenyRingRecord($Ring,[int]$ActorPid,[string]$TargetLeaf) {
-    # The exact refusal of the external rename: a SET_INFORMATION completed STATUS_ACCESS_DENIED for the actor process
-    # whose rename-target name ends with the protected target's name.
+    # The exact refusal of the external rename: a SET_INFORMATION completed STATUS_NOT_SAME_DEVICE (T6: moves into a
+    # protected folder fall back to an inspected copy) for the actor process whose rename-target name ends with the
+    # protected target's name.
     if($Ring.Status -cne 'OK'){return @{Name='C05DenialLedger';Verdict='INCONCLUSIVE';Reason=('Driver deny ring unavailable through the service diagnostics pipe: '+$Ring.Error)}}
-    $hit=@($Ring.Records | Where-Object {$_.processId -eq $ActorPid -and $_.major -ceq 'SET_INFORMATION' -and $_.status -ceq '0xC0000022' -and
+    $hit=@($Ring.Records | Where-Object {$_.processId -eq $ActorPid -and $_.major -ceq 'SET_INFORMATION' -and $_.status -ceq '0xC00000D4' -and
         $null -ne $_.name -and $_.name.EndsWith($TargetLeaf,[StringComparison]::OrdinalIgnoreCase) -and @($_.flags) -contains 'nameIsRenameTarget'})
     if($hit.Count){return @{Name='C05DenialLedger';Verdict='PASS';Reason=('Driver deny ring recorded the denied rename: sequence '+$hit[0].sequence+', status '+$hit[0].status+', site '+$hit[0].siteOffset+', target '+$hit[0].name+'; records read='+$Ring.Records.Count)}}
-    return @{Name='C05DenialLedger';Verdict='FAIL';Reason=('Driver deny ring is readable but holds no STATUS_ACCESS_DENIED SET_INFORMATION record for pid '+$ActorPid+' with target '+$TargetLeaf+'; gap='+$Ring.Gap)}
+    return @{Name='C05DenialLedger';Verdict='FAIL';Reason=('Driver deny ring is readable but holds no STATUS_NOT_SAME_DEVICE SET_INFORMATION record for pid '+$ActorPid+' with target '+$TargetLeaf+'; gap='+$Ring.Gap)}
 }
 
 function Get-BootPolicyReadback {
@@ -2880,14 +2881,14 @@ function Test-CachedActorCalls($Calls,[string]$Kind,[long]$ReadyQpc,[long]$Close
         'external-rename' {'writer-open';'rename-ex';'close'}
         default {'writer-open';'cached-write';'flush';'close'}
     })
-    $assertions=@();$bad=@($Calls | Where-Object {$want=if($Kind -ceq 'external-rename' -and $_.Class -ceq 'rename-ex'){5}else{0};$null -ne $_.NativeCode -and $_.NativeCode -ne $want})
+    $assertions=@();$bad=@($Calls | Where-Object {$want=if($Kind -ceq 'external-rename' -and $_.Class -ceq 'rename-ex'){17}else{0};$null -ne $_.NativeCode -and $_.NativeCode -ne $want})
     $complete=@($Calls).Count -eq $expected.Count -and -not @($Calls | Where-Object {$null -eq $_.NativeCode -or $null -eq $_.StartQpc -or $null -eq $_.EndQpc}).Count
     $ordered=($Calls.Class -join ',') -ceq ($expected -join ',');$previous=$ReadyQpc
     foreach($call in $Calls){if($call.StartQpc -lt $previous -or $call.EndQpc -lt $call.StartQpc){$ordered=$false};$previous=$call.EndQpc}
     $release=@($Calls | Where-Object {$_.Class -cin @('close','unmap-view','close-section')})
     if(@($release | Where-Object StartQpc -lt $CloseQpc).Count){$ordered=$false}
     $assertions+=@{Name='ExactNativeStatus';Verdict=$(if($bad.Count){'FAIL'}elseif(-not $complete){'INCONCLUSIVE'}elseif(-not $ordered){'FAIL'}else{'PASS'});
-        Reason=('Required ordered calls='+($expected -join ',')+'; external rename alone requires Win32:5, all other calls Win32:0; missing receipt fields='+(-not $complete)+'; readiness/release QPC order='+$ordered);Calls=$Calls}
+        Reason=('Required ordered calls='+($expected -join ',')+'; external rename alone requires Win32:17 (ERROR_NOT_SAME_DEVICE), all other calls Win32:0; missing receipt fields='+(-not $complete)+'; readiness/release QPC order='+$ordered);Calls=$Calls}
     return ,$assertions
 }
 function Get-CachedBlockTiming($Entry,[DateTimeOffset]$NowUtc,[long]$StartQpc,[long]$Frequency) {
@@ -3466,7 +3467,7 @@ function Invoke-DedicatedDeniedRenameLatencyObservation($Trial,$Actor,$Context,$
         if($receipt.Trial -ne $round -or $receipt.Held -ne $false -or $receipt.Target -cne $target -or $receipt.OpenPath -cne $source -or $receipt.WriterKind -cne 'external-rename' -or
             ($receipt.Calls.Class -join ',') -cne 'writer-open,rename-ex,close'){throw 'C05 dedicated native sequence/paths/round mismatch'}
         foreach($call in $receipt.Calls){
-            $expectedCode=if($call.Class -ceq 'rename-ex'){5}else{0}
+            $expectedCode=if($call.Class -ceq 'rename-ex'){17}else{0}
             if($call.NativeCode -ne $expectedCode -or $call.Trial -ne $round -or $call.Cold -ne ($round -eq 0) -or $call.StartQpc -lt $previous -or $call.EndQpc -lt $call.StartQpc -or $call.EndQpc -gt $receipt.Qpc){throw 'C05 dedicated native status or QPC ordering mismatch'}
             $previous=$call.EndQpc
         }
@@ -3761,7 +3762,7 @@ function Invoke-CachedObservation {
             $trial.Assertions+=@{Name='C05NoAnyNewTransfer';Verdict=$(if($delta.NewEntries.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason=('Physical external source and denied target rename must create no transfer anywhere in the authenticated journal window; new entries='+$delta.NewEntries.Count+'; '+(@($delta.Failures)+@($delta.Findings) -join '; '))}
             if($null -ne $trial.C05DenialLedger -and $trial.C05DenialLedger.Verdict -ceq 'PASS'){$trial.Assertions+=$trial.C05DenialLedger}
             else{
-                $trial.Assertions+=@{Name='C05DenialLedger';Verdict=$(if($null -ne $trial.C05DenialLedger -and $trial.C05DenialLedger.Verdict -ceq 'FAIL'){'FAIL'}else{'INCONCLUSIVE'});Reason=('Win32:5 is recorded on the exact native rename with a successful physical source open/read; '+$(if($null -ne $trial.C05DenialLedger){$trial.C05DenialLedger.Reason}else{'driver deny ring not queried'}))}
+                $trial.Assertions+=@{Name='C05DenialLedger';Verdict=$(if($null -ne $trial.C05DenialLedger -and $trial.C05DenialLedger.Verdict -ceq 'FAIL'){'FAIL'}else{'INCONCLUSIVE'});Reason=('Win32:17 is recorded on the exact native rename with a successful physical source open/read; '+$(if($null -ne $trial.C05DenialLedger){$trial.C05DenialLedger.Reason}else{'driver deny ring not queried'}))}
             }
         }elseif($CaseId -ceq 'B01'){
             $trial.Assertions+=Test-B01FailureNotification $proof $terminal.TransferId $actor.SessionId $digest
