@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Security;
+using SafeUpload.Agent.Network.Bypass;
 using SafeUpload.Agent.Network.Certificates;
 
 namespace SafeUpload.Agent.Network.Proxy;
@@ -22,11 +23,23 @@ public sealed record TlsInspectionProxyOptions
     public int MaxInspectableBodyBytes { get; init; } = 64 * 1024 * 1024;
 
     /// <summary>
-    /// Decide, pelo host do CONNECT, se a conexão é interceptada (verdadeiro)
-    /// ou passa por túnel cego (falso). É aqui que entram as exceções da
-    /// Fase 4: bancos, saúde, governo e apps com pinning.
+    /// Regra livre, pelo host do CONNECT: interceptar (verdadeiro) ou passar
+    /// por túnel cego (falso). Vale antes das exceções abaixo. Os testes usam
+    /// para forçar o túnel; o serviço usa <see cref="Exceptions"/>.
     /// </summary>
     public Func<string, bool> ShouldIntercept { get; init; } = _ => true;
+
+    /// <summary>
+    /// Exceções da Fase 4: domínios que passam por túnel, sem interceptação
+    /// (bancos, saúde, governo e o que a configuração acrescentar).
+    /// </summary>
+    public InterceptionExceptions Exceptions { get; init; } = InterceptionExceptions.None;
+
+    /// <summary>
+    /// Detecção automática de pinning: o programa que recusa repetidamente o
+    /// certificado de um host passa a ir por túnel para ele. Nulo desliga.
+    /// </summary>
+    public PinningDetector? PinningDetector { get; init; }
 
     /// <summary>
     /// Validação do certificado do servidor de verdade. Nulo é a validação

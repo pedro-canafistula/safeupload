@@ -156,6 +156,15 @@ segue direto; serviço morto à força libera o Edge). Limitações:
 - Depois, se necessário: base comercial de categorização (Zvelo, BrightCloud)
   ou lista aberta (UT1).
 
+Estado: implementada com as listas na configuração local
+(`InspecaoTls:Excecoes`) e testada na VM. Categorias iniciais: bancos, saúde e
+governo. A detecção de pinning aprende por **programa + host**, depois de duas
+recusas seguidas, e expira em 24 h. Ficaram para depois: edição pelo painel e
+envio com a política, exceção fixa por processo (só importa quando o desvio
+cobrir mais do que os navegadores) e o registro na auditoria, que depende do
+canal web das Fases 5 e 6. Detalhes em
+[ARQUITETURA-INSPECAO-TLS.md](ARQUITETURA-INSPECAO-TLS.md), seção 4.5.
+
 ### Fase 5 — Inspeção de upload
 
 - `multipart/form-data`: arquivos vão para o `ExtractorRegistry` pela extensão

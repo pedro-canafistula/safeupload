@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
+using SafeUpload.Agent.Network.Bypass;
 using SafeUpload.Agent.Network.Certificates;
 using SafeUpload.Agent.Network.Diversion;
 using SafeUpload.Agent.Network.Proxy;
@@ -24,6 +25,11 @@ namespace SafeUpload.Agent.Service.Network;
 /// <c>desvio remove</c> (ver <see cref="DiversionCommand"/>). O desvio pode ser
 /// desligado com <c>"InspecaoTls": { "DesviarNavegadores": false }</c>, e aí o
 /// navegador precisa ser apontado para o proxy à mão.
+///
+/// As exceções da Fase 4 também saem da configuração, em
+/// <c>"InspecaoTls": { "Excecoes": ... }</c>: as categorias iniciais (bancos,
+/// saúde, governo) ligadas ou desligadas, domínios acrescentados à mão e a
+/// detecção de pinning. Ver <see cref="LoadExceptions"/>.
 /// </summary>
 public sealed class TlsInspectionService(
     IConfiguration configuration,
@@ -50,6 +56,10 @@ public sealed class TlsInspectionService(
 
         _certificates = new HostCertificateFactory(_authority, revocationList);
 
+        InterceptionExceptions exceptions = LoadExceptions();
+        bool detectPinning = !string.Equals(
+            configuration["InspecaoTls:Excecoes:DetectarPinning"], "false", StringComparison.OrdinalIgnoreCase);
+
         _proxy = new TlsInspectionProxy(
             _certificates,
             new LoggingInspector(logger),
@@ -57,11 +67,25 @@ public sealed class TlsInspectionService(
             {
                 Listen = new IPEndPoint(IPAddress.Loopback, port),
                 RevocationList = revocationList,
+                Exceptions = exceptions,
+                PinningDetector = detectPinning ? new PinningDetector() : null,
             },
             proxyLogger);
 
         _proxy.Start();
         logger.LogInformation("Inspeção TLS ativa com a CA {Thumbprint}.", _authority.Thumbprint);
+        logger.LogInformation(
+            "Exceções de inspeção (túnel, sem leitura): {Categories}. Detecção de pinning {Pinning}.",
+            exceptions.Count == 0
+                ? "nenhuma"
+                : string.Join(", ", exceptions.CountByCategory().Select(pair => $"{pair.Key} ({pair.Value} domínios)")),
+            detectPinning ? "ligada" : "desligada");
+
+        if (exceptions.Ignored.Count > 0)
+        {
+            logger.LogWarning(
+                "Entradas de exceção descartadas por não serem um domínio: {Entries}.", string.Join(", ", exceptions.Ignored));
+        }
 
         // O desvio só depois do proxy no ar: apontar os navegadores para um
         // proxy que ainda não escuta é deixá-los sem internet.
@@ -112,6 +136,39 @@ public sealed class TlsInspectionService(
 
         _certificates?.Dispose();
         _authority?.Dispose();
+    }
+
+    /// <summary>
+    /// Monta as exceções: as categorias iniciais que a configuração não
+    /// desligou, mais os domínios de <c>InspecaoTls:Excecoes:Dominios</c>.
+    ///
+    /// As categorias são chaves com verdadeiro ou falso, e não uma lista,
+    /// porque a configuração do .NET junta listas de arquivos diferentes pela
+    /// posição: não haveria como um arquivo tirar um item que outro pôs.
+    /// </summary>
+    private InterceptionExceptions LoadExceptions()
+    {
+        var categories = new List<KeyValuePair<string, IEnumerable<string>>>();
+
+        foreach ((string category, string[] domains) in DefaultExceptionLists.Categories)
+        {
+            if (!string.Equals(
+                    configuration[$"InspecaoTls:Excecoes:Categorias:{category}"], "false", StringComparison.OrdinalIgnoreCase))
+            {
+                categories.Add(new(category, domains));
+            }
+        }
+
+        string[] configured =
+        [
+            .. configuration.GetSection("InspecaoTls:Excecoes:Dominios").GetChildren()
+                .Select(entry => entry.Value)
+                .OfType<string>(),
+        ];
+
+        categories.Add(new(DefaultExceptionLists.Configured, configured));
+
+        return new InterceptionExceptions(categories);
     }
 
     /// <summary>

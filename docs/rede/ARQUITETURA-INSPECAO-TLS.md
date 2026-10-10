@@ -11,7 +11,7 @@ falta. Cada fase concluída atualiza este documento no mesmo PR.
 | 1 — CA e certificados | Concluída | #20 |
 | 2 — Núcleo do proxy | Concluída | #22 |
 | 3 — Desvio do tráfego (navegadores) | Concluída | #23 |
-| 4 — Exceções | Pendente | |
+| 4 — Exceções | Concluída (listas na configuração; painel e política ficam para depois) | |
 | 5 — Inspeção de upload | Pendente: o proxy vê tudo, mas ainda libera tudo | |
 | 6 — Decisão, aviso e auditoria | Pendente | |
 | 7 — Qualificação | Pendente | |
@@ -95,6 +95,9 @@ Projeto `agente/SafeUpload.Agent.Network` (net10.0-windows):
 | `Proxy/IUploadInspector` | 2 | Ponto de decisão: recebe a requisição com corpo e responde libera/bloqueia. |
 | `Proxy/TcpConnectionOwner` | 2 | Descobre o processo (msedge, chrome...) dono de cada conexão. |
 | `Proxy/PrefixedStream` | 2 | Entrega ao TLS os bytes que chegaram junto com o CONNECT. |
+| `Bypass/InterceptionExceptions` | 4 | Domínios que passam por túnel, com casamento por sufixo no limite do rótulo. |
+| `Bypass/DefaultExceptionLists` | 4 | Listas iniciais por categoria: bancos, saúde e governo. |
+| `Bypass/PinningDetector` | 4 | Aprende os pares programa + host que recusam o certificado de inspeção e os manda para o túnel. |
 | `Diversion/BrowserProxyPolicies` | 3 | Políticas de proxy de Chrome, Edge e Firefox, e QUIC desligado. |
 | `Diversion/BrowserEgressFilter`, `Diversion/WfpNative` | 3 | Filtros da WFP que impedem os navegadores de sair direto. |
 
@@ -179,7 +182,39 @@ acontece no navegador, a v1 desvia **só os navegadores**.
 | **Transação** | Ou entram todos os filtros, ou nenhum. |
 | **Ordem: proxy no ar, depois desvio; ao parar, o inverso** | Apontar o navegador para um proxy que ainda não escuta é deixá-lo sem internet. |
 
-### 4.5 Como o mercado faz, e onde este desenho se encaixa
+### 4.5 Exceções (Fase 4)
+
+Para um host em exceção o proxy não troca o certificado: responde ao `CONNECT`,
+conecta no servidor e copia bytes nos dois sentidos. O navegador faz o TLS
+direto com o site e vê o certificado verdadeiro. O proxy só fica sabendo o nome
+do host e o volume de bytes.
+
+A decisão é tomada no `CONNECT`, que é o único momento em que o destino aparece
+em texto claro, nesta ordem (`TlsInspectionProxy.TunnelReason`):
+
+1. regra livre das opções (`ShouldIntercept`, usada pelos testes);
+2. lista de exceções (`InterceptionExceptions.Match`);
+3. pinning aprendido para aquele programa e host (`PinningDetector.IsPinned`).
+
+| Decisão | Por quê |
+|---|---|
+| **Casamento por sufixo, no limite do rótulo** | `bb.com.br` cobre `www2.bb.com.br`, mas não `fakebb.com.br`. A busca corta o nome sempre num ponto (`a.b.com.br` → `b.com.br` → `com.br`), então um domínio que só termina com as mesmas letras não ganha túnel. |
+| **Nomes normalizados** | Minúsculas, sem `*.` na frente, sem ponto final e em punycode. Endereço IP nunca casa. Entrada que não é domínio (URL, IP) é descartada e relatada no log de subida. |
+| **Categorias iniciais no código, ligadas por chave** | Bancos, saúde e governo (`gov.br`, `jus.br`, `leg.br`, `mp.br`, `def.br`, `mil.br`). São chaves verdadeiro/falso, e não uma lista, porque a configuração do .NET junta listas de arquivos diferentes pela posição, e um arquivo não conseguiria tirar um item que outro pôs. |
+| **Domínios extras pela configuração** | `InspecaoTls:Excecoes:Dominios`. A edição pelo painel web e o envio com a política ficam para depois (L16). |
+| **Pinning aprendido por programa + host** | Se a chave fosse só o host, qualquer programa que recusasse o certificado de propósito tiraria aquele site da inspeção para a máquina inteira, navegador incluído. |
+| **Duas recusas seguidas, em até 10 minutos** | Aba fechada no meio da conexão também derruba um handshake. Uma requisição que chega zera a contagem; só a recusa repetida, sem nenhum uso no meio, indica pinning. |
+| **Dois jeitos de recusar** | Alguns programas validam o certificado durante o handshake e o abortam. Outros (OkHttp, .NET) concluem o handshake, validam depois e fecham sem mandar nada. O proxy conta os dois: o handshake que falha depois de o certificado ser apresentado, e a conexão fechada em até 3 s do handshake sem nenhuma requisição. O limite de 3 s separa isso da conexão que o navegador abre por antecipação e larga sem usar. |
+| **Falha do lado do servidor não conta** | Se o certificado do site de verdade é inválido, o certificado de inspeção nem chega a ser apresentado, e nada é registrado. |
+| **O aprendido expira em 24 h e fica só em memória** | Uma falha passageira não tira o par da inspeção para sempre. Reiniciar o serviço esquece tudo; o pinning verdadeiro é reaprendido em duas conexões. |
+
+O que as exceções custam: o que vai para um host em exceção **não é
+inspecionado**. Um arquivo enviado ao site de um banco ou a um portal `gov.br`
+sai sem passar pelo motor. É a troca prevista no plano (privacidade do
+funcionário e LGPD contra cobertura), e por isso as categorias podem ser
+desligadas.
+
+### 4.6 Como o mercado faz, e onde este desenho se encaixa
 
 Comparação de modelo, a partir de material público; vale conferir na
 documentação de cada fornecedor antes de citar.
@@ -258,7 +293,12 @@ Queda do serviço sem `StopAsync` (travou, foi morto):
 "InspecaoTls": {
   "Habilitada": false,
   "Porta": 8877,
-  "DesviarNavegadores": true
+  "DesviarNavegadores": true,
+  "Excecoes": {
+    "Categorias": { "bancos": true, "saude": true, "governo": true },
+    "Dominios": [],
+    "DetectarPinning": true
+  }
 }
 ```
 
@@ -266,6 +306,9 @@ Queda do serviço sem `StopAsync` (travou, foi morto):
 |---|---|
 | `Habilitada` | Liga tudo. Desligada por padrão: ligar instala uma CA confiável na máquina, e isso tem de ser decisão explícita. |
 | `Porta` | Porta do proxy em loopback. Também entra no endereço da lista de revogação gravado em cada certificado. |
+| `Excecoes:Categorias:<nome>` | `false` desliga a lista inicial daquela categoria (`bancos`, `saude`, `governo`), que volta a ser interceptada. |
+| `Excecoes:Dominios` | Domínios acrescentados às exceções. Cada um cobre também os subdomínios. |
+| `Excecoes:DetectarPinning` | `false` desliga o aprendizado automático de pinning. |
 | `DesviarNavegadores` | `false` sobe só o proxy; o navegador precisa ser apontado à mão (`msedge --proxy-server=http://127.0.0.1:8877`). |
 
 Comandos (terminal de administrador):
@@ -290,6 +333,11 @@ Diagnóstico rápido:
   "SafeUpload - inspeção web".
 - Log do serviço: "Proxy de inspeção TLS escutando", "Navegadores desviados" e,
   para cada envio, "Envio visto: POST <site><caminho> (<bytes>) por <processo>".
+- Exceções: na subida, "Exceções de inspeção (túnel, sem leitura): bancos (26
+  domínios), ...". Com o log do proxy em `Debug`, cada túnel aparece como
+  "Túnel sem interceptação para <host> (exceção: <categoria>)". Pinning
+  aprendido sai como aviso: "<programa> recusou repetidamente o certificado de
+  inspeção para <host>".
 
 ---
 
@@ -302,6 +350,8 @@ Os testes ficam em `agente/SafeUpload.Agent.Tests`. Todos rodam no Windows.
 | `CertificateAuthorityTests` | CA com restrições corretas, reaproveitada, chave não exportável, remoção; certificado de site com SAN e cadeia corretos, IP, cache e concorrência; **handshake TLS real** com o certificado emitido. |
 | `HttpStreamReaderTests` | Corpo por tamanho e em pedaços, keep-alive, mensagens malformadas, limite de cabeçalho, regras de corpo de resposta (HEAD, 204, até fechar). |
 | `TlsInspectionProxyTests` | Proxy de ponta a ponta, com um site HTTPS local e `HttpClient` no papel do navegador, e duas CAs de teste ("inspeção" e "internet"): GET e POST, corpo inteiro no inspetor, **bloqueio com 403 sem o site receber nada**, corpo em pedaços, `100-continue`, keep-alive, resposta em pedaços, túnel, **certificado inválido do site derrubando a conexão**, limite de corpo, processo de origem, **verificação de revogação online do Windows** com a lista servida pelo proxy. |
+| `InterceptionExceptionsTests` | Sufixo no limite do rótulo, normalização (maiúsculas, `*.`, ponto final, punycode), entradas inválidas, listas iniciais; detector de pinning: limite, programa + host, sucesso zerando a contagem, janela e expiração. |
+| `TlsInspectionProxyTests` (Fase 4) | Host na lista passando por túnel; **cliente que recusa o certificado passando a ir por túnel**; cliente que aceita continuando interceptado; certificado ruim do site não contando como pinning. |
 | `MachineCertificateAuthorityTests` (máquina) | CA de verdade em `LocalMachine\Root`, handshake com a validação padrão do Windows, remoção. |
 | `TrafficDiversionTests` (máquina) | Políticas aplicadas e removidas; **filtro WFP bloqueando de verdade** a conexão do processo à porta 443 (`AccessDenied`) e liberando ao descartar. |
 
@@ -323,6 +373,10 @@ Testes manuais feitos na VM Windows 11 a cada fase:
 - Fase 3: Edge **sem configuração de proxy** passando pelo proxy pela política;
   com a política removida e o filtro ativo, Edge sem conexão; curl seguindo
   direto; serviço morto à força liberando o Edge.
+- Fase 4: serviço de verdade com curl pelo proxy. `example.com` interceptado
+  ("Envio visto"); `www.gov.br`, `www.bb.com.br` e um domínio acrescentado pela
+  configuração em túnel, cada um com a sua categoria no log. A detecção de
+  pinning só foi exercitada pelo teste automatizado, não com um aplicativo real.
 
 Ambiente de teste: VM Windows 11 com .NET 10 SDK, acessada por SSH. Montagem com
 a imagem `dockurr/windows` (a mesma do `omarchy-windows-vm`), com OpenSSH
@@ -339,7 +393,7 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 | # | Limitação | Impacto | Caminho proposto |
 |---|---|---|---|
 | L1 | O proxy ainda **não inspeciona**: libera tudo e só registra metadados. | Nada é bloqueado. | Fase 5: extrair multipart (inclusive `multipart/related` e base64), corpo bruto e JSON; tipo real pelo conteúdo; chamar o motor do Core. |
-| L2 | **Sem exceções** (bancos, saúde, governo, pinning). | Tudo que vem do navegador é interceptado; site com pinning falha. | Fase 4: lista por categoria/domínio/processo e detecção de pinning (handshake abortado → túnel). |
+| L2 | **Exceção é buraco na inspeção.** | O que vai para banco, saúde, governo ou host com pinning aprendido não é inspecionado. | Aceito por desenho (seção 4.5). Categorias desligáveis; pinning aprendido sai como aviso no log e deve virar evento de auditoria na Fase 6. |
 | L3 | **Desvio só dos navegadores.** | Apps que não são navegador (clientes de nuvem, Teams, Outlook) não são inspecionados. | Junto com a Fase 4: proxy do sistema (WinINET e WinHTTP) para a máquina, com exceções para o que tem pinning. Depois: driver WFP com callout de redirecionamento (captura transparente). |
 | L4 | **Navegador fora do caminho padrão** não é coberto pelo filtro. | Navegador portátil sai direto. | Identificar por assinatura do executável ou por nome do processo em vez de caminho; ou bloquear 80/443 para todos com exceções (depende de L3). |
 | L5 | **Queda do serviço deixa as políticas** apontando para o proxy fora do ar. | Navegadores sem internet até o serviço voltar. | Decisão em aberto 2: recuperação automática do serviço do Windows; ou PAC com `DIRECT` como alternativa; ou watchdog que remove as políticas. Hoje: `desvio remove`. |
@@ -352,6 +406,9 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 | L12 | **`ca remove` e `desvio remove` apagam valores** mesmo que outra pessoa os tenha gravado. | Pode desfazer política corporativa anterior. | Guardar o valor anterior ao aplicar e restaurar ao remover. |
 | L13 | **Renomear a máquina** gera uma CA nova; a antiga fica até `ca remove`. | CA órfã confiável. | Procurar CAs antigas pela chave CNG e não pelo assunto. |
 | L14 | **Comunicação aos funcionários / LGPD.** | Descriptografar tráfego pede aviso e política interna. | Decisão em aberto 3. |
+| L16 | **Exceções só na configuração local.** | Não dá para editar pelo painel nem distribuir com a política; a lista inicial é curta. | Levar as listas para a política (contrato com o painel web) e, se preciso, base de categorização (ver o plano). |
+| L17 | **Pinning aprendido não é persistido nem auditado.** | Reiniciar o serviço esquece; não há registro fora do log. | Evento de auditoria no canal web (Fases 5 e 6); persistir se o reaprendizado incomodar. |
+| L18 | **Sem exceção por processo fixa.** | O plano previa exceção por processo; hoje só existe a aprendida (programa + host). | Só passa a importar quando o desvio cobrir programas além dos navegadores (L3). |
 | L15 | **Firefox sem política de QUIC.** | Coberto só pelo filtro de UDP 443. | Política `Preferences` (`network.http.http3.enable = false`). |
 
 ---
@@ -365,3 +422,4 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 | 2026-10-08 | 2 | Proxy, parser HTTP/1.1, lista de revogação (achada no teste com curl). |
 | 2026-10-08 | 3 | Desvio só dos navegadores (mudança em relação ao plano), filtros WFP, comando `desvio`. |
 | 2026-10-08 | — | Este documento, consolidando as fases 0 a 3. |
+| 2026-10-10 | 4 | Exceções por categoria e domínio (túnel) e detecção automática de pinning por programa + host. |
