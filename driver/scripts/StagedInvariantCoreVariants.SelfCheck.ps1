@@ -100,6 +100,10 @@ $bad=Copy-Fixture $receipts;$bad[0].Digest=$d2;Assert-Control (@((Test-X01Public
 $bad=Copy-Fixture $receipts;$bad+=@{Channel='Uncached';Digest=$db;Length=12288;BeforePublication=$false;Sequence=3};Assert-Control (@((Test-X01PublicSequence $bad $db $d2 12288) | Where-Object Verdict -ceq 'FAIL').Count -gt 0) 'reader regression rejected'
 $bad=Copy-Fixture $receipts;$bad[3].Length=4096;Assert-Control (@((Test-X01PublicSequence $bad $db $d2 12288) | Where-Object Verdict -ceq 'FAIL').Count -gt 0) 'short image rejected'
 Assert-Control (@((Test-X01PublicSequence @() $db $d2 12288) | Where-Object Verdict -cne 'PASS').Count -gt 0) 'missing evidence cannot pass'
+foreach($channel in @('Raw','Fresh','Uncached')){
+    $bad=@($receipts | Where-Object {-not ($_.Channel -ceq $channel -and -not $_.BeforePublication)})
+    Assert-Control (@((Test-X01PublicSequence $bad $db $d2 12288) | Where-Object Verdict -cne 'PASS').Count -gt 0) ('missing final '+$channel+' image cannot pass')
+}
 $target='C:\fixture\cached.txt'
 $listing=@{Images=@(@{Role='Parent';Path='C:\fixture';DirectoryEntries=@(@{Name='marker.bin';Eof=12288},@{Name='cached.txt';Eof=12288})},@{Role='Current';Path=$target;Absent=$false;Length=12288})}
 Assert-Control ((Test-X01FinalListing $listing $listing $target).Verdict -ceq 'PASS') 'one target exact final names'

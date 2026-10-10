@@ -1970,15 +1970,14 @@ Return Value:
         }
 
         //
-        //  A file already on its way out is refused outright. This is the
-        //  weaker refusal of the two: FltCancelFileOpen undoes the open, so
-        //  no content is ever readable, but it does not undo whatever the
-        //  create itself did - a file may have been created or truncated
-        //  before this callback ran. The strong refusal is the pre-create
-        //  one above.
+        //  The legacy destination refusal applies only to mutating opens.
+        //  Windows permissions decide who may read already published bytes,
+        //  including sensitive content released after justification. Writer,
+        //  delete and metadata-change requests retain their existing gates.
         //
 
         if (FlagOn( scopeFlags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION ) &&
+            SafeUploadCreateIsWriter( Data ) &&
             !overrideGranted) {
 
             //

@@ -3,7 +3,7 @@
 # design section 4 corpus, NOT a claim that one row covers every future variant.
 @{
     Schema = 'StagedInvariantCases/1'
-    TableRevision = 21
+    TableRevision = 22
     Modes = @('ordinary', 'runtime-verifier', 'boot-verifier')
     RowSchema = @{
         Required = @('CaseId', 'Revision', 'Status', 'Variant', 'Outcome',
@@ -495,17 +495,17 @@
             Cleanup = @('CooperativeWriterCancellationAndClose', 'CloseBothObservers', 'StopAndRestoreAgent', 'RemoveOnlyJunctionEntryBeforeSentinelAndProfileRemoval', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'B02'; Revision = 4; Status = 'Ready'
+            CaseId = 'B02'; Revision = 5; Status = 'Ready'
             Variant = 'core-existing-T-block-v1-block-v2-stale-v1-justify-latest-v2'; Outcome = 'LatestV2ReleasedOnce;V1BlockedNeverPublished'
-            QualificationScope = 'MVP coordinated C03 overwrite exact-version justification core through real pipe in owning interactive WTS session'
+            QualificationScope = 'Coordinated C03 overwrite exact-version justification through real pipe in owning interactive WTS session; T7 published sensitive reads and Windows ACL denial'
             DeferredVariants = @('C04 replacement-save JUSTIFY/stale-JUSTIFY companion', 'Wrong principal or session', 'Duplicate/replayed submission', 'V1 justification after restart', 'Repetition beyond coordinated core')
             ActorSid = 'DisposableStandardUserInteractiveToken'; ActorSession = 'ActiveWTSQueryUserTokenSidAndSessionMatchesActor; real service open-window manifest confirms binding'
             InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required'; OverrideAllowed = $true }
-            Scopes = @('FixtureScope'); Setup = @('DurablePrebootB', 'OneBootActorAutoLogon', 'LimitedInteractiveTask', 'C03StyleNativeTruncateOverwrite', 'IndependentRawObserverAndFreshUncachedReaders')
-            Actions = @('OverwriteAndHoldV1ThenCloseAndRequireBlockedWithHandBackAndOpenWindow', 'OverwriteAndHoldV2ThenCloseAndRequireBlockedNewDigestGeneration', 'SubmitRealV1JustificationAndRequireRejectedNoRelease', 'SubmitRealV2JustificationAndRequireAcceptedReleasedOnce')
-            Barriers = @('ActiveOwningWtsSession', 'AuthenticatedServiceReady', 'RawPrebootB', 'V1MutableHandleHeld', 'V1BlockedVerifiedHandBackOpenWindow', 'V2MutableHandleHeld', 'V2BlockedVerifiedHandBackOpenWindow', 'RealV1Rejected', 'RawBStillExact', 'RealV2Accepted', 'FinalRawV2')
+            Scopes = @('FixtureScope'); Setup = @('DurablePrebootB', 'BenignReadDeniedSiblingWithExplicitActorReadDataDenyAcl', 'OneBootActorAutoLogon', 'LimitedInteractiveTask', 'C03StyleNativeTruncateOverwrite', 'IndependentRawObserverAndFreshUncachedReaders')
+            Actions = @('OverwriteAndHoldV1ThenCloseAndRequireBlockedWithHandBackAndOpenWindow', 'OverwriteAndHoldV2ThenCloseAndRequireBlockedNewDigestGeneration', 'SubmitRealV1JustificationAndRequireRejectedNoRelease', 'SubmitRealV2JustificationAndRequireAcceptedReleasedOnce', 'StandardActorReadsExactWholeJustifiedSensitiveV2', 'SameActorReadDeniedByUnchangedWindowsAcl')
+            Barriers = @('ActiveOwningWtsSession', 'AuthenticatedServiceReady', 'RawPrebootB', 'V1MutableHandleHeld', 'V1BlockedVerifiedHandBackOpenWindow', 'V2MutableHandleHeld', 'V2BlockedVerifiedHandBackOpenWindow', 'RealV1Rejected', 'RawBStillExact', 'RealV2Accepted', 'FinalRawFreshUncachedV2', 'StandardActorExactV2ReadAndAclDeniedControl')
             ExpectedTimeline = @('BPublic', 'PrivateV1Held', 'V1Blocked-BPublic-HandBackV1', 'PrivateV2Held', 'V2Blocked-BPublic-HandBackV2', 'StaleV1Rejected-BPublic', 'V2JustifiedFreshInspection-Approved-Publishing-ReleasedOnce', 'FinalExactV2Only')
-            StatusClasses = @('OverwriteFlushAndClose=Win32:0', 'RealPipeRejectedStale', 'RealPipeAcceptedLatest')
+            StatusClasses = @('OverwriteFlushAndClose=Win32:0', 'RealPipeRejectedStale', 'RealPipeAcceptedLatest', 'StandardActorSensitiveRead=Win32:0;ExactWholeV2', 'ExplicitReadDataDenyAcl=Win32:5;NoBytes')
             JournalExpectations = @('DistinctIncreasingDestinationGenerations', 'V1HistoryExactlyAllocatedSealedInspectingBlocked', 'V2HistoryExactlyAllocatedSealedInspectingBlockedInspectingApprovedPublishingReleased')
             NotificationExpectations = @('CompleteAuthenticatedOwnerV1BlockedV2BlockedV2ReleasedWithExactDigests', 'NoV1Released')
             AllowedDirectoryTransitions = @('T:B->V2Only', 'ExactlyOneFinalTargetNoTemporaryResidue'); LatencyClasses = @()

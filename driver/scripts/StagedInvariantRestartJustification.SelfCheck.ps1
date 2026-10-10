@@ -5,7 +5,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'Suite parse failed'}
-foreach($name in @('Load-State','Get-ActivatingWriterBody','Get-R02WriterBody','Get-B02JustificationClientBody','Get-B02WriterBody','Initialize-InvariantWts','Test-R02Held','Test-R02Protected','Test-R02Promotion','Test-ActivationRetiredPromotion','Test-R02Pending','Test-InvariantInteractiveActor','Test-B02Window','Test-B02Versions','Test-B02Notifications','Save-B02ReadyTimeoutDiagnostics','Get-ErrorChain')){
+foreach($name in @('Load-State','Get-ActivatingWriterBody','Get-R02WriterBody','Get-B02JustificationClientBody','Get-B02WriterBody','Initialize-InvariantWts','Test-R02Held','Test-R02Protected','Test-R02Promotion','Test-ActivationRetiredPromotion','Test-R02Pending','Test-InvariantInteractiveActor','Test-B02Window','Test-B02Versions','Test-B02Notifications','Test-B02PublicReadAccess','Save-B02ReadyTimeoutDiagnostics','Get-ErrorChain')){
     $fn=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
     if($fn.Count -ne 1){throw ('Unique function unavailable: '+$name)};Invoke-Expression $fn[0].Extent.Text
 }
@@ -150,6 +150,18 @@ try{
             $trial.Assertions.Count -eq 0 -and $trial.Samples.Count -eq 0) ('diagnostic '+$failure+' failure preserves the original readiness blocker')
     }
 }finally{Remove-Item -LiteralPath $diagRoot -Recurse -Force}
+$readTarget='C:\fixture\cached.txt';$deniedTarget='C:\fixture\read-denied.txt'
+$allowedRead=@{NativeCode=0;Length=12288;Sha256='released-v2';Path=$readTarget}
+$deniedRead=@{NativeCode=5;Length=0;Sha256=$null;Path=$deniedTarget}
+Assert-Control (@((Test-B02PublicReadAccess $allowedRead $deniedRead 'released-v2' 12288 $readTarget $deniedTarget $true)|Where-Object Verdict -cne 'PASS').Count -eq 0) 'exact standard-user sensitive read and Windows ACL denial'
+foreach($field in @('status','length','digest','path','deniedStatus','deniedLength','deniedDigest','deniedPath','acl')){
+    $a=Copy-Fixture $allowedRead;$d=Copy-Fixture $deniedRead;$acl=$true
+    switch($field){
+        'status' {$a.NativeCode=5} 'length' {$a.Length=4096} 'digest' {$a.Sha256='stale-v1'} 'path' {$a.Path='C:\private\stage'}
+        'deniedStatus' {$d.NativeCode=0} 'deniedLength' {$d.Length=1} 'deniedDigest' {$d.Sha256='some-bytes'} 'deniedPath' {$d.Path=$readTarget} 'acl' {$acl=$false}
+    }
+    Assert-Control (@((Test-B02PublicReadAccess $a $d 'released-v2' 12288 $readTarget $deniedTarget $acl)|Where-Object Verdict -ceq 'FAIL').Count -gt 0) ('reject invalid read/ACL proof '+$field)
+}
 foreach($body in @((Get-R02WriterBody),(Get-B02WriterBody))){
     $e=$null;$t=$null;$generated=[Management.Automation.Language.Parser]::ParseInput($body,[ref]$t,[ref]$e)
     Assert-Control ($e.Count -eq 0) 'generated actor parses in PS5.1'

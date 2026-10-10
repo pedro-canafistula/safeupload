@@ -5765,7 +5765,7 @@ function Test-X01Versions($First,$Latest,[string]$DigestV1,[string]$DigestV2) {
     $assertions+=@{Name='X01LatestReleasedOnce';Verdict=$(if($released -and $distinct){'PASS'}else{'FAIL'});Reason='Latest v2 has its exact independently supplied digest and complete history with one Released transition.';Evidence=$Latest}
     return ,$assertions
 }
-function Test-X01PublicSequence($Receipts,[string]$DigestB,[string]$DigestV2,[int]$Length,[string[]]$RefusedFinalChannels=@()) {
+function Test-X01PublicSequence($Receipts,[string]$DigestB,[string]$DigestV2,[int]$Length) {
     $assertions=@();$seen=@{};$begun=@{};$previous=@{};$channels=@('Raw','Fresh','Uncached');$bad=$false;$regressed=$false;$before=$false
     foreach($receipt in $Receipts){
         if($receipt.BeforePublication -isnot [bool] -or $null -eq $receipt.Sequence -or $receipt.Channel -cnotin $channels -or $receipt.Length -ne $Length -or $receipt.Digest -cnotin @($DigestB,$DigestV2)){$bad=$true;continue}
@@ -5776,9 +5776,7 @@ function Test-X01PublicSequence($Receipts,[string]$DigestB,[string]$DigestV2,[in
         if($seen[$receipt.Channel] -and $receipt.Digest -ceq $DigestB){$regressed=$true}
         if($receipt.Digest -ceq $DigestV2){$seen[$receipt.Channel]=$true}
     }
-    # A channel the product refuses at the end (B02: data reads of the justified sensitive v2) has no final digest to wait for; the refusal
-    # itself is asserted separately and the raw channel must still reach v2.
-    $coverage=@($channels | Where-Object {-not $seen[$_] -and $_ -cnotin $RefusedFinalChannels}).Count -eq 0 -and @($Receipts).Count -ge 6
+    $coverage=@($channels | Where-Object {-not $seen[$_]}).Count -eq 0 -and @($Receipts).Count -ge 6
     $assertions+=@{Name='X01PublicWholeImages';Verdict=$(if($bad){'FAIL'}elseif($coverage){'PASS'}else{'INCONCLUSIVE'});Reason='Every raw/fresh/uncached observation is one complete B or v2 image; all three channels must finish at v2. v1, torn and spliced digests are rejected.'}
     $assertions+=@{Name='X01PublicNeverRegresses';Verdict=$(if($regressed){'FAIL'}else{'PASS'});Reason='Each independent observation channel may advance B -> v2 only once and must never regress.'}
     $assertions+=@{Name='X01ReaderBeforePublication';Verdict=$(if($before){'FAIL'}else{'PASS'});Reason='All observations before the latest writer is released for seal/publication must be B.'}
@@ -5827,14 +5825,8 @@ public static class SUOpenProbe {
     try{$out=Invoke-ActivationInspector '--activating-status' (Join-Path $evidenceDirectory ('open-failure-'+$Tag+'-activating')) 45000;$lines.Add('ActivatingStatus='+(($out -replace "`r?`n",' ')).Substring(0,[Math]::Min(6000,$out.Length)))}catch{$lines.Add('ActivatingStatusError='+$_.Exception.Message)}
     try{Write-DurableFile (Join-Path $evidenceDirectory ('open-failure-'+$Tag+'.txt')) ($lines -join "`n") -New}catch{}
 }
-function Add-X01PublicSample($Trial,$Context,$Baseline,[byte[]]$B,[byte[]]$V2,[bool]$BeforePublication,[string]$PhaseName,[switch]$DuringPublication,[switch]$SensitiveJustified) {
-    # SensitiveJustified (B02 FinalReleased): the published v2 is a justified SENSITIVE file and the product's post-create classification refuses
-    # data-read opens of it by processes without an override (DeniedPostCreate, observed 0 -> 3; attribute-only opens succeed). The observer
-    # therefore binds the name with an attribute-only handle and proves the bytes from the raw volume, and the two independent data readers
-    # must be REFUSED with Win32 5 (asserted below) instead of returning v2.
-    if($SensitiveJustified){Add-Member -InputObject $Context -NotePropertyName NamedOpenAttributesOnly -NotePropertyValue $true -Force}
-    try{$sample=Capture-CachedSample $Context $Baseline $PhaseName ($Trial.Samples.Count+1)}
-    finally{if($SensitiveJustified){Add-Member -InputObject $Context -NotePropertyName NamedOpenAttributesOnly -NotePropertyValue $false -Force}}
+function Add-X01PublicSample($Trial,$Context,$Baseline,[byte[]]$B,[byte[]]$V2,[bool]$BeforePublication,[string]$PhaseName,[switch]$DuringPublication) {
+    $sample=Capture-CachedSample $Context $Baseline $PhaseName ($Trial.Samples.Count+1)
     $Trial.Samples+= $sample
     if($sample.Status -cne 'OK' -and $DuringPublication){
         # While the service replaces T, NTFS writes the new parent index entry lazily and the raw name/reference
@@ -5855,13 +5847,6 @@ function Add-X01PublicSample($Trial,$Context,$Baseline,[byte[]]$B,[byte[]]$V2,[b
     $Trial.Assertions+=@($checks)
     foreach($check in $checks){if($check.ContainsKey('ForbiddenByteCount')){$Trial.ForbiddenByteCount+=[long]$check.ForbiddenByteCount}}
     $Trial.PublicReceipts+=@{Channel='Raw';Digest=$image.Sha256;Length=$image.Length;BeforePublication=$BeforePublication;Sequence=$sample.Sequence}
-    }
-    if($SensitiveJustified){
-        $refused=@($sample.C01Readers | Where-Object {$_.Status -ceq 'ERROR' -and $_.NativeCode -eq 5})
-        $good=@($sample.C01Readers).Count -eq 2 -and $refused.Count -eq 2 -and @($sample.C01Readers | Where-Object Unbuffered).Count -eq 1
-        $Trial.Assertions+=@{Name='B02JustifiedSensitiveDataReadsRefused';Verdict=$(if($good){'PASS'}else{'FAIL'});
-            Reason='After the justified publication the standard fresh and uncached data reads of the sensitive v2 are refused with Win32 5 by the product (post-create destination classification); the bytes are proven from the raw volume through an attribute-only binding.';Evidence=@{Readers=@($sample.C01Readers | ForEach-Object {@{Unbuffered=$_.Unbuffered;Status=$_.Status;NativeCode=$_.NativeCode}})}}
-        return $sample
     }
     foreach($reader in $sample.C01Readers){
         if($reader.Status -cne 'OK'){throw 'X01 independent reader failed'}
@@ -6334,6 +6319,22 @@ function Initialize-B02Fixture([int]$Size) {
     $state.B02Images=@{B=[Convert]::ToBase64String($b);V1=[Convert]::ToBase64String($v1);V2=[Convert]::ToBase64String($v2)}
     $stream=[IO.FileStream]::new((Join-Path $protectedDirectory 'cached.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,4096,[IO.FileOptions]::WriteThrough)
     try{$stream.Write($b,0,$b.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+    # A benign sibling with a preboot Windows READ_DATA denial distinguishes
+    # the OS permission check from sensitive-content classification.
+    $denied=Join-Path $protectedDirectory 'read-denied.txt'
+    $stream=[IO.FileStream]::new($denied,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,4096,[IO.FileOptions]::WriteThrough)
+    try{$stream.Write($b,0,$b.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+    $acl=Get-Acl -LiteralPath $denied
+    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+        [Security.Principal.SecurityIdentifier]::new($state.ActorSid),[Security.AccessControl.FileSystemRights]::ReadData,
+        [Security.AccessControl.AccessControlType]::Deny))
+    Set-Acl -LiteralPath $denied -AclObject $acl
+    $denyRules=@((Get-Acl -LiteralPath $denied).GetAccessRules($true,$false,[Security.Principal.SecurityIdentifier]) | Where-Object {
+        $_.IdentityReference.Value -ceq $state.ActorSid -and $_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Deny -and
+        ($_.FileSystemRights -band [Security.AccessControl.FileSystemRights]::ReadData) -ne 0
+    })
+    if($denyRules.Count -ne 1){throw 'B02 explicit actor READ_DATA denial was not installed'}
+    $state.B02DeniedReadSddl=Get-SecuritySddl $denied $false
 }
 function Get-B02JustificationClientBody([string]$NativeType='SUActivationNative') {
 (@'
@@ -6376,6 +6377,18 @@ function Get-B02WriterBody {
   written=count;if(count!=bytes.Length)return 29;return FlushHolderFile();
  }
  [DllImport("kernel32.dll",SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(SafePipeHandle h,out uint pid);
+ public static int B02ReadPublic(string path,out long length,out string digest) {
+  length=0;digest=null;
+  IntPtr handle=CreateFileW(path,0x80000000u,7,IntPtr.Zero,3,0x80,IntPtr.Zero);
+  if(handle==new IntPtr(-1))return Error();
+  using(var file=new SafeFileHandle(handle,true))
+  using(var stream=new System.IO.FileStream(file,System.IO.FileAccess.Read))
+  using(var hash=System.Security.Cryptography.SHA256.Create()) {
+   long expected=stream.Length;
+   digest=BitConverter.ToString(hash.ComputeHash(stream)).Replace("-","");
+   length=stream.Position;return length==expected?0:38;
+  }
+ }
 '@
     $nativeAnchor=' public static int ReleaseHolder() {'
     $profile=@'
@@ -6398,6 +6411,11 @@ function Get-B02WriterBody {
      $result.HolderCreated=($result.NativeCode -eq 0);if($result.HolderCreated){$result.PrivateSha256=[SUActivationNative]::HolderDigest($bytes.Length)}
     }
     'b02-handback' {$result.Files=Get-B02OwnerFiles;$result.NativeCode=0}
+    'b02-read-public' {
+     $length=[long]0;$digest=$null
+     $result.NativeCode=[SUActivationNative]::B02ReadPublic([string]$command.Path,[ref]$length,[ref]$digest)
+     $result.Length=$length;$result.Sha256=$digest;$result.Path=[string]$command.Path
+    }
     'b02-justify' {
 __B02_REAL_PIPE_CLIENT__
     }
@@ -6412,6 +6430,12 @@ function Get-B02Journal($Trial,$Actor,[string]$Tag,[string[]]$Exclude=@()) {
     $entry=$poll.Entries[0];$manifest=ConvertFrom-ServiceJournalRecord $entry.Record
     $entry | Add-Member NoteProperty Manifest $manifest.Entry
     return $entry
+}
+function Test-B02PublicReadAccess($Allowed,$Denied,[string]$Digest,[int]$Length,[string]$Target,[string]$DeniedTarget,[bool]$AclUnchanged) {
+    $read=$Allowed.NativeCode -eq 0 -and $Allowed.Length -eq $Length -and $Allowed.Sha256 -ceq $Digest -and $Allowed.Path -ceq $Target
+    $denial=$AclUnchanged -and $Denied.NativeCode -eq 5 -and $Denied.Length -eq 0 -and [string]::IsNullOrEmpty($Denied.Sha256) -and $Denied.Path -ceq $DeniedTarget
+    return ,@(@{Name='B02StandardUserReadsJustifiedSensitiveV2';Verdict=$(if($read){'PASS'}else{'FAIL'});Reason='Fresh GENERIC_READ by the owning standard interactive actor returns the entire released sensitive v2, with exact length and SHA-256.';Evidence=$Allowed},
+        @{Name='B02WindowsAclStillDeniesRead';Verdict=$(if($denial){'PASS'}else{'FAIL'});Reason='The same standard actor gets Win32 ACCESS_DENIED and no bytes from a benign preboot sibling whose explicit Windows READ_DATA denial remains unchanged.';Evidence=$Denied})
 }
 function Wait-B02Terminal($Trial,$Actor,[string]$Expected,[string[]]$Exclude=@()) {
     $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](120*[Diagnostics.Stopwatch]::Frequency);$n=0
@@ -6500,7 +6524,7 @@ function Invoke-B02Observation {
         if($trial.Assertions[-1].Verdict -cne 'PASS'){throw 'B02 interactive task token/session mismatch'}
         $b=[Convert]::FromBase64String($state.B02Images.B);$v1=[Convert]::FromBase64String($state.B02Images.V1);$v2=[Convert]::FromBase64String($state.B02Images.V2)
         $d1=Get-ActivationSha256 $v1;$d2=Get-ActivationSha256 $v2;$target=Join-Path $protectedDirectory 'cached.txt'
-        $baseline=Capture-InvariantBaseline $context @('marker.bin','cached.txt') @{'marker.bin'=[Convert]::FromBase64String($state.BaselineBase64);'cached.txt'=$b}
+        $baseline=Capture-InvariantBaseline $context @('marker.bin','cached.txt','read-denied.txt') @{'marker.bin'=[Convert]::FromBase64String($state.BaselineBase64);'cached.txt'=$b;'read-denied.txt'=$b}
         if($baseline.Status -cne 'OK'){throw 'B02 preboot raw B baseline unavailable'}
         $trial.ForbiddenByteCount=[long]0;$trial.ServiceBefore=Get-ServiceSnapshot 'b02-before'
         if($trial.ServiceBefore.Status -cne 'OK'){throw 'B02 initial authenticated service snapshot unavailable'}
@@ -6546,8 +6570,17 @@ function Invoke-B02Observation {
         $latest=Wait-B02Terminal $trial $actor 'Released' @($first.TransferId);$first=Get-B02Journal $trial $actor 'b02-final-v1' @($latest.TransferId)
         $trial.Assertions+=Test-B02Versions $first $latest $d1 $d2
         $null=Flush-InvariantSetupVolume
-        $final=Add-X01PublicSample $trial $context $baseline $b $v2 $false 'B02FinalReleased' -SensitiveJustified
-        $checks=Test-X01PublicSequence $trial.PublicReceipts (Get-ActivationSha256 $b) $d2 $b.Length -RefusedFinalChannels @('Fresh','Uncached')
+        $final=Add-X01PublicSample $trial $context $baseline $b $v2 $false 'B02FinalReleased'
+        $allowedRead=Publish-ActivationActorCommand $state 'b02-read-public' @{Path=$target}
+        $deniedTarget=Join-Path $protectedDirectory 'read-denied.txt'
+        $deniedRead=Publish-ActivationActorCommand $state 'b02-read-public' @{Path=$deniedTarget}
+        $aclUnchanged=(Get-SecuritySddl $deniedTarget $false) -ceq $state.B02DeniedReadSddl
+        $trial.Assertions+=Test-B02PublicReadAccess $allowedRead $deniedRead $d2 $v2.Length $target $deniedTarget $aclUnchanged
+        $trial.Operations+=@($allowedRead,$deniedRead)
+        $deniedImages=@($final.Captures | ForEach-Object {$_.Images} | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ceq $deniedTarget})
+        if(-not $deniedImages.Count){throw 'B02 ACL-denied sibling raw image missing'}
+        foreach($image in $deniedImages){$trial.Assertions+=Test-CachedImage $image $baseline.Geometry $b 'B02AclDeniedSiblingUnchanged'}
+        $checks=Test-X01PublicSequence $trial.PublicReceipts (Get-ActivationSha256 $b) $d2 $b.Length
         foreach($check in $checks){$check.Name=$check.Name.Replace('X01','B02')};$trial.Assertions+=@($checks)
         $listing=Test-X01FinalListing $final.Captures[-1] $baseline $target;$listing.Name='B02ExactlyOneFinalTarget';$trial.Assertions+= $listing
         $fenceEnd=[Diagnostics.Stopwatch]::GetTimestamp();Start-Sleep -Milliseconds 1200
