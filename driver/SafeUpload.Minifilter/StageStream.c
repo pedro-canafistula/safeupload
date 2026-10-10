@@ -3226,8 +3226,10 @@ static BOOLEAN StageDirectoryCreateCanMutate(_In_ PFLT_CALLBACK_DATA Data)
         disposition == FILE_OPEN_IF || disposition == FILE_SUPERSEDE ||
         disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF) return TRUE;
     if (security == NULL) return TRUE; /* A malformed/unresolvable create still needs an epoch. */
+    /* T10: WRITE_DAC and WRITE_OWNER are not writer access. A permission or owner change adds no content; such an open reaches the
+     * real file or folder and Windows' own access check decides who may change it (a staged handle still never gets them). */
     return (security->DesiredAccess & (FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
-        FILE_WRITE_ATTRIBUTES | FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER |
+        FILE_WRITE_ATTRIBUTES | FILE_DELETE_CHILD | DELETE |
         GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED)) != 0;
 }
 
@@ -3309,8 +3311,10 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         FlagOn(Data->Iopb->OperationFlags, SL_OPEN_TARGET_DIRECTORY) ||
         (Objects->FileObject->FileName.Length == 0 && Objects->FileObject->RelatedFileObject == NULL))
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    /* T10: WRITE_DAC and WRITE_OWNER are not writer access. A permission or owner change adds no content; such an open reaches the
+     * real file or folder and Windows' own access check decides who may change it (a staged handle still never gets them). */
     writerAccess = BooleanFlagOn(security->DesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
-        FILE_WRITE_ATTRIBUTES | FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE |
+        FILE_WRITE_ATTRIBUTES | FILE_DELETE_CHILD | DELETE | GENERIC_WRITE |
         GENERIC_ALL | MAXIMUM_ALLOWED) ||
         FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE);
     writer = writerAccess ||
@@ -4397,8 +4401,13 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
         if (*CompletionContext != NULL) return FLT_PREOP_SUCCESS_WITH_CALLBACK;
         return result;
         }
-    case IRP_MJ_SET_EA:
     case IRP_MJ_SET_SECURITY:
+        /* T10 (owner decision 2026-10-08): a permission, owner or audit change adds no content, so it is applied to the real file
+         * or folder and Windows decides who may make it: the I/O manager checks WRITE_DAC, WRITE_OWNER or ACCESS_SYSTEM_SECURITY
+         * on the handle. Staged handles never get here (owned-stream routing above), and their creates strip those rights, so the
+         * private backing's ACL never changes; non-service opens of the private namespace are refused at create. */
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    case IRP_MJ_SET_EA:
         {
             PVOID mutatingIoContext = NULL;
             BOOLEAN trackedWriter = FALSE;

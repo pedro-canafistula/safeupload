@@ -1334,7 +1334,7 @@ static BOOLEAN SafeUploadCreateIsWriter(_In_ PFLT_CALLBACK_DATA Data)
     if (security == NULL) return FALSE;
     return BooleanFlagOn(security->DesiredAccess,
             FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA |
-            FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER | MAXIMUM_ALLOWED |
+            FILE_DELETE_CHILD | DELETE | MAXIMUM_ALLOWED |   /* T10: WRITE_DAC/WRITE_OWNER add no content */
             GENERIC_WRITE | GENERIC_ALL) ||
         FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) ||
         disposition == FILE_CREATE || disposition == FILE_SUPERSEDE ||

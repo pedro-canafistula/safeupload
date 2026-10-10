@@ -1406,8 +1406,9 @@ static BOOLEAN StageWriterCreateCanMutate(_In_ PFLT_CALLBACK_DATA Data)
         disposition == FILE_OPEN_IF || disposition == FILE_SUPERSEDE ||
         disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF) return TRUE;
     if (security == NULL) return FALSE;
+    /* T10: a WRITE_DAC/WRITE_OWNER handle cannot change content, so it is not a writer of the file. */
     return (security->DesiredAccess & (FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_DELETE_CHILD | FILE_WRITE_EA |
-        FILE_WRITE_ATTRIBUTES | DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE |
+        FILE_WRITE_ATTRIBUTES | DELETE | GENERIC_WRITE |
         GENERIC_ALL | MAXIMUM_ALLOWED)) != 0;
 }
 
