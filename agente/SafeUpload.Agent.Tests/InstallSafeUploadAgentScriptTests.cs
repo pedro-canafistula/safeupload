@@ -73,8 +73,9 @@ public sealed class InstallSafeUploadAgentScriptTests
              directory = directory.Parent)
         {
             string candidate = Path.Combine(directory.FullName, "scripts", "Install-SafeUploadAgent.ps1");
+            // The assertions look for whole lines ("\nName\n"); a Windows checkout has CR LF line endings.
             if (File.Exists(candidate))
-                return File.ReadAllText(candidate);
+                return File.ReadAllText(candidate).Replace("\r\n", "\n", StringComparison.Ordinal);
         }
 
         throw new FileNotFoundException("Could not find agente/scripts/Install-SafeUploadAgent.ps1 from test output.");

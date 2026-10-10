@@ -46,7 +46,9 @@ public sealed class StagedTransferJournalTests : IDisposable
             new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
             FileSystemRights.Read, AccessControlType.Allow));
         outsideFile.SetAccessControl(security);
-        string priorSecurity = security.GetSecurityDescriptorSddlForm(AccessControlSections.All);
+        // Read back from disk: Windows sets the auto-inherited flag (AI) when it stores a DACL under an inheriting parent,
+        // so the in-memory descriptor written above is not what "unchanged" is compared with.
+        string priorSecurity = outsideFile.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All);
         byte[] priorBytes = await File.ReadAllBytesAsync(outside);
         File.Delete(path);
         if (hardLink)
