@@ -20,10 +20,12 @@ public sealed class StagedHandbackTests : IDisposable
 
     public StagedHandbackTests()
     {
-        // The copier creates the hand-back directories owned by SYSTEM, which the agent service (SYSTEM) may always do. A test
-        // process may do it only with SeRestorePrivilege enabled: the builder's SSH session has it enabled, a CI runner's
-        // elevated token holds it disabled ("This security ID may not be assigned as the owner of this object").
+        // The copier runs with the agent service's (SYSTEM's) privileges: it creates the hand-back directories owned by SYSTEM
+        // (SeRestorePrivilege) and walks them with backup-intent opens (SeBackupPrivilege). The builder's SSH session has both
+        // enabled; a CI runner's elevated token holds them disabled ("This security ID may not be assigned as the owner of this
+        // object", then "Access is denied").
         TestPrivileges.TryEnable("SeRestorePrivilege");
+        TestPrivileges.TryEnable("SeBackupPrivilege");
         _stagingRoot = Path.Combine(_workspace.Root, "staging");
         _journalRoot = Path.Combine(_workspace.Root, "journal");
         Directory.CreateDirectory(_stagingRoot);
