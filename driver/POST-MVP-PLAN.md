@@ -417,4 +417,11 @@ Decided on 2026-10-08:
   justifiable (T9).
 - Permission and owner changes go to the real file or folder, and Windows' own access check decides who may make them (T10).
 
+Decided on 2026-10-10:
+- For M1, a write by NTFS object ID (a 16-byte by-ID open) on a volume that may hold a scope stays refused: the object ID can move to a
+  protected file between a pre-open check and the open, so it cannot be admitted safely yet (Luna P0 on `f848bda0`, kept off the branch as
+  `wip/objid-gate`). The link-tracking service (TrkWks) makes one such write during a cumulative update; T3 counts it as a known refusal,
+  exempted only when the refused process is identified as the svchost hosting TrkWks. Admitting object-ID writes safely (classify the file
+  NTFS actually opened, after the create) is post-M1 work.
+
 No decision is open.

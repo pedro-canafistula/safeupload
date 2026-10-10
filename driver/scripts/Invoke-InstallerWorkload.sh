@@ -235,7 +235,17 @@ if mode == 'driver':
     setup = open(sys.argv[6], encoding='utf-8', errors='replace').read() if len(sys.argv) > 6 else ''
     cursor = re.search(r'^RING_NEXT_BEFORE=(\d+)', setup, re.M)
     start_seq = int(cursor.group(1)) if cursor else 0
+    # Owner decision 2026-10-10 (M1): the link-tracking service's write by NTFS object ID stays refused (an object ID can move to a
+    # protected file between a check and the open, so it cannot be admitted safely yet) and is a known refusal, not a T3 failure.
+    # Exempt only a CREATE refused as byIdHighHalf whose process is identified as the svchost hosting TrkWks.
+    procs = {}
+    for line in re.findall(r'^RING_PROCESS=(.*)$', ring_text, re.M):
+        pid, _, rest = line.partition(' ')
+        procs[pid] = rest
+    def known(r): return r.get('major') == 'CREATE' and r.get('reason') == 'byIdHighHalf' and re.match(r'svchost\.exe services=TrkWks( |$)', procs.get(str(r.get('processId')), '')) is not None
     candidates = [r for r in ring if r.get('major') != 'QUERY_INFORMATION' and not inside(r) and not own_namespace(r)]
+    known_refusals = [r for r in candidates if known(r)]
+    candidates = [r for r in candidates if not known(r)]
     during = [r for r in candidates if r['sequence'] >= start_seq]
     boot = [r for r in candidates if r['sequence'] < start_seq]
     describe = lambda rs: '; '.join(f"#{r['sequence']} {r.get('statusName')} {r.get('major')} {r.get('reason') or 'noReason'} {r.get('name')}" for r in rs[:8])
@@ -243,6 +253,7 @@ if mode == 'driver':
             ('no refusal outside the protected folder during the workload' if not during else f"{len(during)} refusals during the workload; first: " + describe(during)) +
             ('' if cursor else '; the ring cursor at the workload start is missing'))
     out.append('T3BootTimeRefusals ' + ('INFO none before the workload' if not boot else 'INFO ' + str(len(boot)) + ' before the workload started (boot, T2c): ' + describe(boot)))
+    out.append('T3KnownRefusals INFO ' + (str(len(known_refusals)) + ' TrkWks write(s) by object ID refused (owner decision 2026-10-10): ' + describe(known_refusals) if known_refusals else 'none'))
     for proc in re.findall(r'^RING_PROCESS=(.*)$', ring_text, re.M):
         out.append('T3RefusedProcess INFO ' + proc[:300])
     servicing_outside = [r for r in servicing if r.get('major') != 'QUERY_INFORMATION' and not inside(r) and not own_namespace(r)]
