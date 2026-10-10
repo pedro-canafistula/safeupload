@@ -4,8 +4,10 @@
 # that the driver's pool stays flat and that the event-driven stage worker goes idle.
 #
 # Usage: driver/scripts/Invoke-StageCycles.sh <debuggee domain> <tag> <driver.sys> <agent zip> [cycles=10000] [ordinary|runtime-verifier] [sample_every=500]
-#   Installs the pair like the manual install, reboots, waits for Ready, creates a standard user, arms runtime Verifier (flags 0x13B:
-#   special pool, IRQL checking, pool tracking, I/O, deadlock, DDI) unless ordinary, and runs t4/cycles-coordinator.ps1 as SYSTEM with
+#   Installs the pair like the manual install and reboots. Runtime mode holds both services at demand start across that reboot,
+#   arms volatile Verifier while the filter is still unloaded (flags 0x13B: special pool, IRQL, pool tracking, I/O, deadlock,
+#   security checks), loads it once, starts the agent, restores product start modes, and waits for Ready. Creates a standard
+#   user and runs t4/cycles-coordinator.ps1 as SYSTEM with
 #   t4/cycles-actor.ps1 as the standard user.
 #
 # Evidence: driver/evidence/<day>/<tag>-*.txt|jsonl; the verdict is <tag>-verdict.txt; the exit status is 0 only when every required
@@ -18,6 +20,7 @@ dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?
 [[ "$sample_every" =~ ^[1-9][0-9]{0,5}$ ]] || { echo 'Invalid sample interval'; exit 2; }
 case "$mode" in ordinary|runtime-verifier) ;; *) echo 'Unknown mode'; exit 2;; esac
 [ -f "$sys" ] && [ -f "$zip" ] || { echo 'needs the signed driver and the agent zip'; exit 2; }
+driver_sha=$(sha256sum "$sys" | cut -d' ' -f1) || exit 2
 host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt); [ -n "$host" ] || { echo "Unknown debuggee $dom"; exit 2; }
 export SAFEUPLOAD_MIN_FREE_GB=${T4_MIN_FREE_GB:-15}
 V="virsh -c qemu:///system"; ev="driver/evidence/$(date +%F)"; mkdir -p "$ev"
@@ -86,7 +89,8 @@ scp "${opts[@]}" "$sys" "vika@$host:$guest/SafeUpload-t4.sys" && scp "${opts[@]}
   && scp "${opts[@]}" agente/scripts/Get-SafeUploadDiagnostics.ps1 "vika@$host:$guest/Get-SafeUploadDiagnostics.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-actor.ps1 "vika@$host:$guest/t4-cycles-actor.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-coordinator.ps1 "vika@$host:$guest/t4-cycles-coordinator.ps1" \
-  && scp "${opts[@]}" driver/scripts/t4/cycles-progress.ps1 "vika@$host:$guest/t4-cycles-progress.ps1" || { echo 'copy failed'; exit 14; }
+  && scp "${opts[@]}" driver/scripts/t4/cycles-progress.ps1 "vika@$host:$guest/t4-cycles-progress.ps1" \
+  && scp "${opts[@]}" driver/scripts/t4/runtime-verifier.ps1 "vika@$host:$guest/t4-runtime-verifier.ps1" || { echo 'copy failed'; exit 14; }
 remote <<'PS' | tee "$ev/$tag-install.txt"
 $ErrorActionPreference = 'Stop'
 $d = 'C:\Users\vika\Documents'
@@ -108,8 +112,31 @@ Set-Content -LiteralPath "$data\policy.json" -Value $policy -Encoding UTF8
 'INSTALL_DONE=True'
 PS
 grep -qx 'INSTALL_DONE=True' "$ev/$tag-install.txt" || { echo 'install failed'; exit 15; }
+if [ "$mode" = runtime-verifier ]; then
+    remote <<'PS' | tee "$ev/$tag-demand-held.txt"
+$ErrorActionPreference = 'Stop'
+. 'C:\Users\vika\Documents\t4-runtime-verifier.ps1'
+Set-T4RuntimeDemandBeforeReboot
+PS
+    grep -qx 'RUNTIME_DEMAND_HELD=True' "$ev/$tag-demand-held.txt" || { echo 'runtime demand-start hold failed'; exit 16; }
+fi
 echo "== reboot"
 remote <<<'& shutdown.exe /r /t 5 /c "T4 install"' >/dev/null; sleep 60; wait_ssh || { echo 'guest did not return'; exit 17; }
+if [ "$mode" = runtime-verifier ]; then
+    remote <<PS | tee "$ev/$tag-preload-verifier.txt"
+\$ErrorActionPreference = 'Stop'
+. 'C:\Users\vika\Documents\t4-runtime-verifier.ps1'
+Start-T4RuntimePairBeforeFirstLoad '$driver_sha' 'C:\Users\vika\Documents\t4-verifier'
+PS
+    for phase in before-load after-load after-agent; do
+        scp "${opts[@]}" "vika@$host:$guest/t4-verifier-$phase.txt" "$ev/$tag-verifier-$phase.txt" >/dev/null 2>&1 || true
+    done
+    grep -qx 'VERIFIER_BEFORE_FIRST_LOAD=True' "$ev/$tag-preload-verifier.txt" && \
+        grep -qx 'RUNTIME_PAIR_STARTED=True' "$ev/$tag-preload-verifier.txt" || { echo 'runtime Verifier first-load setup failed'; exit 18; }
+    for phase in before-load after-load after-agent; do
+        [ -s "$ev/$tag-verifier-$phase.txt" ] || { echo "missing runtime Verifier $phase query"; exit 18; }
+    done
+fi
 remote <<'PS' | tee "$ev/$tag-ready.txt"
 $ErrorActionPreference = 'Continue'
 function Read-AgentFrame {
@@ -171,9 +198,9 @@ $actor = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 12) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName 't4-actor' -Action $actor -User ($env:COMPUTERNAME + '\' + $name) -Password $password -RunLevel Limited -Settings $settings -Force | Out-Null
 if ('__MODE__' -eq 'runtime-verifier') {
-    & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Null
-    $q = (& verifier.exe /query | Out-String)
-    'VERIFIER_ARMED=' + ($q -match 'SafeUpload\.sys' -and $q -match '(?im)^\s*Verifier Flags:\s*0x0*13b')
+    . "$d\t4-runtime-verifier.ps1"
+    Assert-T4RuntimeVerifierState (Invoke-T4RuntimeNative 'verifier.exe' @('/query')) $true
+    'VERIFIER_ARMED=True'
 }
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $coordinatorArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t4-cycles-coordinator.ps1" -Cycles __CYCLES__ -SampleEvery __SAMPLE_EVERY__'
