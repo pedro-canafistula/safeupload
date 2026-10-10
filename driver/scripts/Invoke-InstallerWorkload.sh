@@ -152,6 +152,8 @@ function Read-AgentFrame {
 try { $f = Read-AgentFrame; 'AGENT_FRAME=' + $f } catch { 'AGENT_FRAME_ERROR=' + $_.Exception.Message }
 try { $c = & "$d\Get-SafeUploadDiagnostics.ps1" -Query counters; 'COUNTERS_AFTER=' + ($c | ConvertTo-Json -Depth 6 -Compress) } catch { 'COUNTERS_AFTER_ERROR=' + $_.Exception.Message }
 try { $ring = @(& "$d\Get-SafeUploadDiagnostics.ps1" -Query deny-ring); 'RING_TOTAL=' + $ring.Count; foreach ($e in $ring) { 'RING=' + ($e | ConvertTo-Json -Compress) } } catch { 'RING_ERROR=' + $_.Exception.Message }
+# Who was refused: each ring PID's process, command line and hosted services, if it is still running.
+try { foreach ($p in @($ring | ForEach-Object { $_.processId } | Sort-Object -Unique)) { $w = Get-CimInstance Win32_Process -Filter "ProcessId=$p" -ErrorAction SilentlyContinue; $svc = @(Get-CimInstance Win32_Service -Filter "ProcessId=$p" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ','; 'RING_PROCESS=' + $p + ' ' + $(if ($w) { $w.Name + ' services=' + $svc + ' cmd=' + $w.CommandLine } else { 'exited' }) } } catch { 'RING_PROCESS_ERROR=' + $_.Exception.Message }
 # Per-volume admission status: which instance is Unknown, the first reason and the driver source line that set it (sticky until reboot).
 # The driver's port takes one client (the agent holds it) and admits SYSTEM: stop the agent for the read (the workload is over), run the
 # inspector once as SYSTEM through a scheduled task, then start the agent again.
@@ -241,6 +243,8 @@ if mode == 'driver':
             ('no refusal outside the protected folder during the workload' if not during else f"{len(during)} refusals during the workload; first: " + describe(during)) +
             ('' if cursor else '; the ring cursor at the workload start is missing'))
     out.append('T3BootTimeRefusals ' + ('INFO none before the workload' if not boot else 'INFO ' + str(len(boot)) + ' before the workload started (boot, T2c): ' + describe(boot)))
+    for proc in re.findall(r'^RING_PROCESS=(.*)$', ring_text, re.M):
+        out.append('T3RefusedProcess INFO ' + proc[:300])
     servicing_outside = [r for r in servicing if r.get('major') != 'QUERY_INFORMATION' and not inside(r) and not own_namespace(r)]
     if os.path.exists(sys.argv[7]) if len(sys.argv) > 7 else False:
         out.append('T3ServicingBootRefusals INFO ' + (str(len(servicing_outside)) + ' after the update reboot (servicing phase): ' + describe(servicing_outside) if servicing_outside else 'none after the update reboot'))
