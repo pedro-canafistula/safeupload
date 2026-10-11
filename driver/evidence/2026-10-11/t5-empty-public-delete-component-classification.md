@@ -51,7 +51,7 @@ and reserve its existing numeric slots. Source identity is the review-base Git c
 
 ## Implementation checkpoint — source evidence
 
-Driver `028a1b66`; agent `d8fd93c6` (the agent tree is unchanged in the driver commit). These are implementation/static-test
+Driver `028a1b66`; agent `fe529a2d` (the driver product tree is unchanged). These are implementation/static-test
 checkpoints. Public deletes, complete teardown rescope and VM qualification are unfinished.
 
 | Piece | Current source evidence | Disposition and remaining check |
@@ -62,8 +62,9 @@ checkpoints. Public deletes, complete teardown rescope and VM qualification are 
 | Removed kernel EmptyHeld chain | `StageStream.c:1684,1845,3306,4982`; `StageProtocol.c` | No EmptyHeld, predecessor/successor ancestry, create-after request/replay or empty-rotation symbols remain in StageStream. New kernel discard traffic accepts only ordinary private discard and generic unattached-allocation cleanup. Wire kinds 2–4 and operation 10 remain reserved. Generic attachment/handle receipts, allocation-parent pins, paging rundown, RPC references, owner/worker drain and exact released-stage deletion are retained. |
 | Service create-after and unparented admission | `MinifilterInterceptor.cs:324`; `StagedTransferJournal.cs:307` | Operation 10 is denied; its service handler and unused ancestry-before-allocation helpers are removed. Legacy journal cleanup readers/test fixtures still preserve exact old proof. Only four ordinary-allocation refusal expectations from the owner-reversed chain were removed; legacy identity, epoch, terminal-ACK, replacement and compaction assertions remain. Remaining legacy allocation APIs will be retired with startup compatibility handling. |
 | Inspection failures | `InspectionService.cs:162`; `StagedTransferPublisher.cs:502,607` | Zero content takes the trivial clean path only after an actual read proves zero. A read/access failure remains Blocked under the existing T9 failure policy. Generic hand-back/cleanup accepts measured zero while preserving identity, digest and failure evidence; a failure is never approval. This replaces the baseline table's assumption that every Blocked entry must contain nonempty bytes. It does not restore EmptyHeld or the empty-save notice. |
+| Destination head and ordinary public-delete ordering | `StagedDestinationCommitJournal.cs:127,235,268,357,382,425,594` | New infrastructure retains maxAllocated, the current private save, latest Published and the immutable completed-delete barrier separately. Exact accepted ordinary-delete reservations block physical publication while releasing locks/workers; allocation continues at max+1. Ordinary clear cancels provisional intents for that exact object across owners. Unknown durable mutations remain blocked after restart; terminal ACK retirement leaves the head intact. All 19 new cases pass in every agent profile. Checked backend authorization, anchored identity capture, on-close intent handling, publisher/allocator wiring and exact physical reconciliation are not implemented by this layer; it is not connected to runtime. |
 
 The latest four WDK builds pass at 0/0 with PREfast/ApiValidator ([summary](exact-t5-strip1-summary.txt));
-the agent matrix passes all four profiles with no skipped/discovered-only cases ([run verification](exact-agent-matrix-t5-empty4-root-readout.json)).
+the agent matrix passes all four profiles with no skipped/discovered-only cases ([run verification](exact-agent-matrix-t5-deletejournal2-root-readout.json)).
 Source/static results do not qualify kernel lifetime or destination privacy at runtime. The complete lifetime/lock-order/retirement
 implementation requires its Luna review before the first revised VM boot.

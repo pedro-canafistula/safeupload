@@ -160,6 +160,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     implemented (`f305d607`, `d8fd93c6`); seal replay refuses changed identity/length. This is source/test completion, not VM qualification.
   - [x] EmptyHeld kernel flags, successor ancestry, rotation and create-after sends/replay removed (`028a1b66`); generic exact ACKs,
     failed-allocation receipts, paging rundown and RPC/worker pins remain. Public-delete backends and complete teardown rescope are still open.
+  - [x] Identity-keyed destination head/commit queue and ordinary-delete journal layer (`b5c2d13f`, `fe529a2d`); 19 new cases pass in
+    each agent profile. Durable accepted reservations release locks while waiting; only newer Published suppresses a delete.
+  - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
+    sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
 - [ ] Run real Notepad clean/CPF Save As in ordinary, runtime-Verifier and boot-Verifier modes, independently observing destination bytes.
 - [ ] Add compatibility/ordering rows: Explorer New Text Document → rename → another process opens it in Notepad; empty copy/move;
@@ -171,14 +175,15 @@ Latest static gates: driver `028a1b66`, four WDK builds at **0 warnings / 0 erro
 [normal Debug](evidence/2026-10-11/exact-t5-strip1-normal-wdk.txt),
 [feature Debug](evidence/2026-10-11/exact-t5-strip1-owned-feature-wdk.txt),
 [normal Release](evidence/2026-10-11/exact-t5-strip1-normal-release-wdk.txt),
-[feature Release](evidence/2026-10-11/exact-t5-strip1-owned-feature-release-wdk.txt)). Agent `d8fd93c6` (unchanged in `028a1b66`)
-passed **742/742** per normal profile and **806/806** per feature profile, all discovered cases executed once without skips; agent
-and tray builds passed at 0/0 ([matrix output](evidence/2026-10-11/exact-agent-matrix-t5-empty4-summary.txt),
-[execution check](evidence/2026-10-11/exact-agent-matrix-t5-empty4-root-readout.json),
-raw TRX: [normal Debug](evidence/2026-10-11/exact-agent-matrix-t5-empty4-normal-debug-results-agent-tests.trx),
-[normal Release](evidence/2026-10-11/exact-agent-matrix-t5-empty4-normal-release-results-agent-tests.trx),
-[feature Debug](evidence/2026-10-11/exact-agent-matrix-t5-empty4-feature-debug-results-agent-tests.trx),
-[feature Release](evidence/2026-10-11/exact-agent-matrix-t5-empty4-feature-release-results-agent-tests.trx)). No revised pair has booted.
+[feature Release](evidence/2026-10-11/exact-t5-strip1-owned-feature-release-wdk.txt)). Agent `fe529a2d` (unchanged in `10511025`)
+passed **761/761** per normal profile and **825/825** per feature profile, all discovered cases executed once without skips; the
+19 new destination-journal cases ran in every profile. Agent and tray builds passed at 0/0
+([matrix output](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-summary.txt),
+[execution check](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-root-readout.json),
+raw TRX: [normal Debug](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-normal-debug-results-agent-tests.trx),
+[normal Release](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-normal-release-results-agent-tests.trx),
+[feature Debug](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-feature-debug-results-agent-tests.trx),
+[feature Release](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-feature-release-results-agent-tests.trx)). No revised pair has booted.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
 [matrix self-checks](evidence/2026-10-11/t5-agent-matrix-runner-selfcheck.txt) pass.
