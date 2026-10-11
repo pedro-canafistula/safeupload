@@ -100,7 +100,7 @@ public sealed class StagedNativeRecoveryNotificationTests
             using var owner = hub.Subscribe(2, OwnerSid);
             Assert.True(StagedNativeRecoveryNotifications.Publish(hub, new CaptureLogger(), head, delete,
                 StagedRecoveryAdvice.CollectDiagnostics, "parent_identity_unresolved"));
-            var emission = Assert.Single(Entries().Where(entry => entry.Kind == "Transfer"));
+            var emission = Assert.Single(Entries(), entry => entry.Kind == "Transfer");
             Assert.Equal(delete.Binding.TransferId, emission.TransferId);
             Assert.Equal(TransferPhase.Retained.ToString(), emission.Phase);
             Assert.Equal(2u, emission.TargetSessionId);
@@ -112,7 +112,7 @@ public sealed class StagedNativeRecoveryNotificationTests
         // Reopening verifies the old hash chain; no new persisted recovery schema is needed.
         using var restarted = new NotificationRecord(directory, NullLogger.Instance,
             NotificationRecord.SegmentBytes, "test/boot", testIdentity: true);
-        var retained = Assert.Single(Entries().Where(entry => entry.Kind == "Transfer"));
+        var retained = Assert.Single(Entries(), entry => entry.Kind == "Transfer");
         Assert.Equal(delete.Binding.TransferId, retained.TransferId);
         Assert.Equal(TransferPhase.Retained.ToString(), retained.Phase);
     }
