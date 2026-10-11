@@ -1,0 +1,2 @@
+RunDiskEfiReset=True
+2026-10-11T15:53:43Z run-disk win10-debug3: run m2t4boot10k1011a2 on /var/lib/libvirt/images/win10-debug3.safeupload-run-m2t4boot10k1011a2.qcow2 (base /var/lib/libvirt/images/win10-debug3.base-20261009.qcow2)

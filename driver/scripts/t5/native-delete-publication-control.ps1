@@ -46,6 +46,47 @@ public static class NativeDeletePublicationControl {
   using (var file=CreateFileW(path, 0x80, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero))
    return file.IsInvalid ? Marshal.GetLastWin32Error() : 0;
  }
+ public static bool DeletePending(SafeFileHandle file) {
+  byte[] data = new byte[24];
+  if (!GetFileInformationByHandleEx(file, 1, data, (uint)data.Length))
+   throw new Win32Exception(Marshal.GetLastWin32Error());
+  return data[20] != 0;
+ }
+ // Read-only parent enumeration; never open the pending child or widen sharing.
+ public static string[] DirectoryEntry(string parent, string leaf) {
+  using (var directory=CreateFileW(parent, 0x81, 7, IntPtr.Zero, 3, 0x02000080, IntPtr.Zero)) {
+   if (directory.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+   string parentId=Identity(directory), found=""; int entries=0;
+   for (int page=0; page<64; page++) {
+    byte[] data=new byte[65536];
+    if (!GetFileInformationByHandleEx(directory, page==0 ? 20 : 19, data, (uint)data.Length)) {
+     int error=Marshal.GetLastWin32Error();
+     if (error!=18) throw new Win32Exception(error);
+     if (Identity(directory)!=parentId) throw new IOException("Parent identity changed.");
+     return new string[] { parentId, found, entries.ToString(), "Complete" };
+    }
+    int offset=0;
+    while (true) {
+     if (offset<0 || offset>data.Length-88) throw new IOException("Short extended directory entry.");
+     uint next=BitConverter.ToUInt32(data,offset), length=BitConverter.ToUInt32(data,offset+60);
+     if (length==0 || (length&1)!=0 || length>(uint)(data.Length-offset-88))
+      throw new IOException("Invalid directory name length.");
+     string name=Encoding.Unicode.GetString(data,offset+88,(int)length); entries++;
+     if (String.Equals(name,leaf,StringComparison.Ordinal)) {
+      if (found.Length!=0) throw new IOException("Duplicate canonical leaf.");
+      uint attrs=BitConverter.ToUInt32(data,offset+56);
+      if ((attrs&0x410)!=0) throw new IOException("Child is a directory or reparse point.");
+      found=parentId.Substring(0,16)+BitConverter.ToString(data,offset+72,16).Replace("-", "");
+     }
+     if (next==0) break;
+     if (next<88+length || (next&7)!=0 || next>(uint)(data.Length-offset-88))
+      throw new IOException("Invalid directory entry offset.");
+     offset=checked(offset+(int)next);
+    }
+   }
+   throw new IOException("Directory enumeration bound exceeded; no absence proof.");
+  }
+ }
 }
 '@
 $script:Assertions = 0

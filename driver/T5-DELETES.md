@@ -6,8 +6,9 @@ retired. Public-file deletion is an M2 feature. The [independent Luna design rev
 accepted this design in `434315cf`. Implementation is underway; concrete kernel lifetime/lock-order/retirement changes need their
 review before the first revised VM boot, and runtime qualification remains required.
 
-The native public-open routing detail remains **NOT READY**. See [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md) for the
-supported-object correction, unresolved scheduled-delete ordering and owner-approved automatic-recovery conditions. Section 4.1's original
+The native public-open routing correction is **READY WITH CORRECTIONS** in the
+[focused Luna review](evidence/2026-10-11/t5-automatic-native-delete-recovery-review-luna6.md). See [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md) for the
+supported-object correction, required scheduled-delete ordering and owner-approved automatic-recovery conditions. Section 4.1's original
 proxy construction is not authority to implement the rejected synthetic FCB/native-section-pointer pairing or unsupported on-close emulation.
 
 This note covers the Notepad Save As test-file sequence (T5), Office temporary/backup sequences (T8), deletion of a public file, and
@@ -196,8 +197,8 @@ tracking failure cannot be described as an unchanged failed open. The owner-appr
 publication held and automatic reconciliation at the app's last-handle close and service startup. Exact absence or the original
 pre-open identity releases the recovery hold automatically; an undecidable result retains it with a named-file actionable tray
 notice and diagnostics. Reuse existing intent/startup recovery; no additional protocol states beyond accepted/unresolved. The
-correction and its feasibility review in [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md) must be resolved before code; if automatic
-recovery cannot be met, ask the owner. Preserve actual unsupported-flag results; the unsupported builder on-close probe is not
+reviewed corrections in [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md) are mandatory; if automatic
+recovery cannot be met during implementation, ask the owner. Preserve actual unsupported-flag results; the unsupported builder on-close probe is not
 evidence that those flags work on the qualification VM.
 
 The FilterPort receive loop dispatches these transactions to bounded workers and remains available for create, seal, cleanup,

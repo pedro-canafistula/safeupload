@@ -1,11 +1,13 @@
 # T5 native public opens and delete lifetime
 
-Date: 2026-10-11. **NOT READY: no implementation or VM boot approved by this note.**
+Date: 2026-10-11. **Security design READY WITH CORRECTIONS; implementation and runtime qualification remain pending.**
+The [focused Luna review](evidence/2026-10-11/t5-automatic-native-delete-recovery-review-luna6.md) requires the corrections below.
 This replaces the synthetic public-FCB proposal at `05ad4df9`, rejected by the
 [Luna review](evidence/2026-10-11/t5-public-proxy-routing-design-review-luna6.md).
 The [focused follow-up](evidence/2026-10-11/t5-native-public-open-followup-luna6.md) also rejects its suggested second-open and
 on-close emulation. The accepted empty/public-delete design in [T5-DELETES.md](T5-DELETES.md) remains in force; the corrections and
-owner-approved automatic-recovery conditions below must be proved feasible and reviewed before writing the routing implementation.
+owner-approved automatic-recovery conditions below are feasible with these corrections. Integrated kernel lifetime/lock-order review
+is still required before the revised pair's first VM boot; this note is not runtime qualification.
 
 ## Supported correction
 
@@ -52,8 +54,10 @@ Newer clean generations may take their normal commit turn; only a **durably Publ
 current public name. Allocated, unsealed, inspecting or blocked successors do not cancel the scheduled delete. Older generations
 cannot publish through that intent. Native cleanup may remove only the originally checked old link/object, never a replacement.
 
-This is a design requirement, not a proved implementation. The corrected review must establish how the native cleanup, atomic rename,
-durable Published receipt and exact last-close reconciliation serialize, including crash between rename and receipt. A pathname's
+Serialize the service's atomic rename and durable Published receipt under the destination turn. Persist its exact temporary identity
+and generation before rename. Native scheduled cleanup acts on the original NTFS open/link; it cannot remove the replacement created
+by the existing POSIX rename. If service loss interrupts rename/receipt, reconcile the exact publication intent and renamed identity
+before admitting another physical commit; a changed name alone is not a durable Published receipt. A pathname's
 absence or a later object's existence alone is insufficient. Do not hold a destination lock through an arbitrary reader lifetime,
 silently change latency, or turn Publishing into Published to make the race pass. If this ordering cannot be implemented while
 preserving the owner's rules, ask the owner before adopting a different timing policy.
@@ -74,7 +78,7 @@ binding fails. Microsoft's [FltCancelFileOpen contract](https://learn.microsoft.
 says cancellation does not undo changes. Preallocation reduces failures but does not prove an exact identity mismatch, I/O failure or
 lost service connection is impossible. Reporting a harmless failed open would conceal a deletion that can still occur at close.
 
-**Approved conditionally by the owner, 2026-10-11; feasibility is not yet established:**
+**Approved conditionally by the owner, 2026-10-11; Luna confirms feasibility with these required corrections:**
 
 1. Before native CREATE is forwarded, a failure leaves the public file untouched and returns failure. No durable intent means no forward.
 2. After NTFS accepts scheduled deletion, preserve that accepted Windows result; do not claim cancellation undid it or report a
@@ -101,11 +105,12 @@ It does not tell the application that an already accepted delete had no effect.
 The approval does not establish implementation feasibility or approve dropping delete-on-close support, weakening existing rows,
 or narrowing the MVP to DeleteFileW-only behavior. M2 public-delete qualification remains open.
 
-## Automatic-recovery construction under review
+## Reviewed automatic-recovery construction
 
 The existing destination head already has a durable physical intent and a reconciliation turn that bypasses its logical hold.
 Its wait releases the destination semaphore, global journal gate and worker thread. Reuse that head/queue, not a second recovery
-protocol. Append one accepted/unresolved value without renumbering persisted enum values; unresolved pre-CREATE intents remain
+protocol. Append one AcceptedUnresolved value without renumbering persisted enum values and persist it before forwarding CREATE;
+it conservatively reserves the destination even if a crash prevents recording NTFS's result. Unresolved pre-CREATE intents remain
 nonpublishable if the service disconnects before it can persist the accepted result. Durable intent is recovery evidence, never
 proof of a DELETE grant or physical completion.
 
@@ -129,11 +134,25 @@ cleanup from pathname, process ID or a changed connection epoch. Cold-driver rec
 handles closed. Reconciliation verifies anchored parent/canonical leaf, full original identity and durable intent under the existing
 destination turn. Missing/replaced/unreadable anchors, unexplained replacement or unknown native state remain held and diagnosed.
 
-The focused design review must establish the exact proof for absence/original-file outcomes, including a service crash before its
-accepted reply, another native reader delaying unlink after the creator's cleanup, and mandatory unregister/reload with surviving
-native handles. It must also establish when the hold can end without letting a still-pending old operation remove a later save.
-These are open proof obligations, not claims that the current recovery code meets the approval. Keep normal scheduled-delete
-ordering separate from this exceptional recovery hold; no new publication delay for successful tracked handles is approved.
+At exact recorded last-handle CLEANUP and service startup, enter the existing reconciliation turn and enumerate the anchored parent
+with FileIdExtdDirectoryInfo / FILE_ID_EXTD_DIR_INFO. Validate complete enumeration, stable parent identity, canonical leaf and full
+FILE_ID_128. This is read-only directory metadata, not a child reopen or share widening. The
+[builder control](evidence/2026-10-11/t5-native-pending-link-control-builder-1011a1.txt) found the exact pending original despite a
+Win32-5 child-open refusal, then found exact absence after last reader close; supported-VM/protected recovery rows remain required.
+
+If the name still maps to original A, or exact enumeration establishes absence, automatically downgrade AcceptedUnresolved to the
+existing nonblocking scheduled-intent representation (Admitted plus an immutable native-on-close kind field). Retain the scheduled
+generation floor and original intent. This removes only the exceptional recovery barrier: it is never Complete or Canceled.
+Enumeration proves the current name-to-file-ID mapping, not NTFS's per-open link identity or delete-pending bit. Absence alone is not
+an exact physical-cleanup ACK. Retire/complete only with the separately required exact cleanup proof. A different unexplained ID
+retains the hold; a newer ID needs exact durable publication-intent/PublishedIdentity reconciliation before Superseded.
+
+Both the physical-turn and publication guards must block AcceptedUnresolved, and wake their existing waiters after durable downgrade.
+Normal scheduled Admitted records enforce their generation floor without adding a whole-handle-lifetime publication reservation.
+NTFS may still refuse publication while another reader keeps the old link pending. Retain the clean private stage and retry
+automatically on directory-change wake followed by exact re-enumeration; never report a successful rename or bypass NTFS. That native
+restriction is separate from the exceptional SafeUpload hold. These are required implementation rules, not a claim that current
+startup recovery or the live journal dispatcher already implements them.
 
 Diagnostics retain destination/transfer/generation, original identity, accepted status, driver epoch, cleanup evidence and reason.
 The tray uses existing session/SID-scoped notification delivery: identify the file, explain that later saves remain private, and
@@ -154,11 +173,18 @@ PASSIVE_LEVEL. Drop the driver's own handle holds before waiting for exact last-
 with a service/kernel handle. Context ownership must not create a FILE_OBJECT/context reference cycle. Nonpaged completion bookkeeping
 can release operation holds at elevated IRQL; final handle/context destruction runs at PASSIVE_LEVEL after local rundown.
 
-Voluntary unload vetoes outstanding private stages, RPCs, native operations and cleanup. Mandatory unload drains actual local
-references, stops new work and retains durable recovery without service waits or path reopen. Native NTFS read sections remain native;
-private stages retain their separate paging/section rundown. No timeout permits freeing a live FCB or operation.
+Voluntary unload vetoes outstanding private stages, RPCs, native records/operations and cleanup; retain the prototype's service-stop
+prohibition. For mandatory unload, fence new native CREATE/disposition/namespace mutations but keep exact CLEANUP/CLOSE and local
+operation-rundown callbacks admitted. Close ports to cancel service-dependent requests, drop driver/service handle holds and
+unneeded map-owned references, then drain every relevant app FILE_OBJECT to last-handle CLEANUP and all local callback/operation
+holds **before** FltUnregisterFilter. Never wait for service ACK or use a veto status as if it prevented mandatory removal.
+This is the already-approved unbounded local lifetime drain in T5-DELETES section 7; a timeout does not authorize unregister/free.
+No live delete-capable app handle crosses a detached interval. Allowed native read-only mappings may outlive app cleanup because
+NTFS owns their sections; they do not extend this native-record drain. Private stages keep their separate paging/section rundown.
+Actual OS shutdown does not call FilterUnloadCallback. Startup distinguishes an actual OS boot using trusted boot evidence, never
+merely a different driver-instance GUID; retain exact durable intent across loss. No automatic Unknown clearance is added.
 
-- Prove the owner's automatic-recovery conditions feasible and complete the corrected security-design review before routing code.
+- Implement the corrections in the READY WITH CORRECTIONS security-design review; do not claim the existing recovery is already wired.
 - Review the integrated kernel lifetime/lock-order/retirement change once before its first revised VM boot.
 - Four WDK/PREfast/ApiValidator configurations at 0/0 and the agent matrix after service changes.
 - Native ShareAccess=0, duplicate/inherited handles, real public identity/size/security/name, reads beyond 16 MiB and implicit position.

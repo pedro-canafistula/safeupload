@@ -42,7 +42,8 @@ establish that it is gone or still the original pre-open file, then release the 
 pre-CREATE intent and existing startup recovery; add no protocol states beyond **accepted, unresolved**. If exact reconciliation
 cannot decide, retain the hold, name the file and an actionable next step in the tray, and record diagnostics. Fault-injection rows
 must prove automatic hold release after handle close and service restart. If that automatic guarantee cannot be met, ask the owner
-before implementation. See [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md); feasibility and design review remain open.
+before implementation. See [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md); Luna finds it feasible with the required corrections,
+but implementation and protected fault-injection qualification remain open.
 
 **2026-10-11 — VM restoration.** Independently verified restoration means all of:
 
@@ -136,9 +137,18 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
 - [x] Simplified VM setup and harness gates (`04fc6bbb`); [PowerShell 5.1 gate](evidence/2026-10-11/harness-windows-gate-t4-resume-1011-a1.txt).
 - [x] Bounded readiness reads; real ready/silent/absent pipe controls and all harness self-checks pass in
   [Windows PowerShell 5.1](evidence/2026-10-11/harness-windows-gate-t4-readiness-1011-a2.txt).
-- [ ] **Running:** `m2t4boot10k1011a2` on win10-debug3 with `m2-driver5-t11` + admission-evidence agent `t4-af1`,
-  Verifier from boot and an eight-hour test deadline; [startup reached Ready](evidence/2026-10-11/m2t4boot10k1011a2-ready.txt).
-  - [ ] Final result, raw Verifier/pool samples, stop reason and separate fresh-disk restoration baseline.
+- [ ] **Failed:** `m2t4boot10k1011a2`, win10-debug3, `m2-driver5-t11` + `t4-af1`, Verifier from boot: 8,740/10,000 passed;
+  845 same-name access denials, 413 rename sharing violations and two missing hand-backs. Four stage files remained.
+  - [x] Retained [verdict](evidence/2026-10-11/m2t4boot10k1011a2-verdict.txt), [all cycle outcomes](evidence/2026-10-11/m2t4boot10k1011a2-cycles.jsonl),
+    [pool/Verifier samples](evidence/2026-10-11/m2t4boot10k1011a2-samples.jsonl), [raw Verifier queries](evidence/2026-10-11/m2t4boot10k1011a2-verifier/),
+    [final result/counters](evidence/2026-10-11/m2t4boot10k1011a2-after.txt)
+    and [service errors](evidence/2026-10-11/m2t4boot10k1011a2-service-events.txt). Pool slope 1.501 B/cycle, no cap refusal, idle worker;
+    settle versions/views failed, though they reached zero after actor exit. No assertion waived.
+  - [x] [Stop reason](evidence/2026-10-11/m2t4boot10k1011a2-stop.txt), [test-disk restoration](evidence/2026-10-11/m2t4boot10k1011a2-final-restored-state.txt)
+    and [separate fresh-disk baseline/restoration](evidence/2026-10-11/m2t4boot10k1011a2-independent-restoration.txt) passed;
+    both [test start](evidence/2026-10-11/m2t4boot10k1011a2-checkpoint.txt) and [verification start](evidence/2026-10-11/m2t4boot10k1011a2restore-start.txt)
+    record EFI reset.
+  - [ ] Owner reply before fixing/retrying repeated identical failures; add prompt harness stop on repetition. No retry launched.
 - [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
 
 The preceding `m2t4boot10k9` stopped after 4,714/10,000 without a final result; it is not a pass. Its run disk was deleted and base
@@ -180,9 +190,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [x] Caller CREATE-subject snapshot, separate NTFS-checked backend factory and exact authenticated service-process hold
     (`334f11af`–`3be0fe71`), original process-lifetime/effective-SID binding and reconciled service-epoch pin; normal builds omit
     the backend. The factory is not yet connected to public-delete handling.
-  - [ ] Resolve the [native public-open correction](T5-NATIVE-PUBLIC-OPENS.md) with the owner's automatic-recovery conditions;
-    [Luna follow-up](evidence/2026-10-11/t5-native-public-open-followup-luna6.md) remains NOT READY. Preserve native reads/mappings/sharing
-    and the published-only delete ordering without an unapproved handle-lifetime publication delay.
+  - [x] [Native public-open correction](T5-NATIVE-PUBLIC-OPENS.md) and automatic accepted/unresolved recovery have a
+    [READY WITH CORRECTIONS Luna review](evidence/2026-10-11/t5-automatic-native-delete-recovery-review-luna6.md).
+    [Builder parent-query control](evidence/2026-10-11/t5-native-pending-link-control-builder-1011a1.txt) identifies a pending original
+    and exact absence after last reader close; protected runtime and automatic-recovery fault rows remain pending.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.

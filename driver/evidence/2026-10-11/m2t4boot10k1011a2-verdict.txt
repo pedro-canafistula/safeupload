@@ -1,0 +1,14 @@
+T4GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T4DriverLoaded PASS the filter is still loaded after the cycles
+T4VerifierActive PASS runtime Verifier 0x13B still verifies SafeUpload.sys
+T4CyclesCompleted FAIL 8740 of 10000 cycles reached their outcome; outcomes {"resave-approve": {"Ok": 1453, "Failed": 422}, "new-approve": {"Ok": 1875, "Failed": 0}, "replace-approve": {"Ok": 1462, "Failed": 413}, "mapped-approve": {"Ok": 1875, "Failed": 0}, "resave-block": {"Ok": 202, "Failed": 423}, "new-block": {"Ok": 624, "Failed": 1}, "replace-block": {"Ok": 625, "Failed": 0}, "mapped-block": {"Ok": 624, "Failed": 1}}; first failures ['3245 resave-block actor: error Exception calling "WriteAllBytes" with "2" argument(s): "Access to the path \'C:\\Protected\\t4\\same-5.txt\' is denied."', '3253 resave-approve actor: error Exception calling "WriteAllBytes" with "2" argument(s): "Access to the path \'C:\\Protected\\t4\\same-5.txt\' is denied."', '3261 resave-block actor: error Exception calling "WriteAllBytes" with "2" argument(s): "Access to the path \'C:\\Protected\\t4\\same-5.txt\' is denied."', '3269 resave-approve actor: error Exception calling "WriteAllBytes" with "2" argument(s): "Access to the path \'C:\\Protected\\t4\\same-5.txt\' is denied."', '3277 resave-block actor: error Exception calling "WriteAllBytes" with "2" argument(s): "Access to the path \'C:\\Protected\\t4\\same-5.txt\' is denied."']
+T4NoBlockedBytesPublished PASS no blocked version reached its public name
+T4PoolFlat PASS driver nonpaged bytes (Verifier pool tracking) from cycle 1000: 6401512 -> 6414600 at cycle 10000, after idle 6404632; slope 1.501 B/cycle (limit 4); peak 6727928
+T4VersionsReleased FAIL after settle: live versions 3, views 3, created 9155, released 9152, views released 9151
+T4TombstonesReleased PASS after the actor exited: tombstones 0
+T4NoCapRefusal PASS cap refusals 0, tombstone refusals 0
+T4StageFilesDeleted FAIL stage files after idle 4 (journal manifests 9155, hand-backs 2075); driver deletes 7076, failures 0
+T4StageWorkerIdle PASS stage worker passes over 60 s with nothing waiting: 0 (timer fires 0; waiting versions 0)
+T4WorkerWakes INFO {"wakeCleanup": 9155, "wakeClose": 9155, "wakeDispose": 9151, "wakeConnect": 1, "wakeExit": 1544, "wakeTimer": 9980, "wakeInline": 414, "timerArms": 16226, "disposeHeld": 9151, "disposeNotHeld": 0, "disposeStale": 0, "disposeDeferred": 0, "passes": 39216}
+T4CycleTime INFO median 1188 ms, p95 1829 ms, max 120242 ms over 10000 cycles
+T4Duration INFO 12748 s (verifier-from-boot, 10000 cycles)

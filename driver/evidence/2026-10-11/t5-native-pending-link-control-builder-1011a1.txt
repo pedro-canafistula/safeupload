@@ -1,0 +1,9 @@
+PS51Parse=PASS;File=native-delete-publication-control.ps1
+PS51Parse=PASS;File=native-pending-link-control.ps1
+Machine=DESKTOP-O1LP5DG
+PSVersion=5.1.19041.6456
+WindowsBuild=10.0.19045.0
+NativePendingLinkSelfCheck=PASS;FreshParentAbsence=True
+Case=after-creator-cleanup;ChildOpenWin32=5;NativeDeletePending=True;ParentIdentity=7F2F63D64463D64A92080F00000021000000000000000000;OriginalIdentity=7F2F63D64463D64A94080F00000020000000000000000000;EnumeratedIdentity=7F2F63D64463D64A94080F00000020000000000000000000;TwoCompleteQueries=True;ChildOpenedForEnumeration=False;Verdict=PASS
+Case=after-last-reader-cleanup;ParentIdentity=7F2F63D64463D64A92080F00000021000000000000000000;ExactLeafAbsent=True;TwoCompleteQueries=True;Verdict=PASS
+NativePendingLinkControl=PASS;Assertions=15;ProductQualified=False;RecoveryNotImplemented=True
