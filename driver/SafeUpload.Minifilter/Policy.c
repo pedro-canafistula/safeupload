@@ -991,8 +991,7 @@ Routine Description:
 
 BOOLEAN SafeUploadIsAuthenticatedClient(VOID)
 {
-    return SafeUploadData.ClientPort != NULL &&
-        InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0;
+    return SafeUploadConnectionIsAuthenticated();
 }
 
 

@@ -23,6 +23,9 @@ public sealed class StagedTransferPublisher
     private readonly IStagedHandbackCopier? _handbackCopier;
     private readonly Func<uint, string?> _sessionUserSidResolver;
     private readonly ILogger? _logger;
+    private readonly SemaphoreSlim _emptyNoticeGate = new(1, 1);
+    private readonly Guid _emptyNoticePublisherInstanceId = Guid.NewGuid();
+    private static readonly TimeSpan EmptyNoticeRetryDelay = TimeSpan.FromSeconds(30);
     private sealed record JustifiedVersion(string Digest, int PolicyVersion);
 
     public StagedTransferPublisher(
@@ -78,12 +81,18 @@ public sealed class StagedTransferPublisher
 
         var journalEntry = await _journal.ReadAsync(transfer.TransferId, cancellationToken)
             .ConfigureAwait(false);
+        if (journalEntry.State == TransferJournalState.EmptyHeld)
+        {
+            await ReportEmptyHeldAsync(transfer.TransferId, cancellationToken).ConfigureAwait(false);
+            return StagedTransferOutcome.Blocked;
+        }
         if (journalEntry.PendingRename is not null || journalEntry.Transfer != transfer || !journalEntry.SealedOnce ||
+            journalEntry.SealedLength is not > 0 || journalEntry.StageIdentity is null ||
             (justified is null
                 ? journalEntry.State is not (TransferJournalState.Sealed or TransferJournalState.Retained)
                 : journalEntry.State != TransferJournalState.Blocked))
         {
-            throw new InvalidOperationException("The transfer must be sealed in the service journal.");
+            throw new InvalidOperationException("The transfer needs a positive, identity-bound measured seal.");
         }
 
         // Reject symbolic links and junctions in the stage path. A service
@@ -100,12 +109,10 @@ public sealed class StagedTransferPublisher
 
         // FileShare.Read lets the inspector open the same bytes, but denies
         // existing and new writable handles until publication completes.
-        FileStream sealedFile;
+        StagedStageFile stageFile;
         try
         {
-            sealedFile = new FileStream(
-                stagePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete,
-                bufferSize: 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            stageFile = StagedStageFile.Open(stagePath);
         }
         catch (IOException)
         {
@@ -115,7 +122,31 @@ public sealed class StagedTransferPublisher
             return StagedTransferOutcome.Retained;
         }
 
-        await using var lockedFile = sealedFile;
+        using var lockedFile = stageFile;
+        FileStream sealedFile = stageFile.Stream;
+        if (stageFile.Identity != journalEntry.StageIdentity)
+        {
+            await RetainUninspectedAsync(transfer, cancellationToken).ConfigureAwait(false);
+            return StagedTransferOutcome.Retained;
+        }
+        if (sealedFile.Length == 0)
+        {
+            TransferJournalEntry empty = await _journal.TryMarkEmptyHeldIfNowZeroAsync(
+                transfer.TransferId, stageFile.Identity, cancellationToken).ConfigureAwait(false);
+            if (empty.State == TransferJournalState.EmptyHeld)
+            {
+                await ReportEmptyHeldAsync(transfer.TransferId, cancellationToken).ConfigureAwait(false);
+                return StagedTransferOutcome.Blocked;
+            }
+            await RetainUninspectedAsync(transfer, cancellationToken).ConfigureAwait(false);
+            return StagedTransferOutcome.Retained;
+        }
+        if (sealedFile.Length != journalEntry.SealedLength)
+        {
+            await RetainUninspectedAsync(transfer, cancellationToken).ConfigureAwait(false);
+            return StagedTransferOutcome.Retained;
+        }
+
         await _journal.TransitionAsync(transfer.TransferId, journalEntry.State,
             TransferJournalState.Inspecting, null, cancellationToken, transfer,
             closeJustificationWindow: justified is not null).ConfigureAwait(false);
@@ -126,6 +157,31 @@ public sealed class StagedTransferPublisher
             sealedFile, _stagingRoot, Path.GetExtension(destinationPath), cancellationToken)
             .ConfigureAwait(false);
         FileStream inspectedFile = snapshot.Stream;
+        if (inspectedFile.Length == 0)
+        {
+            TransferJournalEntry empty = await _journal.TryMarkEmptyHeldIfNowZeroAsync(
+                transfer.TransferId, stageFile.Identity, cancellationToken).ConfigureAwait(false);
+            if (empty.State == TransferJournalState.EmptyHeld)
+            {
+                await ReportEmptyHeldAsync(transfer.TransferId, cancellationToken).ConfigureAwait(false);
+                return StagedTransferOutcome.Blocked;
+            }
+            await _journal.TransitionAsync(transfer.TransferId,
+                TransferJournalState.Inspecting, TransferJournalState.Retained,
+                null, cancellationToken).ConfigureAwait(false);
+            PublishTransferNotification(transfer, new TransferNotification(
+                transfer.TransferId, fileName, TransferPhase.Retained));
+            return StagedTransferOutcome.Retained;
+        }
+        if (inspectedFile.Length != journalEntry.SealedLength)
+        {
+            await _journal.TransitionAsync(transfer.TransferId,
+                TransferJournalState.Inspecting, TransferJournalState.Retained,
+                null, cancellationToken).ConfigureAwait(false);
+            PublishTransferNotification(transfer, new TransferNotification(
+                transfer.TransferId, fileName, TransferPhase.Retained));
+            return StagedTransferOutcome.Retained;
+        }
         string inspectedDigest = Convert.ToHexString(
             await SHA256.HashDataAsync(inspectedFile, cancellationToken).ConfigureAwait(false));
         inspectedFile.Position = 0;
@@ -287,6 +343,20 @@ public sealed class StagedTransferPublisher
                 transfer.TransferId, fileName, TransferPhase.Retained));
             return StagedTransferOutcome.Retained;
         }
+        if (sealedFile.Length <= 0 || inspectedFile.Length <= 0 ||
+            sealedFile.Length != journalEntry.SealedLength || inspectedFile.Length != journalEntry.SealedLength ||
+            stageFile.Identity != journalEntry.StageIdentity)
+        {
+            await _journal.TransitionAsync(transfer.TransferId,
+                TransferJournalState.Inspecting, TransferJournalState.Retained,
+                null, cancellationToken).ConfigureAwait(false);
+            await _inspection.RecordTransferOutcomeAsync(operation, result,
+                Verdict.Retained, "stage_measurement_changed", cancellationToken, transfer.TransferId)
+                .ConfigureAwait(false);
+            PublishTransferNotification(transfer, new TransferNotification(
+                transfer.TransferId, fileName, TransferPhase.Retained));
+            return StagedTransferOutcome.Retained;
+        }
         await _journal.TransitionAsync(transfer.TransferId,
             TransferJournalState.Inspecting, TransferJournalState.Approved,
             digest, cancellationToken).ConfigureAwait(false);
@@ -297,6 +367,9 @@ public sealed class StagedTransferPublisher
         bool committed = false;
         try
         {
+            if (inspectedFile.Length <= 0 || inspectedFile.Length != journalEntry.SealedLength ||
+                sealedFile.Length != journalEntry.SealedLength || stageFile.Identity != journalEntry.StageIdentity)
+                throw new IOException("The measured positive snapshot changed before publication.");
             _logger?.LogDebug("Requesting kernel publication permission for {TransferId}.", transfer.TransferId);
             using var permit = _publicationGate.Authorize(transfer, temporaryDestination, digest);
             _logger?.LogDebug("Creating approved publication file for {TransferId}.", transfer.TransferId);
@@ -347,6 +420,10 @@ public sealed class StagedTransferPublisher
         await _journal.TransitionAsync(transfer.TransferId,
             TransferJournalState.Publishing, TransferJournalState.Released,
             null, CancellationToken.None).ConfigureAwait(false);
+        // No subsequent inspection or publication work needs the private
+        // stage. Close its exact handle before the identity-bound disposer
+        // runs; otherwise Windows correctly refuses deletion while it is open.
+        lockedFile.Dispose();
         await _inspection.RecordTransferOutcomeAsync(operation, result,
             Verdict.Approved, justifiedApproval ? "justified_version" : null,
             CancellationToken.None, transfer.TransferId, digest).ConfigureAwait(false);
@@ -362,6 +439,44 @@ public sealed class StagedTransferPublisher
         }
         else await DisposeReleasedStageAsync(transfer.TransferId, CancellationToken.None).ConfigureAwait(false);
         return StagedTransferOutcome.Released;
+    }
+
+    public async Task<bool> ReportEmptyHeldAsync(Guid transferId, CancellationToken token)
+    {
+        await _emptyNoticeGate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            TransferJournalEntry current = await _journal.ReadAsync(transferId, token).ConfigureAwait(false);
+            if (current.State != TransferJournalState.EmptyHeld || current.SealedLength != 0 ||
+                current.StageIdentity is null)
+                return false;
+            var notice = new TransferNotification(transferId,
+                Path.GetFileName(current.Transfer.DestinationPath), TransferPhase.Blocked,
+                OverrideAllowed: false, BlockReason: StagedBlockReason.EmptySavePrivate);
+            DateTimeOffset attemptedAtUtc = DateTimeOffset.UtcNow;
+            bool ownerBound = TryGetBoundSession(current.Transfer, out uint sessionId, out string sid);
+            if (!ownerBound)
+                _logger?.LogWarning("Empty stage {TransferId} remains private; its owner session/SID is not currently bound.",
+                    transferId);
+
+            return await _journal.TryPublishEmptyHeldNoticeAsync(current,
+                _emptyNoticePublisherInstanceId, attemptedAtUtc, EmptyNoticeRetryDelay,
+                () => ownerBound && _notifications.PublishEmptySavePrivateToOwner(notice, sessionId, sid), token)
+                .ConfigureAwait(false);
+        }
+        finally { _emptyNoticeGate.Release(); }
+    }
+
+    private async Task RetainUninspectedAsync(StagedTransfer transfer, CancellationToken token)
+    {
+        TransferJournalEntry current = await _journal.ReadAsync(transfer.TransferId, token).ConfigureAwait(false);
+        if (current.Transfer != transfer || current.PendingRename is not null ||
+            current.State is not (TransferJournalState.Sealed or TransferJournalState.Blocked) ||
+            current.StageCleanupStarted || current.StageDeleted)
+            return;
+        await _journal.TransitionAsync(transfer.TransferId, current.State,
+            TransferJournalState.Retained, null, token, transfer,
+            closeJustificationWindow: current.State == TransferJournalState.Blocked).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -383,7 +498,14 @@ public sealed class StagedTransferPublisher
             entry = await _journal.ReadAsync(transferId, token).ConfigureAwait(false);
             if (!IsDisposableRelease(entry) || CommittedRenames(entry) != renames) return;
             RequirePrivateStagePath(entry.Transfer.StagePath);
-            File.Delete(entry.Transfer.StagePath);
+            if (!StagedDiscardCleanup.TryDeleteExactAndConfirmAbsent(entry.Transfer.StagePath,
+                    entry.StageIdentity, out Exception? deletionFailure))
+                throw new IOException("The released stage identity did not match the manifest or absence was not confirmed.",
+                    deletionFailure);
+            await _journal.CompleteReleasedStageDisposalAsync(
+                new StagedVersionIdentity(entry.Transfer.TransferId, entry.DestinationGeneration,
+                    entry.StageIdentity ?? throw new IOException("The released stage has no captured identity.")),
+                token).ConfigureAwait(false);
         }
         catch (Exception ex) when (!token.IsCancellationRequested && ex is IOException or UnauthorizedAccessException or
             System.ComponentModel.Win32Exception or InvalidOperationException or ArgumentException)
@@ -411,7 +533,7 @@ public sealed class StagedTransferPublisher
         foreach (TransferJournalEntry entry in await _journal.ReadReleasedAsync(token).ConfigureAwait(false))
         {
             token.ThrowIfCancellationRequested();
-            if (!IsDisposableRelease(entry) || !File.Exists(entry.Transfer.StagePath)) continue;
+            if (!IsDisposableRelease(entry)) continue;
             await DisposeReleasedStageAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
         }
     }
@@ -432,7 +554,8 @@ public sealed class StagedTransferPublisher
     /// <summary>Restores a blocked hand-back and lease after a service restart.</summary>
     public async Task RecoverBlockedAsync(TransferJournalEntry entry, CancellationToken token)
     {
-        if (entry.State != TransferJournalState.Blocked || entry.PendingRename is not null) return;
+        if (entry.State != TransferJournalState.Blocked || entry.PendingRename is not null ||
+            entry.SealedLength is not > 0 || entry.StageIdentity is null) return;
         TransferJournalEntry current = entry;
         if (!HasRequestorIdentity(current.Transfer))
         {
@@ -537,7 +660,8 @@ public sealed class StagedTransferPublisher
 
     public async Task ProcessBlockedCleanupAsync(TransferJournalEntry entry, CancellationToken token)
     {
-        if (entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
+        if (entry.SealedLength is not > 0 || entry.StageIdentity is null ||
+            entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
             entry.StageDeleted) return;
         TransferJournalEntry current = entry;
         if (!HasRequestorIdentity(current.Transfer))
@@ -551,6 +675,8 @@ public sealed class StagedTransferPublisher
                 DateTimeOffset.UtcNow, token).ConfigureAwait(false);
         if (current.HandbackState != StagedHandbackState.Verified || !current.JustificationWindowClosed)
             return;
+        StagedStageIdentity expectedStageIdentity = current.StageIdentity ??
+            throw new IOException("The verified stage has no exact manifest identity for cleanup.");
         if (current.StageCleanupStarted &&
             DateTimeOffset.UtcNow - current.UpdatedAtUtc < TimeSpan.FromSeconds(30))
             return;
@@ -561,24 +687,23 @@ public sealed class StagedTransferPublisher
 
         try
         {
-            bool stageMissing = false;
             long stageLength = current.HandbackLength ?? 0;
             try
             {
                 RequirePrivateStagePath(current.Transfer.StagePath);
-                await using var stage = new FileStream(current.Transfer.StagePath, FileMode.Open,
-                    FileAccess.Read, FileShare.Read, 64 * 1024,
-                    FileOptions.Asynchronous | FileOptions.SequentialScan);
-                long length = stage.Length;
+                using StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath);
+                if (stage.Identity != expectedStageIdentity)
+                    throw new IOException("Staging identity changed after hand-back verification; it was retained.");
+                long length = stage.Stream.Length;
                 stageLength = length;
-                string digest = Convert.ToHexString(await SHA256.HashDataAsync(stage, token)
+                string digest = Convert.ToHexString(await SHA256.HashDataAsync(stage.Stream, token)
                     .ConfigureAwait(false));
-                if (stage.Length != length || length < 0 ||
+                if (stage.Stream.Length != length || length < 0 ||
                     !string.Equals(digest, current.Sha256Hex, StringComparison.OrdinalIgnoreCase))
                     throw new IOException("Staging changed after hand-back verification; it was retained.");
             }
-            catch (FileNotFoundException) { stageMissing = true; }
-            catch (DirectoryNotFoundException) { stageMissing = true; }
+            catch (FileNotFoundException) { /* Exact deletion below confirms absence before recording cleanup. */ }
+            catch (DirectoryNotFoundException) { /* Exact deletion below confirms absence before recording cleanup. */ }
 
             if (_handbackCopier is null || current.HandbackPath is null || current.Sha256Hex is null)
                 throw new IOException("The verified hand-back cannot be reopened for cleanup.");
@@ -599,9 +724,11 @@ public sealed class StagedTransferPublisher
 
             using (handbackLease)
             {
-            if (!stageMissing)
-                File.Delete(current.Transfer.StagePath);
-            await _journal.CompleteStageCleanupAsync(current.Transfer.TransferId, token).ConfigureAwait(false);
+                if (!StagedDiscardCleanup.TryDeleteExactAndConfirmAbsent(current.Transfer.StagePath,
+                        expectedStageIdentity, out Exception? deletionFailure))
+                    throw new IOException("The exact verified stage could not be deleted and confirmed absent.",
+                        deletionFailure);
+                await _journal.CompleteStageCleanupAsync(current.Transfer.TransferId, token).ConfigureAwait(false);
             }
             DisposeCleanedUpStage(current);
         }

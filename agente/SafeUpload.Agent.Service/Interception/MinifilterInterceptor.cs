@@ -58,9 +58,24 @@ public sealed class MinifilterInterceptor : BackgroundService
     private StagedTransferAllocator? _stageAllocator;
     private StagedTransferJournal? _stageJournal;
     private StagedTransferPublisher? _stagePublisher;
+    // Readiness is scoped to this authenticated FilterPort connection. The
+    // exact driver epoch is installed only after a v20 capability receipt is
+    // successfully delivered, and staging recovery completes before the
+    // dispatcher accepts any stage mutation.
+    private Guid? _activeDriverInstanceId;
+    // On a fresh authenticated channel, this is the sole authority retained
+    // for replaying a previously committed op17 after its reply was lost. It
+    // never makes ordinary stage operations ready.
+    private Guid? _drainReplayDriverInstanceId;
+    private volatile bool _stageV20Ready;
+    private volatile bool _stagingRecoveryReady;
+    private bool _stagingRecovered;
+    private TaskCompletionSource<bool> _stagingReadySignal =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private long _overBudget;
     private long _answered;
+    private int _discardCleanupCursor;
     private bool _overrideAllowed;
     private bool _auditOnly;
     private int _policyVersion;
@@ -193,6 +208,12 @@ public sealed class MinifilterInterceptor : BackgroundService
 
         using (port)
         {
+            _activeDriverInstanceId = null;
+            _drainReplayDriverInstanceId = null;
+            _stageV20Ready = false;
+            _stagingRecoveryReady = false;
+            _stagingRecovered = false;
+            _stagingReadySignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             // The driver authenticates the SYSTEM client only after its
             // durable policy is flushed and accepted. Do that first so
             // recovery can use the private stage namespace without opening
@@ -217,6 +238,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                 CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             Task? publishTask = null;
             Task? coverageTask = null;
+            Task? discardCleanupTask = null;
             try
             {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
@@ -226,6 +248,9 @@ public sealed class MinifilterInterceptor : BackgroundService
 #endif
                 publishTask = _stagePublisher is null ? null :
                     Task.Run(() => PublishSealedLoopAsync(publishCancellation.Token),
+                        publishCancellation.Token);
+                discardCleanupTask = _stageJournal is null ? null :
+                    Task.Run(() => ProcessExactDiscardCleanupLoopAsync(publishCancellation.Token),
                         publishCancellation.Token);
 
                 _logger.LogInformation("Minifiltro conectado. Interceptando em modo kernel.");
@@ -258,6 +283,12 @@ public sealed class MinifilterInterceptor : BackgroundService
                 {
                     uint verdict;
                     string? stageName = null;
+                    StagedAllocationReply? typedCreateReply = null;
+                    uint? typedStatusReply = null;
+                    SafeUploadStageLifecycleV20? typedLifecycleReply = null;
+                    SafeUploadStageReconcileReplyV20? typedReconcileReply = null;
+                    SafeUploadStageEpochDrainReplyV20? typedEpochDrainReply = null;
+                    bool reconcileDrainReplayOnly = false;
                     if (request.Version != Contract.Version || request.StructSize != Contract.RequestSize ||
                         (request.Operation != Operation.StageDiagnostic && !request.HasKnownFlags))
                     {
@@ -265,15 +296,51 @@ public sealed class MinifilterInterceptor : BackgroundService
                     }
                     else if (request.Operation == Operation.StageAllocate)
                     {
-                        (verdict, stageName) = AllocateStage(request);
+                        // A typed v20 marker is opaque binary input even when its
+                        // operation-specific flags are malformed. Route every
+                        // such request through the strict typed parser so it
+                        // can be denied without interpreting ImageName as text.
+                        if (request.Reserved == Contract.StageExtensionVersion ||
+                            (request.Flags & Contract.StageV20ReplyFlag) != 0)
+                            (verdict, typedCreateReply) = AllocateStageV19(request);
+                        else if (_stagingEnabled)
+                            verdict = PortVerdict.Deny;
+                        else
+                            (verdict, stageName) = AllocateStage(request, out typedCreateReply);
                     }
                     else if (request.Operation == Operation.StageSeal)
                     {
-                        verdict = SealStage(request);
+                        if (request.Reserved == Contract.StageExtensionVersion)
+                            (verdict, typedStatusReply) = SealStageV19(request);
+                        else if (_stagingEnabled) verdict = PortVerdict.Deny;
+                        else verdict = SealStage(request);
                     }
                     else if (request.Operation == Operation.StageDiscard)
                     {
-                        verdict = DiscardStage(request);
+                        if (request.Reserved == Contract.StageExtensionVersion)
+                            (verdict, typedStatusReply) = DiscardStageV19(request);
+                        else if (_stagingEnabled) verdict = PortVerdict.Deny;
+                        else verdict = DiscardStage(request);
+                    }
+                    else if (request.Operation == Operation.StageCreateAfterDiscard)
+                    {
+                        (verdict, typedCreateReply) = CreateAfterPrivateDiscardStage(request);
+                    }
+                    else if (request.Operation == Operation.StageReconcile)
+                    {
+                        (verdict, typedReconcileReply, reconcileDrainReplayOnly) =
+                            RegisterDriverInstanceV20(request);
+                    }
+                    else if (request.Operation == Operation.StageEpochDrain)
+                    {
+                        (verdict, typedEpochDrainReply) = DrainDriverInstanceV20(request);
+                    }
+                    else if (request.Operation is Operation.StageAttachPrepare or
+                             Operation.StageAttachCommit or Operation.StageAttachAbort or
+                             Operation.StageCompletionPermit or Operation.StageRetireUnexposed or
+                             Operation.StageRetireAttachedPrivate or Operation.StageHandleObserved)
+                    {
+                        (verdict, typedLifecycleReply) = ApplyStageLifecycleV20(request);
                     }
                     else if (request.Operation is Operation.StageRename or
                              Operation.StageRenameCommit or Operation.StageRenameAbort)
@@ -294,7 +361,73 @@ public sealed class MinifilterInterceptor : BackgroundService
 
                     try
                     {
-                        port.Reply(messageId, request.RequestId, verdict, stageName);
+                        if (typedReconcileReply is { } reconcileReply)
+                        {
+                            bool drainReplayOnly = reconcileReply.Result == StageV20Result.EpochBusy &&
+                                reconcileDrainReplayOnly;
+                            if (drainReplayOnly)
+                            {
+                                // Reconciliation may report a durably drained
+                                // epoch after this channel was established. Fence
+                                // ordinary work before attempting the reply; a
+                                // lost response must not leave an old in-memory
+                                // Ready bit authorizing mutations.
+                                _activeDriverInstanceId = null;
+                                _drainReplayDriverInstanceId = reconcileReply.DriverInstanceId;
+                                _stageV20Ready = false;
+                                _stagingRecoveryReady = false;
+                            }
+                            bool delivered = port.ReplyStageReconcileV20(messageId, reconcileReply);
+                            if (delivered && reconcileReply.Result == StageV20Result.CapabilitiesAccepted)
+                            {
+                                _activeDriverInstanceId = reconcileReply.DriverInstanceId;
+                                _drainReplayDriverInstanceId = null;
+                                _stageV20Ready = true;
+                                if (!_stagingRecovered)
+                                {
+                                    try
+                                    {
+                                        RecoverStagingSubsystem(stoppingToken);
+                                        _stagingRecovered = true;
+                                    }
+                                    catch (Exception recoveryError)
+                                    {
+                                        _logger.LogCritical(recoveryError,
+                                            "Stage-v20 recovery failed after capability negotiation; staged requests remain refused.");
+                                        _stageV20Ready = false;
+                                        _activeDriverInstanceId = null;
+                                    }
+                                }
+                                _stagingRecoveryReady = _stagingRecovered;
+                                if (_stagingRecoveryReady) _stagingReadySignal.TrySetResult(true);
+                            }
+                        }
+                        else if (typedEpochDrainReply is { } drainReply)
+                        {
+                            bool delivered = port.ReplyStageEpochDrainV20(messageId, drainReply);
+                            if (delivered && drainReply.Result == StageV20Result.EpochDrained)
+                            {
+                                _stageV20Ready = false;
+                                _stagingRecoveryReady = false;
+                                _activeDriverInstanceId = null;
+                                _drainReplayDriverInstanceId = null;
+                            }
+                        }
+                        else if (typedLifecycleReply is { } lifecycleReply)
+                        {
+                            _ = port.ReplyStageLifecycleV20(messageId, lifecycleReply);
+                        }
+                        else if (verdict == PortVerdict.Allow && typedCreateReply is { } typedCreate)
+                        {
+                            SafeUploadStageIdentityV19 wireIdentity = ToWireStageIdentity(typedCreate.StageIdentity);
+                            port.ReplyStageCreateV19(messageId, request.RequestId,
+                                Path.GetFileName(typedCreate.Transfer.StagePath),
+                                checked((ulong)typedCreate.DestinationGeneration), in wireIdentity);
+                        }
+                        else if (verdict == PortVerdict.Allow && typedStatusReply is { } typedStatus)
+                            port.ReplyStageStatusV19(messageId, request.RequestId, typedStatus);
+                        else
+                            port.Reply(messageId, request.RequestId, verdict, stageName);
                     }
                     catch (Exception ex)
                     {
@@ -337,9 +470,23 @@ public sealed class MinifilterInterceptor : BackgroundService
                         _logger.LogWarning(ex, "Admission coverage monitor stopped before FilterPort close.");
                     }
                 }
+                if (discardCleanupTask is not null)
+                {
+                    try { discardCleanupTask.GetAwaiter().GetResult(); }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Exact private-stage cleanup worker stopped before FilterPort close.");
+                    }
+                }
                 _grants.Unbind(port);
                 _diagnostics.Unbind(port);
                 _stagedJustifications.Clear();
+                _stageV20Ready = false;
+                _stagingRecoveryReady = false;
+                _activeDriverInstanceId = null;
+                _drainReplayDriverInstanceId = null;
+                _stagingReadySignal.TrySetCanceled();
                 _hub.Publish(new StatusNotification(
                     _policyVersion, _activeCategories, ProtectionActive: false,
                     AdmissionCoverage: AdmissionCoverageStatus.NotAvailable));
@@ -354,7 +501,10 @@ public sealed class MinifilterInterceptor : BackgroundService
 
     private uint RetargetStage(SafeUploadRequest request)
     {
-        if (_stageJournal is null || request.Version != Contract.Version ||
+        if (_stageJournal is null || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
+            _activeDriverInstanceId is not { } activeDriver || request.Version != Contract.Version ||
+            request.RequestId == 0 || request.RequestorProcessId == 0 || request.Reserved > 1 ||
+            request.ImageNameLength != 32 * sizeof(char) ||
             request.TypedFlags.HasFlag(RequestFlags.PathTruncated) ||
             request.TypedFlags.HasFlag(RequestFlags.PathNotNormalized)) return PortVerdict.Deny;
         try
@@ -363,6 +513,10 @@ public sealed class MinifilterInterceptor : BackgroundService
             string? destination = NtPathTranslator.ToDosPath(request.GetPath());
             if (destination is null) return PortVerdict.Deny;
             var entry = _stageJournal.ReadAsync(id, CancellationToken.None).GetAwaiter().GetResult();
+            if (entry.DriverInstanceId != activeDriver ||
+                entry.Transfer.ProcessId != checked((int)request.RequestorProcessId) ||
+                !IsExactLiveOwner(entry.Transfer))
+                return PortVerdict.Deny;
             if (request.Operation != Operation.StageRename)
             {
                 _stageJournal.CompleteRenameAsync(id, request.RequestId,
@@ -391,12 +545,320 @@ public sealed class MinifilterInterceptor : BackgroundService
         flags.HasFlag(RequestFlags.StageNetwork) ? DestinationKind.NetworkShare :
         flags.HasFlag(RequestFlags.StageRemovable) ? DestinationKind.RemovableDrive : DestinationKind.Cloud;
 
-    private (uint Verdict, string? StageName) AllocateStage(SafeUploadRequest request)
+    private static bool HasValidStageAllocateFlags(SafeUploadRequest request)
     {
-        if (_stageAllocator is null || request.Version != Contract.Version ||
-            !request.HasKnownFlags ||
+        const uint volumeFlags = (uint)(RequestFlags.StageRemovable | RequestFlags.StageNetwork);
+        const uint referenceFlags = (uint)(RequestFlags.StageFollowup | RequestFlags.StageTombstoneCreate);
+        const uint allowedFlags = volumeFlags | referenceFlags | Contract.StageV19ReplyFlag;
+        uint flags = request.Flags;
+        if ((flags & ~allowedFlags) != 0 || (flags & volumeFlags) == volumeFlags ||
+            (flags & referenceFlags) == referenceFlags ||
             request.TypedFlags.HasFlag(RequestFlags.PathTruncated) ||
+            request.TypedFlags.HasFlag(RequestFlags.ImageNameTruncated) ||
             request.TypedFlags.HasFlag(RequestFlags.PathNotNormalized))
+            return false;
+        return !request.TypedFlags.HasFlag(RequestFlags.StageTombstoneCreate) || request.Reserved == 2;
+    }
+
+    private (uint Verdict, StagedAllocationReply? Reply) AllocateStageV19(SafeUploadRequest request)
+    {
+        if (_stageAllocator is null || _stageJournal is null || !_stagingEnabled ||
+            !_stageV20Ready || !_stagingRecoveryReady ||
+            !request.TryReadStagePayload<SafeUploadStageAllocateV19>(Operation.StageAllocate, out var payload) ||
+            payload.AllocationReservationId == Guid.Empty || payload.DriverInstanceId == Guid.Empty ||
+            payload.Disposition > 5 || payload.ReferenceKind > StageV19AllocationReferenceKind.Tombstone ||
+            (payload.ReferenceKind == StageV19AllocationReferenceKind.None) !=
+                (payload.ParentTransferId == Guid.Empty) || request.RequestorProcessId == 0)
+            return (PortVerdict.Deny, null);
+
+        try
+        {
+            if (_activeDriverInstanceId != payload.DriverInstanceId)
+                throw new IOException("The v19 allocation did not match the registered driver instance.");
+            string? destination = NtPathTranslator.ToDosPath(request.GetPath());
+            if (destination is null) return (PortVerdict.Deny, null);
+            int processId = checked((int)request.RequestorProcessId);
+            DestinationKind kind = ClassifyStagedDestination(request.TypedFlags);
+            var intent = new StagedAllocationIntentV19(payload.AllocationReservationId,
+                payload.ParentTransferId, payload.Disposition, payload.ReferenceKind,
+                payload.DriverInstanceId);
+
+            // A retry may arrive after the original process exited. Resolve an
+            // already durable reservation first; it is private and immutable,
+            // and the driver's post-RPC owner check will exact-discard it when
+            // the original owner no longer exists.
+            TransferJournalEntry? existing = TryReadStageEntry(_stageJournal,
+                payload.AllocationReservationId);
+            if (existing is not null)
+            {
+                if (!MatchesV19AllocationReplay(existing, destination, kind, processId, payload))
+                    throw new IOException("The v19 reservation is already committed to a different request.");
+                StagedTransfer? savedPrevious = null;
+                Guid? savedTombstoneOwner = null;
+                if (payload.ReferenceKind == StageV19AllocationReferenceKind.Followup)
+                {
+                    if (existing.ParentVersionIdentity is not { } parentIdentity ||
+                        parentIdentity.TransferId != payload.ParentTransferId)
+                        throw new IOException("The allocation replay lost its exact predecessor.");
+                    savedPrevious = _stageJournal.ReadAsync(parentIdentity.TransferId,
+                        CancellationToken.None).GetAwaiter().GetResult().Transfer;
+                }
+                else if (payload.ReferenceKind == StageV19AllocationReferenceKind.Tombstone)
+                {
+                    savedTombstoneOwner = payload.ParentTransferId;
+                }
+                StagedTransfer saved = existing.Transfer;
+                StagedAllocationReply replay = _stageAllocator.AllocateV19Async(destination, kind,
+                    saved.ProcessName, processId, saved.SessionId ??
+                        throw new IOException("The v19 allocation replay has no saved session."), intent,
+                    savedPrevious, savedTombstoneOwner,
+                    saved.RequestorSid ?? throw new IOException("The v19 allocation replay has no saved SID."),
+                    saved.RequestorProcessCreationTime ??
+                        throw new IOException("The v19 allocation replay has no saved process identity."),
+                    CancellationToken.None).GetAwaiter().GetResult();
+                return (PortVerdict.Allow, replay);
+            }
+
+            SessionResolver.ProcessIdentity requestor = SessionResolver.GetRequiredProcessIdentity(processId);
+            string processName = Process.GetProcessById(processId).ProcessName;
+            Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var operation = new FileOperation(destination, Path.GetFileName(destination),
+                Path.GetExtension(destination), 0, DateTime.MinValue, processName,
+                processId, destination, kind);
+            if (!policy.IsMonitoredDestination(operation)) return (PortVerdict.Deny, null);
+
+            StagedTransfer? previous = null;
+            Guid? tombstoneOwner = null;
+            if (payload.ReferenceKind == StageV19AllocationReferenceKind.Followup)
+            {
+                TransferJournalEntry prior = _stageJournal.ReadAsync(payload.ParentTransferId,
+                    CancellationToken.None).GetAwaiter().GetResult();
+                if (!prior.SealedOnce || prior.State is not (TransferJournalState.Sealed or
+                        TransferJournalState.Retained or TransferJournalState.EmptyHeld) ||
+                    prior.DriverInstanceId != payload.DriverInstanceId ||
+                    !string.Equals(prior.Transfer.DestinationPath, destination,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    prior.Transfer.Destination != kind || prior.Transfer.ProcessId != processId ||
+                    prior.Transfer.SessionId != requestor.SessionId ||
+                    !string.Equals(prior.Transfer.RequestorSid, requestor.UserSid.Value,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    prior.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime)
+                    return (PortVerdict.Deny, null);
+                previous = prior.Transfer;
+            }
+            else if (payload.ReferenceKind == StageV19AllocationReferenceKind.Tombstone)
+            {
+                if (payload.Disposition != 2) return (PortVerdict.Deny, null);
+                TransferJournalEntry owner = _stageJournal.ReadAsync(payload.ParentTransferId,
+                    CancellationToken.None).GetAwaiter().GetResult();
+                if (owner.Transfer.ProcessId != processId || owner.Transfer.SessionId != requestor.SessionId ||
+                    !string.Equals(owner.Transfer.RequestorSid, requestor.UserSid.Value,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    owner.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime)
+                    return (PortVerdict.Deny, null);
+                tombstoneOwner = payload.ParentTransferId;
+                processName = owner.Transfer.ProcessName;
+            }
+
+            StagedAllocationReply reply = _stageAllocator.AllocateV19Async(destination, kind,
+                processName, processId, requestor.SessionId, intent, previous, tombstoneOwner,
+                requestor.UserSid.Value, requestor.CreationTimeFileTime,
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            SessionResolver.ProcessIdentity after = SessionResolver.GetRequiredProcessIdentity(processId);
+            if (after.SessionId != requestor.SessionId || after.CreationTimeFileTime != requestor.CreationTimeFileTime ||
+                !after.UserSid.Equals(requestor.UserSid))
+                throw new IOException("The allocation owner changed while the v19 request was being handled.");
+            return (PortVerdict.Allow, reply);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Exact v19 allocation refused for request {RequestId}.", request.RequestId);
+            return (PortVerdict.Deny, null);
+        }
+    }
+
+    private static TransferJournalEntry? TryReadStageEntry(StagedTransferJournal journal, Guid transferId)
+    {
+        try { return journal.ReadAsync(transferId, CancellationToken.None).GetAwaiter().GetResult(); }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
+    }
+
+    private static bool MatchesV19AllocationReplay(TransferJournalEntry entry, string destination,
+        DestinationKind kind, int processId, SafeUploadStageAllocateV19 payload) =>
+        entry.Transfer.TransferId == payload.AllocationReservationId &&
+        string.Equals(entry.Transfer.DestinationPath, Path.GetFullPath(destination),
+            StringComparison.OrdinalIgnoreCase) && entry.Transfer.Destination == kind &&
+        entry.Transfer.ProcessId == processId && entry.CreateReservationId == payload.AllocationReservationId &&
+        entry.AllocationDisposition == payload.Disposition &&
+        entry.AllocationReferenceKind == payload.ReferenceKind &&
+        entry.AllocationReferenceId == (payload.ReferenceKind == 0 ? (Guid?)null : payload.ParentTransferId) &&
+        entry.DriverInstanceId == payload.DriverInstanceId && entry.StageIdentity is not null &&
+        entry.DestinationGeneration > 0 && !entry.SealedOnce && entry.SealedLength is null &&
+        entry.State is (TransferJournalState.Allocated or TransferJournalState.Unsealed) &&
+        entry.PendingRename is null;
+
+    private (uint Verdict, SafeUploadStageReconcileReplyV20? Reply, bool DrainReplayOnly)
+        RegisterDriverInstanceV20(
+        SafeUploadRequest request)
+    {
+        if (_stageJournal is null ||
+            !_stagingEnabled || request.RequestId == 0 || request.RequestorProcessId != 0 ||
+            request.Flags != 0 || request.PathLength != 0 ||
+            !request.TryReadStagePayload<SafeUploadStageReconcileV20>(Operation.StageReconcile, out var payload) ||
+            payload.DriverInstanceId == Guid.Empty ||
+            payload.RequiredCapabilityMask != (uint)StageV20Capability.Required || payload.ReservedZero != 0)
+            return (PortVerdict.Deny, null, false);
+
+        try
+        {
+            StagedDriverEpochReconcileV20 reconcile = _stageJournal.ReconcileDriverInstanceV20Async(payload.DriverInstanceId,
+                payload.RequiredCapabilityMask, CancellationToken.None).GetAwaiter().GetResult();
+            bool accepted = reconcile == StagedDriverEpochReconcileV20.Active;
+            bool drainReplayOnly = reconcile == StagedDriverEpochReconcileV20.DrainReplayOnly;
+            var reply = new SafeUploadStageReconcileReplyV20
+            {
+                Version = Contract.StageExtensionVersion,
+                StructSize = Contract.StageReconcileReplyV20Size,
+                Operation = Operation.StageReconcile,
+                Result = accepted ? StageV20Result.CapabilitiesAccepted : StageV20Result.EpochBusy,
+                RequestId = request.RequestId,
+                DriverInstanceId = payload.DriverInstanceId,
+                AcceptedCapabilityMask = accepted ? (uint)StageV20Capability.Required : 0,
+                ReservedZero = 0
+            };
+            return (PortVerdict.Allow, reply, drainReplayOnly);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Stage-v20 epoch reconciliation refused for request {RequestId}.",
+                request.RequestId);
+            return (PortVerdict.Deny, null, false);
+        }
+    }
+
+    private (uint Verdict, SafeUploadStageEpochDrainReplyV20? Reply) DrainDriverInstanceV20(
+        SafeUploadRequest request)
+    {
+        if (_stageJournal is null || !_stagingEnabled ||
+            (_activeDriverInstanceId ?? _drainReplayDriverInstanceId) is not { } activeDriver ||
+            request.RequestId == 0 ||
+            request.RequestorProcessId != 0 || request.Flags != 0 || request.PathLength != 0 ||
+            !request.TryReadStagePayload<SafeUploadStageEpochDrainV20>(Operation.StageEpochDrain, out var payload) ||
+            payload.DriverInstanceId != activeDriver || payload.DrainNonce == 0)
+            return (PortVerdict.Deny, null);
+
+        try
+        {
+            bool drained = _stageJournal.DrainDriverInstanceV20Async(payload.DriverInstanceId,
+                request.RequestId, payload.DrainNonce, CancellationToken.None).GetAwaiter().GetResult();
+            if (drained)
+            {
+                _stageV20Ready = false;
+                _stagingRecoveryReady = false;
+                _drainReplayDriverInstanceId = payload.DriverInstanceId;
+            }
+            return (PortVerdict.Allow, new SafeUploadStageEpochDrainReplyV20
+            {
+                Version = Contract.StageExtensionVersion,
+                StructSize = Contract.StageEpochDrainReplyV20Size,
+                Operation = Operation.StageEpochDrain,
+                Result = drained ? StageV20Result.EpochDrained : StageV20Result.EpochBusy,
+                RequestId = request.RequestId,
+                DriverInstanceId = payload.DriverInstanceId,
+                DrainNonce = payload.DrainNonce
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Stage-v20 epoch drain refused for request {RequestId}.", request.RequestId);
+            return (PortVerdict.Deny, null);
+        }
+    }
+
+    private (uint Verdict, SafeUploadStageLifecycleV20? Reply) ApplyStageLifecycleV20(
+        SafeUploadRequest request)
+    {
+        if (_stageJournal is null || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
+            _activeDriverInstanceId is not { } activeDriver || request.RequestId == 0 ||
+            request.RequestorProcessId == 0 ||
+            !request.TryReadStagePayload<SafeUploadStageLifecycleV20>(request.Operation, out var payload) ||
+            payload.Operation != request.Operation || payload.Result != 0 || payload.RequestId != request.RequestId ||
+            payload.TransferId == Guid.Empty || payload.DestinationGeneration == 0 ||
+            !payload.StageIdentity.HasNonzeroFileId || payload.DriverInstanceId != activeDriver ||
+            !payload.ParentDirectoryIdentity.HasNonzeroFileId)
+            return (PortVerdict.Deny, null);
+
+        try
+        {
+            string? destination = NtPathTranslator.ToDosPath(request.GetPath());
+            if (destination is null) return (PortVerdict.Deny, null);
+            int processId = checked((int)request.RequestorProcessId);
+            StagedVersionIdentity version = new(payload.TransferId,
+                checked((long)payload.DestinationGeneration), FromWireStageIdentity(payload.StageIdentity));
+            TransferJournalEntry entry = _stageJournal.ReadAsync(payload.TransferId,
+                CancellationToken.None).GetAwaiter().GetResult();
+            if (entry.Transfer.Destination != ClassifyStagedDestination(request.TypedFlags))
+                throw new IOException("The v20 attachment volume flags do not match the exact allocation.");
+
+            bool ownerIsLive = IsExactLiveOwner(entry.Transfer);
+            bool commitPolicyAllowed = false;
+            if (request.Operation == Operation.StageAttachCommit)
+            {
+                Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+                var operation = new FileOperation(destination, Path.GetFileName(destination),
+                    Path.GetExtension(destination), 0, DateTime.MinValue, entry.Transfer.ProcessName,
+                    entry.Transfer.ProcessId, destination, entry.Transfer.Destination);
+                commitPolicyAllowed = policy.IsMonitoredDestination(operation);
+            }
+
+            uint? result = _stageJournal.ApplyAttachmentV20Async(new StagedAttachmentRequestV20(
+                request.Operation, payload.RequestId, version, payload.DriverInstanceId,
+                FromWireStageIdentity(payload.ParentDirectoryIdentity), destination,
+                processId), ownerIsLive, commitPolicyAllowed, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            if (result is null) return (PortVerdict.Deny, null);
+            SafeUploadStageLifecycleV20 response = payload;
+            response.Result = result.Value;
+            return (PortVerdict.Allow, response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Stage-v20 lifecycle operation {Operation} refused for request {RequestId}.",
+                request.Operation, request.RequestId);
+            return (PortVerdict.Deny, null);
+        }
+    }
+
+    private static bool IsExactLiveOwner(StagedTransfer transfer)
+    {
+        if (transfer.RequestorSid is null || transfer.RequestorProcessCreationTime is not { } creationTime ||
+            creationTime <= 0 || transfer.ProcessId <= 0)
+            return false;
+        try
+        {
+            SessionResolver.ProcessIdentity current = SessionResolver.GetRequiredProcessIdentity(transfer.ProcessId);
+            return current.SessionId == transfer.SessionId &&
+                current.CreationTimeFileTime == creationTime &&
+                string.Equals(current.UserSid.Value, transfer.RequestorSid, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private (uint Verdict, string? StageName) AllocateStage(SafeUploadRequest request,
+        out StagedAllocationReply? typedReply)
+    {
+        typedReply = null;
+        if (_stageAllocator is null || request.Version != Contract.Version ||
+            !request.HasKnownFlags || !HasValidStageAllocateFlags(request) ||
+            request.RequestorProcessId == 0 || request.Reserved > 5 ||
+            request.ImageNameLength == 0 ||
+            request.ImageNameLength > Contract.MaxImageNameChars * sizeof(char) ||
+            (request.ImageNameLength % sizeof(char)) != 0)
         {
             return (PortVerdict.Deny, null);
         }
@@ -462,6 +924,14 @@ public sealed class MinifilterInterceptor : BackgroundService
                 previous = prior.Transfer;
                 processName = previous.ProcessName;
             }
+            if (request.TypedFlags.HasFlag(RequestFlags.StageV19Reply))
+            {
+                typedReply = _stageAllocator.AllocateV19Async(destination, kind, processName,
+                    requestorProcessId, requestor.SessionId, request.Reserved, previous,
+                    CancellationToken.None, tombstoneOwner, requestor.UserSid.Value,
+                    requestor.CreationTimeFileTime).GetAwaiter().GetResult();
+                return (PortVerdict.Allow, null);
+            }
             var transfer = _stageAllocator.AllocateAsync(
                 destination, kind, processName,
                 requestorProcessId,
@@ -519,10 +989,48 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
     }
 
+    private (uint Verdict, uint? Result) SealStageV19(SafeUploadRequest request)
+    {
+        if (_stageJournal is null || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
+            _activeDriverInstanceId is not { } activeDriver || request.RequestorProcessId == 0 || request.Flags != 0 ||
+            !request.TryReadStagePayload<SafeUploadStageSealV19>(Operation.StageSeal, out var payload))
+            return (PortVerdict.Deny, null);
+        try
+        {
+            string? stage = NtPathTranslator.ToDosPath(request.GetPath());
+            if (stage is null || !IsOwnedStagePath(stage) ||
+                !Guid.TryParseExact(Path.GetFileName(stage)[..32], "N", out Guid id) ||
+                payload.DestinationGeneration == 0 || !payload.StageIdentity.HasNonzeroFileId)
+                return (PortVerdict.Deny, null);
+            var expected = new StagedVersionIdentity(id, checked((long)payload.DestinationGeneration),
+                FromWireStageIdentity(payload.StageIdentity));
+            TransferJournalEntry before = _stageJournal.ReadAsync(id, CancellationToken.None).GetAwaiter().GetResult();
+            if (before.DriverInstanceId != activeDriver || before.StageIdentity != expected.StageIdentity ||
+                before.DestinationGeneration != expected.DestinationGeneration ||
+                before.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
+                return (PortVerdict.Deny, null);
+            TransferJournalEntry sealedEntry = _stageJournal.SealAsync(id,
+                checked((int)request.RequestorProcessId), stage, CancellationToken.None, expected)
+                .GetAwaiter().GetResult();
+            uint result = sealedEntry.SealedLength switch
+            {
+                0 => StageV19Result.EmptyHeld,
+                > 0 => StageV19Result.SealedNonempty,
+                _ => throw new IOException("The v19 seal result has no stable measured length.")
+            };
+            return (PortVerdict.Allow, result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Exact v19 seal refused for request {RequestId}.", request.RequestId);
+            return (PortVerdict.Deny, null);
+        }
+    }
+
     /// <summary>
     /// T5: the owner deleted its private version before it was sealed. The driver has closed its backing; the journal marks the
-    /// version Discarded (never inspected or published, generation kept) and the stage, which holds only bytes the owner deleted,
-    /// is removed. A stage that cannot be removed now is removed at the next service start.
+    /// version Discarded (never inspected or published, generation kept), then the stage is removed before acknowledgement. If
+    /// removal fails, deny the request so the driver keeps the version pending and retries while the service remains connected.
     /// </summary>
     private uint DiscardStage(SafeUploadRequest request)
     {
@@ -551,13 +1059,17 @@ public sealed class MinifilterInterceptor : BackgroundService
                 return PortVerdict.Deny;
             }
 
-            _stageJournal.DiscardAsync(id, checked((int)request.RequestorProcessId),
+            TransferJournalEntry discarded = _stageJournal.DiscardAsync(id, checked((int)request.RequestorProcessId),
                 stage, CancellationToken.None)
                 .GetAwaiter().GetResult();
-            try { File.Delete(stage); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            if (!StagedDiscardCleanup.TryDeleteExactAndConfirmAbsent(stage, discarded.StageIdentity,
+                    out Exception? deletionFailure))
             {
-                _logger.LogWarning(ex, "Estagio descartado {TransferId} sera removido no proximo inicio.", id);
+                if (deletionFailure is null)
+                    _logger.LogWarning("Estagio descartado {TransferId} continua presente; o driver tentara novamente.", id);
+                else
+                    _logger.LogWarning(deletionFailure, "Estagio descartado {TransferId} continua presente; o driver tentara novamente.", id);
+                return PortVerdict.Deny;
             }
             return PortVerdict.Allow;
         }
@@ -569,16 +1081,227 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
     }
 
+    private (uint Verdict, uint? Result) DiscardStageV19(SafeUploadRequest request)
+    {
+        if (_stageJournal is null || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
+            request.Flags != 0 ||
+            !request.TryReadStagePayload<SafeUploadStageVersionV19>(Operation.StageDiscard, out var payload) ||
+            payload.Kind < StageV19DiscardKind.PrivateVersion ||
+            payload.Kind > (uint)StagedDiscardKind.UnattachedAllocation ||
+            payload.DestinationGeneration == 0 || !payload.StageIdentity.HasNonzeroFileId ||
+            payload.ReservationId == Guid.Empty || _activeDriverInstanceId is not { } activeDriverInstanceId ||
+            (request.RequestorProcessId == 0 && payload.Kind is not
+                (StageV19DiscardKind.OwnerExitEmpty or StageV19DiscardKind.DriverUnloadEmpty)))
+            return (PortVerdict.Deny, null);
+        try
+        {
+            string? stage = NtPathTranslator.ToDosPath(request.GetPath());
+            if (stage is null || !IsOwnedStagePath(stage) ||
+                !Guid.TryParseExact(Path.GetFileName(stage)[..32], "N", out Guid id))
+                return (PortVerdict.Deny, null);
+            var version = new StagedVersionIdentity(id, checked((long)payload.DestinationGeneration),
+                FromWireStageIdentity(payload.StageIdentity));
+            var discard = new StagedDiscardRequest(payload.ReservationId, version,
+                (StagedDiscardKind)payload.Kind);
+            StagedDiscardStatus status = _stageJournal.BeginOrConfirmDiscardAsync(discard,
+                CancellationToken.None, request.RequestorProcessId == 0 ? null :
+                    checked((int)request.RequestorProcessId),
+                activeDriverInstanceId).GetAwaiter().GetResult();
+            return (PortVerdict.Allow, status == StagedDiscardStatus.Acknowledged
+                ? StageV19Result.DiscardAcknowledged : StageV19Result.DiscardPending);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Exact v19 discard refused for request {RequestId}.", request.RequestId);
+            return (PortVerdict.Deny, null);
+        }
+    }
+
+    private (uint Verdict, StagedAllocationReply? Reply) CreateAfterPrivateDiscardStage(
+        SafeUploadRequest request)
+    {
+        const uint volumeFlags = (uint)(RequestFlags.StageRemovable | RequestFlags.StageNetwork);
+        if (_stageJournal is null || _stageAllocator is null || request.RequestorProcessId == 0 ||
+            !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
+            (request.Flags & ~volumeFlags) != 0 ||
+            (request.Flags & volumeFlags) == volumeFlags ||
+            !request.TryReadStagePayload<SafeUploadStageCreateAfterDiscardV19>(
+                Operation.StageCreateAfterDiscard, out var payload) ||
+            payload.ReservationId == Guid.Empty || payload.DeleteTransferId == Guid.Empty ||
+            payload.DeleteGeneration == 0 || !payload.DeleteStageIdentity.HasNonzeroFileId ||
+            !payload.ParentDirectoryIdentity.HasNonzeroFileId)
+            return (PortVerdict.Deny, null);
+        try
+        {
+            string? destination = NtPathTranslator.ToDosPath(request.GetPath());
+            if (destination is null || _activeDriverInstanceId is not { } activeDriverInstanceId)
+                return (PortVerdict.Deny, null);
+            int processId = checked((int)request.RequestorProcessId);
+            TransferJournalEntry delete = _stageJournal.ReadAsync(payload.DeleteTransferId,
+                CancellationToken.None).GetAwaiter().GetResult();
+            DestinationKind kind = ClassifyStagedDestination(request.TypedFlags);
+            var deleteIdentity = new StagedVersionIdentity(payload.DeleteTransferId,
+                checked((long)payload.DeleteGeneration), FromWireStageIdentity(payload.DeleteStageIdentity));
+            StagedStageIdentity parentDirectoryIdentity = FromWireStageIdentity(payload.ParentDirectoryIdentity);
+            if (delete.DestinationGeneration != deleteIdentity.DestinationGeneration ||
+                delete.StageIdentity != deleteIdentity.StageIdentity || delete.PendingRename is not null ||
+                !string.Equals(delete.Transfer.DestinationPath, Path.GetFullPath(destination),
+                    StringComparison.OrdinalIgnoreCase) || delete.Transfer.Destination != kind ||
+                delete.Transfer.ProcessId != processId || delete.DriverInstanceId != activeDriverInstanceId)
+                throw new IOException("The create-after request does not identify the exact V2 owner and destination.");
+            if (delete.ParentVersionIdentity is not { } exactParentIdentity)
+                throw new IOException("The create-after V2 has no exact V1 ancestry.");
+            TransferJournalEntry exactParent = _stageJournal.ReadAsync(exactParentIdentity.TransferId,
+                CancellationToken.None).GetAwaiter().GetResult();
+            if (exactParent.StageIdentity is null || exactParent.DestinationGeneration <= 0 ||
+                new StagedVersionIdentity(exactParent.Transfer.TransferId,
+                    exactParent.DestinationGeneration, exactParent.StageIdentity) != exactParentIdentity ||
+                exactParent.State != TransferJournalState.EmptyHeld || exactParent.SealedLength != 0 ||
+                exactParent.DriverInstanceId != activeDriverInstanceId ||
+                !string.Equals(exactParent.Transfer.DestinationPath, Path.GetFullPath(destination),
+                    StringComparison.OrdinalIgnoreCase) || exactParent.Transfer.Destination != kind ||
+                exactParent.Transfer.ProcessId != processId ||
+                exactParent.Transfer.SessionId != delete.Transfer.SessionId ||
+                !string.Equals(exactParent.Transfer.RequestorSid, delete.Transfer.RequestorSid,
+                    StringComparison.OrdinalIgnoreCase) ||
+                exactParent.Transfer.RequestorProcessCreationTime != delete.Transfer.RequestorProcessCreationTime)
+                throw new IOException("The create-after V1 predecessor is not bound to this driver epoch and owner.");
+
+            TransferJournalEntry? existingChild = TryReadStageEntry(_stageJournal, payload.ReservationId);
+            bool resumeDurableIntent = existingChild is not null ||
+                (delete.State == TransferJournalState.DiscardPending &&
+                 delete.DiscardKind == StagedDiscardKind.PrivateVersion &&
+                 delete.DiscardReservationId == delete.Transfer.TransferId &&
+                 delete.CreateAfterReservationId == payload.ReservationId);
+            uint sessionId;
+            string requestorSid;
+            long creationTime;
+            bool liveOwnerRequired = !resumeDurableIntent;
+            if (existingChild is not null)
+            {
+                if (existingChild.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
+                    existingChild.CreateReservationId != payload.ReservationId ||
+                    existingChild.DeleteVersionIdentity != deleteIdentity ||
+                    existingChild.ParentDirectoryIdentity != parentDirectoryIdentity ||
+                    existingChild.AllocationDisposition != payload.Disposition ||
+                    existingChild.AllocationReferenceId != payload.DeleteTransferId ||
+                    existingChild.AllocationReferenceKind != 1u ||
+                    existingChild.DriverInstanceId != activeDriverInstanceId ||
+                    !string.Equals(existingChild.Transfer.DestinationPath, Path.GetFullPath(destination),
+                        StringComparison.OrdinalIgnoreCase) || existingChild.Transfer.Destination != kind ||
+                    existingChild.Transfer.ProcessId != processId ||
+                    delete.State != TransferJournalState.DiscardPending ||
+                    delete.CreateAfterReservationId != payload.ReservationId)
+                    throw new IOException("The create-after reservation is already committed to a different request.");
+                sessionId = existingChild.Transfer.SessionId ??
+                    throw new IOException("The create-after replay has no saved session.");
+                requestorSid = existingChild.Transfer.RequestorSid ??
+                    throw new IOException("The create-after replay has no saved SID.");
+                creationTime = existingChild.Transfer.RequestorProcessCreationTime ??
+                    throw new IOException("The create-after replay has no saved process identity.");
+            }
+            else if (resumeDurableIntent)
+            {
+                // Crash after V2 became nonsealable but before V3's manifest
+                // was written. The exact V2 reservation binds owner metadata;
+                // finish that same transaction even if the app has exited.
+                if (delete.CreateAfterReservationId != payload.ReservationId)
+                    throw new IOException("The pending V2 delete belongs to another create-after reservation.");
+                sessionId = delete.Transfer.SessionId ??
+                    throw new IOException("The pending V2 delete has no saved session.");
+                requestorSid = delete.Transfer.RequestorSid ??
+                    throw new IOException("The pending V2 delete has no saved SID.");
+                creationTime = delete.Transfer.RequestorProcessCreationTime ??
+                    throw new IOException("The pending V2 delete has no saved process identity.");
+            }
+            else
+            {
+                SessionResolver.ProcessIdentity requestor = SessionResolver.GetRequiredProcessIdentity(processId);
+                if (delete.Transfer.SessionId != requestor.SessionId ||
+                    !string.Equals(delete.Transfer.RequestorSid, requestor.UserSid.Value,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    delete.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime)
+                    throw new IOException("The create-after owner does not match its exact V2 predecessor.");
+                sessionId = requestor.SessionId;
+                requestorSid = requestor.UserSid.Value;
+                creationTime = requestor.CreationTimeFileTime;
+            }
+
+            if (liveOwnerRequired)
+            {
+                string processName = Process.GetProcessById(processId).ProcessName;
+                Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+                var operation = new FileOperation(destination, Path.GetFileName(destination),
+                    Path.GetExtension(destination), 0, DateTime.MinValue, processName,
+                    processId, destination, kind);
+                if (!policy.IsMonitoredDestination(operation)) return (PortVerdict.Deny, null);
+            }
+
+            var createRequest = new StagedCreateAfterDiscardRequest(payload.ReservationId,
+                deleteIdentity, parentDirectoryIdentity, payload.Disposition,
+                destination, kind, processId, sessionId, requestorSid,
+                creationTime, activeDriverInstanceId);
+            StagedAllocationReply reply = _stageAllocator.CreateAfterPrivateDiscardAsync(createRequest,
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            if (liveOwnerRequired)
+            {
+                SessionResolver.ProcessIdentity after = SessionResolver.GetRequiredProcessIdentity(processId);
+                if (after.SessionId != sessionId || !string.Equals(after.UserSid.Value, requestorSid,
+                        StringComparison.OrdinalIgnoreCase) || after.CreationTimeFileTime != creationTime)
+                    throw new IOException("The requesting process identity changed before stage attachment.");
+            }
+            return (PortVerdict.Allow, reply);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CREATE_AFTER_DISCARD refused for request {RequestId}.", request.RequestId);
+            return (PortVerdict.Deny, null);
+        }
+    }
+
+    private static StagedStageIdentity FromWireStageIdentity(SafeUploadStageIdentityV19 identity) =>
+        new(identity.VolumeSerialNumber, identity.FileIdHigh, identity.FileIdLow);
+
+    private static SafeUploadStageIdentityV19 ToWireStageIdentity(StagedStageIdentity identity) =>
+        new() { VolumeSerialNumber = identity.VolumeSerialNumber,
+            FileIdLow = identity.FileIdLow, FileIdHigh = identity.FileIdHigh };
+
+    private static bool IsOwnedStagePath(string path) =>
+        string.Equals(Path.GetDirectoryName(path),
+            Path.Combine(AgentPaths.RootDirectory, "staging"), StringComparison.OrdinalIgnoreCase) &&
+        Path.GetFileName(path).Length >= 32;
+
     private async Task PublishSealedLoopAsync(CancellationToken cancellationToken)
     {
         if (_stageJournal is null || _stagePublisher is null) return;
 
-        while (!cancellationToken.IsCancellationRequested)
+        await _stagingReadySignal.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        while (!cancellationToken.IsCancellationRequested && _stageV20Ready && _stagingRecoveryReady)
         {
             foreach (var entry in await _stageJournal.ReadPendingAsync(cancellationToken)
                          .ConfigureAwait(false))
             {
                 if (entry.PendingRename is not null) continue;
+                if (entry.State == TransferJournalState.EmptyHeld)
+                {
+                    try
+                    {
+                        await _stagePublisher.ReportEmptyHeldAsync(entry.Transfer.TransferId, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Falha ao notificar que o salvamento vazio permanece privado {TransferId}.",
+                            entry.Transfer.TransferId);
+                    }
+                    continue;
+                }
                 if (entry.State == TransferJournalState.Blocked)
                 {
                     try
@@ -658,6 +1381,64 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
     }
 
+    private async Task ProcessExactDiscardCleanupLoopAsync(CancellationToken cancellationToken)
+    {
+        if (_stageJournal is null) return;
+        const int MaximumItemsPerPass = 16;
+        await _stagingReadySignal.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        while (!cancellationToken.IsCancellationRequested && _stageV20Ready && _stagingRecoveryReady)
+        {
+            IReadOnlyList<StagedDiscardRequest> pending = await _stageJournal
+                .ReadDiscardPendingAsync(cancellationToken).ConfigureAwait(false);
+            if (pending.Count > 0)
+            {
+                int start = _discardCleanupCursor % pending.Count;
+                int count = Math.Min(MaximumItemsPerPass, pending.Count);
+                for (int offset = 0; offset < count; offset++)
+                {
+                    StagedDiscardRequest request = pending[(start + offset) % pending.Count];
+                    try
+                    {
+                        if (request.Kind == StagedDiscardKind.EmptyHeldPredecessor && _stagePublisher is not null)
+                        {
+                            TransferJournalEntry child = await _stageJournal.ReadAsync(request.ReservationId,
+                                cancellationToken).ConfigureAwait(false);
+                            if (child.ParentVersionIdentity == request.Version &&
+                                child.DeleteVersionIdentity is null && child.CreateAfterReservationId is null &&
+                                child.State == TransferJournalState.Released && !child.StageDeleted)
+                            {
+                                // Released children may be removed only through
+                                // the same driver-held gate as ordinary
+                                // publication disposal. A true/held response
+                                // leaves both the child and V1 cleanup pending.
+                                await _stagePublisher.DisposeReleasedStageAsync(child.Transfer.TransferId,
+                                    cancellationToken).ConfigureAwait(false);
+                                child = await _stageJournal.ReadAsync(request.ReservationId,
+                                    cancellationToken).ConfigureAwait(false);
+                                if (!child.StageDeleted) continue;
+                            }
+                        }
+                        await _stageJournal.CompleteDiscardAsync(request, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // A locked/replaced stage remains private and pending.
+                        // Another pass retries the exact durable tuple.
+                        _logger.LogDebug(ex, "Exact private-stage cleanup remains pending for {TransferId}.",
+                            request.Version.TransferId);
+                    }
+                }
+                _discardCleanupCursor = (start + count) % Math.Max(1, pending.Count);
+            }
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     /// <summary>
     /// Traduz a política do agente para a do driver e empurra.
     ///
@@ -679,12 +1460,33 @@ public sealed class MinifilterInterceptor : BackgroundService
                 _inspection, _hub, _stageJournal, root,
                 new StagedPublicationGate(port), _stagedJustifications, _logger,
                 _policyStore);
+            // The v20 reconcile request is the first stage mutation-capable
+            // message on a new authenticated port. Journal recovery and the
+            // publication/discard workers wait until that exact receipt has
+            // been delivered to the kernel.
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCritical(ex, "Falha ao inicializar o diario de transferencias.");
+            return false;
+        }
+    }
+
+    private void RecoverStagingSubsystem(CancellationToken stoppingToken)
+    {
+        if (_stageJournal is null || _stagePublisher is null)
+            throw new InvalidOperationException("The staging subsystem is not initialized.");
+
             _stageJournal.RetainInterruptedAsync(stoppingToken).GetAwaiter().GetResult();
             _stageJournal.ReconcilePublishingAsync(stoppingToken).GetAwaiter().GetResult();
             foreach (TransferJournalEntry entry in _stageJournal.ReadPendingAsync(stoppingToken)
                          .GetAwaiter().GetResult())
             {
-                if (entry.State == TransferJournalState.Blocked)
+                if (entry.State == TransferJournalState.EmptyHeld)
+                    _stagePublisher.ReportEmptyHeldAsync(entry.Transfer.TransferId, stoppingToken)
+                        .GetAwaiter().GetResult();
+                else if (entry.State == TransferJournalState.Blocked)
                     _stagePublisher.RecoverBlockedAsync(entry, stoppingToken).GetAwaiter().GetResult();
                 else if (entry.State == TransferJournalState.Released &&
                          entry.HandbackState == StagedHandbackState.Verified &&
@@ -697,11 +1499,10 @@ public sealed class MinifilterInterceptor : BackgroundService
             foreach (TransferJournalEntry discarded in _stageJournal.ReadDiscardedWithStageAsync(stoppingToken)
                          .GetAwaiter().GetResult())
             {
-                try { File.Delete(discarded.Transfer.StagePath); }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    _logger.LogWarning(ex, "Estagio descartado {TransferId} nao pode ser removido.", discarded.Transfer.TransferId);
-                }
+                if (!StagedDiscardCleanup.TryDeleteExactAndConfirmAbsent(discarded.Transfer.StagePath,
+                        discarded.StageIdentity, out Exception? deletionFailure))
+                    _logger.LogWarning(deletionFailure, "Estagio descartado {TransferId} nao pode ser removido.",
+                        discarded.Transfer.TransferId);
             }
             // T11: finished transfers from earlier boots leave the journal, so it stops growing with every save. The cutoff is a day
             // before this boot: no per-boot driver state can name those transfers, and the guest clock's step after boot is covered.
@@ -716,13 +1517,6 @@ public sealed class MinifilterInterceptor : BackgroundService
             {
                 _logger.LogWarning(ex, "Falha ao compactar o diario de transferencias; ele sera compactado no proximo inicio.");
             }
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogCritical(ex, "Falha ao recuperar o diario de transferencias.");
-            return false;
-        }
     }
 
     private bool TryPushPolicy(FilterPort port

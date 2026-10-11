@@ -14,10 +14,12 @@ namespace SafeUpload.Agent.Service.Interception;
 /// </summary>
 public sealed class StagedTransferJournal
 {
+    private const uint RequiredStageV20Capabilities = 0x1f;
     private readonly string _directory;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly FileSecurity? _fileSecurity;
     private readonly SecurityIdentifier? _owner;
+    private readonly string _driverEpochPath;
 
     // The publish loop (every 250 ms) and every destination-version scan used to open, ACL-check and JSON-parse EVERY
     // historical manifest, so each stage operation cost O(journal age): latency grew ~3 ms per retained record (C04
@@ -38,6 +40,136 @@ public sealed class StagedTransferJournal
     internal long ScanCacheEvictions => Interlocked.Read(ref _scanCacheEvictions);
     internal int ScanCacheEntries { get { lock (_scanCache) return _scanCache.Count; } }
 
+    /// <summary>
+    /// Persists the single accepted driver epoch. A new channel may resume the
+    /// same undrained epoch; a different epoch is accepted only after an exact
+    /// durable drain receipt. This deliberately does not infer reboot or
+    /// abandonment from time, process exit, or a changed GUID.
+    /// </summary>
+    public async Task<StagedDriverEpochReconcileV20> ReconcileDriverInstanceV20Async(Guid driverInstanceId,
+        uint requiredCapabilities, CancellationToken token)
+    {
+        if (driverInstanceId == Guid.Empty || requiredCapabilities != RequiredStageV20Capabilities)
+            return StagedDriverEpochReconcileV20.Rejected;
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            DriverEpochRecord? current = await ReadDriverEpochCoreAsync(token).ConfigureAwait(false);
+            if (current is not null)
+            {
+                if (current.DriverInstanceId == driverInstanceId)
+                    return current.DrainNonce is null
+                        ? StagedDriverEpochReconcileV20.Active
+                        : StagedDriverEpochReconcileV20.DrainReplayOnly;
+                if (current.DrainNonce is null) return StagedDriverEpochReconcileV20.Rejected;
+            }
+            await WriteDriverEpochCoreAsync(new DriverEpochRecord(driverInstanceId, null,
+                null, DateTimeOffset.UtcNow, null), token).ConfigureAwait(false);
+            return StagedDriverEpochReconcileV20.Active;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Records epoch drain only after every exact stage owned by that epoch is
+    /// terminal and absent/disposed. An active or unknown attachment keeps the
+    /// epoch busy and prevents a later driver instance from being admitted.
+    /// </summary>
+    public async Task<bool> DrainDriverInstanceV20Async(Guid driverInstanceId,
+        ulong requestId, ulong drainNonce, CancellationToken token)
+    {
+        if (driverInstanceId == Guid.Empty || requestId == 0 || drainNonce == 0) return false;
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            DriverEpochRecord? epoch = await ReadDriverEpochCoreAsync(token).ConfigureAwait(false);
+            if (epoch is null || epoch.DriverInstanceId != driverInstanceId) return false;
+            if (epoch.DrainNonce is { } existingNonce)
+                return epoch.DrainRequestId == requestId && existingNonce == drainNonce;
+
+            foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
+            {
+                token.ThrowIfCancellationRequested();
+                if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
+                    throw new InvalidDataException($"Unexpected journal file: {file.FullName}");
+                TransferJournalEntry entry = await ReadCoreAsync(id, token).ConfigureAwait(false);
+                if (entry.DriverInstanceId == driverInstanceId &&
+                    !IsEpochEntryTerminalAndAbsent(entry)) return false;
+            }
+
+            await WriteDriverEpochCoreAsync(epoch with
+            {
+                DrainRequestId = requestId,
+                DrainNonce = drainNonce,
+                DrainedAtUtc = DateTimeOffset.UtcNow
+            }, token).ConfigureAwait(false);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+
+    private static bool IsEpochEntryTerminalAndAbsent(TransferJournalEntry entry)
+    {
+        bool absent = StagedStageFile.TryConfirmAbsent(entry.Transfer.StagePath, out _);
+        if (!absent) return false;
+        if (entry.State == TransferJournalState.DiscardPending)
+            return entry.DiscardAcknowledgedAtUtc is not null;
+        if (entry.State == TransferJournalState.Discarded) return true;
+        if (entry.State == TransferJournalState.EmptyHeld)
+            return entry.DiscardRequestedAtUtc is not null && entry.DiscardAcknowledgedAtUtc is not null;
+        return entry.State is (TransferJournalState.Released or TransferJournalState.Blocked) &&
+               entry.StageDeleted;
+    }
+
+    private async Task<DriverEpochRecord?> ReadDriverEpochCoreAsync(CancellationToken token)
+    {
+        if (!File.Exists(_driverEpochPath)) return null;
+        await using FileStream stream = StagedJournalFile.Open(_driverEpochPath,
+            maximumBytes: 4096);
+        if (_owner is not null)
+        {
+            var security = stream.GetAccessControl();
+            if (_owner.IsWellKnown(WellKnownSidType.LocalSystemSid))
+                RequireTrustedOwner(security, "driver epoch journal");
+            RequireNoUntrustedWriters(security, _owner);
+        }
+        DriverEpochRecord? record = await JsonSerializer.DeserializeAsync<DriverEpochRecord>(stream,
+            cancellationToken: token).ConfigureAwait(false);
+        if (record is null || record.DriverInstanceId == Guid.Empty ||
+            record.AcceptedAtUtc == default || record.AcceptedAtUtc.Offset != TimeSpan.Zero)
+            throw new InvalidDataException("The durable driver epoch record is invalid.");
+
+        bool active = record.DrainRequestId is null && record.DrainNonce is null &&
+            record.DrainedAtUtc is null;
+        bool drainedRecord = record.DrainRequestId is > 0 && record.DrainNonce is > 0 &&
+            record.DrainedAtUtc is { } drainedAt && drainedAt != default &&
+            drainedAt.Offset == TimeSpan.Zero && drainedAt >= record.AcceptedAtUtc;
+        if (!active && !drainedRecord)
+            throw new InvalidDataException("The durable driver epoch record has an unpaired drain receipt.");
+        return record;
+    }
+
+    private async Task WriteDriverEpochCoreAsync(DriverEpochRecord record, CancellationToken token)
+    {
+        string temporary = _driverEpochPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await using FileStream stream = CreatePrivateTemporary(temporary);
+            await JsonSerializer.SerializeAsync(stream, record, cancellationToken: token)
+                .ConfigureAwait(false);
+            if (stream.Length > 4096)
+                throw new InvalidDataException("The driver epoch record exceeds its bound.");
+            StagedDestinationFile.Commit(stream, temporary, _driverEpochPath);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+    }
+
+    private sealed record DriverEpochRecord(Guid DriverInstanceId, ulong? DrainRequestId,
+        ulong? DrainNonce, DateTimeOffset AcceptedAtUtc, DateTimeOffset? DrainedAtUtc);
+
     public StagedTransferJournal(string directory, bool requireProtectedParent = false)
         : this(directory, requireProtectedParent, MaximumScanCacheEntries) { }
 
@@ -49,6 +181,7 @@ public sealed class StagedTransferJournal
             throw new ArgumentOutOfRangeException(nameof(scanCacheCapacity));
         _scanCacheCapacity = scanCacheCapacity;
         _directory = Path.GetFullPath(directory);
+        _driverEpochPath = Path.Combine(_directory, "driver-epoch.state");
         for (string? path = _directory; path is not null; path = Path.GetDirectoryName(path))
         {
             if (Directory.Exists(path) &&
@@ -123,7 +256,13 @@ public sealed class StagedTransferJournal
     public async Task<TransferJournalEntry> CreateAsync(
         StagedTransfer transfer,
         CancellationToken cancellationToken,
-        Guid? tombstoneOwner = null)
+        Guid? tombstoneOwner = null,
+        Guid? parentTransferId = null,
+        uint? allocationDisposition = null,
+        Guid? allocationReferenceId = null,
+        uint? allocationReferenceKind = null,
+        Guid? driverInstanceId = null,
+        StagedStageIdentity? parentDirectoryIdentity = null)
     {
         ArgumentNullException.ThrowIfNull(transfer);
         if (transfer.TransferId == Guid.Empty)
@@ -131,23 +270,45 @@ public sealed class StagedTransferJournal
             throw new ArgumentException("A transfer needs a nonempty ID.", nameof(transfer));
         }
 
-        DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
-        var entry = new TransferJournalEntry(
-            transfer, TransferJournalState.Allocated, null, createdAtUtc)
-        {
-            StateHistory = [new TransferJournalStateChange(TransferJournalState.Allocated, createdAtUtc)]
-        };
-        ValidateEntry(entry, transfer.TransferId);
+        if (parentTransferId == Guid.Empty || allocationDisposition is > 5 ||
+            allocationReferenceId == Guid.Empty || allocationReferenceKind is > 2 ||
+            driverInstanceId == Guid.Empty ||
+            (allocationReferenceKind is null && allocationReferenceId is not null) ||
+            (allocationReferenceKind is { } referenceKind &&
+                ((referenceKind == 0) != (allocationReferenceId is null))) ||
+            ((allocationReferenceKind is null) != (driverInstanceId is null)))
+            throw new ArgumentException("The allocation ancestry or disposition is invalid.");
         string path = ManifestPath(transfer.TransferId);
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        TransferJournalEntry entry;
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            StagedVersionIdentity? parentIdentity = null;
+            if (parentTransferId is { } priorId)
+            {
+                TransferJournalEntry parent = await ReadCoreAsync(priorId, cancellationToken)
+                    .ConfigureAwait(false);
+                RequireFollowupOwner(parent, transfer);
+                if (driverInstanceId is { } expectedDriverInstance &&
+                    (expectedDriverInstance == Guid.Empty || parent.DriverInstanceId != expectedDriverInstance))
+                    throw new IOException("The v20 followup predecessor is not bound to this driver epoch.");
+                if (!parent.SealedOnce || parent.StageIdentity is null || parent.DestinationGeneration <= 0 ||
+                    parent.State is not (TransferJournalState.Sealed or TransferJournalState.Retained or
+                        TransferJournalState.EmptyHeld))
+                    throw new IOException("The followup predecessor has no stable sealed stage identity.");
+                await RequireCurrentDestinationAsync(parent, cancellationToken).ConfigureAwait(false);
+                parentIdentity = VersionIdentity(parent);
+            }
+
             var versions = await DestinationVersionsAsync(transfer.DestinationPath, cancellationToken)
                 .ConfigureAwait(false);
             if (versions.Any(e => e.Reserved))
                 throw new IOException("Publication or rename currently holds this destination.");
+            if (parentTransferId is null && tombstoneOwner is null)
+                await RequireRetiredCreateAfterAncestryAsync(versions, transfer.DestinationPath,
+                    cancellationToken).ConfigureAwait(false);
             if (tombstoneOwner is not null)
             {
                 long head = versions.Select(e => e.Generation).DefaultIfEmpty(0).Max();
@@ -162,8 +323,32 @@ public sealed class StagedTransferJournal
                         transfer.RequestorProcessCreationTime)
                     throw new IOException("No current committed tombstone belongs to this writer and session.");
             }
-            entry = entry with { DestinationGeneration = checked(versions.Select(e => e.Generation)
-                .DefaultIfEmpty(0).Max() + 1) };
+            // Ordinary ALLOCATE is backing-first and one-shot. Capture the
+            // stage identity only after the backing exists and immediately
+            // before the durable generation/head claim, which is committed
+            // before returning the name to the driver. A response lost after
+            // this point is a private orphan candidate, never publishable.
+            StagedStageIdentity? stageIdentity = null;
+            if (File.Exists(transfer.StagePath))
+            {
+                using StagedStageFile stage = StagedStageFile.Open(transfer.StagePath);
+                stageIdentity = stage.Identity;
+            }
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            entry = new TransferJournalEntry(transfer, TransferJournalState.Allocated, null, createdAtUtc)
+            {
+                StateHistory = [new TransferJournalStateChange(TransferJournalState.Allocated, createdAtUtc)],
+                StageIdentity = stageIdentity,
+                DestinationGeneration = checked(versions.Select(e => e.Generation).DefaultIfEmpty(0).Max() + 1),
+                ParentVersionIdentity = parentIdentity,
+                CreateReservationId = allocationDisposition is null ? null : transfer.TransferId,
+                AllocationDisposition = allocationDisposition,
+                AllocationReferenceId = allocationReferenceId,
+                AllocationReferenceKind = allocationReferenceKind,
+                DriverInstanceId = driverInstanceId,
+                ParentDirectoryIdentity = parentDirectoryIdentity
+            };
+            ValidateEntry(entry, transfer.TransferId);
             await using (var stream = CreatePrivateTemporary(temporary))
             {
                 await JsonSerializer.SerializeAsync(stream, entry, cancellationToken: cancellationToken)
@@ -188,6 +373,984 @@ public sealed class StagedTransferJournal
         }
 
         return entry;
+    }
+
+    /// <summary>
+    /// Resolves a stable v19 allocation reservation after an RPC reply was
+    /// lost. The exact reservation-derived manifest and stage identity are the
+    /// only source of the returned tuple; current namespace checks are left to
+    /// the driver's post-RPC attach validation so stale replies can be retired
+    /// with the same exact identity.
+    /// </summary>
+    public async Task<TransferJournalEntry> ResolveAllocationV19Async(
+        StagedTransfer expectedTransfer, StagedAllocationIntentV19 intent,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(expectedTransfer);
+        ArgumentNullException.ThrowIfNull(intent);
+        if (intent.ReservationId == Guid.Empty || expectedTransfer.TransferId != intent.ReservationId ||
+            intent.DriverInstanceId == Guid.Empty || intent.Disposition > 5 ||
+            intent.ReferenceKind > 2 ||
+            (intent.ReferenceKind == 0) != (intent.ParentTransferId == Guid.Empty))
+            throw new ArgumentException("The exact v19 allocation replay tuple is invalid.");
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            TransferJournalEntry current = await ReadCoreAsync(intent.ReservationId, cancellationToken)
+                .ConfigureAwait(false);
+            if (current.Transfer != expectedTransfer || current.CreateReservationId != intent.ReservationId ||
+                current.AllocationDisposition != intent.Disposition ||
+                current.AllocationReferenceId != (intent.ParentTransferId == Guid.Empty
+                    ? null : intent.ParentTransferId) ||
+                current.AllocationReferenceKind != intent.ReferenceKind ||
+                current.DriverInstanceId != intent.DriverInstanceId || current.StageIdentity is null ||
+                current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
+                current.PendingRename is not null)
+                throw new IOException("The v19 reservation has no matching replayable allocation intent.");
+            if (intent.ReferenceKind == 1)
+            {
+                if (current.ParentVersionIdentity is not { } parentIdentity ||
+                    parentIdentity.TransferId != intent.ParentTransferId)
+                    throw new IOException("The v19 allocation's exact predecessor identity changed.");
+                TransferJournalEntry parent = await ReadCoreAsync(parentIdentity.TransferId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (VersionIdentity(parent) != parentIdentity || !SameWriter(parent.Transfer, current.Transfer) ||
+                    parent.Transfer.DestinationPath != current.Transfer.DestinationPath ||
+                    parent.DriverInstanceId != intent.DriverInstanceId || parent.DriverInstanceId == Guid.Empty)
+                    throw new IOException("The v19 allocation's predecessor manifest changed.");
+            }
+            else if (intent.ReferenceKind == 2)
+            {
+                TransferJournalEntry owner = await ReadCoreAsync(intent.ParentTransferId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (current.AllocationDisposition != 2 || owner.Transfer.TransferId != intent.ParentTransferId ||
+                    !SameWriter(owner.Transfer, current.Transfer) || owner.Transfer.Destination != current.Transfer.Destination ||
+                    !string.Equals(owner.Transfer.DestinationPath, current.Transfer.DestinationPath,
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("The v19 tombstone owner no longer matches the allocation request.");
+            }
+            using StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath);
+            if (stage.Identity != current.StageIdentity)
+                throw new IOException("The v19 allocation stage no longer matches its durable identity.");
+            return current;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Captures allocation identity only after the manifest-first transaction
+    /// and backing-file creation. This is allocation evidence, never a seal or
+    /// a positive-length assertion.
+    /// </summary>
+    public async Task<TransferJournalEntry> CaptureAllocationIdentityAsync(Guid transferId,
+        Guid reservationId, CancellationToken cancellationToken, bool requireCurrentDestination = true)
+    {
+        if (transferId == Guid.Empty || reservationId == Guid.Empty)
+            throw new ArgumentException("Allocation identity needs a stable reservation.");
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            TransferJournalEntry current = await ReadCoreAsync(transferId, cancellationToken).ConfigureAwait(false);
+            if (current.State != TransferJournalState.Allocated || current.SealedOnce ||
+                current.SealedLength is not null || current.CreateReservationId != reservationId ||
+                current.PendingRename is not null || current.DestinationGeneration <= 0)
+                throw new IOException("The allocation intent is no longer eligible for identity capture.");
+            using StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath);
+            if (current.StageIdentity is { } captured && captured != stage.Identity)
+                throw new IOException("The allocation stage identity changed before reply or replay.");
+            if (requireCurrentDestination)
+            {
+                if (current.ParentDirectoryIdentity is { } expectedDirectory &&
+                    StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(current.Transfer.DestinationPath)!) !=
+                        expectedDirectory)
+                    throw new IOException("The destination parent directory changed during allocation.");
+                if (current.DeleteVersionIdentity is not null && PathExists(current.Transfer.DestinationPath))
+                    throw new IOException("The public destination appeared during private allocation.");
+                await RequireCurrentDestinationAsync(current, cancellationToken).ConfigureAwait(false);
+            }
+            if (current.DeleteVersionIdentity is { } deleted)
+            {
+                TransferJournalEntry pendingDelete = await ReadCoreAsync(deleted.TransferId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (pendingDelete.State != TransferJournalState.DiscardPending ||
+                    pendingDelete.DiscardReservationId != deleted.TransferId ||
+                    pendingDelete.CreateAfterReservationId != reservationId ||
+                    VersionIdentity(pendingDelete) != deleted)
+                    throw new IOException("The exact delete predecessor changed during allocation.");
+            }
+
+            if (current.StageIdentity is not null) return current;
+
+            var updated = current with { StageIdentity = stage.Identity, UpdatedAtUtc = DateTimeOffset.UtcNow };
+            await ReplaceAsync(ManifestPath(transferId), updated, cancellationToken).ConfigureAwait(false);
+            return updated;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>Final identity/head check immediately before a v19 create reply.</summary>
+    public async Task<TransferJournalEntry> ValidateAllocationReplyAsync(
+        StagedVersionIdentity expectedVersion, Guid reservationId, CancellationToken cancellationToken,
+        bool requireCurrentDestination = true)
+    {
+        ArgumentNullException.ThrowIfNull(expectedVersion);
+        if (reservationId == Guid.Empty) throw new ArgumentException("An allocation reservation is required.");
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            TransferJournalEntry current = await ReadCoreAsync(expectedVersion.TransferId, cancellationToken)
+                .ConfigureAwait(false);
+            if (current.State != TransferJournalState.Allocated || current.SealedOnce ||
+                current.SealedLength is not null || current.CreateReservationId != reservationId ||
+                VersionIdentity(current) != expectedVersion || current.PendingRename is not null)
+                throw new IOException("The allocation reply no longer matches its durable exact tuple.");
+            using (StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath))
+            {
+                if (stage.Identity != expectedVersion.StageIdentity || stage.Stream.Length < 0)
+                    throw new IOException("The allocation stage changed before its reply.");
+            }
+            if (requireCurrentDestination && current.ParentDirectoryIdentity is { } expectedDirectory &&
+                StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(current.Transfer.DestinationPath)!) !=
+                    expectedDirectory)
+                throw new IOException("The destination parent directory changed before the allocation reply.");
+            if (current.DeleteVersionIdentity is { } deleted)
+            {
+                if (requireCurrentDestination && PathExists(current.Transfer.DestinationPath))
+                    throw new IOException("The public destination appeared before the allocation reply.");
+                TransferJournalEntry pendingDelete = await ReadCoreAsync(deleted.TransferId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (pendingDelete.State != TransferJournalState.DiscardPending ||
+                    pendingDelete.DiscardReservationId != deleted.TransferId ||
+                    pendingDelete.CreateAfterReservationId != reservationId ||
+                    VersionIdentity(pendingDelete) != deleted)
+                    throw new IOException("The exact delete predecessor changed before the allocation reply.");
+            }
+            if (requireCurrentDestination)
+                await RequireCurrentDestinationAsync(current, cancellationToken).ConfigureAwait(false);
+            return current;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Commits V2's terminal DiscardPending state before writing the fresh V3
+    /// Allocated manifest. Both writes are serialized under _gate. A crash
+    /// between them is replayable with the same ReservationId and exact V2
+    /// tuple; the requested generation is never supplied by the caller.
+    /// </summary>
+    public async Task<StagedCreateAfterIntentResult> CreateAfterPrivateDiscardIntentAsync(
+        StagedCreateAfterDiscardRequest request, StagedTransfer child,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(child);
+        string destination = Path.GetFullPath(request.DestinationPath);
+        string parentDirectory = Path.GetDirectoryName(destination) ??
+            throw new IOException("The destination has no parent directory.");
+        if (request.ReservationId == Guid.Empty || request.DeleteVersion.TransferId == Guid.Empty ||
+            request.DeleteVersion.DestinationGeneration <= 0 || request.Disposition != 5 ||
+            request.DriverInstanceId == Guid.Empty ||
+            request.ProcessId <= 0 ||
+            string.IsNullOrWhiteSpace(request.RequestorSid) || request.RequestorSid.Length > 184 ||
+            request.RequestorProcessCreationTime <= 0 || child.TransferId != request.ReservationId ||
+            child.DestinationPath != destination || child.Destination != request.Destination ||
+            child.ProcessId != request.ProcessId || child.SessionId != request.SessionId ||
+            !string.Equals(child.RequestorSid, request.RequestorSid, StringComparison.OrdinalIgnoreCase) ||
+            child.RequestorProcessCreationTime != request.RequestorProcessCreationTime)
+            throw new ArgumentException("The create-after-discard reservation has invalid identity or disposition.");
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        string childPath = ManifestPath(child.TransferId);
+        string temporary = childPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            TransferJournalEntry delete = await ReadCoreAsync(request.DeleteVersion.TransferId, cancellationToken)
+                .ConfigureAwait(false);
+            if (VersionIdentity(delete) != request.DeleteVersion ||
+                !SameWriter(delete.Transfer, child) ||
+                !string.Equals(delete.Transfer.DestinationPath, destination, StringComparison.OrdinalIgnoreCase) ||
+                delete.Transfer.Destination != request.Destination || delete.PendingRename is not null ||
+                delete.StageIdentity is null || delete.State is TransferJournalState.EmptyHeld or
+                    TransferJournalState.Blocked or TransferJournalState.Approved or
+                    TransferJournalState.Publishing or TransferJournalState.Released or
+                    TransferJournalState.Discarded)
+                throw new IOException("The exact private delete predecessor is not eligible for replacement.");
+
+            // Keep legacy V19 CREATE_AFTER explicit: it remains eligible only
+            // when both the request and predecessor have no v20 epoch. A
+            // measured predecessor must carry the durable op19 receipt for
+            // this exact manifest before V2 can move to DiscardPending.
+            // ApplyAttachmentV20Async records that receipt only after checking
+            // the active driver epoch and full version tuple.
+            if (delete.DriverInstanceId is null)
+            {
+                if (request.DriverInstanceId is not null)
+                    throw new IOException("The legacy private delete belongs to a different driver epoch.");
+            }
+            else
+            {
+                if (delete.DriverInstanceId == Guid.Empty || delete.DriverInstanceId != request.DriverInstanceId)
+                    throw new IOException("The private delete predecessor is not bound to this driver epoch.");
+                if (delete.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved ||
+                    delete.CompletionPermitRequestIdV20 is not > 0 ||
+                    delete.HandleObservedRequestIdV20 is not > 0 ||
+                    delete.CompletionPermitRequestIdV20 == delete.HandleObservedRequestIdV20)
+                    throw new IOException("The exact private delete predecessor has no durable op19 handle receipt.");
+            }
+
+            // Validate the complete V1/V2 epoch chain before mutating the V2
+            // delete intent. A legacy or mismatched V1 must remain untouched;
+            // otherwise a retry could leave a durable V2 reservation that can
+            // never safely authorize V3 cleanup.
+            if (delete.ParentVersionIdentity is not { } parentIdentity)
+                throw new IOException("The private delete has no durable exact predecessor ancestry.");
+            TransferJournalEntry parent = await ReadCoreAsync(parentIdentity.TransferId, cancellationToken)
+                .ConfigureAwait(false);
+            if (VersionIdentity(parent) != parentIdentity || parent.State != TransferJournalState.EmptyHeld ||
+                parent.SealedLength != 0 || parent.PendingRename is not null ||
+                !string.Equals(parent.Transfer.DestinationPath, destination, StringComparison.OrdinalIgnoreCase) ||
+                !SameWriter(parent.Transfer, child) || parent.DriverInstanceId != request.DriverInstanceId ||
+                parent.DriverInstanceId == Guid.Empty)
+                throw new IOException("The exact EmptyHeld predecessor is not bound to this driver epoch.");
+
+            TransferJournalEntry? existingChild = null;
+            try { existingChild = await ReadCoreAsync(child.TransferId, cancellationToken).ConfigureAwait(false); }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+            if (existingChild is not null)
+            {
+                if (!MatchesCreateAfterRequest(existingChild, child, request) ||
+                    existingChild.ParentVersionIdentity != delete.ParentVersionIdentity ||
+                    delete.State != TransferJournalState.DiscardPending ||
+                    delete.DiscardReservationId != delete.Transfer.TransferId ||
+                    delete.CreateAfterReservationId != request.ReservationId)
+                    throw new IOException("The create-after reservation was already committed with different inputs.");
+                if (existingChild.StageIdentity is { } replayIdentity)
+                {
+                    using StagedStageFile replayStage = StagedStageFile.Open(existingChild.Transfer.StagePath);
+                    if (replayStage.Identity != replayIdentity)
+                        throw new IOException("The create-after replay stage identity changed.");
+                }
+                return new StagedCreateAfterIntentResult(existingChild, IsReplay: true);
+            }
+
+            if (StagedStageFile.ReadDirectoryIdentity(parentDirectory) != request.ParentDirectoryIdentity ||
+                PathExists(destination))
+                throw new IOException("The destination parent changed or the public destination is present.");
+
+            await RequireCurrentDestinationAsync(delete, cancellationToken).ConfigureAwait(false);
+            if (delete.State != TransferJournalState.DiscardPending)
+            {
+                if (delete.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed or
+                        TransferJournalState.SealPending or TransferJournalState.Sealed or TransferJournalState.Retained))
+                    throw new IOException("The private delete predecessor cannot enter DiscardPending.");
+                IReadOnlyList<TransferJournalStateChange> deleteHistory =
+                    AppendState(delete, TransferJournalState.DiscardPending);
+                delete = delete with
+                {
+                    State = TransferJournalState.DiscardPending,
+                    DiscardReservationId = delete.Transfer.TransferId,
+                    DiscardKind = StagedDiscardKind.PrivateVersion,
+                    DiscardRequestedAtUtc = DateTimeOffset.UtcNow,
+                    DiscardAcknowledgedAtUtc = null,
+                    CreateAfterReservationId = request.ReservationId,
+                    UpdatedAtUtc = deleteHistory.Count == 0 ? DateTimeOffset.UtcNow : deleteHistory[^1].OccurredAtUtc,
+                    StateHistory = deleteHistory
+                };
+                await ReplaceAsync(ManifestPath(delete.Transfer.TransferId), delete, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else if (delete.DiscardReservationId != delete.Transfer.TransferId ||
+                delete.DiscardKind != StagedDiscardKind.PrivateVersion ||
+                (delete.CreateAfterReservationId is { } priorReservation &&
+                    priorReservation != request.ReservationId))
+            {
+                throw new IOException("A different create-after reservation already owns the private delete.");
+            }
+            if (delete.CreateAfterReservationId is null)
+            {
+                delete = delete with { CreateAfterReservationId = request.ReservationId,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow };
+                await ReplaceAsync(ManifestPath(delete.Transfer.TransferId), delete, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            var versions = await DestinationVersionsAsync(destination, cancellationToken).ConfigureAwait(false);
+            if (versions.Any(e => e.Reserved))
+                throw new IOException("Publication or rename currently holds this destination.");
+            DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
+            var allocated = new TransferJournalEntry(child, TransferJournalState.Allocated, null, createdAtUtc)
+            {
+                StateHistory = [new TransferJournalStateChange(TransferJournalState.Allocated, createdAtUtc)],
+                DestinationGeneration = checked(versions.Select(e => e.Generation).DefaultIfEmpty(0).Max() + 1),
+                ParentVersionIdentity = parentIdentity,
+                DeleteVersionIdentity = request.DeleteVersion,
+                CreateReservationId = request.ReservationId,
+                ParentDirectoryIdentity = request.ParentDirectoryIdentity,
+                AllocationDisposition = request.Disposition,
+                AllocationReferenceId = request.DriverInstanceId is null
+                    ? null : request.DeleteVersion.TransferId,
+                AllocationReferenceKind = request.DriverInstanceId is null ? null : 1u,
+                DriverInstanceId = request.DriverInstanceId
+            };
+            ValidateEntry(allocated, child.TransferId);
+            await using (var stream = CreatePrivateTemporary(temporary))
+            {
+                await JsonSerializer.SerializeAsync(stream, allocated, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                if (stream.Length > StagedJournalFile.MaximumManifestBytes)
+                    throw new InvalidDataException("Journal manifest exceeds the qualified size bound.");
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(temporary, childPath);
+            ForgetScanned(child.TransferId);
+            return new StagedCreateAfterIntentResult(allocated, IsReplay: false);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Durably queues an exact identity-qualified cleanup request. This method
+    /// never removes the stage; callers on the filter-port thread can return
+    /// Pending immediately while the background worker performs deletion.
+    /// </summary>
+    public async Task<StagedDiscardStatus> BeginOrConfirmDiscardAsync(
+        StagedDiscardRequest request, CancellationToken cancellationToken, int? requestorProcessId = null,
+        Guid? currentDriverInstanceId = null)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ValidateDiscardRequest(request);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            TransferJournalEntry current = await ReadCoreAsync(request.Version.TransferId, cancellationToken)
+                .ConfigureAwait(false);
+            if (VersionIdentity(current) != request.Version || current.PendingRename is not null)
+                throw new IOException("The discard does not identify the exact durable stage version.");
+            if (requestorProcessId is > 0 && request.Kind is not
+                    (StagedDiscardKind.OwnerExitEmpty or StagedDiscardKind.DriverUnloadEmpty) &&
+                requestorProcessId != current.Transfer.ProcessId)
+                throw new IOException("The discard requestor is not the exact staged-version owner.");
+            if (currentDriverInstanceId is { } activeDriver)
+            {
+                if (request.Kind == StagedDiscardKind.EmptyHeldPredecessor)
+                {
+                    TransferJournalEntry child = await ReadCoreAsync(request.ReservationId, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (current.DriverInstanceId != activeDriver || child.DriverInstanceId != activeDriver ||
+                        child.ParentVersionIdentity is null)
+                        throw new IOException("The predecessor cleanup is not bound to the active driver epoch.");
+                }
+                else if (current.DriverInstanceId != activeDriver)
+                {
+                    throw new IOException("The discard is not bound to the active driver epoch.");
+                }
+            }
+            return await BeginOrValidateDiscardCoreAsync(current, request, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Applies one idempotent v20 attachment receipt to the exact allocated
+    /// manifest. Operations 16 and 18 persist a pending terminal intent and
+    /// return null until the background identity-qualified deletion ACK is
+    /// durable; callers must then replay the same request tuple.
+    /// </summary>
+    public async Task<uint?> ApplyAttachmentV20Async(StagedAttachmentRequestV20 request,
+        bool ownerIsLive, bool commitPolicyAllowed, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.RequestId == 0 || request.Operation is not (12 or 13 or 14 or 15 or 16 or 18 or 19) ||
+            request.Version.TransferId == Guid.Empty ||
+            request.Version.DestinationGeneration <= 0 || request.DriverInstanceId == Guid.Empty ||
+            request.Version.StageIdentity is null || request.ParentDirectoryIdentity is null ||
+            request.RequestorProcessId <= 0 || string.IsNullOrWhiteSpace(request.DestinationPath))
+            throw new ArgumentException("The v20 attachment request lacks exact identity.", nameof(request));
+
+        string destination = Path.GetFullPath(request.DestinationPath);
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            DriverEpochRecord? epoch = await ReadDriverEpochCoreAsync(token).ConfigureAwait(false);
+            if (epoch is null || epoch.DriverInstanceId != request.DriverInstanceId || epoch.DrainNonce is not null)
+                throw new IOException("The attachment request does not belong to the active v20 epoch.");
+            TransferJournalEntry current = await ReadCoreAsync(request.Version.TransferId, token)
+                .ConfigureAwait(false);
+            if (VersionIdentity(current) != request.Version || current.DriverInstanceId != request.DriverInstanceId ||
+                current.ParentDirectoryIdentity != request.ParentDirectoryIdentity ||
+                current.Transfer.ProcessId != request.RequestorProcessId ||
+                !string.Equals(current.Transfer.DestinationPath, destination, StringComparison.OrdinalIgnoreCase) ||
+                current.PendingRename is not null || current.ParentDirectoryIdentity is null ||
+                StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(destination)!) !=
+                    request.ParentDirectoryIdentity)
+                throw new IOException("The v20 attachment tuple does not match the exact allocation manifest.");
+
+            uint? replay = ResolveAttachmentReplay(current, request);
+            if (replay.HasValue) return replay.Value;
+            if ((request.Operation is 16 or 18) && current.RetireRequestIdV20 == request.RequestId &&
+                current.AttachmentStateV20 is (StagedAttachmentStateV20.RetireUnexposedPending or
+                    StagedAttachmentStateV20.RetireAttachedPrivatePending))
+                return null;
+            if (request.Operation == 14 && current.AttachAbortRequestIdV20 == request.RequestId &&
+                current.AttachmentStateV20 == StagedAttachmentStateV20.Aborted)
+                return StageV20WireResult.AttachAborted;
+            if (request.RequestId == current.AttachPrepareRequestIdV20 ||
+                request.RequestId == current.AttachCommitRequestIdV20 ||
+                request.RequestId == current.AttachAbortRequestIdV20 ||
+                request.RequestId == current.CompletionPermitRequestIdV20 ||
+                request.RequestId == current.RetireRequestIdV20 ||
+                request.RequestId == current.HandleObservedRequestIdV20)
+                throw new IOException("A v20 lifecycle RequestId is already bound to another exact phase.");
+            if (request.Operation == 14 && current.AttachmentStateV20 is
+                    (StagedAttachmentStateV20.Committed or StagedAttachmentStateV20.CompletionPermitted or
+                     StagedAttachmentStateV20.HandleObserved or StagedAttachmentStateV20.RetireUnexposedPending or
+                     StagedAttachmentStateV20.RetiredUnexposed or
+                     StagedAttachmentStateV20.RetireAttachedPrivatePending or
+                     StagedAttachmentStateV20.RetiredAttachedPrivate))
+                // This is a read-only monotonic result. It never creates an
+                // abort receipt, and remains safe if the private stage is gone.
+                return StageV20WireResult.AttachAlreadyCommitted;
+
+            using (StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath,
+                       allowWriters: request.Operation is 12 or 13 or 15 or 19))
+            {
+                if (stage.Identity != request.Version.StageIdentity)
+                    throw new IOException("The v20 attachment stage identity changed.");
+                if (current.DeleteVersionIdentity is not null && PathExists(destination))
+                    throw new IOException("The public destination reappeared during private attachment.");
+
+                switch (request.Operation)
+                {
+                    case 12: // Prepare
+                        if (current.AttachPrepareRequestIdV20 == request.RequestId)
+                            return StageV20WireResult.AttachPrepared;
+                        if (current.AttachmentStateV20 != StagedAttachmentStateV20.None || !ownerIsLive ||
+                            current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
+                            current.SealedOnce || current.SealedLength is not null ||
+                            current.DiscardRequestedAtUtc is not null || current.StageCleanupStarted || current.StageDeleted)
+                            throw new IOException("The exact stage is not eligible for attachment prepare.");
+                        await ReplaceAsync(ManifestPath(request.Version.TransferId), current with
+                        {
+                            AttachmentStateV20 = StagedAttachmentStateV20.Prepared,
+                            AttachPrepareRequestIdV20 = request.RequestId,
+                            UpdatedAtUtc = DateTimeOffset.UtcNow
+                        }, token).ConfigureAwait(false);
+                        return StageV20WireResult.AttachPrepared;
+
+                    case 13: // Commit
+                        if (current.AttachCommitRequestIdV20 == request.RequestId)
+                            return current.AttachmentStateV20 switch
+                            {
+                                StagedAttachmentStateV20.Committed or StagedAttachmentStateV20.CompletionPermitted or
+                                    StagedAttachmentStateV20.HandleObserved or
+                                    StagedAttachmentStateV20.RetireAttachedPrivatePending or
+                                    StagedAttachmentStateV20.RetiredAttachedPrivate =>
+                                        current.AttachCommitResultV20 ?? StageV20WireResult.AttachCommitted,
+                                StagedAttachmentStateV20.CommitDenied => StageV20WireResult.AttachCommitDenied,
+                                _ => throw new IOException("The saved commit request has no exact result.")
+                            };
+                        if (current.AttachmentStateV20 != StagedAttachmentStateV20.Prepared || !ownerIsLive ||
+                            current.AttachCommitRequestIdV20 is not null || current.AttachAbortRequestIdV20 is not null)
+                            throw new IOException("The exact stage is not eligible for attachment commit.");
+                        StagedAttachmentStateV20 committedState = commitPolicyAllowed
+                            ? StagedAttachmentStateV20.Committed : StagedAttachmentStateV20.CommitDenied;
+                        await ReplaceAsync(ManifestPath(request.Version.TransferId), current with
+                        {
+                            AttachmentStateV20 = committedState,
+                            AttachCommitRequestIdV20 = request.RequestId,
+                            AttachCommitResultV20 = commitPolicyAllowed
+                                ? StageV20WireResult.AttachCommitted : StageV20WireResult.AttachCommitDenied,
+                            UpdatedAtUtc = DateTimeOffset.UtcNow
+                        }, token).ConfigureAwait(false);
+                        return commitPolicyAllowed ? StageV20WireResult.AttachCommitted :
+                            StageV20WireResult.AttachCommitDenied;
+
+                    case 14: // Abort prepared, unexposed attachment
+                        if (current.AttachAbortRequestIdV20 == request.RequestId &&
+                            current.AttachmentStateV20 == StagedAttachmentStateV20.Aborted)
+                            return StageV20WireResult.AttachAborted;
+                        if (current.AttachmentStateV20 is not (StagedAttachmentStateV20.Prepared or
+                                StagedAttachmentStateV20.CommitDenied) || current.AttachAbortRequestIdV20 is not null ||
+                            current.CompletionPermitRequestIdV20 is not null ||
+                            current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
+                            current.DiscardRequestedAtUtc is not null)
+                            throw new IOException("The exact attachment cannot be aborted after commit/expose ambiguity.");
+                        IReadOnlyList<TransferJournalStateChange> abortHistory =
+                            AppendState(current, TransferJournalState.DiscardPending);
+                        await ReplaceAsync(ManifestPath(request.Version.TransferId), current with
+                        {
+                            State = TransferJournalState.DiscardPending,
+                            StateHistory = abortHistory,
+                            AttachmentStateV20 = StagedAttachmentStateV20.Aborted,
+                            AttachAbortRequestIdV20 = request.RequestId,
+                            DiscardReservationId = current.Transfer.TransferId,
+                            DiscardKind = StagedDiscardKind.UnattachedAllocation,
+                            DiscardRequestedAtUtc = DateTimeOffset.UtcNow,
+                            DiscardAcknowledgedAtUtc = null,
+                            UpdatedAtUtc = abortHistory[^1].OccurredAtUtc
+                        }, token).ConfigureAwait(false);
+                        return StageV20WireResult.AttachAborted;
+
+                    case 15: // CompletionPermitted; never means app handle delivery
+                        if (current.CompletionPermitRequestIdV20 == request.RequestId &&
+                            current.AttachmentStateV20 is (StagedAttachmentStateV20.CompletionPermitted or
+                                StagedAttachmentStateV20.HandleObserved or
+                                StagedAttachmentStateV20.RetireAttachedPrivatePending or
+                                StagedAttachmentStateV20.RetiredAttachedPrivate))
+                            return StageV20WireResult.CompletionPermitted;
+                        if (current.AttachmentStateV20 != StagedAttachmentStateV20.Committed || !ownerIsLive ||
+                            current.CompletionPermitRequestIdV20 is not null ||
+                            current.DiscardRequestedAtUtc is not null)
+                            throw new IOException("The exact attachment has no completion permission.");
+                        await ReplaceAsync(ManifestPath(request.Version.TransferId), current with
+                        {
+                            AttachmentStateV20 = StagedAttachmentStateV20.CompletionPermitted,
+                            CompletionPermitRequestIdV20 = request.RequestId,
+                            UpdatedAtUtc = DateTimeOffset.UtcNow
+                        }, token).ConfigureAwait(false);
+                        return StageV20WireResult.CompletionPermitted;
+
+                    case 16: // RetireUnexposed, only if op 15 is provably absent
+                        if (current.RetireRequestIdV20 == request.RequestId &&
+                            current.AttachmentStateV20 == StagedAttachmentStateV20.RetiredUnexposed &&
+                            current.DiscardAcknowledgedAtUtc is not null)
+                            return StageV20WireResult.AttachRetiredUnexposed;
+                        if (current.RetireRequestIdV20 == request.RequestId &&
+                            current.AttachmentStateV20 == StagedAttachmentStateV20.RetireUnexposedPending)
+                            return null;
+                        if (current.AttachmentStateV20 != StagedAttachmentStateV20.Committed ||
+                            current.CompletionPermitRequestIdV20 is not null || current.RetireRequestIdV20 is not null ||
+                            current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
+                            current.SealedOnce || current.SealedLength is not null || current.DiscardRequestedAtUtc is not null)
+                            throw new IOException("RetireUnexposed requires committed attachment with no op15 send.");
+                        await BeginAttachmentRetirementCoreAsync(current, request,
+                            StagedDiscardKind.RetireUnexposed,
+                            StagedAttachmentStateV20.RetireUnexposedPending, token).ConfigureAwait(false);
+                        return null;
+
+                    case 18: // RetireAttachedPrivate, op18 native callsite remains disabled
+                        if (current.RetireRequestIdV20 == request.RequestId &&
+                            current.AttachmentStateV20 == StagedAttachmentStateV20.RetiredAttachedPrivate &&
+                            current.DiscardAcknowledgedAtUtc is not null)
+                            return StageV20WireResult.AttachRetiredPrivate;
+                        if (current.RetireRequestIdV20 == request.RequestId &&
+                            current.AttachmentStateV20 == StagedAttachmentStateV20.RetireAttachedPrivatePending)
+                            return null;
+                        if (current.AttachmentStateV20 != StagedAttachmentStateV20.CompletionPermitted ||
+                            current.HandleObservedRequestIdV20 is not null || current.RetireRequestIdV20 is not null ||
+                            current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
+                            current.SealedOnce || current.SealedLength is not null || current.DiscardRequestedAtUtc is not null ||
+                            stage.Stream.Length != 0)
+                            throw new IOException("RetireAttachedPrivate requires an exact zero-byte attached stage with no use receipt.");
+                        await BeginAttachmentRetirementCoreAsync(current, request,
+                            StagedDiscardKind.RetireAttachedPrivate,
+                            StagedAttachmentStateV20.RetireAttachedPrivatePending, token).ConfigureAwait(false);
+                        return null;
+
+                    case 19: // Sticky positive file-object CLEANUP receipt
+                        if (current.HandleObservedRequestIdV20 == request.RequestId &&
+                            current.AttachmentStateV20 == StagedAttachmentStateV20.HandleObserved)
+                            return StageV20WireResult.HandleLifetimeObserved;
+                        if (current.AttachmentStateV20 != StagedAttachmentStateV20.CompletionPermitted ||
+                            current.HandleObservedRequestIdV20 is not null || current.DiscardRequestedAtUtc is not null ||
+                            current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed))
+                            throw new IOException("The exact attached version cannot accept a late handle receipt.");
+                        await ReplaceAsync(ManifestPath(request.Version.TransferId), current with
+                        {
+                            AttachmentStateV20 = StagedAttachmentStateV20.HandleObserved,
+                            HandleObservedRequestIdV20 = request.RequestId,
+                            UpdatedAtUtc = DateTimeOffset.UtcNow
+                        }, token).ConfigureAwait(false);
+                        return StageV20WireResult.HandleLifetimeObserved;
+
+                    default:
+                        throw new IOException("Unknown v20 attachment operation.");
+                }
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    private async Task BeginAttachmentRetirementCoreAsync(TransferJournalEntry current,
+        StagedAttachmentRequestV20 request, StagedDiscardKind discardKind,
+        StagedAttachmentStateV20 pendingState, CancellationToken token)
+    {
+        IReadOnlyList<TransferJournalStateChange> history = AppendState(current, TransferJournalState.DiscardPending);
+        await ReplaceAsync(ManifestPath(request.Version.TransferId), current with
+        {
+            State = TransferJournalState.DiscardPending,
+            StateHistory = history,
+            AttachmentStateV20 = pendingState,
+            RetireRequestIdV20 = request.RequestId,
+            DiscardReservationId = current.Transfer.TransferId,
+            DiscardKind = discardKind,
+            DiscardRequestedAtUtc = DateTimeOffset.UtcNow,
+            DiscardAcknowledgedAtUtc = null,
+            UpdatedAtUtc = history[^1].OccurredAtUtc
+        }, token).ConfigureAwait(false);
+    }
+
+    private static uint? ResolveAttachmentReplay(TransferJournalEntry entry,
+        StagedAttachmentRequestV20 request)
+    {
+        if (request.Operation == 12 && entry.AttachPrepareRequestIdV20 == request.RequestId)
+            return StageV20WireResult.AttachPrepared;
+        if (request.Operation == 13 && entry.AttachCommitRequestIdV20 == request.RequestId)
+            return entry.AttachCommitResultV20;
+        if (request.Operation == 14 && entry.AttachAbortRequestIdV20 == request.RequestId)
+            return StageV20WireResult.AttachAborted;
+        if (request.Operation == 15 && entry.CompletionPermitRequestIdV20 == request.RequestId)
+            return StageV20WireResult.CompletionPermitted;
+        if (request.Operation == 16 && entry.RetireRequestIdV20 == request.RequestId &&
+            entry.AttachmentStateV20 == StagedAttachmentStateV20.RetiredUnexposed &&
+            entry.DiscardAcknowledgedAtUtc is not null)
+            return StageV20WireResult.AttachRetiredUnexposed;
+        if (request.Operation == 18 && entry.RetireRequestIdV20 == request.RequestId &&
+            entry.AttachmentStateV20 == StagedAttachmentStateV20.RetiredAttachedPrivate &&
+            entry.DiscardAcknowledgedAtUtc is not null)
+            return StageV20WireResult.AttachRetiredPrivate;
+        if (request.Operation == 19 && entry.HandleObservedRequestIdV20 == request.RequestId)
+            return StageV20WireResult.HandleLifetimeObserved;
+        return null;
+    }
+
+    // Caller holds _gate. This records intent only; physical deletion is kept
+    // on the bounded background worker so the filter-port dispatcher remains
+    // available to allocate a successor.
+    private async Task<StagedDiscardStatus> BeginOrValidateDiscardCoreAsync(
+        TransferJournalEntry current, StagedDiscardRequest request, CancellationToken token)
+    {
+        bool alreadyPending = current.DiscardRequestedAtUtc is not null;
+        if (alreadyPending && (current.DiscardReservationId != request.ReservationId ||
+            current.DiscardKind != request.Kind))
+            throw new IOException("A different exact cleanup request already owns this stage.");
+
+        if (request.Kind is StagedDiscardKind.PrivateVersion or StagedDiscardKind.UnattachedAllocation or
+            StagedDiscardKind.RetireUnexposed or StagedDiscardKind.RetireAttachedPrivate)
+        {
+            if (request.Kind == StagedDiscardKind.UnattachedAllocation &&
+                current.ParentVersionIdentity is { } parentIdentity)
+            {
+                TransferJournalEntry parent = await ReadCoreAsync(parentIdentity.TransferId, token)
+                    .ConfigureAwait(false);
+                if (VersionIdentity(parent) != parentIdentity)
+                    throw new IOException("The unattached allocation lost its exact predecessor identity.");
+                if (parent.DiscardKind == StagedDiscardKind.EmptyHeldPredecessor &&
+                    parent.DiscardReservationId == current.Transfer.TransferId &&
+                    parent.DiscardRequestedAtUtc is not null)
+                    throw new IOException("The parent cleanup already committed the attached-child disposition.");
+            }
+            if (current.State == TransferJournalState.DiscardPending)
+            {
+                if (!alreadyPending || current.DiscardKind != request.Kind)
+                    throw new IOException("The private version has a different pending disposition.");
+                return current.DiscardAcknowledgedAtUtc is null
+                    ? StagedDiscardStatus.Pending : StagedDiscardStatus.Acknowledged;
+            }
+            if (alreadyPending ||
+                (current.CreateReservationId is { } expectedReservation &&
+                    expectedReservation != request.ReservationId) ||
+                (current.CreateReservationId is null && request.ReservationId != current.Transfer.TransferId))
+                throw new IOException("The private delete reservation does not match this allocation.");
+            if (current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed or
+                    TransferJournalState.SealPending or TransferJournalState.Sealed or
+                    TransferJournalState.Retained) || current.StageCleanupStarted || current.StageDeleted ||
+                (request.Kind == StagedDiscardKind.UnattachedAllocation &&
+                    (current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
+                     current.SealedOnce || current.SealedLength is not null ||
+                     current.CreateReservationId != current.Transfer.TransferId ||
+                     current.DriverInstanceId is null || request.ReservationId != current.Transfer.TransferId ||
+                     current.AttachmentStateV20 is not (StagedAttachmentStateV20.None or
+                         StagedAttachmentStateV20.Aborted))) ||
+                (request.Kind == StagedDiscardKind.PrivateVersion &&
+                    current.AttachmentStateV20 is not (StagedAttachmentStateV20.None or
+                        StagedAttachmentStateV20.HandleObserved)) ||
+                (request.Kind == StagedDiscardKind.PrivateVersion && current.DriverInstanceId is not null &&
+                    current.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved) ||
+                (request.Kind == StagedDiscardKind.RetireUnexposed &&
+                    (current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
+                     current.SealedOnce || current.SealedLength is not null ||
+                     current.CreateReservationId != current.Transfer.TransferId ||
+                     request.ReservationId != current.Transfer.TransferId ||
+                     current.AttachmentStateV20 != StagedAttachmentStateV20.Committed ||
+                     current.CompletionPermitRequestIdV20 is not null ||
+                     current.RetireRequestIdV20 is null)) ||
+                (request.Kind == StagedDiscardKind.RetireAttachedPrivate &&
+                    (current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
+                     current.SealedOnce || current.SealedLength is not null ||
+                     current.CreateReservationId != current.Transfer.TransferId ||
+                     request.ReservationId != current.Transfer.TransferId ||
+                     current.AttachmentStateV20 != StagedAttachmentStateV20.CompletionPermitted ||
+                     current.HandleObservedRequestIdV20 is not null || current.RetireRequestIdV20 is null)) ||
+                (request.Kind == StagedDiscardKind.RetireUnexposed &&
+                    current.AttachmentStateV20 != StagedAttachmentStateV20.RetireUnexposedPending) ||
+                (request.Kind == StagedDiscardKind.RetireAttachedPrivate &&
+                    current.AttachmentStateV20 != StagedAttachmentStateV20.RetireAttachedPrivatePending))
+                throw new IOException("The private version cannot enter DiscardPending.");
+            if (request.Kind == StagedDiscardKind.RetireAttachedPrivate)
+            {
+                using StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath);
+                if (stage.Identity != request.Version.StageIdentity || stage.Stream.Length != 0)
+                    throw new IOException("The attached private stage is not the exact zero-byte object.");
+            }
+            if (request.Kind == StagedDiscardKind.PrivateVersion &&
+                current.AttachmentStateV20 != StagedAttachmentStateV20.None &&
+                current.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
+                throw new IOException("An attached version requires the exact handle-lifetime receipt before discard.");
+            if (request.Kind == StagedDiscardKind.PrivateVersion)
+                await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
+            IReadOnlyList<TransferJournalStateChange> history =
+                AppendState(current, TransferJournalState.DiscardPending);
+            var pending = current with
+            {
+                State = TransferJournalState.DiscardPending,
+                DiscardReservationId = request.ReservationId,
+                DiscardKind = request.Kind,
+                DiscardRequestedAtUtc = DateTimeOffset.UtcNow,
+                DiscardAcknowledgedAtUtc = null,
+                UpdatedAtUtc = history.Count == 0 ? DateTimeOffset.UtcNow : history[^1].OccurredAtUtc,
+                StateHistory = history
+            };
+            await ReplaceAsync(ManifestPath(request.Version.TransferId), pending, token).ConfigureAwait(false);
+            return StagedDiscardStatus.Pending;
+        }
+
+        if (current.State != TransferJournalState.EmptyHeld || current.SealedLength != 0 ||
+            current.StageIdentity != request.Version.StageIdentity)
+            throw new IOException("Only an exact EmptyHeld stage can be cleaned through this operation.");
+        if (current.DriverInstanceId is not null &&
+            current.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
+            throw new IOException("A v20 EmptyHeld version needs its exact handle-lifetime receipt before cleanup.");
+        if (current.AttachmentStateV20 != StagedAttachmentStateV20.None &&
+            current.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
+            throw new IOException("An attached EmptyHeld version requires the exact handle-lifetime receipt.");
+
+        if (request.Kind is StagedDiscardKind.OwnerExitEmpty or StagedDiscardKind.DriverUnloadEmpty)
+        {
+            if (request.ReservationId != current.Transfer.TransferId)
+                throw new IOException("EmptyHeld retirement must be reserved to the exact version.");
+            if (!alreadyPending) await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
+        }
+        else if (request.Kind == StagedDiscardKind.EmptyHeldPredecessor)
+        {
+            TransferJournalEntry child = await ReadCoreAsync(request.ReservationId, token).ConfigureAwait(false);
+            if (child.Transfer.TransferId != request.ReservationId ||
+                child.CreateReservationId != request.ReservationId ||
+                child.ParentVersionIdentity != request.Version ||
+                child.Transfer.DestinationPath != current.Transfer.DestinationPath ||
+                !SameWriter(child.Transfer, current.Transfer) ||
+                child.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed or
+                    TransferJournalState.SealPending or TransferJournalState.Sealed or
+                    TransferJournalState.Retained or TransferJournalState.EmptyHeld or TransferJournalState.Released or
+                    TransferJournalState.DiscardPending))
+                throw new IOException("The EmptyHeld cleanup reservation has no exact committed child ancestry.");
+            if (current.DriverInstanceId is not { } parentDriverInstance || parentDriverInstance == Guid.Empty ||
+                child.DriverInstanceId != parentDriverInstance || child.DriverInstanceId == Guid.Empty)
+                throw new IOException("The EmptyHeld cleanup chain is missing one exact driver epoch.");
+            if (child.DeleteVersionIdentity is { } deletedIdentity)
+            {
+                if (child.CreateAfterReservationId is not null)
+                    throw new IOException("The CREATE_AFTER predecessor must be retired using its V3 reservation.");
+                TransferJournalEntry deleted = await ReadCoreAsync(deletedIdentity.TransferId, token)
+                    .ConfigureAwait(false);
+                if (VersionIdentity(deleted) != deletedIdentity || deleted.ParentVersionIdentity != request.Version ||
+                    deleted.DiscardReservationId != deleted.Transfer.TransferId ||
+                    deleted.CreateAfterReservationId != request.ReservationId ||
+                    deleted.DiscardKind != StagedDiscardKind.PrivateVersion ||
+                    deleted.State != TransferJournalState.DiscardPending ||
+                    deleted.DiscardAcknowledgedAtUtc is null ||
+                    child.AllocationDisposition != 5 ||
+                    child.AllocationReferenceId != deleted.Transfer.TransferId ||
+                    child.AllocationReferenceKind != 1 || child.DriverInstanceId is null ||
+                    child.DriverInstanceId != deleted.DriverInstanceId ||
+                    deleted.DriverInstanceId != current.DriverInstanceId ||
+                    !SameWriter(deleted.Transfer, child.Transfer))
+                    throw new IOException("The EmptyHeld cleanup ancestry does not match the exact deleted version.");
+                if (!StagedStageFile.TryConfirmAbsent(deleted.Transfer.StagePath, out Exception? deletedAbsenceFailure))
+                    throw new IOException("The exact CREATE_AFTER delete predecessor is not absent.",
+                        deletedAbsenceFailure);
+
+                // A successful attached V3 has no discard intent yet. Once a
+                // V3 cleanup disposition exists, however, V1 may not retire
+                // ahead of that exact terminal ACK and absence proof. This
+                // closes out-of-order/replayed V1 kind-2 requests on the
+                // failed-attach path.
+                if (child.State == TransferJournalState.DiscardPending ||
+                    child.DiscardRequestedAtUtc is not null || child.DiscardAcknowledgedAtUtc is not null)
+                {
+                    bool privateDeleteAck = child.State == TransferJournalState.DiscardPending &&
+                        child.DiscardKind is (StagedDiscardKind.UnattachedAllocation or
+                            StagedDiscardKind.PrivateVersion or StagedDiscardKind.RetireUnexposed or
+                            StagedDiscardKind.RetireAttachedPrivate) &&
+                        child.DiscardReservationId == child.Transfer.TransferId &&
+                        child.DiscardRequestedAtUtc is not null && child.DiscardAcknowledgedAtUtc is not null &&
+                        (child.DiscardKind switch
+                        {
+                            StagedDiscardKind.UnattachedAllocation =>
+                                !child.SealedOnce && child.SealedLength is null,
+                            StagedDiscardKind.RetireUnexposed =>
+                                !child.SealedOnce && child.SealedLength is null &&
+                                child.AttachmentStateV20 == StagedAttachmentStateV20.RetiredUnexposed &&
+                                child.RetireRequestIdV20 is > 0,
+                            StagedDiscardKind.RetireAttachedPrivate =>
+                                !child.SealedOnce && child.SealedLength is null &&
+                                child.AttachmentStateV20 == StagedAttachmentStateV20.RetiredAttachedPrivate &&
+                                child.RetireRequestIdV20 is > 0,
+                            _ => true
+                        });
+                    bool emptyRetirementAck = child.State == TransferJournalState.EmptyHeld &&
+                        child.SealedLength == 0 &&
+                        child.DiscardKind is (StagedDiscardKind.OwnerExitEmpty or
+                            StagedDiscardKind.DriverUnloadEmpty) &&
+                        child.DiscardReservationId == child.Transfer.TransferId &&
+                        child.DiscardRequestedAtUtc is not null && child.DiscardAcknowledgedAtUtc is not null;
+                    if (!privateDeleteAck && !emptyRetirementAck)
+                        throw new IOException("The CREATE_AFTER child has no exact terminal cleanup ACK.");
+                    if (!StagedStageFile.TryConfirmAbsent(child.Transfer.StagePath,
+                            out Exception? childAbsenceFailure))
+                        throw new IOException("The exact CREATE_AFTER child is not absent.", childAbsenceFailure);
+                }
+                else if (child.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved ||
+                    child.HandleObservedRequestIdV20 is not > 0 ||
+                    child.CompletionPermitRequestIdV20 is not > 0)
+                {
+                    throw new IOException("The live CREATE_AFTER child has no exact HandleObserved receipt.");
+                }
+            }
+            else
+            {
+                if (child.CreateAfterReservationId is not null)
+                    throw new IOException("A direct cleanup cannot consume a CREATE_AFTER reservation.");
+                RequireDirectEmptyHeldChildTerminal(current, child, requireReleasedStageDeleted: false);
+            }
+            if (!alreadyPending) await RequireCurrentDestinationAsync(child, token).ConfigureAwait(false);
+        }
+
+        if (alreadyPending)
+            return current.DiscardAcknowledgedAtUtc is null
+                ? StagedDiscardStatus.Pending : StagedDiscardStatus.Acknowledged;
+
+        var cleanup = current with
+        {
+            DiscardReservationId = request.ReservationId,
+            DiscardKind = request.Kind,
+            DiscardRequestedAtUtc = DateTimeOffset.UtcNow,
+            DiscardAcknowledgedAtUtc = null,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        };
+        await ReplaceAsync(ManifestPath(request.Version.TransferId), cleanup, token).ConfigureAwait(false);
+        return StagedDiscardStatus.Pending;
+    }
+
+    /// <summary>Durable cleanup work for the background worker; unacked requests survive restart.</summary>
+    public async Task<IReadOnlyList<StagedDiscardRequest>> ReadDiscardPendingAsync(
+        CancellationToken cancellationToken)
+    {
+        var pending = new List<StagedDiscardRequest>();
+        foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
+                throw new InvalidDataException($"Unexpected journal file: {file.FullName}");
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            TransferJournalEntry entry;
+            try { entry = await ReadScannedAsync(file, id, cancellationToken).ConfigureAwait(false); }
+            finally { _gate.Release(); }
+            if (entry.DiscardRequestedAtUtc is null || entry.DiscardAcknowledgedAtUtc is not null ||
+                entry.DiscardReservationId is not { } reservation || entry.DiscardKind is not { } kind ||
+                entry.StageIdentity is not { } identity || entry.DestinationGeneration <= 0)
+                continue;
+            pending.Add(new StagedDiscardRequest(reservation,
+                new StagedVersionIdentity(entry.Transfer.TransferId, entry.DestinationGeneration, identity), kind));
+        }
+        return pending;
+    }
+
+    /// <summary>
+    /// Records ACK only when the exact manifest stage path is absent after
+    /// identity-qualified deletion. A fabricated success result cannot bypass
+    /// this check.
+    /// </summary>
+    public async Task<StagedDiscardStatus> CompleteDiscardAsync(
+        StagedDiscardRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ValidateDiscardRequest(request);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        TransferJournalEntry before;
+        try
+        {
+            before = await ReadCoreAsync(request.Version.TransferId, cancellationToken)
+                .ConfigureAwait(false);
+            if (VersionIdentity(before) != request.Version || before.DiscardReservationId != request.ReservationId ||
+                before.DiscardKind != request.Kind || before.DiscardRequestedAtUtc is null ||
+                before.PendingRename is not null)
+                throw new IOException("The exact durable cleanup request changed before completion.");
+            if (request.Kind is (StagedDiscardKind.PrivateVersion or StagedDiscardKind.UnattachedAllocation) &&
+                before.State != TransferJournalState.DiscardPending)
+                throw new IOException("The private version is no longer terminally pending deletion.");
+            if (request.Kind is (StagedDiscardKind.RetireUnexposed or StagedDiscardKind.RetireAttachedPrivate) &&
+                before.State != TransferJournalState.DiscardPending)
+                throw new IOException("The v20 attachment retirement is no longer terminally pending deletion.");
+            if (request.Kind is (StagedDiscardKind.EmptyHeldPredecessor or StagedDiscardKind.OwnerExitEmpty or
+                    StagedDiscardKind.DriverUnloadEmpty) &&
+                before.State != TransferJournalState.EmptyHeld)
+                throw new IOException("The EmptyHeld cleanup target changed state.");
+            await BeginOrValidateDiscardCoreAsync(before, request, cancellationToken).ConfigureAwait(false);
+            before = await ReadCoreAsync(request.Version.TransferId, cancellationToken).ConfigureAwait(false);
+            if (before.DiscardAcknowledgedAtUtc is not null) return StagedDiscardStatus.Acknowledged;
+        }
+        finally { _gate.Release(); }
+
+        if (request.Kind == StagedDiscardKind.EmptyHeldPredecessor)
+            await RequireReleasedDirectChildDisposedAsync(request, cancellationToken).ConfigureAwait(false);
+
+        // Filesystem deletion may block on an open handle. Never hold the
+        // journal gate or filter-port callback while doing it. The handle is
+        // no-follow and must still identify the manifest's exact single-link
+        // object before Windows marks that handle for deletion.
+        long? expectedLength = request.Kind == StagedDiscardKind.RetireAttachedPrivate ? 0 : null;
+        if (!StagedStageFile.TryDeleteExactAndConfirmAbsent(before.Transfer.StagePath,
+                request.Version.StageIdentity, out Exception? deletionFailure, expectedLength))
+            throw new IOException("The exact private stage could not be deleted and verified.", deletionFailure);
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            TransferJournalEntry current = await ReadCoreAsync(request.Version.TransferId, cancellationToken)
+                .ConfigureAwait(false);
+            if (VersionIdentity(current) != request.Version || current.DiscardReservationId != request.ReservationId ||
+                current.DiscardKind != request.Kind || current.DiscardRequestedAtUtc is null ||
+                current.PendingRename is not null || current.State != before.State)
+                throw new IOException("The exact cleanup disposition changed while removing its stage.");
+            await BeginOrValidateDiscardCoreAsync(current, request, cancellationToken).ConfigureAwait(false);
+            if (current.DiscardAcknowledgedAtUtc is not null) return StagedDiscardStatus.Acknowledged;
+            if (!StagedStageFile.TryConfirmAbsent(current.Transfer.StagePath, out Exception? absenceFailure))
+                throw new IOException("The stage path is not confirmed absent after cleanup.", absenceFailure);
+            StagedAttachmentStateV20 attachmentState = request.Kind switch
+            {
+                StagedDiscardKind.RetireUnexposed => StagedAttachmentStateV20.RetiredUnexposed,
+                StagedDiscardKind.RetireAttachedPrivate => StagedAttachmentStateV20.RetiredAttachedPrivate,
+                _ => current.AttachmentStateV20
+            };
+            var acknowledged = current with
+            {
+                AttachmentStateV20 = attachmentState,
+                DiscardAcknowledgedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+            await ReplaceAsync(ManifestPath(request.Version.TransferId), acknowledged, cancellationToken)
+                .ConfigureAwait(false);
+            return StagedDiscardStatus.Acknowledged;
+        }
+        finally { _gate.Release(); }
     }
 
     public async Task<TransferJournalEntry> ReadAsync(Guid transferId, CancellationToken cancellationToken)
@@ -294,7 +1457,8 @@ public sealed class StagedTransferJournal
         RequireManifestPath(transfer.DestinationPath);
         if (entry.Sha256Hex is not null && (entry.Sha256Hex.Length != 64 || !entry.Sha256Hex.All(Uri.IsHexDigit)))
             throw new InvalidDataException("The transfer manifest has an invalid digest.");
-        bool requiresSeal = entry.State is TransferJournalState.Sealed or TransferJournalState.Inspecting or
+        bool requiresSeal = entry.State is TransferJournalState.SealPending or TransferJournalState.EmptyHeld or
+            TransferJournalState.Sealed or TransferJournalState.Inspecting or
             TransferJournalState.Approved or TransferJournalState.Publishing or TransferJournalState.Released or
             TransferJournalState.Blocked;
         if ((requiresSeal && !entry.SealedOnce) ||
@@ -304,6 +1468,98 @@ public sealed class StagedTransferJournal
             ((entry.State is TransferJournalState.Publishing or TransferJournalState.Released or
                 TransferJournalState.Blocked) && entry.Sha256Hex is null))
             throw new InvalidDataException("The transfer manifest has invalid seal/publication evidence.");
+        if ((entry.SealedLength is < 0) ||
+            (entry.SealedLength is { } measured && measured == 0 &&
+                entry.State is not (TransferJournalState.EmptyHeld or TransferJournalState.DiscardPending)) ||
+            (entry.SealedLength is { } positive && positive > 0 && entry.StageIdentity is null) ||
+            (entry.StageIdentity is { } stageIdentity && (stageIdentity.FileIdHigh | stageIdentity.FileIdLow) == 0) ||
+            (entry.State == TransferJournalState.SealPending &&
+                (entry.SealedLength is not null || entry.StageIdentity is null)) ||
+            (entry.State == TransferJournalState.EmptyHeld &&
+                (entry.SealedLength != 0 || entry.StageIdentity is null || entry.Sha256Hex is not null ||
+                 entry.BlockedPolicyVersion != 0 || entry.BlockedInspectionFailure is not null ||
+                 entry.HandbackState != StagedHandbackState.NotAttempted || entry.HandbackPath is not null ||
+                 entry.HandbackLength is not null || entry.HandbackFailureReason is not null ||
+                 entry.JustificationExpiresAtUtc is not null || entry.JustificationWindowClosed ||
+                 entry.StageCleanupStarted || entry.StageDeleted)) ||
+            (entry.SealedLength is not null && entry.StageIdentity is null) ||
+            (entry.EmptyHeldNotificationAttemptedAtUtc is { } attempt && attempt.Offset != TimeSpan.Zero) ||
+            (entry.EmptyHeldNotificationQueuedAtUtc is { } queued && queued.Offset != TimeSpan.Zero) ||
+            ((entry.EmptyHeldNotificationAttemptedAtUtc is null) !=
+                (entry.EmptyHeldNotificationAttemptedByInstanceId is null)) ||
+            ((entry.EmptyHeldNotificationQueuedAtUtc is null) !=
+                (entry.EmptyHeldNotificationQueuedByInstanceId is null)) ||
+            (entry.EmptyHeldNotificationAttemptedByInstanceId is { } attemptedBy && attemptedBy == Guid.Empty) ||
+            (entry.EmptyHeldNotificationQueuedByInstanceId is { } queuedBy && queuedBy == Guid.Empty) ||
+            (entry.EmptyHeldNotificationQueuedAtUtc is not null &&
+                entry.EmptyHeldNotificationAttemptedAtUtc is null) ||
+            (entry.EmptyHeldNotificationQueuedAtUtc is { } queuedAt &&
+                entry.EmptyHeldNotificationAttemptedAtUtc is { } attemptedAt && queuedAt < attemptedAt) ||
+            (entry.EmptyHeldNotificationQueuedByInstanceId is { } queuedByInstance &&
+                entry.EmptyHeldNotificationAttemptedByInstanceId is { } attemptedByInstance &&
+                queuedByInstance != attemptedByInstance) ||
+            ((entry.EmptyHeldNotificationAttemptedAtUtc is not null ||
+                entry.EmptyHeldNotificationQueuedAtUtc is not null) && entry.State != TransferJournalState.EmptyHeld))
+            throw new InvalidDataException("The transfer manifest has invalid measured seal evidence.");
+        bool discardPending = entry.State == TransferJournalState.DiscardPending;
+        bool emptyCleanup = entry.State == TransferJournalState.EmptyHeld && entry.DiscardRequestedAtUtc is not null;
+        if ((entry.DiscardReservationId is { } discardReservation && discardReservation == Guid.Empty) ||
+            (entry.DiscardRequestedAtUtc is { } discardAt && discardAt.Offset != TimeSpan.Zero) ||
+            (entry.DiscardAcknowledgedAtUtc is { } acknowledgedAt && acknowledgedAt.Offset != TimeSpan.Zero) ||
+            (entry.DiscardAcknowledgedAtUtc is { } ackAt &&
+                (entry.DiscardRequestedAtUtc is not { } requestedAt || ackAt < requestedAt)) ||
+            (discardPending && (entry.StageIdentity is null || entry.DestinationGeneration <= 0 ||
+                entry.DiscardReservationId is null || entry.DiscardKind is not
+                    (StagedDiscardKind.PrivateVersion or StagedDiscardKind.UnattachedAllocation or
+                     StagedDiscardKind.RetireUnexposed or StagedDiscardKind.RetireAttachedPrivate) ||
+                entry.DiscardRequestedAtUtc is null || entry.PendingRename is not null ||
+                entry.StageCleanupStarted || entry.StageDeleted)) ||
+            (entry.DiscardKind == StagedDiscardKind.UnattachedAllocation &&
+                (!discardPending || entry.SealedOnce || entry.SealedLength is not null ||
+                 entry.CreateReservationId != entry.Transfer.TransferId ||
+                 entry.DiscardReservationId != entry.Transfer.TransferId || entry.DriverInstanceId is null)) ||
+            ((entry.DiscardKind is (StagedDiscardKind.RetireUnexposed or
+                                    StagedDiscardKind.RetireAttachedPrivate)) &&
+                (!discardPending || entry.CreateReservationId != entry.Transfer.TransferId ||
+                 entry.DiscardReservationId != entry.Transfer.TransferId || entry.DriverInstanceId is null ||
+                 entry.RetireRequestIdV20 is null || entry.SealedOnce || entry.SealedLength is not null)) ||
+            (emptyCleanup && (entry.DiscardReservationId is null || entry.DiscardKind is not
+                (StagedDiscardKind.EmptyHeldPredecessor or StagedDiscardKind.OwnerExitEmpty or
+                 StagedDiscardKind.DriverUnloadEmpty))) ||
+            (!discardPending && !emptyCleanup && (entry.DiscardReservationId is not null ||
+                entry.DiscardKind is not null || entry.DiscardRequestedAtUtc is not null ||
+                entry.DiscardAcknowledgedAtUtc is not null)) ||
+            (entry.ParentVersionIdentity is { } parentVersion &&
+                (parentVersion.TransferId == Guid.Empty || parentVersion.DestinationGeneration <= 0 ||
+                 parentVersion.StageIdentity is null ||
+                 (parentVersion.StageIdentity.FileIdHigh | parentVersion.StageIdentity.FileIdLow) == 0)) ||
+            (entry.DeleteVersionIdentity is { } deletedVersion &&
+                (deletedVersion.TransferId == Guid.Empty || deletedVersion.DestinationGeneration <= 0 ||
+                 deletedVersion.StageIdentity is null ||
+                 (deletedVersion.StageIdentity.FileIdHigh | deletedVersion.StageIdentity.FileIdLow) == 0 ||
+                 entry.CreateReservationId != entry.Transfer.TransferId)) ||
+            (entry.CreateReservationId is { } createReservation &&
+                (createReservation == Guid.Empty || createReservation != entry.Transfer.TransferId)) ||
+            (entry.CreateAfterReservationId is { } afterReservation &&
+                (afterReservation == Guid.Empty || afterReservation == entry.Transfer.TransferId ||
+                 entry.State != TransferJournalState.DiscardPending ||
+                 entry.DiscardKind != StagedDiscardKind.PrivateVersion ||
+                 entry.DiscardReservationId != entry.Transfer.TransferId)) ||
+            (entry.AllocationReferenceId is { } allocationReference && allocationReference == Guid.Empty) ||
+            (entry.AllocationReferenceKind is { } referenceKind && referenceKind > 2) ||
+            (entry.DriverInstanceId is { } driverInstance && driverInstance == Guid.Empty) ||
+            (entry.AllocationReferenceKind is { } referenceKindValue &&
+                ((referenceKindValue == 0) != (entry.AllocationReferenceId is null))) ||
+            (entry.AllocationReferenceKind is null && entry.AllocationReferenceId is not null) ||
+            ((entry.DriverInstanceId is not null) != (entry.AllocationReferenceKind is not null)) ||
+            (entry.ParentDirectoryIdentity is { } parentDirectory &&
+                (entry.CreateReservationId is null ||
+                 (parentDirectory.FileIdHigh | parentDirectory.FileIdLow) == 0)) ||
+            (entry.AllocationDisposition is { } disposition && disposition > 5) ||
+                (entry.State == TransferJournalState.EmptyHeld && entry.DiscardAcknowledgedAtUtc is not null &&
+                entry.DiscardRequestedAtUtc is null))
+            throw new InvalidDataException("The transfer manifest has invalid exact-version or cleanup evidence.");
+        ValidateAttachmentEvidence(entry);
         if (entry.PendingRename is { } rename)
         {
             RequireManifestPath(rename.DestinationPath);
@@ -358,13 +1614,111 @@ public sealed class StagedTransferJournal
             (entry.HandbackState == StagedHandbackState.Failed && entry.HandbackFailureReason is null) ||
             (entry.HandbackState != StagedHandbackState.Failed && entry.HandbackFailureReason is not null) ||
             (entry.JustificationExpiresAtUtc is { } expiry && expiry.Offset != TimeSpan.Zero) ||
-            (entry.HandbackLastAttemptAtUtc is { } attempt && attempt.Offset != TimeSpan.Zero) ||
+            (entry.HandbackLastAttemptAtUtc is { } handbackAttempt && handbackAttempt.Offset != TimeSpan.Zero) ||
             (entry.StageCleanupStarted && (entry.HandbackState != StagedHandbackState.Verified ||
                 !entry.JustificationWindowClosed)) ||
-            (entry.StageDeleted && (entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
-                entry.HandbackState != StagedHandbackState.Verified || !entry.JustificationWindowClosed ||
-                entry.StageCleanupStarted)))
+            (entry.StageDeleted && !(
+                (entry.State == TransferJournalState.Released &&
+                 entry.HandbackState == StagedHandbackState.NotAttempted && entry.SealedOnce &&
+                 entry.SealedLength is > 0 && entry.Sha256Hex is not null && !entry.StageCleanupStarted) ||
+                ((entry.State == TransferJournalState.Blocked || entry.State == TransferJournalState.Released) &&
+                 entry.HandbackState == StagedHandbackState.Verified && entry.JustificationWindowClosed &&
+                 !entry.StageCleanupStarted))))
             throw new InvalidDataException("The transfer manifest has invalid hand-back evidence.");
+    }
+
+    private static void ValidateAttachmentEvidence(TransferJournalEntry entry)
+    {
+        static bool ValidRequest(ulong? id) => id is null or > 0;
+        bool hasLifecycle = entry.AttachmentStateV20 != StagedAttachmentStateV20.None ||
+            entry.AttachPrepareRequestIdV20 is not null || entry.AttachCommitRequestIdV20 is not null ||
+            entry.AttachCommitResultV20 is not null ||
+            entry.AttachAbortRequestIdV20 is not null || entry.CompletionPermitRequestIdV20 is not null ||
+            entry.RetireRequestIdV20 is not null || entry.HandleObservedRequestIdV20 is not null;
+        if (!Enum.IsDefined(entry.AttachmentStateV20) ||
+            (entry.AttachCommitResultV20 is not null && entry.AttachCommitResultV20 is not
+                (StageV20WireResult.AttachCommitted or StageV20WireResult.AttachCommitDenied)) ||
+            ((entry.AttachCommitRequestIdV20 is null) != (entry.AttachCommitResultV20 is null)) ||
+            !ValidRequest(entry.AttachPrepareRequestIdV20) || !ValidRequest(entry.AttachCommitRequestIdV20) ||
+            !ValidRequest(entry.AttachAbortRequestIdV20) || !ValidRequest(entry.CompletionPermitRequestIdV20) ||
+            !ValidRequest(entry.RetireRequestIdV20) || !ValidRequest(entry.HandleObservedRequestIdV20))
+            throw new InvalidDataException("The manifest has malformed v20 attachment receipts.");
+        var requestIds = new HashSet<ulong>();
+        foreach (ulong? requestId in new[] { entry.AttachPrepareRequestIdV20,
+                     entry.AttachCommitRequestIdV20, entry.AttachAbortRequestIdV20,
+                     entry.CompletionPermitRequestIdV20, entry.RetireRequestIdV20,
+                     entry.HandleObservedRequestIdV20 })
+        {
+            if (requestId is { } value && !requestIds.Add(value))
+                throw new InvalidDataException("The v20 manifest reuses a lifecycle RequestId across phases.");
+        }
+        if (!hasLifecycle) return;
+        if (entry.DriverInstanceId is null || entry.CreateReservationId != entry.Transfer.TransferId ||
+            entry.DestinationGeneration <= 0 || entry.StageIdentity is null || entry.ParentDirectoryIdentity is null ||
+            entry.ParentDirectoryIdentity.FileIdHigh == 0 && entry.ParentDirectoryIdentity.FileIdLow == 0 ||
+            entry.AttachPrepareRequestIdV20 is not > 0)
+            throw new InvalidDataException("The v20 attachment receipt has no exact allocation identity.");
+
+        bool hasCommit = entry.AttachCommitRequestIdV20 is > 0;
+        bool commitDenied = entry.AttachCommitResultV20 == StageV20WireResult.AttachCommitDenied;
+        bool hasAbort = entry.AttachAbortRequestIdV20 is > 0;
+        bool hasPermit = entry.CompletionPermitRequestIdV20 is > 0;
+        bool hasRetire = entry.RetireRequestIdV20 is > 0;
+        bool hasHandle = entry.HandleObservedRequestIdV20 is > 0;
+        switch (entry.AttachmentStateV20)
+        {
+            case StagedAttachmentStateV20.Prepared:
+                if (hasCommit || hasAbort || hasPermit || hasRetire || hasHandle)
+                    throw new InvalidDataException("Prepared attachment contains a later lifecycle receipt.");
+                break;
+            case StagedAttachmentStateV20.Committed:
+            case StagedAttachmentStateV20.CommitDenied:
+                if (!hasCommit || hasAbort || hasPermit || hasRetire || hasHandle)
+                    throw new InvalidDataException("The commit receipt order is invalid.");
+                if ((entry.AttachmentStateV20 == StagedAttachmentStateV20.CommitDenied) != commitDenied)
+                    throw new InvalidDataException("The commit result disagrees with the attachment state.");
+                break;
+            case StagedAttachmentStateV20.Aborted:
+                if (hasPermit || hasRetire || hasHandle || !hasAbort ||
+                    (hasCommit && !commitDenied) ||
+                    entry.State != TransferJournalState.DiscardPending ||
+                    entry.DiscardKind != StagedDiscardKind.UnattachedAllocation ||
+                    entry.DiscardReservationId != entry.Transfer.TransferId)
+                    throw new InvalidDataException("The abort receipt is not bound to exact unattached cleanup.");
+                break;
+            case StagedAttachmentStateV20.CompletionPermitted:
+                if (!hasCommit || commitDenied || hasAbort || !hasPermit || hasRetire || hasHandle)
+                    throw new InvalidDataException("The completion-permission receipt order is invalid.");
+                break;
+            case StagedAttachmentStateV20.HandleObserved:
+                if (!hasCommit || commitDenied || hasAbort || !hasPermit || hasRetire || !hasHandle)
+                    throw new InvalidDataException("The handle-lifetime receipt order is invalid.");
+                break;
+            case StagedAttachmentStateV20.RetireUnexposedPending:
+            case StagedAttachmentStateV20.RetiredUnexposed:
+                if (!hasCommit || commitDenied || hasPermit || hasAbort || !hasRetire || hasHandle ||
+                    entry.DiscardKind != StagedDiscardKind.RetireUnexposed ||
+                    entry.DiscardReservationId != entry.Transfer.TransferId ||
+                    entry.State != TransferJournalState.DiscardPending ||
+                    entry.SealedOnce || entry.SealedLength is not null ||
+                    (entry.AttachmentStateV20 == StagedAttachmentStateV20.RetiredUnexposed) !=
+                        (entry.DiscardAcknowledgedAtUtc is not null))
+                    throw new InvalidDataException("The unexposed retirement receipt is invalid.");
+                break;
+            case StagedAttachmentStateV20.RetireAttachedPrivatePending:
+            case StagedAttachmentStateV20.RetiredAttachedPrivate:
+                if (!hasCommit || commitDenied || !hasPermit || hasAbort || !hasRetire || hasHandle ||
+                    entry.DiscardKind != StagedDiscardKind.RetireAttachedPrivate ||
+                    entry.DiscardReservationId != entry.Transfer.TransferId ||
+                    entry.State != TransferJournalState.DiscardPending ||
+                    entry.SealedOnce || entry.SealedLength is not null ||
+                    (entry.AttachmentStateV20 == StagedAttachmentStateV20.RetiredAttachedPrivate) !=
+                        (entry.DiscardAcknowledgedAtUtc is not null))
+                    throw new InvalidDataException("The attached-private retirement receipt is invalid.");
+                break;
+            default:
+                throw new InvalidDataException("Unknown v20 attachment state.");
+        }
     }
 
     private static void RequireManifestPath(string? path)
@@ -407,6 +1761,25 @@ public sealed class StagedTransferJournal
         BlockedTransferEvidence? blockedEvidence = null,
         bool closeJustificationWindow = false)
     {
+        // Sealed is never a caller-supplied assertion. Legacy callers still
+        // pass through this API, but the journal performs the same durable
+        // SealPending -> measured classification as SealAsync and ignores any
+        // digest/size-like metadata supplied by the caller.
+        if (next == TransferJournalState.Sealed)
+        {
+            TransferJournalEntry before = await ReadAsync(transferId, cancellationToken)
+                .ConfigureAwait(false);
+            if (before.State != expected || (expectedTransfer is not null && before.Transfer != expectedTransfer))
+                throw new InvalidOperationException("The staged version changed before seal classification.");
+            if (expected is not (TransferJournalState.Allocated or TransferJournalState.Unsealed))
+                throw new InvalidOperationException("Only an unsealed allocation can be classified as sealed.");
+            return await SealAsync(transferId, before.Transfer.ProcessId,
+                before.Transfer.StagePath, cancellationToken).ConfigureAwait(false);
+        }
+        if (next == TransferJournalState.EmptyHeld)
+            throw new InvalidOperationException("EmptyHeld can only be written by stable stage classification.");
+        if (next == TransferJournalState.DiscardPending)
+            throw new InvalidOperationException("DiscardPending can only be written by an exact identity-bound request.");
         if (!IsTransitionAllowed(expected, next))
         {
             throw new InvalidOperationException($"Invalid transfer transition: {expected} -> {next}.");
@@ -418,6 +1791,11 @@ public sealed class StagedTransferJournal
             var current = await ReadCoreAsync(transferId, cancellationToken).ConfigureAwait(false);
             if (current.PendingRename is not null)
                 throw new IOException("A pending namespace transaction holds this version locally.");
+            if (current.DriverInstanceId is not null &&
+                next is (TransferJournalState.Inspecting or TransferJournalState.Approved or
+                    TransferJournalState.Publishing or TransferJournalState.Released or TransferJournalState.Blocked) &&
+                current.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
+                throw new IOException("A v20 stage cannot enter inspection or publication before its exact handle-lifetime receipt.");
             if (next is TransferJournalState.Inspecting or TransferJournalState.Approved or TransferJournalState.Publishing)
                 await RequireCurrentDestinationAsync(current, cancellationToken).ConfigureAwait(false);
             if (expectedTransfer is not null && current.Transfer != expectedTransfer)
@@ -437,9 +1815,11 @@ public sealed class StagedTransferJournal
             // Old prototype manifests can say Retained after recovering an
             // Allocated transfer. Missing SealedOnce deserializes as false;
             // those files must remain local instead of becoming inspectable.
-            if (next == TransferJournalState.Inspecting && !current.SealedOnce)
+            if (next is (TransferJournalState.Inspecting or TransferJournalState.Approved or
+                    TransferJournalState.Publishing or TransferJournalState.Released or TransferJournalState.Blocked) &&
+                (!HasPositiveSeal(current) || !current.SealedOnce))
             {
-                throw new InvalidOperationException("An unsealed transfer cannot be inspected.");
+                throw new InvalidOperationException("Inspection and publication require positive measured stage bytes.");
             }
 
             string? digest = sha256Hex ?? current.Sha256Hex;
@@ -505,7 +1885,7 @@ public sealed class StagedTransferJournal
     // Acknowledge the same frozen version without resetting inspection or a
     // publication that has already progressed beyond Sealed.
     public async Task<TransferJournalEntry> SealAsync(Guid id, int ownerProcessId,
-        string stagePath, CancellationToken token)
+        string stagePath, CancellationToken token, StagedVersionIdentity? expectedVersion = null)
     {
         await _gate.WaitAsync(token).ConfigureAwait(false);
         try
@@ -515,25 +1895,214 @@ public sealed class StagedTransferJournal
                 !string.Equals(current.Transfer.StagePath, Path.GetFullPath(stagePath),
                     StringComparison.OrdinalIgnoreCase) || current.PendingRename is not null)
                 throw new IOException("The seal does not identify an available version owned by this writer.");
+            if (expectedVersion is not null && VersionIdentity(current) != expectedVersion)
+                throw new IOException("The exact v19 seal generation or stage identity changed.");
+            if (current.DriverInstanceId is not null &&
+                current.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
+                throw new IOException("A v20 stage cannot be sealed before its exact handle-lifetime receipt.");
             if (current.StageCleanupStarted || current.StageDeleted)
                 throw new IOException("The staged version is being cleaned up or has already been removed.");
-            if (current.SealedOnce) return current;
-            if (current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed))
-                throw new IOException("The version cannot be sealed from its current state.");
-            IReadOnlyList<TransferJournalStateChange> history =
-                AppendState(current, TransferJournalState.Sealed);
-            var updated = current with
+            if (current.SealedOnce && (HasPositiveSeal(current) || current.State == TransferJournalState.EmptyHeld))
             {
-                State = TransferJournalState.Sealed,
+                await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
+                return current;
+            }
+            if (current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed or
+                    TransferJournalState.SealPending))
+                throw new IOException("The version cannot be sealed from its current state.");
+            await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
+            if (current.State != TransferJournalState.SealPending)
+            {
+                if (current.StageIdentity is null)
+                    throw new IOException("The stage identity was not captured before the writer received the stage.");
+                IReadOnlyList<TransferJournalStateChange> history = AppendState(current, TransferJournalState.SealPending);
+                current = current with
+                {
+                    State = TransferJournalState.SealPending,
+                    SealedOnce = true,
+                    SealedLength = null,
+                    Sha256Hex = null,
+                    UpdatedAtUtc = history.Count == 0 ? DateTimeOffset.UtcNow : history[^1].OccurredAtUtc,
+                    StateHistory = history
+                };
+                await ReplaceAsync(ManifestPath(id), current, token).ConfigureAwait(false);
+            }
+
+            // SealPending is durable before the no-follow open. If this process
+            // exits at any point below, startup retries this same classification.
+            using StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath);
+            if (current.StageIdentity is null || stage.Identity != current.StageIdentity)
+                throw new IOException("The staged file identity changed before seal classification.");
+            long length = stage.Stream.Length;
+            if (length < 0) throw new IOException("The stage reported an invalid length.");
+            await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
+            TransferJournalState finalState = length == 0
+                ? TransferJournalState.EmptyHeld : TransferJournalState.Sealed;
+            IReadOnlyList<TransferJournalStateChange> finalHistory = AppendState(current, finalState);
+            var classified = current with
+            {
+                State = finalState,
                 SealedOnce = true,
-                UpdatedAtUtc = history.Count == 0 ? DateTimeOffset.UtcNow : history[^1].OccurredAtUtc,
-                StateHistory = history
+                SealedLength = length,
+                UpdatedAtUtc = finalHistory.Count == 0 ? DateTimeOffset.UtcNow : finalHistory[^1].OccurredAtUtc,
+                StateHistory = finalHistory
             };
-            await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
-            return updated;
+            await ReplaceAsync(ManifestPath(id), classified, token).ConfigureAwait(false);
+            return classified;
         }
         finally { _gate.Release(); }
     }
+
+    /// <summary>
+    /// Persists a bounded retry attempt, emits only while the same EmptyHeld
+    /// destination generation/path is still current and has no prepared rename,
+    /// and marks only acceptance into an exact owner session queue. The callback
+    /// is synchronous and must not call back into this journal. Holding _gate
+    /// makes path/generation validation, emission, and marker update one ordered
+    /// operation relative to rename preparation/commit.
+    /// </summary>
+    public async Task<bool> TryPublishEmptyHeldNoticeAsync(TransferJournalEntry expected,
+        Guid publisherInstanceId, DateTimeOffset attemptedAtUtc, TimeSpan retryDelay,
+        Func<bool> publishToOwnerQueue, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        ArgumentNullException.ThrowIfNull(publishToOwnerQueue);
+        if (expected.State != TransferJournalState.EmptyHeld || expected.SealedLength != 0 ||
+            expected.StageIdentity is null || expected.DestinationGeneration <= 0 ||
+            publisherInstanceId == Guid.Empty || attemptedAtUtc.Offset != TimeSpan.Zero || retryDelay < TimeSpan.Zero)
+            throw new ArgumentException("An exact EmptyHeld notice attempt is required.", nameof(expected));
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(expected.Transfer.TransferId, token).ConfigureAwait(false);
+            if (!IsSameEmptyHeldDestination(current, expected) || current.DiscardRequestedAtUtc is not null) return false;
+            if (!await IsCurrentDestinationAsync(current, token).ConfigureAwait(false)) return false;
+            if (current.EmptyHeldNotificationQueuedByInstanceId == publisherInstanceId) return true;
+            if (current.EmptyHeldNotificationAttemptedByInstanceId == publisherInstanceId &&
+                current.EmptyHeldNotificationAttemptedAtUtc is { } lastAttempt &&
+                attemptedAtUtc - lastAttempt < retryDelay)
+                return false;
+
+            var attempted = current with
+            {
+                EmptyHeldNotificationAttemptedAtUtc = attemptedAtUtc,
+                EmptyHeldNotificationAttemptedByInstanceId = publisherInstanceId,
+                EmptyHeldNotificationQueuedAtUtc = null,
+                EmptyHeldNotificationQueuedByInstanceId = null,
+                UpdatedAtUtc = attemptedAtUtc
+            };
+            await ReplaceAsync(ManifestPath(expected.Transfer.TransferId), attempted, token)
+                .ConfigureAwait(false);
+
+            // This callback records and queues a bound notification, but it
+            // cannot acknowledge that the user saw the balloon. If it fails or
+            // has no live subscriber, startup and the worker retry after delay.
+            if (!publishToOwnerQueue()) return false;
+
+            DateTimeOffset queuedAtUtc = DateTimeOffset.UtcNow;
+            if (queuedAtUtc < attemptedAtUtc) queuedAtUtc = attemptedAtUtc;
+            var queued = attempted with
+            {
+                EmptyHeldNotificationQueuedAtUtc = queuedAtUtc,
+                EmptyHeldNotificationQueuedByInstanceId = publisherInstanceId,
+                UpdatedAtUtc = queuedAtUtc
+            };
+            await ReplaceAsync(ManifestPath(expected.Transfer.TransferId), queued, token)
+                .ConfigureAwait(false);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+
+    private static bool IsSameEmptyHeldDestination(TransferJournalEntry current,
+        TransferJournalEntry expected) => current.State == TransferJournalState.EmptyHeld &&
+        current.SealedLength == 0 && current.StageIdentity == expected.StageIdentity &&
+        current.Transfer == expected.Transfer && current.DestinationGeneration == expected.DestinationGeneration &&
+        expected.PendingRename is null && current.PendingRename is null;
+
+    private static void ValidateDiscardRequest(StagedDiscardRequest request)
+    {
+        if (request.ReservationId == Guid.Empty || request.Version.TransferId == Guid.Empty ||
+            request.Version.DestinationGeneration <= 0 || request.Version.StageIdentity is null ||
+            !Enum.IsDefined(request.Kind))
+            throw new ArgumentException("The exact discard request is invalid.", nameof(request));
+    }
+
+    private static StagedVersionIdentity VersionIdentity(TransferJournalEntry entry) =>
+        new(entry.Transfer.TransferId, entry.DestinationGeneration,
+            entry.StageIdentity ?? throw new IOException("The journal has no captured stage identity."));
+
+    private static bool SameWriter(StagedTransfer left, StagedTransfer right) =>
+        left.ProcessId == right.ProcessId && left.SessionId == right.SessionId &&
+        string.Equals(left.RequestorSid, right.RequestorSid, StringComparison.OrdinalIgnoreCase) &&
+        left.RequestorProcessCreationTime == right.RequestorProcessCreationTime;
+
+    private static void RequireFollowupOwner(TransferJournalEntry parent, StagedTransfer child)
+    {
+        if (!SameWriter(parent.Transfer, child) ||
+            !string.Equals(parent.Transfer.DestinationPath, child.DestinationPath,
+                StringComparison.OrdinalIgnoreCase) || parent.Transfer.Destination != child.Destination)
+            throw new IOException("The followup predecessor does not belong to this writer and destination.");
+    }
+
+    private static bool MatchesCreateAfterRequest(TransferJournalEntry entry, StagedTransfer child,
+        StagedCreateAfterDiscardRequest request) =>
+        entry.Transfer == child && entry.CreateReservationId == request.ReservationId &&
+        entry.DeleteVersionIdentity == request.DeleteVersion &&
+        entry.ParentDirectoryIdentity == request.ParentDirectoryIdentity &&
+        entry.AllocationDisposition == request.Disposition &&
+        entry.DriverInstanceId == request.DriverInstanceId &&
+        entry.AllocationReferenceId == (request.DriverInstanceId is null
+            ? null : request.DeleteVersion.TransferId) &&
+        entry.AllocationReferenceKind == (request.DriverInstanceId is null ? null : 1u) &&
+        entry.State == TransferJournalState.Allocated;
+
+    private static bool PathExists(string path)
+    {
+        try { _ = File.GetAttributes(path); return true; }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
+    }
+
+    public async Task<TransferJournalEntry> TryMarkEmptyHeldIfNowZeroAsync(Guid id,
+        StagedStageIdentity expectedIdentity, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(expectedIdentity);
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (current.State == TransferJournalState.EmptyHeld) return current;
+            if (current.State is not (TransferJournalState.Sealed or TransferJournalState.Retained or
+                    TransferJournalState.Inspecting) ||
+                current.PendingRename is not null || current.StageCleanupStarted || current.StageDeleted ||
+                current.StageIdentity != expectedIdentity || current.Sha256Hex is not null ||
+                current.BlockedPolicyVersion != 0 || current.BlockedInspectionFailure is not null ||
+                current.JustificationExpiresAtUtc is not null || current.JustificationWindowClosed ||
+                current.HandbackState != StagedHandbackState.NotAttempted || current.HandbackPath is not null ||
+                current.HandbackLength is not null || current.HandbackFailureReason is not null)
+                return current;
+
+            using StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath);
+            if (stage.Identity != expectedIdentity || stage.Stream.Length != 0) return current;
+            IReadOnlyList<TransferJournalStateChange> history = AppendState(current, TransferJournalState.EmptyHeld);
+            var empty = current with
+            {
+                State = TransferJournalState.EmptyHeld,
+                SealedOnce = true,
+                SealedLength = 0,
+                Sha256Hex = null,
+                UpdatedAtUtc = history.Count == 0 ? DateTimeOffset.UtcNow : history[^1].OccurredAtUtc,
+                StateHistory = history
+            };
+            await ReplaceAsync(ManifestPath(id), empty, token).ConfigureAwait(false);
+            return empty;
+        }
+        finally { _gate.Release(); }
+    }
+
+    private static bool HasPositiveSeal(TransferJournalEntry entry) =>
+        entry.SealedLength is > 0 && entry.StageIdentity is not null;
 
     /// <summary>
     /// T5: the writer deleted its private version (disposition or delete-on-close on its staged handle) before the version was
@@ -582,7 +2151,9 @@ public sealed class StagedTransferJournal
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try { entry = await ReadScannedAsync(file, id, cancellationToken).ConfigureAwait(false); }
             finally { _gate.Release(); }
-            if (entry.State == TransferJournalState.Discarded && File.Exists(entry.Transfer.StagePath)) entries.Add(entry);
+            if (entry.State == TransferJournalState.Discarded &&
+                !StagedStageFile.TryConfirmAbsent(entry.Transfer.StagePath, out _))
+                entries.Add(entry);
         }
         return entries;
     }
@@ -598,8 +2169,13 @@ public sealed class StagedTransferJournal
             var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
             if (current.Transfer.ProcessId != ownerProcessId)
                 throw new IOException("The staged version belongs to another writer.");
+            if (current.DriverInstanceId is not null && current.AttachmentStateV20 is not
+                    (StagedAttachmentStateV20.CompletionPermitted or StagedAttachmentStateV20.HandleObserved))
+                throw new IOException("A v20 rename requires a completed attachment transaction.");
             if (current.StageCleanupStarted || current.StageDeleted)
                 throw new IOException("The staged version is being cleaned up or has already been removed.");
+            if (current.State == TransferJournalState.SealPending)
+                throw new IOException("A seal classification is pending recovery.");
             var pending = new StagedRename(transactionId, destination, sealedVersion);
             if (current.PendingRename == pending) return current;
             if (current.PendingRename is not null || current.LastRenameTransactionId == transactionId ||
@@ -638,6 +2214,9 @@ public sealed class StagedTransferJournal
             var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
             if (current.Transfer.ProcessId != ownerProcessId)
                 throw new IOException("The namespace transaction belongs to another writer.");
+            if (current.DriverInstanceId is not null && current.AttachmentStateV20 is not
+                    (StagedAttachmentStateV20.CompletionPermitted or StagedAttachmentStateV20.HandleObserved))
+                throw new IOException("A v20 rename requires a completed attachment transaction.");
             if (current.LastRenameTransactionId == transactionId &&
                 current.LastRenameDestination == destination && current.LastRenameCommitted == commit)
                 return current; // Reply loss must not retarget or inspect twice.
@@ -663,14 +2242,18 @@ public sealed class StagedTransferJournal
                 tombstones = new StagedNameTombstone(current.Transfer.DestinationPath,
                     checked(current.DestinationGeneration + 1), tombstones);
             }
-            bool stateChanged = commit && pending.SealedVersion &&
+            bool preserveEmptyHeld = current.State == TransferJournalState.EmptyHeld;
+            bool emptyHeldPathChanged = commit && preserveEmptyHeld &&
+                !string.Equals(current.Transfer.DestinationPath, destination, StringComparison.Ordinal);
+            bool stateChanged = commit && pending.SealedVersion && !preserveEmptyHeld &&
                 current.State != TransferJournalState.Sealed;
             IReadOnlyList<TransferJournalStateChange> history = stateChanged
                 ? AppendState(current, TransferJournalState.Sealed) : current.StateHistory;
             var updated = current with
             {
                 Transfer = commit ? current.Transfer with { DestinationPath = destination } : current.Transfer,
-                State = commit && pending.SealedVersion ? TransferJournalState.Sealed : current.State,
+                State = commit && pending.SealedVersion && !preserveEmptyHeld
+                    ? TransferJournalState.Sealed : current.State,
                 Sha256Hex = commit ? null : current.Sha256Hex,
                 DestinationGeneration = generation,
                 NamespaceTombstones = tombstones,
@@ -678,6 +2261,14 @@ public sealed class StagedTransferJournal
                 LastRenameTransactionId = transactionId,
                 LastRenameDestination = destination,
                 LastRenameCommitted = commit,
+                EmptyHeldNotificationAttemptedAtUtc = emptyHeldPathChanged
+                    ? null : current.EmptyHeldNotificationAttemptedAtUtc,
+                EmptyHeldNotificationAttemptedByInstanceId = emptyHeldPathChanged
+                    ? null : current.EmptyHeldNotificationAttemptedByInstanceId,
+                EmptyHeldNotificationQueuedAtUtc = emptyHeldPathChanged
+                    ? null : current.EmptyHeldNotificationQueuedAtUtc,
+                EmptyHeldNotificationQueuedByInstanceId = emptyHeldPathChanged
+                    ? null : current.EmptyHeldNotificationQueuedByInstanceId,
                 UpdatedAtUtc = stateChanged && history.Count > 0
                     ? history[^1].OccurredAtUtc : DateTimeOffset.UtcNow,
                 StateHistory = history
@@ -723,9 +2314,9 @@ public sealed class StagedTransferJournal
     /// writer's rename tombstone, can still name the transfer). Finished: no pending rename, the stage file is gone, and either
     /// Released (approved, or justified with its stage deleted) or Blocked with the window closed, the hand-back verified and the
     /// stage deleted. A Blocked version whose hand-back failed keeps its stage and is never removed.
-    /// "Latest wins" is decided from the generations of every manifest claiming a destination (its own name and its rename
-    /// tombstones), so a manifest is removed only if, for each destination it claims, it is not the newest claim or every claimant
-    /// of that destination is removable too; otherwise an older version kept for justification could become current again.
+    /// The greatest generation for each destination (including rename tombstones) is retained as a compact high-water claim.
+    /// Exact parent/delete manifests referenced by that head or any live entry are retained too, so compaction cannot reset a
+    /// destination to generation one or break CREATE_AFTER ancestry.
     /// </summary>
     public async Task<int> CompactAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken)
     {
@@ -747,8 +2338,10 @@ public sealed class StagedTransferJournal
                     yield return (name.DestinationPath, name.Generation);
             }
             bool Finished(TransferJournalEntry e) =>
-                e.PendingRename is null && e.UpdatedAtUtc < cutoffUtc && !File.Exists(e.Transfer.StagePath) &&
+                e.PendingRename is null && e.UpdatedAtUtc < cutoffUtc && !PathExists(e.Transfer.StagePath) &&
                 (e.State == TransferJournalState.Discarded ||
+                 (e.State == TransferJournalState.DiscardPending && e.DiscardAcknowledgedAtUtc is not null) ||
+                 (e.State == TransferJournalState.EmptyHeld && e.DiscardAcknowledgedAtUtc is not null) ||
                  (e.State == TransferJournalState.Released &&
                   (e.HandbackState == StagedHandbackState.NotAttempted || e.StageDeleted)) ||
                  (e.State == TransferJournalState.Blocked && e.JustificationWindowClosed && e.StageDeleted &&
@@ -758,18 +2351,37 @@ public sealed class StagedTransferJournal
                 .SelectMany(e => Claims(e).Select(c => (c.Destination, c.Generation, Id: e.Transfer.TransferId)))
                 .GroupBy(c => c.Destination, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+            var protectedIds = entries.Where(e => !finished.Contains(e.Transfer.TransferId))
+                .Select(e => e.Transfer.TransferId).ToHashSet();
+            // Retain one durable maximum-generation claim per destination even
+            // after its stage is gone. It is the compact high-water mark used
+            // by later create attempts and prevents generation reuse.
+            foreach (List<(string Destination, long Generation, Guid Id)> claims in byDestination.Values)
+            {
+                long maximum = claims.Max(c => c.Generation);
+                foreach (var claim in claims.Where(c => c.Generation == maximum))
+                    protectedIds.Add(claim.Id);
+            }
+            // A retained/current CREATE_AFTER child must keep both exact
+            // ancestry records available for tuple validation and safe replay.
+            bool referencesAdded;
+            do
+            {
+                int before = protectedIds.Count;
+                foreach (TransferJournalEntry entry in entries)
+                {
+                    if (!protectedIds.Contains(entry.Transfer.TransferId)) continue;
+                    if (entry.ParentVersionIdentity is { } parent) protectedIds.Add(parent.TransferId);
+                    if (entry.DeleteVersionIdentity is { } deleted) protectedIds.Add(deleted.TransferId);
+                }
+                referencesAdded = protectedIds.Count != before;
+            } while (referencesAdded);
+
             int removed = 0;
             foreach (TransferJournalEntry entry in entries)
             {
                 Guid id = entry.Transfer.TransferId;
-                if (!finished.Contains(id)) continue;
-                bool keep = Claims(entry).Any(claim =>
-                {
-                    var claimants = byDestination[claim.Destination];
-                    bool newest = !claimants.Any(c => c.Id != id && c.Generation > claim.Generation);
-                    return newest && !claimants.All(c => finished.Contains(c.Id));
-                });
-                if (keep) continue;
+                if (!finished.Contains(id) || protectedIds.Contains(id)) continue;
                 File.Delete(ManifestPath(id));
                 ForgetScanned(id);
                 removed++;
@@ -937,6 +2549,9 @@ public sealed class StagedTransferJournal
                 current.HandbackState != StagedHandbackState.Verified ||
                 !current.JustificationWindowClosed || !current.StageCleanupStarted)
                 throw new IOException("Staging cleanup prerequisites are not satisfied.");
+            if (!StagedStageFile.TryConfirmAbsent(current.Transfer.StagePath, out Exception? absenceFailure))
+                throw new IOException("Staging cleanup cannot be recorded until the path is confirmed absent.",
+                    absenceFailure);
             var updated = current with
             {
                 StageDeleted = true,
@@ -945,6 +2560,39 @@ public sealed class StagedTransferJournal
             };
             await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
             return updated;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Records exact disposal of a normally published stage. This is separate
+    /// from publication: the Released state proves approved public bytes, while
+    /// StageDeleted proves the captured private stage path was observed absent.
+    /// </summary>
+    public async Task<TransferJournalEntry> CompleteReleasedStageDisposalAsync(
+        StagedVersionIdentity expectedVersion, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(expectedVersion);
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            TransferJournalEntry current = await ReadCoreAsync(expectedVersion.TransferId, token)
+                .ConfigureAwait(false);
+            if (VersionIdentity(current) != expectedVersion || current.State != TransferJournalState.Released ||
+                current.PendingRename is not null || current.StageCleanupStarted ||
+                current.HandbackState != StagedHandbackState.NotAttempted || !current.SealedOnce ||
+                current.SealedLength is not > 0 || current.Sha256Hex is null)
+                throw new IOException("The exact normally released stage is not eligible for disposal ACK.");
+            if (!StagedStageFile.TryConfirmAbsent(current.Transfer.StagePath, out Exception? absenceFailure))
+                throw new IOException("The released stage path is not confirmed absent.", absenceFailure);
+            if (current.StageDeleted) return current;
+            TransferJournalEntry disposed = current with
+            {
+                StageDeleted = true,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+            await ReplaceAsync(ManifestPath(expectedVersion.TransferId), disposed, token).ConfigureAwait(false);
+            return disposed;
         }
         finally { _gate.Release(); }
     }
@@ -1000,15 +2648,275 @@ public sealed class StagedTransferJournal
         return versions;
     }
 
+    /// <summary>
+    /// A failed CREATE_AFTER attach leaves a durable V3 UnattachedAllocation
+    /// claim whose exact ancestry must be retired before a caller can start a
+    /// fresh unparented generation. This check runs under _gate from CreateAsync,
+    /// so v18 and v19 allocation paths share the same fail-closed boundary.
+    /// </summary>
+    private async Task RequireRetiredCreateAfterAncestryAsync(
+        IReadOnlyList<DestinationClaim> versions, string destination, CancellationToken token)
+    {
+        var failedChildren = versions.Select(claim => claim.Entry)
+            .GroupBy(entry => entry.Transfer.TransferId)
+            .Select(group => group.First())
+            .Where(entry => entry.State == TransferJournalState.DiscardPending &&
+                entry.DiscardKind == StagedDiscardKind.UnattachedAllocation &&
+                entry.DeleteVersionIdentity is not null);
+
+        foreach (TransferJournalEntry childHint in failedChildren)
+        {
+            TransferJournalEntry child = await ReadCoreAsync(childHint.Transfer.TransferId, token)
+                .ConfigureAwait(false);
+            if (!string.Equals(child.Transfer.DestinationPath, destination, StringComparison.OrdinalIgnoreCase) ||
+                child.Transfer.TransferId != childHint.Transfer.TransferId ||
+                child.CreateReservationId != child.Transfer.TransferId ||
+                child.DiscardReservationId != child.Transfer.TransferId ||
+                child.DiscardKind != StagedDiscardKind.UnattachedAllocation ||
+                child.DiscardAcknowledgedAtUtc is null || child.ParentVersionIdentity is not { } parentIdentity ||
+                child.DeleteVersionIdentity is not { } deletedIdentity)
+                throw new IOException("A failed CREATE_AFTER allocation still has unresolved exact ancestry.");
+
+            TransferJournalEntry deleted = await ReadCoreAsync(deletedIdentity.TransferId, token)
+                .ConfigureAwait(false);
+            TransferJournalEntry parent = await ReadCoreAsync(parentIdentity.TransferId, token)
+                .ConfigureAwait(false);
+            if (VersionIdentity(deleted) != deletedIdentity ||
+                VersionIdentity(parent) != parentIdentity ||
+                deleted.State != TransferJournalState.DiscardPending ||
+                deleted.DiscardKind != StagedDiscardKind.PrivateVersion ||
+                deleted.DiscardReservationId != deleted.Transfer.TransferId ||
+                deleted.DiscardAcknowledgedAtUtc is null ||
+                deleted.CreateAfterReservationId != child.Transfer.TransferId ||
+                deleted.ParentVersionIdentity != parentIdentity ||
+                child.AllocationDisposition != 5 ||
+                child.AllocationReferenceId != deleted.Transfer.TransferId ||
+                child.AllocationReferenceKind != 1 ||
+                child.DriverInstanceId is null || child.DriverInstanceId != deleted.DriverInstanceId ||
+                parent.State != TransferJournalState.EmptyHeld || parent.SealedLength != 0 ||
+                parent.DiscardKind != StagedDiscardKind.EmptyHeldPredecessor ||
+                parent.DiscardReservationId != child.Transfer.TransferId ||
+                parent.DiscardAcknowledgedAtUtc is null ||
+                child.CreateReservationId != child.Transfer.TransferId ||
+                !SameWriter(parent.Transfer, child.Transfer) ||
+                !SameWriter(deleted.Transfer, child.Transfer))
+                throw new IOException("CREATE_AFTER cleanup ACKs do not cover the exact V1/V2/V3 ancestry.");
+
+            foreach (TransferJournalEntry retired in new[] { child, deleted, parent })
+            {
+                if (!StagedStageFile.TryConfirmAbsent(retired.Transfer.StagePath, out Exception? absenceFailure))
+                    throw new IOException("A retired CREATE_AFTER stage path is not confirmed absent.",
+                        absenceFailure);
+            }
+        }
+
+        // A direct ordinary child of an EmptyHeld save (without CREATE_AFTER)
+        // also has to retire its exact parent before a fresh no-parent create.
+        // If that child later acquired a CREATE_AFTER reservation, only the
+        // V3-bound branch may release the parent; the V2 reservation cannot be
+        // used to downgrade that ancestry.
+        TransferJournalEntry[] entries = versions.Select(claim => claim.Entry)
+            .GroupBy(entry => entry.Transfer.TransferId)
+            .Select(group => group.First()).ToArray();
+        foreach (TransferJournalEntry parentHint in entries.Where(entry =>
+                     entry.State == TransferJournalState.EmptyHeld && entry.SealedLength == 0 &&
+                     entry.StageIdentity is not null))
+        {
+            TransferJournalEntry parent = await ReadCoreAsync(parentHint.Transfer.TransferId, token)
+                .ConfigureAwait(false);
+            StagedVersionIdentity parentIdentity = VersionIdentity(parent);
+            foreach (TransferJournalEntry childHint in entries.Where(entry =>
+                         entry.ParentVersionIdentity == parentIdentity && entry.DeleteVersionIdentity is null))
+            {
+                TransferJournalEntry child = await ReadCoreAsync(childHint.Transfer.TransferId, token)
+                    .ConfigureAwait(false);
+                if (child.CreateAfterReservationId is { } v3Reservation)
+                {
+                    TransferJournalEntry v3;
+                    try { v3 = await ReadCoreAsync(v3Reservation, token).ConfigureAwait(false); }
+                    catch (FileNotFoundException error)
+                    { throw new IOException("A committed CREATE_AFTER reservation has no child manifest.", error); }
+                    await RequireRetiredCreateAfterChainAsync(parent, child, v3, destination, token)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    RequireDirectEmptyHeldChildTerminal(parent, child, requireReleasedStageDeleted: true);
+                    if (parent.DiscardKind != StagedDiscardKind.EmptyHeldPredecessor ||
+                        parent.DiscardReservationId != child.Transfer.TransferId ||
+                        parent.DiscardAcknowledgedAtUtc is null)
+                        throw new IOException("The direct EmptyHeld parent has not received its exact cleanup ACK.");
+                    if (!StagedStageFile.TryConfirmAbsent(parent.Transfer.StagePath,
+                            out Exception? parentAbsenceFailure))
+                        throw new IOException("The direct EmptyHeld parent path is not confirmed absent.",
+                            parentAbsenceFailure);
+                }
+            }
+        }
+    }
+
+    private async Task RequireRetiredCreateAfterChainAsync(TransferJournalEntry parent,
+        TransferJournalEntry deleted, TransferJournalEntry child, string destination, CancellationToken token)
+    {
+        StagedVersionIdentity parentIdentity = VersionIdentity(parent);
+        StagedVersionIdentity deletedIdentity = VersionIdentity(deleted);
+        if (!string.Equals(parent.Transfer.DestinationPath, destination, StringComparison.OrdinalIgnoreCase) ||
+            parent.State != TransferJournalState.EmptyHeld || parent.SealedLength != 0 ||
+            parent.DriverInstanceId is null || parent.DriverInstanceId == Guid.Empty ||
+            parent.DiscardKind != StagedDiscardKind.EmptyHeldPredecessor ||
+            parent.DiscardReservationId != child.Transfer.TransferId ||
+            parent.DiscardAcknowledgedAtUtc is null ||
+            deleted.State != TransferJournalState.DiscardPending ||
+            deleted.DiscardKind != StagedDiscardKind.PrivateVersion ||
+            deleted.DiscardReservationId != deleted.Transfer.TransferId ||
+            deleted.DiscardAcknowledgedAtUtc is null ||
+            deleted.CreateAfterReservationId != child.Transfer.TransferId ||
+            deleted.ParentVersionIdentity != parentIdentity ||
+            child.Transfer.TransferId != child.CreateReservationId ||
+            child.ParentVersionIdentity != parentIdentity || child.DeleteVersionIdentity != deletedIdentity ||
+            child.AllocationDisposition != 5 || child.AllocationReferenceId != deleted.Transfer.TransferId ||
+            child.AllocationReferenceKind != 1 || child.DriverInstanceId is null ||
+            child.DriverInstanceId == Guid.Empty ||
+            child.DriverInstanceId != deleted.DriverInstanceId || child.DriverInstanceId != parent.DriverInstanceId ||
+            !SameWriter(parent.Transfer, child.Transfer) || !SameWriter(deleted.Transfer, child.Transfer))
+            throw new IOException("The CREATE_AFTER retirement does not cover the exact V1/V2/V3 tuple.");
+
+        if (child.State == TransferJournalState.DiscardPending)
+        {
+            if (child.DiscardReservationId != child.Transfer.TransferId ||
+                child.DiscardAcknowledgedAtUtc is null ||
+                child.DiscardKind is not (StagedDiscardKind.UnattachedAllocation or
+                    StagedDiscardKind.PrivateVersion or StagedDiscardKind.RetireUnexposed or
+                    StagedDiscardKind.RetireAttachedPrivate))
+                throw new IOException("The terminal CREATE_AFTER child has no exact cleanup ACK.");
+            if (child.DiscardKind == StagedDiscardKind.RetireUnexposed &&
+                (child.AttachmentStateV20 != StagedAttachmentStateV20.RetiredUnexposed ||
+                 child.RetireRequestIdV20 is not > 0 || child.SealedOnce || child.SealedLength is not null))
+                throw new IOException("The CREATE_AFTER RetireUnexposed ACK is not the exact terminal proof.");
+            if (child.DiscardKind == StagedDiscardKind.RetireAttachedPrivate &&
+                (child.AttachmentStateV20 != StagedAttachmentStateV20.RetiredAttachedPrivate ||
+                 child.RetireRequestIdV20 is not > 0 || child.SealedOnce || child.SealedLength is not null))
+                throw new IOException("The CREATE_AFTER attached-private retirement is not the exact terminal proof.");
+            if (!StagedStageFile.TryConfirmAbsent(child.Transfer.StagePath, out Exception? childAbsenceFailure))
+                throw new IOException("The terminal CREATE_AFTER stage path is not confirmed absent.", childAbsenceFailure);
+        }
+        else if (child.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved ||
+            child.HandleObservedRequestIdV20 is not > 0 || child.CompletionPermitRequestIdV20 is not > 0)
+        {
+            throw new IOException("The live CREATE_AFTER child has no exact HandleObserved receipt.");
+        }
+        if (!StagedStageFile.TryConfirmAbsent(parent.Transfer.StagePath, out Exception? parentAbsenceFailure))
+            throw new IOException("The retired CREATE_AFTER EmptyHeld parent path is not confirmed absent.",
+                parentAbsenceFailure);
+        if (!StagedStageFile.TryConfirmAbsent(deleted.Transfer.StagePath, out Exception? deletedAbsenceFailure))
+            throw new IOException("The retired CREATE_AFTER private delete path is not confirmed absent.",
+                deletedAbsenceFailure);
+    }
+
+    private static void RequireDirectEmptyHeldChildTerminal(TransferJournalEntry parent,
+        TransferJournalEntry child, bool requireReleasedStageDeleted)
+    {
+        StagedVersionIdentity parentIdentity = VersionIdentity(parent);
+        if (parent.State != TransferJournalState.EmptyHeld || parent.SealedLength != 0 ||
+            child.Transfer.TransferId == parent.Transfer.TransferId ||
+            child.ParentVersionIdentity != parentIdentity || child.DeleteVersionIdentity is not null ||
+            child.CreateAfterReservationId is not null || child.CreateReservationId != child.Transfer.TransferId ||
+            parent.DestinationGeneration == long.MaxValue ||
+            child.DestinationGeneration != parent.DestinationGeneration + 1 ||
+            !string.Equals(child.Transfer.DestinationPath, parent.Transfer.DestinationPath,
+                StringComparison.OrdinalIgnoreCase) || child.Transfer.Destination != parent.Transfer.Destination ||
+            !SameWriter(parent.Transfer, child.Transfer) || child.DriverInstanceId is null ||
+            child.DriverInstanceId != parent.DriverInstanceId || child.AllocationDisposition is null ||
+            child.AllocationReferenceKind != 1 ||
+            child.AllocationReferenceId != parent.Transfer.TransferId || child.StageIdentity is null ||
+            child.StageIdentity == parent.StageIdentity ||
+            child.PendingRename is not null)
+            throw new IOException("The direct EmptyHeld successor does not match its exact parent allocation.");
+
+        bool privateDeleteAck = child.State == TransferJournalState.DiscardPending &&
+            child.DiscardKind == StagedDiscardKind.PrivateVersion &&
+            child.DiscardReservationId == child.Transfer.TransferId &&
+            child.DiscardRequestedAtUtc is not null && child.DiscardAcknowledgedAtUtc is not null;
+        bool unattachedDeleteAck = child.State == TransferJournalState.DiscardPending &&
+            child.DiscardKind == StagedDiscardKind.UnattachedAllocation &&
+            child.DiscardReservationId == child.Transfer.TransferId &&
+            child.DiscardRequestedAtUtc is not null && child.DiscardAcknowledgedAtUtc is not null &&
+            !child.SealedOnce && child.SealedLength is null;
+        bool retiredUnexposedAck = child.State == TransferJournalState.DiscardPending &&
+            child.DiscardKind == StagedDiscardKind.RetireUnexposed &&
+            child.DiscardReservationId == child.Transfer.TransferId &&
+            child.DiscardRequestedAtUtc is not null && child.DiscardAcknowledgedAtUtc is not null &&
+            child.RetireRequestIdV20 is > 0 &&
+            child.AttachmentStateV20 == StagedAttachmentStateV20.RetiredUnexposed &&
+            !child.SealedOnce && child.SealedLength is null;
+        bool retiredAttachedPrivateAck = child.State == TransferJournalState.DiscardPending &&
+            child.DiscardKind == StagedDiscardKind.RetireAttachedPrivate &&
+            child.DiscardReservationId == child.Transfer.TransferId &&
+            child.DiscardRequestedAtUtc is not null && child.DiscardAcknowledgedAtUtc is not null &&
+            child.RetireRequestIdV20 is > 0 &&
+            child.AttachmentStateV20 == StagedAttachmentStateV20.RetiredAttachedPrivate &&
+            !child.SealedOnce && child.SealedLength is null;
+        bool emptyOwnerExitAck = child.State == TransferJournalState.EmptyHeld && child.SealedLength == 0 &&
+            child.DiscardKind is (StagedDiscardKind.OwnerExitEmpty or StagedDiscardKind.DriverUnloadEmpty) &&
+            child.DiscardReservationId == child.Transfer.TransferId &&
+            child.DiscardRequestedAtUtc is not null && child.DiscardAcknowledgedAtUtc is not null;
+        bool releasedStage = child.State == TransferJournalState.Released && child.SealedOnce &&
+            child.SealedLength is > 0 && child.Sha256Hex is not null && !child.StageCleanupStarted &&
+            (child.HandbackState == StagedHandbackState.NotAttempted ||
+             (child.HandbackState == StagedHandbackState.Verified && child.JustificationWindowClosed &&
+              child.StageDeleted));
+        if (!privateDeleteAck && !unattachedDeleteAck && !retiredUnexposedAck &&
+            !retiredAttachedPrivateAck && !emptyOwnerExitAck && !releasedStage)
+            throw new IOException("The direct EmptyHeld successor is not in a terminal, acknowledged state.");
+        if (releasedStage && requireReleasedStageDeleted && !child.StageDeleted)
+            throw new IOException("The released direct successor has no durable stage-disposal ACK.");
+        if (!releasedStage || child.StageDeleted)
+        {
+            if (!StagedStageFile.TryConfirmAbsent(child.Transfer.StagePath, out Exception? childAbsenceFailure))
+                throw new IOException("The direct EmptyHeld successor path is not confirmed absent.",
+                    childAbsenceFailure);
+        }
+    }
+
+    private async Task RequireReleasedDirectChildDisposedAsync(StagedDiscardRequest request,
+        CancellationToken token)
+    {
+        TransferJournalEntry parent;
+        TransferJournalEntry child;
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            parent = await ReadCoreAsync(request.Version.TransferId, token).ConfigureAwait(false);
+            child = await ReadCoreAsync(request.ReservationId, token).ConfigureAwait(false);
+            if (VersionIdentity(parent) != request.Version || parent.DiscardReservationId != request.ReservationId ||
+                parent.DiscardKind != StagedDiscardKind.EmptyHeldPredecessor ||
+                parent.DiscardRequestedAtUtc is null || parent.DiscardAcknowledgedAtUtc is not null ||
+                child.DeleteVersionIdentity is not null || child.CreateAfterReservationId is not null ||
+                child.State != TransferJournalState.Released)
+                return;
+            RequireDirectEmptyHeldChildTerminal(parent, child, requireReleasedStageDeleted: true);
+        }
+        finally { _gate.Release(); }
+
+        if (!StagedStageFile.TryConfirmAbsent(child.Transfer.StagePath, out Exception? absenceFailure))
+            throw new IOException("The released direct successor has no gate-confirmed absent-stage receipt.",
+                absenceFailure);
+    }
+
     private async Task RequireCurrentDestinationAsync(TransferJournalEntry current, CancellationToken token)
+    {
+        if (!await IsCurrentDestinationAsync(current, token).ConfigureAwait(false))
+            throw new IOException("A later save or pending rename supersedes this destination version.");
+    }
+
+    private async Task<bool> IsCurrentDestinationAsync(TransferJournalEntry current, CancellationToken token)
     {
         var versions = await DestinationVersionsAsync(current.Transfer.DestinationPath, token).ConfigureAwait(false);
         long generation = versions.Select(e => e.Generation).DefaultIfEmpty(0).Max();
-        if (current.DestinationGeneration != generation ||
-            versions.Count(e => e.Generation == generation) != 1 ||
-            versions.Any(e => e.Generation == generation && e.Tombstone) ||
-            versions.Any(e => e.Entry.Transfer.TransferId != current.Transfer.TransferId && e.Reserved))
-            throw new IOException("A later save or pending rename supersedes this destination version.");
+        return current.DestinationGeneration == generation &&
+            versions.Count(e => e.Generation == generation) == 1 &&
+            !versions.Any(e => e.Generation == generation && e.Tombstone) &&
+            !versions.Any(e => e.Entry.Transfer.TransferId != current.Transfer.TransferId && e.Reserved);
     }
 
     /// <summary>
@@ -1023,6 +2931,16 @@ public sealed class StagedTransferJournal
         {
             if (entry.State != TransferJournalState.Publishing)
             {
+                continue;
+            }
+
+            if (!HasPositiveSeal(entry))
+            {
+                // Legacy manifests with no measured seal may already have
+                // reached the destination before this boot. Never retry a
+                // publication or infer a release from that legacy state.
+                await TransitionAsync(entry.Transfer.TransferId, TransferJournalState.Publishing,
+                    TransferJournalState.Retained, null, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
@@ -1079,8 +2997,27 @@ public sealed class StagedTransferJournal
             // loss there is no evidence of which virtual rename completed:
             // retain both names in the manifest and never infer approval.
             if (entry.PendingRename is not null) continue;
+            if (entry.State == TransferJournalState.SealPending)
+            {
+                try
+                {
+                    await SealAsync(entry.Transfer.TransferId, entry.Transfer.ProcessId,
+                        entry.Transfer.StagePath, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    // No exact stage object/length means it remains private and
+                    // non-publishable. Keep SealPending for the next restart.
+                }
+                continue;
+            }
             if (entry.State == TransferJournalState.Allocated)
             {
+                // CREATE_AFTER has a durable ReservationId and may need to
+                // recreate/capture its backing after a crash between the
+                // journal-first transaction and the typed reply. Keep that
+                // exact intent replayable until the driver acknowledges it.
+                if (entry.DeleteVersionIdentity is not null) continue;
                 await TransitionAsync(entry.Transfer.TransferId,
                     TransferJournalState.Allocated, TransferJournalState.Unsealed,
                     null, cancellationToken).ConfigureAwait(false);
@@ -1091,6 +3028,13 @@ public sealed class StagedTransferJournal
                 await TransitionAsync(entry.Transfer.TransferId,
                     entry.State, TransferJournalState.Retained,
                     null, cancellationToken).ConfigureAwait(false);
+            }
+            else if (entry.State == TransferJournalState.Sealed && !HasPositiveSeal(entry))
+            {
+                // Legacy Sealed manifests have no measured EOF/identity. Retain
+                // them; historical state alone is not evidence to inspect.
+                await TransitionAsync(entry.Transfer.TransferId, TransferJournalState.Sealed,
+                    TransferJournalState.Retained, null, cancellationToken).ConfigureAwait(false);
             }
         }
     }
@@ -1203,6 +3147,18 @@ public sealed class StagedTransferJournal
         TransferJournalState from,
         TransferJournalState to) => (from, to) switch
     {
+        (TransferJournalState.Allocated, TransferJournalState.SealPending) => true,
+        (TransferJournalState.Unsealed, TransferJournalState.SealPending) => true,
+        (TransferJournalState.Allocated, TransferJournalState.DiscardPending) => true,
+        (TransferJournalState.Unsealed, TransferJournalState.DiscardPending) => true,
+        (TransferJournalState.SealPending, TransferJournalState.DiscardPending) => true,
+        (TransferJournalState.Sealed, TransferJournalState.DiscardPending) => true,
+        (TransferJournalState.Retained, TransferJournalState.DiscardPending) => true,
+        (TransferJournalState.SealPending, TransferJournalState.Sealed) => true,
+        (TransferJournalState.SealPending, TransferJournalState.EmptyHeld) => true,
+        (TransferJournalState.Sealed, TransferJournalState.EmptyHeld) => true,
+        (TransferJournalState.Retained, TransferJournalState.EmptyHeld) => true,
+        (TransferJournalState.Inspecting, TransferJournalState.EmptyHeld) => true,
         (TransferJournalState.Allocated, TransferJournalState.Sealed) => true,
         (TransferJournalState.Allocated, TransferJournalState.Unsealed) => true,
         (TransferJournalState.Unsealed, TransferJournalState.Sealed) => true,
@@ -1210,6 +3166,11 @@ public sealed class StagedTransferJournal
         (TransferJournalState.Sealed, TransferJournalState.Retained) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Approved) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Blocked) => true,
+        // A previously blocked stage whose identity or measured bytes change
+        // can no longer use its old justification. Keep the file private and
+        // close that window instead of leaving a stale Blocked state attached
+        // to different bytes.
+        (TransferJournalState.Blocked, TransferJournalState.Retained) => true,
         (TransferJournalState.Blocked, TransferJournalState.Inspecting) => true,
         (TransferJournalState.Blocked, TransferJournalState.Sealed) => true,
         (TransferJournalState.Retained, TransferJournalState.Sealed) => true,
@@ -1235,6 +3196,42 @@ public sealed record TransferJournalEntry(
     public const int MaximumStateHistory = 64;
     public IReadOnlyList<TransferJournalStateChange> StateHistory { get; init; } = [];
     public bool SealedOnce { get; init; }
+    public StagedStageIdentity? StageIdentity { get; init; }
+    public long? SealedLength { get; init; }
+    /// <summary>Exact predecessor tuple captured from the journal under the destination gate.</summary>
+    public StagedVersionIdentity? ParentVersionIdentity { get; init; }
+    /// <summary>Exact private version discarded by a manifest-first replacement allocation.</summary>
+    public StagedVersionIdentity? DeleteVersionIdentity { get; init; }
+    /// <summary>Stable transfer ID used as the create-after reservation key.</summary>
+    public Guid? CreateReservationId { get; init; }
+    /// <summary>Stable V3 child reservation authorized by a pending V2 private delete.</summary>
+    public Guid? CreateAfterReservationId { get; init; }
+    /// <summary>Exact parent/tombstone request reference used by v19 allocation replay.</summary>
+    public Guid? AllocationReferenceId { get; init; }
+    /// <summary>0=none, 1=sealed predecessor, 2=rename tombstone owner.</summary>
+    public uint? AllocationReferenceKind { get; init; }
+    /// <summary>Kernel driver instance that owns this v19 allocation epoch.</summary>
+    public Guid? DriverInstanceId { get; init; }
+    public StagedStageIdentity? ParentDirectoryIdentity { get; init; }
+    public uint? AllocationDisposition { get; init; }
+    /// <summary>Durable attachment transaction state; None is legacy/unattached v18 data.</summary>
+    public StagedAttachmentStateV20 AttachmentStateV20 { get; init; }
+    public ulong? AttachPrepareRequestIdV20 { get; init; }
+    public ulong? AttachCommitRequestIdV20 { get; init; }
+    public uint? AttachCommitResultV20 { get; init; }
+    public ulong? AttachAbortRequestIdV20 { get; init; }
+    public ulong? CompletionPermitRequestIdV20 { get; init; }
+    public ulong? RetireRequestIdV20 { get; init; }
+    public ulong? HandleObservedRequestIdV20 { get; init; }
+    /// <summary>Reservation bound to a pending private delete or EmptyHeld cleanup.</summary>
+    public Guid? DiscardReservationId { get; init; }
+    public StagedDiscardKind? DiscardKind { get; init; }
+    public DateTimeOffset? DiscardRequestedAtUtc { get; init; }
+    public DateTimeOffset? DiscardAcknowledgedAtUtc { get; init; }
+    public DateTimeOffset? EmptyHeldNotificationAttemptedAtUtc { get; init; }
+    public Guid? EmptyHeldNotificationAttemptedByInstanceId { get; init; }
+    public DateTimeOffset? EmptyHeldNotificationQueuedAtUtc { get; init; }
+    public Guid? EmptyHeldNotificationQueuedByInstanceId { get; init; }
     public long DestinationGeneration { get; init; }
     public StagedNameTombstone? NamespaceTombstones { get; init; }
     public StagedRename? PendingRename { get; init; }
@@ -1259,6 +3256,28 @@ public sealed record TransferJournalEntry(
         return other is not null && Transfer == other.Transfer && State == other.State &&
             Sha256Hex == other.Sha256Hex && UpdatedAtUtc == other.UpdatedAtUtc &&
             StateHistory.SequenceEqual(other.StateHistory) && SealedOnce == other.SealedOnce &&
+            StageIdentity == other.StageIdentity && SealedLength == other.SealedLength &&
+            ParentVersionIdentity == other.ParentVersionIdentity && DeleteVersionIdentity == other.DeleteVersionIdentity &&
+            CreateReservationId == other.CreateReservationId &&
+            CreateAfterReservationId == other.CreateAfterReservationId &&
+            AllocationReferenceId == other.AllocationReferenceId &&
+            AllocationReferenceKind == other.AllocationReferenceKind && DriverInstanceId == other.DriverInstanceId &&
+            ParentDirectoryIdentity == other.ParentDirectoryIdentity &&
+            AllocationDisposition == other.AllocationDisposition && DiscardReservationId == other.DiscardReservationId &&
+            AttachmentStateV20 == other.AttachmentStateV20 &&
+            AttachPrepareRequestIdV20 == other.AttachPrepareRequestIdV20 &&
+            AttachCommitRequestIdV20 == other.AttachCommitRequestIdV20 &&
+            AttachCommitResultV20 == other.AttachCommitResultV20 &&
+            AttachAbortRequestIdV20 == other.AttachAbortRequestIdV20 &&
+            CompletionPermitRequestIdV20 == other.CompletionPermitRequestIdV20 &&
+            RetireRequestIdV20 == other.RetireRequestIdV20 &&
+            HandleObservedRequestIdV20 == other.HandleObservedRequestIdV20 &&
+            DiscardKind == other.DiscardKind && DiscardRequestedAtUtc == other.DiscardRequestedAtUtc &&
+            DiscardAcknowledgedAtUtc == other.DiscardAcknowledgedAtUtc &&
+            EmptyHeldNotificationAttemptedAtUtc == other.EmptyHeldNotificationAttemptedAtUtc &&
+            EmptyHeldNotificationAttemptedByInstanceId == other.EmptyHeldNotificationAttemptedByInstanceId &&
+            EmptyHeldNotificationQueuedAtUtc == other.EmptyHeldNotificationQueuedAtUtc &&
+            EmptyHeldNotificationQueuedByInstanceId == other.EmptyHeldNotificationQueuedByInstanceId &&
             DestinationGeneration == other.DestinationGeneration && NamespaceTombstones == other.NamespaceTombstones &&
             PendingRename == other.PendingRename && LastRenameTransactionId == other.LastRenameTransactionId &&
             LastRenameDestination == other.LastRenameDestination && LastRenameCommitted == other.LastRenameCommitted &&
@@ -1281,6 +3300,33 @@ public sealed record TransferJournalEntry(
         hash.Add(UpdatedAtUtc);
         foreach (TransferJournalStateChange change in StateHistory) hash.Add(change);
         hash.Add(SealedOnce);
+        hash.Add(StageIdentity);
+        hash.Add(SealedLength);
+        hash.Add(ParentVersionIdentity);
+        hash.Add(DeleteVersionIdentity);
+        hash.Add(CreateReservationId);
+        hash.Add(CreateAfterReservationId);
+        hash.Add(AllocationReferenceId);
+        hash.Add(AllocationReferenceKind);
+        hash.Add(DriverInstanceId);
+        hash.Add(ParentDirectoryIdentity);
+        hash.Add(AllocationDisposition);
+        hash.Add(AttachmentStateV20);
+        hash.Add(AttachPrepareRequestIdV20);
+        hash.Add(AttachCommitRequestIdV20);
+        hash.Add(AttachCommitResultV20);
+        hash.Add(AttachAbortRequestIdV20);
+        hash.Add(CompletionPermitRequestIdV20);
+        hash.Add(RetireRequestIdV20);
+        hash.Add(HandleObservedRequestIdV20);
+        hash.Add(DiscardReservationId);
+        hash.Add(DiscardKind);
+        hash.Add(DiscardRequestedAtUtc);
+        hash.Add(DiscardAcknowledgedAtUtc);
+        hash.Add(EmptyHeldNotificationAttemptedAtUtc);
+        hash.Add(EmptyHeldNotificationAttemptedByInstanceId);
+        hash.Add(EmptyHeldNotificationQueuedAtUtc);
+        hash.Add(EmptyHeldNotificationQueuedByInstanceId);
         hash.Add(DestinationGeneration);
         hash.Add(NamespaceTombstones);
         hash.Add(PendingRename);
@@ -1303,6 +3349,91 @@ public sealed record TransferJournalEntry(
 }
 
 public sealed record TransferJournalStateChange(TransferJournalState State, DateTimeOffset OccurredAtUtc);
+
+public sealed record StagedVersionIdentity(Guid TransferId, long DestinationGeneration,
+    StagedStageIdentity StageIdentity);
+
+public enum StagedDiscardKind : uint
+{
+    PrivateVersion = 1,
+    EmptyHeldPredecessor = 2,
+    OwnerExitEmpty = 3,
+    DriverUnloadEmpty = 4,
+    UnattachedAllocation = 5,
+    RetireUnexposed = 6,
+    RetireAttachedPrivate = 7
+}
+
+/// <summary>
+/// A freshly authenticated v20 channel either owns the active epoch, is
+/// allowed only to replay the exact already-durable drain tuple, or is refused.
+/// DrainReplayOnly never authorizes allocation, publication, or other stage work.
+/// </summary>
+public enum StagedDriverEpochReconcileV20 : uint
+{
+    Rejected = 0,
+    Active = 1,
+    DrainReplayOnly = 2
+}
+
+public enum StagedAttachmentStateV20 : uint
+{
+    None,
+    Prepared,
+    Committed,
+    CommitDenied,
+    Aborted,
+    CompletionPermitted,
+    HandleObserved,
+    RetireUnexposedPending,
+    RetiredUnexposed,
+    RetireAttachedPrivatePending,
+    RetiredAttachedPrivate
+}
+
+internal static class StageV20WireResult
+{
+    public const uint CapabilitiesAccepted = 5;
+    public const uint AttachPrepared = 6;
+    public const uint AttachCommitted = 7;
+    public const uint AttachAborted = 8;
+    public const uint AttachCommitDenied = 9;
+    public const uint AttachAlreadyCommitted = 10;
+    public const uint AttachRetiredUnexposed = 12;
+    public const uint EpochBusy = 13;
+    public const uint EpochDrained = 14;
+    public const uint AttachRetiredPrivate = 15;
+    public const uint CompletionPermitted = 16;
+    public const uint HandleLifetimeObserved = 17;
+}
+
+public sealed record StagedAttachmentRequestV20(uint Operation, ulong RequestId,
+    StagedVersionIdentity Version, Guid DriverInstanceId,
+    StagedStageIdentity ParentDirectoryIdentity, string DestinationPath,
+    int RequestorProcessId);
+
+public enum StagedDiscardStatus : uint
+{
+    Pending = 1,
+    Acknowledged = 2
+}
+
+public sealed record StagedDiscardRequest(Guid ReservationId, StagedVersionIdentity Version,
+    StagedDiscardKind Kind);
+
+public sealed record StagedCreateAfterDiscardRequest(Guid ReservationId,
+    StagedVersionIdentity DeleteVersion, StagedStageIdentity ParentDirectoryIdentity,
+    uint Disposition, string DestinationPath, DestinationKind Destination,
+    int ProcessId, uint SessionId, string RequestorSid, long RequestorProcessCreationTime,
+    Guid? DriverInstanceId = null);
+
+public sealed record StagedCreateAfterIntentResult(TransferJournalEntry Entry, bool IsReplay);
+
+public sealed record StagedAllocationIntentV19(Guid ReservationId, Guid ParentTransferId,
+    uint Disposition, uint ReferenceKind, Guid DriverInstanceId);
+
+public sealed record StagedAllocationReply(StagedTransfer Transfer, long DestinationGeneration,
+    StagedStageIdentity StageIdentity, long InitialLength);
 
 public sealed record BlockedTransferEvidence(int PolicyVersion,
     DateTimeOffset? JustificationExpiresAtUtc, bool WindowClosed,
@@ -1336,5 +3467,13 @@ public enum TransferJournalState
     Unsealed,
     // T5: the writer deleted its private version before it was sealed. Terminal: never inspected or published; it keeps its
     // destination generation, so no older version of the name can publish after the delete.
-    Discarded
+    Discarded,
+    // Seal classification was durably requested but has not yet been measured.
+    SealPending,
+    // A stable, exact stage identity was measured at EOF=0. It remains private
+    // and retains its destination-generation claim permanently.
+    EmptyHeld,
+    // Appended terminal delete workflow. It cannot be sealed, inspected or
+    // published; only an exact identity-qualified background cleanup can ack it.
+    DiscardPending
 }

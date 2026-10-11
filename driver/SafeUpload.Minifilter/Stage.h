@@ -4,9 +4,17 @@
 #include "Filter.h"
 
 NTSTATUS SafeUploadStageInitialize(VOID);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+VOID SafeUploadStageSetFilteringReady(VOID);
+#endif
 NTSTATUS SafeUploadStageStartWorker(VOID);
 VOID SafeUploadStageStopWorker(VOID);
-NTSTATUS SafeUploadStagePrepareUnload(VOID);
+NTSTATUS SafeUploadStagePrepareUnload(_In_ BOOLEAN Mandatory);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageReleaseInstanceReferences(VOID);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+BOOLEAN SafeUploadStageUnloadIsQuarantined(VOID);
+#endif
 VOID SafeUploadStageRecordUnloadVeto(_In_ UINT32 Reason, _In_ NTSTATUS Status);
 VOID SafeUploadStageGetUnloadStatus(_Out_ PUINT32 Streams, _Out_ PUINT32 FileObjects,
     _Out_ PUINT32 Reason, _Out_ PUINT32 Status);
@@ -25,6 +33,17 @@ NTSTATUS SafeUploadStageNormalizeComponent(PFLT_INSTANCE Instance, PCUNICODE_STR
 
 VOID SafeUploadCopyRequestImageName(_In_ PFLT_CALLBACK_DATA Data, _Inout_ PSAFEUPLOAD_REQUEST Request);
 VOID SafeUploadStageInitializeProtocol(VOID);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageProtocolPublishClientPort(_In_ PVOID ConnectionCookie);
+VOID SafeUploadStageProtocolConnectionReset(_In_ PVOID ConnectionCookie);
+VOID SafeUploadStageProtocolAuthenticationChanged(_In_ PVOID ConnectionCookie);
+VOID SafeUploadStageServiceDisconnected(_In_ PVOID ConnectionCookie);
+BOOLEAN SafeUploadStageProtocolIsReady(VOID);
+BOOLEAN SafeUploadStageProtocolIsDrainReplayOnly(VOID);
+LONG SafeUploadStageProtocolChannelGeneration(VOID);
+NTSTATUS SafeUploadStageRenameExchangeV19(_In_ PSAFEUPLOAD_EXCHANGE Exchange);
+#endif
 BOOLEAN SafeUploadStageProtectedName(_In_ PFLT_FILE_NAME_INFORMATION Name, _In_ SAFEUPLOAD_VOLUME_KIND Kind);
 BOOLEAN SafeUploadStageTouchesProtectedNamespace(_In_ PFLT_FILE_NAME_INFORMATION Name, _In_ SAFEUPLOAD_VOLUME_KIND Kind);
 BOOLEAN SafeUploadStageProtectedPath(_In_ PUNICODE_STRING Name, _In_ USHORT VolumeLength, _In_ SAFEUPLOAD_VOLUME_KIND Kind);
@@ -48,7 +67,64 @@ NTSTATUS SafeUploadStageAllocate(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PUNICODE_
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PUNICODE_STRING PreviousStageName,
     _In_opt_ PUNICODE_STRING TombstoneStageName,
     _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+NTSTATUS SafeUploadStageAllocateV19(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PUNICODE_STRING OriginalName,
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PUNICODE_STRING PreviousStageName,
+    _In_opt_ PUNICODE_STRING TombstoneStageName,
+    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
+    _In_ const GUID *DriverInstanceId,
+    _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity,
+    _Out_ PSAFEUPLOAD_STAGE_ALLOCATE_V19 AllocationIntent,
+    _Out_ PSAFEUPLOAD_REQUEST AllocationRequest, _Out_ PBOOLEAN AllocationMayExist);
+NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *AllocationRequest,
+    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
+    _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity);
+NTSTATUS SafeUploadStageReconcileV20(_In_ const GUID *DriverInstanceId,
+    _In_ LONG ExpectedChannelGeneration, _In_opt_ const SAFEUPLOAD_REQUEST *DrainReplayRequest);
+NTSTATUS SafeUploadStageAttachmentExchangeV20(_In_ ULONG ProcessId,
+    _In_ PUNICODE_STRING DestinationName, _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_ UINT32 Operation, _In_ const GUID *TransferId,
+    _In_ UINT64 DestinationGeneration, _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity,
+    _In_ const GUID *DriverInstanceId,
+    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *ParentDirectoryIdentity,
+    _Inout_ PSAFEUPLOAD_REQUEST RequestSnapshot, _Out_ PUINT32 Result,
+    _Out_ PBOOLEAN RequestMayExist);
+BOOLEAN SafeUploadStageAttachmentRequestV20Matches(_In_ const SAFEUPLOAD_REQUEST *RequestSnapshot,
+    _In_ ULONG ProcessId, _In_ PUNICODE_STRING DestinationName,
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_ UINT32 Operation,
+    _In_ const GUID *TransferId, _In_ UINT64 DestinationGeneration,
+    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity,
+    _In_ const GUID *DriverInstanceId,
+    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *ParentDirectoryIdentity);
+NTSTATUS SafeUploadStageEpochDrainV20(_In_ const GUID *DriverInstanceId,
+    _In_ UINT64 DrainNonce, _Inout_ PSAFEUPLOAD_REQUEST RequestSnapshot,
+    _Out_ PUINT32 Result);
+#endif
 NTSTATUS SafeUploadStageSeal(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName);
+NTSTATUS SafeUploadStageDiscard(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+NTSTATUS SafeUploadStageSealVersionV19(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName,
+    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity, _In_ UINT64 DestinationGeneration,
+    _Out_ PBOOLEAN EmptyHeld);
+NTSTATUS SafeUploadStageDiscardVersionV19(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName,
+    _In_ const GUID *ReservationId, _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity,
+    _In_ UINT64 DestinationGeneration, _In_ UINT32 Kind, _Out_ PUINT32 Result);
+NTSTATUS SafeUploadStageCreateAfterDiscardV19(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PUNICODE_STRING OriginalName, _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_ const GUID *ReservationId,
+    _In_ const GUID *DeleteTransferId,
+    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *DeleteStageIdentity,
+    _In_ UINT64 DeleteGeneration,
+    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *ParentDirectoryIdentity,
+    _In_ UINT32 Disposition,
+    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName,
+    _Out_ PUSHORT StageNameLength, _Out_ PUINT64 DestinationGeneration,
+    _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity,
+    _Out_ PSAFEUPLOAD_REQUEST RequestSnapshot, _Out_ PBOOLEAN RequestMayExist);
+NTSTATUS SafeUploadStageReplayCreateAfterDiscardV19(_In_ const SAFEUPLOAD_REQUEST *Request,
+    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
+    _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity);
+#endif
 NTSTATUS SafeUploadStageExchangeResult(_In_ NTSTATUS SendStatus, _In_ BOOLEAN Answered, _In_ UINT32 Verdict);
 BOOLEAN SafeUploadStageTxfSetInformationMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects);
@@ -64,8 +140,12 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageTxfFsctlPreOperation(
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 /* StageStream.c, T4 stage-version lifetime: events that wake the stage worker. */
 NTSTATUS SafeUploadStageDispose(_In_ PSAFEUPLOAD_STAGE_DISPOSE_MESSAGE Message, _Out_ PUINT32 Held);
-VOID SafeUploadStageServiceConnected(VOID);
+VOID SafeUploadStageServiceConnected(_In_ PVOID ConnectionCookie);
 VOID SafeUploadStageProcessExited(_In_ HANDLE ProcessId);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageAttachInstanceTeardownStart(_In_ PFLT_INSTANCE Instance);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageAttachInstanceTeardownComplete(_In_ PFLT_INSTANCE Instance);
 VOID SafeUploadStageGetLifetimeCounters(_Out_ PSAFEUPLOAD_STAGE_LIFETIME_COUNTERS Counters);
 
 /* DenyRing.c: always-on record of operations completed with an error status. */

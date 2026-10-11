@@ -1546,6 +1546,13 @@ static __declspec(noinline) BOOLEAN FenceLateControlClose(VOID)
     FenceAcquireSpinLock(&FenceRetryLock, &irql);
     for (;;) {
         oldValue = FenceLateControlRead();
+        if ((oldValue & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_CLOSING) {
+            /* A prior unload attempt may have committed exact empty-stage
+             * cleanup and then returned DO_NOT_DETACH. Keep the gate closed
+             * to admission, but let a later attempt rescan and finish. */
+            FenceReleaseSpinLock(&FenceRetryLock, irql);
+            return TRUE;
+        }
         if ((oldValue & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN) {
             FenceReleaseSpinLock(&FenceRetryLock, irql);
             return FALSE;

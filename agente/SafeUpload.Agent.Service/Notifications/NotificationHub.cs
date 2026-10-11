@@ -129,17 +129,17 @@ public sealed class NotificationHub
         lock (_gate) { _ = TryRecord(notification, targetSessionId); }
     }
 
-    public void Publish(AgentNotification notification, uint? targetSessionId = null,
+    public bool Publish(AgentNotification notification, uint? targetSessionId = null,
         string? targetUserSid = null)
     {
         ArgumentNullException.ThrowIfNull(notification);
         if (notification is TransferNotification { Phase: TransferPhase.Blocked } &&
             (targetSessionId is null || targetUserSid is null))
-            return;
+            return false;
 
         lock (_gate)
         {
-            if (!TryRecord(notification, targetSessionId)) return;
+            if (!TryRecord(notification, targetSessionId)) return false;
 
             if (notification is StatusNotification status)
             {
@@ -162,6 +162,38 @@ public sealed class NotificationHub
                     subscription.Channel.Writer.TryWrite(notification);
                 }
             }
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Records and routes the private-empty-save notice only to subscribers
+    /// bound to the exact owner session and SID. The return value reports that
+    /// at least one matching in-process subscriber queue accepted the notice;
+    /// it is not an acknowledgement that the user saw it.
+    /// </summary>
+    public bool PublishEmptySavePrivateToOwner(TransferNotification notification,
+        uint targetSessionId, string targetUserSid)
+    {
+        ArgumentNullException.ThrowIfNull(notification);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetUserSid);
+        if (notification.Phase != TransferPhase.Blocked ||
+            notification.BlockReason != StagedBlockReason.EmptySavePrivate)
+            throw new ArgumentException("This route accepts only empty-save private notices.", nameof(notification));
+
+        lock (_gate)
+        {
+            if (!TryRecord(notification, targetSessionId)) return false;
+            _replay.Add(new Buffered(notification, targetSessionId, targetUserSid, _clock.GetUtcNow()));
+            PruneReplay();
+
+            bool queued = false;
+            foreach (var subscription in _subscriptions)
+            {
+                if (Targets(subscription, targetSessionId, targetUserSid))
+                    queued |= subscription.Channel.Writer.TryWrite(notification);
+            }
+            return queued;
         }
     }
 

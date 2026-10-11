@@ -29,6 +29,12 @@ public enum TransferPhase
     Retained
 }
 
+/// <summary>Additional reason for a blocked staged transfer that carries no policy evidence.</summary>
+public enum StagedBlockReason
+{
+    EmptySavePrivate
+}
+
 /// <summary>
 /// Tells the user that a staged write has finished locally and is being checked.
 /// Only metadata crosses the notification pipe; the file stays in the private
@@ -44,7 +50,8 @@ public sealed record TransferNotification(
     string? HandbackPath = null,
     bool? HandbackVerified = null,
     string? SnapshotSha256Hex = null,
-    InspectionFailureKind? InspectionFailure = null) : AgentNotification
+    InspectionFailureKind? InspectionFailure = null,
+    StagedBlockReason? BlockReason = null) : AgentNotification
 {
     public const string TypeName = "transfer";
 }

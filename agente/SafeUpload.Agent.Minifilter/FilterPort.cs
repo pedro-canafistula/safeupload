@@ -248,6 +248,202 @@ public sealed partial class FilterPort : IDisposable
     }
 
     /// <summary>
+    /// Replies to a v19 seal or discard request. StageNameLength carries the
+    /// operation-specific result code for this typed request, so this must
+    /// not be sent through the ordinary text StageName reply path.
+    /// </summary>
+    public unsafe void ReplyStageStatusV19(ulong messageId, ulong requestId, uint result)
+    {
+        if (result is not (StageV19Result.SealedNonempty or StageV19Result.EmptyHeld or
+                           StageV19Result.DiscardPending or StageV19Result.DiscardAcknowledged))
+        {
+            throw new ArgumentOutOfRangeException(nameof(result), "Unknown v19 stage result.");
+        }
+
+        int size = sizeof(FilterReplyHeader) + sizeof(SafeUploadStageCreateReplyV19);
+        byte* buffer = stackalloc byte[size];
+        new Span<byte>(buffer, size).Clear();
+        *(FilterReplyHeader*)buffer = new FilterReplyHeader { Status = StatusSuccess, MessageId = messageId };
+
+        SafeUploadStageCreateReplyV19* response =
+            (SafeUploadStageCreateReplyV19*)(buffer + sizeof(FilterReplyHeader));
+        response->Version = Contract.Version;
+        response->StructSize = (uint)sizeof(SafeUploadStageCreateReplyV19);
+        response->RequestId = requestId;
+        response->Verdict = Verdict.Allow;
+        response->StageNameLength = result;
+
+        ReplyTypedStageBuffer(messageId, buffer, size);
+    }
+
+    /// <summary>Replies with the exact operation-specific v20 receipt payload.</summary>
+    public unsafe bool ReplyStageLifecycleV20(ulong messageId,
+        in SafeUploadStageLifecycleV20 payload)
+    {
+        if (payload.Version != Contract.StageExtensionVersion ||
+            payload.StructSize != Contract.StageLifecycleV20Size ||
+            payload.RequestId == 0 || payload.TransferId == Guid.Empty ||
+            payload.DestinationGeneration == 0 || !payload.StageIdentity.HasNonzeroFileId ||
+            payload.DriverInstanceId == Guid.Empty || !payload.ParentDirectoryIdentity.HasNonzeroFileId ||
+            !IsValidStageLifecycleResult(payload.Operation, payload.Result))
+            throw new ArgumentException("Invalid v20 lifecycle receipt.", nameof(payload));
+
+        int size = sizeof(FilterReplyHeader) + sizeof(SafeUploadStageCreateReplyV19);
+        byte* buffer = stackalloc byte[size];
+        new Span<byte>(buffer, size).Clear();
+        *(FilterReplyHeader*)buffer = new FilterReplyHeader { Status = StatusSuccess, MessageId = messageId };
+
+        SafeUploadResponse* outer = (SafeUploadResponse*)(buffer + sizeof(FilterReplyHeader));
+        *outer = new SafeUploadResponse
+        {
+            Version = Contract.Version,
+            StructSize = (uint)sizeof(SafeUploadResponse),
+            RequestId = payload.RequestId,
+            Verdict = Verdict.Allow,
+            StageNameLength = Contract.StageLifecycleV20Size
+        };
+        *(SafeUploadStageLifecycleV20*)((byte*)outer + 24) = payload;
+        return ReplyTypedStageBuffer(messageId, buffer, size);
+    }
+
+    /// <summary>Replies with the exact v20 capability negotiation result.</summary>
+    public unsafe bool ReplyStageReconcileV20(ulong messageId,
+        in SafeUploadStageReconcileReplyV20 payload)
+    {
+        if (payload.Version != Contract.StageExtensionVersion ||
+            payload.StructSize != Contract.StageReconcileReplyV20Size ||
+            payload.Operation != Operation.StageReconcile || payload.RequestId == 0 ||
+            payload.DriverInstanceId == Guid.Empty || payload.ReservedZero != 0 ||
+            (payload.Result == StageV20Result.CapabilitiesAccepted &&
+                payload.AcceptedCapabilityMask != (uint)StageV20Capability.Required) ||
+            (payload.Result == StageV20Result.EpochBusy && payload.AcceptedCapabilityMask != 0) ||
+            payload.Result is not (StageV20Result.CapabilitiesAccepted or StageV20Result.EpochBusy))
+            throw new ArgumentException("Invalid v20 capability receipt.", nameof(payload));
+
+        SafeUploadStageReconcileReplyV20 copy = payload;
+        return ReplyStageStatusPayloadV20(messageId, copy.RequestId, Contract.StageReconcileReplyV20Size,
+            &copy, sizeof(SafeUploadStageReconcileReplyV20));
+    }
+
+    /// <summary>Replies with the exact v20 epoch-drain result.</summary>
+    public unsafe bool ReplyStageEpochDrainV20(ulong messageId,
+        in SafeUploadStageEpochDrainReplyV20 payload)
+    {
+        if (payload.Version != Contract.StageExtensionVersion ||
+            payload.StructSize != Contract.StageEpochDrainReplyV20Size ||
+            payload.Operation != Operation.StageEpochDrain || payload.RequestId == 0 ||
+            payload.DriverInstanceId == Guid.Empty || payload.DrainNonce == 0 ||
+            payload.Result is not (StageV20Result.EpochDrained or StageV20Result.EpochBusy))
+            throw new ArgumentException("Invalid v20 epoch-drain receipt.", nameof(payload));
+
+        SafeUploadStageEpochDrainReplyV20 copy = payload;
+        return ReplyStageStatusPayloadV20(messageId, copy.RequestId, Contract.StageEpochDrainReplyV20Size,
+            &copy, sizeof(SafeUploadStageEpochDrainReplyV20));
+    }
+
+    private unsafe bool ReplyStageStatusPayloadV20(ulong messageId, ulong requestId,
+        int payloadLength, void* payload, int payloadSize)
+    {
+        if (payloadSize != payloadLength || payloadLength > 128)
+            throw new ArgumentOutOfRangeException(nameof(payloadLength));
+        int size = sizeof(FilterReplyHeader) + sizeof(SafeUploadResponse);
+        byte* buffer = stackalloc byte[size];
+        new Span<byte>(buffer, size).Clear();
+        *(FilterReplyHeader*)buffer = new FilterReplyHeader { Status = StatusSuccess, MessageId = messageId };
+        SafeUploadResponse* outer = (SafeUploadResponse*)(buffer + sizeof(FilterReplyHeader));
+        *outer = new SafeUploadResponse
+        {
+            Version = Contract.Version,
+            StructSize = (uint)sizeof(SafeUploadResponse),
+            RequestId = requestId,
+            Verdict = Verdict.Allow,
+            StageNameLength = checked((uint)payloadLength)
+        };
+        Buffer.MemoryCopy(payload, (byte*)outer + 24, 128, payloadLength);
+        return ReplyTypedStageBuffer(messageId, buffer, size);
+    }
+
+    private static bool IsValidStageLifecycleResult(uint operation, uint result) => operation switch
+    {
+        Operation.StageAttachPrepare => result == StageV20Result.AttachPrepared,
+        Operation.StageAttachCommit => result is StageV20Result.AttachCommitted or
+            StageV20Result.AttachCommitDenied or StageV20Result.AttachAlreadyCommitted,
+        Operation.StageAttachAbort => result is StageV20Result.AttachAborted or
+            StageV20Result.AttachAlreadyCommitted,
+        Operation.StageCompletionPermit => result == StageV20Result.CompletionPermitted,
+        Operation.StageRetireUnexposed => result == StageV20Result.AttachRetiredUnexposed,
+        Operation.StageRetireAttachedPrivate => result == StageV20Result.AttachRetiredPrivate,
+        Operation.StageHandleObserved => result == StageV20Result.HandleLifetimeObserved,
+        _ => false
+    };
+
+    /// <summary>
+    /// Replies to a v19 allocate or CREATE_AFTER_DISCARD request with the
+    /// exact stage identity. The 48-WCHAR name capacity preserves the full
+    /// 32-character transfer GUID plus the existing 16-character suffix.
+    /// </summary>
+    public unsafe void ReplyStageCreateV19(ulong messageId, ulong requestId, string stageName,
+        ulong destinationGeneration, in SafeUploadStageIdentityV19 stageIdentity)
+    {
+        ArgumentNullException.ThrowIfNull(stageName);
+        if (!IsValidV19StageName(stageName))
+            throw new ArgumentException("Invalid v19 stage basename.", nameof(stageName));
+        if (destinationGeneration == 0)
+            throw new ArgumentOutOfRangeException(nameof(destinationGeneration));
+        if (!stageIdentity.HasNonzeroFileId)
+            throw new ArgumentException("The v19 stage FILE_ID_128 must be nonzero.", nameof(stageIdentity));
+
+        int size = sizeof(FilterReplyHeader) + sizeof(SafeUploadStageCreateReplyV19);
+        byte* buffer = stackalloc byte[size];
+        new Span<byte>(buffer, size).Clear();
+        *(FilterReplyHeader*)buffer = new FilterReplyHeader { Status = StatusSuccess, MessageId = messageId };
+
+        SafeUploadStageCreateReplyV19* response =
+            (SafeUploadStageCreateReplyV19*)(buffer + sizeof(FilterReplyHeader));
+        response->Version = Contract.Version;
+        response->StructSize = (uint)sizeof(SafeUploadStageCreateReplyV19);
+        response->RequestId = requestId;
+        response->Verdict = Verdict.Allow;
+        response->StageNameLength = (uint)(stageName.Length * sizeof(char));
+        response->DestinationGeneration = destinationGeneration;
+        response->StageIdentity = stageIdentity;
+        for (int i = 0; i < stageName.Length; i++) response->StageName[i] = stageName[i];
+
+        ReplyTypedStageBuffer(messageId, buffer, size);
+    }
+
+    private static bool IsValidV19StageName(string name)
+    {
+        if (name.Length is < 32 or > Contract.StageCreateReplyV19NameChars) return false;
+        for (int i = 0; i < 32; i++)
+        {
+            char ch = name[i];
+            if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) return false;
+        }
+        for (int i = 32; i < name.Length; i++)
+        {
+            char ch = name[i];
+            if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                  (ch >= '0' && ch <= '9') || ch is '.' or '_')) return false;
+        }
+        return true;
+    }
+
+    private unsafe bool ReplyTypedStageBuffer(ulong messageId, byte* buffer, int size)
+    {
+        int hr = FilterReplyMessage(Handle, (IntPtr)buffer, (uint)size);
+        if (hr == unchecked((int)0x8007010B))
+        {
+            return false;
+        }
+        if (hr != 0)
+        {
+            throw new Win32Exception(hr, $"FilterReplyMessage falhou: 0x{hr:X8}");
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Pushes the policy. Until this succeeds the driver has no policy at
     /// all and inspects nothing, so this is not optional setup - it is the
     /// step that turns the filter on.

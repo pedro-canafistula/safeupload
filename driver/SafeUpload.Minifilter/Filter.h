@@ -161,6 +161,13 @@ typedef struct _SAFEUPLOAD_DATA {
 
     EX_RUNDOWN_REF ChannelRundown;
 
+    // Protects communication-port callback-reachable global state. After
+    // FltUnregisterFilter returns, the driver applies its callback
+    // unregistration contract to the callbacks bound to FltCreateCommunicationPort
+    // as an explicit source-barrier inference; this rundown is waited only
+    // after that boundary.
+    EX_RUNDOWN_REF CommunicationCallbackRundown;
+
     //
     //  Source of SAFEUPLOAD_REQUEST.RequestId.
     //
@@ -456,6 +463,15 @@ typedef struct _SAFEUPLOAD_EXCHANGE {
 
     SAFEUPLOAD_REQUEST Request;
     SAFEUPLOAD_RESPONSE Response;
+    /* Kernel-local evidence only: TRUE once this request crosses the
+     * FltSendMessage call boundary. It is never part of the wire ABI. */
+    BOOLEAN MayHaveReachedService;
+    /* V20 reply authority is bound to the authenticated port generation that
+     * existed before send. A response delivered after disconnect/reconnect
+     * can be a durable commit, but it cannot authorize this channel's caller. */
+    LONG ChannelGeneration;
+    /* Opaque Filter Manager connection identity for this particular send. */
+    PVOID ChannelCookie;
 
 } SAFEUPLOAD_EXCHANGE, *PSAFEUPLOAD_EXCHANGE;
 
@@ -897,8 +913,54 @@ SafeUploadCreateCommunicationPort (
     VOID
     );
 
-VOID
+BOOLEAN
+SafeUploadHasClientConnection (
+    VOID
+    );
+
+BOOLEAN
+SafeUploadConnectionIsAuthenticated (
+    VOID
+    );
+
+/* Returns the current authenticated transport identity while holding the
+ * communication state lock. A non-NULL ExpectedCookie requires an exact
+ * cookie match; generation and process ID are captured from the same state. */
+BOOLEAN SafeUploadConnectionGetAuthenticatedIdentity(
+    _In_opt_ PVOID ExpectedCookie,
+    _Out_ PVOID *ConnectionCookie,
+    _Out_ PLONG64 ConnectionGeneration,
+    _Out_ PULONG ProcessId);
+
+/* Test a captured identity under the same lock; publication code calls this
+ * while serializing permit state so disconnect cleanup and permit mutation
+ * have a defined order. */
+BOOLEAN SafeUploadConnectionIsAuthenticatedIdentity(
+    _In_opt_ PVOID ConnectionCookie,
+    _In_ LONG64 ConnectionGeneration);
+
+NTSTATUS
 SafeUploadCloseCommunicationPort (
+    VOID
+    );
+
+/* Voluntary unload only. Success leaves new connect/message admission closed
+ * for the irreversible unload sequence; timeout restores the live service. */
+NTSTATUS
+SafeUploadTryCommunicationUnloadPreflight (
+    VOID
+    );
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* Staging unload closes Connect/Message body admission while leaving exact
+ * outbound service replies available. A precommit failure may reopen only
+ * this narrow gate; successful preparation never does. */
+NTSTATUS SafeUploadTryStageCallbackUnloadPreflight(VOID);
+VOID SafeUploadOpenStageCallbackUnloadAdmission(VOID);
+#endif
+
+VOID
+SafeUploadWaitForCommunicationDrain (
     VOID
     );
 
@@ -908,6 +970,18 @@ SafeUploadRequestVerdict (
     _Out_ PUINT32 Verdict,
     _Out_ PBOOLEAN Answered
     );
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* StageProtocol calls this while holding its channel-state spin lock so the
+ * accepted cookie/generation and transport-use pin are one authority commit. */
+BOOLEAN SafeUploadConnectionPinForStage(_In_ PVOID ConnectionCookie);
+
+NTSTATUS SafeUploadRequestVerdictForPinnedConnection(
+    _Inout_ PSAFEUPLOAD_EXCHANGE Exchange,
+    _In_ PVOID ConnectionCookie,
+    _Out_ PUINT32 Verdict,
+    _Out_ PBOOLEAN Answered);
+#endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 typedef struct _SAFEUPLOAD_DIRECTORY_OVERLAY {
@@ -928,8 +1002,11 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDirectoryQuery(_Inout_ PFLT_CALLBACK_DA
 #endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-NTSTATUS SafeUploadSetPublicationPermit(_In_ PSAFEUPLOAD_PUBLICATION_MESSAGE Message);
+NTSTATUS SafeUploadSetPublicationPermit(_In_ PSAFEUPLOAD_PUBLICATION_MESSAGE Message,
+    _In_opt_ PVOID ConnectionCookie);
 VOID SafeUploadClearPublicationPermits(VOID);
+VOID SafeUploadClearPublicationPermitsForConnection(_In_ PVOID ConnectionCookie,
+    _In_ LONG64 ConnectionGeneration);
 VOID SafeUploadFreeDirectoryView(_In_opt_ PVOID View);
 #endif
 

@@ -145,6 +145,12 @@ public partial class App : System.Windows.Application
             // A janela de bloqueio detalha o motivo; no status, o arquivo
             // continua somente no armazenamento local de staging.
             case TransferPhase.Blocked:
+                if (transfer.BlockReason == StagedBlockReason.EmptySavePrivate)
+                {
+                    _tray.ShowBalloon("SafeUpload: arquivo vazio bloqueado",
+                        $"{fileName} permanece privado. Adicione conteúdo e salve novamente. O arquivo no destino não foi alterado.");
+                    break;
+                }
                 _tray.ShowBalloon("SafeUpload: envio bloqueado",
                     $"{fileName} não foi enviado ao destino.");
                 ShowStagedBlockNotification(transfer);

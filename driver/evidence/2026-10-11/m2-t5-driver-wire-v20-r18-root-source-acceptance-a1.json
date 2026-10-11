@@ -1,0 +1,40 @@
+{
+  "All26LiveAndFrozenSourcePinsUnchanged": true,
+  "CompilerAndSignerQualified": true,
+  "CutoverAuthorized": false,
+  "Disposition": "GO_INTEGRATED_R18_SOURCE_FOR_QUALIFICATION_RUNTIME_PENDING",
+  "DriverInstalledOrLoaded": false,
+  "EvidenceHashes": {
+    "luna-t5-driver-wire-v20-r18-independent-review.md": "f02f6539283d2a153b027e82e2c6dd395e38a00a6c1a886299dd59b6d2a98e3a",
+    "luna-t5-v20-r18-callback-unregister-contract-review.md": "a2763e6483e601781b52dfae22848e6ae1efc1cf2d30f9dfeb0504fca01fa5e3",
+    "m2-t5-driver-wire-v20-r18-root-review-capture.json": "f47075cfce996c87b7a51c8080621b47bdc7bc731ff3cb4dc02dc6d055e17c2d",
+    "m2-t5-driver-wire-v20-r18-root-review-disposition.json": "eaf584c7bb36bab69c13494d8fcdb97092f712143a12bdc1b0cee8ab9eb88b91",
+    "m2-t5-native-v20-r18-diag-a1-root-result.json": "ca42ee32bac179561992defc0c860e63f6aead038ab739544be527a138cf8646"
+  },
+  "FocusedAddendumFullyRead": true,
+  "FrozenInventoryClosed": true,
+  "GitMutation": false,
+  "HostPolicyApplied": false,
+  "NextAction": "After independently accepted Windows harness and reviewed enforced recovery/isolation transaction, qualify exact pair startup/unload/detach/disconnect/shutdown lifecycle under Verifier and complete full owner objective.",
+  "NormalBuildStagingCompiledOut": true,
+  "PairQualified": false,
+  "PrimarySourcesIndependentlyOpened": [
+    "https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/communication-between-user-mode-and-kernel-mode",
+    "https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltunregisterfilter",
+    "https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltcloseclientport",
+    "https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/closing-the-communication-server-port",
+    "https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/when-the-filterunloadcallback-routine-is-called",
+    "https://raw.githubusercontent.com/microsoft/Windows-driver-samples/main/filesys/miniFilter/minispy/filter/minispy.c",
+    "https://raw.githubusercontent.com/microsoft/Windows-driver-samples/main/filesys/miniFilter/avscan/filter/avscan.c"
+  ],
+  "PriorSourceNoGoRetainedImmutable": true,
+  "ProductVMStarted": false,
+  "RecordedUTC": "2026-10-11T12:10:05.400996+00:00",
+  "RootContractDisposition": "Apply generic documented minifilter callback unregistration to notify routines explicitly classified as minifilter callbacks. Listener closed before unregister; callback state and filter pointer retained through unregister and local EX drain; image retained until unload callback returns. Local counts, EX rundown and opaque filter references are not independent image/source barriers.",
+  "RuntimeQualified": false,
+  "SampleLocationErratum": "Current raw MiniSpy SpyDisconnect lines256\u2013284 and SpyFilterUnload286\u2013326; AvScan AvUnload792\u2013847. Focused report approximate rendered line numbers are not raw source locations; function ordering independently verified.",
+  "SourceAccepted": true,
+  "TaintRetained": true,
+  "TwoFDStableReadsEqual": true,
+  "UnsupportedCapabilitiesRemainDisabled": true
+}

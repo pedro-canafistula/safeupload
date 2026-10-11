@@ -110,7 +110,19 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 if (notification is TransferNotification { InspectionFailure: { } failure } failed &&
                     (failed.Phase != TransferPhase.Blocked || !Enum.IsDefined(failure)))
                     throw new InvalidDataException("Invalid transfer inspection failure classification.");
-                if (notification is TransferNotification transfer &&
+                if (notification is TransferNotification transfer)
+                {
+                    bool emptyPrivate = transfer.BlockReason == StagedBlockReason.EmptySavePrivate;
+                    if (transfer.BlockReason is { } reason &&
+                        (!Enum.IsDefined(reason) || transfer.Phase != TransferPhase.Blocked))
+                        throw new InvalidDataException("Invalid staged block reason.");
+                    if (emptyPrivate &&
+                        (transfer.OverrideAllowed || transfer.Findings is not null ||
+                         transfer.PublishedSha256Hex is not null || transfer.SnapshotSha256Hex is not null ||
+                         transfer.HandbackPath is not null || transfer.HandbackVerified is not null ||
+                         transfer.InspectionFailure is not null))
+                        throw new InvalidDataException("An empty private save cannot carry policy or hand-back evidence.");
+                    if (!emptyPrivate &&
                     ((transfer.PublishedSha256Hex is { } digest &&
                       (digest.Length != 64 || !digest.All(Uri.IsHexDigit))) ||
                      (transfer.SnapshotSha256Hex is { } snapshotDigest &&
@@ -127,6 +139,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                      (transfer.Phase != TransferPhase.Blocked &&
                       (transfer.HandbackPath is not null || transfer.HandbackVerified is not null))))
                     throw new InvalidDataException("Invalid staged hand-back notification evidence.");
+                }
                 if (notification is EventNotification audit && audit.Event.EventId == Guid.Empty)
                     throw new InvalidDataException("Invalid audit notification identity.");
                 string? contentDigest = (notification as TransferNotification) is { } outcome
@@ -140,7 +153,8 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                     StatusNotification => ("Status", (Guid?)null, (Guid?)null, (string?)null),
                     _ => throw new InvalidDataException("Unknown notification kind.")
                 };
-                Write(kind, transferId, eventId, phase, targetSessionId, contentDigest, handBackPath);
+                Write(kind, transferId, eventId, phase, targetSessionId, contentDigest, handBackPath,
+                    (notification as TransferNotification)?.BlockReason);
             }
             catch { _failed = true; throw; }
         }
@@ -175,7 +189,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
     }
 
     private void Write(string kind, Guid? transfer, Guid? eventId, string? phase, uint? session,
-        string? digest = null, string? handBackPath = null)
+        string? digest = null, string? handBackPath = null, StagedBlockReason? blockReason = null)
     {
         RequireDirectory();
         if (File.Exists(Active))
@@ -197,18 +211,18 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 _dropped = dropped;
             }
         }
-        WriteLine(kind, transfer, eventId, phase, session, _dropped, digest, handBackPath);
+        WriteLine(kind, transfer, eventId, phase, session, _dropped, digest, handBackPath, blockReason);
     }
 
     private void WriteLine(string kind, Guid? transfer, Guid? eventId, string? phase, uint? session, long dropped,
-        string? digest = null, string? handBackPath = null)
+        string? digest = null, string? handBackPath = null, StagedBlockReason? blockReason = null)
     {
         if (!File.Exists(Active)) { using var created = Create(Active); }
         using var file = Open(Active, writable: true);
         var entry = new NotificationRecordEntry(1, checked(_sequence + 1), _boot, _instance,
             DateTimeOffset.UtcNow, Stopwatch.GetTimestamp(), Stopwatch.Frequency,
             kind, transfer, eventId, phase, session, _hash, dropped)
-        { Sha256Hex = digest, HandBackPath = handBackPath };
+        { Sha256Hex = digest, HandBackPath = handBackPath, BlockReason = blockReason };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(entry);
         if (bytes.Length + 1 > MaximumLineBytes || file.Length + bytes.Length + 1 > _limit)
             throw new InvalidDataException("Notification record size bound exceeded.");
@@ -295,7 +309,9 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
             if ((entry.Kind == "Transfer" && (entry.TransferId is null || entry.TransferId == Guid.Empty ||
                     entry.Phase is not ("Analyzing" or "Released" or "Blocked" or "Retained"))) ||
                 (entry.Kind == "Event" && (entry.EventId is null || entry.EventId == Guid.Empty ||
-                    entry.Phase is not ("Approved" or "Blocked" or "AllowedWithoutInspection" or "Retained"))))
+                    entry.Phase is not ("Approved" or "Blocked" or "AllowedWithoutInspection" or "Retained"))) ||
+                (entry.BlockReason is { } reason &&
+                    (!Enum.IsDefined(reason) || entry.Kind != "Transfer" || entry.Phase != "Blocked")))
                 throw new InvalidDataException("Invalid notification payload identity/phase.");
             result.Add((entry, Convert.ToHexString(SHA256.HashData(line))));
             start = i + 1;
@@ -409,6 +425,7 @@ public sealed record NotificationRecordEntry(int Version, long Sequence, string 
     // verified hand-back, its path, so the durable record alone proves what was released.
     public string? Sha256Hex { get; init; }
     public string? HandBackPath { get; init; }
+    public StagedBlockReason? BlockReason { get; init; }
 }
 public sealed record NotificationRecordHead(int Version, long Sequence, string Sha256);
 

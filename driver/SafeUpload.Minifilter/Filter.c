@@ -260,6 +260,7 @@ Return Value:
 --*/
 {
     NTSTATUS status;
+    NTSTATUS communicationCloseStatus;
 
     //
     //  Opt in to non-paged, non-executable pool for every allocation that
@@ -277,6 +278,7 @@ Return Value:
     //
 
     ExInitializeRundownProtection( &SafeUploadData.ChannelRundown );
+    ExInitializeRundownProtection( &SafeUploadData.CommunicationCallbackRundown );
 
     //
     //  Also before the port: the first thing a client does after connecting
@@ -316,7 +318,7 @@ Return Value:
     status = SafeUploadCreateCommunicationPort();
 
     if (!NT_SUCCESS( status )) {
-        goto UnregisterFilter;
+        goto ClosePort;
     }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -334,6 +336,10 @@ Return Value:
     }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* FltStartFiltering can deliver callbacks before it returns. Stage CREATE
+     * remains fail-closed until this success return, so a failed-start unwind
+     * cannot inherit a staged FILE_OBJECT or its instance references. */
+    SafeUploadStageSetFilteringReady();
     SafeUploadStageAdmissionReady();
 #endif
 
@@ -342,16 +348,32 @@ Return Value:
     return STATUS_SUCCESS;
 
 ClosePort:
-    // A client can connect after the port is created even if filtering
-    // fails to start. Close it and drain any in-flight port callback first.
-    SafeUploadCloseCommunicationPort();
+    // A client can connect after port creation even if filtering fails to
+    // start. Close and drain before stopping the worker or releasing state.
+    // StageFilteringReady remains false on every failed-start path; the stage
+    // dispatcher rejects every pre-ready CREATE before epoch or stream work.
+    // Consequently this branch has no stage FILE_OBJECT/instance-reference
+    // cycle to resolve before FltUnregisterFilter.
+    // The bounded close helper may report busy; startup failure cannot be
+    // vetoed, so retry after the explicit unbounded safety drain.
+    for (;;) {
+        communicationCloseStatus = SafeUploadCloseCommunicationPort();
+        if (NT_SUCCESS(communicationCloseStatus)) break;
+        SafeUploadWaitForCommunicationDrain();
+    }
     ExWaitForRundownProtectionRelease( &SafeUploadData.ChannelRundown );
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageStopWorker();
+    SafeUploadStageReleaseInstanceReferences();
 #endif
 
-UnregisterFilter:
     FltUnregisterFilter( SafeUploadData.Filter );
+    /* FltUnregisterFilter documents callback unregistration. Applying that
+     * contract to the communication callbacks bound to this Filter is the
+     * explicit source-barrier inference retained for independent/runtime
+     * review. The local EX rundown is closed only after that boundary, so
+     * disconnect cleanup can still acquire it during unregister. */
+    ExWaitForRundownProtectionRelease( &SafeUploadData.CommunicationCallbackRundown );
     SafeUploadData.Filter = NULL;
 
 FreeState:
@@ -383,8 +405,10 @@ Routine Description:
 
     - Mandatory unload (FLTFL_FILTER_UNLOAD_MANDATORY): the filter manager
       is not asking, it is telling. A failure status is ignored and the
-      driver is torn down regardless, so the only correct behaviour is to
-      release everything and return success.
+      driver is torn down regardless, so the unload callback must keep
+      source-controlled cleanup available and wait until it is safe to
+      unregister. It must not free live staged state to meet an invented
+      deadline.
 
     - Non-mandatory unload: an operator ran "fltmc unload". Here the filter
       is allowed to decline by returning STATUS_FLT_DO_NOT_DETACH.
@@ -401,8 +425,10 @@ Return Value:
 
 --*/
 {
-#if SAFEUPLOAD_STAGING_PROTOTYPE
+    NTSTATUS closeStatus;
     NTSTATUS status;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    LARGE_INTEGER stageRetryDelay;
 #endif
 
     PAGED_CODE();
@@ -411,14 +437,17 @@ Return Value:
                      BooleanFlagOn( Flags, FLTFL_FILTER_UNLOAD_MANDATORY ) );
 
     //
-    //  A voluntary unload with the inspector still attached is declined.
-    //  Tearing the channel down under a live client is legal but pointless
-    //  guesswork for the operator: stopping the inspector first makes the
-    //  order of events deterministic. A mandatory unload gets no say.
+    //  Ordinary builds keep the existing connected-client veto. The staging
+    //  prototype first prepares exact EmptyHeld/unattached cleanup while the
+    //  client port remains open. A voluntary preparation failure can veto
+    //  before commit; mandatory unload retries with cleanup available. A delay
+    //  paces retries; it is never evidence that FILE_OBJECTs, I/O, service
+    //  work, or instance references have drained.
     //
 
     if (!FlagOn( Flags, FLTFL_FILTER_UNLOAD_MANDATORY ) &&
-        SafeUploadData.ClientPort != NULL) {
+        !SAFEUPLOAD_STAGING_PROTOTYPE &&
+        SafeUploadHasClientConnection()) {
 
         SafeUploadTrace( "declining voluntary unload: inspector still connected\n" );
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -431,43 +460,108 @@ Return Value:
     //
     //  Order matters here.
     //
-    //  1. Close the ports. No new connection can be made, and any thread
-    //     already blocked inside FltSendMessage is released immediately
-    //     instead of waiting out its verdict timeout.
+    //  1. Staging unload first closes CREATE/attach admission and Connect/
+    //     Message callback-body admission. It leaves the exact outbound
+    //     service channel usable for cleanup ACKs and the epoch drain, then
+    //     scans stage/RPC/queued state before any irreversible commit.
+    //     A precommit veto keeps the listener, worker, instance references,
+    //     and required retry work available. After quarantine, stage
+    //     admission stays fenced while cleanup progress remains enabled.
+    //  2. Successful stage preparation commits the stage fence and exact
+    //     service epoch drain. Callback-body admission stays closed and no
+    //     later status may veto or reopen it.
+    //  3. Close both ports immediately, then drain callbacks and channel
+    //     uses. The safety waits may be unbounded, including for voluntary
+    //     unload; they are not bounded teardown guarantees.
+    //  4. Join stage workers and release backing/instance references only
+    //     after communication has drained, then unregister the filter.
     //
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    status = SafeUploadStagePrepareUnload();
-    if (!NT_SUCCESS(status)) {
-        if (!FlagOn( Flags, FLTFL_FILTER_UNLOAD_MANDATORY )) {
-            SafeUploadStageFenceCancelUnload();
+    status = SafeUploadStagePrepareUnload(
+        BooleanFlagOn( Flags, FLTFL_FILTER_UNLOAD_MANDATORY ));
+    if (!NT_SUCCESS(status) && !FlagOn( Flags, FLTFL_FILTER_UNLOAD_MANDATORY )) {
+        /* PrepareUnload rolled back only its reversible, pre-quarantine
+         * gates. If exact cleanup may have committed, it kept the worker,
+         * listener, and stage admission fence available for replay/retry. */
+        return STATUS_FLT_DO_NOT_DETACH;
+    }
+    while (!NT_SUCCESS(status)) {
+        /* Mandatory unload cannot return a veto. Keep the service listener,
+         * stage worker, and already-closed stage fence intact while the
+         * worker, service, and external FILE_OBJECT owners make progress.
+         * The delay only prevents a hot retry loop; it is not a quiescence
+         * signal. A service or external handle may keep this wait unbounded. */
+        stageRetryDelay.QuadPart = -250LL * 10 * 1000;
+        (VOID)KeDelayExecutionThread(KernelMode, FALSE, &stageRetryDelay);
+        status = SafeUploadStagePrepareUnload(TRUE);
+    }
+#endif
+
+#if !SAFEUPLOAD_STAGING_PROTOTYPE
+    /* Ordinary builds retain the existing reversible full communication
+     * preflight. The staging path already closed only Connect/Message body
+     * admission before its scan and must not call this helper after commit:
+     * its timeout path can reopen admission and recreate a StageDispose
+     * window. Staging proceeds directly to port close after commit. */
+    if (!FlagOn( Flags, FLTFL_FILTER_UNLOAD_MANDATORY )) {
+        status = SafeUploadTryCommunicationUnloadPreflight();
+        if (!NT_SUCCESS(status)) {
+            SafeUploadTrace("declining voluntary unload before port close: communication busy, status 0x%08X\n",
+                status);
             return STATUS_FLT_DO_NOT_DETACH;
         }
     }
+#endif
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageFenceCommitUnload();
 #endif
 
-    SafeUploadCloseCommunicationPort();
+    /* The listener/client close is the point of no return. If a bounded
+     * helper reports busy now, wait safely and retry; returning DO_NOT_DETACH
+     * would leave a live filter with its service port permanently closed.
+     * This may be unbounded for mandatory teardown and is not a bounded
+     * teardown guarantee. */
+    for (;;) {
+        closeStatus = SafeUploadCloseCommunicationPort();
+        if (NT_SUCCESS(closeStatus)) break;
+        SafeUploadTrace("unload continues after communication close status 0x%08X\n",
+            closeStatus);
+        SafeUploadWaitForCommunicationDrain();
+    }
 
     //
-    //  2. Drain. Every later attempt to acquire rundown protection fails
-    //     from here on, and this call returns once the last in-flight
-    //     FltSendMessage has released it. Without this, an operation could
-    //     still be touching the channel while it is being destroyed.
+    //  3. Drain the send channel. New channel pins are denied from here on,
+    //     and this call returns once the last in-flight FltSendMessage has
+    //     released its pin. Communication callback state remains resident
+    //     and disconnect cleanup remains admitted until unregister.
     //
 
     ExWaitForRundownProtectionRelease( &SafeUploadData.ChannelRundown );
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageStopWorker();
+    SafeUploadStageReleaseInstanceReferences();
 #endif
 
     //
-    //  3. Unregister. FltUnregisterFilter waits for every in-flight
-    //     callback to return, so once it completes no code of ours can run.
+    //  4. Unregister. The worker join also completes work already collected
+    //     into a worker-local release/RPC batch. The release helper waits for
+    //     paging rundown, closes backing handles, and drops instance refs
+    //     before unregister can wait on instance teardown. Keep callback,
+    //     stage, and policy state resident until the callback source is
+    //     removed and the EX rundown drains.
     //
 
     FltUnregisterFilter( SafeUploadData.Filter );
+    /* FltUnregisterFilter documents unregistration of the minifilter's
+     * callback routines. Applying that contract to the Connect/Disconnect/
+     * Message pointers bound to this Filter by FltCreateCommunicationPort is
+     * the explicit source-barrier inference retained for independent/runtime
+     * review. The local EX rundown closes and drains state, including any
+     * disconnect cleanup delivered during unregister. */
+    ExWaitForRundownProtectionRelease( &SafeUploadData.CommunicationCallbackRundown );
     SafeUploadData.Filter = NULL;
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -475,9 +569,8 @@ Return Value:
 #endif
 
     //
-    //  4. Release the policy. Last, because it can only be freed once no
-    //     callback of ours can still be holding the snapshot - which is
-    //     exactly what FltUnregisterFilter returning guarantees.
+    //  5. Release the policy last, after communication rundown and callback
+    //     unregistration have prevented new users from acquiring a snapshot.
     //
 
     SafeUploadFreePolicy();
@@ -646,6 +739,7 @@ static VOID SafeUploadInstanceTeardownStart(_In_ PCFLT_RELATED_OBJECTS FltObject
     PAGED_CODE();
     /* Publish retirement before the ledger/context is torn down. The receipt
      * remains unstable until InstanceTeardownComplete after outstanding I/O. */
+    SafeUploadStageAttachInstanceTeardownStart(FltObjects->Instance);
     SafeUploadStageAdmissionTopologyTeardownBegin();
     SafeUploadStageWritersInstanceTeardownStart(FltObjects, Reason);
 }
@@ -654,6 +748,7 @@ static VOID SafeUploadInstanceTeardownComplete(_In_ PCFLT_RELATED_OBJECTS FltObj
     _In_ FLT_INSTANCE_TEARDOWN_FLAGS Reason)
 {
     PAGED_CODE();
+    SafeUploadStageAttachInstanceTeardownComplete(FltObjects->Instance);
     UNREFERENCED_PARAMETER(FltObjects);
     UNREFERENCED_PARAMETER(Reason);
     SafeUploadStageAdmissionTopologyTeardownEnd();
@@ -2050,7 +2145,7 @@ Routine Description:
     PAGED_CODE();
 
     if (Data->Iopb->Parameters.Write.Length == 0 ||
-        SafeUploadData.ClientPort == NULL) {
+        !SafeUploadHasClientConnection()) {
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
@@ -2273,7 +2368,7 @@ Return Value:
 
 
 
-    if (SafeUploadData.ClientPort == NULL) {
+    if (!SafeUploadHasClientConnection()) {
 
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }

@@ -16,6 +16,10 @@ public sealed class StagedTransferAllocator
     private readonly string _root;
     private readonly StagedTransferJournal _journal;
     private readonly FileSecurity? _fileSecurity;
+    // Stable reservation replay must serialize the path check, backing-file
+    // creation and manifest commit. Otherwise a concurrent duplicate could
+    // mistake the first request's not-yet-journaled file for an orphan.
+    private readonly SemaphoreSlim _v19AllocationGate = new(1, 1);
 
     public StagedTransferAllocator(string root, StagedTransferJournal journal,
         bool requireProtectedParent = false, bool requireSystemIdentity = false)
@@ -118,7 +122,11 @@ public sealed class StagedTransferAllocator
         CancellationToken cancellationToken,
         Guid? tombstoneOwner = null,
         string? requestorSid = null,
-        long? requestorProcessCreationTime = null)
+        long? requestorProcessCreationTime = null,
+        Guid? allocationReservationId = null,
+        Guid? allocationReferenceId = null,
+        uint? allocationReferenceKind = null,
+        Guid? driverInstanceId = null)
     {
         string fullDestination = Path.GetFullPath(destinationPath);
         if (string.IsNullOrEmpty(Path.GetFileName(fullDestination)) ||
@@ -134,7 +142,8 @@ public sealed class StagedTransferAllocator
             throw new ArgumentException("Invalid staged file extension.", nameof(destinationPath));
         }
 
-        var id = Guid.NewGuid();
+        var id = allocationReservationId ?? Guid.NewGuid();
+        if (id == Guid.Empty) throw new ArgumentException("A transfer ID cannot be empty.", nameof(allocationReservationId));
         var transfer = new StagedTransfer(
             id,
             Path.Combine(_root, id.ToString("N") + extension),
@@ -226,13 +235,215 @@ public sealed class StagedTransferAllocator
 
         // CreateAsync flushes the manifest to disk and atomically makes it
         // visible. Nothing is returned to the driver before this succeeds.
-            await _journal.CreateAsync(transfer, cancellationToken, tombstoneOwner).ConfigureAwait(false);
+            StagedStageIdentity? parentDirectoryIdentity = allocationReservationId is null
+                ? null : StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(fullDestination)!);
+            await _journal.CreateAsync(transfer, cancellationToken, tombstoneOwner,
+                previous?.TransferId, disposition, allocationReferenceId,
+                allocationReferenceKind, driverInstanceId, parentDirectoryIdentity).ConfigureAwait(false);
             return transfer;
         }
-        catch
+        catch (Exception allocationFailure)
         {
-            if (File.Exists(transfer.StagePath)) File.Delete(transfer.StagePath);
+            if (!StagedStageFile.TryDeleteUnjournaled(transfer.StagePath, out Exception? cleanupFailure))
+                throw new IOException("The unjournaled allocation stage could not be safely removed.",
+                    new AggregateException(allocationFailure, cleanupFailure ??
+                        new IOException("The exact unjournaled stage could not be deleted.")));
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(allocationFailure).Throw();
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Ordinary v19 allocate remains backing-first and one-shot. The exact
+    /// stage identity and destination generation are committed before the
+    /// typed reply, but a lost reply is not replayed as an idempotent create.
+    /// </summary>
+    public async Task<StagedAllocationReply> AllocateV19Async(
+        string destinationPath, DestinationKind destination, string processName, int processId,
+        uint sessionId, uint disposition, StagedTransfer? previous,
+        CancellationToken cancellationToken, Guid? tombstoneOwner = null,
+        string? requestorSid = null, long? requestorProcessCreationTime = null)
+    {
+        StagedTransfer transfer = await AllocateAsync(destinationPath, destination, processName,
+            processId, sessionId, disposition, previous, cancellationToken, tombstoneOwner,
+            requestorSid, requestorProcessCreationTime).ConfigureAwait(false);
+        TransferJournalEntry entry = await _journal.ReadAsync(transfer.TransferId, cancellationToken)
+            .ConfigureAwait(false);
+        if (entry.State != TransferJournalState.Allocated || entry.SealedOnce ||
+            entry.DestinationGeneration <= 0 || entry.StageIdentity is null)
+            throw new IOException("The v19 allocation identity was not durably captured before reply.");
+        entry = await _journal.ValidateAllocationReplyAsync(new StagedVersionIdentity(
+                transfer.TransferId, entry.DestinationGeneration, entry.StageIdentity),
+            transfer.TransferId, cancellationToken).ConfigureAwait(false);
+        using StagedStageFile stage = StagedStageFile.Open(transfer.StagePath);
+        if (stage.Identity != entry.StageIdentity || stage.Stream.Length < 0)
+            throw new IOException("The v19 allocation stage changed before reply.");
+        return new StagedAllocationReply(transfer, entry.DestinationGeneration,
+            entry.StageIdentity, stage.Stream.Length);
+    }
+
+    /// <summary>
+    /// Replayable ordinary v19 allocation keyed by the driver's stable
+    /// reservation GUID. A manifest written before the typed reply resolves a
+    /// lost reply to the exact same stage object and generation. If backing
+    /// creation crashed before the manifest, the unjournaled reservation-name
+    /// object is removed only by a no-follow identity-qualified delete and is
+    /// recreated before the manifest becomes visible.
+    /// </summary>
+    public async Task<StagedAllocationReply> AllocateV19Async(
+        string destinationPath, DestinationKind destination, string processName, int processId,
+        uint sessionId, StagedAllocationIntentV19 intent, StagedTransfer? previous,
+        Guid? tombstoneOwner, string requestorSid, long requestorProcessCreationTime,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(intent);
+        if (intent.ReservationId == Guid.Empty || intent.DriverInstanceId == Guid.Empty ||
+            intent.Disposition > 5 || intent.ReferenceKind > 2 ||
+            (intent.ReferenceKind == 0) != (intent.ParentTransferId == Guid.Empty) ||
+            processId <= 0 || string.IsNullOrWhiteSpace(requestorSid) ||
+            requestorProcessCreationTime <= 0)
+            throw new ArgumentException("The v19 allocation intent is invalid.", nameof(intent));
+        if ((intent.ReferenceKind == 1) != (previous is not null) ||
+            (intent.ReferenceKind == 2) != (tombstoneOwner is not null) ||
+            (previous is not null && previous.TransferId != intent.ParentTransferId) ||
+            (tombstoneOwner is not null && tombstoneOwner != intent.ParentTransferId))
+            throw new ArgumentException("The v19 allocation reference does not match its exact parent.", nameof(intent));
+
+        await _v19AllocationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+
+        string fullDestination = Path.GetFullPath(destinationPath);
+        string extension = Path.GetExtension(fullDestination);
+        if (string.IsNullOrEmpty(Path.GetFileName(fullDestination)) || extension.Length > 16 ||
+            extension.IndexOfAny(['\\', '/', ':']) >= 0 ||
+            fullDestination.StartsWith(_root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Invalid staged destination.", nameof(destinationPath));
+
+        var transfer = new StagedTransfer(intent.ReservationId,
+            Path.Combine(_root, intent.ReservationId.ToString("N") + extension), fullDestination,
+            destination, processName, processId, sessionId)
+        {
+            RequestorSid = requestorSid,
+            RequestorProcessCreationTime = requestorProcessCreationTime
+        };
+
+        TransferJournalEntry existing;
+        try
+        {
+            existing = await _journal.ResolveAllocationV19Async(transfer, intent, cancellationToken)
+                .ConfigureAwait(false);
+            using StagedStageFile stage = StagedStageFile.Open(transfer.StagePath);
+            return new StagedAllocationReply(transfer, existing.DestinationGeneration,
+                existing.StageIdentity!, stage.Stream.Length);
+        }
+        catch (FileNotFoundException)
+        {
+            // This reservation has no durable manifest. Any stage object at
+            // its deterministic path was never returned to the driver.
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Same case: no reservation-derived manifest can be resolved.
+        }
+
+        if (!StagedStageFile.TryDeleteUnjournaled(transfer.StagePath, out Exception? cleanupFailure))
+            throw new IOException("An unjournaled private reservation stage could not be safely replaced.",
+                cleanupFailure);
+
+        StagedTransfer created = await AllocateAsync(fullDestination, destination, processName,
+            processId, sessionId, intent.Disposition, previous, cancellationToken,
+            tombstoneOwner, requestorSid, requestorProcessCreationTime,
+            intent.ReservationId, intent.ParentTransferId == Guid.Empty ? null : intent.ParentTransferId,
+            intent.ReferenceKind, intent.DriverInstanceId).ConfigureAwait(false);
+        TransferJournalEntry entry = await _journal.ReadAsync(created.TransferId, cancellationToken)
+            .ConfigureAwait(false);
+        if (entry.State != TransferJournalState.Allocated || entry.SealedOnce ||
+            entry.DestinationGeneration <= 0 || entry.StageIdentity is null)
+            throw new IOException("The v19 allocation identity was not durably captured before reply.");
+        entry = await _journal.ValidateAllocationReplyAsync(new StagedVersionIdentity(
+                created.TransferId, entry.DestinationGeneration, entry.StageIdentity),
+            created.TransferId, cancellationToken).ConfigureAwait(false);
+        using StagedStageFile createdStage = StagedStageFile.Open(created.StagePath);
+        if (createdStage.Identity != entry.StageIdentity)
+            throw new IOException("The v19 allocation stage changed before reply.");
+        return new StagedAllocationReply(created, entry.DestinationGeneration,
+            entry.StageIdentity, createdStage.Stream.Length);
+        }
+        finally
+        {
+            _v19AllocationGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// CREATE_AFTER_DISCARD is journal-first and replayable by its stable
+    /// reservation. The V2 delete/head and V3 allocated manifest commit before
+    /// this method creates the V3 backing file or returns it to the driver.
+    /// </summary>
+    public async Task<StagedAllocationReply> CreateAfterPrivateDiscardAsync(
+        StagedCreateAfterDiscardRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        await _v19AllocationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+        string destination = Path.GetFullPath(request.DestinationPath);
+        string extension = Path.GetExtension(destination);
+        if (extension.Length > 16 || extension.IndexOfAny(['\\', '/', ':']) >= 0 ||
+            string.IsNullOrEmpty(Path.GetFileName(destination)) ||
+            destination.StartsWith(_root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Invalid staged destination.", nameof(request));
+
+        TransferJournalEntry delete = await _journal.ReadAsync(request.DeleteVersion.TransferId,
+            cancellationToken).ConfigureAwait(false);
+        var transfer = new StagedTransfer(request.ReservationId,
+            Path.Combine(_root, request.ReservationId.ToString("N") + extension), destination,
+            request.Destination, delete.Transfer.ProcessName, request.ProcessId, request.SessionId)
+        {
+            RequestorSid = request.RequestorSid,
+            RequestorProcessCreationTime = request.RequestorProcessCreationTime
+        };
+
+        StagedCreateAfterIntentResult intentResult = await _journal.CreateAfterPrivateDiscardIntentAsync(
+            request with { DestinationPath = destination }, transfer, cancellationToken).ConfigureAwait(false);
+        TransferJournalEntry intent = intentResult.Entry;
+        if (intent.StageIdentity is null && !File.Exists(transfer.StagePath))
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                await StagedBackingFile.CreateAsync(null, transfer.StagePath, MaximumSeedBytes,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await using var output = new FileStream(transfer.StagePath, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough);
+                output.Flush(flushToDisk: true);
+            }
+        }
+
+        if (_fileSecurity is not null)
+            new FileInfo(transfer.StagePath).SetAccessControl(_fileSecurity);
+        TransferJournalEntry captured = await _journal.CaptureAllocationIdentityAsync(
+            transfer.TransferId, request.ReservationId, cancellationToken,
+            requireCurrentDestination: !intentResult.IsReplay).ConfigureAwait(false);
+        if (captured.State != TransferJournalState.Allocated || captured.SealedOnce ||
+            captured.StageIdentity is null || captured.DestinationGeneration <= 0)
+            throw new IOException("The create-after stage identity was not durably captured before reply.");
+        captured = await _journal.ValidateAllocationReplyAsync(new StagedVersionIdentity(
+                transfer.TransferId, captured.DestinationGeneration, captured.StageIdentity),
+            request.ReservationId, cancellationToken,
+            requireCurrentDestination: !intentResult.IsReplay).ConfigureAwait(false);
+        using StagedStageFile stage = StagedStageFile.Open(transfer.StagePath);
+        if (stage.Identity != captured.StageIdentity || stage.Stream.Length < 0)
+            throw new IOException("The create-after stage changed before reply.");
+        return new StagedAllocationReply(transfer, captured.DestinationGeneration,
+            captured.StageIdentity, stage.Stream.Length);
+        }
+        finally
+        {
+            _v19AllocationGate.Release();
         }
     }
 }
