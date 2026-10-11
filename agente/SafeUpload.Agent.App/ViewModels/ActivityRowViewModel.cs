@@ -38,10 +38,10 @@ public sealed class ActivityRowViewModel
 
     private static string Describe(AuditEvent auditEvent) => auditEvent.Verdict switch
     {
-        Verdict.Blocked => $"Upload bloqueado: {auditEvent.FileName}",
-        Verdict.Approved => $"Arquivo enviado: {auditEvent.FileName}",
-        Verdict.Retained => $"Arquivo retido para análise: {auditEvent.FileName}",
-        _ => $"Arquivo não inspecionado: {auditEvent.FileName}"
+        Verdict.Blocked => $"Upload bloqueado: {AuditSubject.Describe(auditEvent)}",
+        Verdict.Approved => $"Arquivo enviado: {AuditSubject.Describe(auditEvent)}",
+        Verdict.Retained => $"Arquivo retido para análise: {AuditSubject.Describe(auditEvent)}",
+        _ => $"Arquivo não inspecionado: {AuditSubject.Describe(auditEvent)}"
     };
 
     /// <summary>

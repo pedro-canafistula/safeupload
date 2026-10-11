@@ -201,7 +201,7 @@ public partial class App : System.Windows.Application
             // arquivos sensíveis produziria dez janelas empilhadas no mesmo
             // canto, e o usuário fecharia uma por uma sem ler nenhuma.
             _notification.Add(
-                notification.Event.FileName,
+                AuditSubject.Describe(notification.Event),
                 notification.Findings,
                 notification.OverrideAllowed ? notification.Event.EventId.ToString("D") : null,
                 notification.Quarantined);
@@ -209,7 +209,7 @@ public partial class App : System.Windows.Application
         }
 
         _notification = new BlockNotificationWindow(
-            notification.Event.FileName,
+            AuditSubject.Describe(notification.Event),
             notification.Findings,
             notification.OverrideAllowed ? notification.Event.EventId.ToString("D") : null,
             quarantined: notification.Quarantined);

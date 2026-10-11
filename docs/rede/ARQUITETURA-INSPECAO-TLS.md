@@ -13,7 +13,7 @@ falta. Cada fase concluída atualiza este documento no mesmo PR.
 | 3 — Desvio do tráfego (navegadores) | Concluída | #23 |
 | 4 — Exceções | Concluída (listas na configuração; painel e política ficam para depois) | |
 | 5 — Inspeção de upload | Concluída: o proxy chama o motor e bloqueia com 403 (sem aviso na bandeja ainda) | |
-| 6 — Decisão, aviso e auditoria | Pendente | |
+| 6 — Decisão, aviso e auditoria | Concluída, sem justificativa (prevista para depois no plano); janela de aviso não verificada visualmente | |
 | 7 — Qualificação | Pendente | |
 
 ---
@@ -261,7 +261,34 @@ quando o achado está em texto digitado), `processName` é o navegador e
 `destinationPath` é o endereço. O conteúdo nunca entra (RN-006); só trechos
 mascarados.
 
-### 4.7 Como o mercado faz, e onde este desenho se encaixa
+### 4.7 Decisão, aviso e auditoria (Fase 6)
+
+O bloqueio com 403 e o evento no canal `Web` vieram na Fase 5. A Fase 6 liga o
+bloqueio ao usuário:
+
+```
+ proxy: conexão de 127.0.0.1:51234  ─►  PID do navegador (tabela TCP do Windows)
+                                          │
+ WebUploadInspector:  token do processo  ─►  sessão do Windows + SID do usuário
+                                          │
+        ┌─────────────────────────────────┴───────────────────────────┐
+        ▼                                                             ▼
+ evento de auditoria com o nome do usuário          NotificationHub.Publish(evento, sessão, SID)
+ (WebInspectionService)                                               │
+                                                     pipe de notificações ─► aplicativo de bandeja
+                                                     daquele usuário: janela "Envio bloqueado"
+```
+
+| Decisão | Por quê |
+|---|---|
+| **Usuário pelo token do processo do navegador** | O serviço roda como SYSTEM; sem isso todo evento web sairia em nome da conta do serviço. O proxy já sabe o PID de cada conexão (Fase 2), e o token do processo diz a sessão e o SID (`SessionResolver`, o mesmo usado pelo driver). O nome vai sem o domínio, como no canal de arquivo. |
+| **Aviso só para a sessão e o SID do dono** | Numa máquina com mais de um usuário conectado, o bloqueio de um não aparece para o outro. O `NotificationHub` exige as duas coisas iguais quando o SID é informado. |
+| **Dono desconhecido: bloqueia, registra e não avisa ninguém** | Difundir para todas as sessões mostraria a um usuário o que outro tentou enviar. |
+| **Mesmo caminho de aviso do canal de arquivo** | `EventNotification` pelo `NotificationHub`, que grava cada emissão antes de entregar. O aplicativo de bandeja já sabia mostrar a janela de bloqueio; só aprendeu a descrever um evento web (`AuditSubject`): "folha.csv para drive.google.com" ou "texto enviado a chatgpt.com". |
+| **Bloqueio repetido de texto vira um evento só por 60 s** | Há sites que enviam o texto a cada tecla (Fase 0). Cada envio é barrado, mas o mesmo achado, do mesmo programa para o mesmo site, não gera evento nem aviso novo dentro do intervalo. A chave usa o site sem o caminho, porque o texto digitado sai por endereços diferentes do mesmo site. Arquivo nunca é agrupado. |
+| **Sem justificativa** | `OverrideAllowed` vai sempre falso. O fluxo de justificativa existente concede uma nova tentativa ao driver para um arquivo; na web seria preciso liberar uma requisição futura igual, e o plano deixou isso para versão posterior. |
+
+### 4.8 Como o mercado faz, e onde este desenho se encaixa
 
 Comparação de modelo, a partir de material público; vale conferir na
 documentação de cada fornecedor antes de citar.
@@ -403,6 +430,8 @@ Os testes ficam em `agente/SafeUpload.Agent.Tests`. Todos rodam no Windows.
 | `InterceptionExceptionsTests` | Sufixo no limite do rótulo, normalização (maiúsculas, `*.`, ponto final, punycode), entradas inválidas, listas iniciais; detector de pinning: limite, programa + host, sucesso zerando a contagem, janela e expiração. |
 | `TlsInspectionProxyTests` (Fase 4) | Host na lista passando por túnel; **cliente que recusa o certificado passando a ir por túnel**; cliente que aceita continuando interceptado; certificado ruim do site não contando como pinning. |
 | `UploadBodyParserTests` | Multipart com arquivo e campo de texto, `multipart/related` com base64 (formato do Drive), JSON, formulário simples, arquivo declarado como formulário, corpo comprimido, nome com acento, corpos malformados. |
+| `WebUploadInspectorTests` | Fase 6: bloqueio anunciado **só à assinatura da mesma sessão e do mesmo usuário**; evento no nome do dono do processo; sem dono conhecido, bloqueia e registra sem anunciar; envio limpo sem aviso. |
+| `WebInspectionServiceTests` (Fase 6) | Usuário do navegador no evento; bloqueio repetido de texto gerando um evento só e voltando a gerar depois do intervalo; arquivo repetido gerando dois eventos. |
 | `WebInspectionServiceTests` | Texto e arquivo com CPF bloqueando; texto limpo sem evento; docx renomeado reconhecido pelo conteúdo; xlsx e PDF sem nome; extensão fora do escopo; arquivo corrompido liberado com motivo; modo de auditoria; política reaproveitada. |
 | `TlsInspectionProxyTests` (Fase 5) | De ponta a ponta com o motor real: formulário com CPF num csv recebe **403 e o site não recebe nada**, com evento no canal web sem a query string; o mesmo formulário limpo passa. |
 | `MachineCertificateAuthorityTests` (máquina) | CA de verdade em `LocalMachine\Root`, handshake com a validação padrão do Windows, remoção. |
@@ -435,6 +464,9 @@ Testes manuais feitos na VM Windows 11 a cada fase:
   formulário simples com CPF: **403**. Multipart limpo: 200. Eventos gravados
   na fila com `"channel":"Web"`. Ainda não testado com navegador em Drive,
   Gmail e ChatGPT de verdade (fica para a Fase 7).
+- Fase 6: só testes automatizados. A janela de aviso do aplicativo de bandeja
+  para um bloqueio web **não foi vista na tela**: a VM é acessada por SSH, sem
+  sessão interativa. Precisa de um teste manual com usuário conectado.
 
 Ambiente de teste: VM Windows 11 com .NET 10 SDK, acessada por SSH. Montagem com
 a imagem `dockurr/windows` (a mesma do `omarchy-windows-vm`), com OpenSSH
@@ -450,7 +482,7 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 
 | # | Limitação | Impacto | Caminho proposto |
 |---|---|---|---|
-| L1 | **Bloqueio sem aviso ao usuário.** | O navegador mostra um 403 seco (ou o site mostra "falha no envio"); o aplicativo de bandeja não avisa e não há justificativa. | Fase 6: notificação pelo `NotificationHub`, com sessão e usuário do navegador. |
+| L1 | **Sem justificativa na web**, e o navegador mostra um 403 seco. | O usuário é avisado pela bandeja, mas não tem como justificar e seguir; o site mostra o próprio erro de envio. | Justificativa: conceder uma liberação de uso único para a mesma requisição (destino + hash do conteúdo). Página de bloqueio em HTML para navegação comum. |
 | L2 | **Exceção é buraco na inspeção.** | O que vai para banco, saúde, governo ou host com pinning aprendido não é inspecionado. | Aceito por desenho (seção 4.5). Categorias desligáveis; pinning aprendido sai como aviso no log e deve virar evento de auditoria na Fase 6. |
 | L3 | **Desvio só dos navegadores.** | Apps que não são navegador (clientes de nuvem, Teams, Outlook) não são inspecionados. | Junto com a Fase 4: proxy do sistema (WinINET e WinHTTP) para a máquina, com exceções para o que tem pinning. Depois: driver WFP com callout de redirecionamento (captura transparente). |
 | L4 | **Navegador fora do caminho padrão** não é coberto pelo filtro. | Navegador portátil sai direto. | Identificar por assinatura do executável ou por nome do processo em vez de caminho; ou bloquear 80/443 para todos com exceções (depende de L3). |
@@ -469,9 +501,8 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 | L18 | **Sem exceção por processo fixa.** | O plano previa exceção por processo; hoje só existe a aprendida (programa + host). | Só passa a importar quando o desvio cobrir programas além dos navegadores (L3). |
 | L19 | **Só o corpo é inspecionado.** | Dado na URL (query string de um GET), em cabeçalho ou em WebSocket não é visto. | Varrer a query string; WebSocket está em L9. |
 | L20 | **Arquivo embutido em JSON** (base64 dentro de um campo) é varrido como texto, sem decodificar. | Arquivo enviado assim escapa. | Detectar campos base64 longos e tratá-los como arquivo. |
-| L21 | **Usuário do evento é a conta do serviço**, não o dono do navegador. | Auditoria web sem o usuário real. | Fase 6: resolver sessão e usuário pelo PID do navegador (`SessionResolver`). |
 | L22 | **O painel web não conhece o canal `Web`.** | O evento é enviado com `"channel":"Web"`; o que o painel faz com isso não foi verificado. | Alinhar o contrato com o time do painel. |
-| L23 | **Texto sendo digitado já é bloqueado.** | Sites que enviam o texto a cada tecla (ChatGPT, Fase 0) geram um 403 e um evento por requisição. | Fase 6: agrupar eventos repetidos do mesmo destino. |
+| L23 | **Texto sendo digitado já é bloqueado.** | Sites que enviam o texto a cada tecla (ChatGPT, Fase 0) recebem um 403 por requisição; o evento e o aviso são agrupados por 60 s, mas a experiência no site com o bloqueio repetido não foi avaliada. | Fase 7: avaliar no ChatGPT de verdade. |
 | L24 | **Sem cache de veredito na web.** | O mesmo arquivo enviado duas vezes é extraído duas vezes. | Cache por hash do conteúdo, como o do canal de arquivo. |
 | L15 | **Firefox sem política de QUIC.** | Coberto só pelo filtro de UDP 443. | Política `Preferences` (`network.http.http3.enable = false`). |
 
@@ -486,5 +517,6 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 | 2026-10-08 | 2 | Proxy, parser HTTP/1.1, lista de revogação (achada no teste com curl). |
 | 2026-10-08 | 3 | Desvio só dos navegadores (mudança em relação ao plano), filtros WFP, comando `desvio`. |
 | 2026-10-08 | — | Este documento, consolidando as fases 0 a 3. |
+| 2026-10-10 | 6 | Usuário real no evento web, aviso na bandeja só para o dono do navegador, agrupamento de bloqueios repetidos de texto. |
 | 2026-10-10 | 5 | Inspeção de upload: parser do corpo, motor do canal web no Core, formato pelos bytes, bloqueio com 403 e evento no canal `Web`. |
 | 2026-10-10 | 4 | Exceções por categoria e domínio (túnel) e detecção automática de pinning por programa + host. |
