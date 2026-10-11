@@ -180,6 +180,7 @@ public sealed class StagedNativeRecoveryNotificationTests
     [InlineData(StagedRecoveryAdvice.CloseApplication)]
     [InlineData(StagedRecoveryAdvice.RestartService)]
     [InlineData(StagedRecoveryAdvice.CollectDiagnostics)]
+    [InlineData(StagedRecoveryAdvice.RestartWindows)]
     public void Guidance_crosses_the_existing_notification_pipe_without_new_transfer_states(StagedRecoveryAdvice advice)
     {
         var notice = new TransferNotification(Guid.NewGuid(), @"C:\Protected\report.txt", TransferPhase.Retained,

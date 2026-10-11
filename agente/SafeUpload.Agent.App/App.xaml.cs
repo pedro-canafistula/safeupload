@@ -148,6 +148,8 @@ public partial class App : System.Windows.Application
                             $"{fileName}: os próximos salvamentos continuam privados. Reinicie o serviço SafeUpload; a conferência será automática.",
                         StagedRecoveryAdvice.CollectDiagnostics =>
                             $"{fileName}: o resultado da exclusão ainda não pôde ser confirmado. Os próximos salvamentos continuam privados. Colete os diagnósticos do SafeUpload para suporte.",
+                        StagedRecoveryAdvice.RestartWindows =>
+                            $"{fileName}: uma falha do volume impediu confirmar o fechamento. Os próximos salvamentos continuam privados. Use Reiniciar no Windows; o SafeUpload confere o resultado automaticamente. Desligar e ligar não substitui Reiniciar.",
                         null => $"{fileName} permanece guardado localmente. O envio será tentado novamente.",
                         _ => $"{fileName}: os próximos salvamentos continuam privados. Colete os diagnósticos do SafeUpload para suporte."
                     });
