@@ -1,0 +1,518 @@
+--- R1/driver/scripts/Test-StagedMinifilterUnloadLifecycle.ps1
++++ R2/driver/scripts/Test-StagedMinifilterUnloadLifecycle.ps1
+@@ -73,6 +73,7 @@
+ $verifierEnabled = $false
+ $observerRulesMap = @{}
+ $cleanupPaths = New-Object System.Collections.Generic.List[string]
++$statusTaskNames = New-Object System.Collections.Generic.List[string]
+ $scenarioResult = 'INCONCLUSIVE'
+ $scenarioReason = 'Target runtime boundary was not observed.'
+ $restoreComplete = $false
+@@ -83,6 +84,15 @@
+ $observerRequired = $false
+ $captureSequence = 0
+ $stopResponseRecorded = $false
++$agentServiceBaseline = $null
++$agentServiceRestored = $false
++$observerStoppedAndValidated = $false
++$originalDriverRestored = $false
++$verifierRestored = $false
++$driverServiceRestored = $false
++$statusTasksRemoved = $false
++$privateStageCleaned = $false
++$disposableVolumeDetached = $false
+ 
+ function Write-Event([string] $Name, [string] $Value) {
+     $line = 'UTC=' + [DateTime]::UtcNow.ToString('o') + ' ' + $Name + '=' + $Value
+@@ -129,18 +139,47 @@
+     return $result
+ }
+ 
++function Get-FilterStateFromCapture($Capture, [string] $Context) {
++    if ($null -eq $Capture -or [int]$Capture.ExitCode -ne 0) {
++        $exit = if ($null -eq $Capture) { 'missing' } else { [string]$Capture.ExitCode }
++        throw ('Filter state is UNKNOWN because fltmc filters failed during ' + $Context + ';exit=' + $exit)
++    }
++    $text = [string]$Capture.Stdout + "`n" + [string]$Capture.Stderr
++    if ($text -notmatch '(?mi)^\s*Filter\s+Name\b') {
++        throw ('Filter state is UNKNOWN because the successful fltmc filters output was not recognizable during ' + $Context)
++    }
++    if ($text -match '(?mi)^\s*SafeUpload\s') { return 'PRESENT' }
++    return 'ABSENT'
++}
++
++function Get-FilterState([string] $Context = 'filter-state-query') {
++    $capture = Invoke-CapturedCommand $Context 'fltmc.exe' @('filters')
++    $state = Get-FilterStateFromCapture $capture $Context
++    Write-Event 'FilterStateQuery' ($Context + ';state=' + $state + ';exit=' + $capture.ExitCode +
++        ';stdout=' + $capture.StdoutPath + ';stderr=' + $capture.StderrPath + ';exitFile=' + $capture.ExitPath)
++    return $state
++}
++
+ function Test-FilterLoaded {
+-    $capture = Invoke-CapturedCommand 'fltmc-filters-state' 'fltmc.exe' @('filters')
+-    return (($capture.Stdout + "`n" + $capture.Stderr) -match '(?m)^SafeUpload\s')
++    return ((Get-FilterState 'fltmc-filters-state') -eq 'PRESENT')
+ }
+ 
+ function Write-FilterSnapshot([string] $Phase) {
+     $filters = Invoke-CapturedCommand ($Phase + '-fltmc-filters') 'fltmc.exe' @('filters')
+-    $instances = Invoke-CapturedCommand ($Phase + '-fltmc-instances') 'fltmc.exe' @('instances','-f','SafeUpload')
+-    Write-Event 'FilterSnapshot' ($Phase + ';filtersExit=' + $filters.ExitCode + ';filtersStdout=' + $filters.StdoutPath +
+-        ';filtersStderr=' + $filters.StderrPath + ';instancesExit=' + $instances.ExitCode +
+-        ';instancesStdout=' + $instances.StdoutPath + ';instancesStderr=' + $instances.StderrPath)
+-    return (($filters.Stdout + "`n" + $filters.Stderr) -match '(?m)^SafeUpload\s')
++    $filterState = Get-FilterStateFromCapture $filters $Phase
++    $instanceSummary = 'skipped;filter-confirmed-absent'
++    if ($filterState -eq 'PRESENT') {
++        $instances = Invoke-CapturedCommand ($Phase + '-fltmc-instances') 'fltmc.exe' @('instances','-f','SafeUpload')
++        if ($instances.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace([string]$instances.Stdout + [string]$instances.Stderr)) {
++            throw ('Filter instance state is UNKNOWN during ' + $Phase + ';exit=' + $instances.ExitCode)
++        }
++        $instanceSummary = 'exit=' + $instances.ExitCode + ';stdout=' + $instances.StdoutPath +
++            ';stderr=' + $instances.StderrPath + ';exitFile=' + $instances.ExitPath
++    }
++    Write-Event 'FilterSnapshot' ($Phase + ';filterState=' + $filterState + ';filtersExit=' + $filters.ExitCode +
++        ';filtersStdout=' + $filters.StdoutPath + ';filtersStderr=' + $filters.StderrPath +
++        ';filtersExitFile=' + $filters.ExitPath + ';instances=' + $instanceSummary)
++    return ($filterState -eq 'PRESENT')
+ }
+ 
+ function Get-DriverServiceConfig([string] $Phase) {
+@@ -154,24 +193,31 @@
+ function Get-DriverServiceSnapshot([string] $Phase) {
+     $capture = Invoke-CapturedCommand ('sc-query-' + $Phase) 'sc.exe' @('query','SafeUpload')
+     $text = ($capture.Stdout + "`n" + $capture.Stderr) -replace '\s+', ' '
++    $stateMatch = [regex]::Match($text, 'STATE\s*:\s*(\d+)')
++    $querySucceeded = ($capture.ExitCode -eq 0 -and $stateMatch.Success)
++    $state = if ($querySucceeded) { $stateMatch.Groups[1].Value } else { 'UNKNOWN' }
+     Write-Event 'DriverServiceStatus' ($Phase + ';scExit=' + $capture.ExitCode + ';stdout=' + $capture.StdoutPath +
+-        ';stderr=' + $capture.StderrPath)
+-    return [pscustomobject]@{ ExitCode=$capture.ExitCode; Text=$text; StdoutPath=$capture.StdoutPath; StderrPath=$capture.StderrPath }
+-}
+-
+-function Record-ScStopControlResponse([System.Diagnostics.Process] $Process, [bool] $FilterResident, [string] $ServiceState) {
++        ';stderr=' + $capture.StderrPath + ';exitFile=' + $capture.ExitPath + ';querySucceeded=' + $querySucceeded + ';state=' + $state)
++    return [pscustomobject]@{ ExitCode=$capture.ExitCode; QuerySucceeded=$querySucceeded; State=$state; Text=$text;
++        StdoutPath=$capture.StdoutPath; StderrPath=$capture.StderrPath; ExitPath=$capture.ExitPath }
++}
++
++function Record-ScStopProcessExit([System.Diagnostics.Process] $Process) {
+     $Process.Refresh()
+     if (-not $Process.HasExited -or $script:stopResponseRecorded) { return }
+     [IO.File]::WriteAllText($mandatoryExitPath, [string]$Process.ExitCode)
+-    Write-Event 'ScStopControlResponse' ('exit=' + $Process.ExitCode + ';accepted=' + ($Process.ExitCode -eq 0) +
+-        ';filterResidentAtResponse=' + $FilterResident + ';serviceStateAtResponse=' + $ServiceState +
+-        ';stdout=' + $mandatoryOut + ';stderr=' + $mandatoryErr + ';exitFile=' + $mandatoryExitPath)
++    Write-Event 'ScStopProcessExitObserved' ('exit=' + $Process.ExitCode + ';commandAccepted=' + ($Process.ExitCode -eq 0) +
++        ';exitObservedUtc=' + [DateTime]::UtcNow.ToString('o') + ';stdout=' + $mandatoryOut +
++        ';stderr=' + $mandatoryErr + ';exitFile=' + $mandatoryExitPath)
+     $script:stopResponseRecorded = $true
+ }
+ 
+ function Test-FilterAttached([string] $Drive) {
+     $capture = Invoke-CapturedCommand 'fltmc-instance-attach-state' 'fltmc.exe' @('instances','-f','SafeUpload')
+-    return (($capture.Stdout + "`n" + $capture.Stderr) -match ('(?m)^.*' + [regex]::Escape($Drive)))
++    if ($capture.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace([string]$capture.Stdout + [string]$capture.Stderr)) {
++        throw ('Filter attachment state is UNKNOWN because fltmc instances failed during attach check;exit=' + $capture.ExitCode)
++    }
++    return (([string]$capture.Stdout + "`n" + [string]$capture.Stderr) -match ('(?mi)^.*' + [regex]::Escape($Drive)))
+ }
+ 
+ function Wait-FilterAttached([string] $Drive, [int] $Seconds = 30) {
+@@ -216,6 +262,62 @@
+     }
+     $service = Get-CimInstance Win32_Service -Filter ("Name='" + $AgentRecord.ServiceName + "'") -ErrorAction Stop
+     if ($null -eq $service -or $service.State -ne 'Stopped') { throw 'Preexisting agent service did not return to its stopped baseline.' }
++}
++
++function Get-AgentServiceBaseline {
++    $serviceName = 'SafeUploadAgent'
++    $keyPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\' + $serviceName
++    if (-not (Test-Path -LiteralPath $keyPath)) { return [pscustomobject]@{ Exists=$false; ServiceName=$serviceName } }
++    $service = Get-CimInstance Win32_Service -Filter ("Name='" + $serviceName + "'") -ErrorAction Stop
++    if ($null -eq $service -or $service.State -ne 'Stopped') {
++        throw 'SafeUploadAgent must be stopped while its restoration baseline is captured.'
++    }
++    $key = Get-Item -LiteralPath $keyPath
++    $values = Get-ItemProperty -LiteralPath $keyPath
++    $sidType = if ($null -eq $values.PSObject.Properties['ServiceSidType']) { 0 } else { [int]$values.ServiceSidType }
++    $objectName = if ([string]::IsNullOrWhiteSpace([string]$values.ObjectName)) { 'LocalSystem' } else { [string]$values.ObjectName }
++    return [pscustomobject]@{
++        Exists=$true; ServiceName=$serviceName; ImagePath=[string]$values.ImagePath
++        ImagePathKind=$key.GetValueKind('ImagePath').ToString(); Start=[int]$values.Start
++        ObjectName=$objectName; ServiceSidType=$sidType
++    }
++}
++
++function Assert-AgentServiceBaseline($Baseline) {
++    if ($null -eq $Baseline) { throw 'SafeUploadAgent restoration baseline was not captured.' }
++    $keyPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\' + $Baseline.ServiceName
++    if (-not $Baseline.Exists) {
++        if (Test-Path -LiteralPath $keyPath) { throw 'Test-created agent service remains registered after restoration.' }
++    } else {
++        if (-not (Test-Path -LiteralPath $keyPath)) { throw 'Preexisting agent service registration is missing after restoration.' }
++        $key = Get-Item -LiteralPath $keyPath
++        $values = Get-ItemProperty -LiteralPath $keyPath
++        $sidType = if ($null -eq $values.PSObject.Properties['ServiceSidType']) { 0 } else { [int]$values.ServiceSidType }
++        $objectName = if ([string]::IsNullOrWhiteSpace([string]$values.ObjectName)) { 'LocalSystem' } else { [string]$values.ObjectName }
++        if ([string]$values.ImagePath -cne [string]$Baseline.ImagePath -or
++            $key.GetValueKind('ImagePath').ToString() -cne [string]$Baseline.ImagePathKind -or
++            [int]$values.Start -ne [int]$Baseline.Start -or $objectName -cne [string]$Baseline.ObjectName -or
++            $sidType -ne [int]$Baseline.ServiceSidType) {
++            throw 'SafeUploadAgent service registry configuration differs from the recorded baseline.'
++        }
++        $service = Get-CimInstance Win32_Service -Filter ("Name='" + $Baseline.ServiceName + "'") -ErrorAction Stop
++        if ($null -eq $service -or $service.State -ne 'Stopped') {
++            throw 'SafeUploadAgent did not return to the recorded stopped state.'
++        }
++    }
++    if (@(Get-Process -Name 'SafeUpload.Agent.Service' -ErrorAction SilentlyContinue).Count -ne 0) {
++        throw 'SafeUploadAgent process remains active after restoration.'
++    }
++}
++
++function Confirm-StatusTasksRemoved {
++    $tasks = @(Get-ScheduledTask -ErrorAction Stop)
++    foreach ($taskName in $script:statusTaskNames) {
++        if (@($tasks | Where-Object { $_.TaskName -eq $taskName }).Count -ne 0) {
++            throw ('Inspector status task remains registered: ' + $taskName)
++        }
++    }
++    return $true
+ }
+ 
+ function Read-Manifest([string] $Path) {
+@@ -424,6 +526,7 @@
+     # inside a Filter Manager callback; wait for its own completion instead.
+     $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero)
+     Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null
++    [void]$script:statusTaskNames.Add($taskName)
+     $taskCompleted = $false
+     try {
+         Start-ScheduledTask -TaskName $taskName
+@@ -461,7 +564,7 @@
+         } else {
+             $latest = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+             if ($null -eq $latest -or $latest.State -in @('Ready','Disabled')) {
+-                Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
++                Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Stop
+             } else {
+                 Write-Event 'WriterStatusTaskRetained' ('task=' + $taskName + ';state=' + $latest.State + ';reason=not-complete-or-still-running;not-cancelled')
+             }
+@@ -532,9 +635,12 @@
+ if (@(Get-Process -Name 'SafeUpload.Agent.Service' -ErrorAction SilentlyContinue).Count -ne 0) {
+     throw 'SafeUploadAgent must be stopped at baseline.'
+ }
++$agentServiceBaseline = Get-AgentServiceBaseline
+ $verifierBaseline = Invoke-CapturedCommand 'verifier-query-baseline' 'verifier.exe' @('/query')
+ $verifierBefore = $verifierBaseline.Stdout + "`n" + $verifierBaseline.Stderr
+-if ($verifierBefore -notmatch 'No drivers are currently verified') { throw 'Driver Verifier must be idle at baseline.' }
++if ($verifierBaseline.ExitCode -ne 0 -or $verifierBefore -notmatch 'No drivers are currently verified') {
++    throw 'Driver Verifier must be queryable and idle at baseline.'
++}
+ if ((Test-Path -LiteralPath (Join-Path $journal 'driver-epoch.state'))) {
+     $serviceEpochBefore = Get-EpochRecord
+     if ($serviceEpochBefore.DrainNonce -eq $null) {
+@@ -711,9 +817,9 @@
+             ';drainedAtUtc=' + $drainAfter.DrainedAtUtc + ';rawWireReplyCaptured=false')
+         Write-Event 'VoluntaryPrecommitRollbackApiSubcase' 'OBSERVED;held-stage-owner-vetoed;post-rollback-service-work-completed;final-filter-removal-observed'
+         Write-Event 'ServiceEpochReceiptSubcase' 'OBSERVED;durable-driver-instance-request-nonce-receipt-present'
+-        Write-Event 'ExactOp17WireAckSubcase' 'INCONCLUSIVE;raw-request-and-ack-frame-are-not-exposed-by-current-service-logging'
++        Write-Event 'ExactOp17WireAckObservation' 'INCONCLUSIVE;raw-request-and-ack-frame-are-not-exposed-by-current-service-logging;no-claim-made'
+         $scenarioResult = 'INCONCLUSIVE'
+-        $scenarioReason = 'Voluntary precommit veto, rollback service work, owner cleanup and final filter removal were observed. The durable receipt is correlated evidence, not the exact op17 ACK; that required subcase remains INCONCLUSIVE.'
++        $scenarioReason = 'Voluntary precommit veto, rollback service work, owner cleanup and final filter removal were observed. The durable receipt is correlated evidence; raw op17 ACK observation remains unqualified and no ACK claim is made.'
+     }
+     else {
+         $heldText = 'R18-MANDATORY-PRIVATE-' + $id
+@@ -737,16 +843,17 @@
+             $present = Write-FilterSnapshot ('mandatory-hold-' + $sample)
+             $ownerStillOpen = -not $mandatoryFile.SafeFileHandle.IsClosed
+             if ($ownerStillOpen -and $present) { $ownerHeldFilterResident = $true }
+-            $stateMatch = [regex]::Match($serviceSnapshot.Text, 'STATE\s*:\s*(\d+)')
+-            $serviceState = if ($stateMatch.Success) { $stateMatch.Groups[1].Value } else { 'unparsed' }
+-            Record-ScStopControlResponse $mandatoryProcess $present $serviceState
++            $serviceState = $serviceSnapshot.State
++            Record-ScStopProcessExit $mandatoryProcess
+             $mandatoryProcess.Refresh()
+-            if ($ownerStillOpen -and $present -and ($serviceState -eq '3' -or
++            if ($ownerStillOpen -and $present -and (($serviceSnapshot.QuerySucceeded -and $serviceState -eq '3') -or
+                 ($mandatoryProcess.HasExited -and $mandatoryProcess.ExitCode -eq 0))) {
+                 $mandatoryStopProgressObserved = $true
+             }
+             Write-Event 'MandatoryHoldState' ('sample=' + $sample + ';scProcessExited=' + $mandatoryProcess.HasExited +
+-                ';filterResident=' + $present + ';realStageFileStreamOpen=' + $ownerStillOpen + ';serviceState=' + $serviceState)
++                ';filterResident=' + $present + ';realStageFileStreamOpen=' + $ownerStillOpen +
++                ';serviceQuerySucceeded=' + $serviceSnapshot.QuerySucceeded + ';serviceState=' + $serviceState +
++                ';stateAndOwnerAreSequentialObservations=true')
+             if (-not $present) { throw 'Filter disappeared while the real stage FILE_OBJECT remained held.' }
+         }
+         if (-not $ownerHeldFilterResident) {
+@@ -755,10 +862,10 @@
+             $scenarioReason = 'The real owner remained open and the filter remained loaded, but STOP_PENDING or a successful SCM response was not observed before owner release.'
+         }
+         if (-not $stopResponseRecorded) {
+-            Write-Event 'ScStopControlResponse' 'PENDING_AT_END_OF_OWNER_HOLD;process-lifetime-is-not-used-as-the-unload-signal'
++            Write-Event 'ScStopProcessExitObservation' 'PENDING_AT_END_OF_OWNER_HOLD;process-lifetime-is-not-used-as-the-unload-signal'
+         }
+         Write-Event 'MandatoryOwnerWaitObserved' ('ownerHandleAndFilterResident=' + $ownerHeldFilterResident +
+-            ';stopProgressWhileOwnerHeld=' + $mandatoryStopProgressObserved + ';holdSeconds=' + $MandatoryHoldSeconds)
++            ';stopProgressCorrelatedWithHoldSample=' + $mandatoryStopProgressObserved + ';holdSeconds=' + $MandatoryHoldSeconds)
+ 
+         $heldHash = Get-ContentSha256 $heldText
+         Set-ObserverAllowance $holdPath $heldHash
+@@ -774,10 +881,7 @@
+             if (-not $stopResponseRecorded) {
+                 $mandatoryProcess.Refresh()
+                 if ($mandatoryProcess.HasExited) {
+-                    $responseSnapshot = Get-DriverServiceSnapshot 'stop-response-after-owner-release'
+-                    $responseMatch = [regex]::Match($responseSnapshot.Text, 'STATE\s*:\s*(\d+)')
+-                    $responseState = if ($responseMatch.Success) { $responseMatch.Groups[1].Value } else { 'unparsed' }
+-                    Record-ScStopControlResponse $mandatoryProcess $true $responseState
++                    Record-ScStopProcessExit $mandatoryProcess
+                 }
+             }
+             Start-Sleep -Milliseconds 250
+@@ -788,23 +892,23 @@
+         # do not use its process lifetime as the kernel unload signal.
+         $mandatoryProcess.WaitForExit()
+         $mandatoryProcess.Refresh()
+-        if (-not $stopResponseRecorded) {
+-            $responseSnapshot = Get-DriverServiceSnapshot 'stop-response-after-filter-absent'
+-            $responseMatch = [regex]::Match($responseSnapshot.Text, 'STATE\s*:\s*(\d+)')
+-            $responseState = if ($responseMatch.Success) { $responseMatch.Groups[1].Value } else { 'unparsed' }
+-            Record-ScStopControlResponse $mandatoryProcess $false $responseState
+-        }
++        Record-ScStopProcessExit $mandatoryProcess
+         $filterLoaded = Test-FilterLoaded
+         [void](Write-FilterSnapshot 'after-mandatory-owner-release')
+         $postServiceSnapshot = Get-DriverServiceSnapshot 'mandatory-complete'
+         Write-Event 'MandatoryStopCompleted' ('scExit=' + $mandatoryProcess.ExitCode + ';accepted=' + ($mandatoryProcess.ExitCode -eq 0) +
+             ';filterStillLoaded=' + $filterLoaded + ';serviceQueryExit=' + $postServiceSnapshot.ExitCode +
++            ';serviceQuerySucceeded=' + $postServiceSnapshot.QuerySucceeded + ';serviceState=' + $postServiceSnapshot.State +
+             ';stdout=' + $mandatoryOut + ';stderr=' + $mandatoryErr + ';exitFile=' + $mandatoryExitPath)
+         if ($mandatoryProcess.ExitCode -ne 0 -or $filterLoaded) { throw 'Mandatory stop did not complete after owner release.' }
++        $mandatoryStoppedObserved = ($postServiceSnapshot.QuerySucceeded -and $postServiceSnapshot.State -eq '1')
++        Write-Event 'MandatoryFinalServiceStoppedSubcase' $(if ($mandatoryStoppedObserved) { 'OBSERVED;successful-query-state=STOPPED' } else { 'INCONCLUSIVE;final-service-query-did-not-confirm-STOPPED' })
+         if (-not $ownerHeldFilterResident) {
+             $scenarioReason = 'Filter removal completed after owner release, but the live external owner plus resident-filter boundary was not observed.'
+         } elseif (-not $mandatoryStopProgressObserved) {
+-            $scenarioReason = 'Filter removal completed after owner release, but SCM stop progress was not observed while the owner remained open.'
++            $scenarioReason = 'Filter removal completed after owner release, but SCM stop progress was not correlated with an owner-held sample.'
++        } elseif (-not $mandatoryStoppedObserved) {
++            $scenarioReason = 'Filter removal completed, but a successful final SCM query confirming STOPPED was not observed.'
+         }
+         $drainAfter = Get-EpochRecord
+         if ($null -eq $drainAfter -or $drainAfter.DriverInstanceId -ne $serviceEpochBefore.DriverInstanceId -or
+@@ -817,13 +921,13 @@
+             ';requestId=' + $drainAfter.DrainRequestId + ';nonce=' + $drainAfter.DrainNonce +
+             ';drainedAtUtc=' + $drainAfter.DrainedAtUtc + ';rawWireReplyCaptured=false')
+         Write-Event 'MandatoryHeldOwnerFilterResidentSubcase' $(if ($ownerHeldFilterResident) { 'OBSERVED' } else { 'INCONCLUSIVE' })
+-        Write-Event 'MandatoryStopProgressWhileOwnerHeldSubcase' $(if ($mandatoryStopProgressObserved) { 'OBSERVED' } else { 'INCONCLUSIVE' })
+-        Write-Event 'MandatoryOwnerReleaseAndFilterRemovalSubcase' $(if ($ownerHeldFilterResident -and -not $filterLoaded) { 'OBSERVED' } else { 'INCONCLUSIVE' })
++        Write-Event 'MandatoryStopProgressCorrelatedWithOwnerHoldSampleSubcase' $(if ($mandatoryStopProgressObserved) { 'OBSERVED;sequential-sample-correlation' } else { 'INCONCLUSIVE' })
++        Write-Event 'MandatoryOwnerReleaseFilterRemovalAndServiceStoppedSubcase' $(if ($ownerHeldFilterResident -and -not $filterLoaded -and $mandatoryStoppedObserved) { 'OBSERVED' } else { 'INCONCLUSIVE' })
+         Write-Event 'ServiceEpochReceiptSubcase' 'OBSERVED;durable-driver-instance-request-nonce-receipt-present'
+-        Write-Event 'ExactOp17WireAckSubcase' 'INCONCLUSIVE;raw-request-and-ack-frame-are-not-exposed-by-current-service-logging'
++        Write-Event 'ExactOp17WireAckObservation' 'INCONCLUSIVE;raw-request-and-ack-frame-are-not-exposed-by-current-service-logging;no-claim-made'
+         $scenarioResult = 'INCONCLUSIVE'
+-        if ($ownerHeldFilterResident -and $mandatoryStopProgressObserved) {
+-            $scenarioReason = 'SCM response or STOP_PENDING, held external owner, filter presence, owner release and final filter disappearance were recorded separately. The durable receipt is correlated evidence, not the exact op17 ACK; that required subcase remains INCONCLUSIVE.'
++        if ($ownerHeldFilterResident -and $mandatoryStopProgressObserved -and $mandatoryStoppedObserved) {
++            $scenarioReason = 'SCM response or STOP_PENDING, held external owner, filter presence, owner release and final filter disappearance were recorded separately. The durable receipt is correlated evidence; raw op17 ACK observation remains unqualified and no ACK claim is made.'
+         }
+     }
+ }
+@@ -842,27 +946,36 @@
+     if ($null -ne $heldFile) { try { $heldFile.Dispose() } catch { } }
+     if ($null -ne $mandatoryFile) { try { $mandatoryFile.Dispose() } catch { } }
+ 
+-    # Never restore over a loaded image. If a voluntary unload did not finish,
+-    # preserve the exact backup, service, observer, and VM fixture for the
+-    # external recovery gate; do not kill an unload command or force success.
++    # UNKNOWN is treated like PRESENT for every destructive restoration step.
++    # A failed fltmc query cannot authorize overwriting an image that may be live.
++    $finalFilterState = 'UNKNOWN'
+     try {
+-        $filterActuallyLoaded = Test-FilterLoaded
+-        if ($filterLoaded -and -not $filterActuallyLoaded) { $filterLoaded = $false }
+-        if (-not $filterLoaded -and $filterActuallyLoaded) { $filterLoaded = $true }
++        $finalFilterState = Get-FilterState 'fltmc-finalizer-state'
++        $filterLoaded = ($finalFilterState -eq 'PRESENT')
+     } catch {
+         $filterLoaded = $true
+         Add-FinalizationIssue ('Could not establish current filter state: ' + $_.Exception.Message)
+     }
+-    if ($filterLoaded) {
+-        Write-Event 'RestorationPending' 'SafeUpload-still-loaded;original-driver-not-overwritten;external-recovery-gate-required'
+-        Add-FinalizationIssue 'Filter remains loaded; driver bytes and mounted fixture were preserved for the independent recovery gate.'
++    if ($finalFilterState -ne 'ABSENT') {
++        Write-Event 'RestorationPending' ('filterState=' + $finalFilterState + ';original-driver-not-overwritten;temporary-and-private-fixture-preserved;external-recovery-gate-required')
++        Add-FinalizationIssue ('Filter state is ' + $finalFilterState + '; driver bytes, backup and mounted fixture were preserved for the independent recovery gate.')
+         if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
+-        try { Stop-ByteObserver $expectedObserverFinal } catch {
++    }
++
++    if ($observerRequired) {
++        try {
++            Stop-ByteObserver $expectedObserverFinal
++            $observerStoppedAndValidated = $true
++        } catch {
+             Add-FinalizationIssue ('Observer stop/verification failed: ' + $_.Exception.Message)
+             if ($_.Exception.Message -match 'failed with exit 2|leak') { $scenarioResult = 'FAIL' }
+             elseif ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
+         }
+     } else {
++        $observerStoppedAndValidated = $true
++    }
++
++    if ($finalFilterState -eq 'ABSENT') {
+         try {
+             if ($null -ne $agent) {
+                 $agentRecordForAudit = $agent
+@@ -871,52 +984,113 @@
+                 Assert-AgentServiceRestored $agentRecordForAudit
+                 Write-Event 'TestAgentStopped' 'true;service-config-and-stopped-state-verified'
+             }
+-        } catch { Add-FinalizationIssue ('Test agent stop/service restoration failed: ' + $_.Exception.Message); if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' } }
+-        try { Stop-ByteObserver $expectedObserverFinal } catch {
+-            Add-FinalizationIssue ('Observer stop/verification failed: ' + $_.Exception.Message)
+-            if ($_.Exception.Message -match 'failed with exit 2|leak') { $scenarioResult = 'FAIL' }
+-            elseif ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
+-        }
++            Assert-AgentServiceBaseline $agentServiceBaseline
++            $agentServiceRestored = $true
++            Write-Event 'AgentServiceBaselineRestoration' 'verified'
++        } catch {
++            Add-FinalizationIssue ('Test agent stop/service restoration failed: ' + $_.Exception.Message)
++            if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
++        }
++
+         if ($replaced) {
+             try {
++                $preRestoreFilterState = Get-FilterState 'fltmc-pre-driver-restore-state'
++                if ($preRestoreFilterState -ne 'ABSENT') {
++                    throw ('Driver restore refused because filter state is ' + $preRestoreFilterState)
++                }
+                 Restore-StagedTestDriver $backup $false $verifierEnabled
+                 $replaced = $false
+                 $verifierEnabled = $false
+                 $restoreComplete = $true
+                 Write-Event 'DriverRestoreOperation' 'completed'
+-            } catch { Add-FinalizationIssue ('Driver restore failed: ' + $_.Exception.Message); if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' } }
++            } catch {
++                Add-FinalizationIssue ('Driver restore failed: ' + $_.Exception.Message)
++                if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
++            }
+         } else {
+             $restoreComplete = $true
+         }
++
+         if ($restoreComplete) {
+             try {
+                 if ((Get-FileHash -LiteralPath $installedDriver -Algorithm SHA256).Hash -ne $expectedOriginalDriver) {
+                     throw 'Installed driver hash does not match the pinned original after restoration.'
+                 }
++                $restoredFilterState = Get-FilterState 'fltmc-post-driver-restore-state'
++                if ($restoredFilterState -ne 'ABSENT') {
++                    throw ('Filter state after driver restoration is ' + $restoredFilterState)
++                }
++                $originalDriverRestored = $true
++                Write-Event 'OriginalDriverRestoration' 'verified;filterState=ABSENT'
++            } catch {
++                Add-FinalizationIssue ('Original driver restoration verification failed: ' + $_.Exception.Message)
++                if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
++            }
++            try {
+                 $verifierAfterCapture = Invoke-CapturedCommand 'verifier-query-restored' 'verifier.exe' @('/query')
+                 $verifierAfter = $verifierAfterCapture.Stdout + "`n" + $verifierAfterCapture.Stderr
+-                if ($verifierAfter -notmatch 'No drivers are currently verified') {
++                if ($verifierAfterCapture.ExitCode -ne 0 -or $verifierAfter -notmatch 'No drivers are currently verified') {
+                     throw 'Driver Verifier did not return to the pinned idle baseline.'
+                 }
++                $verifierRestored = $true
++                Write-Event 'VerifierRestoration' 'verified;idle-baseline'
++            } catch {
++                Add-FinalizationIssue ('Driver Verifier restoration verification failed: ' + $_.Exception.Message)
++                if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
++            }
++            try {
+                 $driverServiceConfigAfter = Get-DriverServiceConfig 'restored'
+                 if ($driverServiceConfigAfter -cne $driverServiceConfigBefore) {
+                     throw 'SafeUpload service configuration changed during the fixture.'
+                 }
+-                Write-Event 'LocalDriverAndVerifierRestoration' 'verified'
+-            } catch { Add-FinalizationIssue ('Local driver/Verifier restoration verification failed: ' + $_.Exception.Message); if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' } }
+-        }
+-        if (-not $replaced -and $restoreComplete -and $mounted) {
++                $driverServiceRestored = $true
++                Write-Event 'DriverServiceRestoration' 'verified;configuration-matches-baseline'
++            } catch {
++                Add-FinalizationIssue ('Driver service restoration verification failed: ' + $_.Exception.Message)
++                if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
++            }
++            try {
++                [void](Confirm-StatusTasksRemoved)
++                $statusTasksRemoved = $true
++                Write-Event 'InspectorStatusTasksRestoration' 'verified;all-fixture-tasks-removed'
++            } catch {
++                Add-FinalizationIssue ('Inspector status task restoration verification failed: ' + $_.Exception.Message)
++                if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
++            }
++        }
++
++        $prePrivateCleanupChecks = $agentServiceRestored -and $observerStoppedAndValidated -and
++            $originalDriverRestored -and $verifierRestored -and $driverServiceRestored -and $statusTasksRemoved
++        if ($prePrivateCleanupChecks -and $mounted) {
+             try {
+                 if ($cleanupPaths.Count -gt 0) { Remove-StagedTestFiles @($cleanupPaths.ToArray()) }
+                 $remainingPrivate = @($cleanupPaths | Where-Object { Test-Path -LiteralPath $_ })
+                 if ($remainingPrivate.Count -gt 0) { throw ('Private stage/journal artifacts remain: ' + ($remainingPrivate -join ',')) }
+-                Invoke-Diskpart @("select vdisk file=`"$diskImage`"",'detach vdisk')
++                Invoke-Diskpart @(('select vdisk file="' + $diskImage + '"'),'detach vdisk')
++                if (Test-Path -LiteralPath 'S:\') { throw 'Disposable volume S: remains mounted after detach.' }
+                 $mounted = $false
+-                if (Test-Path -LiteralPath 'S:\') { throw 'Disposable volume S: remains mounted after detach.' }
++                $privateStageCleaned = $true
++                $disposableVolumeDetached = $true
+                 Write-Event 'PrivateStageCleanupAndVolumeDetach' 'verified'
+-            } catch { Add-FinalizationIssue ('Private stage cleanup or volume detach failed: ' + $_.Exception.Message); if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' } }
+-        }
+-        if ($restoreComplete -and -not $mounted) {
++            } catch {
++                Add-FinalizationIssue ('Private stage cleanup or volume detach failed: ' + $_.Exception.Message)
++                if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
++            }
++        }
++
++        if ($prePrivateCleanupChecks -and -not $mounted -and -not (Test-Path -LiteralPath 'S:\')) {
++            $privateStageCleaned = $true
++            $disposableVolumeDetached = $true
++            Write-Event 'PrivateStageCleanupAndVolumeDetach' 'verified;fixture-volume-was-never-mounted'
++        } elseif ($prePrivateCleanupChecks -and -not $mounted -and (Test-Path -LiteralPath 'S:\')) {
++            Add-FinalizationIssue 'Fixture volume S: remains present while mount state was not recorded; recovery material was preserved.'
++            if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
++        }
++
++        $allRestorationChecksPassed = ($finalFilterState -eq 'ABSENT' -and $agentServiceRestored -and
++            $observerStoppedAndValidated -and $originalDriverRestored -and $verifierRestored -and
++            $driverServiceRestored -and $statusTasksRemoved -and $privateStageCleaned -and $disposableVolumeDetached)
++        if ($allRestorationChecksPassed) {
+             try {
+                 $temporaryPaths = @($serviceDirectory,$backup,$diskImage,$diskpart) | Where-Object { Test-Path -LiteralPath $_ }
+                 if ($temporaryPaths.Count -gt 0) { Remove-Item -LiteralPath $temporaryPaths -Force -Recurse -ErrorAction Stop }
+@@ -924,7 +1098,12 @@
+                     throw 'Temporary service package, restoration backup or disposable image remains after cleanup.'
+                 }
+                 Write-Event 'LocalFixtureCleanup' ('verified;observer-and-command-raw-evidence-retained=' + $evidenceDir)
+-            } catch { Add-FinalizationIssue ('Local fixture cleanup failed: ' + $_.Exception.Message); if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' } }
++            } catch {
++                Add-FinalizationIssue ('Local fixture cleanup failed: ' + $_.Exception.Message)
++                if ($scenarioResult -ne 'FAIL') { $scenarioResult = 'INCONCLUSIVE' }
++            }
++        } else {
++            Write-Event 'LocalFixtureCleanupDeferred' 'one-or-more-independent-restoration-checks-failed;backup-package-volume-and-private-owner-recovery-material-retained'
+         }
+     }
+     if ($null -ne $script:observer) {

@@ -1,0 +1,25 @@
+{
+  "CapturedUTC": "2026-10-11T13:13:35.215076+00:00",
+  "ReadOnlyConnection": "qemu:///system",
+  "BuilderDomainName": "win10",
+  "BuilderUUID": "c6440689-d11c-4c63-a463-f3722b7ddb69",
+  "BuilderState": [
+    1,
+    1
+  ],
+  "ExactBuilderMAC": "52:54:00:63:87:7a",
+  "ExactBuilderIP": "192.168.122.210",
+  "LibvirtNetwork": "default",
+  "NetworkBridge": "virbr0",
+  "NetworkForwardMode": "nat",
+  "HostLocalVirtualMachine": true,
+  "LeaseMapsExactBuilderMACToSourceDeliveryIP": true,
+  "TwoInactiveXMLReadsAndStateEqual": true,
+  "TwoNetworkXMLReadsEqual": true,
+  "InactiveXMLSHA256": "d61896454a9ac6507378e750c2c300b60ad3619e52d4e9e9f6472ba7c51f897d",
+  "NetworkXMLSHA256": "dba987b6e97446a25d71de6736989143aa70bab40ee77f1f643031a87d856f91",
+  "SourceUploaded": false,
+  "VMStartedOrChanged": false,
+  "DriverInstalledOrLoaded": false,
+  "GitMutation": false
+}

@@ -18,10 +18,14 @@ Completion requires evidence for every tracker item, then a taint-removal plan a
 - [x] Commit and push the reviewed native R18 and managed R13 sources as `e0de7e46`; revalidate 226 source pins and 111 retained artifact pins before staging.
   - [x] Four native WDK profiles pass PREfast/ApiValidator at zero warnings/errors with valid test signing.
   - [x] Four Windows agent profiles pass at zero warnings/errors: 3,064 tests, including 104 required v20 cases.
-- [x] Parse the frozen R1 lifecycle fixture and helper using Windows PowerShell 5.1 with zero syntax errors; neither script was executed ([receipt](evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-parser-a1-root-result.json)).
+- [x] Commit and push the reviewed exact-case agent matrix tooling as `5e9b7868`.
 - [x] Independently review R1 and retain source NO_GO for execution: failed filter queries can authorize unsafe restoration, and incomplete restoration can still delete recovery material ([disposition](evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-root-review-disposition.json)).
-  - [ ] Correct these paths in R2, preserve the original evidence, and obtain different-author review before execution.
-- [x] Pass four disposable Btrfs file-lease controls ([receipt](evidence/2026-10-11/m2-t5-file-lease-controls-a2-root.json)). The earlier a1 test ran on tmpfs; its Btrfs prose label was incorrect. These controls do not qualify expiry, crash retention, writeback drain or protection of original VM files.
+  - [x] Freeze the R2 corrections and parse the exact fixture/helper using Windows PowerShell 5.1 with zero syntax errors; neither script was executed ([receipt](evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-parser-a1-root-result.json)).
+  - [ ] Obtain different-author review and resolve observation scope before execution.
+- [x] Complete the frozen R18 harness compiler controls and independent review; retain source NO_GO ([disposition](evidence/2026-10-11/m2-t5-harness-windows-gate-r18-root-review-disposition.json)).
+  - [x] Compile the protocol module's extracted C# literal at zero warnings/errors; invoke no native methods.
+  - [ ] Correct three PowerShell syntax errors and keep exact recovery job handles after an unproven drain/query; recheck and independently review R19.
+- [x] Pass four disposable file-lease controls on each of Btrfs and Ext4, plus read-only leased-descriptor fsync/read calls on both ([disposition](evidence/2026-10-11/m2-t5-filesystem-lease-controls-a1-root-disposition.json)). The earlier a1 test ran on tmpfs; its Btrfs prose label was incorrect. These controls do not qualify expiry, crash retention, pending dirty-page drain, or protection of original VM files.
 - [ ] Finish and independently review the Windows harness and enforced recovery transaction.
 - [ ] Qualify the matched pair, lifecycle and all three nonempty Save As modes under Verifier with independent destination-byte observations and independently verified VM restoration.
 

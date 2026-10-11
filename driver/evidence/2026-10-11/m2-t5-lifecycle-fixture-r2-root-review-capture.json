@@ -1,0 +1,35 @@
+{
+  "Candidate": "m2-t5-lifecycle-fixture-r2-root-a1",
+  "CapturedUTC": "2026-10-11T13:12:50.280354+00:00",
+  "ClosedInventoryVerified": true,
+  "FixtureExecuted": false,
+  "Groups": {
+    "author": {
+      "driver/evidence/2026-10-11/luna-t5-native-v20-r18-lifecycle-fixture-author-r2.md": "e212cd6b542d9b56f1a39df0a7af4f2e33306661c550193d8a021f403f2e47e1",
+      "driver/evidence/2026-10-11/luna-t5-native-v20-r18-lifecycle-fixture-r2-r1-delta.diff": "97196a31452eed114b87fbeee710f000858ff58b7d7a14c9d4cbb1efad4e94e1"
+    },
+    "context": {
+      "driver/evidence/2026-10-11/luna-t5-native-v20-r18-lifecycle-fixture-independent-review-r1.md": "11454ba7717c087c3c79bc3810cda49ced46f5f26b7f0d8e3991802579438bf8",
+      "driver/evidence/2026-10-11/luna-t5-native-v20-r18-runtime-qualification-readiness.md": "d08ce66165588ee9ee9202488bc84ed8e0f8d68327927fdcda9f3ceacf4e7ee5",
+      "driver/evidence/2026-10-11/m2-t5-driver-wire-v20-r18-root-source-acceptance-a1.json": "9e0ae87e8b17712a1f8967ccae0561cb29e21344c03c221e66622a869604492b",
+      "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-root-review-disposition.json": "12cbf20201bdee0ea78a646628d2cf06ac415f11d274e4812deb6a87b876fcc4"
+    },
+    "src": {
+      "driver/scripts/StagedTestAgent.ps1": "abd9c67925a4a18b4635bb4b1d21b35cd033453d6ca0c03acf46246472aa6dd7",
+      "driver/scripts/Test-StagedMinifilterUnloadLifecycle.ps1": "b1bbe99ddb3a7bed2593e397675531d8a8c3c5684373d3be11225a607a089abf"
+    }
+  },
+  "HostPolicyApplied": false,
+  "IndependentReviewPending": true,
+  "ProductVMStarted": false,
+  "Root": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-lifecycle-fixture-r2-root-a1",
+  "RuntimeQualified": false,
+  "SourceAccepted": false,
+  "SourceCount": 2,
+  "SourceHashes": {
+    "driver/scripts/StagedTestAgent.ps1": "abd9c67925a4a18b4635bb4b1d21b35cd033453d6ca0c03acf46246472aa6dd7",
+    "driver/scripts/Test-StagedMinifilterUnloadLifecycle.ps1": "b1bbe99ddb3a7bed2593e397675531d8a8c3c5684373d3be11225a607a089abf"
+  },
+  "SourceRoot": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-lifecycle-fixture-r2-root-a1/src",
+  "TwoFDStableReadsAndPostCopyEquality": true
+}

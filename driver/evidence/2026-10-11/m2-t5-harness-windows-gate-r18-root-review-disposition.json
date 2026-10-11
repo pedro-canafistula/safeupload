@@ -1,0 +1,34 @@
+{
+  "Disposition": "NO_GO_R18_POWERSHELL_SYNTAX_AND_KEEPER_RECOVERY_CORRECTIONS_REQUIRED",
+  "HostPolicyApplied": false,
+  "IndependentReviewFindings": [
+    "Three static method invocations omit required parentheses",
+    "Keeper failure exits and closes exact CANCEL recovery job handles"
+  ],
+  "InputSHA256": {
+    "driver/evidence/2026-10-11/luna-t5-harness-windows-gate-r18-independent-review.md": "8d2eb7dcf8af5d4e8533a00b789b4f03679541aaeb399422906da0f17077e3fb",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-compiler-a1-compile.stderr.txt": "aa4c6b5187e8a52a4b02316c91eb0c7a4cfdce4cdea9b9d7ecfe2faa1d97cce4",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-compiler-a1-compile.stdout.txt": "a1f892636b549a15cc332c9033594846a4fbd4803fccad54686fbb3dcf3785ad",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-compiler-a1-delivery.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-compiler-a1-delivery.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-compiler-a1-preflight.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-compiler-a1-preflight.stdout.txt": "fbaa7892d5652979e593f2a197f0853605c3aca2db2cfd25fcd26929136e4860",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-compiler-a1-root-result.json": "4644cd10ae76f5832729120e26d295df582f8400f924a7361947ccd23537469f",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-native-compiler-a2-compile.stderr.txt": "aa4c6b5187e8a52a4b02316c91eb0c7a4cfdce4cdea9b9d7ecfe2faa1d97cce4",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-native-compiler-a2-compile.stdout.txt": "624eadf7fd435d165e9682a0b7e4ecde472e365fabecca5de66c29067b6c4668",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-native-compiler-a2-delivery.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-native-compiler-a2-delivery.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-harness-r18-native-compiler-a2-root-result.json": "232e34c36550ab0d8c807b34c8e4489d2296a2f1c283919ae7f9ed9ea89b2cc8",
+    "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r18-root-review-capture.json": "4da629bbdc11533484c4a2ed0b2aebfe587f47f2518d5b23c5727d369f81c100"
+  },
+  "NativeMethodsInvoked": false,
+  "NextAction": "Candidate-only R19 correction, root compiler controls and different-author review",
+  "ProductVMStarted": false,
+  "ProtocolOnlyCSharpCompilerPassedZeroWarnings": true,
+  "RecordedUTC": "2026-10-11T13:14:07.266238+00:00",
+  "RootReverified63Source6Author3ContextPins": true,
+  "RuntimeQualified": false,
+  "SourceAccepted": false,
+  "SourceOrHarnessExecuted": false,
+  "ThreePowerShell51ParseErrors": true
+}

@@ -1,0 +1,41 @@
+{
+  "CompilerPassed": true,
+  "HelperSHA256": "c759a0329f84451e6a9c6c8e4ba6976700f3bf8429724d502389bf9bf250ed9e",
+  "NativeMethodsInvoked": false,
+  "ParsedAndCompiled": {
+    "CompilerOnly": true,
+    "NativeCompiler": {
+      "AssemblySHA256": "dc5c1e61215ed2d4546b43bf26c02ad22f934eae442da00790c3ed061dcc12f3",
+      "Attempted": true,
+      "Errors": [],
+      "NativeInputSHA256": "5e32aa317f7c30abf10dc350050afeb530a04f0c35bce8b735995d7fc815e7e0",
+      "Passed": true,
+      "Warnings": []
+    },
+    "NativeMethodsInvoked": false,
+    "NestedWorkerScripts": [],
+    "PSVersion": "5.1.19041.6456",
+    "Results": [
+      {
+        "ErrorCount": 0,
+        "Errors": [],
+        "Name": "HarnessWindowsGateProtocol.psm1",
+        "SHA256": "9fb561090d9e1f7a4370b7cb4c8369001ca69e06e4f406c4f072480f7a0ebacf",
+        "Tokens": 5294
+      }
+    ],
+    "SourceExecuted": false
+  },
+  "ProductVMStarted": false,
+  "RawSHA256": {
+    "m2-t5-harness-r18-native-compiler-a2-compile.stderr.txt": "aa4c6b5187e8a52a4b02316c91eb0c7a4cfdce4cdea9b9d7ecfe2faa1d97cce4",
+    "m2-t5-harness-r18-native-compiler-a2-compile.stdout.txt": "624eadf7fd435d165e9682a0b7e4ecde472e365fabecca5de66c29067b6c4668",
+    "m2-t5-harness-r18-native-compiler-a2-delivery.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-harness-r18-native-compiler-a2-delivery.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "RecordedUTC": "2026-10-11T13:08:32.277249+00:00",
+  "RuntimeQualified": false,
+  "Scope": "Only the exact R18 protocol module literal C# compiler input; separate R18 runner/fixture PS errors remain NO_GO",
+  "SourceAccepted": false,
+  "SourceOrHarnessExecuted": false
+}

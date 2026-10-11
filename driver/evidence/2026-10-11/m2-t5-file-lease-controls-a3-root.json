@@ -1,0 +1,59 @@
+{
+  "CapturedUTC": "2026-10-11T12:59:39.989197+00:00",
+  "ControlCount": 4,
+  "ControlScriptSHA256": "22d1047db86161a70de648200d5f3c395ffe56b30b10ec121c090552da9cb267",
+  "Controls": [
+    {
+      "Case": "ExistingWritableDescriptor",
+      "LeaseAcquisitionErrno": 11,
+      "Result": "PASS"
+    },
+    {
+      "Case": "SharedWritableMappingAfterDescriptorClose",
+      "LeaseAcquisitionErrno": 11,
+      "Result": "PASS"
+    },
+    {
+      "Case": "NewNonblockingWriterOpenWhileReadLeaseHeld",
+      "GetLeaseAfterBreakIsNotTerminalProof": true,
+      "GetLeaseAfterBreakRequest": 2,
+      "RawStderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "RawStderrUTF8": "",
+      "RawStdoutSHA256": "b9ad3bffdf0726fe8612c1952faa71eb3fe5a27de4c4faa3734c447feecb7df0",
+      "RawStdoutUTF8": "{\"Blocked\": true, \"Errno\": 11}\n",
+      "Result": "PASS",
+      "WriterResult": {
+        "Blocked": true,
+        "Errno": 11
+      }
+    },
+    {
+      "Case": "NewWriterOpenAfterExplicitLeaseRelease",
+      "Result": "PASS"
+    }
+  ],
+  "Ext4MechanismTested": true,
+  "HostPolicyMutated": false,
+  "ImmutableFlagsChanged": false,
+  "KernelRelease": "7.2.5-3-omarchy",
+  "LeaseBreakSecondsObserved": "45",
+  "LeasesEnableObserved": "1",
+  "Limit": "Disposable Ext4 files only. No forced timeout, non-expiring lease, crash survival, writeback drain, VM baseline protection or restoration is qualified.",
+  "OriginalVMFilesOpened": false,
+  "PriorReceiptErratum": "a1 ran on /tmp tmpfs, as its actual findmnt field records; its prose Limit incorrectly said Btrfs. This a3 actually runs in a private disposable Ext4 directory on /mnt/storage.",
+  "ProductVMStarted": false,
+  "QueryUID": 1000,
+  "Result": "PASS_TEMPORARY_FILE_MECHANISM_CONTROLS",
+  "RuntimeGuardQualified": false,
+  "SysctlChanged": false,
+  "TemporaryFileFilesystem": {
+    "filesystems": [
+      {
+        "fstype": "ext4",
+        "source": "/dev/sdb1",
+        "target": "/mnt/storage"
+      }
+    ]
+  },
+  "TemporaryKernelFileLeasesUsed": true
+}

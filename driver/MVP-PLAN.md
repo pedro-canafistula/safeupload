@@ -158,6 +158,12 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
 
 ## Owner decisions in force
 
+- 2026-10-10: intentional zero-content saves remain private and are reported as blocked in MVP; an explicit empty-save intent
+  protocol is deferred. Nonempty text keeps the normal Save As path. This decision does not waive cleanup, recovery, or byte-observer
+  qualification, and the strict no-empty-publication assertion remains required.
+- 2026-10-10: startup requirement reconfirmed by the owner: protection starts before applications open protected files for editing;
+  installation may require an initial restart. Starting protection after those editing handles or mappings already exist cannot claim
+  the same privacy guarantee. This approval settles startup ordering; qualification of the implementation remains required.
 - 2026-10-03: a sticky Unknown is never cleared before reboot; no process taint (read classification only while taint is on); no timers or
   scans as fixes.
 - 2026-10-06: local fixed-NTFS MVP only (WinFsp owner prototype shelved on `wip/owner-prototype-20261006`); boot-start install with a reboot;

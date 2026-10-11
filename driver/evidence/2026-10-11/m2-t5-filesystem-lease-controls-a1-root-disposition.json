@@ -1,0 +1,36 @@
+{
+  "BtrfsLeaseControlsPassed": 4,
+  "CurrentSysctlLeaseBreakTime": 45,
+  "CurrentSysctlLeasesEnable": 1,
+  "Disposition": "PASS_DISPOSABLE_BTRFS_AND_EXT4_MECHANISM_AND_READONLY_FSYNC_CALL_CONTROLS_ONLY",
+  "EvidenceSHA256": {
+    "driver/evidence/2026-10-11/m2-t5-file-lease-controls-a2-root.json": "705b532a6369794de52ac44860d013b4daa4fb2cdcf5a184fae8483224f98ceb",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-controls-a2-root.py": "8512ecbd04a060cf277f160b9a0d685f65a86051cb92b19d6fe0cc43bdd33cd2",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-controls-a3-root.json": "aac441ca57162624727864121484b161b6de97b7bf75c0f8150e3a6509a961f4",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-controls-a3-root.py": "22d1047db86161a70de648200d5f3c395ffe56b30b10ec121c090552da9cb267",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-fsync-controls-a2-luna.json": "20a8c74f0b04ed1ba20e11ff65b002995101f29cf347058ee147401c3f598067",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-fsync-controls-a2-luna.py": "f66dc2a7c7a27f53818f093097e5e6b48b1d0cf941024b4b0af1074c5ce8841c",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-fsync-controls-a3-root.py": "fd24cc8413a0d7fa9623813694ed064c50ac759b9d492529804a52ec402ad8ef",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-fsync-controls-a3-root.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-fsync-controls-a3-root.stdout.txt": "7b83a785515fabe30735b10a4b70eb4ff0049582de9dcda18a1e551286671056",
+    "driver/evidence/2026-10-11/m2-t5-host-kernel-package-metadata-a1-root.json": "7aaeb0de1d17846639fe6627b4ea9175a89e6ef27d3258588693634323c53140"
+  },
+  "Ext4FsyncScratchDirectoryAbsent": true,
+  "Ext4LeaseControlsPassed": 4,
+  "HostPolicyMutated": false,
+  "OriginalVMFilesOpened": false,
+  "PairQualified": false,
+  "ProductVMStarted": false,
+  "ReadonlyLeaseThenFsyncThenReadPassedOnBothFilesystems": true,
+  "RecordedUTC": "2026-10-11T13:00:33.153315+00:00",
+  "RuntimeGuardQualified": false,
+  "TwoStableEvidenceReads": true,
+  "Unproven": [
+    "dirty pages actually pending at test lease acquisition",
+    "non-expiring lease behavior without global impact",
+    "FDStore preservation and recovery after holder death",
+    "exact deployed kernel patchset relation to reviewed source",
+    "guarded namespace and in-flight API exclusion",
+    "full source-state migration/install/recovery/restoration transaction"
+  ]
+}
