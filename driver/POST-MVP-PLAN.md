@@ -124,7 +124,8 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
 - [x] Simplified VM setup and harness gates (`04fc6bbb`); [PowerShell 5.1 gate](evidence/2026-10-11/harness-windows-gate-t4-resume-1011-a1.txt).
 - [x] Bounded readiness reads; real ready/silent/absent pipe controls and all harness self-checks pass in
   [Windows PowerShell 5.1](evidence/2026-10-11/harness-windows-gate-t4-readiness-1011-a2.txt).
-- [ ] Run 10,000 cycles on win10-debug3 with `m2-driver5-t11`, a matching admission-evidence agent, Verifier from boot and an eight-hour test deadline.
+- [ ] **Running:** `m2t4boot10k1011a2` on win10-debug3 with `m2-driver5-t11` + admission-evidence agent `t4-af1`,
+  Verifier from boot and an eight-hour test deadline; [startup reached Ready](evidence/2026-10-11/m2t4boot10k1011a2-ready.txt).
   - [ ] Final result, raw Verifier/pool samples, stop reason and separate fresh-disk restoration baseline.
 - [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
 
