@@ -40,7 +40,6 @@ static BOOLEAN StageProtocolValidDrainReplayRequest(_In_ const SAFEUPLOAD_REQUES
 #pragma alloc_text(PAGE, SafeUploadStageAllocateV19)
 #pragma alloc_text(PAGE, SafeUploadStageRenameExchangeV19)
 #pragma alloc_text(PAGE, SafeUploadStageReplayAllocationV19)
-#pragma alloc_text(PAGE, SafeUploadStageReplayCreateAfterDiscardV19)
 #pragma alloc_text(PAGE, SafeUploadStageReconcileV20)
 #pragma alloc_text(PAGE, SafeUploadStageAttachmentExchangeV20)
 #pragma alloc_text(PAGE, SafeUploadStageAttachmentRequestV20Matches)
@@ -54,7 +53,6 @@ static BOOLEAN StageProtocolValidDrainReplayRequest(_In_ const SAFEUPLOAD_REQUES
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #pragma alloc_text(PAGE, SafeUploadStageSealVersionV19)
 #pragma alloc_text(PAGE, SafeUploadStageDiscardVersionV19)
-#pragma alloc_text(PAGE, SafeUploadStageCreateAfterDiscardV19)
 #pragma alloc_text(PAGE, StageSendVersionRequestV19)
 #endif
 #endif
@@ -729,9 +727,8 @@ StageAllocateInternal (
     if (Version19) { status = STATUS_NOT_SUPPORTED; goto Exit; }
 #endif
     exchange->Request.RequestorProcessId = FltGetRequestorProcessId( Data );
-    /* Most callers allocate from CREATE. EmptyHeld retirement allocates the
-     * required successor while handling SET_INFORMATION, where reading the
-     * Create union would interpret unrelated bytes as a disposition. */
+    /* Read a CREATE disposition only for that callback class. Other callbacks
+     * must not interpret unrelated I/O union bytes as create options. */
     if (Data->Iopb->MajorFunction == IRP_MJ_CREATE)
         exchange->Request.Reserved = (Data->Iopb->Parameters.Create.Options >> 24) & 0xff;
     else exchange->Request.Reserved = FILE_OPEN_IF;
@@ -1485,9 +1482,6 @@ StageSendVersionRequestV19 (
         (Operation == SAFEUPLOAD_OPERATION_STAGE_DISCARD &&
          (ReservationId == NULL ||
           (Kind != SAFEUPLOAD_STAGE_DISCARD_KIND_PRIVATE_VERSION &&
-           Kind != SAFEUPLOAD_STAGE_DISCARD_KIND_EMPTY_HELD_CLEANUP &&
-           Kind != SAFEUPLOAD_STAGE_DISCARD_KIND_OWNER_EXIT_EMPTY &&
-           Kind != SAFEUPLOAD_STAGE_DISCARD_KIND_DRIVER_UNLOAD_EMPTY &&
            Kind != SAFEUPLOAD_STAGE_DISCARD_KIND_UNATTACHED_ALLOCATION))))
         return STATUS_INVALID_PARAMETER;
 
@@ -1583,124 +1577,6 @@ StageV19IdentityNonzero (
     return !RtlEqualMemory(&Identity->FileId, &empty, sizeof(empty));
 }
 
-NTSTATUS
-SafeUploadStageCreateAfterDiscardV19 (
-    _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PUNICODE_STRING OriginalName,
-    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
-    _In_ const GUID *ReservationId,
-    _In_ const GUID *DeleteTransferId,
-    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *DeleteStageIdentity,
-    _In_ UINT64 DeleteGeneration,
-    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *ParentDirectoryIdentity,
-    _In_ UINT32 Disposition,
-    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName,
-    _Out_ PUSHORT StageNameLength,
-    _Out_ PUINT64 DestinationGeneration,
-    _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity,
-    _Out_ PSAFEUPLOAD_REQUEST RequestSnapshot,
-    _Out_ PBOOLEAN RequestMayExist
-    )
-{
-    PSAFEUPLOAD_EXCHANGE exchange;
-    SAFEUPLOAD_STAGE_CREATE_AFTER_DISCARD_V19 extension;
-    UINT32 verdict = SAFEUPLOAD_VERDICT_DENY;
-    BOOLEAN answered = FALSE;
-    NTSTATUS status;
-
-    PAGED_CODE();
-    *StageNameLength = 0;
-    *DestinationGeneration = 0;
-    RtlZeroMemory(StageIdentity, sizeof(*StageIdentity));
-    RtlZeroMemory(RequestSnapshot, sizeof(*RequestSnapshot));
-    *RequestMayExist = FALSE;
-    if (OriginalName->Length == 0 || OriginalName->Length > SAFEUPLOAD_MAX_PATH_BYTES ||
-        (OriginalName->Length & 1) || Disposition != FILE_OVERWRITE_IF ||
-        !StageProtocolGuidNonzero(ReservationId) || !StageProtocolGuidNonzero(DeleteTransferId) ||
-        DeleteGeneration == 0 ||
-        !StageV19IdentityNonzero(DeleteStageIdentity) ||
-        !StageV19IdentityNonzero(ParentDirectoryIdentity)) return STATUS_INVALID_PARAMETER;
-
-    exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG);
-    if (exchange == NULL) return STATUS_INSUFFICIENT_RESOURCES;
-    RtlZeroMemory(exchange, sizeof(*exchange));
-    exchange->Request.Version = SAFEUPLOAD_PROTOCOL_VERSION;
-    exchange->Request.StructSize = sizeof(SAFEUPLOAD_REQUEST);
-    exchange->Request.RequestId = (UINT64)InterlockedIncrement64(&SafeUploadData.NextRequestId);
-    exchange->Request.Operation = SAFEUPLOAD_OPERATION_STAGE_CREATE_AFTER_DISCARD;
-    exchange->Request.RequestorProcessId = FltGetRequestorProcessId(Data);
-    exchange->Request.Reserved = SAFEUPLOAD_STAGE_EXTENSION_VERSION;
-    if (VolumeKind == SafeUploadVolumeRemovable) exchange->Request.Flags |= SAFEUPLOAD_REQUEST_FLAG_STAGE_REMOVABLE;
-    else if (VolumeKind == SafeUploadVolumeNetwork) exchange->Request.Flags |= SAFEUPLOAD_REQUEST_FLAG_STAGE_NETWORK;
-    exchange->Request.PathLength = OriginalName->Length;
-    RtlCopyMemory(exchange->Request.Path, OriginalName->Buffer, OriginalName->Length);
-
-    RtlZeroMemory(&extension, sizeof(extension));
-    extension.Version = SAFEUPLOAD_STAGE_EXTENSION_VERSION;
-    extension.StructSize = sizeof(extension);
-    extension.ReservationId = *ReservationId;
-    extension.DeleteTransferId = *DeleteTransferId;
-    extension.DeleteStageIdentity = *DeleteStageIdentity;
-    extension.ParentDirectoryIdentity = *ParentDirectoryIdentity;
-    extension.Disposition = Disposition;
-    extension.DeleteGeneration = DeleteGeneration;
-    exchange->Request.ImageNameLength = sizeof(extension);
-    RtlCopyMemory(exchange->Request.ImageName, &extension, sizeof(extension));
-
-    *RequestSnapshot = exchange->Request;
-    status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
-    *RequestMayExist = exchange->MayHaveReachedService;
-    status = SafeUploadStageExchangeResult(status, answered, verdict);
-    if (!NT_SUCCESS(status)) goto Exit;
-
-    status = StageProtocolReadCreateReply(exchange, ReservationId, StageName,
-        StageNameLength, DestinationGeneration, StageIdentity);
-
-Exit:
-    ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);
-    return status;
-}
-
-NTSTATUS SafeUploadStageReplayCreateAfterDiscardV19(_In_ const SAFEUPLOAD_REQUEST *Request,
-    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
-    _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity)
-{
-    PSAFEUPLOAD_EXCHANGE exchange;
-    SAFEUPLOAD_STAGE_CREATE_AFTER_DISCARD_V19 intent;
-    UINT32 verdict = SAFEUPLOAD_VERDICT_DENY;
-    BOOLEAN answered = FALSE;
-    NTSTATUS status;
-    PAGED_CODE();
-    *StageNameLength = 0;
-    *DestinationGeneration = 0;
-    RtlZeroMemory(StageIdentity, sizeof(*StageIdentity));
-    if (Request == NULL || Request->Version != SAFEUPLOAD_PROTOCOL_VERSION ||
-        Request->StructSize != sizeof(SAFEUPLOAD_REQUEST) ||
-        Request->Operation != SAFEUPLOAD_OPERATION_STAGE_CREATE_AFTER_DISCARD ||
-        Request->Reserved != SAFEUPLOAD_STAGE_EXTENSION_VERSION ||
-        Request->RequestId == 0 || Request->ImageNameLength != sizeof(intent) ||
-        Request->PathLength == 0 || Request->PathLength > SAFEUPLOAD_MAX_PATH_BYTES ||
-        (Request->PathLength & 1) != 0)
-        return STATUS_INVALID_PARAMETER;
-    RtlCopyMemory(&intent, Request->ImageName, sizeof(intent));
-    if (intent.Version != SAFEUPLOAD_STAGE_EXTENSION_VERSION || intent.StructSize != sizeof(intent) ||
-        intent.Disposition != FILE_OVERWRITE_IF || !StageProtocolGuidNonzero(&intent.ReservationId) ||
-        !StageProtocolGuidNonzero(&intent.DeleteTransferId) || intent.DeleteGeneration == 0 ||
-        !StageV19IdentityNonzero(&intent.DeleteStageIdentity) ||
-        !StageV19IdentityNonzero(&intent.ParentDirectoryIdentity))
-        return STATUS_INVALID_PARAMETER;
-    exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG);
-    if (exchange == NULL) return STATUS_INSUFFICIENT_RESOURCES;
-    RtlZeroMemory(exchange, sizeof(*exchange));
-    exchange->Request = *Request;
-    status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
-    status = SafeUploadStageExchangeResult(status, answered, verdict);
-    if (NT_SUCCESS(status)) status = StageProtocolReadCreateReply(exchange,
-        &intent.ReservationId, StageName, StageNameLength,
-        DestinationGeneration, StageIdentity);
-    ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);
-    return status;
-}
 #endif
 
 NTSTATUS

@@ -108,21 +108,6 @@ NTSTATUS SafeUploadStageSealVersionV19(_In_ ULONG ProcessId, _In_ PUNICODE_STRIN
 NTSTATUS SafeUploadStageDiscardVersionV19(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName,
     _In_ const GUID *ReservationId, _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity,
     _In_ UINT64 DestinationGeneration, _In_ UINT32 Kind, _Out_ PUINT32 Result);
-NTSTATUS SafeUploadStageCreateAfterDiscardV19(_Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PUNICODE_STRING OriginalName, _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
-    _In_ const GUID *ReservationId,
-    _In_ const GUID *DeleteTransferId,
-    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *DeleteStageIdentity,
-    _In_ UINT64 DeleteGeneration,
-    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *ParentDirectoryIdentity,
-    _In_ UINT32 Disposition,
-    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName,
-    _Out_ PUSHORT StageNameLength, _Out_ PUINT64 DestinationGeneration,
-    _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity,
-    _Out_ PSAFEUPLOAD_REQUEST RequestSnapshot, _Out_ PBOOLEAN RequestMayExist);
-NTSTATUS SafeUploadStageReplayCreateAfterDiscardV19(_In_ const SAFEUPLOAD_REQUEST *Request,
-    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
-    _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity);
 #endif
 NTSTATUS SafeUploadStageExchangeResult(_In_ NTSTATUS SendStatus, _In_ BOOLEAN Answered, _In_ UINT32 Verdict);
 BOOLEAN SafeUploadStageTxfSetInformationMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
