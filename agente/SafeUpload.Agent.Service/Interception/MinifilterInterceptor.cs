@@ -1510,6 +1510,10 @@ public sealed class MinifilterInterceptor : BackgroundService
                     AdmissionCoverageReadiness.Degraded, "CoverageQueryFailed", boundNativeGeneration);
             }
 
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            decision = ApplyStageStartupReadiness(decision, _stageV20Ready, _stagingRecoveryReady,
+                _nativeStartupRecovery?.HasFailed == true);
+#endif
             AdmissionCoverageStatus status = decision.Readiness switch
             {
                 AdmissionCoverageReadiness.Ready => AdmissionCoverageStatus.Ready,
@@ -1545,6 +1549,18 @@ public sealed class MinifilterInterceptor : BackgroundService
 
             await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    internal static AdmissionCoverageDecision ApplyStageStartupReadiness(AdmissionCoverageDecision coverage,
+        bool handshakeReady, bool recoveryReady, bool startupFailed)
+    {
+        // A good coverage receipt is necessary, but cannot advertise staging
+        // readiness before this connection's epoch/recovery gate opens.
+        if (coverage.Readiness != AdmissionCoverageReadiness.Ready) return coverage;
+        if (startupFailed)
+            return new(AdmissionCoverageReadiness.Degraded, "StageStartupFailed", coverage.NativePolicyGeneration);
+        return handshakeReady && recoveryReady ? coverage :
+            new(AdmissionCoverageReadiness.Pending, "StageStartupPending", coverage.NativePolicyGeneration);
     }
 
     /// <summary>

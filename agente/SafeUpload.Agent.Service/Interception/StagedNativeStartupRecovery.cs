@@ -48,6 +48,17 @@ internal sealed class StagedNativeStartupRecovery
         lock (_sync) { _active = false; _session?.Invalidate(); }
     }
 
+    internal bool HasFailed
+    {
+        get
+        {
+            lock (_sync)
+                return _preparation is { IsFaulted: true } or { IsCanceled: true } ||
+                    (_preparation is { IsCompletedSuccessfully: true } done &&
+                     done.Result.Result == StagedDriverEpochReconcileV20.Rejected);
+        }
+    }
+
     private async Task<(Guid, StagedDriverEpochReconcileV20)> PrepareAsync(CancellationToken token)
     {
         try

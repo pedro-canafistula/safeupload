@@ -172,7 +172,8 @@ public sealed class StagedDriverEpochStartupTests : IDisposable
             RequestorSid = "S-1-5-21-111-222-333-1000",
             RequestorProcessCreationTime = 638953632000000000
         };
-        await journal.CreateAsync(transfer, CancellationToken.None, driverInstanceId: _oldDriver,
+        await journal.CreateAsync(transfer, CancellationToken.None, allocationDisposition: 2,
+            allocationReferenceKind: 0, driverInstanceId: _oldDriver,
             parentDirectoryIdentity: StagedStageFile.ReadDirectoryIdentity(dest));
         Guid next = Guid.NewGuid();
         Assert.Equal(StagedDriverEpochReconcileV20.Active, await Reconcile(journal, next, Evidence(next, 43).Proof,
