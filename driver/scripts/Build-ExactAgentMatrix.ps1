@@ -644,9 +644,14 @@ try {
         }
         $kind = $entry.ExternalAttributes -shr 16 -band 0xf000
         if ($entry.FullName.EndsWith('/')) {
-            if ($kind -ne 0x4000) { throw 'Archive directory has the wrong type.' }
+            # git archive ZIPs use DOS attributes (directory bit, no Unix mode).
+            if ($kind -ne 0x4000 -and -not ($kind -eq 0 -and ($entry.ExternalAttributes -band 0x10))) {
+                throw 'Archive directory has the wrong type.'
+            }
         } else {
-            if ($kind -ne 0x8000) { throw 'Archive input is not a regular file.' }
+            if ($kind -notin @(0, 0x8000) -or ($entry.ExternalAttributes -band 0x10)) {
+                throw 'Archive input is not a regular file.'
+            }
             ++$fileCount
         }
     }
