@@ -66,61 +66,14 @@ public sealed class NotificationRecordTests : IDisposable
     }
 
     [Fact]
-    public void Empty_private_block_is_durably_recorded_without_policy_evidence_and_requires_owner_binding()
+    public void Retired_empty_private_reason_is_reserved_and_cannot_be_emitted()
     {
+        Assert.Equal(0, (int)StagedBlockReason.ReservedEmptySavePrivate);
         using var record = Record();
-        var hub = Hub(record);
         var notice = new TransferNotification(Guid.NewGuid(), "empty.txt", TransferPhase.Blocked,
-            BlockReason: StagedBlockReason.EmptySavePrivate);
-
-        Assert.False(hub.Publish(notice));
-        Assert.DoesNotContain(Entries(), entry => entry.Kind == "Transfer");
-        Assert.True(hub.Publish(notice, 7, "S-1-5-21-1-2-3-1000"));
-        var recorded = Assert.Single(Entries(), entry => entry.Kind == "Transfer");
-        Assert.Equal("Blocked", recorded.Phase);
-        Assert.Equal((uint)7, recorded.TargetSessionId);
-        Assert.Equal(StagedBlockReason.EmptySavePrivate, recorded.BlockReason);
-    }
-
-    [Theory]
-    [InlineData(true, false, TransferPhase.Blocked)]
-    [InlineData(false, true, TransferPhase.Blocked)]
-    [InlineData(false, false, TransferPhase.Released)]
-    public void Empty_private_reason_rejects_override_evidence_and_other_phases(
-        bool overrideAllowed, bool includeDigest, TransferPhase phase)
-    {
-        using var record = Record();
-        var notice = new TransferNotification(Guid.NewGuid(), "empty.txt", phase,
-            OverrideAllowed: overrideAllowed,
-            SnapshotSha256Hex: includeDigest ? new string('A', 64) : null,
-            BlockReason: StagedBlockReason.EmptySavePrivate);
+            BlockReason: StagedBlockReason.ReservedEmptySavePrivate);
         Assert.Throws<InvalidDataException>(() => record.Append(notice, 7));
         Assert.DoesNotContain(Entries(), entry => entry.Kind == "Transfer");
-    }
-
-    [Fact]
-    public void Empty_private_reason_rejects_any_findings_handback_or_failure_metadata()
-    {
-        var notices = new[]
-        {
-            new TransferNotification(Guid.NewGuid(), "empty.txt", TransferPhase.Blocked,
-                Findings: Array.Empty<Finding>(), BlockReason: StagedBlockReason.EmptySavePrivate),
-            new TransferNotification(Guid.NewGuid(), "empty.txt", TransferPhase.Blocked,
-                HandbackPath: "C:\\returned\\empty.txt", HandbackVerified: true,
-                BlockReason: StagedBlockReason.EmptySavePrivate),
-            new TransferNotification(Guid.NewGuid(), "empty.txt", TransferPhase.Blocked,
-                InspectionFailure: InspectionFailureKind.Timeout,
-                BlockReason: StagedBlockReason.EmptySavePrivate)
-        };
-
-        foreach (TransferNotification notice in notices)
-        {
-            // An invalid append closes its record by design; isolate each
-            // malformed shape so every validation branch is exercised.
-            using var record = Record();
-            Assert.Throws<InvalidDataException>(() => record.Append(notice, 7));
-            Assert.DoesNotContain(Entries(), entry => entry.Kind == "Transfer");
-        }
     }
 
     [Theory]

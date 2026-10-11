@@ -112,17 +112,9 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                     throw new InvalidDataException("Invalid transfer inspection failure classification.");
                 if (notification is TransferNotification transfer)
                 {
-                    bool emptyPrivate = transfer.BlockReason == StagedBlockReason.EmptySavePrivate;
-                    if (transfer.BlockReason is { } reason &&
-                        (!Enum.IsDefined(reason) || transfer.Phase != TransferPhase.Blocked))
-                        throw new InvalidDataException("Invalid staged block reason.");
-                    if (emptyPrivate &&
-                        (transfer.OverrideAllowed || transfer.Findings is not null ||
-                         transfer.PublishedSha256Hex is not null || transfer.SnapshotSha256Hex is not null ||
-                         transfer.HandbackPath is not null || transfer.HandbackVerified is not null ||
-                         transfer.InspectionFailure is not null))
-                        throw new InvalidDataException("An empty private save cannot carry policy or hand-back evidence.");
-                    if (!emptyPrivate &&
+                    if (transfer.BlockReason is not null)
+                        throw new InvalidDataException("Retired staged block reasons cannot be emitted.");
+                    if (
                     ((transfer.PublishedSha256Hex is { } digest &&
                       (digest.Length != 64 || !digest.All(Uri.IsHexDigit))) ||
                      (transfer.SnapshotSha256Hex is { } snapshotDigest &&

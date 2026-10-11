@@ -12,6 +12,26 @@ public sealed class StagedInspectionFailureTests : IDisposable
     public void Dispose() => _workspace.Dispose();
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Trivial_empty_inspection_measures_content_instead_of_trusting_declared_size(bool forgedZero)
+    {
+        var policy = LocalPolicyStore.CreateDefault() with { Version = 7 };
+        var service = new InspectionService(new FixedPolicyStore(policy),
+            new LocalQueueAuditSink(_workspace.QueueFile), new ExtractorRegistry([]), new VerdictCache());
+        string path = _workspace.WriteText("placeholder.unknown", forgedZero ? "CPF: 529.982.247-25" : string.Empty);
+        FileOperation operation = TestWorkspace.Operation(path, sizeBytes: 0);
+        InspectionResult result = await service.InspectStagedAsync(operation, CancellationToken.None);
+        Assert.Equal(forgedZero ? Verdict.Blocked : Verdict.Approved, result.Verdict);
+        Assert.Equal(!forgedZero, await service.IsCurrentStagedApprovalAsync(operation, result, CancellationToken.None));
+        Assert.True(result.InScope);
+        Assert.Equal(7, result.PolicyVersion);
+        Assert.False(result.FromCache);
+        if (forgedZero) Assert.Equal(InspectionFailureKind.ReadOrParse, result.FailureKind);
+        else Assert.Null(result.FailureKind);
+    }
+
+    [Theory]
     [InlineData("size", "file_too_large", false)]
     [InlineData("size", "file_too_large", true)]
     [InlineData("format", "unsupported_format", false)]

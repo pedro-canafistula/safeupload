@@ -283,8 +283,10 @@ public enum RequestFlags : uint
 
 public static class StageV19Result
 {
-    public const uint SealedNonempty = 1;
-    public const uint EmptyHeld = 2;
+    public const uint ReservedSealedNonempty = 1;
+    public const uint ReservedEmptyHeld = 2;
+    // 1/2 are retired seal classifications; ordinary measured seals use 3.
+    public const uint Sealed = 3;
     public const uint DiscardPending = 1;
     public const uint DiscardAcknowledged = 2;
 }
@@ -331,8 +333,9 @@ public enum StageV20Capability : uint
     EpochDrain = 0x04,
     AttachedPrivateRetire = 0x08,
     HandleLifetimeReceipt = 0x10,
+    OrdinaryEmptyContent = 0x20,
     Required = StageV19Core | AttachTransaction | EpochDrain |
-              AttachedPrivateRetire | HandleLifetimeReceipt,
+              AttachedPrivateRetire | HandleLifetimeReceipt | OrdinaryEmptyContent,
 }
 
 [Flags]

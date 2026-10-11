@@ -104,8 +104,7 @@ NTSTATUS SafeUploadStageSeal(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageNam
 NTSTATUS SafeUploadStageDiscard(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 NTSTATUS SafeUploadStageSealVersionV19(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName,
-    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity, _In_ UINT64 DestinationGeneration,
-    _Out_ PBOOLEAN EmptyHeld);
+    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity, _In_ UINT64 DestinationGeneration);
 NTSTATUS SafeUploadStageDiscardVersionV19(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName,
     _In_ const GUID *ReservationId, _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity,
     _In_ UINT64 DestinationGeneration, _In_ UINT32 Kind, _Out_ PUINT32 Result);

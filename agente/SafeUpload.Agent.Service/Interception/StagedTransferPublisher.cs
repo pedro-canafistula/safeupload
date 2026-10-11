@@ -23,9 +23,6 @@ public sealed class StagedTransferPublisher
     private readonly IStagedHandbackCopier? _handbackCopier;
     private readonly Func<uint, string?> _sessionUserSidResolver;
     private readonly ILogger? _logger;
-    private readonly SemaphoreSlim _emptyNoticeGate = new(1, 1);
-    private readonly Guid _emptyNoticePublisherInstanceId = Guid.NewGuid();
-    private static readonly TimeSpan EmptyNoticeRetryDelay = TimeSpan.FromSeconds(30);
     private sealed record JustifiedVersion(string Digest, int PolicyVersion);
 
     public StagedTransferPublisher(
@@ -81,18 +78,19 @@ public sealed class StagedTransferPublisher
 
         var journalEntry = await _journal.ReadAsync(transfer.TransferId, cancellationToken)
             .ConfigureAwait(false);
-        if (journalEntry.State == TransferJournalState.EmptyHeld)
+        if (journalEntry.State == TransferJournalState.LegacyEmptyHeld)
         {
-            await ReportEmptyHeldAsync(transfer.TransferId, cancellationToken).ConfigureAwait(false);
-            return StagedTransferOutcome.Blocked;
+            journalEntry = await _journal.TryMigrateLegacyEmptyAsync(transfer.TransferId, cancellationToken)
+                .ConfigureAwait(false);
+            if (journalEntry.State == TransferJournalState.LegacyEmptyHeld) return StagedTransferOutcome.Retained;
         }
         if (journalEntry.PendingRename is not null || journalEntry.Transfer != transfer || !journalEntry.SealedOnce ||
-            journalEntry.SealedLength is not > 0 || journalEntry.StageIdentity is null ||
+            journalEntry.SealedLength is not >= 0 || journalEntry.StageIdentity is null ||
             (justified is null
                 ? journalEntry.State is not (TransferJournalState.Sealed or TransferJournalState.Retained)
                 : journalEntry.State != TransferJournalState.Blocked))
         {
-            throw new InvalidOperationException("The transfer needs a positive, identity-bound measured seal.");
+            throw new InvalidOperationException("The transfer needs an identity-bound measured seal.");
         }
 
         // Reject symbolic links and junctions in the stage path. A service
@@ -129,18 +127,6 @@ public sealed class StagedTransferPublisher
             await RetainUninspectedAsync(transfer, cancellationToken).ConfigureAwait(false);
             return StagedTransferOutcome.Retained;
         }
-        if (sealedFile.Length == 0)
-        {
-            TransferJournalEntry empty = await _journal.TryMarkEmptyHeldIfNowZeroAsync(
-                transfer.TransferId, stageFile.Identity, cancellationToken).ConfigureAwait(false);
-            if (empty.State == TransferJournalState.EmptyHeld)
-            {
-                await ReportEmptyHeldAsync(transfer.TransferId, cancellationToken).ConfigureAwait(false);
-                return StagedTransferOutcome.Blocked;
-            }
-            await RetainUninspectedAsync(transfer, cancellationToken).ConfigureAwait(false);
-            return StagedTransferOutcome.Retained;
-        }
         if (sealedFile.Length != journalEntry.SealedLength)
         {
             await RetainUninspectedAsync(transfer, cancellationToken).ConfigureAwait(false);
@@ -157,22 +143,6 @@ public sealed class StagedTransferPublisher
             sealedFile, _stagingRoot, Path.GetExtension(destinationPath), cancellationToken)
             .ConfigureAwait(false);
         FileStream inspectedFile = snapshot.Stream;
-        if (inspectedFile.Length == 0)
-        {
-            TransferJournalEntry empty = await _journal.TryMarkEmptyHeldIfNowZeroAsync(
-                transfer.TransferId, stageFile.Identity, cancellationToken).ConfigureAwait(false);
-            if (empty.State == TransferJournalState.EmptyHeld)
-            {
-                await ReportEmptyHeldAsync(transfer.TransferId, cancellationToken).ConfigureAwait(false);
-                return StagedTransferOutcome.Blocked;
-            }
-            await _journal.TransitionAsync(transfer.TransferId,
-                TransferJournalState.Inspecting, TransferJournalState.Retained,
-                null, cancellationToken).ConfigureAwait(false);
-            PublishTransferNotification(transfer, new TransferNotification(
-                transfer.TransferId, fileName, TransferPhase.Retained));
-            return StagedTransferOutcome.Retained;
-        }
         if (inspectedFile.Length != journalEntry.SealedLength)
         {
             await _journal.TransitionAsync(transfer.TransferId,
@@ -343,7 +313,7 @@ public sealed class StagedTransferPublisher
                 transfer.TransferId, fileName, TransferPhase.Retained));
             return StagedTransferOutcome.Retained;
         }
-        if (sealedFile.Length <= 0 || inspectedFile.Length <= 0 ||
+        if (sealedFile.Length < 0 || inspectedFile.Length < 0 ||
             sealedFile.Length != journalEntry.SealedLength || inspectedFile.Length != journalEntry.SealedLength ||
             stageFile.Identity != journalEntry.StageIdentity)
         {
@@ -367,9 +337,9 @@ public sealed class StagedTransferPublisher
         bool committed = false;
         try
         {
-            if (inspectedFile.Length <= 0 || inspectedFile.Length != journalEntry.SealedLength ||
+            if (inspectedFile.Length < 0 || inspectedFile.Length != journalEntry.SealedLength ||
                 sealedFile.Length != journalEntry.SealedLength || stageFile.Identity != journalEntry.StageIdentity)
-                throw new IOException("The measured positive snapshot changed before publication.");
+                throw new IOException("The measured snapshot changed before publication.");
             _logger?.LogDebug("Requesting kernel publication permission for {TransferId}.", transfer.TransferId);
             using var permit = _publicationGate.Authorize(transfer, temporaryDestination, digest);
             _logger?.LogDebug("Creating approved publication file for {TransferId}.", transfer.TransferId);
@@ -439,32 +409,6 @@ public sealed class StagedTransferPublisher
         }
         else await DisposeReleasedStageAsync(transfer.TransferId, CancellationToken.None).ConfigureAwait(false);
         return StagedTransferOutcome.Released;
-    }
-
-    public async Task<bool> ReportEmptyHeldAsync(Guid transferId, CancellationToken token)
-    {
-        await _emptyNoticeGate.WaitAsync(token).ConfigureAwait(false);
-        try
-        {
-            TransferJournalEntry current = await _journal.ReadAsync(transferId, token).ConfigureAwait(false);
-            if (current.State != TransferJournalState.EmptyHeld || current.SealedLength != 0 ||
-                current.StageIdentity is null)
-                return false;
-            var notice = new TransferNotification(transferId,
-                Path.GetFileName(current.Transfer.DestinationPath), TransferPhase.Blocked,
-                OverrideAllowed: false, BlockReason: StagedBlockReason.EmptySavePrivate);
-            DateTimeOffset attemptedAtUtc = DateTimeOffset.UtcNow;
-            bool ownerBound = TryGetBoundSession(current.Transfer, out uint sessionId, out string sid);
-            if (!ownerBound)
-                _logger?.LogWarning("Empty stage {TransferId} remains private; its owner session/SID is not currently bound.",
-                    transferId);
-
-            return await _journal.TryPublishEmptyHeldNoticeAsync(current,
-                _emptyNoticePublisherInstanceId, attemptedAtUtc, EmptyNoticeRetryDelay,
-                () => ownerBound && _notifications.PublishEmptySavePrivateToOwner(notice, sessionId, sid), token)
-                .ConfigureAwait(false);
-        }
-        finally { _emptyNoticeGate.Release(); }
     }
 
     private async Task RetainUninspectedAsync(StagedTransfer transfer, CancellationToken token)
@@ -555,7 +499,7 @@ public sealed class StagedTransferPublisher
     public async Task RecoverBlockedAsync(TransferJournalEntry entry, CancellationToken token)
     {
         if (entry.State != TransferJournalState.Blocked || entry.PendingRename is not null ||
-            entry.SealedLength is not > 0 || entry.StageIdentity is null) return;
+            entry.SealedLength is not >= 0 || entry.StageIdentity is null) return;
         TransferJournalEntry current = entry;
         if (!HasRequestorIdentity(current.Transfer))
         {
@@ -660,7 +604,7 @@ public sealed class StagedTransferPublisher
 
     public async Task ProcessBlockedCleanupAsync(TransferJournalEntry entry, CancellationToken token)
     {
-        if (entry.SealedLength is not > 0 || entry.StageIdentity is null ||
+        if (entry.SealedLength is not >= 0 || entry.StageIdentity is null ||
             entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
             entry.StageDeleted) return;
         TransferJournalEntry current = entry;

@@ -8,7 +8,85 @@ public sealed class StagedAttachmentV20Tests : IDisposable
 {
     private const string RequestorSid = "S-1-5-21-111-222-333-1000";
     private const long ProcessCreationTime = 638953632000000000;
-    private const uint RequiredCapabilities = 0x1f;
+    private const uint RequiredCapabilities = 0x3f;
+
+    [Fact]
+    public async Task Ordinary_empty_profile_rejects_old_capabilities_before_accepting_an_epoch()
+    {
+        string directory = Path.Combine(_workspace.Root, "ordinary-empty-profile");
+        var journal = new StagedTransferJournal(directory);
+        Guid driver = Guid.NewGuid();
+        Assert.Equal(StagedDriverEpochReconcileV20.Rejected,
+            await journal.ReconcileDriverInstanceV20Async(driver, 0x1f, CancellationToken.None));
+        Assert.False(File.Exists(Path.Combine(directory, "driver-epoch.state")));
+        Assert.Equal(StagedDriverEpochReconcileV20.Active,
+            await journal.ReconcileDriverInstanceV20Async(driver, RequiredCapabilities, CancellationToken.None));
+        Assert.Equal(3u, SafeUpload.Agent.Minifilter.StageV19Result.Sealed);
+        Assert.Equal(2u, SafeUpload.Agent.Minifilter.StageV19Result.ReservedEmptyHeld);
+    }
+
+    [Theory]
+    [InlineData("zero")]
+    [InlineData("nonempty")]
+    [InlineData("unknown-epoch")]
+    [InlineData("discard")]
+    [InlineData("replacement")]
+    [InlineData("missing")]
+    public async Task Legacy_empty_migration_requires_fresh_exact_content_and_reconciled_obligations(string shape)
+    {
+        Fixture fixture = await CreateFixtureAsync(empty: true);
+        await CompleteAttachmentAsync(fixture, firstRequestId: 701);
+        Assert.Equal(17u, await ApplyAsync(fixture, 19, 704));
+        TransferJournalEntry sealedEntry = await fixture.Journal.SealAsync(fixture.Transfer.TransferId,
+            fixture.Transfer.ProcessId, fixture.Transfer.StagePath, CancellationToken.None, fixture.Version);
+        // Model an actual old manifest: persisted enum number 11 and no digest.
+        string manifest = Path.Combine(fixture.JournalDirectory, fixture.Transfer.TransferId.ToString("N") + ".json");
+        TransferJournalEntry legacy = sealedEntry with
+        {
+            State = TransferJournalState.LegacyEmptyHeld,
+            Sha256Hex = null,
+            StateHistory = sealedEntry.StateHistory.Select(change => change.State == TransferJournalState.Sealed
+                ? change with { State = TransferJournalState.LegacyEmptyHeld } : change).ToArray()
+        };
+        if (shape == "unknown-epoch") legacy = legacy with { DriverInstanceId = Guid.NewGuid() };
+        if (shape == "discard") legacy = legacy with
+        {
+            DiscardReservationId = fixture.Transfer.TransferId,
+            DiscardKind = StagedDiscardKind.OwnerExitEmpty,
+            DiscardRequestedAtUtc = DateTimeOffset.UtcNow
+        };
+        await File.WriteAllTextAsync(manifest, JsonSerializer.Serialize(legacy));
+        if (shape == "nonempty") await File.WriteAllTextAsync(fixture.Transfer.StagePath, "CPF: 529.982.247-25");
+        if (shape == "replacement")
+        {
+            File.Move(fixture.Transfer.StagePath, fixture.Transfer.StagePath + ".retained");
+            await File.WriteAllBytesAsync(fixture.Transfer.StagePath, []);
+        }
+        if (shape == "missing") File.Delete(fixture.Transfer.StagePath);
+        if (shape is "replacement" or "missing")
+        {
+            await Assert.ThrowsAnyAsync<IOException>(() => fixture.Journal.TryMigrateLegacyEmptyAsync(
+                fixture.Transfer.TransferId, CancellationToken.None));
+            await fixture.Journal.RetainInterruptedAsync(CancellationToken.None);
+            Assert.Equal(TransferJournalState.LegacyEmptyHeld,
+                (await fixture.Journal.ReadAsync(fixture.Transfer.TransferId, CancellationToken.None)).State);
+        }
+        else
+        {
+            TransferJournalEntry migrated = await fixture.Journal.TryMigrateLegacyEmptyAsync(
+                fixture.Transfer.TransferId, CancellationToken.None);
+            Assert.Equal(shape is "zero" or "nonempty" ? TransferJournalState.Sealed : TransferJournalState.LegacyEmptyHeld,
+                migrated.State);
+            Assert.Equal(legacy.DestinationGeneration, migrated.DestinationGeneration);
+            if (shape is "zero" or "nonempty")
+            {
+                byte[] bytes = await File.ReadAllBytesAsync(fixture.Transfer.StagePath);
+                Assert.Equal(bytes.LongLength, migrated.SealedLength);
+                Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)), migrated.Sha256Hex);
+            }
+        }
+        Assert.False(File.Exists(fixture.Transfer.DestinationPath));
+    }
     private readonly TestWorkspace _workspace = new();
 
     public void Dispose() => _workspace.Dispose();

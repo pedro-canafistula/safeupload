@@ -1532,12 +1532,10 @@ StageSendVersionRequestV19 (
             result != SAFEUPLOAD_STAGE_REPLY_DISCARD_ACKNOWLEDGED) status = STATUS_INVALID_BUFFER_SIZE;
         else *Result = result;
     } else if (NT_SUCCESS(status) && Operation == SAFEUPLOAD_OPERATION_STAGE_SEAL) {
-        /* Require an explicit v19 classification. A legacy allow reply has
-         * StageNameLength==0 and must never turn an empty save into a normal
-         * sealed version. */
+        /* The ordinary-empty capability requires an explicit measured seal.
+         * Retired positive/EmptyHeld replies cannot authorize this profile. */
         result = exchange->Response.StageNameLength;
-        if (result != SAFEUPLOAD_STAGE_REPLY_SEALED_NONEMPTY &&
-            result != SAFEUPLOAD_STAGE_REPLY_EMPTY_HELD) status = STATUS_INVALID_BUFFER_SIZE;
+        if (result != SAFEUPLOAD_STAGE_REPLY_SEALED) status = STATUS_INVALID_BUFFER_SIZE;
         else if (Result != NULL) *Result = result;
     }
     ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);
@@ -1549,17 +1547,14 @@ SafeUploadStageSealVersionV19 (
     _In_ ULONG ProcessId,
     _In_ PUNICODE_STRING StageName,
     _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity,
-    _In_ UINT64 DestinationGeneration,
-    _Out_ PBOOLEAN EmptyHeld
+    _In_ UINT64 DestinationGeneration
     )
 {
     UINT32 result = 0;
     NTSTATUS status;
     PAGED_CODE();
-    *EmptyHeld = FALSE;
     status = StageSendVersionRequestV19(SAFEUPLOAD_OPERATION_STAGE_SEAL, ProcessId,
         StageName, NULL, StageIdentity, DestinationGeneration, 0, &result);
-    if (NT_SUCCESS(status)) *EmptyHeld = result == SAFEUPLOAD_STAGE_REPLY_EMPTY_HELD;
     return status;
 }
 

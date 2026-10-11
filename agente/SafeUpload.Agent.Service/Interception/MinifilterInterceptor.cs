@@ -324,7 +324,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     }
                     else if (request.Operation == Operation.StageCreateAfterDiscard)
                     {
-                        (verdict, typedCreateReply) = CreateAfterPrivateDiscardStage(request);
+                        verdict = PortVerdict.Deny; // reserved operation 10; fresh creates use ordinary max+1 allocation
                     }
                     else if (request.Operation == Operation.StageReconcile)
                     {
@@ -634,7 +634,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                 TransferJournalEntry prior = _stageJournal.ReadAsync(payload.ParentTransferId,
                     CancellationToken.None).GetAwaiter().GetResult();
                 if (!prior.SealedOnce || prior.State is not (TransferJournalState.Sealed or
-                        TransferJournalState.Retained or TransferJournalState.EmptyHeld) ||
+                        TransferJournalState.Retained or TransferJournalState.LegacyEmptyHeld) ||
                     prior.DriverInstanceId != payload.DriverInstanceId ||
                     !string.Equals(prior.Transfer.DestinationPath, destination,
                         StringComparison.OrdinalIgnoreCase) ||
@@ -1012,12 +1012,9 @@ public sealed class MinifilterInterceptor : BackgroundService
             TransferJournalEntry sealedEntry = _stageJournal.SealAsync(id,
                 checked((int)request.RequestorProcessId), stage, CancellationToken.None, expected)
                 .GetAwaiter().GetResult();
-            uint result = sealedEntry.SealedLength switch
-            {
-                0 => StageV19Result.EmptyHeld,
-                > 0 => StageV19Result.SealedNonempty,
-                _ => throw new IOException("The v19 seal result has no stable measured length.")
-            };
+            if (sealedEntry.State != TransferJournalState.Sealed || sealedEntry.SealedLength is not >= 0)
+                throw new IOException("The ordinary seal has no stable measured length.");
+            uint result = StageV19Result.Sealed;
             return (PortVerdict.Allow, result);
         }
         catch (Exception ex)
@@ -1156,7 +1153,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             if (exactParent.StageIdentity is null || exactParent.DestinationGeneration <= 0 ||
                 new StagedVersionIdentity(exactParent.Transfer.TransferId,
                     exactParent.DestinationGeneration, exactParent.StageIdentity) != exactParentIdentity ||
-                exactParent.State != TransferJournalState.EmptyHeld || exactParent.SealedLength != 0 ||
+                exactParent.State != TransferJournalState.LegacyEmptyHeld || exactParent.SealedLength != 0 ||
                 exactParent.DriverInstanceId != activeDriverInstanceId ||
                 !string.Equals(exactParent.Transfer.DestinationPath, Path.GetFullPath(destination),
                     StringComparison.OrdinalIgnoreCase) || exactParent.Transfer.Destination != kind ||
@@ -1284,24 +1281,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                          .ConfigureAwait(false))
             {
                 if (entry.PendingRename is not null) continue;
-                if (entry.State == TransferJournalState.EmptyHeld)
-                {
-                    try
-                    {
-                        await _stagePublisher.ReportEmptyHeldAsync(entry.Transfer.TransferId, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Falha ao notificar que o salvamento vazio permanece privado {TransferId}.",
-                            entry.Transfer.TransferId);
-                    }
-                    continue;
-                }
+                if (entry.State == TransferJournalState.LegacyEmptyHeld) continue; // guarded startup migration only
                 if (entry.State == TransferJournalState.Blocked)
                 {
                     try
@@ -1483,10 +1463,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             foreach (TransferJournalEntry entry in _stageJournal.ReadPendingAsync(stoppingToken)
                          .GetAwaiter().GetResult())
             {
-                if (entry.State == TransferJournalState.EmptyHeld)
-                    _stagePublisher.ReportEmptyHeldAsync(entry.Transfer.TransferId, stoppingToken)
-                        .GetAwaiter().GetResult();
-                else if (entry.State == TransferJournalState.Blocked)
+                if (entry.State == TransferJournalState.Blocked)
                     _stagePublisher.RecoverBlockedAsync(entry, stoppingToken).GetAwaiter().GetResult();
                 else if (entry.State == TransferJournalState.Released &&
                          entry.HandbackState == StagedHandbackState.Verified &&

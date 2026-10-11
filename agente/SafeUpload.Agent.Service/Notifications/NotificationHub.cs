@@ -166,37 +166,6 @@ public sealed class NotificationHub
         }
     }
 
-    /// <summary>
-    /// Records and routes the private-empty-save notice only to subscribers
-    /// bound to the exact owner session and SID. The return value reports that
-    /// at least one matching in-process subscriber queue accepted the notice;
-    /// it is not an acknowledgement that the user saw it.
-    /// </summary>
-    public bool PublishEmptySavePrivateToOwner(TransferNotification notification,
-        uint targetSessionId, string targetUserSid)
-    {
-        ArgumentNullException.ThrowIfNull(notification);
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetUserSid);
-        if (notification.Phase != TransferPhase.Blocked ||
-            notification.BlockReason != StagedBlockReason.EmptySavePrivate)
-            throw new ArgumentException("This route accepts only empty-save private notices.", nameof(notification));
-
-        lock (_gate)
-        {
-            if (!TryRecord(notification, targetSessionId)) return false;
-            _replay.Add(new Buffered(notification, targetSessionId, targetUserSid, _clock.GetUtcNow()));
-            PruneReplay();
-
-            bool queued = false;
-            foreach (var subscription in _subscriptions)
-            {
-                if (Targets(subscription, targetSessionId, targetUserSid))
-                    queued |= subscription.Channel.Writer.TryWrite(notification);
-            }
-            return queued;
-        }
-    }
-
     /// <summary>Record the retained status again before the pipe sends it to a new client.</summary>
     public StatusNotification? GetRecordedStatus()
     {

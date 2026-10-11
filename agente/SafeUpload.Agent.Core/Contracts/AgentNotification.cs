@@ -29,10 +29,10 @@ public enum TransferPhase
     Retained
 }
 
-/// <summary>Additional reason for a blocked staged transfer that carries no policy evidence.</summary>
+/// <summary>Persisted values retained for compatibility; new notifications do not emit retired reasons.</summary>
 public enum StagedBlockReason
 {
-    EmptySavePrivate
+    ReservedEmptySavePrivate = 0
 }
 
 /// <summary>

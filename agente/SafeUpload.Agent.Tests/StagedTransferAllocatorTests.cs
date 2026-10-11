@@ -344,7 +344,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         const long creation = 638953632000000000;
         Guid driverInstanceId = Guid.NewGuid();
         Assert.Equal(StagedDriverEpochReconcileV20.Active,
-            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0x1f, CancellationToken.None));
+            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0x3f, CancellationToken.None));
 
         StagedAllocationReply v1Reply = await allocator.AllocateV19Async(destination,
             DestinationKind.Cloud, "word.exe", processId, sessionId,
@@ -357,9 +357,9 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v1Allocated.DestinationGeneration, v1Allocated.StageIdentity!));
         await CompleteV20AttachmentAsync(journal, v1Reply.Transfer, v1Identity,
             driverInstanceId, 1000);
-        TransferJournalEntry v1 = await journal.SealAsync(v1Identity.TransferId, processId,
+        TransferJournalEntry v1 = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v1Identity.TransferId, processId,
             v1Reply.Transfer.StagePath, CancellationToken.None, v1Identity);
-        Assert.Equal(TransferJournalState.EmptyHeld, v1.State);
+        Assert.Equal(TransferJournalState.LegacyEmptyHeld, v1.State);
 
         StagedAllocationReply v2Reply = await allocator.AllocateV19Async(destination,
             DestinationKind.Cloud, "word.exe", processId, sessionId,
@@ -372,7 +372,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v2Reply.DestinationGeneration, v2Reply.StageIdentity);
         await CompleteV20AttachmentAsync(journal, v2Reply.Transfer, v2Identity,
             driverInstanceId, 1010);
-        TransferJournalEntry v2 = await journal.SealAsync(v2Identity.TransferId, processId,
+        TransferJournalEntry v2 = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v2Identity.TransferId, processId,
             v2Reply.Transfer.StagePath, CancellationToken.None, v2Identity);
         Assert.Equal(TransferJournalState.Sealed, v2.State);
         Assert.Equal(driverInstanceId, v2.DriverInstanceId);
@@ -450,7 +450,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         Assert.Null(unretiredV3.HandleObservedRequestIdV20);
         TransferJournalEntry retainedV1 = await journal.ReadAsync(v1Identity.TransferId,
             CancellationToken.None);
-        Assert.Equal(TransferJournalState.EmptyHeld, retainedV1.State);
+        Assert.Equal(TransferJournalState.LegacyEmptyHeld, retainedV1.State);
         Assert.Equal(v1Identity, new StagedVersionIdentity(retainedV1.Transfer.TransferId,
             retainedV1.DestinationGeneration, retainedV1.StageIdentity!));
         Assert.Null(retainedV1.DiscardRequestedAtUtc);
@@ -501,9 +501,9 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             CancellationToken.None, requestorSid: sid, requestorProcessCreationTime: creation);
         var v1Identity = new StagedVersionIdentity(v1Reply.Transfer.TransferId,
             v1Reply.DestinationGeneration, v1Reply.StageIdentity);
-        TransferJournalEntry v1 = await journal.SealAsync(v1Identity.TransferId, processId,
+        TransferJournalEntry v1 = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v1Identity.TransferId, processId,
             v1Reply.Transfer.StagePath, CancellationToken.None, v1Identity);
-        Assert.Equal(TransferJournalState.EmptyHeld, v1.State);
+        Assert.Equal(TransferJournalState.LegacyEmptyHeld, v1.State);
         Assert.Null(v1.DriverInstanceId);
         Assert.Equal(StagedAttachmentStateV20.None, v1.AttachmentStateV20);
 
@@ -578,7 +578,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         var journal = new StagedTransferJournal(journalRoot);
         var allocator = new StagedTransferAllocator(stageRoot, journal);
         Assert.Equal(StagedDriverEpochReconcileV20.Active,
-            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0x1f, CancellationToken.None));
+            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0x3f, CancellationToken.None));
 
         StagedAllocationReply v1Reply = await allocator.AllocateV19Async(destination,
             DestinationKind.Cloud, "word.exe", processId, sessionId,
@@ -588,9 +588,9 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v1Reply.DestinationGeneration, v1Reply.StageIdentity);
         await CompleteV20AttachmentAsync(journal, v1Reply.Transfer, v1Identity,
             driverInstanceId, 1900);
-        TransferJournalEntry v1 = await journal.SealAsync(v1Identity.TransferId, processId,
+        TransferJournalEntry v1 = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v1Identity.TransferId, processId,
             v1Reply.Transfer.StagePath, CancellationToken.None, v1Identity);
-        Assert.Equal(TransferJournalState.EmptyHeld, v1.State);
+        Assert.Equal(TransferJournalState.LegacyEmptyHeld, v1.State);
 
         StagedAllocationReply v2Reply = await allocator.AllocateV19Async(destination,
             DestinationKind.Cloud, "word.exe", processId, sessionId,
@@ -649,7 +649,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
 
         TransferJournalEntry afterV1 = await journal.ReadAsync(v1Identity.TransferId, CancellationToken.None);
         TransferJournalEntry afterV2 = await journal.ReadAsync(v2Identity.TransferId, CancellationToken.None);
-        Assert.Equal(TransferJournalState.EmptyHeld, afterV1.State);
+        Assert.Equal(TransferJournalState.LegacyEmptyHeld, afterV1.State);
         Assert.Null(afterV1.DiscardKind);
         Assert.Null(afterV1.DiscardRequestedAtUtc);
         Assert.Null(afterV1.DiscardAcknowledgedAtUtc);
@@ -689,7 +689,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         var journal = new StagedTransferJournal(journalRoot);
         if (parentEpochShape == "different-epoch")
             Assert.Equal(StagedDriverEpochReconcileV20.Active,
-                await journal.ReconcileDriverInstanceV20Async(oldDriver, 0x1f, CancellationToken.None));
+                await journal.ReconcileDriverInstanceV20Async(oldDriver, 0x3f, CancellationToken.None));
 
         Guid v1Id = Guid.NewGuid();
         string v1Stage = Path.Combine(stageRoot, v1Id.ToString("N") + ".txt");
@@ -712,9 +712,9 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v1Created.StageIdentity!);
         if (parentEpochShape == "different-epoch")
             await CompleteV20AttachmentAsync(journal, v1Transfer, v1Identity, oldDriver, 2000);
-        TransferJournalEntry v1 = await journal.SealAsync(v1Id, processId, v1Stage,
+        TransferJournalEntry v1 = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v1Id, processId, v1Stage,
             CancellationToken.None, v1Identity);
-        Assert.Equal(TransferJournalState.EmptyHeld, v1.State);
+        Assert.Equal(TransferJournalState.LegacyEmptyHeld, v1.State);
 
         // A current v20 followup must fail before it creates a successor
         // allocation manifest when the V1 is legacy or belongs to another
@@ -741,7 +741,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             parentTransferId: v1Id);
         var v2Identity = new StagedVersionIdentity(v2Id, v2Created.DestinationGeneration,
             v2Created.StageIdentity!);
-        await journal.SealAsync(v2Id, processId, v2Stage, CancellationToken.None, v2Identity);
+        await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v2Id, processId, v2Stage, CancellationToken.None, v2Identity);
 
         string v2ManifestPath = Path.Combine(journalRoot, v2Id.ToString("N") + ".json");
         JsonObject v2Manifest = JsonNode.Parse(await File.ReadAllTextAsync(v2ManifestPath))!.AsObject();
@@ -785,7 +785,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         Assert.Equal(TransferJournalState.Sealed, unchangedV2.State);
         Assert.Null(unchangedV2.DiscardRequestedAtUtc);
         Assert.Null(unchangedV2.CreateAfterReservationId);
-        Assert.Equal(TransferJournalState.EmptyHeld, unchangedV1.State);
+        Assert.Equal(TransferJournalState.LegacyEmptyHeld, unchangedV1.State);
         Assert.Null(unchangedV1.DiscardRequestedAtUtc);
         Assert.Null(unchangedV1.DiscardAcknowledgedAtUtc);
         Assert.Null(unchangedV1.DiscardKind);
@@ -793,213 +793,6 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             CancellationToken.None));
         Assert.True(File.Exists(v1Stage));
         Assert.True(File.Exists(v2Stage));
-    }
-
-    [Fact]
-    public async Task Failed_create_after_requires_exact_v3_v2_v1_cleanup_before_unparented_successor()
-    {
-        string root = Path.Combine(_workspace.Root, "stage");
-        string journalPath = Path.Combine(_workspace.Root, "journal");
-        string destination = Path.Combine(_workspace.Root, "destination", "failed-attach.txt");
-        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        const int processId = 17;
-        const uint sessionId = 2;
-        const string sid = "S-1-5-21-111-222-333-1000";
-        const long creation = 638953632000000000;
-        Guid driverInstance = Guid.NewGuid();
-        var journal = new StagedTransferJournal(journalPath);
-        var allocator = new StagedTransferAllocator(root, journal);
-        Assert.Equal(StagedDriverEpochReconcileV20.Active,
-            await journal.ReconcileDriverInstanceV20Async(driverInstance, 0x1f, CancellationToken.None));
-
-        StagedAllocationReply v1Reply = await allocator.AllocateV19Async(destination,
-            DestinationKind.Cloud, "word.exe", processId, sessionId,
-            new StagedAllocationIntentV19(Guid.NewGuid(), Guid.Empty, 2, 0, driverInstance),
-            null, null, sid, creation, CancellationToken.None);
-        var v1Identity = new StagedVersionIdentity(v1Reply.Transfer.TransferId,
-            v1Reply.DestinationGeneration, v1Reply.StageIdentity);
-        await CompleteV20AttachmentAsync(journal, v1Reply.Transfer, v1Identity,
-            driverInstance, 1100);
-        TransferJournalEntry v1 = await journal.SealAsync(v1Identity.TransferId, processId,
-            v1Reply.Transfer.StagePath, CancellationToken.None, v1Identity);
-        Assert.Equal(TransferJournalState.EmptyHeld, v1.State);
-
-        StagedAllocationReply v2Reply = await allocator.AllocateV19Async(destination,
-            DestinationKind.Cloud, "word.exe", processId, sessionId,
-            new StagedAllocationIntentV19(Guid.NewGuid(), v1Identity.TransferId, 1, 1, driverInstance),
-            v1.Transfer, null, sid, creation, CancellationToken.None);
-        await File.WriteAllTextAsync(v2Reply.Transfer.StagePath, "private V2 bytes");
-        var v2Identity = new StagedVersionIdentity(v2Reply.Transfer.TransferId,
-            v2Reply.DestinationGeneration, v2Reply.StageIdentity);
-        await CompleteV20AttachmentAsync(journal, v2Reply.Transfer, v2Identity,
-            driverInstance, 1110);
-        TransferJournalEntry v2 = await journal.SealAsync(v2Identity.TransferId, processId,
-            v2Reply.Transfer.StagePath, CancellationToken.None, v2Identity);
-        Assert.Equal(TransferJournalState.Sealed, v2.State);
-
-        Guid v3Reservation = Guid.NewGuid();
-        var createAfter = new StagedCreateAfterDiscardRequest(v3Reservation, v2Identity,
-            StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(destination)!), 5,
-            destination, DestinationKind.Cloud, processId, sessionId, sid, creation, driverInstance);
-        StagedAllocationReply v3Reply = await allocator.CreateAfterPrivateDiscardAsync(
-            createAfter, CancellationToken.None);
-        var v3Identity = new StagedVersionIdentity(v3Reservation, v3Reply.DestinationGeneration,
-            v3Reply.StageIdentity);
-
-        // Model a durable V3 allocation that the native attach step rejected.
-        // The caller must retire this exact child, then its V2 delete, then V1.
-        // Before either a terminal disposition or HandleObserved receipt exists,
-        // V1 must remain byte-for-byte private and its exact cleanup tuple unset.
-        TransferJournalEntry unclassifiedV3 = await journal.ReadAsync(v3Reservation,
-            CancellationToken.None);
-        Assert.Null(unclassifiedV3.DiscardKind);
-        Assert.Null(unclassifiedV3.DiscardRequestedAtUtc);
-        Assert.Null(unclassifiedV3.HandleObservedRequestIdV20);
-        Assert.Null(unclassifiedV3.CompletionPermitRequestIdV20);
-        byte[] v1BytesBeforeDeniedCleanup = await File.ReadAllBytesAsync(v1Reply.Transfer.StagePath);
-        Assert.Empty(v1BytesBeforeDeniedCleanup);
-        var prematureV1Cleanup = new StagedDiscardRequest(v3Reservation, v1Identity,
-            StagedDiscardKind.EmptyHeldPredecessor);
-        await Assert.ThrowsAsync<IOException>(() => journal.BeginOrConfirmDiscardAsync(
-            prematureV1Cleanup, CancellationToken.None, processId, driverInstance));
-        TransferJournalEntry untouchedV1 = await journal.ReadAsync(v1Identity.TransferId,
-            CancellationToken.None);
-        Assert.Equal(TransferJournalState.EmptyHeld, untouchedV1.State);
-        Assert.Equal(v1Identity, new StagedVersionIdentity(untouchedV1.Transfer.TransferId,
-            untouchedV1.DestinationGeneration, untouchedV1.StageIdentity!));
-        Assert.Null(untouchedV1.DiscardRequestedAtUtc);
-        Assert.Null(untouchedV1.DiscardAcknowledgedAtUtc);
-        Assert.Null(untouchedV1.DiscardKind);
-        Assert.Equal(v1BytesBeforeDeniedCleanup,
-            await File.ReadAllBytesAsync(v1Reply.Transfer.StagePath));
-
-        var v3Cleanup = new StagedDiscardRequest(v3Reservation, v3Identity,
-            StagedDiscardKind.UnattachedAllocation);
-        Assert.Equal(StagedDiscardStatus.Pending, await journal.BeginOrConfirmDiscardAsync(
-            v3Cleanup, CancellationToken.None, processId, driverInstance));
-
-        await Assert.ThrowsAsync<IOException>(() => journal.BeginOrConfirmDiscardAsync(
-            prematureV1Cleanup, CancellationToken.None, processId, driverInstance));
-        await Assert.ThrowsAsync<IOException>(() => journal.CompleteDiscardAsync(
-            prematureV1Cleanup, CancellationToken.None));
-        TransferJournalEntry stillPendingV3 = await journal.ReadAsync(v3Reservation,
-            CancellationToken.None);
-        Assert.Equal(TransferJournalState.DiscardPending, stillPendingV3.State);
-        Assert.Equal(StagedDiscardKind.UnattachedAllocation, stillPendingV3.DiscardKind);
-        Assert.Null(stillPendingV3.DiscardAcknowledgedAtUtc);
-        TransferJournalEntry stillHeldV1 = await journal.ReadAsync(v1Identity.TransferId,
-            CancellationToken.None);
-        Assert.Null(stillHeldV1.DiscardRequestedAtUtc);
-        Assert.Null(stillHeldV1.DiscardAcknowledgedAtUtc);
-        Assert.True(File.Exists(v1Reply.Transfer.StagePath));
-        Assert.True(File.Exists(v3Reply.Transfer.StagePath));
-        Assert.True(File.Exists(v2Reply.Transfer.StagePath));
-
-        Assert.Equal(StagedDiscardStatus.Acknowledged,
-            await journal.CompleteDiscardAsync(v3Cleanup, CancellationToken.None));
-        Assert.False(File.Exists(v3Reply.Transfer.StagePath));
-        await Assert.ThrowsAsync<IOException>(() => journal.BeginOrConfirmDiscardAsync(
-            prematureV1Cleanup, CancellationToken.None, processId, driverInstance));
-
-        var v2Cleanup = new StagedDiscardRequest(v2Identity.TransferId, v2Identity,
-            StagedDiscardKind.PrivateVersion);
-        Assert.Equal(StagedDiscardStatus.Pending, await journal.BeginOrConfirmDiscardAsync(
-            v2Cleanup, CancellationToken.None, processId, driverInstance));
-        Assert.Equal(StagedDiscardStatus.Acknowledged,
-            await journal.CompleteDiscardAsync(v2Cleanup, CancellationToken.None));
-        Assert.False(File.Exists(v2Reply.Transfer.StagePath));
-
-        await File.WriteAllTextAsync(v3Reply.Transfer.StagePath,
-            "replacement must not satisfy V3 cleanup ACK");
-        await Assert.ThrowsAsync<IOException>(() => journal.BeginOrConfirmDiscardAsync(
-            prematureV1Cleanup, CancellationToken.None, processId, driverInstance));
-        Assert.Equal("replacement must not satisfy V3 cleanup ACK",
-            await File.ReadAllTextAsync(v3Reply.Transfer.StagePath));
-        Assert.True(File.Exists(v1Reply.Transfer.StagePath));
-        Assert.Null((await journal.ReadAsync(v1Identity.TransferId, CancellationToken.None))
-            .DiscardAcknowledgedAtUtc);
-        File.Delete(v3Reply.Transfer.StagePath);
-
-        await Assert.ThrowsAsync<IOException>(() => journal.BeginOrConfirmDiscardAsync(
-            new StagedDiscardRequest(v2Identity.TransferId, v1Identity,
-                StagedDiscardKind.EmptyHeldPredecessor), CancellationToken.None,
-            processId, driverInstance));
-        await Assert.ThrowsAsync<IOException>(() => journal.BeginOrConfirmDiscardAsync(
-            new StagedDiscardRequest(v2Identity.TransferId, v1Identity,
-                StagedDiscardKind.EmptyHeldPredecessor), CancellationToken.None,
-            processId + 1, driverInstance));
-        await Assert.ThrowsAsync<IOException>(() => journal.BeginOrConfirmDiscardAsync(
-            new StagedDiscardRequest(v2Identity.TransferId,
-                v1Identity with { StageIdentity = v1Identity.StageIdentity with { FileIdLow =
-                    v1Identity.StageIdentity.FileIdLow ^ 1 } },
-                StagedDiscardKind.EmptyHeldPredecessor), CancellationToken.None,
-            processId, driverInstance));
-
-        var wrongChild = new StagedDiscardRequest(Guid.NewGuid(), v1Identity,
-            StagedDiscardKind.EmptyHeldPredecessor);
-        await Assert.ThrowsAsync<FileNotFoundException>(() => journal.BeginOrConfirmDiscardAsync(
-            wrongChild, CancellationToken.None, processId, driverInstance));
-        await Assert.ThrowsAsync<IOException>(() => journal.BeginOrConfirmDiscardAsync(
-            new StagedDiscardRequest(v2Identity.TransferId, v1Identity,
-                StagedDiscardKind.EmptyHeldPredecessor),
-            CancellationToken.None, processId, driverInstance));
-        var wrongParent = v1Identity with { DestinationGeneration = v1Identity.DestinationGeneration + 1 };
-        await Assert.ThrowsAsync<IOException>(() => journal.BeginOrConfirmDiscardAsync(
-            new StagedDiscardRequest(v3Reservation, wrongParent, StagedDiscardKind.EmptyHeldPredecessor),
-            CancellationToken.None, processId, driverInstance));
-
-        // A no-parent successor must not bypass the uncompleted V1 cleanup,
-        // including after the service restarts and compacts the journal.
-        Guid prematureReservation = Guid.NewGuid();
-        var premature = new StagedAllocationIntentV19(prematureReservation, Guid.Empty,
-            5, 0, driverInstance);
-        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateV19Async(destination,
-            DestinationKind.Cloud, "word.exe", processId, sessionId, premature, null, null,
-            sid, creation, CancellationToken.None));
-        Assert.False(File.Exists(Path.Combine(root, prematureReservation.ToString("N") + ".txt")));
-        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateAsync(destination,
-            DestinationKind.Cloud, "word.exe", processId, sessionId, 2, null,
-            CancellationToken.None));
-
-        journal = new StagedTransferJournal(journalPath);
-        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddDays(1), CancellationToken.None));
-        TransferJournalEntry retainedV1 = await journal.ReadAsync(v1Identity.TransferId,
-            CancellationToken.None);
-        Assert.Equal(v1Identity, new StagedVersionIdentity(retainedV1.Transfer.TransferId,
-            retainedV1.DestinationGeneration, retainedV1.StageIdentity!));
-        allocator = new StagedTransferAllocator(root, journal);
-        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateV19Async(destination,
-            DestinationKind.Cloud, "word.exe", processId, sessionId,
-            premature with { ReservationId = Guid.NewGuid() }, null, null,
-            sid, creation, CancellationToken.None));
-
-        var v1Cleanup = new StagedDiscardRequest(v3Reservation, v1Identity,
-            StagedDiscardKind.EmptyHeldPredecessor);
-        Assert.Equal(StagedDiscardStatus.Pending, await journal.BeginOrConfirmDiscardAsync(
-            v1Cleanup, CancellationToken.None, processId, driverInstance));
-        Assert.Equal(StagedDiscardStatus.Acknowledged,
-            await journal.CompleteDiscardAsync(v1Cleanup, CancellationToken.None));
-
-        journal = new StagedTransferJournal(journalPath);
-        allocator = new StagedTransferAllocator(root, journal);
-        await File.WriteAllTextAsync(v1Reply.Transfer.StagePath, "replacement must not satisfy cleanup ACK");
-        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateV19Async(destination,
-            DestinationKind.Cloud, "word.exe", processId, sessionId,
-            new StagedAllocationIntentV19(Guid.NewGuid(), Guid.Empty, 5, 0, driverInstance),
-            null, null, sid, creation, CancellationToken.None));
-        Assert.Equal("replacement must not satisfy cleanup ACK",
-            await File.ReadAllTextAsync(v1Reply.Transfer.StagePath));
-        File.Delete(v1Reply.Transfer.StagePath);
-        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddDays(1), CancellationToken.None));
-        allocator = new StagedTransferAllocator(root, journal);
-        Guid successorReservation = Guid.NewGuid();
-        StagedAllocationReply successor = await allocator.AllocateV19Async(destination,
-            DestinationKind.Cloud, "word.exe", processId, sessionId,
-            new StagedAllocationIntentV19(successorReservation, Guid.Empty, 5, 0, driverInstance),
-            null, null, sid, creation, CancellationToken.None);
-        Assert.True(successor.DestinationGeneration > v3Reply.DestinationGeneration);
-        Assert.Equal(TransferJournalState.Allocated,
-            (await journal.ReadAsync(successorReservation, CancellationToken.None)).State);
     }
 
     [Theory]
@@ -1028,9 +821,9 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v1Reply.DestinationGeneration, v1Reply.StageIdentity);
         await CompleteV20AttachmentAsync(journal, v1Reply.Transfer, v1Identity,
             driverInstance, 1200);
-        TransferJournalEntry v1 = await journal.SealAsync(v1Identity.TransferId, processId,
+        TransferJournalEntry v1 = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v1Identity.TransferId, processId,
             v1Reply.Transfer.StagePath, CancellationToken.None, v1Identity);
-        Assert.Equal(TransferJournalState.EmptyHeld, v1.State);
+        Assert.Equal(TransferJournalState.LegacyEmptyHeld, v1.State);
 
         Guid v2Reservation = Guid.NewGuid();
         StagedAllocationReply v2Reply = await allocator.AllocateV19Async(destination,
@@ -1148,9 +941,9 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v1Reply.DestinationGeneration, v1Reply.StageIdentity);
         await CompleteV20AttachmentAsync(journal, v1Reply.Transfer, v1Identity,
             driverInstance, 1300);
-        TransferJournalEntry v1 = await journal.SealAsync(v1Identity.TransferId, processId,
+        TransferJournalEntry v1 = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v1Identity.TransferId, processId,
             v1Reply.Transfer.StagePath, CancellationToken.None, v1Identity);
-        Assert.Equal(TransferJournalState.EmptyHeld, v1.State);
+        Assert.Equal(TransferJournalState.LegacyEmptyHeld, v1.State);
 
         Guid v2Reservation = Guid.NewGuid();
         StagedAllocationReply v2Reply = await allocator.AllocateV19Async(destination,
@@ -1161,9 +954,9 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v2Reply.DestinationGeneration, v2Reply.StageIdentity);
         await CompleteV20AttachmentAsync(journal, v2Reply.Transfer, v2Identity,
             driverInstance, 1310);
-        TransferJournalEntry v2 = await journal.SealAsync(v2Reservation, processId,
+        TransferJournalEntry v2 = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v2Reservation, processId,
             v2Reply.Transfer.StagePath, CancellationToken.None, v2Identity);
-        Assert.Equal(TransferJournalState.EmptyHeld, v2.State);
+        Assert.Equal(TransferJournalState.LegacyEmptyHeld, v2.State);
 
         var v2Cleanup = new StagedDiscardRequest(v2Reservation, v2Identity,
             childCleanupKind);
@@ -1225,7 +1018,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v1Reply.DestinationGeneration, v1Reply.StageIdentity);
         await CompleteV20AttachmentAsync(journal, v1Reply.Transfer, v1Identity,
             driverInstance, 1400);
-        TransferJournalEntry sealedV1 = await journal.SealAsync(v1Identity.TransferId, processId,
+        TransferJournalEntry sealedV1 = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v1Identity.TransferId, processId,
             v1Reply.Transfer.StagePath, CancellationToken.None, v1Identity);
 
         Guid v2Reservation = Guid.NewGuid();
@@ -1292,7 +1085,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v1Reply.DestinationGeneration, v1Reply.StageIdentity);
         await CompleteV20AttachmentAsync(journal, v1Reply.Transfer, v1Identity,
             driverInstance, 1500);
-        TransferJournalEntry v1 = await journal.SealAsync(v1Identity.TransferId, processId,
+        TransferJournalEntry v1 = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v1Identity.TransferId, processId,
             v1Reply.Transfer.StagePath, CancellationToken.None, v1Identity);
 
         Guid v2Reservation = Guid.NewGuid();
@@ -1305,7 +1098,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v2Reply.DestinationGeneration, v2Reply.StageIdentity);
         await CompleteV20AttachmentAsync(journal, v2Reply.Transfer, v2Identity,
             driverInstance, 1510);
-        await journal.SealAsync(v2Reservation, processId, v2Reply.Transfer.StagePath,
+        await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v2Reservation, processId, v2Reply.Transfer.StagePath,
             CancellationToken.None, v2Identity);
         string digest = Convert.ToHexString(SHA256.HashData(
             await File.ReadAllBytesAsync(v2Reply.Transfer.StagePath))).ToLowerInvariant();
@@ -1368,7 +1161,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         ulong firstRequestId)
     {
         Assert.Equal(StagedDriverEpochReconcileV20.Active,
-            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0x1f, CancellationToken.None));
+            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0x3f, CancellationToken.None));
         TransferJournalEntry current = await journal.ReadAsync(version.TransferId, CancellationToken.None);
         Assert.Equal(version, new StagedVersionIdentity(current.Transfer.TransferId,
             current.DestinationGeneration, current.StageIdentity!));
@@ -1421,7 +1214,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v1Reply.DestinationGeneration, v1Reply.StageIdentity);
         await CompleteV20AttachmentAsync(journal, v1Reply.Transfer, v1Identity,
             driverInstance, 1600);
-        TransferJournalEntry v1 = await journal.SealAsync(v1Identity.TransferId, processId,
+        TransferJournalEntry v1 = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v1Identity.TransferId, processId,
             v1Reply.Transfer.StagePath, CancellationToken.None, v1Identity);
 
         Guid v2Reservation = Guid.NewGuid();
@@ -1434,7 +1227,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             v2Reply.DestinationGeneration, v2Reply.StageIdentity);
         await CompleteV20AttachmentAsync(journal, v2Reply.Transfer, v2Identity,
             driverInstance, 1610);
-        await journal.SealAsync(v2Reservation, processId, v2Reply.Transfer.StagePath,
+        await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, v2Reservation, processId, v2Reply.Transfer.StagePath,
             CancellationToken.None, v2Identity);
         string digest = Convert.ToHexString(SHA256.HashData(
             await File.ReadAllBytesAsync(v2Reply.Transfer.StagePath))).ToLowerInvariant();
@@ -1483,7 +1276,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         var parent = await allocator.AllocateV19Async(destination, DestinationKind.Cloud, "word.exe",
             17, 2, 2, null, CancellationToken.None, requestorSid: "S-1-5-21-111-222-333-1000",
             requestorProcessCreationTime: 638953632000000000);
-        TransferJournalEntry parentEmpty = await journal.SealAsync(parent.Transfer.TransferId, 17,
+        TransferJournalEntry parentEmpty = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, parent.Transfer.TransferId, 17,
             parent.Transfer.StagePath, CancellationToken.None, new StagedVersionIdentity(
                 parent.Transfer.TransferId, parent.DestinationGeneration, parent.StageIdentity));
         var child = await allocator.AllocateV19Async(destination, DestinationKind.Cloud, "word.exe",
@@ -1491,7 +1284,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             requestorSid: "S-1-5-21-111-222-333-1000",
             requestorProcessCreationTime: 638953632000000000);
         await File.WriteAllTextAsync(child.Transfer.StagePath, "V2");
-        TransferJournalEntry sealedChild = await journal.SealAsync(child.Transfer.TransferId, 17,
+        TransferJournalEntry sealedChild = await LegacyStagedJournalFixture.SealEmptyAsync(journal, _workspace.Root, child.Transfer.TransferId, 17,
             child.Transfer.StagePath, CancellationToken.None, new StagedVersionIdentity(
                 child.Transfer.TransferId, child.DestinationGeneration, child.StageIdentity));
         var exact = new StagedVersionIdentity(child.Transfer.TransferId, child.DestinationGeneration,

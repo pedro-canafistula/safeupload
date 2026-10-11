@@ -94,7 +94,7 @@ public sealed class InspectionService
         return current.Version == result.PolicyVersion &&
             !current.IsExcludedProcess(operation.ProcessName) &&
             current.IsMonitoredDestination(operation) &&
-            current.IsMonitoredExtension(operation.Extension);
+            (operation.SizeBytes == 0 || current.IsMonitoredExtension(operation.Extension));
     }
 
     public async Task<bool> IsCurrentStagedJustificationAllowedAsync(
@@ -138,9 +138,31 @@ public sealed class InspectionService
         }
 
         // 2. RN-011 — fora do escopo declarado não se inspeciona nada.
-        if (!policy.IsInScope(operation) || !policy.IsMonitoredExtension(operation.Extension))
+        if (!policy.IsInScope(operation) ||
+            (!(staged && operation.SizeBytes == 0) && !policy.IsMonitoredExtension(operation.Extension)))
         {
             return OutOfScope(stopwatch, policy, "out_of_scope");
+        }
+
+        // Empty content has nothing to extract, regardless of filename/format.
+        // Measure the actual private snapshot rather than trusting SizeBytes.
+        // Destination/process policy still applies and is rechecked at publication.
+        if (staged && operation.SizeBytes == 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                using var input = OpenInspectionInput(operation.FilePath);
+                if (input.Length != 0)
+                    throw new IOException("The empty inspection snapshot contains bytes.");
+                return await CompleteAsync(operation, policy, stopwatch, Verdict.Approved, [], null,
+                    auditAndCache, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return await CompleteAsync(operation, policy, stopwatch, Verdict.Blocked, [],
+                    "parse_error:" + error.GetType().Name, auditAndCache, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         // RN-013 applies to legacy operations; staged failures require a blocked hand-back.

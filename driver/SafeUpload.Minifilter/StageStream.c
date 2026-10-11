@@ -1755,25 +1755,6 @@ static PSTAGE_STREAM StageGetEmptyHeldAncestor(PSTAGE_STREAM Stream)
  * EmptyHeld fence, and only while that fence still has no exact child
  * reservation. A nonzero reservation remains binding after a service ACK
  * until local retirement clears EmptyHeldSuccessorFence. */
-static ULONG StageCountEmptyHeldFences(PSTAGE_STREAM Stream,
-    PBOOLEAN HasBoundFence)
-{
-    static const GUID EmptyId = {0};
-    PSTAGE_STREAM ancestor;
-    ULONG count = 0;
-    *HasBoundFence = FALSE;
-    if (Stream == NULL) return 0;
-    for (ancestor = Stream; ancestor != NULL;
-        ancestor = ancestor->EmptyHeldAncestor) {
-        if (!ancestor->EmptyHeld || !ancestor->EmptyHeldSuccessorFence) continue;
-        ++count;
-        if (!RtlEqualMemory(&ancestor->EmptyHeldCleanupReservationId,
-                &EmptyId, sizeof(EmptyId)))
-            *HasBoundFence = TRUE;
-    }
-    return count;
-}
-
 static BOOLEAN StageIsPendingEmptyHeldCleanupChild(PSTAGE_STREAM Stream)
 {
     PSTAGE_STREAM ancestor;
@@ -2176,249 +2157,7 @@ static BOOLEAN StageParseTransferId(PCWCH Digits, USHORT Chars, GUID *Id)
  * it bypasses the old V2 discard RPC/ACK and asks the service to persist V2
  * DiscardPending plus a deterministic V3 Allocated child. Caller owns
  * NamespaceResource on entry and return. */
-static NTSTATUS StageCreateAfterPrivateDiscardV19(PFLT_CALLBACK_DATA Data,
-    PCFLT_RELATED_OBJECTS Objects, PFLT_FILE_NAME_INFORMATION Name,
-    SAFEUPLOAD_VOLUME_KIND Kind, PEPROCESS Owner, LONG64 ExpectedGeneration,
-    BOOLEAN Writer, ULONG Disposition,
-    PSTAGE_STREAM DeleteVersion, PSTAGE_VIEW *ViewOut, PSTAGE_STREAM *ChildOut,
-    PSTAGE_STREAM *PreviousOut, PBOOLEAN ReservedSlotOut, PACCESS_MASK GrantedOut)
-{
-    PSTAGE_VIEW view = DeleteVersion->View;
-    PSTAGE_STREAM emptyHeldPredecessor = StageGetEmptyHeldAncestor(DeleteVersion);
-    BOOLEAN hasBoundEmptyHeldFence = FALSE;
-    ULONG emptyHeldFenceCount = StageCountEmptyHeldFences(DeleteVersion,
-        &hasBoundEmptyHeldFence);
-    PSTAGE_STREAM child = NULL;
-    WCHAR basename[SAFEUPLOAD_MAX_STAGE_NAME_CHARS];
-    USHORT basenameLength = 0;
-    UINT64 generation = 0;
-    SAFEUPLOAD_STAGE_IDENTITY_V19 stageIdentity, parentIdentity, observedParent, deleteIdentity;
-    GUID reservationId, deleteTransferId;
-    ULONGLONG deleteGeneration;
-    LONG64 viewGeneration;
-    ULONG openCount;
-    BOOLEAN reservationCreated = FALSE;
-    BOOLEAN requestMayExist = FALSE;
-    BOOLEAN replyTupleKnown = FALSE;
-    NTSTATUS rpcStatus;
-    NTSTATUS status;
 
-    *ViewOut = NULL;
-    *ChildOut = NULL;
-    *PreviousOut = NULL;
-    *ReservedSlotOut = FALSE;
-    /* NamespaceResource is still held here. The maintenance worker publishes
-     * HandleReceiptAcknowledged only after validating the exact op19 reply;
-     * its in-flight state and the CREATE completion fence keep this gate
-     * closed until that receipt is fully applied. */
-    if (Owner != view->Owner || DeleteVersion->OwnerExited ||
-        DeleteVersion->DeleteRotationInFlight || DeleteVersion->CreateAfterDiscardInFlight ||
-        DeleteVersion->CreateAfterRecoveryPending || DeleteVersion->AllocationReceiptPending ||
-        DeleteVersion->DiscardRpcInFlight || DeleteVersion->SealRpcInFlight ||
-        DeleteVersion->RenameRpcInFlight || DeleteVersion->RenameExchange != NULL ||
-        DeleteVersion->AttachCompletionPending || DeleteVersion->AttachCompletionFence ||
-        !DeleteVersion->AttachAcknowledged ||
-        DeleteVersion->HandleReceiptPending || DeleteVersion->HandleReceiptInFlight ||
-        !DeleteVersion->AnyHandleCleanupObserved || !DeleteVersion->HandleReceiptAcknowledged ||
-        !DeleteVersion->HandleReceiptRequestValid ||
-        DeleteVersion->HandleReceiptRequest.RequestId == 0 ||
-        DeleteVersion->HandleReceiptRequest.Operation !=
-            SAFEUPLOAD_OPERATION_STAGE_ATTACH_HANDLE_OBSERVED ||
-        emptyHeldFenceCount > 1 || hasBoundEmptyHeldFence ||
-        StageIsPendingEmptyHeldCleanupChild(DeleteVersion) ||
-        !DeleteVersion->PrivateDeleteReserved ||
-        !DeleteVersion->OriginalInstance || !DeleteVersion->HasTransferId || !DeleteVersion->StageIdentityValid ||
-        DeleteVersion->DestinationGeneration == 0 || view->Current != DeleteVersion ||
-        (ExpectedGeneration != 0 && view->Generation != ExpectedGeneration) ||
-        !SafeUploadStageAttachmentRequestV20Matches(&DeleteVersion->HandleReceiptRequest,
-            view->OwnerProcessId, &DeleteVersion->Name, StageVolumeKind(DeleteVersion->OriginalInstance),
-            SAFEUPLOAD_OPERATION_STAGE_ATTACH_HANDLE_OBSERVED, &DeleteVersion->TransferId,
-            DeleteVersion->DestinationGeneration, &DeleteVersion->StageIdentity,
-            &DeleteVersion->DriverInstanceId, &DeleteVersion->AllocationParentDirectoryIdentity))
-        return STATUS_DELETE_PENDING;
-    if (Data->Iopb->Parameters.Create.Options & FILE_OPEN_BY_FILE_ID)
-        return STATUS_INVALID_PARAMETER;
-    /* This transaction was reviewed only for the native Notepad CREATE_ALWAYS
-     * sequence. FILE_CREATE, OPEN_IF, OVERWRITE, OVERWRITE_IF variants and
-     * SUPERSEDE must never silently inherit the private-delete fast path. */
-    if (!Writer || Disposition != FILE_OVERWRITE_IF)
-        return STATUS_OBJECT_NAME_NOT_FOUND;
-    /* The first V3 is the exact child used to retire V1. Do not let a
-     * CREATE_ALWAYS | FILE_DELETE_ON_CLOSE make that child immediately
-     * destructible before V1's service cleanup transaction is terminal. */
-    if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&
-        emptyHeldPredecessor != NULL &&
-        emptyHeldPredecessor->EmptyHeldSuccessorFence &&
-        DeleteVersion->PrivateDeleteReserved)
-        return STATUS_DELETE_PENDING;
-    /* A completed V1 cleanup has no further reservation to bind. Keep its
-     * ancestry reference for later generations, but do not try to reuse its
-     * already-consumed kind-2 reservation. */
-    if (emptyHeldPredecessor != NULL && emptyHeldPredecessor->EmptyHeldCleanupAcknowledged)
-        emptyHeldPredecessor = NULL;
-    if (IoGetTopLevelIrp() != NULL) return STATUS_SHARING_VIOLATION;
-    status = SafeUploadStageCheckAccess(Data, view->Security,
-        Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess, GrantedOut);
-    if (!NT_SUCCESS(status)) return status;
-    status = StagePublicNameFree(Objects->Instance, &Name->Name);
-    if (!NT_SUCCESS(status)) return status;
-    status = StageQueryParentIdentity(Objects->Instance, &Name->Name, &parentIdentity);
-    if (!NT_SUCCESS(status) || parentIdentity.VolumeSerialNumber != view->ParentIdentity.VolumeSerialNumber ||
-        !RtlEqualMemory(&parentIdentity.FileId, &view->ParentIdentity.FileId, sizeof(FILE_ID_128)))
-        return NT_SUCCESS(status) ? STATUS_OBJECT_NAME_COLLISION : status;
-
-    if (!DeleteVersion->Sealed && DeleteVersion->BackingObject != NULL)
-        StageDrainAndSeal(DeleteVersion); /* bounded: mapped sections fail closed, never waited on here */
-    /* A queued discard has not crossed the port yet and is superseded by the
-     * atomic create-after request. An already-inflight discard was refused
-     * above; the caller retries after its exact response. */
-    DeleteVersion->DiscardRpcPending = FALSE;
-    DeleteVersion->SealRpcPending = FALSE;
-
-    StageAcquire(&DeleteVersion->Resource);
-    openCount = DeleteVersion->ShareAccess.OpenCount;
-    if (openCount != 0 || DeleteVersion->BackingObject != NULL ||
-        DeleteVersion->Sections.SharedCacheMap != NULL || DeleteVersion->Sections.DataSectionObject != NULL ||
-        DeleteVersion->Sections.ImageSectionObject != NULL ||
-        InterlockedCompareExchange(&DeleteVersion->FileObjects, 0, 0) != 0) {
-        StageRelease(&DeleteVersion->Resource);
-        return STATUS_DELETE_PENDING;
-    }
-    StageRelease(&DeleteVersion->Resource);
-
-    /* Reserve one of 128 live stream slots and allocate all local state before
-     * the service can durably create V3. */
-    if (StageStreamCount + StageReservedStreamCount >= STAGE_LIMIT) {
-        InterlockedIncrement64((volatile LONG64 *)&StageCounters.CapRefusals);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-    ++StageReservedStreamCount;
-    status = StageCreateStreamShell(Objects->Instance, Name->Volume.Length,
-        &Name->Name, view, &child);
-    if (!NT_SUCCESS(status)) { --StageReservedStreamCount; return status; }
-
-    if (!DeleteVersion->CreateAfterReservationValid) {
-        status = ExUuidCreate(&DeleteVersion->CreateAfterReservationId);
-        if (!NT_SUCCESS(status)) {
-            --StageReservedStreamCount;
-            StageFreeStream(child);
-            return status;
-        }
-        DeleteVersion->CreateAfterReservationValid = TRUE;
-        reservationCreated = TRUE;
-    }
-    reservationId = DeleteVersion->CreateAfterReservationId;
-    /* Bind V1 to the stable V3 reservation before the request can commit.
-     * A definite local no-send unbinds this tentative ID below while keeping
-     * the logical name fence. Once FltSendMessage is entered the tuple is
-     * ambiguous and must be recovered with this same reservation. */
-    if (emptyHeldPredecessor != NULL &&
-        !StageBindEmptyHeldCleanup(emptyHeldPredecessor, &reservationId, FALSE)) {
-        if (reservationCreated) {
-            DeleteVersion->CreateAfterReservationValid = FALSE;
-            RtlZeroMemory(&DeleteVersion->CreateAfterReservationId,
-                sizeof(DeleteVersion->CreateAfterReservationId));
-        }
-        --StageReservedStreamCount;
-        StageFreeStream(child);
-        return STATUS_DELETE_PENDING;
-    }
-    deleteTransferId = DeleteVersion->TransferId;
-    deleteGeneration = DeleteVersion->DestinationGeneration;
-    deleteIdentity = DeleteVersion->StageIdentity;
-    viewGeneration = view->Generation;
-    DeleteVersion->CreateAfterDiscardInFlight = TRUE;
-    InterlockedIncrement(&DeleteVersion->RpcReferences);
-    child->HasTransferId = TRUE;
-    child->TransferId = reservationId;
-    child->DriverInstanceId = StageDriverInstanceId;
-    child->AllocationParentDirectoryIdentity = parentIdentity;
-    child->DeleteReservationId = reservationId;
-    child->AllocationReceiptPending = FALSE;
-    child->AllocationRecoveryIsCreateAfter = TRUE;
-    child->AllocationRecoveryProcessId = view->OwnerProcessId;
-    StageRelease(&StageNamespaceResource);
-
-    status = SafeUploadStageCreateAfterDiscardV19(Data, &Name->Name, Kind,
-        &reservationId, &deleteTransferId, &deleteIdentity,
-        deleteGeneration, &parentIdentity,
-        Disposition, basename, &basenameLength, &generation, &stageIdentity,
-        &child->CreateAfterRequest, &requestMayExist);
-    rpcStatus = status;
-    replyTupleKnown = NT_SUCCESS(rpcStatus);
-    if (replyTupleKnown) {
-        /* Preserve the exact reply tuple before local revalidation. If the
-         * public name changed while the RPC was out, kind-5 cleanup still has
-         * the exact V3 identity and does not need to trust a stale view. */
-        status = StageSetStreamStageName(child, basename, basenameLength);
-        if (NT_SUCCESS(status)) {
-            child->DestinationGeneration = generation;
-            child->StageIdentity = stageIdentity;
-            child->StageIdentityValid = TRUE;
-            child->ExpectedStageIdentity = stageIdentity;
-            child->ExpectedStageIdentityValid = TRUE;
-            child->AllocationTupleKnown = TRUE;
-            child->AllocationReceiptPending = TRUE;
-        }
-    }
-
-    StageAcquire(&StageNamespaceResource);
-    DeleteVersion->CreateAfterDiscardInFlight = FALSE;
-    InterlockedDecrement(&DeleteVersion->RpcReferences);
-    if (!NT_SUCCESS(status) && NT_SUCCESS(rpcStatus)) rpcStatus = status;
-    status = rpcStatus;
-    if (NT_SUCCESS(status) && StageStopping) status = STATUS_DEVICE_NOT_READY;
-    if (NT_SUCCESS(status) && (DeleteVersion->View != view || view->Current != DeleteVersion ||
-        view->Generation != viewGeneration || view->Owner != Owner || DeleteVersion->OwnerExited ||
-        !DeleteVersion->PrivateDeleteReserved ||
-        !RtlEqualMemory(&DeleteVersion->DeleteReservationId, &reservationId, sizeof(GUID)) ||
-        !RtlEqualMemory(&DeleteVersion->TransferId, &deleteTransferId, sizeof(GUID)) ||
-        DeleteVersion->DestinationGeneration != deleteGeneration ||
-        !StageV19IdentityEqual(&DeleteVersion->StageIdentity, &deleteIdentity)))
-        status = STATUS_DELETE_PENDING;
-    if (NT_SUCCESS(status)) status = StagePublicNameFree(Objects->Instance, &Name->Name);
-    if (NT_SUCCESS(status)) {
-        status = StageQueryParentIdentity(Objects->Instance, &Name->Name, &observedParent);
-        if (NT_SUCCESS(status) && !StageV19IdentityEqual(&observedParent, &parentIdentity))
-            status = STATUS_OBJECT_NAME_COLLISION;
-    }
-    if (NT_SUCCESS(status)) {
-        if (!child->AllocationTupleKnown) status = STATUS_INVALID_BUFFER_SIZE;
-    }
-    if (NT_SUCCESS(status)) {
-        status = StageOpenBacking(child, FALSE);
-    }
-    if (NT_SUCCESS(status)) {
-        *ViewOut = view;
-        *ChildOut = child;
-        *PreviousOut = DeleteVersion;
-        *ReservedSlotOut = TRUE;
-        StageQueueStream(DeleteVersion, &StageCounters.WakeInline);
-        return STATUS_SUCCESS;
-    }
-    /* The durable child may exist even when the reply or local open failed.
-     * Hand it to StageCreate's receipt path instead of freeing its only ID. */
-    if (requestMayExist) {
-        child->AllocationReceiptPending = TRUE;
-        child->AllocationRecoveryPending = !child->AllocationTupleKnown;
-        *ViewOut = view;
-        *ChildOut = child;
-        *PreviousOut = DeleteVersion;
-        *ReservedSlotOut = TRUE;
-    } else {
-        if (emptyHeldPredecessor != NULL)
-            StageUnbindEmptyHeldCleanup(emptyHeldPredecessor, &reservationId);
-        if (reservationCreated) {
-            DeleteVersion->CreateAfterReservationValid = FALSE;
-            RtlZeroMemory(&DeleteVersion->CreateAfterReservationId,
-                sizeof(DeleteVersion->CreateAfterReservationId));
-        }
-        --StageReservedStreamCount;
-        StageFreeStream(child);
-    }
-    if (DeleteVersion->OwnerExited && !requestMayExist) StageClearPrivateDelete(DeleteVersion);
-    return status;
-}
 #endif
 
 static VOID StageFreeView(PSTAGE_VIEW View)
@@ -2497,16 +2236,12 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     privateDelete = StageFindPrivateDeleteReservation(&Name->Name);
     if (privateDelete != NULL) {
-        if (privateDelete->DeleteRotationInFlight) { status = STATUS_DELETE_PENDING; goto Exit; }
-        status = StageCreateAfterPrivateDiscardV19(Data, Objects, Name, Kind, owner,
-            ExpectedGeneration, Writer, disposition, privateDelete, &view, &stream, &previous,
-            &reservedStreamSlot, &granted);
-        if (stream != NULL) {
-            newStream = TRUE;
-            exists = FALSE;
-        }
-        if (!NT_SUCCESS(status)) goto Exit;
-    } else
+        /* Before last cleanup keep the existing private delete-pending
+         * admission contract. Afterwards cleanup detaches the old version,
+         * and CREATE uses the ordinary allocator's next generation. */
+        status = STATUS_DELETE_PENDING;
+        goto Exit;
+    }
 #endif
     for (;;) {
         view = StageFindView(owner, &Name->Name);
@@ -2514,9 +2249,6 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
          * of, or whose stage it deleted, leaves the namespace once nothing holds it, and the name resolves without it. */
         if (view == NULL || !StageSettleCurrent(view)) break;
     }
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (privateDelete != NULL) goto StageAfterViewLookup;
-#endif
     /* A name snapshot for a file-ID open must still name that same live view.
      * Rename/replacement between lookup and admission must never create a new
      * view or return the newly occupying file. The generation identifies the
@@ -2533,9 +2265,6 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         (view != NULL || hidden != NULL) != PrivateNamespace)) {
         status = STAGE_STATUS_READMIT; goto Exit;
     }
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-StageAfterViewLookup:
-#endif
     if (view != NULL && view->Current->OriginalInstance != Objects->Instance) {
         status = STATUS_SHARING_VIOLATION; goto Exit;
     }
@@ -5211,6 +4940,14 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
             SetFlag(file->Flags, FO_CLEANUP_COMPLETE);
             (VOID)CcUninitializeCacheMap(file, NULL, NULL);
             lastHandle = stream->ShareAccess.OpenCount == 0;
+            if (lastHandle && stream->DiscardOnClose && !stream->Sealed) {
+                /* Name ownership ends at last cleanup. The old version stays
+                 * in the retained stream list until local drain and the exact
+                 * service cleanup ACK; no new create reuses its identity. */
+                if (stream->View != NULL && stream->View->Current == stream)
+                    stream->View->Detached = TRUE;
+                stream->PrivateDeleteReserved = FALSE;
+            }
             queueReceipt = queueReceipt || stream->HandleReceiptPending;
             StageRelease(&stream->Resource);
             StageRelease(&StageNamespaceResource);
@@ -6352,12 +6089,11 @@ static VOID StagePerformSealRpcs(PLIST_ENTRY Rpcs)
 {
     while (!IsListEmpty(Rpcs)) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(RemoveHeadList(Rpcs), STAGE_STREAM, RpcLink);
-        BOOLEAN emptyHeld = FALSE;
         NTSTATUS status;
         InitializeListHead(&stream->RpcLink);
         status = SafeUploadStageSealVersionV19(stream->RpcProcessIdSnapshot,
             &stream->StageName, &stream->RpcIdentitySnapshot,
-            stream->RpcGenerationSnapshot, &emptyHeld);
+            stream->RpcGenerationSnapshot);
 
         StageAcquire(&StageNamespaceResource);
         if (stream->View != NULL && stream->View->OwnerProcessId == stream->RpcProcessIdSnapshot &&
@@ -6368,7 +6104,6 @@ static VOID StagePerformSealRpcs(PLIST_ENTRY Rpcs)
             stream->SealRpcInFlight = FALSE;
             if (NT_SUCCESS(status)) {
                 stream->Sealed = TRUE;
-                stream->EmptyHeld = emptyHeld;
                 stream->Wait = STAGE_WAIT_NONE;
                 StageQueueStream(stream, &StageCounters.WakeInline);
             } else {

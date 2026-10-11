@@ -254,7 +254,7 @@ public sealed partial class FilterPort : IDisposable
     /// </summary>
     public unsafe void ReplyStageStatusV19(ulong messageId, ulong requestId, uint result)
     {
-        if (result is not (StageV19Result.SealedNonempty or StageV19Result.EmptyHeld or
+        if (result is not (StageV19Result.Sealed or
                            StageV19Result.DiscardPending or StageV19Result.DiscardAcknowledged))
         {
             throw new ArgumentOutOfRangeException(nameof(result), "Unknown v19 stage result.");

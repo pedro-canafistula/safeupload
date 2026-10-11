@@ -40,14 +40,21 @@ public sealed class StagedTransferPublisherTests : IDisposable
 
     public void Dispose() => _workspace.Dispose();
 
-    [Fact]
-    public async Task Empty_save_stays_private_and_reports_owner_without_policy_or_handback_evidence()
+    [Theory]
+    [InlineData("empty.txt", false)]
+    [InlineData("empty.txt", true)]
+    [InlineData(".gitkeep", false)]
+    [InlineData("__init__.py", false)]
+    [InlineData("marker.lock", false)]
+    [InlineData("empty.docx", false)]
+    public async Task Measured_empty_content_publishes_normally_without_extraction_or_private_notice(
+        string name, bool replaceExisting)
     {
         using var owner = _notifications.Subscribe(7, TestRequestorSid);
         using var wrongSession = _notifications.Subscribe(8, TestRequestorSid);
         using var wrongUser = _notifications.Subscribe(7, "S-1-5-21-999-888-777-1000");
-        var transfer = Transfer("empty.txt", string.Empty);
-        await File.WriteAllTextAsync(transfer.DestinationPath, "previous public version");
+        StagedTransfer transfer = Transfer(name, string.Empty);
+        if (replaceExisting) await File.WriteAllTextAsync(transfer.DestinationPath, "previous public version");
         var extractor = new CountingExtractor();
         var gate = new CountingPublicationGate();
         var publisher = new StagedTransferPublisher(new InspectionService(
@@ -55,243 +62,62 @@ public sealed class StagedTransferPublisherTests : IDisposable
                 new ExtractorRegistry([extractor]), new VerdictCache()),
             _notifications, _journal, _stagingRoot, gate,
             sessionUserSidResolver: _ => TestRequestorSid);
-
-        Assert.Equal(StagedTransferOutcome.Blocked,
-            await publisher.PublishAsync(transfer, CancellationToken.None));
-        TransferJournalEntry held = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
-        Assert.Equal(TransferJournalState.EmptyHeld, held.State);
-        Assert.Equal(0, held.SealedLength);
-        Assert.Equal("previous public version", await File.ReadAllTextAsync(transfer.DestinationPath));
-        Assert.True(File.Exists(transfer.StagePath));
-        Assert.NotNull(held.EmptyHeldNotificationAttemptedAtUtc);
-        Assert.NotNull(held.EmptyHeldNotificationAttemptedByInstanceId);
-        Assert.NotNull(held.EmptyHeldNotificationQueuedAtUtc);
-        Assert.NotNull(held.EmptyHeldNotificationQueuedByInstanceId);
-
-        Assert.True(owner.Reader.TryRead(out var raw));
-        var notification = Assert.IsType<TransferNotification>(raw);
-        Assert.Equal(TransferPhase.Blocked, notification.Phase);
-        Assert.Equal(StagedBlockReason.EmptySavePrivate, notification.BlockReason);
-        Assert.False(notification.OverrideAllowed);
-        Assert.Null(notification.Findings);
-        Assert.Null(notification.SnapshotSha256Hex);
-        Assert.Null(notification.HandbackPath);
-        Assert.Null(notification.HandbackVerified);
-        Assert.Null(notification.InspectionFailure);
+        Assert.Equal(StagedTransferOutcome.Released, await publisher.PublishAsync(transfer, CancellationToken.None));
+        TransferJournalEntry released = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(TransferJournalState.Released, released.State);
+        Assert.Equal(0, released.SealedLength);
+        Assert.Equal(StagedTransferJournal.EmptySha256Hex, released.Sha256Hex);
+        Assert.True(File.Exists(transfer.DestinationPath));
+        Assert.Empty(await File.ReadAllBytesAsync(transfer.DestinationPath));
+        Assert.True(released.StageDeleted);
+        Assert.False(File.Exists(transfer.StagePath));
         Assert.Equal(0, extractor.Calls);
-        Assert.Equal(0, gate.AuthorizeCalls);
+        Assert.Equal(1, gate.AuthorizeCalls);
+        var notices = new List<TransferNotification>();
+        while (owner.Reader.TryRead(out AgentNotification? raw)) notices.Add(Assert.IsType<TransferNotification>(raw));
+        Assert.Contains(notices, notice => notice.Phase == TransferPhase.Released &&
+            notice.PublishedSha256Hex == StagedTransferJournal.EmptySha256Hex);
+        Assert.DoesNotContain(notices, notice => notice.Phase == TransferPhase.Blocked || notice.BlockReason is not null);
         Assert.False(wrongSession.Reader.TryRead(out _));
         Assert.False(wrongUser.Reader.TryRead(out _));
-
-        Assert.True(await publisher.ReportEmptyHeldAsync(transfer.TransferId, CancellationToken.None));
-        Assert.False(owner.Reader.TryRead(out _));
     }
 
-    [Fact]
-    public async Task Stage_that_becomes_empty_after_inspection_begins_returns_private_without_publication()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Changed_length_cannot_turn_a_measured_version_into_an_implicit_empty_approval(bool originallyEmpty)
     {
-        using var owner = _notifications.Subscribe(7, TestRequestorSid);
-        var transfer = Transfer("late-empty.txt", "initial positive bytes");
+        StagedTransfer transfer = Transfer("changed-length.txt", originallyEmpty ? string.Empty : "positive sealed bytes");
         await File.WriteAllTextAsync(transfer.DestinationPath, "previous public version");
-        TransferJournalEntry sealedEntry = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
-        await _journal.TransitionAsync(transfer.TransferId, TransferJournalState.Sealed,
-            TransferJournalState.Inspecting, null, CancellationToken.None, transfer);
-        await File.WriteAllBytesAsync(transfer.StagePath, []);
-
-        TransferJournalEntry empty = await _journal.TryMarkEmptyHeldIfNowZeroAsync(
-            transfer.TransferId, sealedEntry.StageIdentity!, CancellationToken.None);
-        Assert.Equal(TransferJournalState.EmptyHeld, empty.State);
-        Assert.Equal(new[] { TransferJournalState.Allocated, TransferJournalState.SealPending,
-                TransferJournalState.Sealed, TransferJournalState.Inspecting, TransferJournalState.EmptyHeld },
-            empty.StateHistory.Select(change => change.State));
-
-        var extractor = new CountingExtractor();
+        if (originallyEmpty) await File.WriteAllTextAsync(transfer.StagePath, "CPF: 529.982.247-25");
+        else await File.WriteAllBytesAsync(transfer.StagePath, []);
         var gate = new CountingPublicationGate();
         var publisher = new StagedTransferPublisher(new InspectionService(
                 new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
-                new ExtractorRegistry([extractor]), new VerdictCache()),
-            _notifications, _journal, _stagingRoot, gate,
-            sessionUserSidResolver: _ => TestRequestorSid);
-        Assert.Equal(StagedTransferOutcome.Blocked,
-            await publisher.PublishAsync(transfer, CancellationToken.None));
+                ExtractorRegistry.CreateDefault(), new VerdictCache()),
+            _notifications, _journal, _stagingRoot, gate);
+        Assert.Equal(StagedTransferOutcome.Retained, await publisher.PublishAsync(transfer, CancellationToken.None));
         Assert.Equal("previous public version", await File.ReadAllTextAsync(transfer.DestinationPath));
-        Assert.Equal(0, extractor.Calls);
+        Assert.True(File.Exists(transfer.StagePath));
         Assert.Equal(0, gate.AuthorizeCalls);
-        Assert.True(owner.Reader.TryRead(out var raw));
-        Assert.Equal(StagedBlockReason.EmptySavePrivate,
-            Assert.IsType<TransferNotification>(raw).BlockReason);
+        Assert.Equal(TransferJournalState.Retained,
+            (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
     }
 
     [Fact]
-    public async Task Empty_notice_record_failure_does_not_mark_reported_and_retry_is_idempotent()
+    public async Task Empty_publication_still_requires_the_kernel_permit()
     {
-        var transfer = Transfer("empty-retry.txt", string.Empty);
-        var record = new FailOnceNotificationRecord();
-        var hub = new NotificationHub(record, NullLogger<NotificationHub>.Instance);
-        using var owner = hub.Subscribe(7, TestRequestorSid);
+        StagedTransfer transfer = Transfer("empty-permit.txt", string.Empty);
+        await File.WriteAllTextAsync(transfer.DestinationPath, "previous public version");
+        var gate = new RecordingPublicationGate(refuse: true);
         var publisher = new StagedTransferPublisher(new InspectionService(
                 new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
                 ExtractorRegistry.CreateDefault(), new VerdictCache()),
-            hub, _journal, _stagingRoot, new TestPublicationGate(),
-            sessionUserSidResolver: _ => TestRequestorSid);
-
-        Assert.False(await publisher.ReportEmptyHeldAsync(transfer.TransferId, CancellationToken.None));
-        TransferJournalEntry failed = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
-        Assert.NotNull(failed.EmptyHeldNotificationAttemptedAtUtc);
-        Assert.NotNull(failed.EmptyHeldNotificationAttemptedByInstanceId);
-        Assert.Null(failed.EmptyHeldNotificationQueuedAtUtc);
-        Assert.Null(failed.EmptyHeldNotificationQueuedByInstanceId);
-        Assert.False(owner.Reader.TryRead(out _));
-
-        record.FailNext = false;
-        var restartedPublisher = new StagedTransferPublisher(new InspectionService(
-                new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
-                ExtractorRegistry.CreateDefault(), new VerdictCache()),
-            hub, _journal, _stagingRoot, new TestPublicationGate(),
-            sessionUserSidResolver: _ => TestRequestorSid);
-        Assert.True(await restartedPublisher.ReportEmptyHeldAsync(transfer.TransferId, CancellationToken.None));
-        TransferJournalEntry queued = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
-        Assert.NotNull(queued.EmptyHeldNotificationQueuedAtUtc);
-        Assert.Equal(queued.EmptyHeldNotificationAttemptedByInstanceId,
-            queued.EmptyHeldNotificationQueuedByInstanceId);
-        Assert.True(owner.Reader.TryRead(out var raw));
-        Assert.Equal(StagedBlockReason.EmptySavePrivate,
-            Assert.IsType<TransferNotification>(raw).BlockReason);
-
-        Assert.True(await restartedPublisher.ReportEmptyHeldAsync(transfer.TransferId, CancellationToken.None));
-        Assert.Equal(1, record.SuccessfulAppends);
-        Assert.False(owner.Reader.TryRead(out _));
-
-        var afterRestartHub = new NotificationHub(new FailOnceNotificationRecord { FailNext = false },
-            NullLogger<NotificationHub>.Instance);
-        using var afterRestartOwner = afterRestartHub.Subscribe(7, TestRequestorSid);
-        var afterRestart = new StagedTransferPublisher(new InspectionService(
-                new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
-                ExtractorRegistry.CreateDefault(), new VerdictCache()),
-            afterRestartHub, _journal, _stagingRoot, new TestPublicationGate(),
-            sessionUserSidResolver: _ => TestRequestorSid);
-        Assert.True(await afterRestart.ReportEmptyHeldAsync(transfer.TransferId, CancellationToken.None));
-        Assert.True(afterRestartOwner.Reader.TryRead(out var repeated));
-        Assert.Equal(StagedBlockReason.EmptySavePrivate,
-            Assert.IsType<TransferNotification>(repeated).BlockReason);
-        TransferJournalEntry replayed = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
-        Assert.Equal(replayed.EmptyHeldNotificationAttemptedByInstanceId,
-            replayed.EmptyHeldNotificationQueuedByInstanceId);
-        Assert.NotEqual(queued.EmptyHeldNotificationQueuedByInstanceId,
-            replayed.EmptyHeldNotificationQueuedByInstanceId);
-    }
-
-    [Fact]
-    public async Task Empty_notice_without_subscriber_is_retried_by_a_new_service_instance()
-    {
-        var transfer = Transfer("empty-offline.txt", string.Empty);
-        var firstRecord = new FailOnceNotificationRecord { FailNext = false };
-        var firstHub = new NotificationHub(firstRecord, NullLogger<NotificationHub>.Instance);
-        var firstPublisher = new StagedTransferPublisher(new InspectionService(
-                new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
-                ExtractorRegistry.CreateDefault(), new VerdictCache()),
-            firstHub, _journal, _stagingRoot, new TestPublicationGate(),
-            sessionUserSidResolver: _ => TestRequestorSid);
-
-        Assert.False(await firstPublisher.ReportEmptyHeldAsync(transfer.TransferId, CancellationToken.None));
-        TransferJournalEntry notQueued = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
-        Assert.NotNull(notQueued.EmptyHeldNotificationAttemptedAtUtc);
-        Assert.Null(notQueued.EmptyHeldNotificationQueuedAtUtc);
-        Assert.Equal(1, firstRecord.SuccessfulAppends);
-        Assert.False(await firstPublisher.ReportEmptyHeldAsync(transfer.TransferId, CancellationToken.None));
-        Assert.Equal(1, firstRecord.SuccessfulAppends);
-
-        var restartedRecord = new FailOnceNotificationRecord { FailNext = false };
-        var restartedHub = new NotificationHub(restartedRecord, NullLogger<NotificationHub>.Instance);
-        using var owner = restartedHub.Subscribe(7, TestRequestorSid);
-        var restartedPublisher = new StagedTransferPublisher(new InspectionService(
-                new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
-                ExtractorRegistry.CreateDefault(), new VerdictCache()),
-            restartedHub, _journal, _stagingRoot, new TestPublicationGate(),
-            sessionUserSidResolver: _ => TestRequestorSid);
-
-        Assert.True(await restartedPublisher.ReportEmptyHeldAsync(transfer.TransferId, CancellationToken.None));
-        Assert.True(owner.Reader.TryRead(out var raw));
-        Assert.Equal(StagedBlockReason.EmptySavePrivate, Assert.IsType<TransferNotification>(raw).BlockReason);
-        Assert.Equal(1, restartedRecord.SuccessfulAppends);
-    }
-
-    [Fact]
-    public async Task Superseded_empty_destination_version_does_not_emit_or_mark_its_notice()
-    {
-        using var owner = _notifications.Subscribe(7, TestRequestorSid);
-        var empty = Transfer("superseded-empty.txt", string.Empty);
-        string newerStage = Path.Combine(_stagingRoot, "newer-superseding-version.txt");
-        await File.WriteAllTextAsync(newerStage, "newer private bytes");
-        StagedTransfer newer = empty with
-        {
-            TransferId = Guid.NewGuid(),
-            StagePath = newerStage
-        };
-        await _journal.CreateAsync(newer, CancellationToken.None);
-
-        Assert.False(await _publisher.ReportEmptyHeldAsync(empty.TransferId, CancellationToken.None));
-        TransferJournalEntry superseded = await _journal.ReadAsync(empty.TransferId, CancellationToken.None);
-        Assert.Null(superseded.EmptyHeldNotificationAttemptedAtUtc);
-        Assert.Null(superseded.EmptyHeldNotificationQueuedAtUtc);
-        Assert.False(owner.Reader.TryRead(out _));
-    }
-
-    [Fact]
-    public async Task Empty_notice_is_bound_to_exact_path_and_rename_cannot_interleave_its_marker()
-    {
-        var transfer = Transfer("empty-before-rename.txt", string.Empty);
-        using var record = new BlockingNotificationRecord();
-        var hub = new NotificationHub(record, NullLogger<NotificationHub>.Instance);
-        using var owner = hub.Subscribe(7, TestRequestorSid);
-        var publisher = new StagedTransferPublisher(new InspectionService(
-                new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
-                ExtractorRegistry.CreateDefault(), new VerdictCache()),
-            hub, _journal, _stagingRoot, new TestPublicationGate(),
-            sessionUserSidResolver: _ => TestRequestorSid);
-        string renamed = Path.Combine(_workspace.Root, "destination", "empty-after-rename.txt");
-
-        Task<bool> report = publisher.ReportEmptyHeldAsync(transfer.TransferId, CancellationToken.None);
-        Task? prepare = null;
-        try
-        {
-            Assert.True(record.AppendEntered.Wait(TimeSpan.FromSeconds(5)));
-            var prepareStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            prepare = Task.Run(async () =>
-            {
-                prepareStarted.SetResult(true);
-                await _journal.PrepareRenameAsync(transfer.TransferId, 72, transfer.ProcessId,
-                    renamed, sealedVersion: true, CancellationToken.None);
-            });
-            await prepareStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await Task.Delay(TimeSpan.FromMilliseconds(100));
-            Assert.False(prepare.IsCompleted);
-        }
-        finally
-        {
-            record.ReleaseAppend.Set();
-        }
-        Assert.True(await report);
-        await prepare!.WaitAsync(TimeSpan.FromSeconds(5));
-        TransferJournalEntry pending = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
-        Assert.NotNull(pending.PendingRename);
-        Assert.NotNull(pending.EmptyHeldNotificationQueuedAtUtc);
-        Assert.False(await publisher.ReportEmptyHeldAsync(transfer.TransferId, CancellationToken.None));
-        Assert.Equal(1, record.SuccessfulAppends);
-
-        TransferJournalEntry committed = await _journal.CompleteRenameAsync(transfer.TransferId, 72,
-            transfer.ProcessId, renamed, commit: true, CancellationToken.None);
-        Assert.Equal(TransferJournalState.EmptyHeld, committed.State);
-        Assert.Equal(renamed, committed.Transfer.DestinationPath);
-        Assert.Null(committed.EmptyHeldNotificationAttemptedAtUtc);
-        Assert.Null(committed.EmptyHeldNotificationQueuedAtUtc);
-
-        Assert.True(await publisher.ReportEmptyHeldAsync(transfer.TransferId, CancellationToken.None));
-        Assert.Equal(2, record.SuccessfulAppends);
-        Assert.True(owner.Reader.TryRead(out var first));
-        Assert.Equal("empty-before-rename.txt", Assert.IsType<TransferNotification>(first).FileName);
-        Assert.True(owner.Reader.TryRead(out var second));
-        Assert.Equal("empty-after-rename.txt", Assert.IsType<TransferNotification>(second).FileName);
+            _notifications, _journal, _stagingRoot, gate);
+        Assert.Equal(StagedTransferOutcome.Retained, await publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.True(gate.Called);
+        Assert.Equal(StagedTransferJournal.EmptySha256Hex, gate.Digest);
+        Assert.Equal("previous public version", await File.ReadAllTextAsync(transfer.DestinationPath));
     }
 
     [Theory]
@@ -602,39 +428,6 @@ public sealed class StagedTransferPublisherTests : IDisposable
         {
             Calls++;
             return Task.FromResult(string.Empty);
-        }
-    }
-
-    private sealed class FailOnceNotificationRecord : INotificationRecord
-    {
-        public bool FailNext = true;
-        public int SuccessfulAppends;
-        public void Append(AgentNotification notification, uint? targetSessionId)
-        {
-            if (FailNext) throw new IOException("Injected notification record failure.");
-            SuccessfulAppends++;
-        }
-    }
-
-    private sealed class BlockingNotificationRecord : INotificationRecord, IDisposable
-    {
-        public readonly ManualResetEventSlim AppendEntered = new();
-        public readonly ManualResetEventSlim ReleaseAppend = new();
-        private int _successfulAppends;
-        public int SuccessfulAppends => Volatile.Read(ref _successfulAppends);
-
-        public void Append(AgentNotification notification, uint? targetSessionId)
-        {
-            AppendEntered.Set();
-            if (!ReleaseAppend.Wait(TimeSpan.FromSeconds(10)))
-                throw new TimeoutException("The controlled notification append was not released.");
-            Interlocked.Increment(ref _successfulAppends);
-        }
-
-        public void Dispose()
-        {
-            AppendEntered.Dispose();
-            ReleaseAppend.Dispose();
         }
     }
 
