@@ -5,6 +5,7 @@
 #include "Stage.h"
 #include "StageSecurity.h"
 #include "StagePublic.h"
+#include "StageNativeRecords.h"
 #include <ntstrsafe.h>
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -2856,6 +2857,12 @@ static BOOLEAN StageAttachIsInstanceTearingDown(_In_ PFLT_INSTANCE Instance)
     }
     StageStreamReleaseSpinLock(&StageAttachLock, irql);
     return found;
+}
+
+_Use_decl_annotations_
+BOOLEAN SafeUploadStageAttachInstanceRetiring(PFLT_INSTANCE Instance)
+{
+    return StageAttachIsInstanceTearingDown(Instance);
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -5917,6 +5924,7 @@ NTSTATUS SafeUploadStageInitialize(VOID)
         SafeUploadStageWritersInitialize();
         status = SafeUploadStageFenceInitialize();
         if (!NT_SUCCESS(status)) return status;
+        SafeUploadStageNativeInitialize(&StageDriverInstanceId, SharedUserData->BootId, &StageWorkEvent);
         ExInitializeFastMutex(&AdmissionTraceControlMutex);
         ExInitializeRundownProtection(&AdmissionTraceRundown);
         AdmissionTraceRundownClosed = FALSE;
@@ -6066,6 +6074,7 @@ static VOID StageRollbackUnloadPreparation(VOID)
     StageUnloadPrepareWork = FALSE;
     StageRelease(&StageNamespaceResource);
     StageSetUnloadAdmissionClosed(FALSE);
+    SafeUploadStageNativeReopenAdmission();
     KeSetEvent(&StageWorkEvent, IO_NO_INCREMENT, FALSE);
 }
 #endif
@@ -6092,6 +6101,14 @@ NTSTATUS SafeUploadStagePrepareUnload(_In_ BOOLEAN Mandatory)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     quarantined = SafeUploadStageUnloadIsQuarantined();
     SafeUploadStageRecordUnloadVeto(SAFEUPLOAD_UNLOAD_VETO_NONE, STATUS_SUCCESS);
+
+    /* Feature registration rejects mandatory service-stop requests before
+     * this callback. Never unregister while a native fallback/receipt still
+     * exists, especially after instance teardown hid its CLEANUP callback. */
+    if (!SafeUploadStageNativeTryCloseAdmission()) {
+        SafeUploadStageRecordUnloadVeto(SAFEUPLOAD_UNLOAD_VETO_STAGE_DRAIN, STATUS_DEVICE_BUSY);
+        return STATUS_FLT_DO_NOT_DETACH;
+    }
 
     /* Close CREATE/attach admission before the fence scan. The attach gate is
      * serialized against active-count publication. Mandatory unload and an
@@ -6429,6 +6446,7 @@ VOID SafeUploadStageFree(VOID)
     while (exitCount != 0) ObDereferenceObject(exited[--exitCount]);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     StageAdmissionTraceShutdown();
+    SafeUploadStageNativeUninitialize();
     SafeUploadStageFenceFree();
 #endif
     while (!IsListEmpty(&StageStreams)) {
@@ -7561,6 +7579,8 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         SafeUploadStageWritersQueueLifetimeRecheck(Objects->Instance, Objects->FileObject);
 #endif
+        if (SafeUploadStageNativePreClose(Objects, CompletionContext))
+            return FLT_PREOP_SYNCHRONIZE;
         break;
     case IRP_MJ_MDL_READ_COMPLETE:
         /* Completion releases a previously returned MDL; do not block the release path. */
@@ -7917,6 +7937,9 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
     PCFLT_RELATED_OBJECTS Objects, PVOID CompletionContext, FLT_POST_OPERATION_FLAGS Flags)
 {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (Data->Iopb->MajorFunction == IRP_MJ_CLOSE &&
+        SafeUploadStageNativePostClose(Data, Objects, CompletionContext, Flags))
+        return FLT_POSTOP_FINISHED_PROCESSING;
     if (Data->Iopb->MajorFunction == IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION && CompletionContext != NULL) {
         if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) {
             /* Outcome unavailable while draining: keep the entry and make writer state Unknown. */
@@ -7953,6 +7976,7 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
     if (Data->Iopb->MajorFunction == IRP_MJ_CLEANUP) {
+        SafeUploadStageNativePostCleanup(Data, Objects, Flags);
         if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) {
             SafeUploadStageWritersMutationDraining(Objects->Instance,
                 Objects->FileObject != NULL ? Objects->FileObject->SectionObjectPointer : NULL);
@@ -7964,6 +7988,8 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
 #endif
     if (Data->Iopb->MajorFunction == IRP_MJ_CREATE) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (SafeUploadStageNativePostCreate(Data, Objects, CompletionContext, Flags))
+            return FLT_POSTOP_FINISHED_PROCESSING;
         if (SafeUploadStageWritersIsReservation(CompletionContext)) {
             PVOID legacyCompletionContext = NULL;
             BOOLEAN legacyCallbackRequired = FALSE;

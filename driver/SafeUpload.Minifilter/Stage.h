@@ -136,6 +136,8 @@ VOID SafeUploadStageServiceConnected(_In_ PVOID ConnectionCookie);
 VOID SafeUploadStageProcessExited(_In_ HANDLE ProcessId);
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStageAttachInstanceTeardownStart(_In_ PFLT_INSTANCE Instance);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN SafeUploadStageAttachInstanceRetiring(_In_ PFLT_INSTANCE Instance);
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStageAttachInstanceTeardownComplete(_In_ PFLT_INSTANCE Instance);
 VOID SafeUploadStageGetLifetimeCounters(_Out_ PSAFEUPLOAD_STAGE_LIFETIME_COUNTERS Counters);

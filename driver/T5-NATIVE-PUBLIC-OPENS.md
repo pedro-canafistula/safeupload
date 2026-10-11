@@ -122,6 +122,14 @@ Before forwarding original CREATE, allocate a bounded nonpaged record and regist
 local rundown. Include operation/transfer identity, anchored destination, original full file ID and pre-CREATE journal generation.
 That fallback record must survive failure to attach the post-CREATE stream-handle context: cleanup cannot depend on the operation
 whose failure selected this path. No driver/service handle keeps the application open alive; no context/FILE_OBJECT reference cycle.
+The [cancelled-CREATE review](evidence/2026-10-11/t5-native-cancelled-create-design-luna6.md) additionally requires a **non-owning**
+original-object lookup: retaining an object reference across upper post callbacks can prevent CLOSE after an upper filter cancels
+before any app handle exists. The pending CREATE/completion context pins local record ownership; remove lookup keys at actual
+CLEANUP/CLOSE or callback-coverage loss before object-address reuse. Correlate CREATE completion through its preallocated record,
+even after instance teardown removed the object lookup. Lower-filter cancellation with `FO_FILE_OPEN_CANCELLED` and no created handle
+remains accepted/unresolved and starts exact automatic parent/identity reconciliation without waiting for an unobservable CLOSE.
+For upper-filter cancellation, the exact canceled-before-handle CLOSE completion is its separate terminal lifetime receipt.
+Neither receipt proves physical deletion or grants a delete permit. `STATUS_REPARSE` is not an accepted open.
 Record references are local lifetime bookkeeping, not a new protocol state. Complete registration/allocation failures before
 forwarding; never rely on a fresh allocation in failed post-CREATE or cleanup.
 

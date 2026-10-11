@@ -23,6 +23,7 @@ Environment:
 --*/
 
 #include "Filter.h"
+#include "StageNativeRecords.h"
 
 //
 //  Single instance of the global driver state.
@@ -740,6 +741,7 @@ static VOID SafeUploadInstanceTeardownStart(_In_ PCFLT_RELATED_OBJECTS FltObject
     /* Publish retirement before the ledger/context is torn down. The receipt
      * remains unstable until InstanceTeardownComplete after outstanding I/O. */
     SafeUploadStageAttachInstanceTeardownStart(FltObjects->Instance);
+    SafeUploadStageNativeInstanceTeardownStart(FltObjects->Instance, Reason);
     SafeUploadStageAdmissionTopologyTeardownBegin();
     SafeUploadStageWritersInstanceTeardownStart(FltObjects, Reason);
 }
