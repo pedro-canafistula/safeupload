@@ -146,6 +146,8 @@ disposition under the shared destination journal turn. The filter recognizes thi
 NTFS rather than recursively requesting another service transaction. Consume/revoke the permit on the actual operation; no replay
 under another caller, generation, name or object is allowed.
 
+The proposed same-volume routing and section/cleanup lifetime mechanism is detailed in
+[T5-PUBLIC-PROXY-ROUTING.md](T5-PUBLIC-PROXY-ROUTING.md); it needs its focused security-design review before implementation.
 The proxy preserves the original handle's supported surface. For a non-writing delete proxy, forward allowed reads, positioning,
 byte-range locks and filesystem metadata queries to the checked public backend under the caller's originally granted rights; report
 its real size, attributes, streams, public FILE_ID_128/internal ID, public name and volume. Never expose a private proxy backing's
