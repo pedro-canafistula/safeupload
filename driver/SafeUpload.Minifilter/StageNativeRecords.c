@@ -5,12 +5,13 @@
  * pointer is borrowed, no service call runs under this lock, and no receipt
  * here certifies physical deletion. Normal builds omit this module. */
 #include "StageNativeRecords.h"
+#include "StageNativeWire.h"
 #include "Stage.h"
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #define NATIVE_RECORD_TAG 'nUpS'
-#define NATIVE_RECORD_LIMIT 1024L /* simultaneous unacknowledged records, never a per-boot counter */
-#define NATIVE_PAGE_LIMIT 16UL
+#define NATIVE_RECORD_LIMIT ((LONG)SAFEUPLOAD_NATIVE_REPLAY_MAX_RECORDS) /* simultaneous unacked, never per boot */
+#define NATIVE_PAGE_LIMIT SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS
 
 struct _SAFEUPLOAD_STAGE_NATIVE_RECORD {
     LIST_ENTRY Link;
@@ -475,6 +476,21 @@ VOID SafeUploadStageNativeInstanceTeardownStart(PFLT_INSTANCE Instance, FLT_INST
     NativeRelease(irql);
     if (changed) NativeWake();
     ExReleaseRundownProtection(&NativeCalls);
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageNativeReadIdentity(GUID *DriverInstanceId, PULONG OsBootSequence)
+{
+    KIRQL irql;
+    RtlZeroMemory(DriverInstanceId, sizeof(*DriverInstanceId));
+    *OsBootSequence = 0;
+    if (!NativeEnter()) return STATUS_DEVICE_NOT_READY;
+    NativeAcquire(&irql);
+    *DriverInstanceId = NativeDriverInstance;
+    *OsBootSequence = NativeBootSequence;
+    NativeRelease(irql);
+    ExReleaseRundownProtection(&NativeCalls);
+    return STATUS_SUCCESS;
 }
 
 _Use_decl_annotations_

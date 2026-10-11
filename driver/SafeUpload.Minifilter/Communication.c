@@ -22,6 +22,8 @@ Environment:
 #include "Filter.h"
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #include "Stage.h"
+#include "StageNativeRecords.h"
+#include "StageNativeWire.h"
 #endif
 
 //
@@ -1974,6 +1976,9 @@ Return Value:
         if (command == SAFEUPLOAD_CONTROL_SET_POLICY ||
             command == SAFEUPLOAD_CONTROL_STAGE_PUBLICATION ||
             command == SAFEUPLOAD_CONTROL_STAGE_DISPOSE ||
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+            command == SAFEUPLOAD_CONTROL_NATIVE_RECORD_REPLAY ||
+#endif
             command == SAFEUPLOAD_CONTROL_GRANT_OVERRIDE) {
             if (!SafeUploadCurrentProcessHasAgentServiceSid()) {
                 status = STATUS_ACCESS_DENIED;
@@ -1982,6 +1987,12 @@ Return Value:
         }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (command == SAFEUPLOAD_CONTROL_NATIVE_RECORD_REPLAY) {
+            status = SafeUploadStageNativeReplayControl(PortCookie, InputBuffer, InputBufferLength,
+                OutputBuffer, OutputBufferLength, ReturnOutputBufferLength);
+            leave;
+        }
+
         if (command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE ||
             command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_DISABLE ||
             command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR) {

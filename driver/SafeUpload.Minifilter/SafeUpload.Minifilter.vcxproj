@@ -81,6 +81,7 @@
     <ClCompile Include="StageSecurity.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StagePublic.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageNativeRecords.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
+    <ClCompile Include="StageNativeWire.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageAlias.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageFence.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageWriters.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
@@ -99,6 +100,7 @@
     <ClInclude Include="StageSecurity.h" />
     <ClInclude Include="StagePublic.h" />
     <ClInclude Include="StageNativeRecords.h" />
+    <ClInclude Include="StageNativeWire.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

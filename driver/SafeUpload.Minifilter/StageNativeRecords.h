@@ -90,6 +90,13 @@ _IRQL_requires_max_(APC_LEVEL)
 NTSTATUS SafeUploadStageNativeReadPage(_In_ UINT64 ExpectedRevision, _In_ ULONG Offset,
     _Out_writes_to_(Capacity, *Count) PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Rows, _In_ ULONG Capacity,
     _Out_ PULONG Count, _Out_ PUINT64 Revision, _Out_ PBOOLEAN Complete);
+_IRQL_requires_max_(APC_LEVEL)
+NTSTATUS SafeUploadStageNativeReadIdentity(_Out_ GUID *DriverInstanceId, _Out_ PULONG OsBootSequence);
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageNativeReplayControl(_In_opt_ PVOID PortCookie,
+    _In_reads_bytes_(InputLength) PVOID Input, _In_ ULONG InputLength,
+    _Out_writes_bytes_(OutputLength) PVOID Output, _In_ ULONG OutputLength,
+    _Out_ PULONG Returned);
 /* Call only after the authenticated service's exact terminal cleanup ACK,
  * never merely after releasing the exceptional publication hold. */
 _IRQL_requires_(PASSIVE_LEVEL)

@@ -1,0 +1,93 @@
+#ifndef SAFEUPLOAD_STAGE_NATIVE_WIRE_H
+#define SAFEUPLOAD_STAGE_NATIVE_WIRE_H
+#include "Protocol.h"
+
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+/* Separate feature-only ABI. Existing v18 controls and v20 stage layouts
+ * remain unchanged; this new payload has its own checked version. */
+#define SAFEUPLOAD_CONTROL_NATIVE_RECORD_REPLAY ((UINT32) 30)
+#define SAFEUPLOAD_NATIVE_REPLAY_VERSION ((UINT32) 21)
+#define SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS ((UINT32) 16)
+#define SAFEUPLOAD_NATIVE_REPLAY_MAX_RECORDS ((UINT32) 1024)
+#define SAFEUPLOAD_NATIVE_REPLAY_SID_BYTES ((UINT32) 68)
+#define SAFEUPLOAD_NATIVE_REPLAY_LEAF_CHARS ((UINT32) 256)
+
+#define SAFEUPLOAD_NATIVE_FORWARDED ((UINT32) 0x01)
+#define SAFEUPLOAD_NATIVE_CREATE_KNOWN ((UINT32) 0x02)
+#define SAFEUPLOAD_NATIVE_CREATE_ACCEPTED ((UINT32) 0x04)
+#define SAFEUPLOAD_NATIVE_IDENTITY_CHECKED ((UINT32) 0x08)
+#define SAFEUPLOAD_NATIVE_LAST_CLEANUP ((UINT32) 0x10)
+#define SAFEUPLOAD_NATIVE_CANCEL_BEFORE_HANDLE ((UINT32) 0x20)
+#define SAFEUPLOAD_NATIVE_CANCEL_CLOSE ((UINT32) 0x40)
+#define SAFEUPLOAD_NATIVE_COVERAGE_LOST ((UINT32) 0x80)
+
+typedef struct _SAFEUPLOAD_NATIVE_REPLAY_REQUEST {
+    SAFEUPLOAD_CONTROL Control;
+    UINT32 ExtensionVersion;
+    UINT32 StartIndex;
+    GUID ExpectedDriverInstanceId;
+    UINT64 ExpectedConnectionEpoch;
+    UINT64 ExpectedRevision;
+    UINT64 Reserved;
+} SAFEUPLOAD_NATIVE_REPLAY_REQUEST, *PSAFEUPLOAD_NATIVE_REPLAY_REQUEST;
+
+/* Explicit-width facts only. No kernel addresses, BOOLEANs, implicit
+ * padding, handles, access tokens or deletion authority cross this ABI. */
+typedef struct _SAFEUPLOAD_NATIVE_REPLAY_ROW {
+    GUID DriverInstanceId;
+    GUID TransferId;
+    GUID RequestNonce;
+    GUID OperationId;
+    UINT64 OriginalConnectionEpoch;
+    UINT64 JournalGeneration;
+    INT64 CallerProcessCreationTime;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 VolumeRootIdentity;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 ParentIdentity;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 PublicIdentity;
+    UINT32 OsBootSequence;
+    UINT32 CreateOptions;
+    UINT32 OriginalDesiredAccess;
+    UINT32 OriginalShareAccess;
+    UINT32 CallerProcessId;
+    UINT32 CallerSessionId;
+    UINT32 CallerSidBytes;
+    UINT32 ParentCaseSensitive;
+    UINT32 CanonicalLeafBytes;
+    UINT32 Flags;
+    INT32 CreateStatus;
+    INT32 IdentityStatus;
+    UINT32 TeardownReason;
+    UINT32 Reserved;
+    UCHAR CallerSid[SAFEUPLOAD_NATIVE_REPLAY_SID_BYTES];
+    WCHAR CanonicalLeaf[SAFEUPLOAD_NATIVE_REPLAY_LEAF_CHARS];
+    UINT32 ReservedEnd;
+} SAFEUPLOAD_NATIVE_REPLAY_ROW, *PSAFEUPLOAD_NATIVE_REPLAY_ROW;
+
+typedef struct _SAFEUPLOAD_NATIVE_REPLAY_PAGE {
+    UINT32 ExtensionVersion;
+    UINT32 StructSize;
+    GUID DriverInstanceId;
+    UINT64 ConnectionEpoch;
+    UINT64 Revision;
+    UINT32 OsBootSequence;
+    UINT32 StartIndex;
+    UINT32 Count;
+    UINT32 Complete;
+    UINT64 Reserved;
+    SAFEUPLOAD_NATIVE_REPLAY_ROW Rows[SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS];
+} SAFEUPLOAD_NATIVE_REPLAY_PAGE, *PSAFEUPLOAD_NATIVE_REPLAY_PAGE;
+
+C_ASSERT(sizeof(SAFEUPLOAD_NATIVE_REPLAY_REQUEST) == 64);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_REPLAY_REQUEST, ExpectedConnectionEpoch) == 40);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_REPLAY_REQUEST, ExpectedRevision) == 48);
+C_ASSERT(sizeof(SAFEUPLOAD_NATIVE_REPLAY_ROW) == 800);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_REPLAY_ROW, VolumeRootIdentity) == 88);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_REPLAY_ROW, Flags) == 196);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_REPLAY_ROW, CallerSid) == 216);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_REPLAY_ROW, CanonicalLeaf) == 284);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_REPLAY_ROW, ReservedEnd) == 796);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_REPLAY_PAGE, Rows) == 64);
+C_ASSERT(sizeof(SAFEUPLOAD_NATIVE_REPLAY_PAGE) == 12864);
+
+#endif
+#endif
