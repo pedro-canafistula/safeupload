@@ -194,7 +194,7 @@ VOID SafeUploadStageNativeInitialize(const GUID *DriverInstanceId, ULONG OsBootS
     NativeDriverInstance = *DriverInstanceId;
     NativeBootSequence = OsBootSequence;
     NativeWakeEvent = WakeEvent;
-    NativeRecordCount = 0;
+    InterlockedExchange(&NativeRecordCount, 0);
     NativeRevision = 1;
     NativeReplayUsable = TRUE;
     NativeAccepting = TRUE;
@@ -228,7 +228,8 @@ NTSTATUS SafeUploadStageNativeReserve(PFLT_INSTANCE Instance, PFILE_OBJECT FileO
     NativeAcquire(&irql);
     /* Lock order NativeLock -> StageAttachLock. Teardown publishes the attach
      * tombstone before taking NativeLock, and never holds both in reverse. */
-    if (!NativeAccepting || !NativeReplayUsable || NativeRecordCount >= NATIVE_RECORD_LIMIT ||
+    if (!NativeAccepting || !NativeReplayUsable ||
+        InterlockedCompareExchange(&NativeRecordCount, 0, 0) >= NATIVE_RECORD_LIMIT ||
         SafeUploadStageAttachInstanceRetiring(Instance)) { status = STATUS_DEVICE_BUSY; goto UnlockFail; }
     for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
         PSAFEUPLOAD_STAGE_NATIVE_RECORD current = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
@@ -547,7 +548,7 @@ BOOLEAN SafeUploadStageNativeTryCloseAdmission(VOID)
     KIRQL irql;
     BOOLEAN closed;
     NativeAcquire(&irql);
-    closed = NativeRecordCount == 0;
+    closed = InterlockedCompareExchange(&NativeRecordCount, 0, 0) == 0;
     if (closed) NativeAccepting = FALSE;
     NativeRelease(irql);
     return closed;
@@ -567,7 +568,7 @@ VOID SafeUploadStageNativeUninitialize(VOID)
     KIRQL irql;
     NativeAcquire(&irql);
     NativeAccepting = FALSE;
-    NT_ASSERT(NativeRecordCount == 0);
+    NT_ASSERT(InterlockedCompareExchange(&NativeRecordCount, 0, 0) == 0);
     NativeRelease(irql);
     InterlockedExchange(&NativeInitialized, 0);
     ExWaitForRundownProtectionRelease(&NativeCalls);

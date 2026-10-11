@@ -1,10 +1,13 @@
 namespace SafeUpload.Agent.Service.Interception;
 
 // Checked inputs from the authenticated driver replay, not path/PID inference.
-// LastHandleCleanedUp describes the preallocated original FILE_OBJECT record;
-// it is local lifetime evidence, never a physical deletion acknowledgement.
+// LastHandleCleanedUp describes the preallocated original FILE_OBJECT record.
+// Cancellation receipts are the two reviewed before-any-app-handle cases;
+// they cannot be inferred from a failed NTSTATUS, path, or arbitrary CLOSE.
+// These are lifetime evidence, never physical deletion acknowledgements.
 internal sealed record StagedNativeRecordReplay(StagedPublicDeleteBinding Binding,
-    Guid OperationId, bool LastHandleCleanedUp);
+    Guid OperationId, bool LastHandleCleanedUp, bool CancelledBeforeHandle = false,
+    bool CancelledCloseObserved = false);
 
 // The dispatcher creates this only after the driver/connection handshake and
 // invalidates it on disconnect. A replay must be reconciled against the actual
@@ -86,16 +89,18 @@ internal sealed class StagedNativeRecoverySession
                     r.Binding.TransferId == binding.TransferId || r.Binding.RequestNonce == binding.RequestNonce);
                 if (matching is not null)
                 {
-                    if (matching.Binding != binding || matching.OperationId != operationId || !matching.LastHandleCleanedUp)
+                    if (matching.Binding != binding || matching.OperationId != operationId ||
+                        !(matching.LastHandleCleanedUp || matching.CancelledBeforeHandle || matching.CancelledCloseObserved))
                         throw new IOException("The exact original native application handle is still live or unproven.");
-                    return; // Exact authenticated cleanup, regardless of boot-counter rollback/wrap.
+                    return; // Exact authenticated lifetime receipt, regardless of boot-counter rollback/wrap.
                 }
                 if (!_complete || _session._driverInstanceId == binding.DriverInstanceId ||
                     binding.OsBootSequence is not { } originalBoot || _session._osBootSequence is not { } currentBoot ||
                     currentBoot <= originalBoot)
                     throw new IOException("The original driver lifetime has not been proven ended.");
-                // Requires the driver's mandatory local drain before unregister
-                // and a complete reconciled native map. A new GUID alone, or a
+                // Requires the service-stop prohibition and voluntary-unload
+                // veto while native records remain, plus complete reconciled
+                // replay. A new GUID alone, or a
                 // resumed original driver even with a larger counter, cannot pass.
             }
         }

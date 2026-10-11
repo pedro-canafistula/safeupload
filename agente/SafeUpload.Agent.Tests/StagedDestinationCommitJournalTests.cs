@@ -120,6 +120,49 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
         Assert.Equal(generation, (await journal.ReadDestinationHeadAsync(destination, CancellationToken.None))!.LatestPublished);
     }
 
+    [Theory]
+    [InlineData("below", false)]
+    [InlineData("below", true)]
+    [InlineData("above", false)]
+    [InlineData("above", true)]
+    public async Task Exact_before_handle_cancellation_reconciles_after_service_restart_without_inventing_no_effect(
+        string cancellingFilter, bool absent)
+    {
+        var destination = Destination(); var binding = Binding() with { OsBootSequence = 42 };
+        var operation = Guid.NewGuid(); var journal = Journal();
+        var intent = await NativeCreateIntent(journal, destination, binding, operation);
+        var successor = Guid.NewGuid(); long generation = await Allocate(journal, destination, successor);
+        Assert.True(generation > intent.Generation);
+        var restart = Journal();
+        var session = new StagedNativeRecoverySession(binding.DriverInstanceId, binding.ConnectionEpoch + 1, 42);
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var waiting = restart.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.PhysicalCommit, cancel.Token);
+        using (var turn = await restart.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+        {
+            var unproven = session.ReconcileReplay(binding.DriverInstanceId, binding.ConnectionEpoch + 1,
+                true, true, [new(binding, operation, false)]);
+            await Assert.ThrowsAsync<IOException>(() => restart.ReconcileNativeDeleteOnCloseAsync(turn,
+                binding, operation, unproven, Observation(destination, absent ? null : _publicIdentity), CancellationToken.None));
+            Assert.False(waiting.IsCompleted);
+            var proof = session.ReconcileReplay(binding.DriverInstanceId, binding.ConnectionEpoch + 1,
+                true, true, [new(binding, operation, false, CancelledBeforeHandle: cancellingFilter == "below",
+                    CancelledCloseObserved: cancellingFilter == "above")]);
+            var recovered = await restart.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+                proof, Observation(destination, absent ? null : _publicIdentity), CancellationToken.None);
+            Assert.Equal(StagedPublicDeleteState.Admitted, recovered.State);
+            Assert.Null(recovered.NativeCreateAccepted); // Never treat cancellation as a harmless rejected CREATE.
+            Assert.Equal(intent.Generation, recovered.Generation);
+            await Assert.ThrowsAsync<IOException>(() => restart.RecordPublicDeletePhysicalCompleteAsync(turn,
+                binding, CancellationToken.None));
+        }
+        using (await waiting.WaitAsync(TimeSpan.FromSeconds(10))) { }
+        Assert.Equal(0, (await restart.ReadDestinationHeadAsync(destination, CancellationToken.None))!.CommittedDelete);
+        await Publish(restart, destination, successor, generation);
+        Assert.Equal(generation, (await restart.ReadDestinationHeadAsync(destination, CancellationToken.None))!.LatestPublished);
+    }
+
     [Fact]
     public async Task Restart_keeps_unresolved_pre_create_until_exact_cleanup_or_qualified_boot_replay()
     {
