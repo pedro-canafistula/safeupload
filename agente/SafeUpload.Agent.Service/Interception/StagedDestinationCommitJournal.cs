@@ -60,7 +60,10 @@ internal sealed record StagedDestinationIdentity
 }
 
 internal enum StagedDestinationTurnPurpose { Allocation, PhysicalCommit, Reconciliation }
-internal enum StagedPublicDeleteState { Admitted = 1, Intent = 2, Accepted = 3, Canceled = 4, Superseded = 5, Complete = 6, Failed = 7 }
+// Persisted values are never renumbered. AcceptedUnresolved is the single
+// exceptional native-CREATE recovery state approved by the owner.
+internal enum StagedPublicDeleteState { Admitted = 1, Intent = 2, Accepted = 3, Canceled = 4, Superseded = 5, Complete = 6, Failed = 7, AcceptedUnresolved = 8 }
+internal enum StagedPublicDeleteKind { Ordinary = 0, NativeOnClose = 1 }
 internal enum StagedDestinationMutation { Publication = 1, DeleteDisposition = 2, ClearDisposition = 3 }
 
 // Checked authorization is deliberately not represented by an "allowed" bool.
@@ -69,9 +72,18 @@ internal enum StagedDestinationMutation { Publication = 1, DeleteDisposition = 2
 // These records are durable ordering/replay evidence, not an access grant.
 internal sealed record StagedPublicDeleteBinding(Guid TransferId, Guid RequestNonce,
     Guid DriverInstanceId, ulong ConnectionEpoch, StagedStageIdentity PublicIdentity,
-    int OwnerProcessId, long OwnerProcessCreationTime, uint OwnerSessionId, string OwnerSid);
+    int OwnerProcessId, long OwnerProcessCreationTime, uint OwnerSessionId, string OwnerSid,
+    uint? OsBootSequence = null);
 internal sealed record StagedPublicDeleteRecord(StagedPublicDeleteBinding Binding, long Generation,
-    StagedPublicDeleteState State, DateTimeOffset UpdatedAtUtc, Guid? OperationId = null);
+    StagedPublicDeleteState State, DateTimeOffset UpdatedAtUtc, Guid? OperationId = null,
+    StagedPublicDeleteKind Kind = StagedPublicDeleteKind.Ordinary, bool? NativeCreateAccepted = null);
+// These are checked dispatcher inputs, not publication/delete permits. A
+// complete anchored directory query proves a name mapping, never a native
+// link's delete-pending state or an exact physical-cleanup acknowledgement.
+internal sealed record StagedDestinationNameObservation(StagedDestinationIdentity Destination,
+    StagedStageIdentity ParentBefore, StagedStageIdentity ParentAfter, bool CompleteEnumeration,
+    StagedStageIdentity? PublicIdentity);
+internal sealed record StagedNativeLastCleanupReceipt(StagedPublicDeleteBinding Binding, Guid OperationId);
 internal sealed record StagedDestinationCommitIntent(Guid OperationId, StagedDestinationMutation Mutation,
     Guid TransferId, long Generation, StagedStageIdentity? ExpectedPublicIdentity,
     StagedStageIdentity? TemporaryIdentity = null, long? Length = null, string? Sha256Hex = null);
@@ -151,7 +163,7 @@ public sealed partial class StagedTransferJournal
                     bool blocked = purpose != StagedDestinationTurnPurpose.Reconciliation &&
                         (head?.PendingCommit is not null ||
                          (purpose == StagedDestinationTurnPurpose.PhysicalCommit &&
-                          head?.Deletes.Any(d => d.State == StagedPublicDeleteState.Accepted) == true));
+                          head?.Deletes.Any(IsPublicationReservation) == true));
                     if (!blocked)
                     {
                         var turn = new DestinationCommitTurn(this, cell, destination, purpose);
@@ -249,10 +261,11 @@ public sealed partial class StagedTransferJournal
             if (head.Deletes.FirstOrDefault(d => d.Binding.TransferId == binding.TransferId ||
                     d.Binding.RequestNonce == binding.RequestNonce) is { } replay)
             {
-                if (replay.Binding != binding) throw new IOException("The delete replay is bound to a different capability.");
+                if (replay.Binding != binding || replay.Kind != StagedPublicDeleteKind.Ordinary)
+                    throw new IOException("The delete replay is bound to a different capability or kind.");
                 return replay;
             }
-            if (head.Deletes.Any(d => d.State == StagedPublicDeleteState.Accepted &&
+            if (head.Deletes.Any(d => IsPublicationReservation(d) &&
                     d.Binding.PublicIdentity != binding.PublicIdentity))
                 throw new IOException("The public object conflicts with an accepted deletion reservation.");
             long generation = checked(Math.Max(head.MaxAllocated, retainedManifestHighWater) + 1);
@@ -275,6 +288,8 @@ public sealed partial class StagedTransferJournal
         {
             var head = await RequireDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
             var delete = RequireExactDelete(head, binding);
+            if (delete.Kind != StagedPublicDeleteKind.Ordinary)
+                throw new IOException("A native on-close CREATE cannot be emulated by an ordinary disposition.");
             if (delete.OperationId == operationId && delete.State is (StagedPublicDeleteState.Accepted or
                     StagedPublicDeleteState.Complete or StagedPublicDeleteState.Canceled or StagedPublicDeleteState.Failed))
                 return delete;
@@ -291,7 +306,7 @@ public sealed partial class StagedTransferJournal
                 await WriteDestinationHeadCoreAsync(ReplaceDelete(head, delete), token).ConfigureAwait(false);
                 return delete;
             }
-            if (head.Deletes.Any(d => d.State == StagedPublicDeleteState.Accepted &&
+            if (head.Deletes.Any(d => IsPublicationReservation(d) &&
                     d.Binding.PublicIdentity != binding.PublicIdentity))
                 throw new IOException("An accepted reservation belongs to another public identity.");
             delete = delete with { State = StagedPublicDeleteState.Intent, UpdatedAtUtc = DateTimeOffset.UtcNow,
@@ -299,6 +314,119 @@ public sealed partial class StagedTransferJournal
             head = ReplaceDelete(head, delete) with { PendingCommit = new(operationId,
                 StagedDestinationMutation.DeleteDisposition, binding.TransferId, delete.Generation, binding.PublicIdentity) };
             await WriteDestinationHeadCoreAsync(head, token).ConfigureAwait(false);
+            return delete;
+        }
+        finally { _gate.Release(); }
+    }
+
+    // Persist before forwarding original native CREATE. The dispatcher has
+    // already bound the caller, original target object and checked namespace.
+    // This receipt never permits repeating CREATE after a lost response.
+    internal async Task<StagedPublicDeleteRecord> BeginNativeDeleteOnCloseCreateAsync(
+        DestinationCommitTurn turn, StagedPublicDeleteBinding binding, Guid operationId,
+        string locator, long retainedManifestHighWater, CancellationToken token)
+    {
+        turn.Require(this, StagedDestinationTurnPurpose.Allocation);
+        ValidatePublicDeleteBinding(binding, turn.Destination);
+        if (operationId == Guid.Empty || binding.OsBootSequence is null || retainedManifestHighWater < 0)
+            throw new ArgumentException("Native CREATE requires its exact operation and OS boot sequence.");
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var head = await ReadDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false)
+                ?? NewDestinationHead(turn.Destination, locator);
+            RequireNoPendingPhysicalCommit(head);
+            if (head.CurrentSaveTransferId == binding.TransferId)
+                throw new IOException("A save transfer cannot be reused for native CREATE.");
+            if (head.Deletes.FirstOrDefault(d => d.Binding.TransferId == binding.TransferId ||
+                    d.Binding.RequestNonce == binding.RequestNonce) is { } replay)
+            {
+                if (replay.Binding != binding || replay.OperationId != operationId ||
+                    replay.Kind != StagedPublicDeleteKind.NativeOnClose)
+                    throw new IOException("Native CREATE replay changed its capability or operation.");
+                return replay;
+            }
+            if (head.Deletes.Any(IsPublicationReservation))
+                throw new IOException("An unresolved native or physical delete already holds this destination.");
+            long generation = checked(Math.Max(head.MaxAllocated, retainedManifestHighWater) + 1);
+            var intent = new StagedPublicDeleteRecord(binding, generation,
+                StagedPublicDeleteState.AcceptedUnresolved, DateTimeOffset.UtcNow, operationId,
+                StagedPublicDeleteKind.NativeOnClose);
+            await WriteDestinationHeadCoreAsync(head with { MaxAllocated = generation,
+                Deletes = [.. head.Deletes, intent] }, token).ConfigureAwait(false);
+            return intent;
+        }
+        finally { _gate.Release(); }
+    }
+
+    // Only the original checked CREATE's NTSTATUS and preallocated record
+    // binding may supply these inputs. Failed bookkeeping cannot change an
+    // NTFS-accepted result or authorize another open/mutation.
+    internal async Task<StagedPublicDeleteRecord> RecordNativeDeleteOnCloseCreateResultAsync(
+        DestinationCommitTurn turn, StagedPublicDeleteBinding binding, Guid operationId,
+        bool ntfsAccepted, bool trackingBound)
+    {
+        turn.Require(this, StagedDestinationTurnPurpose.Reconciliation);
+        if (!ntfsAccepted && trackingBound) throw new ArgumentException("A failed CREATE cannot own a live native record.");
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var head = await RequireDestinationHeadCoreAsync(turn.Destination, CancellationToken.None).ConfigureAwait(false);
+            RequireNoPendingPhysicalCommit(head);
+            var delete = RequireExactNativeDelete(head, binding, operationId);
+            if (delete.NativeCreateAccepted is { } recorded)
+            {
+                if (recorded != ntfsAccepted) throw new IOException("The native CREATE result changed on replay.");
+                return delete; // An unresolved receipt is released only by reconciliation, never a later bool.
+            }
+            if (delete.State != StagedPublicDeleteState.AcceptedUnresolved)
+                throw new IOException("No unresolved pre-CREATE intent remains for this result.");
+            delete = delete with { NativeCreateAccepted = ntfsAccepted, UpdatedAtUtc = DateTimeOffset.UtcNow,
+                State = !ntfsAccepted ? StagedPublicDeleteState.Failed :
+                    trackingBound ? StagedPublicDeleteState.Admitted : StagedPublicDeleteState.AcceptedUnresolved };
+            await WriteDestinationHeadCoreAsync(ReplaceDelete(head, delete), CancellationToken.None).ConfigureAwait(false);
+            return delete;
+        }
+        finally { _gate.Release(); }
+    }
+
+    // Called by exact last-handle CLEANUP or startup recovery, after a checked
+    // complete parent enumeration. A new service epoch/driver GUID is not boot
+    // evidence. The OS-loader BootId is supplied by the authenticated driver;
+    // non-increasing/wrapped/unknown values cannot prove an old lifetime ended.
+    internal async Task<StagedPublicDeleteRecord> ReconcileNativeDeleteOnCloseAsync(
+        DestinationCommitTurn turn, StagedPublicDeleteBinding binding, Guid operationId,
+        uint currentOsBootSequence, StagedNativeLastCleanupReceipt? cleanup,
+        StagedDestinationNameObservation observation, CancellationToken token)
+    {
+        turn.Require(this, StagedDestinationTurnPurpose.Reconciliation);
+        ArgumentNullException.ThrowIfNull(observation);
+        if (observation.Destination != turn.Destination || !observation.CompleteEnumeration ||
+            observation.ParentBefore != turn.Destination.Parent || observation.ParentAfter != turn.Destination.Parent)
+            throw new IOException("Native recovery needs a complete enumeration of the exact stable anchored parent.");
+        if (observation.PublicIdentity is not null) RequireSameVolumeIdentity(turn.Destination, observation.PublicIdentity);
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var head = await RequireDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
+            RequireNoPendingPhysicalCommit(head);
+            var delete = RequireExactNativeDelete(head, binding, operationId);
+            if (binding.OsBootSequence is not { } originalBoot || currentOsBootSequence < originalBoot ||
+                (currentOsBootSequence == originalBoot &&
+                 (cleanup is null || cleanup.Binding != binding || cleanup.OperationId != operationId)))
+                throw new IOException("The exact native handle lifetime has not been proven ended.");
+            if (delete.State == StagedPublicDeleteState.Admitted) return delete;
+            if (delete.State != StagedPublicDeleteState.AcceptedUnresolved)
+                throw new IOException("This native intent is no longer awaiting exceptional reconciliation.");
+            bool newerPublished = observation.PublicIdentity is not null && head.LatestPublished > delete.Generation &&
+                head.PublishedIdentity == observation.PublicIdentity;
+            if (observation.PublicIdentity is not null && observation.PublicIdentity != binding.PublicIdentity && !newerPublished)
+                throw new IOException("An unexplained replacement retains the native recovery hold.");
+            delete = delete with { State = newerPublished ? StagedPublicDeleteState.Superseded : StagedPublicDeleteState.Admitted,
+                UpdatedAtUtc = DateTimeOffset.UtcNow };
+            // Neither original identity nor name absence is a physical ACK.
+            // Keep the original scheduled intent and its generation floor.
+            await WriteDestinationHeadCoreAsync(ReplaceDelete(head, delete), token).ConfigureAwait(false);
             return delete;
         }
         finally { _gate.Release(); }
@@ -315,6 +443,8 @@ public sealed partial class StagedTransferJournal
         {
             var head = await RequireDestinationHeadCoreAsync(turn.Destination, CancellationToken.None).ConfigureAwait(false);
             var delete = RequireExactDelete(head, binding);
+            if (delete.Kind != StagedPublicDeleteKind.Ordinary)
+                throw new IOException("An ordinary disposition result cannot resolve a native CREATE intent.");
             if (delete.OperationId == operationId &&
                 ((ntfsAccepted && delete.State is (StagedPublicDeleteState.Accepted or StagedPublicDeleteState.Complete or
                     StagedPublicDeleteState.Canceled)) ||
@@ -341,7 +471,7 @@ public sealed partial class StagedTransferJournal
         {
             var head = await RequireDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
             RequireNoPendingPhysicalCommit(head);
-            if (!head.Deletes.Any(d => d.Binding.PublicIdentity == exactPublicIdentity &&
+            if (!head.Deletes.Any(d => d.Kind == StagedPublicDeleteKind.Ordinary && d.Binding.PublicIdentity == exactPublicIdentity &&
                     d.State is (StagedPublicDeleteState.Admitted or StagedPublicDeleteState.Accepted)))
                 throw new IOException("No provisional disposition is bound to this exact public object.");
             await WriteDestinationHeadCoreAsync(head with { PendingCommit = new(operationId,
@@ -368,7 +498,8 @@ public sealed partial class StagedTransferJournal
             if (intent.ExpectedPublicIdentity != exactPublicIdentity)
                 throw new IOException("Clear completion belongs to another public object.");
             if (ntfsCleared)
-                head = head with { Deletes = head.Deletes.Select(d => d.Binding.PublicIdentity == exactPublicIdentity &&
+                head = head with { Deletes = head.Deletes.Select(d => d.Kind == StagedPublicDeleteKind.Ordinary &&
+                    d.Binding.PublicIdentity == exactPublicIdentity &&
                     d.State is (StagedPublicDeleteState.Admitted or StagedPublicDeleteState.Accepted)
                     ? d with { State = StagedPublicDeleteState.Canceled, UpdatedAtUtc = DateTimeOffset.UtcNow } : d).ToArray() };
             await WriteDestinationHeadCoreAsync(head with { PendingCommit = null,
@@ -414,7 +545,7 @@ public sealed partial class StagedTransferJournal
             RequireNoPendingPhysicalCommit(head);
             var delete = RequireExactDelete(head, binding);
             if (delete.State == StagedPublicDeleteState.Canceled) return;
-            if (delete.State != StagedPublicDeleteState.Admitted)
+            if (delete.Kind != StagedPublicDeleteKind.Ordinary || delete.State != StagedPublicDeleteState.Admitted)
                 throw new IOException("Cancellation cannot undo an attempted or accepted NTFS disposition.");
             await WriteDestinationHeadCoreAsync(ReplaceDelete(head, delete with
                 { State = StagedPublicDeleteState.Canceled, UpdatedAtUtc = DateTimeOffset.UtcNow }), token).ConfigureAwait(false);
@@ -437,8 +568,8 @@ public sealed partial class StagedTransferJournal
             var head = await RequireDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
             RequireNoPendingPhysicalCommit(head);
             if (head.CurrentSaveTransferId != transferId || head.CurrentSaveGeneration != generation ||
-                generation <= head.CommittedDelete || generation <= head.LatestPublished ||
-                head.Deletes.Any(d => d.State == StagedPublicDeleteState.Accepted))
+                generation <= PublicationGenerationFloor(head) || generation <= head.LatestPublished ||
+                head.Deletes.Any(IsPublicationReservation))
                 throw new IOException("A newer save, committed delete or accepted reservation bars publication.");
             await WriteDestinationHeadCoreAsync(head with { PendingCommit = new(operationId,
                 StagedDestinationMutation.Publication, transferId, generation, expectedPublicIdentity,
@@ -499,6 +630,24 @@ public sealed partial class StagedTransferJournal
     private static StagedPublicDeleteRecord RequireExactDelete(StagedDestinationHead head, StagedPublicDeleteBinding binding) =>
         head.Deletes.SingleOrDefault(d => d.Binding == binding)
         ?? throw new IOException("No delete receipt matches the exact capability binding.");
+
+    private static StagedPublicDeleteRecord RequireExactNativeDelete(StagedDestinationHead head,
+        StagedPublicDeleteBinding binding, Guid operationId)
+    {
+        var delete = RequireExactDelete(head, binding);
+        if (operationId == Guid.Empty || delete.OperationId != operationId ||
+            delete.Kind != StagedPublicDeleteKind.NativeOnClose)
+            throw new IOException("No native CREATE intent matches the exact capability and operation.");
+        return delete;
+    }
+
+    private static bool IsPublicationReservation(StagedPublicDeleteRecord delete) =>
+        delete.State is StagedPublicDeleteState.Accepted or StagedPublicDeleteState.AcceptedUnresolved;
+
+    private static long PublicationGenerationFloor(StagedDestinationHead head) => Math.Max(head.CommittedDelete,
+        head.Deletes.Where(d => d.Kind == StagedPublicDeleteKind.NativeOnClose &&
+            d.State is (StagedPublicDeleteState.Admitted or StagedPublicDeleteState.AcceptedUnresolved))
+            .Select(d => d.Generation).DefaultIfEmpty(0).Max());
 
     private static StagedDestinationCommitIntent RequirePendingCommit(StagedDestinationHead head, Guid operationId,
         StagedDestinationMutation mutation, Guid transferId) => head.PendingCommit is { } intent &&
@@ -613,12 +762,21 @@ public sealed partial class StagedTransferJournal
                 !generations.Add(delete.Generation) || delete.Generation <= 0 || delete.Generation > head.MaxAllocated ||
                 delete.Generation == head.CurrentSaveGeneration || delete.OperationId == Guid.Empty ||
                 (delete.State is (StagedPublicDeleteState.Intent or StagedPublicDeleteState.Accepted or
-                    StagedPublicDeleteState.Complete or StagedPublicDeleteState.Failed) && delete.OperationId is null) ||
-                !Enum.IsDefined(delete.State) || delete.UpdatedAtUtc == default || delete.UpdatedAtUtc.Offset != TimeSpan.Zero ||
+                    StagedPublicDeleteState.Complete or StagedPublicDeleteState.Failed or
+                    StagedPublicDeleteState.AcceptedUnresolved) && delete.OperationId is null) ||
+                !Enum.IsDefined(delete.State) || !Enum.IsDefined(delete.Kind) ||
+                (delete.Kind == StagedPublicDeleteKind.Ordinary &&
+                    (delete.State == StagedPublicDeleteState.AcceptedUnresolved || delete.NativeCreateAccepted is not null)) ||
+                (delete.Kind == StagedPublicDeleteKind.NativeOnClose &&
+                    (delete.Binding.OsBootSequence is null || delete.OperationId is null ||
+                     delete.State is (StagedPublicDeleteState.Intent or StagedPublicDeleteState.Accepted or StagedPublicDeleteState.Canceled) ||
+                     (delete.State == StagedPublicDeleteState.Failed && delete.NativeCreateAccepted != false) ||
+                     (delete.State != StagedPublicDeleteState.Failed && delete.NativeCreateAccepted == false))) ||
+                delete.UpdatedAtUtc == default || delete.UpdatedAtUtc.Offset != TimeSpan.Zero ||
                 (delete.State == StagedPublicDeleteState.Complete && delete.Generation > head.CommittedDelete))
                 throw new InvalidDataException("The durable public-delete receipt is invalid.");
         }
-        var acceptedIdentities = head.Deletes.Where(d => d.State == StagedPublicDeleteState.Accepted)
+        var acceptedIdentities = head.Deletes.Where(IsPublicationReservation)
             .Select(d => d.Binding.PublicIdentity).Distinct().ToArray();
         if (acceptedIdentities.Length > 1) throw new InvalidDataException("Conflicting delete reservations.");
         if (head.PendingCommit is { } intent)
@@ -630,7 +788,7 @@ public sealed partial class StagedTransferJournal
             {
                 case StagedDestinationMutation.Publication:
                     if (intent.TransferId != head.CurrentSaveTransferId || intent.Generation != head.CurrentSaveGeneration ||
-                        intent.Generation <= head.CommittedDelete || intent.Generation <= head.LatestPublished ||
+                        intent.Generation <= PublicationGenerationFloor(head) || intent.Generation <= head.LatestPublished ||
                         intent.TemporaryIdentity is null || !IsMeasuredDigest(intent.Length, intent.Sha256Hex) ||
                         acceptedIdentities.Length != 0) throw new InvalidDataException("Invalid publication intent.");
                     RequireSameVolumeIdentity(destination, intent.TemporaryIdentity);
@@ -645,7 +803,8 @@ public sealed partial class StagedTransferJournal
                 case StagedDestinationMutation.ClearDisposition:
                     if (intent.TransferId != Guid.Empty || intent.Generation != 0 || intent.ExpectedPublicIdentity is null ||
                         intent.TemporaryIdentity is not null || intent.Length is not null || intent.Sha256Hex is not null ||
-                        !head.Deletes.Any(d => d.Binding.PublicIdentity == intent.ExpectedPublicIdentity &&
+                        !head.Deletes.Any(d => d.Kind == StagedPublicDeleteKind.Ordinary &&
+                            d.Binding.PublicIdentity == intent.ExpectedPublicIdentity &&
                             d.State is (StagedPublicDeleteState.Admitted or StagedPublicDeleteState.Accepted)))
                         throw new InvalidDataException("Invalid ordinary clear intent.");
                     break;

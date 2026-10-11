@@ -183,6 +183,11 @@ No live delete-capable app handle crosses a detached interval. Allowed native re
 NTFS owns their sections; they do not extend this native-record drain. Private stages keep their separate paging/section rundown.
 Actual OS shutdown does not call FilterUnloadCallback. Startup distinguishes an actual OS boot using trusted boot evidence, never
 merely a different driver-instance GUID; retain exact durable intent across loss. No automatic Unknown clearance is added.
+The OS-boot sequence is the OS-loader `KUSER_SHARED_DATA.BootId` documented in
+[the WDK reference](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/ns-ntddk-kuser_shared_data), also present in the
+installed `10.0.28000.0/km/ntddk.h`. Bind its original value into the durable native intent and obtain the current value from the
+authenticated driver. A strictly greater value can end a prior local NTFS handle lifetime; a service epoch, driver GUID, adjustable
+boot-time timestamp, unknown value or counter rollback/wrap cannot. Remote/removable lifetime proofs require their own destination design.
 
 - Implement the corrections in the READY WITH CORRECTIONS security-design review; do not claim the existing recovery is already wired.
 - Review the integrated kernel lifetime/lock-order/retirement change once before its first revised VM boot.

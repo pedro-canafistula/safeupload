@@ -60,6 +60,191 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
         await journal.RecordDestinationPublicationResultAsync(turn, operation, transferId, _temporaryIdentity, renameCommitted: true);
     }
 
+    private async Task<StagedPublicDeleteRecord> NativeCreateIntent(StagedTransferJournal journal,
+        StagedDestinationIdentity destination, StagedPublicDeleteBinding binding, Guid operation)
+    {
+        using var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Allocation, CancellationToken.None);
+        return await journal.BeginNativeDeleteOnCloseCreateAsync(turn, binding, operation,
+            Locator(destination.CanonicalLeaf), 0, CancellationToken.None);
+    }
+
+    private static StagedDestinationNameObservation Observation(StagedDestinationIdentity destination,
+        StagedStageIdentity? identity) => new(destination, destination.Parent, destination.Parent, true, identity);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Exact_last_cleanup_releases_exceptional_hold_without_forging_physical_completion(bool absent)
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved,
+            (await NativeCreateIntent(journal, destination, binding, operation)).State);
+        var successor = Guid.NewGuid(); long generation = await Allocate(journal, destination, successor);
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var waiting = journal.EnterDestinationCommitTurnAsync(destination, StagedDestinationTurnPurpose.PhysicalCommit, cancel.Token);
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+        {
+            await journal.RecordNativeDeleteOnCloseCreateResultAsync(turn, binding, operation, true, false);
+            Assert.False(waiting.IsCompleted);
+            var result = await journal.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation, 42,
+                new(binding, operation), Observation(destination, absent ? null : _publicIdentity), CancellationToken.None);
+            Assert.Equal(StagedPublicDeleteState.Admitted, result.State);
+            Assert.Equal(StagedPublicDeleteKind.NativeOnClose, result.Kind);
+            Assert.True(result.NativeCreateAccepted);
+            await Assert.ThrowsAsync<IOException>(() => journal.CancelAdmittedPublicDeleteAsync(turn, binding, CancellationToken.None));
+            await Assert.ThrowsAsync<IOException>(() => journal.RecordPublicDeletePhysicalCompleteAsync(turn, binding, CancellationToken.None));
+        }
+        using (await waiting.WaitAsync(TimeSpan.FromSeconds(10))) { }
+        var head = (await Journal().ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+        Assert.Equal(0, head.CommittedDelete); Assert.Equal(operation, Assert.Single(head.Deletes).OperationId);
+        await Publish(journal, destination, successor, generation);
+        Assert.Equal(generation, (await journal.ReadDestinationHeadAsync(destination, CancellationToken.None))!.LatestPublished);
+    }
+
+    [Fact]
+    public async Task Restart_keeps_unresolved_pre_create_and_requires_cleanup_or_a_strictly_later_os_boot()
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, binding, operation);
+        var restart = Journal();
+        var persisted = Assert.Single((await restart.ReadDestinationHeadAsync(destination, CancellationToken.None))!.Deletes);
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved, persisted.State);
+        Assert.Equal(binding, persisted.Binding); Assert.Null(persisted.NativeCreateAccepted);
+        using var turn = await restart.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None);
+        foreach (uint boot in new uint[] { 0, 41, 42 })
+            await Assert.ThrowsAsync<IOException>(() => restart.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+                boot, null, Observation(destination, null), CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => restart.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation, 42,
+            new(binding with { DriverInstanceId = Guid.NewGuid(), ConnectionEpoch = 18 }, operation),
+            Observation(destination, _publicIdentity), CancellationToken.None));
+        var recovered = await restart.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation, 43,
+            null, Observation(destination, null), CancellationToken.None);
+        Assert.Equal(StagedPublicDeleteState.Admitted, recovered.State);
+        Assert.Null(recovered.NativeCreateAccepted); // Recovery never invents NTFS acceptance or cleanup ACK.
+        Assert.Equal(0, (await restart.ReadDestinationHeadAsync(destination, CancellationToken.None))!.CommittedDelete);
+    }
+
+    [Fact]
+    public async Task Unknown_parent_or_replacement_and_wrong_cleanup_binding_keep_the_recovery_hold()
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, binding, operation);
+        using var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None);
+        var original = Observation(destination, _publicIdentity);
+        foreach (var invalid in new[] { original with { CompleteEnumeration = false },
+            original with { ParentAfter = destination.Parent with { FileIdHigh = 999 } },
+            original with { Destination = Destination("another.txt") },
+            original with { PublicIdentity = _publicIdentity with { FileIdHigh = 999 } } })
+            await Assert.ThrowsAsync<IOException>(() => journal.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+                42, new(binding, operation), invalid, CancellationToken.None));
+        foreach (var cleanup in new[] { new StagedNativeLastCleanupReceipt(binding, Guid.NewGuid()),
+            new(binding with { OwnerProcessCreationTime = binding.OwnerProcessCreationTime + 1 }, operation),
+            new(binding with { PublicIdentity = _publicIdentity with { FileIdLow = 999 } }, operation) })
+            await Assert.ThrowsAsync<IOException>(() => journal.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+                42, cleanup, original, CancellationToken.None));
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved,
+            Assert.Single((await journal.ReadDestinationHeadAsync(destination, CancellationToken.None))!.Deletes).State);
+    }
+
+    [Fact]
+    public async Task Successful_tracking_is_nonblocking_but_older_saves_stay_below_the_native_delete_floor()
+    {
+        var journal = Journal(); var destination = Destination(); var old = Guid.NewGuid();
+        long oldGeneration = await Allocate(journal, destination, old);
+        var operation = Guid.NewGuid(); var binding = Binding() with { OsBootSequence = 42 };
+        var native = await NativeCreateIntent(journal, destination, binding, operation);
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+            Assert.Equal(StagedPublicDeleteState.Admitted,
+                (await journal.RecordNativeDeleteOnCloseCreateResultAsync(turn, binding, operation, true, true)).State);
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.PhysicalCommit, CancellationToken.None))
+            await Assert.ThrowsAsync<IOException>(() => journal.BeginDestinationPublicationAsync(turn, Guid.NewGuid(), old,
+                oldGeneration, _publicIdentity, _temporaryIdentity, 0, StagedTransferJournal.EmptySha256Hex, CancellationToken.None));
+        var successor = Guid.NewGuid(); long generation = await Allocate(journal, destination, successor);
+        Assert.True(generation > native.Generation);
+        await Publish(journal, destination, successor, generation);
+    }
+
+    [Fact]
+    public async Task Acceptance_replay_cannot_clear_exceptional_hold_or_contradict_the_original_ntfs_result()
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, binding, operation);
+        using var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None);
+        await journal.RecordNativeDeleteOnCloseCreateResultAsync(turn, binding, operation, true, false);
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved,
+            (await journal.RecordNativeDeleteOnCloseCreateResultAsync(turn, binding, operation, true, true)).State);
+        await Assert.ThrowsAsync<IOException>(() => journal.RecordNativeDeleteOnCloseCreateResultAsync(turn, binding, operation, false, false));
+        await Assert.ThrowsAsync<IOException>(() => journal.BeginPublicDeleteDispositionAsync(turn, binding, Guid.NewGuid(), CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.RecordPublicDeleteDispositionResultAsync(turn, binding, operation, true));
+        await Assert.ThrowsAsync<IOException>(() => journal.RetirePublicDeleteReceiptAsync(turn, binding, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Failed_native_create_releases_the_guard_and_ordinary_clear_never_cancels_a_native_on_close_intent()
+    {
+        var journal = Journal(); var destination = Destination(); var failedOperation = Guid.NewGuid();
+        var failed = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, failed, failedOperation);
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+            Assert.Equal(StagedPublicDeleteState.Failed,
+                (await journal.RecordNativeDeleteOnCloseCreateResultAsync(turn, failed, failedOperation, false, false)).State);
+        using (await journal.EnterDestinationCommitTurnAsync(destination, StagedDestinationTurnPurpose.PhysicalCommit,
+            CancellationToken.None)) { }
+        var operation = Guid.NewGuid(); var native = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, native, operation);
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+            await journal.RecordNativeDeleteOnCloseCreateResultAsync(turn, native, operation, true, true);
+        var ordinary = Binding(5678); await Admit(journal, destination, ordinary);
+        await Accept(journal, destination, ordinary, Guid.NewGuid());
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+        {
+            Guid clear = Guid.NewGuid();
+            await journal.BeginPublicDeleteClearAsync(turn, clear, _publicIdentity, CancellationToken.None);
+            await journal.RecordPublicDeleteClearResultAsync(turn, clear, _publicIdentity, true);
+        }
+        var head = (await journal.ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+        Assert.Equal(StagedPublicDeleteState.Admitted, head.Deletes.Single(d => d.Binding == native).State);
+        Assert.Equal(StagedPublicDeleteState.Canceled, head.Deletes.Single(d => d.Binding == ordinary).State);
+    }
+
+    [Theory]
+    [InlineData("ordinary-kind")]
+    [InlineData("missing-boot")]
+    [InlineData("rejected-unresolved")]
+    [InlineData("unknown-kind")]
+    public async Task Malformed_native_intents_are_never_reinterpreted_as_publishable_ordinary_deletes(string mutation)
+    {
+        var journal = Journal(); var destination = Destination();
+        await NativeCreateIntent(journal, destination, Binding() with { OsBootSequence = 42 }, Guid.NewGuid());
+        string path = Assert.Single(Directory.GetFiles(JournalPath, "destination-*.state"));
+        var head = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+        var delete = head["Deletes"]![0]!;
+        switch (mutation)
+        {
+            case "ordinary-kind": delete["Kind"] = 0; break;
+            case "missing-boot": delete["Binding"]!["OsBootSequence"] = null; break;
+            case "rejected-unresolved": delete["NativeCreateAccepted"] = false; break;
+            case "unknown-kind": delete["Kind"] = 999; break;
+        }
+        await File.WriteAllTextAsync(path, head.ToJsonString());
+        await Assert.ThrowsAsync<InvalidDataException>(() => journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.PhysicalCommit, CancellationToken.None));
+    }
+
     [Fact]
     public void Destination_key_joins_case_insensitive_aliases_and_keeps_full_volume_parent_identity()
     {
