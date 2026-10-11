@@ -1,0 +1,13 @@
+{
+  "AppDataAttributes": "Hidden, Directory",
+  "ExitCode": 0,
+  "OriginalRemoteProcessTerminalProof": false,
+  "PID": 1572036,
+  "ProcessTerminal": true,
+  "QueryUTC": "2026-10-11T15:07:24.830146+00:00",
+  "RemoteFilesObservedUnchanged": true,
+  "RuntimeQualified": false,
+  "ScriptSHA256": "55d72f7fee816f4dfb2f052f3dd29319f08dd5d440a19ba88bac684c1d62d8be",
+  "StderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "StdoutSHA256": "bbd43ca49952334e44daac0d33585c135fbc387ab8bb6ed792083ec0f5f81d27"
+}

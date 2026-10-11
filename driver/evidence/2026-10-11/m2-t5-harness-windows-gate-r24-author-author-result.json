@@ -1,0 +1,105 @@
+{
+  "schema": "safeupload-harness-windows-gate-r24-author-result-v1",
+  "candidate": "m2-t5-harness-windows-gate-r24-luna-a1",
+  "status": "AUTHOR_SOURCE_ONLY_CANDIDATE_PENDING_ROOT_CAPTURE_AND_DIFFERENT_AUTHOR_REVIEW",
+  "baseline": {
+    "candidate": "output/review-candidates/m2-t5-harness-windows-gate-r23-root-a1",
+    "rootCaptureSha256": "7f4cd75757bddd4e02a2b88142d9773a59b96e9069883976048535c9f253788c",
+    "independentReviewSha256": "975b1d71e9d255585cd8523c95f795ded0a87b869523f578d50298565eeb5c57",
+    "sourceCount": 63,
+    "frozenUnchanged": true
+  },
+  "sourceDelta": {
+    "changedCount": 4,
+    "unchangedCount": 59,
+    "changedPaths": [
+      {
+        "path": "driver/scripts/HarnessWindowsGate.manifest.json",
+        "baselineSha256": "2494b0411213f07df94d43f501330f2f5d9b27195f26bedc8444709b98d2c71a",
+        "sha256": "1a10aa3cf34348386febb3b9de7fe0dda78e8a8ba7650bd8e221574b5f2e4aca"
+      },
+      {
+        "path": "driver/scripts/HarnessWindowsGateLifecycleFixture.ps1",
+        "baselineSha256": "599eb7da9e0177b2443d5edd937a15b29c72b0357e5c4b71a3c2397b62fb1489",
+        "sha256": "1ce3820e89d9f93192ab6b437262dc0522617ce575ed33a0613dc5b287012d73"
+      },
+      {
+        "path": "driver/scripts/HarnessWindowsGateRemoteControl.ps1",
+        "baselineSha256": "48a16decedec44e7c529ee2df099f9dbde1f2b69ef33d23d95fc58cd2b3b3caa",
+        "sha256": "0b6c57014a5629f178654a559dc5658e23e4464dd782650fbb621f55ddc950cb"
+      },
+      {
+        "path": "driver/scripts/Invoke-HarnessWindowsGate.sh",
+        "baselineSha256": "5ad2092573fe2fd9f636c7fc2a5d39b8a542cfc536e7869b2797a7c7e2a201b7",
+        "sha256": "7c55d78b02298aa56eb81aa94f31a799efd5aca32b59427ecc25d8cc145f3ce1"
+      }
+    ],
+    "sourceCapturePath": "author/source-capture.json",
+    "sourceCaptureSha256": "e005dd7dca3ab3a1ea1e3453f89de09bd652e51d5e995da6b8914dcc0e769740",
+    "exactDeltaPath": "author/exact-delta-from-r23.patch",
+    "exactDeltaSha256": "e29d6a5ced880a2db3fc807118594212d002f551b0ac86002652adac26591cfd"
+  },
+  "closedInventory": {
+    "sourceFiles": 63,
+    "contextInputs": 49,
+    "mainFiles": 15,
+    "rootSelfchecks": 17,
+    "t5Selfcheck": 1,
+    "executionRoles": 33,
+    "supportFiles": 8,
+    "executionRoleOrderPreserved": true,
+    "authorFiles": 9
+  },
+  "changedPins": {
+    "remoteControl": "0b6c57014a5629f178654a559dc5658e23e4464dd782650fbb621f55ddc950cb",
+    "lifecycleFixture": "1ce3820e89d9f93192ab6b437262dc0522617ce575ed33a0613dc5b287012d73",
+    "manifest": "1a10aa3cf34348386febb3b9de7fe0dda78e8a8ba7650bd8e221574b5f2e4aca",
+    "shell": "7c55d78b02298aa56eb81aa94f31a799efd5aca32b59427ecc25d8cc145f3ce1"
+  },
+  "preservedT5SelfcheckSha256": "abc6b472a16e772bdd11fea7ab88e8e3de82579fc2691c6ef2436229c88d74bb",
+  "offlineControls": {
+    "path": "author/r24-source-controls.py",
+    "sha256": "1cb05c892c6a2b42a07edfaeb0ddcdf7e8d0687f163e140753ed66a9231816dc",
+    "result": "PASS",
+    "outputPath": "author/offline-controls.stdout.log",
+    "stdoutSha256": "cdc6b2deff90d4bab77dadf244c177a3611f5b8e20120be6ddfa39f9fe26e20a",
+    "stderrPath": "author/offline-controls.stderr.log",
+    "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrBytes": 0,
+    "syntheticNegativeCount": 20,
+    "powershellExecuted": false
+  },
+  "qualification": {
+    "PowerShellParsedOrExecuted": false,
+    "FullWindowsGate": false,
+    "RuntimeQualified": false,
+    "ServicePairQualified": false,
+    "RecoveryQualified": false,
+    "ProductQualified": false,
+    "SourceAccepted": false
+  },
+  "activity": {
+    "WindowsAction": false,
+    "RemoteAction": false,
+    "ServiceOrActorInvoked": false,
+    "CoordinatorTopLevelInvoked": false,
+    "HostApiOrPolicyAction": false,
+    "ProductVMStarted": false,
+    "NetworkAction": false,
+    "GitMutation": false
+  },
+  "limitations": [
+    "R23 bounded full-gate NO-GO remains retained until R24 receives independent source review and approved diagnostics.",
+    "PS5.1 parsing and Windows lifecycle fixture have not run for R24.",
+    "R18 162-assertion T5 standalone result is diagnostic-only, not full-gate or product qualification."
+  ],
+  "authorArtifacts": {
+    "noteSha256": "8efff124766cb5db8264b5930386c56de21367630b8dc6c8dc6c75904fb227e8",
+    "attemptLogSha256": "311e9f165de0813a2ca3ffd3847fd4cec5bd71ff2be80a434c566626ca47f857",
+    "offlineControlsSha256": "16ec832a3dd73dfe38f98c85943ab2d1e199380d7f66f85257c5640693175b38",
+    "offlineStdoutSha256": "cdc6b2deff90d4bab77dadf244c177a3611f5b8e20120be6ddfa39f9fe26e20a",
+    "offlineStderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "exactDeltaSha256": "e29d6a5ced880a2db3fc807118594212d002f551b0ac86002652adac26591cfd",
+    "sourceCaptureSha256": "e005dd7dca3ab3a1ea1e3453f89de09bd652e51d5e995da6b8914dcc0e769740"
+  }
+}

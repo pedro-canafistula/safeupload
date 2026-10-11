@@ -1,0 +1,12 @@
+{
+  "EndedUTC": "2026-10-11T15:05:08.680606+00:00",
+  "ExitCode": 4,
+  "LocalShellPID": 1567073,
+  "ProductVMStarted": false,
+  "ReviewSHA256": "99bb0bf247b3335871da9d8471fa177c45a9f5a4dd78966f798991307b7ac605",
+  "RunStderrSHA256": "3a1156ca9a9ed1c4b09e1f2b77ad3481c5a6c8e3f1ef2775ee80523ea8a8e34c",
+  "RunStdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "RuntimeQualified": false,
+  "SourceInputsUnchanged": true,
+  "StartedUTC": "2026-10-11T15:04:42.375068+00:00"
+}

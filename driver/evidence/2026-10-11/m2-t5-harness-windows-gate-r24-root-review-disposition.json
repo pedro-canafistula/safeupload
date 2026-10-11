@@ -1,0 +1,17 @@
+{
+  "All121FrozenInputsRevalidated": true,
+  "All63PreparedInputsRevalidated": true,
+  "BoundedExistingBuilderDiagnosticPermitted": true,
+  "BuilderTrustSHA256": "ea4a4c3ffe5314a44a3846b8278be15858e2a5b94372c522b139d6439421ea30",
+  "CutoverAuthorized": false,
+  "HostPolicyApplied": false,
+  "IndependentReviewSHA256": "99bb0bf247b3335871da9d8471fa177c45a9f5a4dd78966f798991307b7ac605",
+  "PairQualified": false,
+  "ProductQualified": false,
+  "ProductVMStarted": false,
+  "RootCaptureSHA256": "e4cfa1e2e9ab63214b4fae771583e8a990ac269ac6f932c0cebdec4e7834577e",
+  "RootExecutorSHA256": "25c5bd7845b89caa427b9a9effa569207c18a4ed88ff497498b1b86f4309af12",
+  "RuntimeQualified": false,
+  "Scope": "Exact detached63 source closure,33parse roles,18selfchecks,controlled overflow/lifecycle children; unchanged existingbuilder-only controls. No product driver/service/actor/coordinator top-level or product VM.",
+  "SourceCorrectionAccepted": true
+}

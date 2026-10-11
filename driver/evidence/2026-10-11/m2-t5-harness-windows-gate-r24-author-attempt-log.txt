@@ -1,0 +1,13 @@
+R24 author attempt log
+
+- Read the owner objective and R23 independent NO-GO report before editing.
+- Created a candidate-only copy from the immutable R23 root source. No live source, R23 source, Git state, host, VM, or Windows state was modified.
+- An initial patch context did not match because the R24 candidate already contained the first pre-ready helper draft and negative-control fixture scaffolding. Inspected the exact candidate diff and revised that code in place; no failed patch changed source bytes.
+- Tightened pre-recovery admission to snapshot original phase/PID/FILETIME before Open-KeeperProcess can rewrite an unpublished identity. Added exact phase-transition and state/readiness gates; retained strict receipt validation outside pre-ready CANCEL.
+- Added source-only fixture cases for no-ready VERIFY rejection, path mismatch, published FILETIME mismatch, ambiguous keeper-job PID list, exact child termination/wait, and final no-readiness/exact-drain assertions at both barriers.
+- Updated only derived gateControl/gateFixture manifest hashes and shell expected hashes. Preserved the exact 33 execution roles.
+- Ran `python3 -I -B author/r24-source-controls.py`: PASS. It verified R23 source/context capture pins, exact source closure/delta, nineteen synthetic rejection cases, manifest-helper self-test and exact manifest verification, and `bash -n`.
+- No PowerShell parser/runtime, Windows/builder, remote transport, full gate, service, actor/coordinator, host/API/policy, VM, network, or Git action was performed. No failed Windows/runtime attempt exists for R24.
+
+- Tightened the final absent-readiness guard so a JSON null readiness hash is rejected distinctly from the exact empty string, before keeper recovery and again after recovery. Added a null-hash synthetic negative without changing production receipt validation.
+- Refreshed the four-path manifest/shell closure, exact R23 delta, source capture, and 20-case offline result. Final source controls passed; PowerShell and Windows behavior remain unverified.

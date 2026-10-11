@@ -1,0 +1,404 @@
+--- R23/driver/scripts/HarnessWindowsGate.manifest.json
++++ R24/driver/scripts/HarnessWindowsGate.manifest.json
+@@ -192,7 +192,7 @@
+   },
+   "gateControl": {
+     "path": "HarnessWindowsGateRemoteControl.ps1",
+-    "sha256": "48a16decedec44e7c529ee2df099f9dbde1f2b69ef33d23d95fc58cd2b3b3caa"
++    "sha256": "0b6c57014a5629f178654a559dc5658e23e4464dd782650fbb621f55ddc950cb"
+   },
+   "gateProtocol": {
+     "path": "HarnessWindowsGateProtocol.psm1",
+@@ -212,6 +212,6 @@
+   },
+   "gateFixture": {
+     "path": "HarnessWindowsGateLifecycleFixture.ps1",
+-    "sha256": "599eb7da9e0177b2443d5edd937a15b29c72b0357e5c4b71a3c2397b62fb1489"
++    "sha256": "1ce3820e89d9f93192ab6b437262dc0522617ce575ed33a0613dc5b287012d73"
+   }
+ }
+--- R23/driver/scripts/HarnessWindowsGateLifecycleFixture.ps1
++++ R24/driver/scripts/HarnessWindowsGateLifecycleFixture.ps1
+@@ -179,6 +179,88 @@
+     }
+ }
+ 
++function Invoke-R18ControlExpectedFailure([string]$RunToken, [string]$ControlPath,
++    [string]$PowerShellPath, [IntPtr]$FixtureJobHandle, [uint32]$SupervisorPid, [long]$SupervisorStart,
++    [string]$CasePrefix, [string]$ModeName, [string]$FailureTag, [string]$ExpectedErrorSubstring) {
++    $arguments = @(
++        '-NoProfile', '-NonInteractive', '-OutputFormat', 'Text', '-ExecutionPolicy', 'Bypass',
++        '-File', $ControlPath,
++        '-Mode', $ModeName, '-DestinationPath', $DestinationPath, '-RunToken', $RunToken,
++        '-ExpectedManifestSha256', $ExpectedManifestSha256,
++        '-ExpectedRunnerSha256', $ExpectedRunnerSha256,
++        '-ExpectedWorkerSha256', $ExpectedWorkerSha256,
++        '-ExpectedKeeperSha256', $ExpectedKeeperSha256,
++        '-ExpectedFixtureSha256', $ExpectedFixtureSha256,
++        '-ExpectedControlSha256', $ExpectedControlSha256,
++        '-ExpectedProtocolSha256', $ExpectedProtocolSha256,
++        '-ExpectedProcessId', [string]$SupervisorPid,
++        '-ExpectedStartFiletime', [string]$SupervisorStart
++    )
++    $stdoutPath = $CasePrefix + '.' + $FailureTag + '.stdout.bin'
++    $stderrPath = $CasePrefix + '.' + $FailureTag + '.stderr.bin'
++    if ((Test-Path -LiteralPath $stdoutPath) -or (Test-Path -LiteralPath $stderrPath)) {
++        throw ('Negative control evidence path is already occupied: ' + $FailureTag)
++    }
++    $control = [SafeUpload.HarnessGate.Native]::StartSuspendedInJob(
++        $FixtureJobHandle, $PowerShellPath, [string[]]$arguments, $env:USERPROFILE, $stdoutPath, $stderrPath)
++    try {
++        [void][SafeUpload.HarnessGate.Native]::ResumeChild($control)
++        $watch = [Diagnostics.Stopwatch]::StartNew()
++        $terminal = $false
++        while ($watch.Elapsed.TotalSeconds -lt 60) {
++            $wait = [SafeUpload.HarnessGate.Native]::Wait($control, [uint32]100)
++            if ($wait -eq 0) { $terminal = $true; break }
++            if ($wait -ne 258) { throw ('Negative control process wait returned unexpected result ' + [string]$wait) }
++        }
++        if (-not $terminal) {
++            if (-not [SafeUpload.HarnessGate.Native]::TerminateAndWait($control, [uint32]0xE5F7, [uint32]20000)) {
++                throw 'Negative control process did not become terminal through its exact handle.'
++            }
++            throw 'Negative control exceeded its monotonic deadline.'
++        }
++        $exitCode = [uint32][SafeUpload.HarnessGate.Native]::ExitCode($control)
++        $stdoutText = Read-R18BoundedText $stdoutPath 65536
++        $stderrText = Read-R18BoundedText $stderrPath 65536
++        if ($exitCode -eq 0 -or $stdoutText.Length -ne 0 -or
++            -not $stderrText.Contains($ExpectedErrorSubstring)) {
++            throw ('Negative control did not fail at its pinned identity guard: ' + $FailureTag)
++        }
++        return [pscustomobject]@{ ExitCode = $exitCode; Stdout = $stdoutText; Stderr = $stderrText }
++    } finally {
++        [SafeUpload.HarnessGate.Native]::CloseChild($control)
++    }
++}
++
++function Start-R18AmbiguousKeeperChild([IntPtr]$KeeperJobHandle, [IntPtr]$FixtureJobHandle,
++    [string]$PowerShellPath, [string]$CasePrefix) {
++    $stdoutPath = $CasePrefix + '.ambiguous-keeper.stdout.bin'
++    $stderrPath = $CasePrefix + '.ambiguous-keeper.stderr.bin'
++    if ((Test-Path -LiteralPath $stdoutPath) -or (Test-Path -LiteralPath $stderrPath)) {
++        throw 'Ambiguous keeper test evidence path is already occupied.'
++    }
++    $scriptText = 'while ($true) { [System.Threading.Thread]::Sleep(1000) }'
++    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($scriptText))
++    $arguments = @('-NoProfile', '-NonInteractive', '-OutputFormat', 'Text',
++        '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded)
++    $child = [SafeUpload.HarnessGate.Native]::StartSuspendedInJob(
++        $KeeperJobHandle, $PowerShellPath, [string[]]$arguments, $env:USERPROFILE, $stdoutPath, $stderrPath)
++    try {
++        if ([uint32]$child.ProcessId -eq 0 -or [long]$child.StartFileTime -le 0 -or
++            -not [SafeUpload.HarnessGate.Native]::IsProcessHandleInJob($child.ProcessHandle, $KeeperJobHandle) -or
++            -not [SafeUpload.HarnessGate.Native]::IsProcessHandleInJob($child.ProcessHandle, $FixtureJobHandle)) {
++            throw 'Ambiguous keeper negative-control process has no exact identity or is outside its held jobs.'
++        }
++        [void][SafeUpload.HarnessGate.Native]::ResumeChild($child)
++        $wait = [SafeUpload.HarnessGate.Native]::WaitHandle($child.ProcessHandle, [uint32]0)
++        if ($wait -ne 258) { throw 'Ambiguous keeper negative-control process did not remain active on its exact handle.' }
++        return $child
++    } catch {
++        try { [void][SafeUpload.HarnessGate.Native]::TerminateAndWait($child, [uint32]0xE5F8, [uint32]20000) } catch { }
++        [SafeUpload.HarnessGate.Native]::CloseChild($child)
++        throw
++    }
++}
++
+ function Invoke-R18BarrierCase([string]$Barrier) {
+     $guid = [guid]::NewGuid()
+     $runToken = $guid.ToString('D')
+@@ -199,6 +281,7 @@
+     $powerShellPath = Join-Path $PSHOME 'powershell.exe'
+     $runner = $null
+     $keeper = $null
++    $ambiguousKeeper = $null
+     $fixtureJob = [IntPtr]::Zero
+     $mainJob = [IntPtr]::Zero
+     $keeperJob = [IntPtr]::Zero
+@@ -207,8 +290,15 @@
+     $supervisorStart = [long]0
+     $state = $null
+     try {
+-        foreach ($path in @($statePath, $barrierPath, $runnerStdoutPath, $runnerStderrPath,
+-            ($prefix + '.cancel.stdout.bin'), ($prefix + '.cancel.stderr.bin'))) {
++        $controlOutputPaths = @(
++            ($prefix + '.cancel.stdout.bin'), ($prefix + '.cancel.stderr.bin'),
++            ($prefix + '.verify-no-ready.stdout.bin'), ($prefix + '.verify-no-ready.stderr.bin'),
++            ($prefix + '.cancel-ambiguous.stdout.bin'), ($prefix + '.cancel-ambiguous.stderr.bin'),
++            ($prefix + '.cancel-path-mismatch.stdout.bin'), ($prefix + '.cancel-path-mismatch.stderr.bin'),
++            ($prefix + '.cancel-start-mismatch.stdout.bin'), ($prefix + '.cancel-start-mismatch.stderr.bin'),
++            ($prefix + '.ambiguous-keeper.stdout.bin'), ($prefix + '.ambiguous-keeper.stderr.bin')
++        )
++        foreach ($path in (@($statePath, $barrierPath, $runnerStdoutPath, $runnerStderrPath) + $controlOutputPaths)) {
+             Assert-R18Fixture (-not (Test-Path -LiteralPath $path)) ('fresh run evidence path is unused: ' + $path)
+         }
+         foreach ($name in @($mainJobName, $keeperJobName, $fixtureJobName)) {
+@@ -277,6 +367,8 @@
+             Assert-R18Fixture ($state.phase -ceq 'KEEPER_IDENTITY_DURABLE' -and
+                 [uint32]$state.keeperPid -gt 0 -and [long]$state.keeperStartFiletime -gt 0) 'pre-resume state has the durable exact keeper identity'
+         }
++        Assert-R18Fixture ([string]$state.keeperReadySha256 -ceq '' -and
++            -not (Test-Path -LiteralPath (Get-HarnessGateKeeperReadyPath $runToken))) 'both startup barriers have no readiness hash or receipt'
+ 
+         $mainJob = Open-R18NamedJob $mainJobName
+         $keeperJob = Open-R18NamedJob $keeperJobName
+@@ -324,6 +416,85 @@
+         Assert-R18Fixture ($keeperMatches.Count -eq 1 -and $keeperMatches[0].ProcessId -eq $keeperPid -and
+             $keeperMatches[0].StartFiletime -eq $keeper.StartFileTime) 'CANCEL target remains the same exact keeper process after RUN exits'
+ 
++        $verifyError = if ($Barrier -ceq 'BeforeKeeperPublication') {
++            'Unpublished keeper recovery requires exactly one PID in the exact keeper job.'
++        } else {
++            'Keeper readiness receipt hash is absent or malformed.'
++        }
++        $stateBeforeNegative = (Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash.ToLowerInvariant()
++        [void](Invoke-R18ControlExpectedFailure $runToken $controlPath $powerShellPath `
++            $fixtureJob $supervisorPid $supervisorStart $prefix 'VERIFY' 'verify-no-ready' $verifyError)
++        Assert-R18Fixture ((Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $stateBeforeNegative) 'VERIFY without readiness fails without rewriting durable state'
++        Assert-R18Fixture (-not (Test-Path -LiteralPath (Get-HarnessGateKeeperReadyPath $runToken))) 'failed VERIFY does not synthesize keeper readiness'
++
++        $state = Read-HarnessGateState $runToken
++        $originalKeeperPath = [string]$state.keeperPath
++        $state.keeperPath = $originalKeeperPath + '.mismatch'
++        Write-HarnessGateState $statePath $state
++        $mismatchedPathHash = (Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash.ToLowerInvariant()
++        [void](Invoke-R18ControlExpectedFailure $runToken $controlPath $powerShellPath `
++            $fixtureJob $supervisorPid $supervisorStart $prefix 'CANCEL' 'cancel-path-mismatch' `
++            'Run state does not bind the exact v2 token, original supervisor, paths, and two jobs.')
++        Assert-R18Fixture ((Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $mismatchedPathHash) 'mismatched keeper path is rejected without control-side state rewrite'
++        $state.keeperPath = $originalKeeperPath
++        Write-HarnessGateState $statePath $state
++
++        if ($Barrier -ceq 'BeforeKeeperResume') {
++            $state = Read-HarnessGateState $runToken
++            $originalKeeperStart = [long]$state.keeperStartFiletime
++            $state.keeperStartFiletime = $originalKeeperStart + 1
++            Write-HarnessGateState $statePath $state
++            $mismatchedStartHash = (Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash.ToLowerInvariant()
++            [void](Invoke-R18ControlExpectedFailure $runToken $controlPath $powerShellPath `
++                $fixtureJob $supervisorPid $supervisorStart $prefix 'CANCEL' 'cancel-start-mismatch' `
++                'Keeper job PID creation FILETIME differs from the durable exact identity.')
++            Assert-R18Fixture ((Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $mismatchedStartHash) 'mismatched durable keeper FILETIME is rejected without control-side state rewrite'
++            $state.keeperStartFiletime = $originalKeeperStart
++            Write-HarnessGateState $statePath $state
++        }
++        $state = Read-HarnessGateState $runToken
++        if ($Barrier -ceq 'BeforeKeeperPublication') {
++            Assert-R18Fixture ($state.phase -ceq 'JOBS_CREATED' -and
++                [uint32]$state.keeperPid -eq 0 -and [long]$state.keeperStartFiletime -eq 0) 'identity-negative controls restore the original unpublished barrier state'
++        } else {
++            Assert-R18Fixture ($state.phase -ceq 'KEEPER_IDENTITY_DURABLE' -and
++                [uint32]$state.keeperPid -eq $keeperPid -and
++                [long]$state.keeperStartFiletime -eq [long]$keeper.StartFileTime) 'identity-negative controls restore the original durable barrier identity'
++        }
++
++        $ambiguousKeeper = Start-R18AmbiguousKeeperChild $keeperJob $fixtureJob $powerShellPath $prefix
++        $ambiguousSnapshot = Get-R18JobSnapshot $keeperJob
++        $ambiguousPid = [uint32]$ambiguousKeeper.ProcessId
++        Assert-R18Fixture ($ambiguousSnapshot.Active -eq 2 -and $ambiguousSnapshot.Ids.Length -eq 2 -and
++            @($ambiguousSnapshot.Ids | Where-Object { $_ -eq $keeperPid }).Count -eq 1 -and
++            @($ambiguousSnapshot.Ids | Where-Object { $_ -eq $ambiguousPid }).Count -eq 1) 'ambiguity control holds exactly the real keeper plus one distinct job-listed process'
++        $stateBeforeAmbiguousCancel = (Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash.ToLowerInvariant()
++        $ambiguousError = if ($Barrier -ceq 'BeforeKeeperPublication') {
++            'Unpublished keeper recovery requires exactly one PID in the exact keeper job.'
++        } else {
++            'Pre-ready CANCEL requires one unambiguous job-listed keeper with the exact durable PID and FILETIME.'
++        }
++        [void](Invoke-R18ControlExpectedFailure $runToken $controlPath $powerShellPath `
++            $fixtureJob $supervisorPid $supervisorStart $prefix 'CANCEL' 'cancel-ambiguous' $ambiguousError)
++        Assert-R18Fixture ((Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $stateBeforeAmbiguousCancel) 'ambiguous keeper identity is rejected without durable state rewrite'
++        Assert-R18Fixture ([SafeUpload.HarnessGate.Native]::WaitHandle($keeper.ProcessHandle, [uint32]0) -eq 258 -and
++            [SafeUpload.HarnessGate.Native]::WaitHandle($ambiguousKeeper.ProcessHandle, [uint32]0) -eq 258) 'ambiguous CANCEL leaves both original held process handles active'
++        Assert-R18Fixture (-not (Test-Path -LiteralPath (Get-HarnessGateKeeperReadyPath $runToken))) 'ambiguous CANCEL does not synthesize readiness'
++        if (-not [SafeUpload.HarnessGate.Native]::TerminateAndWait($ambiguousKeeper, [uint32]0xE5F9, [uint32]20000)) {
++            throw 'Ambiguity-control child did not become terminal through its exact retained process handle.'
++        }
++        [SafeUpload.HarnessGate.Native]::CloseChild($ambiguousKeeper)
++        $ambiguousKeeper = $null
++        $oneKeeperWatch = [Diagnostics.Stopwatch]::StartNew()
++        $keeperSnapshot = Get-R18JobSnapshot $keeperJob
++        while ($oneKeeperWatch.ElapsedMilliseconds -lt 20000 -and
++            ($keeperSnapshot.Active -ne 1 -or $keeperSnapshot.Ids.Length -ne 1 -or $keeperSnapshot.Ids[0] -ne $keeperPid)) {
++            Start-Sleep -Milliseconds 50
++            $keeperSnapshot = Get-R18JobSnapshot $keeperJob
++        }
++        Assert-R18Fixture ($keeperSnapshot.Active -eq 1 -and $keeperSnapshot.Ids.Length -eq 1 -and
++            $keeperSnapshot.Ids[0] -eq $keeperPid) 'exact ambiguity-control process drain restores only the original keeper PID'
++
+         $cancelState = Invoke-R18Cancel $runToken $controlPath $powerShellPath `
+             $fixtureJob $supervisorPid $supervisorStart $prefix
+         Assert-R18Fixture ([SafeUpload.HarnessGate.Native]::WaitHandle($keeper.ProcessHandle, [uint32]0) -eq 0) 'CANCEL terminates the exact retained keeper process handle'
+@@ -331,6 +502,10 @@
+         Assert-R18Fixture (Wait-R18JobEmpty $mainJob 20000) 'held main job remains exact zero after keeper termination'
+         Assert-R18Fixture ($cancelState.status -ceq 'CANCELLED' -and
+             $cancelState.phase -ceq 'CANCELLED_TERMINAL' -and [bool]$cancelState.pinsAfter) 'CANCEL durable state carries its exact terminal and post-pin proof'
++        Assert-R18Fixture ([uint32]$cancelState.keeperPid -eq $keeperPid -and
++            [long]$cancelState.keeperStartFiletime -eq [long]$keeper.StartFileTime) 'CANCEL terminal state retains the exact original keeper PID and FILETIME'
++        Assert-R18Fixture ([string]$cancelState.keeperReadySha256 -ceq '' -and
++            -not (Test-Path -LiteralPath (Get-HarnessGateKeeperReadyPath $runToken))) 'successful pre-ready CANCEL records no synthesized readiness receipt'
+         Assert-R18Fixture (Wait-R18JobEmpty $fixtureJob 20000) 'outer fixture job reaches exact zero only after CANCEL and controller termination'
+         [void](Assert-HarnessGateFiles $DestinationPath $ExpectedManifestSha256 $ExpectedRunnerSha256 `
+             $ExpectedWorkerSha256 $ExpectedKeeperSha256 $ExpectedFixtureSha256 $ExpectedControlSha256 $ExpectedProtocolSha256)
+@@ -368,13 +543,25 @@
+             if ($mainJob -ne [IntPtr]::Zero) { try { $mainDrained = Wait-R18JobEmpty $mainJob 20000 } catch { $mainDrained = $false } }
+             if ($keeperJob -ne [IntPtr]::Zero) { try { $keeperDrained = Wait-R18JobEmpty $keeperJob 20000 } catch { $keeperDrained = $false } }
+             if ($fixtureJob -ne [IntPtr]::Zero) { try { $fixtureDrained = Wait-R18JobEmpty $fixtureJob 20000 } catch { $fixtureDrained = $false } }
+-            if (-not $runnerDrained -or -not $mainDrained -or -not $keeperDrained -or -not $fixtureDrained) {
++            $ambiguousDrained = ($null -eq $ambiguousKeeper)
++            if ($null -ne $ambiguousKeeper) {
++                try {
++                    $ambiguousWait = [SafeUpload.HarnessGate.Native]::WaitHandle($ambiguousKeeper.ProcessHandle, [uint32]0)
++                    if ($ambiguousWait -eq 0) { $ambiguousDrained = $true }
++                    elseif ($ambiguousWait -eq 258) {
++                        $ambiguousDrained = [SafeUpload.HarnessGate.Native]::TerminateAndWait($ambiguousKeeper, [uint32]0xE5FA, [uint32]20000)
++                    }
++                } catch { $ambiguousDrained = $false }
++            }
++            if (-not $runnerDrained -or -not $mainDrained -or -not $keeperDrained -or
++                -not $fixtureDrained -or -not $ambiguousDrained) {
+                 [Console]::Error.WriteLine(('LifecycleFixtureCleanup=INCOMPLETE;runTerminal=' + [string]$runnerDrained +
+                     ';mainEmpty=' + [string]$mainDrained + ';keeperEmpty=' + [string]$keeperDrained +
+-                    ';outerFixtureEmpty=' + [string]$fixtureDrained))
++                    ';outerFixtureEmpty=' + [string]$fixtureDrained + ';ambiguousChildTerminal=' + [string]$ambiguousDrained))
+             }
+         }
+         if ($null -ne $keeper) { [SafeUpload.HarnessGate.Native]::CloseChild($keeper) }
++        if ($null -ne $ambiguousKeeper) { [SafeUpload.HarnessGate.Native]::CloseChild($ambiguousKeeper) }
+         if ($null -ne $runner) { [SafeUpload.HarnessGate.Native]::CloseChild($runner) }
+         if ($keeperJob -ne [IntPtr]::Zero) { [SafeUpload.HarnessGate.Native]::Close($keeperJob) }
+         if ($mainJob -ne [IntPtr]::Zero) { [SafeUpload.HarnessGate.Native]::Close($mainJob) }
+--- R23/driver/scripts/HarnessWindowsGateRemoteControl.ps1
++++ R24/driver/scripts/HarnessWindowsGateRemoteControl.ps1
+@@ -138,6 +138,67 @@
+         [string]$receipt.keeperJobMembership -cne 'CURRENT_PROCESS_MEMBER') {
+         throw 'Keeper readiness receipt fields do not bind this exact run and both job identities.'
+     }
++}
++
++function Assert-PreReadyCancelKeeperIdentity($State, [string]$OriginalPhase,
++    [uint32]$OriginalKeeperPid, [long]$OriginalKeeperStartFiletime,
++    $MainSnapshot, $KeeperSnapshot, $KeeperProcess,
++    [IntPtr]$MainJobHandle, [IntPtr]$KeeperJobHandle, [string]$KeeperPath) {
++    if ($Mode -cne 'CANCEL') { throw 'Pre-ready keeper recovery is available only to CANCEL.' }
++    if ($MainJobHandle -eq [IntPtr]::Zero -or $KeeperJobHandle -eq [IntPtr]::Zero) {
++        throw 'Pre-ready CANCEL requires both exact held named job handles.'
++    }
++    [void][SafeUpload.HarnessGate.Native]::VerifyKillOnCloseJob($MainJobHandle)
++    [void][SafeUpload.HarnessGate.Native]::VerifyKillOnCloseJob($KeeperJobHandle)
++    if ($State.schema -cne 'safeupload-harness-gate-run-v2' -or
++        $State.runToken -cne $RunToken -or $State.status -cne 'RUNNING' -or
++        $State.jobName -cne (Get-HarnessGateJobName $RunToken) -or
++        $State.keeperJobName -cne (Get-HarnessGateKeeperJobName $RunToken) -or
++        [string]::Equals([string]$State.keeperPath, $KeeperPath, [StringComparison]::OrdinalIgnoreCase) -eq $false) {
++        throw 'Pre-ready CANCEL state does not bind this exact run token, two named jobs, and keeper path.'
++    }
++    $expectedPostOpenPhase = if ($OriginalPhase -ceq 'JOBS_CREATED') {
++        'CANCEL_RECOVERED_KEEPER_IDENTITY'
++    } elseif ($OriginalPhase -ceq 'KEEPER_IDENTITY_DURABLE') {
++        'KEEPER_IDENTITY_DURABLE'
++    } else {
++        throw 'Pre-ready CANCEL original phase is not one of the two exact keeper startup barriers.'
++    }
++    if ([string]$State.phase -cne $expectedPostOpenPhase -or
++        [string]$State.keeperReadyPath -cne (Get-HarnessGateKeeperReadyPath $RunToken) -or
++        $null -eq $State.PSObject.Properties['keeperReadySha256'] -or
++        $null -eq $State.keeperReadySha256 -or
++        [string]$State.keeperReadySha256 -cne '' -or
++        (Test-Path -LiteralPath ([string]$State.keeperReadyPath) -ErrorAction Stop)) {
++        throw 'Pre-ready CANCEL state or absent-readiness evidence is not exact.'
++    }
++    if ($OriginalPhase -ceq 'JOBS_CREATED') {
++        if ($OriginalKeeperPid -ne 0 -or $OriginalKeeperStartFiletime -ne 0 -or
++            [uint32]$State.keeperPid -eq 0 -or [long]$State.keeperStartFiletime -le 0) {
++            throw 'Pre-publication CANCEL did not recover one exact keeper from an originally empty identity.'
++        }
++    } elseif ($OriginalKeeperPid -eq 0 -or $OriginalKeeperStartFiletime -le 0 -or
++        [uint32]$State.keeperPid -ne $OriginalKeeperPid -or
++        [long]$State.keeperStartFiletime -ne $OriginalKeeperStartFiletime) {
++        throw 'Pre-resume CANCEL no longer matches its original durable keeper PID and creation FILETIME.'
++    }
++    if ([uint32]$State.workerPid -ne 0 -or [long]$State.workerStartFiletime -ne 0 -or
++        $MainSnapshot.Active -ne 0 -or $MainSnapshot.Ids.Length -ne 0) {
++        throw 'Pre-ready CANCEL requires no published worker and an exactly empty main job.'
++    }
++    if ($null -eq $KeeperProcess -or $KeeperProcess.ProcessHandle -eq [IntPtr]::Zero -or
++        [uint32]$KeeperProcess.ProcessId -eq 0 -or [long]$KeeperProcess.StartFileTime -le 0 -or
++        [uint32]$State.keeperPid -ne [uint32]$KeeperProcess.ProcessId -or
++        [long]$State.keeperStartFiletime -ne [long]$KeeperProcess.StartFileTime -or
++        $KeeperSnapshot.Active -ne 1 -or $KeeperSnapshot.Ids.Length -ne 1 -or
++        [uint32]$KeeperSnapshot.Ids[0] -ne [uint32]$KeeperProcess.ProcessId) {
++        throw 'Pre-ready CANCEL requires one unambiguous job-listed keeper with the exact durable PID and FILETIME.'
++    }
++    if ([SafeUpload.HarnessGate.Native]::WaitHandle($KeeperProcess.ProcessHandle, [uint32]0) -ne 258 -or
++        -not [SafeUpload.HarnessGate.Native]::IsProcessHandleInJob($KeeperProcess.ProcessHandle, $KeeperJobHandle)) {
++        throw 'Pre-ready CANCEL keeper handle is not live in the exact held keeper job.'
++    }
++    Assert-LiveScriptIdentity $KeeperProcess $KeeperPath
+ }
+ 
+ function Assert-ExactState($State, [string]$MainJobName, [string]$KeeperJobName,
+@@ -343,6 +404,28 @@
+             -not [SafeUpload.HarnessGate.Native]::IsProcessHandleInJob($workerProcess.Handle, $mainJobHandle)) {
+             throw 'Exact durable worker identity is not contained in the held main job.'
+         }
++        $originalKeeperPhase = [string]$state.phase
++        $originalKeeperPid = [uint32]$state.keeperPid
++        $originalKeeperStartFiletime = [long]$state.keeperStartFiletime
++        $preReadyCancelCandidate = $Mode -eq 'CANCEL' -and
++            ($originalKeeperPhase -ceq 'JOBS_CREATED' -or $originalKeeperPhase -ceq 'KEEPER_IDENTITY_DURABLE')
++        if ($preReadyCancelCandidate) {
++            if ($state.status -cne 'RUNNING' -or
++                $null -eq $state.PSObject.Properties['keeperReadySha256'] -or
++                $null -eq $state.keeperReadySha256 -or
++                [string]$state.keeperReadySha256 -cne '' -or
++                (Test-Path -LiteralPath ([string]$state.keeperReadyPath) -ErrorAction Stop) -or
++                [uint32]$state.workerPid -ne 0 -or [long]$state.workerStartFiletime -ne 0 -or
++                $mainSnapshot.Active -ne 0 -or $mainSnapshot.Ids.Length -ne 0) {
++                throw 'Pre-ready CANCEL original state has readiness evidence, a worker, or a nonempty main job.'
++            }
++            if (($originalKeeperPhase -ceq 'JOBS_CREATED' -and
++                    ($originalKeeperPid -ne 0 -or $originalKeeperStartFiletime -ne 0)) -or
++                ($originalKeeperPhase -ceq 'KEEPER_IDENTITY_DURABLE' -and
++                    ($originalKeeperPid -eq 0 -or $originalKeeperStartFiletime -le 0))) {
++                throw 'Pre-ready CANCEL original phase and keeper PID/FILETIME publication disagree.'
++            }
++        }
+         if ($Mode -eq 'CANCEL') {
+             $keeperProcess = Open-KeeperProcess $state $keeperJobOpen $keeperSnapshot $keeperPath -AllowUnpublished
+         } else {
+@@ -359,8 +442,14 @@
+         if ($null -ne $keeperProcess -and -not (Test-ProcessHandleTerminal $keeperProcess)) {
+             Assert-LiveScriptIdentity $rootProcess $runnerPath -Encoded
+             Assert-LiveScriptIdentity $workerProcess $workerPath
+-            Assert-KeeperReadyReceipt $state
+-            $keeperReady = $true
++            if ($preReadyCancelCandidate) {
++                Assert-PreReadyCancelKeeperIdentity $state $originalKeeperPhase `
++                    $originalKeeperPid $originalKeeperStartFiletime $mainSnapshot $keeperSnapshot $keeperProcess `
++                    $mainJobHandle $keeperJobHandle $keeperPath
++            } else {
++                Assert-KeeperReadyReceipt $state
++                $keeperReady = $true
++            }
+         }
+ 
+         if ($Mode -eq 'VERIFY') {
+--- R23/driver/scripts/Invoke-HarnessWindowsGate.sh
++++ R24/driver/scripts/Invoke-HarnessWindowsGate.sh
+@@ -24,12 +24,12 @@
+ # Root capture binds these local controllers and the remote protocol inventory.
+ expected_helper_sha256='a7cebdf3eb20fe1ab8df9976721a648725a526b5c39a584fb721a59658f2a6c8'
+ expected_client_sha256='d5f558bc6c7435a0e8f6628ae2fffc465b34ed0981d1470d90de44980f4975c8'
+-expected_manifest_sha256='2494b0411213f07df94d43f501330f2f5d9b27195f26bedc8444709b98d2c71a'
++expected_manifest_sha256='1a10aa3cf34348386febb3b9de7fe0dda78e8a8ba7650bd8e221574b5f2e4aca'
+ expected_runner_sha256='6e1765e52ed051a493f55826f066d3fc050bcbe75edef783bd4c555a84eb5918'
+ expected_worker_sha256='8826d5f39295be32b1a2782ff2aaf378a1871b71260c707a810ba0ee5fba2731'
+ expected_keeper_sha256='7e144a4d0b2d5000d3cc50cbd39bace0cb61af00257803c189cf7a035a834641'
+-expected_fixture_sha256='599eb7da9e0177b2443d5edd937a15b29c72b0357e5c4b71a3c2397b62fb1489'
+-expected_control_sha256='48a16decedec44e7c529ee2df099f9dbde1f2b69ef33d23d95fc58cd2b3b3caa'
++expected_fixture_sha256='1ce3820e89d9f93192ab6b437262dc0522617ce575ed33a0613dc5b287012d73'
++expected_control_sha256='0b6c57014a5629f178654a559dc5658e23e4464dd782650fbb621f55ddc950cb'
+ expected_protocol_sha256='f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a'
+ 
+ evidence_dir="$repo/driver/evidence/$(date +%F)"

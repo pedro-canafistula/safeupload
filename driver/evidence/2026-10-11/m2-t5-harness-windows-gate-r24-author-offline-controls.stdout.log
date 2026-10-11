@@ -1,0 +1,10 @@
+R24 offline source controls: PASS
+R23 frozen root closure: 63 source / 7 author / 40 context inputs; root capture and review pins verified.
+R24 exact source closure: 63 paths; 59 byte-identical; changed paths: driver/scripts/HarnessWindowsGate.manifest.json, driver/scripts/HarnessWindowsGateLifecycleFixture.ps1, driver/scripts/HarnessWindowsGateRemoteControl.ps1, driver/scripts/Invoke-HarnessWindowsGate.sh
+Pre-ready routing model: two valid barrier phases accepted; 20 wrong-mode/state/receipt/job/identity cases rejected.
+Fixture controls present for both barriers: VERIFY/no-ready, path mismatch, ambiguity, exact cancellation/drains; pre-resume also checks mismatched FILETIME.
+Manifest helper self-check: HarnessWindowsGateManifest self-check PASS (15 assertions).
+Manifest exact source/support verification: HarnessWindowsGateManifest=R24-source-controls:PASS;sourceFiles=33;supportFiles=8;checked=41
+Manifest/shell stale-pin, altered-source, missing-entry, and duplicate-entry mutants rejected.
+Shell syntax: bash -n PASS. No PowerShell parser/runtime, Windows, service, actor, coordinator, host/API, VM, network, or Git action performed.
+R24 remains a source-only candidate pending root capture, independent review, and separately authorized bounded execution.

@@ -1,0 +1,11 @@
+{
+  "PID": 1567073,
+  "StartedUTC": "2026-10-11T15:04:42.375068+00:00",
+  "Command": [
+    "bash",
+    "/tmp/m2-t5-harness-r24-full-gate-1011-a1-root/tree/driver/scripts/Invoke-HarnessWindowsGate.sh",
+    "r24-1011-a1",
+    "/tmp/m2-t5-harness-r24-full-gate-1011-a1-root/tree"
+  ],
+  "ReviewSHA256": "99bb0bf247b3335871da9d8471fa177c45a9f5a4dd78966f798991307b7ac605"
+}

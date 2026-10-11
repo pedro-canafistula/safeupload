@@ -1,0 +1,23 @@
+{
+  "localTransport": {
+    "exitCode": 1,
+    "localTreeTerminal": true,
+    "originalLocalIdentityTerminal": true,
+    "outputLimitExceeded": false,
+    "pid": 1567487,
+    "readerTimedOut": false,
+    "startTicks": 7974292,
+    "stderrPath": "/tmp/m2-t5-harness-r24-full-gate-1011-a1-root/tree/driver/evidence/2026-10-11/harness-windows-gate-r24-1011-a1.txt.lifecycle-fixture.stderr.bin",
+    "stdinError": null,
+    "stdoutPath": "/tmp/m2-t5-harness-r24-full-gate-1011-a1-root/tree/driver/evidence/2026-10-11/harness-windows-gate-r24-1011-a1.txt.lifecycle-fixture.stdout.bin",
+    "timedOut": false,
+    "unexpectedLocalDescendants": false
+  },
+  "localTransportCompleted": false,
+  "outcome": "NO_GO",
+  "phase": "remote-lifecycle-fixture",
+  "rawStderrPath": "/tmp/m2-t5-harness-r24-full-gate-1011-a1-root/tree/driver/evidence/2026-10-11/harness-windows-gate-r24-1011-a1.txt.lifecycle-fixture.stderr.bin",
+  "rawStdoutPath": "/tmp/m2-t5-harness-r24-full-gate-1011-a1-root/tree/driver/evidence/2026-10-11/harness-windows-gate-r24-1011-a1.txt.lifecycle-fixture.stdout.bin",
+  "remoteFixture": "INVALID",
+  "remoteFixtureError": "lifecycle fixture must emit exactly two case records and one final sentinel"
+}
