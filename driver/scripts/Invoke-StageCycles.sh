@@ -121,6 +121,7 @@ scp "${opts[@]}" "$sys" "vika@$host:$guest/SafeUpload-t4.sys" && scp "${opts[@]}
   && scp "${opts[@]}" driver/scripts/t4/cycles-actor.ps1 "vika@$host:$guest/t4-cycles-actor.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-coordinator.ps1 "vika@$host:$guest/t4-cycles-coordinator.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-progress.ps1 "vika@$host:$guest/t4-cycles-progress.ps1" \
+  && scp "${opts[@]}" driver/scripts/t4/agent-readiness.ps1 "vika@$host:$guest/t4-agent-readiness.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/runtime-verifier.ps1 "vika@$host:$guest/t4-runtime-verifier.ps1" || { echo 'copy failed'; exit 14; }
 remote <<'PS' | tee "$ev/$tag-install.txt"
 $ErrorActionPreference = 'Stop'
@@ -185,21 +186,11 @@ PS
     scp "${opts[@]}" "vika@$host:$guest/t4-verifier-after-boot.txt" "$ev/$tag-verifier-after-boot.txt" >/dev/null 2>&1 || true
     grep -qx 'VERIFIER_FROM_FIRST_LOAD=True' "$ev/$tag-first-load-verifier.txt" || { echo 'Verifier not active from the first load'; exit 18; }
 fi
+phase=readiness
 remote <<'PS' | tee "$ev/$tag-ready.txt"
-$ErrorActionPreference = 'Continue'
-function Read-AgentFrame {
-    $c = New-Object System.IO.Pipes.NamedPipeClientStream('.', 'SafeUpload.Agent', [System.IO.Pipes.PipeDirection]::In)
-    try { $c.Connect(5000); $r = New-Object System.IO.StreamReader($c); $r.ReadLine() } finally { $c.Dispose() }
-}
-$ready = $false; $last = ''
-for ($i = 0; $i -lt 60 -and -not $ready; $i++) {
-    try { $last = Read-AgentFrame; if ($last -match '"admissionCoverage"\s*:\s*"Ready"') { $ready = $true } } catch { $last = 'ERR ' + $_.Exception.Message }
-    if (-not $ready) { Start-Sleep -Seconds 5 }
-}
-'READY=' + $ready
-'DRIVER_LOADED=' + [bool](fltmc.exe filters | Select-String SafeUpload)
+& 'C:\Users\vika\Documents\t4-agent-readiness.ps1'
 PS
-grep -qx 'READY=True' "$ev/$tag-ready.txt" || { echo 'agent never Ready'; exit 19; }
+grep -qx 'READY=True' "$ev/$tag-ready.txt" || { stop_reason=admission-not-ready; echo 'agent never Ready'; exit 19; }
 
 phase=coordinator-start
 echo "== actor, Verifier ($mode) and the coordinator"

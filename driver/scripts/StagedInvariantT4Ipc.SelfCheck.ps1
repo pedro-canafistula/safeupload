@@ -5,6 +5,7 @@ $ErrorActionPreference='Stop'
 Add-Type -TypeDefinition @'
 using System;
 using System.IO;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
@@ -20,6 +21,15 @@ public static class T4IpcControl {
   var thread=new Thread(()=>{try{Thread.Sleep(milliseconds);}finally{file.Dispose();}});
   thread.IsBackground=true;thread.Start();return thread;
  }
+ public static Thread AgentFrame(string name,bool silent) {
+  var server=new NamedPipeServerStream(name,PipeDirection.Out,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous);
+  var thread=new Thread(()=>{try{
+   server.WaitForConnection();
+   if(silent)Thread.Sleep(500);
+   else{var b=System.Text.Encoding.UTF8.GetBytes("{\"admissionCoverage\":\"Ready\"}\n");server.Write(b,0,b.Length);server.Flush();}
+  }finally{server.Dispose();}});
+  thread.IsBackground=true;thread.Start();return thread;
+ }
 }
 '@
 $count=0
@@ -27,6 +37,24 @@ function Assert-Control([bool]$Good,[string]$Label){if(-not $Good){throw ('T4 IP
 $root=Join-Path ([IO.Path]::GetTempPath()) ('safeupload-t4-ipc-'+[guid]::NewGuid().ToString('N'))
 $null=New-Item -ItemType Directory -Path $root
 try {
+    $tokens=$null;$errors=$null
+    $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 't4\agent-readiness.ps1'),[ref]$tokens,[ref]$errors)
+    Assert-Control ($errors.Count -eq 0) 'actual agent readiness script parses'
+    $frame=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Read-T4AgentFrame'},$false))
+    Assert-Control ($frame.Count -eq 1) 'actual agent frame reader available'
+    Invoke-Expression $frame[0].Extent.Text
+    $pipeName='safeupload-t4-frame-'+[guid]::NewGuid().ToString('N')
+    $thread=[T4IpcControl]::AgentFrame($pipeName,$false)
+    try{Assert-Control ((Read-T4AgentFrame $pipeName 2000) -ceq '{"admissionCoverage":"Ready"}') 'ready frame is read intact'}finally{$thread.Join()}
+    $pipeName='safeupload-t4-silent-'+[guid]::NewGuid().ToString('N')
+    $thread=[T4IpcControl]::AgentFrame($pipeName,$true)
+    $watch=[Diagnostics.Stopwatch]::StartNew();$timedOut=$false
+    try{try{$null=Read-T4AgentFrame $pipeName 100}catch [TimeoutException]{$timedOut=$true}}
+    finally{$elapsed=$watch.ElapsedMilliseconds;$thread.Join()}
+    Assert-Control ($timedOut -and $elapsed -lt 2000) 'a connected silent server cannot hang readiness'
+    $timedOut=$false
+    try{$null=Read-T4AgentFrame ('safeupload-t4-absent-'+[guid]::NewGuid().ToString('N')) 100}catch [TimeoutException]{$timedOut=$true}
+    Assert-Control $timedOut 'an absent server has a bounded connect timeout'
     foreach($leaf in @('cycles-actor.ps1','cycles-coordinator.ps1')){
         $tokens=$null;$errors=$null
         $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot ('t4\'+$leaf)),[ref]$tokens,[ref]$errors)
