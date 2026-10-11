@@ -78,6 +78,22 @@ internal sealed class StagedNativeRecoverySession
             => (_session, _revision, _complete, _reconciled, _records) =
                 (session, revision, complete, reconciled, records);
 
+        // This authenticates current boot metadata only. It says nothing about
+        // private staged objects: the epoch caller must separately complete
+        // conservative private recovery with readiness/publication closed.
+        internal uint RequireCurrentBoot(Guid expectedDriver)
+        {
+            lock (_session._sync)
+            {
+                if (!_session._active || !ReferenceEquals(_session._currentProof, this) ||
+                    _revision != _session._replayRevision || !_complete || !_reconciled ||
+                    _session._driverInstanceId != expectedDriver ||
+                    _session._osBootSequence is not { } boot)
+                    throw new IOException("Current boot metadata requires the complete reconciled authenticated replay.");
+                return boot;
+            }
+        }
+
         internal void RequireExactLifetimeEnded(StagedPublicDeleteBinding binding, Guid operationId)
         {
             lock (_session._sync)

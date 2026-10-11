@@ -85,6 +85,7 @@ public sealed class MinifilterInterceptor : BackgroundService
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
     private readonly AdmissionEvidenceEndpoint _admissionEvidence;
     private byte[]? _acceptedPolicyFingerprint;
+    private StagedNativeStartupRecovery? _nativeStartupRecovery;
 #endif
 
     /// <summary>Compõe o interceptador.</summary>
@@ -239,12 +240,23 @@ public sealed class MinifilterInterceptor : BackgroundService
             Task? publishTask = null;
             Task? coverageTask = null;
             Task? discardCleanupTask = null;
+            Task? startupTask = null;
             try
             {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
                 evidenceBound = _stagingEnabled && evidenceSender is not null &&
                     _acceptedPolicyFingerprint is { Length: 32 } &&
                     _admissionEvidence.TryBind(evidenceSender, _policyVersion, _acceptedPolicyFingerprint);
+                if (_stagingEnabled && _stageJournal is not null)
+                {
+                    _nativeStartupRecovery = new(_stageJournal, port.ReadNativeRecordReplay,
+                        token => { RecoverStagingSubsystem(token); return Task.CompletedTask; });
+                    startupTask = _nativeStartupRecovery.Start(publishCancellation.Token);
+                    _ = startupTask.ContinueWith(task => _logger.LogCritical(task.Exception,
+                        "Authenticated stage startup recovery failed; requests/publication remain refused."),
+                        CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted,
+                        TaskScheduler.Default);
+                }
 #endif
                 publishTask = _stagePublisher is null ? null :
                     Task.Run(() => PublishSealedLoopAsync(publishCancellation.Token),
@@ -438,6 +450,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             finally
             {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
+                _nativeStartupRecovery?.Invalidate();
                 if (evidenceBound && evidenceSender is not null)
                 {
                     try
@@ -451,6 +464,18 @@ public sealed class MinifilterInterceptor : BackgroundService
                 }
 #endif
                 publishCancellation.Cancel();
+                if (startupTask is not null)
+                {
+                    try { startupTask.GetAwaiter().GetResult(); }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Stage startup recovery stopped before FilterPort close.");
+                    }
+                }
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                _nativeStartupRecovery = null;
+#endif
                 if (publishTask is not null)
                 {
                     try { publishTask.GetAwaiter().GetResult(); }
@@ -713,8 +738,24 @@ public sealed class MinifilterInterceptor : BackgroundService
 
         try
         {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            StagedDriverEpochReconcileV20 reconcile = StagedDriverEpochReconcileV20.Rejected;
+            if (_nativeStartupRecovery is not null &&
+                _nativeStartupRecovery.TryGetResult(payload.DriverInstanceId, out var prepared))
+            {
+                // Preparation is not a cached active-epoch grant. An exact
+                // drain may have committed since it completed; reread that
+                // durable gate on every later handshake.
+                reconcile = prepared == StagedDriverEpochReconcileV20.Active
+                    ? _stageJournal.ReconcileDriverInstanceV20Async(payload.DriverInstanceId,
+                        payload.RequiredCapabilityMask, CancellationToken.None).GetAwaiter().GetResult()
+                    : prepared;
+                if (reconcile == StagedDriverEpochReconcileV20.Active) _stagingRecovered = true;
+            }
+#else
             StagedDriverEpochReconcileV20 reconcile = _stageJournal.ReconcileDriverInstanceV20Async(payload.DriverInstanceId,
                 payload.RequiredCapabilityMask, CancellationToken.None).GetAwaiter().GetResult();
+#endif
             bool accepted = reconcile == StagedDriverEpochReconcileV20.Active;
             bool drainReplayOnly = reconcile == StagedDriverEpochReconcileV20.DrainReplayOnly;
             var reply = new SafeUploadStageReconcileReplyV20

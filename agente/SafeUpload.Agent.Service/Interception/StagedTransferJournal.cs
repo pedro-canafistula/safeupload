@@ -169,7 +169,8 @@ public sealed partial class StagedTransferJournal
     }
 
     private sealed record DriverEpochRecord(Guid DriverInstanceId, ulong? DrainRequestId,
-        ulong? DrainNonce, DateTimeOffset AcceptedAtUtc, DateTimeOffset? DrainedAtUtc);
+        ulong? DrainNonce, DateTimeOffset AcceptedAtUtc, DateTimeOffset? DrainedAtUtc,
+        uint? OsBootSequence = null);
 
     public StagedTransferJournal(string directory, bool requireProtectedParent = false)
         : this(directory, requireProtectedParent, MaximumScanCacheEntries) { }
