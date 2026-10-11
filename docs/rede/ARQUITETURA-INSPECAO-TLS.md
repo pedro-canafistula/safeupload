@@ -14,7 +14,7 @@ falta. Cada fase concluída atualiza este documento no mesmo PR.
 | 4 — Exceções | Concluída (listas na configuração; painel e política ficam para depois) | |
 | 5 — Inspeção de upload | Concluída: o proxy chama o motor e bloqueia com 403 (sem aviso na bandeja ainda) | |
 | 6 — Decisão, aviso e auditoria | Concluída, sem justificativa (prevista para depois no plano); janela de aviso não verificada visualmente | |
-| 7 — Qualificação | Pendente | |
+| 7 — Qualificação | Feita com o Edge ([resultado](FASE7-QUALIFICACAO.md)); falta upload com login em Drive e Gmail, Chrome e Firefox | |
 
 ---
 
@@ -116,6 +116,7 @@ No `Core` (`agente/SafeUpload.Agent.Core`), para a Fase 5:
 | Classe | Responsabilidade |
 |---|---|
 | `Application/WebInspectionService` | O motor do canal web: política, formato pelos bytes, extração, varredura, veredito e auditoria. |
+| `Domain/TypedTextScanner` | Varredura de texto digitado na web, com a régua de texto escrito por uma pessoa (Fase 7). |
 | `Infrastructure/Extraction/ContentTypeSniffer` | Reconhece PDF, docx e xlsx pela assinatura dos bytes, e diz se um conteúdo parece texto. |
 | `Domain/AuditChannel.Web` | Canal novo do evento de auditoria. |
 
@@ -208,8 +209,8 @@ em texto claro, nesta ordem (`TlsInspectionProxy.TunnelReason`):
 | **Categorias iniciais no código, ligadas por chave** | Bancos, saúde e governo (`gov.br`, `jus.br`, `leg.br`, `mp.br`, `def.br`, `mil.br`). São chaves verdadeiro/falso, e não uma lista, porque a configuração do .NET junta listas de arquivos diferentes pela posição, e um arquivo não conseguiria tirar um item que outro pôs. |
 | **Domínios extras pela configuração** | `InspecaoTls:Excecoes:Dominios`. A edição pelo painel web e o envio com a política ficam para depois (L16). |
 | **Pinning aprendido por programa + host** | Se a chave fosse só o host, qualquer programa que recusasse o certificado de propósito tiraria aquele site da inspeção para a máquina inteira, navegador incluído. |
-| **Duas recusas seguidas, em até 10 minutos** | Aba fechada no meio da conexão também derruba um handshake. Uma requisição que chega zera a contagem; só a recusa repetida, sem nenhum uso no meio, indica pinning. |
-| **Dois jeitos de recusar** | Alguns programas validam o certificado durante o handshake e o abortam. Outros (OkHttp, .NET) concluem o handshake, validam depois e fecham sem mandar nada. O proxy conta os dois: o handshake que falha depois de o certificado ser apresentado, e a conexão fechada em até 3 s do handshake sem nenhuma requisição. O limite de 3 s separa isso da conexão que o navegador abre por antecipação e larga sem usar. |
+| **Duas recusas seguidas, em até 10 minutos** | Uma recusa isolada pode ser acidente. Uma requisição que chega zera a contagem; só a recusa repetida, sem nenhum uso no meio, indica pinning. |
+| **Só o alerta TLS conta como recusa** | Quem recusa o certificado manda um alerta TLS: durante o handshake (navegadores) ou no lugar da primeira requisição (OkHttp, .NET). Conexão que só fecha não conta. A primeira versão contava também "fechou até 3 s depois do handshake sem pedir nada", e a qualificação (Fase 7) mostrou o Edge fazendo isso o tempo todo com conexões abertas por antecipação: `httpbin.org`, `www.dropbox.com`, `www.bing.com` e outros foram para o túnel sem ter pinning nenhum, e ficariam 24 h sem inspeção. |
 | **Falha do lado do servidor não conta** | Se o certificado do site de verdade é inválido, o certificado de inspeção nem chega a ser apresentado, e nada é registrado. |
 | **O aprendido expira em 24 h e fica só em memória** | Uma falha passageira não tira o par da inspeção para sempre. Reiniciar o serviço esquece tudo; o pinning verdadeiro é reaprendido em duas conexões. |
 
@@ -249,6 +250,8 @@ O caminho de uma requisição com corpo, depois que o proxy a segurou inteira:
 | **Corpo malformado não lança** | O que o parser não entende vira uma parte com os bytes como vieram. |
 | **Formato pelos bytes** (`ContentTypeSniffer`) | PDF começa com `%PDF-`; docx e xlsx são ZIP com `word/document.xml` ou `xl/workbook.xml` dentro. Um docx renomeado para `.jpg` é aberto como docx. O nome só vale para texto e csv, que não têm assinatura. |
 | **Escopo por extensão da política (RN-011)** | Arquivo cujo formato não está nas extensões vigiadas (imagem, vídeo) não é julgado nem registrado. Texto digitado é sempre varrido. |
+| **O que é "arquivo"** | Parte com nome de arquivo, corpo num protocolo de upload (`X-Goog-Upload-Command`, `Upload-Offset`, `Content-Range`), ou conteúdo binário. Corpo de texto sem nada disso é texto, seja qual for o tipo declarado. Antes, um corpo `text/plain` ou `octet-stream` sem nome virava "arquivo .txt", e cada envio de telemetria de página gerava um evento "arquivo aprovado" (Fase 7). |
+| **Duas réguas de varredura** | Arquivo passa pelo `ContentScanner` completo, o mesmo do canal de arquivo. Texto passa pelo `TypedTextScanner`, mais estrito: CPF, CNPJ e cartão só contam na forma escrita (`529.982.247-25`) ou com o nome do dado logo antes (`cpf: 52998224725`), e isolados; senha não conta (todo login manda `password=`); JWT e chave de API do Google não contam (são o que a própria página envia). Com a régua de documento, a qualificação barrou o SmartScreen do Edge, métricas do GitHub, YouTube, Dropbox e WeTransfer: um em cada dez números de 16 dígitos passa no Luhn, e telemetria é feita de números. |
 | **Qualquer achado bloqueia a requisição inteira** | Não dá para tirar uma parte de um formulário e mandar o resto. |
 | **Fail-open** | Acima do tamanho da política, formato sem extrator, prazo estourado e erro de leitura liberam com o motivo no evento (RN-012, RN-013). Exceção inesperada no inspetor também libera (o proxy registra aviso). |
 | **Modo de auditoria da política** (`auditOnly`) | O evento é gravado como bloqueio, mas o proxy deixa passar. |
@@ -430,6 +433,7 @@ Os testes ficam em `agente/SafeUpload.Agent.Tests`. Todos rodam no Windows.
 | `InterceptionExceptionsTests` | Sufixo no limite do rótulo, normalização (maiúsculas, `*.`, ponto final, punycode), entradas inválidas, listas iniciais; detector de pinning: limite, programa + host, sucesso zerando a contagem, janela e expiração. |
 | `TlsInspectionProxyTests` (Fase 4) | Host na lista passando por túnel; **cliente que recusa o certificado passando a ir por túnel**; cliente que aceita continuando interceptado; certificado ruim do site não contando como pinning. |
 | `UploadBodyParserTests` | Multipart com arquivo e campo de texto, `multipart/related` com base64 (formato do Drive), JSON, formulário simples, arquivo declarado como formulário, corpo comprimido, nome com acento, corpos malformados. |
+| `TypedTextScannerTests` | Fase 7: dado escrito por uma pessoa encontrado (forma escrita ou nome do dado antes); número solto de telemetria, senha de login, JWT e chave do Google não contando; segredo do usuário contando. |
 | `WebUploadInspectorTests` | Fase 6: bloqueio anunciado **só à assinatura da mesma sessão e do mesmo usuário**; evento no nome do dono do processo; sem dono conhecido, bloqueia e registra sem anunciar; envio limpo sem aviso. |
 | `WebInspectionServiceTests` (Fase 6) | Usuário do navegador no evento; bloqueio repetido de texto gerando um evento só e voltando a gerar depois do intervalo; arquivo repetido gerando dois eventos. |
 | `WebInspectionServiceTests` | Texto e arquivo com CPF bloqueando; texto limpo sem evento; docx renomeado reconhecido pelo conteúdo; xlsx e PDF sem nome; extensão fora do escopo; arquivo corrompido liberado com motivo; modo de auditoria; política reaproveitada. |
@@ -464,9 +468,11 @@ Testes manuais feitos na VM Windows 11 a cada fase:
   formulário simples com CPF: **403**. Multipart limpo: 200. Eventos gravados
   na fila com `"channel":"Web"`. Ainda não testado com navegador em Drive,
   Gmail e ChatGPT de verdade (fica para a Fase 7).
-- Fase 6: só testes automatizados. A janela de aviso do aplicativo de bandeja
-  para um bloqueio web **não foi vista na tela**: a VM é acessada por SSH, sem
-  sessão interativa. Precisa de um teste manual com usuário conectado.
+- Fase 6: só testes automatizados na entrega; a janela de aviso foi vista na
+  tela na Fase 7.
+- Fase 7: qualificação com o Edge de verdade, serviço como SYSTEM e aplicativo
+  de bandeja na sessão do usuário. Resultado, capturas e roteiros em
+  [FASE7-QUALIFICACAO.md](FASE7-QUALIFICACAO.md).
 
 Ambiente de teste: VM Windows 11 com .NET 10 SDK, acessada por SSH. Montagem com
 a imagem `dockurr/windows` (a mesma do `omarchy-windows-vm`), com OpenSSH
@@ -502,7 +508,9 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 | L19 | **Só o corpo é inspecionado.** | Dado na URL (query string de um GET), em cabeçalho ou em WebSocket não é visto. | Varrer a query string; WebSocket está em L9. |
 | L20 | **Arquivo embutido em JSON** (base64 dentro de um campo) é varrido como texto, sem decodificar. | Arquivo enviado assim escapa. | Detectar campos base64 longos e tratá-los como arquivo. |
 | L22 | **O painel web não conhece o canal `Web`.** | O evento é enviado com `"channel":"Web"`; o que o painel faz com isso não foi verificado. | Alinhar o contrato com o time do painel. |
-| L23 | **Texto sendo digitado já é bloqueado.** | Sites que enviam o texto a cada tecla (ChatGPT, Fase 0) recebem um 403 por requisição; o evento e o aviso são agrupados por 60 s, mas a experiência no site com o bloqueio repetido não foi avaliada. | Fase 7: avaliar no ChatGPT de verdade. |
+| L23 | **Texto sendo digitado pode ser bloqueado antes do envio.** | Sites que enviam o texto a cada tecla recebem um 403 por requisição; o evento e o aviso são agrupados por 60 s. No ChatGPT sem login (Fase 7) houve um bloqueio só, no envio. O fluxo com login não foi testado. | Testar com conta. |
+| L25 | **A régua de texto digitado deixa passar número sem contexto.** | CPF, CNPJ ou cartão só com os dígitos, sem o nome do dado por perto, passa; senha, JWT e chave do Google em texto também. | É o preço de não barrar a telemetria das páginas (Fase 7). Afinar com contexto do campo (nome do campo no formulário, endereço de destino). |
+| L26 | **Texto do aviso fala em "arquivo"** mesmo quando o achado é texto digitado. | Mensagem imprecisa. | Texto próprio para o canal web na janela de bloqueio. |
 | L24 | **Sem cache de veredito na web.** | O mesmo arquivo enviado duas vezes é extraído duas vezes. | Cache por hash do conteúdo, como o do canal de arquivo. |
 | L15 | **Firefox sem política de QUIC.** | Coberto só pelo filtro de UDP 443. | Política `Preferences` (`network.http.http3.enable = false`). |
 
@@ -517,6 +525,7 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 | 2026-10-08 | 2 | Proxy, parser HTTP/1.1, lista de revogação (achada no teste com curl). |
 | 2026-10-08 | 3 | Desvio só dos navegadores (mudança em relação ao plano), filtros WFP, comando `desvio`. |
 | 2026-10-08 | — | Este documento, consolidando as fases 0 a 3. |
+| 2026-10-11 | 7 | Qualificação com o Edge. Três correções: régua própria para texto digitado (`TypedTextScanner`), critério de "arquivo" no parser e pinning só por alerta TLS. |
 | 2026-10-10 | 6 | Usuário real no evento web, aviso na bandeja só para o dono do navegador, agrupamento de bloqueios repetidos de texto. |
 | 2026-10-10 | 5 | Inspeção de upload: parser do corpo, motor do canal web no Core, formato pelos bytes, bloqueio com 403 e evento no canal `Web`. |
 | 2026-10-10 | 4 | Exceções por categoria e domínio (túnel) e detecção automática de pinning por programa + host. |

@@ -74,11 +74,22 @@ public static class UploadBodyParser
         var parts = new List<UploadPart>();
         string? fileName = FileNameFromHeaders(head.Headers);
 
-        AddContent(parts, head.Headers.Get("Content-Type"), fileName, body, depth: 0);
+        AddContent(parts, head.Headers.Get("Content-Type"), fileName, body, IsUploadProtocol(head.Headers), depth: 0);
         return parts;
     }
 
-    private static void AddContent(List<UploadPart> parts, string? contentType, string? fileName, ReadOnlyMemory<byte> content, int depth)
+    /// <summary>
+    /// Cabeçalhos dos protocolos de upload de arquivo: o retomável do Google
+    /// (Drive, Gmail), o tus e o envio em faixas. Com eles o corpo é conteúdo
+    /// de arquivo, mesmo sem nome e com o tipo declarado errado.
+    /// </summary>
+    private static bool IsUploadProtocol(HttpHeaders headers) =>
+        headers.Get("X-Goog-Upload-Command") is not null
+        || headers.Get("Upload-Offset") is not null
+        || headers.Get("Content-Range") is not null;
+
+    private static void AddContent(
+        List<UploadPart> parts, string? contentType, string? fileName, ReadOnlyMemory<byte> content, bool isUpload, int depth)
     {
         if (content.IsEmpty)
         {
@@ -93,9 +104,9 @@ public static class UploadBodyParser
             return;
         }
 
-        // Com nome de arquivo, ou com cara de binário, é arquivo, diga o que
-        // disser o tipo declarado.
-        if (fileName is not null || LooksBinary(content.Span))
+        // Com nome de arquivo, num protocolo de upload ou com cara de binário,
+        // é arquivo, diga o que disser o tipo declarado.
+        if (fileName is not null || isUpload || LooksBinary(content.Span))
         {
             parts.Add(new UploadPart(UploadPartKind.File, fileName, content));
             return;
@@ -109,15 +120,13 @@ public static class UploadBodyParser
         {
             parts.Add(Text(json));
         }
-        else if (type.IsEmpty || type.IsText || type.IsJson || type.Is("application/x-www-form-urlencoded"))
-        {
-            parts.Add(new UploadPart(UploadPartKind.Text, null, content));
-        }
         else
         {
-            // Tipo de arquivo declarado (application/pdf, octet-stream...) com
-            // conteúdo que não tem cara de binário: o motor decide pelos bytes.
-            parts.Add(new UploadPart(UploadPartKind.File, null, content));
+            // Sem nome, sem protocolo de upload e sem cara de binário: é
+            // texto, seja qual for o tipo declarado. É assim que sai a
+            // telemetria das páginas (sendBeacon com text/plain ou sem tipo),
+            // e tratá-la como arquivo geraria um evento por requisição.
+            parts.Add(new UploadPart(UploadPartKind.Text, null, content));
         }
     }
 
@@ -216,7 +225,7 @@ public static class UploadBodyParser
 
         ReadOnlyMemory<byte> content = DecodeTransfer(part[(headerEnd + separator)..], transferEncoding);
 
-        AddContent(parts, contentType, FileNameFromDisposition(disposition), content, depth + 1);
+        AddContent(parts, contentType, FileNameFromDisposition(disposition), content, isUpload: false, depth + 1);
     }
 
     /// <summary>A quebra de linha antes da fronteira pertence à fronteira, não ao conteúdo.</summary>

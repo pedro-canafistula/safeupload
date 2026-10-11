@@ -13,13 +13,12 @@ namespace SafeUpload.Agent.Network.Bypass;
 /// A recusa aparece de dois jeitos, e o proxy conta os dois:
 ///
 /// - o programa valida o certificado <b>durante</b> o handshake e o aborta
-///   (navegadores, SChannel);
-/// - o programa conclui o handshake, valida <b>depois</b> e fecha a conexão sem
-///   mandar nada (OkHttp, .NET). Para o proxy é um handshake que deu certo
-///   seguido de um fechamento imediato, antes de qualquer requisição. O
-///   "imediato" (<see cref="AbandonWindow"/>) separa isso da conexão que o
-///   navegador abre por antecipação e larga sem usar, que fica aberta por
-///   vários segundos.
+///   com um alerta TLS (navegadores, SChannel);
+/// - o programa conclui o handshake, valida <b>depois</b> e manda o alerta no
+///   lugar da primeira requisição (OkHttp, .NET).
+///
+/// Só o alerta TLS conta. Conexão que simplesmente fecha não conta: o
+/// navegador abre conexões por antecipação e larga várias sem usar.
 ///
 /// Três cuidados:
 ///
@@ -57,12 +56,6 @@ public sealed class PinningDetector
 
     /// <summary>Intervalo em que as recusas precisam acontecer para contar juntas.</summary>
     public TimeSpan Window { get; init; } = TimeSpan.FromMinutes(10);
-
-    /// <summary>
-    /// Até quanto tempo depois do handshake um fechamento sem nenhuma
-    /// requisição conta como recusa do certificado.
-    /// </summary>
-    public TimeSpan AbandonWindow { get; init; } = TimeSpan.FromSeconds(3);
 
     /// <summary>Por quanto tempo o par aprendido segue por túnel.</summary>
     public TimeSpan Lifetime { get; init; } = TimeSpan.FromHours(24);

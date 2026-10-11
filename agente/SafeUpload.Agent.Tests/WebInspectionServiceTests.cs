@@ -75,6 +75,33 @@ public sealed class WebInspectionServiceTests : IDisposable
         Assert.Empty(await EventsAsync());
     }
 
+    /// <summary>
+    /// Fase 7: o que as páginas enviam sozinhas (telemetria com números e
+    /// tokens, login com senha) não é bloqueado nem registrado.
+    /// </summary>
+    [Theory]
+    [InlineData("{\"id\":52998224725,\"ts\":1760150000000000,\"ok\":false,\"n\":4111111111111111}")]
+    [InlineData("email=ana@example.com\npassword=Segredo123!")]
+    [InlineData("Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV")]
+    public async Task Trafego_da_propria_pagina_nao_e_bloqueado(string body)
+    {
+        WebInspectionResult result = await InspectAsync(Text(body));
+
+        Assert.False(result.IsBlocked);
+        Assert.Empty(await EventsAsync());
+    }
+
+    /// <summary>O mesmo conteúdo, enviado como arquivo, continua na régua de documento.</summary>
+    [Fact]
+    public async Task Arquivo_continua_na_varredura_completa()
+    {
+        WebInspectionResult result = await InspectAsync(File("lista.txt", Encoding.UTF8.GetBytes("Ana 52998224725\nsenha: abc12345\n")));
+
+        Assert.True(result.IsBlocked);
+        Assert.Contains(Category.Cpf, result.Categories);
+        Assert.Contains(Category.Password, result.Categories);
+    }
+
     [Fact]
     public async Task Arquivo_limpo_e_aprovado_e_registrado()
     {

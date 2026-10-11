@@ -306,46 +306,42 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
 
             // Quem valida o certificado só depois do handshake (OkHttp, .NET)
-            // não o aborta: conclui e fecha em seguida, sem mandar nada. Por
-            // isso a primeira requisição é lida aqui, com o tempo contado.
+            // não o aborta: conclui e, em vez da primeira requisição, manda um
+            // alerta TLS. Por isso a primeira requisição é lida aqui.
             var tlsReader = new HttpStreamReader(clientTls);
-            long handshakeDone = Stopwatch.GetTimestamp();
-            HttpRequestHead? firstRequest = null;
+            HttpRequestHead? firstRequest;
 
             try
             {
                 firstRequest = await ReadWithIdleTimeoutAsync(tlsReader, cancellationToken).ConfigureAwait(false);
             }
-            finally
+            catch (Exception ex) when (IsTlsRejection(ex))
             {
-                if (firstRequest is not null)
-                {
-                    _options.PinningDetector?.RecordSuccess(application, host);
-                }
-                else if (_options.PinningDetector is { } detector
-                         && !cancellationToken.IsCancellationRequested
-                         && Stopwatch.GetElapsedTime(handshakeDone) <= detector.AbandonWindow)
-                {
-                    RecordRejection(application, host);
-                }
+                RecordRejection(application, host);
+                throw;
             }
 
             if (firstRequest is null)
             {
+                // Fechou sem pedir nada. É o que o navegador faz com a conexão
+                // que abriu por antecipação e não usou; não diz nada sobre o
+                // certificado.
                 return;
             }
+
+            _options.PinningDetector?.RecordSuccess(application, host);
 
             await ExchangeAsync(
                 clientTls, tlsReader, upstreamTls!, host, port, processId,
                 encrypted: true, first: firstRequest, closeAfterFirst: false, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (certificateOffered && !clientTls.IsAuthenticated && ex is AuthenticationException or IOException)
+        catch (Exception ex) when (certificateOffered && !clientTls.IsAuthenticated && IsTlsRejection(ex))
         {
             // O servidor de verdade foi validado e o certificado da CA local
-            // foi apresentado, mas o handshake com o programa não fechou: ele
-            // recusou o certificado (pinning, ou não confia na CA) ou desistiu
-            // da conexão. Falha do lado do servidor não chega aqui, porque
-            // nela o certificado nem é apresentado.
+            // foi apresentado, mas o programa respondeu com um alerta TLS: ele
+            // recusou o certificado (pinning, ou não confia na CA). Falha do
+            // lado do servidor não chega aqui, porque nela o certificado nem é
+            // apresentado.
             RecordRejection(application, host);
             throw;
         }
@@ -358,6 +354,34 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
 
             upstreamClient?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Se a falha é o outro lado recusando no nível do TLS, e não a conexão
+    /// simplesmente caindo. A diferença é o que separa pinning de aba fechada:
+    /// quem recusa o certificado manda um alerta TLS, e a leitura falha com um
+    /// erro de TLS; quem desiste só fecha o socket (fim de fluxo ou erro de
+    /// socket). Contar a segunda como recusa mandava para o túnel sites que o
+    /// navegador aceitava normalmente (visto na qualificação, Fase 7).
+    /// </summary>
+    private static bool IsTlsRejection(Exception ex)
+    {
+        if (ex is not (AuthenticationException or IOException))
+        {
+            return false;
+        }
+
+        for (Exception? inner = ex; inner is not null; inner = inner.InnerException)
+        {
+            if (inner is SocketException or OperationCanceledException or ObjectDisposedException)
+            {
+                return false;
+            }
+        }
+
+        // Fim de fluxo no meio do handshake também vem como IOException, sem
+        // exceção interna: é o socket fechado, não um alerta.
+        return ex is AuthenticationException || ex.InnerException is not null;
     }
 
     private void RecordRejection(string? application, string host)
