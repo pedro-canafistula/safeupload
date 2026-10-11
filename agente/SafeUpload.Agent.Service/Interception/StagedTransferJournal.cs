@@ -1904,6 +1904,12 @@ public sealed class StagedTransferJournal
             if (current.SealedOnce && (HasMeasuredSeal(current) || current.State == TransferJournalState.LegacyEmptyHeld))
             {
                 await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
+                if (current.State != TransferJournalState.LegacyEmptyHeld)
+                {
+                    using StagedStageFile replay = StagedStageFile.Open(current.Transfer.StagePath);
+                    if (replay.Identity != current.StageIdentity || replay.Stream.Length != current.SealedLength)
+                        throw new IOException("The measured stage identity or length changed before seal replay.");
+                }
                 return current;
             }
             if (current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed or
@@ -2607,171 +2613,6 @@ public sealed class StagedTransferJournal
                     pending || (current && (entry.PendingRename is not null || entry.State == TransferJournalState.Publishing))));
         }
         return versions;
-    }
-
-    /// <summary>
-    /// A failed CREATE_AFTER attach leaves a durable V3 UnattachedAllocation
-    /// claim whose exact ancestry must be retired before a caller can start a
-    /// fresh unparented generation. This check runs under _gate from CreateAsync,
-    /// so v18 and v19 allocation paths share the same fail-closed boundary.
-    /// </summary>
-    private async Task RequireRetiredCreateAfterAncestryAsync(
-        IReadOnlyList<DestinationClaim> versions, string destination, CancellationToken token)
-    {
-        var failedChildren = versions.Select(claim => claim.Entry)
-            .GroupBy(entry => entry.Transfer.TransferId)
-            .Select(group => group.First())
-            .Where(entry => entry.State == TransferJournalState.DiscardPending &&
-                entry.DiscardKind == StagedDiscardKind.UnattachedAllocation &&
-                entry.DeleteVersionIdentity is not null);
-
-        foreach (TransferJournalEntry childHint in failedChildren)
-        {
-            TransferJournalEntry child = await ReadCoreAsync(childHint.Transfer.TransferId, token)
-                .ConfigureAwait(false);
-            if (!string.Equals(child.Transfer.DestinationPath, destination, StringComparison.OrdinalIgnoreCase) ||
-                child.Transfer.TransferId != childHint.Transfer.TransferId ||
-                child.CreateReservationId != child.Transfer.TransferId ||
-                child.DiscardReservationId != child.Transfer.TransferId ||
-                child.DiscardKind != StagedDiscardKind.UnattachedAllocation ||
-                child.DiscardAcknowledgedAtUtc is null || child.ParentVersionIdentity is not { } parentIdentity ||
-                child.DeleteVersionIdentity is not { } deletedIdentity)
-                throw new IOException("A failed CREATE_AFTER allocation still has unresolved exact ancestry.");
-
-            TransferJournalEntry deleted = await ReadCoreAsync(deletedIdentity.TransferId, token)
-                .ConfigureAwait(false);
-            TransferJournalEntry parent = await ReadCoreAsync(parentIdentity.TransferId, token)
-                .ConfigureAwait(false);
-            if (VersionIdentity(deleted) != deletedIdentity ||
-                VersionIdentity(parent) != parentIdentity ||
-                deleted.State != TransferJournalState.DiscardPending ||
-                deleted.DiscardKind != StagedDiscardKind.PrivateVersion ||
-                deleted.DiscardReservationId != deleted.Transfer.TransferId ||
-                deleted.DiscardAcknowledgedAtUtc is null ||
-                deleted.CreateAfterReservationId != child.Transfer.TransferId ||
-                deleted.ParentVersionIdentity != parentIdentity ||
-                child.AllocationDisposition != 5 ||
-                child.AllocationReferenceId != deleted.Transfer.TransferId ||
-                child.AllocationReferenceKind != 1 ||
-                child.DriverInstanceId is null || child.DriverInstanceId != deleted.DriverInstanceId ||
-                parent.State != TransferJournalState.LegacyEmptyHeld || parent.SealedLength != 0 ||
-                parent.DiscardKind != StagedDiscardKind.EmptyHeldPredecessor ||
-                parent.DiscardReservationId != child.Transfer.TransferId ||
-                parent.DiscardAcknowledgedAtUtc is null ||
-                child.CreateReservationId != child.Transfer.TransferId ||
-                !SameWriter(parent.Transfer, child.Transfer) ||
-                !SameWriter(deleted.Transfer, child.Transfer))
-                throw new IOException("CREATE_AFTER cleanup ACKs do not cover the exact V1/V2/V3 ancestry.");
-
-            foreach (TransferJournalEntry retired in new[] { child, deleted, parent })
-            {
-                if (!StagedStageFile.TryConfirmAbsent(retired.Transfer.StagePath, out Exception? absenceFailure))
-                    throw new IOException("A retired CREATE_AFTER stage path is not confirmed absent.",
-                        absenceFailure);
-            }
-        }
-
-        // A direct ordinary child of an EmptyHeld save (without CREATE_AFTER)
-        // also has to retire its exact parent before a fresh no-parent create.
-        // If that child later acquired a CREATE_AFTER reservation, only the
-        // V3-bound branch may release the parent; the V2 reservation cannot be
-        // used to downgrade that ancestry.
-        TransferJournalEntry[] entries = versions.Select(claim => claim.Entry)
-            .GroupBy(entry => entry.Transfer.TransferId)
-            .Select(group => group.First()).ToArray();
-        foreach (TransferJournalEntry parentHint in entries.Where(entry =>
-                     entry.State == TransferJournalState.LegacyEmptyHeld && entry.SealedLength == 0 &&
-                     entry.StageIdentity is not null))
-        {
-            TransferJournalEntry parent = await ReadCoreAsync(parentHint.Transfer.TransferId, token)
-                .ConfigureAwait(false);
-            StagedVersionIdentity parentIdentity = VersionIdentity(parent);
-            foreach (TransferJournalEntry childHint in entries.Where(entry =>
-                         entry.ParentVersionIdentity == parentIdentity && entry.DeleteVersionIdentity is null))
-            {
-                TransferJournalEntry child = await ReadCoreAsync(childHint.Transfer.TransferId, token)
-                    .ConfigureAwait(false);
-                if (child.CreateAfterReservationId is { } v3Reservation)
-                {
-                    TransferJournalEntry v3;
-                    try { v3 = await ReadCoreAsync(v3Reservation, token).ConfigureAwait(false); }
-                    catch (FileNotFoundException error)
-                    { throw new IOException("A committed CREATE_AFTER reservation has no child manifest.", error); }
-                    await RequireRetiredCreateAfterChainAsync(parent, child, v3, destination, token)
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    RequireDirectEmptyHeldChildTerminal(parent, child, requireReleasedStageDeleted: true);
-                    if (parent.DiscardKind != StagedDiscardKind.EmptyHeldPredecessor ||
-                        parent.DiscardReservationId != child.Transfer.TransferId ||
-                        parent.DiscardAcknowledgedAtUtc is null)
-                        throw new IOException("The direct EmptyHeld parent has not received its exact cleanup ACK.");
-                    if (!StagedStageFile.TryConfirmAbsent(parent.Transfer.StagePath,
-                            out Exception? parentAbsenceFailure))
-                        throw new IOException("The direct EmptyHeld parent path is not confirmed absent.",
-                            parentAbsenceFailure);
-                }
-            }
-        }
-    }
-
-    private async Task RequireRetiredCreateAfterChainAsync(TransferJournalEntry parent,
-        TransferJournalEntry deleted, TransferJournalEntry child, string destination, CancellationToken token)
-    {
-        StagedVersionIdentity parentIdentity = VersionIdentity(parent);
-        StagedVersionIdentity deletedIdentity = VersionIdentity(deleted);
-        if (!string.Equals(parent.Transfer.DestinationPath, destination, StringComparison.OrdinalIgnoreCase) ||
-            parent.State != TransferJournalState.LegacyEmptyHeld || parent.SealedLength != 0 ||
-            parent.DriverInstanceId is null || parent.DriverInstanceId == Guid.Empty ||
-            parent.DiscardKind != StagedDiscardKind.EmptyHeldPredecessor ||
-            parent.DiscardReservationId != child.Transfer.TransferId ||
-            parent.DiscardAcknowledgedAtUtc is null ||
-            deleted.State != TransferJournalState.DiscardPending ||
-            deleted.DiscardKind != StagedDiscardKind.PrivateVersion ||
-            deleted.DiscardReservationId != deleted.Transfer.TransferId ||
-            deleted.DiscardAcknowledgedAtUtc is null ||
-            deleted.CreateAfterReservationId != child.Transfer.TransferId ||
-            deleted.ParentVersionIdentity != parentIdentity ||
-            child.Transfer.TransferId != child.CreateReservationId ||
-            child.ParentVersionIdentity != parentIdentity || child.DeleteVersionIdentity != deletedIdentity ||
-            child.AllocationDisposition != 5 || child.AllocationReferenceId != deleted.Transfer.TransferId ||
-            child.AllocationReferenceKind != 1 || child.DriverInstanceId is null ||
-            child.DriverInstanceId == Guid.Empty ||
-            child.DriverInstanceId != deleted.DriverInstanceId || child.DriverInstanceId != parent.DriverInstanceId ||
-            !SameWriter(parent.Transfer, child.Transfer) || !SameWriter(deleted.Transfer, child.Transfer))
-            throw new IOException("The CREATE_AFTER retirement does not cover the exact V1/V2/V3 tuple.");
-
-        if (child.State == TransferJournalState.DiscardPending)
-        {
-            if (child.DiscardReservationId != child.Transfer.TransferId ||
-                child.DiscardAcknowledgedAtUtc is null ||
-                child.DiscardKind is not (StagedDiscardKind.UnattachedAllocation or
-                    StagedDiscardKind.PrivateVersion or StagedDiscardKind.RetireUnexposed or
-                    StagedDiscardKind.RetireAttachedPrivate))
-                throw new IOException("The terminal CREATE_AFTER child has no exact cleanup ACK.");
-            if (child.DiscardKind == StagedDiscardKind.RetireUnexposed &&
-                (child.AttachmentStateV20 != StagedAttachmentStateV20.RetiredUnexposed ||
-                 child.RetireRequestIdV20 is not > 0 || child.SealedOnce || child.SealedLength is not null))
-                throw new IOException("The CREATE_AFTER RetireUnexposed ACK is not the exact terminal proof.");
-            if (child.DiscardKind == StagedDiscardKind.RetireAttachedPrivate &&
-                (child.AttachmentStateV20 != StagedAttachmentStateV20.RetiredAttachedPrivate ||
-                 child.RetireRequestIdV20 is not > 0 || child.SealedOnce || child.SealedLength is not null))
-                throw new IOException("The CREATE_AFTER attached-private retirement is not the exact terminal proof.");
-            if (!StagedStageFile.TryConfirmAbsent(child.Transfer.StagePath, out Exception? childAbsenceFailure))
-                throw new IOException("The terminal CREATE_AFTER stage path is not confirmed absent.", childAbsenceFailure);
-        }
-        else if (child.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved ||
-            child.HandleObservedRequestIdV20 is not > 0 || child.CompletionPermitRequestIdV20 is not > 0)
-        {
-            throw new IOException("The live CREATE_AFTER child has no exact HandleObserved receipt.");
-        }
-        if (!StagedStageFile.TryConfirmAbsent(parent.Transfer.StagePath, out Exception? parentAbsenceFailure))
-            throw new IOException("The retired CREATE_AFTER EmptyHeld parent path is not confirmed absent.",
-                parentAbsenceFailure);
-        if (!StagedStageFile.TryConfirmAbsent(deleted.Transfer.StagePath, out Exception? deletedAbsenceFailure))
-            throw new IOException("The retired CREATE_AFTER private delete path is not confirmed absent.",
-                deletedAbsenceFailure);
     }
 
     private static void RequireDirectEmptyHeldChildTerminal(TransferJournalEntry parent,

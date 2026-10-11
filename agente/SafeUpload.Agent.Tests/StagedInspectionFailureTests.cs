@@ -20,6 +20,7 @@ public sealed class StagedInspectionFailureTests : IDisposable
         var service = new InspectionService(new FixedPolicyStore(policy),
             new LocalQueueAuditSink(_workspace.QueueFile), new ExtractorRegistry([]), new VerdictCache());
         string path = _workspace.WriteText("placeholder.unknown", forgedZero ? "CPF: 529.982.247-25" : string.Empty);
+        if (!forgedZero) await File.WriteAllBytesAsync(path, []); // WriteText uses UTF-8 with a BOM.
         FileOperation operation = TestWorkspace.Operation(path, sizeBytes: 0);
         InspectionResult result = await service.InspectStagedAsync(operation, CancellationToken.None);
         Assert.Equal(forgedZero ? Verdict.Blocked : Verdict.Approved, result.Verdict);

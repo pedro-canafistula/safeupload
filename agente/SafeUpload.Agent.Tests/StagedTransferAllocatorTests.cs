@@ -841,10 +841,6 @@ public sealed class StagedTransferAllocatorTests : IDisposable
                 driverInstance, 1210);
         }
 
-        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateV19Async(destination,
-            DestinationKind.Cloud, "word.exe", processId, sessionId,
-            new StagedAllocationIntentV19(Guid.NewGuid(), Guid.Empty, 5, 0, driverInstance),
-            null, null, sid, creation, CancellationToken.None));
 
         await Assert.ThrowsAsync<IOException>(() => journal.BeginOrConfirmDiscardAsync(
             new StagedDiscardRequest(v2Reservation, v1Identity,
@@ -869,8 +865,8 @@ public sealed class StagedTransferAllocatorTests : IDisposable
 
         // This unit fixture does not observe a real process exit. It retains
         // the saved nonzero owner PID and exact V2 reservation through service
-        // restart, and verifies that this identity-bound cleanup—not a new
-        // no-parent allocation—is still the only permitted path.
+        // restart, and verifies that the old cleanup keeps its exact proof.
+        // Ordinary max+1 allocation no longer waits on this legacy chain.
         var v1Cleanup = new StagedDiscardRequest(v2Reservation, v1Identity,
             StagedDiscardKind.EmptyHeldPredecessor);
         await Assert.ThrowsAsync<IOException>(() => journal.BeginOrConfirmDiscardAsync(
@@ -879,19 +875,11 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         Assert.Equal(StagedDiscardStatus.Pending,
             await journal.BeginOrConfirmDiscardAsync(v1Cleanup, CancellationToken.None,
                 processId, driverInstance));
-        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateV19Async(destination,
-            DestinationKind.Cloud, "word.exe", processId, sessionId,
-            new StagedAllocationIntentV19(Guid.NewGuid(), Guid.Empty, 5, 0, driverInstance),
-            null, null, sid, creation, CancellationToken.None));
         journal = new StagedTransferJournal(journalPath);
         Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddDays(1), CancellationToken.None));
         StagedDiscardRequest pending = Assert.Single(await journal.ReadDiscardPendingAsync(CancellationToken.None));
         Assert.Equal(v1Cleanup, pending);
         allocator = new StagedTransferAllocator(root, journal);
-        var premature = new StagedAllocationIntentV19(Guid.NewGuid(), Guid.Empty, 5, 0, driverInstance);
-        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateV19Async(destination,
-            DestinationKind.Cloud, "word.exe", processId, sessionId, premature, null, null,
-            sid, creation, CancellationToken.None));
 
         Assert.Equal(StagedDiscardStatus.Acknowledged,
             await journal.CompleteDiscardAsync(v1Cleanup, CancellationToken.None));
@@ -1259,10 +1247,6 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         Assert.True(File.Exists(v1Reply.Transfer.StagePath));
         Assert.Null((await journal.ReadAsync(v1Identity.TransferId, CancellationToken.None))
             .DiscardAcknowledgedAtUtc);
-        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateV19Async(destination,
-            DestinationKind.Cloud, "word.exe", processId, sessionId,
-            new StagedAllocationIntentV19(Guid.NewGuid(), Guid.Empty, 5, 0, driverInstance),
-            null, null, sid, creation, CancellationToken.None));
     }
 
     [Fact]
