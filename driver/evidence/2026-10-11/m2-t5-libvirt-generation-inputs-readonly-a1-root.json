@@ -1,0 +1,185 @@
+{
+  "APIInvoked": false,
+  "CapturedUTC": "2026-10-11T15:02:52.862327+00:00",
+  "Daemon": {
+    "Cgroup": "0::/system.slice/libvirtd.service\n",
+    "Executable": {
+      "ObservationError": "[Errno 13] Permission denied: '/proc/1205/exe'",
+      "ProofEstablished": false
+    },
+    "Namespace": {
+      "mnt": {
+        "ObservationError": "[Errno 13] Permission denied: '/proc/1205/ns/mnt'",
+        "ProofEstablished": false
+      },
+      "net": {
+        "ObservationError": "[Errno 13] Permission denied: '/proc/1205/ns/net'",
+        "ProofEstablished": false
+      },
+      "pid": {
+        "ObservationError": "[Errno 13] Permission denied: '/proc/1205/ns/pid'",
+        "ProofEstablished": false
+      },
+      "user": {
+        "ObservationError": "[Errno 13] Permission denied: '/proc/1205/ns/user'",
+        "ProofEstablished": false
+      }
+    },
+    "OpenFDNamesOnly": {
+      "ObservationError": "[Errno 13] Permission denied: '/proc/1205/fd'",
+      "ProofEstablished": false
+    },
+    "PID": 1205,
+    "StartTicks": "2145",
+    "TwoProcStatReadsEqual": true
+  },
+  "Directories": {
+    "/etc/libvirt": {
+      "ContentsRead": false,
+      "Entries": [
+        "ch.conf",
+        "libvirt-admin.conf",
+        "libvirt.conf",
+        "libvirtd.conf",
+        "lxc",
+        "lxc.conf",
+        "network.conf",
+        "nwfilter",
+        "qemu",
+        "qemu-lockd.conf",
+        "qemu.conf",
+        "secret.conf",
+        "secrets",
+        "storage",
+        "virt-login-shell.conf",
+        "virtchd.conf",
+        "virtinterfaced.conf",
+        "virtlockd.conf",
+        "virtlogd.conf",
+        "virtlxcd.conf",
+        "virtnetworkd.conf",
+        "virtnodedevd.conf",
+        "virtnwfilterd.conf",
+        "virtproxyd.conf",
+        "virtqemud.conf",
+        "virtsecretd.conf",
+        "virtstoraged.conf",
+        "virtvboxd.conf"
+      ],
+      "Metadata": [
+        31,
+        268179,
+        16877,
+        0,
+        0
+      ]
+    },
+    "/etc/libvirt/hooks": {
+      "ObservationError": "[Errno 2] No such file or directory: '/etc/libvirt/hooks'",
+      "ProofEstablished": false
+    },
+    "/etc/polkit-1/rules.d": {
+      "ObservationError": "[Errno 13] Permission denied: '/etc/polkit-1/rules.d'",
+      "ProofEstablished": false
+    }
+  },
+  "Files": {
+    "/usr/bin/libvirtd": {
+      "ContentEmitted": false,
+      "SHA256": "ecdfcc574d6a07849bb9c701c2c727f2963813c90db170477dc9a1e67cf0b15e",
+      "Size": 701720,
+      "StableMetadata": [
+        31,
+        405217,
+        701720,
+        1788257786000000000,
+        1788920248423195028,
+        33261,
+        0,
+        0
+      ]
+    },
+    "/usr/lib/systemd/system/libvirtd-tcp.socket": {
+      "ContentEmitted": false,
+      "SHA256": "bd51e9276dc95bcfbed4289637f0b09abbc56624ca93261b298c76ac8acf879a",
+      "Size": 205,
+      "StableMetadata": [
+        31,
+        405312,
+        205,
+        1788257786000000000,
+        1788920248463852541,
+        33188,
+        0,
+        0
+      ]
+    },
+    "/usr/lib/systemd/system/libvirtd-tls.socket": {
+      "ContentEmitted": false,
+      "SHA256": "d22b43b1b510b83e255b5c7b310beb7042f45c6eee9a37f643ad214c887d5230",
+      "Size": 201,
+      "StableMetadata": [
+        31,
+        405313,
+        201,
+        1788257786000000000,
+        1788920248463905071,
+        33188,
+        0,
+        0
+      ]
+    },
+    "/usr/lib/systemd/system/libvirtd.service.d/10-secret.conf": {
+      "ContentEmitted": false,
+      "SHA256": "fe8edbaf517ac13e66d009a65235174920565661973a9e49dc523fe4a4cf4682",
+      "Size": 261,
+      "StableMetadata": [
+        31,
+        405315,
+        261,
+        1788257786000000000,
+        1788920248463954871,
+        33188,
+        0,
+        0
+      ]
+    },
+    "/usr/lib/systemd/system/virtproxyd-tcp.socket": {
+      "ContentEmitted": false,
+      "SHA256": "be7b019110ac8b22ef8c00f397996d183d8813a8f9cb2d671231fdc62142136f",
+      "Size": 255,
+      "StableMetadata": [
+        31,
+        405351,
+        255,
+        1788257786000000000,
+        1788920248465866659,
+        33188,
+        0,
+        0
+      ]
+    },
+    "/usr/lib/systemd/system/virtproxyd-tls.socket": {
+      "ContentEmitted": false,
+      "SHA256": "a6ed4098fab59f657b80e70bca6dbc69bd9e81f4e7a9a25d28fa53fa3acb3e5d",
+      "Size": 251,
+      "StableMetadata": [
+        31,
+        405352,
+        251,
+        1788257786000000000,
+        1788920248465913219,
+        33188,
+        0,
+        0
+      ]
+    }
+  },
+  "HostPolicyApplied": false,
+  "ObserverPID": 1564474,
+  "Scope": "Read-only captured observer namespace; failed identity reads prevent generation/descendant proof. Configuration contents intentionally not emitted.",
+  "ServiceAction": false,
+  "ServiceCgroupMembers": "1205\n1580\n1581\n",
+  "TerminalFenceEstablished": false,
+  "VMChanged": false
+}

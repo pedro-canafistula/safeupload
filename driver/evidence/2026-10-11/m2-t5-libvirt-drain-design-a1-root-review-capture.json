@@ -1,0 +1,24 @@
+{
+  "CapturedUTC": "2026-10-11T15:03:53.576254+00:00",
+  "ClosedInventoryVerified": true,
+  "Groups": {
+    "context": {
+      "luna-t5-recovery-transaction-r2-a2-independent-review.md": "52b4663d665f6bd52b03126c88c884fa9c219caa66819c9439780e289fd3328a",
+      "m2-t5-libvirt-admin-header-readonly-a1-root.json": "8ce12f3930f3ec8afd1dea3c775e9daeb7726d0aeb36a09a1b823fe1fbbfaeab",
+      "m2-t5-libvirt-generation-inputs-readonly-a1-root.json": "ffd4ed59e7f02d48bdb0a7de3f8eb825e4f6b04c03b73d0f0cf7de5825035b0f",
+      "m2-t5-libvirt-listener-inputs-readonly-a1-root.json": "dd014aeb7d0e06ba295d905ef25ad375c94789f1e153d636f17652b811ba1cda",
+      "m2-t5-libvirt-service-layout-readonly-a2-root.json": "db12a15782bfc0dcec982b47e220bcffe24c260710217588634f32cf88dcb628",
+      "m2-t5-libvirt-unit-files-readonly-a1-root.json": "8f150a7309d383d315e382bf67438769d5f8094d6c522ce9f1a261c3d2372864",
+      "m2-t5-recovery-transaction-r2-a2-root-review-capture.json": "a9190d6aa600ec564e5499aaa08c7388c808081b1f0e9d95e3b252e90a493f8c"
+    },
+    "src": {
+      "design.md": "d1f8f0b8f263ac04540393acdeb8d3e9e00a98dd9cef63c69bc00d450bb0b692"
+    }
+  },
+  "HostPolicyApplied": false,
+  "ProductVMStarted": false,
+  "Root": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-libvirt-drain-design-a1-root-a1",
+  "RuntimeQualified": false,
+  "SourceAccepted": false,
+  "TwoFDStableReadsAndPostCopyEquality": true
+}

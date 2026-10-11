@@ -1,0 +1,16 @@
+{
+  "FilesSHA256": {
+    "luna-t5-libvirt-drain-design-a1-independent-review.md": "261ad20877117ba3a0d28dae1277d28cc0eacf94a48150000c8a93475215d851",
+    "m2-t5-libvirt-drain-design-a1-author-design.md": "d1f8f0b8f263ac04540393acdeb8d3e9e00a98dd9cef63c69bc00d450bb0b692",
+    "m2-t5-libvirt-drain-design-a1-root-preliminary-findings.json": "b491f9acfcf767343f964c9a7b0b1fceba89937f9735fe2d31b97b8f99c30af4",
+    "m2-t5-libvirt-drain-design-a1-root-review-capture.json": "224b72e6113ca92b4c62535e477225d5599499749b119ba05413799be197c709",
+    "m2-t5-libvirt-drain-design-a1-root-review-disposition.json": "8763c474627fe1167734aff617c51aab0c8ed6ee3fa43b5903434d127cb92732",
+    "m2-t5-libvirt-generation-inputs-readonly-a1-root.json": "ffd4ed59e7f02d48bdb0a7de3f8eb825e4f6b04c03b73d0f0cf7de5825035b0f",
+    "m2-t5-libvirt-generation-inputs-readonly-a1-root.py": "5a47d0799c20ecd9ccbcaa96042a52b6d8678083044efb6fe0affd3cadeb82da",
+    "m2-t5-libvirt-listener-inputs-readonly-a1-root.json": "dd014aeb7d0e06ba295d905ef25ad375c94789f1e153d636f17652b811ba1cda",
+    "m2-t5-libvirt-listener-inputs-readonly-a1-root.py": "09b3035ebc859be8caaa5a3dd59ebb6bd1df63cf32404334a6f68acd003f795c"
+  },
+  "HostPolicyApplied": false,
+  "Outcome": "NO_GO",
+  "RuntimeQualified": false
+}

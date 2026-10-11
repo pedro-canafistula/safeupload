@@ -1,0 +1,19 @@
+{
+  "ActualA2ReviewSHA256": "52b4663d665f6bd52b03126c88c884fa9c219caa66819c9439780e289fd3328a",
+  "DesignAccepted": false,
+  "DesignSHA256": "d1f8f0b8f263ac04540393acdeb8d3e9e00a98dd9cef63c69bc00d450bb0b692",
+  "Findings": [
+    "Design carries a malformed 63-hex A2 review pin; actual 64-hex hash retained in context.",
+    "New-read-descriptor lease handoff proposal conflicts with pending-break EAGAIN control; same-OFD ownership transfer remains under review.",
+    "Current service cgroup contains dnsmasq members. Blanket all non-QEMU members terminal prerequisite needs safe infrastructure classification.",
+    "Daemon executable/namespace/open-FD reads denied to observer; complete generation and helper/file custody proof not established."
+  ],
+  "HostPolicyApplied": false,
+  "ProductVMChanged": false,
+  "ReadOnlyInputSHA256": {
+    "m2-t5-libvirt-generation-inputs-readonly-a1-root.json": "ffd4ed59e7f02d48bdb0a7de3f8eb825e4f6b04c03b73d0f0cf7de5825035b0f",
+    "m2-t5-libvirt-listener-inputs-readonly-a1-root.json": "dd014aeb7d0e06ba295d905ef25ad375c94789f1e153d636f17652b811ba1cda"
+  },
+  "RuntimeQualified": false,
+  "Scope": "Preliminary root evidence checks, separate different-author review pending."
+}
