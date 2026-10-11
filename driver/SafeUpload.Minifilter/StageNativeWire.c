@@ -14,8 +14,7 @@ typedef struct _NATIVE_REPLAY_WORK {
 static VOID NativeWireCopyIdentity(PSAFEUPLOAD_STAGE_IDENTITY_V19 To, const FILE_ID_INFORMATION *From)
 {
     To->VolumeSerialNumber = From->VolumeSerialNumber;
-    RtlCopyMemory(&To->FileIdLow, From->FileId.Identifier, sizeof(To->FileIdLow));
-    RtlCopyMemory(&To->FileIdHigh, From->FileId.Identifier + sizeof(To->FileIdLow), sizeof(To->FileIdHigh));
+    To->FileId = From->FileId;
 }
 
 static VOID NativeWireCopyRow(PSAFEUPLOAD_NATIVE_REPLAY_ROW To,
@@ -67,7 +66,7 @@ NTSTATUS SafeUploadStageNativeReplayControl(PVOID PortCookie, PVOID Input, ULONG
     PEPROCESS process = NULL;
     PVOID cookie = NULL;
     LONG64 epoch = 0;
-    ULONG processId, count, index;
+    ULONG processId, count, index, bootSequence;
     UINT64 revision;
     BOOLEAN complete;
     NTSTATUS status;
@@ -98,8 +97,9 @@ NTSTATUS SafeUploadStageNativeReplayControl(PVOID PortCookie, PVOID Input, ULONG
         }
         work = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*work), NATIVE_WIRE_TAG);
         if (work == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; leave; }
-        status = SafeUploadStageNativeReadIdentity(&work->Page.DriverInstanceId, &work->Page.OsBootSequence);
+        status = SafeUploadStageNativeReadIdentity(&work->Page.DriverInstanceId, &bootSequence);
         if (!NT_SUCCESS(status)) leave;
+        work->Page.OsBootSequence = bootSequence;
         if (request.ExpectedRevision != 0 && !RtlEqualMemory(&request.ExpectedDriverInstanceId,
                 &work->Page.DriverInstanceId, sizeof(GUID))) { status = STATUS_REVISION_MISMATCH; leave; }
         status = SafeUploadStageNativeReadPage(request.ExpectedRevision, request.StartIndex,
