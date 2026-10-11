@@ -1,0 +1,5 @@
+PSVersion=5.1.19041.6456
+Build-ExactSource.ps1:ParseErrors=0
+Build-ExactSource.SelfCheck.ps1:ParseErrors=0
+BuildExactSourceSelfCheck=PASS; controls=parameter-sets,invalid-commit,mixed-source
+CommitBuildPowerShell51Gate=PASS

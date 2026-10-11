@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build hash-pinned source on the isolated builder and fetch artifacts for verification.
+# Build committed source on the isolated builder and fetch artifacts for verification.
 # Usage: driver/scripts/Invoke-ExactSourceBuild.sh <label> [commit-ish=HEAD|--worktree] [--prepare-only]
 # The default archives committed sources (a git archive, so the
-# result never depends on the builder mirror's dirty state), writes a host-side per-file SHA-256 manifest, and
-# has Build-ExactSource.ps1 verify every extracted file, build, sign and summarize in a fresh child directory.
+# result never depends on the builder mirror's dirty state). The commit is the source pin;
+# an archive hash checks delivery. Build-ExactSource.ps1 builds, signs and summarizes in a fresh child directory.
 # Evidence: driver/evidence/<today>/exact-<label>-*.txt. Artifacts: /tmp/claude-1000/exact-<label>/.
 # The process exit code is NOT the verdict: read the summary lines (exit=, errors=, warnings=, artifact hashes).
 # --worktree captures current tracked project bytes and freezes build tools without committing.
@@ -55,16 +55,14 @@ paths=(driver/SafeUpload.Minifilter driver/SafeUpload.Inspector)
 if git cat-file -e "$full:driver/SafeUpload.WriterFixture/WriterFixture.cs" 2>/dev/null; then paths+=(driver/SafeUpload.WriterFixture); fi
 
 git archive --format=zip -o "$work/src.zip" "$full" "${paths[@]}" || exit 2
-: > "$work/src.manifest"
-while IFS= read -r f; do
-    printf '%s  %s\n' "$(git show "$full:$f" | sha256sum | cut -d' ' -f1)" "$f" >> "$work/src.manifest"
-done < <(git ls-tree -r --name-only "$full" -- "${paths[@]}")
-echo "commit=$full files=$(wc -l < "$work/src.manifest")"
-zip_sha="$(sha256sum "$work/src.zip" | cut -d' ' -f1)"; man_sha="$(sha256sum "$work/src.manifest" | cut -d' ' -f1)"
+echo "SOURCE_COMMIT=$full"
+zip_sha="$(sha256sum "$work/src.zip" | cut -d' ' -f1)"
 build_sha="$(sha256sum "$build_script" | cut -d' ' -f1)"
 fi
-echo "zip=$zip_sha manifest=$man_sha"
-cp "$work/src.manifest" "$ev/exact-$label-source-manifest.txt" || exit 2
+echo "archive=$zip_sha"
+if [[ "$commit" == '--worktree' ]]; then
+    cp "$work/src.manifest" "$ev/exact-$label-source-manifest.txt" || exit 2
+fi
 if [[ "$mode" == '--prepare-only' ]]; then
     echo "PREPARED_ONLY=$work; no upload or build performed"
     exit 0
@@ -98,14 +96,19 @@ fi
 
 d='vika@'"$host"':C:/Users/vika/Documents'
 scp "${scp_opts[@]}" "$work/src.zip" "$d/exact-$label.zip" || exit 3
-scp "${scp_opts[@]}" "$work/src.manifest" "$d/exact-$label.manifest" || exit 3
+if [[ "$commit" == '--worktree' ]]; then
+    scp "${scp_opts[@]}" "$work/src.manifest" "$d/exact-$label.manifest" || exit 3
+    source_arg="-ManifestSha256 '$man_sha'"
+else
+    source_arg="-SourceCommit '$full'"
+fi
 scp "${scp_opts[@]}" "$build_script" "$d/Build-ExactSource-$label.ps1" || exit 3
 
 log="$ev/exact-$label-build.txt"
 python3 "$remote_helper" "$host" <<PS > >(tee "$log") 2> >(tee "$ev/exact-$label-build.stderr.txt" >&2)
 \$ErrorActionPreference='Stop'
 if((Get-FileHash -LiteralPath 'C:\Users\vika\Documents\Build-ExactSource-$label.ps1' -Algorithm SHA256).Hash -ne '$build_sha'){throw 'Uploaded build-tool hash mismatch.'}
-& 'C:\Users\vika\Documents\Build-ExactSource-$label.ps1' -Label '$label' -ArchiveSha256 '$zip_sha' -ManifestSha256 '$man_sha' -CertificateThumbprint '$thumb' -CertificateStoreLocation '$store' -OwnerWinFspPrototype '$owner_fsp'
+& 'C:\Users\vika\Documents\Build-ExactSource-$label.ps1' -Label '$label' -ArchiveSha256 '$zip_sha' $source_arg -CertificateThumbprint '$thumb' -CertificateStoreLocation '$store' -OwnerWinFspPrototype '$owner_fsp'
 PS
 build_exit=$?
 

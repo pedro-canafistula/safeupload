@@ -152,11 +152,15 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   references without waiting on the service. Startup retains private stages; adding a reaper or changing failure policy needs an owner decision.
 - [ ] Implement reviewed design; remove EmptyHeld/SupersededEmpty/AbandonedEmpty, EmptySavePrivate and CREATE_AFTER_PRIVATE_DISCARD /
   SuccessorReservation chains. Keep independent identity cleanup, local rundown and exact-ACK safeguards where applicable.
+  - [x] Released-stage cleanup now checks volume + full 128-bit ID and refuses reparse replacements; builds and Verifier qualification pending.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
 - [ ] Run real Notepad clean/CPF Save As in ordinary, runtime-Verifier and boot-Verifier modes, independently observing destination bytes.
 - [ ] Add compatibility/ordering rows: Explorer New Text Document → rename → another process opens it in Notepad; empty copy/move;
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
+
+Committed driver builds use the Git hash as their source pin, without a per-file pin manifest; the delivery archive is checked for
+integrity. The revised build scripts passed their [PowerShell 5.1 parse and input-mode controls](evidence/2026-10-11/t5-commit-build-powershell51-gate.txt).
 
 Ordinary CPF overwrite of an existing file preserves prior bytes. Explicit authorized deletion followed by a blocked new save leaves
 that name absent. Do not delete a pre-existing file after a failed CREATE_NEW probe. Historical EmptyHeld source/build acceptance

@@ -5571,23 +5571,47 @@ static VOID StageDeleteReleasedStage(PSTAGE_STREAM Stream)
     IO_STATUS_BLOCK io;
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
-    FILE_INTERNAL_INFORMATION expected, actual;
+    FILE_ID_INFORMATION expected, actual;
+    FILE_ATTRIBUTE_TAG_INFORMATION stageAttributes;
     FILE_DISPOSITION_INFORMATION disposition;
+    ULONG returned = 0;
     NTSTATUS status;
     if (Stream->BackingObject == NULL) return; /* retired: the service deleted it already */
     status = FltQueryInformationFile(Stream->BackingInstance, Stream->BackingObject, &expected, sizeof(expected),
-        FileInternalInformation, NULL);
+        FileIdInformation, &returned);
     if (!NT_SUCCESS(status)) goto Exit;
+    if (returned != sizeof(expected)) { status = STATUS_INFO_LENGTH_MISMATCH; goto Exit; }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (!Stream->StageIdentityValid ||
+        expected.VolumeSerialNumber != Stream->StageIdentity.VolumeSerialNumber ||
+        !RtlEqualMemory(&expected.FileId, &Stream->StageIdentity.FileId, sizeof(expected.FileId))) {
+        status = STATUS_OBJECT_NAME_COLLISION;
+        goto Exit;
+    }
+#endif
     InitializeObjectAttributes(&attributes, &Stream->StageName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
     status = FltCreateFileEx2(SafeUploadData.Filter, Stream->BackingInstance, &handle, &object,
         DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, &attributes, &io, NULL, FILE_ATTRIBUTE_NORMAL,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
         FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0, 0, NULL);
     if (!NT_SUCCESS(status)) goto Exit;
-    status = FltQueryInformationFile(Stream->BackingInstance, object, &actual, sizeof(actual),
-        FileInternalInformation, NULL);
+    status = FltQueryInformationFile(Stream->BackingInstance, object, &stageAttributes, sizeof(stageAttributes),
+        FileAttributeTagInformation, NULL);
     if (!NT_SUCCESS(status)) goto Exit;
-    if (actual.IndexNumber.QuadPart != expected.IndexNumber.QuadPart) { status = STATUS_OBJECT_NAME_COLLISION; goto Exit; }
+    if (FlagOn(stageAttributes.FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT)) {
+        status = STATUS_REPARSE_POINT_ENCOUNTERED;
+        goto Exit;
+    }
+    returned = 0;
+    status = FltQueryInformationFile(Stream->BackingInstance, object, &actual, sizeof(actual),
+        FileIdInformation, &returned);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (returned != sizeof(actual)) { status = STATUS_INFO_LENGTH_MISMATCH; goto Exit; }
+    if (actual.VolumeSerialNumber != expected.VolumeSerialNumber ||
+        !RtlEqualMemory(&actual.FileId, &expected.FileId, sizeof(actual.FileId))) {
+        status = STATUS_OBJECT_NAME_COLLISION;
+        goto Exit;
+    }
     disposition.DeleteFile = TRUE;
     status = FltSetInformationFile(Stream->BackingInstance, object, &disposition, sizeof(disposition),
         FileDispositionInformation);

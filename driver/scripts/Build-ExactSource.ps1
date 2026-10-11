@@ -1,15 +1,17 @@
 <#
-Runs on the isolated Windows builder. Builds a hash-pinned source archive in a fresh child directory
-(either one exact commit or a locally captured worktree; archive/manifest hashes identify the input):
-verifies every extracted file against the host-produced manifest, builds the four driver configurations
+Runs on the isolated Windows builder. Builds a Git-commit source archive in a fresh child directory.
+The archive hash verifies delivery; the commit identifies source. The legacy worktree parameter set is
+retained for old callers. Builds the four driver configurations
 (normal/feature x Debug/Release) with /warnaserror, PREfast (DriverRecommendedRules) and ApiValidator, builds the
 Inspector with and without the feature define, test-signs the feature Debug SYS, and writes a summary.
 Never installs or loads anything. Refuses to reuse an existing child directory.
 #>
+[CmdletBinding(DefaultParameterSetName = 'Commit')]
 param(
     [Parameter(Mandatory)] [ValidatePattern('^[A-Za-z0-9._-]{3,60}$')] [string] $Label,
     [Parameter(Mandatory)] [ValidatePattern('^[0-9a-fA-F]{64}$')] [string] $ArchiveSha256,
-    [Parameter(Mandatory)] [ValidatePattern('^[0-9a-fA-F]{64}$')] [string] $ManifestSha256,
+    [Parameter(Mandatory, ParameterSetName = 'Commit')] [ValidatePattern('^[0-9a-fA-F]{40}$')] [string] $SourceCommit,
+    [Parameter(Mandatory, ParameterSetName = 'Worktree')] [ValidatePattern('^[0-9a-fA-F]{64}$')] [string] $ManifestSha256,
     [Parameter(Mandatory)] [ValidatePattern('^[0-9A-Fa-f]{40}$')] [string] $CertificateThumbprint,
     [ValidateSet('CurrentUser', 'LocalMachine')] [string] $CertificateStoreLocation = 'CurrentUser',
     [ValidateSet('false', 'true')] [string] $OwnerWinFspPrototype = 'false'
@@ -30,13 +32,15 @@ $signtool = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtoo
 
 if (Test-Path -LiteralPath $run) { throw "Child directory already exists: $run" }
 if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $ArchiveSha256.ToUpperInvariant()) { throw 'Archive hash mismatch.' }
-if ((Get-FileHash -LiteralPath $manifestFile -Algorithm SHA256).Hash -ne $ManifestSha256.ToUpperInvariant()) { throw 'Manifest hash mismatch.' }
+if ($PSCmdlet.ParameterSetName -eq 'Worktree' -and
+    (Get-FileHash -LiteralPath $manifestFile -Algorithm SHA256).Hash -ne $ManifestSha256.ToUpperInvariant()) { throw 'Manifest hash mismatch.' }
 $out = Join-Path $run 'out'
 $src = Join-Path $run 'src'
 [void][IO.Directory]::CreateDirectory($out)
 Expand-Archive -LiteralPath $archive -DestinationPath $src -Force
 
-# Every extracted file must match the manifest, and nothing else may exist.
+# Old worktree callers retain their existing input checks; committed builds need no per-file pin manifest.
+if ($PSCmdlet.ParameterSetName -eq 'Worktree') {
 $expected = @{}
 foreach ($line in [IO.File]::ReadAllLines($manifestFile)) {
     if ([string]::IsNullOrWhiteSpace($line)) { continue }
@@ -53,6 +57,9 @@ foreach ($file in Get-ChildItem -LiteralPath $src -Recurse -File) {
 }
 if ($seen -ne $expected.Count) { throw "Manifest lists $($expected.Count) files but $seen were extracted." }
 'SOURCE_MANIFEST_VERIFIED=' + $seen + ' files'
+} else {
+    'SOURCE_COMMIT=' + $SourceCommit.ToLowerInvariant()
+}
 
 $summary = New-Object System.Collections.ArrayList
 function Invoke-NativeToLog([string] $Executable, [string[]] $Arguments, [string] $Log) {
@@ -167,7 +174,9 @@ if (Test-Path -LiteralPath $unsigned) {
 }
 else { [void]$summary.Add('sign : SKIPPED (no feature Debug SYS)') }
 
-$header = @("LABEL=$Label", "ARCHIVE_SHA256=$($ArchiveSha256.ToUpperInvariant())", "MANIFEST_SHA256=$($ManifestSha256.ToUpperInvariant())",
+$sourceRow = if ($PSCmdlet.ParameterSetName -eq 'Commit') { "SOURCE_COMMIT=$($SourceCommit.ToLowerInvariant())" }
+    else { "MANIFEST_SHA256=$($ManifestSha256.ToUpperInvariant())" }
+$header = @("LABEL=$Label", "ARCHIVE_SHA256=$($ArchiveSha256.ToUpperInvariant())", $sourceRow,
     "BUILDER=$env:COMPUTERNAME", "BUILD_END_UTC=$([DateTime]::UtcNow.ToString('o'))")
 ($header + $summary.ToArray()) | Set-Content -LiteralPath (Join-Path $out 'summary.txt') -Encoding UTF8
 Get-Content -LiteralPath (Join-Path $out 'summary.txt')
