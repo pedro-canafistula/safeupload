@@ -1,0 +1,14 @@
+{
+  "FilesSHA256": {
+    "luna-t5-recovery-transaction-r2-a2-independent-review.md": "52b4663d665f6bd52b03126c88c884fa9c219caa66819c9439780e289fd3328a",
+    "m2-t5-recovery-transaction-r2-a2-retained-hostinstall-selfcheck.stdout.txt": "8804371734adbe09685f18655c679992ef720af8111cd9db6aef86dc41f56d7c",
+    "m2-t5-recovery-transaction-r2-a2-retained-m2-t5-recovery-transaction-r2-a2-author.md": "bfe573658ca061d29e3ad850f13ae2e8bfd4aeba0f3af0c0e2c704bce285e221",
+    "m2-t5-recovery-transaction-r2-a2-retained-recovery-source-selfcheck.stdout.json": "e84de57ff746a29314c1ae10cb9700476f8c1404db8319b3e2f1f387929ddc82",
+    "m2-t5-recovery-transaction-r2-a2-retained-recovery-transaction-r2-a2-manifest.json": "a0f97ced49dbebbf78a067bbbed96121d6b77f574227b0bafcf3bf31713ae3f0",
+    "m2-t5-recovery-transaction-r2-a2-retained-recovery-transaction-r2-a2.delta": "4a53bde3ddd0e5c5da4d89336939305348b026918728edbe9b5ce92bd083c585",
+    "m2-t5-recovery-transaction-r2-a2-retained-source-lease-selfcheck.stdout.json": "c89c914a697b32f70533672ca0de31db25ef502766d02662e417fe8b5cd77a1e",
+    "m2-t5-recovery-transaction-r2-a2-root-review-disposition.json": "d0cd70278ae8b75ff90aee1f52fe664d0ed02eb4ffd2b856c6325ae416afe0e8"
+  },
+  "PriorCommittedRootCaptureSHA256": "a9190d6aa600ec564e5499aaa08c7388c808081b1f0e9d95e3b252e90a493f8c",
+  "Scope": "Retained A2 source checkpoint and independent NO_GO review; no live source integration or host/VM mutation."
+}
