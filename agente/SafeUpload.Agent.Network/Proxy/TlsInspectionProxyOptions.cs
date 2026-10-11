@@ -17,8 +17,7 @@ public sealed record TlsInspectionProxyOptions
     /// <summary>
     /// Maior corpo que o proxy segura para inspecionar. Acima disso a
     /// requisição segue sem inspeção, para não segurar gigabytes em memória
-    /// (a Fase 5 decide se isso vira bloqueio, como o limite de tamanho de
-    /// arquivo da política).
+    /// (limitação L8 do documento de arquitetura).
     /// </summary>
     public int MaxInspectableBodyBytes { get; init; } = 64 * 1024 * 1024;
 

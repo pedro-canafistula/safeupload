@@ -6,8 +6,8 @@ namespace SafeUpload.Agent.Network.Proxy;
 /// O ponto onde o proxy pergunta "isto pode sair?".
 ///
 /// O proxy (Fase 2) só sabe transportar: abre as conexões, lê as mensagens e
-/// segura o corpo. Quem decide é a implementação desta interface, que na Fase 5
-/// vai extrair o conteúdo (multipart, corpo bruto, JSON) e passá-lo ao motor de
+/// segura o corpo. Quem decide é a implementação desta interface: no serviço,
+/// a que extrai o conteúdo (multipart, corpo bruto, JSON) e o passa ao motor de
 /// inspeção do Core. Separar os dois deixa o transporte testável sem o motor e
 /// o motor intocado pelo transporte.
 /// </summary>
@@ -51,7 +51,7 @@ public sealed record UploadDecision(bool Allowed, string? Reason = null)
     public static UploadDecision Block(string reason) => new(false, reason);
 }
 
-/// <summary>Libera tudo. É o comportamento até a Fase 5 ligar o motor de inspeção.</summary>
+/// <summary>Libera tudo. Serve a testes e a quem quer só o transporte.</summary>
 public sealed class AllowAllInspector : IUploadInspector
 {
     /// <inheritdoc />

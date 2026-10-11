@@ -229,6 +229,8 @@ public static class Program
         // explícita. Ver docs/rede/PLANO-INSPECAO-TLS.md.
         if (string.Equals(builder.Configuration["InspecaoTls:Habilitada"], "true", StringComparison.OrdinalIgnoreCase))
         {
+            builder.Services.AddSingleton<WebInspectionService>();
+            builder.Services.AddSingleton<WebUploadInspector>();
             builder.Services.AddHostedService<TlsInspectionService>();
         }
 
