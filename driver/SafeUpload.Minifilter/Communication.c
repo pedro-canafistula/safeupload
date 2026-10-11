@@ -73,6 +73,11 @@ static BOOLEAN SafeUploadControlCallbackAdmissionClosed;
 /* Denies Connect/Message callback bodies during final stage quiesce while
  * leaving outbound FltSendMessage pins available. Disconnect stays admitted. */
 static BOOLEAN SafeUploadStageCallbackAdmissionClosed;
+/* Exact process accepted at PortConnect. A PID lookup at a later export is
+ * not this identity, even when the numeric PID matches. State lock protects
+ * the owned reference; holders acquire their own reference and channel-use
+ * pin before leaving that lock. */
+static PEPROCESS SafeUploadCurrentConnectionProcess;
 #endif
 /* Protected by SafeUploadConnectionTransitionLock. Retiring blocks both a
  * replacement publish and a second close while FltCloseClientPort runs with
@@ -367,6 +372,7 @@ Return Value:
     SafeUploadControlCallbackAdmissionClosed = FALSE;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageCallbackAdmissionClosed = FALSE;
+    SafeUploadCurrentConnectionProcess = NULL;
 #endif
     SafeUploadConnectionRetiring = FALSE;
     SafeUploadRetiringConnectionCookie = NULL;
@@ -813,9 +819,19 @@ static BOOLEAN SafeUploadConnectionRetireState(
 static VOID SafeUploadConnectionResetInspectorProcessId(VOID)
 {
     KIRQL oldIrql;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    PEPROCESS process;
+#endif
     KeAcquireSpinLock(&SafeUploadConnectionStateLock, &oldIrql);
     SafeUploadData.InspectorProcessId = 0;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    process = SafeUploadCurrentConnectionProcess;
+    SafeUploadCurrentConnectionProcess = NULL;
+#endif
     KeReleaseSpinLock(&SafeUploadConnectionStateLock, oldIrql);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (process != NULL) ObDereferenceObject(process);
+#endif
 }
 
 static BOOLEAN SafeUploadConnectionPublishClientPort(
@@ -826,22 +842,41 @@ static BOOLEAN SafeUploadConnectionPublishClientPort(
 {
     KIRQL oldIrql;
     BOOLEAN published = FALSE;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    PEPROCESS process;
+#endif
     if (ClientPort == NULL || ConnectionCookie == NULL ||
         ConnectionGeneration <= 0 || ProcessId == 0) return FALSE;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* Only PortConnect calls this helper, in the accepted process context. */
+    if (HandleToULong(PsGetCurrentProcessId()) != ProcessId) return FALSE;
+    process = PsGetCurrentProcess();
+    ObReferenceObject(process);
+#endif
 
     KeAcquireSpinLock(&SafeUploadConnectionStateLock, &oldIrql);
     if (!SafeUploadControlCallbackAdmissionClosed &&
         InterlockedCompareExchangePointer(
             &SafeUploadCurrentConnectionCookie, NULL, NULL) == NULL &&
-        SafeUploadData.ClientPort == NULL) {
+        SafeUploadData.ClientPort == NULL
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        && SafeUploadCurrentConnectionProcess == NULL
+#endif
+        ) {
         InterlockedExchange(&SafeUploadData.AuthenticatedClient, 0);
         SafeUploadData.InspectorProcessId = ProcessId;
         SafeUploadData.ClientPort = ClientPort;
         SafeUploadCurrentConnectionGeneration = ConnectionGeneration;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        SafeUploadCurrentConnectionProcess = process;
+#endif
         InterlockedExchangePointer(&SafeUploadCurrentConnectionCookie, ConnectionCookie);
         published = TRUE;
     }
     KeReleaseSpinLock(&SafeUploadConnectionStateLock, oldIrql);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (!published) ObDereferenceObject(process);
+#endif
     return published;
 }
 
@@ -1147,6 +1182,7 @@ SafeUploadCloseUnpublishedClientPort (
         NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
         FltCloseClientPort(SafeUploadData.Filter, &SafeUploadData.ClientPort);
     }
+    SafeUploadConnectionResetInspectorProcessId();
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadClearPublicationPermits();
 #endif
@@ -1711,6 +1747,43 @@ SafeUploadRequestVerdict (
 }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+BOOLEAN SafeUploadConnectionPinAuthenticatedProcess(_In_ PVOID ConnectionCookie,
+    _In_ LONG64 ConnectionGeneration, _Outptr_result_nullonfailure_ PEPROCESS *Process)
+{
+    PVOID pinnedCookie = NULL;
+    KIRQL oldIrql;
+    BOOLEAN acquired = FALSE;
+    if (Process == NULL) return FALSE;
+    *Process = NULL;
+    if (ConnectionCookie == NULL || ConnectionGeneration <= 0 ||
+        !SafeUploadConnectionUseAcquire(ConnectionCookie, TRUE, &pinnedCookie)) return FALSE;
+    /* Retirement can revoke the cookie after the use is acquired. Recheck
+     * the exact generation and reference its accepted process atomically;
+     * a replacement cannot publish until this old-cookie use is released. */
+    KeAcquireSpinLock(&SafeUploadConnectionStateLock, &oldIrql);
+    if (pinnedCookie == ConnectionCookie &&
+        InterlockedCompareExchangePointer(&SafeUploadCurrentConnectionCookie, NULL, NULL) == ConnectionCookie &&
+        SafeUploadCurrentConnectionGeneration == ConnectionGeneration &&
+        !SafeUploadControlCallbackAdmissionClosed && !SafeUploadStageCallbackAdmissionClosed &&
+        InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0 &&
+        SafeUploadData.ClientPort != NULL && SafeUploadCurrentConnectionProcess != NULL) {
+        ObReferenceObject(SafeUploadCurrentConnectionProcess);
+        *Process = SafeUploadCurrentConnectionProcess;
+        acquired = TRUE;
+    }
+    KeReleaseSpinLock(&SafeUploadConnectionStateLock, oldIrql);
+    if (!acquired) SafeUploadConnectionUseRelease(pinnedCookie);
+    return acquired;
+}
+
+VOID SafeUploadConnectionReleaseAuthenticatedProcess(_In_ PVOID ConnectionCookie,
+    _In_ PEPROCESS Process)
+{
+    /* Drop the process hold before publishing the channel-use drain. */
+    ObDereferenceObject(Process);
+    SafeUploadConnectionUseRelease(ConnectionCookie);
+}
+
 BOOLEAN SafeUploadConnectionPinForStage(_In_ PVOID ConnectionCookie)
 {
     PVOID pinnedCookie = NULL;

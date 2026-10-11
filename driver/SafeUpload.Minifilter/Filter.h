@@ -976,6 +976,13 @@ SafeUploadRequestVerdict (
  * accepted cookie/generation and transport-use pin are one authority commit. */
 BOOLEAN SafeUploadConnectionPinForStage(_In_ PVOID ConnectionCookie);
 
+/* Exact accepted service-process hold plus channel-use pin. Does not grant a
+ * public-delete permit or replace the separate accepted stage-epoch check. */
+BOOLEAN SafeUploadConnectionPinAuthenticatedProcess(_In_ PVOID ConnectionCookie,
+    _In_ LONG64 ConnectionGeneration, _Outptr_result_nullonfailure_ PEPROCESS *Process);
+VOID SafeUploadConnectionReleaseAuthenticatedProcess(_In_ PVOID ConnectionCookie,
+    _In_ PEPROCESS Process);
+
 NTSTATUS SafeUploadRequestVerdictForPinnedConnection(
     _Inout_ PSAFEUPLOAD_EXCHANGE Exchange,
     _In_ PVOID ConnectionCookie,
