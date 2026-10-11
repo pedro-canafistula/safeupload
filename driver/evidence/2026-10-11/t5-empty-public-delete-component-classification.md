@@ -2,7 +2,7 @@
 
 Date: 2026-10-11  
 Review base: `c8fa2f90be66346cb467a8d025fa4dd12cc92f42` (`feat/driver-m2`).  
-Purpose: source/design classification for the revised [T5 delete design](../../T5-DELETES.md). No product code or VM behavior was changed for this note. The baseline source files listed below are clean relative to the review base; the documentation and T5 test scripts in the worktree are dirty and are not represented as baseline-source claims.
+Purpose: source/design classification for the revised [T5 delete design](../../T5-DELETES.md). Evidence below describes product source at the review base, not a claim that later worktree bytes are unchanged. Classification itself changed no VM behavior. Later implementation and qualification are recorded in [POST-MVP-PLAN.md](../../POST-MVP-PLAN.md); the T5 test-script references are explicitly marked as worktree observations rather than baseline-source claims.
 
 The owner decision is that stable zero-byte saves are ordinary sealed content, trivially clean, and publishable. Public-file deletion is M2. The classification removes the EmptyHeld product path and its successor workaround while keeping independent identity, lifecycle, drain, and cleanup protections. Public delete has no implementation in this baseline; the transaction described in T5 is a design requirement, not a claim that the current code satisfies it.
 

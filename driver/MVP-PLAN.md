@@ -1,6 +1,7 @@
 # SafeUpload driver: MVP status and plan
 
-Status as of 2026-10-08. This file replaces the long working log that lived here during the MVP; that log, `STAGED-WRITES.md`'s
+Updated 2026-10-11. The component results below describe the 2026-10-08 pair; the active MVP scope and status are in
+[POST-MVP-PLAN.md](POST-MVP-PLAN.md). This file replaces the long working log that lived here during the MVP; that log, `STAGED-WRITES.md`'s
 full history and all raw VM evidence are preserved under the git tag **`mvp-history-2026-10-08`**.
 
 ## What the MVP is
@@ -11,7 +12,11 @@ user into a protected folder goes to a private staged version first; the service
 reaches the folder. A blocked version is handed back to the user who wrote it. Administrators and SYSTEM are trusted; standard users are
 the adversary. The product fails closed.
 
-Frozen release pair (product code must not change without a new gate):
+The full MVP also requires USB/removable, SMB/UNC and cloud-sync folders, in that order after M3 and before combined M4 qualification.
+Each destination needs its own design note, owner decisions and Luna design review. These capabilities remain disabled until their
+approved support and qualification gates pass and the owner approves cutover; the historical local-NTFS results do not qualify them.
+
+Historical qualification pair (later product changes require their own gates):
 
 | Part | Label | Source commit | Artifact SHA-256 |
 |---|---|---|---|
@@ -49,9 +54,11 @@ Each line is backed by a suite row that passed on the frozen pair (rows in `driv
 
 ## What the driver does not have
 
-- Protection for anything but local fixed NTFS: no USB/removable media, SMB/UNC shares, cloud-sync folders, ReFS/FAT/exFAT.
+- Protection for anything but local fixed NTFS on this pair. USB/removable, SMB/UNC and cloud-sync are required remaining MVP work
+  (T21–T23); ReFS remains Later (T24). Supported removable filesystems will be decided in T21's design, rather than assumed qualified.
 - Any Windows build other than 10 22H2 19045.2965 (no Windows 11).
-- Read-side protection: process taint (classifying data as it is read) is off in the MVP.
+- This staged-only test pair ran without read-side process taint. The current MVP keeps existing taint enforcement until the owner
+  approves cutover after the combined qualification and taint-removal plan.
 - Application compatibility beyond scripted saves and Explorer copies: Notepad "Save As" fails (see known issues); Word and other Office
   applications were never exercised, and the Microsoft 365 installer did not complete with the driver loaded.
 - Files larger than 16 MiB in a protected folder, or more than 128 staged files per boot (both refused, see known issues).
@@ -149,15 +156,19 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
   files (tests: `driver/scripts/test_staged_mvp_tiers.py`).
 - Harness changes must pass `driver/scripts/Invoke-HarnessWindowsGate.sh <label> .` (Windows PowerShell 5.1 parse plus self-checks) on the
   builder VM; agent builds and tests run on the builder with `Invoke-ExactAgentBuild.sh`.
-- Test VMs: `win10-debug`, `win10-debug2`, `win10-debug3` (192.168.122.51-.53) are clones of the same clean 19045.2965 disk with the same
-  memory size, created by `New-ParallelDebuggees.sh` from a cleanly shut down `win10-debug`; each clone keeps the guest's static address .51
-  until it is reconfigured, so start and readdress them one at a time. Their SMBIOS UUIDs are pinned in `Get-StagedBaseline.ps1` and
-  `Test-StagedInvariantSuite.ps1`. BLOCK-window cells are reliable only when run alone (three guests in parallel stall the agent's disk I/O).
+- Use `win10-debug3` only, at its current guest address `192.168.122.52`; `win10-debug2` must remain off because it shares that address.
+  Test VMs have no TPM. Each run resets EFI variables, uses a disposable qcow2 disk that is deleted afterwards, and separately verifies
+  the untouched base and unchanged domain XML with `Get-StagedBaseline.ps1`. See the recorded setup in POST-MVP-PLAN. BLOCK-window cells run serially.
 - Raw evidence is written under `driver/evidence/` and stays local (ignored by git); curated summaries are added explicitly
   (`git add -f`), see `driver/evidence/README.md`.
 
 ## Owner decisions in force
 
+- 2026-10-11: M2 T4–T11 → M3 T12/T14 → T21 USB/removable → T22 SMB/UNC → T23 cloud sync → M4 T15–T19 qualifying local NTFS and all
+  newly supported destinations together. T20 other Windows builds and T24 ReFS remain Later; T13 production signing is owner-deferred.
+  USB includes surprise removal; actual SMB and a real sync client need independent destination-byte observers. Taint stays, normal
+  builds compile staging out, and unsupported capabilities stay disabled until owner-approved cutover. After all required evidence,
+  write the taint-removal plan and wait for sign-off. This supersedes the earlier local-only completion scope.
 - 2026-10-11: empty files are ordinary content: seal, inspect (trivially clean at a freshly verified stable zero length), and publish
   them normally. This replaces the 2026-10-10 EmptyHeld decision and removes EmptySavePrivate notices. Public deletes are part of M2;
   Windows checks the caller's DELETE authority against the real public file. Private deletes free the name at last close while exact
@@ -168,18 +179,17 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
 - 2026-10-10: startup requirement reconfirmed by the owner: protection starts before applications open protected files for editing;
   installation may require an initial restart. Starting protection after those editing handles or mappings already exist cannot claim
   the same privacy guarantee. This approval settles startup ordering; qualification of the implementation remains required.
-- 2026-10-03: a sticky Unknown is never cleared before reboot; no process taint (read classification only while taint is on); no timers or
-  scans as fixes.
-- 2026-10-06: local fixed-NTFS MVP only (WinFsp owner prototype shelved on `wip/owner-prototype-20261006`); boot-start install with a reboot;
+- 2026-10-03: a sticky Unknown is never cleared before reboot; no timers or scans as fixes. The earlier isolated staged-only test
+  configuration does not authorize removing existing taint from the current MVP.
+- 2026-10-06: the historical component scope was local fixed NTFS (WinFsp owner prototype shelved on `wip/owner-prototype-20261006`);
+  its completion scope is superseded above. Boot-start install with a reboot remains required;
   a scope whose files still have a pre-scope writer stays Activating and is never Ready; P01-P06 and RV4 deferred.
-- 2026-10-08: freeze at `5ebe139a` + `51ba5873` (product changes only for a leak, a crash or a Verifier hit); two-tier gate; latency reported
-  only; the five boot-Verifier cells are a known gap.
+- 2026-10-08: historical pair `5ebe139a` + `51ba5873` was frozen for its two-tier gate, with five boot-Verifier cells left open.
+  Later milestone changes need fresh gates; combined functional, crash/recovery, Verifier, stress and latency qualification remain required.
 
-## Next steps (post-MVP)
+## Remaining MVP work
 
-The prioritized plan is in [POST-MVP-PLAN.md](POST-MVP-PLAN.md). In short: M1 makes the driver safe to leave loaded (reclaim-worker
-rescan, new-profile creation, large installers and Windows Update); M2 makes everyday file work behave like Windows plus inspection (stage
-slot reuse, Notepad and Office saves, moves inspected like copies, reads and permission changes left to Windows, large files, the review
-conditions); M3 is the release candidate (release build configuration, install/upgrade/uninstall; still test-signed); M4 is full
-qualification. Production signing, other Windows builds and destinations come later (owner decisions 2026-10-08: test mode only, stay on
-19045.2965 for now).
+The status plan is [POST-MVP-PLAN.md](POST-MVP-PLAN.md). M1 is complete on its recorded pair. M2 is active, with the T4 10,000-cycle
+run first and T5 deletes next. M3 covers release configuration and install/upgrade/uninstall. Then T21–T23 add and qualify USB,
+SMB/UNC and cloud-sync before M4 qualifies them together with local NTFS. The MVP finishes only after all required evidence and the
+owner's taint-removal sign-off. Production signing, other Windows builds and ReFS remain deferred.
