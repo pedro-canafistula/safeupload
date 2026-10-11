@@ -36,6 +36,14 @@ delete authority on the real public file. A newer save cancels a delete only if 
 sealed, inspecting or blocked successors do not cancel it; older versions cannot publish after deletion. See [T5-DELETES.md](T5-DELETES.md).
 Only the old no-empty-publication assertion changes; every other product assertion remains required.
 
+**2026-10-11 — accepted native-delete tracking failure.** The owner approves preserving NTFS's accepted result only with automatic
+reconciliation at the app's last-handle close and again at service startup after a crash. Hold publication to that name meanwhile;
+establish that it is gone or still the original pre-open file, then release the recovery hold automatically. Reuse the durable
+pre-CREATE intent and existing startup recovery; add no protocol states beyond **accepted, unresolved**. If exact reconciliation
+cannot decide, retain the hold, name the file and an actionable next step in the tray, and record diagnostics. Fault-injection rows
+must prove automatic hold release after handle close and service restart. If that automatic guarantee cannot be met, ask the owner
+before implementation. See [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md); feasibility and design review remain open.
+
 **2026-10-11 — VM restoration.** Independently verified restoration means all of:
 
 - A throwaway qcow2 run disk is deleted afterwards.
@@ -172,7 +180,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [x] Caller CREATE-subject snapshot, separate NTFS-checked backend factory and exact authenticated service-process hold
     (`334f11af`–`3be0fe71`), original process-lifetime/effective-SID binding and reconciled service-epoch pin; normal builds omit
     the backend. The factory is not yet connected to public-delete handling.
-  - [ ] Resolve the [native public-open correction](T5-NATIVE-PUBLIC-OPENS.md) and its post-acceptance failure-policy owner choice;
+  - [ ] Resolve the [native public-open correction](T5-NATIVE-PUBLIC-OPENS.md) with the owner's automatic-recovery conditions;
     [Luna follow-up](evidence/2026-10-11/t5-native-public-open-followup-luna6.md) remains NOT READY. Preserve native reads/mappings/sharing
     and the published-only delete ordering without an unapproved handle-lifetime publication delay.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and

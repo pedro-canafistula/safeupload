@@ -7,7 +7,7 @@ accepted this design in `434315cf`. Implementation is underway; concrete kernel 
 review before the first revised VM boot, and runtime qualification remains required.
 
 The native public-open routing detail remains **NOT READY**. See [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md) for the
-supported-object correction, unresolved scheduled-delete ordering and pending owner failure-policy choice. Section 4.1's original
+supported-object correction, unresolved scheduled-delete ordering and owner-approved automatic-recovery conditions. Section 4.1's original
 proxy construction is not authority to implement the rejected synthetic FCB/native-section-pointer pairing or unsupported on-close emulation.
 
 This note covers the Notepad Save As test-file sequence (T5), Office temporary/backup sequences (T8), deletion of a public file, and
@@ -189,10 +189,16 @@ An unrelated object, immutable completed delete, or later TRUE ordered after thi
 requests are not canceled by ordinary FALSE; their later cleanup can establish a new effective pending disposition. A canceled delete
 does not commit an irreversible delete watermark or supersede still-current private content. No clear can resurrect an already
 physically deleted object. Multiple pending dispositions for the same exact object must reconcile with this shared NTFS state.
-FILE_DELETE_ON_CLOSE and supported FILE_DISPOSITION_ON_CLOSE are tracked per proxy handle separately; their durable intent and
-checked backend acquisition precede successful CREATE, and their effective disposition is applied at cleanup. Failed proxy
-construction must close an unchanged backend and must not accidentally delete the public file. Preserve native unsupported-flag
-results; the unsupported builder on-close probe is not evidence that those flags work on the qualification VM.
+FILE_DELETE_ON_CLOSE and supported FILE_DISPOSITION_ON_CLOSE remain separately tracked scheduled requests. The corrected native route
+preserves the original CREATE and native scheduled-delete flag after durable pre-CREATE intent; it does not emulate that flag by an
+unsupported extended disposition. A failure before forwarding leaves the public file untouched. Once NTFS accepts deletion, a later
+tracking failure cannot be described as an unchanged failed open. The owner-approved exception is accepted/unresolved, with physical
+publication held and automatic reconciliation at the app's last-handle close and service startup. Exact absence or the original
+pre-open identity releases the recovery hold automatically; an undecidable result retains it with a named-file actionable tray
+notice and diagnostics. Reuse existing intent/startup recovery; no additional protocol states beyond accepted/unresolved. The
+correction and its feasibility review in [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md) must be resolved before code; if automatic
+recovery cannot be met, ask the owner. Preserve actual unsupported-flag results; the unsupported builder on-close probe is not
+evidence that those flags work on the qualification VM.
 
 The FilterPort receive loop dispatches these transactions to bounded workers and remains available for create, seal, cleanup,
 cancel, acknowledgement and reconnect traffic. It must not await a destination queue turn, backend deletion or last-close event.

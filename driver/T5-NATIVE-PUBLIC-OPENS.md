@@ -5,7 +5,7 @@ This replaces the synthetic public-FCB proposal at `05ad4df9`, rejected by the
 [Luna review](evidence/2026-10-11/t5-public-proxy-routing-design-review-luna6.md).
 The [focused follow-up](evidence/2026-10-11/t5-native-public-open-followup-luna6.md) also rejects its suggested second-open and
 on-close emulation. The accepted empty/public-delete design in [T5-DELETES.md](T5-DELETES.md) remains in force; the corrections and
-pending failure-policy choice below must be resolved before changing section 4.1 or writing the routing implementation.
+owner-approved automatic-recovery conditions below must be proved feasible and reviewed before writing the routing implementation.
 
 ## Supported correction
 
@@ -58,7 +58,7 @@ absence or a later object's existence alone is insufficient. Do not hold a desti
 silently change latency, or turn Publishing into Published to make the race pass. If this ordering cannot be implemented while
 preserving the owner's rules, ask the owner before adopting a different timing policy.
 
-## Pending owner decision: failure after NTFS accepts scheduled deletion
+## Owner decision: failure after NTFS accepts scheduled deletion
 
 T5-DELETES section 4.2 currently requires failed proxy construction to leave an unchanged backend. That cannot be promised for the
 unchanged native delete-on-close CREATE: NTFS may already have accepted the scheduled mutation before post-CREATE identity/context
@@ -66,25 +66,78 @@ binding fails. Microsoft's [FltCancelFileOpen contract](https://learn.microsoft.
 says cancellation does not undo changes. Preallocation reduces failures but does not prove an exact identity mismatch, I/O failure or
 lost service connection is impossible. Reporting a harmless failed open would conceal a deletion that can still occur at close.
 
-**Proposed policy, not approved:**
+**Approved conditionally by the owner, 2026-10-11; feasibility is not yet established:**
 
 1. Before native CREATE is forwarded, a failure leaves the public file untouched and returns failure. No durable intent means no forward.
 2. After NTFS accepts scheduled deletion, preserve that accepted Windows result; do not claim cancellation undid it or report a
    no-effect failure. If exact binding/recording cannot complete, keep the pre-CREATE intent and destination reservation in an explicit
-   accepted-but-unresolved recovery state. Never fabricate an exact acknowledgement or reopen a changed path as SYSTEM.
+   accepted/unresolved recovery state. Never fabricate an exact acknowledgement or reopen a changed path as SYSTEM.
 3. Prevent further physical commits to the affected destination while the accepted mutation is unresolved; keep later edits private.
-   Expose the reason through product status/diagnostics. Reconciliation needs the exact anchored object/link and durable intent.
+   Reconcile automatically at that app's last-handle close and again at service startup after a crash. Publication is held meanwhile,
+   so the result must be absence or the original pre-open file. Release the recovery hold automatically after exact reconciliation;
+   later saves are held only until then. Reconciliation needs the exact anchored object/link and durable intent.
    Existing global Unknown/reboot rules remain unchanged; this proposal grants no new automatic Unknown clearance.
 4. Unbound native handles must not bypass tracked disposition/namespace mutation checks. Mandatory unload still drains only local work
    and never waits for the service; it cannot undo NTFS's already accepted scheduled delete. Retain durable recovery state on disk.
+5. If reconciliation cannot decide, keep the hold, name the file and an actionable next step in the tray, and record diagnostics.
+   Recovery is never a manual journal edit/unlock. Reuse the durable pre-CREATE intent and existing startup recovery; add no new
+   protocol states beyond accepted/unresolved. Fault-injection rows must show the hold ends automatically after the handle closes
+   and after service restart. If the automatic guarantee cannot be met, return to the owner before implementation.
 
-**What users notice if approved:** normal empty saves, Explorer New Text Document, empty copy/move and clear-and-save keep their
+**What users notice:** normal empty saves, Explorer New Text Document, empty copy/move and clear-and-save keep their
 ordinary publication behavior. Normal delete-on-close uses Windows timing. In the exceptional tracking-failure case, Windows' accepted
-delete may still finish; SafeUpload reports recovery needed and holds further saves to that name private until exact recovery is proved.
+delete may still finish; SafeUpload holds further saves to that name private until automatic close/startup reconciliation establishes
+the exact result. If it remains undecidable, the tray names the affected file and tells the user the applicable next step.
 It does not tell the application that an already accepted delete had no effect.
 
-**If not approved:** leave this failure-policy change unimplemented and revise the design. M2 public-delete qualification remains open;
-there is no approval to drop delete-on-close support, weaken existing rows or narrow the MVP to DeleteFileW-only behavior.
+The approval does not establish implementation feasibility or approve dropping delete-on-close support, weakening existing rows,
+or narrowing the MVP to DeleteFileW-only behavior. M2 public-delete qualification remains open.
+
+## Automatic-recovery construction under review
+
+The existing destination head already has a durable physical intent and a reconciliation turn that bypasses its logical hold.
+Its wait releases the destination semaphore, global journal gate and worker thread. Reuse that head/queue, not a second recovery
+protocol. Append one accepted/unresolved value without renumbering persisted enum values; unresolved pre-CREATE intents remain
+nonpublishable if the service disconnects before it can persist the accepted result. Durable intent is recovery evidence, never
+proof of a DELETE grant or physical completion.
+
+Before forwarding original CREATE, allocate a bounded nonpaged record and register it against the original TargetFileObject under
+local rundown. Include operation/transfer identity, anchored destination, original full file ID and pre-CREATE journal generation.
+That fallback record must survive failure to attach the post-CREATE stream-handle context: cleanup cannot depend on the operation
+whose failure selected this path. No driver/service handle keeps the application open alive; no context/FILE_OBJECT reference cycle.
+Record references are local lifetime bookkeeping, not a new protocol state. Complete registration/allocation failures before
+forwarding; never rely on a fresh allocation in failed post-CREATE or cleanup.
+
+For this exact recorded object, pre/post IRP_MJ_CLEANUP records last-handle cleanup and wakes existing asynchronous reconciliation
+outside StageNamespaceResource. CLEANUP, not CLOSE or PID exit, identifies the last application handle; duplicate/inherited handles
+do not release the hold early. Microsoft's [cleanup contract](https://learn.microsoft.com/en-us/previous-versions/windows/drivers/ifs/irp-mj-cleanup)
+distinguishes zero handles from outstanding cache/memory references. [Stream-handle context attachment](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltsetstreamhandlecontext)
+can only occur after native opening, which is why failed attachment needs the preallocated fallback. A draining callback is not a
+physical-delete acknowledgement.
+
+Extend the existing service startup recovery entry point to reconcile these destination intents before physical publication is
+admitted. A surviving driver replays exact live/cleaned records for its authenticated instance; a service restart must not infer
+cleanup from pathname, process ID or a changed connection epoch. Cold-driver recovery must not treat reload as proof that old native
+handles closed. Reconciliation verifies anchored parent/canonical leaf, full original identity and durable intent under the existing
+destination turn. Missing/replaced/unreadable anchors, unexplained replacement or unknown native state remain held and diagnosed.
+
+The focused design review must establish the exact proof for absence/original-file outcomes, including a service crash before its
+accepted reply, another native reader delaying unlink after the creator's cleanup, and mandatory unregister/reload with surviving
+native handles. It must also establish when the hold can end without letting a still-pending old operation remove a later save.
+These are open proof obligations, not claims that the current recovery code meets the approval. Keep normal scheduled-delete
+ordering separate from this exceptional recovery hold; no new publication delay for successful tracked handles is approved.
+
+Diagnostics retain destination/transfer/generation, original identity, accepted status, driver epoch, cleanup evidence and reason.
+The tray uses existing session/SID-scoped notification delivery: identify the file, explain that later saves remain private, and
+give the applicable automatic-retry trigger (close the app if still open; restart SafeUpload if disconnected; collect diagnostics
+if the exact outcome remains undecidable). A button or edit that manually clears the hold is outside the approval.
+
+Required fault rows inject context attachment/identity query/acceptance-record failure after native success; lost cleanup notification;
+service disconnect before close; service crash after close before durable resolution; and startup with live versus closed handles.
+Each decisive case must prove the original identity or absence, no later physical publication while held, automatic durable release
+without manual action, then clean successor publication. The undecidable identity/anchor case must retain the hold and named-file
+notice/diagnostics. Re-run duplicate-handle and outstanding-reader cases; distinguish NTFS's actual restriction from a SafeUpload
+recovery hold. Use the existing independent observer, Verifier and separate VM restoration gates.
 
 ## Local lifetime and required verification
 
@@ -97,7 +150,7 @@ Voluntary unload vetoes outstanding private stages, RPCs, native operations and 
 references, stops new work and retains durable recovery without service waits or path reopen. Native NTFS read sections remain native;
 private stages retain their separate paging/section rundown. No timeout permits freeing a live FCB or operation.
 
-- Resolve the owner failure-policy choice and the corrected security-design review before routing code.
+- Prove the owner's automatic-recovery conditions feasible and complete the corrected security-design review before routing code.
 - Review the integrated kernel lifetime/lock-order/retirement change once before its first revised VM boot.
 - Four WDK/PREfast/ApiValidator configurations at 0/0 and the agent matrix after service changes.
 - Native ShareAccess=0, duplicate/inherited handles, real public identity/size/security/name, reads beyond 16 MiB and implicit position.

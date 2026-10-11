@@ -191,6 +191,13 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
 - 2026-10-08: historical pair `5ebe139a` + `51ba5873` was frozen for its two-tier gate, with five boot-Verifier cells left open.
   Later milestone changes need fresh gates; combined functional, crash/recovery, Verifier, stress and latency qualification remain required.
 
+- 2026-10-11: an exceptional tracking failure after NTFS accepts native scheduled deletion preserves the accepted Windows result.
+  Recovery must be automatic at the app's last-handle close and at service startup after a crash. Publication to the name stays held
+  until exact reconciliation establishes absence or the original pre-open file; then the recovery hold ends automatically. Reuse
+  durable pre-CREATE intent and existing startup recovery, adding only accepted/unresolved state. An undecidable result keeps the hold
+  with a named-file, actionable tray notice and diagnostics. Fault-injection rows must prove release after close and restart.
+  If the automatic guarantee cannot be met, return to the owner before implementation; see [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md).
+
 ## Remaining MVP work
 
 The status plan is [POST-MVP-PLAN.md](POST-MVP-PLAN.md). M1 is complete on its recorded pair. M2 is active, with the T4 10,000-cycle
