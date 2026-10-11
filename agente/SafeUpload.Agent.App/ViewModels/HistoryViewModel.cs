@@ -73,7 +73,7 @@ public sealed class HistoryRowViewModel
         ArgumentNullException.ThrowIfNull(auditEvent);
 
         OccurredAt = auditEvent.OccurredAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
-        FileName = auditEvent.FileName;
+        FileName = AuditSubject.Describe(auditEvent);
         Extension = auditEvent.Extension;
         Size = FormatSize(auditEvent.SizeBytes);
         Destination = auditEvent.DestinationPath;
