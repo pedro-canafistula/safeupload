@@ -227,6 +227,24 @@ replay cannot prove absence. Exact cleanup remains valid even if the counter wra
 Same-boot reload without authenticated cleanup remains fail-closed until a qualified boot under the existing late-attach rule.
 These are proof metadata, not new protocol states. Remote/removable lifetime proofs require their own destination design.
 
+**Reviewed startup prerequisite.** `StagedTransferJournal.ReconcileDriverInstanceV20Async` currently rejects a
+different driver instance while its preceding epoch lacks an exact durable drain nonce. After an unclean full Restart this would
+prevent activation before the approved native hold recovery runs. The proposed correction adds the authenticated original OS boot
+sequence as optional epoch metadata, reads/reconciles the current authenticated replay before epoch activation, and permits a new
+epoch only after qualified full-Restart lifetime proof and safe existing private-stage recovery. The
+[focused Luna review](evidence/2026-10-11/t5-native-startup-epoch-design-review-luna6.md) requires a separate private-stage recovery
+gate: native replay reports public-open records and cannot establish private attachment lifetime by itself. Preserve the service-stop
+prohibition, voluntary native/private unload veto and local lifetime drain; do not synthesize a drain nonce. Keep old manifests bound
+to their original driver instance, retain uncertain stages and `PendingRename`, and complete existing conservative startup recovery
+before exposing staging/publication readiness. Failed recovery stays degraded. Obtain/reconcile the complete authenticated replay
+before replacing the epoch; never block the receive loop on a long recovery while kernel RPCs wait for replies.
+
+A changed GUID, clock, PID or counter alone never qualifies; the current unsigned boot sequence must be strictly greater than the
+saved original value, without wrap inference. Legacy epochs without trusted boot metadata stay fail-closed on a changed driver.
+Only the same authenticated original driver may capture its missing baseline for a future restart; never manufacture an old boot
+sequence from a replacement driver. This adds no persisted enum or protocol state. The correction is reviewed, but its epoch-gate
+implementation and runtime qualification remain open.
+
 - Implement the corrections in the READY WITH CORRECTIONS security-design review; do not claim the existing recovery is already wired.
 - Review the integrated kernel lifetime/lock-order/retirement change once before its first revised VM boot.
 - Four WDK/PREfast/ApiValidator configurations at 0/0 and the agent matrix after service changes.
