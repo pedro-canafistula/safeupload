@@ -48,3 +48,22 @@ returns no matches. Do not invent or renumber enum members for those earlier des
 empty-predecessor/owner-exit/unload discard kinds at `driver/SafeUpload.Minifilter/Protocol.h:111-115` and
 `agente/SafeUpload.Agent.Minifilter/Protocol.cs:292-298`, plus the CREATE_AFTER/ancestry paths classified above. Remove that behavior
 and reserve its existing numeric slots. Source identity is the review-base Git commit above.
+
+## Implementation checkpoint — source evidence
+
+Driver `028a1b66`; agent `d8fd93c6` (the agent tree is unchanged in the driver commit). These are implementation/static-test
+checkpoints. Public deletes, complete teardown rescope and VM qualification are unfinished.
+
+| Piece | Current source evidence | Disposition and remaining check |
+|---|---|---|
+| Ordinary empty seal and publication | `StagedTransferJournal.cs:1904,1953,2071`; `StagedTransferPublisher.cs:88`; `InspectionService.cs:150` | Measured zero is ordinary Sealed with the empty digest; actual snapshot length is checked before trivial approval. Replay reopens the exact stage and refuses changed identity/length. Empty notification emission is removed. Matrix cases cover zero publication, clear-to-zero, placeholders, changed length, denied publication permit and falsely declared zero. |
+| Legacy state 11 | `StagedTransferJournal.cs:2012,2804` | Reserved `LegacyEmptyHeld`; no fresh state-11 emission. Migration requires exact identity, fresh length/digest, current generation and reconciled attachment/epoch/retirement obligations. Ambiguous old entries remain private; full install/upgrade/mandatory-teardown reconciliation remains T14 work. |
+| Private deletion/name reuse | `StageStream.c:4538,5155,5348`; `StagedTransferJournal.cs:1102` | Last cleanup detaches the deleted view and clears its name reservation. Retained stream identity and exact cleanup ACK remain independent of a newer ordinary max+1 allocation. The RPC still runs outside NamespaceResource. Driver runtime verification is pending. |
+| Removed kernel EmptyHeld chain | `StageStream.c:1684,1845,3306,4982`; `StageProtocol.c` | No EmptyHeld, predecessor/successor ancestry, create-after request/replay or empty-rotation symbols remain in StageStream. New kernel discard traffic accepts only ordinary private discard and generic unattached-allocation cleanup. Wire kinds 2–4 and operation 10 remain reserved. Generic attachment/handle receipts, allocation-parent pins, paging rundown, RPC references, owner/worker drain and exact released-stage deletion are retained. |
+| Service create-after and unparented admission | `MinifilterInterceptor.cs:324`; `StagedTransferJournal.cs:307` | Operation 10 is denied; its service handler and unused ancestry-before-allocation helpers are removed. Legacy journal cleanup readers/test fixtures still preserve exact old proof. Only four ordinary-allocation refusal expectations from the owner-reversed chain were removed; legacy identity, epoch, terminal-ACK, replacement and compaction assertions remain. Remaining legacy allocation APIs will be retired with startup compatibility handling. |
+| Inspection failures | `InspectionService.cs:162`; `StagedTransferPublisher.cs:502,607` | Zero content takes the trivial clean path only after an actual read proves zero. A read/access failure remains Blocked under the existing T9 failure policy. Generic hand-back/cleanup accepts measured zero while preserving identity, digest and failure evidence; a failure is never approval. This replaces the baseline table's assumption that every Blocked entry must contain nonempty bytes. It does not restore EmptyHeld or the empty-save notice. |
+
+The latest four WDK builds pass at 0/0 with PREfast/ApiValidator ([summary](exact-t5-strip1-summary.txt));
+the agent matrix passes all four profiles with no skipped/discovered-only cases ([run verification](exact-agent-matrix-t5-empty4-root-readout.json)).
+Source/static results do not qualify kernel lifetime or destination privacy at runtime. The complete lifetime/lock-order/retirement
+implementation requires its Luna review before the first revised VM boot.

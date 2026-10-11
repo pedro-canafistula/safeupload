@@ -1,0 +1,13 @@
+test_complete_synthetic_matrix_binds_every_v20_case_and_result_id (__main__.RequiredV20MatrixControls.test_complete_synthetic_matrix_binds_every_v20_case_and_result_id) ... ok
+test_each_exact_epoch_theory_case_is_required_despite_consistent_discovery_and_trx_omission (__main__.RequiredV20MatrixControls.test_each_exact_epoch_theory_case_is_required_despite_consistent_discovery_and_trx_omission) ... ok
+test_each_new_required_case_is_rejected_when_consistently_omitted (__main__.RequiredV20MatrixControls.test_each_new_required_case_is_rejected_when_consistently_omitted) ... ok
+test_each_new_required_case_rejects_a_consistent_duplicate_display_row (__main__.RequiredV20MatrixControls.test_each_new_required_case_rejects_a_consistent_duplicate_display_row) ... ok
+test_each_new_required_case_rejects_a_wrong_public_argument (__main__.RequiredV20MatrixControls.test_each_new_required_case_rejects_a_wrong_public_argument) ... ok
+test_every_v20_method_is_required_in_each_profile_even_when_all_discovered_cases_pass (__main__.RequiredV20MatrixControls.test_every_v20_method_is_required_in_each_profile_even_when_all_discovered_cases_pass) ... ok
+test_skipped_required_case_cannot_pass_any_profile (__main__.RequiredV20MatrixControls.test_skipped_required_case_cannot_pass_any_profile) ... ok
+test_wrong_epoch_argument_cannot_replace_the_reviewed_case (__main__.RequiredV20MatrixControls.test_wrong_epoch_argument_cannot_replace_the_reviewed_case) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 1.912s
+
+OK
