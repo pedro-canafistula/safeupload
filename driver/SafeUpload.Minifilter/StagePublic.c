@@ -327,7 +327,7 @@ NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRIN
         PublicName->Length == 0 || (PublicName->Length & 1) != 0 || PublicName->Length > SAFEUPLOAD_MAX_PATH_BYTES ||
         PublicName->Length > PublicName->MaximumLength ||
         OriginalShareAccess > (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE) ||
-        FlagOn(OriginalCreateOptions, 0xff000000 | FILE_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT | FILE_OPEN_BY_FILE_ID) ||
+        FlagOn(OriginalCreateOptions, 0xff000000 | FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID) ||
         IoGetTopLevelIrp() != NULL || !PsIsSystemThread(PsGetCurrentThread()))
         return STATUS_INVALID_PARAMETER;
     for (index = 0; index < PublicName->Length / sizeof(WCHAR); ++index) {
@@ -364,7 +364,10 @@ NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRIN
         (CaseSensitiveOpen ? 0 : OBJ_CASE_INSENSITIVE), NULL, NULL);
     /* Do not truncate/create and do not grant DELETE_ON_CLOSE before the
      * durable handle intent exists. Original access and sharing stay intact;
-     * there is no IO_IGNORE_SHARE_ACCESS_CHECK or service-account fallback. */
+     * there is no IO_IGNORE_SHARE_ACCESS_CHECK or service-account fallback.
+     * Preserve an original backup-intent option (shell opens can use it), but
+     * never add that option or enable a backup/restore privilege. Any native
+     * privilege check uses only the captured caller's effective token. */
     status = FltCreateFileEx2(SafeUploadData.Filter, Instance, &result->PublicHandle, &result->PublicObject,
         OriginalDesiredAccess, &attributes, &io, NULL, 0, OriginalShareAccess, FILE_OPEN,
         (OriginalCreateOptions & ~(FILE_DELETE_ON_CLOSE | FILE_OPEN_BY_FILE_ID)) |
