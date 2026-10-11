@@ -2,8 +2,9 @@
 
 Status: owner decision recorded 2026-10-11. A zero-byte staged file is an ordinary sealed file: the service checks its stable length,
 classifies it trivially clean, and publishes it through the normal exact-destination path. EmptyHeld and its private tray notice are
-retired. Public-file deletion is an M2 feature. This is a design draft awaiting review by a Luna who did not author the earlier empty
-probe work. No code may be written until that independent review is complete; runtime qualification follows implementation.
+retired. Public-file deletion is an M2 feature. The [independent Luna design review](evidence/2026-10-11/t5-empty-public-delete-design-review-luna6.md)
+accepted this design in `434315cf`. Implementation is underway; concrete kernel lifetime/lock-order/retirement changes need their
+review before the first revised VM boot, and runtime qualification remains required.
 
 This note covers the Notepad Save As test-file sequence (T5), Office temporary/backup sequences (T8), deletion of a public file, and
 the lifetime and recovery rules needed to make those operations safe. The earlier R1 physical-delete and R2 physical-rename/link

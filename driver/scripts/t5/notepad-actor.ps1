@@ -37,8 +37,16 @@ public static class T5Native {
         uint flags = deleteOnClose ? 0x04000000u /* FILE_FLAG_DELETE_ON_CLOSE */ : 0x80u;
         IntPtr h = CreateFileW(path, 0x40000000 | (deleteOnClose ? 0x00010000u : 0u), 0, IntPtr.Zero, 1 /* CREATE_NEW */, flags, IntPtr.Zero);
         log.Append("test-create=" + (h == new IntPtr(-1) ? Err() : 0));
-        if (h != new IntPtr(-1)) log.Append(" test-close=" + (CloseHandle(h) ? 0 : Err()));
-        if (!deleteOnClose) log.Append(" test-delete=" + (DeleteFileW(path) ? 0 : Err()));
+        bool testCreated = h != new IntPtr(-1);
+        if (testCreated) {
+            int close = CloseHandle(h) ? 0 : Err();
+            log.Append(" test-close=" + close);
+            testCreated = close == 0;
+        }
+        // CREATE_NEW failure did not create a probe; preserve the user's existing file.
+        if (!deleteOnClose) log.Append(testCreated
+            ? " test-delete=" + (DeleteFileW(path) ? 0 : Err())
+            : " test-delete=skipped-create-failed");
         h = CreateFileW(path, 0x40000000, 1 /* FILE_SHARE_READ */, IntPtr.Zero, 2 /* CREATE_ALWAYS */, 0x80, IntPtr.Zero);
         log.Append(" save-create=" + (h == new IntPtr(-1) ? Err() : 0));
         if (h != new IntPtr(-1)) {

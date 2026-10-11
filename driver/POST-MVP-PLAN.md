@@ -150,6 +150,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   ready before code: private last-close name release, checked public deletes, durable ordering, reserved enum slots and guarded legacy migration.
 - [x] Simpler unload design reviewed in the same note: voluntary veto for outstanding private work; mandatory teardown drains local
   references without waiting on the service. Startup retains private stages; adding a reaper or changing failure policy needs an owner decision.
+- [x] Native actor skips DeleteFileW after a failed CREATE_NEW; [PowerShell 5.1/native controls](evidence/2026-10-11/t5-actor-probe-native-control-1011a2.txt)
+  prove the existing object's full identity survives and successful new-name probes still delete/save. Protected rows remain unqualified.
 - [ ] Implement reviewed design; remove EmptyHeld/SupersededEmpty/AbandonedEmpty, EmptySavePrivate and CREATE_AFTER_PRIVATE_DISCARD /
   SuccessorReservation chains. Keep independent identity cleanup, local rundown and exact-ACK safeguards where applicable.
   - [x] Released-stage cleanup checks volume + full 128-bit ID and refuses reparse replacements (`a9c0fb59`); its four WDK builds pass
