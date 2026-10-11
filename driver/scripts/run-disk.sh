@@ -66,13 +66,28 @@ _rd_shutdown() {  # $1 domain, running on its base: shut Windows down from insid
 }
 
 run_disk_begin() {  # $1 domain, $2 tag -> the domain is started on a fresh overlay of its base
-    local dom=$1 tag=$2 state base dir pool fmt cap ov xml free min
+    local dom=$1 tag=$2 state base dir pool fmt cap ov xml free min sibling
+    case "$dom" in
+        win10-debug3) sibling=win10-debug2 ;;
+        win10-debug2) sibling=win10-debug3 ;;
+        *) sibling= ;;
+    esac
+    if [ -n "$sibling" ] && [ "$($V domstate "$sibling")" != 'shut off' ]; then
+        _rd_log "$sibling must stay off: these clones share a guest IP"; return 1
+    fi
     mkdir -p "$RUN_DISK_STATE"; state="$RUN_DISK_STATE/$dom"
     if [ -f "$state" ]; then
-        _rd_log "$dom: run $(sed -n 's/^tag=//p' "$state") was never ended; discarding it first"
-        run_disk_end "$dom" "$(sed -n 's/^tag=//p' "$state")" || return 1
+        _rd_log "$dom: prior run state remains; stop and inspect it before starting another run"
+        return 1
     fi
     [ "$($V domstate "$dom")" = "shut off" ] || _rd_shutdown "$dom" || return 1
+    (umask 077; $V dumpxml --inactive "$dom" > "$state.xml") || return 1
+    python3 - "$state.xml" <<'CHECKXML' || return 1
+import sys, xml.etree.ElementTree as ET
+root=ET.parse(sys.argv[1]).getroot()
+if root.find('./devices/tpm') is not None: raise SystemExit('Test VM still has a TPM')
+if root.find('./os/nvram') is None: raise SystemExit('Test VM has no EFI variable store')
+CHECKXML
     base=$(_rd_vda "$dom" --inactive)
     case "$(basename "$base")" in *.safeupload-run-*|*.safeupload-pre-*)
         _rd_log "$dom: its disk $base is a run file with no run state; end that run by hand first"; return 1;; esac
@@ -90,7 +105,8 @@ run_disk_begin() {  # $1 domain, $2 tag -> the domain is started on a fresh over
     $V vol-create "$pool" "$xml" >/dev/null; local rc=$?; rm -f "$xml"; [ $rc -eq 0 ] || return 1
     printf 'base=%s\noverlay=%s\ntag=%s\nbasestat=%s\n' "$base" "$dir/$ov" "$tag" "$(stat -c '%Y %s' "$base")" > "$state"
     _rd_repoint "$dom" "$dir/$ov" || { _rd_log "$dom: could not point the domain at $dir/$ov"; return 1; }
-    $V start "$dom" >/dev/null || return 1
+    $V start "$dom" --reset-nvram >/dev/null || return 1
+    echo 'RunDiskEfiReset=True'
     _rd_log "$dom: run $tag on $dir/$ov (base $base)"
 }
 
@@ -115,7 +131,16 @@ run_disk_end() {  # $1 domain, $2 tag -> guest off, domain back on its base, eve
         done
     done
     [[ " ${files[*]} " == *" $ov "* ]] || { [ -e "$ov" ] && [ "$(_rd_vol "$ov" backing)" = "$base" ] && files+=("$ov"); }
-    _rd_repoint "$dom" "$base" || { _rd_log "$dom: could not point the domain back at $base; nothing deleted"; return 1; }
+    if [ "$(stat -c '%Y %s' "$base")" != "$stat0" ]; then
+        echo "RunDiskBaseUntouched=False base $base changed during run $tag"; return 1
+    fi
+    [ -s "$state.xml" ] && $V define "$state.xml" >/dev/null || {
+        _rd_log "$dom: original XML restoration failed; nothing deleted"; return 1;
+    }
+    cmp -s "$state.xml" <($V dumpxml --inactive "$dom") && [ "$(_rd_vda "$dom" --inactive)" = "$base" ] || {
+        echo 'RunDiskXmlUnchanged=False'; return 1;
+    }
+    echo 'RunDiskXmlUnchanged=True'
     for f in "${files[@]}"; do
         _rd_named_elsewhere "$dom" "$f" && { _rd_log "$dom: another domain names $f; nothing deleted"; return 1; }
     done
@@ -123,7 +148,9 @@ run_disk_end() {  # $1 domain, $2 tag -> guest off, domain back on its base, eve
         p=$(image_pool_of "$(dirname "$f")") && $V vol-delete --pool "$p" "$(basename "$f")" >/dev/null || { _rd_log "could not delete $f"; return 1; }
         _rd_log "$dom: deleted $f"
     done
-    rm -f "$state"
+    [ ! -e "$ov" ] || { echo 'RunDiskOverlayDeleted=False'; return 1; }
+    echo 'RunDiskOverlayDeleted=True'
+    rm -f "$state" "$state.xml"
     if [ "$(stat -c '%Y %s' "$base")" = "$stat0" ]; then echo "RunDiskBaseUntouched=True"; else echo "RunDiskBaseUntouched=False base $base changed during run $tag"; return 1; fi
     _rd_log "$dom: run $tag ended; the domain is shut off on $base"
 }

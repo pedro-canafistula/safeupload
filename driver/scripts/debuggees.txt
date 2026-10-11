@@ -4,5 +4,6 @@
 # UUIDs are pinned in Get-StagedBaseline.ps1 and Test-StagedInvariantSuite.ps1 (Assert-Platform).
 win10-debug 192.168.122.51
 win10-debug2 192.168.122.52
-win10-debug3 192.168.122.53
+# win10-debug2 and win10-debug3 share a guest IP: never run both. Active test VM: win10-debug3.
+win10-debug3 192.168.122.52
 win10-debug4 192.168.122.54

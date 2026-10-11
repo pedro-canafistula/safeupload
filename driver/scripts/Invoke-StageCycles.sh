@@ -39,13 +39,24 @@ print("\n".join(line for line in (text.split("\n") + errors) if line.strip()))
 remote() { python3 driver/scripts/remote_ps.py "$host" 2>&1 | clean; }
 wait_ssh() { for _ in $(seq 1 90); do ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1 && return 0; sleep 10; done; return 1; }
 started=$(date +%s)
+stop_reason='setup-or-test-exit'
+phase=run-disk
+state=NOT_STARTED
+waited=0
 
 echo "== run disk"
 source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"; source "$(dirname "${BASH_SOURCE[0]}")/run-disk.sh"
 run_disk_begin "$dom" "$tag" > "$ev/$tag-checkpoint.txt" 2>&1 || { cat "$ev/$tag-checkpoint.txt"; exit 12; }
 finish() {
     local test_status=$?
-    trap - EXIT
+    trap - EXIT TERM INT HUP
+    printf 'T4StopReason=%s;ExitCode=%s;Phase=%s;Progress=%s;ElapsedSeconds=%s\n' \
+        "$stop_reason" "$test_status" "$phase" "$state" "$waited" | tee "$ev/$tag-stop.txt"
+    if [ "$phase" = cycles ]; then
+        # Preserve partial progress even when the launcher receives a signal.
+        timeout 90 scp "${opts[@]}" "vika@$host:C:/T4/cycles.jsonl" "$ev/$tag-cycles-at-stop.jsonl" >/dev/null 2>&1 || true
+        timeout 90 scp "${opts[@]}" "vika@$host:C:/T4/samples.jsonl" "$ev/$tag-samples-at-stop.jsonl" >/dev/null 2>&1 || true
+    fi
     echo "== discard the run disk"
     if ! run_disk_end "$dom" "$tag" > "$ev/$tag-final-restored-state.txt" 2>&1 ||
         ! grep -qx 'RunDiskBaseUntouched=True' "$ev/$tag-final-restored-state.txt"; then
@@ -53,16 +64,32 @@ finish() {
         echo 'T4Restoration=FAIL'
         exit 22
     fi
-    grep -E 'RunDiskBaseUntouched|deleted|nothing deleted' "$ev/$tag-final-restored-state.txt"
+    cat "$ev/$tag-final-restored-state.txt"
+    # Separate baseline boot/check after the tested run has ended and its disk is gone.
+    if ! bash driver/scripts/Verify-RunDiskRestoration.sh "$dom" "${tag}restore" > "$ev/$tag-independent-restoration.txt" 2>&1; then
+        cat "$ev/$tag-independent-restoration.txt"
+        echo 'T4Restoration=FAIL'; exit 22
+    fi
+    echo 'T4IndependentRestoration=PASS'
     exit "$test_status"
 }
 trap finish EXIT
+trap 'stop_reason=signal-TERM; exit 143' TERM
+trap 'stop_reason=signal-INT; exit 130' INT
+trap 'stop_reason=signal-HUP; exit 129' HUP
 wait_ssh || { echo 'guest did not boot on the run disk'; exit 3; }
 
+phase=baseline
 echo "== baseline"
 scp "${opts[@]}" driver/scripts/Get-StagedBaseline.ps1 "vika@$host:$guest/Get-StagedBaseline.ps1" || exit 3
 echo "& 'C:\\Users\\vika\\Documents\\Get-StagedBaseline.ps1'" | remote | tee "$ev/$tag-baseline.txt" >/dev/null
 grep -q '^BaselineClean=True' "$ev/$tag-baseline.txt" || { echo 'BASELINE NOT CLEAN on a fresh run disk: the base changed'; exit 10; }
+case "$dom" in
+    win10-debug3) expected_uuid=FFCB9530-146B-43B1-8AF7-2B5CC8EDE2E3 ;;
+    *) echo 'T4 now uses the owner-selected VM win10-debug3 only'; exit 10 ;;
+esac
+grep -qx "UUID=$expected_uuid" "$ev/$tag-baseline.txt" || { echo 'Wrong VM identity'; exit 10; }
+
 
 # As in the invariant batch, settle the guest's cold-boot clock before the install reboot. Deadlines remain monotonic.
 clock_now=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
@@ -84,6 +111,7 @@ remote <<PS >> "$ev/$tag-clock.txt"
 PS
 grep -qx 'GuestClockSynced=True' "$ev/$tag-clock.txt" || { echo 'guest clock not synchronized'; exit 11; }
 
+phase=install
 echo "== stage files and install"
 sleep 5
 scp "${opts[@]}" "$sys" "vika@$host:$guest/SafeUpload-t4.sys" && scp "${opts[@]}" "$zip" "vika@$host:$guest/stage-service-publish.zip" \
@@ -173,6 +201,7 @@ for ($i = 0; $i -lt 60 -and -not $ready; $i++) {
 PS
 grep -qx 'READY=True' "$ev/$tag-ready.txt" || { echo 'agent never Ready'; exit 19; }
 
+phase=coordinator-start
 echo "== actor, Verifier ($mode) and the coordinator"
 setup_ps=$(cat <<'PS'
 $ErrorActionPreference = 'Stop'
@@ -237,17 +266,31 @@ grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator 
 if [ "$mode" != ordinary ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
 
 # The earlier run's median was 2.2 s per cycle. Allow 4 s each on the fast run disk, plus settle and idle samples, at least an hour.
-limit=$(( cycles * 4 + 600 )); [ "$limit" -lt 3600 ] && limit=3600
-waited=0; state=RUNNING; alive=yes
+limit=${T4_DEADLINE_SECONDS:-$(( cycles * 4 + 600 ))}
+[[ "$limit" =~ ^[0-9]+$ ]] || { echo 'Invalid T4 deadline'; exit 2; }
+[ "$limit" -ge 3600 ] || limit=3600
+if [ "$cycles" -ge 10000 ] && [ "$limit" -lt 21600 ]; then
+    echo '10,000-cycle runs require at least a six-hour deadline'; exit 2
+fi
+printf 'T4DeadlineSeconds=%s\n' "$limit" | tee "$ev/$tag-deadline.txt"
+loop_started=$(python3 -c 'import time; print(time.monotonic())')
+phase=cycles; waited=0; state=RUNNING; alive=yes
+stop_reason=deadline
 while [ "$waited" -lt "$limit" ]; do
-    sleep 60; waited=$((waited + 60))
+    sleep 60
+    waited=$(python3 - "$loop_started" <<'MONOTONIC'
+import sys,time
+print(int(time.monotonic()-float(sys.argv[1])))
+MONOTONIC
+)
     if ! state=$(remote <<<"& 'C:\Users\vika\Documents\t4-cycles-progress.ps1'" | tail -1); then state=UNREACHABLE; fi
-    case "$state" in DONE*) break;; RUNNING*) alive=yes;; *) # a bugcheck looks like a hang: the guest stops answering
-        if ! ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1; then alive=no; echo "guest unreachable after ${waited}s"; break; fi;;
+    case "$state" in DONE*) stop_reason=coordinator-finished; break;; RUNNING*) alive=yes;; *) # a bugcheck looks like a hang: the guest stops answering
+        if ! ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1; then alive=no; stop_reason=guest-unreachable; echo "guest unreachable after ${waited}s"; break; fi;;
     esac
-    [ $((waited % 600)) -eq 0 ] && echo "progress after ${waited}s: $state"
+    echo "progress after ${waited}s: $state"
 done
-echo "wait ended after ${waited}s: $state alive=$alive"
+echo "wait ended after ${waited}s: $state alive=$alive reason=$stop_reason"
+phase=collect-results
 
 if [ "$alive" = yes ]; then
     remote <<'PS' > "$ev/$tag-after.txt"
