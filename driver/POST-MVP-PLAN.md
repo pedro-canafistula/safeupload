@@ -223,7 +223,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [static gates](evidence/2026-10-11/t5-native-replay-static-gates.md). Authenticated read-only replay is built/tested (`aa1a2a46`);
     durable destination-head discovery exists (`e97585cb`). CREATE producer and integrated pre-boot kernel review remain pending.
   - [x] [Startup epoch security design](evidence/2026-10-11/t5-native-startup-epoch-design-review-luna6.md) reviewed with corrections:
-    authenticated boot metadata plus conservative private recovery before readiness; implementation/runtime remain open.
+    authenticated boot metadata, asynchronous private preflight and visible readiness gate implemented (`9c1f9737`);
+    [agent gates pass](evidence/2026-10-11/t5-native-startup-static-gates.md). Anchored native hold release/runtime remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
@@ -235,9 +236,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: driver and agent `aa1a2a46`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
-**821/821** per normal agent profile and **936/936** per feature profile, every discovered case executed once without skips,
-service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-11/t5-native-replay-static-gates.md)).
+Latest static gates: unchanged driver `aa1a2a46`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
+agent `9c1f9737`, **848/848** per normal profile and **970/970** per feature profile, every discovered case executed once without skips,
+service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-11/t5-native-startup-static-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and

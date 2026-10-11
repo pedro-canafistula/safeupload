@@ -242,8 +242,10 @@ before replacing the epoch; never block the receive loop on a long recovery whil
 A changed GUID, clock, PID or counter alone never qualifies; the current unsigned boot sequence must be strictly greater than the
 saved original value, without wrap inference. Legacy epochs without trusted boot metadata stay fail-closed on a changed driver.
 Only the same authenticated original driver may capture its missing baseline for a future restart; never manufacture an old boot
-sequence from a replacement driver. This adds no persisted enum or protocol state. The correction is reviewed, but its epoch-gate
-implementation and runtime qualification remain open.
+sequence from a replacement driver. This adds no persisted enum or protocol state. Epoch metadata, asynchronous private preflight,
+authenticated final replay checks and visible readiness gating are implemented in `9c1f9737` with
+[passing agent component gates](evidence/2026-10-11/t5-native-startup-static-gates.md). Anchored native hold release and runtime
+qualification remain open; the startup path refuses an unresolved hold until that dispatcher is connected.
 
 - Implement the corrections in the READY WITH CORRECTIONS security-design review; do not claim the existing recovery is already wired.
 - Review the integrated kernel lifetime/lock-order/retirement change once before its first revised VM boot.
