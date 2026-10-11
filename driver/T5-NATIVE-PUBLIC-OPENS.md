@@ -153,7 +153,8 @@ FILE_ID_128. This is read-only directory metadata, not a child reopen or share w
 Win32-5 child-open refusal, then found exact absence after last reader close; supported-VM/protected recovery rows remain required.
 `StagedDestinationNameObserver` implements this read-only observation on borrowed, checked directory handles: verify root/parent
 identities, non-reparse directory type and case mode, then require two complete matching enumerations and unchanged anchors. It
-never opens the child or interprets access denial as absence. Authenticated anchor export and the live recovery call remain pending.
+never opens the child or interprets access denial as absence. The production transport below returns metadata directly;
+the live recovery call remains pending.
 
 **Reviewed transport correction.** Perform that same read-only anchored observation in the driver and return
 the checked metadata instead of exporting directory handles. The
@@ -180,6 +181,12 @@ Bind the reply to the requested tuple,
 destination and leaf, recheck native replay revision and connection at completion, and reject malformed/stale/partial replies in the
 service. The service still independently checks lifetime proof and enters its destination reconciliation turn before downgrading a hold.
 Directory absence/original identity remains only name-mapping evidence, not physical cleanup or permission to delete.
+
+The implemented feature-only port control `31` uses native extension `22`, a 640-byte request and a 664-byte reply.
+`StageNativeObservation.c` keeps directory handles local to the callback; `FilterPort.ObserveNativeName` validates the exact
+request binding, two completed scans, presence and full child identity. The reply exports no handles or kernel addresses.
+Malformed, stale, incomplete or unsupported observations return failure and provide no absence evidence. This transport is
+not yet connected to automatic hold release; that requires the lifetime proof and reconciliation turn described above.
 
 The existing owner-approved close/startup and fixed-NTFS Restart conditions,
 named-file diagnostics, generation floor, supported capability gates and independent runtime observers remain required. No new journal

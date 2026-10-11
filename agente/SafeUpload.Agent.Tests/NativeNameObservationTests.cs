@@ -170,7 +170,8 @@ public sealed class NativeNameObservationTests
         public int Send(SafeFileHandle handle, ReadOnlyMemory<byte> input, Memory<byte> output, out uint returned)
         {
             Calls++;
-            reply(input).CopyTo(output); returned = checked((uint)output.Length - (Short ? 1u : 0u)); return Error;
+            reply(input).AsSpan().CopyTo(output.Span);
+            returned = checked((uint)output.Length - (Short ? 1u : 0u)); return Error;
         }
     }
 }
