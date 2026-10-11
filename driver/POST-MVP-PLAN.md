@@ -4,7 +4,7 @@ Written 2026-10-08 on `feat/driver-post-mvp` (= `main` `aaab5c0c`, which carries
 Current status, gate results and known issues are in [MVP-PLAN.md](MVP-PLAN.md); this file is the work plan that follows them, in priority
 order. Where a cause is not yet measured, the task says so and lists hypotheses from reading the code; treat those as leads, not findings.
 
-**Current owner objective:** M2 is the active milestone, not the completion boundary for the full owned-stream replacement.
+**Current owner objective:** Complete the SafeUpload MVP as soon as possible. M2 is the active milestone, not the completion boundary for the full owned-stream replacement.
 The current goal also requires both mapping repros, USB including surprise removal, UNC/SMB and a real sync client with independent
 destination-byte observers, the functional/crash/recovery matrix, Verifier, stress and latency, and independently verified restoration
 after every VM run. Older "Later" and local-NTFS-only labels below record milestone ordering; they do not waive these goal requirements.
@@ -54,7 +54,7 @@ Carried over from the MVP; they apply to every driver change on this branch.
   runtime Driver Verifier; the affected suite rows pass end to end with the raw-volume observer (`ForbiddenByteCount` 0) and a clean
   restoration (`Get-StagedBaseline.ps1`).
 - One adversarial review per milestone against the working system, plus one before the first VM boot of any change to object lifetime,
-  lock order or the retirement gate (T4 and T6 in particular). Reviews only by Luna; implementation is done here.
+  lock order or the retirement gate (T4 and T6 in particular). Codex handles ordinary work; heavy cybersecurity implementation and reviews go to Luna 6 at max effort.
 - Each milestone ends with a new frozen pair (new build labels) and the full three-mode gate. BLOCK-window cells run serially on one VM.
 - Harness changes pass `Invoke-HarnessWindowsGate.sh` (Windows PowerShell 5.1) before they are used for a gate run.
 - Owner decisions in force stay in force (no process taint, no scan-based or timer-based fixes for writer state, sticky Unknown until
