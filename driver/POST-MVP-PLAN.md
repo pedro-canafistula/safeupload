@@ -31,10 +31,12 @@ Completion requires evidence for every tracker item, then a taint-removal plan a
 - [x] Pass four disposable file-lease controls on each of Btrfs and Ext4, plus read-only leased-descriptor fsync/read calls on both ([disposition](evidence/2026-10-11/m2-t5-filesystem-lease-controls-a1-root-disposition.json)). The earlier a1 test ran on tmpfs; its Btrfs prose label was incorrect. These controls do not qualify expiry, crash retention, pending dirty-page drain, or protection of original VM files.
 - [x] Retain the R1 recovery installer NO_GO: the first durable attempt and journal were written before the canonical lock ([disposition](evidence/2026-10-11/m2-t5-lifecycle-file-lease-guard-r1-root-review-disposition.json)).
   - [x] Independently freeze the R2 lock-ordering source checkpoint and its disposable author controls ([capture](evidence/2026-10-11/m2-t5-recovery-transaction-r2-lock-ordering-a1-root-review-capture.json)).
-  - [ ] Independently review that correction and finish the full recovery transaction; no host changes are authorized by this checkpoint.
+  - [x] Accept the lock-ordering source correction after different-author review and revalidate all eleven frozen inputs ([disposition](evidence/2026-10-11/m2-t5-recovery-transaction-r2-lock-ordering-a1-root-review-disposition.json)).
+  - [ ] Finish and qualify the full recovery transaction; no host changes are authorized by this checkpoint.
 - [x] Freeze the R15 coordinator self-check correction without changing the production coordinator or managed schema ([capture](evidence/2026-10-11/m2-t5-notepad-coordinator-r15-root-review-capture.json)).
   - [x] Independently review and execute the fresh two-file Windows PowerShell 5.1 diagnostic; both scripts parse, but the all-legacy ancestry assertion fails. Preserve that failure and independently verify the original process terminal and both remote source pins unchanged ([verification](evidence/2026-10-11/m2-t5-coordinator-r15-diag-a1-root-verification.json)).
-  - [ ] Diagnose and correct the legacy fixture or validator as the evidence requires; retain the assertion and rerun in a fresh isolated folder after review.
+  - [x] Diagnose the false legacy-positive failure: adding two empty PowerShell validator outputs creates a null element. A Windows PowerShell 5.1 language probe confirms that direct output collection preserves zero errors and retains real errors ([result](evidence/2026-10-11/m2-t5-ps51-empty-pipeline-a1-root-result.json)).
+  - [ ] Independently review the one-line R16 fixture correction and rerun the complete standalone self-check; production validation and the assertion remain unchanged.
 - [ ] Finish and independently review the Windows harness and enforced recovery transaction.
 - [ ] Qualify the matched pair, lifecycle and all three nonempty Save As modes under Verifier with independent destination-byte observations and independently verified VM restoration.
 

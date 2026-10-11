@@ -1,0 +1,17 @@
+{
+  "All11FrozenPinsRevalidated": true,
+  "CutoverAuthorized": false,
+  "EvidenceSHA256": {
+    "luna-t5-recovery-transaction-r2-lock-ordering-a1-independent-review.md": "ae43b52f571c3ab1fb8a4f3404c96fd9d1ff140d34dbee44d33c1c112282f8de",
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-root-review-capture.json": "0b1299ef9b41b2211bf5730059160267487cbafb8ec65d27fe2e4ff11cbdd14c"
+  },
+  "FullRecoveryTransactionSourceAccepted": false,
+  "HostPolicyApplied": false,
+  "InstallationAuthorized": false,
+  "LockOrderingCorrectionSourceAccepted": true,
+  "ProductVMStarted": false,
+  "Remaining": "Whole-run admitted-API and direct-source write exclusion, private disk/NVRAM/TPM binding, crash/failure retention, original whole-state restoration and independent verification remain unqualified.",
+  "ReviewedUTC": "2026-10-11T13:47:59.113540+00:00",
+  "RuntimeQualified": false,
+  "Scope": "Authorized attempt reservation, journal and TRANSACTION_BEGIN plus no-authorization durable preflight under the same held canonical flock. Temporary controls use replaced host boundaries."
+}

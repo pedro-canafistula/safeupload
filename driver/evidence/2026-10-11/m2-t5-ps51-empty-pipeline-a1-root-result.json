@@ -1,0 +1,22 @@
+{
+  "PSVersion": "5.1.19041.6456",
+  "ExistingEmptySumCount": 1,
+  "ExistingEmptySumContainsNull": true,
+  "DirectEmptyCount": 0,
+  "DirectOneErrorCount": 1,
+  "DirectTwoErrorCount": 2,
+  "ControlsPassed": true,
+  "ProjectSourceInvoked": false,
+  "FileWrites": false,
+  "RecordedUTC": "2026-10-11T13:46:20.577740+00:00",
+  "TransportExitCode": 0,
+  "EvidenceSHA256": {
+    "m2-t5-ps51-empty-pipeline-a1.stdout.log": "158139f96ddc1ef00e190148c747ebf1e8cb55d72f9e01c00f0d269fa9fec704",
+    "m2-t5-ps51-empty-pipeline-a1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-ps51-empty-pipeline-a1-input.ps1": "fb5faf6c8e2a5df7cd4814a5d046886066b86d98c8b6ea0c6cc8c29ed10219cb"
+  },
+  "RuntimeQualified": false,
+  "PairQualified": false,
+  "ProductVMStarted": false,
+  "HostPolicyApplied": false
+}
