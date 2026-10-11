@@ -137,6 +137,6 @@ internal sealed class StagedNativeStartupRecovery
     }
 
     private static StagedStageIdentity Identity(SafeUploadStageIdentityV19 value)
-        => new(value.VolumeSerialNumber, value.FileIdLow, value.FileIdHigh);
+        => new(value.VolumeSerialNumber, value.FileIdHigh, value.FileIdLow);
 }
 #endif
