@@ -1,0 +1,7 @@
+R23 source-only authoring attempts
+
+1. Initial exact-diff generation used a baseline path relative to `driver/scripts` twice. The script had already made only the intended three R23 source changes, then stopped while trying to open the incorrectly constructed diff input; it wrote no patch or other source artifact.
+2. Two diff-generation retries ran before `author/` had been created and stopped at patch-file creation. They made no source changes.
+3. After creating the candidate author directory, exact three-file diff generation succeeded. The R23 closure/control script then passed its source, pin, context, mutation, and R18 evidence checks. The follow-up edit added an exact context-membership check; it also passed.
+
+These were authoring-control path setup mistakes, not source or runtime failures. The R22 frozen candidate and live source tree were not edited. No PowerShell, Windows, full gate, host/API, service, actor, coordinator, VM, network, or Git action occurred.

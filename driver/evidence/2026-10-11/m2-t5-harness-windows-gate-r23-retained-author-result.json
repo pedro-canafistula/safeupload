@@ -1,0 +1,119 @@
+{
+  "schema": "safeupload-harness-windows-gate-r23-author-result-v1",
+  "candidate": "m2-t5-harness-windows-gate-r23-luna-a1",
+  "status": "AUTHOR_SOURCE_ONLY_CANDIDATE_PENDING_ROOT_CAPTURE_AND_INDEPENDENT_REVIEW",
+  "sourceDisposition": "R18_REVIEWED_SELFCHECK_INTEGRATED_SOURCE_ONLY_NO_FULL_GATE_OR_PRODUCT_QUALIFICATION",
+  "baseline": {
+    "candidate": "output/review-candidates/m2-t5-harness-windows-gate-r22-root-a1",
+    "rootReviewCaptureSha256": "d2f7ea5ec8a7205678fb7fd00a3563c6f86ba0ea07e1f1884dc70039c881101e",
+    "sourceCaptureSha256": "11aabe1e028a051a9f735d21ee3584cc979e821f6d23f77612587bdff5bc4816",
+    "sourceCount": 63,
+    "unchangedSourceCount": 60
+  },
+  "sourceCapture": {
+    "path": "author/source-capture.json",
+    "sha256": "5b54bcabc05d7653521d4fa9e1e9f204f1192030cccb510474c60877d925d5a3",
+    "canonicalSourceInventorySha256": "59d067bc1b2f58cd8f32c01ba0dda5f1ce7d8a4e68fd5b1af1f7a363ca1d30b0",
+    "sourceFileCount": 63,
+    "contextInputCount": 40,
+    "pinnedAuthorArtifactCount": 5
+  },
+  "integratedCoordinatorSelfcheck": {
+    "path": "src/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1",
+    "sha256": "abc6b472a16e772bdd11fea7ab88e8e3de82579fc2691c6ef2436229c88d74bb",
+    "R18IndependentReviewSha256": "ee454c91457d54d0697bc07cd8f7b83be0d51c83321093ef1b1c47b884a98098",
+    "R18StandaloneDiagnosticResultSha256": "9d468ba1e5fc1da11a8801cebfc6a37aec5d0ccfc4b656b6594b88ffc7d17126",
+    "R18StandaloneDiagnosticVerificationSha256": "378f374cfd55c6f1e66ebcf89881eb58f2db53ae9cd1cb9c0766e51279cdfde3",
+    "R18Assertions": 162,
+    "R18ExactSinglePass": true,
+    "R18OriginalProcessTerminal": true,
+    "R18StandaloneOnly": true,
+    "FullHarnessOrProductQualified": false
+  },
+  "sourceDelta": {
+    "changedSourceCount": 3,
+    "changedPaths": [
+      {
+        "path": "src/driver/scripts/HarnessWindowsGate.manifest.json",
+        "sha256": "2494b0411213f07df94d43f501330f2f5d9b27195f26bedc8444709b98d2c71a",
+        "baselineSha256": "1611157ba0be27a2d7f5223eb615e918deefdd7a8e525c1295f45afcb1c1c5ae"
+      },
+      {
+        "path": "src/driver/scripts/Invoke-HarnessWindowsGate.sh",
+        "sha256": "5ad2092573fe2fd9f636c7fc2a5d39b8a542cfc536e7869b2797a7c7e2a201b7",
+        "baselineSha256": "31d15c406efc96d6e74e79a237e192528c4b4cd1356ef41df12f11db816980b6"
+      },
+      {
+        "path": "src/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1",
+        "sha256": "abc6b472a16e772bdd11fea7ab88e8e3de82579fc2691c6ef2436229c88d74bb",
+        "baselineSha256": "be52114a729e2861afccf6c73d900d5b03fc9f476e3664a64f10f959cb33ae47"
+      }
+    ],
+    "addedFiles": 0,
+    "removedFiles": 0,
+    "exactDiffPath": "author/exact-delta-from-r22.patch",
+    "exactDiffSha256": "48e4d979df0d0d7ad32e0ede62faff724f1cd60ce16c03fc7dce5e94d9540a03",
+    "allOther60SourceFilesByteIdentical": true
+  },
+  "closedExecutionInventory": {
+    "mainFiles": 15,
+    "rootSelfchecks": 17,
+    "t5Selfcheck": 1,
+    "total": 33,
+    "orderedPathSetUnchanged": true,
+    "duplicateExecutionPaths": 0,
+    "gateSupportFiles": 8,
+    "manifestVerifiedInputCount": 41
+  },
+  "pins": {
+    "R23ManifestSha256": "2494b0411213f07df94d43f501330f2f5d9b27195f26bedc8444709b98d2c71a",
+    "R23ShellSha256": "5ad2092573fe2fd9f636c7fc2a5d39b8a542cfc536e7869b2797a7c7e2a201b7",
+    "ShellExpectedManifestSha256": "2494b0411213f07df94d43f501330f2f5d9b27195f26bedc8444709b98d2c71a",
+    "T5SelfcheckSha256": "abc6b472a16e772bdd11fea7ab88e8e3de82579fc2691c6ef2436229c88d74bb",
+    "R21AtomicReceiptAndJobContainmentProtocolSha256": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a"
+  },
+  "sourceOnlyControls": {
+    "path": "author/r23-source-controls.py",
+    "sha256": "5be77dd889f09686385b8b331e66beb2fe60dc85ed81d8fae2e73bef8d1a118e",
+    "result": "PASS",
+    "offlineControlsPath": "author/offline-controls.txt",
+    "offlineControlsSha256": "1809e71e357264e8713d1aa855f5b1c62a08fe1347bc48d3383781a30d677462",
+    "negativeControls": [
+      "stale R22 T5 manifest pin",
+      "stale shell manifest pin",
+      "altered T5 self-check",
+      "duplicate execution entry"
+    ],
+    "manifestSelfcheck": "PASS, 15 assertions",
+    "manifestVerification": "PASS, 33 execution sources and 8 support inputs checked",
+    "shellSyntax": "PASS, bash -n"
+  },
+  "qualification": {
+    "R23PowerShellParsedOrExecuted": "NOT_RUN",
+    "FullWindowsGate": "NOT_RUN",
+    "ServicePair": false,
+    "Recovery": false,
+    "ProductRuntime": false,
+    "SourceAccepted": false,
+    "RuntimeQualified": false
+  },
+  "activity": {
+    "R23PowerShellParsedOrExecuted": false,
+    "FullHarnessInvoked": false,
+    "CoordinatorTopLevelInvoked": false,
+    "ServiceOrActorInvoked": false,
+    "WindowsActionByAuthor": false,
+    "HostApiOrPolicyAction": false,
+    "ProductVMStarted": false,
+    "NetworkAction": false,
+    "GitMutation": false
+  },
+  "restrictionsObserved": [
+    "Created a new R23 candidate from root-frozen R22 source; frozen R22, R18, and live source trees were not edited.",
+    "Changed only the T5 self-check input plus its derived manifest and shell hash pins; preserved 60 of 63 source files byte-for-byte and the exact 33 execution roles.",
+    "Retained exact R18 source review and standalone diagnostic result, raw output, and postverification as context; R18 162-assertion PASS is diagnostic-only.",
+    "R21 atomic receipt publication and native job-containment protocol inputs remain unchanged from R22.",
+    "Ran only isolated Python source/manifest controls and bash syntax parsing; did not invoke shell gate, PowerShell, Windows, service, actor, coordinator, host/API, VM, network, or Git.",
+    "R23 remains pending independent review and separately authorized full-gate review/run; full product runtime and recovery are unqualified."
+  ]
+}

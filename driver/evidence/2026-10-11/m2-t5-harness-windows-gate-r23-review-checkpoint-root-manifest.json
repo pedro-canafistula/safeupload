@@ -1,0 +1,17 @@
+{
+  "FilesSHA256": {
+    "luna-t5-harness-windows-gate-r23-independent-review.md": "975b1d71e9d255585cd8523c95f795ded0a87b869523f578d50298565eeb5c57",
+    "m2-t5-harness-windows-gate-r23-retained-attempt-log.txt": "f8faba51ca74aab5953c18a716c7b6672b70994e8d45ea786df39f6462bc1125",
+    "m2-t5-harness-windows-gate-r23-retained-author-note.md": "1e88e15ff0e7fc0b2859ff3ec86d376a9c99cd2a84d781b8f0c31b4059404a4c",
+    "m2-t5-harness-windows-gate-r23-retained-author-result.json": "963b567ce472d22842897e1ad340322937cccda3ce5121b88fa75d27fa2e42ff",
+    "m2-t5-harness-windows-gate-r23-retained-exact-delta-from-r22.patch": "48e4d979df0d0d7ad32e0ede62faff724f1cd60ce16c03fc7dce5e94d9540a03",
+    "m2-t5-harness-windows-gate-r23-retained-offline-controls.txt": "1809e71e357264e8713d1aa855f5b1c62a08fe1347bc48d3383781a30d677462",
+    "m2-t5-harness-windows-gate-r23-retained-r23-source-controls.py": "5be77dd889f09686385b8b331e66beb2fe60dc85ed81d8fae2e73bef8d1a118e",
+    "m2-t5-harness-windows-gate-r23-retained-source-capture.json": "5b54bcabc05d7653521d4fa9e1e9f204f1192030cccb510474c60877d925d5a3",
+    "m2-t5-harness-windows-gate-r23-retained-unexecuted-prepared-plan.json": "74f53363b238accd4c4e5fe2c3a6e28c0581e4bb498765fab20a58b50637dca8",
+    "m2-t5-harness-windows-gate-r23-retained-unexecuted-run-reviewed-gate.py": "368f6d3c758b3af8278cd2d7e27c499e9ddc154710b881c7e2e3fc8e40d32a60",
+    "m2-t5-harness-windows-gate-r23-root-review-capture.json": "7f4cd75757bddd4e02a2b88142d9773a59b96e9069883976048535c9f253788c",
+    "m2-t5-harness-windows-gate-r23-root-review-disposition.json": "b54cd8230d3958ab50cb40d963e0721de8a572b71e84ab12be4f86c76f881eaa"
+  },
+  "Scope": "Source-only integration accepted; R23 full gate NO_GO and not executed."
+}
