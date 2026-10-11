@@ -1,0 +1,19 @@
+{
+  "HostPolicyApplied": false,
+  "IndependentReviewSHA256": "ee454c91457d54d0697bc07cd8f7b83be0d51c83321093ef1b1c47b884a98098",
+  "PairQualified": false,
+  "PreparedInputsSHA256": {
+    "controls-plan.ps1": "b912d4c81a00876bf87e7ff818f3d4c2aa343fd9c8caf2e3f817cacdad0ab2df",
+    "notepad-coordinator.SelfCheck.ps1": "abc6b472a16e772bdd11fea7ab88e8e3de82579fc2691c6ef2436229c88d74bb",
+    "notepad-coordinator.ps1": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d",
+    "remote_ps.py": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b",
+    "run-diagnostic.py": "b69ddfb746503ba1417b5ceb617fbd6ebc2ca7fee0ee0c133c43e4e4c1ffe61e"
+  },
+  "PreparedUTC": "2026-10-11T14:23:10.712832+00:00",
+  "ProductVMStarted": false,
+  "RootCaptureSHA256": "019ae43c6488accd0b4118b67d165c9aa93eee2863b8d845633efee52ba2b8d4",
+  "RuntimeQualified": false,
+  "Scope": "Fresh exact two-file standalone. One receipt assertion strengthened to exact parent+child matches; all other behavior and production/schema sources unchanged. No coordinator top-level, actor, service, native or product VM.",
+  "WindowsExecuted": false,
+  "WorkDirectory": "/tmp/m2-t5-coordinator-r18-diag-1011-a1-root"
+}

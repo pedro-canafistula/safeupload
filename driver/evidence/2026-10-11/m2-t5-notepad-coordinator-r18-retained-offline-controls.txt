@@ -1,0 +1,16 @@
+R18 coordinator source-only controls
+
+Command:
+python3 -I -B output/review-candidates/m2-t5-notepad-coordinator-r18-luna-a1/author/r18-source-controls.py
+
+Output:
+R18 offline coordinator controls: PASS
+R17 root source baseline: exact 4-file closure and source hashes verified; all 15 copied author/context pins match the root capture.
+R18 delta: exactly one faulty assertion line replaced; all other source bytes unchanged.
+Receipt assertion: exactly two state-6/op19 records, exact UInt64 text op19, one parent TransferId and one child TransferId.
+Mutation controls: PASS; raw-number comparison, wrong total cardinality, missing parent/child uniqueness, and old generic assertion are rejected.
+Production coordinator and both managed schema review inputs: unchanged R17 pins.
+R17 failed diagnostic: exact terminal result and raw assertion output retained; it is not treated as a pass.
+Runtime boundary: no PowerShell, Windows, coordinator, service, actor, host, VM, network, or Git action.
+
+Boundary: Source reconstruction and static controls only. R18 was not parsed or executed, and no Windows diagnostic was attempted.

@@ -1,0 +1,9 @@
+R22 authoring attempts (all source-only)
+
+1. First `r22-source-controls.py` run stopped with `KeyError: 'runtimeQualified'`. The prior R17 author result stores that field under `qualification`; the checker was corrected to validate the nested value and retain the later diagnostic evidence. No source or manifest bytes changed in the failed run.
+
+2. Second checker run could not find the R17 failed assertion in the captured stdout. Inspection of the pinned raw logs showed PowerShell wrote the assertion to stderr; the checker was corrected to pin and inspect the stderr file. No source or manifest bytes changed in the failed run.
+
+3. The checker passed after the evidence stream was corrected. It verifies the R17 root/source captures and the actual failed diagnostic result rather than treating the prior bounded source GO as runtime success. The only source files changed from the frozen R21 baseline remain the T5 self-check, its manifest digest, and the shell's manifest digest.
+
+No R22 PowerShell, Windows, full harness, remote, service, actor, coordinator, host, VM, network, or Git execution occurred during these attempts.

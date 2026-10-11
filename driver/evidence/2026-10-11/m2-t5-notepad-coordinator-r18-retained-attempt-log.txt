@@ -1,0 +1,7 @@
+R18 authoring attempts (source-only)
+
+1. The first offline checker run failed its expected diff-line count: it expected eight added lines, while the reviewed replacement contains nine added lines and removes the single prior assertion. The exact diff showed one old assertion replaced by a receipt projection plus one `Assert-T5`. The checker was corrected to require one removed and nine added lines. No source bytes changed due to this checker failure.
+
+2. The corrected control passed, including exact one-assertion reconstruction and source closure checks. A later checker revision added verification for all 15 copied R17 author/context records and the retained failed diagnostic; it passed as well.
+
+These were offline checker corrections, not PowerShell, Windows, coordinator, service, actor, or product failures. No runtime was invoked during R18 authoring.

@@ -1,0 +1,96 @@
+{
+  "schema": "safeupload-t5-notepad-coordinator-r18-author-result-v1",
+  "candidate": "m2-t5-notepad-coordinator-r18-luna-a1",
+  "status": "AUTHOR_SOURCE_CANDIDATE_PENDING_ROOT_CAPTURE_AND_INDEPENDENT_REVIEW",
+  "sourceDisposition": "NARROW_RECEIPT_ASSERTION_CORRECTION_SOURCE_ONLY_NO_RUNTIME_OR_ROOT_ACCEPTANCE_INFERRED",
+  "baseline": {
+    "candidate": "output/review-candidates/m2-t5-notepad-coordinator-r17-root-a1",
+    "rootReviewCaptureSha256": "7fd178b5560c782cecb655557e17889b1ce6b9739dc54d009191732c89289d79",
+    "sourceCaptureSha256": "124ef0e9de648fa4bcc44b46b0abf6181d733fa9ed629fa5e1247a23bf37d0b8",
+    "failureDiagnosisSha256": "ce7213e64b57c183523fbaa5646867aacd4e9a4387f5c1290f17d9f63eabcac5",
+    "rootFailureDispositionSha256": "8c312e0b8b3e43485efa9fcc821ec731456e5042bdc507c69ef82a3ba6746b99",
+    "actualDiagnosticResultSha256": "334b8794c812cdcd7330104b3f269457185aeef405fb6abfbf1998438bd2edf4",
+    "actualDiagnosticVerificationSha256": "5a552d5adc1e3a18c3bbdca55795b31e63aa1a7dc72279679304d353641192bc",
+    "failedDiagnosticRetained": true
+  },
+  "sourceCapture": {
+    "path": "author/source-capture.json",
+    "sha256": "e04ea25160c92b94e44a28dc6fa594b01727b6accd2699251eee2cd62ee56544",
+    "canonicalSourceInventorySha256": "d1f49497608191a8a91d8547e166716e0bcfc433d90874cb878ff96834361eab",
+    "sourceFileCount": 4,
+    "contextInputCount": 23,
+    "authorArtifactCount": 5
+  },
+  "changedSource": {
+    "path": "src/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1",
+    "sha256": "abc6b472a16e772bdd11fea7ab88e8e3de82579fc2691c6ef2436229c88d74bb",
+    "baselineSha256": "be52114a729e2861afccf6c73d900d5b03fc9f476e3664a64f10f959cb33ae47",
+    "change": "one diagnosed generic HandleObserved receipt cardinality assertion replaced by exact parent-and-child receipt assertion",
+    "requiredPredicate": {
+      "matchingReceiptCount": 2,
+      "attachmentState": 6,
+      "requestId": "Get-T5UInt64Text result compared case-sensitively to '19'",
+      "parentTransferIdOccurrences": 1,
+      "childTransferIdOccurrences": 1
+    },
+    "oneAssertionIntentionallyStrengthened": true,
+    "otherSourceBytesPreserved": true
+  },
+  "unchangedSourcePins": {
+    "agente/SafeUpload.Agent.Service/Interception/StagedJournalFile.cs": "5f4a5ae360513425f1ff79c3ad8c0c4fc8c2b3464f416cecc43c57c42224053a",
+    "agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs": "4b270eaef4616c06ba52e0b88deb701d72463dcef8ed6c9c8cc4c39893b23f8d",
+    "driver/scripts/t5/notepad-coordinator.ps1": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d"
+  },
+  "exactDelta": {
+    "path": "author/exact-delta-from-r17.patch",
+    "sha256": "861bfe47d2a282a035bc8d10fed0f2fa7a817fb73b72759207526f50498c184e",
+    "removedLines": 1,
+    "addedLines": 9,
+    "oneAssertionStrengthened": true,
+    "allOtherAssertionAndMutationBytesPreserved": true,
+    "productionCoordinatorAndManagedSchemaChanged": false,
+    "newHelpersOrGateChanges": false
+  },
+  "sourceOnlyControls": {
+    "path": "author/r18-source-controls.py",
+    "sha256": "6e1096f7091e0221dc70eb11682d74f31da53a4e31545c7b9b74f9666fc50448",
+    "command": "python3 -I -B output/review-candidates/m2-t5-notepad-coordinator-r18-luna-a1/author/r18-source-controls.py",
+    "result": "PASS",
+    "negativeControls": [
+      "raw numeric receipt comparison rejected",
+      "wrong total count rejected",
+      "missing parent uniqueness rejected",
+      "missing child uniqueness rejected",
+      "old generic assertion rejected"
+    ]
+  },
+  "qualification": {
+    "PowerShellParser": "NOT_RUN",
+    "StandaloneDiagnostic": "NOT_RUN",
+    "CoordinatorRuntime": false,
+    "ManagedServiceRuntime": false,
+    "CompleteHarness": false,
+    "ProductVM": false,
+    "SourceAccepted": false,
+    "RuntimeQualified": false
+  },
+  "activity": {
+    "R18PowerShellParserOrExecution": false,
+    "WindowsAction": false,
+    "CoordinatorTopLevelInvoked": false,
+    "ServiceOrActorInvoked": false,
+    "ManagedOrNativeBuild": false,
+    "HostPolicyOrAPIAction": false,
+    "ProductVMStarted": false,
+    "NetworkAction": false,
+    "GitMutation": false
+  },
+  "restrictionsObserved": [
+    "Created a new R18 candidate from the root-frozen R17 snapshot; R17 and live sources were not edited.",
+    "Changed only the one diagnosed generic HandleObserved assertion in notepad-coordinator.SelfCheck.ps1; the strengthened assertion requires two exact op19/state-6 receipts with exactly one parent TransferId and one child TransferId.",
+    "The one assertion is intentionally strengthened; all other assertion and mutation bytes were reconstructed unchanged.",
+    "Production coordinator and both managed schema review sources remain at their R17 pins; no helper or gate change was made.",
+    "Only isolated Python source/hash controls ran. No PowerShell, Windows, runtime, coordinator, service, actor, host, VM, network, or Git action occurred.",
+    "R17 failed diagnostic evidence remains attached and failed; R18 requires independent source review and a fresh standalone diagnostic."
+  ]
+}

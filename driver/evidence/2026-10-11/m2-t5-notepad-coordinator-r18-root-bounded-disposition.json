@@ -1,0 +1,26 @@
+{
+  "All34FrozenPinsRevalidated": true,
+  "BothPowerShellParserErrors": 0,
+  "CutoverAuthorized": false,
+  "EvidenceSHA256": {
+    "luna-t5-notepad-coordinator-r17-a1-runtime-failure-diagnosis.md": "ce7213e64b57c183523fbaa5646867aacd4e9a4387f5c1290f17d9f63eabcac5",
+    "luna-t5-notepad-coordinator-r18-independent-review.md": "ee454c91457d54d0697bc07cd8f7b83be0d51c83321093ef1b1c47b884a98098",
+    "m2-t5-coordinator-r18-diag-a1-root-verification.json": "378f374cfd55c6f1e66ebcf89881eb58f2db53ae9cd1cb9c0766e51279cdfde3",
+    "m2-t5-harness-windows-gate-r22-root-review-capture.json": "d2f7ea5ec8a7205678fb7fd00a3563c6f86ba0ea07e1f1884dc70039c881101e",
+    "m2-t5-notepad-coordinator-r18-root-review-capture.json": "019ae43c6488accd0b4118b67d165c9aa93eee2863b8d845633efee52ba2b8d4",
+    "m2-t5-recovery-transaction-r2-a2-root-review-capture.json": "a9190d6aa600ec564e5499aaa08c7388c808081b1f0e9d95e3b252e90a493f8c"
+  },
+  "FullHarnessAccepted": false,
+  "HostPolicyApplied": false,
+  "IndependentSourceReviewPermitsStandaloneOnly": true,
+  "OneReceiptAssertionStrengthened": true,
+  "OriginalProcessTerminalAndInputsUnchanged": true,
+  "PairQualified": false,
+  "PowerShellVersion": "5.1.19041.6456",
+  "ProductVMStarted": false,
+  "ProductionCoordinatorAndManagedSchemaUnchanged": true,
+  "ReviewedUTC": "2026-10-11T14:27:11.389544+00:00",
+  "RuntimeQualified": false,
+  "Scope": "Exact standalone schema/lineage selfcheck only. R15/R16/R17 failures remain immutable. R22 prepared closed harness still contains failing R17; R23 integrates passing R18 separately. Recovery A2 is independently reviewing and remains NO_GO for integration/host/runtime.",
+  "StandaloneAssertionsPassed": 162
+}

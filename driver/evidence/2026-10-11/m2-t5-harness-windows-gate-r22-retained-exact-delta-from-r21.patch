@@ -1,0 +1,75 @@
+--- R21/driver/scripts/HarnessWindowsGate.manifest.json
++++ R22/driver/scripts/HarnessWindowsGate.manifest.json
+@@ -179,7 +179,7 @@
+     },
+     {
+       "path": "t5/notepad-coordinator.SelfCheck.ps1",
+-      "sha256": "dbc00a84c456b97f6903cfcb4ccc0ba37c5ff763fc6b67e83aab3e86e807245f"
++      "sha256": "be52114a729e2861afccf6c73d900d5b03fc9f476e3664a64f10f959cb33ae47"
+     }
+   ],
+   "gateRunner": {
+--- R21/driver/scripts/Invoke-HarnessWindowsGate.sh
++++ R22/driver/scripts/Invoke-HarnessWindowsGate.sh
+@@ -24,7 +24,7 @@
+ # Root capture binds these local controllers and the remote protocol inventory.
+ expected_helper_sha256='a7cebdf3eb20fe1ab8df9976721a648725a526b5c39a584fb721a59658f2a6c8'
+ expected_client_sha256='d5f558bc6c7435a0e8f6628ae2fffc465b34ed0981d1470d90de44980f4975c8'
+-expected_manifest_sha256='1ab0f29e50bef0dff2e14a768a5f75fb7c416f7912941dfe04bec852bd554e31'
++expected_manifest_sha256='1611157ba0be27a2d7f5223eb615e918deefdd7a8e525c1295f45afcb1c1c5ae'
+ expected_runner_sha256='6e1765e52ed051a493f55826f066d3fc050bcbe75edef783bd4c555a84eb5918'
+ expected_worker_sha256='8826d5f39295be32b1a2782ff2aaf378a1871b71260c707a810ba0ee5fba2731'
+ expected_keeper_sha256='7e144a4d0b2d5000d3cc50cbd39bace0cb61af00257803c189cf7a035a834641'
+--- R21/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1
++++ R22/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1
+@@ -245,7 +245,7 @@
+         DestinationGeneration = $legacyParent.DestinationGeneration
+         StageIdentity = $legacyParent.StageIdentity
+     }
+-    $legacyChainSchemaErrors = @((Get-T5FixtureErrors $legacyParent) + (Get-T5FixtureErrors $legacyChild))
++    $legacyChainSchemaErrors = @( Get-T5FixtureErrors $legacyParent; Get-T5FixtureErrors $legacyChild )
+     $legacyChainErrors = @(Get-T5JournalLineageErrors @($legacyParentProjection, $legacyChildProjection))
+     Assert-T5 (-not $legacyParentProjection.IsV20 -and -not $legacyChildProjection.IsV20 -and
+         (Get-T5VersionIdentityKey $legacyChildProjection.ParentVersionIdentity) -ceq (Get-T5VersionIdentityKey $legacyParentIdentity) -and
+@@ -424,13 +424,13 @@
+     Assert-T5 (Test-T5DirectEmptyHeldChildTerminal $releasedPendingParentProjection $releasedPendingChildProjection $false) 'direct Released child in NotAttempted handback state may await gate-confirmed disposal'
+     Assert-T5 (-not (Test-T5DirectEmptyHeldChildTerminal $releasedPendingParentProjection $releasedPendingChildProjection $true)) 'direct Released child cannot satisfy an ACK before StageDeleted'
+ 
+-    $failedHandbackChild = $releasedPendingChild.PSObject.Copy()
++    $failedHandbackChild = $releasedPendingChildProjection.PSObject.Copy()
+     $failedHandbackChild.HandbackState = '3'
+     $failedHandbackChild.HandbackFailureReason = 'fixture failure'
+     Assert-T5 (-not (Test-T5DirectEmptyHeldChildTerminal $releasedPendingParentProjection $failedHandbackChild $false) -and
+         @(Get-T5JournalLineageErrors @($releasedPendingParentProjection, $failedHandbackChild)).Count -gt 0) 'Failed handback Released child is not terminal for EmptyHeld cleanup'
+ 
+-    $pendingRenameChild = $releasedPendingChild.PSObject.Copy()
++    $pendingRenameChild = $releasedPendingChildProjection.PSObject.Copy()
+     $pendingRenameChild.PendingRename = [pscustomobject]@{
+         TransactionId = [uint64]91
+         DestinationPath = (Join-Path $tempRoot 'pending-rename.txt')
+@@ -439,20 +439,20 @@
+     Assert-T5 (-not (Test-T5DirectEmptyHeldChildTerminal $releasedPendingParentProjection $pendingRenameChild $false) -and
+         @(Get-T5JournalLineageErrors @($releasedPendingParentProjection, $pendingRenameChild)).Count -gt 0) 'pending rename prevents direct-child cleanup classification'
+ 
+-    $sameStageChild = $releasedPendingChild.PSObject.Copy()
++    $sameStageChild = $releasedPendingChildProjection.PSObject.Copy()
+     $sameStageChild.StageIdentity = $releasedPendingParentProjection.StageIdentity
+     Assert-T5 (-not (Test-T5DirectEmptyHeldChildTerminal $releasedPendingParentProjection $sameStageChild $false)) 'direct child must have a distinct exact stage identity from its parent'
+-    $wrongCreateReservationChild = $releasedPendingChild.PSObject.Copy()
++    $wrongCreateReservationChild = $releasedPendingChildProjection.PSObject.Copy()
+     $wrongCreateReservationChild.CreateReservationId = [guid]::NewGuid().ToString()
+     Assert-T5 (-not (Test-T5DirectEmptyHeldChildTerminal $releasedPendingParentProjection $wrongCreateReservationChild $false)) 'direct child create reservation must be its exact transfer ID'
+-    $wrongAllocationReferenceChild = $releasedPendingChild.PSObject.Copy()
++    $wrongAllocationReferenceChild = $releasedPendingChildProjection.PSObject.Copy()
+     $wrongAllocationReferenceChild.AllocationReferenceId = [guid]::NewGuid().ToString()
+     Assert-T5 (-not (Test-T5DirectEmptyHeldChildTerminal $releasedPendingParentProjection $wrongAllocationReferenceChild $false)) 'direct child allocation reference must name the exact parent'
+-    $cleanupStartedChild = $releasedPendingChild.PSObject.Copy()
++    $cleanupStartedChild = $releasedPendingChildProjection.PSObject.Copy()
+     $cleanupStartedChild.StageCleanupStarted = [bool]$true
+     Assert-T5 (-not (Test-T5DirectEmptyHeldChildTerminal $releasedPendingParentProjection $cleanupStartedChild $false)) 'direct child with cleanup already started is not terminal'
+ 
+-    $verifiedHandbackChild = $releasedPendingChild.PSObject.Copy()
++    $verifiedHandbackChild = $releasedPendingChildProjection.PSObject.Copy()
+     $verifiedHandbackChild.HandbackState = '2'
+     $verifiedHandbackChild.HandbackPath = Join-Path $tempRoot 'verified-handback.txt'
+     $verifiedHandbackChild.HandbackLength = [long]5

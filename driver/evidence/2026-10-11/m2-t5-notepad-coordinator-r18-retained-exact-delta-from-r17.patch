@@ -1,0 +1,19 @@
+--- R17/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1
++++ R18/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1
+@@ -484,7 +484,15 @@
+     $journal = Get-JournalFor -Destination $basePath -BaselineTransferIds @() -RequireHistoryForNewRecords
+     Assert-T5 (@($journal.ParseErrors).Count -eq 0 -and @($journal.SchemaErrors).Count -eq 0) ('serialized exact direct HandleObserved chain must validate: ' + (@($journal.SchemaErrors | ForEach-Object Error) -join '; '))
+     Assert-T5 (@($journal.Records).Count -eq 2) 'full journal projection retains both exact lineage records'
+-    Assert-T5 (@($journal.Records | Where-Object { $_.AttachmentStateV20 -eq 6 -and $_.HandleObservedRequestIdV20 -eq 19 }).Count -eq 1) 'projection retains exact HandleObserved receipt'
++    $observedReceipts = @($journal.Records | Where-Object {
++        $_.AttachmentStateV20 -eq 6 -and
++        (Get-T5UInt64Text $_.HandleObservedRequestIdV20) -ceq '19'
++    })
++    Assert-T5 (
++        $observedReceipts.Count -eq 2 -and
++        @($observedReceipts | Where-Object { $_.TransferId -ceq $parent.Transfer.TransferId }).Count -eq 1 -and
++        @($observedReceipts | Where-Object { $_.TransferId -ceq $child.Transfer.TransferId }).Count -eq 1
++    ) 'parent and child projections retain exact HandleObserved receipts'
+ 
+     $noObserved = New-T5Entry 5 'no-observed-child' $driver $basePath
+     $noObserved.StageDeleted = $true

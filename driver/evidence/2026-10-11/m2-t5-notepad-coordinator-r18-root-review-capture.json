@@ -1,0 +1,52 @@
+{
+  "CapturedUTC": "2026-10-11T14:21:31.233634+00:00",
+  "ClosedInventoryVerified": true,
+  "Groups": {
+    "author": {
+      "attempt-log.txt": "51555a23522b320f87d7644c1dab16ed2ca1664d072c26f00a169bdd2cc2b4d8",
+      "author-note.md": "03307476b99029cffc502f694df5b0910c1af2eae91fb7d5eeaee7a856ea9854",
+      "author-result.json": "07a7032d7300997d12b804b353eb4b8fc9b4f9b1a32b31da4ad85ab43329b689",
+      "exact-delta-from-r17.patch": "861bfe47d2a282a035bc8d10fed0f2fa7a817fb73b72759207526f50498c184e",
+      "offline-controls.txt": "4f3887e21776224d1c538b8e006b2ef67bf36b3da3699931f784156a1ed4c120",
+      "r18-source-controls.py": "6e1096f7091e0221dc70eb11682d74f31da53a4e31545c7b9b74f9666fc50448",
+      "source-capture.json": "e04ea25160c92b94e44a28dc6fa594b01727b6accd2699251eee2cd62ee56544"
+    },
+    "context": {
+      "r17-root/author/attempt-log.txt": "293c10c5deac05425734891aa4d2185cb613f2570ce0b4c6b6b47544303598d4",
+      "r17-root/author/author-note.md": "70da818bf29816896f3f0bf484ebbf13fe70b415eb0708cb7de144faea1a3391",
+      "r17-root/author/author-result.json": "1cac6ac7927b22ab24c4a39a9b95683f643d1996951a91823cee2a32c516a33c",
+      "r17-root/author/exact-delta-from-r16.patch": "8b1ece29f64a72117705863496afcd1891c5c43755eaf5d7396523da876a13ea",
+      "r17-root/author/offline-controls.txt": "c16a27b18fc433fd522dba1a4c099ace7dd0c57409bc11fd22e22ee92647b9dd",
+      "r17-root/author/r17-source-controls.py": "9b10019d4dbd66e5ab4b9875aad1959ebbdfefd4bfab583136c76642a70d41cd",
+      "r17-root/author/source-capture.json": "124ef0e9de648fa4bcc44b46b0abf6181d733fa9ed629fa5e1247a23bf37d0b8",
+      "r17-root/context/r16/author-result.json": "244e0d8a81effdd149cb60f6f4ed292352088030de916c4f77e52942398a6c1a",
+      "r17-root/context/r16/diagnostic-result.json": "1060947bea2cc9892783f548ed2194099aeea5dd5872f7dc53def8f3fd0af604",
+      "r17-root/context/r16/diagnostic-verification.json": "c22d5fdeb88f1f8c212f57a1bb493ed32177aba7d1b93c1427d9a85a3468e757",
+      "r17-root/context/r16/failure-diagnosis.md": "8328b24d9236c4ac61c322b95be2c92f77d49151fc588e409f689e5cb26ee842",
+      "r17-root/context/r16/notepad-coordinator.SelfCheck.baseline.ps1": "e64729a084d6d87db93bfc99a41cc95537cbf3e5e2f2977bf53c49761758afe8",
+      "r17-root/context/r16/root-review-capture.json": "479cd969a36c6d010efcd0758caf1f3f6a798f235b6accffef8d7a638ccd8411",
+      "r17-root/context/r16/root-review-disposition.json": "643e3e24749d02b6cdfdbc1dd8236c395048b82426261e7c9980c987c8bf59a8",
+      "r17-root/context/r16/source-capture.json": "74663932a7bcb6460a330b6b225516f1d17d87878ddd17916e32d09213db3ff6",
+      "r17-runtime/diagnostic-controls.stderr.log": "31db57ecf12725856215a7f0a6c4c9e41a5f7828c46d4ee7189057f61ee09b97",
+      "r17-runtime/diagnostic-controls.stdout.log": "6af33efaa7bccb8ad8c344d48af1d8bd5029fa4e627cbb31019ab0e6970a27db",
+      "r17-runtime/diagnostic-root-result.json": "334b8794c812cdcd7330104b3f269457185aeef405fb6abfbf1998438bd2edf4",
+      "r17-runtime/diagnostic-root-verification.json": "5a552d5adc1e3a18c3bbdca55795b31e63aa1a7dc72279679304d353641192bc",
+      "r17-runtime/failure-diagnosis.md": "ce7213e64b57c183523fbaa5646867aacd4e9a4387f5c1290f17d9f63eabcac5",
+      "r17-runtime/root-failure-disposition.json": "8c312e0b8b3e43485efa9fcc821ec731456e5042bdc507c69ef82a3ba6746b99",
+      "r17-runtime/root-review-capture.json": "7fd178b5560c782cecb655557e17889b1ce6b9739dc54d009191732c89289d79",
+      "r17-runtime/selfcheck-r17-baseline.ps1": "be52114a729e2861afccf6c73d900d5b03fc9f476e3664a64f10f959cb33ae47"
+    },
+    "src": {
+      "agente/SafeUpload.Agent.Service/Interception/StagedJournalFile.cs": "5f4a5ae360513425f1ff79c3ad8c0c4fc8c2b3464f416cecc43c57c42224053a",
+      "agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs": "4b270eaef4616c06ba52e0b88deb701d72463dcef8ed6c9c8cc4c39893b23f8d",
+      "driver/scripts/t5/notepad-coordinator.SelfCheck.ps1": "abc6b472a16e772bdd11fea7ab88e8e3de82579fc2691c6ef2436229c88d74bb",
+      "driver/scripts/t5/notepad-coordinator.ps1": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d"
+    }
+  },
+  "HostPolicyApplied": false,
+  "ProductVMStarted": false,
+  "Root": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-notepad-coordinator-r18-root-a1",
+  "RuntimeQualified": false,
+  "SourceAccepted": false,
+  "TwoFDStableReadsAndPostCopyEquality": true
+}

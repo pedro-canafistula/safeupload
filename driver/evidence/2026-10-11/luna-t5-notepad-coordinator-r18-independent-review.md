@@ -1,0 +1,13 @@
+# R18 coordinator source review
+
+**Verdict: bounded GO** for a fresh standalone Windows PowerShell 5.1 diagnostic using only the exact frozen R18 `notepad-coordinator.SelfCheck.ps1` and `notepad-coordinator.ps1` inputs. This source review does not qualify the coordinator/service pair, the full harness, or product behavior, and I did not run a parser or runtime.
+
+The frozen capture is `m2-t5-notepad-coordinator-r18-root-review-capture.json`, SHA-256 `019ae43c6488accd0b4118b67d165c9aa93eee2863b8d845633efee52ba2b8d4`. Its closed inventory records four source files, 23 context inputs, and seven author artifacts. I verified the four captured source hashes against the frozen R18 files: SelfCheck `abc6b472a16e772bdd11fea7ab88e8e3de82579fc2691c6ef2436229c88d74bb`, coordinator `c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d`, `StagedTransferJournal.cs` `4b270eaef4616c06ba52e0b88deb701d72463dcef8ed6c9c8cc4c39893b23f8d`, and `StagedJournalFile.cs` `5f4a5ae360513425f1ff79c3ad8c0c4fc8c2b3464f416cecc43c57c42224053a`.
+
+I compared the R18 files directly with the frozen R17 source. The only difference is the diagnosed SelfCheck assertion at lines 487–495; the coordinator and both managed schema files are byte-identical to R17. The patch removes the generic state-6/op19 count-equals-one check and replaces it with one stronger `Assert-T5`: exactly two receipts must match AttachmentState 6 and exact UInt64 text `19`, with exactly one record carrying the parent TransferId and one carrying the child TransferId.
+
+The change is consistent with the fixture: both serialized lineage records are expected to carry that receipt, as established by the R17 failure diagnosis. The revised predicate directly verifies the parent/child association instead of only adjusting the aggregate count. `Get-T5UInt64Text` is already included in the SelfCheck's allowlisted coordinator helper extraction, so the added comparison uses an available pure helper and introduces no new helper, gate, or coordinator behavior. The case-sensitive TransferId comparisons bind each match to the exact fixture identity.
+
+The prior R17 runtime failure remains preserved as a failure and is not treated as a pass. R18 makes no production or schema changes. A fresh two-file standalone diagnostic is justified to validate the corrected assertion and the preserved controls; keep that diagnostic isolated to the captured files and its existing temporary fixture boundary. Do not interpret this bounded GO as approval of a full harness run or as runtime qualification.
+
+No source execution, PowerShell parse, Windows action, service/actor invocation, build, VM, network, host-policy action, or Git operation was performed for this review.

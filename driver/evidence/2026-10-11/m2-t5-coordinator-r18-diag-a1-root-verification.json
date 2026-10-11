@@ -1,0 +1,30 @@
+{
+  "Assertions": 162,
+  "CoordinatorInvoked": false,
+  "CutoverAuthorized": false,
+  "DiagnosticFailure": null,
+  "DiagnosticOnly": true,
+  "HostPolicyApplied": false,
+  "LocalPreparedInputsUnchanged": true,
+  "OriginalControlPID": 4048,
+  "OriginalControlStartFILETIME": 134362021960171127,
+  "OriginalDiagnosticProcessTerminal": true,
+  "PairQualified": false,
+  "PostCheckSHA256": {
+    "m2-t5-coordinator-r18-diag-a1-post-check.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r18-diag-a1-post-check.stdout.log": "a66fd3fd2faa40e212aeab7cbc75c4a278b792e70e48730316680441ac05ac95"
+  },
+  "PreparationSHA256": "08c52ada3f2bc835357a8581bd4aadc9b0cd631131d1f99626487d254e1eeeab",
+  "ProductVMStarted": false,
+  "RemoteDirectoryContainsOnlyTwoPinnedRegularInputs": true,
+  "ResultSHA256": "9d468ba1e5fc1da11a8801cebfc6a37aec5d0ccfc4b656b6594b88ffc7d17126",
+  "RuntimeQualified": false,
+  "SelfCheckOutputHasExactlyOneCompletePASS": true,
+  "ServiceInstalled": false,
+  "SourceInputSHA256": {
+    "notepad-coordinator.SelfCheck.ps1": "abc6b472a16e772bdd11fea7ab88e8e3de82579fc2691c6ef2436229c88d74bb",
+    "notepad-coordinator.ps1": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d"
+  },
+  "StandaloneWindowsControlsPassed": true,
+  "VerifiedUTC": "2026-10-11T14:23:39.104867+00:00"
+}
