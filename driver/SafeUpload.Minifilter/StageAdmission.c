@@ -277,6 +277,7 @@ VOID SafeUploadStageAdmissionCoverageEnd(VOID)
     InterlockedDecrement(&AdmissionCoverageChangesInFlight);
 }
 
+_Use_decl_annotations_
 BOOLEAN SafeUploadStageAdmissionReadTopology(PUINT64 Topology, PUINT64 Coverage)
 {
     UINT64 topology = (UINT64)InterlockedCompareExchange64(&AdmissionTopologySequence, 0, 0);

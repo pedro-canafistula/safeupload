@@ -187,9 +187,10 @@ static NTSTATUS NativeObservationScan(PNATIVE_OBSERVATION_WORK Work,
         RtlZeroMemory(Work->Directory, sizeof(Work->Directory));
         status = FltQueryDirectoryFile(Work->Instance, Work->ParentObject, Work->Directory,
             sizeof(Work->Directory), FileIdExtdDirectoryInformation, FALSE, NULL, page == 0, &returned);
+        if (status != STATUS_SUCCESS && status != STATUS_NO_MORE_FILES)
+            return NT_SUCCESS(status) ? STATUS_RETRY : status;
         if (!NativeObservationStable(Work)) return STATUS_RETRY;
-        if (status == STATUS_NO_MORE_FILES && returned == 0) return STATUS_SUCCESS;
-        if (status != STATUS_SUCCESS) return NT_SUCCESS(status) ? STATUS_RETRY : status;
+        if (status == STATUS_NO_MORE_FILES) return returned == 0 ? STATUS_SUCCESS : STATUS_DATA_ERROR;
         if (returned < header || returned > sizeof(Work->Directory)) return STATUS_INVALID_BUFFER_SIZE;
         offset = 0;
         for (;;) {
