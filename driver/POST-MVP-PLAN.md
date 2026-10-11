@@ -4,6 +4,15 @@ Written 2026-10-08 on `feat/driver-post-mvp` (= `main` `aaab5c0c`, which carries
 Current status, gate results and known issues are in [MVP-PLAN.md](MVP-PLAN.md); this file is the work plan that follows them, in priority
 order. Where a cause is not yet measured, the task says so and lists hypotheses from reading the code; treat those as leads, not findings.
 
+**Current owner objective:** M2 is the active milestone, not the completion boundary for the full owned-stream replacement.
+The current goal also requires both mapping repros, USB including surprise removal, UNC/SMB and a real sync client with independent
+destination-byte observers, the functional/crash/recovery matrix, Verifier, stress and latency, and independently verified restoration
+after every VM run. Older "Later" and local-NTFS-only labels below record milestone ordering; they do not waive these goal requirements.
+Normal builds must keep staging compiled out. Taint stays and unsupported capabilities remain disabled until the owner approves cutover.
+Codex commits and pushes coherent reviewed changes as work proceeds. Each progress checkbox group starts with its T item.
+Codex handles ordinary work directly and delegates heavy cybersecurity implementation and reviews to Luna 6 at max effort.
+Completion requires evidence for every tracker item, then a taint-removal plan and owner sign-off.
+
 ## What "complete" means
 
 The driver is complete for the local-NTFS product on Windows 10 22H2 build 19045.2965 when all of these hold:
