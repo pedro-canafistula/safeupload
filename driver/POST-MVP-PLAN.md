@@ -212,7 +212,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [boot-lifetime review](evidence/2026-10-11/t5-native-boot-lifetime-design-review-luna6.md) rejects counter-only release;
     live dispatcher, startup recovery and notification emission remain pending.
   - [x] Anchored native parent observer (`3df7aa97`) without child opens, using complete repeated 128-bit directory enumeration;
-    all 14 buffer/native-handle cases pass in each agent profile. Authenticated driver-anchor export and live recovery remain pending.
+    all 14 buffer/native-handle cases pass in each agent profile. The metadata RPC below replaces handle export; live recovery remains pending.
   - [x] Named-file recovery guidance, exact owner-session/SID delivery and structured diagnostics (`a3b3b81e`, `6ee1112e`);
     [18 cases pass in each agent profile](evidence/2026-10-11/t5-native-notice4-static-gates.md), including real emission-record reopening and qualified Restart advice.
     The notification helper is not connected to the live recovery dispatcher and cannot clear a hold.
@@ -227,7 +227,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [agent gates pass](evidence/2026-10-11/t5-native-startup-static-gates.md). Anchored native hold release/runtime remain open.
   - [x] [Observation transport review](evidence/2026-10-11/t5-native-observation-transport-review-luna6.md): return checked metadata directly;
     volume-GUID/legacy-hold and portable-device guards implemented (`1d3f47cc`, `e088cde4`) with [passing static gates](evidence/2026-10-11/t5-native-volume-static-gates.md).
-    The observation RPC and runtime portability/hold-release checks remain open.
+    Authenticated metadata RPC and strict receiver implemented (`13a8fb8b`, `589e9034`), with [passing query static gates](evidence/2026-10-11/t5-native-query-static-gates.md)
+    including 42 new query cases per feature profile. Live recovery and runtime portability/hold-release checks remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
@@ -239,9 +240,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: driver `1d3f47cc`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
-agent `e088cde4`, **857/857** per normal profile and **982/982** per feature profile, every discovered case executed once without skips,
-service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-11/t5-native-volume-static-gates.md)).
+Latest static gates: driver `589e9034`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
+agent `1756bfe9`, **857/857** per normal profile and **1024/1024** per feature profile, every discovered case executed once without skips,
+service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-11/t5-native-query-static-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
