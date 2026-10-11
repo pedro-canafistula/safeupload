@@ -42,6 +42,7 @@ static volatile LONG StagePublicBackendCount;
 #pragma alloc_text(PAGE, SafeUploadStagePublicReleaseOperation)
 #endif
 
+_Use_decl_annotations_
 NTSTATUS SafeUploadStagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
     PSECURITY_CLIENT_CONTEXT Subject)
 {
@@ -86,12 +87,14 @@ static VOID StagePublicCloseObject(PHANDLE Handle, PFILE_OBJECT *FileObject)
     if (handle != NULL) FltClose(handle);
 }
 
+_Use_decl_annotations_
 VOID SafeUploadStagePublicReferenceBackend(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend)
 {
     NT_ASSERT(Backend != NULL && Backend->References > 0);
     InterlockedIncrement(&Backend->References);
 }
 
+_Use_decl_annotations_
 VOID SafeUploadStagePublicCloseBackend(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend)
 {
     PAGED_CODE();
@@ -106,6 +109,7 @@ VOID SafeUploadStagePublicCloseBackend(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend)
     KeSetEvent(&Backend->Closed, IO_NO_INCREMENT, FALSE);
 }
 
+_Use_decl_annotations_
 VOID SafeUploadStagePublicDereferenceBackend(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend)
 {
     PAGED_CODE();
@@ -118,6 +122,7 @@ VOID SafeUploadStagePublicDereferenceBackend(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Ba
     ExFreePoolWithTag(Backend, STAGE_PUBLIC_TAG);
 }
 
+_Use_decl_annotations_
 BOOLEAN SafeUploadStagePublicAcquireOperation(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend,
     PFLT_INSTANCE *Instance, PFILE_OBJECT *FileObject)
 {
@@ -138,6 +143,7 @@ BOOLEAN SafeUploadStagePublicAcquireOperation(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND B
     return TRUE;
 }
 
+_Use_decl_annotations_
 VOID SafeUploadStagePublicReleaseOperation(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend)
 {
     PAGED_CODE();
@@ -145,6 +151,7 @@ VOID SafeUploadStagePublicReleaseOperation(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Back
     SafeUploadStagePublicDereferenceBackend(Backend);
 }
 
+_Use_decl_annotations_
 VOID SafeUploadStagePublicGetBinding(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend,
     PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding)
 {
@@ -296,6 +303,7 @@ static NTSTATUS StagePublicBindAnchoredName(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Bac
     return status;
 }
 
+_Use_decl_annotations_
 NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRING PublicName,
     PSECURITY_CLIENT_CONTEXT Subject, ACCESS_MASK OriginalDesiredAccess, ULONG OriginalShareAccess,
     ULONG OriginalCreateOptions, BOOLEAN CaseSensitiveOpen, PSAFEUPLOAD_STAGE_PUBLIC_BACKEND *Backend)
