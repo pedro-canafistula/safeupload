@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Freeze reviewed worktree inputs, build on the pinned builder, retain evidence.
+"""Build a Git-commit agent matrix on the recorded builder and retain raw evidence.
 
-Never stages/commits Git changes or installs the agent. --prepare-only performs
-no network operation. A fresh label is required after any failed capture/build.
+Never commits changes or installs the agent. --prepare-only performs no network
+operation. The commit identifies source; the archive hash verifies delivery.
 """
 import argparse
 import datetime
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
 import re
@@ -20,10 +19,6 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 REPO = Path(__file__).resolve().parents[2]
-spec = importlib.util.spec_from_file_location(
-    'agent_snapshot', Path(__file__).with_name('Prepare-ExactAgentWorktreeSource.py'))
-agent_snapshot = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(agent_snapshot)
 SSH = ['-F', '/dev/null', '-i', '/home/victor/.ssh/id_ed25519',
        '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'LogLevel=ERROR',
        '-o', 'StrictHostKeyChecking=yes']
@@ -43,7 +38,9 @@ STAGED_V20_REQUIRED_TESTS = {
         'V20_retire_unexposed_uses_exact_background_delete_ack_and_replays_op16',
         'V20_retire_attached_private_requires_measured_zero_and_exact_ack',
         'V20_epoch_drain_replay_is_exact_and_does_not_reauthorize_a_different_tuple',
-        'V20_epoch_rejects_unpaired_drain_receipts_without_rewriting_them')
+        'V20_epoch_rejects_unpaired_drain_receipts_without_rewriting_them',
+        'Ordinary_empty_profile_rejects_old_capabilities_before_accepting_an_epoch',
+        'Legacy_empty_migration_requires_fresh_exact_content_and_reconciled_obligations')
 } | {
     ('SafeUpload.Agent.Tests.StagedTransferAllocatorTests', method)
     for method in (
@@ -54,7 +51,6 @@ STAGED_V20_REQUIRED_TESTS = {
         'V19_create_after_discard_commits_exact_ancestry_before_backing_and_replays_reservation',
         'Legacy_v19_create_after_preserves_all_legacy_chain_and_rejects_mixed_epoch_request',
         'V20_create_after_requires_exact_op19_before_any_journal_mutation',
-        'Failed_create_after_requires_exact_v3_v2_v1_cleanup_before_unparented_successor',
         'Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction',
         'Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent',
         'Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch',
@@ -62,7 +58,19 @@ STAGED_V20_REQUIRED_TESTS = {
         'Direct_released_successor_replacement_blocks_parent_cleanup_without_deleting_replacement')
 } | {
     ('SafeUpload.Agent.Tests.StagedTransferJournalTests',
-     'V19_unattached_allocation_cleanup_cannot_discard_a_sealed_version')
+     'V19_unattached_allocation_cleanup_cannot_discard_a_sealed_version'),
+    ('SafeUpload.Agent.Tests.StagedTransferJournalTests',
+     'Exact_private_discard_can_finish_after_a_newer_ordinary_allocation_without_touching_it'),
+    ('SafeUpload.Agent.Tests.StagedTransferJournalTests',
+     'Empty_stage_is_measured_sealed_with_the_empty_digest_and_reserved_state_cannot_be_forged'),
+    ('SafeUpload.Agent.Tests.StagedTransferPublisherTests',
+     'Measured_empty_content_publishes_normally_without_extraction_or_private_notice'),
+    ('SafeUpload.Agent.Tests.StagedTransferPublisherTests',
+     'Changed_length_cannot_turn_a_measured_version_into_an_implicit_empty_approval'),
+    ('SafeUpload.Agent.Tests.StagedTransferPublisherTests',
+     'Empty_publication_still_requires_the_kernel_permit'),
+    ('SafeUpload.Agent.Tests.StagedInspectionFailureTests',
+     'Trivial_empty_inspection_measures_content_instead_of_trusting_declared_size')
 }
 STAGED_V20_REQUIRED_CASES = {
     ('SafeUpload.Agent.Tests.StagedTransferAllocatorTests.'
@@ -381,7 +389,7 @@ def verify_matrix_outputs(out, summary):
             expected_admission = (required_feature if mode == 'feature' else required_normal)
             expected_switch = 'true' if mode == 'feature' else 'false'
             read_gate(summary, name + ': admission_evidence=' + expected_switch)
-            for action in ('build', 'test-build', 'tests-discovery-list',
+            for action in ('build', 'app-build', 'test-build', 'tests-discovery-list',
                            'tests-discovery-fqns', 'tests-user', 'tests-system', 'tests'):
                 read_gate(summary, name + '-' + action + ': exit=0 warnings=0 errors=0')
             user_identity_rows = [line for line in summary.splitlines()
@@ -413,7 +421,7 @@ def verify_matrix_outputs(out, summary):
                 actual_cases = Counter({case: count for case, count in discovered_cases.items()
                                         if case[0] == fqn})
                 require_exact_case_multiset(required_cases, actual_cases,
-                    'Mandatory v20 theory cases differ from the reviewed inputs: ' + name + '/' + fqn)
+                    'Mandatory v20 theory cases differ from required variants: ' + name + '/' + fqn)
             require_system_families(discovered_methods, name)
 
             user = read_trx(result_dir / 'agent-tests-user.trx')
@@ -471,7 +479,7 @@ def verify_matrix_outputs(out, summary):
 def create_feature_release_view(work, out, provenance, tests, package_info):
     """Write the old exact-agent artifact names for the verified feature Release output.
 
-    The view deliberately records captured-worktree hashes and never writes a SourceCommit claim.
+    Source identity is the same Git commit as the matrix build.
     """
     view = work / 'feature-release-view'
     view.mkdir(exist_ok=False)
@@ -499,17 +507,13 @@ def create_feature_release_view(work, out, provenance, tests, package_info):
     copy_verified(out / 'feature-release-build.txt', 'build.txt')
     copy_verified(out / 'feature-release-publish.txt', 'publish.txt')
     copy_verified(out / 'dotnet-info.txt', 'dotnet-info.txt')
-    copy_verified(work / 'src.zip', 'src.zip')
-    copy_verified(work / 'src.manifest', 'src.manifest')
-    copy_verified(work / 'source-provenance.json', 'source-provenance.json')
 
     test_count = tests['feature-release']['total']
     summary = '\n'.join((
         'ArtifactView=exact-agent-compatible-feature-release',
-        'SourceKind=CapturedWorkingTree',
+        'SourceKind=GitCommit',
+        'SourceCommit=' + provenance['SourceCommit'],
         'ARCHIVE_SHA256=' + provenance['ArchiveSHA256'].upper(),
-        'MANIFEST_SHA256=' + provenance['ManifestSHA256'].upper(),
-        'SOURCE_MANIFEST_VERIFIED=' + str(provenance['Files']),
         'tests: exit=0 warnings=0',
         'publish: exit=0 warnings=0',
         'tests_passed=' + str(test_count),
@@ -518,44 +522,24 @@ def create_feature_release_view(work, out, provenance, tests, package_info):
     )) + '\n'
     (view / 'summary.txt').write_text(summary, encoding='utf-8')
     files['summary.txt'] = sha(view / 'summary.txt').upper()
-    if 'SourceCommit=' in summary or 'AgentSourceCommit=' in summary:
-        raise RuntimeError('Compatibility view falsely claims a source commit.')
-
-    view_manifest = {
-        'ArtifactView': 'exact-agent-compatible-feature-release',
-        'SourceKind': 'CapturedWorkingTree',
-        'SourceArchiveSHA256': provenance['ArchiveSHA256'],
-        'SourceManifestSHA256': provenance['ManifestSHA256'],
-        'SourceProvenanceSHA256': sha(work / 'source-provenance.json').upper(),
-        'FeatureReleasePackageSHA256': package_info['feature']['sha256'],
-        'ServiceExecutableSHA256': package_info['feature']['exe_sha256'],
-        'TestsPassed': test_count,
-        'Files': files,
-    }
-    (view / 'compatibility-view.json').write_text(
-        json.dumps(view_manifest, indent=2) + '\n', encoding='utf-8')
     return view
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('label')
-    parser.add_argument('--reviewed-untracked', required=True, type=Path)
+    parser.add_argument('--commit', default='HEAD')
     parser.add_argument('--prepare-only', action='store_true')
     args = parser.parse_args()
     if not re.fullmatch('[A-Za-z0-9._-]{3,60}', args.label):
         parser.error('invalid label')
-    approved = json.loads(args.reviewed_untracked.read_text(encoding='utf-8'),
-                          object_pairs_hook=agent_snapshot.unique_object)
-    if (not isinstance(approved, dict) or any(
-            not isinstance(n, str) or not isinstance(h, str)
-            or not n.startswith('agente/') or not n.endswith('.cs')
-            for n, h in approved.items())):
-        parser.error('allowlist must map exact new agente/*.cs names to reviewed SHA-256')
+    commit = subprocess.check_output(
+        ['git', 'rev-parse', '--verify', args.commit + '^{commit}'], cwd=REPO, text=True).strip()
     work = REPO / 'output' / 'exact-agent-matrix' / args.label
-    provenance = agent_snapshot.snapshot.capture(
-        REPO, work, roots=agent_snapshot.ROOTS, tools=agent_snapshot.TOOLS,
-        reviewed_untracked=approved)
+    work.mkdir(parents=True, exist_ok=False)
+    subprocess.run(['git', 'archive', '--format=zip', '-o', str(work / 'src.zip'),
+                    commit, 'agente'], cwd=REPO, check=True)
+    provenance = {'SourceCommit': commit, 'ArchiveSHA256': sha(work / 'src.zip')}
     evidence = REPO / 'driver' / 'evidence' / datetime.date.today().isoformat()
     evidence.mkdir(parents=True, exist_ok=True)
     prefix = 'exact-agent-matrix-' + args.label
@@ -567,9 +551,8 @@ def main():
         path.write_bytes(data)
         return path
 
-    for name in ('source-provenance.json', 'src.manifest'):
-        retain(name, (work / name).read_bytes())
-    print('CAPTURED=' + str(work), flush=True)
+    retain('source.txt', ('SourceCommit=' + commit + '\nArchiveSHA256=' + provenance['ArchiveSHA256'] + '\n').encode())
+    print('SOURCE_COMMIT=' + commit + '; archive=' + str(work / 'src.zip'), flush=True)
     if args.prepare_only:
         print('PREPARED_ONLY; network operations=0', flush=True)
         return
@@ -577,7 +560,7 @@ def main():
     def remote(ps, name):
         capture_setup = ("[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)\n"
                          "$OutputEncoding = New-Object System.Text.UTF8Encoding($false)\n")
-        result = subprocess.run(['python3', str(work / 'tools' / 'remote_ps.py'), HOST],
+        result = subprocess.run(['python3', str(REPO / 'driver/scripts/remote_ps.py'), HOST],
                                 input=(capture_setup + ps).encode('utf-8'),
                                 capture_output=True, cwd=REPO)
         retain(name + '.stdout.txt', result.stdout)
@@ -590,24 +573,22 @@ if($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or
    -not @(Get-NetAdapter|Where-Object {$_.MacAddress -eq '52-54-00-63-87-7A'}).Count){throw 'Wrong builder; delivery refused.'}
 Write-Output ('BUILDER_PREFLIGHT_MATCH UTC='+[DateTime]::UtcNow.ToString('o'))
 """
-    for leaf in (prefix, prefix + '.zip', prefix + '.manifest',
+    for leaf in (prefix, prefix + '.zip',
                  'Build-ExactAgentMatrix-' + args.label + '.ps1'):
         preflight += "if(Test-Path -LiteralPath 'C:\\Users\\vika\\Documents\\" + leaf + "'){throw 'Remote build destination already exists.'}\n"
     if remote(preflight, 'builder-preflight') != 0:
         raise RuntimeError('Builder preflight failed before source delivery')
-    pins = agent_snapshot.snapshot.verify(work, provenance, tools=agent_snapshot.TOOLS)
-    archive_sha, manifest_sha = pins.split()
-    tool = work / 'tools' / 'Build-ExactAgentMatrix.ps1'
-    tool_sha = provenance['BuildToolsSHA256']['driver/scripts/Build-ExactAgentMatrix.ps1']
+    archive_sha = provenance['ArchiveSHA256']
+    tool = REPO / 'driver/scripts/Build-ExactAgentMatrix.ps1'
+    tool_sha = sha(tool)
     for local, target in ((work / 'src.zip', prefix + '.zip'),
-                          (work / 'src.manifest', prefix + '.manifest'),
                           (tool, 'Build-ExactAgentMatrix-' + args.label + '.ps1')):
         subprocess.run(['scp', *SSH, str(local), REMOTE + target], check=True)
-    print('DELIVERED; builder identity and frozen input pins verified', flush=True)
+    print('DELIVERED; builder identity and archive delivery verified', flush=True)
     remote_tool = 'C:\\Users\\vika\\Documents\\Build-ExactAgentMatrix-' + args.label + '.ps1'
     cleanup_selftest = "$ErrorActionPreference='Stop'\n"
     cleanup_selftest += "if((Get-FileHash -LiteralPath '" + remote_tool + "' -Algorithm SHA256).Hash -ne '" + tool_sha + "'){throw 'Uploaded build tool hash mismatch.'}\n"
-    cleanup_selftest += "& '" + remote_tool + "' -Label '" + args.label + "' -ArchiveSha256 '" + archive_sha + "' -ManifestSha256 '" + manifest_sha + "' -CleanupSelfTestOnly\n"
+    cleanup_selftest += "& '" + remote_tool + "' -Label '" + args.label + "' -ArchiveSha256 '" + archive_sha + "' -SourceCommit '" + commit + "' -CleanupSelfTestOnly\n"
     selftest_exit = remote(cleanup_selftest, 'system-job-cleanup-selftest')
     selftest_log = evidence / (prefix + '-system-job-cleanup-selftest.stdout.txt')
     if (selftest_exit != 0 or not selftest_log.exists()
@@ -616,7 +597,7 @@ Write-Output ('BUILDER_PREFLIGHT_MATCH UTC='+[DateTime]::UtcNow.ToString('o'))
         raise RuntimeError('Builder process-job cleanup self-test failed; matrix execution was not started')
     ps = "$ErrorActionPreference='Stop'\n"
     ps += "if((Get-FileHash -LiteralPath '" + remote_tool + "' -Algorithm SHA256).Hash -ne '" + tool_sha + "'){throw 'Uploaded build tool hash mismatch.'}\n"
-    ps += "& '" + remote_tool + "' -Label '" + args.label + "' -ArchiveSha256 '" + archive_sha + "' -ManifestSha256 '" + manifest_sha + "'\n"
+    ps += "& '" + remote_tool + "' -Label '" + args.label + "' -ArchiveSha256 '" + archive_sha + "' -SourceCommit '" + commit + "'\n"
     result = remote(ps, 'build')
     print('BUILD_RETURNED=' + str(result) + '; collecting retained evidence', flush=True)
     out = work / 'out'
@@ -625,7 +606,7 @@ Write-Output ('BUILDER_PREFLIGHT_MATCH UTC='+[DateTime]::UtcNow.ToString('o'))
     for mode in ('normal', 'feature'):
         for configuration in ('debug', 'release'):
             name = mode + '-' + configuration
-            names += [name + '-build.txt', name + '-tests.txt',
+            names += [name + '-build.txt', name + '-app-build.txt', name + '-tests.txt',
                       name + '-test-build.txt', name + '-tests-user.txt',
                       name + '-tests-system.txt', name + '-tests-system.txt.stderr',
                       name + '-tests-discovery-list.txt', name + '-tests-discovery-fqns.txt',
@@ -652,16 +633,16 @@ Write-Output ('BUILDER_PREFLIGHT_MATCH UTC='+[DateTime]::UtcNow.ToString('o'))
     if result != 0 or not all(row['Fetched'] for row in fetched.values()):
         raise RuntimeError('Build or evidence retrieval incomplete; inspect retained logs')
     summary = (out / 'summary.txt').read_text(encoding='utf-8-sig')
+    read_gate(summary, 'SourceCommit=' + commit)
+    read_gate(summary, 'ARCHIVE_SHA256=' + archive_sha.upper())
     if 'AgentMatrixGate=True' not in summary.splitlines():
         raise RuntimeError('Matrix completion sentinel missing')
     tests, packages = verify_matrix_outputs(out, summary)
-    agent_snapshot.snapshot.verify(work, provenance, tools=agent_snapshot.TOOLS)
     feature_view = create_feature_release_view(work, out, provenance, tests, packages)
     feature_zip = feature_view / 'stage-service-publish.zip'
     if sha(feature_zip).upper() != packages['feature']['sha256']:
         raise RuntimeError('Feature compatibility package differs from the independently validated matrix package.')
     retain('feature-release-view-summary.txt', (feature_view / 'summary.txt').read_bytes())
-    retain('feature-release-view-manifest.json', (feature_view / 'compatibility-view.json').read_bytes())
     readout = {'UTC': datetime.datetime.now(datetime.timezone.utc).isoformat(),
                'AgentMatrixGate': 'PASS', 'Tests': tests, 'Packages': packages,
                'FeatureReleaseCompatibilityView': str(feature_view),

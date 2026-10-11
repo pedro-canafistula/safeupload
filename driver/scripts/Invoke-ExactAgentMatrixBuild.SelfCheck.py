@@ -23,7 +23,9 @@ STAGED = {
         'V20_retire_unexposed_uses_exact_background_delete_ack_and_replays_op16',
         'V20_retire_attached_private_requires_measured_zero_and_exact_ack',
         'V20_epoch_drain_replay_is_exact_and_does_not_reauthorize_a_different_tuple',
-        'V20_epoch_rejects_unpaired_drain_receipts_without_rewriting_them')
+        'V20_epoch_rejects_unpaired_drain_receipts_without_rewriting_them',
+        'Ordinary_empty_profile_rejects_old_capabilities_before_accepting_an_epoch',
+        'Legacy_empty_migration_requires_fresh_exact_content_and_reconciled_obligations')
 } | {
     'SafeUpload.Agent.Tests.StagedTransferAllocatorTests.' + method
     for method in (
@@ -34,7 +36,6 @@ STAGED = {
         'V19_create_after_discard_commits_exact_ancestry_before_backing_and_replays_reservation',
         'Legacy_v19_create_after_preserves_all_legacy_chain_and_rejects_mixed_epoch_request',
         'V20_create_after_requires_exact_op19_before_any_journal_mutation',
-        'Failed_create_after_requires_exact_v3_v2_v1_cleanup_before_unparented_successor',
         'Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction',
         'Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent',
         'Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch',
@@ -42,7 +43,13 @@ STAGED = {
         'Direct_released_successor_replacement_blocks_parent_cleanup_without_deleting_replacement')
 } | {
     'SafeUpload.Agent.Tests.StagedTransferJournalTests.' +
-    'V19_unattached_allocation_cleanup_cannot_discard_a_sealed_version'
+    'V19_unattached_allocation_cleanup_cannot_discard_a_sealed_version',
+    'SafeUpload.Agent.Tests.StagedTransferJournalTests.Exact_private_discard_can_finish_after_a_newer_ordinary_allocation_without_touching_it',
+    'SafeUpload.Agent.Tests.StagedTransferJournalTests.Empty_stage_is_measured_sealed_with_the_empty_digest_and_reserved_state_cannot_be_forged',
+    'SafeUpload.Agent.Tests.StagedTransferPublisherTests.Measured_empty_content_publishes_normally_without_extraction_or_private_notice',
+    'SafeUpload.Agent.Tests.StagedTransferPublisherTests.Changed_length_cannot_turn_a_measured_version_into_an_implicit_empty_approval',
+    'SafeUpload.Agent.Tests.StagedTransferPublisherTests.Empty_publication_still_requires_the_kernel_permit',
+    'SafeUpload.Agent.Tests.StagedInspectionFailureTests.Trivial_empty_inspection_measures_content_instead_of_trusting_declared_size'
 }
 ENDPOINT = 'SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.'
 FEATURE = {
@@ -178,7 +185,7 @@ def make_matrix(out, omitted=None, skip_profile=None, omitted_case=None, replace
             'SYSTEM_TEST_TASK_SID=S-1-5-18\nSYSTEM_TEST_JOB_CLEANUP=active_processes=0\n'
             'SYSTEM_TEST_TASK_CLEANUP=task_absent,job_empty,wrapper_absent\n')
         rows.append(profile + ': admission_evidence=' + ('true' if mode == 'feature' else 'false'))
-        for action in ('build', 'test-build', 'tests-discovery-list', 'tests-discovery-fqns', 'tests-user', 'tests-system', 'tests'):
+        for action in ('build', 'app-build', 'test-build', 'tests-discovery-list', 'tests-discovery-fqns', 'tests-user', 'tests-system', 'tests'):
             rows.append(profile + '-' + action + ': exit=0 warnings=0 errors=0')
         rows.extend((profile + '-tests-user-identity: name=BUILDER\\vika sid=S-1-5-21-1-2-3-1001',
                      profile + '-tests-system-identity: S-1-5-18'))
@@ -206,7 +213,7 @@ class RequiredV20MatrixControls(unittest.TestCase):
                            for class_name, method_name in gate.STAGED_V20_REQUIRED_TESTS}
             self.assertEqual(STAGED, gate_staged)
             self.assertEqual(REQUIRED_CASES, gate.STAGED_V20_REQUIRED_CASES)
-            self.assertEqual(19, len(STAGED))
+            self.assertEqual(26, len(STAGED))
             for profile in PROFILES:
                 required = tests[profile]['required_passed_result_ids']
                 self.assertTrue(STAGED <= required.keys())

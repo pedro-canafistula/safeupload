@@ -1,8 +1,9 @@
-<# Build-only validation of frozen agent sources. Never installs or starts the service. #>
+<# Build-only validation of Git-commit agent sources. Never installs or starts the service. #>
+[CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]{3,60}$')][string] $Label,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string] $ArchiveSha256,
-    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string] $ManifestSha256,
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string] $SourceCommit,
     [switch] $DiagnosticCompileOnly,
     [switch] $CleanupSelfTestOnly
 )
@@ -621,57 +622,51 @@ function Invoke-SystemProcess {
 $documents = 'C:\Users\vika\Documents'
 $run = Join-Path $documents ('exact-agent-matrix-' + $Label)
 $archive = $run + '.zip'
-$manifest = $run + '.manifest'
 if (Test-Path -LiteralPath $run) { throw 'Build directory already exists.' }
-if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $ArchiveSha256.ToUpperInvariant() -or
-    (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash -ne $ManifestSha256.ToUpperInvariant()) {
-    throw 'Frozen source hash mismatch.'
+if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $ArchiveSha256.ToUpperInvariant()) {
+    throw 'Source archive delivery hash mismatch.'
 }
-$expected = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::Ordinal)
-$foldedPaths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-foreach ($line in [IO.File]::ReadAllLines($manifest)) {
-    if ($line -notmatch '^([0-9a-f]{64})  (agente/.+)$') { throw 'Malformed source manifest.' }
-    $hash = $Matches[1].ToUpperInvariant()
-    $relative = $Matches[2]
-    foreach ($part in $relative.Split('/')) {
-        if ($part -in @('', '.', '..') -or $part -match '[\x00-\x1f\\:*?<>|"]' -or
-            $part -match '[ .]$' -or $part -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)') {
-            throw 'Unsafe source manifest path.'
-        }
-    }
-    if (-not $foldedPaths.Add($relative)) { throw 'Duplicate or case-colliding source manifest path.' }
-    $expected.Add($relative, $hash)
-}
-if ($expected.Count -eq 0) { throw 'Empty source manifest.' }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead($archive)
 try {
     $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $fileCount = 0
     foreach ($entry in $zip.Entries) {
-        if (-not $expected.ContainsKey($entry.FullName) -or -not $seen.Add($entry.FullName)) {
-            throw 'Archive path is missing, duplicated or unexpected.'
+        $relative = $entry.FullName.TrimEnd('/')
+        if (-not $relative.StartsWith('agente', [StringComparison]::Ordinal) -or
+            ($relative -ne 'agente' -and -not $relative.StartsWith('agente/', [StringComparison]::Ordinal)) -or
+            -not $seen.Add($relative)) { throw 'Archive path is duplicated or outside the agent tree.' }
+        foreach ($part in $relative.Split('/')) {
+            if ($part -in @('', '.', '..') -or $part -match '[\x00-\x1f\\:*?<>|"]' -or
+                $part -match '[ .]$' -or $part -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)') {
+                throw 'Unsafe source archive path.'
+            }
         }
-        if (($entry.ExternalAttributes -shr 16 -band 0xf000) -ne 0x8000) {
-            throw 'Archive entry is not a regular file.'
+        $kind = $entry.ExternalAttributes -shr 16 -band 0xf000
+        if ($entry.FullName.EndsWith('/')) {
+            if ($kind -ne 0x4000) { throw 'Archive directory has the wrong type.' }
+        } else {
+            if ($kind -ne 0x8000) { throw 'Archive input is not a regular file.' }
+            ++$fileCount
         }
     }
-    if ($seen.Count -ne $expected.Count) { throw 'Archive input count mismatch.' }
+    if ($fileCount -le 0) { throw 'Source archive is empty.' }
 } finally { $zip.Dispose() }
 $out = Join-Path $run 'out'
 $src = Join-Path $run 'src'
 [void][IO.Directory]::CreateDirectory($out)
 [IO.Compression.ZipFile]::ExtractToDirectory($archive, $src)
+# Keep copy/mutation checks in memory. The Git commit is the source identifier;
+# no per-file source manifest or worktree freeze is produced.
+$expected = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::Ordinal)
 $seenFiles = @(Get-ChildItem -LiteralPath $src -Recurse -File)
-if ($seenFiles.Count -ne $expected.Count) { throw 'Extracted input count mismatch.' }
+if ($seenFiles.Count -ne $fileCount) { throw 'Extracted input count mismatch.' }
 foreach ($file in $seenFiles) {
     $relative = $file.FullName.Substring($src.Length + 1).Replace('\', '/')
-    if (-not $expected.ContainsKey($relative) -or
-        (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash -ne $expected[$relative]) {
-        throw 'Extracted input hash mismatch.'
-    }
+    $expected.Add($relative, (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash)
 }
-$summary = @("LABEL=$Label", "BUILDER=$env:COMPUTERNAME", "SOURCE_MANIFEST_VERIFIED=$($expected.Count)",
-    "ARCHIVE_SHA256=$($ArchiveSha256.ToUpperInvariant())", "MANIFEST_SHA256=$($ManifestSha256.ToUpperInvariant())")
+$summary = @("LABEL=$Label", "BUILDER=$env:COMPUTERNAME", "SourceCommit=$($SourceCommit.ToLowerInvariant())",
+    "ARCHIVE_SHA256=$($ArchiveSha256.ToUpperInvariant())")
 $gatePassed = $false
 $diagnosticFailed = $false
 $dotnetCommand = Get-Command dotnet.exe -ErrorAction Stop
@@ -725,8 +720,10 @@ try {
             $common = @('-c', $configuration, '-warnaserror',
                 ('-p:SafeUploadAdmissionEvidence=' + $feature))
             $serviceProject = Join-Path $profileSource 'agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj'
+            $appProject = Join-Path $profileSource 'agente\SafeUpload.Agent.App\SafeUpload.Agent.App.csproj'
             $testProject = Join-Path $profileSource 'agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj'
             Invoke-DotnetGate ($name + '-build') (@('build', $serviceProject) + $common)
+            Invoke-DotnetGate ($name + '-app-build') (@('build', $appProject) + $common)
             if ($DiagnosticCompileOnly) {
                 Invoke-DotnetGate ($name + '-test-build') (@('build', $testProject) + $common)
                 foreach ($relative in $expected.Keys) {

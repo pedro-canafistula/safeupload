@@ -1,8 +1,9 @@
-<# Builds/tests/publishes an exact agent archive in a fresh builder directory. Never installs it. #>
+<# Builds/tests/publishes a Git-commit agent archive in a fresh builder directory. Never installs it. #>
+[CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]{3,60}$')][string] $Label,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string] $ArchiveSha256,
-    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string] $ManifestSha256,
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string] $SourceCommit,
     [switch] $AdmissionEvidence
 )
 $ErrorActionPreference = 'Stop'
@@ -97,29 +98,14 @@ function Invoke-SystemProcess {
 $documents = 'C:\Users\vika\Documents'
 $run = Join-Path $documents ('exact-agent-' + $Label)
 $archive = $run + '.zip'
-$manifest = $run + '.manifest'
 if (Test-Path $run) { throw 'Exact agent child directory already exists.' }
-if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $ArchiveSha256.ToUpperInvariant() -or
-    (Get-FileHash $manifest -Algorithm SHA256).Hash -ne $ManifestSha256.ToUpperInvariant()) { throw 'Agent source hash mismatch.' }
+if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $ArchiveSha256.ToUpperInvariant()) { throw 'Agent archive delivery hash mismatch.' }
 $out = Join-Path $run 'out'
 $src = Join-Path $run 'src'
 [void][IO.Directory]::CreateDirectory($out)
 Expand-Archive -LiteralPath $archive -DestinationPath $src
-$expected = @{}
-foreach ($line in [IO.File]::ReadAllLines($manifest)) {
-    $expected[$line.Substring(66).Replace('/', '\')] = $line.Substring(0,64).ToUpperInvariant()
-}
-$seen = 0
-foreach ($file in Get-ChildItem $src -Recurse -File) {
-    $relative = $file.FullName.Substring($src.Length + 1)
-    if (-not $expected.ContainsKey($relative) -or
-        (Get-FileHash $file.FullName -Algorithm SHA256).Hash -ne $expected[$relative]) { throw ('Agent manifest mismatch: ' + $relative) }
-    ++$seen
-}
-if ($seen -ne $expected.Count) { throw 'Agent manifest file count mismatch.' }
 $summary = @("LABEL=$Label", "BUILDER=$env:COMPUTERNAME",
-    "ARCHIVE_SHA256=$($ArchiveSha256.ToUpperInvariant())", "MANIFEST_SHA256=$($ManifestSha256.ToUpperInvariant())",
-    "SOURCE_MANIFEST_VERIFIED=$seen")
+    "ARCHIVE_SHA256=$($ArchiveSha256.ToUpperInvariant())", "SourceCommit=$($SourceCommit.ToLowerInvariant())")
 Push-Location $src
 try {
     & dotnet.exe --info > (Join-Path $out 'dotnet-info.txt') 2>&1

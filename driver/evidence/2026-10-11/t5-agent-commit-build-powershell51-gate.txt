@@ -1,0 +1,5 @@
+PowerShellVersion=5.1.19041.6456
+Build-ExactAgent-commit1.ps1: ParseErrors=0
+Build-ExactAgentMatrix-commit1.ps1: ParseErrors=0
+Build-ExactAgent-commit1.SelfCheck.ps1: ParseErrors=0
+BuildExactAgentSelfCheck=PASS; controls=required-commit,invalid-commit,no-source-manifest
