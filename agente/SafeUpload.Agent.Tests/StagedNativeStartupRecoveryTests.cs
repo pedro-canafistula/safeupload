@@ -69,9 +69,10 @@ public sealed class StagedNativeStartupRecoveryTests : IDisposable
     public async Task Startup_cannot_bypass_a_durable_native_hold_before_anchored_recovery_is_connected()
     {
         var journal = Journal();
-        var destination = new StagedDestinationIdentity(new(7, 11, 12), new(7, 21, 22), false, "document.txt");
+        var volumeId = Guid.NewGuid();
+        var destination = new StagedDestinationIdentity(new(7, 11, 12), new(7, 21, 22), false, "document.txt", volumeId);
         var binding = new StagedPublicDeleteBinding(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 10,
-            new(7, 91, 92), 1234, 123456, 1, "S-1-5-21-100-200-300-1001", 41);
+            new(7, 91, 92), 1234, 123456, 1, "S-1-5-21-100-200-300-1001", 41, volumeId);
         using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
                    StagedDestinationTurnPurpose.Allocation, CancellationToken.None))
             await journal.BeginNativeDeleteOnCloseCreateAsync(turn, binding, Guid.NewGuid(),

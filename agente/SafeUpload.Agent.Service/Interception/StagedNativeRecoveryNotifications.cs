@@ -16,16 +16,19 @@ internal static class StagedNativeRecoveryNotifications
         ArgumentNullException.ThrowIfNull(head);
         ArgumentNullException.ThrowIfNull(delete);
         ArgumentException.ThrowIfNullOrWhiteSpace(diagnosticReason);
+        bool legacyVolumeUnknown = head.Destination.MountManagerVolumeId is null || delete.Binding.MountManagerVolumeId is null;
         if (!Enum.IsDefined(advice) || delete.Kind != StagedPublicDeleteKind.NativeOnClose ||
-            delete.State != StagedPublicDeleteState.AcceptedUnresolved || !head.Deletes.Contains(delete))
+            (delete.State != StagedPublicDeleteState.AcceptedUnresolved &&
+             !(legacyVolumeUnknown && delete.State == StagedPublicDeleteState.Admitted)) ||
+            !head.Deletes.Contains(delete) || (legacyVolumeUnknown && advice != StagedRecoveryAdvice.CollectDiagnostics))
             throw new InvalidOperationException("Recovery guidance requires the exact unresolved native intent.");
         var binding = delete.Binding;
         logger.LogWarning("Native delete recovery holds {Destination}: transfer {TransferId}, generation {Generation}, " +
             "operation {OperationId}, volume {VolumeSerial}, file {FileIdHigh}:{FileIdLow}, accepted {Accepted}, " +
-            "driver {DriverInstance}, connection {ConnectionEpoch}, reason {Reason}, advice {Advice}",
+            "driver {DriverInstance}, connection {ConnectionEpoch}, mount volume {MountVolumeId}, reason {Reason}, advice {Advice}",
             head.Locator, binding.TransferId, delete.Generation, delete.OperationId,
             binding.PublicIdentity.VolumeSerialNumber, binding.PublicIdentity.FileIdHigh, binding.PublicIdentity.FileIdLow,
-            delete.NativeCreateAccepted, binding.DriverInstanceId, binding.ConnectionEpoch, diagnosticReason, advice);
+            delete.NativeCreateAccepted, binding.DriverInstanceId, binding.ConnectionEpoch, binding.MountManagerVolumeId, diagnosticReason, advice);
         var notification = new TransferNotification(binding.TransferId, head.Locator, TransferPhase.Retained,
             RecoveryAdvice: advice);
         if (binding.OwnerSessionId == 0)

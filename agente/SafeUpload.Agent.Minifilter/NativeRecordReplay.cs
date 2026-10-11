@@ -23,7 +23,8 @@ public sealed record NativeRecordReplayRow(Guid DriverInstanceId, Guid TransferI
     SafeUploadStageIdentityV19 ParentIdentity, SafeUploadStageIdentityV19 PublicIdentity,
     uint OsBootSequence, uint CreateOptions, uint OriginalDesiredAccess, uint OriginalShareAccess,
     uint CallerProcessId, uint CallerSessionId, string CallerSid, bool ParentCaseSensitive,
-    string CanonicalLeaf, NativeRecordFacts Facts, int CreateStatus, int IdentityStatus, uint TeardownReason);
+    string CanonicalLeaf, NativeRecordFacts Facts, int CreateStatus, int IdentityStatus, uint TeardownReason,
+    Guid MountManagerVolumeId);
 
 public sealed record NativeRecordReplay(Guid DriverInstanceId, ulong ConnectionEpoch,
     ulong Revision, uint OsBootSequence, IReadOnlyList<NativeRecordReplayRow> Records);
@@ -38,8 +39,8 @@ internal sealed record NativeRecordReplayPage(Guid DriverInstanceId, ulong Conne
 
 internal static class NativeRecordReplayWire
 {
-    internal const uint Command = 30, ExtensionVersion = 21;
-    internal const int RequestBytes = 64, HeaderBytes = 64, RowBytes = 800, PageRows = 16;
+    internal const uint Command = 30, ExtensionVersion = 22;
+    internal const int RequestBytes = 64, HeaderBytes = 64, RowBytes = 816, PageRows = 16;
     internal const int PageBytes = HeaderBytes + RowBytes * PageRows, MaximumRecords = 1024;
     private static readonly Encoding StrictUtf16 = new UnicodeEncoding(false, false, true);
 
@@ -81,13 +82,14 @@ internal static class NativeRecordReplayWire
     private static NativeRecordReplayRow DecodeRow(ReadOnlySpan<byte> b, Guid driver, ulong epoch, uint boot)
     {
         Guid rowDriver = new(b[..16]), transfer = new(b.Slice(16, 16)), nonce = new(b.Slice(32, 16)), operation = new(b.Slice(48, 16));
+        Guid mountVolumeId = new(b.Slice(800, 16));
         ulong originalEpoch = U64(b, 64), generation = U64(b, 72);
         long creationTime = BinaryPrimitives.ReadInt64LittleEndian(b[80..]);
         var root = Identity(b, 88); var parent = Identity(b, 112); var file = Identity(b, 136);
         uint options = U32(b, 164), desired = U32(b, 168), share = U32(b, 172), pid = U32(b, 176);
         uint sidBytes = U32(b, 184), caseMode = U32(b, 188), leafBytes = U32(b, 192);
         var facts = (NativeRecordFacts)U32(b, 196);
-        if (rowDriver != driver || transfer == Guid.Empty || nonce == Guid.Empty || operation == Guid.Empty ||
+        if (rowDriver != driver || transfer == Guid.Empty || nonce == Guid.Empty || operation == Guid.Empty || mountVolumeId == Guid.Empty ||
             originalEpoch == 0 || originalEpoch > epoch || U32(b, 160) != boot || creationTime <= 0 ||
             !root.HasNonzeroFileId || !parent.HasNonzeroFileId || !file.HasNonzeroFileId ||
             root.VolumeSerialNumber != parent.VolumeSerialNumber || parent.VolumeSerialNumber != file.VolumeSerialNumber ||
@@ -116,7 +118,7 @@ internal static class NativeRecordReplayWire
         if (leaf is "." or ".." || leaf.Any(c => c == 0 || c is '\\' or '/' or ':')) throw Bad("Invalid native canonical leaf.");
         return new(driver, transfer, nonce, operation, originalEpoch, generation, creationTime, root, parent, file,
             boot, options, desired, share, pid, U32(b, 180), ownerSid, caseMode == 1, leaf, facts,
-            BinaryPrimitives.ReadInt32LittleEndian(b[200..]), BinaryPrimitives.ReadInt32LittleEndian(b[204..]), U32(b, 208));
+            BinaryPrimitives.ReadInt32LittleEndian(b[200..]), BinaryPrimitives.ReadInt32LittleEndian(b[204..]), U32(b, 208), mountVolumeId);
     }
 
     private static SafeUploadStageIdentityV19 Identity(ReadOnlySpan<byte> b, int offset) => new()

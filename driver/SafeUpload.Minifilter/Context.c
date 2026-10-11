@@ -315,6 +315,8 @@ Return Value:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN teardownToken = NULL;
     UNICODE_STRING volumeGuid;
+    FILE_FS_DEVICE_INFORMATION storageDevice;
+    IO_STATUS_BLOCK storageIo = {0};
 #endif
 
     PAGED_CODE();
@@ -377,6 +379,22 @@ Return Value:
     instanceContext->CanaryCleanupStatus = STATUS_PENDING;
     instanceContext->FileSystemStatus = FltGetFileSystemType(FltObjects->Instance,
         &instanceContext->FileSystemType);
+    RtlZeroMemory(&storageDevice, sizeof(storageDevice));
+    instanceContext->DeviceInformationStatus = FltQueryVolumeInformation(FltObjects->Instance,
+        &storageIo, &storageDevice, sizeof(storageDevice), FileFsDeviceInformation);
+    if (instanceContext->DeviceInformationStatus == STATUS_SUCCESS) {
+        if (storageIo.Information != sizeof(storageDevice))
+            instanceContext->DeviceInformationStatus = STATUS_INFO_LENGTH_MISMATCH;
+        else {
+            instanceContext->StorageDeviceType = storageDevice.DeviceType;
+            instanceContext->StorageDeviceCharacteristics = storageDevice.Characteristics;
+            // Portable hardware can report fixed media. Keep it in the
+            // unsupported removable scope until T21; normal taint builds keep
+            // their existing classifier because this block is feature-only.
+            if (FlagOn(storageDevice.Characteristics, FILE_PORTABLE_DEVICE))
+                instanceContext->VolumeKind = SafeUploadVolumeRemovable;
+        }
+    }
     volumeGuid.Buffer = instanceContext->VolumeGuid;
     volumeGuid.Length = 0;
     volumeGuid.MaximumLength = sizeof(instanceContext->VolumeGuid) - sizeof(WCHAR);
@@ -494,6 +512,9 @@ BOOLEAN SafeUploadInstanceAdmissionGateSatisfied(_In_ PFLT_INSTANCE Instance)
 
     SafeUploadInstanceCheckCanaryDeadline(context);
     if (context->VolumeKind == SafeUploadVolumeFixed &&
+        context->DeviceInformationStatus == STATUS_SUCCESS &&
+        context->StorageDeviceType == FILE_DEVICE_DISK &&
+        !FlagOn(context->StorageDeviceCharacteristics, FILE_PORTABLE_DEVICE | FILE_REMOVABLE_MEDIA | FILE_REMOTE_DEVICE) &&
         context->FileSystemStatus == STATUS_SUCCESS &&
         context->FileSystemType == FLT_FSTYPE_NTFS &&
         context->VolumeNameChars != 0 &&

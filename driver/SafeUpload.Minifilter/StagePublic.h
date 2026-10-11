@@ -18,6 +18,7 @@ typedef struct _SAFEUPLOAD_STAGE_PUBLIC_BINDING {
     UCHAR CallerSid[SECURITY_MAX_SID_SIZE];
     BOOLEAN ParentCaseSensitive;
     FILE_ID_INFORMATION VolumeRootIdentity;
+    GUID MountManagerVolumeId; /* Distinguishes a sector clone with identical filesystem IDs. */
     FILE_ID_INFORMATION ParentIdentity;
     FILE_ID_INFORMATION PublicIdentity;
     USHORT CanonicalLeafBytes;
@@ -27,6 +28,9 @@ typedef struct _SAFEUPLOAD_STAGE_PUBLIC_BINDING {
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStagePublicCaptureSubject(_In_ PFLT_CALLBACK_DATA Data,
     _Out_ PSECURITY_CLIENT_CONTEXT Subject);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicReadMountGuid(_In_ PFLT_INSTANCE Instance, _Out_ GUID *VolumeId);
 
 /* Runs on an unimpersonated system worker, outside namespace/stream/spin
  * locks. Capture Subject in the original CREATE before queueing. NTFS checks

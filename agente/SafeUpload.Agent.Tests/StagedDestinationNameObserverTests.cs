@@ -31,6 +31,62 @@ public sealed class StagedDestinationNameObserverTests : IDisposable
     private static StagedDestinationIdentity Destination(SafeFileHandle root, SafeFileHandle parent, string leaf) =>
         new(Identity(root), Identity(parent), false, leaf);
 
+    private static SafeFileHandle OpenParentById(SafeFileHandle root, StagedStageIdentity expected)
+    {
+        // NTFS uses FileIdType, not the ReFS ExtendedFileIdType selector.
+        // The selector is never the proof: compare the complete returned ID.
+        if (expected.FileIdHigh != 0) throw new IOException("The NTFS control cannot truncate a high file-ID half.");
+        var descriptor = new FileIdDescriptor { Size = 24, Type = 0, Low = expected.FileIdLow };
+        var handle = OpenFileById(root, ref descriptor, 0x100081, 7, IntPtr.Zero, 0x02200000);
+        if (handle.IsInvalid)
+        {
+            int error = Marshal.GetLastWin32Error(); handle.Dispose();
+            throw new IOException("Native parent-by-ID control failed.", new Win32Exception(error));
+        }
+        if (Identity(handle) == expected) return handle;
+        handle.Dispose(); throw new IOException("Parent-by-ID returned another complete identity.");
+    }
+
+    [Fact]
+    public void Recorded_parent_by_id_observes_the_original_after_rename_and_locator_replacement()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        const string leaf = "document.txt";
+        string saved = Path.Combine(_workspace.Root, "recorded"), moved = Path.Combine(_workspace.Root, "moved");
+        Directory.CreateDirectory(saved); File.WriteAllText(Path.Combine(saved, leaf), "original-pre-open");
+        using var root = Open(Path.GetPathRoot(saved)!, 0x80, flags: 0x02200080);
+        StagedDestinationIdentity destination;
+        using (var initial = Open(saved, 0x81, flags: 0x02200080)) destination = Destination(root, initial, leaf);
+        Directory.Move(saved, moved);
+        Directory.CreateDirectory(saved); File.WriteAllText(Path.Combine(saved, leaf), "locator-replacement");
+        using var parent = OpenParentById(root, destination.Parent);
+        using var reader = Open(Path.Combine(moved, leaf), 0x80000000);
+        var original = Identity(reader);
+        using var creator = Open(Path.Combine(moved, leaf), 0x10080, flags: 0x04200080);
+        creator.Dispose();
+        Assert.Equal(original, StagedDestinationNameObserver.Observe(root, parent, destination, CancellationToken.None).PublicIdentity);
+        reader.Dispose();
+        Assert.Null(StagedDestinationNameObserver.Observe(root, parent, destination, CancellationToken.None).PublicIdentity);
+        Assert.Equal("locator-replacement", File.ReadAllText(Path.Combine(saved, leaf)));
+        Assert.Equal(destination.Parent, Identity(parent));
+    }
+
+    [Fact]
+    public void Deleted_recorded_parent_cannot_be_substituted_by_a_new_directory_at_the_saved_locator()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        string saved = Path.Combine(_workspace.Root, "recorded"); Directory.CreateDirectory(saved);
+        using var root = Open(Path.GetPathRoot(saved)!, 0x80, flags: 0x02200080);
+        StagedStageIdentity original;
+        using (var parent = Open(saved, 0x81, flags: 0x02200080)) original = Identity(parent);
+        Directory.Delete(saved); Directory.CreateDirectory(saved);
+        File.WriteAllText(Path.Combine(saved, "document.txt"), "replacement");
+        using var replacement = Open(saved, 0x81, flags: 0x02200080);
+        Assert.NotEqual(original, Identity(replacement));
+        Assert.Throws<IOException>(() => OpenParentById(root, original));
+        Assert.Equal("replacement", File.ReadAllText(Path.Combine(saved, "document.txt")));
+    }
+
     [Fact]
     public void Real_pending_original_is_observed_without_child_reopen_then_absent_after_last_reader_close()
     {
@@ -175,6 +231,18 @@ public sealed class StagedDestinationNameObserverTests : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern SafeFileHandle CreateFileW(string path, uint access, uint share,
         IntPtr security, uint disposition, uint flags, IntPtr template);
+
+    [StructLayout(LayoutKind.Explicit, Size = 24)]
+    private struct FileIdDescriptor
+    {
+        [FieldOffset(0)] internal uint Size;
+        [FieldOffset(4)] internal uint Type;
+        [FieldOffset(8)] internal ulong Low;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern SafeFileHandle OpenFileById(SafeFileHandle volumeHint,
+        ref FileIdDescriptor id, uint access, uint share, IntPtr security, uint flags);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -10,6 +10,7 @@ namespace SafeUpload.Agent.Tests;
 public sealed class NativeRecordReplayTests
 {
     private static readonly Guid Driver = Guid.Parse("11000000-0000-0000-0000-000000000001");
+    private static readonly Guid MountVolume = Guid.Parse("22000000-0000-0000-0000-000000000002");
     private const ulong Epoch = 9, Revision = 23;
     private const uint Boot = 40;
 
@@ -22,7 +23,7 @@ public sealed class NativeRecordReplayTests
             Assert.Equal(Contract.Version, U32(input.Span, 0));
             Assert.Equal(64u, U32(input.Span, 4));
             Assert.Equal(30u, U32(input.Span, 8));
-            Assert.Equal(21u, U32(input.Span, 16));
+            Assert.Equal(22u, U32(input.Span, 16));
             Assert.Equal(0u, U32(input.Span, 12));
             Assert.Equal(0ul, U64(input.Span, 56));
             if (index == 0)
@@ -44,6 +45,7 @@ public sealed class NativeRecordReplayTests
         Assert.Equal(0xAABBCCDDEEFF1122ul, result.Records[0].PublicIdentity.FileIdHigh);
         Assert.Equal("S-1-5-18", result.Records[0].CallerSid);
         Assert.Equal("file0.txt", result.Records[0].CanonicalLeaf);
+        Assert.Equal(MountVolume, result.Records[0].MountManagerVolumeId);
         Assert.Throws<NotSupportedException>(() => ((IList<NativeRecordReplayRow>)result.Records).Clear());
     }
 
@@ -58,6 +60,7 @@ public sealed class NativeRecordReplayTests
 
     [Theory]
     [InlineData("version")]
+    [InlineData("legacy-volume-identity-version")]
     [InlineData("size")]
     [InlineData("driver")]
     [InlineData("epoch")]
@@ -74,6 +77,7 @@ public sealed class NativeRecordReplayTests
         switch (defect)
         {
             case "version": W32(bytes, 0, 20); break;
+            case "legacy-volume-identity-version": W32(bytes, 0, 21); break;
             case "size": W32(bytes, 4, 64); break;
             case "driver": bytes.AsSpan(8, 16).Clear(); break;
             case "epoch": W64(bytes, 24, 0); break;
@@ -112,6 +116,7 @@ public sealed class NativeRecordReplayTests
     [InlineData("forwarded-without-generation")]
     [InlineData("row-reserved")]
     [InlineData("row-reserved-end")]
+    [InlineData("missing-mount-volume")]
     public void Invalid_original_object_binding_never_supplies_lifetime_evidence(string defect)
     {
         byte[] page = Page(0, 1, true);
@@ -141,6 +146,7 @@ public sealed class NativeRecordReplayTests
             case "forwarded-without-generation": W64(row, 72, 0); break;
             case "row-reserved": W32(row, 212, 1); break;
             case "row-reserved-end": W32(row, 796, 1); break;
+            case "missing-mount-volume": row.Slice(800, 16).Clear(); break;
         }
         Assert.Throws<IOException>(() => NativeRecordReplayWire.DecodePage(page, 0));
     }
@@ -231,10 +237,10 @@ public sealed class NativeRecordReplayTests
     private static byte[] Page(uint index, int count, bool complete)
     {
         byte[] b = new byte[NativeRecordReplayWire.PageBytes];
-        W32(b, 0, 21); W32(b, 4, (uint)b.Length); Driver.TryWriteBytes(b.AsSpan(8, 16));
+        W32(b, 0, 22); W32(b, 4, (uint)b.Length); Driver.TryWriteBytes(b.AsSpan(8, 16));
         W64(b, 24, Epoch); W64(b, 32, Revision); W32(b, 40, Boot);
         W32(b, 44, index); W32(b, 48, (uint)count); W32(b, 52, complete ? 1u : 0u);
-        for (int i = 0; i < count; i++) Row(b.AsSpan(64 + i * 800, 800), index + (uint)i);
+        for (int i = 0; i < count; i++) Row(b.AsSpan(64 + i * 816, 816), index + (uint)i);
         return b;
     }
 
@@ -249,6 +255,7 @@ public sealed class NativeRecordReplayTests
         b[216] = 1; b[217] = 1; b[223] = 5; b[224] = 18; // S-1-5-18
         byte[] leaf = Encoding.Unicode.GetBytes($"file{index}.txt");
         W32(b, 192, (uint)leaf.Length); leaf.AsSpan().CopyTo(b[284..]);
+        MountVolume.TryWriteBytes(b.Slice(800, 16));
     }
 
     private static SafeFileHandle Handle() => new(new IntPtr(123), false);

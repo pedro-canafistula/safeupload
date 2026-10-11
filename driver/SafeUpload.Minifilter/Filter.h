@@ -291,6 +291,9 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
     NTSTATUS CanaryCleanupStatus;
     FLT_FILESYSTEM_TYPE FileSystemType;
     NTSTATUS FileSystemStatus;
+    NTSTATUS DeviceInformationStatus;
+    DEVICE_TYPE StorageDeviceType;
+    ULONG StorageDeviceCharacteristics; /* Immutable FileFsDeviceInformation; portable devices are outside M2. */
     NTSTATUS VolumeGuidStatus;
     UINT32 VolumeGuidChars;
     WCHAR VolumeGuid[64]; /* Immutable after InstanceSetup; query failure stays explicit. */

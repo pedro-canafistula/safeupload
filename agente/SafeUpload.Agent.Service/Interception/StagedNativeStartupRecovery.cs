@@ -83,7 +83,9 @@ internal sealed class StagedNativeStartupRecovery
                     // commit dispatcher are integrated, never let the existing
                     // publisher bypass a durable exceptional hold.
                     var recoveredHeads = await _journal.ReadDestinationHeadsAsync(recoveryToken).ConfigureAwait(false);
-                    var held = recoveredHeads.Where(h => h.Deletes.Any(d => d.State == StagedPublicDeleteState.AcceptedUnresolved))
+                    var held = recoveredHeads.Where(h => h.Deletes.Any(d => d.State == StagedPublicDeleteState.AcceptedUnresolved ||
+                        (d.Kind == StagedPublicDeleteKind.NativeOnClose && d.State == StagedPublicDeleteState.Admitted &&
+                         (h.Destination.MountManagerVolumeId is null || d.Binding.MountManagerVolumeId is null))))
                         .Select(h => h.Locator).ToArray();
                     if (held.Length != 0)
                         throw new IOException("Native publication recovery remains unresolved: " + string.Join(", ", held));
@@ -106,10 +108,10 @@ internal sealed class StagedNativeStartupRecovery
         foreach (NativeRecordReplayRow row in replay.Records)
         {
             var destination = new StagedDestinationIdentity(Identity(row.VolumeRootIdentity), Identity(row.ParentIdentity),
-                row.ParentCaseSensitive, row.CanonicalLeaf);
+                row.ParentCaseSensitive, row.CanonicalLeaf, row.MountManagerVolumeId);
             var binding = new StagedPublicDeleteBinding(row.TransferId, row.RequestNonce, row.DriverInstanceId,
                 row.OriginalConnectionEpoch, Identity(row.PublicIdentity), checked((int)row.CallerProcessId),
-                row.CallerProcessCreationTime, row.CallerSessionId, row.CallerSid, row.OsBootSequence);
+                row.CallerProcessCreationTime, row.CallerSessionId, row.CallerSid, row.OsBootSequence, row.MountManagerVolumeId);
             var candidates = heads.SelectMany(h => h.Deletes.Select(d => (Head: h, Delete: d)))
                 .Where(p => p.Delete.Binding.TransferId == row.TransferId || p.Delete.Binding.RequestNonce == row.RequestNonce ||
                     p.Delete.OperationId == row.OperationId).ToArray();

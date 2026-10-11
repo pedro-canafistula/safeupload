@@ -10,17 +10,86 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
 {
     private readonly TestWorkspace _workspace = new();
     private readonly Guid _driverInstance = Guid.NewGuid();
+    private static readonly Guid MountVolume = Guid.Parse("22000000-0000-0000-0000-000000000002");
     private readonly StagedStageIdentity _publicIdentity = new(7, 91, 92);
     private readonly StagedStageIdentity _temporaryIdentity = new(7, 101, 102);
     private string JournalPath => Path.Combine(_workspace.Root, "journal");
     private string Locator(string name = "document.txt") => Path.Combine(_workspace.Root, "destination", name);
     private StagedTransferJournal Journal() => new(JournalPath);
     private static StagedDestinationIdentity Destination(string leaf = "document.txt", bool caseSensitive = false) =>
-        new(new(7, 11, 12), new(7, 21, 22), caseSensitive, leaf);
+        new(new(7, 11, 12), new(7, 21, 22), caseSensitive, leaf, MountVolume);
     private StagedPublicDeleteBinding Binding(int owner = 1234) => new(Guid.NewGuid(), Guid.NewGuid(),
-        _driverInstance, 17, _publicIdentity, owner, 123456, 1, "S-1-5-21-100-200-300-1001");
+        _driverInstance, 17, _publicIdentity, owner, 123456, 1, "S-1-5-21-100-200-300-1001",
+        MountManagerVolumeId: MountVolume);
 
     public void Dispose() => _workspace.Dispose();
+
+    [Fact]
+    public async Task Cloned_filesystem_ids_with_different_volume_guids_have_distinct_durable_heads()
+    {
+        var journal = Journal(); var original = Destination();
+        var clone = new StagedDestinationIdentity(original.VolumeRoot, original.Parent,
+            original.CaseSensitive, original.CanonicalLeaf, Guid.NewGuid());
+        Assert.NotEqual(original.StorageKey, clone.StorageKey);
+        var first = await Allocate(journal, original, Guid.NewGuid());
+        var second = await Allocate(journal, clone, Guid.NewGuid());
+        Assert.Equal(1, first); Assert.Equal(1, second);
+        var reopened = await Journal().ReadDestinationHeadsAsync(CancellationToken.None);
+        Assert.Equal(2, reopened.Count);
+        Assert.Contains(reopened, h => h.Destination == original);
+        Assert.Contains(reopened, h => h.Destination == clone);
+    }
+
+    [Fact]
+    public async Task Native_create_cannot_substitute_another_mount_or_omit_captured_volume_identity()
+    {
+        var journal = Journal(); var binding = Binding() with { OsBootSequence = 42 };
+        await Assert.ThrowsAsync<ArgumentException>(() => NativeCreateIntent(journal, Destination(),
+            binding with { MountManagerVolumeId = Guid.NewGuid() }, Guid.NewGuid()));
+        await Assert.ThrowsAsync<ArgumentException>(() => NativeCreateIntent(journal, Destination(),
+            binding with { MountManagerVolumeId = null }, Guid.NewGuid()));
+        var legacy = new StagedDestinationIdentity(Destination().VolumeRoot, Destination().Parent, false, "document.txt");
+        await Assert.ThrowsAsync<ArgumentException>(() => NativeCreateIntent(journal, legacy,
+            binding with { MountManagerVolumeId = null }, Guid.NewGuid()));
+        Assert.Empty(await journal.ReadDestinationHeadsAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Legacy_admitted_native_record_without_volume_guid_remains_a_publication_hold()
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, binding, operation);
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+            await journal.RecordNativeDeleteOnCloseCreateResultAsync(turn, binding, operation, true, true);
+        string currentPath = Assert.Single(Directory.GetFiles(JournalPath, "destination-*.state"));
+        var oldHead = JsonNode.Parse(await File.ReadAllTextAsync(currentPath))!;
+        oldHead["Destination"]!.AsObject().Remove("MountManagerVolumeId");
+        oldHead["Deletes"]![0]!["Binding"]!.AsObject().Remove("MountManagerVolumeId");
+        var legacy = new StagedDestinationIdentity(destination.VolumeRoot, destination.Parent,
+            destination.CaseSensitive, destination.CanonicalLeaf);
+        string legacyPath = Path.Combine(JournalPath, "destination-" + legacy.StorageKey + ".state");
+        await File.WriteAllTextAsync(currentPath, oldHead.ToJsonString()); File.Move(currentPath, legacyPath);
+
+        var restarted = Journal();
+        var retained = Assert.Single(await restarted.ReadDestinationHeadsAsync(CancellationToken.None));
+        Assert.Null(retained.Destination.MountManagerVolumeId);
+        Assert.Equal(StagedPublicDeleteState.Admitted, Assert.Single(retained.Deletes).State);
+        using var cancellation = new CancellationTokenSource();
+        Task<StagedTransferJournal.DestinationCommitTurn> wait = restarted.EnterDestinationCommitTurnAsync(legacy,
+            StagedDestinationTurnPurpose.PhysicalCommit, cancellation.Token);
+        Assert.False(wait.IsCompleted); cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+        string unchanged = await File.ReadAllTextAsync(legacyPath);
+        using (var turn = await restarted.EnterDestinationCommitTurnAsync(legacy,
+                   StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+            await Assert.ThrowsAsync<IOException>(() => restarted.ReconcileNativeDeleteOnCloseAsync(turn,
+                binding with { MountManagerVolumeId = null }, operation,
+                CleanupProof(binding with { MountManagerVolumeId = null }, operation), Observation(legacy, _publicIdentity),
+                CancellationToken.None));
+        Assert.Equal(unchanged, await File.ReadAllTextAsync(legacyPath));
+    }
 
     [Fact]
     public async Task Startup_discovers_durable_native_holds_without_a_surviving_driver_record_or_manifest()

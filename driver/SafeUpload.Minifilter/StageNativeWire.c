@@ -26,6 +26,7 @@ static VOID NativeWireCopyRow(PSAFEUPLOAD_NATIVE_REPLAY_ROW To,
     const SAFEUPLOAD_STAGE_NATIVE_BINDING *b = &From->Binding;
     const SAFEUPLOAD_STAGE_PUBLIC_BINDING *p = &b->Public;
     To->DriverInstanceId = b->DriverInstanceId;
+    To->MountManagerVolumeId = p->MountManagerVolumeId;
     To->TransferId = b->TransferId;
     To->RequestNonce = b->RequestNonce;
     To->OperationId = b->OperationId;

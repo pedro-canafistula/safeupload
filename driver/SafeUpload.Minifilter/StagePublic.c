@@ -90,7 +90,45 @@ Exit:
 #pragma alloc_text(PAGE, SafeUploadStagePublicCloseBackend)
 #pragma alloc_text(PAGE, SafeUploadStagePublicDereferenceBackend)
 #pragma alloc_text(PAGE, SafeUploadStagePublicReleaseOperation)
+#pragma alloc_text(PAGE, SafeUploadStagePublicReadMountGuid)
 #endif
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicReadMountGuid(PFLT_INSTANCE Instance, GUID *VolumeId)
+{
+    static const GUID zero = {0};
+    const UNICODE_STRING prefix = RTL_CONSTANT_STRING(L"\\??\\Volume");
+    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+    UNICODE_STRING full, text;
+    NTSTATUS status;
+    ULONG prefixChars = prefix.Length / sizeof(WCHAR);
+    PAGED_CODE();
+    RtlZeroMemory(VolumeId, sizeof(*VolumeId));
+    status = FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context);
+    if (!NT_SUCCESS(status)) return status;
+    if (context->VolumeGuidStatus != STATUS_SUCCESS ||
+        (context->VolumeGuidChars != prefixChars + 38 && context->VolumeGuidChars != prefixChars + 39)) {
+        status = STATUS_FILE_INVALID;
+        goto Exit;
+    }
+    full.Buffer = context->VolumeGuid;
+    full.Length = (USHORT)(context->VolumeGuidChars * sizeof(WCHAR));
+    full.MaximumLength = full.Length;
+    if (!RtlPrefixUnicodeString(&prefix, &full, TRUE) ||
+        (context->VolumeGuidChars == prefixChars + 39 && context->VolumeGuid[prefixChars + 38] != L'\\')) {
+        status = STATUS_FILE_INVALID;
+        goto Exit;
+    }
+    text.Buffer = &context->VolumeGuid[prefixChars];
+    text.Length = 38 * sizeof(WCHAR);
+    text.MaximumLength = text.Length;
+    status = RtlGUIDFromString(&text, VolumeId);
+    if (NT_SUCCESS(status) && RtlEqualMemory(VolumeId, &zero, sizeof(zero))) status = STATUS_FILE_INVALID;
+Exit:
+    FltReleaseContext(context);
+    if (!NT_SUCCESS(status)) RtlZeroMemory(VolumeId, sizeof(*VolumeId));
+    return status;
+}
 
 _Use_decl_annotations_
 NTSTATUS SafeUploadStagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
@@ -395,7 +433,9 @@ NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRIN
     }
     status = FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&instanceContext);
     if (!NT_SUCCESS(status)) return status;
-    if (instanceContext->VolumeKind != SafeUploadVolumeFixed || instanceContext->FileSystemType != FLT_FSTYPE_NTFS)
+    if (instanceContext->VolumeKind != SafeUploadVolumeFixed || instanceContext->FileSystemType != FLT_FSTYPE_NTFS ||
+        instanceContext->DeviceInformationStatus != STATUS_SUCCESS || instanceContext->StorageDeviceType != FILE_DEVICE_DISK ||
+        FlagOn(instanceContext->StorageDeviceCharacteristics, FILE_PORTABLE_DEVICE | FILE_REMOVABLE_MEDIA | FILE_REMOTE_DEVICE))
         status = STATUS_NOT_SUPPORTED;
     FltReleaseContext(instanceContext);
     if (!NT_SUCCESS(status)) return status;
@@ -407,6 +447,8 @@ NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRIN
     status = FltObjectReference(Instance);
     if (!NT_SUCCESS(status)) goto Exit;
     result->Instance = Instance;
+    status = SafeUploadStagePublicReadMountGuid(Instance, &result->Binding.MountManagerVolumeId);
+    if (!NT_SUCCESS(status)) goto Exit;
     result->Binding.OriginalDesiredAccess = OriginalDesiredAccess;
     result->Binding.OriginalShareAccess = OriginalShareAccess;
     status = StagePublicBindCaller(Subject, OriginalRequestorProcess, &result->Binding);

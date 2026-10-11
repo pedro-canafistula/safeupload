@@ -82,6 +82,7 @@ static BOOLEAN NativeBindingEqual(const SAFEUPLOAD_STAGE_NATIVE_BINDING *Left,
         a->CallerSessionId == b->CallerSessionId && a->CallerSidBytes == b->CallerSidBytes &&
         a->ParentCaseSensitive == b->ParentCaseSensitive && a->CanonicalLeafBytes == b->CanonicalLeafBytes &&
         RtlEqualMemory(&a->VolumeRootIdentity, &b->VolumeRootIdentity, sizeof(FILE_ID_INFORMATION)) &&
+        NativeGuidEqual(&a->MountManagerVolumeId, &b->MountManagerVolumeId) &&
         RtlEqualMemory(&a->ParentIdentity, &b->ParentIdentity, sizeof(FILE_ID_INFORMATION)) &&
         RtlEqualMemory(&a->PublicIdentity, &b->PublicIdentity, sizeof(FILE_ID_INFORMATION)) &&
         RtlEqualMemory(a->CallerSid, b->CallerSid, a->CallerSidBytes) &&
@@ -108,6 +109,7 @@ static BOOLEAN NativeBindingValid(const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding
         !RtlValidSid((PSID)p->CallerSid) || RtlLengthSid((PSID)p->CallerSid) != p->CallerSidBytes ||
         p->CanonicalLeafBytes == 0 || (p->CanonicalLeafBytes & 1) != 0 ||
         p->CanonicalLeafBytes >= sizeof(p->CanonicalLeaf) ||
+        NativeGuidEqual(&p->MountManagerVolumeId, &zero) ||
         RtlEqualMemory(&p->VolumeRootIdentity.FileId, &zeroId, sizeof(zeroId)) ||
         RtlEqualMemory(&p->ParentIdentity.FileId, &zeroId, sizeof(zeroId)) ||
         RtlEqualMemory(&p->PublicIdentity.FileId, &zeroId, sizeof(zeroId)) ||
@@ -136,6 +138,7 @@ static VOID NativeCopyBinding(PSAFEUPLOAD_STAGE_NATIVE_BINDING Destination,
     Destination->CreateOptions = Source->CreateOptions;
     d->OriginalDesiredAccess = s->OriginalDesiredAccess;
     d->OriginalShareAccess = s->OriginalShareAccess;
+    d->MountManagerVolumeId = s->MountManagerVolumeId;
     d->CallerProcessId = s->CallerProcessId;
     d->CallerProcessCreationTime = s->CallerProcessCreationTime;
     d->CallerSessionId = s->CallerSessionId;
@@ -214,6 +217,14 @@ NTSTATUS SafeUploadStageNativeReserve(PFLT_INSTANCE Instance, PFILE_OBJECT FileO
     if (!NativeEnter()) return STATUS_DEVICE_NOT_READY;
     if (Instance == NULL || FileObject == NULL || !NativeBindingValid(Binding) ||
         !SafeUploadInstanceAdmissionGateSatisfied(Instance)) { status = STATUS_ACCESS_DENIED; goto Exit; }
+    {
+        GUID actualVolumeId;
+        status = SafeUploadStagePublicReadMountGuid(Instance, &actualVolumeId);
+        if (!NT_SUCCESS(status) || !NativeGuidEqual(&actualVolumeId, &Binding->Public.MountManagerVolumeId)) {
+            status = STATUS_FILE_INVALID;
+            goto Exit;
+        }
+    }
     item = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*item), NATIVE_RECORD_TAG);
     if (item == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
     RtlZeroMemory(item, sizeof(*item));

@@ -30,9 +30,10 @@ public sealed class StagedNativeRecoveryNotificationTests
 
     private static (StagedDestinationHead Head, StagedPublicDeleteRecord Delete) Intent(uint session = 2)
     {
-        var destination = new StagedDestinationIdentity(new(7, 11, 12), new(7, 21, 22), false, "report.txt");
+        var volumeId = Guid.NewGuid();
+        var destination = new StagedDestinationIdentity(new(7, 11, 12), new(7, 21, 22), false, "report.txt", volumeId);
         var binding = new StagedPublicDeleteBinding(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 17,
-            new(7, 91, 92), 1234, 123456, session, OwnerSid, 42);
+            new(7, 91, 92), 1234, 123456, session, OwnerSid, 42, volumeId);
         var delete = new StagedPublicDeleteRecord(binding, 1, StagedPublicDeleteState.AcceptedUnresolved,
             DateTimeOffset.UtcNow, Guid.NewGuid(), StagedPublicDeleteKind.NativeOnClose, true);
         return (new(destination, @"C:\Protected\report.txt", 1, null, 0, 0, null, 0, null, [delete]), delete);
@@ -68,7 +69,39 @@ public sealed class StagedNativeRecoveryNotificationTests
         Assert.Equal(delete.Binding.PublicIdentity.FileIdHigh, diagnostic["FileIdHigh"]);
         Assert.Equal(delete.Binding.PublicIdentity.FileIdLow, diagnostic["FileIdLow"]);
         Assert.Equal(delete.Binding.ConnectionEpoch, diagnostic["ConnectionEpoch"]);
+        Assert.Equal(delete.Binding.MountManagerVolumeId, diagnostic["MountVolumeId"]);
         Assert.Equal("parent_identity_unresolved", diagnostic["Reason"]);
+    }
+
+    [Theory]
+    [InlineData(StagedRecoveryAdvice.CollectDiagnostics)]
+    [InlineData(StagedRecoveryAdvice.CloseApplication)]
+    [InlineData(StagedRecoveryAdvice.RestartService)]
+    [InlineData(StagedRecoveryAdvice.RestartWindows)]
+    public void Legacy_missing_volume_identity_is_named_without_promising_a_restart_will_repair_it(StagedRecoveryAdvice advice)
+    {
+        var record = new Record(); var log = new CaptureLogger();
+        var hub = new NotificationHub(record, NullLogger<NotificationHub>.Instance);
+        using var owner = hub.Subscribe(2, OwnerSid);
+        var (originalHead, originalDelete) = Intent();
+        var delete = originalDelete with { State = StagedPublicDeleteState.Admitted,
+            Binding = originalDelete.Binding with { MountManagerVolumeId = null } };
+        var destination = new StagedDestinationIdentity(originalHead.Destination.VolumeRoot, originalHead.Destination.Parent,
+            originalHead.Destination.CaseSensitive, originalHead.Destination.CanonicalLeaf);
+        var head = originalHead with { Destination = destination, Deletes = [delete] };
+        if (advice != StagedRecoveryAdvice.CollectDiagnostics)
+        {
+            Assert.Throws<InvalidOperationException>(() => StagedNativeRecoveryNotifications.Publish(hub, log, head, delete,
+                advice, "legacy_volume_identity_unavailable"));
+            Assert.Empty(record.Entries); Assert.Empty(log.Entries); Assert.False(owner.Reader.TryRead(out _));
+            return;
+        }
+        Assert.True(StagedNativeRecoveryNotifications.Publish(hub, log, head, delete, advice, "legacy_volume_identity_unavailable"));
+        Assert.True(owner.Reader.TryRead(out var delivered));
+        var notice = Assert.IsType<TransferNotification>(delivered);
+        Assert.Equal(head.Locator, notice.FileName); Assert.Equal(advice, notice.RecoveryAdvice); Assert.False(notice.OverrideAllowed);
+        Assert.Equal(StagedPublicDeleteState.Admitted, delete.State); // Guidance never clears or rewrites the hold.
+        Assert.Null(Assert.Single(log.Entries)["MountVolumeId"]);
     }
 
     [Fact]

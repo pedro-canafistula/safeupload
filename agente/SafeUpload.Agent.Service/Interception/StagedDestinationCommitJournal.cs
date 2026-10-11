@@ -16,14 +16,16 @@ internal sealed record StagedDestinationIdentity
     public StagedStageIdentity Parent { get; }
     public bool CaseSensitive { get; }
     public string CanonicalLeaf { get; }
+    public Guid? MountManagerVolumeId { get; }
 
     [System.Text.Json.Serialization.JsonConstructor]
     public StagedDestinationIdentity(StagedStageIdentity volumeRoot, StagedStageIdentity parent,
-        bool caseSensitive, string canonicalLeaf)
+        bool caseSensitive, string canonicalLeaf, Guid? mountManagerVolumeId = null)
     {
         ArgumentNullException.ThrowIfNull(volumeRoot);
         ArgumentNullException.ThrowIfNull(parent);
         ArgumentException.ThrowIfNullOrWhiteSpace(canonicalLeaf);
+        if (mountManagerVolumeId == Guid.Empty) throw new ArgumentException("A captured volume GUID cannot be empty.");
         if ((volumeRoot.FileIdHigh | volumeRoot.FileIdLow) == 0 ||
             (parent.FileIdHigh | parent.FileIdLow) == 0 ||
             volumeRoot.VolumeSerialNumber != parent.VolumeSerialNumber ||
@@ -39,6 +41,7 @@ internal sealed record StagedDestinationIdentity
         Parent = parent;
         CaseSensitive = caseSensitive;
         CanonicalLeaf = folded;
+        MountManagerVolumeId = mountManagerVolumeId;
     }
 
     private static bool IsWellFormedUtf16(string value)
@@ -56,7 +59,8 @@ internal sealed record StagedDestinationIdentity
 
     internal string StorageKey => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
         string.Create(CultureInfo.InvariantCulture,
-            $"{VolumeRoot.VolumeSerialNumber:X16}:{VolumeRoot.FileIdHigh:X16}:{VolumeRoot.FileIdLow:X16}:{Parent.FileIdHigh:X16}:{Parent.FileIdLow:X16}:{(CaseSensitive ? 1 : 0)}:{CanonicalLeaf}"))));
+            $"{VolumeRoot.VolumeSerialNumber:X16}:{VolumeRoot.FileIdHigh:X16}:{VolumeRoot.FileIdLow:X16}:{Parent.FileIdHigh:X16}:{Parent.FileIdLow:X16}:{(CaseSensitive ? 1 : 0)}:{CanonicalLeaf}") +
+            (MountManagerVolumeId is { } volumeId ? $":{volumeId:N}" : ""))));
 }
 
 internal enum StagedDestinationTurnPurpose { Allocation, PhysicalCommit, Reconciliation }
@@ -73,7 +77,7 @@ internal enum StagedDestinationMutation { Publication = 1, DeleteDisposition = 2
 internal sealed record StagedPublicDeleteBinding(Guid TransferId, Guid RequestNonce,
     Guid DriverInstanceId, ulong ConnectionEpoch, StagedStageIdentity PublicIdentity,
     int OwnerProcessId, long OwnerProcessCreationTime, uint OwnerSessionId, string OwnerSid,
-    uint? OsBootSequence = null);
+    uint? OsBootSequence = null, Guid? MountManagerVolumeId = null);
 internal sealed record StagedPublicDeleteRecord(StagedPublicDeleteBinding Binding, long Generation,
     StagedPublicDeleteState State, DateTimeOffset UpdatedAtUtc, Guid? OperationId = null,
     StagedPublicDeleteKind Kind = StagedPublicDeleteKind.Ordinary, bool? NativeCreateAccepted = null);
@@ -348,7 +352,8 @@ public sealed partial class StagedTransferJournal
     {
         turn.Require(this, StagedDestinationTurnPurpose.Allocation);
         ValidatePublicDeleteBinding(binding, turn.Destination);
-        if (operationId == Guid.Empty || binding.OsBootSequence is null || retainedManifestHighWater < 0)
+        if (operationId == Guid.Empty || binding.OsBootSequence is null || retainedManifestHighWater < 0 ||
+            turn.Destination.MountManagerVolumeId is null || binding.MountManagerVolumeId != turn.Destination.MountManagerVolumeId)
             throw new ArgumentException("Native CREATE requires its exact operation and OS boot sequence.");
         await _gate.WaitAsync(token).ConfigureAwait(false);
         try
@@ -653,14 +658,17 @@ public sealed partial class StagedTransferJournal
         StagedPublicDeleteBinding binding, Guid operationId)
     {
         var delete = RequireExactDelete(head, binding);
-        if (operationId == Guid.Empty || delete.OperationId != operationId ||
+        if (head.Destination.MountManagerVolumeId is null || binding.MountManagerVolumeId != head.Destination.MountManagerVolumeId ||
+            operationId == Guid.Empty || delete.OperationId != operationId ||
             delete.Kind != StagedPublicDeleteKind.NativeOnClose)
             throw new IOException("No native CREATE intent matches the exact capability and operation.");
         return delete;
     }
 
     private static bool IsPublicationReservation(StagedPublicDeleteRecord delete) =>
-        delete.State is StagedPublicDeleteState.Accepted or StagedPublicDeleteState.AcceptedUnresolved;
+        delete.State is StagedPublicDeleteState.Accepted or StagedPublicDeleteState.AcceptedUnresolved ||
+        (delete.Kind == StagedPublicDeleteKind.NativeOnClose && delete.Binding.MountManagerVolumeId is null &&
+         delete.State == StagedPublicDeleteState.Admitted);
 
     private static long PublicationGenerationFloor(StagedDestinationHead head) => Math.Max(head.CommittedDelete,
         head.Deletes.Where(d => d.Kind == StagedPublicDeleteKind.NativeOnClose &&
@@ -698,6 +706,9 @@ public sealed partial class StagedTransferJournal
     {
         ArgumentNullException.ThrowIfNull(binding);
         RequireSameVolumeIdentity(destination, binding.PublicIdentity);
+        if (binding.MountManagerVolumeId == Guid.Empty ||
+            (binding.MountManagerVolumeId is not null && binding.MountManagerVolumeId != destination.MountManagerVolumeId))
+            throw new ArgumentException("A delete changed its captured Mount Manager volume identity.");
         if (binding.TransferId == Guid.Empty || binding.RequestNonce == Guid.Empty ||
             binding.DriverInstanceId == Guid.Empty || binding.ConnectionEpoch == 0 ||
             binding.OwnerProcessId <= 0 || binding.OwnerProcessCreationTime <= 0 ||

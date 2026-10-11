@@ -155,6 +155,52 @@ Win32-5 child-open refusal, then found exact absence after last reader close; su
 identities, non-reparse directory type and case mode, then require two complete matching enumerations and unchanged anchors. It
 never opens the child or interprets access denial as absence. Authenticated anchor export and the live recovery call remain pending.
 
+**Reviewed transport correction.** Perform that same read-only anchored observation in the driver and return
+the checked metadata instead of exporting directory handles. The
+[Luna review](evidence/2026-10-11/t5-native-observation-transport-review-luna6.md) requires the original Mount Manager volume GUID
+in the native binding and durable anchor, alongside root/parent full identities and canonical
+leaf in the durable head. Its query binds the authenticated current driver/connection/boot/replay revision and those exact identities,
+case mode and leaf. It grants no access to the public file and carries no DELETE permit, file handle or cleanup ACK.
+
+For surviving-driver and qualified-Restart recovery, select a currently attached fixed NTFS instance by its exact recorded Mount
+Manager volume GUID, then open its root as a directory and verify the recorded volume serial plus full root ID. A serial/root-ID match
+alone can select a clone while the original is absent. Legacy missing-GUID records remain held; never backfill from a replacement.
+Reject missing/ambiguous matches, an incomplete instance enumeration,
+retiring/untrusted instances and any changed authority. Open the parent by file ID relative to that checked root, never by the saved
+locator; NTFS may use an eight-byte file-ID selector only when the recorded high half is zero, but compare the resulting complete
+128-bit ID and volume serial before use. Query directory/non-reparse type and exact case mode, perform two complete matching
+extended-ID directory enumerations for the canonical leaf, then recheck both anchors and the instance gate. A child-open refusal is
+never interpreted as absence. The existing observer's enumeration bound remains fail-closed; there is no truncation-based absence proof.
+
+The authenticated port callback pins the exact service process/connection and references candidate instances while running this
+metadata I/O outside namespace/native locks. Close every local directory handle and release references before returning the reply;
+no cross-process handle lease/revocation protocol or application FILE_OBJECT hold is added. Bracket I/O with unchanged quiescent
+topology generations and no setup/teardown in flight; check the instance retirement gate before/after opens and queries.
+Bind the reply to the requested tuple,
+destination and leaf, recheck native replay revision and connection at completion, and reject malformed/stale/partial replies in the
+service. The service still independently checks lifetime proof and enters its destination reconciliation turn before downgrading a hold.
+Directory absence/original identity remains only name-mapping evidence, not physical cleanup or permission to delete.
+
+The existing owner-approved close/startup and fixed-NTFS Restart conditions,
+named-file diagnostics, generation floor, supported capability gates and independent runtime observers remain required. No new journal
+or protocol state is introduced; live admission and runtime qualification remain pending. Native replay uses a new version 22 layout
+for the captured GUID; version 21 is rejected rather than silently reinterpreted. Core v18/v20 layouts and persisted enum values remain unchanged.
+
+**Scope correction — fixed-reporting USB (Luna 6 review).** The current classifier in `SafeUpload.Minifilter/Context.c:238–276`
+checks only `FILE_REMOVABLE_MEDIA` and otherwise returns `SafeUploadVolumeFixed`; the admission gate and coverage readiness then
+accept `Fixed + NTFS`, and `SafeUploadStageNativeReserve` inherits that gate. I found no separate USB/bus-type check in the instance
+context, boot-scope, coverage, native-reserve, or public-open admission paths in the reviewed source. That was insufficient for M2: Microsoft defines
+`FILE_REMOVABLE_MEDIA` as removable *media*, not a removable device, while `FILE_PORTABLE_DEVICE` denotes a device on a portable
+bus such as USB. Before enabling the T5 native CREATE producer, query `FileFsDeviceInformation` through
+[`FltQueryVolumeInformation`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltqueryvolumeinformation)
+at `PASSIVE_LEVEL`, retain the portable/unqualified result in the per-instance admission evidence, and reject `FILE_PORTABLE_DEVICE`
+from the fixed-NTFS scope in the instance gate, coverage, native reserve, and metadata query. Query failure, incomplete data, or an
+unknown portability result must fail closed; require a successful `FltQueryVolumeInformation` result with
+`IO_STATUS_BLOCK.Information == sizeof(FILE_FS_DEVICE_INFORMATION)`. This is the minimum M2 scope guard, not T21 implementation. The metadata-only query can
+proceed without T21 only for positively admitted local fixed NTFS instances; for portable/removable/unknown instances it must return
+unknown and keep any recovery hold. Microsoft references: [FILE_FS_DEVICE_INFORMATION](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/616b66d5-b335-4e1c-8f87-b4a55e8d3e4a)
+defines both flags, and the `FltQueryVolumeInformation` contract lists `FileFsDeviceInformation` and requires `PASSIVE_LEVEL`.
+
 If the name still maps to original A, or exact enumeration establishes absence, automatically downgrade AcceptedUnresolved to the
 existing nonblocking scheduled-intent representation (Admitted plus an immutable native-on-close kind field). Retain the scheduled
 generation floor and original intent. This removes only the exceptional recovery barrier: it is never Complete or Canceled.

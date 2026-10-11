@@ -287,6 +287,9 @@ typedef struct _STAGE_ADMISSION_COVERAGE_INSTANCE {
     ULONG VolumeKind;
     ULONG FileSystemType;
     ULONG FileSystemStatus;
+    ULONG DeviceInformationStatus;
+    ULONG StorageDeviceType;
+    ULONG StorageDeviceCharacteristics;
     ULONG VolumeStatus;
     ULONG VolumeFlags;
     ULONG TrustState;
@@ -433,6 +436,9 @@ static VOID StageAdmissionCoverageReadInstance(
         Record->CanaryStatus = (ULONG)context->CanaryStatus;
         Record->CanaryChecks = context->CanaryChecks;
         Record->CanaryCleanupStatus = (ULONG)context->CanaryCleanupStatus;
+        Record->DeviceInformationStatus = (ULONG)context->DeviceInformationStatus;
+        Record->StorageDeviceType = context->StorageDeviceType;
+        Record->StorageDeviceCharacteristics = context->StorageDeviceCharacteristics;
         Record->WritersUntracked = (ULONG)InterlockedCompareExchange(&context->WritersUntracked, 0, 0);
         Record->RegistryUnknownReasons = (ULONG)InterlockedCompareExchange(&context->RegistryUnknownReasons, 0, 0);
         FltReleaseContext(context);
@@ -458,9 +464,12 @@ static ULONG StageAdmissionCoverageInstanceReadiness(
         return SAFEUPLOAD_ADMISSION_COVERAGE_REASON_IDENTITY;
     if (FlagOn(Instance->VolumeFlags, SAFEUPLOAD_VOLUME_DETACHED_FLAG))
         return SAFEUPLOAD_ADMISSION_COVERAGE_REASON_IDENTITY;
+    if (Instance->DeviceInformationStatus != (ULONG)STATUS_SUCCESS)
+        return SAFEUPLOAD_ADMISSION_COVERAGE_REASON_IDENTITY;
     if (Instance->VolumeKind != SafeUploadVolumeFixed ||
         Instance->FileSystemStatus != (ULONG)STATUS_SUCCESS ||
-        Instance->FileSystemType != FLT_FSTYPE_NTFS)
+        Instance->FileSystemType != FLT_FSTYPE_NTFS || Instance->StorageDeviceType != FILE_DEVICE_DISK ||
+        FlagOn(Instance->StorageDeviceCharacteristics, FILE_PORTABLE_DEVICE | FILE_REMOVABLE_MEDIA | FILE_REMOTE_DEVICE))
         return SAFEUPLOAD_ADMISSION_COVERAGE_REASON_UNSUPPORTED;
     if (Instance->CanaryState == SAFEUPLOAD_CANARY_PENDING ||
         Instance->CanaryState == SAFEUPLOAD_CANARY_RUNNING ||
