@@ -210,6 +210,27 @@ public sealed partial class StagedTransferJournal
         finally { _gate.Release(); }
     }
 
+    // Startup must discover durable native holds even when their original
+    // driver is gone and cannot replay a live object. This read is metadata,
+    // not permission to publish; recovery still takes and rereads each turn.
+    internal async Task<IReadOnlyList<StagedDestinationHead>> ReadDestinationHeadsAsync(CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var heads = new List<StagedDestinationHead>();
+            foreach (string path in Directory.EnumerateFiles(_directory, "destination-*.state"))
+            {
+                token.ThrowIfCancellationRequested();
+                var head = await ReadDestinationHeadFileCoreAsync(path, null, token).ConfigureAwait(false)
+                    ?? throw new InvalidDataException("A destination head disappeared during startup recovery.");
+                heads.Add(head);
+            }
+            return heads.AsReadOnly();
+        }
+        finally { _gate.Release(); }
+    }
+
     // The caller imports retained manifest claims first and checks that the
     // transfer is a fresh allocation (or this current exact replay). Advancing
     // the high-water before committing its manifest can leave a harmless gap;
@@ -698,10 +719,12 @@ public sealed partial class StagedTransferJournal
         CancellationToken token) => await ReadDestinationHeadCoreAsync(destination, token).ConfigureAwait(false)
         ?? throw new IOException("The destination has no durable head.");
 
-    private async Task<StagedDestinationHead?> ReadDestinationHeadCoreAsync(StagedDestinationIdentity destination,
-        CancellationToken token)
+    private Task<StagedDestinationHead?> ReadDestinationHeadCoreAsync(StagedDestinationIdentity destination,
+        CancellationToken token) => ReadDestinationHeadFileCoreAsync(DestinationHeadPath(destination), destination, token);
+
+    private async Task<StagedDestinationHead?> ReadDestinationHeadFileCoreAsync(string path,
+        StagedDestinationIdentity? expectedDestination, CancellationToken token)
     {
-        string path = DestinationHeadPath(destination);
         FileStream stream;
         try { stream = StagedJournalFile.Open(path); }
         catch (FileNotFoundException) { return null; }
@@ -715,7 +738,10 @@ public sealed partial class StagedTransferJournal
             }
             StagedDestinationHead? head = await JsonSerializer.DeserializeAsync<StagedDestinationHead>(stream,
                 cancellationToken: token).ConfigureAwait(false);
-            ValidateDestinationHead(head, destination);
+            if (head?.Destination is null) throw new InvalidDataException("The destination head has no identity.");
+            ValidateDestinationHead(head, expectedDestination ?? head.Destination);
+            if (!string.Equals(Path.GetFileName(path), Path.GetFileName(DestinationHeadPath(head.Destination)), StringComparison.Ordinal))
+                throw new InvalidDataException("The destination head filename does not match its exact namespace identity.");
             return head;
         }
     }

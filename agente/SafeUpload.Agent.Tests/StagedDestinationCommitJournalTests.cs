@@ -22,6 +22,50 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
 
     public void Dispose() => _workspace.Dispose();
 
+    [Fact]
+    public async Task Startup_discovers_durable_native_holds_without_a_surviving_driver_record_or_manifest()
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, binding, operation);
+        await Allocate(journal, Destination("other.txt"), Guid.NewGuid());
+        Assert.Empty(Directory.GetFiles(JournalPath, "*.json"));
+        var recovered = await Journal().ReadDestinationHeadsAsync(CancellationToken.None);
+        Assert.Equal(2, recovered.Count);
+        var hold = Assert.Single(recovered.Single(h => h.Destination == destination).Deletes);
+        Assert.Equal(binding, hold.Binding); Assert.Equal(operation, hold.OperationId);
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved, hold.State);
+        Assert.Equal(1, hold.Generation);
+        using var cancel = new CancellationTokenSource();
+        var blocked = journal.EnterDestinationCommitTurnAsync(destination, StagedDestinationTurnPurpose.PhysicalCommit, cancel.Token);
+        Assert.False(blocked.IsCompleted);
+        cancel.Cancel(); await Assert.ThrowsAnyAsync<OperationCanceledException>(() => blocked);
+    }
+
+    [Fact]
+    public async Task Startup_refuses_a_copied_head_under_another_identity_instead_of_skipping_its_hold()
+    {
+        var journal = Journal();
+        await NativeCreateIntent(journal, Destination(), Binding() with { OsBootSequence = 42 }, Guid.NewGuid());
+        string head = Assert.Single(Directory.GetFiles(JournalPath, "destination-*.state"));
+        File.Copy(head, Path.Combine(JournalPath, "destination-" + new string('0', 64) + ".state"));
+        await Assert.ThrowsAsync<InvalidDataException>(() => Journal().ReadDestinationHeadsAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Startup_refuses_corrupt_native_hold_state_and_releases_its_metadata_gate()
+    {
+        var journal = Journal();
+        await NativeCreateIntent(journal, Destination(), Binding() with { OsBootSequence = 42 }, Guid.NewGuid());
+        string path = Assert.Single(Directory.GetFiles(JournalPath, "destination-*.state"));
+        string original = await File.ReadAllTextAsync(path);
+        var head = JsonNode.Parse(original)!.AsObject(); head["Deletes"]![0]!["State"] = 999;
+        await File.WriteAllTextAsync(path, head.ToJsonString());
+        await Assert.ThrowsAsync<InvalidDataException>(() => journal.ReadDestinationHeadsAsync(CancellationToken.None));
+        await File.WriteAllTextAsync(path, original);
+        Assert.Single(await journal.ReadDestinationHeadsAsync(CancellationToken.None));
+    }
+
     private async Task<long> Allocate(StagedTransferJournal journal, StagedDestinationIdentity destination,
         Guid transferId, long priorManifestHead = 0)
     {
