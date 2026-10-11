@@ -122,12 +122,16 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
 
 - [x] Lifetime fix and pre-boot review, including `60fecdbc`; `m2-driver5-t11` has all four WDK/PREfast/ApiValidator builds at 0/0.
 - [x] Simplified VM setup and harness gates (`04fc6bbb`); [PowerShell 5.1 gate](evidence/2026-10-11/harness-windows-gate-t4-resume-1011-a1.txt).
-- [ ] **Running:** `m2t4boot10k1011a1`, win10-debug3, `m2-driver5-t11` + agent `m2-t11-cache2`, Verifier from boot, eight-hour test deadline.
+- [ ] Run 10,000 cycles on win10-debug3 with `m2-driver5-t11`, a matching admission-evidence agent, Verifier from boot and an eight-hour test deadline.
   - [ ] Final result, raw Verifier/pool samples, stop reason and separate fresh-disk restoration baseline.
 - [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
 
 The preceding `m2t4boot10k9` stopped after 4,714/10,000 without a final result; it is not a pass. Its run disk was deleted and base
 verified untouched. The cycle row's sampled public checks do not replace the raw-volume invariant regressions.
+Attempt `m2t4boot10k1011a1` [stopped before any cycles](evidence/2026-10-11/m2t4boot10k1011a1-stop-request.txt): the selected agent lacked admission-evidence support (`UnknownReceiptFlags`).
+Correct the agent selection and bound the readiness read before retrying; this attempt provides no T4 qualification.
+Its [run-disk restoration](evidence/2026-10-11/m2t4boot10k1011a1-final-restored-state.txt) and
+[separate fresh-disk baseline verification](evidence/2026-10-11/m2t4boot10k1011a1-independent-restoration.txt) passed.
 
 ### T5. Empty saves, Notepad Save As and deletes
 

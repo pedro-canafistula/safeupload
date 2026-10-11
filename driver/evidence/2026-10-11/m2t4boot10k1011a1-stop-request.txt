@@ -1,0 +1,2 @@
+StopRequested=Admission coverage Degraded: UnknownReceiptFlags; no cycles started
+Signal=TERM to verified T4 process group
