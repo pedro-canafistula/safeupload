@@ -42,8 +42,9 @@ establish that it is gone or still the original pre-open file, then release the 
 pre-CREATE intent and existing startup recovery; add no protocol states beyond **accepted, unresolved**. If exact reconciliation
 cannot decide, retain the hold, name the file and an actionable next step in the tray, and record diagnostics. Fault-injection rows
 must prove automatic hold release after handle close and service restart. If that automatic guarantee cannot be met, ask the owner
-before implementation. See [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md); Luna finds it feasible with the required corrections,
-but implementation and protected fault-injection qualification remain open.
+before implementation. See [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md). Ordinary mounted-instance recovery has a corrected
+design; forced instance teardown can hide last-handle cleanup. Owner clarification of that exception is pending before kernel
+implementation; protected fault-injection qualification remains open.
 
 **2026-10-11 — VM restoration.** Independently verified restoration means all of:
 
@@ -205,6 +206,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     live dispatcher, startup recovery and named-file notification remain pending.
   - [x] Anchored native parent observer (`3df7aa97`) without child opens, using complete repeated 128-bit directory enumeration;
     all 14 buffer/native-handle cases pass in each agent profile. Authenticated driver-anchor export and live recovery remain pending.
+  - [ ] Verify named-file recovery guidance, exact owner-session/SID delivery and structured diagnostics; 17 agent cases prepared.
+    The notification helper is not connected to the live recovery dispatcher and cannot clear a hold.
+  - [ ] Resolve the [forced-instance callback cutoff](evidence/2026-10-11/t5-native-instance-teardown-feasibility-luna6.md) with the owner;
+    a same-boot service restart cannot supply a lost cleanup receipt. No exceptional restart remedy is approved yet.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.

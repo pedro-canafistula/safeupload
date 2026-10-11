@@ -171,6 +171,18 @@ recovery hold. Use the existing independent observer, Verifier and separate VM r
 
 ## Local lifetime and required verification
 
+**Forced-instance boundary — owner clarification pending.** The
+[focused feasibility review](evidence/2026-10-11/t5-native-instance-teardown-feasibility-luna6.md) identifies a limit in the construction:
+after `InstanceTeardownStart`, Filter Manager stops invoking pre/post callbacks for new I/O on that instance, including a later app
+cleanup. Referencing the instance does not restore callback coverage; the query-teardown veto applies only to manual detach.
+Keep the durable accepted/unresolved hold when exact cleanup evidence is lost. The proposed named-file/full-Windows-restart remedy
+needs an owner exception to the universal last-handle guarantee; it is not authorized by this note. Its existing qualified-boot
+proof remains sound only if the feature's mandatory-service-stop prohibition stays enabled and a coverage-lost native record stays
+in the driver's global rundown map: voluntary unload must veto before unregister, not wait for a callback that cannot arrive.
+OS shutdown skips FilterUnloadCallback; Fast Startup retains that driver/map and cannot qualify as a new lifetime.
+Do not implement the dependent native kernel path before that decision. The pre-unregister drain below is a prerequisite while
+callback coverage remains intact, not proof that every forced instance can be drained after its callback cutoff.
+
 Object references preserve allocation, not the native open after last-handle cleanup. Disposition must use a still-open object at
 PASSIVE_LEVEL. Drop the driver's own handle holds before waiting for exact last-close completion; do not keep the app's own open alive
 with a service/kernel handle. Context ownership must not create a FILE_OBJECT/context reference cycle. Nonpaged completion bookkeeping
