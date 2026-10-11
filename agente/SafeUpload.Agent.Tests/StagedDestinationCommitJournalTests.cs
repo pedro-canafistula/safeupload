@@ -355,4 +355,26 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
             Guid.NewGuid(), Locator(), 0, CancellationToken.None));
         Assert.Equal(1, await Allocate(journal, destination, Guid.NewGuid()));
     }
+
+    [Fact]
+    public async Task Transfer_ids_cannot_cross_save_and_delete_roles_and_empty_intents_require_the_empty_digest()
+    {
+        var journal = Journal(); var destination = Destination(); var save = Guid.NewGuid();
+        await Allocate(journal, destination, save);
+        var binding = Binding();
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Allocation, CancellationToken.None))
+        {
+            await Assert.ThrowsAsync<IOException>(() => journal.AdmitPublicDeleteAsync(turn,
+                binding with { TransferId = save }, Locator(), 0, CancellationToken.None));
+            await journal.AdmitPublicDeleteAsync(turn, binding, Locator(), 0, CancellationToken.None);
+            await Assert.ThrowsAsync<IOException>(() => journal.ReserveSaveGenerationAsync(turn,
+                binding.TransferId, Locator(), 0, CancellationToken.None));
+        }
+        using var physical = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.PhysicalCommit, CancellationToken.None);
+        await Assert.ThrowsAsync<ArgumentException>(() => journal.BeginDestinationPublicationAsync(physical,
+            Guid.NewGuid(), save, 1, _publicIdentity, _temporaryIdentity, 0, new string('A', 64), CancellationToken.None));
+        Assert.Null((await journal.ReadDestinationHeadAsync(destination, CancellationToken.None))!.PendingCommit);
+    }
 }

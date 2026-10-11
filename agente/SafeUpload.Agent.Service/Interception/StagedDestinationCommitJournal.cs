@@ -214,9 +214,11 @@ public sealed partial class StagedTransferJournal
             var head = await ReadDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false)
                 ?? NewDestinationHead(turn.Destination, locator);
             RequireNoPendingPhysicalCommit(head);
+            if (head.Deletes.Any(d => d.Binding.TransferId == transferId))
+                throw new IOException("A delete transfer ID cannot be reused for a save allocation.");
             if (head.CurrentSaveTransferId == transferId)
             {
-                if (retainedManifestHighWater > head.MaxAllocated)
+                if (retainedManifestHighWater > head.MaxAllocated || head.CurrentSaveGeneration <= head.CommittedDelete)
                     throw new IOException("The allocation replay conflicts with a later manifest head.");
                 return head.CurrentSaveGeneration;
             }
@@ -242,6 +244,8 @@ public sealed partial class StagedTransferJournal
             var head = await ReadDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false)
                 ?? NewDestinationHead(turn.Destination, locator);
             RequireNoPendingPhysicalCommit(head);
+            if (head.CurrentSaveTransferId == binding.TransferId)
+                throw new IOException("A save transfer ID cannot be reused for a public delete.");
             if (head.Deletes.FirstOrDefault(d => d.Binding.TransferId == binding.TransferId ||
                     d.Binding.RequestNonce == binding.RequestNonce) is { } replay)
             {
@@ -423,7 +427,7 @@ public sealed partial class StagedTransferJournal
         StagedStageIdentity temporaryIdentity, long length, string digest, CancellationToken token)
     {
         turn.Require(this, StagedDestinationTurnPurpose.PhysicalCommit);
-        if (operationId == Guid.Empty || transferId == Guid.Empty || length < 0 || !IsExactDigest(digest))
+        if (operationId == Guid.Empty || transferId == Guid.Empty || length < 0 || !IsMeasuredDigest(length, digest))
             throw new ArgumentException("Publication requires an exact measured intent.");
         RequireSameVolumeIdentity(turn.Destination, temporaryIdentity);
         if (expectedPublicIdentity is not null) RequireSameVolumeIdentity(turn.Destination, expectedPublicIdentity);
@@ -538,6 +542,9 @@ public sealed partial class StagedTransferJournal
     private static bool IsExactDigest(string? digest) => digest is { Length: 64 } &&
         digest.All(c => c is >= '0' and <= '9' or >= 'A' and <= 'F');
 
+    private static bool IsMeasuredDigest(long? length, string? digest) => length is >= 0 && IsExactDigest(digest) &&
+        (length != 0 || digest == EmptySha256Hex);
+
     private string DestinationHeadPath(StagedDestinationIdentity destination) =>
         Path.Combine(_directory, "destination-" + destination.StorageKey + ".state");
 
@@ -624,7 +631,7 @@ public sealed partial class StagedTransferJournal
                 case StagedDestinationMutation.Publication:
                     if (intent.TransferId != head.CurrentSaveTransferId || intent.Generation != head.CurrentSaveGeneration ||
                         intent.Generation <= head.CommittedDelete || intent.Generation <= head.LatestPublished ||
-                        intent.TemporaryIdentity is null || intent.Length is not >= 0 || !IsExactDigest(intent.Sha256Hex) ||
+                        intent.TemporaryIdentity is null || !IsMeasuredDigest(intent.Length, intent.Sha256Hex) ||
                         acceptedIdentities.Length != 0) throw new InvalidDataException("Invalid publication intent.");
                     RequireSameVolumeIdentity(destination, intent.TemporaryIdentity);
                     break;
@@ -650,29 +657,29 @@ public sealed partial class StagedTransferJournal
             throw new InvalidDataException("A provisional physical mutation lost its durable intent.");
         if (head.LastMutationResult is { } result)
         {
-            var intent = result.Intent;
-            if (intent is null || intent.OperationId == Guid.Empty || !Enum.IsDefined(intent.Mutation) ||
-                intent.Generation < 0 || intent.Generation > head.MaxAllocated)
+            var completedIntent = result.Intent;
+            if (completedIntent is null || completedIntent.OperationId == Guid.Empty || !Enum.IsDefined(completedIntent.Mutation) ||
+                completedIntent.Generation < 0 || completedIntent.Generation > head.MaxAllocated)
                 throw new InvalidDataException("Invalid physical mutation result.");
-            if (intent.ExpectedPublicIdentity is not null) RequireSameVolumeIdentity(destination, intent.ExpectedPublicIdentity);
-            switch (intent.Mutation)
+            if (completedIntent.ExpectedPublicIdentity is not null) RequireSameVolumeIdentity(destination, completedIntent.ExpectedPublicIdentity);
+            switch (completedIntent.Mutation)
             {
                 case StagedDestinationMutation.Publication:
-                    if (intent.TransferId == Guid.Empty || intent.Generation == 0 || intent.TemporaryIdentity is null ||
-                        intent.Length is not >= 0 || !IsExactDigest(intent.Sha256Hex) ||
-                        (result.Succeeded && (head.LatestPublished != intent.Generation ||
-                            head.PublishedIdentity != intent.TemporaryIdentity)))
+                    if (completedIntent.TransferId == Guid.Empty || completedIntent.Generation == 0 || completedIntent.TemporaryIdentity is null ||
+                        !IsMeasuredDigest(completedIntent.Length, completedIntent.Sha256Hex) ||
+                        (result.Succeeded && (head.LatestPublished != completedIntent.Generation ||
+                            head.PublishedIdentity != completedIntent.TemporaryIdentity)))
                         throw new InvalidDataException("Invalid durable publication result.");
-                    RequireSameVolumeIdentity(destination, intent.TemporaryIdentity);
+                    RequireSameVolumeIdentity(destination, completedIntent.TemporaryIdentity);
                     break;
                 case StagedDestinationMutation.DeleteDisposition:
-                    if (intent.TransferId == Guid.Empty || intent.Generation == 0 || intent.ExpectedPublicIdentity is null ||
-                        intent.TemporaryIdentity is not null || intent.Length is not null || intent.Sha256Hex is not null)
+                    if (completedIntent.TransferId == Guid.Empty || completedIntent.Generation == 0 || completedIntent.ExpectedPublicIdentity is null ||
+                        completedIntent.TemporaryIdentity is not null || completedIntent.Length is not null || completedIntent.Sha256Hex is not null)
                         throw new InvalidDataException("Invalid durable disposition result.");
                     break;
                 case StagedDestinationMutation.ClearDisposition:
-                    if (intent.TransferId != Guid.Empty || intent.Generation != 0 || intent.ExpectedPublicIdentity is null ||
-                        intent.TemporaryIdentity is not null || intent.Length is not null || intent.Sha256Hex is not null)
+                    if (completedIntent.TransferId != Guid.Empty || completedIntent.Generation != 0 || completedIntent.ExpectedPublicIdentity is null ||
+                        completedIntent.TemporaryIdentity is not null || completedIntent.Length is not null || completedIntent.Sha256Hex is not null)
                         throw new InvalidDataException("Invalid durable clear result.");
                     break;
             }
