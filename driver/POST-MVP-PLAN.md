@@ -162,6 +162,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     failed-allocation receipts, paging rundown and RPC/worker pins remain. Public-delete backends and complete teardown rescope are still open.
   - [x] Identity-keyed destination head/commit queue and ordinary-delete journal layer (`b5c2d13f`, `fe529a2d`); 19 new cases pass in
     each agent profile. Durable accepted reservations release locks while waiting; only newer Published suppresses a delete.
+  - [x] Caller CREATE-subject snapshot, separate NTFS-checked backend factory and exact authenticated service-process hold
+    (`334f11af`–`4e070ab2`); normal builds omit the backend. The factory is not yet connected to public-delete handling.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
@@ -170,12 +172,12 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: driver `028a1b66`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator
-([summary](evidence/2026-10-11/exact-t5-strip1-summary.txt),
-[normal Debug](evidence/2026-10-11/exact-t5-strip1-normal-wdk.txt),
-[feature Debug](evidence/2026-10-11/exact-t5-strip1-owned-feature-wdk.txt),
-[normal Release](evidence/2026-10-11/exact-t5-strip1-normal-release-wdk.txt),
-[feature Release](evidence/2026-10-11/exact-t5-strip1-owned-feature-release-wdk.txt)). Agent `fe529a2d` (unchanged in `10511025`)
+Latest static gates: driver `4e070ab2`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator
+([summary](evidence/2026-10-11/exact-t5-public-backend5-summary.txt),
+[normal Debug](evidence/2026-10-11/exact-t5-public-backend5-normal-wdk.txt),
+[feature Debug](evidence/2026-10-11/exact-t5-public-backend5-owned-feature-wdk.txt),
+[normal Release](evidence/2026-10-11/exact-t5-public-backend5-normal-release-wdk.txt),
+[feature Release](evidence/2026-10-11/exact-t5-public-backend5-owned-feature-release-wdk.txt)). Agent `fe529a2d` (unchanged through `4e070ab2`)
 passed **761/761** per normal profile and **825/825** per feature profile, all discovered cases executed once without skips; the
 19 new destination-journal cases ran in every profile. Agent and tray builds passed at 0/0
 ([matrix output](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-summary.txt),
