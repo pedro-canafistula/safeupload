@@ -1,0 +1,25 @@
+{
+  "CheckedUTC": "2026-10-11T08:47:18.190535+00:00",
+  "CaptureReceiptSHA256": "a4fc654e0345d8d08daf9f0145502b4335d6ba3078bb8182c87145516303522a",
+  "Command": [
+    "/usr/bin/python3",
+    "-B",
+    "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-matrix-v20-required-1011-r5/src/driver/scripts/Invoke-ExactAgentMatrixBuild.SelfCheck.py"
+  ],
+  "ExitCode": 0,
+  "ControlLogSHA256": "00ac6111f6c68ef2fabf043a91e7967dac17dba49ec1cff339c9fc123ca79602",
+  "ControlTestMethods": 8,
+  "SyntheticScenarios": 141,
+  "MandatoryMethods": 19,
+  "ExactEpochTheoryCases": 2,
+  "ExactReceiptTheoryCases": 3,
+  "ExactNewLegacyFactCases": 1,
+  "Profiles": 4,
+  "InMemoryPythonCompileCount": 5,
+  "AllSixLiveAndFrozenPinsUnchanged": true,
+  "IndependentReviewPending": true,
+  "WindowsTestsExecuted": false,
+  "SourceUploaded": false,
+  "VMChanged": false,
+  "GitMutation": false
+}

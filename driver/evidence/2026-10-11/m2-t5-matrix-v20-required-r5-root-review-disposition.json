@@ -1,0 +1,17 @@
+{
+  "CheckedUTC": "2026-10-11T08:52:14.996633+00:00",
+  "CaptureReceiptSHA256": "a4fc654e0345d8d08daf9f0145502b4335d6ba3078bb8182c87145516303522a",
+  "Disposition": "GO_FROZEN_MATRIX_R5_TOOLS_FOR_FRESH_DIAGNOSTIC_WINDOWS_MATRIX_ONLY",
+  "IndependentReport": "luna-t5-matrix-v20-required-r5-independent-review.md",
+  "IndependentReportSHA256": "bb2b77bfd3fd9f8da7d21d1156e84d41f6d92cc2237dc5604ed39b955f9a8b50",
+  "MandatoryMethodsEveryProfile": 19,
+  "ExactEpochTheoryCasesEveryProfile": 2,
+  "ExactReceiptTheoryCasesEveryProfile": 3,
+  "ExactNewLegacyFactCasesEveryProfile": 1,
+  "RootReadCompleteReportAndVerifiedAllSixLiveAndFrozenPins": true,
+  "RootOfflineResultSHA256": "d30f0c74fe67f1f77fbd2ca76ce065fb71190d23958e592203400202a8865ad4",
+  "WindowsMatrixQualified": false,
+  "PairQualified": false,
+  "DriverInstalledOrLoaded": false,
+  "GitMutation": false
+}

@@ -1,0 +1,33 @@
+{
+  "CapturedUTC": "2026-10-11T08:46:39.824703+00:00",
+  "Candidate": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-matrix-v20-required-1011-r5/src",
+  "SourceCount": 6,
+  "SourceHashes": {
+    "driver/scripts/Build-ExactAgentMatrix.ps1": "90aebd88352c4c23265508a244437895d0a84218bc7815d031de7e81bec45ac7",
+    "driver/scripts/Invoke-ExactAgentMatrixBuild.SelfCheck.py": "4ab066f1d1f691f155bb62126e1dc389a311f6c61e05cf0db238ca84b9fa74f6",
+    "driver/scripts/Invoke-ExactAgentMatrixBuild.py": "ecd48f18f81542398e7a2aaab0d8e8e932d6d42122797a4150c6b9d971a9c4ca",
+    "driver/scripts/Prepare-ExactAgentWorktreeSource.py": "137002d23758ca8bd700abce891c2e3e0f7b43614eedfd38ffa944ba0b27de83",
+    "driver/scripts/Prepare-ExactWorktreeSource.py": "67386727e63ac8ff961548101276bdaa4b9bf0d0f970d23e801a915e6adff107",
+    "driver/scripts/remote_ps.py": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b"
+  },
+  "ChangedSincePrior": [
+    "driver/scripts/Invoke-ExactAgentMatrixBuild.SelfCheck.py",
+    "driver/scripts/Invoke-ExactAgentMatrixBuild.py"
+  ],
+  "PriorCaptureReceiptSHA256": "b737dee67cce0a14b45d566f6fde4689325d8acf6470c027f39929b85503f3b7",
+  "AuthorNoteSHA256": "1fd2b0e7e7cb67a956e1e309a9d969ee317a8d2337739083f0632c29f8ac2266",
+  "AuthorFrozen": true,
+  "SourceFileSetClosed": true,
+  "CaptureCheck": "Two no-follow stable live reads and post-copy metadata plus frozen equality",
+  "MandatoryMethodsAllFourProfiles": 19,
+  "ExactEpochTheoryCasesAllFourProfiles": 2,
+  "ExactReceiptTheoryCasesAllFourProfiles": 3,
+  "IndependentReviewPending": true,
+  "SourceAccepted": false,
+  "BuildQualified": false,
+  "WindowsMatrixQualified": false,
+  "PairQualified": false,
+  "SourceUploaded": false,
+  "VMChanged": false,
+  "GitMutation": false
+}

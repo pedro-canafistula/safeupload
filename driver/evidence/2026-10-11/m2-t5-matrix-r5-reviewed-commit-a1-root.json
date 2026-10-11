@@ -1,0 +1,29 @@
+{
+  "ActualPassingTests": 3064,
+  "ActualRequiredV20PassingCases": 104,
+  "ActualWindowsMatrixEvidence": "m2-t5-agent-v20-r13-diag-a1-root-result.json",
+  "EvidenceSHA256": {
+    "driver/evidence/2026-10-11/luna-t5-matrix-v20-required-r5-independent-review.md": "bb2b77bfd3fd9f8da7d21d1156e84d41f6d92cc2237dc5604ed39b955f9a8b50",
+    "driver/evidence/2026-10-11/m2-t5-matrix-v20-required-r5-root-controls.txt": "00ac6111f6c68ef2fabf043a91e7967dac17dba49ec1cff339c9fc123ca79602",
+    "driver/evidence/2026-10-11/m2-t5-matrix-v20-required-r5-root-offline-result.json": "d30f0c74fe67f1f77fbd2ca76ce065fb71190d23958e592203400202a8865ad4",
+    "driver/evidence/2026-10-11/m2-t5-matrix-v20-required-r5-root-review-capture.json": "a4fc654e0345d8d08daf9f0145502b4335d6ba3078bb8182c87145516303522a",
+    "driver/evidence/2026-10-11/m2-t5-matrix-v20-required-r5-root-review-disposition.json": "c8d52efb733f102e77b1ee7674b291e430414c67c262f0d7a6e0473f9328d48d"
+  },
+  "PairQualified": false,
+  "ProductVMStarted": false,
+  "Purpose": "Commit reviewed reproducible Windows diagnostic build/test tooling with exact required case and partition checks",
+  "RecordedUTC": "2026-10-11T12:55:43.584131+00:00",
+  "RequiredV20MethodsEveryProfile": 19,
+  "ReviewedSelfCheckMethods": 8,
+  "ReviewedSyntheticScenarios": 141,
+  "RuntimeQualified": false,
+  "SourceHashes": {
+    "driver/scripts/Build-ExactAgentMatrix.ps1": "90aebd88352c4c23265508a244437895d0a84218bc7815d031de7e81bec45ac7",
+    "driver/scripts/Invoke-ExactAgentMatrixBuild.SelfCheck.py": "4ab066f1d1f691f155bb62126e1dc389a311f6c61e05cf0db238ca84b9fa74f6",
+    "driver/scripts/Invoke-ExactAgentMatrixBuild.py": "ecd48f18f81542398e7a2aaab0d8e8e932d6d42122797a4150c6b9d971a9c4ca",
+    "driver/scripts/Prepare-ExactAgentWorktreeSource.py": "137002d23758ca8bd700abce891c2e3e0f7b43614eedfd38ffa944ba0b27de83",
+    "driver/scripts/Prepare-ExactWorktreeSource.py": "67386727e63ac8ff961548101276bdaa4b9bf0d0f970d23e801a915e6adff107",
+    "driver/scripts/remote_ps.py": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b"
+  },
+  "TwoStableReadsEqualFrozen": true
+}
