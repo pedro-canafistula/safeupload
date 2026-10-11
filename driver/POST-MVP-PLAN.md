@@ -199,10 +199,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [READY WITH CORRECTIONS Luna review](evidence/2026-10-11/t5-automatic-native-delete-recovery-review-luna6.md).
     [Builder parent-query control](evidence/2026-10-11/t5-native-pending-link-control-builder-1011a1.txt) identifies a pending original
     and exact absence after last reader close; protected runtime and automatic-recovery fault rows remain pending.
-  - [ ] Native accepted/unresolved journal component with immutable on-close kind, current-session cleanup/qualified-boot proof,
-    automatic queue wake and retained generation floor; 24 new component cases prepared. The
+  - [x] Native accepted/unresolved journal component (`960ba2d7`) with immutable on-close kind, current-session cleanup/qualified-boot proof,
+    automatic queue wake and retained generation floor; all 24 new component cases pass in each agent profile. The
     [boot-lifetime review](evidence/2026-10-11/t5-native-boot-lifetime-design-review-luna6.md) rejects counter-only release;
-    revised agent matrix/builds, live dispatcher, startup recovery and named-file notification remain pending.
+    live dispatcher, startup recovery and named-file notification remain pending.
   - [ ] Anchored native parent observer implemented without child opens, using complete repeated 128-bit directory enumeration;
     14 buffer/native-handle cases prepared. Its agent matrix and authenticated driver-anchor exporter remain pending.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
@@ -216,20 +216,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: driver `3be0fe71`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator
-([summary](evidence/2026-10-11/exact-t5-public-caller2-summary.txt),
-[normal Debug](evidence/2026-10-11/exact-t5-public-caller2-normal-wdk.txt),
-[feature Debug](evidence/2026-10-11/exact-t5-public-caller2-owned-feature-wdk.txt),
-[normal Release](evidence/2026-10-11/exact-t5-public-caller2-normal-release-wdk.txt),
-[feature Release](evidence/2026-10-11/exact-t5-public-caller2-owned-feature-release-wdk.txt)). Agent `fe529a2d` (unchanged through `3be0fe71`)
-passed **761/761** per normal profile and **825/825** per feature profile, all discovered cases executed once without skips; the
-19 new destination-journal cases ran in every profile. Agent and tray builds passed at 0/0
-([matrix output](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-summary.txt),
-[execution check](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-root-readout.json),
-raw TRX: [normal Debug](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-normal-debug-results-agent-tests.trx),
-[normal Release](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-normal-release-results-agent-tests.trx),
-[feature Debug](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-feature-debug-results-agent-tests.trx),
-[feature Release](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-feature-release-results-agent-tests.trx)). No revised pair has booted.
+Latest static gates: driver `960ba2d7`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator; agent `960ba2d7`,
+**785/785** per normal profile and **849/849** per feature profile, all discovered cases executed once without skips and service/tray
+builds at 0/0 ([curated gate readout](evidence/2026-10-11/t5-native-recovery2-static-gates.md)). Raw build output, TRX and execution
+checks remain local under the `exact-t5-native-recovery2` and `exact-agent-matrix-t5-native-recovery2` prefixes. No revised pair has booted.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
 [matrix self-checks](evidence/2026-10-11/t5-agent-matrix-runner-selfcheck.txt) pass.
