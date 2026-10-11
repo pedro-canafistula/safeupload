@@ -1,0 +1,26 @@
+{
+  "AllFourInputFilesStableAndRetainedByteExact": true,
+  "BaselineQualified": false,
+  "DiskBackingChainInspectionSucceeded": false,
+  "DomainCount": 5,
+  "EvidenceSHA256": {
+    "m2-t5-domain-inputs-readonly-a1-root.json": "3fad6cee0fb5ba684d7d816cf327843a441b15b612d6ebed0aefbe3c5838ccc5",
+    "m2-t5-domain-inputs-readonly-a1-root.py": "49167288051a9b4b5b0fb78183aac9877cdebb922a99ecccc424fe12dc315094",
+    "m2-t5-selected-storage-inputs-readonly-a1-root.json": "b1a855f61e0465260a00012d86dc114a9b8f84c3b99235ec28296d1238e4ddfe",
+    "m2-t5-selected-storage-inputs-readonly-a1-root.py": "e68c090870427eb34aef8f7a8a178c61b5505fb5e9a4f82196de4ad05eae9f5c"
+  },
+  "HostPolicyApplied": false,
+  "PathCustodyQualified": false,
+  "PermissionAndCapacityFactsAreCaptureTimeObservations": true,
+  "RawXMLContentsEmittedOrIncludedInGit": false,
+  "ReportedRootAvailableBytes": 58347741184,
+  "ReportedSelectedTopFileBytes": 466157568,
+  "ReportedSharedDiskFileBytes": 78220165120,
+  "ReportedStorageAvailableBytes": 115728896000,
+  "RequestDrainEstablished": false,
+  "RuntimeQualified": false,
+  "SelectedTPMMemberInspectionSucceeded": false,
+  "StoragePoolCount": 2,
+  "TwoInactiveXMLAndStateReadsEqual": true,
+  "VMChanged": false
+}
