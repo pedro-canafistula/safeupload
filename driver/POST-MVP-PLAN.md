@@ -178,6 +178,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
+  - [x] Prepare clean/CPF forced-order coordinator gates and no-empty-leftover verdicts; Windows PowerShell 5.1 parsing,
+    168 schema assertions and actual unprotected NTFS actor controls pass ([raw output](evidence/2026-10-11/t5-forced-order-harness-controls-1011a5.txt));
+    14 host evidence-rejection controls pass ([output](evidence/2026-10-11/t5-host-forced-order-verdict-control-1011a1.txt)). Protected coordinator runs remain pending.
 - [ ] Run real Notepad clean/CPF Save As in ordinary, runtime-Verifier and boot-Verifier modes, independently observing destination bytes.
 - [ ] Add compatibility/ordering rows: Explorer New Text Document → rename → another process opens it in Notepad; empty copy/move;
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.

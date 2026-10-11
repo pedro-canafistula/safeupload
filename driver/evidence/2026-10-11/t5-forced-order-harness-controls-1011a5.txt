@@ -1,0 +1,15 @@
+Builder=DESKTOP-O1LP5DG
+PSVersion=5.1.19041.6456
+PS51Parse=PASS;File=notepad-coordinator.ps1
+PS51Parse=PASS;File=notepad-coordinator.SelfCheck.ps1
+PS51Parse=PASS;File=notepad-actor.ps1
+PS51Parse=PASS;File=notepad-actor.SelfCheck.ps1
+T5 coordinator schema self-check PASS (168 assertions).
+PowerShell51ActorParse=PASS
+ExistingNameFailedProbe=PASS; identity=4AD66344D6632F7F:0000000000000000:000C0000000F089A; test-create=80 test-delete=skipped-create-failed save-create=0 save-write=0 save-close=0
+NewNameProbe=PASS; SplitNativeControl=True; test-create=0 test-close=0 test-delete=0 save-create=0 save-write=0 save-close=0
+HeldWriterDeleteBeforeClose=PASS; test-create=0 test-delete=0 test-close=0 save-create=0 save-write=0 save-close=0
+VisibleEmptyDeleteAfterClose=PASS; observedIdentity=4AD66344D6632F7F:0000000000000000:000A0000000F089E; test-create=0 test-close=0 test-delete=0 save-create=0 save-write=0 save-close=0
+HeldFailedCreatePreservesIdentity=PASS; test-create=80 test-delete=skipped-create-failed save-create=0 save-write=0 save-close=0
+NativeActorControl=PASS; ProductQualified=False; ProtectedDestination=False
+ForcedOrderHarnessComponentGate=PASS;ProductQualified=False;ProtectedCoordinatorRunPending=True
