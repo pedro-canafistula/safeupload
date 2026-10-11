@@ -5,7 +5,8 @@ namespace SafeUpload.Agent.Service.Interception;
 
 // Emit only from the live recovery dispatcher after reading the exact durable
 // destination head. This records a diagnosis and guidance, never clears a hold
-// or offers an override. The native dispatcher is not connected yet.
+// or offers an override. Startup refusal uses this path; live last-close
+// reconciliation remains pending the shared physical commit integration.
 internal static class StagedNativeRecoveryNotifications
 {
     internal static bool Publish(NotificationHub hub, ILogger logger, StagedDestinationHead head,

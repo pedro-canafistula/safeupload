@@ -1,6 +1,9 @@
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
 using SafeUpload.Agent.Minifilter;
+using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Service.Interception;
+using SafeUpload.Agent.Service.Notifications;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -115,6 +118,68 @@ public sealed class StagedNativeStartupRecoveryTests : IDisposable
         Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved,
             Assert.Single(Assert.Single(await journal.ReadDestinationHeadsAsync(CancellationToken.None)).Deletes).State);
         Assert.False(File.Exists(Path.Combine(JournalPath, "driver-epoch.state")));
+    }
+
+    [Fact]
+    public async Task Startup_native_hold_emits_named_owner_scoped_guidance_without_accepting_epoch_or_releasing_hold()
+    {
+        var journal = Journal(); var volumeId = Guid.NewGuid(); var operation = Guid.NewGuid();
+        var destination = new StagedDestinationIdentity(new(7, 11, 12), new(7, 21, 22), false, "held.txt", volumeId);
+        var binding = new StagedPublicDeleteBinding(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 10,
+            new(7, 91, 92), 1234, 123456, 1, "S-1-5-21-100-200-300-1001", 41, volumeId);
+        string locator = Path.Combine(_workspace.Root, "held.txt");
+        StagedPublicDeleteRecord original;
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Allocation, CancellationToken.None))
+            original = await journal.BeginNativeDeleteOnCloseCreateAsync(turn, binding, operation, locator, 0, CancellationToken.None);
+        var record = new Emissions();
+        var hub = new NotificationHub(record, NullLogger<NotificationHub>.Instance);
+        using var owner = hub.Subscribe(1, binding.OwnerSid);
+        using var otherUser = hub.Subscribe(1, "S-1-5-21-100-200-300-1002");
+        using var otherSession = hub.Subscribe(2, binding.OwnerSid);
+        using var unscoped = hub.Subscribe();
+        var startup = new StagedNativeStartupRecovery(journal, () => Replay(), _ => Task.CompletedTask,
+            (head, delete) => StagedNativeRecoveryNotifications.Publish(hub, NullLogger.Instance,
+                head, delete, StagedRecoveryAdvice.CollectDiagnostics, "NativeRecoveryUnresolved"));
+        await Assert.ThrowsAsync<IOException>(() => startup.Start(CancellationToken.None));
+        Assert.True(owner.Reader.TryRead(out var delivered));
+        var notice = Assert.IsType<TransferNotification>(delivered);
+        Assert.Equal(locator, notice.FileName); Assert.Equal(binding.TransferId, notice.TransferId);
+        Assert.Equal(StagedRecoveryAdvice.CollectDiagnostics, notice.RecoveryAdvice);
+        Assert.False(otherUser.Reader.TryRead(out _)); Assert.False(otherSession.Reader.TryRead(out _));
+        Assert.False(unscoped.Reader.TryRead(out _));
+        Assert.Equal(notice, Assert.Single(record.Notices));
+        Assert.Equal(original, Assert.Single(Assert.Single(await Journal().ReadDestinationHeadsAsync(CancellationToken.None)).Deletes));
+        Assert.True(startup.HasFailed); Assert.False(startup.TryGetResult(_driver, out _));
+        Assert.False(File.Exists(Path.Combine(JournalPath, "driver-epoch.state")));
+    }
+
+    [Fact]
+    public async Task Failed_startup_hold_reporting_cannot_accept_epoch_or_release_the_durable_barrier()
+    {
+        var journal = Journal(); var volumeId = Guid.NewGuid();
+        var destination = new StagedDestinationIdentity(new(7, 11, 12), new(7, 21, 22), false, "held.txt", volumeId);
+        var binding = new StagedPublicDeleteBinding(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 10,
+            new(7, 91, 92), 1234, 123456, 1, "S-1-5-21-100-200-300-1001", 41, volumeId);
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Allocation, CancellationToken.None))
+            await journal.BeginNativeDeleteOnCloseCreateAsync(turn, binding, Guid.NewGuid(),
+                Path.Combine(_workspace.Root, "held.txt"), 0, CancellationToken.None);
+        int calls = 0;
+        var startup = new StagedNativeStartupRecovery(journal, () => Replay(), _ => Task.CompletedTask,
+            (_, _) => { calls++; throw new IOException("Injected notification failure"); });
+        var error = await Assert.ThrowsAsync<IOException>(() => startup.Start(CancellationToken.None));
+        Assert.Contains("Injected notification failure", error.Message); Assert.Equal(1, calls);
+        Assert.True(startup.HasFailed); Assert.False(startup.TryGetResult(_driver, out _));
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved,
+            Assert.Single(Assert.Single(await Journal().ReadDestinationHeadsAsync(CancellationToken.None)).Deletes).State);
+        Assert.False(File.Exists(Path.Combine(JournalPath, "driver-epoch.state")));
+    }
+
+    private sealed class Emissions : INotificationRecord
+    {
+        internal readonly List<AgentNotification> Notices = [];
+        public void Append(AgentNotification notification, uint? targetSessionId) => Notices.Add(notification);
     }
 }
 #endif

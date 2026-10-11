@@ -12,14 +12,16 @@ internal sealed class StagedNativeStartupRecovery
     private readonly StagedTransferJournal _journal;
     private readonly Func<NativeRecordReplay> _readAuthenticatedReplay;
     private readonly Func<CancellationToken, Task> _recoverPrivateStages;
+    private readonly Action<StagedDestinationHead, StagedPublicDeleteRecord>? _reportUnresolved;
     private bool _active = true;
     private StagedNativeRecoverySession? _session;
     private Task<(Guid Driver, StagedDriverEpochReconcileV20 Result)>? _preparation;
 
     internal StagedNativeStartupRecovery(StagedTransferJournal journal,
-        Func<NativeRecordReplay> readAuthenticatedReplay, Func<CancellationToken, Task> recoverPrivateStages)
-        => (_journal, _readAuthenticatedReplay, _recoverPrivateStages) =
-            (journal, readAuthenticatedReplay, recoverPrivateStages);
+        Func<NativeRecordReplay> readAuthenticatedReplay, Func<CancellationToken, Task> recoverPrivateStages,
+        Action<StagedDestinationHead, StagedPublicDeleteRecord>? reportUnresolved = null)
+        => (_journal, _readAuthenticatedReplay, _recoverPrivateStages, _reportUnresolved) =
+            (journal, readAuthenticatedReplay, recoverPrivateStages, reportUnresolved);
 
     internal Task Start(CancellationToken token)
     {
@@ -86,9 +88,23 @@ internal sealed class StagedNativeStartupRecovery
                     var held = recoveredHeads.Where(h => h.Deletes.Any(d => d.State == StagedPublicDeleteState.AcceptedUnresolved ||
                         (d.Kind == StagedPublicDeleteKind.NativeOnClose && d.State == StagedPublicDeleteState.Admitted &&
                          (h.Destination.MountManagerVolumeId is null || d.Binding.MountManagerVolumeId is null))))
-                        .Select(h => h.Locator).ToArray();
+                        .ToArray();
                     if (held.Length != 0)
-                        throw new IOException("Native publication recovery remains unresolved: " + string.Join(", ", held));
+                    {
+                        // Report exact durable native holds through the live
+                        // connection's owner-scoped tray/diagnostic delivery.
+                        // Reporting can neither accept an epoch nor mutate a
+                        // destination head. No resolving trigger is promised
+                        // before the shared physical dispatcher is connected.
+                        foreach (var head in held)
+                            foreach (var delete in head.Deletes.Where(d => d.Kind == StagedPublicDeleteKind.NativeOnClose &&
+                                (d.State == StagedPublicDeleteState.AcceptedUnresolved ||
+                                 (d.State == StagedPublicDeleteState.Admitted &&
+                                  (head.Destination.MountManagerVolumeId is null || d.Binding.MountManagerVolumeId is null)))))
+                                _reportUnresolved?.Invoke(head, delete);
+                        throw new IOException("Native publication recovery remains unresolved: " +
+                            string.Join(", ", held.Select(h => h.Locator)));
+                    }
 
                     NativeRecordReplay final = _readAuthenticatedReplay();
                     if (final.DriverInstanceId != replay.DriverInstanceId || final.ConnectionEpoch != replay.ConnectionEpoch ||

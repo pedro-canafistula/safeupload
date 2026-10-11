@@ -250,7 +250,9 @@ public sealed class MinifilterInterceptor : BackgroundService
                 if (_stagingEnabled && _stageJournal is not null)
                 {
                     _nativeStartupRecovery = new(_stageJournal, port.ReadNativeRecordReplay,
-                        token => { RecoverStagingSubsystem(token); return Task.CompletedTask; });
+                        token => { RecoverStagingSubsystem(token); return Task.CompletedTask; },
+                        (head, delete) => StagedNativeRecoveryNotifications.Publish(_hub, _logger, head, delete,
+                            StagedRecoveryAdvice.CollectDiagnostics, "NativeRecoveryUnresolved"));
                     startupTask = _nativeStartupRecovery.Start(publishCancellation.Token);
                     _ = startupTask.ContinueWith(task => _logger.LogCritical(task.Exception,
                         "Authenticated stage startup recovery failed; requests/publication remain refused."),
