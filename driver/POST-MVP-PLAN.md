@@ -146,12 +146,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
 - [x] Owner reversal recorded 2026-10-11 in this plan and [MVP-PLAN.md](MVP-PLAN.md).
 - [x] [Source classification](evidence/2026-10-11/t5-empty-public-delete-component-classification.md) distinguishes EmptyHeld-only
   removal from independent identity, callback drain and cleanup protections; [native NTFS controls](evidence/2026-10-11/t5-ntfs-disposition-control-1011.txt) verify ordinary clear, on-close timing and parent DELETE_CHILD authority.
-- [ ] Finish [delete design](T5-DELETES.md), source classification and independent Luna design review before code.
-  - [ ] Private name release at last cleanup; retired exact-ID cleanup outside namespace locks; ordinary max+1 creates.
-  - [ ] Permission-checked public-delete generations, published-only cancellation, durable ordering and publication-collision waits.
-  - [ ] Reserve old enum numbers; migrate old EmptyHeld journals only after retirement reconciliation and fresh stable-length checks.
-- [ ] Review simpler unload semantics: voluntary veto for outstanding private work; mandatory teardown never waits on service.
-  Retained private-stage behavior and any changed product/failure policy need an owner decision before code.
+- [x] [Delete design](T5-DELETES.md), source classification and [independent Luna design review](evidence/2026-10-11/t5-empty-public-delete-design-review-luna6.md)
+  ready before code: private last-close name release, checked public deletes, durable ordering, reserved enum slots and guarded legacy migration.
+- [x] Simpler unload design reviewed in the same note: voluntary veto for outstanding private work; mandatory teardown drains local
+  references without waiting on the service. Startup retains private stages; adding a reaper or changing failure policy needs an owner decision.
 - [ ] Implement reviewed design; remove EmptyHeld/SupersededEmpty/AbandonedEmpty, EmptySavePrivate and CREATE_AFTER_PRIVATE_DISCARD /
   SuccessorReservation chains. Keep independent identity cleanup, local rundown and exact-ACK safeguards where applicable.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.

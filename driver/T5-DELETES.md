@@ -69,10 +69,11 @@ A successful ordinary disposition sets the version's shared delete-pending state
 DELETE-authorized handle can clear it, as verified on real NTFS both before and after the first handle's cleanup in the
 [native control](evidence/2026-10-11/t5-ntfs-disposition-control-1011.txt). Keep the existing stream-wide ordinary disposition;
 do not invent a per-handle ordinary-delete guarantee. FILE_DELETE_ON_CLOSE and supported FILE_DISPOSITION_ON_CLOSE state remain
-per handle, with their scheduled requests separate from effective ordinary delete-pending state. The native CREATE delete-on-close
-control allowed another open before creator cleanup, then refused opens after that cleanup; clearing ordinary disposition through
-another handle before cleanup did not cancel the scheduled on-close request. New opens and renames fail with STATUS_DELETE_PENDING
-after ordinary disposition or an on-close cleanup makes deletion effective, not merely because a handle has scheduled on-close.
+per handle. Preserve the existing private-view admission contract: scheduled on-close requests contribute to its aggregate pending
+state, and new private opens/renames receive STATUS_DELETE_PENDING until the requests are cleared or the version is retired. The
+existing probe-doc and probe-onclose assertions, including Win32 303 before private cleanup, stay unchanged. This existing private
+contract is stricter than the native public-file CREATE delete-on-close control, which allowed opens before creator cleanup and
+became pending afterward; that native timing governs the new public backend in section 4, not a waiver of private-row assertions.
 Cleanup folds an effective on-close request into persistent disposition; last-cleanup admission and
 create/rename transitions are serialized under StageNamespaceResource. The extended on-close control returned unsupported on the
 builder and is not evidence of qualification; the existing native extended-disposition rows remain required on the product VM.
@@ -174,8 +175,11 @@ Never certify a replacement or infer success
 from path absence without the prior exact accepted operation. A changed or ambiguous link blocks the destination for recovery.
 
 Ordinary disposition remains stream-wide. A FALSE request from another still-live DELETE-authorized proxy for that same public
-object may clear it under the same logical destination turn. Return its actual NTFS result; on success persist Canceled, release
-only that operation's owner tombstone/reservation and provisional publication barrier, and retain maxAllocated. A canceled delete
+object may clear it under the same logical destination turn. Return its actual NTFS result; a verified effective clear persists
+Canceled for all still-provisional accepted ordinary-delete intents, publication barriers and owner tombstones for that exact public
+object identity, across handles and owners. Reconcile them together before releasing its logical reservation and retain maxAllocated.
+An unrelated object, immutable completed delete, or later TRUE ordered after this clear is unaffected. Scheduled per-handle on-close
+requests are not canceled by ordinary FALSE; their later cleanup can establish a new effective pending disposition. A canceled delete
 does not commit an irreversible delete watermark or supersede still-current private content. No clear can resurrect an already
 physically deleted object. Multiple pending dispositions for the same exact object must reconcile with this shared NTFS state.
 FILE_DELETE_ON_CLOSE and supported FILE_DISPOSITION_ON_CLOSE are tracked per proxy handle separately; their durable intent and
@@ -185,13 +189,15 @@ results; the unsupported builder on-close probe is not evidence that those flags
 
 The FilterPort receive loop dispatches these transactions to bounded workers and remains available for create, seal, cleanup,
 cancel, acknowledgement and reconnect traffic. It must not await a destination queue turn, backend deletion or last-close event.
-Cancel before the physical operation revokes the permit and leaves the public object untouched; after NTFS accepted disposition,
-report that accepted result and reconcile or execute an explicit authorized clear. Cancellation/disconnect cannot pretend that an
+Cancel before the physical operation revokes that request's permit and leaves the public object untouched; after NTFS accepted disposition,
+report that accepted result and reconcile or execute an explicit authorized object-wide clear. Cancellation/disconnect cannot pretend that an
 already-applied mutation was undone. Recovery resumes only from exact durable intent/acceptance evidence; it never reopens a
 changed path under SYSTEM to regain a lost caller capability.
 
 The owner receives a tombstone when its checked delete request is admitted, so future owner open-by-name operations no longer reveal
-the old public version. A failed or canceled request removes only its own tombstone. Other processes retain the old name until the
+the old public version. A request that fails or is canceled before NTFS accepts its disposition removes only its own tombstone.
+After acceptance, cancellation retains the accepted result until reconciliation; a successful authorized ordinary FALSE clears all
+provisional tombstones for the exact object under the object-wide rule above. Other processes retain the old name until the
 service applies disposition, then new opens fail as delete-pending until last-close removal; existing handles keep Windows semantics.
 At physical completion, the service durably records the delete result and destination watermark under the journal gate. A later ordinary save gets a
 higher generation and can publish clean replacement bytes. A rejected/CPF version cannot restore or publish bytes.
@@ -209,13 +215,15 @@ delete is implemented, publication and delete need a shared per-destination comm
 
 1. Prepare inspection and temporary bytes outside the short destination commit turn.
 2. Enter a cancel-aware per-destination journal commit queue keyed by volume and normalized parent/name. The per-destination journal
-   commit lock is the serialization authority for both publication and delete and remains held across the physical rename/delete and its
-   durable terminal journal result. The global manifest metadata semaphore is separate: do not wait for the destination queue while
+   commit lock is the serialization authority for both publication and delete. Publication holds it across physical rename and durable
+   Published; deletion holds it across NTFS disposition and durable DispositionAccepted, then hands off to a durable reservation for
+   last-close completion. It never holds the lock while waiting for last close. The global manifest metadata semaphore is separate: do not wait for the destination queue while
    holding it.
 3. Inside the per-destination journal commit lock, reread the generation head and persist an exact commit intent containing operation
    ID, generation, expected destination identity, and temporary identity. Briefly take the global metadata semaphore only to persist
-   each journal update. Then validate the one-use permit, perform the atomic rename or delete, persist the terminal Published/Deleted
-   result, and release the per-destination lock.
+   each journal update. Then validate the one-use permit, perform atomic rename or ordinary disposition, and persist Published or
+   DispositionAccepted respectively. Release the per-destination lock; the delete reservation's later exact completion persists
+   PhysicalDeleteComplete under its own short continuation turn.
 4. On collision with a physical commit already inside this short turn, queue behind that turn and release all global locks while
    waiting. When admitted, reread the durable generation head before touching the public name. Cancellation before commit removes the
    queued request; after the durable intent/physical operation starts, cancellation cannot report the mutation as undone.
@@ -254,7 +262,8 @@ its actual Windows authorization; never claim a private discard removed a public
 Use a cancel-safe queue only for IRP-based callbacks that support it (for example, FltCbdqInsertIo); do not assume every callback form
 is cancellable. The product-facing delete must return the actual committed, superseded, denied, or failed result. Do not hold
 StageNamespaceResource, the global manifest metadata semaphore, or a spin lock while waiting for the destination turn. The
-per-destination journal commit lock itself remains held across the physical mutation.
+per-destination journal commit lock itself remains held across the short physical mutation and its corresponding durable result;
+the asynchronous last-close reservation is not a held lock.
 
 ## 5. Save As and Office behavior
 
