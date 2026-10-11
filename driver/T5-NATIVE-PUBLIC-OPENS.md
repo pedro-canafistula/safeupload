@@ -58,6 +58,14 @@ absence or a later object's existence alone is insufficient. Do not hold a desti
 silently change latency, or turn Publishing into Published to make the race pass. If this ordering cannot be implemented while
 preserving the owner's rules, ask the owner before adopting a different timing policy.
 
+The [builder control](evidence/2026-10-11/t5-native-delete-publication-control-1011a1.txt), using the existing publication flags
+REPLACE_IF_EXISTS | POSIX_SEMANTICS, succeeded before creator cleanup and preserved the successor's full identity/bytes after all old
+handles closed. After creator cleanup with another reader still open, both the native metadata open and publication rename returned
+Win32 5. The control deliberately fails its proposed zero-result assertion; this is not product qualification or evidence that the
+exceptional recovery hold can end. Do not assume POSIX rename bypasses native delete-pending. The review must distinguish exact
+automatic recovery from NTFS's remaining native restriction without silently claiming cancellation/completion or approving a new delay.
+Source: [native-delete-publication-control.ps1](scripts/t5/native-delete-publication-control.ps1); PS5.1 parse and encoder self-check passed.
+
 ## Owner decision: failure after NTFS accepts scheduled deletion
 
 T5-DELETES section 4.2 currently requires failed proxy construction to leave an unchanged backend. That cannot be promised for the
