@@ -1,0 +1,582 @@
+
+/usr/lib/modules/7.2.5-3-omarchy/build/vmlinux:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+ffffffff818bff60 <time_out_leases>:
+ffffffff818bff60:	call   ffffffff8133e2a0 <__fentry__>
+ffffffff818bff65:	sub    $0x40,%rsp
+ffffffff818bff69:	mov    %r12,0x20(%rsp)
+ffffffff818bff6e:	mov    0x160(%rdi),%r12
+ffffffff818bff75:	mov    0x28(%r12),%rax
+ffffffff818bff7a:	add    $0x28,%r12
+ffffffff818bff7e:	cmp    %rax,%r12
+ffffffff818bff81:	je     ffffffff818c006d <time_out_leases+0x10d>
+ffffffff818bff87:	mov    %rbx,0x10(%rsp)
+ffffffff818bff8c:	lea    -0x8(%rax),%rbx
+ffffffff818bff90:	mov    %r13,0x28(%rsp)
+ffffffff818bff95:	mov    %rdi,%r13
+ffffffff818bff98:	mov    %r14,0x30(%rsp)
+ffffffff818bff9d:	mov    %rsi,%r14
+ffffffff818bffa0:	mov    %rbp,0x18(%rsp)
+ffffffff818bffa5:	mov    %r15,0x38(%rsp)
+ffffffff818bffaa:	mov    (%rax),%rbp
+ffffffff818bffad:	sub    $0x8,%rbp
+ffffffff818bffb1:	jmp    ffffffff818bffcb <time_out_leases+0x6b>
+ffffffff818bffb3:	lea    0x8(%rbp),%rax
+ffffffff818bffb7:	mov    0x8(%rbp),%rdx
+ffffffff818bffbb:	mov    %rbp,%rbx
+ffffffff818bffbe:	cmp    %rax,%r12
+ffffffff818bffc1:	je     ffffffff818c0054 <time_out_leases+0xf4>
+ffffffff818bffc7:	lea    -0x8(%rdx),%rbp
+ffffffff818bffcb:	nopl   0x0(%rax,%rax,1)
+ffffffff818bffd0:	mov    0x90(%rbx),%rax
+ffffffff818bffd7:	test   %rax,%rax
+ffffffff818bffda:	je     ffffffff818bfff1 <time_out_leases+0x91>
+ffffffff818bffdc:	movq   $0x0,(%rsp)
+ffffffff818bffe4:	cmp    0x2147a15(%rip),%rax        # ffffffff83a07a00 <jiffies_64>
+ffffffff818bffeb:	js     ffffffff818c00c8 <time_out_leases+0x168>
+ffffffff818bfff1:	mov    0x88(%rbx),%rax
+ffffffff818bfff8:	test   %rax,%rax
+ffffffff818bfffb:	je     ffffffff818bffb3 <time_out_leases+0x53>
+ffffffff818bfffd:	movq   $0x0,0x8(%rsp)
+ffffffff818c0006:	cmp    0x21479f3(%rip),%rax        # ffffffff83a07a00 <jiffies_64>
+ffffffff818c000d:	jns    ffffffff818bffb3 <time_out_leases+0x53>
+ffffffff818c000f:	mov    0x98(%rbx),%rax
+ffffffff818c0016:	test   %rax,%rax
+ffffffff818c0019:	je     ffffffff818c0030 <time_out_leases+0xd0>
+ffffffff818c001b:	mov    0x28(%rax),%rax
+ffffffff818c001f:	test   %rax,%rax
+ffffffff818c0022:	je     ffffffff818c0030 <time_out_leases+0xd0>
+ffffffff818c0024:	mov    %rbx,%rdi
+ffffffff818c0027:	call   ffffffff82631cc0 <__x86_indirect_thunk_array>
+ffffffff818c002c:	test   %al,%al
+ffffffff818c002e:	je     ffffffff818bffb3 <time_out_leases+0x53>
+ffffffff818c0030:	mov    %r14,%rdx
+ffffffff818c0033:	mov    %rbx,%rdi
+ffffffff818c0036:	mov    $0x2,%esi
+ffffffff818c003b:	mov    %rbp,%rbx
+ffffffff818c003e:	call   ffffffff818bfcb0 <lease_modify>
+ffffffff818c0043:	lea    0x8(%rbp),%rax
+ffffffff818c0047:	mov    0x8(%rbp),%rdx
+ffffffff818c004b:	cmp    %rax,%r12
+ffffffff818c004e:	jne    ffffffff818bffc7 <time_out_leases+0x67>
+ffffffff818c0054:	mov    0x10(%rsp),%rbx
+ffffffff818c0059:	mov    0x18(%rsp),%rbp
+ffffffff818c005e:	mov    0x28(%rsp),%r13
+ffffffff818c0063:	mov    0x30(%rsp),%r14
+ffffffff818c0068:	mov    0x38(%rsp),%r15
+ffffffff818c006d:	mov    0x20(%rsp),%r12
+ffffffff818c0072:	add    $0x40,%rsp
+ffffffff818c0076:	xor    %eax,%eax
+ffffffff818c0078:	xor    %edx,%edx
+ffffffff818c007a:	xor    %esi,%esi
+ffffffff818c007c:	xor    %edi,%edi
+ffffffff818c007e:	jmp    ffffffff826328f0 <__pi___x86_return_thunk>
+ffffffff818c0083:	mov    %gs:0x2e26faa(%rip),%eax        # ffffffff846e7034 <cpu_number>
+ffffffff818c008a:	bt     %rax,0x2431c4e(%rip)        # ffffffff83cf1ce0 <__cpu_online_mask>
+ffffffff818c0092:	jae    ffffffff818bffd0 <time_out_leases+0x70>
+ffffffff818c0098:	mov    0x2294ec1(%rip),%r15        # ffffffff83b54f60 <tracepoint_srcu>
+ffffffff818c009f:	incq   %gs:(%r15)
+ffffffff818c00a3:	mov    0x23e856e(%rip),%rax        # ffffffff83ca8618 <__tracepoint_time_out_leases+0x38>
+ffffffff818c00aa:	test   %rax,%rax
+ffffffff818c00ad:	je     ffffffff818c00be <time_out_leases+0x15e>
+ffffffff818c00af:	mov    0x8(%rax),%rdi
+ffffffff818c00b3:	mov    %rbx,%rdx
+ffffffff818c00b6:	mov    %r13,%rsi
+ffffffff818c00b9:	call   ffffffff82633ac0 <__SCT__tp_func_time_out_leases>
+ffffffff818c00be:	incq   %gs:0x8(%r15)
+ffffffff818c00c3:	jmp    ffffffff818bffd0 <time_out_leases+0x70>
+ffffffff818c00c8:	andl   $0xfffffeff,0x50(%rbx)
+ffffffff818c00cf:	lea    0x28(%rbx),%rax
+ffffffff818c00d3:	movb   $0x0,0x54(%rbx)
+ffffffff818c00d7:	cmp    %rax,0x28(%rbx)
+ffffffff818c00db:	je     ffffffff818bfff1 <time_out_leases+0x91>
+ffffffff818c00e1:	mov    $0xffffffff84859aa8,%rdi
+ffffffff818c00e8:	call   ffffffff826306a0 <_raw_spin_lock>
+ffffffff818c00ed:	mov    %rbx,%rdi
+ffffffff818c00f0:	call   ffffffff818bf160 <__locks_wake_up_blocks>
+ffffffff818c00f5:	mov    $0xffffffff84859aa8,%rdi
+ffffffff818c00fc:	call   ffffffff82630830 <_raw_spin_unlock>
+ffffffff818c0101:	jmp    ffffffff818bfff1 <time_out_leases+0x91>
+
+Disassembly of section .data:
+
+Disassembly of section .init.text:
+
+Disassembly of section .altinstr_aux:
+
+Disassembly of section .altinstr_replacement:
+
+Disassembly of section .exit.text:
+
+/usr/lib/modules/7.2.5-3-omarchy/build/vmlinux:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+ffffffff818c24d0 <__break_lease>:
+ffffffff818c24d0:	endbr64
+ffffffff818c24d4:	call   ffffffff8133e2a0 <__fentry__>
+ffffffff818c24d9:	sub    $0xa8,%rsp
+ffffffff818c24e0:	mov    %rbp,0x80(%rsp)
+ffffffff818c24e8:	lea    0x38(%rsp),%rbp
+ffffffff818c24ed:	mov    %r13,0x90(%rsp)
+ffffffff818c24f5:	mov    %rdi,%r13
+ffffffff818c24f8:	mov    %rbx,0x78(%rsp)
+ffffffff818c24fd:	mov    %r15,0xa0(%rsp)
+ffffffff818c2505:	mov    %gs:0x2e24afb(%rip),%rbx        # ffffffff846e7008 <__stack_chk_guard>
+ffffffff818c250d:	mov    %rbx,0x70(%rsp)
+ffffffff818c2512:	mov    %esi,%ebx
+ffffffff818c2514:	mov    %rbp,0x38(%rsp)
+ffffffff818c2519:	mov    %rbp,0x40(%rsp)
+ffffffff818c251e:	xchg   %ax,%ax
+ffffffff818c2520:	test   $0x1,%bl
+ffffffff818c2523:	jne    ffffffff818c25e1 <__break_lease+0x111>
+ffffffff818c2529:	test   $0x2,%bl
+ffffffff818c252c:	jne    ffffffff818c26fd <__break_lease+0x22d>
+ffffffff818c2532:	mov    $0xffffffea,%r15d
+ffffffff818c2538:	test   $0x4,%bl
+ffffffff818c253b:	jne    ffffffff818c25f1 <__break_lease+0x121>
+ffffffff818c2541:	mov    0x70(%rsp),%rax
+ffffffff818c2546:	sub    %gs:0x2e24aba(%rip),%rax        # ffffffff846e7008 <__stack_chk_guard>
+ffffffff818c254e:	jne    ffffffff818c2d1b <__break_lease+0x84b>
+ffffffff818c2554:	mov    %r15d,%eax
+ffffffff818c2557:	mov    0x78(%rsp),%rbx
+ffffffff818c255c:	mov    0x80(%rsp),%rbp
+ffffffff818c2564:	mov    0x90(%rsp),%r13
+ffffffff818c256c:	mov    0xa0(%rsp),%r15
+ffffffff818c2574:	add    $0xa8,%rsp
+ffffffff818c257b:	xor    %edx,%edx
+ffffffff818c257d:	xor    %ecx,%ecx
+ffffffff818c257f:	xor    %esi,%esi
+ffffffff818c2581:	xor    %edi,%edi
+ffffffff818c2583:	xor    %r8d,%r8d
+ffffffff818c2586:	jmp    ffffffff826328f0 <__pi___x86_return_thunk>
+ffffffff818c258b:	mov    %gs:0x2e24aa2(%rip),%eax        # ffffffff846e7034 <cpu_number>
+ffffffff818c2592:	bt     %rax,0x242f746(%rip)        # ffffffff83cf1ce0 <__cpu_online_mask>
+ffffffff818c259a:	jae    ffffffff818c2520 <__break_lease+0x50>
+ffffffff818c259c:	mov    %r12,0x88(%rsp)
+ffffffff818c25a4:	mov    0x22929b5(%rip),%r12        # ffffffff83b54f60 <tracepoint_srcu>
+ffffffff818c25ab:	incq   %gs:(%r12)
+ffffffff818c25b0:	mov    0x23e6241(%rip),%rax        # ffffffff83ca87f8 <__tracepoint_break_lease+0x38>
+ffffffff818c25b7:	test   %rax,%rax
+ffffffff818c25ba:	je     ffffffff818c25ca <__break_lease+0xfa>
+ffffffff818c25bc:	mov    0x8(%rax),%rdi
+ffffffff818c25c0:	mov    %ebx,%edx
+ffffffff818c25c2:	mov    %r13,%rsi
+ffffffff818c25c5:	call   ffffffff82633a98 <__SCT__tp_func_break_lease>
+ffffffff818c25ca:	incq   %gs:0x8(%r12)
+ffffffff818c25d0:	mov    0x88(%rsp),%r12
+ffffffff818c25d8:	test   $0x1,%bl
+ffffffff818c25db:	je     ffffffff818c2529 <__break_lease+0x59>
+ffffffff818c25e1:	mov    %r14,0x98(%rsp)
+ffffffff818c25e9:	mov    $0x20,%r15d
+ffffffff818c25ef:	jmp    ffffffff818c25ff <__break_lease+0x12f>
+ffffffff818c25f1:	mov    %r14,0x98(%rsp)
+ffffffff818c25f9:	mov    $0x800,%r15d
+ffffffff818c25ff:	mov    0x1912022(%rip),%rdi        # ffffffff831d4628 <filelease_cache>
+ffffffff818c2606:	mov    $0xdc0,%esi
+ffffffff818c260b:	call   ffffffff81764d40 <kmem_cache_alloc_noprof>
+ffffffff818c2610:	mov    %rax,%r14
+ffffffff818c2613:	test   %rax,%rax
+ffffffff818c2616:	je     ffffffff818c2d30 <__break_lease+0x860>
+ffffffff818c261c:	mov    %ebx,%eax
+ffffffff818c261e:	mov    %r12,0x88(%rsp)
+ffffffff818c2626:	lea    0x38(%r14),%r12
+ffffffff818c262a:	lea    0x60(%r14),%rcx
+ffffffff818c262e:	and    $0x10,%eax
+ffffffff818c2631:	movq   $0x0,0x18(%r14)
+ffffffff818c2639:	mov    $0xffffffff848598e0,%rdx
+ffffffff818c2640:	mov    $0xffffffff83143827,%rsi
+ffffffff818c2647:	mov    %eax,(%rsp)
+ffffffff818c264a:	lea    0x8(%r14),%rax
+ffffffff818c264e:	mov    %rcx,%rdi
+ffffffff818c2651:	mov    %rax,0x8(%r14)
+ffffffff818c2655:	mov    %rax,0x10(%r14)
+ffffffff818c2659:	lea    0x28(%r14),%rax
+ffffffff818c265d:	mov    %rax,0x28(%r14)
+ffffffff818c2661:	movq   $0x0,0x20(%r14)
+ffffffff818c2669:	mov    %rax,0x30(%r14)
+ffffffff818c266d:	mov    %r12,0x38(%r14)
+ffffffff818c2671:	mov    %r12,0x40(%r14)
+ffffffff818c2675:	mov    %rcx,0x8(%rsp)
+ffffffff818c267a:	call   ffffffff81427c50 <__init_waitqueue_head>
+ffffffff818c267f:	mov    (%rsp),%eax
+ffffffff818c2682:	movq   $0x0,0x48(%r14)
+ffffffff818c268a:	shr    $0x4,%eax
+ffffffff818c268d:	xor    $0x1,%eax
+ffffffff818c2690:	mov    %al,0x54(%r14)
+ffffffff818c2694:	mov    %gs:0x2e2497c(%rip),%rax        # ffffffff846e7018 <current_task>
+ffffffff818c269c:	mov    0xb3c(%rax),%eax
+ffffffff818c26a2:	movq   $0x0,0x78(%r14)
+ffffffff818c26aa:	mov    %r15d,0x50(%r14)
+ffffffff818c26ae:	mov    %eax,0x58(%r14)
+ffffffff818c26b2:	movq   $0xffffffff828afac0,0x98(%r14)
+ffffffff818c26bd:	cmp    $0xfffffffffffff000,%r14
+ffffffff818c26c4:	ja     ffffffff818c2c73 <__break_lease+0x7a3>
+ffffffff818c26ca:	movzwl 0x2(%r13),%eax
+ffffffff818c26cf:	test   $0x1,%ah
+ffffffff818c26d2:	jne    ffffffff818c2710 <__break_lease+0x240>
+ffffffff818c26d4:	ud2
+ffffffff818c26d6:	xor    %r15d,%r15d
+ffffffff818c26d9:	mov    0x1911f48(%rip),%rdi        # ffffffff831d4628 <filelease_cache>
+ffffffff818c26e0:	mov    %r14,%rsi
+ffffffff818c26e3:	call   ffffffff81760070 <kmem_cache_free>
+ffffffff818c26e8:	mov    0x88(%rsp),%r12
+ffffffff818c26f0:	mov    0x98(%rsp),%r14
+ffffffff818c26f8:	jmp    ffffffff818c2541 <__break_lease+0x71>
+ffffffff818c26fd:	mov    %r14,0x98(%rsp)
+ffffffff818c2705:	mov    $0x4,%r15d
+ffffffff818c270b:	jmp    ffffffff818c25ff <__break_lease+0x12f>
+ffffffff818c2710:	mov    0x160(%r13),%rax
+ffffffff818c2717:	mov    %rax,0x10(%rsp)
+ffffffff818c271c:	test   %rax,%rax
+ffffffff818c271f:	je     ffffffff818c26d4 <__break_lease+0x204>
+ffffffff818c2721:	call   ffffffff82633000 <__SCT__might_resched>
+ffffffff818c2726:	incl   %gs:0x2e24903(%rip)        # ffffffff846e7030 <__preempt_count>
+ffffffff818c272d:	mov    0x22e298d(%rip),%edi        # ffffffff83ba50c0 <file_rwsem>
+ffffffff818c2733:	test   %edi,%edi
+ffffffff818c2735:	jne    ffffffff818c2cc5 <__break_lease+0x7f5>
+ffffffff818c273b:	mov    0x22e29ae(%rip),%rax        # ffffffff83ba50f0 <file_rwsem+0x30>
+ffffffff818c2742:	incl   %gs:(%rax)
+ffffffff818c2745:	decl   %gs:0x2e248e4(%rip)        # ffffffff846e7030 <__preempt_count>
+ffffffff818c274c:	je     ffffffff818c2ca0 <__break_lease+0x7d0>
+ffffffff818c2752:	mov    0x10(%rsp),%rdi
+ffffffff818c2757:	call   ffffffff826306a0 <_raw_spin_lock>
+ffffffff818c275c:	mov    %rbp,%rsi
+ffffffff818c275f:	mov    %r13,%rdi
+ffffffff818c2762:	call   ffffffff818bff60 <time_out_leases>
+ffffffff818c2767:	mov    %ebx,%edx
+ffffffff818c2769:	mov    %r14,%rsi
+ffffffff818c276c:	mov    %r13,%rdi
+ffffffff818c276f:	call   ffffffff818bed00 <first_visible_lease>
+ffffffff818c2774:	test   %rax,%rax
+ffffffff818c2777:	je     ffffffff818c2ba0 <__break_lease+0x6d0>
+ffffffff818c277d:	movq   $0x0,0x28(%rsp)
+ffffffff818c2786:	mov    0x22e2994(%rip),%eax        # ffffffff83ba5120 <lease_break_time>
+ffffffff818c278c:	test   %eax,%eax
+ffffffff818c278e:	jle    ffffffff818c27b3 <__break_lease+0x2e3>
+ffffffff818c2790:	imul   $0x3e8,%eax,%eax
+ffffffff818c2796:	cltq
+ffffffff818c2798:	add    0x2145261(%rip),%rax        # ffffffff83a07a00 <jiffies_64>
+ffffffff818c279f:	mov    %rax,%rcx
+ffffffff818c27a2:	test   %rax,%rax
+ffffffff818c27a5:	mov    $0x1,%eax
+ffffffff818c27aa:	cmovne %rcx,%rax
+ffffffff818c27ae:	mov    %rax,0x28(%rsp)
+ffffffff818c27b3:	mov    0x10(%rsp),%rdx
+ffffffff818c27b8:	mov    0x28(%rdx),%rax
+ffffffff818c27bc:	add    $0x28,%rdx
+ffffffff818c27c0:	mov    %rdx,0x20(%rsp)
+ffffffff818c27c5:	cmp    %rax,%rdx
+ffffffff818c27c8:	je     ffffffff818c289b <__break_lease+0x3cb>
+ffffffff818c27ce:	lea    -0x8(%rax),%r15
+ffffffff818c27d2:	mov    (%rax),%rax
+ffffffff818c27d5:	sub    $0x8,%rax
+ffffffff818c27d9:	mov    %rax,0x18(%rsp)
+ffffffff818c27de:	jmp    ffffffff818c2841 <__break_lease+0x371>
+ffffffff818c27e0:	test   $0x2,%ah
+ffffffff818c27e3:	jne    ffffffff818c2824 <__break_lease+0x354>
+ffffffff818c27e5:	or     $0x2,%ah
+ffffffff818c27e8:	mov    %eax,0x50(%r15)
+ffffffff818c27ec:	mov    0x28(%rsp),%rax
+ffffffff818c27f1:	mov    %rax,0x88(%r15)
+ffffffff818c27f8:	mov    0x98(%r15),%rax
+ffffffff818c27ff:	mov    (%rax),%rax
+ffffffff818c2802:	cmp    $0xffffffff818be3f0,%rax
+ffffffff818c2808:	jne    ffffffff818c2be6 <__break_lease+0x716>
+ffffffff818c280e:	lea    0x80(%r15),%rdi
+ffffffff818c2815:	mov    $0x3,%edx
+ffffffff818c281a:	mov    $0x1d,%esi
+ffffffff818c281f:	call   ffffffff81831570 <kill_fasync>
+ffffffff818c2824:	mov    0x18(%rsp),%r15
+ffffffff818c2829:	mov    0x8(%r15),%rsi
+ffffffff818c282d:	lea    0x8(%r15),%rax
+ffffffff818c2831:	cmp    %rax,0x20(%rsp)
+ffffffff818c2836:	je     ffffffff818c289b <__break_lease+0x3cb>
+ffffffff818c2838:	lea    -0x8(%rsi),%rax
+ffffffff818c283c:	mov    %rax,0x18(%rsp)
+ffffffff818c2841:	mov    %r14,%rsi
+ffffffff818c2844:	mov    %r15,%rdi
+ffffffff818c2847:	call   ffffffff818bc790 <leases_conflict>
+ffffffff818c284c:	test   %al,%al
+ffffffff818c284e:	je     ffffffff818c2824 <__break_lease+0x354>
+ffffffff818c2850:	movzwl 0x0(%r13),%eax
+ffffffff818c2855:	and    $0xf000,%ax
+ffffffff818c2859:	cmp    $0x4000,%ax
+ffffffff818c285d:	je     ffffffff818c288b <__break_lease+0x3bb>
+ffffffff818c285f:	mov    (%rsp),%esi
+ffffffff818c2862:	mov    0x50(%r15),%eax
+ffffffff818c2866:	test   %esi,%esi
+ffffffff818c2868:	je     ffffffff818c27e0 <__break_lease+0x310>
+ffffffff818c286e:	test   $0x3,%ah
+ffffffff818c2871:	jne    ffffffff818c2824 <__break_lease+0x354>
+ffffffff818c2873:	or     $0x1,%ah
+ffffffff818c2876:	mov    %eax,0x50(%r15)
+ffffffff818c287a:	mov    0x28(%rsp),%rax
+ffffffff818c287f:	mov    %rax,0x90(%r15)
+ffffffff818c2886:	jmp    ffffffff818c27f8 <__break_lease+0x328>
+ffffffff818c288b:	mov    %ebx,%esi
+ffffffff818c288d:	mov    %r15,%rdi
+ffffffff818c2890:	call   ffffffff818beca0 <ignore_dir_deleg_break>
+ffffffff818c2895:	test   %al,%al
+ffffffff818c2897:	je     ffffffff818c285f <__break_lease+0x38f>
+ffffffff818c2899:	jmp    ffffffff818c2824 <__break_lease+0x354>
+ffffffff818c289b:	mov    %ebx,%edx
+ffffffff818c289d:	mov    %r14,%rsi
+ffffffff818c28a0:	mov    %r13,%rdi
+ffffffff818c28a3:	call   ffffffff818bed00 <first_visible_lease>
+ffffffff818c28a8:	mov    %rax,%r15
+ffffffff818c28ab:	test   %rax,%rax
+ffffffff818c28ae:	je     ffffffff818c2ba0 <__break_lease+0x6d0>
+ffffffff818c28b4:	test   $0x8,%bl
+ffffffff818c28b7:	je     ffffffff818c29ea <__break_lease+0x51a>
+ffffffff818c28bd:	jmp    ffffffff818c2c93 <__break_lease+0x7c3>
+ffffffff818c28c2:	movq   $0x0,0x30(%rsp)
+ffffffff818c28cb:	cmp    0x214512e(%rip),%rax        # ffffffff83a07a00 <jiffies_64>
+ffffffff818c28d2:	js     ffffffff818c2b6d <__break_lease+0x69d>
+ffffffff818c28d8:	sub    0x2145121(%rip),%rax        # ffffffff83a07a00 <jiffies_64>
+ffffffff818c28df:	mov    %rax,0x20(%rsp)
+ffffffff818c28e4:	test   %rax,%rax
+ffffffff818c28e7:	mov    %rax,(%rsp)
+ffffffff818c28eb:	sete   0x18(%rsp)
+ffffffff818c28f0:	mov    $0xffffffff84859aa8,%rdi
+ffffffff818c28f7:	call   ffffffff826306a0 <_raw_spin_lock>
+ffffffff818c28fc:	mov    %r15,%rdi
+ffffffff818c28ff:	mov    $0xffffffff818bc790,%rdx
+ffffffff818c2906:	mov    %r14,%rsi
+ffffffff818c2909:	call   ffffffff818bf680 <__locks_insert_block>
+ffffffff818c290e:	mov    $0xffffffff84859aa8,%rdi
+ffffffff818c2915:	call   ffffffff82630830 <_raw_spin_unlock>
+ffffffff818c291a:	nopl   0x0(%rax,%rax,1)
+ffffffff818c291f:	mov    0x10(%rsp),%rdi
+ffffffff818c2924:	call   ffffffff82630830 <_raw_spin_unlock>
+ffffffff818c2929:	incl   %gs:0x2e24700(%rip)        # ffffffff846e7030 <__preempt_count>
+ffffffff818c2930:	mov    0x22e278a(%rip),%ecx        # ffffffff83ba50c0 <file_rwsem>
+ffffffff818c2936:	test   %ecx,%ecx
+ffffffff818c2938:	jne    ffffffff818c2c62 <__break_lease+0x792>
+ffffffff818c293e:	mov    0x22e27ab(%rip),%rax        # ffffffff83ba50f0 <file_rwsem+0x30>
+ffffffff818c2945:	decl   %gs:(%rax)
+ffffffff818c2948:	decl   %gs:0x2e246e1(%rip)        # ffffffff846e7030 <__preempt_count>
+ffffffff818c294f:	je     ffffffff818c2c58 <__break_lease+0x788>
+ffffffff818c2955:	mov    %rbp,%rdi
+ffffffff818c2958:	call   ffffffff818bf0d0 <lease_dispose_list>
+ffffffff818c295d:	call   ffffffff82633000 <__SCT__might_resched>
+ffffffff818c2962:	cmp    %r12,0x38(%r14)
+ffffffff818c2966:	jne    ffffffff818c2ab6 <__break_lease+0x5e6>
+ffffffff818c296c:	mov    $0x1,%r15d
+ffffffff818c2972:	cmpb   $0x0,0x18(%rsp)
+ffffffff818c2977:	je     ffffffff818c2aac <__break_lease+0x5dc>
+ffffffff818c297d:	call   ffffffff82633000 <__SCT__might_resched>
+ffffffff818c2982:	incl   %gs:0x2e246a7(%rip)        # ffffffff846e7030 <__preempt_count>
+ffffffff818c2989:	mov    0x22e2731(%rip),%edx        # ffffffff83ba50c0 <file_rwsem>
+ffffffff818c298f:	test   %edx,%edx
+ffffffff818c2991:	jne    ffffffff818c2c43 <__break_lease+0x773>
+ffffffff818c2997:	mov    0x22e2752(%rip),%rax        # ffffffff83ba50f0 <file_rwsem+0x30>
+ffffffff818c299e:	incl   %gs:(%rax)
+ffffffff818c29a1:	decl   %gs:0x2e24688(%rip)        # ffffffff846e7030 <__preempt_count>
+ffffffff818c29a8:	je     ffffffff818c2c39 <__break_lease+0x769>
+ffffffff818c29ae:	mov    0x10(%rsp),%rdi
+ffffffff818c29b3:	call   ffffffff826306a0 <_raw_spin_lock>
+ffffffff818c29b8:	xchg   %ax,%ax
+ffffffff818c29ba:	mov    %r14,%rdi
+ffffffff818c29bd:	call   ffffffff818bf480 <__locks_delete_block>
+ffffffff818c29c2:	test   %r15d,%r15d
+ffffffff818c29c5:	js     ffffffff818c2ba3 <__break_lease+0x6d3>
+ffffffff818c29cb:	je     ffffffff818c2b5d <__break_lease+0x68d>
+ffffffff818c29d1:	mov    %ebx,%edx
+ffffffff818c29d3:	mov    %r14,%rsi
+ffffffff818c29d6:	mov    %r13,%rdi
+ffffffff818c29d9:	call   ffffffff818bed00 <first_visible_lease>
+ffffffff818c29de:	mov    %rax,%r15
+ffffffff818c29e1:	test   %rax,%rax
+ffffffff818c29e4:	je     ffffffff818c2ba0 <__break_lease+0x6d0>
+ffffffff818c29ea:	mov    0x88(%r15),%rax
+ffffffff818c29f1:	test   %rax,%rax
+ffffffff818c29f4:	jne    ffffffff818c28c2 <__break_lease+0x3f2>
+ffffffff818c29fa:	movb   $0x0,0x18(%rsp)
+ffffffff818c29ff:	movq   $0x1,(%rsp)
+ffffffff818c2a07:	movq   $0x1,0x20(%rsp)
+ffffffff818c2a10:	jmp    ffffffff818c28f0 <__break_lease+0x420>
+ffffffff818c2a15:	mov    %gs:0x2e24618(%rip),%eax        # ffffffff846e7034 <cpu_number>
+ffffffff818c2a1c:	bt     %rax,0x242f2bc(%rip)        # ffffffff83cf1ce0 <__cpu_online_mask>
+ffffffff818c2a24:	jae    ffffffff818c29ba <__break_lease+0x4ea>
+ffffffff818c2a26:	mov    0x2292533(%rip),%r8        # ffffffff83b54f60 <tracepoint_srcu>
+ffffffff818c2a2d:	incq   %gs:(%r8)
+ffffffff818c2a31:	mov    0x23e5ca0(%rip),%rax        # ffffffff83ca86d8 <__tracepoint_break_lease_unblock+0x38>
+ffffffff818c2a38:	test   %rax,%rax
+ffffffff818c2a3b:	je     ffffffff818c2a53 <__break_lease+0x583>
+ffffffff818c2a3d:	mov    0x8(%rax),%rdi
+ffffffff818c2a41:	xor    %edx,%edx
+ffffffff818c2a43:	mov    %r13,%rsi
+ffffffff818c2a46:	mov    %r8,(%rsp)
+ffffffff818c2a4a:	call   ffffffff82633ab0 <__SCT__tp_func_break_lease_unblock>
+ffffffff818c2a4f:	mov    (%rsp),%r8
+ffffffff818c2a53:	incq   %gs:0x8(%r8)
+ffffffff818c2a58:	jmp    ffffffff818c29ba <__break_lease+0x4ea>
+ffffffff818c2a5d:	mov    %gs:0x2e245d0(%rip),%eax        # ffffffff846e7034 <cpu_number>
+ffffffff818c2a64:	bt     %rax,0x242f274(%rip)        # ffffffff83cf1ce0 <__cpu_online_mask>
+ffffffff818c2a6c:	jae    ffffffff818c291f <__break_lease+0x44f>
+ffffffff818c2a72:	mov    0x22924e7(%rip),%r8        # ffffffff83b54f60 <tracepoint_srcu>
+ffffffff818c2a79:	incq   %gs:(%r8)
+ffffffff818c2a7d:	mov    0x23e5cb4(%rip),%rax        # ffffffff83ca8738 <__tracepoint_break_lease_block+0x38>
+ffffffff818c2a84:	test   %rax,%rax
+ffffffff818c2a87:	je     ffffffff818c2aa2 <__break_lease+0x5d2>
+ffffffff818c2a89:	mov    0x8(%rax),%rdi
+ffffffff818c2a8d:	mov    %r15,%rdx
+ffffffff818c2a90:	mov    %r13,%rsi
+ffffffff818c2a93:	mov    %r8,0x28(%rsp)
+ffffffff818c2a98:	call   ffffffff82633aa8 <__SCT__tp_func_break_lease_block>
+ffffffff818c2a9d:	mov    0x28(%rsp),%r8
+ffffffff818c2aa2:	incq   %gs:0x8(%r8)
+ffffffff818c2aa7:	jmp    ffffffff818c291f <__break_lease+0x44f>
+ffffffff818c2aac:	mov    0x20(%rsp),%r15d
+ffffffff818c2ab1:	jmp    ffffffff818c297d <__break_lease+0x4ad>
+ffffffff818c2ab6:	cmpb   $0x0,0x18(%rsp)
+ffffffff818c2abb:	jne    ffffffff818c2aac <__break_lease+0x5dc>
+ffffffff818c2abd:	movq   $0x0,0x48(%rsp)
+ffffffff818c2ac6:	xor    %esi,%esi
+ffffffff818c2ac8:	lea    0x48(%rsp),%rdi
+ffffffff818c2acd:	movq   $0x0,0x50(%rsp)
+ffffffff818c2ad6:	movq   $0x0,0x58(%rsp)
+ffffffff818c2adf:	movq   $0x0,0x60(%rsp)
+ffffffff818c2ae8:	movq   $0x0,0x68(%rsp)
+ffffffff818c2af1:	call   ffffffff81427e20 <init_wait_entry>
+ffffffff818c2af6:	mov    0x8(%rsp),%rdi
+ffffffff818c2afb:	mov    $0x1,%edx
+ffffffff818c2b00:	lea    0x48(%rsp),%rsi
+ffffffff818c2b05:	call   ffffffff8142b8b0 <prepare_to_wait_event>
+ffffffff818c2b0a:	cmp    %r12,0x38(%r14)
+ffffffff818c2b0e:	je     ffffffff818c2b57 <__break_lease+0x687>
+ffffffff818c2b10:	test   %rax,%rax
+ffffffff818c2b13:	jne    ffffffff818c2c8b <__break_lease+0x7bb>
+ffffffff818c2b19:	mov    (%rsp),%rdi
+ffffffff818c2b1d:	call   ffffffff8262e3e0 <schedule_timeout>
+ffffffff818c2b22:	cmp    %r12,0x38(%r14)
+ffffffff818c2b26:	mov    %rax,%rdx
+ffffffff818c2b29:	mov    %rax,(%rsp)
+ffffffff818c2b2d:	sete   %al
+ffffffff818c2b30:	test   %rdx,%rdx
+ffffffff818c2b33:	jne    ffffffff818c2b53 <__break_lease+0x683>
+ffffffff818c2b35:	mov    $0x1,%r15d
+ffffffff818c2b3b:	test   %al,%al
+ffffffff818c2b3d:	je     ffffffff818c2b57 <__break_lease+0x687>
+ffffffff818c2b3f:	mov    0x8(%rsp),%rdi
+ffffffff818c2b44:	lea    0x48(%rsp),%rsi
+ffffffff818c2b49:	call   ffffffff8142e4b0 <finish_wait>
+ffffffff818c2b4e:	jmp    ffffffff818c297d <__break_lease+0x4ad>
+ffffffff818c2b53:	test   %al,%al
+ffffffff818c2b55:	je     ffffffff818c2af6 <__break_lease+0x626>
+ffffffff818c2b57:	mov    (%rsp),%r15d
+ffffffff818c2b5b:	jmp    ffffffff818c2b3f <__break_lease+0x66f>
+ffffffff818c2b5d:	mov    %rbp,%rsi
+ffffffff818c2b60:	mov    %r13,%rdi
+ffffffff818c2b63:	call   ffffffff818bff60 <time_out_leases>
+ffffffff818c2b68:	jmp    ffffffff818c29d1 <__break_lease+0x501>
+ffffffff818c2b6d:	imul   $0x3e8,0x22e25a9(%rip),%eax        # ffffffff83ba5120 <lease_break_time>
+ffffffff818c2b77:	mov    0x2144e82(%rip),%rdx        # ffffffff83a07a00 <jiffies_64>
+ffffffff818c2b7e:	movslq %eax,%rcx
+ffffffff818c2b81:	add    %rcx,%rdx
+ffffffff818c2b84:	test   %eax,%eax
+ffffffff818c2b86:	mov    %rcx,0x20(%rsp)
+ffffffff818c2b8b:	mov    %rdx,0x88(%r15)
+ffffffff818c2b92:	mov    %rcx,(%rsp)
+ffffffff818c2b96:	sete   0x18(%rsp)
+ffffffff818c2b9b:	jmp    ffffffff818c28f0 <__break_lease+0x420>
+ffffffff818c2ba0:	xor    %r15d,%r15d
+ffffffff818c2ba3:	mov    0x10(%rsp),%rdi
+ffffffff818c2ba8:	call   ffffffff82630830 <_raw_spin_unlock>
+ffffffff818c2bad:	incl   %gs:0x2e2447c(%rip)        # ffffffff846e7030 <__preempt_count>
+ffffffff818c2bb4:	mov    0x22e2506(%rip),%eax        # ffffffff83ba50c0 <file_rwsem>
+ffffffff818c2bba:	test   %eax,%eax
+ffffffff818c2bbc:	jne    ffffffff818c2cb4 <__break_lease+0x7e4>
+ffffffff818c2bc2:	mov    0x22e2527(%rip),%rax        # ffffffff83ba50f0 <file_rwsem+0x30>
+ffffffff818c2bc9:	decl   %gs:(%rax)
+ffffffff818c2bcc:	decl   %gs:0x2e2445d(%rip)        # ffffffff846e7030 <__preempt_count>
+ffffffff818c2bd3:	je     ffffffff818c2caa <__break_lease+0x7da>
+ffffffff818c2bd9:	mov    %rbp,%rdi
+ffffffff818c2bdc:	call   ffffffff818bf0d0 <lease_dispose_list>
+ffffffff818c2be1:	jmp    ffffffff818c26d9 <__break_lease+0x209>
+ffffffff818c2be6:	mov    %r15,%rdi
+ffffffff818c2be9:	call   ffffffff82631cc0 <__x86_indirect_thunk_array>
+ffffffff818c2bee:	test   %al,%al
+ffffffff818c2bf0:	je     ffffffff818c2824 <__break_lease+0x354>
+ffffffff818c2bf6:	mov    %r15,%rdi
+ffffffff818c2bf9:	call   ffffffff818bf590 <locks_unlink_lock_ctx>
+ffffffff818c2bfe:	mov    0x38(%rsp),%rdx
+ffffffff818c2c03:	lea    0x8(%r15),%rdi
+ffffffff818c2c07:	cmp    %rbp,0x8(%rdx)
+ffffffff818c2c0b:	jne    ffffffff8122b471 <__break_lease.cold>
+ffffffff818c2c11:	cmp    %rbp,%rdi
+ffffffff818c2c14:	je     ffffffff8122b471 <__break_lease.cold>
+ffffffff818c2c1a:	cmp    %rdx,%rdi
+ffffffff818c2c1d:	je     ffffffff8122b471 <__break_lease.cold>
+ffffffff818c2c23:	mov    %rdi,0x8(%rdx)
+ffffffff818c2c27:	mov    %rdi,0x38(%rsp)
+ffffffff818c2c2c:	mov    %rdx,0x8(%r15)
+ffffffff818c2c30:	mov    %rbp,0x10(%r15)
+ffffffff818c2c34:	jmp    ffffffff818c2824 <__break_lease+0x354>
+ffffffff818c2c39:	call   ffffffff82632fe8 <__SCT__preempt_schedule>
+ffffffff818c2c3e:	jmp    ffffffff818c29ae <__break_lease+0x4de>
+ffffffff818c2c43:	xor    %edx,%edx
+ffffffff818c2c45:	xor    %esi,%esi
+ffffffff818c2c47:	mov    $0xffffffff83ba50c0,%rdi
+ffffffff818c2c4e:	call   ffffffff8262ba90 <__percpu_down_read>
+ffffffff818c2c53:	jmp    ffffffff818c29a1 <__break_lease+0x4d1>
+ffffffff818c2c58:	call   ffffffff82632fe8 <__SCT__preempt_schedule>
+ffffffff818c2c5d:	jmp    ffffffff818c2955 <__break_lease+0x485>
+ffffffff818c2c62:	mov    $0xffffffff83ba50c0,%rdi
+ffffffff818c2c69:	call   ffffffff8143da10 <__percpu_up_read>
+ffffffff818c2c6e:	jmp    ffffffff818c2948 <__break_lease+0x478>
+ffffffff818c2c73:	mov    0x88(%rsp),%r12
+ffffffff818c2c7b:	mov    %r14d,%r15d
+ffffffff818c2c7e:	mov    0x98(%rsp),%r14
+ffffffff818c2c86:	jmp    ffffffff818c2541 <__break_lease+0x71>
+ffffffff818c2c8b:	mov    %eax,%r15d
+ffffffff818c2c8e:	jmp    ffffffff818c297d <__break_lease+0x4ad>
+ffffffff818c2c93:	xchg   %ax,%ax
+ffffffff818c2c95:	mov    $0xfffffff5,%r15d
+ffffffff818c2c9b:	jmp    ffffffff818c2ba3 <__break_lease+0x6d3>
+ffffffff818c2ca0:	call   ffffffff82632fe8 <__SCT__preempt_schedule>
+ffffffff818c2ca5:	jmp    ffffffff818c2752 <__break_lease+0x282>
+ffffffff818c2caa:	call   ffffffff82632fe8 <__SCT__preempt_schedule>
+ffffffff818c2caf:	jmp    ffffffff818c2bd9 <__break_lease+0x709>
+ffffffff818c2cb4:	mov    $0xffffffff83ba50c0,%rdi
+ffffffff818c2cbb:	call   ffffffff8143da10 <__percpu_up_read>
+ffffffff818c2cc0:	jmp    ffffffff818c2bcc <__break_lease+0x6fc>
+ffffffff818c2cc5:	xor    %edx,%edx
+ffffffff818c2cc7:	xor    %esi,%esi
+ffffffff818c2cc9:	mov    $0xffffffff83ba50c0,%rdi
+ffffffff818c2cd0:	call   ffffffff8262ba90 <__percpu_down_read>
+ffffffff818c2cd5:	jmp    ffffffff818c2745 <__break_lease+0x275>
+ffffffff818c2cda:	mov    %gs:0x2e24353(%rip),%eax        # ffffffff846e7034 <cpu_number>
+ffffffff818c2ce1:	bt     %rax,0x242eff7(%rip)        # ffffffff83cf1ce0 <__cpu_online_mask>
+ffffffff818c2ce9:	jae    ffffffff818c2c95 <__break_lease+0x7c5>
+ffffffff818c2ceb:	mov    0x229226e(%rip),%rbx        # ffffffff83b54f60 <tracepoint_srcu>
+ffffffff818c2cf2:	incq   %gs:(%rbx)
+ffffffff818c2cf6:	mov    0x23e5a9b(%rip),%rax        # ffffffff83ca8798 <__tracepoint_break_lease_noblock+0x38>
+ffffffff818c2cfd:	test   %rax,%rax
+ffffffff818c2d00:	je     ffffffff818c2d11 <__break_lease+0x841>
+ffffffff818c2d02:	mov    0x8(%rax),%rdi
+ffffffff818c2d06:	mov    %r14,%rdx
+ffffffff818c2d09:	mov    %r13,%rsi
+ffffffff818c2d0c:	call   ffffffff82633aa0 <__SCT__tp_func_break_lease_noblock>
+ffffffff818c2d11:	incq   %gs:0x8(%rbx)
+ffffffff818c2d16:	jmp    ffffffff818c2c95 <__break_lease+0x7c5>
+ffffffff818c2d1b:	mov    %r12,0x88(%rsp)
+ffffffff818c2d23:	mov    %r14,0x98(%rsp)
+ffffffff818c2d2b:	call   ffffffff8261e1b0 <__stack_chk_fail>
+ffffffff818c2d30:	mov    $0xfffffffffffffff4,%r14
+ffffffff818c2d37:	jmp    ffffffff818c2c7b <__break_lease+0x7ab>
+
+Disassembly of section .data:
+
+Disassembly of section .init.text:
+
+Disassembly of section .altinstr_aux:
+
+Disassembly of section .altinstr_replacement:
+
+Disassembly of section .exit.text:

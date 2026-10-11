@@ -1,0 +1,10 @@
+{
+  "CapturedUTC": "2026-10-11T14:38:00.136420+00:00",
+  "KernelNotesBytes": 476,
+  "KernelNotesSHA256": "fb347ba32dfe1d3b88c55c92b6b7ef6d027ac04c32013edc0f8e71cbc1ad9966",
+  "MatchesInstalledVmlinuxReportedBuildID": true,
+  "ProcVersion": "Linux version 7.2.5-3-omarchy (linux-omarchy@omarchy) (gcc (GCC) 16.2.1 20260810, GNU ld (GNU Binutils) 2.47) #1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 19:55:01 +0000",
+  "QualificationBoundary": "Running kernel build identity observation only; no kernel policy changed and no crash/recovery or lease zero-timeout runtime qualification.",
+  "ReadOnly": true,
+  "RunningKernelGNUBuildID": "240f9ec5a8022b1a7f578b0199033bf067658fbc"
+}

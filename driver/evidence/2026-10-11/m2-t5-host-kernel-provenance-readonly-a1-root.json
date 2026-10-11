@@ -1,0 +1,53 @@
+{
+  "CachedKernelPackages": [
+    "/var/cache/pacman/pkg/linux-omarchy-7.2.5-3-x86_64.pkg.tar.zst",
+    "/var/cache/pacman/pkg/linux-omarchy-7.2.5-3-x86_64.pkg.tar.zst.sig",
+    "/var/cache/pacman/pkg/linux-omarchy-headers-7.2.5-3-x86_64.pkg.tar.zst",
+    "/var/cache/pacman/pkg/linux-omarchy-headers-7.2.5-3-x86_64.pkg.tar.zst.sig"
+  ],
+  "CapturedUTC": "2026-10-11T14:35:13.612791+00:00",
+  "Files": {
+    "/usr/lib/modules/7.2.5-3-omarchy/build/.config": {
+      "SHA256": "c2d66d77d7488ca07f114b9468e3b515ca163c5eab43a5de5332ab7a1e54be40",
+      "Size": 296538,
+      "Text": null
+    },
+    "/usr/lib/modules/7.2.5-3-omarchy/build/fs/locks.c": {
+      "Present": false
+    },
+    "/usr/lib/modules/7.2.5-3-omarchy/build/include/generated/compile.h": {
+      "SHA256": "1f77b7577f271d967757c8ef9a69e182a72f30fc67a4a76c82871437d12b8f7d",
+      "Size": 188,
+      "Text": "#define UTS_MACHINE\t\t\"x86_64\"\n#define LINUX_COMPILE_BY\t\"linux-omarchy\"\n#define LINUX_COMPILE_HOST\t\"omarchy\"\n#define LINUX_COMPILER\t\t\"gcc (GCC) 16.2.1 20260810, GNU ld (GNU Binutils) 2.47\"\n"
+    },
+    "/usr/lib/modules/7.2.5-3-omarchy/build/include/generated/utsrelease.h": {
+      "SHA256": "afc645ddf19fb1176cae3d26470e37a8e70ede5832cfdc338fa31623348b0664",
+      "Size": 38,
+      "Text": "#define UTS_RELEASE \"7.2.5-3-omarchy\"\n"
+    },
+    "/usr/lib/modules/7.2.5-3-omarchy/build/version": {
+      "SHA256": "9b6261f1b9d925f20ef0236a572770e8d3dfe30ffc9936d28b2d33a412a81f6a",
+      "Size": 16,
+      "Text": "7.2.5-3-omarchy\n"
+    },
+    "/var/lib/pacman/local/linux-omarchy-7.2.5-3/desc": {
+      "SHA256": "9dc562c71fa286f88c8e513010818ae71c41eb9638a2ecf16d2dee5578f72e6e",
+      "Size": 722,
+      "Text": "%NAME%\nlinux-omarchy\n\n%VERSION%\n7.2.5-3\n\n%BASE%\nlinux-omarchy\n\n%DESC%\nThe Omarchy Linux kernel and modules\n\n%URL%\nhttps://omarchy.org\n\n%ARCH%\nx86_64\n\n%BUILDDATE%\n1789415701\n\n%INSTALLDATE%\n1789570113\n\n%PACKAGER%\nUnknown Packager\n\n%SIZE%\n156652838\n\n%LICENSE%\nGPL-2.0-only\n\n%VALIDATION%\nsha256\npgp\n\n%DEPENDS%\ncoreutils\ninitramfs\nkmod\n\n%OPTDEPENDS%\nlinux-omarchy-headers: headers and scripts for building modules\nlinux-firmware: firmware images needed for some devices\nscx-scheds: to use sched-ext schedulers\nsof-firmware: firmware for Intel SOF audio\nwireless-regdb: to set the correct wireless channels of your country\n\n%PROVIDES%\nKSMBD-MODULE\nNTSYNC-MODULE\nVIRTUALBOX-GUEST-MODULES\nWIREGUARD-MODULE\n\n%XDATA%\npkgtype=split\n\n"
+    },
+    "/var/lib/pacman/local/linux-omarchy-headers-7.2.5-3/desc": {
+      "SHA256": "1aa93e1d66aecbdfee8ae053a8edef918b3af4e2f49a0327055980bd96d6e51a",
+      "Size": 458,
+      "Text": "%NAME%\nlinux-omarchy-headers\n\n%VERSION%\n7.2.5-3\n\n%BASE%\nlinux-omarchy\n\n%DESC%\nHeaders and scripts for building modules for the Omarchy Linux kernel\n\n%URL%\nhttps://omarchy.org\n\n%ARCH%\nx86_64\n\n%BUILDDATE%\n1789415701\n\n%INSTALLDATE%\n1789570115\n\n%PACKAGER%\nUnknown Packager\n\n%SIZE%\n335014203\n\n%LICENSE%\nGPL-2.0-only\n\n%VALIDATION%\nsha256\npgp\n\n%DEPENDS%\nbinutils\nglibc\nlibelf\nlibgcc\nopenssl\npahole\nxxhash\nzlib\nzstd\n\n%PROVIDES%\nLINUX-HEADERS\n\n%XDATA%\npkgtype=split\n\n"
+    }
+  },
+  "PackageInfo": "Name            : linux-omarchy\nVersion         : 7.2.5-3\nDescription     : The Omarchy Linux kernel and modules\nArchitecture    : x86_64\nURL             : https://omarchy.org\nLicenses        : GPL-2.0-only\nGroups          : None\nProvides        : KSMBD-MODULE  NTSYNC-MODULE  VIRTUALBOX-GUEST-MODULES  WIREGUARD-MODULE\nDepends On      : coreutils  initramfs  kmod\nOptional Deps   : linux-omarchy-headers: headers and scripts for building modules [installed]\n                  linux-firmware: firmware images needed for some devices [installed]\n                  scx-scheds: to use sched-ext schedulers\n                  sof-firmware: firmware for Intel SOF audio\n                  wireless-regdb: to set the correct wireless channels of your country [installed]\nRequired By     : ntsync-autoload\nOptional For    : steam\nConflicts With  : None\nReplaces        : None\nInstalled Size  : 149.40 MiB\nPackager        : Unknown Packager\nBuild Date      : Mon Sep 14 16:55:01 2026\nInstall Date    : Wed Sep 16 11:48:33 2026\nInstall Reason  : Explicitly installed\nInstall Script  : No\nValidated By    : SHA-256 Sum  Signature\n\n",
+  "ReadOnly": true,
+  "Uname": "7.2.5-3-omarchy",
+  "Vmlinux": {
+    "ELFNotes": "\nDisplaying notes found in: .notes\n  Owner                Data size \tDescription\n  Linux                0x00000004\tfunc\n   description data: 00 00 00 00 \n  Linux                0x00000001\tOPEN\n   description data: 00 \n  Xen                  0x0000000c\tUnknown note type: (0x00000013)\n   description data: 00 00 20 00 00 00 00 01 ff ff ff 3f \n  Xen                  0x00000008\tUnknown note type: (0x00000012)\n   description data: 90 69 24 04 00 00 00 00 \n  Xen                  0x00000006\tUnknown note type: (0x00000006)\n   description data: 6c 69 6e 75 78 00 \n  Xen                  0x00000004\tUnknown note type: (0x00000007)\n   description data: 32 2e 36 00 \n  Xen                  0x00000008\tUnknown note type: (0x00000005)\n   description data: 78 65 6e 2d 33 2e 30 00 \n  Xen                  0x00000008\tUnknown note type: (0x00000003)\n   description data: 00 00 00 80 ff ff ff ff \n  Xen                  0x00000008\tUnknown note type: (0x0000000f)\n   description data: 00 00 00 00 80 00 00 00 \n  Xen                  0x00000008\tNT_VERSION (version)\n   description data: 70 7b 24 84 ff ff ff ff \n  Xen                  0x00000015\tUnknown note type: (0x0000000a)\n   description data: 21 77 72 69 74 61 62 6c 65 5f 70 61 67 65 5f 74 61 62 6c 65 73 \n  Xen                  0x00000004\tUnknown note type: (0x00000009)\n   description data: 79 65 73 00 \n  Xen                  0x00000010\tUnknown note type: (0x0000000d)\n   description data: 01 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 \n  Xen                  0x00000004\tUnknown note type: (0x00000010)\n   description data: 01 00 00 00 \n  Xen                  0x00000008\tGO BUILDID\n   description data: 00 00 00 00 00 00 00 00 \n  Xen                  0x00000004\tUnknown note type: (0x00000011)\n   description data: 01 88 00 00 \n  Xen                  0x00000008\tUnknown note type: (0x00000008)\n   description data: 67 65 6e 65 72 69 63 00 \n  Xen                  0x00000004\tUnknown note type: (0x0000000e)\n   description data: 01 00 00 00 \n  GNU                  0x00000014\tNT_GNU_BUILD_ID (unique build ID bitstring)\n    Build ID: 240f9ec5a8022b1a7f578b0199033bf067658fbc\n",
+    "Path": "/usr/lib/modules/7.2.5-3-omarchy/build/vmlinux",
+    "Present": true,
+    "Size": 84218760
+  }
+}

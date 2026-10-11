@@ -1,0 +1,16 @@
+{
+  "FilesSHA256": {
+    "luna-t5-host-kernel-lease-zero-provenance-a1-review.md": "cfbbc4e12dc8020313eb7588ce64e22bbd4b897e1dc06ea745542bb7aa9a05c9",
+    "m2-t5-host-kernel-lease-zero-a1-retained-headers_BUILDINFO.txt": "334150d4b368b81532847faa8bc3d8e5dacf1ed2dfc1594070d22c65bbd3cac6",
+    "m2-t5-host-kernel-lease-zero-a1-retained-headers_MTREE.txt": "26aa20deeaa6bab7c8719394b1c9726d4caf7b9c591e98bf06bf07c259d7105e",
+    "m2-t5-host-kernel-lease-zero-a1-retained-headers_PKGINFO.txt": "b24ebab02d7fb6d4813accae1a04b06473330f7cbd681f0da05eaa3aa0b10622",
+    "m2-t5-host-kernel-lease-zero-a1-retained-kernel_BUILDINFO.txt": "dc4aad593396c2c11a5e8710488dcdc73d9b736881158e18d206ec63818f0d7f",
+    "m2-t5-host-kernel-lease-zero-a1-retained-kernel_MTREE.txt": "42bace6eecdceff5d6b64fd0386c2e2e37fed85e92ec5d7cd3d7ccc47caffd9f",
+    "m2-t5-host-kernel-lease-zero-a1-retained-kernel_PKGINFO.txt": "5a7a191f61eb5e0ed7fdefda0ee18bc9369f2b1aa0c6513fab4c6a08427c403c",
+    "m2-t5-host-kernel-lease-zero-a1-retained-vmlinux-time-out-leases.txt": "acfee9a904517ef774f949078deb473cc284be393e59264d0e02fc30dd603b9d",
+    "m2-t5-host-kernel-lease-zero-a1-root-verification.json": "7757c8aa796e9c906e7c2e1db2d5da6caf983d719549dcbb90dab74ff4a394aa",
+    "m2-t5-host-kernel-provenance-readonly-a1-root.json": "9a25b4be57083fe449c7f1ac70600017e73d9b12e54f06bec9b6d5a4b95b7c1a",
+    "m2-t5-running-kernel-build-identity-readonly-a1-root.json": "8cf7662f55d2366d1ff114e837335aa11556dae439473a7f9b094309c39fcbe1"
+  },
+  "Scope": "Exact-build static implementation prerequisite only; runtime/recovery gates stay open."
+}
