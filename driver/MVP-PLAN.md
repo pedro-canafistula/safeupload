@@ -12,8 +12,10 @@ user into a protected folder goes to a private staged version first; the service
 reaches the folder. A blocked version is handed back to the user who wrote it. Administrators and SYSTEM are trusted; standard users are
 the adversary. The product fails closed.
 
-The full MVP also requires USB/removable, SMB/UNC and cloud-sync folders, in that order after M3 and before combined M4 qualification.
-Each destination needs its own design note, owner decisions and Luna design review. These capabilities remain disabled until their
+The full MVP also requires **T21 USB/removable → T22 SMB/UNC → T23 cloud-sync folders**, in that order after M3 and before combined M4 qualification.
+Each is a separate required milestone with its own design note, recorded owner decisions, Luna 6 max-effort design review and destination
+qualification. USB includes surprise removal; SMB runs against an actual server with independent server-side byte observation.
+Supported removable filesystems and network configurations still require their design decisions. These capabilities remain disabled until their
 approved support and qualification gates pass and the owner approves cutover; the historical local-NTFS results do not qualify them.
 
 Historical qualification pair (later product changes require their own gates):
@@ -169,6 +171,8 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
   USB includes surprise removal; actual SMB and a real sync client need independent destination-byte observers. Taint stays, normal
   builds compile staging out, and unsupported capabilities stay disabled until owner-approved cutover. After all required evidence,
   write the taint-removal plan and wait for sign-off. This supersedes the earlier local-only completion scope.
+  T21 and T22 each require a dedicated design, recorded owner decisions with user-visible effects and Luna 6 max-effort design review
+  before implementation; their destination run evidence is required before combined M4 qualification.
 - 2026-10-11: empty files are ordinary content: seal, inspect (trivially clean at a freshly verified stable zero length), and publish
   them normally. This replaces the 2026-10-10 EmptyHeld decision and removes EmptySavePrivate notices. Public deletes are part of M2;
   Windows checks the caller's DELETE authority against the real public file. Private deletes free the name at last close while exact

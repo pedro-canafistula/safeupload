@@ -11,7 +11,9 @@ Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](PO
 | M1 | T0–T3: safe to leave loaded | Complete on the recorded M1 pair |
 | **M2** | **T4–T11: everyday file work** | **Active: T4 10,000 cycles first, then T5 deletes** |
 | M3 | T12, T14: release configuration and lifecycle | After M2 |
-| New destinations | **T21 USB/removable → T22 SMB/UNC → T23 cloud-sync folders** | After M3; separate design, owner decisions and Luna design review for each |
+| T21 | USB/removable | After M3; own design, owner decisions, Luna design review and destination qualification |
+| T22 | SMB/UNC | After T21; own design, owner decisions, Luna design review and destination qualification |
+| T23 | Cloud-sync folders | After T22; own design, owner decisions, Luna design review and real-client qualification |
 | M4 | T15–T19: combined qualification | Qualify local NTFS and T21–T23 together |
 | Later | T20 other Windows builds; T24 ReFS | Outside the current milestone sequence |
 | Owner-deferred | T13 production signing/Secure Boot | Test mode remains in force |
@@ -23,6 +25,8 @@ respective support and qualification gates are met and the owner approves cutove
 
 **2026-10-11 — destinations and completion.** Follow the order above. M4 covers local NTFS, USB including surprise removal,
 UNC/SMB, and a real sync client with independent destination-byte observers. Both mapping leaks need their repros rerun and closed.
+T21 and T22 are required MVP milestones before M4, not Later work. Each needs its own design note, owner decisions and Luna 6
+max-effort design review before implementation; adding them to the plan does not approve particular filesystems or network configurations.
 After all required tracker items have run evidence, write a taint-removal plan and wait for owner sign-off. Taint stays, normal builds
 compile staging out, and unsupported capabilities stay disabled until the owner approves cutover.
 
@@ -280,20 +284,26 @@ cannot publish unapproved bytes, proven by the observer.
 ### T21. USB and removable media
 
 **Problem:** removal, changing volume identity and filesystems without stable file IDs challenge private staging and publication.
-**Done when:** the approved USB scope, including surprise removal, keeps unapproved bytes private and passes independent destination-byte checks.
+**Done when:** the owner-approved USB/removable scope, including surprise removal, keeps unapproved bytes private, has independent
+destination-byte run evidence, and is ready for combined M4 qualification.
 
-- [ ] Write a dedicated design note; present supported filesystems/removal behavior as user-visible owner choices; obtain Luna design review.
+- [ ] Complete the dedicated USB/removable design before implementation.
+  - [ ] Record owner decisions on supported filesystems/removal behavior, explaining what users notice under each option; obtain Luna 6 max-effort design review.
 - [ ] Implement only the approved scope; keep unsupported combinations disabled.
 - [ ] Qualify attach/detach, surprise removal during write/seal/inspection/publication, reconnect and recovery with an independent observer.
+  - [ ] Cite matched-pair results, destination-byte observations, Verifier and separate VM restoration; include the approved scope in M4.
 
 ### T22. SMB / UNC
 
 **Problem:** policy UNC strings and provider-normalized paths differ; redirector identity, remote permissions and disconnects need a supported design.
-**Done when:** the approved SMB/UNC scope preserves privacy through writes, mapping and reconnect, observed independently at the destination.
+**Done when:** the owner-approved SMB/UNC scope preserves privacy through writes, mapping and reconnect on an actual SMB server,
+has independent server-side destination-byte run evidence, and is ready for combined M4 qualification.
 
-- [ ] Write a dedicated design note covering canonical names, redirector identity, remote authorization, commit ordering and disconnect/retry.
-- [ ] Resolve user-visible scope/failure decisions and obtain Luna design review before implementation.
-- [ ] Qualify an actual SMB server with independent server-side destination-byte observation; keep unsupported network capabilities disabled.
+- [ ] Complete the dedicated SMB/UNC design before implementation.
+  - [ ] Cover canonical names, redirector identity, remote authorization, commit ordering and disconnect/retry; record owner choices with user-visible effects and obtain Luna 6 max-effort design review.
+- [ ] Implement only the approved scope; keep unsupported network capabilities disabled.
+- [ ] Qualify an actual SMB server with independent server-side destination-byte observation.
+  - [ ] Cite matched-pair results, mapping/reconnect/recovery evidence, Verifier and separate VM restoration; include the approved scope in M4.
 
 ### T23. Cloud-sync folders
 
