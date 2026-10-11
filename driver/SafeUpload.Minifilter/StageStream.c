@@ -4,6 +4,7 @@
 #include "Filter.h"
 #include "Stage.h"
 #include "StageSecurity.h"
+#include "StagePublic.h"
 #include <ntstrsafe.h>
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -201,6 +202,8 @@ typedef struct _STAGE_ATTACH_TRANSACTION {
     PSTAGE_STREAM Stream;
     PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN AdmissionToken;
     PEPROCESS RequestorProcess;
+    SECURITY_CLIENT_CONTEXT PublicDeleteSubject;
+    BOOLEAN PublicDeleteSubjectValid;
     ULONG RequestorProcessId;
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
     LONG64 ExpectedGeneration;
@@ -2557,6 +2560,7 @@ static VOID StageAttachTransactionDereference(PSTAGE_ATTACH_TRANSACTION Transact
     if (Transaction->NameInfo != NULL && Transaction->NameInfoIsSynthetic)
         ExFreePoolWithTag(Transaction->NameInfo, STAGE_TAG);
     if (Transaction->RequestorProcess != NULL) ObDereferenceObject(Transaction->RequestorProcess);
+    if (Transaction->PublicDeleteSubjectValid) SeDeleteClientSecurity(&Transaction->PublicDeleteSubject);
     if (Transaction->ReferencedFileObject != NULL)
         ObDereferenceObject(Transaction->ReferencedFileObject);
     if (Transaction->ReferencedVolume != NULL)
@@ -2575,6 +2579,10 @@ static VOID StageAttachTransactionDereference(PSTAGE_ATTACH_TRANSACTION Transact
 static VOID StageAttachReleaseRelatedObjects(PSTAGE_ATTACH_TRANSACTION Transaction)
 {
     if (Transaction == NULL) return;
+    if (Transaction->PublicDeleteSubjectValid) {
+        SeDeleteClientSecurity(&Transaction->PublicDeleteSubject);
+        Transaction->PublicDeleteSubjectValid = FALSE;
+    }
     if (Transaction->NameInfo != NULL && Transaction->NameInfoIsSynthetic) {
         ExFreePoolWithTag(Transaction->NameInfo, STAGE_TAG);
         Transaction->NameInfo = NULL;
@@ -2717,6 +2725,13 @@ static NTSTATUS StageAttachQueueCreate(PFLT_CALLBACK_DATA Data,
     if (transaction->RequestorProcess == NULL) { status = STATUS_ACCESS_DENIED; goto Fail; }
     ObReferenceObject(transaction->RequestorProcess);
     transaction->RequestorProcessId = FltGetRequestorProcessId(Data);
+    if (Data->Iopb->Parameters.Create.SecurityContext != NULL &&
+        (FlagOn(Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess, DELETE | GENERIC_ALL | MAXIMUM_ALLOWED) ||
+         FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE))) {
+        status = SafeUploadStagePublicCaptureSubject(Data, &transaction->PublicDeleteSubject);
+        if (!NT_SUCCESS(status)) goto Fail;
+        transaction->PublicDeleteSubjectValid = TRUE;
+    }
     transaction->VolumeKind = VolumeKind;
     transaction->ExpectedGeneration = ExpectedGeneration;
     transaction->PrivateNamespace = PrivateNamespace;
