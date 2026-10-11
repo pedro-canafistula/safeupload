@@ -197,6 +197,10 @@ tracking failure cannot be described as an unchanged failed open. The owner-appr
 publication held and automatic reconciliation at the app's last-handle close and service startup. Exact absence or the original
 pre-open identity releases the recovery hold automatically; an undecidable result retains it with a named-file actionable tray
 notice and diagnostics. Reuse existing intent/startup recovery; no additional protocol states beyond accepted/unresolved. The
+owner's 2026-10-11 M2 exception covers forced teardown on local fixed NTFS: retain the named-file hold until exact evidence or a
+qualified full Windows Restart allows automatic reconciliation. Keep the service-stop prohibition and veto voluntary unregister
+for coverage-lost native records. App close/service restart cannot replace a lost cleanup receipt. USB/removable recovery must
+instead be designed at remount in T21; do not extend the fixed-NTFS exception or implement it here.
 reviewed corrections in [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md) are mandatory; if automatic
 recovery cannot be met during implementation, ask the owner. Preserve actual unsupported-flag results; the unsupported builder on-close probe is not
 evidence that those flags work on the qualification VM.

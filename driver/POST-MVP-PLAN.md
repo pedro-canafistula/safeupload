@@ -43,8 +43,15 @@ pre-CREATE intent and existing startup recovery; add no protocol states beyond *
 cannot decide, retain the hold, name the file and an actionable next step in the tray, and record diagnostics. Fault-injection rows
 must prove automatic hold release after handle close and service restart. If that automatic guarantee cannot be met, ask the owner
 before implementation. See [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md). Ordinary mounted-instance recovery has a corrected
-design; forced instance teardown can hide last-handle cleanup. Owner clarification of that exception is pending before kernel
-implementation; protected fault-injection qualification remains open.
+design; the approved fixed-NTFS exception below covers forced instance teardown. Protected fault-injection qualification remains open.
+
+**2026-10-11 — forced-teardown recovery scope.** For **M2 local fixed NTFS only**, the owner approves holding the affected name
+private after forced instance teardown until exact evidence or a qualified full Windows **Restart** permits automatic reconciliation.
+The tray names the file and gives that remedy; app close, service restart and Fast Startup cannot substitute for lost cleanup evidence.
+Keep the existing service-stop prohibition and veto voluntary unregister while coverage-lost native records remain unresolved.
+For **T21 USB/removable**, surprise removal makes this routine: restarting Windows is **not** an acceptable remedy. Design automatic
+reconciliation when the volume remounts, proving that the old removed-volume handle can no longer change the file before checking
+the returning volume's state. Record this requirement now; implement it only in T21 after its dedicated design/review.
 
 **2026-10-11 — VM restoration.** Independently verified restoration means all of:
 
@@ -203,13 +210,14 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [x] Native accepted/unresolved journal component (`960ba2d7`) with immutable on-close kind, current-session cleanup/qualified-boot proof,
     automatic queue wake and retained generation floor; all 24 new component cases pass in each agent profile. The
     [boot-lifetime review](evidence/2026-10-11/t5-native-boot-lifetime-design-review-luna6.md) rejects counter-only release;
-    live dispatcher, startup recovery and named-file notification remain pending.
+    live dispatcher, startup recovery and notification emission remain pending.
   - [x] Anchored native parent observer (`3df7aa97`) without child opens, using complete repeated 128-bit directory enumeration;
     all 14 buffer/native-handle cases pass in each agent profile. Authenticated driver-anchor export and live recovery remain pending.
-  - [ ] Verify named-file recovery guidance, exact owner-session/SID delivery and structured diagnostics; 17 agent cases prepared.
+  - [x] Named-file recovery guidance, exact owner-session/SID delivery and structured diagnostics (`a3b3b81e`);
+    [17 cases pass in each agent profile](evidence/2026-10-11/t5-native-notice2-static-gates.md), including real emission-record reopening.
     The notification helper is not connected to the live recovery dispatcher and cannot clear a hold.
-  - [ ] Resolve the [forced-instance callback cutoff](evidence/2026-10-11/t5-native-instance-teardown-feasibility-luna6.md) with the owner;
-    a same-boot service restart cannot supply a lost cleanup receipt. No exceptional restart remedy is approved yet.
+  - [x] Owner approves the [forced-instance exception](evidence/2026-10-11/t5-native-instance-teardown-feasibility-luna6.md) for M2 fixed NTFS:
+    keep the named-file hold until qualified Restart recovery; T21 must reconcile at remount instead. Implementation/runtime remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
@@ -222,9 +230,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
 Latest static gates: unchanged driver `960ba2d7`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator
-([readout](evidence/2026-10-11/t5-native-recovery2-static-gates.md)); agent `3df7aa97`, **799/799** per normal profile and **863/863** per
+([readout](evidence/2026-10-11/t5-native-recovery2-static-gates.md)); agent `a3b3b81e`, **816/816** per normal profile and **880/880** per
 feature profile, all discovered cases executed once without skips and service/tray builds at 0/0
-([observer readout](evidence/2026-10-11/t5-native-observer1-static-gates.md)). Raw build output, TRX and execution checks remain local
+([guidance readout](evidence/2026-10-11/t5-native-notice2-static-gates.md)). Raw build output, TRX and execution checks remain local
 under those readouts' recorded prefixes. No revised pair has booted.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
@@ -323,8 +331,13 @@ cannot publish unapproved bytes, proven by the observer.
 **Done when:** the owner-approved USB/removable scope, including surprise removal, keeps unapproved bytes private, has independent
 destination-byte run evidence, and is ready for combined M4 qualification.
 
+**Owner requirement, 2026-10-11:** surprise removal must reconcile automatically at remount, where the old handle can no longer
+change the file. Prove that lifetime boundary and validate the returning volume/file state in the T21 design. Windows Restart is
+not an acceptable removable-media recovery remedy; the M2 fixed-NTFS exception does not extend here. Do not implement this in M2.
+
 - [ ] Complete the dedicated USB/removable design before implementation.
   - [ ] Record owner decisions on supported filesystems/removal behavior, explaining what users notice under each option; obtain Luna 6 max-effort design review.
+  - [ ] Design automatic remount reconciliation after surprise removal; retain the exact identity/generation hold until verified.
 - [ ] Implement only the approved scope; keep unsupported combinations disabled.
 - [ ] Qualify attach/detach, surprise removal during write/seal/inspection/publication, reconnect and recovery with an independent observer.
   - [ ] Cite matched-pair results, destination-byte observations, Verifier and separate VM restoration; include the approved scope in M4.

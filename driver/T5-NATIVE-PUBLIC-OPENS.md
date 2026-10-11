@@ -95,6 +95,10 @@ lost service connection is impossible. Reporting a harmless failed open would co
    Recovery is never a manual journal edit/unlock. Reuse the durable pre-CREATE intent and existing startup recovery; add no new
    protocol states beyond accepted/unresolved. Fault-injection rows must show the hold ends automatically after the handle closes
    and after service restart. If the automatic guarantee cannot be met, return to the owner before implementation.
+6. **Owner-approved fixed-NTFS exception, 2026-10-11:** forced instance teardown can hide exact cleanup. For M2 local fixed NTFS,
+   retain the named-file hold until exact evidence or a qualified Windows Restart permits automatic reconciliation. Preserve the
+   service-stop prohibition and voluntary-unload veto for coverage-lost records. This exception does not apply to USB/removable:
+   T21 must design automatic reconciliation at remount after the removed-volume handle can no longer change the file; do not build it now.
 
 **What users notice:** normal empty saves, Explorer New Text Document, empty copy/move and clear-and-save keep their
 ordinary publication behavior. Normal delete-on-close uses Windows timing. In the exceptional tracking-failure case, Windows' accepted
@@ -171,16 +175,17 @@ recovery hold. Use the existing independent observer, Verifier and separate VM r
 
 ## Local lifetime and required verification
 
-**Forced-instance boundary — owner clarification pending.** The
+**Forced-instance boundary — approved for M2 fixed NTFS, 2026-10-11.** The
 [focused feasibility review](evidence/2026-10-11/t5-native-instance-teardown-feasibility-luna6.md) identifies a limit in the construction:
 after `InstanceTeardownStart`, Filter Manager stops invoking pre/post callbacks for new I/O on that instance, including a later app
 cleanup. Referencing the instance does not restore callback coverage; the query-teardown veto applies only to manual detach.
-Keep the durable accepted/unresolved hold when exact cleanup evidence is lost. The proposed named-file/full-Windows-restart remedy
-needs an owner exception to the universal last-handle guarantee; it is not authorized by this note. Its existing qualified-boot
+Keep the durable accepted/unresolved hold when exact cleanup evidence is lost. The owner approves the named-file/full-Windows-restart
+remedy only for M2 local fixed NTFS. Its existing qualified-boot
 proof remains sound only if the feature's mandatory-service-stop prohibition stays enabled and a coverage-lost native record stays
 in the driver's global rundown map: voluntary unload must veto before unregister, not wait for a callback that cannot arrive.
 OS shutdown skips FilterUnloadCallback; Fast Startup retains that driver/map and cannot qualify as a new lifetime.
-Do not implement the dependent native kernel path before that decision. The pre-unregister drain below is a prerequisite while
+T21 must instead design automatic remount recovery; do not extend this exception or implement removable recovery now.
+The pre-unregister drain below is a prerequisite while
 callback coverage remains intact, not proof that every forced instance can be drained after its callback cutoff.
 
 Object references preserve allocation, not the native open after last-handle cleanup. Disposition must use a still-open object at

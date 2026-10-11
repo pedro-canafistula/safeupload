@@ -36,3 +36,9 @@ For the durable destination hold, the failure mode is technically fail-closed: p
 This leaves one owner question before implementation: is the visible duration acceptable when forced per-volume teardown loses exact cleanup coverage, so the affected destination can remain held until the user performs a qualified Windows **Restart**? The recovery and tray behavior can be automatic after that restart; the user must not be told that service restart, app close, volume reattach, or Fast Startup is sufficient. The product must retain the mandatory-service-stop flag and the voluntary-unload veto for unresolved native records. If a future build removes that flag and can enter a mandatory unload callback with a coverage-lost record, the approved drain cannot complete and that build is unsupported. The normal mounted-instance close and same-driver service-start path remain automatic.
 
 Microsoft distinguishes Fast Startup from a full restart: Fast Startup saves the kernel session, while a restart uses a full shutdown and boot ([system power states](https://learn.microsoft.com/en-us/windows/win32/power/system-power-states)).
+
+## Owner decision recorded after review, 2026-10-11
+
+The owner approves the qualified-Restart exception as written **for M2 local fixed NTFS only**. T21 USB/removable must instead design
+automatic reconciliation at remount after surprise removal, proving the old handle can no longer change the file before checking
+the returning state. Restarting Windows is not an acceptable T21 remedy. Record that requirement now; do not implement it in M2.
