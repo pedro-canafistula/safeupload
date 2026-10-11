@@ -34,10 +34,17 @@ typedef struct _STAGE_PUBLIC_OBJECT_BASIC_INFORMATION {
 
 static volatile LONG StagePublicBackendCount;
 
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StagePublicBindCaller(PSECURITY_CLIENT_CONTEXT Subject,
+    PEPROCESS RequestorProcess, PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StagePublicBindCaller)
+#endif
+
 /* RequestorProcess is the original CREATE's referenced process object, not a
  * new PID lookup. The effective SID/session come from the exact copied subject
  * used for the checked NTFS open, including an impersonated/restricted token. */
-_IRQL_requires_(PASSIVE_LEVEL)
+_Use_decl_annotations_
 static NTSTATUS StagePublicBindCaller(PSECURITY_CLIENT_CONTEXT Subject,
     PEPROCESS RequestorProcess, PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding)
 {
