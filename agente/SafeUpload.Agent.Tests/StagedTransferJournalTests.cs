@@ -115,8 +115,8 @@ public sealed class StagedTransferJournalTests : IDisposable
         var request = new StagedDiscardRequest(older.TransferId,
             new StagedVersionIdentity(older.TransferId, oldEntry.DestinationGeneration, oldEntry.StageIdentity!),
             StagedDiscardKind.PrivateVersion);
-        Assert.Equal(StagedDiscardStatus.Pending, await journal.RequestDiscardAsync(request, older.ProcessId,
-            older.StagePath, CancellationToken.None));
+        Assert.Equal(StagedDiscardStatus.Pending, await journal.BeginOrConfirmDiscardAsync(request,
+            CancellationToken.None, older.ProcessId));
         Assert.True(File.Exists(older.StagePath)); // journal intent replies before physical cleanup
         Assert.Equal(StagedDiscardStatus.Acknowledged,
             await journal.CompleteDiscardAsync(request, CancellationToken.None));
