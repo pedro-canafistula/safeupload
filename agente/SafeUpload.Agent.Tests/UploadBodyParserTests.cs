@@ -137,10 +137,33 @@ public sealed class UploadBodyParserTests
         Assert.Equal(pdf, part.Content.ToArray());
     }
 
-    [Fact]
-    public void Corpo_bruto_sem_tipo_de_texto_e_arquivo()
+    /// <summary>
+    /// Corpo de texto sem nome de arquivo é texto, seja qual for o tipo
+    /// declarado: é assim que sai a telemetria das páginas.
+    /// </summary>
+    [Theory]
+    [InlineData("application/octet-stream")]
+    [InlineData("text/plain;charset=UTF-8")]
+    [InlineData(null)]
+    public void Corpo_de_texto_sem_nome_e_texto(string? contentType)
     {
-        UploadPart part = Assert.Single(Parse("application/octet-stream", Encoding.UTF8.GetBytes($"linha 1\nCPF {Cpf}\n")));
+        UploadPart part = Assert.Single(Parse(contentType, Encoding.UTF8.GetBytes("{\"evento\":\"clique\",\"t\":1760150000000000}")));
+
+        Assert.Equal(UploadPartKind.Text, part.Kind);
+    }
+
+    /// <summary>
+    /// Nos protocolos de upload (retomável do Google, tus, envio em faixas) o
+    /// corpo é conteúdo de arquivo, mesmo sem nome e parecendo texto.
+    /// </summary>
+    [Theory]
+    [InlineData("X-Goog-Upload-Command", "upload, finalize")]
+    [InlineData("Upload-Offset", "0")]
+    [InlineData("Content-Range", "bytes 0-27/28")]
+    public void Corpo_em_protocolo_de_upload_e_arquivo(string header, string value)
+    {
+        UploadPart part = Assert.Single(Parse(
+            "application/x-www-form-urlencoded", Encoding.UTF8.GetBytes($"nome;cpf\nAna;{Cpf}\n"), (header, value)));
 
         Assert.Equal(UploadPartKind.File, part.Kind);
         Assert.Null(part.FileName);

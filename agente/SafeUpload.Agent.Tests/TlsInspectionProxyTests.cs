@@ -276,13 +276,14 @@ public sealed class TlsInspectionProxyTests : IAsyncLifetime
         Assert.Equal(_inspectionCa.Subject, seen()!.Issuer);
         Assert.Empty(_site.Requests);
 
-        // O programa insiste, como faz um cliente de verdade. O proxy registra
-        // a recusa quando vê a conexão cair, um instante depois de o cliente
-        // já ter recebido o erro; por isso o número exato de falhas varia.
+        // O programa insiste, como faz um cliente de verdade. O número de
+        // falhas varia: o proxy só conta a recusa quando o alerta TLS do
+        // cliente chega antes de o socket fechar, e este cliente (.NET) fecha
+        // logo depois de mandar o alerta.
         string? body = null;
         int failures = 1;
 
-        while (body is null && failures < 20)
+        while (body is null && failures < 40)
         {
             await Task.Delay(100);
 
@@ -297,7 +298,7 @@ public sealed class TlsInspectionProxyTests : IAsyncLifetime
         }
 
         Assert.Equal("GET /ola 0", body);
-        Assert.InRange(failures, 2, 3);
+        Assert.True(failures >= 2, "Uma recusa só não basta para aprender.");
         Assert.Equal(_internetCa.Subject, seen()!.Issuer);
         Assert.Empty(inspector.Requests);
     }

@@ -199,6 +199,10 @@ em [ARQUITETURA-INSPECAO-TLS.md](ARQUITETURA-INSPECAO-TLS.md), seção 4.7.
 Matriz de sites × navegadores, latência adicionada, apps que quebram e
 comportamento com o proxy fora do ar.
 
+Estado: feita com o Edge na VM, com três correções saídas dela. Resultado em
+[FASE7-QUALIFICACAO.md](FASE7-QUALIFICACAO.md). Falta upload com login em
+Drive e Gmail, Chrome e Firefox, e uso prolongado.
+
 ### Depois
 
 Driver WFP com callout de redirecionamento, HTTP/2, inspeção de WebSocket.

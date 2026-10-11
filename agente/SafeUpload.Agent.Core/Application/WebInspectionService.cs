@@ -67,7 +67,8 @@ public sealed record WebInspectionResult(
 /// Para cada envio:
 ///
 ///   1. processo excluído                              RN-014
-///   2. texto digitado: todas as partes de texto juntas, direto na varredura
+///   2. texto digitado: todas as partes de texto juntas, na varredura de
+///      texto escrito (<see cref="TypedTextScanner"/>)
 ///   3. cada arquivo: formato pelos bytes, extensão em escopo (RN-011),
 ///      tamanho (RN-013), extração e varredura com prazo (RN-012)
 ///   4. veredito: qualquer achado bloqueia o envio inteiro (RN-005)
@@ -128,7 +129,9 @@ public sealed class WebInspectionService
             return new WebInspectionResult(findings, policy.AuditOnly, policy.Version, records);
         }
 
-        // 2. Texto digitado. Vai direto para a varredura: não há formato a extrair.
+        // 2. Texto digitado. Não há formato a extrair, e a régua é a de
+        // texto escrito por gente, mais estrita que a de documento: o tráfego
+        // de uma página é cheio de telemetria (ver TypedTextScanner).
         var text = new StringBuilder();
         long textBytes = 0;
 
@@ -143,7 +146,7 @@ public sealed class WebInspectionService
 
         if (text.Length > 0)
         {
-            var found = ContentScanner.Scan(text.ToString(), policy.ActiveCategories);
+            var found = TypedTextScanner.Scan(text.ToString(), policy.ActiveCategories);
 
             if (found.Count > 0)
             {
