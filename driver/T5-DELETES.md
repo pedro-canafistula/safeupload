@@ -6,6 +6,10 @@ retired. Public-file deletion is an M2 feature. The [independent Luna design rev
 accepted this design in `434315cf`. Implementation is underway; concrete kernel lifetime/lock-order/retirement changes need their
 review before the first revised VM boot, and runtime qualification remains required.
 
+The native public-open routing detail remains **NOT READY**. See [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md) for the
+supported-object correction, unresolved scheduled-delete ordering and pending owner failure-policy choice. Section 4.1's original
+proxy construction is not authority to implement the rejected synthetic FCB/native-section-pointer pairing or unsupported on-close emulation.
+
 This note covers the Notepad Save As test-file sequence (T5), Office temporary/backup sequences (T8), deletion of a public file, and
 the lifetime and recovery rules needed to make those operations safe. The earlier R1 physical-delete and R2 physical-rename/link
 proposals remain withdrawn. Physical rename and link operations touching protected names stay refused; in-folder rename continues

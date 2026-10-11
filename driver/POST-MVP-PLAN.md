@@ -172,8 +172,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [x] Caller CREATE-subject snapshot, separate NTFS-checked backend factory and exact authenticated service-process hold
     (`334f11af`–`3be0fe71`), original process-lifetime/effective-SID binding and reconciled service-epoch pin; normal builds omit
     the backend. The factory is not yet connected to public-delete handling.
-  - [ ] Correct the [public-open routing proposal](T5-PUBLIC-PROXY-ROUTING.md) after its
-    [NOT READY design review](evidence/2026-10-11/t5-public-proxy-routing-design-review-luna6.md); preserve native reads/mappings/sharing.
+  - [ ] Resolve the [native public-open correction](T5-NATIVE-PUBLIC-OPENS.md) and its post-acceptance failure-policy owner choice;
+    [Luna follow-up](evidence/2026-10-11/t5-native-public-open-followup-luna6.md) remains NOT READY. Preserve native reads/mappings/sharing
+    and the published-only delete ordering without an unapproved handle-lifetime publication delay.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.

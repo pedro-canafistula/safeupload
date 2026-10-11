@@ -3,7 +3,8 @@
 Date: 2026-10-11. Proposed implementation detail for [T5-DELETES.md](T5-DELETES.md) section 4.1.
 Review base: `1e04bfec`; checked-backend implementation: `4e070ab2`. **NOT READY; do not implement this routing.**
 The [independent Luna review](evidence/2026-10-11/t5-public-proxy-routing-design-review-luna6.md) rejects the synthetic FCB/native
-section-pointer pairing and identifies positioning and elevated-IRQL release gaps. A native app-object correction is being reviewed.
+section-pointer pairing and identifies positioning and elevated-IRQL release gaps. This proposal is superseded by the still-unapproved
+[native app-object correction](T5-NATIVE-PUBLIC-OPENS.md) and its focused review findings; retain this file as the rejected proposal.
 This does not change empty-file publication, delete authority, generation ordering, cancellation/failure policy or supported destinations.
 
 ## Purpose
