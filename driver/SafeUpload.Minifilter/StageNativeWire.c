@@ -5,6 +5,9 @@
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #define NATIVE_WIRE_TAG 'wUpS'
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, SafeUploadStageNativeReplayControl)
+#endif
 
 typedef struct _NATIVE_REPLAY_WORK {
     SAFEUPLOAD_NATIVE_REPLAY_PAGE Page;
@@ -74,10 +77,14 @@ NTSTATUS SafeUploadStageNativeReplayControl(PVOID PortCookie, PVOID Input, ULONG
     *Returned = 0;
     if (InputLength != sizeof(request) || Output == NULL || OutputLength != sizeof(work->Page))
         return STATUS_INVALID_BUFFER_SIZE;
-    /* The caller's SEH guards these probes and the final copy. Every owned
-     * pin/allocation below has a finally block, including a late probe fault. */
-    ProbeForRead(Input, sizeof(request), __alignof(SAFEUPLOAD_NATIVE_REPLAY_REQUEST));
-    RtlCopyMemory(&request, Input, sizeof(request));
+    /* Guard user-buffer accesses locally so the safety contract does not
+     * depend on the dispatcher's enclosing exception handler. */
+    try {
+        ProbeForRead(Input, sizeof(request), __alignof(SAFEUPLOAD_NATIVE_REPLAY_REQUEST));
+        RtlCopyMemory(&request, Input, sizeof(request));
+    } except (EXCEPTION_EXECUTE_HANDLER) {
+        return GetExceptionCode();
+    }
     if (request.Control.Version != SAFEUPLOAD_PROTOCOL_VERSION || request.Control.StructSize != sizeof(request) ||
         request.Control.Command != SAFEUPLOAD_CONTROL_NATIVE_RECORD_REPLAY || request.Control.Reserved != 0 ||
         request.ExtensionVersion != SAFEUPLOAD_NATIVE_REPLAY_VERSION || request.Reserved != 0 ||
@@ -118,11 +125,15 @@ NTSTATUS SafeUploadStageNativeReplayControl(PVOID PortCookie, PVOID Input, ULONG
         status = SafeUploadStageNativeReadPage(revision, 0, work->Snapshots, 1, &count, &revision, &complete);
         if (!NT_SUCCESS(status)) leave;
         if (!SafeUploadConnectionIsAuthenticatedIdentity(cookie, epoch)) { status = STATUS_ACCESS_DENIED; leave; }
+        try {
 #pragma warning(suppress: 6001)
-        ProbeForWrite(Output, sizeof(work->Page), __alignof(SAFEUPLOAD_NATIVE_REPLAY_PAGE));
-        RtlCopyMemory(Output, &work->Page, sizeof(work->Page));
-        *Returned = sizeof(work->Page);
-        status = STATUS_SUCCESS;
+            ProbeForWrite(Output, sizeof(work->Page), __alignof(SAFEUPLOAD_NATIVE_REPLAY_PAGE));
+            RtlCopyMemory(Output, &work->Page, sizeof(work->Page));
+            *Returned = sizeof(work->Page);
+            status = STATUS_SUCCESS;
+        } except (EXCEPTION_EXECUTE_HANDLER) {
+            status = GetExceptionCode();
+        }
     } finally {
         if (work != NULL) ExFreePoolWithTag(work, NATIVE_WIRE_TAG);
         SafeUploadConnectionReleaseAuthenticatedProcess(cookie, process);
