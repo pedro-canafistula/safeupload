@@ -207,17 +207,20 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [READY WITH CORRECTIONS Luna review](evidence/2026-10-11/t5-automatic-native-delete-recovery-review-luna6.md).
     [Builder parent-query control](evidence/2026-10-11/t5-native-pending-link-control-builder-1011a1.txt) identifies a pending original
     and exact absence after last reader close; protected runtime and automatic-recovery fault rows remain pending.
-  - [x] Native accepted/unresolved journal component (`960ba2d7`) with immutable on-close kind, current-session cleanup/qualified-boot proof,
-    automatic queue wake and retained generation floor; all 24 new component cases pass in each agent profile. The
+  - [x] Native accepted/unresolved journal component (`960ba2d7`, `e9458807`) with immutable on-close kind, current-session cleanup/cancellation/qualified-boot proof,
+    automatic queue wake and retained generation floor; all 28 component cases pass in each agent profile. The
     [boot-lifetime review](evidence/2026-10-11/t5-native-boot-lifetime-design-review-luna6.md) rejects counter-only release;
     live dispatcher, startup recovery and notification emission remain pending.
   - [x] Anchored native parent observer (`3df7aa97`) without child opens, using complete repeated 128-bit directory enumeration;
     all 14 buffer/native-handle cases pass in each agent profile. Authenticated driver-anchor export and live recovery remain pending.
-  - [x] Named-file recovery guidance, exact owner-session/SID delivery and structured diagnostics (`a3b3b81e`);
-    [17 cases pass in each agent profile](evidence/2026-10-11/t5-native-notice2-static-gates.md), including real emission-record reopening.
+  - [x] Named-file recovery guidance, exact owner-session/SID delivery and structured diagnostics (`a3b3b81e`, `6ee1112e`);
+    [18 cases pass in each agent profile](evidence/2026-10-11/t5-native-notice4-static-gates.md), including real emission-record reopening and qualified Restart advice.
     The notification helper is not connected to the live recovery dispatcher and cannot clear a hold.
   - [x] Owner approves the [forced-instance exception](evidence/2026-10-11/t5-native-instance-teardown-feasibility-luna6.md) for M2 fixed NTFS:
     keep the named-file hold until qualified Restart recovery; T21 must reconcile at remount instead. Implementation/runtime remain open.
+  - [x] Bounded native-object record map, exact CREATE/CLEANUP/cancellation ownership and unload veto (`5591afe8`, `e9458807`);
+    [canceled-CREATE design review](evidence/2026-10-11/t5-native-cancelled-create-design-luna6.md) and
+    [static gates](evidence/2026-10-11/t5-native-map2-static-gates.md). CREATE producer/export and integrated pre-boot kernel review remain pending.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
@@ -229,11 +232,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: unchanged driver `960ba2d7`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator
-([readout](evidence/2026-10-11/t5-native-recovery2-static-gates.md)); agent `a3b3b81e`, **816/816** per normal profile and **880/880** per
-feature profile, all discovered cases executed once without skips and service/tray builds at 0/0
-([guidance readout](evidence/2026-10-11/t5-native-notice2-static-gates.md)). Raw build output, TRX and execution checks remain local
-under those readouts' recorded prefixes. No revised pair has booted.
+Latest static gates: driver and agent `e9458807`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
+**821/821** per normal agent profile and **885/885** per feature profile, every discovered case executed once without skips,
+service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-11/t5-native-map2-static-gates.md)).
+Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
 [matrix self-checks](evidence/2026-10-11/t5-agent-matrix-runner-selfcheck.txt) pass.
