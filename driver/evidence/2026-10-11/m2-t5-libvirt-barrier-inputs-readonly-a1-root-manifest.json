@@ -1,0 +1,10 @@
+{
+  "FilesSHA256": {
+    "m2-t5-libvirt-admin-header-readonly-a1-root.json": "8ce12f3930f3ec8afd1dea3c775e9daeb7726d0aeb36a09a1b823fe1fbbfaeab",
+    "m2-t5-libvirt-barrier-inputs-readonly-a1-root-verification.json": "0a6ce05bce8105ef2354d5d55558e0577ede2b85339a47561eb8e786dab0e2bc",
+    "m2-t5-libvirt-service-layout-readonly-a1-root.json": "3adeee46f8adaf857493da7f3a55bf333156d9f1d9a69c87a862464c1ca49d66",
+    "m2-t5-libvirt-service-layout-readonly-a2-root.json": "db12a15782bfc0dcec982b47e220bcffe24c260710217588634f32cf88dcb628",
+    "m2-t5-libvirt-unit-files-readonly-a1-root.json": "8f150a7309d383d315e382bf67438769d5f8094d6c522ce9f1a261c3d2372864"
+  },
+  "Scope": "Pinned read-only inputs only; no API barrier, recovery, or host change qualification."
+}

@@ -1,0 +1,24 @@
+{
+  "CapturedUTC": "2026-10-11T14:42:54.300580+00:00",
+  "Command": [
+    "systemctl",
+    "show",
+    "libvirtd.service",
+    "libvirtd.socket",
+    "libvirtd-ro.socket",
+    "libvirtd-admin.socket",
+    "virtqemud.service",
+    "virtqemud.socket",
+    "virtqemud-ro.socket",
+    "virtqemud-admin.socket",
+    "virtproxyd.service",
+    "virtproxyd.socket",
+    "--property=Id,LoadState,ActiveState,SubState,FragmentPath,MainPID,ExecStart,ExecStop,KillMode,TimeoutStopUSec,Triggers,TriggeredBy,Listen,StopWhenUnneeded,RefuseManualStop,ControlGroup",
+    "--no-pager"
+  ],
+  "ExitCode": 0,
+  "ManagementMutationPerformed": false,
+  "ReadOnly": true,
+  "Stderr": "",
+  "Stdout": "Id=libvirtd.service\nTriggers=\nTriggeredBy=libvirtd.socket libvirtd-admin.socket libvirtd-ro.socket\nLoadState=loaded\nActiveState=active\nSubState=running\nFragmentPath=/usr/lib/systemd/system/libvirtd.service\nStopWhenUnneeded=no\nRefuseManualStop=no\nTimeoutStopUSec=5s\nMainPID=1205\nExecStart={ path=/usr/bin/libvirtd ; argv[]=/usr/bin/libvirtd $LIBVIRTD_ARGS ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\nControlGroup=/system.slice/libvirtd.service\nKillMode=process\n\nId=libvirtd.socket\nTriggers=libvirtd.service\nTriggeredBy=\nLoadState=loaded\nActiveState=active\nSubState=running\nFragmentPath=/usr/lib/systemd/system/libvirtd.socket\nStopWhenUnneeded=no\nRefuseManualStop=no\nListen=/run/libvirt/libvirt-sock (Stream)\nControlGroup=\nKillMode=control-group\n\nId=libvirtd-ro.socket\nTriggers=libvirtd.service\nTriggeredBy=\nLoadState=loaded\nActiveState=active\nSubState=running\nFragmentPath=/usr/lib/systemd/system/libvirtd-ro.socket\nStopWhenUnneeded=no\nRefuseManualStop=no\nListen=/run/libvirt/libvirt-sock-ro (Stream)\nControlGroup=\nKillMode=control-group\n\nId=libvirtd-admin.socket\nTriggers=libvirtd.service\nTriggeredBy=\nLoadState=loaded\nActiveState=active\nSubState=running\nFragmentPath=/usr/lib/systemd/system/libvirtd-admin.socket\nStopWhenUnneeded=no\nRefuseManualStop=no\nListen=/run/libvirt/libvirt-admin-sock (Stream)\nControlGroup=\nKillMode=control-group\n\nId=virtqemud.service\nTriggers=\nTriggeredBy=virtqemud-ro.socket virtqemud-admin.socket virtqemud.socket\nLoadState=loaded\nActiveState=inactive\nSubState=dead\nFragmentPath=/usr/lib/systemd/system/virtqemud.service\nStopWhenUnneeded=no\nRefuseManualStop=no\nTimeoutStopUSec=5s\nMainPID=0\nExecStart={ path=/usr/bin/virtqemud ; argv[]=/usr/bin/virtqemud $VIRTQEMUD_ARGS ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\nControlGroup=\nKillMode=process\n\nId=virtqemud.socket\nTriggers=virtqemud.service\nTriggeredBy=\nLoadState=loaded\nActiveState=inactive\nSubState=dead\nFragmentPath=/usr/lib/systemd/system/virtqemud.socket\nStopWhenUnneeded=no\nRefuseManualStop=no\nListen=/run/libvirt/virtqemud-sock (Stream)\nControlGroup=\nKillMode=control-group\n\nId=virtqemud-ro.socket\nTriggers=virtqemud.service\nTriggeredBy=\nLoadState=loaded\nActiveState=inactive\nSubState=dead\nFragmentPath=/usr/lib/systemd/system/virtqemud-ro.socket\nStopWhenUnneeded=no\nRefuseManualStop=no\nListen=/run/libvirt/virtqemud-sock-ro (Stream)\nControlGroup=\nKillMode=control-group\n\nId=virtqemud-admin.socket\nTriggers=virtqemud.service\nTriggeredBy=\nLoadState=loaded\nActiveState=inactive\nSubState=dead\nFragmentPath=/usr/lib/systemd/system/virtqemud-admin.socket\nStopWhenUnneeded=no\nRefuseManualStop=no\nListen=/run/libvirt/virtqemud-admin-sock (Stream)\nControlGroup=\nKillMode=control-group\n\nId=virtproxyd.service\nTriggers=\nTriggeredBy=virtproxyd.socket virtproxyd-ro.socket virtproxyd-admin.socket\nLoadState=loaded\nActiveState=inactive\nSubState=dead\nFragmentPath=/usr/lib/systemd/system/virtproxyd.service\nStopWhenUnneeded=no\nRefuseManualStop=no\nTimeoutStopUSec=5s\nMainPID=0\nExecStart={ path=/usr/bin/virtproxyd ; argv[]=/usr/bin/virtproxyd $VIRTPROXYD_ARGS ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\nControlGroup=\nKillMode=control-group\n\nId=virtproxyd.socket\nTriggers=virtproxyd.service\nTriggeredBy=\nLoadState=loaded\nActiveState=inactive\nSubState=dead\nFragmentPath=/usr/lib/systemd/system/virtproxyd.socket\nStopWhenUnneeded=no\nRefuseManualStop=no\nListen=/run/libvirt/libvirt-sock (Stream)\nControlGroup=\nKillMode=control-group\n"
+}

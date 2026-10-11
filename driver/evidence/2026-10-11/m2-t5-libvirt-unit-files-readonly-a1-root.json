@@ -1,0 +1,79 @@
+{
+  "CapturedUTC": "2026-10-11T14:45:00.050401+00:00",
+  "NoConfigurationOrServiceMutation": true,
+  "ReadOnly": true,
+  "Units": {
+    "libvirtd-admin.socket": {
+      "Path": "/usr/lib/systemd/system/libvirtd-admin.socket",
+      "SHA256": "e9a0539acf6d4459f48bd4e63228fad09df9291020e2d4610cde394f13471bca",
+      "Size": 304,
+      "Text": "[Unit]\nDescription=libvirt legacy monolithic daemon admin socket\nBindsTo=libvirtd.socket\nAfter=libvirtd.socket\n\n[Socket]\nListenStream=/run/libvirt/libvirt-admin-sock\nService=libvirtd.service\nSocketMode=0600\nRemoveOnStop=yes\n\n[Install]\nWantedBy=sockets.target\nAlso=libvirtd.socket\nAlso=libvirtd-ro.socket\n"
+    },
+    "libvirtd-ro.socket": {
+      "Path": "/usr/lib/systemd/system/libvirtd-ro.socket",
+      "SHA256": "a677a530e7de7594ae122403bb3e1e31b089380bf7077285c0f6db158e2013aa",
+      "Size": 308,
+      "Text": "[Unit]\nDescription=libvirt legacy monolithic daemon read-only socket\nBindsTo=libvirtd.socket\nAfter=libvirtd.socket\n\n[Socket]\nListenStream=/run/libvirt/libvirt-sock-ro\nService=libvirtd.service\nSocketMode=0666\nRemoveOnStop=yes\n\n[Install]\nWantedBy=sockets.target\nAlso=libvirtd.socket\nAlso=libvirtd-admin.socket\n"
+    },
+    "libvirtd.service": {
+      "Path": "/usr/lib/systemd/system/libvirtd.service",
+      "SHA256": "0b12eda4d04f8a2129fdc06e5509ff7e7e4b8e5522cbe0aec90fdb6111a51204",
+      "Size": 2072,
+      "Text": "[Unit]\nDescription=libvirt legacy monolithic daemon\nDocumentation=man:libvirtd(8)\nDocumentation=https://libvirt.org/\n# Use Wants instead of Requires so that users\n# can disable these three .socket units to revert\n# to a traditional non-activation deployment setup\nWants=libvirtd.socket\nWants=libvirtd-ro.socket\nWants=libvirtd-admin.socket\nAfter=libvirtd.socket\nAfter=libvirtd-ro.socket\nAfter=libvirtd-admin.socket\nRequires=virtlogd.socket\nWants=virtlockd.socket\nAfter=virtlogd.socket\nAfter=virtlockd.socket\n# To ensure that our helper daemons are not shut down before the main daemon\n# shuts down we need also explicit ordering with the .service unit\nAfter=virtlogd.service\nAfter=virtlockd.service\nWants=systemd-machined.service\nAfter=network.target\nAfter=dbus.service\nAfter=iscsid.service\nAfter=apparmor.service\nAfter=remote-fs.target\nAfter=systemd-machined.service\nAfter=xencommons.service\nConflicts=xendomains.service\n\n[Service]\nType=notify-reload\nEnvironment=LIBVIRTD_ARGS=\"--timeout 120\"\nEnvironmentFile=-/etc/conf.d/libvirtd\nExecStart=/usr/bin/libvirtd $LIBVIRTD_ARGS\nExecReload=/bin/kill -HUP $MAINPID\nKillMode=process\nRestart=on-failure\n# Raise hard limits to match behaviour of systemd >= 240.\n# During startup, daemon will set soft limit to match hard limit\n# per systemd recommendations\nLimitNOFILE=1024:524288\n# The cgroups pids controller can limit the number of tasks started by\n# the daemon, which can limit the number of domains for some hypervisors.\n# A conservative default of 8 tasks per guest results in a TasksMax of\n# 32k to support 4096 guests.\nTasksMax=32768\n# With cgroups v2 there is no devices controller anymore, we have to use\n# eBPF to control access to devices. In order to do that we create a eBPF\n# hash MAP which locks memory. The default map size for 64 devices together\n# with program takes 12k per guest. After rounding up we will get 64M to\n# support 4096 guests.\nLimitMEMLOCK=64M\n\n[Install]\nWantedBy=multi-user.target\nAlso=virtlockd.socket\nAlso=virtlogd.socket\nAlso=libvirtd.socket\nAlso=libvirtd-ro.socket\nAlso=libvirtd-admin.socket\n"
+    },
+    "libvirtd.socket": {
+      "Path": "/usr/lib/systemd/system/libvirtd.socket",
+      "SHA256": "7a70873094ae1820c295141f2f57dd64447567fa7a0057ef6f1952b77e1ceade",
+      "Size": 252,
+      "Text": "[Unit]\nDescription=libvirt legacy monolithic daemon socket\n\n[Socket]\nListenStream=/run/libvirt/libvirt-sock\nService=libvirtd.service\nSocketMode=0666\nRemoveOnStop=yes\n\n[Install]\nWantedBy=sockets.target\nAlso=libvirtd-ro.socket\nAlso=libvirtd-admin.socket\n"
+    },
+    "virtproxyd-admin.socket": {
+      "Path": "/usr/lib/systemd/system/virtproxyd-admin.socket",
+      "SHA256": "a8e938ff1ea31b1d6b5bf100502074a9596d439f0ad1660cd46a8466471dcacb",
+      "Size": 362,
+      "Text": "[Unit]\nDescription=libvirt proxy daemon admin socket\nBindsTo=virtproxyd.socket\nAfter=virtproxyd.socket\nConflicts=libvirtd-admin.socket\nAfter=libvirtd-admin.socket\n\n[Socket]\nListenStream=/run/libvirt/libvirt-admin-sock\nService=virtproxyd.service\nSocketMode=0600\nRemoveOnStop=yes\n\n[Install]\nWantedBy=sockets.target\nAlso=virtproxyd.socket\nAlso=virtproxyd-ro.socket\n"
+    },
+    "virtproxyd-ro.socket": {
+      "Path": "/usr/lib/systemd/system/virtproxyd-ro.socket",
+      "SHA256": "daa5185e62e6d0b7f95367b3484936a384432007a4f85b28831c0f3fdc00e12e",
+      "Size": 360,
+      "Text": "[Unit]\nDescription=libvirt proxy daemon read-only socket\nBindsTo=virtproxyd.socket\nAfter=virtproxyd.socket\nConflicts=libvirtd-ro.socket\nAfter=libvirtd-ro.socket\n\n[Socket]\nListenStream=/run/libvirt/libvirt-sock-ro\nService=virtproxyd.service\nSocketMode=0666\nRemoveOnStop=yes\n\n[Install]\nWantedBy=sockets.target\nAlso=virtproxyd.socket\nAlso=virtproxyd-admin.socket\n"
+    },
+    "virtproxyd.service": {
+      "Path": "/usr/lib/systemd/system/virtproxyd.service",
+      "SHA256": "aa7368a5fb25c37f76f18b8a76bf1b7e4d9533584f942040406787eeae0351c5",
+      "Size": 715,
+      "Text": "[Unit]\nDescription=libvirt proxy daemon\nDocumentation=man:virtproxyd(8)\nDocumentation=https://libvirt.org/\nBindsTo=virtproxyd.socket\nWants=virtproxyd-ro.socket\nWants=virtproxyd-admin.socket\nAfter=virtproxyd.socket\nAfter=virtproxyd-ro.socket\nAfter=virtproxyd-admin.socket\nConflicts=libvirtd.service\nAfter=libvirtd.service\nAfter=network.target\nAfter=dbus.service\nAfter=apparmor.service\n\n[Service]\nType=notify-reload\nEnvironment=VIRTPROXYD_ARGS=\"--timeout 120\"\nEnvironmentFile=-/etc/conf.d/virtproxyd\nExecStart=/usr/bin/virtproxyd $VIRTPROXYD_ARGS\nExecReload=/bin/kill -HUP $MAINPID\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\nAlso=virtproxyd.socket\nAlso=virtproxyd-ro.socket\nAlso=virtproxyd-admin.socket\n"
+    },
+    "virtproxyd.socket": {
+      "Path": "/usr/lib/systemd/system/virtproxyd.socket",
+      "SHA256": "b7ac151be8534adcf67a5d6c9f83836e510704332022a013debf46331ee7cc3a",
+      "Size": 294,
+      "Text": "[Unit]\nDescription=libvirt proxy daemon socket\nConflicts=libvirtd.socket\nAfter=libvirtd.socket\n\n[Socket]\nListenStream=/run/libvirt/libvirt-sock\nService=virtproxyd.service\nSocketMode=0666\nRemoveOnStop=yes\n\n[Install]\nWantedBy=sockets.target\nAlso=virtproxyd-ro.socket\nAlso=virtproxyd-admin.socket\n"
+    },
+    "virtqemud-admin.socket": {
+      "Path": "/usr/lib/systemd/system/virtqemud-admin.socket",
+      "SHA256": "230c420327f5419d53c18350a5cc621831b85f6bbaac51355f3d44ffafd4ce37",
+      "Size": 358,
+      "Text": "[Unit]\nDescription=libvirt QEMU daemon admin socket\nBindsTo=virtqemud.socket\nAfter=virtqemud.socket\nConflicts=libvirtd-admin.socket\nAfter=libvirtd-admin.socket\n\n[Socket]\nListenStream=/run/libvirt/virtqemud-admin-sock\nService=virtqemud.service\nSocketMode=0600\nRemoveOnStop=yes\n\n[Install]\nWantedBy=sockets.target\nAlso=virtqemud.socket\nAlso=virtqemud-ro.socket\n"
+    },
+    "virtqemud-ro.socket": {
+      "Path": "/usr/lib/systemd/system/virtqemud-ro.socket",
+      "SHA256": "46e03ecf0243010181ccf8858eb0ccfe793c970c6a7bf4869bd12b1df8a2b6fc",
+      "Size": 356,
+      "Text": "[Unit]\nDescription=libvirt QEMU daemon read-only socket\nBindsTo=virtqemud.socket\nAfter=virtqemud.socket\nConflicts=libvirtd-ro.socket\nAfter=libvirtd-ro.socket\n\n[Socket]\nListenStream=/run/libvirt/virtqemud-sock-ro\nService=virtqemud.service\nSocketMode=0666\nRemoveOnStop=yes\n\n[Install]\nWantedBy=sockets.target\nAlso=virtqemud.socket\nAlso=virtqemud-admin.socket\n"
+    },
+    "virtqemud.service": {
+      "Path": "/usr/lib/systemd/system/virtqemud.service",
+      "SHA256": "3ab2d1ca9a5259d9b749e24b19451310ba0ab78493bb087623d18dbda4d39a58",
+      "Size": 1903,
+      "Text": "[Unit]\nDescription=libvirt QEMU daemon\nDocumentation=man:virtqemud(8)\nDocumentation=https://libvirt.org/\nBindsTo=virtqemud.socket\nWants=virtqemud-ro.socket\nWants=virtqemud-admin.socket\nAfter=virtqemud.socket\nAfter=virtqemud-ro.socket\nAfter=virtqemud-admin.socket\nConflicts=libvirtd.service\nAfter=libvirtd.service\nAfter=network.target\nAfter=dbus.service\nAfter=apparmor.service\nRequires=virtlogd.socket\nWants=virtlockd.socket\nAfter=virtlogd.socket\nAfter=virtlockd.socket\n# To ensure that our helper daemons are not shut down before the main daemon\n# shuts down we need also explicit ordering with the .service unit\nAfter=virtlogd.service\nAfter=virtlockd.service\nWants=systemd-machined.service\nAfter=systemd-machined.service\nAfter=remote-fs.target\n\n[Service]\nType=notify-reload\nEnvironment=VIRTQEMUD_ARGS=\"--timeout 120\"\nEnvironmentFile=-/etc/conf.d/virtqemud\nExecStart=/usr/bin/virtqemud $VIRTQEMUD_ARGS\nExecReload=/bin/kill -HUP $MAINPID\nRestart=on-failure\nKillMode=process\n# Raise hard limits to match behaviour of systemd >= 240.\n# During startup, daemon will set soft limit to match hard limit\n# per systemd recommendations\nLimitNOFILE=1024:524288\n# The cgroups pids controller can limit the number of tasks started by\n# the daemon, which can limit the number of domains for some hypervisors.\n# A conservative default of 8 tasks per guest results in a TasksMax of\n# 32k to support 4096 guests.\nTasksMax=32768\n# With cgroups v2 there is no devices controller anymore, we have to use\n# eBPF to control access to devices. In order to do that we create a eBPF\n# hash MAP which locks memory. The default map size for 64 devices together\n# with program takes 12k per guest. After rounding up we will get 64M to\n# support 4096 guests.\nLimitMEMLOCK=64M\n\n[Install]\nWantedBy=multi-user.target\nAlso=virtqemud.socket\nAlso=virtqemud-ro.socket\nAlso=virtqemud-admin.socket\nAlso=virtlogd.socket\nAlso=virtlockd.socket\n"
+    },
+    "virtqemud.socket": {
+      "Path": "/usr/lib/systemd/system/virtqemud.socket",
+      "SHA256": "7191ae4acd20f69a23e16d48250a4c59c518746fa92f37ae6e7d0ebf31946346",
+      "Size": 292,
+      "Text": "[Unit]\nDescription=libvirt QEMU daemon socket\nConflicts=libvirtd.socket\nAfter=libvirtd.socket\n\n[Socket]\nListenStream=/run/libvirt/virtqemud-sock\nService=virtqemud.service\nSocketMode=0666\nRemoveOnStop=yes\n\n[Install]\nWantedBy=sockets.target\nAlso=virtqemud-ro.socket\nAlso=virtqemud-admin.socket\n"
+    }
+  }
+}

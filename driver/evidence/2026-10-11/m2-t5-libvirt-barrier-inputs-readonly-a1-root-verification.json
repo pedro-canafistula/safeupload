@@ -1,0 +1,26 @@
+{
+  "CapturedActiveSockets": [
+    "libvirtd.socket",
+    "libvirtd-ro.socket",
+    "libvirtd-admin.socket"
+  ],
+  "CapturedDaemon": "libvirtd.service",
+  "CapturedMainPID": 1205,
+  "DrainProven": false,
+  "EvidenceSHA256": {
+    "m2-t5-libvirt-admin-header-readonly-a1-root.json": "8ce12f3930f3ec8afd1dea3c775e9daeb7726d0aeb36a09a1b823fe1fbbfaeab",
+    "m2-t5-libvirt-service-layout-readonly-a1-root.json": "3adeee46f8adaf857493da7f3a55bf333156d9f1d9a69c87a862464c1ca49d66",
+    "m2-t5-libvirt-service-layout-readonly-a2-root.json": "db12a15782bfc0dcec982b47e220bcffe24c260710217588634f32cf88dcb628",
+    "m2-t5-libvirt-unit-files-readonly-a1-root.json": "8f150a7309d383d315e382bf67438769d5f8094d6c522ce9f1a261c3d2372864"
+  },
+  "HostPolicyApplied": false,
+  "ManagementMutationPerformed": false,
+  "ObservedInactiveAlternativeServices": [
+    "virtqemud.service",
+    "virtproxyd.service"
+  ],
+  "ProductVMStarted": false,
+  "Scope": "Read-only deployment observations and declarations for a source/design review. Service state is bound to its capture window and must be reobserved before a transaction. First sandbox DBus attempt failed; read-only escalated observation succeeded without an automatic approval rejection.",
+  "TwelveInstalledUnitPinsAndAdminHeaderRevalidated": true,
+  "VerifiedUTC": "2026-10-11T14:52:55.297325+00:00"
+}

@@ -1,0 +1,24 @@
+{
+  "CapturedUTC": "2026-10-11T14:42:43.950971+00:00",
+  "Command": [
+    "systemctl",
+    "show",
+    "libvirtd.service",
+    "libvirtd.socket",
+    "libvirtd-ro.socket",
+    "libvirtd-admin.socket",
+    "virtqemud.service",
+    "virtqemud.socket",
+    "virtqemud-ro.socket",
+    "virtqemud-admin.socket",
+    "virtproxyd.service",
+    "virtproxyd.socket",
+    "--property=Id,LoadState,ActiveState,SubState,FragmentPath,MainPID,ExecStart,ExecStop,KillMode,TimeoutStopUSec,Triggers,TriggeredBy,Listen,StopWhenUnneeded,RefuseManualStop,ControlGroup",
+    "--no-pager"
+  ],
+  "ExitCode": 1,
+  "ManagementMutationPerformed": false,
+  "ReadOnly": true,
+  "Stderr": "Failed to connect to system scope bus via local transport: Operation not permitted (consider using --machine=<user>@.host --user to connect to bus of other user)\n",
+  "Stdout": ""
+}
