@@ -139,6 +139,9 @@ with FileIdExtdDirectoryInfo / FILE_ID_EXTD_DIR_INFO. Validate complete enumerat
 FILE_ID_128. This is read-only directory metadata, not a child reopen or share widening. The
 [builder control](evidence/2026-10-11/t5-native-pending-link-control-builder-1011a1.txt) found the exact pending original despite a
 Win32-5 child-open refusal, then found exact absence after last reader close; supported-VM/protected recovery rows remain required.
+`StagedDestinationNameObserver` implements this read-only observation on borrowed, checked directory handles: verify root/parent
+identities, non-reparse directory type and case mode, then require two complete matching enumerations and unchanged anchors. It
+never opens the child or interprets access denial as absence. Authenticated anchor export and the live recovery call remain pending.
 
 If the name still maps to original A, or exact enumeration establishes absence, automatically downgrade AcceptedUnresolved to the
 existing nonblocking scheduled-intent representation (Admitted plus an immutable native-on-close kind field). Retain the scheduled

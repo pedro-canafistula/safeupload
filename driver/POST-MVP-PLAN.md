@@ -202,7 +202,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [ ] Native accepted/unresolved journal component with immutable on-close kind, current-session cleanup/qualified-boot proof,
     automatic queue wake and retained generation floor; 24 new component cases prepared. The
     [boot-lifetime review](evidence/2026-10-11/t5-native-boot-lifetime-design-review-luna6.md) rejects counter-only release;
-    revised agent matrix/builds, live dispatcher, parent observer, startup recovery and named-file notification remain pending.
+    revised agent matrix/builds, live dispatcher, startup recovery and named-file notification remain pending.
+  - [ ] Anchored native parent observer implemented without child opens, using complete repeated 128-bit directory enumeration;
+    14 buffer/native-handle cases prepared. Its agent matrix and authenticated driver-anchor exporter remain pending.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
