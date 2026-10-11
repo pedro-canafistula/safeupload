@@ -754,9 +754,14 @@ try {
             $oldMachineTestSetting = $env:SAFEUPLOAD_MACHINE_TESTS
             try {
                 $env:SAFEUPLOAD_MACHINE_TESTS = '1'
-                Invoke-DotnetGate ($name + '-tests-discovery-list') @('vstest', $testDll.FullName, '/ListTests')
+                # VSTest deduplicates FQNs only within a discovery batch. A
+                # theory spanning its default 1,000-case boundary repeats its
+                # method name. Keep the inventory-uniqueness gate and collect
+                # this bounded matrix in one batch instead of normalizing it.
+                Invoke-DotnetGate ($name + '-tests-discovery-list') @('vstest', $testDll.FullName,
+                    '/ListTests', '/BatchSize:100000')
                 Invoke-DotnetGate ($name + '-tests-discovery-fqns') @('vstest', $testDll.FullName,
-                    '/ListFullyQualifiedTests', ("/ListTestsTargetPath:$discoveryFqns"))
+                    '/ListFullyQualifiedTests', '/BatchSize:100000', ("/ListTestsTargetPath:$discoveryFqns"))
             } finally {
                 if ($null -eq $oldMachineTestSetting) { Remove-Item Env:SAFEUPLOAD_MACHINE_TESTS -ErrorAction SilentlyContinue }
                 else { $env:SAFEUPLOAD_MACHINE_TESTS = $oldMachineTestSetting }

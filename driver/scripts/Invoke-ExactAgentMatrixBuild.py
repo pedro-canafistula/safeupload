@@ -410,7 +410,7 @@ def verify_matrix_outputs(out, summary):
             fqns = read_captured_text(fq_file).splitlines()
             if (not fqns or any(not fqn or fqn != fqn.strip() for fqn in fqns)
                     or len(set(fqns)) != len(fqns)):
-                raise RuntimeError('Empty discovery-only fully qualified test inventory: ' + name)
+                raise RuntimeError('Invalid discovery-only method inventory (empty, whitespace or duplicate): ' + name)
             public_cases = read_public_discovery_cases(out / (name + '-tests-discovery-list.txt'))
             discovered_methods = Counter(fqns)
             discovered_cases = bind_discovery_cases_to_methods(public_cases, fqns, name)
