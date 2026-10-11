@@ -72,6 +72,22 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
     private static StagedDestinationNameObservation Observation(StagedDestinationIdentity destination,
         StagedStageIdentity? identity) => new(destination, destination.Parent, destination.Parent, true, identity);
 
+    private static StagedNativeRecoverySession.Proof CleanupProof(StagedPublicDeleteBinding binding,
+        Guid operation, uint? currentBoot = null)
+    {
+        var session = new StagedNativeRecoverySession(binding.DriverInstanceId, binding.ConnectionEpoch + 1,
+            currentBoot ?? binding.OsBootSequence);
+        return session.ReconcileReplay(binding.DriverInstanceId, binding.ConnectionEpoch + 1, true, true,
+            [new(binding, operation, true)]);
+    }
+
+    private static StagedNativeRecoverySession.Proof BootProof(StagedPublicDeleteBinding binding,
+        uint? currentBoot, Guid currentDriver, bool complete = true, bool reconciled = true)
+    {
+        var session = new StagedNativeRecoverySession(currentDriver, binding.ConnectionEpoch + 1, currentBoot);
+        return session.ReconcileReplay(currentDriver, binding.ConnectionEpoch + 1, complete, reconciled, []);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -89,8 +105,8 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
         {
             await journal.RecordNativeDeleteOnCloseCreateResultAsync(turn, binding, operation, true, false);
             Assert.False(waiting.IsCompleted);
-            var result = await journal.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation, 42,
-                new(binding, operation), Observation(destination, absent ? null : _publicIdentity), CancellationToken.None);
+            var result = await journal.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+                CleanupProof(binding, operation), Observation(destination, absent ? null : _publicIdentity), CancellationToken.None);
             Assert.Equal(StagedPublicDeleteState.Admitted, result.State);
             Assert.Equal(StagedPublicDeleteKind.NativeOnClose, result.Kind);
             Assert.True(result.NativeCreateAccepted);
@@ -105,7 +121,7 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
     }
 
     [Fact]
-    public async Task Restart_keeps_unresolved_pre_create_and_requires_cleanup_or_a_strictly_later_os_boot()
+    public async Task Restart_keeps_unresolved_pre_create_until_exact_cleanup_or_qualified_boot_replay()
     {
         var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
         var binding = Binding() with { OsBootSequence = 42 };
@@ -116,14 +132,14 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
         Assert.Equal(binding, persisted.Binding); Assert.Null(persisted.NativeCreateAccepted);
         using var turn = await restart.EnterDestinationCommitTurnAsync(destination,
             StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None);
-        foreach (uint boot in new uint[] { 0, 41, 42 })
+        foreach (uint? boot in new uint?[] { null, 0, 41, 42 })
             await Assert.ThrowsAsync<IOException>(() => restart.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
-                boot, null, Observation(destination, null), CancellationToken.None));
-        await Assert.ThrowsAsync<IOException>(() => restart.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation, 42,
-            new(binding with { DriverInstanceId = Guid.NewGuid(), ConnectionEpoch = 18 }, operation),
+                BootProof(binding, boot, Guid.NewGuid()), Observation(destination, null), CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => restart.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+            CleanupProof(binding with { DriverInstanceId = Guid.NewGuid(), ConnectionEpoch = 18 }, operation),
             Observation(destination, _publicIdentity), CancellationToken.None));
-        var recovered = await restart.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation, 43,
-            null, Observation(destination, null), CancellationToken.None);
+        var recovered = await restart.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+            BootProof(binding, 43, Guid.NewGuid()), Observation(destination, null), CancellationToken.None);
         Assert.Equal(StagedPublicDeleteState.Admitted, recovered.State);
         Assert.Null(recovered.NativeCreateAccepted); // Recovery never invents NTFS acceptance or cleanup ACK.
         Assert.Equal(0, (await restart.ReadDestinationHeadAsync(destination, CancellationToken.None))!.CommittedDelete);
@@ -143,14 +159,114 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
             original with { Destination = Destination("another.txt") },
             original with { PublicIdentity = _publicIdentity with { FileIdHigh = 999 } } })
             await Assert.ThrowsAsync<IOException>(() => journal.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
-                42, new(binding, operation), invalid, CancellationToken.None));
-        foreach (var cleanup in new[] { new StagedNativeLastCleanupReceipt(binding, Guid.NewGuid()),
-            new(binding with { OwnerProcessCreationTime = binding.OwnerProcessCreationTime + 1 }, operation),
-            new(binding with { PublicIdentity = _publicIdentity with { FileIdLow = 999 } }, operation) })
+                CleanupProof(binding, operation), invalid, CancellationToken.None));
+        foreach (var cleanup in new[] { CleanupProof(binding, Guid.NewGuid()),
+            CleanupProof(binding with { OwnerProcessCreationTime = binding.OwnerProcessCreationTime + 1 }, operation),
+            CleanupProof(binding with { PublicIdentity = _publicIdentity with { FileIdLow = 999 } }, operation) })
             await Assert.ThrowsAsync<IOException>(() => journal.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
-                42, cleanup, original, CancellationToken.None));
+                cleanup, original, CancellationToken.None));
         Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved,
             Assert.Single((await journal.ReadDestinationHeadAsync(destination, CancellationToken.None))!.Deletes).State);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Partial_or_unreconciled_new_driver_replay_cannot_release_a_later_boot_hold(bool complete, bool reconciled)
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, binding, operation);
+        using var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None);
+        await Assert.ThrowsAsync<IOException>(() => journal.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+            BootProof(binding, 43, Guid.NewGuid(), complete, reconciled), Observation(destination, null), CancellationToken.None));
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved,
+            Assert.Single((await Journal().ReadDestinationHeadAsync(destination, CancellationToken.None))!.Deletes).State);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Resume_or_same_boot_driver_reload_never_releases_without_exact_cleanup(bool changedDriver)
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, binding, operation);
+        using var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None);
+        Guid driver = changedDriver ? Guid.NewGuid() : binding.DriverInstanceId;
+        uint boot = changedDriver ? 42u : 43u;
+        await Assert.ThrowsAsync<IOException>(() => journal.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+            BootProof(binding, boot, driver), Observation(destination, null), CancellationToken.None));
+        var session = new StagedNativeRecoverySession(binding.DriverInstanceId, 18, 43);
+        var live = session.ReconcileReplay(binding.DriverInstanceId, 18, true, true, [new(binding, operation, false)]);
+        await Assert.ThrowsAsync<IOException>(() => journal.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+            live, Observation(destination, _publicIdentity), CancellationToken.None));
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved,
+            Assert.Single((await Journal().ReadDestinationHeadAsync(destination, CancellationToken.None))!.Deletes).State);
+    }
+
+    [Theory]
+    [InlineData("disconnect")]
+    [InlineData("partial-replay")]
+    [InlineData("unbound-replay")]
+    [InlineData("reconstructed-token")]
+    public async Task Stale_or_reconstructed_recovery_proof_cannot_change_the_durable_hold(string invalidation)
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, binding, operation);
+        var session = new StagedNativeRecoverySession(binding.DriverInstanceId, 18, 42);
+        var records = new StagedNativeRecordReplay[] { new(binding, operation, true) };
+        var proof = session.ReconcileReplay(binding.DriverInstanceId, 18, true, true, records);
+        if (invalidation == "disconnect") session.Invalidate();
+        else if (invalidation == "partial-replay") session.ReconcileReplay(binding.DriverInstanceId, 18, false, false, []);
+        else if (invalidation == "unbound-replay")
+            Assert.Throws<IOException>(() => session.ReconcileReplay(binding.DriverInstanceId, 19, true, true, records));
+        else proof = new StagedNativeRecoverySession.Proof(session, 1, true, true, records);
+        using var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None);
+        await Assert.ThrowsAsync<IOException>(() => journal.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+            proof, Observation(destination, null), CancellationToken.None));
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved,
+            Assert.Single((await Journal().ReadDestinationHeadAsync(destination, CancellationToken.None))!.Deletes).State);
+    }
+
+    [Theory]
+    [InlineData(0u)]
+    [InlineData(41u)]
+    [InlineData(43u)]
+    public async Task Service_restart_replays_exact_cleanup_even_if_boot_counter_changed(uint currentBoot)
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, binding, operation);
+        var restarted = Journal();
+        using var turn = await restarted.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None);
+        var result = await restarted.ReconcileNativeDeleteOnCloseAsync(turn, binding, operation,
+            CleanupProof(binding, operation, currentBoot), Observation(destination, null), CancellationToken.None);
+        Assert.Equal(StagedPublicDeleteState.Admitted, result.State);
+        Assert.Equal(StagedPublicDeleteKind.NativeOnClose, result.Kind);
+    }
+
+    [Fact]
+    public void Native_replay_rejects_unbound_and_duplicate_original_objects_and_copies_its_input()
+    {
+        var binding = Binding() with { OsBootSequence = 42 }; var operation = Guid.NewGuid();
+        var session = new StagedNativeRecoverySession(binding.DriverInstanceId, 18, 42);
+        var live = new StagedNativeRecordReplay(binding, operation, false);
+        foreach (var record in new[] { live with { Binding = binding with { DriverInstanceId = Guid.NewGuid() } },
+            live with { Binding = binding with { ConnectionEpoch = 19 } }, live with { OperationId = Guid.Empty } })
+            Assert.Throws<IOException>(() => session.ReconcileReplay(binding.DriverInstanceId, 18, true, true, [record]));
+        Assert.Throws<IOException>(() => session.ReconcileReplay(binding.DriverInstanceId, 18, true, true,
+            [live, live with { LastHandleCleanedUp = true }]));
+        var records = new[] { live };
+        var proof = session.ReconcileReplay(binding.DriverInstanceId, 18, true, true, records);
+        records[0] = live with { LastHandleCleanedUp = true };
+        Assert.Throws<IOException>(() => proof.RequireExactLifetimeEnded(binding, operation));
     }
 
     [Fact]

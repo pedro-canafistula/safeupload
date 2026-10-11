@@ -186,8 +186,18 @@ merely a different driver-instance GUID; retain exact durable intent across loss
 The OS-boot sequence is the OS-loader `KUSER_SHARED_DATA.BootId` documented in
 [the WDK reference](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/ns-ntddk-kuser_shared_data), also present in the
 installed `10.0.28000.0/km/ntddk.h`. Bind its original value into the durable native intent and obtain the current value from the
-authenticated driver. A strictly greater value can end a prior local NTFS handle lifetime; a service epoch, driver GUID, adjustable
-boot-time timestamp, unknown value or counter rollback/wrap cannot. Remote/removable lifetime proofs require their own destination design.
+authenticated driver. This counter is one part of the boot proof below; a service epoch, driver GUID, adjustable boot-time timestamp,
+unknown value or counter rollback/wrap cannot replace it.
+
+The [boot-lifetime review](evidence/2026-10-11/t5-native-boot-lifetime-design-review-luna6.md) rejects that counter alone as proof:
+the loader counts boot attempts, and hibernation/Fast Startup can retain handles and drivers. Release the exceptional hold only with
+either exact authenticated original-object last-handle cleanup, or **all** of a strictly greater unsigned counter, a different
+authenticated driver instance, and a complete reconciled native-record replay containing no live original record. Preserve the
+instance and live records across resume. The mandatory local drain above is a prerequisite, not an inference from a new empty map.
+Bind proof to the current connection; disconnect, rejected replay or newer replay invalidates an old snapshot. A partial/unreconciled
+replay cannot prove absence. Exact cleanup remains valid even if the counter wrapped or rolled back; the boot branch does not.
+Same-boot reload without authenticated cleanup remains fail-closed until a qualified boot under the existing late-attach rule.
+These are proof metadata, not new protocol states. Remote/removable lifetime proofs require their own destination design.
 
 - Implement the corrections in the READY WITH CORRECTIONS security-design review; do not claim the existing recovery is already wired.
 - Review the integrated kernel lifetime/lock-order/retirement change once before its first revised VM boot.

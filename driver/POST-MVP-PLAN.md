@@ -199,9 +199,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [READY WITH CORRECTIONS Luna review](evidence/2026-10-11/t5-automatic-native-delete-recovery-review-luna6.md).
     [Builder parent-query control](evidence/2026-10-11/t5-native-pending-link-control-builder-1011a1.txt) identifies a pending original
     and exact absence after last reader close; protected runtime and automatic-recovery fault rows remain pending.
-  - [ ] Native accepted/unresolved journal component implemented with immutable on-close kind, checked cleanup/OS-boot evidence,
-    automatic queue wake and retained generation floor; 11 new component cases prepared. Agent matrix/builds and live dispatcher,
-    parent observer, startup recovery and named-file notification remain pending.
+  - [ ] Native accepted/unresolved journal component with immutable on-close kind, current-session cleanup/qualified-boot proof,
+    automatic queue wake and retained generation floor; 24 new component cases prepared. The
+    [boot-lifetime review](evidence/2026-10-11/t5-native-boot-lifetime-design-review-luna6.md) rejects counter-only release;
+    revised agent matrix/builds, live dispatcher, parent observer, startup recovery and named-file notification remain pending.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.

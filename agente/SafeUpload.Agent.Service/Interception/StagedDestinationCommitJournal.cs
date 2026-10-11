@@ -83,7 +83,6 @@ internal sealed record StagedPublicDeleteRecord(StagedPublicDeleteBinding Bindin
 internal sealed record StagedDestinationNameObservation(StagedDestinationIdentity Destination,
     StagedStageIdentity ParentBefore, StagedStageIdentity ParentAfter, bool CompleteEnumeration,
     StagedStageIdentity? PublicIdentity);
-internal sealed record StagedNativeLastCleanupReceipt(StagedPublicDeleteBinding Binding, Guid OperationId);
 internal sealed record StagedDestinationCommitIntent(Guid OperationId, StagedDestinationMutation Mutation,
     Guid TransferId, long Generation, StagedStageIdentity? ExpectedPublicIdentity,
     StagedStageIdentity? TemporaryIdentity = null, long? Length = null, string? Sha256Hex = null);
@@ -391,15 +390,16 @@ public sealed partial class StagedTransferJournal
     }
 
     // Called by exact last-handle CLEANUP or startup recovery, after a checked
-    // complete parent enumeration. A new service epoch/driver GUID is not boot
-    // evidence. The OS-loader BootId is supplied by the authenticated driver;
-    // non-increasing/wrapped/unknown values cannot prove an old lifetime ended.
+    // complete parent enumeration and session-bound native-record replay. A
+    // boot counter alone, new service epoch or driver GUID is not lifetime
+    // evidence; the proof also rejects a stale/partial/unfinished boot replay.
     internal async Task<StagedPublicDeleteRecord> ReconcileNativeDeleteOnCloseAsync(
         DestinationCommitTurn turn, StagedPublicDeleteBinding binding, Guid operationId,
-        uint currentOsBootSequence, StagedNativeLastCleanupReceipt? cleanup,
+        StagedNativeRecoverySession.Proof lifetimeProof,
         StagedDestinationNameObservation observation, CancellationToken token)
     {
         turn.Require(this, StagedDestinationTurnPurpose.Reconciliation);
+        ArgumentNullException.ThrowIfNull(lifetimeProof);
         ArgumentNullException.ThrowIfNull(observation);
         if (observation.Destination != turn.Destination || !observation.CompleteEnumeration ||
             observation.ParentBefore != turn.Destination.Parent || observation.ParentAfter != turn.Destination.Parent)
@@ -411,10 +411,7 @@ public sealed partial class StagedTransferJournal
             var head = await RequireDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
             RequireNoPendingPhysicalCommit(head);
             var delete = RequireExactNativeDelete(head, binding, operationId);
-            if (binding.OsBootSequence is not { } originalBoot || currentOsBootSequence < originalBoot ||
-                (currentOsBootSequence == originalBoot &&
-                 (cleanup is null || cleanup.Binding != binding || cleanup.OperationId != operationId)))
-                throw new IOException("The exact native handle lifetime has not been proven ended.");
+            lifetimeProof.RequireExactLifetimeEnded(binding, operationId);
             if (delete.State == StagedPublicDeleteState.Admitted) return delete;
             if (delete.State != StagedPublicDeleteState.AcceptedUnresolved)
                 throw new IOException("This native intent is no longer awaiting exceptional reconciliation.");
