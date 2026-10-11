@@ -1,0 +1,71 @@
+{
+  "schema": "safeupload-t5-notepad-coordinator-r15-author-result-v1",
+  "candidate": "m2-t5-notepad-coordinator-r15-luna-a1",
+  "status": "AUTHOR_GO_PENDING_ROOT_INDEPENDENT_REVIEW_AND_PS51_STANDALONE_DIAGNOSTIC",
+  "sourceDisposition": "AUTHOR_SOURCE_REVIEW_GO_CANDIDATE_ONLY_NO_ROOT_ACCEPTANCE_INFERRED",
+  "sourceCapture": {
+    "path": "author/source-capture.json",
+    "sha256": "118766c1d578a01a324c1e8b63bda82766291fe38fe306ac8e08ef576cd618ab",
+    "runtimeInputs": 2,
+    "managedSchemaReviewInputs": 2,
+    "contextInputs": 13
+  },
+  "changedSource": {
+    "path": "driver/scripts/t5/notepad-coordinator.SelfCheck.ps1",
+    "sha256": "dbc00a84c456b97f6903cfcb4ccc0ba37c5ff763fc6b67e83aab3e86e807245f",
+    "r14BaselineSha256": "01277fd1696d0e8a7af81e54ed3e1da479fcbd20061b8353d80be78b6cd12158",
+    "r18BaselineSha256": "dbc00a84c456b97f6903cfcb4ccc0ba37c5ff763fc6b67e83aab3e86e807245f",
+    "byteIdenticalToR18": true
+  },
+  "unchangedSourcePins": {
+    "driver/scripts/t5/notepad-coordinator.ps1": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d",
+    "agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs": "4b270eaef4616c06ba52e0b88deb701d72463dcef8ed6c9c8cc4c39893b23f8d",
+    "agente/SafeUpload.Agent.Service/Interception/StagedJournalFile.cs": "5f4a5ae360513425f1ff79c3ad8c0c4fc8c2b3464f416cecc43c57c42224053a"
+  },
+  "exactDelta": {
+    "path": "author/exact-delta-from-r14.patch",
+    "sha256": "6aa7645f9cd9dfb5a3ef67a6d10e5358a9fcc228f0cc012fdbe8adaf813a1d27",
+    "r18SelfCheckByteIdentical": true,
+    "productionCoordinatorOrManagedSchemaChanged": false,
+    "impossibleHistoryRejectionPreservedWithForbiddenEdge10To2": true,
+    "allLegacyPositivePreserved": true,
+    "mixedLegacyMeasuredNegativePreserved": true,
+    "extraHelperOrMutationControlsAdded": false
+  },
+  "provenance": {
+    "r14RootCaptureSha256": "cf0231084dab2b7cb1e36c3e041fa7bb6206e9c3faa4a47b126c9705e324efb0",
+    "r14DiagnosticVerificationSha256": "60b5ec053da0d06f774578ae754607c587419affa9de81a5587b3d87e417bec5",
+    "r18RootCaptureSha256": "4da629bbdc11533484c4a2ed0b2aebfe587f47f2518d5b23c5727d369f81c100",
+    "r18RootDispositionSha256": "b545b9211ad6b4f4bfba6c41b1fa019ed17fb6b29b4c2aa757aaa731b856c130",
+    "r18HarnessSourceAccepted": false,
+    "r18HarnessWindowsRunAuthorizedOrPerformed": false
+  },
+  "offlineControls": {
+    "path": "author/offline-controls.txt",
+    "sha256": "430e0a240b5b749c422742a9536e26101884e17ae815ebbe177a024671b836b3",
+    "pins": "PASS 17/17",
+    "sourceClosure": "PASS 4/4",
+    "contextClosure": "PASS 13/13",
+    "r18RootCaptureBinding": "PASS",
+    "r14RootCaptureBinding": "PASS",
+    "windowsOrPowerShellExecution": "NOT_RUN"
+  },
+  "authorArtifacts": {
+    "authorNote": "2bfddd81fe367e2a7364c0e3c0b838694b02b625166dd8e58c8c508b59ac9c24",
+    "exactDelta": "6aa7645f9cd9dfb5a3ef67a6d10e5358a9fcc228f0cc012fdbe8adaf813a1d27",
+    "offlineControls": "430e0a240b5b749c422742a9536e26101884e17ae815ebbe177a024671b836b3"
+  },
+  "qualification": {
+    "windowsPowerShell51StandaloneDiagnostic": "PENDING_ROOT_INDEPENDENT_REVIEW",
+    "coordinatorRuntime": false,
+    "servicePair": false,
+    "productVm": false,
+    "completeHarness": false
+  },
+  "restrictionsObserved": [
+    "created and revised a new candidate only; R14, R18, R19, and live source left unchanged",
+    "no PowerShell or project script execution",
+    "no Windows builder, network, actor, service, driver, product VM, or host-policy action",
+    "no Git mutation"
+  ]
+}

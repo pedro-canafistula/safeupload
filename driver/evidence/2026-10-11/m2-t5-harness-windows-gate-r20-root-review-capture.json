@@ -1,0 +1,414 @@
+{
+  "All33ExecutionInputsUnchanged": true,
+  "All62OtherSourceFilesUnchanged": true,
+  "BaselineCapturePath": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r19-root-review-capture.json",
+  "BaselineCaptureSHA256": "8958ae1cc166773431c5b463dbe8ebfe7497d9766f8b7e9a3cd3c4156e155a13",
+  "Candidate": "m2-t5-harness-windows-gate-r20-root-a1",
+  "CanonicalInventorySHA256": "e5107b6cf73adcbe8718f377e5621c2a99d7de020604e3413aa36a7239d12190",
+  "CapturedUTC": "2026-10-11T13:27:02.148895+00:00",
+  "ChangedSinceR19": [
+    "driver/scripts/Invoke-HarnessWindowsGate.sh"
+  ],
+  "ClosedInventoryVerified": true,
+  "HostPolicyApplied": false,
+  "IndependentReviewPending": true,
+  "OfflineControlsSHA256": "e40047902daca1a4bbeff28137d084908e3f96f9698dc36b5d5fa28230b27575",
+  "ProductVMStarted": false,
+  "RootAuthoredRoutineShellPinMaintenance": true,
+  "RuntimeQualified": false,
+  "ShellLiteralChangedKeys": [
+    "client",
+    "manifest",
+    "runner",
+    "keeper",
+    "fixture"
+  ],
+  "SixPowerShellCompilerInputsUnchanged": true,
+  "SourceAccepted": false,
+  "SourceCount": 63,
+  "SourceFiles": [
+    {
+      "path": "agente/SafeUpload.Agent.Service/Interception/StagedJournalFile.cs",
+      "sha256": "5f4a5ae360513425f1ff79c3ad8c0c4fc8c2b3464f416cecc43c57c42224053a",
+      "size": 3911
+    },
+    {
+      "path": "agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs",
+      "sha256": "4b270eaef4616c06ba52e0b88deb701d72463dcef8ed6c9c8cc4c39893b23f8d",
+      "size": 210643
+    },
+    {
+      "path": "driver/evidence/2026-10-11/luna-t5-harness-windows-gate-r15-independent-review.md",
+      "sha256": "992e5229652ffb85199984d502d71a7be9da7ceaa412f581a890f8ed425ddedf",
+      "size": 17835
+    },
+    {
+      "path": "driver/evidence/2026-10-11/luna-t5-notepad-coordinator-r14-independent-review.md",
+      "sha256": "714a0d4ad56682a6a33aa95048ec7ec20abf939783a1419ee884c207510cedb3",
+      "size": 18335
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-coordinator-r14-diag-a1-root-result.json",
+      "sha256": "db51a75d2833bc7d9c0fda78c484fe94708ef24166f3ae664a7f3bd3f50ae725",
+      "size": 1329
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-coordinator-r14-diag-a1-root-verification.json",
+      "sha256": "60b5ec053da0d06f774578ae754607c587419affa9de81a5587b3d87e417bec5",
+      "size": 2568
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-empty-service-r13-root-review-capture.json",
+      "sha256": "828246fd46b6cdaf8ea3be2fab94267dfa9e158c0542c2aa675806b6e7906d19",
+      "size": 28567
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r15-author-note.md",
+      "sha256": "2c56d07635a4bf3423dd51983c111bac56d8e7a28d7922cb4cee00f9ad8a77db",
+      "size": 4772
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r15-author-result.json",
+      "sha256": "ca51d31b45590f472d81a58fc506afe776e04171c6f3ba36a92b3261abe45e1c",
+      "size": 6812
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r15-offline-controls.txt",
+      "sha256": "145edd7d3dde1b897a6a210e4e7a27c7eabb59dcd65815e655928f7314e18daf",
+      "size": 1920
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r15-root-review-disposition.json",
+      "sha256": "c690a5b7a5ac3afc5f56bba94123bb890e86afaeae1cf4684cf74fd29328f220",
+      "size": 1680
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r16-author-note.md",
+      "sha256": "c56721e0f63ccd57193608531f9ed4317052c8ea4bf52f9d192d447913b80b97",
+      "size": 4658
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r16-author-result.json",
+      "sha256": "ccf6a8490b8a27edf77bff8839bd80f537d8e57fccbee25fd58bcd56d603962d",
+      "size": 7327
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r16-offline-controls.txt",
+      "sha256": "b84e98b50162bdcb0ce271af441ac4c8ead48ec27f9289fc257f29507f9fba5f",
+      "size": 4542
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r18-dual-handle-design.md",
+      "sha256": "69e47c0b091b0d236c535e4e19d2b18815806614d45cbf668ccc4bf54e7a9044",
+      "size": 8575
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-notepad-coordinator-r14-root-review-capture.json",
+      "sha256": "cf0231084dab2b7cb1e36c3e041fa7bb6206e9c3faa4a47b126c9705e324efb0",
+      "size": 7837
+    },
+    {
+      "path": "driver/evidence/2026-10-11/m2-t5-notepad-coordinator-r14-root-review-disposition.json",
+      "sha256": "386b2dcb492ad66835fcac15a3d2552ef33345149b99accd1f3d52331b215d51",
+      "size": 1541
+    },
+    {
+      "path": "driver/scripts/Build-ExactAgent.ps1",
+      "sha256": "eb9be83ed99aa0057b00f160419e8c123bc2b4a79991c894086de86571ad2e52",
+      "size": 13017
+    },
+    {
+      "path": "driver/scripts/Build-ExactAgentMatrix.ps1",
+      "sha256": "90aebd88352c4c23265508a244437895d0a84218bc7815d031de7e81bec45ac7",
+      "size": 49523
+    },
+    {
+      "path": "driver/scripts/HarnessWindowsGate.manifest.json",
+      "sha256": "7d5ea90a1cf1c941610572f038a9db8ff43b5c934e41a0adbf3f54bbd98d11f7",
+      "size": 7812
+    },
+    {
+      "path": "driver/scripts/HarnessWindowsGateClient.py",
+      "sha256": "d5f558bc6c7435a0e8f6628ae2fffc465b34ed0981d1470d90de44980f4975c8",
+      "size": 78317
+    },
+    {
+      "path": "driver/scripts/HarnessWindowsGateLeaseKeeper.ps1",
+      "sha256": "aa24884d0f943ff0e97bc37132f5fe4a9f2c595166a7a7b9515198abc2606fa2",
+      "size": 7079
+    },
+    {
+      "path": "driver/scripts/HarnessWindowsGateLifecycleFixture.ps1",
+      "sha256": "599eb7da9e0177b2443d5edd937a15b29c72b0357e5c4b71a3c2397b62fb1489",
+      "size": 27333
+    },
+    {
+      "path": "driver/scripts/HarnessWindowsGateManifest.py",
+      "sha256": "a7cebdf3eb20fe1ab8df9976721a648725a526b5c39a584fb721a59658f2a6c8",
+      "size": 19557
+    },
+    {
+      "path": "driver/scripts/HarnessWindowsGateProtocol.psm1",
+      "sha256": "9fb561090d9e1f7a4370b7cb4c8369001ca69e06e4f406c4f072480f7a0ebacf",
+      "size": 101391
+    },
+    {
+      "path": "driver/scripts/HarnessWindowsGateRemote.ps1",
+      "sha256": "6e1765e52ed051a493f55826f066d3fc050bcbe75edef783bd4c555a84eb5918",
+      "size": 24017
+    },
+    {
+      "path": "driver/scripts/HarnessWindowsGateRemoteControl.ps1",
+      "sha256": "48a16decedec44e7c529ee2df099f9dbde1f2b69ef33d23d95fc58cd2b3b3caa",
+      "size": 24856
+    },
+    {
+      "path": "driver/scripts/HarnessWindowsGateWorker.ps1",
+      "sha256": "8826d5f39295be32b1a2782ff2aaf378a1871b71260c707a810ba0ee5fba2731",
+      "size": 7856
+    },
+    {
+      "path": "driver/scripts/Invoke-HarnessWindowsGate.sh",
+      "sha256": "53877a59d30bc7a993bb527438d4ed17539e59763d38742e0f38907a896ca32f",
+      "size": 9086
+    },
+    {
+      "path": "driver/scripts/StagedInvariantActivationDuplicate.SelfCheck.ps1",
+      "sha256": "56f10e03983bb996d851584c6604554fee1762c115535a4d2ed005ca50ea15e8",
+      "size": 11670
+    },
+    {
+      "path": "driver/scripts/StagedInvariantBlockWindow.SelfCheck.ps1",
+      "sha256": "4f25dde8342906dce67227fec8fcd154b1f4793377c18f0be262cc15d828f893",
+      "size": 13947
+    },
+    {
+      "path": "driver/scripts/StagedInvariantCases.psd1",
+      "sha256": "c7c91697b77b278c3f4f0aec627cfcb1b3b86e06b9d05b81d4616d00062af7b6",
+      "size": 101377
+    },
+    {
+      "path": "driver/scripts/StagedInvariantCoreVariants.SelfCheck.ps1",
+      "sha256": "5a2c2e365a20e566eb1fb395cc3df537cc630d9b28dbd545fd1098421ba9c990",
+      "size": 14123
+    },
+    {
+      "path": "driver/scripts/StagedInvariantDeniedRenameLatency.SelfCheck.ps1",
+      "sha256": "9d55ec0ae3ad55ffab0cf1c992715f6e903dea43c1820b71cdcbea334ecb6fb5",
+      "size": 5575
+    },
+    {
+      "path": "driver/scripts/StagedInvariantLatency.SelfCheck.ps1",
+      "sha256": "344e33acf1036757b2c5284e67179d26b96681a5b4bf19c6609ad5c9600f9c86",
+      "size": 5900
+    },
+    {
+      "path": "driver/scripts/StagedInvariantLatencyLite.SelfCheck.ps1",
+      "sha256": "a91b37beb4f5d137d604f4bbdab928a68c72b72b5e8d527ee6c3f698d595dc1e",
+      "size": 21061
+    },
+    {
+      "path": "driver/scripts/StagedInvariantLiveTaint.SelfCheck.ps1",
+      "sha256": "967b8e791bc9c26a4e992cd33582519556e251d10690bb3f48deb8eb0530017d",
+      "size": 4915
+    },
+    {
+      "path": "driver/scripts/StagedInvariantObserver.SelfCheck.ps1",
+      "sha256": "8cd16c071114d2e2d93cf1594ae27b61f6d7672c45d73cb42bbe7fa850de49e1",
+      "size": 51711
+    },
+    {
+      "path": "driver/scripts/StagedInvariantObserver.psm1",
+      "sha256": "48577d312b66287f432b75e0ee61cca787a30f6e3632a1d2912085cc32070bc8",
+      "size": 166751
+    },
+    {
+      "path": "driver/scripts/StagedInvariantProofAdapters.SelfCheck.ps1",
+      "sha256": "2dd78b9dcd6f21ab0220c983ca1924b1440c26fc9670bc3ef927ce5ea227e764",
+      "size": 119578
+    },
+    {
+      "path": "driver/scripts/StagedInvariantR03.SelfCheck.ps1",
+      "sha256": "91620bc811b38a8ef0e26e7f41c459eea61a9b0d8d66019fdb584b9cf644e40e",
+      "size": 10189
+    },
+    {
+      "path": "driver/scripts/StagedInvariantRestartJustification.SelfCheck.ps1",
+      "sha256": "6418ed356b1bcb80b24c449da431069ba7d30a9db26489c43789726c7a9e9715",
+      "size": 17571
+    },
+    {
+      "path": "driver/scripts/StagedInvariantRobustness.SelfCheck.ps1",
+      "sha256": "d3ea4d476a766a8f0dc5d9b70713eb3c671b81c770472c836c3aaee21739d41e",
+      "size": 14208
+    },
+    {
+      "path": "driver/scripts/StagedInvariantRowsA.SelfCheck.ps1",
+      "sha256": "d23d22e48e24433a94b98b8789bacd1e548ccf516dbbb3e80d8c1b2c2070033b",
+      "size": 23437
+    },
+    {
+      "path": "driver/scripts/StagedInvariantT4Ipc.SelfCheck.ps1",
+      "sha256": "af41aa53f16390f023911d519c9493f15658274c1381aef6532c4dcf48b45513",
+      "size": 6359
+    },
+    {
+      "path": "driver/scripts/StagedInvariantT4Runtime.SelfCheck.ps1",
+      "sha256": "0e6598eb65c44e8c4e5aeac97f92c5b28fdd2de648c0ff4284ee6962069e712d",
+      "size": 9008
+    },
+    {
+      "path": "driver/scripts/StagedInvariantT4Verifier.SelfCheck.ps1",
+      "sha256": "a0282ae55b388dc19db5e3976d773faeb06992026b0ade17cebf9d118454f02c",
+      "size": 3599
+    },
+    {
+      "path": "driver/scripts/StagedInvariantTraceWindow.SelfCheck.ps1",
+      "sha256": "b1911961ad0ed225c6ba2ae02a19d5de08256aa6c326981c1fd8afd65c54844d",
+      "size": 7690
+    },
+    {
+      "path": "driver/scripts/Test-StagedInvariantSuite.ps1",
+      "sha256": "773bc9348b374f52dee78c06ee69d7144b7b16a8aa6c03ba3b5ee50ae4e0a672",
+      "size": 687294
+    },
+    {
+      "path": "driver/scripts/remote_ps.py",
+      "sha256": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b",
+      "size": 2991
+    },
+    {
+      "path": "driver/scripts/t10/permissions-actor.ps1",
+      "sha256": "208ebd1639f30bd61ca9fab1e8bb2a98bfdd874f1c9ecaaa42dc0cbf7a1d9cc6",
+      "size": 3094
+    },
+    {
+      "path": "driver/scripts/t10/permissions-coordinator.ps1",
+      "sha256": "d916c2d18a9da5e50441c164df61d19ba772bf7289fa42062592bb6b487cbe48",
+      "size": 11871
+    },
+    {
+      "path": "driver/scripts/t4/cycles-actor.ps1",
+      "sha256": "7338124c4da1c44025f93cbfc754e6a002ba09e39bb68a045a5fea25f0af04e9",
+      "size": 8297
+    },
+    {
+      "path": "driver/scripts/t4/cycles-coordinator.ps1",
+      "sha256": "e7b5349888eeaeefd7dfc09fd92e23447ba142fb70a67892ee3a9c3c4ff7c677",
+      "size": 17274
+    },
+    {
+      "path": "driver/scripts/t4/cycles-progress.ps1",
+      "sha256": "dfa5d200c5778d3025ed57e8440b400d0bff5e6c8de4781f22435e691aafaf6b",
+      "size": 885
+    },
+    {
+      "path": "driver/scripts/t4/runtime-verifier.ps1",
+      "sha256": "04dfbfad81daf4c3b8d613f068d88e05adbb73c10bd2e1376de8c69f8a9148c1",
+      "size": 7361
+    },
+    {
+      "path": "driver/scripts/t5/notepad-actor.ps1",
+      "sha256": "fe85a4259a8fa1da10db3b7be7a684ffccffee107491bf02442f95ae75c1ce11",
+      "size": 17099
+    },
+    {
+      "path": "driver/scripts/t5/notepad-coordinator.SelfCheck.ps1",
+      "sha256": "dbc00a84c456b97f6903cfcb4ccc0ba37c5ff763fc6b67e83aab3e86e807245f",
+      "size": 45799
+    },
+    {
+      "path": "driver/scripts/t5/notepad-coordinator.ps1",
+      "sha256": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d",
+      "size": 110797
+    },
+    {
+      "path": "driver/scripts/t6/moves-actor.ps1",
+      "sha256": "22d427bd811c2bf396d45f8d65a1c3ef197d6fa6428b9630aef367bde138857a",
+      "size": 8165
+    },
+    {
+      "path": "driver/scripts/t6/moves-coordinator.ps1",
+      "sha256": "5218b675460f540ac1ef077a0112ec018b5000e73dff8f54d7adbd729f94df3d",
+      "size": 13056
+    },
+    {
+      "path": "output/review-candidates/m2-t5-harness-windows-gate-r15-1011-a1/source-capture.json",
+      "sha256": "e7df89326202d432b9f1846368e3716bb27d207926dc07267dbdbadb293aa4c8",
+      "size": 7125
+    },
+    {
+      "path": "output/review-candidates/m2-t5-harness-windows-gate-r16-1011-a1/source-capture.json",
+      "sha256": "0cce292047acb14c0f00b62acc1efc998b59d743441e118c2f4d4debdce765e0",
+      "size": 24863
+    }
+  ],
+  "SourceHashes": {
+    "agente/SafeUpload.Agent.Service/Interception/StagedJournalFile.cs": "5f4a5ae360513425f1ff79c3ad8c0c4fc8c2b3464f416cecc43c57c42224053a",
+    "agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs": "4b270eaef4616c06ba52e0b88deb701d72463dcef8ed6c9c8cc4c39893b23f8d",
+    "driver/evidence/2026-10-11/luna-t5-harness-windows-gate-r15-independent-review.md": "992e5229652ffb85199984d502d71a7be9da7ceaa412f581a890f8ed425ddedf",
+    "driver/evidence/2026-10-11/luna-t5-notepad-coordinator-r14-independent-review.md": "714a0d4ad56682a6a33aa95048ec7ec20abf939783a1419ee884c207510cedb3",
+    "driver/evidence/2026-10-11/m2-t5-coordinator-r14-diag-a1-root-result.json": "db51a75d2833bc7d9c0fda78c484fe94708ef24166f3ae664a7f3bd3f50ae725",
+    "driver/evidence/2026-10-11/m2-t5-coordinator-r14-diag-a1-root-verification.json": "60b5ec053da0d06f774578ae754607c587419affa9de81a5587b3d87e417bec5",
+    "driver/evidence/2026-10-11/m2-t5-empty-service-r13-root-review-capture.json": "828246fd46b6cdaf8ea3be2fab94267dfa9e158c0542c2aa675806b6e7906d19",
+    "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r15-author-note.md": "2c56d07635a4bf3423dd51983c111bac56d8e7a28d7922cb4cee00f9ad8a77db",
+    "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r15-author-result.json": "ca51d31b45590f472d81a58fc506afe776e04171c6f3ba36a92b3261abe45e1c",
+    "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r15-offline-controls.txt": "145edd7d3dde1b897a6a210e4e7a27c7eabb59dcd65815e655928f7314e18daf",
+    "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r15-root-review-disposition.json": "c690a5b7a5ac3afc5f56bba94123bb890e86afaeae1cf4684cf74fd29328f220",
+    "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r16-author-note.md": "c56721e0f63ccd57193608531f9ed4317052c8ea4bf52f9d192d447913b80b97",
+    "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r16-author-result.json": "ccf6a8490b8a27edf77bff8839bd80f537d8e57fccbee25fd58bcd56d603962d",
+    "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r16-offline-controls.txt": "b84e98b50162bdcb0ce271af441ac4c8ead48ec27f9289fc257f29507f9fba5f",
+    "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r18-dual-handle-design.md": "69e47c0b091b0d236c535e4e19d2b18815806614d45cbf668ccc4bf54e7a9044",
+    "driver/evidence/2026-10-11/m2-t5-notepad-coordinator-r14-root-review-capture.json": "cf0231084dab2b7cb1e36c3e041fa7bb6206e9c3faa4a47b126c9705e324efb0",
+    "driver/evidence/2026-10-11/m2-t5-notepad-coordinator-r14-root-review-disposition.json": "386b2dcb492ad66835fcac15a3d2552ef33345149b99accd1f3d52331b215d51",
+    "driver/scripts/Build-ExactAgent.ps1": "eb9be83ed99aa0057b00f160419e8c123bc2b4a79991c894086de86571ad2e52",
+    "driver/scripts/Build-ExactAgentMatrix.ps1": "90aebd88352c4c23265508a244437895d0a84218bc7815d031de7e81bec45ac7",
+    "driver/scripts/HarnessWindowsGate.manifest.json": "7d5ea90a1cf1c941610572f038a9db8ff43b5c934e41a0adbf3f54bbd98d11f7",
+    "driver/scripts/HarnessWindowsGateClient.py": "d5f558bc6c7435a0e8f6628ae2fffc465b34ed0981d1470d90de44980f4975c8",
+    "driver/scripts/HarnessWindowsGateLeaseKeeper.ps1": "aa24884d0f943ff0e97bc37132f5fe4a9f2c595166a7a7b9515198abc2606fa2",
+    "driver/scripts/HarnessWindowsGateLifecycleFixture.ps1": "599eb7da9e0177b2443d5edd937a15b29c72b0357e5c4b71a3c2397b62fb1489",
+    "driver/scripts/HarnessWindowsGateManifest.py": "a7cebdf3eb20fe1ab8df9976721a648725a526b5c39a584fb721a59658f2a6c8",
+    "driver/scripts/HarnessWindowsGateProtocol.psm1": "9fb561090d9e1f7a4370b7cb4c8369001ca69e06e4f406c4f072480f7a0ebacf",
+    "driver/scripts/HarnessWindowsGateRemote.ps1": "6e1765e52ed051a493f55826f066d3fc050bcbe75edef783bd4c555a84eb5918",
+    "driver/scripts/HarnessWindowsGateRemoteControl.ps1": "48a16decedec44e7c529ee2df099f9dbde1f2b69ef33d23d95fc58cd2b3b3caa",
+    "driver/scripts/HarnessWindowsGateWorker.ps1": "8826d5f39295be32b1a2782ff2aaf378a1871b71260c707a810ba0ee5fba2731",
+    "driver/scripts/Invoke-HarnessWindowsGate.sh": "53877a59d30bc7a993bb527438d4ed17539e59763d38742e0f38907a896ca32f",
+    "driver/scripts/StagedInvariantActivationDuplicate.SelfCheck.ps1": "56f10e03983bb996d851584c6604554fee1762c115535a4d2ed005ca50ea15e8",
+    "driver/scripts/StagedInvariantBlockWindow.SelfCheck.ps1": "4f25dde8342906dce67227fec8fcd154b1f4793377c18f0be262cc15d828f893",
+    "driver/scripts/StagedInvariantCases.psd1": "c7c91697b77b278c3f4f0aec627cfcb1b3b86e06b9d05b81d4616d00062af7b6",
+    "driver/scripts/StagedInvariantCoreVariants.SelfCheck.ps1": "5a2c2e365a20e566eb1fb395cc3df537cc630d9b28dbd545fd1098421ba9c990",
+    "driver/scripts/StagedInvariantDeniedRenameLatency.SelfCheck.ps1": "9d55ec0ae3ad55ffab0cf1c992715f6e903dea43c1820b71cdcbea334ecb6fb5",
+    "driver/scripts/StagedInvariantLatency.SelfCheck.ps1": "344e33acf1036757b2c5284e67179d26b96681a5b4bf19c6609ad5c9600f9c86",
+    "driver/scripts/StagedInvariantLatencyLite.SelfCheck.ps1": "a91b37beb4f5d137d604f4bbdab928a68c72b72b5e8d527ee6c3f698d595dc1e",
+    "driver/scripts/StagedInvariantLiveTaint.SelfCheck.ps1": "967b8e791bc9c26a4e992cd33582519556e251d10690bb3f48deb8eb0530017d",
+    "driver/scripts/StagedInvariantObserver.SelfCheck.ps1": "8cd16c071114d2e2d93cf1594ae27b61f6d7672c45d73cb42bbe7fa850de49e1",
+    "driver/scripts/StagedInvariantObserver.psm1": "48577d312b66287f432b75e0ee61cca787a30f6e3632a1d2912085cc32070bc8",
+    "driver/scripts/StagedInvariantProofAdapters.SelfCheck.ps1": "2dd78b9dcd6f21ab0220c983ca1924b1440c26fc9670bc3ef927ce5ea227e764",
+    "driver/scripts/StagedInvariantR03.SelfCheck.ps1": "91620bc811b38a8ef0e26e7f41c459eea61a9b0d8d66019fdb584b9cf644e40e",
+    "driver/scripts/StagedInvariantRestartJustification.SelfCheck.ps1": "6418ed356b1bcb80b24c449da431069ba7d30a9db26489c43789726c7a9e9715",
+    "driver/scripts/StagedInvariantRobustness.SelfCheck.ps1": "d3ea4d476a766a8f0dc5d9b70713eb3c671b81c770472c836c3aaee21739d41e",
+    "driver/scripts/StagedInvariantRowsA.SelfCheck.ps1": "d23d22e48e24433a94b98b8789bacd1e548ccf516dbbb3e80d8c1b2c2070033b",
+    "driver/scripts/StagedInvariantT4Ipc.SelfCheck.ps1": "af41aa53f16390f023911d519c9493f15658274c1381aef6532c4dcf48b45513",
+    "driver/scripts/StagedInvariantT4Runtime.SelfCheck.ps1": "0e6598eb65c44e8c4e5aeac97f92c5b28fdd2de648c0ff4284ee6962069e712d",
+    "driver/scripts/StagedInvariantT4Verifier.SelfCheck.ps1": "a0282ae55b388dc19db5e3976d773faeb06992026b0ade17cebf9d118454f02c",
+    "driver/scripts/StagedInvariantTraceWindow.SelfCheck.ps1": "b1911961ad0ed225c6ba2ae02a19d5de08256aa6c326981c1fd8afd65c54844d",
+    "driver/scripts/Test-StagedInvariantSuite.ps1": "773bc9348b374f52dee78c06ee69d7144b7b16a8aa6c03ba3b5ee50ae4e0a672",
+    "driver/scripts/remote_ps.py": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b",
+    "driver/scripts/t10/permissions-actor.ps1": "208ebd1639f30bd61ca9fab1e8bb2a98bfdd874f1c9ecaaa42dc0cbf7a1d9cc6",
+    "driver/scripts/t10/permissions-coordinator.ps1": "d916c2d18a9da5e50441c164df61d19ba772bf7289fa42062592bb6b487cbe48",
+    "driver/scripts/t4/cycles-actor.ps1": "7338124c4da1c44025f93cbfc754e6a002ba09e39bb68a045a5fea25f0af04e9",
+    "driver/scripts/t4/cycles-coordinator.ps1": "e7b5349888eeaeefd7dfc09fd92e23447ba142fb70a67892ee3a9c3c4ff7c677",
+    "driver/scripts/t4/cycles-progress.ps1": "dfa5d200c5778d3025ed57e8440b400d0bff5e6c8de4781f22435e691aafaf6b",
+    "driver/scripts/t4/runtime-verifier.ps1": "04dfbfad81daf4c3b8d613f068d88e05adbb73c10bd2e1376de8c69f8a9148c1",
+    "driver/scripts/t5/notepad-actor.ps1": "fe85a4259a8fa1da10db3b7be7a684ffccffee107491bf02442f95ae75c1ce11",
+    "driver/scripts/t5/notepad-coordinator.SelfCheck.ps1": "dbc00a84c456b97f6903cfcb4ccc0ba37c5ff763fc6b67e83aab3e86e807245f",
+    "driver/scripts/t5/notepad-coordinator.ps1": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d",
+    "driver/scripts/t6/moves-actor.ps1": "22d427bd811c2bf396d45f8d65a1c3ef197d6fa6428b9630aef367bde138857a",
+    "driver/scripts/t6/moves-coordinator.ps1": "5218b675460f540ac1ef077a0112ec018b5000e73dff8f54d7adbd729f94df3d",
+    "output/review-candidates/m2-t5-harness-windows-gate-r15-1011-a1/source-capture.json": "e7df89326202d432b9f1846368e3716bb27d207926dc07267dbdbadb293aa4c8",
+    "output/review-candidates/m2-t5-harness-windows-gate-r16-1011-a1/source-capture.json": "0cce292047acb14c0f00b62acc1efc998b59d743441e118c2f4d4debdce765e0"
+  },
+  "SourceRoot": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-harness-windows-gate-r20-root-a1/src",
+  "TwoFDStableBaselineReadsAndPostCopyEquality": true,
+  "WindowsExecutionPerformed": false
+}

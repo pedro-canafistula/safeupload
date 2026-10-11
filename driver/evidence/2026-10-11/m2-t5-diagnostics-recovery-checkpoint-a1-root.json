@@ -1,0 +1,147 @@
+{
+  "CoordinatorR15Failure": "all-legacy ancestry positive assertion",
+  "CoordinatorR15OriginalProcessTerminalAndPinsUnchanged": true,
+  "CoordinatorR15StandalonePassed": false,
+  "CopiedEvidence": {
+    "m2-t5-coordinator-r15-author-note.md": {
+      "SHA256": "2bfddd81fe367e2a7364c0e3c0b838694b02b625166dd8e58c8c508b59ac9c24",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-notepad-coordinator-r15-root-a1/author/author-note.md"
+    },
+    "m2-t5-coordinator-r15-author-result.json": {
+      "SHA256": "fabd555cbccd03265ca58f531f445f261ed6268ca50701d18177130377362a22",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-notepad-coordinator-r15-root-a1/author/author-result.json"
+    },
+    "m2-t5-coordinator-r15-diag-a1-controls-input.ps1": {
+      "SHA256": "8a655779fbe22061fd2dc76422f6d5903d6e8eb0322777248544baf243d715a6",
+      "Source": "/tmp/m2-t5-coordinator-r15-diag-1011-a1-root/controls-plan.ps1"
+    },
+    "m2-t5-coordinator-r15-diag-a1-post-check-input.ps1": {
+      "SHA256": "a51ca31900aa07ab5628cbfe322db55767488cabb5c8de4237440d9726b98f7b",
+      "Source": "/tmp/m2-t5-coordinator-r15-diag-1011-a1-root/post-check.ps1"
+    },
+    "m2-t5-coordinator-r15-diag-a1-runner-input.py": {
+      "SHA256": "29c2ad25b8922a0cf123356f5a41340e517aa97b844e4b7175555100e079dbee",
+      "Source": "/tmp/m2-t5-coordinator-r15-diag-1011-a1-root/run-diagnostic.py"
+    },
+    "m2-t5-coordinator-r15-diag-a1-verifier-input.py": {
+      "SHA256": "c2ce480cf53526e0c6fa0ace4dc775aa1fe46b0f5a93afad47797ae5a2b209d4",
+      "Source": "/tmp/m2-t5-coordinator-r15-post-verify-root.py"
+    },
+    "m2-t5-coordinator-r15-exact-delta-from-r14.patch": {
+      "SHA256": "6aa7645f9cd9dfb5a3ef67a6d10e5358a9fcc228f0cc012fdbe8adaf813a1d27",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-notepad-coordinator-r15-root-a1/author/exact-delta-from-r14.patch"
+    },
+    "m2-t5-coordinator-r15-offline-controls.txt": {
+      "SHA256": "430e0a240b5b749c422742a9536e26101884e17ae815ebbe177a024671b836b3",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-notepad-coordinator-r15-root-a1/author/offline-controls.txt"
+    },
+    "m2-t5-coordinator-r15-source-capture.json": {
+      "SHA256": "118766c1d578a01a324c1e8b63bda82766291fe38fe306ac8e08ef576cd618ab",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-notepad-coordinator-r15-root-a1/author/source-capture.json"
+    },
+    "m2-t5-harness-r19-author-design.md": {
+      "SHA256": "65317fc497f2454fae7a7ddf65d08440a62a295cbc65ce431239fa9a99db682c",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-harness-windows-gate-r19-root-a1/author/author-design.md"
+    },
+    "m2-t5-harness-r19-author-note.md": {
+      "SHA256": "924a89565968b0ff0b9d1c1f1bcef669d9205d9250c08b9876ddb187ef22f66b",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-harness-windows-gate-r19-root-a1/author/author-note.md"
+    },
+    "m2-t5-harness-r19-author-result.json": {
+      "SHA256": "53697ae75fe2c407689277e1a4504f9814b7391a58fe6c69bd3082a9639ba22e",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-harness-windows-gate-r19-root-a1/author/author-result.json"
+    },
+    "m2-t5-harness-r19-offline-controls.txt": {
+      "SHA256": "c08e09ffa1bd9fdb4454276c2462910b1abbb624d5b6862354ef909aef50bf78",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-harness-windows-gate-r19-root-a1/author/offline-controls.txt"
+    },
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-author-controls.json": {
+      "SHA256": "98bb789b8352b3e4551e4fdbb0cb49026155a2d9bf1ad7cf5c442b61253588a9",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-recovery-transaction-r2-lock-ordering-a1-root-a1/author/checkpoints/lock-ordering-a1/selfcheck-result.json"
+    },
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-author-controls.stdout.json": {
+      "SHA256": "cfc6211ea26f3ccde8368525c4c53000047ed15482a3705d9b7d1b17a1d691a2",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-recovery-transaction-r2-lock-ordering-a1-root-a1/author/checkpoints/lock-ordering-a1/selfcheck.stdout.json"
+    },
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-author-manifest.json": {
+      "SHA256": "532a5721d2775eacf92a1e26a0c4e091654bf6c2db4b3162935cef02c468aa60",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-recovery-transaction-r2-lock-ordering-a1-root-a1/author/checkpoints/lock-ordering-a1/author-lock-ordering-manifest.json"
+    },
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-author-note.md": {
+      "SHA256": "102e15badd3c56c71ee6b7547f6b96789e1107f5726a3a35290ed2af0e5f3474",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-recovery-transaction-r2-lock-ordering-a1-root-a1/author/checkpoints/lock-ordering-a1/author-note.md"
+    },
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-source.diff": {
+      "SHA256": "be19030288c25decf11a3ebcdc29ef54fe08521c4bbae2e4135075e13e333581",
+      "Source": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-recovery-transaction-r2-lock-ordering-a1-root-a1/author/checkpoints/lock-ordering-a1/lock-ordering.diff"
+    }
+  },
+  "CutoverAuthorized": false,
+  "EvidenceSHA256": {
+    "luna-t5-harness-windows-gate-r19-independent-review.md": "598d3ec6dbc685d64a07a8a17001275027ab6b4b53e20d4e1cf6363364035263",
+    "luna-t5-harness-windows-gate-r20-independent-review.md": "ebefc3877acacae287257d96eb256a6f18bb64ccb441b5de31648fa583148160",
+    "luna-t5-lifecycle-file-lease-guard-r1-independent-review.md": "30853874ae6cf6e521f5b395279c2c3b3b32e779e736c9dee36f89b38978e707",
+    "luna-t5-notepad-coordinator-r15-independent-review.md": "e648834a47c9405783c601f3c518dfcba88bbd643b6de125502ccd6b227122f8",
+    "m2-t5-coordinator-r15-author-note.md": "2bfddd81fe367e2a7364c0e3c0b838694b02b625166dd8e58c8c508b59ac9c24",
+    "m2-t5-coordinator-r15-author-result.json": "fabd555cbccd03265ca58f531f445f261ed6268ca50701d18177130377362a22",
+    "m2-t5-coordinator-r15-diag-a1-controls-input.ps1": "8a655779fbe22061fd2dc76422f6d5903d6e8eb0322777248544baf243d715a6",
+    "m2-t5-coordinator-r15-diag-a1-controls.stderr.log": "18bbe0f6f8166f11d933c9ccb4b8459ccd52ea856cd18a8e3901dbd867c72d08",
+    "m2-t5-coordinator-r15-diag-a1-controls.stdout.log": "43a8b7ca8f55990563b304879500d41079762337fc9ffd1a89c89dbc3ac3dba2",
+    "m2-t5-coordinator-r15-diag-a1-delivery0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r15-diag-a1-delivery0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r15-diag-a1-delivery1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r15-diag-a1-delivery1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r15-diag-a1-post-check-input.ps1": "a51ca31900aa07ab5628cbfe322db55767488cabb5c8de4237440d9726b98f7b",
+    "m2-t5-coordinator-r15-diag-a1-post-check.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r15-diag-a1-post-check.stdout.log": "b5606d884dc272507941ab889cb7b7abb81713d32de81cb21fe296593aed6df5",
+    "m2-t5-coordinator-r15-diag-a1-preparation-root.json": "aabd799deb234a34f6f547932f2061714d5537769980796995e3d775970be7d1",
+    "m2-t5-coordinator-r15-diag-a1-prepare.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r15-diag-a1-prepare.stdout.log": "b3754f54b7f90e04f1fc836f7d0f65f8ef767b9084ca13465bb1eb4e4d454f67",
+    "m2-t5-coordinator-r15-diag-a1-root-result.json": "a0b30bf07fd1492b857de0acfc93e38cfd79a02a635908403ea004c3275b1861",
+    "m2-t5-coordinator-r15-diag-a1-root-verification.json": "273a67981983a98d4e027a6e06ebd7c867112e8362b1f56bf92d75ac219b01fb",
+    "m2-t5-coordinator-r15-diag-a1-runner-input.py": "29c2ad25b8922a0cf123356f5a41340e517aa97b844e4b7175555100e079dbee",
+    "m2-t5-coordinator-r15-diag-a1-verifier-input.py": "c2ce480cf53526e0c6fa0ace4dc775aa1fe46b0f5a93afad47797ae5a2b209d4",
+    "m2-t5-coordinator-r15-exact-delta-from-r14.patch": "6aa7645f9cd9dfb5a3ef67a6d10e5358a9fcc228f0cc012fdbe8adaf813a1d27",
+    "m2-t5-coordinator-r15-offline-controls.txt": "430e0a240b5b749c422742a9536e26101884e17ae815ebbe177a024671b836b3",
+    "m2-t5-coordinator-r15-source-capture.json": "118766c1d578a01a324c1e8b63bda82766291fe38fe306ac8e08ef576cd618ab",
+    "m2-t5-harness-r19-author-design.md": "65317fc497f2454fae7a7ddf65d08440a62a295cbc65ce431239fa9a99db682c",
+    "m2-t5-harness-r19-author-note.md": "924a89565968b0ff0b9d1c1f1bcef669d9205d9250c08b9876ddb187ef22f66b",
+    "m2-t5-harness-r19-author-result.json": "53697ae75fe2c407689277e1a4504f9814b7391a58fe6c69bd3082a9639ba22e",
+    "m2-t5-harness-r19-compiler-a1-compile-input.ps1": "07b70d44aa44b85518320a99778faf7e35e17c511054d335be64a660f98ba8f4",
+    "m2-t5-harness-r19-compiler-a1-compile.stderr.txt": "aa4c6b5187e8a52a4b02316c91eb0c7a4cfdce4cdea9b9d7ecfe2faa1d97cce4",
+    "m2-t5-harness-r19-compiler-a1-compile.stdout.txt": "5fee3c122fd2b599d89d303cd184a9b09bf6054d59d1b061bf5a06bdb0683987",
+    "m2-t5-harness-r19-compiler-a1-delivery.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-harness-r19-compiler-a1-delivery.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-harness-r19-compiler-a1-helper-input.ps1": "308a12fa669dd10faec4bc777804b4a6f9f85a0e2d95d5b3d65199be3c97f550",
+    "m2-t5-harness-r19-compiler-a1-preflight-input.ps1": "6b94c792159b1c1f96fa99b41bac714ece2b251eea7aa9cedd53b8963f2adf62",
+    "m2-t5-harness-r19-compiler-a1-preflight.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-harness-r19-compiler-a1-preflight.stdout.txt": "31591cd0e0b0a8fb80d9d103361a1d0ef1793a706f492f4407678dd64f366b05",
+    "m2-t5-harness-r19-compiler-a1-root-result.json": "30c0b0590db7ae31e8893ae47528bbab418a590be2f5331a66c426ba5a672185",
+    "m2-t5-harness-r19-offline-controls.txt": "c08e09ffa1bd9fdb4454276c2462910b1abbb624d5b6862354ef909aef50bf78",
+    "m2-t5-harness-windows-gate-r19-root-review-capture.json": "8958ae1cc166773431c5b463dbe8ebfe7497d9766f8b7e9a3cd3c4156e155a13",
+    "m2-t5-harness-windows-gate-r20-root-offline-controls.json": "e40047902daca1a4bbeff28137d084908e3f96f9698dc36b5d5fa28230b27575",
+    "m2-t5-harness-windows-gate-r20-root-review-capture.json": "41e88a1b5dcb7bceff4782263f21c4fe9f75819e43738fcec877ea86bf9adacc",
+    "m2-t5-harness-windows-gate-r20-root-review-disposition.json": "bd6c51f07745ffb06466f46a4f713efa4f78af7ff64e12c504ab54566ca46325",
+    "m2-t5-lifecycle-file-lease-guard-r1-root-review-capture.json": "c9649ac5c6a7d1b72ed0bfde13533713a380407efa725e43b8f696f8ae5f3523",
+    "m2-t5-lifecycle-file-lease-guard-r1-root-review-disposition.json": "3e1bdb85c69853f6dc41928953bd789249107beb4ece4a5589794fb89f25c799",
+    "m2-t5-notepad-coordinator-r15-root-review-capture.json": "6cba85a7b71c30b5ad6a35a243a6c6834fb85388ef554d502fc70c61b1c23186",
+    "m2-t5-notepad-coordinator-r15-root-review-disposition.json": "975b4380b2d245961ac19ffe697fbbb390a2fa342de87dba1f93b2f1c435c466",
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-author-controls.json": "98bb789b8352b3e4551e4fdbb0cb49026155a2d9bf1ad7cf5c442b61253588a9",
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-author-controls.stdout.json": "cfc6211ea26f3ccde8368525c4c53000047ed15482a3705d9b7d1b17a1d691a2",
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-author-manifest.json": "532a5721d2775eacf92a1e26a0c4e091654bf6c2db4b3162935cef02c468aa60",
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-author-note.md": "102e15badd3c56c71ee6b7547f6b96789e1107f5726a3a35290ed2af0e5f3474",
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-root-review-capture.json": "0b1299ef9b41b2211bf5730059160267487cbafb8ec65d27fe2e4ff11cbdd14c",
+    "m2-t5-recovery-transaction-r2-lock-ordering-a1-source.diff": "be19030288c25decf11a3ebcdc29ef54fe08521c4bbae2e4135075e13e333581",
+    "m2-t5-v20-builder-local-trust-readonly-a16-root.json": "0cb0259e4677ad3f7a69486e5c92bcaa35778fadab6f62e7512c69b4dd6b1328"
+  },
+  "HarnessR19CompilerPassed": true,
+  "HarnessR20LocalPinCorrectionReviewed": true,
+  "HostPolicyApplied": false,
+  "NoUnacceptedLiveSourceStaged": true,
+  "PairQualified": false,
+  "ProductVMStarted": false,
+  "RecordedUTC": "2026-10-11T13:43:55.534575+00:00",
+  "RecoveryR1SourceDisposition": "NO_GO",
+  "RecoveryR2LockCheckpointIndependentReviewPending": true,
+  "RuntimeQualified": false
+}

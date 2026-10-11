@@ -1,0 +1,45 @@
+--- a/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1
++++ b/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1
+@@ -233,6 +233,32 @@
+     Assert-T5 ($legacySealedErrors.Count -eq 0) 'legacy sealed baseline may remain readable without V20 measurement authority'
+     Assert-T5 (-not (Get-T5Projection $legacySealed 'legacy.json').IsV20) 'legacy projection stays explicitly separate from V20'
+ 
++    $legacyParent = New-T5Entry 1 'legacy-chain-parent' $driver $basePath
++    $legacyParent.DriverInstanceId = $null
++    $legacyChild = New-T5Entry 5 'legacy-chain-child' $driver $basePath
++    $legacyChild.DriverInstanceId = $null
++    Set-T5ExactParent $legacyChild $legacyParent
++    $legacyParentProjection = Get-T5Projection $legacyParent 'legacy-parent.json'
++    $legacyChildProjection = Get-T5Projection $legacyChild 'legacy-child.json'
++    $legacyParentIdentity = [pscustomobject]@{
++        TransferId = $legacyParent.Transfer.TransferId
++        DestinationGeneration = $legacyParent.DestinationGeneration
++        StageIdentity = $legacyParent.StageIdentity
++    }
++    $legacyChainSchemaErrors = @((Get-T5FixtureErrors $legacyParent) + (Get-T5FixtureErrors $legacyChild))
++    $legacyChainErrors = @(Get-T5JournalLineageErrors @($legacyParentProjection, $legacyChildProjection))
++    Assert-T5 (-not $legacyParentProjection.IsV20 -and -not $legacyChildProjection.IsV20 -and
++        (Get-T5VersionIdentityKey $legacyChildProjection.ParentVersionIdentity) -ceq (Get-T5VersionIdentityKey $legacyParentIdentity) -and
++        $legacyChainSchemaErrors.Count -eq 0 -and
++        $legacyChainErrors.Count -eq 0) 'an exact all-legacy ancestry chain remains accepted without V20 measurement authority'
++
++    $mixedChild = New-T5Entry 5 'mixed-v20-child' $driver $basePath
++    Set-T5ExactParent $mixedChild $legacyParent
++    $mixedChildProjection = Get-T5Projection $mixedChild 'mixed-v20-child.json'
++    $mixedChainErrors = @(Get-T5JournalLineageErrors @($legacyParentProjection, $mixedChildProjection))
++    Assert-T5 ($mixedChildProjection.IsV20 -and (Get-T5FixtureErrors $mixedChild -RequireV20).Count -eq 0 -and
++        $mixedChainErrors.Count -gt 0) 'a measured V20 child may not inherit ancestry from a legacy parent'
++
+     $prepared = New-T5Entry 0 'prepared' $driver $basePath
+     $prepared.AttachmentStateV20 = [uint32]1
+     $prepared.AttachPrepareRequestIdV20 = [uint64]31
+@@ -324,7 +350,8 @@
+     $unknownState.StateHistory = (New-T5History @(0, 13))
+     Assert-T5 ((Get-T5FixtureErrors $unknownState -RequireV20).Count -gt 0) 'unknown numeric state must fail'
+     $badHistory = New-T5Entry 1 'bad-history' $driver $basePath
+-    $badHistory.StateHistory = (New-T5History @(0, 10, 1))
++    # 10 -> 1 is a valid SealPending completion; 10 -> 2 is not.
++    $badHistory.StateHistory = (New-T5History @(0, 10, 2, 1))
+     Assert-T5 ((Get-T5FixtureErrors $badHistory -RequireV20).Count -gt 0) 'impossible history transition must fail'
+     $longHistory = New-T5Entry 0 'long-history' $driver $basePath
+     $longHistory.StateHistory = New-T5History (@(0) + (1..64))

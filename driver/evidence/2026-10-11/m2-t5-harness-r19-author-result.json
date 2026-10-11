@@ -1,0 +1,79 @@
+{
+  "schema": "safeupload-harness-windows-gate-r19-author-result-v1",
+  "candidate": "m2-t5-harness-windows-gate-r19-1011-a1",
+  "status": "AUTHOR_FREEZE_COMPLETE_PENDING_ROOT_CAPTURE_AND_INDEPENDENT_REVIEW",
+  "sourceDisposition": "SOURCE_CANDIDATE_ONLY_NO_ACCEPTANCE_INFERRED",
+  "sourceRoot": "output/review-candidates/m2-t5-harness-windows-gate-r19-1011-a1/src",
+  "sourceCapture": {
+    "path": "output/review-candidates/m2-t5-harness-windows-gate-r19-1011-a1/source-capture.json",
+    "sha256": "4ce3bc6cc05f27228dcbda5ecf4a5eac99da8ef9e27c4fcc187c8bcb73b2624a",
+    "sourceInventorySha256": "6899176de36cf694a61cf268f7ec49cceacc94b2c7b6c01f77d7f7541d0854f6",
+    "fileCount": 63
+  },
+  "baseline": {
+    "candidate": "m2-t5-harness-windows-gate-r18-root-a1",
+    "sourceCaptureSha256": "d74f348f192e697b70a169af9c5e75fb0ad09e87b6d9ffe7bcb93b514203f14a",
+    "fileCount": 63,
+    "identicalFiles": 58,
+    "changedFiles": 5,
+    "addedFiles": 0,
+    "removedFiles": 0,
+    "all33ExecutionSourceHashesUnchanged": true,
+    "changedPaths": [
+      "driver/scripts/HarnessWindowsGate.manifest.json",
+      "driver/scripts/HarnessWindowsGateClient.py",
+      "driver/scripts/HarnessWindowsGateLeaseKeeper.ps1",
+      "driver/scripts/HarnessWindowsGateLifecycleFixture.ps1",
+      "driver/scripts/HarnessWindowsGateRemote.ps1"
+    ]
+  },
+  "closedGate": {
+    "executionSources": 33,
+    "mainFiles": 15,
+    "rootSelfchecks": 17,
+    "t5Selfcheck": 1,
+    "remoteSupportFiles": 6,
+    "additionalLocalSupportFiles": 2,
+    "manifestCheckedFiles": 41,
+    "remoteUploadFiles": 40
+  },
+  "finalLocalPins": {
+    "manifestHelper": "a7cebdf3eb20fe1ab8df9976721a648725a526b5c39a584fb721a59658f2a6c8",
+    "client": "d5f558bc6c7435a0e8f6628ae2fffc465b34ed0981d1470d90de44980f4975c8",
+    "manifest": "7d5ea90a1cf1c941610572f038a9db8ff43b5c934e41a0adbf3f54bbd98d11f7",
+    "runner": "6e1765e52ed051a493f55826f066d3fc050bcbe75edef783bd4c555a84eb5918",
+    "worker": "8826d5f39295be32b1a2782ff2aaf378a1871b71260c707a810ba0ee5fba2731",
+    "keeper": "aa24884d0f943ff0e97bc37132f5fe4a9f2c595166a7a7b9515198abc2606fa2",
+    "lifecycleFixture": "599eb7da9e0177b2443d5edd937a15b29c72b0357e5c4b71a3c2397b62fb1489",
+    "control": "48a16decedec44e7c529ee2df099f9dbde1f2b69ef33d23d95fc58cd2b3b3caa",
+    "protocol": "9fb561090d9e1f7a4370b7cb4c8369001ca69e06e4f406c4f072480f7a0ebacf",
+    "transport": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b"
+  },
+  "offlineControls": {
+    "exactManifestVerification": "PASS;41 files",
+    "manifestSelfcheck": "PASS;15 assertions",
+    "clientSelfcheck": "PASS;88 assertions",
+    "mutantRejections": "PASS;4 disposable variants rejected",
+    "shellSyntax": "PASS",
+    "shellFinishSelfcheck": "PASS;2 assertions",
+    "all33ExecutionSourceHashesUnchanged": true,
+    "prePostSourceInventory": "IDENTICAL;63 paths/hash/size records",
+    "changedFileWhitespace": "PASS;5 source files"
+  },
+  "windowsPowerShellParseCompileOrRuntime": "NOT_RUN_BY_AUTHOR; FRESH ROOT R19 PARSE/COMPILE REQUIRED",
+  "windowsUploadOrBuilderDiagnostic": "NOT_RUN_NOT_AUTHORIZED_IN_AUTHOR_PHASE",
+  "productQualification": "NOT_CLAIMED",
+  "authorArtifactPins": {
+    "authorNote": "924a89565968b0ff0b9d1c1f1bcef669d9205d9250c08b9876ddb187ef22f66b",
+    "authorDesign": "65317fc497f2454fae7a7ddf65d08440a62a295cbc65ce431239fa9a99db682c",
+    "offlineControls": "c08e09ffa1bd9fdb4454276c2462910b1abbb624d5b6862354ef909aef50bf78",
+    "offlineControlScript": "f0435269655758868ac3ae865e0dd704996421941d1fce4674fa6611374c0a9b",
+    "r18BaselineSourceCapture": "d74f348f192e697b70a169af9c5e75fb0ad09e87b6d9ffe7bcb93b514203f14a"
+  },
+  "restrictionsObserved": [
+    "R19 candidate-only source changes; immutable R18 and live source were not modified",
+    "no Windows or SSH execution, upload, host/API operation, product VM, or network action",
+    "no Git mutation; root owns commit and push",
+    "no service, actor, coordinator, or product execution"
+  ]
+}

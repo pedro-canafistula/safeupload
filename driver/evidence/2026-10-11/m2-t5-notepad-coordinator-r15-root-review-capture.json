@@ -1,0 +1,40 @@
+{
+  "CapturedUTC": "2026-10-11T13:40:03.287198+00:00",
+  "ClosedInventoryVerified": true,
+  "Groups": {
+    "author": {
+      "author-note.md": "2bfddd81fe367e2a7364c0e3c0b838694b02b625166dd8e58c8c508b59ac9c24",
+      "author-result.json": "fabd555cbccd03265ca58f531f445f261ed6268ca50701d18177130377362a22",
+      "exact-delta-from-r14.patch": "6aa7645f9cd9dfb5a3ef67a6d10e5358a9fcc228f0cc012fdbe8adaf813a1d27",
+      "offline-controls.txt": "430e0a240b5b749c422742a9536e26101884e17ae815ebbe177a024671b836b3",
+      "source-capture.json": "118766c1d578a01a324c1e8b63bda82766291fe38fe306ac8e08ef576cd618ab"
+    },
+    "context": {
+      "driver/evidence/2026-10-11/luna-t5-harness-windows-gate-r15-independent-review.md": "992e5229652ffb85199984d502d71a7be9da7ceaa412f581a890f8ed425ddedf",
+      "driver/evidence/2026-10-11/luna-t5-notepad-coordinator-r14-correction.md": "188c62323abd6434bc0f2951b367174e9be2dc727d7ad52c6988ec85e264e56d",
+      "driver/evidence/2026-10-11/luna-t5-notepad-coordinator-r14-independent-review.md": "714a0d4ad56682a6a33aa95048ec7ec20abf939783a1419ee884c207510cedb3",
+      "driver/evidence/2026-10-11/m2-t5-coordinator-r14-diag-a1-root-verification.json": "60b5ec053da0d06f774578ae754607c587419affa9de81a5587b3d87e417bec5",
+      "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r15-author-note.md": "2c56d07635a4bf3423dd51983c111bac56d8e7a28d7922cb4cee00f9ad8a77db",
+      "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r15-author-result.json": "ca51d31b45590f472d81a58fc506afe776e04171c6f3ba36a92b3261abe45e1c",
+      "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r15-root-review-disposition.json": "c690a5b7a5ac3afc5f56bba94123bb890e86afaeae1cf4684cf74fd29328f220",
+      "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r18-root-review-capture.json": "4da629bbdc11533484c4a2ed0b2aebfe587f47f2518d5b23c5727d369f81c100",
+      "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r18-root-review-disposition.json": "b545b9211ad6b4f4bfba6c41b1fa019ed17fb6b29b4c2aa757aaa731b856c130",
+      "driver/evidence/2026-10-11/m2-t5-notepad-coordinator-r14-root-review-capture.json": "cf0231084dab2b7cb1e36c3e041fa7bb6206e9c3faa4a47b126c9705e324efb0",
+      "driver/evidence/2026-10-11/m2-t5-notepad-coordinator-r14-root-review-disposition.json": "386b2dcb492ad66835fcac15a3d2552ef33345149b99accd1f3d52331b215d51",
+      "r14/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1": "01277fd1696d0e8a7af81e54ed3e1da479fcbd20061b8353d80be78b6cd12158",
+      "r18/source-capture.json": "d74f348f192e697b70a169af9c5e75fb0ad09e87b6d9ffe7bcb93b514203f14a"
+    },
+    "src": {
+      "agente/SafeUpload.Agent.Service/Interception/StagedJournalFile.cs": "5f4a5ae360513425f1ff79c3ad8c0c4fc8c2b3464f416cecc43c57c42224053a",
+      "agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs": "4b270eaef4616c06ba52e0b88deb701d72463dcef8ed6c9c8cc4c39893b23f8d",
+      "driver/scripts/t5/notepad-coordinator.SelfCheck.ps1": "dbc00a84c456b97f6903cfcb4ccc0ba37c5ff763fc6b67e83aab3e86e807245f",
+      "driver/scripts/t5/notepad-coordinator.ps1": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d"
+    }
+  },
+  "HostPolicyApplied": false,
+  "ProductVMStarted": false,
+  "Root": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-notepad-coordinator-r15-root-a1",
+  "RuntimeQualified": false,
+  "SourceAccepted": false,
+  "TwoFDStableReadsAndPostCopyEquality": true
+}

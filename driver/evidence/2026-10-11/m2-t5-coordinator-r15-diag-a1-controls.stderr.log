@@ -1,0 +1,13 @@
+T5 coordinator self-check failed: an exact all-legacy ancestry chain remains accepted without V20 
+measurement authority
+At C:\Users\vika\Documents\m2-t5-coordinator-r15-diag-1011-a1\notepad-coordinator.SelfCheck.ps1:9 
+char:28
++ ... ondition) { throw ('T5 coordinator self-check failed: ' + $Message) } ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (T5 coordinator ...ement authority:String) [], Run 
+   timeException
+    + FullyQualifiedErrorId : T5 coordinator self-check failed: an exact all-legacy ancestry chain 
+    remains accepted without V20 measurement authority
+ 
+#< CLIXML
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>

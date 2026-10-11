@@ -25,8 +25,16 @@ Completion requires evidence for every tracker item, then a taint-removal plan a
   - [ ] Run the bounded lifecycle probes under Verifier with separate independent VM restoration; broader race coverage remains open.
 - [x] Complete the frozen R18 harness compiler controls and independent review; retain source NO_GO ([disposition](evidence/2026-10-11/m2-t5-harness-windows-gate-r18-root-review-disposition.json)).
   - [x] Compile the protocol module's extracted C# literal at zero warnings/errors; invoke no native methods.
-  - [ ] Correct three PowerShell syntax errors and keep exact recovery job handles after an unproven drain/query; recheck and independently review R19.
+  - [x] Correct the three PowerShell syntax errors and keep exact recovery job handles after an unproven drain/query; the R19 Windows parser/compiler passes. R19 review still rejects stale launcher hashes ([review](evidence/2026-10-11/luna-t5-harness-windows-gate-r19-independent-review.md)).
+  - [x] Correct the five launcher hashes and pass independent R20 review plus real local preflight and stale-pin rejection controls ([disposition](evidence/2026-10-11/m2-t5-harness-windows-gate-r20-root-review-disposition.json)). This permits bounded diagnostics only.
+  - [ ] Publish the keeper readiness receipt atomically, independently review R21, and execute the Windows lifecycle controls.
 - [x] Pass four disposable file-lease controls on each of Btrfs and Ext4, plus read-only leased-descriptor fsync/read calls on both ([disposition](evidence/2026-10-11/m2-t5-filesystem-lease-controls-a1-root-disposition.json)). The earlier a1 test ran on tmpfs; its Btrfs prose label was incorrect. These controls do not qualify expiry, crash retention, pending dirty-page drain, or protection of original VM files.
+- [x] Retain the R1 recovery installer NO_GO: the first durable attempt and journal were written before the canonical lock ([disposition](evidence/2026-10-11/m2-t5-lifecycle-file-lease-guard-r1-root-review-disposition.json)).
+  - [x] Independently freeze the R2 lock-ordering source checkpoint and its disposable author controls ([capture](evidence/2026-10-11/m2-t5-recovery-transaction-r2-lock-ordering-a1-root-review-capture.json)).
+  - [ ] Independently review that correction and finish the full recovery transaction; no host changes are authorized by this checkpoint.
+- [x] Freeze the R15 coordinator self-check correction without changing the production coordinator or managed schema ([capture](evidence/2026-10-11/m2-t5-notepad-coordinator-r15-root-review-capture.json)).
+  - [x] Independently review and execute the fresh two-file Windows PowerShell 5.1 diagnostic; both scripts parse, but the all-legacy ancestry assertion fails. Preserve that failure and independently verify the original process terminal and both remote source pins unchanged ([verification](evidence/2026-10-11/m2-t5-coordinator-r15-diag-a1-root-verification.json)).
+  - [ ] Diagnose and correct the legacy fixture or validator as the evidence requires; retain the assertion and rerun in a fresh isolated folder after review.
 - [ ] Finish and independently review the Windows harness and enforced recovery transaction.
 - [ ] Qualify the matched pair, lifecycle and all three nonempty Save As modes under Verifier with independent destination-byte observations and independently verified VM restoration.
 

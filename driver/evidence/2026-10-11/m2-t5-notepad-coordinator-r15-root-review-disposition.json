@@ -1,0 +1,16 @@
+{
+  "All22CapturedPinsRevalidated": true,
+  "CutoverAuthorized": false,
+  "EvidenceSHA256": {
+    "luna-t5-notepad-coordinator-r15-independent-review.md": "e648834a47c9405783c601f3c518dfcba88bbd643b6de125502ccd6b227122f8",
+    "m2-t5-coordinator-r15-diag-a1-preparation-root.json": "aabd799deb234a34f6f547932f2061714d5537769980796995e3d775970be7d1",
+    "m2-t5-notepad-coordinator-r15-root-review-capture.json": "6cba85a7b71c30b5ad6a35a243a6c6834fb85388ef554d502fc70c61b1c23186"
+  },
+  "FiveDiagnosticInputsRevalidated": true,
+  "PairQualified": false,
+  "ProductionCoordinatorAndManagedSchemaUnchangedFromR14": true,
+  "ReviewedUTC": "2026-10-11T13:42:50.493044+00:00",
+  "RuntimeQualified": false,
+  "Scope": "Source-only GO for the exact prepared two-file standalone PS5.1 diagnostic; no coordinator top level, actor, service, native driver or product VM execution.",
+  "SourceDiagnosticPermitted": true
+}

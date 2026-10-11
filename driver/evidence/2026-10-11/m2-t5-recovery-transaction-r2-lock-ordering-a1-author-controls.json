@@ -1,0 +1,29 @@
+{
+  "Checks": {
+    "ambiguous_mutation_retained": "PASS",
+    "changed_config_preserved": "PASS",
+    "changed_created_file_preserved": "PASS",
+    "config_bytes_mode_mtime_xattrs_restored": "PASS",
+    "exact_created_file_removed": "PASS",
+    "exact_empty_directory_removed": "PASS",
+    "held_inode_blocks_competing_process": "PASS",
+    "main_lock_attempt_journal_order_and_exclusion": "PASS",
+    "main_lock_before_no_authorization_preflight_state": "PASS",
+    "nonempty_directory_preserved": "PASS",
+    "restart_barrier_retains_objects": "PASS",
+    "simultaneous_bootstrap_one_inode_one_holder": "PASS"
+  },
+  "HostPolicyApplied": false,
+  "Invocation": "python3.14 -B output/review-candidates/m2-t5-lifecycle-recovery-transaction-r2-luna-a1/checkpoints/lock-ordering-a1/src/driver/scripts/t5/T5WritableStateHostInstall.SelfCheck.py",
+  "JournalSHA256": "8fcab3a4ef50a0382b9ab8ade7d632f268057466cb0d67cb6c311de063ae6b49",
+  "LibvirtAPI": false,
+  "OutputSHA256": "cfc6211ea26f3ccde8368525c4c53000047ed15482a3705d9b7d1b17a1d691a2",
+  "ProductVMStarted": false,
+  "RuntimeQualified": false,
+  "Schema": "T5HostInstallLockOrderingSelfCheckV2",
+  "Scope": "temporary fixtures only; imported main() fixture control; no host API calls",
+  "SourceAccepted": false,
+  "Status": "PASS",
+  "SystemdOperation": false,
+  "XAttrFixtureSupported": true
+}

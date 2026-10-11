@@ -1,0 +1,767 @@
+--- R1/T5WritableStateHostInstall.py
++++ R2-lock-ordering-a1/T5WritableStateHostInstall.py
+@@ -904,10 +904,11 @@
+     found = [path for path in target_files if os.path.lexists(path)]
+     if found:
+         raise InstallError('fixed transaction target already exists: ' + ', '.join(found))
+-    for path in (LOCK_DIR, STATE_ROOT, STATE_TAG, STATE_DIR, EVIDENCE_DIR,
++    for path in (STATE_ROOT, STATE_TAG, STATE_DIR, EVIDENCE_DIR,
+                  IMAGE_ROOT, IMAGE_TAG, RUN_POOL_PATH, QEMU_D):
+         if os.path.lexists(path):
+             raise InstallError('fixed transaction directory already exists: ' + path)
++    _inspect_canonical_lock_namespace()
+     if os.path.lexists(QEMU_MAIN_HOOK_PATH):
+         raise InstallError('qemu main hook already exists; refusing replacement')
+     _verify_safe_directory(POLKIT_RULES_DIR)
+@@ -929,8 +930,15 @@
+     if count not in (0, 1) or (count == 1 and value not in (b'[ "polkit" ]', b'["polkit"]')):
+         raise InstallError('libvirtd access_drivers is not safely installable')
+     return {'TargetFilesAbsent': list(target_files), 'TargetDirectoriesAbsent': [
+-        LOCK_DIR, STATE_ROOT, STATE_TAG, STATE_DIR, EVIDENCE_DIR,
++        STATE_ROOT, STATE_TAG, STATE_DIR, EVIDENCE_DIR,
+         IMAGE_ROOT, IMAGE_TAG, RUN_POOL_PATH, QEMU_D],
++        'CanonicalLockNamespace': {
++            'Path': LOCK_PATH,
++            'DirectoryMode': '0711',
++            'LockFileMode': '0444',
++            'RetainedBootLifetime': True,
++            'ReplacementAllowed': False,
++        },
+         'EarlierPolkitRules': polkit_names, 'AccessDriversCount': count,
+         'AccessDriversAlreadyPolkit': bool(count)}
+ 
+@@ -1072,38 +1080,174 @@
+         view = view[written:]
+ 
+ 
+-def _create_and_acquire_canonical_lock(journal_fd: int) -> tuple[int, os.stat_result]:
+-    """Create the fixed lock inode once and hold EX before later mutations."""
+-    _create_directory(LOCK_DIR, 0, 0, 0o711, journal_fd)
+-    _append_event(journal_fd, {'Event': 'CANONICAL_LOCK_CREATE_INTENT',
+-                               'Path': LOCK_PATH, 'Mode': '0444'})
+-    _create_exclusive(LOCK_PATH, b'', mode=0o444)
+-    lock_fd = os.open(LOCK_PATH, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW)
+-    try:
++def _inspect_canonical_lock_namespace() -> dict[str, Any]:
++    """Validate an absent or already provisioned canonical lock namespace."""
++    if not os.path.lexists(LOCK_DIR):
++        return {'DirectoryPresent': False, 'LockPresent': False}
++    parent = os.open('/run', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC |
++                     os.O_NOFOLLOW)
++    runtime_fd = -1
++    try:
++        parent_stat = os.fstat(parent)
++        if (not stat.S_ISDIR(parent_stat.st_mode) or parent_stat.st_uid != 0 or
++                parent_stat.st_gid != 0 or stat.S_IMODE(parent_stat.st_mode) & 0o022):
++            raise InstallError('/run is not a root-owned protected directory')
++        runtime_fd = os.open(os.path.basename(LOCK_DIR), os.O_RDONLY | os.O_DIRECTORY |
++                             os.O_CLOEXEC | os.O_NOFOLLOW, dir_fd=parent)
++        runtime_stat = os.fstat(runtime_fd)
++        runtime_path_stat = os.stat(os.path.basename(LOCK_DIR), dir_fd=parent,
++                                    follow_symlinks=False)
++        if (not stat.S_ISDIR(runtime_stat.st_mode) or runtime_stat.st_uid != 0 or
++                runtime_stat.st_gid != 0 or stat.S_IMODE(runtime_stat.st_mode) != 0o711 or
++                (runtime_stat.st_dev, runtime_stat.st_ino) !=
++                (runtime_path_stat.st_dev, runtime_path_stat.st_ino)):
++            raise InstallError('canonical runtime directory identity/owner/mode differs')
++        lock_name = os.path.basename(LOCK_PATH)
++        names = set(os.listdir(runtime_fd))
++        if names - {lock_name}:
++            raise InstallError('canonical runtime directory contains stale lease or unexpected state')
++        if lock_name not in names:
++            return {'DirectoryPresent': True, 'LockPresent': False,
++                    'DirectoryDevice': runtime_stat.st_dev,
++                    'DirectoryInode': runtime_stat.st_ino}
++        lock_fd = os.open(lock_name, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
++                          dir_fd=runtime_fd)
++        try:
++            lock_stat = os.fstat(lock_fd)
++            path_stat = os.stat(lock_name, dir_fd=runtime_fd, follow_symlinks=False)
++            if (not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_uid != 0 or
++                    lock_stat.st_gid != 0 or stat.S_IMODE(lock_stat.st_mode) != 0o444 or
++                    lock_stat.st_nlink != 1 or lock_stat.st_size != 0 or
++                    (lock_stat.st_dev, lock_stat.st_ino) !=
++                    (path_stat.st_dev, path_stat.st_ino)):
++                raise InstallError('canonical lock file metadata/path identity differs')
++            return {'DirectoryPresent': True, 'LockPresent': True,
++                    'DirectoryDevice': runtime_stat.st_dev,
++                    'DirectoryInode': runtime_stat.st_ino,
++                    'LockDevice': lock_stat.st_dev, 'LockInode': lock_stat.st_ino}
++        finally:
++            os.close(lock_fd)
++    finally:
++        if runtime_fd >= 0:
++            os.close(runtime_fd)
++        os.close(parent)
++
++
++def _acquire_canonical_lock_at(runtime_directory: str, lock_path: str, *,
++                               expected_uid: int, expected_gid: int,
++                               directory_mode: int,
++                               lock_mode: int = 0o444) -> tuple[int, os.stat_result]:
++    """Acquire one fixed inode; the fixture parameters are private to self-checks."""
++    runtime = Path(runtime_directory)
++    if (not runtime.is_absolute() or runtime.parent == runtime or
++            not lock_path.startswith(runtime_directory.rstrip('/') + '/') or
++            os.path.dirname(lock_path) != runtime_directory):
++        raise InstallError('canonical lock fixture paths are not one fixed directory')
++    parent = os.open(str(runtime.parent), os.O_RDONLY | os.O_DIRECTORY |
++                     os.O_CLOEXEC | os.O_NOFOLLOW)
++    runtime_fd = -1
++    lock_fd = -1
++    try:
++        parent_stat = os.fstat(parent)
++        if (not stat.S_ISDIR(parent_stat.st_mode) or
++                parent_stat.st_uid != expected_uid or parent_stat.st_gid != expected_gid or
++                stat.S_IMODE(parent_stat.st_mode) & 0o022):
++            raise InstallError('canonical lock parent is not protected by its expected owner')
++        runtime_name = runtime.name
++        created_runtime = False
++        try:
++            os.mkdir(runtime_name, directory_mode, dir_fd=parent)
++            created_runtime = True
++            os.fsync(parent)
++        except FileExistsError:
++            pass
++        runtime_fd = os.open(runtime_name, os.O_RDONLY | os.O_DIRECTORY |
++                             os.O_CLOEXEC | os.O_NOFOLLOW, dir_fd=parent)
++        runtime_stat = os.fstat(runtime_fd)
++        if created_runtime:
++            if (runtime_stat.st_uid, runtime_stat.st_gid) != (expected_uid, expected_gid):
++                os.fchown(runtime_fd, expected_uid, expected_gid)
++            os.fchmod(runtime_fd, directory_mode)
++            os.fsync(runtime_fd)
++            runtime_stat = os.fstat(runtime_fd)
++        runtime_path_stat = os.stat(runtime_name, dir_fd=parent,
++                                    follow_symlinks=False)
++        if (not stat.S_ISDIR(runtime_stat.st_mode) or
++                runtime_stat.st_uid != expected_uid or
++                runtime_stat.st_gid != expected_gid or
++                stat.S_IMODE(runtime_stat.st_mode) != directory_mode or
++                (runtime_stat.st_dev, runtime_stat.st_ino) !=
++                (runtime_path_stat.st_dev, runtime_path_stat.st_ino)):
++            raise InstallError('canonical runtime directory identity/owner/mode differs')
++        lock_name = os.path.basename(lock_path)
++        names = set(os.listdir(runtime_fd))
++        if names - {lock_name}:
++            raise InstallError('canonical runtime directory contains stale lease or unexpected state')
++        try:
++            lock_fd = os.open(lock_name, os.O_RDWR | os.O_CREAT | os.O_EXCL |
++                              os.O_CLOEXEC | os.O_NOFOLLOW, lock_mode,
++                              dir_fd=runtime_fd)
++            created_stat = os.fstat(lock_fd)
++            if (created_stat.st_uid, created_stat.st_gid) != (expected_uid, expected_gid):
++                os.fchown(lock_fd, expected_uid, expected_gid)
++            os.fchmod(lock_fd, lock_mode)
++            os.fsync(lock_fd)
++            os.fsync(runtime_fd)
++        except FileExistsError:
++            lock_fd = os.open(lock_name, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW,
++                              dir_fd=runtime_fd)
+         lock_stat = os.fstat(lock_fd)
+-        path_stat = os.stat(LOCK_PATH, follow_symlinks=False)
+-        if (not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_uid != 0 or
+-                lock_stat.st_gid != 0 or stat.S_IMODE(lock_stat.st_mode) != 0o444 or
+-                lock_stat.st_nlink != 1 or
++        path_stat = os.stat(lock_name, dir_fd=runtime_fd, follow_symlinks=False)
++        if (not stat.S_ISREG(lock_stat.st_mode) or
++                lock_stat.st_uid != expected_uid or lock_stat.st_gid != expected_gid or
++                stat.S_IMODE(lock_stat.st_mode) != lock_mode or
++                lock_stat.st_nlink != 1 or lock_stat.st_size != 0 or
+                 (lock_stat.st_dev, lock_stat.st_ino) !=
+                 (path_stat.st_dev, path_stat.st_ino)):
+-            raise InstallError('canonical lock file metadata/path identity differs after creation')
++            raise InstallError('canonical lock file metadata/path identity differs')
+         try:
+             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+         except BlockingIOError as exc:
+             raise InstallError('canonical lock was acquired by another process') from exc
+-        _append_event(journal_fd, {'Event': 'CANONICAL_LOCK_ACQUIRED',
+-                                   'Device': lock_stat.st_dev, 'Inode': lock_stat.st_ino,
+-                                   'OwnerPID': os.getpid(),
+-                                   'OwnerStartTicks': _process_start_ticks(os.getpid()),
+-                                   'DescriptorNotInherited': True})
+-        _append_event(journal_fd, {'Event': 'CANONICAL_LOCK_CREATED',
+-                                   'Device': lock_stat.st_dev, 'Inode': lock_stat.st_ino,
+-                                   'Mode': '0444'})
++        after = os.fstat(lock_fd)
++        end_path = os.stat(lock_name, dir_fd=runtime_fd, follow_symlinks=False)
++        parent_end = os.stat(runtime_name, dir_fd=parent, follow_symlinks=False)
++        parent_path_end = os.stat(str(runtime.parent), follow_symlinks=False)
++        if ((lock_stat.st_dev, lock_stat.st_ino) !=
++                (after.st_dev, after.st_ino) or
++                (lock_stat.st_dev, lock_stat.st_ino) !=
++                (end_path.st_dev, end_path.st_ino) or
++                (runtime_stat.st_dev, runtime_stat.st_ino) !=
++                (parent_end.st_dev, parent_end.st_ino) or
++                (parent_stat.st_dev, parent_stat.st_ino) !=
++                (parent_path_end.st_dev, parent_path_end.st_ino)):
++            raise InstallError('canonical lock or runtime pathname changed while acquiring')
++        info = Path('/proc/%d/fdinfo/%d' % (os.getpid(), lock_fd)).read_text(encoding='ascii')
++        lock_pattern = re.compile(
++            r'lock:\s+\d+:\s+FLOCK\s+ADVISORY\s+WRITE\s+\d+\s+'
++            r'[0-9a-fA-F]+:[0-9a-fA-F]+:(\d+)\s+0\s+EOF')
++        held_inodes = [int(match.group(1)) for line in info.splitlines()
++                       if (match := lock_pattern.fullmatch(line))]
++        if held_inodes != [lock_stat.st_ino]:
++            raise InstallError('current process does not hold the exact canonical exclusive lock')
+         return lock_fd, lock_stat
+     except BaseException:
+-        os.close(lock_fd)
++        if lock_fd >= 0:
++            os.close(lock_fd)
+         raise
++    finally:
++        if runtime_fd >= 0:
++            os.close(runtime_fd)
++        os.close(parent)
++
++
++def _acquire_canonical_lock() -> tuple[int, os.stat_result]:
++    """Provision the permanent runtime inode, then hold it before any transaction write."""
++    if os.getuid() != 0 or os.geteuid() != 0:
++        raise InstallError('canonical transaction lock requires the root namespace')
++    return _acquire_canonical_lock_at(LOCK_DIR, LOCK_PATH,
++                                      expected_uid=0, expected_gid=0,
++                                      directory_mode=0o711)
+ 
+ 
+ def _atomic_replace_config(raw: bytes, journal_fd: int,
+@@ -1495,7 +1639,8 @@
+ 
+ def _apply_transaction(preflight: dict[str, Any], preflight_raw: bytes,
+                        auth: dict[str, Any], auth_raw: bytes,
+-                       attempt_sha: str) -> dict[str, Any]:
++                       attempt_sha: str, lock_fd: int,
++                       lock_stat: os.stat_result) -> dict[str, Any]:
+     journal_fd = os.open(JOURNAL_PATH, os.O_WRONLY | os.O_APPEND | os.O_CREAT |
+                          os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW, 0o600)
+     os.fchown(journal_fd, 0, 0)
+@@ -1507,7 +1652,6 @@
+         os.fsync(journal_parent_fd)
+     finally:
+         os.close(journal_parent_fd)
+-    lock_fd = -1
+     transaction = {'Schema': 'T5LifecycleHostInstallTransactionV1',
+                    'AttemptSHA256': attempt_sha,
+                    'PreflightSHA256': _sha(preflight_raw),
+@@ -1516,15 +1660,13 @@
+                    'SourceImageHeaderMetadataReadByQemuImgInfo': True,
+                    'SourcePayloadBlocksRead': False}
+     try:
++        _append_event(journal_fd, {'Event': 'CANONICAL_LOCK_ACQUIRED',
++                                   'Path': LOCK_PATH,
++                                   'Device': lock_stat.st_dev, 'Inode': lock_stat.st_ino,
++                                   'OwnerPID': os.getpid(),
++                                   'OwnerStartTicks': _process_start_ticks(os.getpid()),
++                                   'DescriptorNotInherited': True})
+         _append_event(journal_fd, {'Event': 'TRANSACTION_BEGIN', **transaction})
+-        # Reserve the canonical inode and hold its exclusive lock before any
+-        # further libvirt observation or persistent host-object mutation.
+-        # LOCK_DIR and LOCK_PATH are permanent namespace objects; failed or
+-        # partial attempts retain them and cannot create a second lock domain.
+-        transaction['MutationInProgress'] = True
+-        lock_fd, lock_stat = _create_and_acquire_canonical_lock(journal_fd)
+-        transaction['MutationInProgress'] = False
+-
+         # Repeat the preflight after reservation. A separate read-only API
+         # connection and all metadata must still match the authorized capture.
+         fresh = _collect_preflight(allow_reserved=True)
+@@ -1748,8 +1890,6 @@
+                     pass
+         raise
+     finally:
+-        if lock_fd >= 0:
+-            os.close(lock_fd)
+         os.close(journal_fd)
+ 
+ 
+@@ -1760,6 +1900,7 @@
+ 
+ 
+ def main(argv: list[str] | None = None) -> int:
++    lock_fd = -1
+     try:
+         args = sys.argv[1:] if argv is None else argv
+         if args:
+@@ -1769,11 +1910,17 @@
+             preflight, preflight_raw, _ = _read_json(PREFLIGHT_PATH)
+             auth, auth_raw, _ = _read_json(AUTH_PATH)
+             _verify_auth(preflight, preflight_raw, auth, auth_raw)
++            lock_fd, lock_stat = _acquire_canonical_lock()
+             if os.path.lexists(ATTEMPT_PATH) or os.path.lexists(JOURNAL_PATH):
+                 raise InstallError('install attempt/journal already exists; replay is forbidden')
+             _attempt, attempt_sha = _reserve_attempt(preflight_raw, auth_raw)
+-            result = _apply_transaction(preflight, preflight_raw, auth, auth_raw, attempt_sha)
++            result = _apply_transaction(preflight, preflight_raw, auth, auth_raw,
++                                        attempt_sha, lock_fd, lock_stat)
+         else:
++            # The read-only preflight itself is safe outside the lock, but its
++            # durable one-use report is shared transaction state. Serialize
++            # that first write under the same permanent canonical inode.
++            lock_fd, lock_stat = _acquire_canonical_lock()
+             if os.path.lexists(PREFLIGHT_PATH):
+                 raise InstallError('preflight report already exists; no overwrite/replay is allowed')
+             report = _collect_preflight()
+@@ -1789,6 +1936,9 @@
+         print(json.dumps({'Status': 'REJECTED', 'Reason': str(exc)},
+                          sort_keys=True, separators=(',', ':')), file=sys.stderr)
+         return 2
++    finally:
++        if lock_fd >= 0:
++            os.close(lock_fd)
+ 
+ 
+ if __name__ == '__main__':
+--- R1/T5WritableStateHostInstall.SelfCheck.py
++++ R2-lock-ordering-a1/T5WritableStateHostInstall.SelfCheck.py
+@@ -1,8 +1,10 @@
+ #!/usr/bin/env python3
+ """Offline-only checks for the root installer rollback primitives.
+ 
+-All filesystem mutations are confined to a fresh /tmp directory.  The host
+-installer itself is imported as data; its command entry point is not run.
++All filesystem mutations are confined to fresh /tmp directories. The imported
++main() function is exercised only with its authorization, namespace, attempt,
++and transaction boundaries replaced by fixture-only functions. No production
++entry point or host API is invoked.
+ """
+ from __future__ import annotations
+ 
+@@ -12,6 +14,7 @@
+ import json
+ import os
+ from pathlib import Path
++import select
+ import shutil
+ import stat
+ import tempfile
+@@ -36,28 +39,384 @@
+ 
+ 
+ def check_transaction_order() -> None:
+-    """Pin the critical source ordering: reserve/hold lock before recheck."""
++    """Pin lock ordering across main, reservation, journal, and mutations."""
+     tree = ast.parse(SCRIPT.read_text(encoding='utf-8'))
+-    function = next((node for node in tree.body
+-                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+-                     and node.name == '_apply_transaction'), None)
+-    if function is None:
+-        raise AssertionError('installer transaction entry is absent')
+-    call_lines: dict[str, list[int]] = {}
+-    for node in ast.walk(function):
+-        if isinstance(node, ast.Call):
+-            name = node.func.id if isinstance(node.func, ast.Name) else None
+-            if name in {'_create_and_acquire_canonical_lock', '_collect_preflight',
+-                        '_create_directory', '_write_new_file', '_atomic_replace_config'}:
+-                call_lines.setdefault(name, []).append(node.lineno)
+-    lock_line = min(call_lines.get('_create_and_acquire_canonical_lock', []), default=0)
+-    collect_line = min(call_lines.get('_collect_preflight', []), default=0)
+-    later_mutations = [line for name in ('_create_directory', '_write_new_file',
+-                                         '_atomic_replace_config')
+-                       for line in call_lines.get(name, []) if line > collect_line]
+-    if not lock_line or not collect_line or not later_mutations or not (
+-            lock_line < collect_line < min(later_mutations)):
+-        raise AssertionError('canonical exclusive lock is not held before recheck and install mutations')
++    functions = {node.name: node for node in tree.body
++                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
++    main = functions.get('main')
++    transaction = functions.get('_apply_transaction')
++    acquire = functions.get('_acquire_canonical_lock')
++    acquire_at = functions.get('_acquire_canonical_lock_at')
++    if None in (main, transaction, acquire, acquire_at):
++        raise AssertionError('installer main/transaction/canonical-lock source is incomplete')
++
++    def calls_in(nodes, names: set[str]) -> list[int]:
++        roots = nodes if isinstance(nodes, list) else [nodes]
++        return [call.lineno for root in roots for call in ast.walk(root)
++                if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
++                and call.func.id in names]
++
++    def checks_auth_path(node) -> bool:
++        return any(isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
++                   and call.func.attr == 'lexists' and call.args
++                   and isinstance(call.args[0], ast.Name)
++                   and call.args[0].id == 'AUTH_PATH'
++                   for call in ast.walk(node))
++
++    auth_branch = next((node for node in ast.walk(main)
++                        if isinstance(node, ast.If) and checks_auth_path(node.test)), None)
++    if auth_branch is None:
++        raise AssertionError('main has no structurally visible authorization branch')
++    auth_lines = {
++        '_acquire_canonical_lock': calls_in(auth_branch.body, {'_acquire_canonical_lock'}),
++        '_reserve_attempt': calls_in(auth_branch.body, {'_reserve_attempt'}),
++        '_apply_transaction': calls_in(auth_branch.body, {'_apply_transaction'}),
++    }
++    lock_line = min(auth_lines['_acquire_canonical_lock'], default=0)
++    reserve_line = min(auth_lines['_reserve_attempt'], default=0)
++    transaction_line = min(auth_lines['_apply_transaction'], default=0)
++    if not lock_line or not reserve_line or not transaction_line or not (
++            lock_line < reserve_line < transaction_line):
++        raise AssertionError('authorized main path does not hold the canonical lock before attempt and journal transaction')
++    preflight_lock_line = min(calls_in(auth_branch.orelse,
++                                       {'_acquire_canonical_lock'}), default=0)
++    preflight_write_line = min(calls_in(auth_branch.orelse,
++                                        {'_create_exclusive'}), default=0)
++    if not preflight_lock_line or not preflight_write_line or not (
++            preflight_lock_line < preflight_write_line):
++        raise AssertionError('no-authorization main path writes its durable preflight before the canonical lock')
++    if {'lock_fd', 'lock_stat'} - {arg.arg for arg in transaction.args.args}:
++        raise AssertionError('transaction does not receive the already-held lock identity')
++    transaction_calls = {node.func.id for node in ast.walk(transaction)
++                         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
++    if '_acquire_canonical_lock' in transaction_calls or '_reserve_attempt' in transaction_calls:
++        raise AssertionError('transaction reacquires the lock or reserves after journal creation')
++
++    for function, name in ((acquire, '_acquire_canonical_lock'),
++                           (acquire_at, '_acquire_canonical_lock_at')):
++        calls = {node.func.attr if isinstance(node.func, ast.Attribute) else
++                 node.func.id if isinstance(node.func, ast.Name) else ''
++                 for node in ast.walk(function) if isinstance(node, ast.Call)}
++        if {'replace', 'rename', 'unlink', 'remove'} & calls:
++            raise AssertionError(name + ' can replace or unlink the canonical inode')
++        if {'_append_event', '_create_exclusive', '_create_directory'} & calls:
++            raise AssertionError(name + ' writes the transaction journal or state before lock acquisition')
++    if 'flock' not in {node.func.attr for node in ast.walk(acquire_at)
++                       if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}:
++        raise AssertionError('canonical lock helper does not acquire an advisory lock')
++
++
++def _competing_lock_probe(module, runtime_dir: str, lock_path: str,
++                          expected_uid: int, expected_gid: int,
++                          directory_mode: int) -> str:
++    """Use a separate process to prove the same inode excludes a competitor."""
++    read_fd, write_fd = os.pipe()
++    pid = os.fork()
++    if pid == 0:
++        os.close(read_fd)
++        try:
++            fd, _row = module._acquire_canonical_lock_at(
++                runtime_dir, lock_path, expected_uid=expected_uid,
++                expected_gid=expected_gid, directory_mode=directory_mode,
++                lock_mode=0o600)
++        except module.InstallError:
++            result = b'BLOCKED'
++        except BaseException as exc:
++            result = ('ERROR:' + type(exc).__name__).encode('ascii')
++        else:
++            os.close(fd)
++            result = b'ACQUIRED'
++        os.write(write_fd, result + b'\n')
++        os.close(write_fd)
++        os._exit(0)
++    os.close(write_fd)
++    result = os.read(read_fd, 128).strip().decode('ascii')
++    os.close(read_fd)
++    _pid, status = os.waitpid(pid, 0)
++    if status != 0:
++        raise AssertionError('lock competitor child exited abnormally')
++    return result
++
++
++def _concurrent_bootstrap_probe(module, runtime_dir: str, lock_path: str,
++                                expected_uid: int, expected_gid: int,
++                                directory_mode: int) -> tuple[str, str]:
++    """Race the parent and a child from an absent namespace and compare identity."""
++    start_read, start_write = os.pipe()
++    result_read, result_write = os.pipe()
++    release_read, release_write = os.pipe()
++    pid = os.fork()
++    if pid == 0:
++        os.close(start_write)
++        os.close(result_read)
++        os.close(release_write)
++        lock_fd = -1
++        try:
++            if os.read(start_read, 1) != b'G':
++                os._exit(3)
++            try:
++                lock_fd, row = module._acquire_canonical_lock_at(
++                    runtime_dir, lock_path, expected_uid=expected_uid,
++                    expected_gid=expected_gid, directory_mode=directory_mode,
++                    lock_mode=0o600)
++            except module.InstallError:
++                os.write(result_write, b'BLOCKED\n')
++            else:
++                os.write(result_write,
++                         ('ACQUIRED:%d:%d\n' % (row.st_dev, row.st_ino)).encode('ascii'))
++                if os.read(release_read, 1) != b'R':
++                    os._exit(4)
++            os._exit(0)
++        except BaseException:
++            os._exit(5)
++        finally:
++            if lock_fd >= 0:
++                os.close(lock_fd)
++
++    os.close(start_read)
++    os.close(result_write)
++    os.close(release_read)
++    parent_fd = -1
++    parent_result = ''
++    try:
++        os.write(start_write, b'G')
++        os.close(start_write)
++        try:
++            parent_fd, parent_row = module._acquire_canonical_lock_at(
++                runtime_dir, lock_path, expected_uid=expected_uid,
++                expected_gid=expected_gid, directory_mode=directory_mode,
++                lock_mode=0o600)
++            parent_result = 'ACQUIRED:%d:%d' % (parent_row.st_dev, parent_row.st_ino)
++        except module.InstallError:
++            parent_result = 'BLOCKED'
++        ready, _, _ = select.select([result_read], [], [], 5)
++        if not ready:
++            raise AssertionError('concurrent bootstrap child did not report within five seconds')
++        child_result = os.read(result_read, 128).decode('ascii').strip()
++        if child_result.startswith('ACQUIRED:'):
++            child_dev, child_ino = child_result.split(':')[1:]
++            child_result = 'ACQUIRED:%s:%s' % (child_dev, child_ino)
++        if (parent_result == 'BLOCKED') == (child_result == 'BLOCKED'):
++            raise AssertionError('bootstrap race did not produce exactly one lock holder')
++        if not parent_result.startswith('ACQUIRED:') and not child_result.startswith('ACQUIRED:'):
++            raise AssertionError('bootstrap race produced no lock holder')
++        winner = parent_result if parent_result.startswith('ACQUIRED:') else child_result
++        _, device, inode = winner.split(':')
++        path_row = os.stat(lock_path, follow_symlinks=False)
++        if (str(path_row.st_dev), str(path_row.st_ino)) != (device, inode):
++            raise AssertionError('bootstrap race replaced or split the canonical lock inode')
++        if parent_fd >= 0:
++            os.close(parent_fd)
++            parent_fd = -1
++        if child_result.startswith('ACQUIRED:'):
++            os.write(release_write, b'R')
++        _pid, status = os.waitpid(pid, 0)
++        if status != 0:
++            raise AssertionError('concurrent bootstrap child exited abnormally')
++        return parent_result, child_result
++    finally:
++        if parent_fd >= 0:
++            os.close(parent_fd)
++        for fd in (start_write, result_read, release_write):
++            try:
++                os.close(fd)
++            except OSError:
++                pass
++
++
++def check_canonical_lock_controls(module) -> dict[str, str]:
++    """Exercise bootstrap and the complete authorized main ordering in /tmp."""
++    root = tempfile.mkdtemp(prefix='m2-t5-canonical-lock-')
++    outcomes: dict[str, str] = {}
++    try:
++        os.chmod(root, 0o700)
++        runtime_dir = os.path.join(root, 'runtime')
++        lock_path = os.path.join(runtime_dir, 'win10-debug3.lifecycle.lock')
++        uid, gid = os.getuid(), os.getgid()
++
++        parent_result, child_result = _concurrent_bootstrap_probe(
++            module, runtime_dir, lock_path, uid, gid, 0o700)
++        if sum(result.startswith('ACQUIRED:') for result in
++               (parent_result, child_result)) != 1:
++            raise AssertionError('simultaneous namespace bootstrap was not exclusive')
++        outcomes['simultaneous_bootstrap_one_inode_one_holder'] = 'PASS'
++
++        fd, first = module._acquire_canonical_lock_at(
++            runtime_dir, lock_path, expected_uid=uid, expected_gid=gid,
++            directory_mode=0o700, lock_mode=0o600)
++        try:
++            if _competing_lock_probe(module, runtime_dir, lock_path, uid, gid, 0o700) != 'BLOCKED':
++                raise AssertionError('separate process acquired an already-held canonical inode')
++            same = os.stat(lock_path, follow_symlinks=False)
++            if (same.st_dev, same.st_ino) != (first.st_dev, first.st_ino):
++                raise AssertionError('canonical lock inode changed while held')
++            outcomes['held_inode_blocks_competing_process'] = 'PASS'
++        finally:
++            os.close(fd)
++
++        config = os.path.join(root, 'config')
++        os.mkdir(config, 0o700)
++        preflight_path = os.path.join(config, 'preflight.json')
++        auth_path = os.path.join(config, 'authorization.json')
++        attempt_path = os.path.join(config, 'attempt.json')
++        journal_path = os.path.join(config, 'transaction.jsonl')
++        Path(preflight_path).write_bytes(b'fixture-preflight')
++        Path(auth_path).write_bytes(b'fixture-authorization')
++        constants = {name: getattr(module, name) for name in
++                     ('LOCK_DIR', 'LOCK_PATH', 'PREFLIGHT_PATH', 'AUTH_PATH',
++                      'ATTEMPT_PATH', 'JOURNAL_PATH')}
++        functions = {name: getattr(module, name) for name in
++                     ('_root_namespace_preflight', '_read_json', '_verify_auth',
++                      '_acquire_canonical_lock', '_reserve_attempt', '_apply_transaction')}
++        event_order: list[str] = []
++        lock_identity: list[tuple[int, int]] = []
++        module.LOCK_DIR = runtime_dir
++        module.LOCK_PATH = lock_path
++        module.PREFLIGHT_PATH = preflight_path
++        module.AUTH_PATH = auth_path
++        module.ATTEMPT_PATH = attempt_path
++        module.JOURNAL_PATH = journal_path
++        module._root_namespace_preflight = lambda: {'FixtureOnly': True}
++
++        def fake_read_json(path, **_kwargs):
++            if path == preflight_path:
++                return {'Candidate': 'fixture'}, b'preflight-bytes', None
++            if path == auth_path:
++                return {'Candidate': 'fixture'}, b'authorization-bytes', None
++            raise AssertionError('main read outside the temporary authorization fixture')
++
++        def fake_acquire():
++            if os.path.lexists(attempt_path) or os.path.lexists(journal_path):
++                raise AssertionError('durable attempt or journal exists before lock acquisition')
++            held_fd, row = module._acquire_canonical_lock_at(
++                runtime_dir, lock_path, expected_uid=uid, expected_gid=gid,
++                directory_mode=0o700, lock_mode=0o600)
++            lock_identity.append((row.st_dev, row.st_ino))
++            event_order.append('lock')
++            return held_fd, row
++
++        def fake_reserve(_preflight_raw, _auth_raw):
++            event_order.append('attempt')
++            if _competing_lock_probe(module, runtime_dir, lock_path, uid, gid, 0o700) != 'BLOCKED':
++                raise AssertionError('competitor entered while main reserved its attempt')
++            fd = os.open(attempt_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
++                         os.O_CLOEXEC | os.O_NOFOLLOW, 0o600)
++            try:
++                write_all(fd, b'fixture-attempt')
++                os.fsync(fd)
++                row = os.fstat(fd)
++            finally:
++                os.close(fd)
++            return row, sha(b'fixture-attempt')
++
++        def fake_transaction(_preflight, _preflight_raw, _auth, _auth_raw,
++                             _attempt_sha, held_fd, held_stat):
++            event_order.append('journal')
++            if (held_stat.st_dev, held_stat.st_ino) != lock_identity[-1]:
++                raise AssertionError('transaction did not receive the exact held lock identity')
++            if _competing_lock_probe(module, runtime_dir, lock_path, uid, gid, 0o700) != 'BLOCKED':
++                raise AssertionError('competitor entered while transaction created its journal')
++            if (os.fstat(held_fd).st_dev, os.fstat(held_fd).st_ino) != lock_identity[-1]:
++                raise AssertionError('held lock descriptor identity changed before journal creation')
++            fd = os.open(journal_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
++                         os.O_CLOEXEC | os.O_NOFOLLOW, 0o600)
++            try:
++                write_all(fd, b'{"Event":"TRANSACTION_BEGIN"}\n')
++                os.fsync(fd)
++            finally:
++                os.close(fd)
++            return {'Status': 'TEMPORARY_FIXTURE_ONLY'}
++
++        module._read_json = fake_read_json
++        module._verify_auth = lambda *_args: None
++        module._acquire_canonical_lock = fake_acquire
++        module._reserve_attempt = fake_reserve
++        module._apply_transaction = fake_transaction
++        try:
++            result = module.main([])
++        finally:
++            for name, value in constants.items():
++                setattr(module, name, value)
++            for name, value in functions.items():
++                setattr(module, name, value)
++        if result != 0 or event_order != ['lock', 'attempt', 'journal']:
++            raise AssertionError('full main flow did not order lock, attempt, then journal')
++        if not (os.path.isfile(attempt_path) and os.path.isfile(journal_path)):
++            raise AssertionError('temporary full-flow fixture omitted its durable outputs')
++        final_lock = os.stat(lock_path, follow_symlinks=False)
++        if lock_identity != [(final_lock.st_dev, final_lock.st_ino)]:
++            raise AssertionError('main flow replaced the canonical lock inode')
++        if _competing_lock_probe(module, runtime_dir, lock_path, uid, gid, 0o700) != 'ACQUIRED':
++            raise AssertionError('canonical lock was not released after successful fixture completion')
++        outcomes['main_lock_attempt_journal_order_and_exclusion'] = 'PASS'
++
++        no_auth_path = os.path.join(config, 'no-authorization.json')
++        no_auth_preflight = os.path.join(config, 'preflight-no-authorization.json')
++        no_auth_constants = {name: getattr(module, name) for name in
++                             ('LOCK_DIR', 'LOCK_PATH', 'PREFLIGHT_PATH', 'AUTH_PATH')}
++        no_auth_functions = {name: getattr(module, name) for name in
++                             ('_root_namespace_preflight', '_collect_preflight',
++                              '_create_exclusive', '_acquire_canonical_lock')}
++        no_auth_events: list[str] = []
++        module.LOCK_DIR = runtime_dir
++        module.LOCK_PATH = lock_path
++        module.PREFLIGHT_PATH = no_auth_preflight
++        module.AUTH_PATH = no_auth_path
++        module._root_namespace_preflight = lambda: {'FixtureOnly': True}
++
++        def fixture_preflight_acquire():
++            if os.path.lexists(no_auth_preflight):
++                raise AssertionError('no-authorization preflight already exists before lock')
++            held_fd, row = module._acquire_canonical_lock_at(
++                runtime_dir, lock_path, expected_uid=uid, expected_gid=gid,
++                directory_mode=0o700, lock_mode=0o600)
++            no_auth_events.append('lock')
++            return held_fd, row
++
++        def fixture_collect_preflight():
++            if _competing_lock_probe(module, runtime_dir, lock_path, uid, gid,
++                                     0o700) != 'BLOCKED':
++                raise AssertionError('competitor entered while no-authorization preflight was collected')
++            no_auth_events.append('collect')
++            return {'Status': 'FIXTURE_ONLY'}
++
++        def fixture_create_preflight(path, raw, *, mode=0o400):
++            if path != no_auth_preflight or not no_auth_events or no_auth_events[0] != 'lock':
++                raise AssertionError('preflight evidence was created outside the locked fixture path')
++            if _competing_lock_probe(module, runtime_dir, lock_path, uid, gid,
++                                     0o700) != 'BLOCKED':
++                raise AssertionError('competitor entered during no-authorization preflight write')
++            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
++                         os.O_CLOEXEC | os.O_NOFOLLOW, mode)
++            try:
++                write_all(fd, raw)
++                os.fsync(fd)
++                row = os.fstat(fd)
++            finally:
++                os.close(fd)
++            no_auth_events.append('preflight')
++            return row
++
++        module._acquire_canonical_lock = fixture_preflight_acquire
++        module._collect_preflight = fixture_collect_preflight
++        module._create_exclusive = fixture_create_preflight
++        try:
++            no_auth_result = module.main([])
++        finally:
++            for name, value in no_auth_constants.items():
++                setattr(module, name, value)
++            for name, value in no_auth_functions.items():
++                setattr(module, name, value)
++        if no_auth_result != 0 or no_auth_events != ['lock', 'collect', 'preflight']:
++            raise AssertionError('no-authorization main path did not lock before durable preflight evidence')
++        if not os.path.isfile(no_auth_preflight):
++            raise AssertionError('no-authorization fixture did not retain its preflight evidence')
++        if _competing_lock_probe(module, runtime_dir, lock_path, uid, gid, 0o700) != 'ACQUIRED':
++            raise AssertionError('no-authorization canonical lock was not released after fixture completion')
++        outcomes['main_lock_before_no_authorization_preflight_state'] = 'PASS'
++        return outcomes
++    finally:
++        shutil.rmtree(root)
+ 
+ 
+ def write_all(fd: int, raw: bytes) -> None:
+@@ -72,8 +431,8 @@
+ def main() -> int:
+     check_transaction_order()
+     module = load_module()
++    outcomes = check_canonical_lock_controls(module)
+     root = tempfile.mkdtemp(prefix='m2-t5-hostinstall-rollback-')
+-    outcomes: dict[str, str] = {}
+     journal = os.path.join(root, 'journal.jsonl')
+     journal_fd = os.open(journal, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+     try:
+@@ -221,9 +580,10 @@
+ 
+         os.fsync(journal_fd)
+         receipt = {'Schema': 'T5HostInstallRollbackSelfCheckV1',
+-                   'Status': 'PASS', 'Scope': 'temporary fixtures only; no host installer entry point or API calls',
++                   'Status': 'PASS',
++                   'Scope': 'temporary fixtures only; imported main() fixture control; no host API calls',
+                    'XAttrFixtureSupported': xattr_supported,
+-                   'LockBeforeRecheckAndInstallObjects': 'PASS',
++                   'LockOrderingAcrossMainAttemptAndJournal': 'PASS',
+                    'Checks': outcomes, 'JournalSHA256': sha(Path(journal).read_bytes())}
+         print(json.dumps(receipt, sort_keys=True, separators=(',', ':')))
+     finally:

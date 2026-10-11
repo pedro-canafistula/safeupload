@@ -1,0 +1,19 @@
+{
+  "All63SourcePinsRevalidated": true,
+  "CutoverAuthorized": false,
+  "EvidenceSHA256": {
+    "luna-t5-harness-windows-gate-r20-independent-review.md": "ebefc3877acacae287257d96eb256a6f18bb64ccb441b5de31648fa583148160",
+    "m2-t5-harness-r19-compiler-a1-root-result.json": "30c0b0590db7ae31e8893ae47528bbab418a590be2f5331a66c426ba5a672185",
+    "m2-t5-harness-windows-gate-r20-root-offline-controls.json": "e40047902daca1a4bbeff28137d084908e3f96f9698dc36b5d5fa28230b27575",
+    "m2-t5-harness-windows-gate-r20-root-review-capture.json": "41e88a1b5dcb7bceff4782263f21c4fe9f75819e43738fcec877ea86bf9adacc"
+  },
+  "FullSourceAccepted": false,
+  "HostPolicyApplied": false,
+  "OpenConcern": "Final keeper-ready pathname is visible before receipt write/flush completes; R21 atomic publication correction pending. Truthful startup failure and exact retained-handle cleanup remain required.",
+  "PairQualified": false,
+  "ProductVMStarted": false,
+  "ReviewedUTC": "2026-10-11T13:40:03.302584+00:00",
+  "RuntimeQualified": false,
+  "Scope": "Five literal shell pin corrections and inherited reviewed R19 containment only; bounded diagnostics, not full T5 gate acceptance.",
+  "SourceDiagnosticPermitted": true
+}

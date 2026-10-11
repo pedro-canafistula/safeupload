@@ -1,0 +1,48 @@
+{
+  "Disposition": "NO_GO_R1_ACTIVE_INSTALL_OR_RUNTIME_FULL_TRANSACTION_REQUIRED",
+  "DraftRetainedLocally": true,
+  "Findings": [
+    "Attempt reservation and journal writes precede canonical flock acquisition",
+    "Installer-scoped lock is not a whole-run guard",
+    "Installed runtime closure and effective filesystem/API exclusion remain unproved; cold shared backing remains refused"
+  ],
+  "GoalAlignedOutcomes": [
+    "Continuous admitted-operation/source-write exclusion across copy/run/preserve/restore",
+    "Private disk NVRAM and TPM binding",
+    "Account for cold debug2 shared backing and preserve unrelated active builder",
+    "Retain failed state and independently verify original whole-state restoration"
+  ],
+  "HostPolicyApplied": false,
+  "InputSHA256": {
+    "driver/evidence/2026-10-11/luna-t5-lifecycle-file-lease-guard-r1-independent-review.md": "30853874ae6cf6e521f5b395279c2c3b3b32e779e736c9dee36f89b38978e707",
+    "driver/evidence/2026-10-11/m2-t5-domain-backing-survey-a2-root.json": "11662e2abcc3ead1c7ac7cc751ce83380b947847ad4bfd246798e4ecaac54d7a",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-controls-a2-root.json": "705b532a6369794de52ac44860d013b4daa4fb2cdcf5a184fae8483224f98ceb",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-controls-a2-root.py": "8512ecbd04a060cf277f160b9a0d685f65a86051cb92b19d6fe0cc43bdd33cd2",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-controls-a3-root.json": "aac441ca57162624727864121484b161b6de97b7bf75c0f8150e3a6509a961f4",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-controls-a3-root.py": "22d1047db86161a70de648200d5f3c395ffe56b30b10ec121c090552da9cb267",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-fsync-controls-a2-luna.json": "20a8c74f0b04ed1ba20e11ff65b002995101f29cf347058ee147401c3f598067",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-fsync-controls-a2-luna.py": "f66dc2a7c7a27f53818f093097e5e6b48b1d0cf941024b4b0af1074c5ce8841c",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-fsync-controls-a3-root.py": "fd24cc8413a0d7fa9623813694ed064c50ac759b9d492529804a52ec402ad8ef",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-fsync-controls-a3-root.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-file-lease-fsync-controls-a3-root.stdout.txt": "7b83a785515fabe30735b10a4b70eb4ff0049582de9dcda18a1e551286671056",
+    "driver/evidence/2026-10-11/m2-t5-host-install-topology-a1-root.json": "9f30ee3e8baf0e8924d4fec6ba444198100f9c0effdf9faf9b85449ba79b7c44",
+    "driver/evidence/2026-10-11/m2-t5-host-kernel-package-metadata-a1-root.json": "7aaeb0de1d17846639fe6627b4ea9175a89e6ef27d3258588693634323c53140",
+    "driver/evidence/2026-10-11/m2-t5-hostinstall-rollback-selfcheck-a3-luna.json": "6028740dbb2bf70f44a21883e2830c4717121807ba9f656a3094d86f335cc604",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-file-lease-guard-r1-luna-inputs.json": "bf8a21f3168e2a0fae1cd417d42312a2928d95e90ada02962e0b0e212c87ea87",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-file-lease-guard-r1-luna.md": "9aaa29497a42cf78babbd8252ef9c94c25e97eecba416b8fe861fa0778eaee50",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-file-lease-guard-r1-root-review-capture.json": "c9649ac5c6a7d1b72ed0bfde13533713a380407efa725e43b8f696f8ae5f3523",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-lock-path-root-design-disposition.json": "28860cc9f2fec83f46e0959525acb2902392b2258305e973d1a5c25e06531bc8",
+    "driver/evidence/2026-10-11/m2-t5-source-backing-metadata-a1-root.json": "e9d4aa7497069d28e4d54042cf07bcf0bab716c678a88c4a06edd4d760608591",
+    "driver/scripts/t5/T5WritableStateHostInstall.SelfCheck.py": "c56b709beb1b060e207afea4aeca3617693e1edf802cea2fc61dfdca68cc8e8a",
+    "driver/scripts/t5/T5WritableStateHostInstall.py": "98bdacf3abfc1864a62b9f69934c5fd5824c8cf80a5e34752be9a0f32824414d"
+  },
+  "MechanismSpecificProbesAreNotUniversalOwnerGates": true,
+  "NextAction": "Candidate-only R2 lock-order correction and concrete full transaction implementation; different-author review before any host application",
+  "NoOriginalInvariantWaived": true,
+  "ProductVMStarted": false,
+  "RecordedUTC": "2026-10-11T13:25:07.846286+00:00",
+  "RootReadFullIndependentReport": true,
+  "RuntimeGuardQualified": false,
+  "SourceAcceptedForActiveIntegration": false,
+  "TwoFDStableReadsAndClosed19FileSnapshotReverified": true
+}

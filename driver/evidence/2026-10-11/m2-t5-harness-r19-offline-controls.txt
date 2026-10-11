@@ -1,0 +1,43 @@
+R19 offline source controls
+Candidate source root: output/review-candidates/m2-t5-harness-windows-gate-r19-1011-a1/src
+R18 baseline: output/review-candidates/m2-t5-harness-windows-gate-r18-root-a1/src
+No command below opened a network connection, uploaded files, invoked PowerShell, or changed the live source tree.
+
+Exact closed-manifest verification (33 execution sources plus eight pinned support files):
+python3 -I -B driver/scripts/HarnessWindowsGateManifest.py --verify --manifest driver/scripts/HarnessWindowsGate.manifest.json --expected-manifest-sha256 7d5ea90a1cf1c941610572f038a9db8ff43b5c934e41a0adbf3f54bbd98d11f7 --expected-runner-sha256 6e1765e52ed051a493f55826f066d3fc050bcbe75edef783bd4c555a84eb5918 --expected-worker-sha256 8826d5f39295be32b1a2782ff2aaf378a1871b71260c707a810ba0ee5fba2731 --expected-keeper-sha256 aa24884d0f943ff0e97bc37132f5fe4a9f2c595166a7a7b9515198abc2606fa2 --expected-fixture-sha256 599eb7da9e0177b2443d5edd937a15b29c72b0357e5c4b71a3c2397b62fb1489 --expected-control-sha256 48a16decedec44e7c529ee2df099f9dbde1f2b69ef33d23d95fc58cd2b3b3caa --expected-protocol-sha256 9fb561090d9e1f7a4370b7cb4c8369001ca69e06e4f406c4f072480f7a0ebacf --root driver/scripts --phase offline-final
+HarnessWindowsGateManifest=offline-final:PASS;sourceFiles=33;supportFiles=8;checked=41
+Exit: 0
+
+Manifest duplicate-key, omission, hash, unsafe-path, and symlink controls:
+python3 -I -B driver/scripts/HarnessWindowsGateManifest.py --self-test
+HarnessWindowsGateManifest self-check PASS (15 assertions).
+Exit: 0
+
+Client protocol, process-lifetime, exact identity, source-order, and lifecycle controls, plus disposable mutants:
+python3 -I -B offline-r19-controls.py
+HarnessWindowsGateClient self-check PASS (88 assertions).
+R19 mutation rejection PASS: runner static-call parentheses; exit=4
+R19 mutation rejection PASS: fixture static-call parentheses; exit=4
+R19 mutation rejection PASS: sticky keeper-retention branch; exit=4
+R19 mutation rejection PASS: conditional keeper handle close; exit=4
+R19 offline source controls PASS; no PowerShell, network, service, actor, or product runtime was invoked.
+Exit: 0
+
+Bash syntax and finalizer negative/positive control:
+bash -n driver/scripts/Invoke-HarnessWindowsGate.sh
+bash driver/scripts/Invoke-HarnessWindowsGate.sh --self-test-finish .
+HarnessWindowsGate finish self-check PASS (2 assertions).
+Exit: 0
+
+Source closure and baseline comparison:
+R18 and R19 have exactly 63 source paths; R19 has 58 byte-identical paths, five changed authorized harness paths, zero additions, and zero removals. The 33 closed execution-source paths and hashes are unchanged. Manifest local pins match all four changed support scripts (runner, keeper, fixture, and client); the manifest SHA is pinned by the exact offline command above. Before and after these final controls, the sorted candidate source path/hash/size inventory was identical.
+Result: PASS.
+
+R19 targeted changed-line whitespace check:
+The five changed source files have no trailing whitespace or malformed line endings. Result: PASS.
+
+PowerShell availability:
+No PowerShell parse, compilation, or execution is claimed in this author pass. Root's R18 PS5.1 parser receipt records R18 failures; R19 requires a fresh exact-pin Windows parse/compile control.
+
+Attempt log:
+One orchestration invocation used the candidate `src` directory as its working directory while naming `offline-r19-controls.py`, which is an author artifact in the candidate parent. It exited 2 with file-not-found before launching any control. The command was rerun from the candidate parent and passed as recorded above; no source or runtime state changed.

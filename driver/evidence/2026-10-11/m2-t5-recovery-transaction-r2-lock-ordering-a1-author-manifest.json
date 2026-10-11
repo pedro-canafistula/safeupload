@@ -1,0 +1,64 @@
+{
+  "BaseR1Candidate": "output/review-candidates/m2-t5-lifecycle-file-lease-guard-r1-root-a1",
+  "BaseR1IndependentReviewSHA256": "30853874ae6cf6e521f5b395279c2c3b3b32e779e736c9dee36f89b38978e707",
+  "BaseR1RootCaptureSHA256": "c9649ac5c6a7d1b72ed0bfde13533713a380407efa725e43b8f696f8ae5f3523",
+  "Candidate": "m2-t5-lifecycle-recovery-transaction-r2-luna-a1",
+  "CanonicalLockDesignDispositionSHA256": "28860cc9f2fec83f46e0959525acb2902392b2258305e973d1a5c25e06531bc8",
+  "Checkpoint": "checkpoints/lock-ordering-a1",
+  "Disposition": "SOURCE_ONLY_PENDING_INDEPENDENT_REVIEW_FULL_TRANSACTION_NO_GO",
+  "Files": [
+    {
+      "Path": "src/driver/scripts/t5/T5WritableStateHostInstall.py",
+      "SHA256": "145ed9008255cec4264a07160a15b6a98af76b729b5dd55e80e727a926102bc0"
+    },
+    {
+      "Path": "src/driver/scripts/t5/T5WritableStateHostInstall.SelfCheck.py",
+      "SHA256": "8244ca6c5f234c854953b20414640aaa7c2474f7547d841412d68bad6ab37bdd"
+    },
+    {
+      "Path": "checkpoints/lock-ordering-a1/src/driver/scripts/t5/T5WritableStateHostInstall.py",
+      "SHA256": "145ed9008255cec4264a07160a15b6a98af76b729b5dd55e80e727a926102bc0"
+    },
+    {
+      "Path": "checkpoints/lock-ordering-a1/src/driver/scripts/t5/T5WritableStateHostInstall.SelfCheck.py",
+      "SHA256": "8244ca6c5f234c854953b20414640aaa7c2474f7547d841412d68bad6ab37bdd"
+    },
+    {
+      "Path": "checkpoints/lock-ordering-a1/lock-ordering.diff",
+      "SHA256": "be19030288c25decf11a3ebcdc29ef54fe08521c4bbae2e4135075e13e333581"
+    },
+    {
+      "Path": "checkpoints/lock-ordering-a1/selfcheck-result.json",
+      "SHA256": "98bb789b8352b3e4551e4fdbb0cb49026155a2d9bf1ad7cf5c442b61253588a9"
+    },
+    {
+      "Path": "checkpoints/lock-ordering-a1/selfcheck.stdout.json",
+      "SHA256": "cfc6211ea26f3ccde8368525c4c53000047ed15482a3705d9b7d1b17a1d691a2"
+    },
+    {
+      "Path": "checkpoints/lock-ordering-a1/author-note.md",
+      "SHA256": "102e15badd3c56c71ee6b7547f6b96789e1107f5726a3a35290ed2af0e5f3474"
+    },
+    {
+      "Path": "author/driver/evidence/2026-10-11/m2-t5-recovery-transaction-r2-lock-ordering-a1-author.md",
+      "SHA256": "f6d42eb63cee54adf3657212c2693ac849ecccd753772579e9580a9573248bd9"
+    }
+  ],
+  "OfflineControls": {
+    "Checks": "structural authorized/no-auth lock ordering; simultaneous single-inode bootstrap; held-inode competitor exclusion; authorized attempt+journal flow; preflight state flow; existing rollback fixtures",
+    "Command": "python3.14 -B output/review-candidates/m2-t5-lifecycle-recovery-transaction-r2-luna-a1/checkpoints/lock-ordering-a1/src/driver/scripts/t5/T5WritableStateHostInstall.SelfCheck.py",
+    "HostPolicyApplied": false,
+    "LibvirtAPI": false,
+    "ProductVMStarted": false,
+    "ProtectedSourceOpened": false,
+    "Scope": "temporary filesystem fixtures only; imported main() with host and transaction boundaries replaced; real lock implementation used only on fixture paths",
+    "Status": "PASS",
+    "SystemdOperation": false
+  },
+  "ProductionInvocationEnabled": false,
+  "R1Immutable": true,
+  "RootR1DispositionSHA256": "3e1bdb85c69853f6dc41928953bd789249107beb4ece4a5589794fb89f25c799",
+  "RuntimeQualified": false,
+  "Schema": "T5RecoveryTransactionR2LockOrderingCheckpointV1",
+  "SourceAccepted": false
+}

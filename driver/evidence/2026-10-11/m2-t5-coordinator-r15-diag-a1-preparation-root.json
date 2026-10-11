@@ -1,0 +1,23 @@
+{
+  "PreparedUTC": "2026-10-11T13:34:28.745058+00:00",
+  "WorkDirectory": "/tmp/m2-t5-coordinator-r15-diag-1011-a1-root",
+  "PreparedInputsSHA256": {
+    "run-diagnostic.py": "29c2ad25b8922a0cf123356f5a41340e517aa97b844e4b7175555100e079dbee",
+    "controls-plan.ps1": "8a655779fbe22061fd2dc76422f6d5903d6e8eb0322777248544baf243d715a6",
+    "remote_ps.py": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b",
+    "notepad-coordinator.SelfCheck.ps1": "dbc00a84c456b97f6903cfcb4ccc0ba37c5ff763fc6b67e83aab3e86e807245f",
+    "notepad-coordinator.ps1": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d"
+  },
+  "TwoRuntimeInputPinsMatchFrozenR20": true,
+  "SourceSelfcheckCorrectionAlreadyFrozenInR18ThroughR20": true,
+  "RunnerAndPlanChanges": "Fresh R15 labels/path; replace only selfcheck expected hash; execution boundary unchanged from independently reviewed R14 two-file standalone diagnostic",
+  "PriorReviewedRunnerSHA256": "0102f6540b587f7380b792994a3c9262595bb00c0cefafcb931fb82695ef7ac0",
+  "PriorReviewedPlanSHA256": "ef2035bb0117c3cac6063b3ab3b738a45393b4809ba49f49ee2384d23ed289a2",
+  "IndependentSourceReadinessPending": true,
+  "WindowsExecuted": false,
+  "SourceUploaded": false,
+  "CoordinatorInvoked": false,
+  "ProductVMStarted": false,
+  "ServiceInstalled": false,
+  "HostPolicyApplied": false
+}
