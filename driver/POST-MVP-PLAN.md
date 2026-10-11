@@ -148,6 +148,8 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
     and [separate fresh-disk baseline/restoration](evidence/2026-10-11/m2t4boot10k1011a2-independent-restoration.txt) passed;
     both [test start](evidence/2026-10-11/m2t4boot10k1011a2-checkpoint.txt) and [verification start](evidence/2026-10-11/m2t4boot10k1011a2restore-start.txt)
     record EFI reset.
+  - [x] [Read-only diagnosis](evidence/2026-10-11/t4-journal-failure-diagnosis.md): four failed private-journal replacements;
+    two leave Publishing reservations, two prevent hand-back. The underlying native error 5 remains unproven.
   - [ ] Owner reply before fixing/retrying repeated identical failures; add prompt harness stop on repetition. No retry launched.
 - [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
 
