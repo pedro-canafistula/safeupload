@@ -12,7 +12,7 @@ namespace SafeUpload.Agent.Service.Interception;
 /// can therefore distinguish an unapproved file from a published one.
 /// The journal directory must be writable only by the service account.
 /// </summary>
-public sealed class StagedTransferJournal
+public sealed partial class StagedTransferJournal
 {
     private const uint RequiredStageV20Capabilities = 0x3f;
     internal static readonly string EmptySha256Hex = Convert.ToHexString(SHA256.HashData(Array.Empty<byte>()));
