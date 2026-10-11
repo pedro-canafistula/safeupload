@@ -1,0 +1,14 @@
+R21 receipt-writer control preparation checks (offline; no PowerShell execution)
+
+PASS: the bundled HarnessWindowsGateProtocol.psm1 and root-frozen R21 protocol module are byte-identical (102549 bytes; SHA-256 f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a).
+PASS: the prepared script contains the exact expected module SHA-256 and byte-length guard.
+PASS: the extraction allowlist contains only Get-HarnessGateJobName, Get-HarnessGateKeeperJobName, Get-HarnessGateKeeperReadyPath, and Write-HarnessGateKeeperReadyReceipt; each was found once at a top-level definition in the pinned module. Get-HarnessGateStateRoot is a script-local fixture adapter.
+PASS: static token scan found no Import-Module, Add-Type, Invoke-Command, Start-Process, Stop-Process, Invoke-Expression, remote harness, coordinator, or actor invocation in the control script.
+PASS: the control does not copy/reimplement File.Move; the actual pinned writer AST is the code path under test.
+PASS: pass and failure sentinels are present; the PASS line is emitted after input post-pins and cleanup. Extracted definitions are dot-sourced at the control script scope rather than a helper-function scope.
+
+NOT RUN: Windows PowerShell parser or execution, .NET writer control, FileStream/File.Move runtime test, builder/SSH action, shared harness root access, service/actor/coordinator/harness action, host/API action, VM action, network, or Git operation.
+
+Scope note: these preparation checks inspect package bytes and script text only. They do not establish PS5.1 syntax validity, AST extraction runtime behavior, filesystem race properties, or Windows/.NET behavior. A different author must review the script and source pins before root considers any execution.
+
+Qualification boundary: the known R16 standalone coordinator self-check failure is “Verified handback child is terminal only after justification closes and stage deletion is acknowledged.” Root and reviewer traced it to raw-versus-projected inputs in adjacent fixture variants; a separate R17 correction is pending and remains outside this prepared control.

@@ -1,0 +1,20 @@
+{
+  "All76FrozenPinsRevalidated": true,
+  "CompilerPreflightVersionGate": "Major 5/x64; actual captured version is 5.1.19041.6456. This is observed-version evidence, not a 5.1-only rejection gate.",
+  "CompilerResultSHA256": "816310223e1803ffd63181f0dd44427c9046eba0b8c80ac80580f7398ba5a420",
+  "CutoverAuthorized": false,
+  "FixtureOrHarnessExecuted": false,
+  "HostPolicyApplied": false,
+  "LiteralCSharpInputUnchangedFromR19": true,
+  "LiteralCSharpZeroWarningsErrors": true,
+  "NativeMethodsInvoked": false,
+  "ObservedPowerShellVersion": "5.1.19041.6456",
+  "PairQualified": false,
+  "ProductVMStarted": false,
+  "RawAndHelperHashesRevalidated": true,
+  "RootCaptureSHA256": "70af109854294f7eca2fb17be997438b225c18ebae6bafeddb75330eb289bbe0",
+  "RuntimeQualified": false,
+  "SixPowerShellInputsAndTwoEmbeddedWorkersParseWithoutErrors": true,
+  "SourceFunctionsInvoked": false,
+  "VerifiedUTC": "2026-10-11T13:54:37.103011+00:00"
+}

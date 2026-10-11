@@ -1,0 +1,11 @@
+--- a1
++++ a2
+@@ -299,7 +299,7 @@
+         fixture = [ordered]@{ path = $FixtureRoot; createdFresh = $true; removedAfterOwnedCleanup = $FixtureRemoved }
+         receipt = [ordered]@{ runToken = $runToken; keeperPid = $keeperPid; keeperStartFiletime = $keeperStartFiletime; sha256 = $actualHash; exactClosedBytes = $true }
+         checks = $PassedChecks.ToArray()
+-        boundaries = @('Standalone receipt-writer control only; no full-module import or coordinator/harness execution.', 'No Windows run has occurred yet; this script is a prepared plan for independent review.', 'The synchronous source-writer check does not observe the temporary file during an in-progress partial write.')
++        boundaries = @('Standalone receipt-writer control only; no full-module import or coordinator/harness execution.', 'This Windows control exercises only the extracted receipt writer; it does not qualify the full gate or product.', 'The synchronous source-writer check does not observe the temporary file during an in-progress partial write.')
+     }
+     [Console]::Out.WriteLine('R21_RECEIPT_WRITER_CONTROL_PASS ' + (ConvertTo-Json -InputObject $result -Depth 8 -Compress))
+ } catch {

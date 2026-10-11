@@ -1,0 +1,82 @@
+{
+  "schema": "safeupload-harness-windows-gate-r21-author-result-v1",
+  "candidate": "m2-t5-harness-windows-gate-r21-1011-a1",
+  "status": "AUTHOR_FREEZE_COMPLETE_PENDING_ROOT_CAPTURE_AND_INDEPENDENT_REVIEW",
+  "sourceDisposition": "SOURCE_CANDIDATE_ONLY_NO_ACCEPTANCE_INFERRED",
+  "sourceRoot": "output/review-candidates/m2-t5-harness-windows-gate-r21-1011-a1/src",
+  "sourceCapture": {
+    "path": "output/review-candidates/m2-t5-harness-windows-gate-r21-1011-a1/author/source-capture.json",
+    "sha256": "5ab229c89e075097a715bd6730b94a3d1b6492cdfde6f3482f36117a1fcd44a0",
+    "sourceInventorySha256": "658e0d62624f524445354d17b2844de85df8a040e95d64b100be45f9ab161c65",
+    "fileCount": 63
+  },
+  "baseline": {
+    "candidate": "m2-t5-harness-windows-gate-r20-root-a1",
+    "captureSha256": "41e88a1b5dcb7bceff4782263f21c4fe9f75819e43738fcec877ea86bf9adacc",
+    "independentReviewSha256": "ebefc3877acacae287257d96eb256a6f18bb64ccb441b5de31648fa583148160",
+    "identicalFiles": 59,
+    "changedFiles": 4,
+    "addedFiles": 0,
+    "removedFiles": 0,
+    "all33ExecutionSourceRecordsUnchanged": true,
+    "changedPaths": [
+      "driver/scripts/HarnessWindowsGate.manifest.json",
+      "driver/scripts/HarnessWindowsGateLeaseKeeper.ps1",
+      "driver/scripts/HarnessWindowsGateProtocol.psm1",
+      "driver/scripts/Invoke-HarnessWindowsGate.sh"
+    ]
+  },
+  "changedSourcePins": {
+    "driver/scripts/HarnessWindowsGate.manifest.json": "1ab0f29e50bef0dff2e14a768a5f75fb7c416f7912941dfe04bec852bd554e31",
+    "driver/scripts/HarnessWindowsGateLeaseKeeper.ps1": "7e144a4d0b2d5000d3cc50cbd39bace0cb61af00257803c189cf7a035a834641",
+    "driver/scripts/HarnessWindowsGateProtocol.psm1": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a",
+    "driver/scripts/Invoke-HarnessWindowsGate.sh": "24743073424a58a47cc5f93bf13974207912a2b49b83857c6ce7817f48dc44b2"
+  },
+  "finalPins": {
+    "keeper": "7e144a4d0b2d5000d3cc50cbd39bace0cb61af00257803c189cf7a035a834641",
+    "protocol": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a",
+    "manifest": "1ab0f29e50bef0dff2e14a768a5f75fb7c416f7912941dfe04bec852bd554e31",
+    "shell": "24743073424a58a47cc5f93bf13974207912a2b49b83857c6ce7817f48dc44b2",
+    "manifestHelper": "a7cebdf3eb20fe1ab8df9976721a648725a526b5c39a584fb721a59658f2a6c8",
+    "client": "d5f558bc6c7435a0e8f6628ae2fffc465b34ed0981d1470d90de44980f4975c8",
+    "transport": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b"
+  },
+  "closedGate": {
+    "executionSources": 33,
+    "mainFiles": 15,
+    "rootSelfchecks": 17,
+    "t5Selfcheck": 1,
+    "remoteSupportFiles": 6,
+    "additionalLocalSupportFiles": 2,
+    "manifestCheckedFiles": 41,
+    "remoteUploadFiles": 40
+  },
+  "offlineControls": {
+    "sourceControls": "PASS; four mutants rejected; 4 POSIX model assertions",
+    "manifestVerification": "PASS;41 files",
+    "manifestSelfcheck": "PASS;15 assertions",
+    "shellSyntax": "PASS;bash -n",
+    "changedSourceWhitespace": "PASS;4 files",
+    "pathAndHashClosure": "PASS;63 paths, 59 identical to R20, 4 changed, none added/removed"
+  },
+  "runtimeDisposition": "NOT_RUN_NO_POWERSHELL_OR_WINDOWS_EXECUTION",
+  "qualificationBoundaries": [
+    "The existing R20 frozen 33-input inventory still includes the previously reported T5 coordinator self-check failure; the separate coordinator R16 correction is pending and was not imported into R21.",
+    "No Windows test was run for FileStream.Flush(true), FileShare.None, File.Move visibility/no-overwrite behavior, or complete harness lifecycle.",
+    "R21 is only a narrow source candidate. It is not full source acceptance, runtime qualification, or product qualification."
+  ],
+  "authorArtifacts": {
+    "authorNoteSha256": "bc550f932fa8e2d392b897964233eb965fe36fb806e2bbbc1336051435860e70",
+    "offlineControlsSha256": "aa93737c55d3fe419bd90c803e2079208b7723b093826e8f53a89bf766d05bb3",
+    "sourceControlsSha256": "875b4ade3179e59b500d6e2f6081389006a84255b9ad4c4f5f48737791cd65dd",
+    "attemptLogSha256": "5ba1443edcf39aac52ac2a5f867beca76e427676aaadfa1bbd54c38efaf3fd32",
+    "r20CaptureBaselineSha256": "41e88a1b5dcb7bceff4782263f21c4fe9f75819e43738fcec877ea86bf9adacc",
+    "r20ReviewBaselineSha256": "ebefc3877acacae287257d96eb256a6f18bb64ccb441b5de31648fa583148160"
+  },
+  "restrictionsObserved": [
+    "R21 candidate-only source and artifact writes; frozen R19/R20 and live sources were not modified.",
+    "No Windows, SSH/builder, service, actor, coordinator, product VM, host/API, or Git operation occurred.",
+    "One read-only Microsoft Learn documentation lookup was performed for .NET Framework FileStream.Flush(Boolean) and File.Move API behavior.",
+    "Root owns capture/review and any later commit or push."
+  ]
+}

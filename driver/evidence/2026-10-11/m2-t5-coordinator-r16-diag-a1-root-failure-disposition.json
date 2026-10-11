@@ -1,0 +1,27 @@
+{
+  "BothScriptsParseWithoutErrors": true,
+  "CutoverAuthorized": false,
+  "EvidenceSHA256": {
+    "luna-t5-notepad-coordinator-r16-independent-review.md": "320ba24660ab1f86a02dd900d840bcbb88411e7bd31336dac06cba7719d2adad",
+    "m2-t5-coordinator-r16-diag-a1-controls.stderr.log": "150833293f77b7ca2cd2590e5dfa48fe7ad330bf6abe697d702ff3eed513dd4d",
+    "m2-t5-coordinator-r16-diag-a1-controls.stdout.log": "d18d37446553eaf15a16ad94ff32006990fdabcf66e6d16aee3d59eb4c75e397",
+    "m2-t5-coordinator-r16-diag-a1-preparation-root.json": "51abf9f78fdd88ea73b7ad7918c8342fe97510b7d0858c4ac00d07d45f694412",
+    "m2-t5-coordinator-r16-diag-a1-root-result.json": "1060947bea2cc9892783f548ed2194099aeea5dd5872f7dc53def8f3fd0af604",
+    "m2-t5-coordinator-r16-diag-a1-root-verification.json": "c22d5fdeb88f1f8c212f57a1bb493ed32177aba7d1b93c1427d9a85a3468e757",
+    "m2-t5-notepad-coordinator-r16-root-review-capture.json": "479cd969a36c6d010efcd0758caf1f3f6a798f235b6accffef8d7a638ccd8411"
+  },
+  "HostPolicyApplied": false,
+  "LaterFailure": "Verified handback child is terminal only after justification closes and stage deletion is acknowledged",
+  "LegacyAggregationFailurePassedInThisRun": true,
+  "MetadataNote": "The runner retained the uppercase descriptive R15 source-disposition label. The fresh R16 path, exact e64729 self-check pin, root capture, reviewed preparation and pre/post hashes establish the executed R16 inputs; preserve the original result and correct the descriptive label in future runners.",
+  "NoRetryWithoutReviewedCorrection": true,
+  "OriginalPID": 3100,
+  "OriginalProcessTerminalAndBothRemotePinsUnchanged": true,
+  "OriginalStartFILETIME": 134362003265953500,
+  "PairQualified": false,
+  "ProductVMStarted": false,
+  "RecordedUTC": "2026-10-11T13:54:10.646016+00:00",
+  "RuntimeQualified": false,
+  "SourceSelfCheckAccepted": false,
+  "StandaloneSelfCheckPassed": false
+}

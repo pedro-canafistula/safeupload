@@ -1,0 +1,14 @@
+R21 offline source controls: PASS
+Source closure: 63 paths; R20 delta: 59 unchanged, 4 changed, 0 added, 0 removed.
+Changed source paths: driver/scripts/HarnessWindowsGate.manifest.json, driver/scripts/HarnessWindowsGateLeaseKeeper.ps1, driver/scripts/HarnessWindowsGateProtocol.psm1, driver/scripts/Invoke-HarnessWindowsGate.sh
+Canonical inventory SHA-256 (compact sorted source records): 658e0d62624f524445354d17b2844de85df8a040e95d64b100be45f9ab161c65
+Manifest/shell pins: keeper, protocol, and manifest hashes match exact candidate bytes.
+Receipt order: exact final-path/tuple guards; in-memory receipt/hash; random same-directory CreateNew + FileShare.None; full write; Flush(true); close; no-overwrite File.Move; return.
+Consumer controls: unchanged final-path-only polling and exact schema/token/PID/FILETIME/job/query/membership checks retained.
+Retention control: keeper sticky-retention assignment precedes receipt writer invocation; exception branch retains handles for explicit CANCEL.
+Mutation controls: PASS; direct-final-write, move-before-flush, overwrite-publish, and share-readable-stage mutants rejected.
+Staging/no-overwrite model: PASS (4 assertions; POSIX hard-link analogue only, not Windows/.NET runtime evidence).
+Execution inventory: all 33 manifest execution source records and arrays unchanged from frozen R20.
+Shell syntax and actual manifest verifier are recorded in the author control transcript.
+No PowerShell, Windows, builder/product network transport, service, actor, coordinator, VM, host-policy, or Git operation was invoked; one read-only Microsoft Learn API documentation lookup was used.
+Runtime disposition: NOT RUN; Windows .NET FileStream/File.Move behavior and gate lifecycle remain unqualified.

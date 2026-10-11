@@ -1,0 +1,13 @@
+{
+  "CaptureSHA256": "479cd969a36c6d010efcd0758caf1f3f6a798f235b6accffef8d7a638ccd8411",
+  "CutoverAuthorized": false,
+  "FivePreparedInputsRevalidated": true,
+  "IndependentReviewSHA256": "320ba24660ab1f86a02dd900d840bcbb88411e7bd31336dac06cba7719d2adad",
+  "OneLineFixtureCorrectionOnly": true,
+  "PairQualified": false,
+  "ProductionCoordinatorAndManagedSchemaUnchanged": true,
+  "ReviewedUTC": "2026-10-11T13:52:02.068216+00:00",
+  "RuntimeQualified": false,
+  "Scope": "Fresh isolated two-file standalone PS5.1 self-check; no coordinator top-level, native probes, actor, service or product VM.",
+  "SourceDiagnosticPermitted": true
+}

@@ -1,0 +1,6 @@
+{
+  "Scope": "One success-report boundary string corrected; executable statements, conditions, assertions, fixture cleanup and extracted writer unchanged. Root ordinary reporting edit, independently reviewed before execution.",
+  "PriorControlSHA256": "16ad9481d69b2e76ad13cbf5b29368ae08f5ea53b726d73b2282a39f50119049",
+  "NewControlSHA256": "265b1bef47b4b5ccd907cfc5f8427bbfee5113f583ae8136d042e5d041f1b3c0",
+  "Executed": false
+}

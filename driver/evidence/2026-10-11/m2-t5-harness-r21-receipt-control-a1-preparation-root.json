@@ -1,0 +1,19 @@
+{
+  "AllCapturedPinsRechecked": true,
+  "CaptureSHA256": "2f0c2865bf0fed7f0697395a897c9a4bbee27edbb6dbc96b589afca8346d16c0",
+  "DiagnosticOnly": true,
+  "Executed": false,
+  "FullModuleImported": false,
+  "HostPolicyApplied": false,
+  "NativeCallsPermitted": false,
+  "PairQualified": false,
+  "PreparedInputsSHA256": {
+    "HarnessWindowsGateProtocol.psm1": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a",
+    "Invoke-R21ReceiptWriterControl.ps1": "16ad9481d69b2e76ad13cbf5b29368ae08f5ea53b726d73b2282a39f50119049",
+    "controls-plan.ps1": "5ac146daf90fef01679f975c68263b2f28a18355d60e27c1180253c857bd98fb",
+    "remote_ps.py": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b",
+    "run-diagnostic.py": "0b9e0e75b97a733ae0081db953120d2b0c012910e029b0228c1341e2fc323fe3"
+  },
+  "ProductVMStarted": false,
+  "RuntimeQualified": false
+}

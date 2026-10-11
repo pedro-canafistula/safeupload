@@ -1,0 +1,9 @@
+R16 author-only offline controls (no project execution)
+PASS frozen R15 root capture bound: SHA256 6cba85a7b71c30b5ad6a35a243a6c6834fb85388ef554d502fc70c61b1c23186
+PASS source closure: 2 runtime inputs and 2 managed schema review inputs, all pinned
+PASS context closure: 27 files, including R15 failed controls stdout/stderr, post-check logs, terminal PID/FILETIME verification, and PS 5.1 cardinality probe input/result/stdout/stderr
+PASS exact source delta: one self-check line replacement; restoring the old expression reproduces frozen R15 bytes
+PASS unchanged source: coordinator and both managed schema files retain frozen R15 hashes
+PASS R15 failure and terminal evidence hashes match the bound root result/verification records
+PASS PS 5.1 probe record: ambiguous empty sum Count=1/null; direct empty Count=0; one/two errors Count=1/2
+NOT RUN R16 self-check or coordinator source; no PowerShell rerun, Windows/network action, service, product VM, host policy, or Git mutation

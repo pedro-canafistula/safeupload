@@ -1,0 +1,7 @@
+R21 author-phase attempts (all are source-only)
+
+1. Initial `python3 -I -B .../r21-source-controls.py` exited 1 because the order control found the initial `$stream = $null` declaration instead of the post-close null assignment. Product source was not changed by this failure.
+2. After adding a post-publication cleanup-flag check, the control still exited 1 for the same checker-ordering reason: the first `$stream = $null` occurrence was the initializer. Product source was not changed by this failure.
+3. The control was corrected to look for the stream-null assignment after the first Dispose operation. The unmodified candidate then passed, and direct-final-write, move-before-flush, overwrite-publish, and share-readable-stage mutants were rejected.
+
+The failed checks were defects in the offline checker’s token selection, not runtime or product failures. They are retained here rather than omitted. No PowerShell, Windows, remote transport, service, actor, coordinator, VM, host/API action, or Git operation occurred during these attempts.

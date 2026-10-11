@@ -1,0 +1,106 @@
+{
+  "BuilderIdentity": {
+    "CompilerOnly": true,
+    "Computer": "DESKTOP-O1LP5DG",
+    "Directory": "C:/Users/vika/AppData/Local/Temp/SafeUpload-harness-r21-compile-1011-a1",
+    "PSVersion": "5.1.19041.6456",
+    "SID": "S-1-5-21-316478115-1595729549-2803163825-1001"
+  },
+  "CompilerAndParserPassed": true,
+  "CompilerHelperSHA256": "21fe25731c580bf05b7fd74eb238763225f8c522a8ad4f8333cc53f1e65425a0",
+  "CompilerProcessExit": 0,
+  "DriverInstalledOrLoaded": false,
+  "FixtureOrHarnessExecuted": false,
+  "LiveImplementationChanged": false,
+  "NativeMethodsInvoked": false,
+  "ParsedAndCompiled": {
+    "CompilerOnly": true,
+    "NativeCompiler": {
+      "AssemblySHA256": "787971495f64bd51e13790be6f04db8e7ab2198c207fc1efb0a0b574673c7596",
+      "Attempted": true,
+      "Errors": [],
+      "NativeInputSHA256": "5e32aa317f7c30abf10dc350050afeb530a04f0c35bce8b735995d7fc815e7e0",
+      "Passed": true,
+      "Warnings": []
+    },
+    "NativeMethodsInvoked": false,
+    "NestedWorkerScripts": [
+      {
+        "ErrorCount": 0,
+        "Errors": [],
+        "Line": 82
+      },
+      {
+        "ErrorCount": 0,
+        "Errors": [],
+        "Line": 90
+      }
+    ],
+    "PSVersion": "5.1.19041.6456",
+    "Results": [
+      {
+        "ErrorCount": 0,
+        "Errors": [],
+        "Name": "HarnessWindowsGateProtocol.psm1",
+        "SHA256": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a",
+        "Tokens": 5477
+      },
+      {
+        "ErrorCount": 0,
+        "Errors": [],
+        "Name": "HarnessWindowsGateRemote.ps1",
+        "SHA256": "6e1765e52ed051a493f55826f066d3fc050bcbe75edef783bd4c555a84eb5918",
+        "Tokens": 3487
+      },
+      {
+        "ErrorCount": 0,
+        "Errors": [],
+        "Name": "HarnessWindowsGateRemoteControl.ps1",
+        "SHA256": "48a16decedec44e7c529ee2df099f9dbde1f2b69ef33d23d95fc58cd2b3b3caa",
+        "Tokens": 3800
+      },
+      {
+        "ErrorCount": 0,
+        "Errors": [],
+        "Name": "HarnessWindowsGateWorker.ps1",
+        "SHA256": "8826d5f39295be32b1a2782ff2aaf378a1871b71260c707a810ba0ee5fba2731",
+        "Tokens": 1146
+      },
+      {
+        "ErrorCount": 0,
+        "Errors": [],
+        "Name": "HarnessWindowsGateLeaseKeeper.ps1",
+        "SHA256": "7e144a4d0b2d5000d3cc50cbd39bace0cb61af00257803c189cf7a035a834641",
+        "Tokens": 1039
+      },
+      {
+        "ErrorCount": 0,
+        "Errors": [],
+        "Name": "HarnessWindowsGateLifecycleFixture.ps1",
+        "SHA256": "599eb7da9e0177b2443d5edd937a15b29c72b0357e5c4b71a3c2397b62fb1489",
+        "Tokens": 3789
+      }
+    ],
+    "SourceExecuted": false
+  },
+  "ProductVMStarted": false,
+  "RawSHA256": {
+    "m2-t5-harness-r21-compiler-a1-compile.stderr.txt": "aa4c6b5187e8a52a4b02316c91eb0c7a4cfdce4cdea9b9d7ecfe2faa1d97cce4",
+    "m2-t5-harness-r21-compiler-a1-compile.stdout.txt": "f253bf84e734bb1f8094b1eba073b13ee6b638277c188a528d14590ab77abda3",
+    "m2-t5-harness-r21-compiler-a1-delivery.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-harness-r21-compiler-a1-delivery.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-harness-r21-compiler-a1-preflight.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-harness-r21-compiler-a1-preflight.stdout.txt": "aca871890483154f94cff774550c060812a6cdeb58b753e1ce6b78f0c2c3751c"
+  },
+  "RecordedUTC": "2026-10-11T13:53:24.276464+00:00",
+  "RuntimeQualified": false,
+  "SourceAccepted": false,
+  "SourceHashes": {
+    "HarnessWindowsGateLeaseKeeper.ps1": "7e144a4d0b2d5000d3cc50cbd39bace0cb61af00257803c189cf7a035a834641",
+    "HarnessWindowsGateLifecycleFixture.ps1": "599eb7da9e0177b2443d5edd937a15b29c72b0357e5c4b71a3c2397b62fb1489",
+    "HarnessWindowsGateProtocol.psm1": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a",
+    "HarnessWindowsGateRemote.ps1": "6e1765e52ed051a493f55826f066d3fc050bcbe75edef783bd4c555a84eb5918",
+    "HarnessWindowsGateRemoteControl.ps1": "48a16decedec44e7c529ee2df099f9dbde1f2b69ef33d23d95fc58cd2b3b3caa",
+    "HarnessWindowsGateWorker.ps1": "8826d5f39295be32b1a2782ff2aaf378a1871b71260c707a810ba0ee5fba2731"
+  }
+}

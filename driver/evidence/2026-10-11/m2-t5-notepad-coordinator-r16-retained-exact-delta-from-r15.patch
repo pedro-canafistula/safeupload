@@ -1,0 +1,13 @@
+--- R15/notepad-coordinator.SelfCheck.ps1
++++ R16/notepad-coordinator.SelfCheck.ps1
+@@ -244,9 +244,9 @@
+         TransferId = $legacyParent.Transfer.TransferId
+         DestinationGeneration = $legacyParent.DestinationGeneration
+         StageIdentity = $legacyParent.StageIdentity
+     }
+-    $legacyChainSchemaErrors = @((Get-T5FixtureErrors $legacyParent) + (Get-T5FixtureErrors $legacyChild))
++    $legacyChainSchemaErrors = @( Get-T5FixtureErrors $legacyParent; Get-T5FixtureErrors $legacyChild )
+     $legacyChainErrors = @(Get-T5JournalLineageErrors @($legacyParentProjection, $legacyChildProjection))
+     Assert-T5 (-not $legacyParentProjection.IsV20 -and -not $legacyChildProjection.IsV20 -and
+         (Get-T5VersionIdentityKey $legacyChildProjection.ParentVersionIdentity) -ceq (Get-T5VersionIdentityKey $legacyParentIdentity) -and
+         $legacyChainSchemaErrors.Count -eq 0 -and

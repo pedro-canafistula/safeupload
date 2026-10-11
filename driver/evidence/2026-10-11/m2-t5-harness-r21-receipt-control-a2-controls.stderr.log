@@ -1,0 +1,10 @@
+Missing or ambiguous complete receipt-writer PASS.
+At C:\Users\vika\AppData\Local\Temp\remote_ps_ff802084ef2347e58185da98533a70d8.ps1:38 char:28
++ ... nt -ne 1) { throw 'Missing or ambiguous complete receipt-writer PASS. ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Missing or ambi...pt-writer PASS.:String) [], Run 
+   timeException
+    + FullyQualifiedErrorId : Missing or ambiguous complete receipt-writer PASS.
+ 
+#< CLIXML
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>

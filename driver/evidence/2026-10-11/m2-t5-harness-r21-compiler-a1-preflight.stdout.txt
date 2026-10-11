@@ -1,0 +1,1 @@
+{"Computer":"DESKTOP-O1LP5DG","SID":"S-1-5-21-316478115-1595729549-2803163825-1001","PSVersion":"5.1.19041.6456","CompilerOnly":true,"Directory":"C:/Users/vika/AppData/Local/Temp/SafeUpload-harness-r21-compile-1011-a1"}

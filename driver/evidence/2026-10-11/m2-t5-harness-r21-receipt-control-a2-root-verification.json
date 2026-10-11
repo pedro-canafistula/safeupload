@@ -1,0 +1,67 @@
+{
+  "ActualReceiptWriterControlPassed": true,
+  "AllRootSnapshotPinsRevalidated": true,
+  "ControlReceipt": {
+    "boundaries": [
+      "Standalone receipt-writer control only; no full-module import or coordinator/harness execution.",
+      "This Windows control exercises only the extracted receipt writer; it does not qualify the full gate or product.",
+      "The synchronous source-writer check does not observe the temporary file during an in-progress partial write."
+    ],
+    "checks": [
+      "Pinned module parsed as data; only the four exact allowlisted function ASTs were defined.",
+      "Fixture adapter maps the receipt target exclusively into the fresh TEMP directory.",
+      "Wrong tuple rejected before any receipt or staging write.",
+      "Noncanonical target path rejected before any receipt or staging write.",
+      "Final-target collision fails closed, preserves exact preexisting bytes, and leaves no staging artifact.",
+      "Successful writer returned the exact closed receipt bytes and matching SHA-256."
+    ],
+    "control": {
+      "path": "C:\\Users\\vika\\Documents\\m2-t5-harness-r21-receipt-control-1011-a2\\Invoke-R21ReceiptWriterControl.ps1",
+      "sha256After": "265b1bef47b4b5ccd907cfc5f8427bbfee5113f583ae8136d042e5d041f1b3c0",
+      "sha256Before": "265b1bef47b4b5ccd907cfc5f8427bbfee5113f583ae8136d042e5d041f1b3c0"
+    },
+    "fixture": {
+      "createdFresh": true,
+      "path": "C:\\Users\\vika\\AppData\\Local\\Temp\\SafeUpload-HarnessGate-ReceiptControl-96886a8fb3244ba7bb272d329cb74c05",
+      "removedAfterOwnedCleanup": true
+    },
+    "module": {
+      "length": 102549,
+      "path": "C:\\Users\\vika\\Documents\\m2-t5-harness-r21-receipt-control-1011-a2\\HarnessWindowsGateProtocol.psm1",
+      "sha256After": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a",
+      "sha256Before": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a"
+    },
+    "process": {
+      "pid": 2116,
+      "startFiletime": 134362011021749534
+    },
+    "receipt": {
+      "exactClosedBytes": true,
+      "keeperPid": 2116,
+      "keeperStartFiletime": 134362011021749534,
+      "runToken": "21644735-fe9e-44c2-83e0-9b951bb18596",
+      "sha256": "8c4815c19eaea87df91769635dfd2a8f2eb5b8f47bf6fbc2929e961c7fca14ae"
+    },
+    "schema": "safeupload-harness-gate-r21-receipt-writer-control-v1",
+    "status": "PASS"
+  },
+  "ControlResultSHA256": "f69532b7c92197960dfd2c6ce542bea28d8ffc3e1ff553f5877e89aa44146d57",
+  "CutoverAuthorized": false,
+  "HostPolicyApplied": false,
+  "LocalPreparedInputsUnchanged": true,
+  "OriginalControlPID": 2116,
+  "OriginalControlProcessTerminal": true,
+  "OriginalControlStartFILETIME": 134362011021749534,
+  "PairQualified": false,
+  "PostCheckSHA256": {
+    "m2-t5-harness-r21-receipt-control-a2-post-check.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-harness-r21-receipt-control-a2-post-check.stdout.log": "d9f777691239e765d7723077c43e2c9661759f9302d547a54ed1e6910e29488e"
+  },
+  "ProductVMStarted": false,
+  "RemoteDirectoryContainsOnlyTwoPinnedRegularInputs": true,
+  "RunnerFailure": "controls failed: exit 1",
+  "RunnerWindowsControlsPassed": false,
+  "RuntimeQualified": false,
+  "Scope": "The control writes its sentinel directly to Console.Out, so the derived runner did not receive that sentinel in its PowerShell pipeline variable and failed its wrapper-only PASS assertion. The raw unique complete control PASS is independently verified; preserve runner failure and do not rerun. Actual isolated writer function only. No full module import, native jobs, coordinator, service or product VM. Concurrent partial publication was not observed.",
+  "VerifiedUTC": "2026-10-11T14:05:19.544506+00:00"
+}

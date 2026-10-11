@@ -1,0 +1,25 @@
+{
+  "CapturedUTC": "2026-10-11T14:04:01.001965+00:00",
+  "ClosedInventoryVerified": true,
+  "Groups": {
+    "author": {
+      "author-disposition.json": "4f8baa4138640ab0dc8c223dc430637dc6dcd9b8bebacb897eb8a6227bb10506",
+      "reporting-only.patch": "ba053e789f883024c10c73daa579a8f28f6ab8de499f04229f89af566a275509"
+    },
+    "context": {
+      "luna-t5-harness-r21-receipt-control-independent-review.md": "8bf6c9b53fc7f0a830e0f70b554911baf7b91bf6d039ab2bb04fe578600100d3",
+      "luna-t5-harness-windows-gate-r21-independent-review.md": "345547088c092449fb33c8e9cd6fab8973b42c573180b5cd01efc639db884321",
+      "m2-t5-harness-r21-receipt-writer-control-root-review-capture.json": "2f0c2865bf0fed7f0697395a897c9a4bbee27edbb6dbc96b589afca8346d16c0"
+    },
+    "payload": {
+      "HarnessWindowsGateProtocol.psm1": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a",
+      "Invoke-R21ReceiptWriterControl.ps1": "265b1bef47b4b5ccd907cfc5f8427bbfee5113f583ae8136d042e5d041f1b3c0"
+    }
+  },
+  "HostPolicyApplied": false,
+  "ProductVMStarted": false,
+  "Root": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-harness-r21-receipt-writer-control-a2-root-a1",
+  "RuntimeQualified": false,
+  "SourceAccepted": false,
+  "TwoFDStableReadsAndPostCopyEquality": true
+}

@@ -1,0 +1,22 @@
+{
+  "PSVersion": "5.1.19041.6456",
+  "OriginalStageCleanupStarted": false,
+  "OriginalCreateReservationId": "original",
+  "CopyStageCleanupStarted": true,
+  "CopyCreateReservationId": "mutant",
+  "SourceMutatedByCopy": false,
+  "ControlsPassed": true,
+  "ProjectSourceInvoked": false,
+  "FileWrites": false,
+  "RecordedUTC": "2026-10-11T13:56:18.993232+00:00",
+  "TransportExitCode": 0,
+  "EvidenceSHA256": {
+    "m2-t5-ps51-object-copy-a1.stdout.log": "6d853133c741b8e9f2d34fc1e0eb5e4643fa12964a2c2a77ebe7e6ac67c8c18a",
+    "m2-t5-ps51-object-copy-a1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-ps51-object-copy-a1-input.ps1": "dc8ca1abe40b70404ac2622f4c76dfad3c8e0a3e8e5eea447b53430113adcefa"
+  },
+  "RuntimeQualified": false,
+  "PairQualified": false,
+  "ProductVMStarted": false,
+  "HostPolicyApplied": false
+}

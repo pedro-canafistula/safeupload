@@ -1,0 +1,28 @@
+{
+  "CapturedUTC": "2026-10-11T14:02:24.597579+00:00",
+  "ClosedInventoryVerified": true,
+  "Groups": {
+    "author": {
+      "preparation-controls.txt": "7b4bdbadd7915a7f341efdcb3ad6c48a928c408563a73431dd45d14373b94663",
+      "prepared-capture.json": "f46b30febe0145582ac65204fd676ae8347644331a64e0e1ffc3420f0741b508",
+      "review-plan.md": "0aebd4975ca4c5f2303293bd35e960fa88b870f6974370b5c395017397485057"
+    },
+    "context": {
+      "luna-t5-harness-windows-gate-r21-independent-review.md": "345547088c092449fb33c8e9cd6fab8973b42c573180b5cd01efc639db884321",
+      "m2-t5-coordinator-r16-diag-a1-root-result.json": "1060947bea2cc9892783f548ed2194099aeea5dd5872f7dc53def8f3fd0af604",
+      "m2-t5-coordinator-r16-diag-a1-root-verification.json": "c22d5fdeb88f1f8c212f57a1bb493ed32177aba7d1b93c1427d9a85a3468e757",
+      "m2-t5-harness-r21-compiler-a1-root-verification.json": "8b6b7330b3fc7fed942b6b92ca93476e7fc57031097dd9aef2b40018a93f8afd",
+      "m2-t5-harness-windows-gate-r21-root-review-capture.json": "70af109854294f7eca2fb17be997438b225c18ebae6bafeddb75330eb289bbe0"
+    },
+    "payload": {
+      "HarnessWindowsGateProtocol.psm1": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a",
+      "Invoke-R21ReceiptWriterControl.ps1": "16ad9481d69b2e76ad13cbf5b29368ae08f5ea53b726d73b2282a39f50119049"
+    }
+  },
+  "HostPolicyApplied": false,
+  "ProductVMStarted": false,
+  "Root": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-harness-r21-receipt-writer-control-root-a1",
+  "RuntimeQualified": false,
+  "SourceAccepted": false,
+  "TwoFDStableReadsAndPostCopyEquality": true
+}

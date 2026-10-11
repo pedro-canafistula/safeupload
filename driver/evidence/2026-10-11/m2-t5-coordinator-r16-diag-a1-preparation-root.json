@@ -1,0 +1,22 @@
+{
+  "BaselinePreparationSHA256": "aabd799deb234a34f6f547932f2061714d5537769980796995e3d775970be7d1",
+  "CoordinatorInvoked": false,
+  "HostPolicyApplied": false,
+  "IndependentReviewSHA256": "320ba24660ab1f86a02dd900d840bcbb88411e7bd31336dac06cba7719d2adad",
+  "PreparedInputsSHA256": {
+    "controls-plan.ps1": "b708b26a27f7c00acc05e016a8b32917c592a74203c6e242de14c93da816f046",
+    "notepad-coordinator.SelfCheck.ps1": "e64729a084d6d87db93bfc99a41cc95537cbf3e5e2f2977bf53c49761758afe8",
+    "notepad-coordinator.ps1": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d",
+    "remote_ps.py": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b",
+    "run-diagnostic.py": "88e349fcc758b7d7084c29a7ad6b60b31c99c3ca1bb816fd00d4bac68b5e4d0b"
+  },
+  "PreparedUTC": "2026-10-11T13:52:02.067977+00:00",
+  "PriorR15ProcessTerminalVerifiedSHA256": "273a67981983a98d4e027a6e06ebd7c867112e8362b1f56bf92d75ac219b01fb",
+  "ProductVMStarted": false,
+  "RootCaptureSHA256": "479cd969a36c6d010efcd0758caf1f3f6a798f235b6accffef8d7a638ccd8411",
+  "RunnerAndPlanChanges": "Fresh R16 labels/path and new self-check hash only; same independently reviewed two-file standalone boundary.",
+  "RuntimeQualified": false,
+  "ServiceInstalled": false,
+  "WindowsExecuted": false,
+  "WorkDirectory": "/tmp/m2-t5-coordinator-r16-diag-1011-a1-root"
+}

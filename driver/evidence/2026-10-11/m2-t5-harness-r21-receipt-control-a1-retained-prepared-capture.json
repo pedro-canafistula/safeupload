@@ -1,0 +1,83 @@
+{
+  "astExtractionAllowlist": [
+    "Get-HarnessGateJobName",
+    "Get-HarnessGateKeeperJobName",
+    "Get-HarnessGateKeeperReadyPath",
+    "Write-HarnessGateKeeperReadyReceipt"
+  ],
+  "candidate": "m2-t5-harness-r21-receipt-writer-control-luna-a1",
+  "contextPins": {
+    "r16CoordinatorDiagnosticResult": {
+      "path": "driver/evidence/2026-10-11/m2-t5-coordinator-r16-diag-a1-root-result.json",
+      "sha256": "1060947bea2cc9892783f548ed2194099aeea5dd5872f7dc53def8f3fd0af604"
+    },
+    "r16CoordinatorDiagnosticVerification": {
+      "path": "driver/evidence/2026-10-11/m2-t5-coordinator-r16-diag-a1-root-verification.json",
+      "sha256": "c22d5fdeb88f1f8c212f57a1bb493ed32177aba7d1b93c1427d9a85a3468e757"
+    }
+  },
+  "controlScope": [
+    "PS5.1 Desktop x64 assertion",
+    "module parse as data using Parser.ParseInput",
+    "only exact allowlisted function AST extents are created and dot-sourced at script scope",
+    "wrong tuple and path denial before writes",
+    "existing final-name collision preserves prior bytes and leaves no temporary artifact; underlying IOException required",
+    "valid writer exact closed UTF-8 receipt and SHA-256",
+    "PID/UTC start FILETIME and before/after module/control hashes",
+    "owned-fixture exact membership and nonrecursive success cleanup; retain on failure"
+  ],
+  "files": [
+    {
+      "path": "HarnessWindowsGateProtocol.psm1",
+      "sha256": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a",
+      "size": 102549
+    },
+    {
+      "path": "Invoke-R21ReceiptWriterControl.ps1",
+      "sha256": "16ad9481d69b2e76ad13cbf5b29368ae08f5ea53b726d73b2282a39f50119049",
+      "size": 21275
+    },
+    {
+      "path": "review-plan.md",
+      "sha256": "0aebd4975ca4c5f2303293bd35e960fa88b870f6974370b5c395017397485057",
+      "size": 4745
+    },
+    {
+      "path": "preparation-controls.txt",
+      "sha256": "7b4bdbadd7915a7f341efdcb3ad6c48a928c408563a73431dd45d14373b94663",
+      "size": 2108
+    }
+  ],
+  "notExecuted": [
+    "Windows PowerShell parser or run",
+    "FileStream/File.Move runtime behavior",
+    "builder or SSH",
+    "full module import",
+    "Add-Type/native job/process action",
+    "service/actor/coordinator/harness/product VM",
+    "host/API/network/Git"
+  ],
+  "qualificationBoundary": [
+    "Prepared plan only; no runtime result is claimed.",
+    "A different author must review the exact payload before root considers execution.",
+    "The synchronous writer control does not observe the stage path during an in-progress partial write.",
+    "R16 coordinator standalone self-check failed at the verified-handback terminal assertion because of raw-versus-projected fixture inputs; a separate R17 correction remains pending."
+  ],
+  "rootFrozenCandidate": "m2-t5-harness-windows-gate-r21-root-a1",
+  "rootFrozenSource": {
+    "authorCapturePath": "output/review-candidates/m2-t5-harness-windows-gate-r21-root-a1/author/source-capture.json",
+    "authorCaptureSha256": "5ab229c89e075097a715bd6730b94a3d1b6492cdfde6f3482f36117a1fcd44a0",
+    "path": "output/review-candidates/m2-t5-harness-windows-gate-r21-root-a1/src/driver/scripts/HarnessWindowsGateProtocol.psm1",
+    "rootReviewCapturePath": "driver/evidence/2026-10-11/m2-t5-harness-windows-gate-r21-root-review-capture.json",
+    "rootReviewCaptureSha256": "70af109854294f7eca2fb17be997438b225c18ebae6bafeddb75330eb289bbe0",
+    "sha256": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a",
+    "size": 102549
+  },
+  "runPayload": [
+    "HarnessWindowsGateProtocol.psm1",
+    "Invoke-R21ReceiptWriterControl.ps1"
+  ],
+  "schema": "safeupload-r21-receipt-writer-control-prepared-v1",
+  "stateRootAdapter": "Fixture-only Get-HarnessGateStateRoot returns the one newly created GUID directory under [IO.Path]::GetTempPath().",
+  "status": "PREPARED_NOT_EXECUTED_PENDING_DIFFERENT_AUTHOR_REVIEW"
+}

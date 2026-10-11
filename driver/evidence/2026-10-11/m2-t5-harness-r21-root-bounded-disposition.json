@@ -1,0 +1,22 @@
+{
+  "ActualIsolatedReceiptWriterControlPassed": true,
+  "CompilerAndParserControlsPassed": true,
+  "CutoverAuthorized": false,
+  "EvidenceSHA256": {
+    "luna-t5-harness-r21-receipt-control-a2-runtime-review.md": "4cd7c919c12ec93d7ab89a93ef8bc3d0904b08713d6d48efd93923788e627b13",
+    "luna-t5-harness-windows-gate-r21-independent-review.md": "345547088c092449fb33c8e9cd6fab8973b42c573180b5cd01efc639db884321",
+    "m2-t5-harness-r21-compiler-a1-root-verification.json": "8b6b7330b3fc7fed942b6b92ca93476e7fc57031097dd9aef2b40018a93f8afd",
+    "m2-t5-harness-r21-receipt-control-a2-root-verification.json": "254389a8b463b4c8661932338f0b48f1fa05398a9eaacfe3ae06f23391b6ed8c",
+    "m2-t5-r16-r21-reviewed-checkpoint-a1-root-manifest.json": "47dc6567e4273182cf78ecc858ff7c1386341f2d0a4edf56af280ca03c9982fc"
+  },
+  "FullHarnessAccepted": false,
+  "HostPolicyApplied": false,
+  "NoRetryPerformed": true,
+  "PairQualified": false,
+  "ProductVMStarted": false,
+  "ReviewedUTC": "2026-10-11T14:07:16.655780+00:00",
+  "RuntimeQualified": false,
+  "Scope": "Reviewed R21 atomic writer source; 6 PowerShell plus 2 embedded workers parse; C# zero warnings/errors; actual exact isolated writer identity/path/collision/bytes/hash/cleanup. No observation of a concurrent partial publication. Full gate still pins old failing coordinator self-check; R17/R22 preparation remains separately pending.",
+  "WrapperDiagnosticPassed": false,
+  "WrapperFailureRetained": true
+}

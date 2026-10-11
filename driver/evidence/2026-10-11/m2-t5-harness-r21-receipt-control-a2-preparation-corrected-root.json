@@ -1,0 +1,21 @@
+{
+  "AllCapturedPinsRechecked": true,
+  "CaptureSHA256": "0ec098e291138b215e891c77e54f97075236cbbe7e63c6aa3b61a1f0adb2df72",
+  "Correction": "Before execution, correct three derived runner directory labels from a1 to a2. Payload and control plan unchanged; no remote execution or directory creation occurred.",
+  "DiagnosticOnly": true,
+  "Executed": false,
+  "FullModuleImported": false,
+  "HostPolicyApplied": false,
+  "NativeCallsPermitted": false,
+  "PairQualified": false,
+  "PreparedInputsSHA256": {
+    "HarnessWindowsGateProtocol.psm1": "f9dba8569c7bf2fafef648c5b6d49211ee299b6adc4651733dfb5acbbd6f251a",
+    "Invoke-R21ReceiptWriterControl.ps1": "265b1bef47b4b5ccd907cfc5f8427bbfee5113f583ae8136d042e5d041f1b3c0",
+    "controls-plan.ps1": "61e173338206fd8de1b52cbbf07d8f3a4f007628ab0c7ed990835c9af5c42a42",
+    "remote_ps.py": "39ed7a7892555d61b1577380fd84888ab39278a0115a7ca9b47b16ca6c52995b",
+    "run-diagnostic.py": "f0c30f0873265462314cd7ffda92fb3514be394626cf111fdbc9ce759490ef92"
+  },
+  "PriorPreparationSHA256": "654f8338d737da76fc3ae56622e2523781081ec0fc490119c29381e1b3038ebb",
+  "ProductVMStarted": false,
+  "RuntimeQualified": false
+}
