@@ -978,6 +978,7 @@ BOOLEAN SafeUploadConnectionPinForStage(_In_ PVOID ConnectionCookie);
 
 /* Exact accepted service-process hold plus channel-use pin. Does not grant a
  * public-delete permit or replace the separate accepted stage-epoch check. */
+_Success_(return != FALSE)
 BOOLEAN SafeUploadConnectionPinAuthenticatedProcess(_In_ PVOID ConnectionCookie,
     _In_ LONG64 ConnectionGeneration, _Outptr_result_nullonfailure_ PEPROCESS *Process);
 VOID SafeUploadConnectionReleaseAuthenticatedProcess(_In_ PVOID ConnectionCookie,

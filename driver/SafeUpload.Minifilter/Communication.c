@@ -1747,8 +1747,9 @@ SafeUploadRequestVerdict (
 }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-BOOLEAN SafeUploadConnectionPinAuthenticatedProcess(_In_ PVOID ConnectionCookie,
-    _In_ LONG64 ConnectionGeneration, _Outptr_result_nullonfailure_ PEPROCESS *Process)
+_Use_decl_annotations_
+BOOLEAN SafeUploadConnectionPinAuthenticatedProcess(PVOID ConnectionCookie,
+    LONG64 ConnectionGeneration, PEPROCESS *Process)
 {
     PVOID pinnedCookie = NULL;
     KIRQL oldIrql;
