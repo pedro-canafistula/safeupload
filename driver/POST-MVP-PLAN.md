@@ -21,7 +21,8 @@ Completion requires evidence for every tracker item, then a taint-removal plan a
 - [x] Commit and push the reviewed exact-case agent matrix tooling as `5e9b7868`.
 - [x] Independently review R1 and retain source NO_GO for execution: failed filter queries can authorize unsafe restoration, and incomplete restoration can still delete recovery material ([disposition](evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-root-review-disposition.json)).
   - [x] Freeze the R2 corrections and parse the exact fixture/helper using Windows PowerShell 5.1 with zero syntax errors; neither script was executed ([receipt](evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-parser-a1-root-result.json)).
-  - [ ] Obtain different-author review and resolve observation scope before execution.
+  - [x] Accept the R2 source corrections after different-author review; keep the aggregate and exact-ACK observation inconclusive ([disposition](evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-root-review-disposition.json)).
+  - [ ] Run the bounded lifecycle probes under Verifier with separate independent VM restoration; broader race coverage remains open.
 - [x] Complete the frozen R18 harness compiler controls and independent review; retain source NO_GO ([disposition](evidence/2026-10-11/m2-t5-harness-windows-gate-r18-root-review-disposition.json)).
   - [x] Compile the protocol module's extracted C# literal at zero warnings/errors; invoke no native methods.
   - [ ] Correct three PowerShell syntax errors and keep exact recovery job handles after an unproven drain/query; recheck and independently review R19.

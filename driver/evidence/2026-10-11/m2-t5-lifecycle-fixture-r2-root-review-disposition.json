@@ -1,0 +1,47 @@
+{
+  "CutoverAuthorized": false,
+  "Disposition": "GO_R2_SOURCE_CORRECTIONS_ONLY",
+  "FixtureExecuted": false,
+  "HostPolicyApplied": false,
+  "InputSHA256": {
+    "driver/evidence/2026-10-11/luna-t5-lifecycle-fixture-r2-independent-review.md": "4e21cec1515fdaaf7324af1d88f382386beb736722ea9873d861d1fa014563a3",
+    "driver/evidence/2026-10-11/luna-t5-native-v20-r18-lifecycle-fixture-author-r2.md": "e212cd6b542d9b56f1a39df0a7af4f2e33306661c550193d8a021f403f2e47e1",
+    "driver/evidence/2026-10-11/luna-t5-native-v20-r18-lifecycle-fixture-independent-review-r1.md": "11454ba7717c087c3c79bc3810cda49ced46f5f26b7f0d8e3991802579438bf8",
+    "driver/evidence/2026-10-11/luna-t5-native-v20-r18-lifecycle-fixture-r2-r1-delta.diff": "97196a31452eed114b87fbeee710f000858ff58b7d7a14c9d4cbb1efad4e94e1",
+    "driver/evidence/2026-10-11/luna-t5-native-v20-r18-runtime-qualification-readiness.md": "d08ce66165588ee9ee9202488bc84ed8e0f8d68327927fdcda9f3ceacf4e7ee5",
+    "driver/evidence/2026-10-11/m2-t5-driver-wire-v20-r18-root-source-acceptance-a1.json": "9e0ae87e8b17712a1f8967ccae0561cb29e21344c03c221e66622a869604492b",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-root-review-disposition.json": "12cbf20201bdee0ea78a646628d2cf06ac415f11d274e4812deb6a87b876fcc4",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-parser-a1-delivery.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-parser-a1-delivery.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-parser-a1-parse.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-parser-a1-parse.stdout.txt": "a359786561875949eddea8687e383a82430d0c79aecbc3a15e69d5a70cb0c69d",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-parser-a1-preflight.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-parser-a1-preflight.stdout.txt": "586ed076aa3914504bef8ff1dcda4648cebb3a3571e38a4dbc48bba8c775f315",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-parser-a1-root-result.json": "035bf73cc24e1fa6b6d31f2fea382b689167ab438cb7fe82770956a0cb1f79cc",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-root-review-capture.json": "b765554a6fcf20938c08ee767686bc0d685ea2b2446ed06943005cdfd1c19327",
+    "driver/scripts/StagedTestAgent.ps1": "abd9c67925a4a18b4635bb4b1d21b35cd033453d6ca0c03acf46246472aa6dd7",
+    "driver/scripts/Test-StagedMinifilterUnloadLifecycle.ps1": "b1bbe99ddb3a7bed2593e397675531d8a8c3c5684373d3be11225a607a089abf"
+  },
+  "Open": [
+    "Real lifecycle observations under runtime Verifier with separate independently verified VM restoration",
+    "Startup failure, stale disconnect and connection/process-exit race coverage",
+    "Continuous destination-byte evidence remains required for product qualification"
+  ],
+  "PairQualified": false,
+  "PowerShell51ParsePassed": true,
+  "ProductVMStarted": false,
+  "RecordedUTC": "2026-10-11T13:20:12.818483+00:00",
+  "RootReadIndependentReportAndAffectedFinalizationSource": true,
+  "RuntimeQualified": false,
+  "ScopeDisposition": {
+    "BoundedFunctionalSubcasesMayBeObservedSeparatelyWithFullLifecycleQualifiedFalse": true,
+    "ExactRawOp17AckUnqualified": true,
+    "HistoricalReadinessMatrixUnchanged": true,
+    "NewOwnerApprovalRequirementIntroduced": false,
+    "NoPrivacyRaceVerifierOrRestorationAssertionWaived": true,
+    "R2AggregateRemainsInconclusive": true
+  },
+  "SourceAccepted": true,
+  "ThreeR1FindingsClosed": true,
+  "TwoFDStableReadsAndRootFrozenLiveEquality": true
+}
