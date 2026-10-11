@@ -1,0 +1,120 @@
+{
+  "activity": {
+    "ActorOrServiceInvoked": false,
+    "CoordinatorTopLevelExecuted": false,
+    "GitMutation": false,
+    "HostPolicyApplied": false,
+    "NetworkAction": false,
+    "PowerShellExecuted": false,
+    "ProductVMStarted": false,
+    "WindowsAction": false
+  },
+  "authorArtifacts": {
+    "author/attempt-log.txt": "293c10c5deac05425734891aa4d2185cb613f2570ce0b4c6b6b47544303598d4",
+    "author/author-note.md": "70da818bf29816896f3f0bf484ebbf13fe70b415eb0708cb7de144faea1a3391",
+    "author/exact-delta-from-r16.patch": "8b1ece29f64a72117705863496afcd1891c5c43755eaf5d7396523da876a13ea",
+    "author/offline-controls.txt": "c16a27b18fc433fd522dba1a4c099ace7dd0c57409bc11fd22e22ee92647b9dd",
+    "author/r17-source-controls.py": "9b10019d4dbd66e5ab4b9875aad1959ebbdfefd4bfab583136c76642a70d41cd"
+  },
+  "baseline": {
+    "candidate": "output/review-candidates/m2-t5-notepad-coordinator-r16-root-a1",
+    "diagnosisPath": "driver/evidence/2026-10-11/luna-t5-notepad-coordinator-r16-failure-diagnosis.md",
+    "diagnosisSha256": "8328b24d9236c4ac61c322b95be2c92f77d49151fc588e409f689e5cb26ee842",
+    "failedR16DiagnosticResultSha256": "1060947bea2cc9892783f548ed2194099aeea5dd5872f7dc53def8f3fd0af604",
+    "failedR16DiagnosticVerificationSha256": "c22d5fdeb88f1f8c212f57a1bb493ed32177aba7d1b93c1427d9a85a3468e757",
+    "rootReviewCapture": "driver/evidence/2026-10-11/m2-t5-notepad-coordinator-r16-root-review-capture.json",
+    "rootReviewCaptureSha256": "479cd969a36c6d010efcd0758caf1f3f6a798f235b6accffef8d7a638ccd8411",
+    "selfCheckSha256": "e64729a084d6d87db93bfc99a41cc95537cbf3e5e2f2977bf53c49761758afe8",
+    "sourceCaptureSha256": "74663932a7bcb6460a330b6b225516f1d17d87878ddd17916e32d09213db3ff6"
+  },
+  "candidate": "m2-t5-notepad-coordinator-r17-luna-a1",
+  "candidateOnly": true,
+  "canonicalSourceInventorySha256": "313b7656dba168daf3cabc5ff5ca0cb8615e7dfad4cbcea2c255fbe774fa432f",
+  "closure": {
+    "authorArtifacts": 5,
+    "completeCoordinatorHarnessIncluded": false,
+    "contextInputs": 8,
+    "managedSchemaReviewInputs": 2,
+    "runtimeInputs": 2
+  },
+  "contextInputs": {
+    "context/r16/author-result.json": "244e0d8a81effdd149cb60f6f4ed292352088030de916c4f77e52942398a6c1a",
+    "context/r16/diagnostic-result.json": "1060947bea2cc9892783f548ed2194099aeea5dd5872f7dc53def8f3fd0af604",
+    "context/r16/diagnostic-verification.json": "c22d5fdeb88f1f8c212f57a1bb493ed32177aba7d1b93c1427d9a85a3468e757",
+    "context/r16/failure-diagnosis.md": "8328b24d9236c4ac61c322b95be2c92f77d49151fc588e409f689e5cb26ee842",
+    "context/r16/notepad-coordinator.SelfCheck.baseline.ps1": "e64729a084d6d87db93bfc99a41cc95537cbf3e5e2f2977bf53c49761758afe8",
+    "context/r16/root-review-capture.json": "479cd969a36c6d010efcd0758caf1f3f6a798f235b6accffef8d7a638ccd8411",
+    "context/r16/root-review-disposition.json": "643e3e24749d02b6cdfdbc1dd8236c395048b82426261e7c9980c987c8bf59a8",
+    "context/r16/source-capture.json": "74663932a7bcb6460a330b6b225516f1d17d87878ddd17916e32d09213db3ff6"
+  },
+  "controls": {
+    "checks": [
+      "exact seven replacement reconstruction from frozen R16 source",
+      "assertion/mutation text preserved",
+      "exact four-source closure",
+      "coordinator and both managed files unchanged",
+      "context pins verified"
+    ],
+    "sourceOnlyControlsPath": "author/r17-source-controls.py",
+    "sourceOnlyControlsResult": "PASS",
+    "sourceOnlyControlsSha256": "9b10019d4dbd66e5ab4b9875aad1959ebbdfefd4bfab583136c76642a70d41cd"
+  },
+  "deltaFromR16": {
+    "assertionsAndMutationsPreserved": true,
+    "changedFiles": [
+      "src/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1"
+    ],
+    "exactPatchPath": "author/exact-delta-from-r16.patch",
+    "exactPatchSha256": "8b1ece29f64a72117705863496afcd1891c5c43755eaf5d7396523da876a13ea",
+    "exactSubstitutionCount": 7,
+    "noNewHelperOrGate": true,
+    "noOtherSourceChanges": true,
+    "sourceChangedPaths": [
+      "src/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1"
+    ],
+    "sourceSelfCheckSha256": "be52114a729e2861afccf6c73d900d5b03fc9f476e3664a64f10f959cb33ae47",
+    "variants": [
+      "failedHandbackChild",
+      "pendingRenameChild",
+      "sameStageChild",
+      "wrongCreateReservationChild",
+      "wrongAllocationReferenceChild",
+      "cleanupStartedChild",
+      "verifiedHandbackChild"
+    ]
+  },
+  "qualificationBoundaries": [
+    "No PowerShell parser or standalone self-check ran against R17; no Windows pass inferred.",
+    "R16 standalone self-check failed at the verified-handback terminal assertion because the seven variants copied raw rather than projected child inputs.",
+    "No production coordinator, managed schema, complete harness, service pair, actor, service, host, VM, network, or Git action was performed.",
+    "R17 is an author candidate pending root capture and independent review; runtime qualification remains open."
+  ],
+  "runtimeDisposition": "NOT_RUN_NO_POWERHELL_OR_WINDOWS_EXECUTION",
+  "runtimeQualified": false,
+  "schema": "safeupload-t5-notepad-coordinator-r17-source-capture-v1",
+  "sourceAccepted": false,
+  "sourceFileCount": 4,
+  "sourceFiles": [
+    {
+      "path": "src/agente/SafeUpload.Agent.Service/Interception/StagedJournalFile.cs",
+      "sha256": "5f4a5ae360513425f1ff79c3ad8c0c4fc8c2b3464f416cecc43c57c42224053a",
+      "size": 3911
+    },
+    {
+      "path": "src/agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs",
+      "sha256": "4b270eaef4616c06ba52e0b88deb701d72463dcef8ed6c9c8cc4c39893b23f8d",
+      "size": 210643
+    },
+    {
+      "path": "src/driver/scripts/t5/notepad-coordinator.SelfCheck.ps1",
+      "sha256": "be52114a729e2861afccf6c73d900d5b03fc9f476e3664a64f10f959cb33ae47",
+      "size": 45866
+    },
+    {
+      "path": "src/driver/scripts/t5/notepad-coordinator.ps1",
+      "sha256": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d",
+      "size": 110797
+    }
+  ],
+  "sourceRoot": "output/review-candidates/m2-t5-notepad-coordinator-r17-luna-a1/src"
+}

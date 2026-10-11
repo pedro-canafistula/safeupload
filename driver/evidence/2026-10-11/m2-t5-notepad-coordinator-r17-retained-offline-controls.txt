@@ -1,0 +1,17 @@
+R17 coordinator self-check source-only controls
+
+Command:
+  python3 -I -B output/review-candidates/m2-t5-notepad-coordinator-r17-luna-a1/author/r17-source-controls.py
+
+Output:
+  R17 source-only coordinator controls: PASS
+  Frozen R16 baseline: exact hashes verified for 4 source files and 8 diagnostic/context files.
+  Delta: exactly seven raw-to-projected copy-source substitutions; all other bytes identical.
+  Variant controls: seven expected mutations and their original assertion texts remain in place.
+  Production source: coordinator and both managed schema review sources remain exact R16 pins.
+  Candidate source closure: exactly 4 files; no new helper, gate, validator, or schema change.
+  Runtime boundary: no PowerShell, Windows, coordinator, actor, service, host, VM, network, or Git action.
+
+The checker reconstructs the seven exact replacements from the frozen R16 root snapshot and compares the result byte-for-byte with R17. It also checks all named mutations/assertion texts, the exact four-file source closure, the 8 copied context pins, and the independent R16 diagnosis pin.
+
+NOT RUN: Windows PowerShell parser or self-check, coordinator top-level, service/actor, managed/native build, Windows host, VM, network, or Git operation. R17 is an author source candidate only; the complete harness remains unqualified.

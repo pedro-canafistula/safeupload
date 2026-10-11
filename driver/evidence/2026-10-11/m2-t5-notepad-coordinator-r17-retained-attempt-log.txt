@@ -1,0 +1,5 @@
+R17 author attempt log
+
+1. Initial offline transform-control attempt did not modify candidate source: the checker incorrectly expected eight changed `PSObject.Copy` suffixes, counting the projected baseline as a copy. The frozen baseline has seven affected raw-child copies; the valid projected baseline is produced by `Get-T5Projection`. The attempt aborted before the write step.
+2. Corrected the source transform to require exactly one old copy line per named variant and exactly seven resulting projection copies. Wrote only the seven substitutions, then regenerated the unified diff from the frozen R16 baseline.
+3. Ran the final offline source-only checker successfully. No PowerShell or runtime execution was attempted.

@@ -1,0 +1,37 @@
+{
+  "CapturedUTC": "2026-10-11T14:06:25.396683+00:00",
+  "ClosedInventoryVerified": true,
+  "Groups": {
+    "author": {
+      "attempt-log.txt": "293c10c5deac05425734891aa4d2185cb613f2570ce0b4c6b6b47544303598d4",
+      "author-note.md": "70da818bf29816896f3f0bf484ebbf13fe70b415eb0708cb7de144faea1a3391",
+      "author-result.json": "1cac6ac7927b22ab24c4a39a9b95683f643d1996951a91823cee2a32c516a33c",
+      "exact-delta-from-r16.patch": "8b1ece29f64a72117705863496afcd1891c5c43755eaf5d7396523da876a13ea",
+      "offline-controls.txt": "c16a27b18fc433fd522dba1a4c099ace7dd0c57409bc11fd22e22ee92647b9dd",
+      "r17-source-controls.py": "9b10019d4dbd66e5ab4b9875aad1959ebbdfefd4bfab583136c76642a70d41cd",
+      "source-capture.json": "124ef0e9de648fa4bcc44b46b0abf6181d733fa9ed629fa5e1247a23bf37d0b8"
+    },
+    "context": {
+      "r16/author-result.json": "244e0d8a81effdd149cb60f6f4ed292352088030de916c4f77e52942398a6c1a",
+      "r16/diagnostic-result.json": "1060947bea2cc9892783f548ed2194099aeea5dd5872f7dc53def8f3fd0af604",
+      "r16/diagnostic-verification.json": "c22d5fdeb88f1f8c212f57a1bb493ed32177aba7d1b93c1427d9a85a3468e757",
+      "r16/failure-diagnosis.md": "8328b24d9236c4ac61c322b95be2c92f77d49151fc588e409f689e5cb26ee842",
+      "r16/notepad-coordinator.SelfCheck.baseline.ps1": "e64729a084d6d87db93bfc99a41cc95537cbf3e5e2f2977bf53c49761758afe8",
+      "r16/root-review-capture.json": "479cd969a36c6d010efcd0758caf1f3f6a798f235b6accffef8d7a638ccd8411",
+      "r16/root-review-disposition.json": "643e3e24749d02b6cdfdbc1dd8236c395048b82426261e7c9980c987c8bf59a8",
+      "r16/source-capture.json": "74663932a7bcb6460a330b6b225516f1d17d87878ddd17916e32d09213db3ff6"
+    },
+    "src": {
+      "agente/SafeUpload.Agent.Service/Interception/StagedJournalFile.cs": "5f4a5ae360513425f1ff79c3ad8c0c4fc8c2b3464f416cecc43c57c42224053a",
+      "agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs": "4b270eaef4616c06ba52e0b88deb701d72463dcef8ed6c9c8cc4c39893b23f8d",
+      "driver/scripts/t5/notepad-coordinator.SelfCheck.ps1": "be52114a729e2861afccf6c73d900d5b03fc9f476e3664a64f10f959cb33ae47",
+      "driver/scripts/t5/notepad-coordinator.ps1": "c21757ed59acd607138be5eaafbdbcd2192dd48dd840c80563cb5b21f22d291d"
+    }
+  },
+  "HostPolicyApplied": false,
+  "ProductVMStarted": false,
+  "Root": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-notepad-coordinator-r17-root-a1",
+  "RuntimeQualified": false,
+  "SourceAccepted": false,
+  "TwoFDStableReadsAndPostCopyEquality": true
+}

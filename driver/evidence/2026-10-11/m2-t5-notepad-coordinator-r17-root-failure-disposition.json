@@ -1,0 +1,22 @@
+{
+  "ActualStandaloneWindowsControlsPassed": false,
+  "AllAssertionsAndProductionSourcesUnchanged": true,
+  "BoundedSourceDiagnosticPermitted": true,
+  "CutoverAuthorized": false,
+  "EarlierProjectionMutantAndHandbackAssertionsReachedAndPassed": true,
+  "EvidenceSHA256": {
+    "luna-t5-notepad-coordinator-r17-independent-review.md": "cde139668abb57964cc394fa84944c9949c05994567a08b559d3abe30b9b1540",
+    "m2-t5-coordinator-r17-diag-a1-root-verification.json": "5a552d5adc1e3a18c3bbdca55795b31e63aa1a7dc72279679304d353641192bc"
+  },
+  "ExactlySevenProjectionCopyFixes": true,
+  "Failure": "projection retains exact HandleObserved receipt",
+  "HostPolicyApplied": false,
+  "IndependentFailureDiagnosis": "Pending; no fixture-only or production-defect conclusion is inferred.",
+  "OriginalProcessTerminalAndInputsUnchanged": true,
+  "PairQualified": false,
+  "ParserErrors": 0,
+  "ProductVMStarted": false,
+  "ReviewedUTC": "2026-10-11T14:09:59.203763+00:00",
+  "RootCaptureSHA256": "7fd178b5560c782cecb655557e17889b1ce6b9739dc54d009191732c89289d79",
+  "RuntimeQualified": false
+}

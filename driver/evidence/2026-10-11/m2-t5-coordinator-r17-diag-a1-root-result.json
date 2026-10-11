@@ -1,0 +1,34 @@
+{
+  "StartedUTC": "2026-10-11T14:08:20.859503+00:00",
+  "CoordinatorSourceDisposition": "See separate root-reviewed R17 disposition",
+  "DiagnosticOnly": true,
+  "CoordinatorInvoked": false,
+  "ServiceInstalled": false,
+  "ProductVMStarted": false,
+  "GitMutation": false,
+  "Steps": {
+    "prepare": {
+      "ExitCode": 0,
+      "StdoutSHA256": "b3754f54b7f90e04f1fc836f7d0f65f8ef767b9084ca13465bb1eb4e4d454f67",
+      "StderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "delivery0": {
+      "ExitCode": 0,
+      "StdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "StderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "delivery1": {
+      "ExitCode": 0,
+      "StdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "StderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "controls": {
+      "ExitCode": 1,
+      "StdoutSHA256": "6af33efaa7bccb8ad8c344d48af1d8bd5029fa4e627cbb31019ab0e6970a27db",
+      "StderrSHA256": "31db57ecf12725856215a7f0a6c4c9e41a5f7828c46d4ee7189057f61ee09b97"
+    }
+  },
+  "StandaloneWindowsControlsPassed": false,
+  "Failure": "controls failed: exit 1",
+  "FinishedUTC": "2026-10-11T14:08:27.176140+00:00"
+}

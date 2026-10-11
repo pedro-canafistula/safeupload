@@ -40,7 +40,8 @@ Completion requires evidence for every tracker item, then a taint-removal plan a
   - [x] Diagnose the false legacy-positive failure: adding two empty PowerShell validator outputs creates a null element. A Windows PowerShell 5.1 language probe confirms that direct output collection preserves zero errors and retains real errors ([result](evidence/2026-10-11/m2-t5-ps51-empty-pipeline-a1-root-result.json)).
   - [x] Independently review and run R16. Both scripts parse and the legacy/mixed/history controls pass, but the later verified-handback assertion fails; retain the exact process-terminal and unchanged-source verification ([receipt](evidence/2026-10-11/m2-t5-coordinator-r16-diag-a1-root-verification.json)).
     - [x] Diagnose seven adjacent fixture variants that copy raw entries where the helper requires projected entries; their negative assertions were vacuous. Preserve all assertions and the production validator ([diagnosis](evidence/2026-10-11/luna-t5-notepad-coordinator-r16-failure-diagnosis.md)).
-    - [ ] Independently review and run the R17 seven-copy correction; no Windows pass is inferred from preparation.
+    - [x] Independently review and run the exact R17 seven-copy correction: the affected projection variants and verified-handback assertion pass, but the later exact HandleObserved receipt assertion fails. Retain the failure and exact terminal/source verification ([disposition](evidence/2026-10-11/m2-t5-notepad-coordinator-r17-root-failure-disposition.json)).
+    - [ ] Diagnose the later receipt assertion and pass the complete standalone self-check; full harness/runtime qualification remains open.
 - [ ] Finish and independently review the Windows harness and enforced recovery transaction.
 - [ ] Qualify the matched pair, lifecycle and all three nonempty Save As modes under Verifier with independent destination-byte observations and independently verified VM restoration.
 

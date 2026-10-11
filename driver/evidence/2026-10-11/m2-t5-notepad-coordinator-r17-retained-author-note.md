@@ -1,0 +1,13 @@
+# R17 coordinator self-check fixture correction
+
+R17 changes seven fixture-copy sources in `notepad-coordinator.SelfCheck.ps1` so each direct-helper negative case starts from the valid projected released-child object. The production coordinator, service schema, helper implementation, assertion text, and all fixture mutations remain unchanged.
+
+The frozen R16 Windows diagnostic failed at `Verified handback child is terminal only after justification closes and stage deletion is acknowledged`. The pinned independent diagnosis at `context/r16/failure-diagnosis.md` explains that `Test-T5DirectEmptyHeldChildTerminal` consumes projected entries with top-level `TransferId` and `IsV20`, while the seven direct variants were copied from the raw journal child. The helper therefore returned false at its first identity guard; the verified-handback positive could not reach its intended terminal condition, and the failed-handback/pending-rename lineage assertions used raw children. Root's diagnosis also ruled out scalar aliasing with a separate PS 5.1 object-copy probe.
+
+The seven substitutions are exactly the named variants: `failedHandbackChild`, `pendingRenameChild`, `sameStageChild`, `wrongCreateReservationChild`, `wrongAllocationReferenceChild`, `cleanupStartedChild`, and `verifiedHandbackChild`. Each now copies `$releasedPendingChildProjection`. The original field mutation immediately follows each copy and each original assertion remains byte-identical. Since the only source delta is these seven line substitutions, no negative predicate or expected failure was weakened. Each case now retains the projection identity and lifecycle shape needed to reach the condition its existing mutation is intended to exercise.
+
+The immutable patch is `author/exact-delta-from-r16.patch`. The offline checker recreates the seven replacements against the frozen R16 root source, compares all resulting bytes, verifies the four-file source closure and context hashes, and checks every mutation/assertion pair. It passes. No PowerShell or product/runtime code ran during authoring, so the R17 self-check has not yet been shown to pass on Windows.
+
+The frozen source capture is `author/source-capture.json`; the author result is `author/author-result.json`. Production source pins remain the two managed schema review inputs and the coordinator source listed in the result. No live source, R16 source, harness inventory, coordinator source, schema, actor, service, host, or VM was modified. No Git, Windows, network, or host operation was performed.
+
+Runtime qualification remains open. A fresh standalone Windows PS 5.1 self-check should run only after independent review and root recapture. The complete harness and product remain unqualified.

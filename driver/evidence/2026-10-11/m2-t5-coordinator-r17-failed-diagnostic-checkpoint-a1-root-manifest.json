@@ -1,0 +1,32 @@
+{
+  "CapturedUTC": "2026-10-11T14:09:59.215308+00:00",
+  "FilesSHA256": {
+    "luna-t5-notepad-coordinator-r17-independent-review.md": "cde139668abb57964cc394fa84944c9949c05994567a08b559d3abe30b9b1540",
+    "m2-t5-coordinator-r17-diag-a1-controls.stderr.log": "31db57ecf12725856215a7f0a6c4c9e41a5f7828c46d4ee7189057f61ee09b97",
+    "m2-t5-coordinator-r17-diag-a1-controls.stdout.log": "6af33efaa7bccb8ad8c344d48af1d8bd5029fa4e627cbb31019ab0e6970a27db",
+    "m2-t5-coordinator-r17-diag-a1-delivery0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r17-diag-a1-delivery0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r17-diag-a1-delivery1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r17-diag-a1-delivery1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r17-diag-a1-exact-controls-plan.ps1": "1f856732277537a0c7491ca5fed088f218fbe991d4aeefe9300291cda3fb3a53",
+    "m2-t5-coordinator-r17-diag-a1-exact-post-check.ps1": "cc9ef952bf3287f81a559d017c800e9fa36b715e8c1f647042facb8334527a52",
+    "m2-t5-coordinator-r17-diag-a1-exact-run-diagnostic.py": "e8747000439993e23a946023aa9e4d7562a2a1d45c571e78d3f9217e50f715f3",
+    "m2-t5-coordinator-r17-diag-a1-post-check.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r17-diag-a1-post-check.stdout.log": "089cf11489010060e6c110c4b142550c387e56bceefecb1bb62df29b553e7250",
+    "m2-t5-coordinator-r17-diag-a1-preparation-root.json": "855fd2b70624590b2127145b35249ebb0e6ed09673801b069fd7a7fb7b147623",
+    "m2-t5-coordinator-r17-diag-a1-prepare.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-coordinator-r17-diag-a1-prepare.stdout.log": "b3754f54b7f90e04f1fc836f7d0f65f8ef767b9084ca13465bb1eb4e4d454f67",
+    "m2-t5-coordinator-r17-diag-a1-root-result.json": "334b8794c812cdcd7330104b3f269457185aeef405fb6abfbf1998438bd2edf4",
+    "m2-t5-coordinator-r17-diag-a1-root-verification.json": "5a552d5adc1e3a18c3bbdca55795b31e63aa1a7dc72279679304d353641192bc",
+    "m2-t5-notepad-coordinator-r17-retained-attempt-log.txt": "293c10c5deac05425734891aa4d2185cb613f2570ce0b4c6b6b47544303598d4",
+    "m2-t5-notepad-coordinator-r17-retained-author-note.md": "70da818bf29816896f3f0bf484ebbf13fe70b415eb0708cb7de144faea1a3391",
+    "m2-t5-notepad-coordinator-r17-retained-author-result.json": "1cac6ac7927b22ab24c4a39a9b95683f643d1996951a91823cee2a32c516a33c",
+    "m2-t5-notepad-coordinator-r17-retained-exact-delta-from-r16.patch": "8b1ece29f64a72117705863496afcd1891c5c43755eaf5d7396523da876a13ea",
+    "m2-t5-notepad-coordinator-r17-retained-offline-controls.txt": "c16a27b18fc433fd522dba1a4c099ace7dd0c57409bc11fd22e22ee92647b9dd",
+    "m2-t5-notepad-coordinator-r17-retained-r17-source-controls.py": "9b10019d4dbd66e5ab4b9875aad1959ebbdfefd4bfab583136c76642a70d41cd",
+    "m2-t5-notepad-coordinator-r17-retained-source-capture.json": "124ef0e9de648fa4bcc44b46b0abf6181d733fa9ed629fa5e1247a23bf37d0b8",
+    "m2-t5-notepad-coordinator-r17-root-failure-disposition.json": "8c312e0b8b3e43485efa9fcc821ec731456e5042bdc507c69ef82a3ba6746b99",
+    "m2-t5-notepad-coordinator-r17-root-review-capture.json": "7fd178b5560c782cecb655557e17889b1ce6b9739dc54d009191732c89289d79"
+  },
+  "Scope": "Independently reviewed exact seven fixture projection corrections, actual standalone later failure and independently verified terminal process/unchanged inputs. No full gate or product qualification."
+}
