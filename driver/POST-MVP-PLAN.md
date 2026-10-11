@@ -1,696 +1,338 @@
-# SafeUpload driver: post-MVP plan
-
-Written 2026-10-08 on `feat/driver-post-mvp` (= `main` `aaab5c0c`, which carries the frozen MVP pair: driver `5ebe139a`, agent `51ba5873`).
-Current status, gate results and known issues are in [MVP-PLAN.md](MVP-PLAN.md); this file is the work plan that follows them, in priority
-order. Where a cause is not yet measured, the task says so and lists hypotheses from reading the code; treat those as leads, not findings.
-
-**Current owner objective:** Complete the SafeUpload MVP as soon as possible. M2 is the active milestone, not the completion boundary for the full owned-stream replacement.
-The current goal also requires both mapping repros, USB including surprise removal, UNC/SMB and a real sync client with independent
-destination-byte observers, the functional/crash/recovery matrix, Verifier, stress and latency, and independently verified restoration
-after every VM run. Older "Later" and local-NTFS-only labels below record milestone ordering; they do not waive these goal requirements.
-Normal builds must keep staging compiled out. Taint stays and unsupported capabilities remain disabled until the owner approves cutover.
-Codex commits and pushes coherent reviewed changes as work proceeds. Each progress checkbox group starts with its T item.
-Codex handles ordinary work directly and delegates heavy cybersecurity implementation and reviews to Luna 6 at max effort.
-Completion requires evidence for every tracker item, then a taint-removal plan and owner sign-off.
-
-### T5 — Reviewed source checkpoint (2026-10-11)
-
-- [x] Commit and push the reviewed native R18 and managed R13 sources as `e0de7e46`; revalidate 226 source pins and 111 retained artifact pins before staging.
-  - [x] Four native WDK profiles pass PREfast/ApiValidator at zero warnings/errors with valid test signing.
-  - [x] Four Windows agent profiles pass at zero warnings/errors: 3,064 tests, including 104 required v20 cases.
-- [x] Commit and push the reviewed exact-case agent matrix tooling as `5e9b7868`.
-- [x] Independently review R1 and retain source NO_GO for execution: failed filter queries can authorize unsafe restoration, and incomplete restoration can still delete recovery material ([disposition](evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-root-review-disposition.json)).
-  - [x] Freeze the R2 corrections and parse the exact fixture/helper using Windows PowerShell 5.1 with zero syntax errors; neither script was executed ([receipt](evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-parser-a1-root-result.json)).
-  - [x] Accept the R2 source corrections after different-author review; keep the aggregate and exact-ACK observation inconclusive ([disposition](evidence/2026-10-11/m2-t5-lifecycle-fixture-r2-root-review-disposition.json)).
-  - [ ] Run the bounded lifecycle probes under Verifier with separate independent VM restoration; broader race coverage remains open.
-- [x] Complete the frozen R18 harness compiler controls and independent review; retain source NO_GO ([disposition](evidence/2026-10-11/m2-t5-harness-windows-gate-r18-root-review-disposition.json)).
-  - [x] Compile the protocol module's extracted C# literal at zero warnings/errors; invoke no native methods.
-  - [x] Correct the three PowerShell syntax errors and keep exact recovery job handles after an unproven drain/query; the R19 Windows parser/compiler passes. R19 review still rejects stale launcher hashes ([review](evidence/2026-10-11/luna-t5-harness-windows-gate-r19-independent-review.md)).
-  - [x] Correct the five launcher hashes and pass independent R20 review plus real local preflight and stale-pin rejection controls ([disposition](evidence/2026-10-11/m2-t5-harness-windows-gate-r20-root-review-disposition.json)). This permits bounded diagnostics only.
-  - [x] Review R21 atomic receipt publication and pass the actual Windows parser/compiler controls: six PowerShell inputs, two embedded workers, and C# at zero warnings/errors ([disposition](evidence/2026-10-11/m2-t5-harness-r21-root-bounded-disposition.json)).
-    - [x] Pass the isolated actual writer checks for identity/path refusal, no-overwrite collision, exact receipt bytes/hash, and owned-temp cleanup. Preserve the wrapper failure: its pipeline capture missed the console-written PASS; independent raw-output review and exact process/input/fixture post-check establish only the bounded writer result. No retry was performed.
-    - [x] Integrate the exact passing R18 self-check and its two hash references into the closed R23 candidate; independent review accepts that three-path delta and confirms 60 of 63 source files unchanged ([disposition](evidence/2026-10-11/m2-t5-harness-windows-gate-r23-root-review-disposition.json)).
-    - [x] Freeze all 121 R24 inputs, independently accept the CANCEL correction, and execute one bounded existing-builder attempt ([disposition](evidence/2026-10-11/m2-t5-harness-r24-full-gate-a1-root-failure-disposition.json)). R24 remains NO_GO: the hidden AppData ancestor lookup fails before the main diagnostic starts.
-      - [x] Verify the original local transport identity/tree terminal, all 63 local source pins unchanged, and all 40 uploaded source pins unchanged through a read-only postquery; AppData is Hidden, Directory. Full remote custody remains unqualified.
-      - [x] Independently accept the exact failure capture and verify setup stopped before creating barrier jobs/children; keep the original remote-process custody unproven ([reviewed disposition](evidence/2026-10-11/m2-t5-harness-r24-actual-failure-root-reviewed-disposition.json)).
-      - [ ] Correct hidden-directory inspection without weakening plain-directory/reparse checks, independently review a fresh candidate, then execute the fresh bounded gate.
-- [x] Pass four disposable file-lease controls on each of Btrfs and Ext4, plus read-only leased-descriptor fsync/read calls on both ([disposition](evidence/2026-10-11/m2-t5-filesystem-lease-controls-a1-root-disposition.json)). The earlier a1 test ran on tmpfs; its Btrfs prose label was incorrect. These controls do not qualify expiry, crash retention, pending dirty-page drain, or protection of original VM files.
-- [x] Retain the R1 recovery installer NO_GO: the first durable attempt and journal were written before the canonical lock ([disposition](evidence/2026-10-11/m2-t5-lifecycle-file-lease-guard-r1-root-review-disposition.json)).
-  - [x] Independently freeze the R2 lock-ordering source checkpoint and its disposable author controls ([capture](evidence/2026-10-11/m2-t5-recovery-transaction-r2-lock-ordering-a1-root-review-capture.json)).
-  - [x] Accept the lock-ordering source correction after different-author review and revalidate all eleven frozen inputs ([disposition](evidence/2026-10-11/m2-t5-recovery-transaction-r2-lock-ordering-a1-root-review-disposition.json)).
-  - [x] Freeze all 50 A2 inputs and independently retain NO_GO: restart lease-owner reattachment, the missing recovery executor, undrained prior API requests, selected backing-path preflight, and independent restoration remain unresolved ([disposition](evidence/2026-10-11/m2-t5-recovery-transaction-r2-a2-root-review-disposition.json)).
-  - [x] Verify zero-deadline semantics by different-author disassembly of the exact installed kernel artifact, match its running GNU build identity, and independently rehash five package/binary artifacts ([verification](evidence/2026-10-11/m2-t5-host-kernel-lease-zero-a1-root-verification.json)). This is static prerequisite evidence; no zero-timeout runtime test or host policy change occurred.
-  - [x] Capture and revalidate twelve installed virtualization unit files and the admin API header, plus the active daemon/socket layout, for the request-barrier design ([verification](evidence/2026-10-11/m2-t5-libvirt-barrier-inputs-readonly-a1-root-verification.json)). These are read-only inputs; request draining remains unproven.
-  - [x] Capture the current listener/process-generation inputs, freeze the eight-file drain design and independently retain NO_GO ([disposition](evidence/2026-10-11/m2-t5-libvirt-drain-design-a1-root-review-disposition.json)). The old-daemon terminal-fence approach is conditional; same-FD restart custody, recovery-only endpoint admission, helper/job/hook reconciliation, protected-path migration, and full independent restoration remain unproven.
-  - [x] Capture five domains/two storage pools plus selected path permissions and capacity ([verification](evidence/2026-10-11/m2-t5-selected-storage-inputs-readonly-a1-root-verification.json)). Raw XML stays private; disk-chain and TPM-member reads were denied. The 78 GB shared disk cannot be assumed to fit on the 58 GB-free root filesystem; the storage volume reports 116 GB free. These are design inputs, not a qualified baseline.
-  - [ ] Finish and qualify the full recovery transaction; no host changes are authorized by these checkpoints.
-- [x] Freeze the R15 coordinator self-check correction without changing the production coordinator or managed schema ([capture](evidence/2026-10-11/m2-t5-notepad-coordinator-r15-root-review-capture.json)).
-  - [x] Independently review and execute the fresh two-file Windows PowerShell 5.1 diagnostic; both scripts parse, but the all-legacy ancestry assertion fails. Preserve that failure and independently verify the original process terminal and both remote source pins unchanged ([verification](evidence/2026-10-11/m2-t5-coordinator-r15-diag-a1-root-verification.json)).
-  - [x] Diagnose the false legacy-positive failure: adding two empty PowerShell validator outputs creates a null element. A Windows PowerShell 5.1 language probe confirms that direct output collection preserves zero errors and retains real errors ([result](evidence/2026-10-11/m2-t5-ps51-empty-pipeline-a1-root-result.json)).
-  - [x] Independently review and run R16. Both scripts parse and the legacy/mixed/history controls pass, but the later verified-handback assertion fails; retain the exact process-terminal and unchanged-source verification ([receipt](evidence/2026-10-11/m2-t5-coordinator-r16-diag-a1-root-verification.json)).
-    - [x] Diagnose seven adjacent fixture variants that copy raw entries where the helper requires projected entries; their negative assertions were vacuous. Preserve all assertions and the production validator ([diagnosis](evidence/2026-10-11/luna-t5-notepad-coordinator-r16-failure-diagnosis.md)).
-    - [x] Independently review and run the exact R17 seven-copy correction: the affected projection variants and verified-handback assertion pass, but the later exact HandleObserved receipt assertion fails. Retain the failure and exact terminal/source verification ([disposition](evidence/2026-10-11/m2-t5-notepad-coordinator-r17-root-failure-disposition.json)).
-    - [x] Diagnose the duplicated fixture receipts, strengthen the assertion to bind both exact parent/child records, and pass the independently reviewed R18 Windows PowerShell 5.1 standalone: 162 assertions, zero parser errors, exact process terminal and unchanged source pins ([disposition](evidence/2026-10-11/m2-t5-notepad-coordinator-r18-root-bounded-disposition.json)).
-    - [ ] Run the corrected closed harness after independent startup-recovery review; recovery and product runtime qualification remain open.
-- [ ] Finish and independently review the Windows harness and enforced recovery transaction.
-- [ ] Qualify the matched pair, lifecycle and all three nonempty Save As modes under Verifier with independent destination-byte observations and independently verified VM restoration.
-
-Source/compiler/test acceptance remains separate from runtime qualification. Taint remains enabled, normal builds compile staging out, unsupported capabilities remain disabled, and cutover is unauthorized.
-
-## What "complete" means
-
-The driver is complete for the local-NTFS product on Windows 10 22H2 build 19045.2965 when all of these hold:
-
-1. **It can stay loaded on a real machine**: no CPU churn at idle, new users can sign in, large installers and Windows Update complete.
-2. **Everyday file work behaves like Windows without the driver, plus inspection**: Notepad, Office and other common applications save into
-   a protected folder; copies and moves into it are inspected the same way; reading and permission changes are left to Windows; no per-boot
-   or small file-size ceiling a user would hit.
-3. **It is a release build**: staging is the release configuration, the test-only diagnostics are out of it, and it installs, upgrades
-   and uninstalls cleanly. It stays test-signed (test signing on, Secure Boot off) until the owner says otherwise.
-4. **It is qualified**: the full invariant suite (all variants) passes in all three modes, plus soak, stress and coexistence runs.
-
-Other Windows builds and destinations beyond local NTFS (USB, SMB, sync clients, ReFS) come after that.
-
-## Rules for every task
-
-Carried over from the MVP; they apply to every driver change on this branch.
-
-- Every driver commit: the four WDK configurations build with PREfast and ApiValidator at 0/0; kernel changes that run on a VM run under
-  runtime Driver Verifier; the affected suite rows pass end to end with the raw-volume observer (`ForbiddenByteCount` 0) and a clean
-  restoration (`Get-StagedBaseline.ps1`).
-- One adversarial review per milestone against the working system, plus one before the first VM boot of any change to object lifetime,
-  lock order or the retirement gate (T4 and T6 in particular). Codex handles ordinary work; heavy cybersecurity implementation and reviews go to Luna 6 at max effort.
-- Each milestone ends with a new frozen pair (new build labels) and the full three-mode gate. BLOCK-window cells run serially on one VM.
-- Harness changes pass `Invoke-HarnessWindowsGate.sh` (Windows PowerShell 5.1) before they are used for a gate run.
-- Owner decisions in force stay in force (no process taint, no scan-based or timer-based fixes for writer state, sticky Unknown until
-  reboot, Activating never reports Ready). A task that seems to need an exception stops and asks.
-- Any change that removes a refusal must come with a suite row proving that unapproved bytes still cannot reach a protected folder.
-
-## Priority order
-
-Sizes are rough: S = a few days, M = about a week, L = several weeks.
-
-| # | Task | Tier | Size | Depends on |
-|---|---|---|---|---|
-| T0 | Field diagnostics: deny ring and counters readable while the agent runs; installer quick fixes | P0 | S | - |
-| T1 | Event-driven reclaim worker (no rescan loop); rerun the five boot-Verifier cells | P0 | M | T0 |
-| T2 | Find and fix the denial that breaks new-profile creation | P0 | M | T0 |
-| T3 | Large installers and Windows Update with the driver loaded (M365, cumulative updates) | P0 | M-L | T1, T2 |
-| T4 | Reclaim stage slots: remove the 128-versions-per-boot ceiling | P1 | M-L | T1 |
-| T5 | Notepad Save As | P1 | M | T0 |
-| T6 | Moves into a protected folder are inspected like copies | P1 | S-L | T0 |
-| T7 | Reads are never refused | P1 | S | - |
-| T8 | Office and common-application save patterns, metadata fidelity | P1 | L | T4, T5 |
-| T9 | Large files: no fixed size cap, whole-file inspection, "could not inspect" is blocked | P1 | M | T4 |
-| T10 | Permission and owner changes reach the real file or folder | P1 | M | T0 |
-| T11 | Close the review conditions (Luna P2s) | P1 | S-M | - |
-| T12 | Release build: staging becomes the product configuration, diagnostics test-only | P1 | M | T11 |
-| T14 | Driver install, upgrade and uninstall | P1 | M | T12 |
-| T15 | Full suite: section-4.1 variants, P01-P06, RV4, dedicated latency | P2 | L | M2 |
-| T16 | Soak, stress and fault injection | P2 | M | M2 |
-| T17 | Coexistence: antivirus/EDR filters, BitLocker, VSS, indexer, backup, OneDrive | P2 | M | M3 |
-| T18 | Operating Degraded/Unknown in the field | P2 | S | T0 |
-| T19 | Continuous no-unapproved-byte evidence (mutation ledger, C05 denial ledger) | P2 | M | T15 |
-| T13 | Altitude, production (attestation) signing, Secure Boot on (deferred: test mode only) | Later | M + lead time | owner |
-| T20 | Other Windows builds (deferred by the owner) | Later | L | M4 |
-| T21-T24 | USB/removable, SMB/UNC, cloud-sync folders, ReFS | Later | L each | M4 |
-
-Milestones: **M1 "safe to leave loaded"** = T0-T3; **M2 "everyday file work"** = T4-T11; **M3 "release candidate"** = T12 and T14;
-**M4 "qualified"** = T15-T19; then T13 and T20-T24, each on its own.
-
-## P0: the driver can stay loaded (M1)
-
-**M1 complete 2026-10-10:** gate 69/69 (MvpSuite PASS) on `m1-driver21` (`498f4ed7`) + agent `4d02039a`, T3's four workloads and U01 in
-both modes on the same pair (`driver/POST-MVP-LOG.md`, "M1 complete").
-
-### T0. Field diagnostics and installer quick fixes
-
-**Problem.** The three P0 bugs could not be root-caused on the manual-test VM: the Inspector cannot open the filter port while the agent
-holds it (`0x800704D6`), and the kernel FileIo trace of the failing profile creation showed no `0xC0000022` create, so we do not know which
-operation the driver refused.
-
-**Work.**
-- A bounded, always-on **deny ring** in the driver: every operation SafeUpload completes with a failure status (`ACCESS_DENIED`, `RETRY`,
-  `SHARING_VIOLATION`, `DELETE_PENDING`, `INSUFFICIENT_RESOURCES`, `FILE_TOO_LARGE`, ...) records a call-site ID, major/minor function,
-  status, requestor PID, IRQL, whether `IoGetTopLevelIrp()` was non-NULL, transaction present, and the name when it was already resolved.
-  Fixed size, no allocation on the I/O path, no name query added just for the ring.
-- Expose the ring and the key counters (reclaim passes, registry entries/limit, parked and unresolved probes, section slots in use, stage
-  streams in use, Unknown reasons) through the agent: a query message the agent already authenticated forwards, and an admin-only command
-  on the `SafeUpload.Agent` pipe. Field diagnosis must not need the Inspector.
-- Installer quick fixes (agent side, needed by every manual test): register the service with
-  `--Interception:Mode=Minifilter --Interception:StagingPrototype=true`, and accept `SERVICE_SID_TYPE:  UNRESTRICTED` in the final check.
-
-**Done when** the ring shows a known refusal from a scripted test (for example a rename into `C:\Protected`) through the agent, with the
-Inspector not running, and a clean install leaves `admissionCoverage` Ready without hand edits.
-
-**Status 2026-10-09: done.** The deny ring recorded the real denied rename of C05 on a debuggee through the agent's diagnostics pipe with the Inspector not
-running; the installer registers the minifilter flavour and leaves coverage Ready. Evidence and the diagnosis of every later refusal: `POST-MVP-LOG.md`.
-- [x] deny ring + counters + pipe; installer quick fixes; agent gate green with the SYSTEM test step
-- [x] ring seen recording the real C05 denial on a debuggee
-
-### T1. Event-driven reclaim worker
-
-**Problem.** `StageRegistryReclaimWorker` (`StageWriters.c`) sets `STAGE_RECLAIM_RESCAN` whenever a pass leaves an entry unfinished
-(`unfinishedScan`: an unresolved or parked alias probe, a pending scope scan), and `StageRegistryReclaimWorkerFinish` requeues immediately.
-An entry that cannot finish keeps the worker spinning: 2.5-5k passes/s measured, about 20,000 special-pool allocations/s under boot
-Verifier, guest CPU at 100% for 20+ minutes. It is the likely cause of the five missing boot-Verifier cells and a suspect for the slow
-M365 install.
-
-**Approach (event-driven, no timer).** A pass requeues itself only when it made progress or new work arrived:
-- keep the immediate requeue when the batch limit was reached (`reachedBatch`: real work remains);
-- when the pass ends with only unfinished entries, compare the registry change sequence and the recheck flag with their values at pass
-  start; if nothing changed, park instead of requeueing;
-- audit every reason an entry can be unfinished and make sure the event that can resolve it queues a recheck (alias probe completion,
-  cleanup/close/section release, which already call `SafeUploadStageWritersQueueRecheck`, rename-churn settle, policy commit, service
-  reply). A reason with no wake-up event is a liveness bug to fix at its source, not with a timer. A parked entry stays gated
-  (Activating, never Ready), so a missed wake-up fails closed.
-
-**Done when** idle reclaim passes are about zero with a parked probe present (counter from T0); A01-A04, R02, X01, C04 and C05 pass in
-all three modes; and boot-Verifier B02 plus C01-C04 BLOCK complete, taking the gate from 64/69 to 69/69. If they still do not
-complete, measure what is CPU bound before changing anything else.
-
-**Status 2026-10-09: worker done, boot-Verifier cells pending.** The spin was external wake-ups from every CLOSE/CLEANUP; the worker now requeues only for
-bounded work and lifetime events wake it only for a stream something waits on (idle 3,100 passes/s -> about 10). Removing the unpaused requeue exposed a race
-in R02 (the cache manager's own close is the only wake-up after a clean holder leaves; if the pass starts after NTFS tore the stream down the promotion is on the
-replaced basis, which the harness refuses): fixed with an identity anchor (the pass keeps its by-ID handle while the entry is Activating with a live writer).
-- [x] idle passes about zero (A01-A04 pass; counter in the diagnostics)
-- [x] R02 passes on the held basis (2 of 2 on the anchor driver)
-- [x] A01-A05, B01, R01, R03, X01, C03, C04 ok in all three modes on the final driver `m1-driver21` (69/69, below)
-- [x] boot-Verifier B02 + C01-C04 BLOCK complete on the final driver line -> 69/69 (C01 `m1b1`, C03 `m1d1`, C04 `m1d2`, C02 `m1d3`; B02 `m1w1` on 8e506437, re-run queued)
-- [x] runtime-Verifier slice (C05, C01-approve-absent, C01-block-absent, S01) on the final pair: `m1f1`-`m1f4` ok by the gate rule (tier 2) on `m1-driver4`/`m1-agent6`, also R02 `m1f5` and A01 `m1f6`; C05 `m1f2` ring: "recorded the denied rename: sequence 2, status 0xC0000022"
-- [x] follow-up 2026-10-09: the end of a write still woke the worker for every entry (C03-approve-existing `m14v13`: 156 passes/s); now only for a waiting
-  entry or a sibling a promotion waits for (`a7a69d1c`, five Luna passes, no P0/P1); the idle check runs its own 200 writes/s outside writer (driver14 `m15a1`: 206 passes/s, FAIL)
-- [x] the 69 cells, T3 and U01 again on the final driver `m1-driver21` (`498f4ed7`; driver19's cumulative update exposed the stream-cache refusal
-  fixed there): gate 69/69, MvpSuite PASS; idle cell `m21c1` 1.93 passes/s (log: "M1 complete")
-
-### T2. New user profiles
-
-**Problem.** With the driver loaded (agent running or stopped), a new user's first sign-in fails: ProfSvc 1542 "cannot load classes
-registry file. Access is denied", `CreateProfile` returns `0x80070005`, and the failed attempt leaks `HKU\<sid>` and `HKU\<sid>_Classes`
-until reboot. `C:\Protected` is on the same volume as `C:\Users`, but the profile is outside every scope, so the driver should not refuse
-anything there.
-
-**Leads from the code (unverified).** About 40 call sites fall back to `SafeUploadPolicyMayMatchInstanceVolume` (true for any volume that
-hosts a scope) when the operation arrives above PASSIVE_LEVEL, with a non-NULL top-level IRP, or when the name query fails; in those
-contexts any operation on `C:` is treated as possibly in scope. Kernel registry hive I/O (the `Registry` process, mapped hive files, KTM
-logs) is a plausible trigger. Other candidates: the TxF refusal in `Txf.c` (same fallbacks) and the policy-epoch `STATUS_RETRY`.
-
-**Work.** Reproduce with the T0 ring on (`CreateProfile` for a fresh user), name the call site and operation, and fix the principle rather
-than the one case: an operation outside every scope must never be refused. Where the name cannot be resolved in the current context,
-resolve the identity some other safe way (file ID and the registry entry, or a deferred check) instead of a volume-wide answer. Add a suite
-row for first sign-in of a new user with protection active (the harness pre-creates the actor profile today, which is why no row caught it).
-
-**Done when** the new row passes in all three modes, the deny ring shows no refusal outside a scope during sign-in, and every existing row
-still passes (no refusal was weakened inside a scope).
-
-**Status 2026-10-09: fixed and verified by a real first sign-in; row U01.** Causes found with the ring: a lookup that proves the path absent was refused as
-"unresolved"; the volume root counted as an ancestor of the protected scope for attribute changes; the alias probe followed reparse points (Store app-execution
-aliases) and failed on `pagefile.sys`; an Activating entry for an unrelated name refused outside writers; and a network volume counted as in scope for any
-local prefix (the `\Device\Mup` instance, early boot). Row U01 = `driver/scripts/Invoke-NewProfileDiagnosis.sh` (verdict file). U01 is not part of the 69 cells.
-- [x] ring names the refusals; fixes without weakening a refusal inside a scope (the standard user is still refused directory creates in the protected folder)
-- [x] row U01 written, with a verdict
-- [x] U01 PASS on the final driver: `u0121a` on `m1-driver21` (the Mup refusals were fixed in 6b83f608)
-- [x] U01 in boot-Verifier mode: `u0121b` PASS on `m1-driver21` (the transient FontCache section refusal of `u01h` was T2c, fixed below)
-- [x] **T2c** also hit a registry hive: `t3cue` refused the Registry process's writable section of `config\DRIVERS` at boot (`policyScope`). Built in
-  `4d02039a` (three Luna rounds); no T2c refusal since (U01 and the cumulative updates on driver13, driver14 and driver21). Design: when the section gate would refuse only because the entry's alias probe is pending, at PASSIVE and not nested, it moves that entry to the front
-  of the worker and waits a bounded time (about 2 s) for that probe, then decides; on timeout it refuses as today. Rejected: a "single link" name-only rule
-  (a hard link made through another stream's handle does not reach the default-stream entry, so its rename version is not advanced).
-- [x] FileStandardLinkInformation (0x36) on a staged stream answered from the backing file; U01 `u01n` and `u01o` (boot Verifier) all PASS on `m1-driver13` (T2c fixed too)
-
-### T3. Large installers and Windows Update
-
-**Problem.** The Microsoft 365 installer ran very slowly (about 21,000 metadata operations/s in `System`) and then failed with "couldn't
-use a required file". Windows Update, Defender updates and Store updates were never exercised with the driver loaded, and a deployed
-driver has to survive monthly updates. (The platform stays build 19045.2965 for now; these runs check that installing an update with the
-driver loaded works, not that the driver is qualified on the updated build, which is T20.)
-
-**Work.** Re-measure after T1 and T2 (some or all of this may be the same causes). Then add qualification runs, each with the driver
-loaded and a protected folder on `C:`: Microsoft 365 install, an MSI install, a Windows cumulative update and reboot, a Defender platform
-update. Record duration against the same run without the driver, the deny ring, and the writer-registry high-water mark: the registry
-holds at most 4,096 entries (`SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT`) and exhaustion makes coverage Unknown until reboot, so an installer
-that fills it would leave protection Degraded.
-
-**Done when** all four complete with no refusal outside a scope, coverage still Ready afterwards, and an overhead number the owner accepts.
-
-**Status 2026-10-09: runner written, not yet run.** `driver/scripts/Invoke-InstallerWorkload.sh <dom> <tag> msi|m365|cu|defender driver|control` (workloads in `driver/scripts/t3/`).
-The debuggees have internet access and about 40 GB free; Defender is disabled by policy in the baseline (the defender workload removes the policy inside the
-checkpoint). Known risk to check first: M365 and installers use by-ID opens and many concurrent writers, which the T2 gate changes address.
-- [x] msi: driver 9.2 s, control 7.0 s, no refusal, Ready, registry high-water 225/4096
-- [x] m365: `t3m365c` PASS on `m1-driver14` (402 s, control 418 s; empty deny ring, Ready, no overflow: the compact tier absorbed the burst after the T3c fix `b995943b`; with `m1-driver13` it installed but overflowed the registry and left coverage Degraded)
-- [x] cu: `t3cuh` PASS on `m1-driver13` (1,135 s, empty deny ring, Ready, high-water 4,015/4,096 - thin margin, see T3c). Before: KB5066791 installs with the driver (19045.2965 -> 19045.6456 in `t3cub`/`t3cuc`/`t3cud`); 0 legacy-gate refusals since `c70a4354`; the nested TiWorker writes (23 install, 8 servicing) are still refused (T3d, `704146b8` names them). T3d cause: their entries are Unscoped but never classified (aux `0xE5000007`); fix `77b76faa` (create-time alias proof -> OUTSIDE, distrusted during a scope transition after Luna's P0), builds `m1-driver10`; CU `t3cuh` pending
-- [x] defender: `t3defenderu` PASS, 170.4 s, no refusal, Ready, high-water 277/4096; control `t3defenderv` 172.3 s
-- [x] control runs: msi 7.0 s, defender 172.3 s, cu 921.3 s (driver 1,135.3 s, +23 %), m365 418.3 s (driver 402.2 s)
-- [x] all four again on the final driver `m1-driver21`: m365 `t3m365j` 453.4 s, msi `t3msi21` 11.1 s, defender `t3def21` 167.9 s, cu `t3cu21b`
-  1,016.9 s and `t3cu21c` 1,043.5 s (+10-13 %); coverage Ready, no Unknown, no overflow; the only refusal is TrkWks's write by object ID, a known
-  refusal by the owner decision of 2026-10-10
-
-## P1: everyday file work (M2)
-
-### T4. Stage-slot reclamation (remove the 128-per-boot ceiling)
-
-**Problem.** Retired versions stay on `StageStreams` until unload and keep their `StageStreamCount` slot (`STAGE_LIMIT` 128,
-`StageStream.c`). After 128 staged versions in one boot, every create in a protected folder fails with `STATUS_INSUFFICIENT_RESOURCES`
-until reboot. One user saving a document with autosave reaches that in a day.
-
-**Approach.** Retired versions are kept today so no view, tombstone, directory overlay or process reference can dangle. Replace "keep
-everything until unload" with references: once a version is retired and disposed of by the service, its stream structure is released on
-the last reference, and only a small tombstone record (name, destination generation) stays in a bounded table. Count only live versions
-against the cap. This is a lifetime change: design note first, Luna review before the first VM boot, special pool on.
-
-**Done when** 10,000 save cycles in one boot (approve and block mixed) run with flat nonpaged pool and no Verifier hit, and C01-C04, B01,
-B02 and X01 pass in all three modes.
-
-**Status 2026-10-10.** Design note `driver/T4-STAGE-LIFETIME.md`. A version is released once nothing can reach it, and approved stage files
-are deleted. Rename records keep a name and a transfer ID in a bounded table. The worker runs on events: last cleanup, last close, the
-service's new DISPOSE message, service connect, process exit, inline settling in create. A retry timer is armed only while a version waits
-on something Windows does not signal (owner decision 2026-10-10). The cycle row is `driver/scripts/Invoke-StageCycles.sh`.
-- [x] design note; owner decision on the timer; Luna design review (0 P0, 2 P1, 7 P2: fixed, or moved to T9)
-- [x] driver and agent implementation; 4 WDK builds 0/0; agent gate PASS (596 tests)
-- [x] Luna implementation review and two re-reviews recorded in `970239a3`; findings fixed or assigned to T9 (no new lifetime change in `4a438b36`)
-- [ ] 10,000 cycles under runtime Verifier (special pool), pool flat, versions/views/tombstones/stage files back to zero, worker idle
-- [ ] C01-C04, B01, B02, X01 in all three modes
-
-**Qualification update 2026-10-10.** Corrected ordinary run `m2t4clean1` passes 256/256 mixed approve/block saves on `m2-driver1` +
-`t4-af1`: all 256 versions/views released, zero tombstones/stage files/cap refusals, 192 approved stage deletions and 64 exact
-blocked hand-backs. Idle worker passes/timer fires stay zero for 60 s; the discarded run disk leaves the base untouched.
-Runtime-Verifier (special pool) run `m2t4long2` failed after 2,713/10,000 outcomes: PowerShell 5.1 `Add-Content` refused
-the concurrent host progress reader of `cycles.jsonl`. All eight outcome buckets had zero failures, but only 2,712 log
-records were appended, final settle/idle evidence was absent, and no Verifier pool sample was parsed. This is a failed run.
-The disposable overlay was deleted and the base verified untouched; the conditional 33-cell queue stopped before any cell.
-Harness-only commit `9472b1cd` uses explicitly shared append/read streams, atomic final-result publication and the actual
-Windows 19045 Verifier `(NonPaged/Paged)` tuple format, retaining each raw query. Its Windows 5.1 gate passes all existing
-controls plus 23 IPC and 11 parser controls. Diagnostics `m2t4stat1` / `m2t4stat2` each finish 256/256 under runtime Verifier:
-every version/view releases, tombstones/stage files/cap refusals return to zero and the stage worker stays idle for 60 s.
-Both fail the unchanged pool-flat gate and restore the untouched base. The isolated second run uses additive attribution
-harness `439f08fb`, also Windows-gated, and no extra guest queries: module pool grows from 389,168 bytes at cycle 64 to
-3,368,496 at 256 (3,284,448 after idle; slope 14,464.9 B/cycle). `SpUs` returns to zero while `SwUr` grows by about 3.2 MiB;
-listed registry entries remain near 242 with over 14,000 prunes and zero Unknown/capacity failures. The code retains a
-reference on retired registry entries in idle stream contexts until replacement/context cleanup. This is the next lifetime
-path to investigate, not a confirmed runtime root cause or a passed long-run gate. No new 10,000-cycle run/regression starts yet.
-Candidate `60fecdbc` releases that exact idle cache only after the existing prune gate succeeds, preserving its H=0 census with
-a context-local witness and leaving sticky Unknown in force. Exact worktree build `m2-driver2` passes all four WDK/PREfast/
-ApiValidator configurations at 0/0; all 28 frozen inputs match the committed and detached source. The user authorized Luna
-reviews; the scoped pre-boot lifetime review passed without P0/P1/P2 findings. Fresh short run `m2t4prune1` completed all 256 cycles on the same tested agent and unchanged Windows-qualified harness
-as `m2t4stat2`, changing only the signed kernel. Versions/views/tombstones/stage files returned to zero and the worker stayed
-idle, but the unchanged pool gate failed at 452.1 B/cycle (limit 4), versus 14,464.9 previously. Restoration deleted the run
-disk and verified the base untouched. The 10,000-cycle and 33-cell follow-up queue stopped before any cell. Luna found no
-concrete source defect explaining residual growth; the harness armed volatile Verifier after the initial driver load, so a
-new Windows-qualified repeat will arm it before first load. That attribution hypothesis does not invalidate the failed gate.
-Build-only receipt: [T4 pruned-cache candidate](evidence/2026-10-10/m2-t4-pruned-cache-qualified-source.json).
-The cycle row samples public names; it does not replace the required raw-observer invariant regression.
-The stopped 33 C01-C04/B01/B02/X01 component queue (`m2t4rv`, `m2t4ro`, `m2t4rb`) and its frozen inputs remain preserved:
-`m2-driver1` kernel + separately tested `m2-t9-fail3` agent. A fresh serial queue may start only after every required
-10,000-cycle assertion and independent disk teardown passes. These component rows are not the final M2 milestone gate.
-Decision-level receipt: [T4 telemetry correction](evidence/2026-10-10/m2-t4-telemetry-status.json).
-
-**Update 2026-10-10 evening (Claude, after the Codex session was paused).** The short 256-cycle runs cannot pass the pool-flat check by
-construction: the harness measures the slope from cycle `min(1000, cycles/4)`, which for 256 cycles is inside warm-up, and `m2t4prune1`'s
-samples (166 k -> 132 k -> 102 k after idle) are a bounded cache, not growth. Decision: go straight to the required 10,000-cycle run. The
-"Verifier before the first load" setup (load with `fltmc` after boot) can never reach Ready: a filter attached after boot cannot prove that
-no writer predates it (`m2t4pre10k1`: READY=False, no cycle ran). `Invoke-StageCycles.sh` gains `verifier-from-boot`: Verifier 0x13B
-configured persistently before the install reboot, so pool tracking covers the driver from DriverEntry and Ready comes through the normal
-boot path (`9c90a835`, `d9d0c5d3`). The 10,000-cycle run is queued on `m2-driver5-t11` (T6 + T10 + T11 on `60fecdbc`).
-
-### T5. Notepad Save As
-
-**Problem.** Save As to `C:\Protected\ok.txt` published a 0-byte, SYSTEM-owned file (journal: State 5, SHA-256 of empty input) and Notepad
-then reported "You don't have permission to modify files in this network location". The individual opens were not traced.
-
-**Work.** Trace the sequence with the T0 ring and Process Monitor on the guest. Two hypotheses to confirm or reject: (a) the dialog's probe
-create (possibly delete-on-close) became a version that was sealed and published; a delete-on-close or deleted version must be discarded,
-never published; (b) Notepad's write-open arrived while the earlier version was `Sealed`/`Inspecting`/`Publishing` and was refused instead
-of starting a new latest version (X01 already proves latest-wins for two live writers). Fix the cause and add a suite row that replays the
-recorded Notepad sequence.
-
-**Done when** Save As of clean content publishes that content, Save As of CPF content hands it back, no empty version is published, and
-the new row passes in all three modes.
-
-**Status 2026-10-10.** Diagnostic row `driver/scripts/Invoke-StageNotepad.sh` (`b7ed2eb5`): a standard user signs in interactively
-(one-boot autologon on the run disk); the common file dialog's test create is replayed natively (CREATE_NEW + close + DeleteFile, and
-FILE_FLAG_DELETE_ON_CLOSE) before the save, then real Notepad Save As is driven with UI Automation, clean and CPF, recording public bytes,
-owner, journal entries and the deny ring. Working hypothesis: unless `OFN_NOTESTFILECREATE` is set the dialog creates the target and
-deletes it; under staging that empty test version is sealed, approved and published (the SYSTEM-owned 0-byte file) and Notepad's save
-then meets that version. First run queued (`m2t5rv2`); the fix follows its trace.
-
-### T6. Moves into a protected folder are inspected like copies
-
-**Owner decision (2026-10-08):** moves must not stay refused; they are analysed exactly like copies.
-
-**Why it is refused today (C05).** On the same volume a move is a rename: NTFS moves the existing file into the folder and no byte is
-written, so the staged write path never sees the content. Letting the rename through as it is would publish uninspected content.
-
-**Approach, cheapest first.**
-1. Answer a rename or hard link from outside into a protected folder with `STATUS_NOT_SAME_DEVICE` instead of `ACCESS_DENIED`. That is the
-   answer Windows gives for a move to another disk, and callers that support cross-disk moves then copy and delete the source: `MoveFileEx`
-   with `MOVEFILE_COPY_ALLOWED` (used by .NET `File.Move` and `cmd move`) and, expected but to verify first, the Explorer copy engine. The
-   copy goes through the normal staged path, so it is inspected, published or handed back like any copy. If the copy is blocked the source
-   is already gone, but the user's bytes are in the hand-back folder, so nothing is lost. Renames inside the folder (Office's temporary
-   file to final name) are unchanged.
-2. Only if Explorer does not fall back: do the conversion in the kernel (stage the moved file's content as a new version and remove the
-   source after the copy). That is a much larger change with its own design review.
-
-Callers that do not allow a cross-disk copy get the same error as a move to another drive. Directory moves into the folder take the same
-path (Explorer then copies the tree).
-
-**Done when** Explorer drag, `Move-Item`, `cmd move` and `MoveFileEx` of a clean file end with it published and the source removed; the same
-with a CPF file ends with it handed back; C05 is rewritten from "refused" to "inspected", and no move publishes uninspected bytes (observer).
-
-**Status 2026-10-10.** Approach 1 implemented: `baec933f` answers a rename or hard link from outside every protected scope into one with
-STATUS_NOT_SAME_DEVICE (renames by the service and renames whose source is inside or above a scope keep ACCESS_DENIED). C05 revision 6
-expects Win32 17. Row `driver/scripts/Invoke-StageMoves.sh` (`9c90a835`, `d54aadae`): `m2t6rv4` (runtime Verifier, `m2-driver4-t10`)
-passes 28/28: `MoveFileEx(COPY_ALLOWED)`, `Move-Item`, `cmd move` and the Explorer copy engine (Shell.Application `MoveHere`), clean
-and CPF, three rounds each: clean bytes published exactly, CPF handed back and never public, source removed; raw rename and hard link
-fail with Win32 17 and change nothing. The fallback copy is an ordinary staged create and write, whose raw-volume no-leak proof is the
-C01 rows'. Known limit: a whole folder moved by Explorer is not created inside the protected folder (staging does not create
-directories there); the source folder stays intact. Remaining: ordinary and boot-Verifier modes; Explorer drag by hand (the copy engine
-is the same one `MoveHere` uses).
-
-### T7. Reads are never refused
-
-**Owner decision (2026-10-08):** the driver does not refuse reads; who may read a file is decided by its permissions and the
-administrators.
-
-**Work.** Remove the read refusal in the legacy post-create path (`Filter.c` `SafeUploadPostCreate`: `FltCancelFileOpen` of a file classified
-sensitive in a destination scope unless an override covers it), and check no other path refuses an open that has no write, delete or
-metadata-change access. Writes are unaffected: they still go through staging.
-
-**Done when** a justified sensitive file can be opened and read by a standard user with read permission, a user without read permission
-still gets the normal Windows denial, and a suite row covers both.
-
-**Complete 2026-10-10:** `4a438b36`, exact build `m2-driver1` plus unchanged agent `t4-af1`. B02 revision 5 passes its selected MVP
-gate in ordinary (`m2t7o1`), runtime-Verifier (`m2t7v1`) and boot-Verifier (`m2t7b1`), with `ForbiddenByteCount=0` and clean independent
-restoration/base checks in every mode. All raw/fresh/uncached readers reach the complete justified sensitive v2; the standard interactive
-actor independently reads its exact length/digest and gets Win32 5 with no bytes from the unchanged explicit Windows READ_DATA-denied
-sibling. Four WDK/PREfast/ApiValidator configurations pass at 0/0. This component gate retains the M1 core's deferred continuous
-mutation-ledger coverage; the full M2 freeze/review/gate is still pending.
-
-### T8. Office and common applications
-
-**Work.** Record the real save sequences of Word, Excel and PowerPoint (temporary file in the same folder, rename original to backup,
-rename temporary to the final name, delete backup), plus Paint, WordPad, Explorer copy with replace, a browser download into the folder,
-`robocopy` and a 7-Zip extraction. For each, decide the expected outcome and add a suite row that replays the sequence. The rename support
-is a two-slot transaction with at most 16 moves per version; check the Office pattern stays inside that.
-
-Also check what the published file keeps from the user's version: owner (it is SYSTEM today), DACL inheritance, timestamps, attributes,
-alternate data streams (for example `Zone.Identifier` on downloaded files) and EAs. Decide per item whether the service copies it or the
-destination keeps the old one, and test it.
-
-Install the applications before installing the driver (owner note) until T3 is done.
-
-**Done when** each application row passes in all three modes and a user can open the published file with the same application afterwards.
-
-### T9. Large files
-
-**Today.** The driver caps a staged version at 16 MiB (`STAGE_MAX_BYTES`, `STATUS_FILE_TOO_LARGE`), the agent seeds at most 16 MiB of an
-existing file into a stage (`StagedTransferAllocator.MaximumSeedBytes`), and the legacy policy value `MaxFileSizeMb` (20) returns
-`AllowedWithoutInspection` above it, which in staged mode never publishes. Office files, PDFs and images often exceed 16 MiB.
-
-**How commercial DLP products handle it.** They cap *inspection*, not the file: Symantec's endpoint agent inspects 30 MB by default
-(150 MB tested maximum) and ignores larger files; Microsoft Purview scans the first 2 million characters of extracted text and lets a rule
-match "content not scanned"; Forcepoint checks only name, size and a fingerprint above 100 MB. Skipping or truncating is a bypass in our
-threat model: a standard user pads a file past the limit, or puts the CPF after the scanned part.
-
-**Approach (owner agreed on 2026-10-08).**
-- No fixed size cap in the driver. A staged version is an ordinary NTFS file, so its size is bounded by a **stage-space budget** (per user
-  and in total, as a policy value) rather than by 16 MiB; exhaustion fails closed with a disk-full status and does not affect other users.
-- The agent inspects the **whole** file, streaming with bounded memory; no truncation.
-- One verdict for every case where the content cannot be fully inspected: larger than the inspection limit (policy value; default chosen
-  after measuring scan throughput on the VM, starting the measurement at 256 MiB), encrypted or password-protected, corrupt, an archive past
-  its extraction limits, inspection timeout. That verdict is **Blocked**, with hand-back, and justifiable when the policy allows overrides,
-  so the product stays fail closed.
-- Measure the cost of seeding: opening an existing large file for write copies it into the stage before the open returns.
-
-- Stage-space accounting must also cover orphaned allocations. A staged create that fails after the service allocated its stage (for
-  example a cancelled open) leaves that stage file and its journal entry. That is today's behaviour, found in the T4 review (Luna P1).
-  They use disk, not driver memory or the version cap, and the budget must count them and clean them up.
-
-**Done when** a file at the inspection limit is approved and published byte-exact, one over it is blocked and handed back, a CPF placed at
-the end of a large file is found, and a stage-space exhaustion attempt by a standard user fails closed without affecting other users.
-
-**Partial implementation 2026-10-10:** `7c8e1ab3` makes the in-scope staged size-limit, unsupported-format, timeout and parser/read
-failure results `Blocked`, using the existing digest/policy-bound hand-back and justification path. The normal and admission-evidence
-agent gates pass 551/551 and 615/615 tests, respectively, with build/publish at 0 warnings. Twenty-two controls cover both inspection
-modes, cancellation, the exact limit/CPF at EOF, complete hand-back bytes, unchanged public content and policy/session/SID-bound
-justification. This is build/test qualification; the failure cases still need their raw-observer runtime rows.
-
-`eb35c6f0` additionally rejects malformed plain-text Unicode instead of silently replacing undecodable bytes. Strict UTF-8
-(with/without BOM), UTF-16 LE/BE and UTF-32 LE/BE preserve complete valid text; malformed encodings reach the staged Blocked
-parse-error path. Thirty-six new controls cover fragmented/nonseekable reads, CPF at EOF, short inputs, all BOMs, malformed
-code units, cancellation and no cached approval. Exact agent gates `m2-t9-decode2` / `m2-t9-decode3` pass 655/655 feature and
-591/591 normal tests with 0 build/publish warnings. Whole-file extraction still uses memory and needs streaming.
-
-`bb035f06` bounds file-inspection workers at two per engine instance (the service registers one singleton), including parsers
-that ignore cancellation after a timeout. Queueing and parsing share one policy deadline; a linked token cancels cooperative
-work, and a post-result Stopwatch check rejects delayed results even if timer scheduling was late. The worker retains its
-slot until it actually ends; late results cannot enter approval cache/audit. Eight controls cover noncooperative late success
-and failure, six concurrent queued calls, caller cancellation while queued, cooperative cancellation/recovery, complete CPF
-inspection after recovery and a four-second queue wait inside a six-second total budget in both modes. Exact gates
-`m2-t9-budget3` / `m2-t9-budget4` pass 663/663 feature and 599/599 normal tests, 0 build/publish warnings. This bounds concurrency;
-it does not yet make each extraction use bounded memory or qualify publication under load.
-
-`ed5a2c6d` adds a safe classification to staged failure notifications and persists it in the journal for recovery. The WPF
-view explains size, format, timeout and read/parse failures without parser diagnostics, identifies the latest file in an
-aggregate, and explains the policy-authorized exception for incomplete inspection. Exact gates `m2-t9-ui1` / `m2-t9-ui2`
-pass 673/673 feature and 609/609 normal tests at 0 warnings. Metadata tampering/invalid phases are refused; publisher,
-hand-back, digest and policy-bound justification assertions remain required. An exact-source WPF build and 36 offscreen
-controls (seven images) pass; these do not qualify interactive app behavior or raw publication.
-
-The requested initial 256 MiB measurement uses the tested core on the builder with no SafeUpload filter loaded: clean text Approved
-in 1.56 s (164 MiB/s), CPF at EOF Blocked in 1.01 s (254 MiB/s). Inputs were just generated and the file cache was not evicted;
-these are separate single-process baseline measurements, not cold-disk or staged-publication results. Peak working sets are
-1.28-1.29 GiB, confirming that the current whole-memory extraction must be replaced before choosing a large-file default.
-Whole-file streaming, remaining format/encoding/extraction limits, stage-space accounting and orphan
-cleanup, seeding cost and runtime qualification remain open. The failure UI is implemented for the covered result codes;
-interactive app checks remain open. Policy-load/snapshot failures still retain
-locally and need their own safe Blocked/hand-back treatment; the agent does not claim a complete T9 implementation.
-
-**Input-copy update 2026-10-10:** `dbbd6bc1` reads the publisher's existing service-only snapshot through one exact read handle,
-without a second whole-file byte array. Legacy hash/cache/scan still use one captured image. Gates `m2-t9-stream3` / `stream4`
-pass 679/679 feature and 615/615 normal tests, with six real-format/replacement/mapping controls and zero warnings. A matched
-256 MiB warm-input comparison against `ed5a2c6d` saves 257.3-257.7 MiB of peak working set and about 255.4 MiB allocated, with
-both expected verdicts and all generated inputs deleted. Peak memory is still about 1.04 GiB: extraction/scanning remains
-whole-text memory, so this does not qualify bounded memory, throughput, runtime publication or a production default.
-Receipts: [input-copy component](evidence/2026-10-10/m2-t9-snapshot-stream-qualified-source.json),
-[matched memory measurement](evidence/2026-10-10/m2-t9-copy-throughput-readout.json).
-
-**Office parser-integrity update 2026-10-10:** an actual baseline probe confirmed silent approvals for a Word document with
-no body, an invalid spreadsheet shared-string index and an inline-string cell with no value. `d559e812` requires the main
-Word body and workbook part and rejects missing/invalid cell string data. Four damaged-document cases in both modes now
-reach staged Blocked / legacy AllowedWithoutInspection without cache reuse; three valid empty formats remain Approved in
-both modes. Gates `m2-t9-office1` / `office2` pass 693/693 feature and 629/629 normal tests at zero warnings, with all 197
-source inputs independently matched. Luna's scoped parser review passes without findings. This closes the measured parser
-integrity cases; whole-format coverage, bounded memory and runtime publication qualification remain open.
-Receipts: [Office parser component](evidence/2026-10-10/m2-t9-office-integrity-qualified-source.json),
-[component reviews](evidence/2026-10-10/m2-agent-component-luna-review.json).
-
-
-T9 PDF coverage component `8619b690` refuses any raster image detected by PdfPig before accumulated text can yield an
-approval. A pinned baseline on qualified `d559e812` reproduced Approved image-only and clean-text-then-image PDFs. Four
-image layouts in both inspection modes now take the typed unsupported-format failure path without cache reuse; blank/clean
-text remains Approved and CPF text remains Blocked. Two publisher image controls prove exact hand-back and policy-bound
-justification with unchanged digest/SID/session requirements. Feature `m2-t9-pdf1` passes 709/709 and normal `m2-t9-pdf2`
-645/645, both zero build/publish warnings; all 197 archive/manifest/committed/frozen inputs and artifact hashes were checked.
-Luna's scoped review passes without findings. This qualifies the detected raster cases, not every inline image/Form XObject
-encoding, OCR, full-format coverage or raw-volume publication. Receipt: `m2-t9-pdf-coverage-qualified-source.json`.
-
-Numeric scanner scratch space `77f9a4d3` (Codex, Luna-reviewed) keeps a small window instead of every digit position, with rule
-precedence unchanged against a reference copy of the old scanner. Its allocation test used a run of zeros, which is a correct payment-card
-match (every 13-19 digit window of zeros passes Luhn); `0ea835ae` uses ones. Gates `m2-t9-numwin3` / `numwin4` pass 729/729 feature and
-665/665 normal tests at zero warnings. Open product question for the owner: whether an all-zero number should count as a card.
-
-### T10. Permission and owner changes reach the real file or folder
-
-**Problem.** With the driver loaded nobody, administrators included, can change the permissions of the protected folder or its files
-(`icacls` was refused in the manual test). A handle to a protected file points at the private staged version, and `StageSecurity.c`
-refuses `WRITE_DAC`/`WRITE_OWNER` on it ("never give a staged handle authority to weaken the backing file's private ACL"); directory
-opens with those rights go through the directory-mutation admission and are refused too.
-
-**Approach.** A permission or owner change adds no content, so it does not need inspection. Apply it to the destination file or folder (the
-real one), never to the private backing, and let Windows' own access check decide who may do it. Keep auditing changes (`ACCESS_SYSTEM_SECURITY`)
-for administrators only, as Windows does.
-
-**Done when** an administrator can change the folder's and a file's permissions with `icacls` and Explorer while the driver is loaded, the
-private backing's ACL never changes, and a standard user still cannot get unapproved bytes into the folder through a permission change
-(suite row with the observer).
-
-**Status 2026-10-10.** `771a551b`: WRITE_DAC and WRITE_OWNER are no longer writer access (staged-create and directory admission, the
-writer registry, the legacy create gate), so a security-only open reaches the real file or folder, and IRP_MJ_SET_SECURITY on such a
-handle passes; the I/O manager's check of the handle's rights decides. Staged handles still never get those rights, and non-service opens
-inside the private staging folder stay refused, so the private backing cannot change. Row `driver/scripts/Invoke-StagePermissions.sh`
-(`b1ee2037`, `c71215a1`). `m2t10rv2` phase A passed every administrator change on the protected file and folder (icacls grant,
-/setowner, takeown, Set-Acl, folder grant and /reset with /T); phase B (standard user cannot publish CPF through a permission change,
-Windows refuses the user's folder ACL change, private stage closed to security changes) reruns as `m2t10rv5`. Recorded for T8: a
-publication replaces the destination with the stage file, so ACL changes made on the old destination do not carry over yet.
-
-### T11. Review conditions
-
-Small, independent fixes from the Phase 5 and gen4b reviews:
-- `StageCreate` sealed-stage reopen calls `FltQueryInformationFile` under the namespace lock with no `IoGetTopLevelIrp()` guard
-  (`StageStream.c` around line 1391): restrict that branch to a NULL top-level IRP context or route it safely.
-- Policy generation is a signed `LONG` (`StageWriters.c` around line 5295): use an unsigned 64-bit generation, compare with wraparound-safe
-  arithmetic, and add a test that starts near the old limit.
-- Retire changed-SOP entries from the bounded registry.
-- Turn the SOP-lifetime premise of `StageRegistryAssociateSectionPointer` into a start-up check that marks the volume Untrusted if it does
-  not hold, alongside the existing canary.
-- Agent: the journal scan cache clears at 50,000 entries and can then reread the whole history on every scan; replace the clear with
-  eviction, and add journal compaction so it stops growing.
-
-**Done when** each item has its own commit with a test or a suite row, and the M2 review closes them.
-
-**Kernel items 2026-10-10.** `203d31e9`: the sealed-stage delete-pending query no longer runs from a create nested inside another
-file-system call (retryable sharing violation instead). `b8394357`: the policy generation stays a 32-bit serial number (protocol and agent
-are 32-bit and compare for equality); the activation stamp's ordered comparison uses serial-number arithmetic, one function defines the
-next commit's value for commit and apply, 0 still means "no policy", and the first commit starts at 0x7FFFFFFF so every VM row crosses
-the old signed limit (the "test near the old limit"). Build `m2-driver5-t11`: four configurations 0/0. Open: SOP-lifetime start-up probe,
-retiring changed-SOP entries (a registry lifetime change: Luna review before its first boot), journal compaction.
-
-**Partial implementation 2026-10-10:** journal cache eviction is implemented in its own commit `cb1d0930`. At capacity it
-evicts one most-recently-used scan entry, preserving the rest across full sequential scans. Production capacity remains
-50,000; authoritative state-changing reads still open and ACL-check the disk. Four controls use the actual journal scan
-path at small capacities to prove reduced rereads, unchanged manifest bytes, exact generations/state invalidation and
-unsafe-ACL refusal through authoritative reads. Exact Windows gates `m2-t11-cache1` / `m2-t11-cache2` pass 619/619 feature
-and 555/555 normal tests, 0 build/publish warnings. Journal compaction and all kernel conditions remain open; the M2 Luna
-review has not occurred.
-
-Curated build receipts for these agent components: [M2 agent component gates](evidence/2026-10-10/m2-agent-component-gates.json).
-They qualify exact source and Windows build/tests; they do not claim runtime qualification or completion of M2.
-
-## P1: release candidate (M3)
-
-### T12. Release build configuration
-
-**Problem.** Staged writes compile only with `SafeUploadStagingPrototype=true` (`SafeUpload.Minifilter.vcxproj`); the release
-configuration has none of `Stage*.c`. The staging build also carries diagnostics that must not ship: Inspector-only protocol extensions,
-the admission trace, the canary hold, the volume-callback probe.
-
-**Work.** Make staging the product configuration and move every test-only hook behind a separate test configuration (owner rule: test-only
-hooks only in the test build). Review the communication port surface of the release build: which messages exist, who may connect (service
-SID only), input validation. Keep `Test-NormalBuildIdentity.ps1` (or its successor) proving that the release binary contains none of the
-test-only code. CodeQL, PREfast and ApiValidator at 0/0 on the release configuration.
-
-**Done when** the release configuration passes the full gate and the identity test shows no test-only message or hook.
-
-### T14. Install, upgrade, uninstall
-
-**Work.**
-- Driver install as part of the product installer: INF install, BootPolicy seeding, reboot (installation needs one reboot by design).
-- Upgrade: driver and agent versions in the field differ for a reboot; define protocol version negotiation and test old-driver/new-agent
-  and the reverse.
-- Uninstall: back to a clean machine after reboot, no residue (`Reset-StagedProductResidue.ps1` is the starting point).
-
-**Done when** install, upgrade and uninstall pass on a clean VM.
-
-## P2: qualified (M4)
-
-- **T15. Full suite.** The other section-4.1 variants of each row, P01-P06 and RV4 (deferred on 2026-10-06), dedicated latency runs, and
-  the new rows from T2, T3 and T5-T10, all in three modes. Fix the parallel-pool flake in BLOCK cells (the agent's flush stalls under disk
-  pressure when three guests run) or keep them serial.
-- **T16. Soak, stress and fault injection.** Several days of scripted use with many saves; Driver Verifier with low-resources simulation;
-  power loss during seal and publication (extends R01-R03); service crash loops; full disk; many concurrent writers.
-- **T17. Coexistence.** Microsoft Defender and at least one third-party antivirus/EDR filter, BitLocker, VSS and System Restore, the search
-  indexer, a backup agent, OneDrive in the user profile, `chkdsk` and defrag on the protected volume.
-- **T18. Degraded and Unknown in the field.** Sticky Unknown stays until reboot (owner decision). Make it actionable: the reason (from T0)
-  in the agent status and a durable notification an administrator can see, with the documented remedy.
-- **T19. Continuous evidence.** If customers or audits need it: a driver-side mutation ledger proving no unapproved byte reached a
-  destination continuously (the MVP proves it with sampled raw reads and the final image), and the deferred C05 denial ledger.
-
-## Lessons from the minifilter study (2026-10-10)
-
-Source: a static reverse-engineering study of Microsoft's MsSecFlt, WdFilter, FileInfo and Filter Manager and of Purview's endpoint DLP
-user-mode components (`~/Projects/Study-MsSecFlt.sys`, `analysis/comparison.md` and `analysis/Purview/study.md`), compared with this
-staging design at `4f30a36d`. It is evidence for design and qualification, not runtime proof: none of its experiments has run, and its
-decompiled pseudocode is not used here. Each lesson lands in an existing task:
-
-- **T4 (stage slots).** The stage worker polls every 250 ms (`StageWorker`, `StageStream.c`, a `KeWaitForSingleObject` timeout loop over
-  every staged stream): the same kind of timer the owner ruled out for T1. Make it event-driven with T4's reclamation (seal, rename finish
-  and retire are each caused by an event).
-- **T1 follow-up (diagnostics).** Count reclaim wake-ups by source, so a spike names its cause (the C03 churn took a hunt to find).
-- **T6, T8, T9 (moves, applications, large files).** Every unusual route gets an explicit, documented coverage state (supported, or a
-  conservative refusal with its deny-ring reason): rename/replace/link, relative-to-directory opens, by-ID and object-ID opens (object IDs
-  are refused for now, owner decision 2026-10-10), mixed-case ADS, delete-on-close, clone/offload FSCTLs, MDL paths (study E4). Record
-  Notepad and Office save sequences and check that the published file keeps the decided ACL, owner, ADS and timestamps (E8).
-- **T16 (soak and fault injection).** Add the study's uncovered experiments:
-  - mapped dirty writes racing retirement, observed on the raw destination (E1);
-  - service death and dropped, duplicate, short or stale replies at each protocol step: an unanswered or stale reply never becomes an
-    approval or a permit, and readiness, "empty policy" and an explicit allow stay distinct states (E3, Purview lesson);
-  - voluntary and mandatory unload and every allocation failure during active I/O, under Verifier (E5);
-  - a bounded fuzz of our own service-protocol parser with truncated, cyclic and extreme nested lengths (E6).
-- **T17 (coexistence).** Defender (WdFilter 4.18.1909.6 matches the test guest's platform), VSS, backup and indexing (E9). Check whether a
-  protected save keeps kernel extended-attribute labels such as `$Kernel.SEC.EndpointDlp`, which Purview and MsSecFlt use for
-  classification; SafeUpload has no extended-attribute handling today, so a staged publication may drop them.
-- **Agent (outside the driver).** Check the caller on every privileged operation of the agent's pipe and the driver port, not once per
-  connection; classification metadata (EA labels, timestamps, window titles) is evidence, never approval for specific bytes (Purview
-  lessons).
-- **Harness.** Flush the volume before the observer's raw read of a private snapshot (C01-block-absent `m1w2` and `m21y2` saw the stage
-  file's creation-time MFT record); make the process inventory tolerate a process that exits while it is listed, without weakening what it
-  proves (it cost a rerun in 3 of about 30 cells). Asking the owner first: the study suggests reporting a last-access mismatch after a
-  wall-clock step as INCONCLUSIVE instead of FAIL (the clock sync now removes the cause).
-
-## Later
-
-- **Network scopes (from the M1 review, F1).** A destination written as a UNC path is stored as given; the driver compares it with the
-  provider-normalized names (`\Device\Mup\...`, `\Device\LanmanRedirector\...`). Canonicalize both sides to one form for exact
-  matching, the resident volume cache and boot scopes before `networkPaths` or a UNC destination is offered. Until then the volume
-  rules only err on the conservative side (a network volume may match when any prefix is a network path).
-
-### T13. Altitude, INF and signing (deferred)
-
-Deferred by the owner on 2026-10-08: the project runs only in test mode (test signing on, Secure Boot off) until told otherwise. The
-provisional altitude is fine there as long as no other filter on the test VMs uses `321410`. Kept here for when it is picked up.
-
-Today the driver is test-signed, which only loads on machines with test signing on and Secure Boot off. Since Windows 10 1607, a kernel
-driver on a normal Windows 10/11 machine must carry Microsoft's signature, obtained through the Partner Center (Hardware Dev Center), which
-requires an EV code-signing certificate. Two ways to get it:
-- **Attestation signing**: submit the EV-signed driver package; Microsoft signs it without running tests, usually within hours. Valid on
-  Windows 10/11 client editions, not on Windows Server. Enough for this product on Windows 10/11 PCs.
-- **WHQL certification**: run Microsoft's Hardware Lab Kit tests for file-system filters on our own test machines and submit the results.
-  Needed for Windows Server, Windows Update distribution, or customers who require certified drivers. Weeks of work.
-
-**Work.**
-- Request a minifilter altitude from Microsoft; `SafeUpload.inf` carries a provisional `321410` with a "must not ship" note. Confirm the
-  class and load order group for the request (the INF says `ActivityMonitor` class with `FSFilter Anti-Virus` load order; a filter that
-  blocks writes may belong in a different group).
-- Finalize the INF (`DriverVer`, version resource, catalog).
-- EV certificate, Partner Center registration, attestation signing (recommended for the first release; WHQL only if a customer needs it).
-- Qualify with test signing off and Secure Boot on.
-
-**Done when** the attestation-signed driver loads with Secure Boot on and passes the gate.
-
-### T20 and new destinations
-
-- **T20. Other Windows builds.** Deferred by the owner on 2026-10-08: the platform stays Windows 10 22H2 build 19045.2965 for now. When it
-  is picked up: Windows 11 24H2/25H2 and current Windows 10 22H2 (Windows 10 support ended on 2025-10-14), rerunning the section-behavior
-  experiments (`MmDoesFileHaveUserWritableReferences` is observed, not documented, behavior), the start-up canary and the full gate on each,
-  and a clear "not qualified" coverage state on any other build.
-- **T21-T24. New destinations**, each with its own design, owner decisions and qualification; none may be enabled by removing today's guards:
-  USB and removable media (surprise removal; FAT/exFAT have no stable file IDs), SMB/UNC (redirector-level filtering), cloud-sync folders
-  (the Cloud Files API and sync clients' own writers), ReFS.
-
-## Outside the driver, needed for a complete product
-
-- Notification app packaged and qualified (a blocked save is silent today), and hand-back copies named after the original file.
-- Central policy distribution: the kernel policy message holds at most 16 destination prefixes of 260 characters and 32 extensions of 16
-  characters, and the boot policy 32 prefixes (`Protocol.h`, `SAFEUPLOAD_MAX_*`); the server's policy format has to fit those bounds or
-  the protocol has to change.
-- The agent's TLS-inspection tests that fail without rights to create machine CNG keys (from `main`).
+# SafeUpload MVP status plan
+
+Updated 2026-10-11. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
+destination, keeping unapproved bytes private throughout. M2 is the current milestone, not the completion boundary.
+Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](POST-MVP-LOG.md), and the local WIP branch noted below.
+
+## Milestone order
+
+| Order | Scope | Status |
+|---|---|---|
+| M1 | T0–T3: safe to leave loaded | Complete on the recorded M1 pair |
+| **M2** | **T4–T11: everyday file work** | **Active: T4 10,000 cycles first, then T5 deletes** |
+| M3 | T12, T14: release configuration and lifecycle | After M2 |
+| New destinations | **T21 USB/removable → T22 SMB/UNC → T23 cloud-sync folders** | After M3; separate design, owner decisions and Luna design review for each |
+| M4 | T15–T19: combined qualification | Qualify local NTFS and T21–T23 together |
+| Later | T20 other Windows builds; T24 ReFS | Outside the current milestone sequence |
+| Owner-deferred | T13 production signing/Secure Boot | Test mode remains in force |
+
+USB, SMB/UNC and cloud-sync are required MVP work; they are no longer deferred until after M4. They remain disabled until their
+respective support and qualification gates are met and the owner approves cutover.
 
 ## Owner decisions
 
-Decided on 2026-10-08:
-- The platform stays Windows 10 22H2 build 19045.2965 for now (other builds moved to T20).
-- The project runs only in test mode (test signing on, Secure Boot off) until the owner says otherwise (T13 deferred).
-- The reclaim worker is event-driven, with no backoff timer (T1).
-- Moves into a protected folder are inspected like copies, not refused (T6).
-- Reads are never refused by the driver; permissions and administrators decide who reads (T7).
-- File size: no driver cap, a stage-space budget, whole-file inspection, and anything that cannot be fully inspected is Blocked and
-  justifiable (T9).
-- Permission and owner changes go to the real file or folder, and Windows' own access check decides who may make them (T10).
+**2026-10-11 — destinations and completion.** Follow the order above. M4 covers local NTFS, USB including surprise removal,
+UNC/SMB, and a real sync client with independent destination-byte observers. Both mapping leaks need their repros rerun and closed.
+After all required tracker items have run evidence, write a taint-removal plan and wait for owner sign-off. Taint stays, normal builds
+compile staging out, and unsupported capabilities stay disabled until the owner approves cutover.
 
-Decided on 2026-10-10:
-- For M1, a write by NTFS object ID (a 16-byte by-ID open) on a volume that may hold a scope stays refused: the object ID can move to a
-  protected file between a pre-open check and the open, so it cannot be admitted safely yet (Luna P0 on `f848bda0`, kept off the branch as
-  `wip/objid-gate`). The link-tracking service (TrkWks) makes one such write during a cumulative update; T3 counts it as a known refusal,
-  exempted only when the refused process is identified as the svchost hosting TrkWks. Admitting object-ID writes safely (classify the file
-  NTFS actually opened, after the create) is post-M1 work.
+**2026-10-11 — empty files and deletes.** Empty files are ordinary content: seal, verify stable length, inspect trivially clean,
+and publish normally. This reverses the 2026-10-10 EmptyHeld decision. Public deletes are in M2 and Windows decides the caller's
+delete authority on the real public file. A newer save cancels a delete only if that save has already published. Allocated, unsealed,
+sealed, inspecting or blocked successors do not cancel it; older versions cannot publish after deletion. See [T5-DELETES.md](T5-DELETES.md).
+Only the old no-empty-publication assertion changes; every other product assertion remains required.
 
-No decision is open.
+**2026-10-11 — VM restoration.** Independently verified restoration means all of:
+
+- A throwaway qcow2 run disk is deleted afterwards.
+- The base disk is verified untouched (`RunDiskBaseUntouched=True` and `Get-StagedBaseline.ps1`).
+- Domain XML is unchanged by the run.
+- EFI variables are reset at every start; if reset boot is unreliable, restore a saved known-good VARS copy before each run.
+- Test VMs have no TPM; Windows 10 runs test-signed with Secure Boot off.
+
+Use **win10-debug3 only**; win10-debug2 must remain off because the clones share a guest IP. Its TPM was removed with the original
+XML backed up and the exact [XML diff](evidence/2026-10-11/t4-vm-setup-1011-xml.diff) retained. Libvirt supports `start --reset-nvram`.
+The [setup boot](evidence/2026-10-11/t4setup1011a1-host.txt) passed the original baseline, disk deletion, untouched-base and unchanged-XML checks.
+Run restoration separately from the product test. Writable-state proofs, file leases and libvirt request-drain work are not prerequisites.
+
+The unfinished writable-state/recovery transaction, polkit/QEMU-hook tooling and remote-execution harness rework are preserved locally
+on **`wip/t5-writable-state-20261011` (`61dedee1`)**, removed from the active M2 tooling. No polkit, QEMU hooks, sudoers, libvirt daemon,
+systemd or other host-wide configuration may be changed without asking the owner.
+
+**2026-10-11 — workflow.** Codex orchestrates and does ordinary work. Luna 6 at max effort reviews only product-security designs,
+kernel lifetime/lock-order/retirement changes once before their first VM boot, and one adversarial review per milestone against the
+working system. Harness/test scripts need Windows PowerShell 5.1 parsing, their self-checks and a real run; no per-revision Luna
+review, freeze/pin manifests or disposition JSON. The Git commit hash identifies source. Keep raw evidence local under
+[evidence/README.md](evidence/README.md); track only cited files. Commit and push coherent changes. Progress checklists start with their
+T item and have at most two levels. Stop and ask on repeated identical failures, changed VM baselines, or product/taint/cutover/failure-policy
+choices. Every option must explain what users will notice.
+
+**Earlier decisions still in force:**
+
+- Protection starts before applications open protected files for editing; installation may need an initial restart (reconfirmed 2026-10-10).
+- Sticky Unknown lasts until reboot; no scan/timer workaround for unresolved writer state. T1 is event-driven. T4's previously approved
+  bounded retry applies only where Windows supplies no resolving event; it is not authority to clear Unknown.
+- Windows 10 22H2 build 19045.2965 remains the qualification platform; production signing and other Windows builds remain deferred.
+- Moves into protection are inspected like copies (T6); reads follow Windows permissions (T7).
+- Permission/owner changes reach the real file or directory and use Windows access checks (T10).
+- No fixed driver file-size cap: stage-space budgets, whole-file inspection, and Blocked/hand-back/allowed justification when inspection
+  cannot complete (T9). Do not truncate inspection or infer approval from a failure.
+- NTFS object-ID writes on potentially protected volumes remain refused until safely classified after open. The M1 TrkWks workload
+  exception requires identifying that exact service; it is not a general bypass.
+
+## Gates that stay required
+
+Four WDK builds (normal/feature × Debug/Release), PREfast and ApiValidator at **0 warnings / 0 errors**, and passing agent tests.
+Kernel runtime changes run under Verifier. Keep every product assertion, independent raw-volume observation and **ForbiddenByteCount=0**.
+Any removed refusal needs a row proving unapproved bytes remain private. BLOCK-window tests run serially on the selected VM.
+A milestone ends with its matched pair, three-mode gate, adversarial review and separate restoration checks.
+
+## M1 — completed component baseline
+
+M1 passed 69/69 cells on `m1-driver21` (`498f4ed7`) plus agent `4d02039a`, with U01 and installer workloads recorded in
+[POST-MVP-LOG.md](POST-MVP-LOG.md). These results do not qualify later changed pairs.
+
+### T0. Field diagnostics and installer fixes
+
+**Problem:** refusals could not be diagnosed while the agent owned the filter port.
+**Done when:** the bounded deny ring/counters are readable through the agent and installation reaches Ready without hand edits.
+
+- [x] Deny ring, counters, agent pipe and installer fixes; real C05 refusal observed (M1 log above).
+
+### T1. Event-driven reclaim
+
+**Problem:** unresolved work repeatedly requeued the worker and consumed CPU.
+**Done when:** idle passes approach zero, required activation/recovery rows pass, and all boot-Verifier cells finish.
+
+- [x] Event-driven worker and identity anchor; final M1 69/69 and idle cell `m21c1` (M1 log).
+- [ ] Keep wake-up attribution and unchanged idle assertions in the final combined gate.
+
+### T2. New user profiles
+
+**Problem:** protection refused unrelated profile/registry operations during first sign-in.
+**Done when:** real first sign-in succeeds with no out-of-scope refusal and no weakened protected-file check.
+
+- [x] U01 normal/boot-Verifier and registry/section fixes on the M1 pair (`u0121a`, `u0121b`; M1 log).
+
+### T3. Installers and Windows Update
+
+**Problem:** heavy installer workloads caused refusals or exhausted writer tracking.
+**Done when:** MSI, Microsoft 365, cumulative update and Defender update finish, coverage stays Ready and overhead is measured.
+
+- [x] All four workloads and controls on final M1; no Unknown/overflow, scoped TrkWks exception only (M1 log).
+- [ ] Recheck coexistence and workload impact on the final combined product (T17).
+
+## M2 — active
+
+### T4. Remove the 128-saves-per-boot ceiling
+
+**Problem:** retired versions retained slots; later saves failed until reboot. Idle writer-context retention also affected pool accounting.
+**Done when:** 10,000 mixed approve/block saves in one boot pass with flat nonpaged pool, no Verifier hit, no cap refusal, zero residual
+versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01 pass in all three modes.
+
+- [x] Lifetime fix and pre-boot review, including `60fecdbc`; `m2-driver5-t11` has all four WDK/PREfast/ApiValidator builds at 0/0.
+- [x] Simplified VM setup and harness gates (`04fc6bbb`); [PowerShell 5.1 gate](evidence/2026-10-11/harness-windows-gate-t4-resume-1011-a1.txt).
+- [ ] **Running:** `m2t4boot10k1011a1`, win10-debug3, `m2-driver5-t11` + agent `m2-t11-cache2`, Verifier from boot, eight-hour test deadline.
+  - [ ] Final result, raw Verifier/pool samples, stop reason and separate fresh-disk restoration baseline.
+- [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
+
+The preceding `m2t4boot10k9` stopped after 4,714/10,000 without a final result; it is not a pass. Its run disk was deleted and base
+verified untouched. The cycle row's sampled public checks do not replace the raw-volume invariant regressions.
+
+### T5. Empty saves, Notepad Save As and deletes
+
+**Problem:** public probe deletion was refused and private-delete names stayed occupied until physical cleanup. EmptyHeld broke normal
+zero-byte file operations and added a successor protocol. Empty is now ordinary content; public deletes are M2.
+**Done when:** clean saves publish exactly their bytes; CPF saves hand back and leave new names absent or existing prior bytes intact;
+no empty probe is left behind; no uninspected nonempty byte reaches the public name. All existing other assertions pass in three modes.
+
+- [x] Owner reversal recorded 2026-10-11 in this plan and [MVP-PLAN.md](MVP-PLAN.md).
+- [ ] Finish [delete design](T5-DELETES.md), source classification and independent Luna design review before code.
+  - [ ] Private name release at last cleanup; retired exact-ID cleanup outside namespace locks; ordinary max+1 creates.
+  - [ ] Permission-checked public-delete generations, published-only cancellation, durable ordering and publication-collision waits.
+  - [ ] Reserve old enum numbers; migrate old EmptyHeld journals only after retirement reconciliation and fresh stable-length checks.
+- [ ] Review simpler unload semantics: voluntary veto for outstanding private work; mandatory teardown never waits on service.
+  Retained private-stage behavior and any changed product/failure policy need an owner decision before code.
+- [ ] Implement reviewed design; remove EmptyHeld/SupersededEmpty/AbandonedEmpty, EmptySavePrivate and CREATE_AFTER_PRIVATE_DISCARD /
+  SuccessorReservation chains. Keep independent identity cleanup, local rundown and exact-ACK safeguards where applicable.
+- [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
+- [ ] Run real Notepad clean/CPF Save As in ordinary, runtime-Verifier and boot-Verifier modes, independently observing destination bytes.
+- [ ] Add compatibility/ordering rows: Explorer New Text Document → rename → another process opens it in Notepad; empty copy/move;
+  clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
+- [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
+
+Ordinary CPF overwrite of an existing file preserves prior bytes. Explicit authorized deletion followed by a blocked new save leaves
+that name absent. Do not delete a pre-existing file after a failed CREATE_NEW probe. Historical EmptyHeld source/build acceptance
+(`e0de7e46`) is not runtime qualification of this revised behavior. Preserve exact file identity, callback/worker/owner lifetime and
+cleanup obligations; removal must follow the source classification, not a text-wide deletion.
+
+### T6. Moves inspected like copies
+
+**Problem:** a same-volume rename can introduce bytes without a staged write.
+**Done when:** Explorer, Move-Item, cmd move and MoveFileEx publish clean moves or hand back CPF, remove the source appropriately,
+and never publish uninspected bytes; C05 reflects inspection rather than blanket refusal.
+
+- [x] Copy fallback via STATUS_NOT_SAME_DEVICE (`baec933f`); runtime row `m2t6rv4` passed 28/28 on its component pair.
+- [ ] Rerun ordinary, runtime and boot-Verifier on the final pair, including empty files and real Explorer drag.
+- [ ] Resolve and qualify directory moves; current Explorer folder move leaves the source intact because protected directory creation is refused.
+
+### T7. Reads follow Windows permissions
+
+**Problem:** legacy read enforcement denied reads that Windows allowed.
+**Done when:** authorized users read the exact justified bytes; unauthorized users receive Windows denial with no bytes.
+
+- [x] `4a438b36`; B02 `m2t7o1`, `m2t7v1`, `m2t7b1` passed with ForbiddenByteCount=0 and restoration on that pair.
+- [ ] Preserve these assertions in the final M2/combined gates.
+
+### T8. Office/common apps and metadata
+
+**Problem:** real application save/replace/delete sequences and publication metadata need qualification.
+**Done when:** Word, Excel, PowerPoint, Paint, WordPad, Explorer replace, browser download, robocopy and 7-Zip rows pass all three modes;
+the publishing application can reopen the file and agreed metadata is preserved.
+
+- [ ] Trace/replay real save sequences, including temporary/backup deletes under T5; respect staged rename limits.
+- [ ] Decide and test owner, DACL inheritance, timestamps, attributes, ADS including Zone.Identifier, EAs and kernel labels.
+- [ ] Qualify application rows under the matched pair with independent byte observation and restoration.
+
+### T9. Large files and complete inspection
+
+**Problem:** 16 MiB driver/seeding limits and whole-memory extraction prevent ordinary large-file use.
+**Done when:** no fixed driver size cap; per-user/total stage budgets fail closed without harming other users; full-content inspection
+uses bounded memory; incomplete inspection is Blocked with hand-back and policy-authorized justification; runtime rows prove privacy.
+
+- [x] Failure classification, bounded worker concurrency, notifications, single-handle snapshot input, parser-integrity controls and
+  bounded numeric-scanner scratch space are implemented; [component gates](evidence/2026-10-10/m2-agent-component-gates.json).
+- [ ] Finish whole-file streaming, format/encoding/extraction coverage, stage-space accounting/orphan cleanup and seeding cost.
+- [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
+- [ ] Measure cold/warm throughput and peak memory before choosing defaults; existing 256 MiB warm-input measurements are not staged qualification.
+- [ ] Qualify large clean/CPF, corrupt/encrypted/password-protected, parser/extraction-limit, timeout and disk-full cases.
+- [ ] Resolve the all-zero payment-card classification question with user-visible options before changing its current verdict.
+
+### T10. Permission and owner changes
+
+**Problem:** metadata-only security changes were redirected/refused instead of reaching the real public object.
+**Done when:** Windows-authorized file/folder ACL and owner changes succeed; private backing ACLs remain private; permission changes
+cannot publish unapproved bytes, proven by the observer.
+
+- [x] Security-only opens use the public file/folder; staged backing remains inaccessible (`771a551b`).
+- [ ] Fix/finish phase B: `m2t10rv5` stopped after 5/13 checks when its stage-file access was denied; do not count admin-only success as the row passing.
+- [ ] Rerun all modes on the final pair. Carry publication ACL/owner fidelity into T8.
+
+### T11. Review conditions
+
+**Problem:** remaining locking, generation, section-lifetime and journal-scaling findings need closure.
+**Done when:** every finding has a tested change or row and the M2 adversarial review closes the working system.
+
+- [x] Nested sealed-stage query guard (`203d31e9`), 32-bit serial-generation arithmetic (`b8394357`), journal cache eviction (`cb1d0930`).
+- [ ] Validate SOP lifetime at startup; retire changed-SOP registry entries with a lifetime review before first boot.
+- [ ] Finish journal compaction without losing generation barriers or unresolved identity/cleanup obligations.
+- [ ] Close every M2 review condition against the final matched pair.
+
+## M3 — after M2
+
+### T12. Release configuration
+
+**Problem:** staging remains feature-gated and test diagnostics must not ship as product interfaces.
+**Done when:** an owner-approved release configuration passes the complete gate with test-only hooks absent.
+
+- [ ] Separate product and test-only protocol/diagnostics; keep normal builds staging-free until cutover approval.
+- [ ] Check service-SID port authorization, message validation, normal-build identity and four-build static-analysis gates.
+
+### T14. Install, upgrade and uninstall
+
+**Problem:** installation/reboot and mixed driver-agent versions must preserve protection and recoverability.
+**Done when:** clean install, both upgrade directions and uninstall pass on a clean VM with verified restoration.
+
+- [ ] Qualify INF/boot-policy seeding/reboot, protocol negotiation and old/new version combinations.
+- [ ] Qualify uninstall and residue removal; apply the reviewed voluntary/mandatory teardown policy.
+
+## New destinations — after M3, before M4
+
+### T21. USB and removable media
+
+**Problem:** removal, changing volume identity and filesystems without stable file IDs challenge private staging and publication.
+**Done when:** the approved USB scope, including surprise removal, keeps unapproved bytes private and passes independent destination-byte checks.
+
+- [ ] Write a dedicated design note; present supported filesystems/removal behavior as user-visible owner choices; obtain Luna design review.
+- [ ] Implement only the approved scope; keep unsupported combinations disabled.
+- [ ] Qualify attach/detach, surprise removal during write/seal/inspection/publication, reconnect and recovery with an independent observer.
+
+### T22. SMB / UNC
+
+**Problem:** policy UNC strings and provider-normalized paths differ; redirector identity, remote permissions and disconnects need a supported design.
+**Done when:** the approved SMB/UNC scope preserves privacy through writes, mapping and reconnect, observed independently at the destination.
+
+- [ ] Write a dedicated design note covering canonical names, redirector identity, remote authorization, commit ordering and disconnect/retry.
+- [ ] Resolve user-visible scope/failure decisions and obtain Luna design review before implementation.
+- [ ] Qualify an actual SMB server with independent server-side destination-byte observation; keep unsupported network capabilities disabled.
+
+### T23. Cloud-sync folders
+
+**Problem:** sync-client writers, placeholders and upload timing can expose bytes before approval.
+**Done when:** a real supported sync client uploads only approved content, with independent local and remote destination observation.
+
+- [ ] Write a dedicated design note for client/Cloud Files behavior, hydration and uploads; obtain owner decisions and Luna design review.
+- [ ] Implement the approved client/scope and qualify edits, empty files, delete/rename, conflicts, offline/reconnect and recovery.
+- [ ] Observe the real remote destination independently; retain unsupported-client guards until approved.
+
+## M4 — qualify local NTFS and T21–T23 together
+
+### T15. Full functional matrix and mapping repros
+
+**Problem:** component passes do not prove the combined product or all section/mapping variants.
+**Done when:** full section-4.1 variants, P01–P06, RV4, T2/T3/T5–T10 rows and both mapping-leak repros pass on every supported destination.
+
+- [ ] Close both mapping leaks and rerun their original repro scripts without weakening their observers/assertions.
+- [ ] Run the combined ordinary/runtime-Verifier/boot-Verifier matrix, independent raw-volume/destination observation and separate restoration.
+- [ ] Run dedicated latency measurements; keep BLOCK-window cells serial and report costs without masking failures.
+
+### T16. Soak, stress and failure recovery
+
+**Problem:** interruption and concurrency can violate privacy or lifetime despite ordinary passes.
+**Done when:** the combined product survives the required stress/crash/recovery matrix with privacy and Verifier gates intact.
+
+- [ ] Multi-day saves, concurrent writers, low-resource Verifier, full disk, service crash loops and power loss during seal/publication.
+- [ ] Mapped dirty-write retirement races; lost/duplicate/short/stale replies; voluntary/mandatory unload and allocation failures during I/O.
+- [ ] Bound protocol-parser fuzzing, reject malformed/cyclic/extreme inputs, and qualify recovery at each durable transition.
+
+### T17. Coexistence
+
+**Problem:** other filters, storage tools and clients alter the same objects and metadata.
+**Done when:** supported coexistence workloads pass with independent privacy observation and no new lifetime/Verifier failures.
+
+- [ ] Defender and at least one third-party AV/EDR, BitLocker, VSS/System Restore, indexer, backup, chkdsk and defrag.
+- [ ] Real sync-client coexistence with T23, installers/updates and metadata-label preservation under the agreed T8 rules.
+
+### T18. Degraded / Unknown behavior
+
+**Problem:** sticky Unknown needs actionable status without suggesting protection is Ready.
+**Done when:** administrators see the durable reason/remedy and Unknown never clears before reboot.
+
+- [ ] Qualify status, notification, diagnostic reason and documented remedy across supported destinations.
+
+### T19. Continuous evidence
+
+**Problem:** sampled raw reads and final images do not by themselves prove all intermediate publication states.
+**Done when:** required continuous mutation/denial evidence closes the observer gaps without weakening existing raw observations.
+
+- [ ] Qualify the mutation ledger and deferred C05 denial ledger; preserve causal operation/inspection/publication ordering.
+- [ ] Finish combined adversarial review, stress/latency and evidence audit; then write the taint-removal plan for owner sign-off.
+
+## Later / owner-deferred
+
+### T13. Production signing and Secure Boot
+
+**Problem:** the current test-signed driver requires test mode and Secure Boot off.
+**Done when:** after owner authorization, production signing/altitude/INF work passes the gate with Secure Boot on.
+
+- [ ] Deferred by owner: remain test-signed; do not purchase certificates or change signing scope automatically.
+
+### T20. Other Windows builds
+
+**Problem:** section behavior and startup canaries are qualified only on the current platform.
+**Done when:** an owner-approved additional Windows build passes its behavior experiments and full combined gate.
+
+- [ ] Later; keep other builds explicitly unqualified until their own evidence exists.
+
+### T24. ReFS
+
+**Problem:** NTFS identity, staging and observer assumptions are not ReFS qualification.
+**Done when:** a dedicated reviewed design and owner-approved scope pass the full destination gate.
+
+- [ ] Later; retain unsupported guards.
+
+## Product work outside the driver
+
+- [ ] Package and qualify notifications and correctly named hand-back files, including real interactive blocked-save behavior.
+- [ ] Qualify central policy distribution against kernel/boot-policy bounds; change the protocol explicitly if the product exceeds them.
+- [ ] Pass agent TLS/certificate tests with their required machine-key permissions, alongside normal and feature agent profiles.

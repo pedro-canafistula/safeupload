@@ -158,9 +158,13 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
 
 ## Owner decisions in force
 
-- 2026-10-10: intentional zero-content saves remain private and are reported as blocked in MVP; an explicit empty-save intent
-  protocol is deferred. Nonempty text keeps the normal Save As path. This decision does not waive cleanup, recovery, or byte-observer
-  qualification, and the strict no-empty-publication assertion remains required.
+- 2026-10-11: empty files are ordinary content: seal, inspect (trivially clean at a freshly verified stable zero length), and publish
+  them normally. This replaces the 2026-10-10 EmptyHeld decision and removes EmptySavePrivate notices. Public deletes are part of M2;
+  Windows checks the caller's DELETE authority against the real public file. Private deletes free the name at last close while exact
+  cleanup proceeds asynchronously. See [T5-DELETES.md](T5-DELETES.md) for generation ordering, cleanup, and legacy-journal handling.
+  Replace only the no-empty-publication test: no uninspected nonempty bytes may reach the public name; clean saves finish with the saved
+  bytes, CPF saves to new names leave no file, and CPF saves to existing names retain prior contents, with no empty leftover. All other
+  assertions remain required, including independent byte observation, Verifier, and verified VM restoration. Design review precedes code.
 - 2026-10-10: startup requirement reconfirmed by the owner: protection starts before applications open protected files for editing;
   installation may require an initial restart. Starting protection after those editing handles or mappings already exist cannot claim
   the same privacy guarantee. This approval settles startup ordering; qualification of the implementation remains required.
