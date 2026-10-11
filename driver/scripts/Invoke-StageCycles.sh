@@ -43,6 +43,19 @@ stop_reason='setup-or-test-exit'
 phase=run-disk
 state=NOT_STARTED
 waited=0
+failure_evidence_exported=no
+capture_failure_evidence() {
+    [ "$failure_evidence_exported" = yes ] && return 0
+    mkdir -p "$ev/$tag-failure-evidence"
+    # The trap calls this too, so interruption cannot silently lose snapshots
+    # already captured by the coordinator before its run disk is discarded.
+    if timeout 90 scp -r "${opts[@]}" "vika@$host:C:/T4/failure-evidence" "$ev/$tag-failure-evidence/" > "$ev/$tag-failure-evidence-copy.txt" 2>&1; then
+        echo 'T4FailureEvidenceExport=CAPTURED' > "$ev/$tag-failure-evidence-export.txt"
+        failure_evidence_exported=yes
+    else
+        echo 'T4FailureEvidenceExport=ABSENT_OR_FAILED' > "$ev/$tag-failure-evidence-export.txt"
+    fi
+}
 
 echo "== run disk"
 source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"; source "$(dirname "${BASH_SOURCE[0]}")/run-disk.sh"
@@ -56,6 +69,7 @@ finish() {
         # Preserve partial progress even when the launcher receives a signal.
         timeout 90 scp "${opts[@]}" "vika@$host:C:/T4/cycles.jsonl" "$ev/$tag-cycles-at-stop.jsonl" >/dev/null 2>&1 || true
         timeout 90 scp "${opts[@]}" "vika@$host:C:/T4/samples.jsonl" "$ev/$tag-samples-at-stop.jsonl" >/dev/null 2>&1 || true
+        capture_failure_evidence
     fi
     echo "== discard the run disk"
     if ! run_disk_end "$dom" "$tag" > "$ev/$tag-final-restored-state.txt" 2>&1 ||
@@ -120,6 +134,7 @@ scp "${opts[@]}" "$sys" "vika@$host:$guest/SafeUpload-t4.sys" && scp "${opts[@]}
   && scp "${opts[@]}" agente/scripts/Get-SafeUploadDiagnostics.ps1 "vika@$host:$guest/Get-SafeUploadDiagnostics.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-actor.ps1 "vika@$host:$guest/t4-cycles-actor.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-coordinator.ps1 "vika@$host:$guest/t4-cycles-coordinator.ps1" \
+  && scp "${opts[@]}" driver/scripts/t4/failure-evidence.ps1 "vika@$host:$guest/failure-evidence.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-progress.ps1 "vika@$host:$guest/t4-cycles-progress.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/agent-readiness.ps1 "vika@$host:$guest/t4-agent-readiness.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/runtime-verifier.ps1 "vika@$host:$guest/t4-runtime-verifier.ps1" || { echo 'copy failed'; exit 14; }
@@ -287,12 +302,21 @@ if [ "$alive" = yes ]; then
     remote <<'PS' > "$ev/$tag-after.txt"
 $ErrorActionPreference = 'Continue'
 'RESULT=' + $(if (Test-Path C:\T4\result.json) { (Get-Content C:\T4\result.json -Raw) -replace '\s+', ' ' } else { 'missing' })
+if (Test-Path C:\T4\result.json) { 'COORDINATOR_STOP_REASON=' + (Get-Content C:\T4\result.json -Raw | ConvertFrom-Json).StopReason }
 'DRIVER_LOADED=' + [bool](fltmc.exe filters | Select-String SafeUpload)
 'VERIFIER=' + ((& verifier.exe /query | Out-String) -replace '\s+', ' ')
 try { $c = & 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query counters; 'COUNTERS=' + ($c | ConvertTo-Json -Depth 6 -Compress) } catch { 'COUNTERS_ERROR=' + $_.Exception.Message }
 try { $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query deny-ring); 'RING_TOTAL=' + $ring.Count; foreach ($e in $ring | Select-Object -Last 40) { 'RING=' + ($e | ConvertTo-Json -Compress) } } catch { 'RING_ERROR=' + $_.Exception.Message }
 'AFTER_DONE=True'
 PS
+    coordinator_reason=$(sed -n 's/^COORDINATOR_STOP_REASON=//p' "$ev/$tag-after.txt" | head -1)
+    case "$coordinator_reason" in
+        completed|completed-with-failures|repeated-identical-failure|blocked-bytes-published|actor-command-timeout|coordinator-error)
+            stop_reason="$coordinator_reason";;
+    esac
+    # Capture diagnostic journal copies while the run disk still exists.
+    # A failed/missing export is recorded and can never make the row pass.
+    capture_failure_evidence
     scp "${opts[@]}" "vika@$host:C:/T4/samples.jsonl" "$ev/$tag-samples.jsonl" >/dev/null 2>&1 || true
     scp "${opts[@]}" "vika@$host:C:/T4/cycles.jsonl" "$ev/$tag-cycles.jsonl" >/dev/null 2>&1 || true
     mkdir -p "$ev/$tag-verifier"
@@ -343,8 +367,11 @@ verdict('T4CyclesCompleted', result is not None and completed == cycles and not 
         f"{completed} of {cycles} cycles reached their outcome; outcomes {json.dumps(result.get('Outcomes')) if result else 'none'}; " +
         (f"error {result.get('Error')}; " if result and result.get('Error') else '') +
         (f"first failures {result.get('Failures')[:5]}" if result and result.get('Failures') else 'no failures'))
+verdict('T4ActorStopped', result is not None and result.get('ActorStopped') is True, 'the actor acknowledged stop')
+out.append('T4StopReason INFO ' + str(result.get('StopReason') if result else 'missing') +
+           f"; attempted {result.get('Attempted') if result else 'missing'}; failures {result.get('FailureCount') if result else 'missing'}")
 leak = [f for f in (result.get('Failures') or []) if 'BLOCKED BYTES PUBLISHED' in f] if result else []
-verdict('T4NoBlockedBytesPublished', result is not None and not leak, 'no blocked version reached its public name' if not leak else '; '.join(leak[:5]))
+verdict('T4NoBlockedBytesPublished', result is not None and not result.get('BlockedBytesPublished') and not leak, 'no blocked version reached its public name' if not leak else '; '.join(leak[:5]))
 cyc = [s for s in samples if s.get('Label') == 'cycle' and isinstance(s.get('Verifier'), dict) and s['Verifier'].get('NonPagedBytes') is not None]
 if mode in ('runtime-verifier', 'verifier-from-boot') and len(cyc) >= 4:
     warm = [s for s in cyc if s['Cycle'] >= min(1000, cycles // 4)]

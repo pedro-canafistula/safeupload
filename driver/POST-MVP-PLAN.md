@@ -150,7 +150,10 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
     record EFI reset.
   - [x] [Read-only diagnosis](evidence/2026-10-11/t4-journal-failure-diagnosis.md): four failed private-journal replacements;
     two leave Publishing reservations, two prevent hand-back. The underlying native error 5 remains unproven.
-  - [ ] Owner reply before fixing/retrying repeated identical failures; add prompt harness stop on repetition. No retry launched.
+  - [x] Harness stops on the second identical failure, captures private journal records and full-ID stage metadata, and records
+    the stop reason. [PowerShell 5.1 gate](evidence/2026-10-11/harness-windows-gate-t4-stop-evidence-1011-a1.txt): all 18 self-checks
+    pass; 27 new controls include two real native actor failures and orderly stop. Revised protected runtime remains pending.
+  - [ ] Owner reply before product fixes/retry after repeated identical failures. No retry launched.
 - [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
 
 The preceding `m2t4boot10k9` stopped after 4,714/10,000 without a final result; it is not a pass. Its run disk was deleted and base

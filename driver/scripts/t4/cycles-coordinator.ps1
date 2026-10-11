@@ -41,6 +41,7 @@ function Write-T4ResultLine([string]$Path, [string]$Line) {
     $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]'ReadWrite, Delete')
     try { $stream.Write($bytes, 0, $bytes.Length); $stream.Flush() } finally { $stream.Dispose() }
 }
+. (Join-Path $PSScriptRoot 'failure-evidence.ps1')
 $out = 'C:\T4'; $control = Join-Path $out 'control'; $root = 'C:\Protected\t4'
 $handback = $null   # the actor's profile, resolved from its SID once the actor has logged on
 $stageDir = 'C:\ProgramData\SafeUpload\staging'; $journalDir = 'C:\ProgramData\SafeUpload\staging-journal'
@@ -140,10 +141,15 @@ function Same([byte[]]$A, [byte[]]$B) { if ($null -eq $A -or $null -eq $B -or $A
 
 New-Item -ItemType Directory -Force -Path $out, $control | Out-Null
 Remove-Item -LiteralPath (Join-Path $out 'cycles.jsonl'), (Join-Path $out 'samples.jsonl'), (Join-Path $out 'result.json') -ErrorAction SilentlyContinue
-$result = [ordered]@{ Cycles = $Cycles; Started = [DateTime]::UtcNow.ToString('o'); Completed = 0; Failures = @(); Outcomes = [ordered]@{} }
+$result = [ordered]@{ Cycles = $Cycles; Started = [DateTime]::UtcNow.ToString('o'); Completed = 0; Attempted = 0;
+    Failures = @(); FailureCount = 0; FailureEvidence = @(); BlockedBytesPublished = $false;
+    StopReason = 'coordinator-error'; Outcomes = [ordered]@{} }
+$failureCounts = @{}
+$actorLaunched = $false
 $frequency = [Diagnostics.Stopwatch]::Frequency
 try {
     Start-ScheduledTask -TaskName $ActorTask
+    $actorLaunched = $true
     $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 120 * $frequency
     while (-not (Test-Path (Join-Path $control 'actor-started.txt'))) {
         if ([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline) {
@@ -205,26 +211,31 @@ try {
             if ($sensitive -and (Same (Read-Public $target) $bytes)) { $ok = $false; $why = 'BLOCKED BYTES PUBLISHED' }
         }
         $done = [Diagnostics.Stopwatch]::GetTimestamp()
-        Remove-Item -LiteralPath $payload, $ack -Force -ErrorAction SilentlyContinue
+        if ($ackText -ne 'timeout') { Remove-Item -LiteralPath $payload, $ack -Force -ErrorAction SilentlyContinue }
         $key = $pattern + '-' + $(if ($sensitive) { 'block' } else { 'approve' })
         if (-not $result.Outcomes.Contains($key)) { $result.Outcomes[$key] = [ordered]@{ Ok = 0; Failed = 0 } }
-        if ($ok) { $result.Completed++; $result.Outcomes[$key].Ok++ } else { $result.Outcomes[$key].Failed++; if ($result.Failures.Count -lt 50) { $result.Failures += ("$i $key $why") } }
-        Write-T4ResultLine (Join-Path $out 'cycles.jsonl') ([ordered]@{ I = $i; Pattern = $pattern; Sensitive = $sensitive; Ok = $ok; Why = $why; AckMs = [math]::Round(($acked - $started) * 1000.0 / $frequency, 1); OutcomeMs = [math]::Round(($done - $acked) * 1000.0 / $frequency, 1) } | ConvertTo-Json -Compress)
+        $result.Attempted = $i
+        if ($ok) { $result.Completed++; $result.Outcomes[$key].Ok++ } else { $result.FailureCount++; $result.Outcomes[$key].Failed++; if ($result.Failures.Count -lt 50) { $result.Failures += ("$i $key $why") } }
+        $outcome = [pscustomobject]@{ I = $i; Pattern = $pattern; Sensitive = $sensitive; Target = $target; Ok = $ok; Why = $why; AckMs = [math]::Round(($acked - $started) * 1000.0 / $frequency, 1); OutcomeMs = [math]::Round(($done - $acked) * 1000.0 / $frequency, 1) }
+        Write-T4ResultLine (Join-Path $out 'cycles.jsonl') ($outcome | ConvertTo-Json -Compress)
+        $decision = Get-T4FailureDecision $failureCounts $outcome
+        if (-not $ok) {
+            if ($why -ceq 'BLOCKED BYTES PUBLISHED') { $result.BlockedBytesPublished = $true }
+            try { $result.FailureEvidence += Save-T4FailureEvidence (Join-Path $out 'failure-evidence') $journalDir $stageDir $i $target }
+            catch { $result.FailureEvidence += [pscustomobject]@{ Cycle = $i; CaptureError = $_.Exception.ToString() } }
+        }
         if ($i % $SampleEvery -eq 0) { $null = Get-Sample $i 'cycle' }
-        if (-not $ok -and $why -eq 'BLOCKED BYTES PUBLISHED') { break }
-        # Once a command times out, its actor may still be using the payload.
-        # Do not enqueue another command or treat later replies as evidence.
-        if ($ackText -eq 'timeout') { throw ('actor command '+$i+' timed out; task state '+(Get-ScheduledTask -TaskName $ActorTask).State) }
+        if ($decision) {
+            $result.StopReason = $decision.Reason
+            $result.StopFailure = $decision
+            throw ('T4 stopped at cycle ' + $i + ': ' + $decision.Reason + '; ' + $why)
+        }
     }
+    $result.StopReason = if ($result.FailureCount) { 'completed-with-failures' } else { 'completed' }
     # Settle: hand-backs, cleanups and disposals finish; the stage worker releases what nothing holds.
     Start-Sleep -Seconds 30
     $result.Settled = Get-Sample $Cycles 'settled'
-    $stopPart = Join-Path $control 'stop.part'
-    [IO.File]::WriteAllText($stopPart, 'stop')
-    [IO.File]::Move($stopPart, (Join-Path $control 'cmd-stop.txt'))
-    $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 60 * $frequency
-    while (-not (Test-Path (Join-Path $control 'actor-stopped.txt'))) { if ([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline) { break }; Start-Sleep -Milliseconds 200 }
-    $result.ActorStopped = Test-Path (Join-Path $control 'actor-stopped.txt')
+    $result.ActorStopped = Stop-T4Actor $control
     Start-Sleep -Seconds 15
     $result.AfterActorExit = Get-Sample $Cycles 'actor-exited'
     Start-Sleep -Seconds 60
@@ -234,6 +245,10 @@ try {
     $result.ErrorDetail = $_.Exception.ToString()
     $result.ErrorScriptStackTrace = $_.ScriptStackTrace
 } finally {
+    if ($actorLaunched -and -not $result.ActorStopped) {
+        try { $result.ActorStopped = Stop-T4Actor $control }
+        catch { $result.ActorStopError = $_.Exception.ToString() }
+    }
     $result.Finished = [DateTime]::UtcNow.ToString('o')
     $resultPart = Join-Path $out 'result.part'
     [IO.File]::WriteAllText($resultPart, ($result | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
