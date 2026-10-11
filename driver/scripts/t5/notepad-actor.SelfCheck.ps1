@@ -78,6 +78,38 @@ try {
     Assert-Actor ($steps -eq 'test-create=0 test-close=0 test-delete=0 save-create=0 save-write=0 save-close=0') 'new probe delete/save failed'
     Assert-Actor ([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($newPath)) -eq 'clean saved bytes') 'new-name final bytes differ'
     'NewNameProbe=PASS; SplitNativeControl=' + $splitNativeControl + '; ' + $steps
+    $heldMethod = [T5Native].GetMethod('ProbeHoldUntilDelete')
+    if ($null -ne $heldMethod) {
+        $beforeSealPath = Join-Path $root 'delete-before-seal.txt'
+        $held = [T5Native]::ProbeHoldUntilDelete($beforeSealPath)
+        try {
+            Assert-Actor ($held.Created -and $held.HeldHandle -ne [IntPtr]::Zero -and $held.HeldHandle -ne [IntPtr](-1)) 'before-seal probe must hold a live writer'
+            Assert-Actor ((Get-Item -LiteralPath $beforeSealPath).Length -eq 0) 'held probe must be empty'
+            $steps = $held.Steps + ' ' + [T5Native]::ProbeDeleteWhileHeldThenSave($beforeSealPath, $saved, $held)
+            Assert-Actor ($steps -eq 'test-create=0 test-delete=0 test-close=0 save-create=0 save-write=0 save-close=0') 'delete before writer close failed'
+            Assert-Actor ($held.HeldHandle -eq [IntPtr]::Zero) 'held writer must be released before save'
+            Assert-Actor ([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($beforeSealPath)) -eq 'clean saved bytes') 'before-seal final bytes differ'
+            'HeldWriterDeleteBeforeClose=PASS; ' + $steps
+        } finally { [void][T5Native]::ProbeCloseHeld($held) }
+
+        $afterPath = Join-Path $root 'delete-after-visible-empty.txt'
+        $probe = [T5Native]::ProbeCreate($afterPath, $false)
+        Assert-Actor ($probe.Created -and $probe.Steps -eq 'test-create=0 test-close=0') 'after-publication probe creation failed'
+        Assert-Actor ((Get-Item -LiteralPath $afterPath).Length -eq 0) 'native control read must see an empty file before delete'
+        $identity = [T5ActorSelfCheckIdentity]::Read($afterPath)
+        $steps = $probe.Steps + ' ' + [T5Native]::ProbeFinish($afterPath, $saved, $true, $probe.Created)
+        Assert-Actor ($steps -eq 'test-create=0 test-close=0 test-delete=0 save-create=0 save-write=0 save-close=0') 'delete after empty visibility failed'
+        Assert-Actor ([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($afterPath)) -eq 'clean saved bytes') 'after-publication final bytes differ'
+        'VisibleEmptyDeleteAfterClose=PASS; observedIdentity=' + $identity + '; ' + $steps
+
+        $held = [T5Native]::ProbeHoldUntilDelete($path)
+        Assert-Actor (-not $held.Created) 'held CREATE_NEW must refuse an existing name'
+        $before = [T5ActorSelfCheckIdentity]::Read($path)
+        $steps = $held.Steps + ' ' + [T5Native]::ProbeDeleteWhileHeldThenSave($path, $saved, $held)
+        Assert-Actor ($steps -match '^test-create=(80|183) test-delete=skipped-create-failed save-create=0 save-write=0 save-close=0$') 'held failed CREATE_NEW must skip delete'
+        Assert-Actor ([T5ActorSelfCheckIdentity]::Read($path) -eq $before) 'held failed CREATE_NEW deleted/recreated the existing object'
+        'HeldFailedCreatePreservesIdentity=PASS; ' + $steps
+    }
     'NativeActorControl=PASS; ProductQualified=False; ProtectedDestination=False'
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force

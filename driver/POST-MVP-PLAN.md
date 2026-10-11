@@ -156,6 +156,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   references without waiting on the service. Startup retains private stages; adding a reaper or changing failure policy needs an owner decision.
 - [x] Native actor skips DeleteFileW after a failed CREATE_NEW; [PowerShell 5.1/native controls](evidence/2026-10-11/t5-actor-probe-native-control-1011a2.txt)
   prove the existing object's full identity survives and successful new-name probes still delete/save. Protected rows remain unqualified.
+- [x] Actor branches force a held-writer delete and an observer-gated after-publication delete;
+  [PowerShell 5.1/native NTFS controls](evidence/2026-10-11/t5-actor-forced-delete-orders-native-control-1011a1.txt) pass both native
+  orders and the failed-create identity guard. Protected coordinator/order receipts and runtime qualification remain open.
 - [ ] Implement reviewed design; remove EmptyHeld/SupersededEmpty/AbandonedEmpty, EmptySavePrivate and CREATE_AFTER_PRIVATE_DISCARD /
   SuccessorReservation chains. Keep independent identity cleanup, local rundown and exact-ACK safeguards where applicable.
   - [x] Released-stage cleanup checks volume + full 128-bit ID and refuses reparse replacements (`a9c0fb59`); its four WDK builds pass
@@ -167,7 +170,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [x] Identity-keyed destination head/commit queue and ordinary-delete journal layer (`b5c2d13f`, `fe529a2d`); 19 new cases pass in
     each agent profile. Durable accepted reservations release locks while waiting; only newer Published suppresses a delete.
   - [x] Caller CREATE-subject snapshot, separate NTFS-checked backend factory and exact authenticated service-process hold
-    (`334f11af`–`4e070ab2`); normal builds omit the backend. The factory is not yet connected to public-delete handling.
+    (`334f11af`–`3be0fe71`), original process-lifetime/effective-SID binding and reconciled service-epoch pin; normal builds omit
+    the backend. The factory is not yet connected to public-delete handling.
+  - [ ] Correct the [public-open routing proposal](T5-PUBLIC-PROXY-ROUTING.md) after its
+    [NOT READY design review](evidence/2026-10-11/t5-public-proxy-routing-design-review-luna6.md); preserve native reads/mappings/sharing.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
@@ -176,12 +182,12 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: driver `4e070ab2`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator
-([summary](evidence/2026-10-11/exact-t5-public-backend5-summary.txt),
-[normal Debug](evidence/2026-10-11/exact-t5-public-backend5-normal-wdk.txt),
-[feature Debug](evidence/2026-10-11/exact-t5-public-backend5-owned-feature-wdk.txt),
-[normal Release](evidence/2026-10-11/exact-t5-public-backend5-normal-release-wdk.txt),
-[feature Release](evidence/2026-10-11/exact-t5-public-backend5-owned-feature-release-wdk.txt)). Agent `fe529a2d` (unchanged through `4e070ab2`)
+Latest static gates: driver `3be0fe71`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator
+([summary](evidence/2026-10-11/exact-t5-public-caller2-summary.txt),
+[normal Debug](evidence/2026-10-11/exact-t5-public-caller2-normal-wdk.txt),
+[feature Debug](evidence/2026-10-11/exact-t5-public-caller2-owned-feature-wdk.txt),
+[normal Release](evidence/2026-10-11/exact-t5-public-caller2-normal-release-wdk.txt),
+[feature Release](evidence/2026-10-11/exact-t5-public-caller2-owned-feature-release-wdk.txt)). Agent `fe529a2d` (unchanged through `3be0fe71`)
 passed **761/761** per normal profile and **825/825** per feature profile, all discovered cases executed once without skips; the
 19 new destination-journal cases ran in every profile. Agent and tray builds passed at 0/0
 ([matrix output](evidence/2026-10-11/exact-agent-matrix-t5-deletejournal2-summary.txt),

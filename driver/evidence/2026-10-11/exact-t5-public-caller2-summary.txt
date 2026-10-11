@@ -1,0 +1,13 @@
+﻿LABEL=t5-public-caller2
+ARCHIVE_SHA256=AB425A57ABC3583405EB3F63EFC23BB43FA6653822925765E184245F0C10C406
+SOURCE_COMMIT=3be0fe71e725ca9ad33b8bc6c8a93a3e02536387
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-11T18:31:08.4093911Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=EE47F6E6F12ACE4BDDD01019412520E6FC8A512EDA1CE904A310281883078BA1
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=104C274B06FC184D92C6272FEC199B9275E184AB39255201D7D0B4BD192EA732
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=EFAB13856DBA7BB2A07BEB2DF4F1542136E0675176C38D762F042DDC6EA0AD8E
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=31E7411ED8A140E0AC06A895ADCEE5C115EA6D5850ED173209269BBBFB5CFD8C
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=43B24EDEAE908A476A9947C5349AC8012E33A5CDF89660002668AA78B57DC01F
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=A7448D5B9995D75C65711CC315B3D5746985CD12E48743C21C6DAB548B11761D
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=1B061F7140200636A547A31F2F14B45055675746BECE58474075DC8478F56EB0
+sign : exit=0 unsigned_sha256=104C274B06FC184D92C6272FEC199B9275E184AB39255201D7D0B4BD192EA732 signing_copy_sha256=104C274B06FC184D92C6272FEC199B9275E184AB39255201D7D0B4BD192EA732 unsigned_unchanged=True store=LocalMachine output_sha256=49770C7D4302F19422398980F97E9606B9FB35CD5C550CF502568C1B20B46B46 signed_sha256=49770C7D4302F19422398980F97E9606B9FB35CD5C550CF502568C1B20B46B46 signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38

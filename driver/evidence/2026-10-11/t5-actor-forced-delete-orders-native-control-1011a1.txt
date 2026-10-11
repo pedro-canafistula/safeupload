@@ -1,0 +1,10 @@
+Builder=DESKTOP-O1LP5DG
+PSVersion=5.1.19041.6456
+PowerShell51ActorParse=PASS
+ExistingNameFailedProbe=PASS; identity=4AD66344D6632F7F:0000000000000000:00070000000F0897; test-create=80 test-delete=skipped-create-failed save-create=0 save-write=0 save-close=0
+NewNameProbe=PASS; SplitNativeControl=True; test-create=0 test-close=0 test-delete=0 save-create=0 save-write=0 save-close=0
+HeldWriterDeleteBeforeClose=PASS; test-create=0 test-delete=0 test-close=0 save-create=0 save-write=0 save-close=0
+VisibleEmptyDeleteAfterClose=PASS; observedIdentity=4AD66344D6632F7F:0000000000000000:00070000000F089B; test-create=0 test-close=0 test-delete=0 save-create=0 save-write=0 save-close=0
+HeldFailedCreatePreservesIdentity=PASS; test-create=80 test-delete=skipped-create-failed save-create=0 save-write=0 save-close=0
+NativeActorControl=PASS; ProductQualified=False; ProtectedDestination=False
+NativeForcedOrderControlGate=PASS

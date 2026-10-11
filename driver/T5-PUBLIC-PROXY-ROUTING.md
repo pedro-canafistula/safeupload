@@ -1,7 +1,9 @@
 # T5 public proxy routing and local lifetime
 
 Date: 2026-10-11. Proposed implementation detail for [T5-DELETES.md](T5-DELETES.md) section 4.1.
-Review base: `1e04bfec`; checked-backend implementation: `4e070ab2`. **Review pending; do not implement this routing until READY.**
+Review base: `1e04bfec`; checked-backend implementation: `4e070ab2`. **NOT READY; do not implement this routing.**
+The [independent Luna review](evidence/2026-10-11/t5-public-proxy-routing-design-review-luna6.md) rejects the synthetic FCB/native
+section-pointer pairing and identifies positioning and elevated-IRQL release gaps. A native app-object correction is being reviewed.
 This does not change empty-file publication, delete authority, generation ordering, cancellation/failure policy or supported destinations.
 
 ## Purpose
