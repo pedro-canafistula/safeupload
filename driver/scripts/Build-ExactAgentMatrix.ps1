@@ -751,6 +751,10 @@ try {
             # SAFEUPLOAD_MACHINE_TESTS only affects the MachineFact skip marker; discovery does not execute test bodies.
             $discoveryFqns = Join-Path $results 'agent-tests-discovered-fq.txt'
             if (Test-Path -LiteralPath $discoveryFqns) { throw 'Test discovery output already exists.' }
+            $discoverySettings = Join-Path $results 'discovery.runsettings'
+            [IO.File]::WriteAllText($discoverySettings,
+                '<RunSettings><RunConfiguration><BatchSize>100000</BatchSize></RunConfiguration></RunSettings>',
+                $script:Utf8ConsoleEncoding)
             $oldMachineTestSetting = $env:SAFEUPLOAD_MACHINE_TESTS
             try {
                 $env:SAFEUPLOAD_MACHINE_TESTS = '1'
@@ -759,9 +763,9 @@ try {
                 # method name. Keep the inventory-uniqueness gate and collect
                 # this bounded matrix in one batch instead of normalizing it.
                 Invoke-DotnetGate ($name + '-tests-discovery-list') @('vstest', $testDll.FullName,
-                    '/ListTests', '/BatchSize:100000')
+                    '/ListTests', ("/Settings:$discoverySettings"))
                 Invoke-DotnetGate ($name + '-tests-discovery-fqns') @('vstest', $testDll.FullName,
-                    '/ListFullyQualifiedTests', '/BatchSize:100000', ("/ListTestsTargetPath:$discoveryFqns"))
+                    '/ListFullyQualifiedTests', ("/Settings:$discoverySettings"), ("/ListTestsTargetPath:$discoveryFqns"))
             } finally {
                 if ($null -eq $oldMachineTestSetting) { Remove-Item Env:SAFEUPLOAD_MACHINE_TESTS -ErrorAction SilentlyContinue }
                 else { $env:SAFEUPLOAD_MACHINE_TESTS = $oldMachineTestSetting }
