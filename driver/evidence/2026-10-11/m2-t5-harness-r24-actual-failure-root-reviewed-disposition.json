@@ -1,0 +1,17 @@
+{
+  "All33ManifestMembersAndSeparateManifestRevalidated": true,
+  "All63LocalSourcePinsUnchanged": true,
+  "CheckpointManifestSHA256": "37bb1c52d9e514a0a6a71db01bce39a27887df4aaaaebc06610d71b57a88c274",
+  "CutoverAuthorized": false,
+  "FailureCaptureAccepted": true,
+  "HostPolicyApplied": false,
+  "IndependentReviewSHA256": "10ef26e888a09e4c3f7f4051e6c9a388a1e89d1dfa007033abdb09584b2b6e12",
+  "LocalOriginalTransportIdentityAndTreeTerminal": true,
+  "NextAction": "Fresh hidden-directory source correction plus separate review; no immediate rerun approved by this record.",
+  "NoBarrierChildrenCreated": true,
+  "OriginalRemoteProcessTerminalProof": false,
+  "Outcome": "NO_GO",
+  "ProductVMStarted": false,
+  "RemoteCustodyQualified": false,
+  "RuntimeQualified": false
+}
