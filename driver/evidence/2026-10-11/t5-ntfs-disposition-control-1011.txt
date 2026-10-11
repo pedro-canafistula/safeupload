@@ -1,0 +1,9 @@
+ParseErrors=0
+PSVersion=5.1.19041.6456
+NativeControlFileSystem=NTFS
+Case=ordinary-clear-before-cleanup;Set=Success=True;Win32=0;ProbePendingWin32=5;ClearOther=Success=True;Win32=0;ProbeAfterClearWin32=0;ExistsAfterClose=True
+Case=ordinary-clear-after-cleanup;Set=Success=True;Win32=0;ProbePendingWin32=5;ClearOther=Success=True;Win32=0;ProbeAfterClearWin32=0;ExistsAfterClose=True
+Case=onclose-other-handle-clear;Set=Success=False;Win32=50;ProbePendingWin32=0;ClearOther=Success=True;Win32=0;ProbeAfterClearWin32=0;ExistsAfterClose=True
+Case=create-delete-on-close;ProbePendingWin32=0;ClearOther=Success=True;Win32=0;ProbeAfterClearWin32=0;ProbeAfterCreatorCloseWin32=5;ExistsAfterClose=False
+Case=delete-child-authority;FileDeleteExplicitlyDenied=True;ParentDeleteChildGrantedOpenWin32=0;BothDeniedOpenWin32=5
+NtfsDispositionControl=COMPLETE;ProductQualified=False

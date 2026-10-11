@@ -144,6 +144,8 @@ zero-byte file operations and added a successor protocol. Empty is now ordinary 
 no empty probe is left behind; no uninspected nonempty byte reaches the public name. All existing other assertions pass in three modes.
 
 - [x] Owner reversal recorded 2026-10-11 in this plan and [MVP-PLAN.md](MVP-PLAN.md).
+- [x] [Source classification](evidence/2026-10-11/t5-empty-public-delete-component-classification.md) distinguishes EmptyHeld-only
+  removal from independent identity, callback drain and cleanup protections; [native NTFS controls](evidence/2026-10-11/t5-ntfs-disposition-control-1011.txt) verify ordinary clear, on-close timing and parent DELETE_CHILD authority.
 - [ ] Finish [delete design](T5-DELETES.md), source classification and independent Luna design review before code.
   - [ ] Private name release at last cleanup; retired exact-ID cleanup outside namespace locks; ordinary max+1 creates.
   - [ ] Permission-checked public-delete generations, published-only cancellation, durable ordering and publication-collision waits.

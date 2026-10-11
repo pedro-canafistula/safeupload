@@ -56,7 +56,9 @@ the service disposed of it as approved (section 3.1), then `StageFreeStream`. No
 create takes.
 
 An unsealed version is never released: it is drained and sealed first, as today, even if its view was detached by a rename replace or
-an owner exit. A superseded version is released as soon as it is unreferenced, even before the service has inspected it. The service
+an owner exit. T5's [private-delete design](T5-DELETES.md) detaches the name at last cleanup and retires the version instead of sealing
+it. Discarded is terminal and never publishable; release still requires local drain and its exact cleanup ACK. An accepted/queued
+discard reply is not that ACK. A superseded version is released as soon as it is unreferenced, even before the service has inspected it. The service
 reads the stage file by path, and the private-namespace gate refuses every non-service writer under `\ProgramData\SafeUpload\staging\`,
 so closing the driver's read-only backing (which denied write sharing) opens no write window.
 
@@ -161,14 +163,18 @@ A queued PID cannot be reused while the ring holds the reference (Luna review: a
   `StageInitialized`, so an exit racing the unload cannot leave a reference behind.
 - If the notify registration failed (it is not fatal today), views and tombstones of exited owners are still bounded by the two caps.
 
-**Unload.** A voluntary unload is refused (new veto reason `STAGE_RENAME`) while any version has a rename exchange whose commit or abort
-the service has not acknowledged. Unloading would leave the journal's prepared rename unresolved (Luna review).
+**Unload.** A voluntary unload is refused (veto reason `STAGE_RENAME`) while any version has a rename exchange whose commit or abort the
+service has not acknowledged; it is also refused (`STAGE_DISCARD`) while a private-stage discard or its deletion is unacknowledged.
+Unloading would leave the journal's prepared rename unresolved or discard retry state behind (Luna review). The 2026-10-11 T5
+rescope also vetoes voluntary unload for any outstanding private stage, RPC or public-delete reservation. Mandatory teardown follows
+[T5-DELETES.md section 7](T5-DELETES.md#7-unload-and-shutdown-rescope): drain local references, close backend holds, and never wait for
+service availability or cleanup ACKs. Interrupted private stages remain retained and nonpublishable under existing startup recovery.
 
-**Failures.** These retry on the timer: a drain or backing reopen that fails for any reason other than open handles or file objects, and
-a seal or rename that fails for any reason other than a refusal or an absent service (no reply, no memory for the request). A refused
-seal or rename, or one sent while no service is connected, waits for the next service connect. If the driver fails to delete an approved
-stage at release, the file stays until the next service start, which resends DISPOSE for every `Released` entry whose stage file still
-exists, gets `Held = 0` and deletes it.
+**Failures.** These retry on the timer: a drain or backing reopen that fails for any reason other than open handles or file objects, a
+discard whose service acknowledgement is refused (including a stage that could not be removed), and a seal or rename that gets no reply
+or cannot allocate a request. A disconnected service or refused seal/rename waits for the next service connection. If the driver fails to
+delete an approved stage at release, the file stays until the next service start, which resends DISPOSE for every `Released` entry whose
+stage file still exists, gets `Held = 0` and deletes it.
 
 **Out of T4 (to T9).** A staged create that fails after the service allocated its stage leaves that stage and its journal entry
 (today's behaviour). These use disk, not driver memory or the cap. T9's stage-space budget must count and clean them up (Luna review, P1).
