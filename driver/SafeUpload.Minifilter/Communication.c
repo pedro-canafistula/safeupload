@@ -1978,6 +1978,7 @@ Return Value:
             command == SAFEUPLOAD_CONTROL_STAGE_DISPOSE ||
 #if SAFEUPLOAD_STAGING_PROTOTYPE
             command == SAFEUPLOAD_CONTROL_NATIVE_RECORD_REPLAY ||
+            command == SAFEUPLOAD_CONTROL_NATIVE_NAME_OBSERVATION ||
 #endif
             command == SAFEUPLOAD_CONTROL_GRANT_OVERRIDE) {
             if (!SafeUploadCurrentProcessHasAgentServiceSid()) {
@@ -1989,6 +1990,12 @@ Return Value:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (command == SAFEUPLOAD_CONTROL_NATIVE_RECORD_REPLAY) {
             status = SafeUploadStageNativeReplayControl(PortCookie, InputBuffer, InputBufferLength,
+                OutputBuffer, OutputBufferLength, ReturnOutputBufferLength);
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_NATIVE_NAME_OBSERVATION) {
+            status = SafeUploadStageNativeNameControl(PortCookie, InputBuffer, InputBufferLength,
                 OutputBuffer, OutputBufferLength, ReturnOutputBufferLength);
             leave;
         }

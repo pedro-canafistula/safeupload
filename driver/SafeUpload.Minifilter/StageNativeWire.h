@@ -6,6 +6,7 @@
 /* Separate feature-only ABI. Existing v18 controls and v20 stage layouts
  * remain unchanged; this new payload has its own checked version. */
 #define SAFEUPLOAD_CONTROL_NATIVE_RECORD_REPLAY ((UINT32) 30)
+#define SAFEUPLOAD_CONTROL_NATIVE_NAME_OBSERVATION ((UINT32) 31)
 #define SAFEUPLOAD_NATIVE_REPLAY_VERSION ((UINT32) 22) /* v21 lacked exact Mount Manager identity; never infer it. */
 #define SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS ((UINT32) 16)
 #define SAFEUPLOAD_NATIVE_REPLAY_MAX_RECORDS ((UINT32) 1024)
@@ -90,6 +91,48 @@ C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_REPLAY_ROW, ReservedEnd) == 796);
 C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_REPLAY_ROW, MountManagerVolumeId) == 800);
 C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_REPLAY_PAGE, Rows) == 64);
 C_ASSERT(sizeof(SAFEUPLOAD_NATIVE_REPLAY_PAGE) == 13120);
+
+/* Read-only, momentary name mapping. Two complete scans are not an unlink
+ * receipt, a DELETE grant, or permission to release a durable hold. */
+typedef struct _SAFEUPLOAD_NATIVE_NAME_REQUEST {
+    SAFEUPLOAD_CONTROL Control;
+    UINT32 ExtensionVersion;
+    UINT32 OsBootSequence;
+    GUID ExpectedDriverInstanceId;
+    UINT64 ExpectedConnectionEpoch;
+    UINT64 ExpectedRevision;
+    GUID MountManagerVolumeId;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 VolumeRootIdentity;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 ParentIdentity;
+    UINT32 ParentCaseSensitive;
+    UINT32 CanonicalLeafBytes;
+    WCHAR CanonicalLeaf[SAFEUPLOAD_NATIVE_REPLAY_LEAF_CHARS];
+} SAFEUPLOAD_NATIVE_NAME_REQUEST, *PSAFEUPLOAD_NATIVE_NAME_REQUEST;
+
+typedef struct _SAFEUPLOAD_NATIVE_NAME_REPLY {
+    UINT32 ExtensionVersion;
+    UINT32 StructSize;
+    GUID DriverInstanceId;
+    UINT64 ConnectionEpoch;
+    UINT64 Revision;
+    UINT32 OsBootSequence;
+    UINT32 CompleteScans;
+    GUID MountManagerVolumeId;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 VolumeRootIdentity;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 ParentIdentity;
+    UINT32 ParentCaseSensitive;
+    UINT32 CanonicalLeafBytes;
+    WCHAR CanonicalLeaf[SAFEUPLOAD_NATIVE_REPLAY_LEAF_CHARS];
+    UINT32 Present;
+    UINT32 Reserved;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 ChildIdentity;
+} SAFEUPLOAD_NATIVE_NAME_REPLY, *PSAFEUPLOAD_NATIVE_NAME_REPLY;
+
+C_ASSERT(sizeof(SAFEUPLOAD_NATIVE_NAME_REQUEST) == 640);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_NAME_REQUEST, CanonicalLeaf) == 128);
+C_ASSERT(sizeof(SAFEUPLOAD_NATIVE_NAME_REPLY) == 664);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_NAME_REPLY, CanonicalLeaf) == 120);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_NATIVE_NAME_REPLY, ChildIdentity) == 640);
 
 #endif
 #endif

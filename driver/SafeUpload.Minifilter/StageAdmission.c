@@ -277,6 +277,19 @@ VOID SafeUploadStageAdmissionCoverageEnd(VOID)
     InterlockedDecrement(&AdmissionCoverageChangesInFlight);
 }
 
+BOOLEAN SafeUploadStageAdmissionReadTopology(PUINT64 Topology, PUINT64 Coverage)
+{
+    UINT64 topology = (UINT64)InterlockedCompareExchange64(&AdmissionTopologySequence, 0, 0);
+    UINT64 coverage = (UINT64)InterlockedCompareExchange64(&AdmissionCoverageSequence, 0, 0);
+    *Topology = topology;
+    *Coverage = coverage;
+    if (InterlockedCompareExchange(&AdmissionSetupsInFlight, 0, 0) != 0 ||
+        InterlockedCompareExchange(&AdmissionTeardownsInFlight, 0, 0) != 0 ||
+        InterlockedCompareExchange(&AdmissionCoverageChangesInFlight, 0, 0) != 0) return FALSE;
+    return topology == (UINT64)InterlockedCompareExchange64(&AdmissionTopologySequence, 0, 0) &&
+        coverage == (UINT64)InterlockedCompareExchange64(&AdmissionCoverageSequence, 0, 0);
+}
+
 typedef struct _STAGE_ADMISSION_COVERAGE_INSTANCE {
     BOOLEAN ContextKnown;
     BOOLEAN VolumeNameKnown;

@@ -182,6 +182,8 @@ VOID SafeUploadStageAdmissionTopologyTeardownBegin(VOID);
 VOID SafeUploadStageAdmissionTopologyTeardownEnd(VOID);
 VOID SafeUploadStageAdmissionCoverageBegin(VOID);
 VOID SafeUploadStageAdmissionCoverageEnd(VOID);
+/* Quiescent observation of the existing counters; no I/O under a lock. */
+BOOLEAN SafeUploadStageAdmissionReadTopology(_Out_ PUINT64 Topology, _Out_ PUINT64 Coverage);
 NTSTATUS SafeUploadStageAdmissionCoverageStatus(
     _Out_ PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS Status);
 NTSTATUS SafeUploadStageAdmissionVolumeStatus(

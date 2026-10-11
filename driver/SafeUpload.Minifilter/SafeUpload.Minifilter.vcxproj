@@ -82,6 +82,7 @@
     <ClCompile Include="StagePublic.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageNativeRecords.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageNativeWire.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
+    <ClCompile Include="StageNativeObservation.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageAlias.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageFence.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageWriters.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />

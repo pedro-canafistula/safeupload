@@ -97,6 +97,11 @@ NTSTATUS SafeUploadStageNativeReplayControl(_In_opt_ PVOID PortCookie,
     _In_reads_bytes_(InputLength) PVOID Input, _In_ ULONG InputLength,
     _Out_writes_bytes_(OutputLength) PVOID Output, _In_ ULONG OutputLength,
     _Out_ PULONG Returned);
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageNativeNameControl(_In_opt_ PVOID PortCookie,
+    _In_reads_bytes_(InputLength) PVOID Input, _In_ ULONG InputLength,
+    _Out_writes_bytes_(OutputLength) PVOID Output, _In_ ULONG OutputLength,
+    _Out_ PULONG Returned);
 /* Call only after the authenticated service's exact terminal cleanup ACK,
  * never merely after releasing the exceptional publication hold. */
 _IRQL_requires_(PASSIVE_LEVEL)
