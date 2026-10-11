@@ -1,0 +1,61 @@
+{
+  "CapturedUTC": "2026-10-11T12:38:50.946237+00:00",
+  "ControlCount": 4,
+  "ControlScriptSHA256": "8bb24a90801fe48387fc1469ed0148dee7a4df9cad3e97076f6ad2f9cdff7365",
+  "Controls": [
+    {
+      "Case": "ExistingWritableDescriptor",
+      "LeaseAcquisitionErrno": 11,
+      "Result": "PASS"
+    },
+    {
+      "Case": "SharedWritableMappingAfterDescriptorClose",
+      "LeaseAcquisitionErrno": 11,
+      "Result": "PASS"
+    },
+    {
+      "Case": "NewNonblockingWriterOpenWhileReadLeaseHeld",
+      "GetLeaseAfterBreakIsNotTerminalProof": true,
+      "GetLeaseAfterBreakRequest": 2,
+      "RawStderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "RawStdoutSHA256": "b9ad3bffdf0726fe8612c1952faa71eb3fe5a27de4c4faa3734c447feecb7df0",
+      "Result": "PASS",
+      "WriterResult": {
+        "Blocked": true,
+        "Errno": 11
+      }
+    },
+    {
+      "Case": "NewWriterOpenAfterExplicitLeaseRelease",
+      "Result": "PASS"
+    }
+  ],
+  "Ext4MechanismTested": false,
+  "HostPolicyMutated": false,
+  "ImmutableFlagsChanged": false,
+  "KernelRelease": "7.2.5-3-omarchy",
+  "LeaseBreakSecondsObserved": "45",
+  "LeasesEnableObserved": "1",
+  "Limit": "Disposable Btrfs files only. No forced timeout, non-expiring lease, crash survival, writeback drain, VM baseline protection or restoration is qualified.",
+  "OriginalVMFilesOpened": false,
+  "ProductVMStarted": false,
+  "QueryUID": 1000,
+  "Result": "PASS_TEMPORARY_FILE_MECHANISM_CONTROLS",
+  "RuntimeGuardQualified": false,
+  "SysctlChanged": false,
+  "TemporaryFileFilesystem": {
+    "filesystems": [
+      {
+        "fstype": "tmpfs",
+        "source": "tmpfs",
+        "target": "/tmp"
+      },
+      {
+        "fstype": "tmpfs",
+        "source": "tmpfs",
+        "target": "/tmp"
+      }
+    ]
+  },
+  "TemporaryKernelFileLeasesUsed": true
+}

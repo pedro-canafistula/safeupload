@@ -1,0 +1,33 @@
+{
+  "Disposition": "NO_GO_R1_FIXTURE_EXECUTION_SOURCE_CORRECTIONS_REQUIRED",
+  "DriverInstalledOrLoaded": false,
+  "Findings": [
+    "Failed fltmc queries can be parsed as absent and authorize restore over loaded image",
+    "Temporary recovery materials can be deleted despite failed restoration checks",
+    "SCM sequential samples must not claim atomic state at response; final STOPPED requires a successful query"
+  ],
+  "FixtureExecuted": false,
+  "InputSHA256": {
+    "driver/evidence/2026-10-11/luna-t5-native-v20-r18-lifecycle-fixture-independent-review-r1.md": "11454ba7717c087c3c79bc3810cda49ced46f5f26b7f0d8e3991802579438bf8",
+    "driver/evidence/2026-10-11/luna-t5-native-v20-r18-runtime-qualification-readiness.md": "d08ce66165588ee9ee9202488bc84ed8e0f8d68327927fdcda9f3ceacf4e7ee5",
+    "driver/evidence/2026-10-11/m2-t5-driver-wire-v20-r18-root-source-acceptance-a1.json": "9e0ae87e8b17712a1f8967ccae0561cb29e21344c03c221e66622a869604492b",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-parser-a1-delivery.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-parser-a1-delivery.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-parser-a1-parse.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-parser-a1-parse.stdout.txt": "5402c5ea81781d1054b30a84fc227510e3a725e1df9e450e5d6d9029c196fa8d",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-parser-a1-preflight.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-parser-a1-preflight.stdout.txt": "0b4222655f2941c91a50138e62419bc36bb5620cd1630e4284ca1fdc3e9e71ec",
+    "driver/evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-parser-a1-root-result.json": "2377e1eef14e0c174aacfdac2cc48a486d1984613d7710f4c29efa36062bb7d3",
+    "driver/scripts/StagedTestAgent.ps1": "abd9c67925a4a18b4635bb4b1d21b35cd033453d6ca0c03acf46246472aa6dd7",
+    "driver/scripts/Test-StagedMinifilterUnloadLifecycle.ps1": "d96f40d1563df2c8c48c57d03fd49199fd580f7a96fac04ed8994a74468d4378"
+  },
+  "NewCutoverRequirementsIntroduced": false,
+  "NextAction": "Narrow additive R2 fixture correction by original author; preserve R1 evidence and obtain different-author re-review",
+  "PowerShell51TopLevelParserPassed": true,
+  "ProductVMStarted": false,
+  "RecordedUTC": "2026-10-11T12:54:04.526393+00:00",
+  "RootReadFullIndependentReportAndAffectedSource": true,
+  "RuntimeQualified": false,
+  "SourceAccepted": false,
+  "TwoStableInputReads": true
+}

@@ -13,6 +13,20 @@ Codex commits and pushes coherent reviewed changes as work proceeds. Each progre
 Codex handles ordinary work directly and delegates heavy cybersecurity implementation and reviews to Luna 6 at max effort.
 Completion requires evidence for every tracker item, then a taint-removal plan and owner sign-off.
 
+### T5 — Reviewed source checkpoint (2026-10-11)
+
+- [x] Commit and push the reviewed native R18 and managed R13 sources as `e0de7e46`; revalidate 226 source pins and 111 retained artifact pins before staging.
+  - [x] Four native WDK profiles pass PREfast/ApiValidator at zero warnings/errors with valid test signing.
+  - [x] Four Windows agent profiles pass at zero warnings/errors: 3,064 tests, including 104 required v20 cases.
+- [x] Parse the frozen R1 lifecycle fixture and helper using Windows PowerShell 5.1 with zero syntax errors; neither script was executed ([receipt](evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-parser-a1-root-result.json)).
+- [x] Independently review R1 and retain source NO_GO for execution: failed filter queries can authorize unsafe restoration, and incomplete restoration can still delete recovery material ([disposition](evidence/2026-10-11/m2-t5-lifecycle-fixture-r1-root-review-disposition.json)).
+  - [ ] Correct these paths in R2, preserve the original evidence, and obtain different-author review before execution.
+- [x] Pass four disposable Btrfs file-lease controls ([receipt](evidence/2026-10-11/m2-t5-file-lease-controls-a2-root.json)). The earlier a1 test ran on tmpfs; its Btrfs prose label was incorrect. These controls do not qualify expiry, crash retention, writeback drain or protection of original VM files.
+- [ ] Finish and independently review the Windows harness and enforced recovery transaction.
+- [ ] Qualify the matched pair, lifecycle and all three nonempty Save As modes under Verifier with independent destination-byte observations and independently verified VM restoration.
+
+Source/compiler/test acceptance remains separate from runtime qualification. Taint remains enabled, normal builds compile staging out, unsupported capabilities remain disabled, and cutover is unauthorized.
+
 ## What "complete" means
 
 The driver is complete for the local-NTFS product on Windows 10 22H2 build 19045.2965 when all of these hold:

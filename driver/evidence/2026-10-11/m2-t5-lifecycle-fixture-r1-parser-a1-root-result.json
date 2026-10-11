@@ -1,0 +1,49 @@
+{
+  "RecordedUTC": "2026-10-11T12:51:49.167174+00:00",
+  "BuilderIdentity": {
+    "Computer": "DESKTOP-O1LP5DG",
+    "SID": "S-1-5-21-316478115-1595729549-2803163825-1001",
+    "PSVersion": "5.1.19041.6456",
+    "ParseOnly": true,
+    "Directory": "C:/Users/vika/AppData/Local/Temp/SafeUpload-lifecycle-parse-1011-a1"
+  },
+  "Parsed": {
+    "ParseOnly": true,
+    "SourceExecuted": false,
+    "PSVersion": "5.1.19041.6456",
+    "Results": [
+      {
+        "Name": "Test-StagedMinifilterUnloadLifecycle.ps1",
+        "SHA256": "d96f40d1563df2c8c48c57d03fd49199fd580f7a96fac04ed8994a74468d4378",
+        "ErrorCount": 0,
+        "Errors": [],
+        "Tokens": 7409,
+        "ASTType": "System.Management.Automation.Language.ScriptBlockAst"
+      },
+      {
+        "Name": "StagedTestAgent.ps1",
+        "SHA256": "abd9c67925a4a18b4635bb4b1d21b35cd033453d6ca0c03acf46246472aa6dd7",
+        "ErrorCount": 0,
+        "Errors": [],
+        "Tokens": 2374,
+        "ASTType": "System.Management.Automation.Language.ScriptBlockAst"
+      }
+    ]
+  },
+  "RawSHA256": {
+    "m2-t5-lifecycle-fixture-r1-parser-a1-preflight.stdout.txt": "0b4222655f2941c91a50138e62419bc36bb5620cd1630e4284ca1fdc3e9e71ec",
+    "m2-t5-lifecycle-fixture-r1-parser-a1-preflight.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-lifecycle-fixture-r1-parser-a1-delivery.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-lifecycle-fixture-r1-parser-a1-delivery.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "m2-t5-lifecycle-fixture-r1-parser-a1-parse.stdout.txt": "5402c5ea81781d1054b30a84fc227510e3a725e1df9e450e5d6d9029c196fa8d",
+    "m2-t5-lifecycle-fixture-r1-parser-a1-parse.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "ParserPassed": true,
+  "FixtureExecuted": false,
+  "HelperExecuted": false,
+  "ProductVMStarted": false,
+  "DriverInstalledOrLoaded": false,
+  "RuntimeQualified": false,
+  "SourceAccepted": false,
+  "RootFrozenSource": "/home/victor/Work/safeupload-staging/output/review-candidates/m2-t5-lifecycle-fixture-r1-root-a1/src/driver/scripts"
+}
