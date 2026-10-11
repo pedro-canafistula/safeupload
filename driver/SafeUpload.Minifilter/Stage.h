@@ -40,6 +40,14 @@ VOID SafeUploadStageProtocolConnectionReset(_In_ PVOID ConnectionCookie);
 VOID SafeUploadStageProtocolAuthenticationChanged(_In_ PVOID ConnectionCookie);
 VOID SafeUploadStageServiceDisconnected(_In_ PVOID ConnectionCookie);
 BOOLEAN SafeUploadStageProtocolIsReady(VOID);
+/* Short capability-handoff snapshot. The caller releases its process/channel
+ * hold with SafeUploadConnectionReleaseAuthenticatedProcess. This is not a
+ * disposition permit and must not be held while waiting for last close. */
+_Success_(return != FALSE)
+BOOLEAN SafeUploadStageProtocolPinPublicService(_In_ LONG ExpectedChannelGeneration,
+    _Outptr_result_nullonfailure_ PVOID *ConnectionCookie,
+    _Out_ PLONG64 ConnectionGeneration,
+    _Outptr_result_nullonfailure_ PEPROCESS *Process);
 BOOLEAN SafeUploadStageProtocolIsDrainReplayOnly(VOID);
 LONG SafeUploadStageProtocolChannelGeneration(VOID);
 NTSTATUS SafeUploadStageRenameExchangeV19(_In_ PSAFEUPLOAD_EXCHANGE Exchange);

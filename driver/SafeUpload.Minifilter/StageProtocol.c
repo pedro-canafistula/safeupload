@@ -624,6 +624,39 @@ BOOLEAN SafeUploadStageProtocolIsReady(VOID)
     return ready;
 }
 
+_Use_decl_annotations_
+BOOLEAN SafeUploadStageProtocolPinPublicService(LONG ExpectedChannelGeneration,
+    PVOID *ConnectionCookie, PLONG64 ConnectionGeneration, PEPROCESS *Process)
+{
+    KIRQL stateIrql;
+    PVOID authenticatedCookie = NULL;
+    LONG64 authenticatedGeneration = 0;
+    ULONG processId = 0;
+    PEPROCESS process = NULL;
+    BOOLEAN pinned = FALSE;
+    if (ConnectionCookie == NULL || ConnectionGeneration == NULL || Process == NULL) return FALSE;
+    *ConnectionCookie = NULL;
+    *ConnectionGeneration = 0;
+    *Process = NULL;
+    if (ExpectedChannelGeneration <= 0) return FALSE;
+    /* Same state -> connection lock order as StageSendV19Exchange. No I/O or
+     * exchange mutex is held here. An authenticated but unreconciled channel,
+     * drain-only channel or replacement generation cannot export a capability. */
+    KeAcquireSpinLock(&SafeUploadStageV20StateLock, &stateIrql);
+    if (StageProtocolReadyForGenerationLocked(ExpectedChannelGeneration) &&
+        SafeUploadConnectionGetAuthenticatedIdentity(SafeUploadStageV20ConnectionCookie,
+            &authenticatedCookie, &authenticatedGeneration, &processId) &&
+        SafeUploadConnectionPinAuthenticatedProcess(authenticatedCookie,
+            authenticatedGeneration, &process)) {
+        *ConnectionCookie = authenticatedCookie;
+        *ConnectionGeneration = authenticatedGeneration;
+        *Process = process;
+        pinned = TRUE;
+    }
+    KeReleaseSpinLock(&SafeUploadStageV20StateLock, stateIrql);
+    return pinned;
+}
+
 BOOLEAN SafeUploadStageProtocolIsDrainReplayOnly(VOID)
 {
     KIRQL oldIrql;

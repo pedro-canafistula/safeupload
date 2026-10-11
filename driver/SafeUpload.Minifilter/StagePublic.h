@@ -11,6 +11,11 @@ typedef struct _SAFEUPLOAD_STAGE_PUBLIC_BINDING {
     ACCESS_MASK OriginalDesiredAccess;
     ACCESS_MASK GrantedAccess;
     ULONG OriginalShareAccess;
+    ULONG CallerProcessId;
+    LONGLONG CallerProcessCreationTime;
+    ULONG CallerSessionId;
+    ULONG CallerSidBytes;
+    UCHAR CallerSid[SECURITY_MAX_SID_SIZE];
     BOOLEAN ParentCaseSensitive;
     FILE_ID_INFORMATION VolumeRootIdentity;
     FILE_ID_INFORMATION ParentIdentity;
@@ -30,6 +35,7 @@ NTSTATUS SafeUploadStagePublicCaptureSubject(_In_ PFLT_CALLBACK_DATA Data,
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStagePublicOpenBackend(_In_ PFLT_INSTANCE Instance,
     _In_ PUNICODE_STRING PublicName, _In_ PSECURITY_CLIENT_CONTEXT Subject,
+    _In_ PEPROCESS OriginalRequestorProcess,
     _In_ ACCESS_MASK OriginalDesiredAccess, _In_ ULONG OriginalShareAccess,
     _In_ ULONG OriginalCreateOptions, _In_ BOOLEAN CaseSensitiveOpen,
     _Outptr_result_nullonfailure_ PSAFEUPLOAD_STAGE_PUBLIC_BACKEND *Backend);

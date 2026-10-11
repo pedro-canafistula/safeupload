@@ -34,6 +34,49 @@ typedef struct _STAGE_PUBLIC_OBJECT_BASIC_INFORMATION {
 
 static volatile LONG StagePublicBackendCount;
 
+/* RequestorProcess is the original CREATE's referenced process object, not a
+ * new PID lookup. The effective SID/session come from the exact copied subject
+ * used for the checked NTFS open, including an impersonated/restricted token. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StagePublicBindCaller(PSECURITY_CLIENT_CONTEXT Subject,
+    PEPROCESS RequestorProcess, PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding)
+{
+    PTOKEN_USER user = NULL;
+    PULONG session = NULL;
+    ULONG sidBytes;
+    NTSTATUS status;
+    PAGED_CODE();
+    Binding->CallerProcessId = HandleToULong(PsGetProcessId(RequestorProcess));
+    Binding->CallerProcessCreationTime = PsGetProcessCreateTimeQuadPart(RequestorProcess);
+    if (Binding->CallerProcessId == 0 || Binding->CallerProcessCreationTime <= 0)
+        return STATUS_ACCESS_DENIED;
+    status = SeQueryInformationToken(Subject->ClientToken, TokenUser, (PVOID *)&user);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (user == NULL || user->User.Sid == NULL || !RtlValidSid(user->User.Sid)) {
+        status = STATUS_INVALID_SID;
+        goto Exit;
+    }
+    sidBytes = RtlLengthSid(user->User.Sid);
+    if (sidBytes == 0 || sidBytes > sizeof(Binding->CallerSid)) {
+        status = STATUS_INVALID_SID;
+        goto Exit;
+    }
+    status = RtlCopySid(sizeof(Binding->CallerSid), Binding->CallerSid, user->User.Sid);
+    if (!NT_SUCCESS(status)) goto Exit;
+    Binding->CallerSidBytes = sidBytes;
+    status = SeQueryInformationToken(Subject->ClientToken, TokenSessionId, (PVOID *)&session);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (session == NULL) {
+        status = STATUS_INVALID_BUFFER_SIZE;
+        goto Exit;
+    }
+    Binding->CallerSessionId = *session;
+Exit:
+    if (user != NULL) ExFreePool(user);
+    if (session != NULL) ExFreePool(session);
+    return status;
+}
+
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStagePublicCaptureSubject)
 #pragma alloc_text(PAGE, SafeUploadStagePublicOpenBackend)
@@ -305,7 +348,8 @@ static NTSTATUS StagePublicBindAnchoredName(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Bac
 
 _Use_decl_annotations_
 NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRING PublicName,
-    PSECURITY_CLIENT_CONTEXT Subject, ACCESS_MASK OriginalDesiredAccess, ULONG OriginalShareAccess,
+    PSECURITY_CLIENT_CONTEXT Subject, PEPROCESS OriginalRequestorProcess,
+    ACCESS_MASK OriginalDesiredAccess, ULONG OriginalShareAccess,
     ULONG OriginalCreateOptions, BOOLEAN CaseSensitiveOpen, PSAFEUPLOAD_STAGE_PUBLIC_BACKEND *Backend)
 {
     PSAFEUPLOAD_STAGE_PUBLIC_BACKEND result = NULL;
@@ -323,12 +367,14 @@ NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRIN
     PAGED_CODE();
     if (Backend == NULL) return STATUS_INVALID_PARAMETER;
     *Backend = NULL;
-    if (Instance == NULL || PublicName == NULL || Subject == NULL || Subject->ClientToken == NULL || PublicName->Buffer == NULL ||
+    if (Instance == NULL || PublicName == NULL || Subject == NULL || Subject->ClientToken == NULL ||
+        OriginalRequestorProcess == NULL || PublicName->Buffer == NULL ||
         PublicName->Length == 0 || (PublicName->Length & 1) != 0 || PublicName->Length > SAFEUPLOAD_MAX_PATH_BYTES ||
         PublicName->Length > PublicName->MaximumLength ||
         OriginalShareAccess > (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE) ||
         FlagOn(OriginalCreateOptions, 0xff000000 | FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID) ||
-        IoGetTopLevelIrp() != NULL || !PsIsSystemThread(PsGetCurrentThread()))
+        IoGetTopLevelIrp() != NULL || !PsIsSystemThread(PsGetCurrentThread()) ||
+        PsGetCurrentProcess() != PsInitialSystemProcess)
         return STATUS_INVALID_PARAMETER;
     for (index = 0; index < PublicName->Length / sizeof(WCHAR); ++index) {
         WCHAR ch = PublicName->Buffer[index];
@@ -356,6 +402,8 @@ NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRIN
     result->Instance = Instance;
     result->Binding.OriginalDesiredAccess = OriginalDesiredAccess;
     result->Binding.OriginalShareAccess = OriginalShareAccess;
+    status = StagePublicBindCaller(Subject, OriginalRequestorProcess, &result->Binding);
+    if (!NT_SUCCESS(status)) goto Exit;
     status = SeImpersonateClientEx(Subject, NULL);
     if (!NT_SUCCESS(status)) goto Exit;
     impersonating = TRUE;
