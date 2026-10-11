@@ -35,6 +35,14 @@ public enum StagedBlockReason
     ReservedEmptySavePrivate = 0
 }
 
+/// <summary>Guidance for an unresolved native delete; it grants no recovery or publication action.</summary>
+public enum StagedRecoveryAdvice
+{
+    CloseApplication = 1,
+    RestartService = 2,
+    CollectDiagnostics = 3
+}
+
 /// <summary>
 /// Tells the user that a staged write has finished locally and is being checked.
 /// Only metadata crosses the notification pipe; the file stays in the private
@@ -51,7 +59,8 @@ public sealed record TransferNotification(
     bool? HandbackVerified = null,
     string? SnapshotSha256Hex = null,
     InspectionFailureKind? InspectionFailure = null,
-    StagedBlockReason? BlockReason = null) : AgentNotification
+    StagedBlockReason? BlockReason = null,
+    StagedRecoveryAdvice? RecoveryAdvice = null) : AgentNotification
 {
     public const string TypeName = "transfer";
 }

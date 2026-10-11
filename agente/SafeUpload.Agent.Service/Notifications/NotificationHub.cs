@@ -136,6 +136,10 @@ public sealed class NotificationHub
         if (notification is TransferNotification { Phase: TransferPhase.Blocked } &&
             (targetSessionId is null || targetUserSid is null))
             return false;
+        if (notification is TransferNotification { RecoveryAdvice: { } advice } recovery &&
+            (recovery.Phase != TransferPhase.Retained || recovery.OverrideAllowed || !Enum.IsDefined(advice) ||
+             targetSessionId is null || string.IsNullOrWhiteSpace(targetUserSid)))
+            return false;
 
         lock (_gate)
         {
