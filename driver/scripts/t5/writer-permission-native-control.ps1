@@ -17,6 +17,8 @@ public static class WriterPermissionNativeControl {
  [StructLayout(LayoutKind.Sequential)] struct IoStatusBlock { public IntPtr Status; public UIntPtr Information; }
  [StructLayout(LayoutKind.Sequential)] struct Luid { public uint Low; public int High; }
  [StructLayout(LayoutKind.Sequential)] struct TokenPrivileges { public uint Count; public Luid Id; public uint Attributes; }
+ [StructLayout(LayoutKind.Sequential)] struct GenericMapping { public uint Read, Write, Execute, All; }
+ [DllImport("advapi32.dll")] static extern void MapGenericMask(ref uint mask,ref GenericMapping mapping);
  [DllImport("advapi32.dll",SetLastError=true)] static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);
  [DllImport("advapi32.dll",SetLastError=true)] static extern bool DuplicateTokenEx(IntPtr token,uint access,IntPtr attributes,int level,int type,out IntPtr copy);
  [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool LookupPrivilegeValue(string system,string name,out Luid id);
@@ -101,12 +103,19 @@ public static class WriterPermissionNativeControl {
   if(disposition==1 || disposition==3) return original;
   throw new ArgumentException("Unsupported disposition.");
  }
+ public static uint ProjectGrant(uint original,uint checkedGrant) {
+  if((original&0x02000000)!=0) return checkedGrant;
+  var mapping=new GenericMapping{Read=0x120089,Write=0x120116,Execute=0x1200A0,All=0x1F01FF};
+  MapGenericMask(ref original,ref mapping); return checkedGrant&original;
+ }
  public static void SelfCheck() {
   if(IntPtr.Size!=8 || Marshal.SizeOf(typeof(ObjectAttributes))!=48 || Marshal.SizeOf(typeof(UnicodeString))!=16 || Marshal.SizeOf(typeof(IoStatusBlock))!=16 || Marshal.SizeOf(typeof(TokenPrivileges))!=16)
    throw new InvalidOperationException("Unexpected native packing.");
   if(CheckAccess(0x100002,1)!=0x100002 || CheckAccess(0x100002,3)!=0x100002 ||
      CheckAccess(0x100002,4)!=0x100112 || CheckAccess(0x100002,5)!=0x100112 || CheckAccess(0x100002,0)!=0x110112)
    throw new InvalidOperationException("Implicit-access matrix is malformed.");
+  if(ProjectGrant(0x40000000,0x1F01FF)!=0x120116 || ProjectGrant(0x100002,0x110112)!=0x100002)
+   throw new InvalidOperationException("App-grant projection is malformed.");
  }
  public static void RequireSubject() { using(var subject=new Subject()) {} }
  public static string ProcessPrivileges() {
@@ -171,7 +180,9 @@ try {
     Write-Output 'PrivateNativeSubjectRestoreDisabled=PASS ProcessTokenUnchanged=True'
     foreach ($profile in $cases) {
         foreach ($disposition in @(0, 1, 3, 4, 5)) {
-            $case = Join-Path $root ($profile.Name + '-' + $disposition)
+          foreach ($access in @([uint32]0x00100002, [uint32]0x00100004, [uint32]0x00100001,
+              [uint32]0x40000000, [uint32]3221225472, [uint32]0x10000000, [uint32]0x02100000)) {
+            $case = Join-Path $root ($profile.Name + '-' + $disposition + '-' + $access.ToString('X8'))
             [void][IO.Directory]::CreateDirectory($case)
             $nativePath = Join-Path $case 'native.txt'
             $probePath = Join-Path $case 'probe.txt'
@@ -182,6 +193,7 @@ try {
             Set-FixtureAcl $nativePath $false $profile.Deny
             Set-FixtureAcl $probePath $false $profile.Deny
             $descriptor = [IO.File]::GetAccessControl($probePath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)
+            $nativeDescriptor = [IO.File]::GetAccessControl($nativePath, [Security.AccessControl.AccessControlSections]::All).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)
             $native = $null; $probe = $null; $nativeGuard = $null; $probeGuard = $null
             try {
                 if ($null -ne $profile.GuardShare) {
@@ -192,16 +204,21 @@ try {
                     $probeGuard = [WriterPermissionNativeControl]::Open($probePath, $guardAccess, $profile.GuardShare, 1)
                     if (-not $nativeGuard.Accepted -or -not $probeGuard.Accepted) { throw 'Sharing guard could not open.' }
                 }
-                $native = [WriterPermissionNativeControl]::Open($nativePath, 0x00100002, 7, $disposition)
-                $checkAccess = [WriterPermissionNativeControl]::CheckAccess(0x00100002, $disposition)
+                $native = [WriterPermissionNativeControl]::Open($nativePath, $access, 7, $disposition)
+                $checkAccess = [WriterPermissionNativeControl]::CheckAccess($access, $disposition)
                 $probe = [WriterPermissionNativeControl]::Open($probePath, $checkAccess, 7, 1)
                 if ($profile.Name -eq 'full' -and -not $native.Accepted) { throw 'Positive native fixture was denied.' }
+                $projection = [WriterPermissionNativeControl]::ProjectGrant($access, $probe.GrantedAccess)
+                $nativeAfter = [IO.File]::GetAccessControl($nativePath, [Security.AccessControl.AccessControlSections]::All).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)
                 $row = [pscustomobject]@{ Profile=$profile.Name; Disposition=$disposition; GuardShare=$profile.GuardShare;
+                    RequestedAccess=('0x{0:X8}' -f $access); ProjectedAppGrant=('0x{0:X8}' -f $projection);
+                    NativeSecurityBefore=$nativeDescriptor; NativeSecurityAfter=$nativeAfter;
                     NativeStatus=('0x{0:X8}' -f $native.Status); NativeIoStatus=$native.IoStatus;
                     NativeInformation=$native.Information; NativeGranted=('0x{0:X8}' -f $native.GrantedAccess);
                     ProbeStatus=('0x{0:X8}' -f $probe.Status); ProbeIoStatus=$probe.IoStatus;
                     ProbeInformation=$probe.Information; ProbeGranted=('0x{0:X8}' -f $probe.GrantedAccess);
-                    OutcomeEquivalent=($native.Accepted -eq $probe.Accepted -and $native.Status -eq $probe.Status) }
+                    OutcomeEquivalent=($native.Accepted -eq $probe.Accepted -and $native.Status -eq $probe.Status);
+                    AppGrantEquivalent=(-not $native.Accepted -or ($probe.Accepted -and $native.GrantedAccess -eq $projection)) }
                 $rows.Add($row); Write-Output ($row | ConvertTo-Json -Compress)
             } finally {
                 if ($null -ne $probe) { $probe.Dispose() }
@@ -215,9 +232,10 @@ try {
             Set-FixtureAcl $probePath $false 0
             Set-FixtureAcl $case $true 0
             if (([IO.File]::ReadAllBytes($probePath) -join ',') -ne ($bytes -join ',')) { throw 'Probe changed source bytes.' }
+          }
         }
     }
-    $mismatches = @($rows | Where-Object { -not $_.OutcomeEquivalent })
+    $mismatches = @($rows | Where-Object { -not $_.OutcomeEquivalent -or -not $_.AppGrantEquivalent })
     if ([WriterPermissionNativeControl]::ProcessPrivileges() -ne $processPrivileges) { throw 'Native controls changed process privileges.' }
     Write-Output 'ProcessPrivilegesRetained=PASS'
     Write-Output ('NativePermissionRows=' + $rows.Count + ' Mismatches=' + $mismatches.Count)
