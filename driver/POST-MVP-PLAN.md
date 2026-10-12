@@ -142,9 +142,10 @@ integration. After the single pre-boot kernel lifetime review, qualify native de
 clean/CPF Save As in all three modes, with independent bytes and separate restoration. Component passes do not complete T5.
 Keep the broad application/metadata matrix in T8; all existing assertions and the full milestone sequence remain required.
 
-The [2026-10-12 progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md) confirms the architecture and scope,
-but identifies delivery fragmentation: group the remaining T5 work around the protected runtime checkpoint. The current design for
-capturing CREATE permissions needs correction before implementation; component checkmarks do not qualify the product.
+The [latest 2026-10-12 progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md) confirms the architecture and scope,
+but finds that delivery fragmentation persists: no revised protected T5 pair has run. Complete the connected fixed-NTFS delete/recovery
+path and shared publication head before adding component checkpoints. Ordinary CREATE authority and the seeded-content hand-back
+owner choice remain open; native transport design readiness and component checkmarks do not qualify the product.
 
 ### T4. Remove the 128-saves-per-boot ceiling
 
@@ -249,7 +250,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [Reviewed integration contract](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md), V23 transport and
     Windows filename resolver are implemented (`827b3f41`, `5f294008`) with [passing static gates](evidence/2026-10-12/t5-bound-allocation-static-gates.md).
   - [x] Service V23 dispatch → anchored seeding → bound manifest/head claim and receipt validation connected (`ca5a9cfa`–`be78b958`);
-    [agent gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md), including 11 allocation/continuation cases per feature profile.
+    [agent gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md), including 12 allocation/continuation cases per feature profile.
     Interrupted claims retain exact private cleanup obligations. Kernel producer/physical commits remain open; admission stays disabled.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
   - [x] Prepare clean/CPF forced-order coordinator gates and no-empty-leftover verdicts; Windows PowerShell 5.1 parsing,
