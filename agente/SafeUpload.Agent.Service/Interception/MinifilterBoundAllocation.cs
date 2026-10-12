@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Minifilter;
+using SafeUpload.Agent.Service.Notifications;
 using PortVerdict = SafeUpload.Agent.Minifilter.Verdict;
 
 namespace SafeUpload.Agent.Service.Interception;
