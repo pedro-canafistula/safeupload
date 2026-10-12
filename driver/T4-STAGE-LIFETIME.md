@@ -316,3 +316,9 @@ journal wait/scan/write and reply latency. The patch does not claim to fix the f
 It remains isolated from the unfinished T5 allocation protocol. The [Windows agent gate](evidence/2026-10-12/exact-agent-matrix-t4-rejected-allocation1-summary.txt)
 passes at `6198eee7`: 558 normal / 625 feature tests per configuration, no skips, all service/app/test builds at 0/0, packages independently
 verified. The harness's PowerShell 5.1 parse and cleanup self-checks passed. Protected qualification remains pending.
+
+The [instrumented short run](evidence/2026-10-12/t4-instrumented-short-result.md) completes 256/256 outcomes with no reply/journal
+failures, no remaining stages/versions/views/tombstones, an idle worker and separate restoration passed. It still fails the unchanged
+pool gate (318.863 B/cycle against 4). The NO_WAITER branch was not triggered; its protected fault-path qualification is not claimed.
+Aggregate growth follows the writer-registry tag while stage-owned allocations return to zero; object/reference attribution remains
+open. Further VM tests stop under the owner's repeated-failure rule. The 10,000-cycle and raw-observer gates remain outstanding.

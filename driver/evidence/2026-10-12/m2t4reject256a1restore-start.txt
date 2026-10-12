@@ -1,0 +1,2 @@
+RunDiskEfiReset=True
+2026-10-12T16:51:14Z run-disk win10-debug3: run m2t4reject256a1restore on /var/lib/libvirt/images/win10-debug3.safeupload-run-m2t4reject256a1restore.qcow2 (base /var/lib/libvirt/images/win10-debug3.base-20261009.qcow2)

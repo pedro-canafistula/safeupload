@@ -193,8 +193,9 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
     Separate restoration passed. Owner approved focused diagnosis/fix on 2026-10-12; no further VM run until reviewed and built.
   - [x] Luna-reviewed unaccepted-allocation cleanup and request timing: `6198eee7` on the isolated T4 branch;
     [agent matrix](evidence/2026-10-12/exact-agent-matrix-t4-rejected-allocation1-summary.txt), 558 normal / 625 feature tests per configuration, 0/0 builds.
-  - [ ] Instrumented short Verifier run `m2t4reject256a1` started on win10-debug3 with `6198eee7` + `m2-driver5-t11`;
-    attribute delay/pool growth before retrying 10,000 cycles. No kernel change or assertion waived.
+  - [ ] **Memory gate still fails:** `m2t4reject256a1`, win10-debug3, `6198eee7` + `m2-driver5-t11`: 256/256 saves passed, no reply/journal errors,
+    zero leftover stages/versions/views/tombstones, idle worker; pool slope 318.863 B/cycle against 4. [Result/restoration evidence](evidence/2026-10-12/t4-instrumented-short-result.md).
+    Separate restoration passed. Further tests stop under the owner's repeated-failure rule; registry-memory attribution remains open.
 - [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
 
 The preceding `m2t4boot10k9` stopped after 4,714/10,000 without a final result; it is not a pass. Its run disk was deleted and base
