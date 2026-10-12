@@ -89,6 +89,29 @@ public sealed class StagedNativeLifecycleDispatcherTests : IDisposable
         Assert.Equal(0, (await Head()).CommittedDelete);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Hidden_create_outcome_requires_exact_cancel_close_then_name_reconciliation(bool absent)
+    {
+        var prepared = await Send(Request(NativeLifecycleV24.Prepare));
+        Advance(Row with { JournalGeneration = prepared.JournalGeneration,
+            Facts = NativeRecordFacts.Forwarded | NativeRecordFacts.CancelledBeforeHandle,
+            CreateStatus = unchecked((int)0xc0000120), IdentityStatus = unchecked((int)0xc0000120) });
+        Assert.Equal(NativeLifecycleV24.Progress, (await Send(Request(NativeLifecycleV24.FactsChanged))).Result);
+        Assert.Equal(0, _observations);
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved, Assert.Single((await Head()).Deletes).State);
+        Advance(Row with { Facts = Row.Facts | NativeRecordFacts.CancelledCloseObserved });
+        if (absent) _child = null;
+        var result = await Send(Request(NativeLifecycleV24.FactsChanged));
+        Assert.Equal(absent ? NativeLifecycleV24.Terminal : NativeLifecycleV24.Progress, result.Result);
+        Assert.Equal(1, _observations);
+        var saved = Assert.Single((await Head()).Deletes);
+        Assert.Equal(absent ? StagedPublicDeleteState.Complete : StagedPublicDeleteState.Admitted, saved.State);
+        Assert.Null(saved.NativeCreateAccepted); Assert.Null(saved.NativeOutcome);
+        Assert.Equal(absent ? 1 : 0, (await Head()).CommittedDelete);
+    }
+
     [Fact]
     public async Task Reopened_journal_dispatch_reconciles_last_close_from_durable_intent_without_manual_disposition()
     {

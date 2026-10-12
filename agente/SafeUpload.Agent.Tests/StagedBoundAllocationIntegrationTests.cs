@@ -215,8 +215,18 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
             using var bytes = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             byte[] observed = new byte[original.Length];
             bytes.ReadExactly(observed); Assert.Equal(original, observed); Assert.Equal(original.Length, bytes.Length);
+            if (creator is not null)
+            {
+                bytes.Dispose(); creator.Dispose(); // Another original reader/DELETE handle still retains the link.
+                var retained = StagedDestinationNameObserver.Observe(parent.VolumeRoot, parent.Parent,
+                    destination, CancellationToken.None);
+                Assert.Equal(binding.PublicTarget, retained.PublicIdentity);
+            }
         }
         Assert.Equal(!scheduledOnClose, File.Exists(path));
+        var finalName = StagedDestinationNameObserver.Observe(parent.VolumeRoot, parent.Parent,
+            destination, CancellationToken.None);
+        Assert.Equal(scheduledOnClose ? null : binding.PublicTarget, finalName.PublicIdentity);
         if (!scheduledOnClose)
         {
             using var exact = StagedStageFile.Open(path);

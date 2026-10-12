@@ -62,6 +62,25 @@ static VOID NativeChanged(VOID)
 static VOID NativeWake(VOID)
 { KeSetEvent(NativeWakeEvent, IO_NO_INCREMENT, FALSE); }
 
+/* NativeLock. Another native reader may retain a delete-pending link after
+ * the scheduled creator's cleanup. Its CLEANUP/CLOSE is a resolving event
+ * even when that reader has no record of its own. It triggers exact anchored
+ * observation only; it supplies no lifetime, unlink or cleanup-ACK proof. */
+static BOOLEAN NativeNameMayResolveLocked(PFLT_INSTANCE Instance)
+{
+    PLIST_ENTRY link;
+    for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
+        PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+        if (record->Instance == Instance && !record->Snapshot.CleanupCoverageLost &&
+            record->Snapshot.Forwarded &&
+            ((record->Snapshot.CreateOutcomeKnown && record->Snapshot.CreateAccepted &&
+              record->Snapshot.LastHandleCleanedUp) ||
+             (record->Snapshot.CancelledBeforeHandle && record->Snapshot.CancelledCloseObserved)))
+            return TRUE;
+    }
+    return FALSE;
+}
+
 static BOOLEAN NativeGuidEqual(const GUID *Left, const GUID *Right)
 { return RtlEqualMemory(Left, Right, sizeof(*Left)); }
 
@@ -415,6 +434,7 @@ VOID SafeUploadStageNativePostCleanup(PFLT_CALLBACK_DATA Data,
 {
     PSAFEUPLOAD_STAGE_NATIVE_RECORD record;
     KIRQL irql;
+    BOOLEAN changed = FALSE;
     UNREFERENCED_PARAMETER(Data);
     if (!NativeEnter()) return;
     NativeAcquire(&irql);
@@ -430,9 +450,13 @@ VOID SafeUploadStageNativePostCleanup(PFLT_CALLBACK_DATA Data,
             record->FileObject = NULL;
         }
         NativeChanged();
+        changed = TRUE;
+    } else if (!FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) && NativeNameMayResolveLocked(Objects->Instance)) {
+        NativeChanged();
+        changed = TRUE;
     }
     NativeRelease(irql);
-    if (record != NULL) NativeWake();
+    if (changed) NativeWake();
     ExReleaseRundownProtection(&NativeCalls);
 }
 
@@ -441,10 +465,12 @@ BOOLEAN SafeUploadStageNativePreClose(PCFLT_RELATED_OBJECTS Objects, PVOID *Comp
 {
     PSAFEUPLOAD_STAGE_NATIVE_RECORD record;
     KIRQL irql;
+    BOOLEAN observeClose;
     *CompletionContext = NULL;
     if (!NativeEnter()) return FALSE;
     NativeAcquire(&irql);
     record = NativeFindObject(Objects->Instance, Objects->FileObject);
+    observeClose = record == NULL && NativeNameMayResolveLocked(Objects->Instance);
     if (record != NULL) {
         NT_ASSERT(!record->CloseCallbackOwned);
         record->References += 1;
@@ -459,7 +485,9 @@ BOOLEAN SafeUploadStageNativePreClose(PCFLT_RELATED_OBJECTS Objects, PVOID *Comp
     NativeRelease(irql);
     if (record != NULL) NativeWake();
     ExReleaseRundownProtection(&NativeCalls);
-    return record != NULL;
+    /* A null context owns no record reference. Filter Manager preserves the
+     * instance/callback lifetime for this observe-only synchronized post. */
+    return record != NULL || observeClose;
 }
 
 _Use_decl_annotations_
@@ -468,6 +496,7 @@ BOOLEAN SafeUploadStageNativePostClose(PFLT_CALLBACK_DATA Data,
 {
     PSAFEUPLOAD_STAGE_NATIVE_RECORD record;
     KIRQL irql;
+    BOOLEAN changed = FALSE;
     if (!NativeEnter()) return FALSE;
     NativeAcquire(&irql);
     record = NativeFindContext(CompletionContext, FALSE);
@@ -480,9 +509,13 @@ BOOLEAN SafeUploadStageNativePostClose(PFLT_CALLBACK_DATA Data,
         NT_ASSERT(record->References > 1);
         record->References -= 1;
         NativeChanged();
+        changed = TRUE;
+    } else if (!FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) && NativeNameMayResolveLocked(Objects->Instance)) {
+        NativeChanged();
+        changed = TRUE;
     }
     NativeRelease(irql);
-    if (record != NULL) NativeWake();
+    if (changed) NativeWake();
     ExReleaseRundownProtection(&NativeCalls);
     return record != NULL;
 }

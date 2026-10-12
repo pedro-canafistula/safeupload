@@ -5829,7 +5829,12 @@ static VOID StageNativeFlushFacts(VOID)
         for (index = 0; index < count; ++index) {
             SAFEUPLOAD_NATIVE_LIFECYCLE_REPLY reply;
             UINT64 replyAuthority;
-            if (!rows[index].CreateOutcomeKnown) continue;
+            /* Lower cancellation can conceal CREATE acceptance. Its exact
+             * canceled-CLOSE or coverage-loss facts still need reconciliation
+             * against the durable pre-CREATE intent, never a fabricated failed
+             * CREATE receipt. Do not strand it behind CreateOutcomeKnown. */
+            if (!rows[index].CreateOutcomeKnown && !rows[index].CancelledBeforeHandle &&
+                !rows[index].CleanupCoverageLost) continue;
             status = SafeUploadStageNativeExchange(&rows[index], revision, SAFEUPLOAD_NATIVE_FACTS_CHANGED, &reply, &replyAuthority);
             if (!NT_SUCCESS(status)) continue; // A later map/channel event retries; no idle timer.
             if (reply.Result == SAFEUPLOAD_NATIVE_TERMINAL &&
