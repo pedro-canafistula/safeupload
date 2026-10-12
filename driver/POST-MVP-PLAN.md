@@ -232,6 +232,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     including 42 new query cases per feature profile. Live recovery and runtime portability/hold-release checks remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
+    [Reviewed integration contract](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md), V23 transport and
+    Windows filename resolver are implemented (`827b3f41`, `5f294008`) with [passing static gates](evidence/2026-10-12/t5-bound-allocation-static-gates.md).
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
   - [x] Prepare clean/CPF forced-order coordinator gates and no-empty-leftover verdicts; Windows PowerShell 5.1 parsing,
     168 schema assertions and actual unprotected NTFS actor controls pass ([raw output](evidence/2026-10-11/t5-forced-order-harness-controls-1011a5.txt));
@@ -241,9 +243,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: driver `589e9034`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
-agent `9e9dea9d`, **857/857** per normal profile and **1026/1026** per feature profile, every discovered case executed once without skips,
-service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-11/t5-native-startup-notice-static-gates.md)).
+Latest static gates: driver `827b3f41`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
+agent `744fd08e`, **863/863** per normal profile and **1101/1101** per feature profile, every discovered case executed once without skips,
+service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-12/t5-bound-allocation-static-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
