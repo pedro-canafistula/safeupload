@@ -120,7 +120,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         var notifications = new List<TransferNotification>();
         while (owner.Reader.TryRead(out var notification))
             if (notification is TransferNotification transferNotification) notifications.Add(transferNotification);
-        var hold = Assert.Single(notifications.Where(n => n.RecoveryAdvice == StagedRecoveryAdvice.PublicationUnresolved));
+        var hold = Assert.Single(notifications, n => n.RecoveryAdvice == StagedRecoveryAdvice.PublicationUnresolved);
         Assert.Equal(transfer.DestinationPath, hold.FileName);
         Assert.Equal(TransferPhase.Retained, hold.Phase);
         Assert.Equal(StagedRecoveryAdvice.PublicationUnresolved, hold.RecoveryAdvice);
