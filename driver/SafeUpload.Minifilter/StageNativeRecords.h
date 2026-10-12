@@ -47,6 +47,7 @@ typedef struct _SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT {
     FLT_INSTANCE_TEARDOWN_FLAGS TeardownReason;
     BOOLEAN PublicOpenPrepared;
     BOOLEAN PublicOpenConfirmed;
+    BOOLEAN PublicCleanupOutstanding;
     UINT64 PublishedGeneration;
     SAFEUPLOAD_STAGE_IDENTITY_V19 PublishedIdentity;
     ACCESS_MASK GrantedAccess; /* explicit requested subset, only after checked native CREATE */
@@ -80,8 +81,22 @@ NTSTATUS SafeUploadStageNativeSnapshot(_In_ PSAFEUPLOAD_STAGE_NATIVE_RECORD Reco
  * Its negative CREATE receipt stays replayable until the exact service ACK. */
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeMarkNotForwarded(_In_ PSAFEUPLOAD_STAGE_NATIVE_RECORD Record);
-_IRQL_requires_(PASSIVE_LEVEL)
+_IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageNativeReleaseRecord(_In_ PSAFEUPLOAD_STAGE_NATIVE_RECORD Record);
+
+/* Ordinary native-object disposition stays in the original callback. No
+ * worker reissues an operation or substitutes another security subject. */
+_IRQL_requires_max_(APC_LEVEL)
+FLT_PREOP_CALLBACK_STATUS SafeUploadStagePublicDispositionPre(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _Outptr_result_maybenull_ PVOID *CompletionContext,
+    _Out_ PBOOLEAN Handled);
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadStagePublicDispositionPost(_In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _In_opt_ PVOID CompletionContext,
+    _In_ FLT_POST_OPERATION_FLAGS Flags);
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicDispositionConfirm(_In_ const SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT *Snapshot,
+    _In_ const SAFEUPLOAD_PUBLIC_RELAY_REPLY *Reply, _In_ UINT64 AuthorityRevision);
 
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageNativePostCreate(_In_ PFLT_CALLBACK_DATA Data,

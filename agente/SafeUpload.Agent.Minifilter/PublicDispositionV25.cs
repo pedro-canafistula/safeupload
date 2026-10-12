@@ -9,7 +9,7 @@ public static class PublicDispositionV25
 {
     public const uint Operation = 21, Version = 25, ReplayControl = 32;
     public const uint OpenPrepare = 1, OpenFacts = 2, DispositionPrepare = 3, DispositionFacts = 4;
-    public const uint Prepared = 1, Progress = 2, Recorded = 3;
+    public const uint Prepared = 1, Progress = 2, Recorded = 3, PreparedNoNameEffect = 4;
     public const int RequestBytes = 80, ReplyBytes = 128, ReplayRowBytes = 1024, ReplayPageBytes = 16448;
 
     public static unsafe void Verify()
@@ -35,7 +35,8 @@ public static class PublicDispositionV25
         (value.PublishedGeneration == 0 ? !value.PublishedIdentity.HasNonzeroFileId &&
             value.PublishedIdentity.VolumeSerialNumber == 0 : value.PublishedIdentity.HasNonzeroFileId) &&
         (value.Request.Phase is OpenPrepare or OpenFacts ? value.MutationGeneration == 0 : true) &&
-        (value.Request.Phase is OpenPrepare or DispositionPrepare ? value.Result == Prepared :
+        (value.Request.Phase == OpenPrepare ? value.Result == Prepared :
+            value.Request.Phase == DispositionPrepare ? value.Result is Prepared or PreparedNoNameEffect :
             value.Result is Progress or Recorded);
 }
 

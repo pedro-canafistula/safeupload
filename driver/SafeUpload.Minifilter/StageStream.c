@@ -5851,7 +5851,18 @@ static VOID StagePublicOpenFlushFacts(VOID)
         for (index = 0; index < count; ++index) {
             SAFEUPLOAD_PUBLIC_RELAY_REPLY reply;
             UINT64 replyAuthority;
-            if (rows[index].PublicOpenConfirmed && !rows[index].LastHandleCleanedUp &&
+            if (rows[index].PublicOperation.Sequence != 0) {
+                if (!FlagOn(rows[index].PublicOperation.Facts, SAFEUPLOAD_PUBLIC_OPERATION_RESULT_KNOWN |
+                    SAFEUPLOAD_PUBLIC_OPERATION_NOT_FORWARDED | SAFEUPLOAD_PUBLIC_OPERATION_COVERAGE_LOST)) continue;
+                status = SafeUploadStagePublicOpenExchange(&rows[index], revision, SAFEUPLOAD_PUBLIC_DISPOSITION_FACTS,
+                    &reply, &replyAuthority);
+                if (status == STATUS_SUCCESS && reply.Result == SAFEUPLOAD_PUBLIC_RELAY_RECORDED) {
+                    status = SafeUploadStagePublicDispositionConfirm(&rows[index], &reply, replyAuthority);
+                    if (NT_SUCCESS(status)) goto Exit;
+                }
+                continue;
+            }
+            if (rows[index].PublicOpenConfirmed && !rows[index].PublicCleanupOutstanding && !rows[index].LastHandleCleanedUp &&
                 !rows[index].CancelledBeforeHandle && !rows[index].CancelledCloseObserved &&
                 !rows[index].CleanupCoverageLost) continue;
             if (!rows[index].CreateOutcomeKnown && !rows[index].CancelledBeforeHandle &&
@@ -5860,7 +5871,14 @@ static VOID StagePublicOpenFlushFacts(VOID)
                 &reply, &replyAuthority);
             if (status == STATUS_SUCCESS && reply.Result == SAFEUPLOAD_PUBLIC_RELAY_RECORDED) {
                 status = SafeUploadStagePublicOpenConfirm(&rows[index].Binding, replyAuthority);
-                if (NT_SUCCESS(status)) goto Exit; /* Map/pagination may have changed; its event resumes. */
+                if (NT_SUCCESS(status)) {
+                    UINT64 afterRevision;
+                    if (rows[index].PublicCleanupOutstanding &&
+                        NT_SUCCESS(SafeUploadStageNativeReadRevision(&afterRevision)))
+                        (VOID)SafeUploadStagePublicOpenExchange(&rows[index], afterRevision,
+                            SAFEUPLOAD_PUBLIC_OPEN_FACTS, &reply, NULL);
+                    goto Exit; /* Map/pagination may have changed; its event resumes. */
+                }
             }
         }
         offset += count;
@@ -7771,6 +7789,13 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
     /* Owned-stream routing MUST precede all legacy taint/context/policy callbacks. */
     if (StageStreamForObject(Data->Iopb->TargetFileObject) != NULL)
         return StagePreOperation(Data, Objects, CompletionContext, AdmissionSlot);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION) {
+        BOOLEAN handled;
+        result = SafeUploadStagePublicDispositionPre(Data, Objects, CompletionContext, &handled);
+        if (handled) return result;
+    }
+#endif
     switch (Data->Iopb->MajorFunction) {
     case IRP_MJ_CREATE:
         {
@@ -8200,6 +8225,9 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
     PCFLT_RELATED_OBJECTS Objects, PVOID CompletionContext, FLT_POST_OPERATION_FLAGS Flags)
 {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION &&
+        SafeUploadStagePublicDispositionPost(Data, Objects, CompletionContext, Flags))
+        return FLT_POSTOP_FINISHED_PROCESSING;
     if (Data->Iopb->MajorFunction == IRP_MJ_CLOSE &&
         SafeUploadStageNativePostClose(Data, Objects, CompletionContext, Flags))
         return FLT_POSTOP_FINISHED_PROCESSING;

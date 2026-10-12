@@ -815,6 +815,57 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
     }
 
     [Theory]
+    [InlineData(false, 0, false)]
+    [InlineData(true, 0, false)]
+    [InlineData(true, -1073741790, false)]
+    [InlineData(true, -1073741536, true)]
+    public async Task Relay_intent_retains_exact_native_result_without_replaying_or_losing_its_generation(
+        bool deleting, int nativeStatus, bool notForwarded)
+    {
+        var journal = Journal(); var destination = Destination();
+        using (var bind = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Allocation, CancellationToken.None))
+            await journal.CapturePublicOpenHeadAsync(bind, _publicIdentity, Locator(),
+                Observation(destination, _publicIdentity), CancellationToken.None);
+        var binding = Binding() with { OsBootSequence = 42 };
+        var original = new StagedPublicRelayIntent(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1,
+            0, null, 13, deleting ? 1u : 0u, 1, 0x10000, 1234);
+        Guid operation = Guid.NewGuid();
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+        {
+            var first = await journal.BeginPublicRelayAsync(turn, binding, operation, original,
+                Observation(destination, _publicIdentity), CancellationToken.None);
+            Assert.Equal(deleting ? 1 : 0, first.Generation);
+            Assert.Equal(first, await journal.BeginPublicRelayAsync(turn, binding, operation, original,
+                Observation(destination, _publicIdentity), CancellationToken.None));
+        }
+        var reopened = Journal();
+        var pending = (await reopened.ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+        Assert.Equal(operation, pending.PendingCommit!.OperationId);
+        Assert.Null(Assert.Single(pending.PublicRelayReceipts!).NativeStatus);
+        using (var turn = await reopened.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+        {
+            var recorded = await reopened.RecordPublicRelayResultAsync(turn, binding, operation, original,
+                nativeStatus, notForwarded);
+            Assert.Equal(nativeStatus, recorded.NativeStatus); Assert.Equal(notForwarded, recorded.NotForwarded);
+            Assert.Equal(recorded, await reopened.RecordPublicRelayResultAsync(turn, binding, operation, original,
+                nativeStatus, notForwarded));
+            await Assert.ThrowsAsync<IOException>(() => reopened.RecordPublicRelayResultAsync(turn, binding,
+                operation, original, nativeStatus == 0 ? -1 : 0, false));
+        }
+        var result = (await Journal().ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+        Assert.Null(result.PendingCommit); Assert.Equal(deleting ? 1 : 0, result.MaxAllocated);
+        Assert.Equal(0, result.CommittedDelete);
+        if (deleting)
+            Assert.Equal(notForwarded ? StagedPublicDeleteState.Canceled :
+                nativeStatus >= 0 ? StagedPublicDeleteState.Accepted : StagedPublicDeleteState.Failed,
+                Assert.Single(result.Deletes).State);
+        else Assert.Empty(result.Deletes);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]

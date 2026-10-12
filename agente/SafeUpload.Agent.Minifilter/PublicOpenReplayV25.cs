@@ -9,7 +9,7 @@ namespace SafeUpload.Agent.Minifilter;
 [Flags]
 public enum PublicOperationFacts : uint
 {
-    Captured = 1, Forwarded = 2, ResultKnown = 4, NotForwarded = 8, CoverageLost = 16
+    Captured = 1, Forwarded = 2, ResultKnown = 4, NotForwarded = 8, CoverageLost = 16, CleanupOutstanding = 32
 }
 
 public sealed record PublicOpenReplayRow(NativeRecordReplayRow Open, ulong PublishedGeneration,
@@ -86,8 +86,10 @@ internal static class PublicOpenReplayWireV25
             (published == 0 ? publishedIdentity.HasNonzeroFileId || publishedIdentity.VolumeSerialNumber != 0 :
                 !publishedIdentity.HasNonzeroFileId || publishedIdentity.VolumeSerialNumber != opened.PublicIdentity.VolumeSerialNumber) ||
             granted != (opened.Facts.HasFlag(NativeRecordFacts.IdentityChecked) ? mapped : 0) ||
-            (facts & ~(PublicOperationFacts)31) != 0 ||
-            (sequence == 0 ? !Zero(b.Slice(856, 48)) || !Zero(b[908..]) :
+            (facts & ~(PublicOperationFacts)63) != 0 ||
+            (facts.HasFlag(PublicOperationFacts.CleanupOutstanding) && !opened.Facts.HasFlag(NativeRecordFacts.IdentityChecked)) ||
+            (sequence == 0 ? !Zero(b.Slice(856, 48)) || !Zero(b.Slice(908, 12)) || !Zero(b[924..]) ||
+                (facts & ~PublicOperationFacts.CleanupOutstanding) != 0 :
                 (transfer == Guid.Empty || nonce == Guid.Empty || operation == Guid.Empty ||
                  transfer == opened.TransferId || nonce == opened.RequestNonce || operation == opened.OperationId ||
                  !facts.HasFlag(PublicOperationFacts.Captured) || !opened.Facts.HasFlag(NativeRecordFacts.IdentityChecked) ||

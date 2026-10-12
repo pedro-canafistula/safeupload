@@ -83,6 +83,7 @@ static VOID PublicWireCopyRow(PSAFEUPLOAD_PUBLIC_OPEN_REPLAY_ROW To,
     To->DispositionFlags = op->DispositionFlags;
     To->RequestorMode = op->RequestorMode;
     To->OperationFacts = op->Facts;
+    if (From->PublicCleanupOutstanding) To->OperationFacts |= SAFEUPLOAD_PUBLIC_CLEANUP_OUTSTANDING;
     To->OperationStatus = op->Status;
     To->MutationGeneration = op->Generation;
     To->ActorProcessCreationTime = op->ActorProcessCreationTime;

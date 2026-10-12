@@ -106,11 +106,21 @@ internal sealed record StagedDestinationCommitIntent(Guid OperationId, StagedDes
     Guid TransferId, long Generation, StagedStageIdentity? ExpectedPublicIdentity,
     StagedStageIdentity? TemporaryIdentity = null, long? Length = null, string? Sha256Hex = null);
 internal sealed record StagedDestinationMutationResult(StagedDestinationCommitIntent Intent, bool Succeeded);
+// Immutable original-operation facts. These are durable replay evidence;
+// they confer no handle, token, DELETE right or permission to repeat I/O.
+internal sealed record StagedPublicRelayIntent(Guid OpenTransferId, Guid OpenNonce, Guid OpenOperationId,
+    ulong Sequence, long PublishedGeneration, StagedStageIdentity? PublishedIdentity,
+    uint InformationClass, uint DispositionFlags, uint RequestorMode, uint GrantedAccess, int OpenProcessId);
+internal sealed record StagedPublicRelayReceipt(StagedPublicDeleteBinding Binding, Guid OperationId,
+    StagedPublicRelayIntent Original, long Generation, bool NoNameEffect,
+    StagedPublicDeleteState State, int? NativeStatus = null, bool NotForwarded = false,
+    ulong? AcknowledgedRevision = null, ulong? CleanupAcknowledgementRevision = null);
 internal sealed record StagedDestinationHead(StagedDestinationIdentity Destination, string Locator,
     long MaxAllocated, Guid? CurrentSaveTransferId, long CurrentSaveGeneration,
     long LatestPublished, StagedStageIdentity? PublishedIdentity, long CommittedDelete,
     StagedDestinationCommitIntent? PendingCommit, StagedPublicDeleteRecord[] Deletes,
-    StagedDestinationMutationResult? LastMutationResult = null);
+    StagedDestinationMutationResult? LastMutationResult = null,
+    StagedPublicRelayReceipt[]? PublicRelayReceipts = null);
 
 public sealed partial class StagedTransferJournal
 {
@@ -774,6 +784,8 @@ public sealed partial class StagedTransferJournal
             var delete = RequireExactDelete(head, binding);
             if (delete.Kind == StagedPublicDeleteKind.NativeOnClose)
                 throw new IOException("Native receipt retirement requires confirmed kernel-record removal.");
+            if ((head.PublicRelayReceipts ?? []).Any(r => r.Binding == binding))
+                throw new IOException("Original-operation receipts require authenticated slot/cleanup removal.");
             if (delete.State is not (StagedPublicDeleteState.Canceled or StagedPublicDeleteState.Superseded or
                 StagedPublicDeleteState.Complete or StagedPublicDeleteState.Failed))
                 throw new IOException("An unresolved delete receipt cannot be compacted.");
@@ -1039,7 +1051,9 @@ public sealed partial class StagedTransferJournal
                     RequireSameVolumeIdentity(destination, intent.TemporaryIdentity);
                     break;
                 case StagedDestinationMutation.DeleteDisposition:
-                    if (!head.Deletes.Any(d => d.State == StagedPublicDeleteState.Intent &&
+                    if (!head.Deletes.Any(d => (d.State == StagedPublicDeleteState.Intent ||
+                            (d.State == StagedPublicDeleteState.Superseded && head.PublicRelayReceipts?.Any(r =>
+                                r.OperationId == intent.OperationId && r.NoNameEffect && r.State == StagedPublicDeleteState.Intent) == true)) &&
                             d.Binding.TransferId == intent.TransferId && d.Generation == intent.Generation &&
                             d.Binding.PublicIdentity == intent.ExpectedPublicIdentity && d.OperationId == intent.OperationId) ||
                         intent.TemporaryIdentity is not null || intent.Length is not null || intent.Sha256Hex is not null)
@@ -1085,5 +1099,6 @@ public sealed partial class StagedTransferJournal
                     break;
             }
         }
+        ValidatePublicRelayReceipts(head);
     }
 }

@@ -1138,16 +1138,22 @@ NTSTATUS SafeUploadStagePublicOpenExchange(const SAFEUPLOAD_STAGE_NATIVE_SNAPSHO
     static const SAFEUPLOAD_STAGE_IDENTITY_V19 zeroIdentity = {0};
     UINT32 verdict = SAFEUPLOAD_VERDICT_DENY;
     BOOLEAN answered = FALSE;
+    BOOLEAN mutation = Phase == SAFEUPLOAD_PUBLIC_DISPOSITION_PREPARE || Phase == SAFEUPLOAD_PUBLIC_DISPOSITION_FACTS;
     NTSTATUS status;
     PAGED_CODE();
     RtlZeroMemory(Reply, sizeof(*Reply));
     if (AuthorityRevision != NULL) *AuthorityRevision = 0;
     if (Snapshot == NULL || MapRevision == 0 ||
-        (Phase != SAFEUPLOAD_PUBLIC_OPEN_PREPARE && Phase != SAFEUPLOAD_PUBLIC_OPEN_FACTS) ||
+        (!mutation && Phase != SAFEUPLOAD_PUBLIC_OPEN_PREPARE && Phase != SAFEUPLOAD_PUBLIC_OPEN_FACTS) ||
         FlagOn(Snapshot->Binding.CreateOptions, FILE_DELETE_ON_CLOSE) ||
         !StageProtocolGuidNonzero(&Snapshot->Binding.TransferId) ||
         !StageProtocolGuidNonzero(&Snapshot->Binding.RequestNonce) ||
         !StageProtocolGuidNonzero(&Snapshot->Binding.OperationId) || Snapshot->Binding.Public.CallerProcessId == 0)
+        return STATUS_INVALID_PARAMETER;
+    if (mutation && (Snapshot->PublicOperation.Sequence == 0 ||
+        !FlagOn(Snapshot->PublicOperation.Facts, SAFEUPLOAD_PUBLIC_OPERATION_CAPTURED) ||
+        !StageProtocolGuidNonzero(&Snapshot->PublicOperation.Nonce) ||
+        !StageProtocolGuidNonzero(&Snapshot->PublicOperation.OperationId) || Snapshot->PublicOperation.ActorProcessId == 0))
         return STATUS_INVALID_PARAMETER;
     exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG);
     if (exchange == NULL) return STATUS_INSUFFICIENT_RESOURCES;
@@ -1157,14 +1163,18 @@ NTSTATUS SafeUploadStagePublicOpenExchange(const SAFEUPLOAD_STAGE_NATIVE_SNAPSHO
     payload.StructSize = sizeof(payload);
     payload.Phase = Phase;
     payload.OpenNonce = Snapshot->Binding.RequestNonce;
-    payload.OperationId = Snapshot->Binding.OperationId;
+    payload.OperationId = mutation ? Snapshot->PublicOperation.OperationId : Snapshot->Binding.OperationId;
+    if (mutation) {
+        payload.MutationNonce = Snapshot->PublicOperation.Nonce;
+        payload.OperationSequence = Snapshot->PublicOperation.Sequence;
+    }
     payload.NativeMapRevision = MapRevision;
     exchange->Request.Version = SAFEUPLOAD_PROTOCOL_VERSION;
     exchange->Request.StructSize = sizeof(SAFEUPLOAD_REQUEST);
     exchange->Request.RequestId = (UINT64)InterlockedIncrement64(&SafeUploadData.NextRequestId);
     exchange->Request.Operation = SAFEUPLOAD_OPERATION_PUBLIC_DISPOSITION;
     exchange->Request.Flags = SAFEUPLOAD_REQUEST_FLAG_STAGE_V19_REPLY;
-    exchange->Request.RequestorProcessId = Snapshot->Binding.Public.CallerProcessId;
+    exchange->Request.RequestorProcessId = mutation ? Snapshot->PublicOperation.ActorProcessId : Snapshot->Binding.Public.CallerProcessId;
     exchange->Request.Reserved = SAFEUPLOAD_PUBLIC_RELAY_VERSION;
     exchange->Request.ImageNameLength = sizeof(payload);
     RtlCopyMemory(exchange->Request.ImageName, &payload, sizeof(payload));
@@ -1180,12 +1190,18 @@ NTSTATUS SafeUploadStagePublicOpenExchange(const SAFEUPLOAD_STAGE_NATIVE_SNAPSHO
         else {
             RtlCopyMemory(Reply, exchange->Response.StageName, sizeof(*Reply));
             if (!RtlEqualMemory(&Reply->Request, &payload, sizeof(payload)) || Reply->Reserved != 0 ||
-                Reply->MutationGeneration != 0 || Reply->PublishedGeneration > (UINT64)MAXLONGLONG ||
+                (!mutation && Reply->MutationGeneration != 0) || Reply->MutationGeneration > (UINT64)MAXLONGLONG ||
+                Reply->PublishedGeneration > (UINT64)MAXLONGLONG ||
+                (mutation && (Reply->PublishedGeneration != Snapshot->PublishedGeneration ||
+                    !RtlEqualMemory(&Reply->PublishedIdentity, &Snapshot->PublishedIdentity, sizeof(Reply->PublishedIdentity)))) ||
                 (Reply->PublishedGeneration == 0 ?
                     !RtlEqualMemory(&Reply->PublishedIdentity, &zeroIdentity, sizeof(zeroIdentity)) :
                     (Reply->PublishedIdentity.VolumeSerialNumber != Snapshot->Binding.Public.PublicIdentity.VolumeSerialNumber ||
                      !StageV19IdentityNonzero(&Reply->PublishedIdentity))) ||
-                (Phase == SAFEUPLOAD_PUBLIC_OPEN_PREPARE ? Reply->Result != SAFEUPLOAD_PUBLIC_RELAY_PREPARED :
+                (Phase == SAFEUPLOAD_PUBLIC_DISPOSITION_PREPARE ?
+                    ((Reply->Result != SAFEUPLOAD_PUBLIC_RELAY_PREPARED && Reply->Result != SAFEUPLOAD_PUBLIC_RELAY_PREPARED_NO_NAME_EFFECT) ||
+                     (FlagOn(Snapshot->PublicOperation.DispositionFlags, 1) ? Reply->MutationGeneration == 0 : Reply->MutationGeneration != 0)) :
+                Phase == SAFEUPLOAD_PUBLIC_OPEN_PREPARE ? Reply->Result != SAFEUPLOAD_PUBLIC_RELAY_PREPARED :
                     (Reply->Result != SAFEUPLOAD_PUBLIC_RELAY_PROGRESS && Reply->Result != SAFEUPLOAD_PUBLIC_RELAY_RECORDED)))
                 status = STATUS_INVALID_BUFFER_SIZE;
         }
