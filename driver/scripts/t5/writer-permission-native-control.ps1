@@ -181,7 +181,7 @@ try {
     foreach ($profile in $cases) {
         foreach ($disposition in @(0, 1, 3, 4, 5)) {
           foreach ($access in @([uint32]0x00100002, [uint32]0x00100004, [uint32]0x00100001,
-              [uint32]0x40000000, [uint32]3221225472, [uint32]0x10000000, [uint32]0x02100000)) {
+              [uint32]0x40100000, [uint32]3222274048, [uint32]0x10100000, [uint32]0x02100000)) {
             $case = Join-Path $root ($profile.Name + '-' + $disposition + '-' + $access.ToString('X8'))
             [void][IO.Directory]::CreateDirectory($case)
             $nativePath = Join-Path $case 'native.txt'
@@ -207,7 +207,6 @@ try {
                 $native = [WriterPermissionNativeControl]::Open($nativePath, $access, 7, $disposition)
                 $checkAccess = [WriterPermissionNativeControl]::CheckAccess($access, $disposition)
                 $probe = [WriterPermissionNativeControl]::Open($probePath, $checkAccess, 7, 1)
-                if ($profile.Name -eq 'full' -and -not $native.Accepted) { throw 'Positive native fixture was denied.' }
                 $projection = [WriterPermissionNativeControl]::ProjectGrant($access, $probe.GrantedAccess)
                 $nativeAfter = [IO.File]::GetAccessControl($nativePath, [Security.AccessControl.AccessControlSections]::All).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)
                 $row = [pscustomobject]@{ Profile=$profile.Name; Disposition=$disposition; GuardShare=$profile.GuardShare;
@@ -220,6 +219,9 @@ try {
                     OutcomeEquivalent=($native.Accepted -eq $probe.Accepted -and $native.Status -eq $probe.Status);
                     AppGrantEquivalent=(-not $native.Accepted -or ($probe.Accepted -and $native.GrantedAccess -eq $projection)) }
                 $rows.Add($row); Write-Output ($row | ConvertTo-Json -Compress)
+                if ($profile.Name -eq 'full' -and -not $native.Accepted) {
+                    throw ('Positive native fixture was denied: access=0x{0:X8} disposition={1} status=0x{2:X8}' -f $access,$disposition,$native.Status)
+                }
             } finally {
                 if ($null -ne $probe) { $probe.Dispose() }
                 if ($null -ne $native) { $native.Dispose() }
