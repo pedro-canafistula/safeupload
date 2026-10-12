@@ -251,6 +251,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)
     design is READY WITH CORRECTIONS. Native FALSE no-op journaling/head capture is built/tested (`dcf4b276`); the relay remains unconnected.
+    Ordinary native-open producer/replay/service binding is connected (`8ef80fcc`); four WDK profiles pass 0/0 on `450c8d74`.
+    Agent matrix `t5-public-open3` is running; disposition phases remain denied and this pair has no protected boot qualification.
     [Reviewed integration contract](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md), V23 transport and
     Windows filename resolver are implemented (`827b3f41`, `5f294008`) with [passing static gates](evidence/2026-10-12/t5-bound-allocation-static-gates.md).
   - [x] Service V23 dispatch → anchored seeding → bound manifest/head claim and receipt validation connected (`ca5a9cfa`–`be78b958`);
