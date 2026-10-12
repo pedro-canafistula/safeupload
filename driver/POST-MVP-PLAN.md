@@ -269,11 +269,12 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: matched agent/kernel source `d5779d5a`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
-**880/880** per normal profile and **1183/1183** per feature profile, every discovered case executed once without skips,
+Latest static gates: matched agent/kernel source `a15fc758`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
+**880/880** per normal profile and **1217/1217** per feature profile, every discovered case executed once without skips,
 service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-12/t5-bound-service-allocation-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
-V23 allocation, native CREATE/close and ordinary native disposition/known-cleanup dispatch pass these gates. Bound-writer capture,
+V23 allocation, native CREATE/close, ordinary disposition/known-cleanup and 34 v26 publication-client controls pass these gates;
+kernel publication records/hooks remain open. Bound-writer capture,
 combined backends, owner tombstones, shared physical commits, startup and directory events remain open; reopening is not service-restart qualification.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and

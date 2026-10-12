@@ -1,0 +1,13 @@
+﻿LABEL=t5-bound-publication-wire1
+ARCHIVE_SHA256=C089FADDCACBDE0DE198200F4AA1FF59170C404DA281C2E1C43F40C5D8A79C1B
+SOURCE_COMMIT=a15fc7584f74a2797f93db528eda4961a0f39766
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-12T12:02:53.2297801Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=ECA6F183622C0D29D5A1E91CAE8988080FE873CDD28E6DCE97BBA34B2B14D21A
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=69C2D739D95CF2165A4A5177F384A566A593A4470F5AF6FDDD60D820549E4A4E
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=41D8BB707A4756DD49D3D46BDA70E377D817AAC62244239BBFFC1161734C9B95
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=F20A3ABD58A333D3B7464EA6D5506976D5F42CE1DAEA90940952B6C22768FC00
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=E173F58E0A28A1DF08850A42CD4E19FAF9CF05A323BB9385FBA3880792657CCA
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=416196804BAE3F56232B6231A208E51EF4DF5E60821EE2123A7AD22B607C70BF
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=0181F2940C485B246F60700B96FF58EFBDB0299DDB27DF0F2524D35A544F27FC
+sign : exit=0 unsigned_sha256=69C2D739D95CF2165A4A5177F384A566A593A4470F5AF6FDDD60D820549E4A4E signing_copy_sha256=69C2D739D95CF2165A4A5177F384A566A593A4470F5AF6FDDD60D820549E4A4E unsigned_unchanged=True store=LocalMachine output_sha256=2E346764EA6F6E654372635776B9D2FE51F37408ADA4D0AAD37B6EF1023415D2 signed_sha256=2E346764EA6F6E654372635776B9D2FE51F37408ADA4D0AAD37B6EF1023415D2 signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38

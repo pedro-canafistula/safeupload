@@ -1,23 +1,37 @@
-# T5 native lifecycle, ordinary disposition and allocation — builder gates
+# T5 shared pipeline — latest builder gates
 
-Source: **`d5779d5a57ddc776738c6b7772a6d935e5560b2b`** for both agent and WDK.
-Labels: **t5-public-relay2**. Kernel subtree: `8330a8f7b20fd824030f18a0ae6cba791c18f186`.
+Source: **`a15fc7584f74a2797f93db528eda4961a0f39766`** for both agent and WDK.
+Labels: **t5-bound-publication-wire1**. Kernel subtree: `15251c35099a789e4ca1556428c399c373aea64e`.
+Agent subtree: `dc7af491b16849f50023ed60e39a7b23ddc3f179`.
 **Four WDK profiles 0 warnings / 0 errors, PREfast/ApiValidator; AgentMatrixGate=True.**
 No revised pair was installed or booted. Bound-head capability remains unadvertised and admission disabled.
 
-| Agent profile | Passed / discovered / unique executions | Ordinary controls | Native lifecycle | Allocation / native Windows |
-| --- | ---: | ---: | ---: | ---: |
-| Normal Debug | 880 / 880 / 880 | compiled out | compiled out | compiled out |
-| Normal Release | 880 / 880 / 880 | compiled out | compiled out | compiled out |
-| Feature Debug | 1183 / 1183 / 1183 | 22 / 22 | 26 / 26 | 16 / 16 |
-| Feature Release | 1183 / 1183 / 1183 | 22 / 22 | 26 / 26 | 16 / 16 |
+| Agent profile | Passed / discovered / unique executions | Ordinary controls | Native lifecycle | Allocation / native Windows | Publication client |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Normal Debug | 880 / 880 / 880 | compiled out | compiled out | compiled out | compiled out |
+| Normal Release | 880 / 880 / 880 | compiled out | compiled out | compiled out | compiled out |
+| Feature Debug | 1217 / 1217 / 1217 | 22 / 22 | 26 / 26 | 16 / 16 | 34 / 34 |
+| Feature Release | 1217 / 1217 / 1217 | 22 / 22 | 26 / 26 | 16 / 16 | 34 / 34 |
 
 Root independently verified aggregate execution files equal the disjoint user + SYSTEM union:
-855 + 25 normal, 1158 + 25 feature; every result Passed, unique execution IDs, no skipped cases.
+855 + 25 normal, 1192 + 25 feature; every result Passed, unique execution IDs, no skipped cases.
 Every service/tray/test/discovery/Release-package leg passes at 0/0. Inspector/writer builds and
-signature verification pass ([raw WDK summary](exact-t5-public-relay2-summary.txt),
-[raw agent summary](exact-agent-matrix-t5-public-relay2-summary.txt)).
-Signed feature Debug SHA-256: `09290A71D8DF4C0ADC02E268AE3C6FBE305690311AB88713931DF066F3AB11F9`.
+signature verification pass ([raw WDK summary](exact-t5-bound-publication-wire1-summary.txt),
+[raw agent summary](exact-agent-matrix-t5-bound-publication-wire1-summary.txt)).
+Signed feature Debug SHA-256: `2E346764EA6F6E654372635776B9D2FE51F37408ADA4D0AAD37B6EF1023415D2`.
+
+The [corrected publication contract](../../T5-BOUND-PUBLICATION.md) received READY WITH CORRECTIONS from Luna 6 max before code.
+`a15fc758` adds matching feature-only C/managed v26 layouts and a FilterPort client, preserving core v18 and all existing layouts.
+The client rejects changed authority, result-only renewal, short/nonzero-status transport, incomplete/stale/duplicate replay,
+unfenced or in-flight renames, changed target/source identity, pending native results and cleanup after accepted rename.
+Conclusive failed CREATE can retire without a nonexistent temporary cleanup; malformed outcomes and coverage loss cannot ACK.
+All 34 publication-client controls pass per feature profile. C layout assertions pass in the feature WDK builds.
+
+This is the **wire/client side**, not the kernel permit producer or execution map. Control 33 has no live producer/handler,
+and the existing bound publisher still refuses publication. These tests inject native control receipts. They do not prove actual
+driver fencing, target serialization, descriptor assignment or recovery. The exact-mask
+[native PowerShell 5.1 control](bound-publication-native-ab6dc0b9.txt) separately proves 0/37-byte parent-relative NTFS create,
+aligned noncached write, exact EOF/flush and rename with actual granted rights; it is unprotected and supplies no privacy qualification.
 
 The native CREATE/close path captures the original subject and metadata anchors without a second target-file open,
 persists the V24 pre-CREATE intent, and forwards once behind strict typed/revision/channel checks.
@@ -56,13 +70,13 @@ teardown must finish together. Unknown-result/forced-teardown startup recovery a
 Then perform the single integrated pre-boot lifetime review, both forced orders, real Notepad and all fault/compatibility
 rows in every required mode, independent destination bytes and separate restoration. Capability stays off until then.
 
-Normal Release package SHA-256: `519010964F875B354509C543213809065ACD4A573E7967BEB0B50E97C05E987E`.
-Feature Release package SHA-256: `3AFCD3E3D3C9E24C683736E96C5094B9D4355282AED1708E4AA1843DA8E2F4D0`.
-Raw output remains local in `output/exact-agent-matrix/t5-public-relay2/`,
-`exact-agent-matrix-t5-public-relay2-*`, `t5-public-relay2-agent-host.txt`,
-`exact-t5-public-relay2-*` and `t5-public-relay2-wdk-host.txt`.
+Normal Release package SHA-256: `1A99807DAC55A5D2B58AE94A269975B320047C60DDEC884B4BF5AD128E65E6E0`.
+Feature Release package SHA-256: `20822873E82EE3AE4FA05DC384D0F156F8A1C58D91DF4401874306BF677D340C`.
+Raw output remains local in `output/exact-agent-matrix/t5-bound-publication-wire1/`,
+`exact-agent-matrix-t5-bound-publication-wire1-*` and `exact-t5-bound-publication-wire1-*`.
 
-Earlier failed attempts remain local. Public-relay1 found two signed/unsigned comparisons in the feature kernel builds;
+Earlier failed attempts remain local. The first native-mask control queried a creation-only flag as an I/O mode; `ab6dc0b9`
+corrected that harness assumption without changing CREATE rights/options, then passed. Public-relay1 found two signed/unsigned comparisons in the feature kernel builds;
 `d5779d5a` adds explicit wire-field casts without relaxing warnings-as-errors or static analysis.
 Its initial agent matrix passed 880/1182; the final matrix adds the second-forwarding guard/control.
 Earlier oversized-stack, fixture and cancellation failures remain recorded in Git history and their raw outputs.
