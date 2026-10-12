@@ -2,6 +2,7 @@
 using System.Runtime.InteropServices;
 using SafeUpload.Agent.Minifilter;
 using SafeUpload.Agent.Service.Interception;
+using SafeUpload.Agent.Core.Contracts;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -122,6 +123,32 @@ public sealed class StagedNativeLifecycleDispatcherTests : IDisposable
             CreateStatus = unchecked((int)0xc0000022) });
         await Assert.ThrowsAsync<IOException>(() => Send(Request(NativeLifecycleV24.FactsChanged)));
         Assert.True(Assert.Single((await Head()).Deletes).NativeCreateAccepted);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Unresolved_close_names_the_held_file_and_uses_only_the_approved_recovery_advice(bool coverageLost)
+    {
+        var prepared = await Send(Request(NativeLifecycleV24.Prepare));
+        Advance(Row with { JournalGeneration = prepared.JournalGeneration,
+            Facts = NativeRecordFacts.Forwarded | NativeRecordFacts.CreateOutcomeKnown | NativeRecordFacts.CreateAccepted |
+                (coverageLost ? NativeRecordFacts.CleanupCoverageLost : NativeRecordFacts.LastHandleCleanedUp),
+            CreateStatus = 0, IdentityStatus = unchecked((int)0xc0000001) });
+        _child = Id(99); // A replacement with no durable newer publication cannot release the hold.
+        var reports = new List<(StagedDestinationHead Head, StagedPublicDeleteRecord Delete, StagedRecoveryAdvice Advice)>();
+        var dispatcher = new StagedNativeLifecycleDispatcher(_journal, () => _replay, expected => new(expected, _child),
+            _ => throw new InvalidOperationException(), _ => throw new InvalidOperationException(),
+            (head, delete, advice, _) => reports.Add((head, delete, advice)));
+        if (coverageLost) await dispatcher.ProcessAsync(Request(NativeLifecycleV24.FactsChanged), 1234, _driver, default);
+        else await Assert.ThrowsAsync<IOException>(() => dispatcher.ProcessAsync(
+            Request(NativeLifecycleV24.FactsChanged), 1234, _driver, default));
+        var report = Assert.Single(reports);
+        Assert.EndsWith("document.txt", report.Head.Locator);
+        Assert.Contains(report.Delete, report.Head.Deletes);
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved, report.Delete.State);
+        Assert.Equal(coverageLost ? StagedRecoveryAdvice.RestartWindows : StagedRecoveryAdvice.CollectDiagnostics, report.Advice);
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved, Assert.Single((await Head()).Deletes).State);
     }
 
     [Theory]

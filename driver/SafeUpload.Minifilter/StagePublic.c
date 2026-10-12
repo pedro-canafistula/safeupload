@@ -37,8 +37,11 @@ static volatile LONG StagePublicBackendCount;
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StagePublicBindCaller(PSECURITY_CLIENT_CONTEXT Subject,
     PEPROCESS RequestorProcess, PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding);
+static NTSTATUS StagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
+    PSECURITY_CLIENT_CONTEXT Subject, BOOLEAN RequireImpersonation);
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, StagePublicBindCaller)
+#pragma alloc_text(PAGE, StagePublicCaptureSubject)
 #endif
 
 /* RequestorProcess is the original CREATE's referenced process object, not a
@@ -166,11 +169,17 @@ static NTSTATUS StagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
 
 _Use_decl_annotations_
 NTSTATUS SafeUploadStagePublicCaptureSubject(PFLT_CALLBACK_DATA Data, PSECURITY_CLIENT_CONTEXT Subject)
-{ return StagePublicCaptureSubject(Data, Subject, TRUE); }
+{
+    PAGED_CODE();
+    return StagePublicCaptureSubject(Data, Subject, TRUE);
+}
 
 _Use_decl_annotations_
 NTSTATUS SafeUploadStagePublicCaptureNativeSubject(PFLT_CALLBACK_DATA Data, PSECURITY_CLIENT_CONTEXT Subject)
-{ return StagePublicCaptureSubject(Data, Subject, FALSE); }
+{
+    PAGED_CODE();
+    return StagePublicCaptureSubject(Data, Subject, FALSE);
+}
 
 static VOID StagePublicCloseObject(PHANDLE Handle, PFILE_OBJECT *FileObject)
 {

@@ -1,6 +1,7 @@
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
 using SafeUpload.Agent.Minifilter;
 using SafeUpload.Agent.Service.Notifications;
+using SafeUpload.Agent.Core.Contracts;
 
 namespace SafeUpload.Agent.Service.Interception;
 
@@ -10,7 +11,8 @@ internal sealed class StagedNativeLifecycleDispatcher(
     StagedTransferJournal journal, Func<NativeRecordReplay> readReplay,
     Func<NativeNameObservationRequest, NativeNameObservation> observeName,
     Func<NativeRecordReplayRow, string> resolveLocator,
-    Action<NativeRecordReplayRow> checkLiveCreator)
+    Action<NativeRecordReplayRow> checkLiveCreator,
+    Action<StagedDestinationHead, StagedPublicDeleteRecord, StagedRecoveryAdvice, string>? reportUnresolved = null)
 {
     internal async Task<NativeLifecycleReplyV24> ProcessAsync(NativeLifecycleRequestV24 request,
         uint requestorPid, Guid expectedDriver, CancellationToken token)
@@ -84,22 +86,40 @@ internal sealed class StagedNativeLifecycleDispatcher(
             bool lifetimeEnded;
             try { proof.RequireExactLifetimeEnded(binding, row.OperationId); lifetimeEnded = true; }
             catch (IOException) { lifetimeEnded = false; }
+            if (!lifetimeEnded && saved.State == StagedPublicDeleteState.AcceptedUnresolved &&
+                row.Facts.HasFlag(NativeRecordFacts.CleanupCoverageLost))
+                reportUnresolved?.Invoke(AssertExactHead(heads, destination),
+                    saved, StagedRecoveryAdvice.RestartWindows, "NativeCleanupCoverageLost");
             if (lifetimeEnded && saved.State is StagedPublicDeleteState.AcceptedUnresolved or StagedPublicDeleteState.Admitted)
             {
                 var expected = new NativeNameObservationRequest(replay.DriverInstanceId, replay.ConnectionEpoch,
                     replay.Revision, replay.OsBootSequence, row.MountManagerVolumeId, row.VolumeRootIdentity,
                     row.ParentIdentity, row.ParentCaseSensitive, row.CanonicalLeaf);
-                NativeNameObservation name = observeName(expected);
-                if (name.Binding != expected) throw new IOException("Native name observation changed its exact replay.");
-                RequireSameReplay(request, replay);
-                var observation = new StagedDestinationNameObservation(destination, destination.Parent,
-                    destination.Parent, true, name.ChildIdentity is { } child ? Identity(child) : null);
-                if (saved.State == StagedPublicDeleteState.AcceptedUnresolved)
-                    saved = await journal.ReconcileNativeDeleteOnCloseAsync(recoveryTurn, binding, row.OperationId,
-                        proof, observation, token).ConfigureAwait(false);
-                if (saved.State == StagedPublicDeleteState.Admitted)
-                    saved = await journal.CompleteNativeDeleteOnCloseAsync(recoveryTurn, binding, row.OperationId,
-                        proof, observation, token).ConfigureAwait(false);
+                try
+                {
+                    NativeNameObservation name = observeName(expected);
+                    if (name.Binding != expected) throw new IOException("Native name observation changed its exact replay.");
+                    RequireSameReplay(request, replay);
+                    var observation = new StagedDestinationNameObservation(destination, destination.Parent,
+                        destination.Parent, true, name.ChildIdentity is { } child ? Identity(child) : null);
+                    if (saved.State == StagedPublicDeleteState.AcceptedUnresolved)
+                        saved = await journal.ReconcileNativeDeleteOnCloseAsync(recoveryTurn, binding, row.OperationId,
+                            proof, observation, token).ConfigureAwait(false);
+                    if (saved.State == StagedPublicDeleteState.Admitted)
+                        saved = await journal.CompleteNativeDeleteOnCloseAsync(recoveryTurn, binding, row.OperationId,
+                            proof, observation, token).ConfigureAwait(false);
+                }
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    // Only a durable exceptional hold produces recovery guidance;
+                    // publication progress is never a reason to grant an override.
+                    var currentHead = AssertExactHead(await journal.ReadDestinationHeadsAsync(token).ConfigureAwait(false), destination);
+                    var currentDelete = currentHead.Deletes.Single(d => d.Binding == binding && d.OperationId == row.OperationId);
+                    if (currentDelete.State == StagedPublicDeleteState.AcceptedUnresolved)
+                        reportUnresolved?.Invoke(currentHead, currentDelete, StagedRecoveryAdvice.CollectDiagnostics,
+                            "NativeAnchoredReconciliationUnresolved");
+                    throw;
+                }
             }
             if (saved.State is StagedPublicDeleteState.Failed or StagedPublicDeleteState.Complete or StagedPublicDeleteState.Superseded)
             {
@@ -163,6 +183,8 @@ internal sealed class StagedNativeLifecycleDispatcher(
         new() { Request = request, JournalGeneration = checked((ulong)generation), Result = result };
     private static StagedStageIdentity Identity(SafeUploadStageIdentityV19 value) =>
         new(value.VolumeSerialNumber, value.FileIdHigh, value.FileIdLow);
+    private static StagedDestinationHead AssertExactHead(IReadOnlyList<StagedDestinationHead> heads,
+        StagedDestinationIdentity destination) => heads.Single(h => h.Destination == destination);
 }
 
 public sealed partial class MinifilterInterceptor
@@ -191,7 +213,8 @@ public sealed partial class MinifilterInterceptor
                     var process = SessionResolver.GetRequiredProcessIdentity(checked((int)row.CallerProcessId));
                     if (process.CreationTimeFileTime != row.CallerProcessCreationTime)
                         throw new IOException("The native CREATE caller lifetime changed.");
-                });
+                }, (head, delete, advice, reason) =>
+                    StagedNativeRecoveryNotifications.Publish(_hub, _logger, head, delete, advice, reason));
             var reply = await dispatcher.ProcessAsync(payload, request.RequestorProcessId, current, token).ConfigureAwait(false);
             if (token.IsCancellationRequested || !_stageBoundHeadReady || _activeDriverInstanceId != current)
                 throw new IOException("Native lifecycle completion belongs to a revoked channel.");
