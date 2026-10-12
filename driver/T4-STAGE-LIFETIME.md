@@ -280,11 +280,12 @@ received a Luna 6 max security review in this conversation before implementation
 - Recovery runs single-flight, with per-transfer persistence retry delays of 250 ms up to 8 s, using a monotonic clock. No retry delay
   holds the journal gate. Other transfers continue. The current journal scan remains; indexing old history is a separate optimization.
 
-The [Windows agent matrix](evidence/2026-10-12/exact-agent-matrix-t4-journal-recovery4-summary.txt) at `0cd58e79` passes normal
+The [Windows agent matrix](evidence/2026-10-12/exact-agent-matrix-t4-journal-recovery6-summary.txt) at `8e0156c9` (product fix through `aea1ec16`) passes normal
 Debug/Release (895 tests each) and feature Debug/Release (1,245 each), with no skipped tests and all agent/app/test builds at 0/0.
 It includes 15 new cases: deliberate failures before/after manifest replacement; native publication followed by failed Released
 persistence; unchanged/changed public bytes; lost receipt at restart; live/restarted hand-back recovery without duplicate copies;
-and exact-version rejection after a prepared rename. These are Windows service tests, not protected VM qualification.
+and exact-version rejection after a prepared rename. The hand-back cases also verify live notification/justification completion
+after a lost completion acknowledgement. These are Windows service tests, not protected VM qualification.
 
 The protocol-18 backport on `fix/t4-journal-recovery-v18` preserves the existing T4 driver pairing; it does not enable unfinished
 T5 capabilities. Qualification still requires its agent matrix, short Verifier run, 10,000 cycles, raw-observer regressions and

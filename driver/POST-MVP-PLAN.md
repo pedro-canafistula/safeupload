@@ -183,9 +183,9 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
     the stop reason. [PowerShell 5.1 gate](evidence/2026-10-11/harness-windows-gate-t4-stop-evidence-1011-a1.txt): all 18 self-checks
     pass; 27 new controls include two real native actor failures and orderly stop. Revised protected runtime remains pending.
   - [x] Owner approved the focused recovery fix on 2026-10-12; [implementation design](T4-STAGE-LIFETIME.md#11-journal-failure-recovery--2026-10-12).
-  - [x] Recovery implemented through `0cd58e79`; [Windows agent matrix](evidence/2026-10-12/exact-agent-matrix-t4-journal-recovery4-summary.txt):
+  - [x] Recovery implemented through `aea1ec16`; [Windows agent matrix at `8e0156c9`](evidence/2026-10-12/exact-agent-matrix-t4-journal-recovery6-summary.txt):
     normal Debug/Release 895 tests each, feature Debug/Release 1,245 each, zero skipped, builds at 0 warnings/errors. Includes
-    publication/hand-back fault injection and rejection of stale native-success receipts.
+    publication/hand-back fault injection, live notification completion and rejection of stale native-success receipts.
   - [x] Isolated protocol-18 agent matrix: `91c6a3be`, [four-profile gate](evidence/2026-10-12/exact-agent-matrix-t4-recovery-v18a3-summary.txt),
     547 normal / 611 feature tests per configuration, no skips and builds at 0/0. Includes the live hand-back notification correction.
   - [ ] Short Verifier retry `m2t4recover256a1` (`0cfdc7c6` + unchanged `m2-driver5-t11`) failed: 255/256 outcomes, one residual stage,
@@ -193,7 +193,8 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
     Separate restoration passed. Owner approved focused diagnosis/fix on 2026-10-12; no further VM run until reviewed and built.
   - [x] Luna-reviewed unaccepted-allocation cleanup and request timing: `6198eee7` on the isolated T4 branch;
     [agent matrix](evidence/2026-10-12/exact-agent-matrix-t4-rejected-allocation1-summary.txt), 558 normal / 625 feature tests per configuration, 0/0 builds.
-  - [ ] Attribute delay/pool growth and qualify the candidate under Verifier before retrying 10,000 cycles. No kernel change or assertion waived.
+  - [ ] Instrumented short Verifier run `m2t4reject256a1` started on win10-debug3 with `6198eee7` + `m2-driver5-t11`;
+    attribute delay/pool growth before retrying 10,000 cycles. No kernel change or assertion waived.
 - [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
 
 The preceding `m2t4boot10k9` stopped after 4,714/10,000 without a final result; it is not a pass. Its run disk was deleted and base
