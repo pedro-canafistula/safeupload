@@ -304,8 +304,12 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         request.Operation == Operation.StageAllocate)
                     {
                         Guid? capturedDriver = _activeDriverInstanceId;
+                        // The out variables in the receive condition are reused.
+                        // Copy them inside this iteration before queueing work.
+                        SafeUploadRequest capturedRequest = request;
+                        ulong capturedMessageId = messageId;
                         boundContinuations.Dispatch(token =>
-                            ReplyBoundAllocationAsync(port, request, messageId, capturedDriver, token));
+                            ReplyBoundAllocationAsync(port, capturedRequest, capturedMessageId, capturedDriver, token));
                         continue;
                     }
 #endif
