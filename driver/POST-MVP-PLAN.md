@@ -142,10 +142,11 @@ integration. After the single pre-boot kernel lifetime review, qualify native de
 clean/CPF Save As in all three modes, with independent bytes and separate restoration. Component passes do not complete T5.
 Keep the broad application/metadata matrix in T8; all existing assertions and the full milestone sequence remain required.
 
-The [latest progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md), covering `ffd47a97` and unfinished relay changes,
-confirms the architecture and scope but finds delivery still fragmented. Native CREATE/close and ordinary-open binding pass static
-gates; no revised protected T5 pair has run. Finish ordinary disposition, cleanup/receipt retirement and shared publication/recovery
-as one delivery checkpoint. Bound-writer CREATE authority and the seeded-content hand-back owner choice remain open.
+The [latest progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md), covering `8255f350` and the `d5779d5a` gates,
+confirms the architecture and scope but finds delivery still fragmented. Original ordinary dispositions and known-cleanup ACK/retirement
+are connected; no revised protected T5 pair has run. Finish checked writer authority, shared publication/deletes and automatic recovery
+as one delivery checkpoint. The [publication contract](T5-BOUND-PUBLICATION.md) needs three review corrections before transport code;
+the seeded-content hand-back owner choice remains open. Unprotected native controls do not qualify this pair.
 
 ### T4. Remove the 128-saves-per-boot ceiling
 
