@@ -521,7 +521,12 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
     public void Destination_key_joins_case_insensitive_aliases_and_keeps_full_volume_parent_identity()
     {
         Assert.Equal(Destination(), Destination("DOCUMENT.TXT"));
-        Assert.Equal(Destination().StorageKey, Destination("DOCUMENT.TXT").StorageKey);
+        Assert.Equal(Destination().GetHashCode(), Destination("DOCUMENT.TXT").GetHashCode());
+        Assert.Equal("document.txt", Destination().CanonicalLeaf);
+        Assert.Equal("DOCUMENT.TXT", Destination("DOCUMENT.TXT").CanonicalLeaf);
+        // Raw serialization addresses differ. Existing concurrent-alias and
+        // reopen tests assert the stronger property: one actual durable head.
+        Assert.NotEqual(Destination().StorageKey, Destination("DOCUMENT.TXT").StorageKey);
         Assert.NotEqual(Destination("document.txt", true).StorageKey, Destination("DOCUMENT.TXT", true).StorageKey);
         Assert.NotEqual(Destination().StorageKey, new StagedDestinationIdentity(new(7, 11, 12),
             new(7, 121, 22), false, "document.txt").StorageKey);
@@ -532,6 +537,92 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
         foreach (string leaf in new[] { "../document.txt", "document.txt:stream", "document.txt.", "document.txt ", "\ud800" })
             Assert.Throws<ArgumentException>(() => Destination(leaf));
         Assert.Throws<ArgumentException>(() => new StagedDestinationIdentity(new(7, 11, 12), new(8, 21, 22), false, "document.txt"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Exact_unicode_leaves_share_a_head_only_under_the_windows_insensitive_bucket(bool sensitive)
+    {
+        var journal = Journal();
+        var first = Destination("MiXeD-é.txt", sensitive);
+        var second = Destination("MIXED-É.TXT", sensitive);
+        Assert.Equal("MiXeD-é.txt", first.CanonicalLeaf);
+        Assert.Equal("MIXED-É.TXT", second.CanonicalLeaf);
+        Assert.Equal(!sensitive, first == second);
+        Assert.Equal(1, await Allocate(journal, first, Guid.NewGuid()));
+        Assert.Equal(sensitive ? 1 : 2, await Allocate(journal, second, Guid.NewGuid()));
+        var reopened = Journal();
+        var heads = await reopened.ReadDestinationHeadsAsync(CancellationToken.None);
+        Assert.Equal(sensitive ? 2 : 1, heads.Count);
+        Assert.Equal(sensitive ? 1 : 2,
+            (await reopened.ReadDestinationHeadAsync(second, CancellationToken.None))!.MaxAllocated);
+        Assert.Contains(heads, head => head.Destination.CanonicalLeaf == "MiXeD-é.txt");
+    }
+
+    [Fact]
+    public async Task Legacy_folded_head_is_reused_without_inventing_an_alias_head_after_restart()
+    {
+        var folded = Destination("DOCUMENT.TXT");
+        var journal = Journal();
+        Assert.Equal(1, await Allocate(journal, folded, Guid.NewGuid()));
+        string originalPath = Assert.Single(Directory.GetFiles(JournalPath, "destination-*.state"));
+        Assert.EndsWith("destination-" + folded.StorageKey + ".state", originalPath);
+        var reopened = Journal();
+        Assert.Equal(2, await Allocate(reopened, Destination(), Guid.NewGuid()));
+        Assert.Equal(originalPath, Assert.Single(Directory.GetFiles(JournalPath, "destination-*.state")));
+        var head = (await reopened.ReadDestinationHeadAsync(Destination(), CancellationToken.None))!;
+        Assert.Equal("DOCUMENT.TXT", head.Destination.CanonicalLeaf);
+        Assert.Equal(folded.MountManagerVolumeId, head.Destination.MountManagerVolumeId);
+        Assert.Equal(2, head.MaxAllocated);
+    }
+
+    [Fact]
+    public async Task Equivalent_duplicate_heads_fail_closed_for_discovery_lookup_and_allocation()
+    {
+        var journal = Journal();
+        var lower = Destination();
+        await Allocate(journal, lower, Guid.NewGuid());
+        string originalPath = Assert.Single(Directory.GetFiles(JournalPath, "destination-*.state"));
+        string original = await File.ReadAllTextAsync(originalPath);
+        var duplicate = JsonNode.Parse(original)!;
+        var upper = Destination("DOCUMENT.TXT");
+        duplicate["Destination"]!["CanonicalLeaf"] = upper.CanonicalLeaf;
+        duplicate["Locator"] = Locator(upper.CanonicalLeaf);
+        string duplicatePath = Path.Combine(JournalPath, "destination-" + upper.StorageKey + ".state");
+        await File.WriteAllTextAsync(duplicatePath, duplicate.ToJsonString());
+        var reopened = Journal();
+        await Assert.ThrowsAsync<InvalidDataException>(() => reopened.ReadDestinationHeadsAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() => reopened.ReadDestinationHeadAsync(lower, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() => Allocate(reopened, upper, Guid.NewGuid()));
+        Assert.Equal(original, await File.ReadAllTextAsync(originalPath));
+        Assert.Equal(2, Directory.GetFiles(JournalPath, "destination-*.state").Length);
+    }
+
+    [Fact]
+    public async Task Alias_turns_serialize_while_an_unrelated_leaf_continues()
+    {
+        var journal = Journal();
+        await Allocate(journal, Destination(), Guid.NewGuid());
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var held = await journal.EnterDestinationCommitTurnAsync(Destination(),
+            StagedDestinationTurnPurpose.Reconciliation, cancellation.Token);
+        var alias = journal.EnterDestinationCommitTurnAsync(Destination("DOCUMENT.TXT"),
+            StagedDestinationTurnPurpose.Allocation, cancellation.Token);
+        try
+        {
+            Assert.False(alias.IsCompleted);
+            using (var other = await journal.EnterDestinationCommitTurnAsync(Destination("unrelated.txt"),
+                       StagedDestinationTurnPurpose.Allocation, cancellation.Token))
+                Assert.Equal(1, await journal.ReserveSaveGenerationAsync(other, Guid.NewGuid(),
+                    Locator("unrelated.txt"), 0, cancellation.Token));
+            Assert.False(alias.IsCompleted);
+        }
+        finally { held.Dispose(); }
+        using var acquired = await alias;
+        Assert.Equal(2, await journal.ReserveSaveGenerationAsync(acquired, Guid.NewGuid(),
+            Locator("DOCUMENT.TXT"), 0, cancellation.Token));
+        Assert.Equal(2, (await journal.ReadDestinationHeadAsync(Destination(), cancellation.Token))!.MaxAllocated);
     }
 
     [Fact]

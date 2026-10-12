@@ -34,15 +34,23 @@ internal sealed record StagedDestinationIdentity
             canonicalLeaf.Any(c => c < 32 || "<>:\"/\\|?*".Contains(c)) ||
             !IsWellFormedUtf16(canonicalLeaf))
             throw new ArgumentException("The destination needs an unambiguous checked parent and leaf.");
-        string folded = caseSensitive ? canonicalLeaf : canonicalLeaf.ToUpperInvariant();
-        if (!caseSensitive && !string.Equals(canonicalLeaf, folded, StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("The leaf cannot be folded with ordinal Windows comparison.");
         VolumeRoot = volumeRoot;
         Parent = parent;
         CaseSensitive = caseSensitive;
-        CanonicalLeaf = folded;
+        CanonicalLeaf = canonicalLeaf;
         MountManagerVolumeId = mountManagerVolumeId;
     }
+
+    internal bool LeafEquals(string leaf) => StagedDestinationLeafComparer.Equals(CanonicalLeaf, leaf, CaseSensitive);
+
+    public bool Equals(StagedDestinationIdentity? other) => other is not null &&
+        VolumeRoot == other.VolumeRoot && Parent == other.Parent && CaseSensitive == other.CaseSensitive &&
+        MountManagerVolumeId == other.MountManagerVolumeId && LeafEquals(other.CanonicalLeaf);
+
+    // A bucket hash deliberately omits the leaf. Its Windows equality cannot
+    // be replaced by an independently folded managed hash. Same-bucket names
+    // may collide in this in-memory hash; only the comparator selects a head.
+    public override int GetHashCode() => HashCode.Combine(VolumeRoot, Parent, CaseSensitive, MountManagerVolumeId);
 
     private static bool IsWellFormedUtf16(string value)
     {
@@ -57,6 +65,9 @@ internal sealed record StagedDestinationIdentity
         return true;
     }
 
+    // Exact serialization address, not an insensitive-name authority. Legacy
+    // heads already store their folded leaf, so their original address stays
+    // readable; alias resolution must search and reject conflicting heads.
     internal string StorageKey => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
         string.Create(CultureInfo.InvariantCulture,
             $"{VolumeRoot.VolumeSerialNumber:X16}:{VolumeRoot.FileIdHigh:X16}:{VolumeRoot.FileIdLow:X16}:{Parent.FileIdHigh:X16}:{Parent.FileIdLow:X16}:{(CaseSensitive ? 1 : 0)}:{CanonicalLeaf}") +
@@ -99,7 +110,7 @@ internal sealed record StagedDestinationHead(StagedDestinationIdentity Destinati
 
 public sealed partial class StagedTransferJournal
 {
-    private readonly Dictionary<string, DestinationQueueCell> _destinationQueues = new(StringComparer.Ordinal);
+    private readonly Dictionary<StagedDestinationIdentity, DestinationQueueCell> _destinationQueues = new();
 
     internal sealed class DestinationQueueCell
     {
@@ -132,7 +143,7 @@ public sealed partial class StagedTransferJournal
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             _cell.Turn.Release();
-            _journal.ReleaseQueueReference(Destination.StorageKey, _cell);
+            _journal.ReleaseQueueReference(Destination, _cell);
         }
     }
 
@@ -144,12 +155,11 @@ public sealed partial class StagedTransferJournal
     {
         ArgumentNullException.ThrowIfNull(destination);
         if (!Enum.IsDefined(purpose)) throw new ArgumentOutOfRangeException(nameof(purpose));
-        string key = destination.StorageKey;
         DestinationQueueCell cell;
         lock (_destinationQueues)
         {
-            if (!_destinationQueues.TryGetValue(key, out cell!))
-                _destinationQueues.Add(key, cell = new DestinationQueueCell());
+            if (!_destinationQueues.TryGetValue(destination, out cell!))
+                _destinationQueues.Add(destination, cell = new DestinationQueueCell());
             cell.References++;
         }
         try
@@ -180,16 +190,16 @@ public sealed partial class StagedTransferJournal
                 finally { if (held) cell.Turn.Release(); }
             }
         }
-        catch { ReleaseQueueReference(key, cell); throw; }
+        catch { ReleaseQueueReference(destination, cell); throw; }
     }
 
-    private void ReleaseQueueReference(string key, DestinationQueueCell cell)
+    private void ReleaseQueueReference(StagedDestinationIdentity destination, DestinationQueueCell cell)
     {
         lock (_destinationQueues)
         {
             if (--cell.References == 0)
             {
-                _destinationQueues.Remove(key);
+                _destinationQueues.Remove(destination);
                 cell.Turn.Dispose();
             }
         }
@@ -199,7 +209,7 @@ public sealed partial class StagedTransferJournal
     {
         lock (_destinationQueues)
         {
-            if (!_destinationQueues.TryGetValue(destination.StorageKey, out var cell)) return;
+            if (!_destinationQueues.TryGetValue(destination, out var cell)) return;
             TaskCompletionSource signal;
             lock (cell) { signal = cell.Changed; cell.Changed = DestinationQueueCell.NewSignal(); }
             signal.TrySetResult();
@@ -223,11 +233,14 @@ public sealed partial class StagedTransferJournal
         try
         {
             var heads = new List<StagedDestinationHead>();
+            var identities = new HashSet<StagedDestinationIdentity>();
             foreach (string path in Directory.EnumerateFiles(_directory, "destination-*.state"))
             {
                 token.ThrowIfCancellationRequested();
                 var head = await ReadDestinationHeadFileCoreAsync(path, null, token).ConfigureAwait(false)
                     ?? throw new InvalidDataException("A destination head disappeared during startup recovery.");
+                if (!identities.Add(head.Destination))
+                    throw new InvalidDataException("Equivalent destination leaves have conflicting durable heads.");
                 heads.Add(head);
             }
             return heads.AsReadOnly();
@@ -730,8 +743,25 @@ public sealed partial class StagedTransferJournal
         CancellationToken token) => await ReadDestinationHeadCoreAsync(destination, token).ConfigureAwait(false)
         ?? throw new IOException("The destination has no durable head.");
 
-    private Task<StagedDestinationHead?> ReadDestinationHeadCoreAsync(StagedDestinationIdentity destination,
-        CancellationToken token) => ReadDestinationHeadFileCoreAsync(DestinationHeadPath(destination), destination, token);
+    private async Task<StagedDestinationHead?> ReadDestinationHeadCoreAsync(StagedDestinationIdentity destination,
+        CancellationToken token)
+    {
+        // Never select authority by the exact-leaf filename alone: a legacy
+        // folded spelling or another Windows-equivalent spelling must select
+        // the same retained head, and duplicates must stop every commit path.
+        StagedDestinationHead? selected = null;
+        foreach (string path in Directory.EnumerateFiles(_directory, "destination-*.state"))
+        {
+            token.ThrowIfCancellationRequested();
+            var head = await ReadDestinationHeadFileCoreAsync(path, null, token).ConfigureAwait(false)
+                ?? throw new InvalidDataException("A destination head disappeared during resolution.");
+            if (head.Destination != destination) continue;
+            if (selected is not null)
+                throw new InvalidDataException("Equivalent destination leaves have conflicting durable heads.");
+            selected = head;
+        }
+        return selected;
+    }
 
     private async Task<StagedDestinationHead?> ReadDestinationHeadFileCoreAsync(string path,
         StagedDestinationIdentity? expectedDestination, CancellationToken token)
@@ -777,8 +807,7 @@ public sealed partial class StagedTransferJournal
     private static void ValidateDestinationHead(StagedDestinationHead? head, StagedDestinationIdentity destination)
     {
         if (head is null || head.Destination != destination || !Path.IsPathFullyQualified(head.Locator) ||
-            !string.Equals(Path.GetFileName(head.Locator), destination.CanonicalLeaf,
-                destination.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase) ||
+            !destination.LeafEquals(Path.GetFileName(head.Locator)) ||
             head.MaxAllocated < 0 || head.CurrentSaveGeneration < 0 || head.CurrentSaveGeneration > head.MaxAllocated ||
             ((head.CurrentSaveTransferId is null) != (head.CurrentSaveGeneration == 0)) ||
             head.CurrentSaveTransferId == Guid.Empty || head.LatestPublished < 0 || head.LatestPublished > head.MaxAllocated ||

@@ -116,8 +116,7 @@ internal static class StagedDestinationNameObserver
             string name;
             try { name = StrictUtf16.GetString(data, offset + EntryHeaderBytes, checked((int)length)); }
             catch (DecoderFallbackException ex) { throw new IOException("Invalid native directory name encoding.", ex); }
-            if (string.Equals(name, destination.CanonicalLeaf,
-                    destination.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase))
+            if (destination.LeafEquals(name))
             {
                 if (found is not null) throw new IOException("Duplicate canonical name in native recovery enumeration.");
                 uint attributes = BitConverter.ToUInt32(data, offset + 56);
