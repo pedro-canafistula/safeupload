@@ -1,6 +1,6 @@
 # SafeUpload MVP status plan
 
-Updated 2026-10-11. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
+Updated 2026-10-12. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
 destination, keeping unapproved bytes private throughout. M2 is the current milestone, not the completion boundary.
 Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](POST-MVP-LOG.md), and the local WIP branch noted below.
 
@@ -134,6 +134,13 @@ M1 passed 69/69 cells on `m1-driver21` (`498f4ed7`) plus agent `4d02039a`, with 
 - [ ] Recheck coexistence and workload impact on the final combined product (T17).
 
 ## M2 — active
+
+**Next delivery checkpoint:** T4 fixes/retry await the pending owner direction after repeated failures. Meanwhile complete the
+integrated T5 pair: bound allocation/manifests/seeding, every physical publication/delete through the shared head and permits,
+exact close/startup reconciliation, cleanup acknowledgements and teardown. Group implementation and static checks around that
+integration. After the single pre-boot kernel lifetime review, qualify native deletes in both forced orders and real Notepad
+clean/CPF Save As in all three modes, with independent bytes and separate restoration. Component passes do not complete T5.
+Keep the broad application/metadata matrix in T8; all existing assertions and the full milestone sequence remain required.
 
 ### T4. Remove the 128-saves-per-boot ceiling
 
