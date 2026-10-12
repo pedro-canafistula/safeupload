@@ -5,6 +5,8 @@ using Microsoft.Win32.SafeHandles;
 
 namespace SafeUpload.Agent.Service.Interception;
 
+internal sealed record StagedStageIdentity(ulong VolumeSerialNumber, ulong FileIdHigh, ulong FileIdLow);
+
 // One exclusively held public temporary, containing only inspected bytes, is
 // flushed and renamed on that same handle. POSIX replacement preserves existing
 // readers of the old destination instead of failing intermittently while source
@@ -119,6 +121,22 @@ internal static class StagedDestinationFile
             throw new IOException("Could not replace the destination entry.",
                 new Win32Exception(Marshal.GetLastWin32Error()));
     }
+
+    // Capture the object on the held publication handle, never by reopening
+    // its temporary name. The receipt is retained only after rename succeeds.
+    internal static StagedStageIdentity ReadIdentity(SafeFileHandle output)
+    {
+        byte[] id = new byte[24]; // FILE_ID_INFO: volume serial + 128-bit ID
+        if (!GetFileInformationByHandleEx(output, 18, id, (uint)id.Length))
+            throw new IOException("Could not identify the publication object.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        return new(BitConverter.ToUInt64(id, 0), BitConverter.ToUInt64(id, 16), BitConverter.ToUInt64(id, 8));
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandleEx(SafeFileHandle file,
+        int informationClass, byte[] buffer, uint size);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

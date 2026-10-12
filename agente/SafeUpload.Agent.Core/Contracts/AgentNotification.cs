@@ -29,6 +29,9 @@ public enum TransferPhase
     Retained
 }
 
+// Values 1-4 belong to the later T5 recovery UI and remain reserved here.
+public enum StagedRecoveryAdvice { JournalRecovery = 5, PublicationUnresolved = 6 }
+
 /// <summary>
 /// Tells the user that a staged write has finished locally and is being checked.
 /// Only metadata crosses the notification pipe; the file stays in the private
@@ -43,7 +46,8 @@ public sealed record TransferNotification(
     string? PublishedSha256Hex = null,
     string? HandbackPath = null,
     bool? HandbackVerified = null,
-    string? SnapshotSha256Hex = null) : AgentNotification
+    string? SnapshotSha256Hex = null,
+    StagedRecoveryAdvice? RecoveryAdvice = null) : AgentNotification
 {
     public const string TypeName = "transfer";
 }

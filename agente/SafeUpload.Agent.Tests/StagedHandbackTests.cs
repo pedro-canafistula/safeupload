@@ -36,6 +36,66 @@ public sealed class StagedHandbackTests : IDisposable
 
     private readonly TestPublicationGate _gate = new();
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public async Task Journal_failure_resumes_handback_without_terminal_failure_or_duplicate_copy(
+        bool completingCopy, bool afterReplacement, bool restart)
+    {
+        IPolicyStore policy = await PolicyAsync(allowJustification: true);
+        bool injected = false;
+        var journal = new StagedTransferJournal(_journalRoot, false,
+            (point, entry) =>
+            {
+                if (injected || entry.State != TransferJournalState.Blocked ||
+                    entry.HandbackState != (completingCopy ? StagedHandbackState.Verified : StagedHandbackState.Copying) ||
+                    point != (afterReplacement ? StagedJournalWritePoint.AfterReplacement : StagedJournalWritePoint.BeforeReplacement))
+                    return;
+                injected = true;
+                throw new System.ComponentModel.Win32Exception(5);
+            });
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", sessionId: 7);
+        Directory.CreateDirectory(Path.GetDirectoryName(transfer.DestinationPath)!);
+        await File.WriteAllTextAsync(transfer.DestinationPath, "original public content");
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        var publisher = Publisher(journal, policy, new StagedJustifications(), copier);
+
+        var failure = await Assert.ThrowsAsync<StagedJournalPersistenceException>(() =>
+            publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.True(injected);
+        Assert.Equal(transfer.TransferId, failure.TransferId);
+        Assert.Equal(afterReplacement, failure.ReplacementReturned);
+        Assert.Contains("nativeError=5", failure.Message);
+        Assert.Contains("pointInTimeOnly=true", failure.Message);
+        Assert.Contains("temporary=[volume=", failure.Message);
+        var interrupted = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.NotEqual(StagedHandbackState.Failed, interrupted.HandbackState);
+        Assert.True(File.Exists(transfer.StagePath));
+        Assert.Empty(_gate.Disposals);
+        Assert.Equal("original public content", await File.ReadAllTextAsync(transfer.DestinationPath));
+
+        if (restart)
+        {
+            journal = new StagedTransferJournal(_journalRoot);
+            publisher = Publisher(journal, policy, new StagedJustifications(), copier);
+        }
+        await publisher.RecoverPendingTransferAsync(interrupted, CancellationToken.None);
+        var recovered = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(StagedHandbackState.Verified, recovered.HandbackState);
+        Assert.Null(recovered.HandbackFailureReason);
+        Assert.Equal(1, copier.CopyCount);
+        Assert.Equal("CPF: 529.982.247-25", await File.ReadAllTextAsync(recovered.HandbackPath!));
+        Assert.Equal("original public content", await File.ReadAllTextAsync(transfer.DestinationPath));
+        Assert.True(File.Exists(transfer.StagePath)); // Existing justification window still applies.
+        Assert.Empty(_gate.Disposals);
+    }
+
     [Fact]
     public async Task Verified_handback_is_idempotent_across_restart_and_cleanup_waits_for_window_close()
     {
@@ -523,13 +583,17 @@ public sealed class StagedHandbackTests : IDisposable
         public async Task<string> CopyVerifiedAsync(StagedTransfer transfer, FileStream sealedSnapshot,
             long length, string sha256Hex, CancellationToken token)
         {
-            CopyCount++;
             if (fail) throw new IOException("Injected hand-back copy failure.");
             string directory = Path.Combine(profile, "SafeUpload", "_bloqueados");
             Directory.CreateDirectory(directory);
             string path = Path.Combine(directory, transfer.TransferId.ToString("N") +
                 Path.GetExtension(transfer.DestinationPath));
-            if (File.Exists(path)) throw new IOException("The fake copier does not overwrite.");
+            if (File.Exists(path))
+            {
+                using var verified = OpenVerifiedReadLease(transfer, path, length, sha256Hex);
+                return path;
+            }
+            CopyCount++;
             sealedSnapshot.Position = 0;
             await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write,
                 FileShare.None, 4096, FileOptions.Asynchronous | FileOptions.WriteThrough))

@@ -140,7 +140,14 @@ public partial class App : System.Windows.Application
                 break;
             case TransferPhase.Retained:
                 _tray.ShowBalloon("SafeUpload: envio pendente",
-                    $"{fileName} permanece guardado localmente. O envio será tentado novamente.");
+                    transfer.RecoveryAdvice switch
+                    {
+                        StagedRecoveryAdvice.JournalRecovery =>
+                            $"{fileName}: o SafeUpload está recuperando o registro do salvamento automaticamente. Se a espera continuar, colete os diagnósticos para suporte.",
+                        StagedRecoveryAdvice.PublicationUnresolved =>
+                            $"{fileName}: não foi possível confirmar o último salvamento. Novas gravações nesse nome estão bloqueadas. Colete os diagnósticos do SafeUpload para suporte.",
+                        _ => $"{fileName} permanece guardado localmente. O envio será tentado novamente."
+                    });
                 break;
             // A janela de bloqueio detalha o motivo; no status, o arquivo
             // continua somente no armazenamento local de staging.
