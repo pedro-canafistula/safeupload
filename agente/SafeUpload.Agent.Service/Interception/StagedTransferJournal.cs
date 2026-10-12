@@ -2799,8 +2799,8 @@ public sealed partial class StagedTransferJournal
     /// An allocation that was never sealed must not become eligible for
     /// inspection merely because recovery ran. Sealed versions interrupted
     /// during inspection or publication approval can be inspected again.
-    /// Publishing is handled separately because its destination may already
-    /// contain exactly the approved digest.
+    /// Publishing is handled separately because a public rename may already
+    /// have succeeded, and only its exact receipt can finish the bookkeeping.
     /// </summary>
     public async Task RetainInterruptedAsync(CancellationToken cancellationToken)
     {
@@ -2871,6 +2871,7 @@ public sealed partial class StagedTransferJournal
         string step = "create-temporary";
         bool replacementReturned = false;
         Exception? writeFailure = null;
+        string? failureEvidence = null;
         try
         {
             await using (var stream = CreatePrivateTemporary(temporary))
@@ -2881,10 +2882,19 @@ public sealed partial class StagedTransferJournal
                 if (stream.Length > StagedJournalFile.MaximumManifestBytes)
                     throw new InvalidDataException("Journal manifest exceeds the qualified size bound.");
                 step = "replace";
-                _writeObserver?.Invoke(StagedJournalWritePoint.BeforeReplacement, entry);
-                StagedDestinationFile.Commit(stream, temporary, manifestPath);
-                replacementReturned = true;
-                _writeObserver?.Invoke(StagedJournalWritePoint.AfterReplacement, entry);
+                try
+                {
+                    _writeObserver?.Invoke(StagedJournalWritePoint.BeforeReplacement, entry);
+                    StagedDestinationFile.Commit(stream, temporary, manifestPath);
+                    replacementReturned = true;
+                    _writeObserver?.Invoke(StagedJournalWritePoint.AfterReplacement, entry);
+                }
+                catch (Exception error) when (error is not InvalidDataException &&
+                    error is (IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception))
+                {
+                    failureEvidence = StagedJournalPersistenceException.CaptureEvidence(stream, manifestPath);
+                    throw;
+                }
                 step = "close-temporary";
             }
         }
@@ -2893,7 +2903,7 @@ public sealed partial class StagedTransferJournal
         {
             writeFailure = error;
             throw new StagedJournalPersistenceException(manifestPath, temporary, entry,
-                step, replacementReturned, error);
+                step, replacementReturned, error, failureEvidence);
         }
         finally
         {

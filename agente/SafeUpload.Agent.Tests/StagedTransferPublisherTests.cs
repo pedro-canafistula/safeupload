@@ -117,11 +117,49 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal(changePublicBytes ? "newer public content" : "approved first version", await File.ReadAllTextAsync(transfer.DestinationPath));
         Assert.True(File.Exists(transfer.StagePath));
         Assert.Equal(1, gate.AuthorizeCalls);
-        Assert.True(owner.Reader.TryRead(out var notification));
-        var hold = Assert.IsType<TransferNotification>(notification);
+        var notifications = new List<TransferNotification>();
+        while (owner.Reader.TryRead(out var notification))
+            if (notification is TransferNotification transferNotification) notifications.Add(transferNotification);
+        var hold = Assert.Single(notifications.Where(n => n.RecoveryAdvice == StagedRecoveryAdvice.PublicationUnresolved));
         Assert.Equal(transfer.DestinationPath, hold.FileName);
+        Assert.Equal(TransferPhase.Retained, hold.Phase);
         Assert.Equal(StagedRecoveryAdvice.PublicationUnresolved, hold.RecoveryAdvice);
         Assert.False(hold.OverrideAllowed);
+    }
+
+    [Fact]
+    public async Task A_confirmed_publication_receipt_cannot_advance_a_renamed_journal_version()
+    {
+        bool injected = false;
+        var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "rename-journal"), false, 100,
+            (point, entry) =>
+            {
+                if (!injected && entry.State == TransferJournalState.Released && point == StagedJournalWritePoint.AfterReplacement)
+                { injected = true; throw new System.ComponentModel.Win32Exception(5); }
+            });
+        var gate = new CountingPublicationGate();
+        var publisher = new StagedTransferPublisher(new InspectionService(
+            new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
+            ExtractorRegistry.CreateDefault(), new VerdictCache()), _notifications, journal, _stagingRoot, gate,
+            sessionUserSidResolver: _ => TestRequestorSid);
+        var transfer = Transfer("old-name.txt", "approved first version");
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Allocated,
+            TransferJournalState.Sealed, null, CancellationToken.None);
+        await Assert.ThrowsAsync<StagedJournalPersistenceException>(() => publisher.PublishAsync(transfer, CancellationToken.None));
+        string nextName = Path.Combine(Path.GetDirectoryName(transfer.DestinationPath)!, "new-name.txt");
+        await journal.PrepareRenameAsync(transfer.TransferId, 41, transfer.ProcessId, nextName, true, CancellationToken.None);
+        var renamed = await journal.CompleteRenameAsync(transfer.TransferId, 41, transfer.ProcessId, nextName, true, CancellationToken.None);
+
+        await publisher.RecoverConfirmedPublicationsAsync(CancellationToken.None);
+        var after = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(renamed.Transfer, after.Transfer);
+        Assert.Equal(renamed.DestinationGeneration, after.DestinationGeneration);
+        Assert.Equal(TransferJournalState.Sealed, after.State);
+        Assert.False(File.Exists(nextName));
+        Assert.Equal("approved first version", await File.ReadAllTextAsync(transfer.DestinationPath));
+        Assert.True(File.Exists(transfer.StagePath));
+        Assert.Equal(1, gate.AuthorizeCalls);
     }
 
     [Theory]

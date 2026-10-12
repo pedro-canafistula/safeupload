@@ -71,6 +71,9 @@ public sealed class StagedHandbackTests : IDisposable
         Assert.True(injected);
         Assert.Equal(transfer.TransferId, failure.TransferId);
         Assert.Equal(afterReplacement, failure.ReplacementReturned);
+        Assert.Contains("nativeError=5", failure.Message);
+        Assert.Contains("pointInTimeOnly=true", failure.Message);
+        Assert.Contains("temporary=[volume=", failure.Message);
         var interrupted = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
         Assert.NotEqual(StagedHandbackState.Failed, interrupted.HandbackState);
         Assert.True(File.Exists(transfer.StagePath));
