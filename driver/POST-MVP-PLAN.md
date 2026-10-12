@@ -243,6 +243,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     including 42 new query cases per feature profile. Live recovery and runtime portability/hold-release checks remain open.
   - [ ] Correct ordinary CREATE authority: disposition-specific rights, case/identity anchors, native sharing, complete security labels,
     post-allocation authorization and live replay identity; see the [current review](evidence/2026-10-12/m2-progress-direction-review.md).
+    Replay identity is fixed (`dbe02d04`); [kernel seed/read-authority corrections and the owner hand-back choice](T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes) remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
     [Reviewed integration contract](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md), V23 transport and
@@ -259,11 +260,11 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: driver `827b3f41`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
-agent `be78b958`, **863/863** per normal profile and **1112/1112** per feature profile, every discovered case executed once without skips,
+Latest static gates: driver/agent `dbe02d04`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
+**863/863** per normal profile and **1113/1113** per feature profile, every discovered case executed once without skips,
 service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-12/t5-bound-service-allocation-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
-In-progress kernel protocol changes are not covered by these passes; gate the resulting committed integration source before boot.
+The V23 sender and concurrent RPC authority fence pass these gates; CREATE capture and the connected commit/recovery path remain open.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
 [matrix self-checks](evidence/2026-10-11/t5-agent-matrix-runner-selfcheck.txt) pass.

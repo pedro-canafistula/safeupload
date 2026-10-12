@@ -1,0 +1,13 @@
+﻿LABEL=t5-rpc-integration1
+ARCHIVE_SHA256=65BA8AB8764E5553270DAFEB67482C23C6E104EA8C8FD2EDB39279B1847F2655
+SOURCE_COMMIT=dbe02d0485fcc416726c9d316d1b58dd0063c369
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-12T05:14:23.6988777Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=B8A205A3F27CBF696F585F1DE3463B3719C4B9A7EE897BD3B7D3D4B6658E4DCF
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=E757D9B316FB61F5EB13687D3E0161A46432ECEA7D49A4FD1DA9C1D0D524A5AA
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=9241F1EB78640BAC59530E6F62EBF101DEE63DC8EF4DEF42891865FB86A98E10
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=85BF7564A331A57FD90650BBC079A8821E655CEC5AAE65F8BD203DAD7E17F70F
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=85431BC525E43E190A584B4060E4A3375F8CD1184918EC1D58D55745C3C5463B
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=E088053E8B50E61658550BFC5707FB6309F1F75325E349AA503B9EEECF1C5659
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=01614C0EB8E8E39444A98B1D870418B3F907AE7C0F0EAC8831C960017AD8F020
+sign : exit=0 unsigned_sha256=E757D9B316FB61F5EB13687D3E0161A46432ECEA7D49A4FD1DA9C1D0D524A5AA signing_copy_sha256=E757D9B316FB61F5EB13687D3E0161A46432ECEA7D49A4FD1DA9C1D0D524A5AA unsigned_unchanged=True store=LocalMachine output_sha256=F03AA35EF06EFBD923D41CC0D68E285E012F971D9A1C5DF16C2680EBA0777D08 signed_sha256=F03AA35EF06EFBD923D41CC0D68E285E012F971D9A1C5DF16C2680EBA0777D08 signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38

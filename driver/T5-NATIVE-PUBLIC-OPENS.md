@@ -378,3 +378,92 @@ product-security design review of authority transport and shared commit integrat
 The [Luna design review](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md) is READY WITH TWO REQUIRED CONTRACT
 CORRECTIONS for non-live implementation: source ID/absence revalidation and consistent ordinal filename bucket resolution, specified
 above. Full pipeline integration, the kernel lifetime review and protected runtime gates still precede live admission. No revised boot has occurred.
+
+### Kernel permission and identity capture — required integration corrections
+
+The service allocation path is connected on `be78b958`; kernel capture is next. The current private CREATE uses
+`SafeUploadStageCaptureSecurity` and `SafeUploadStageQueryIdentity` (`StageStream.c:2156`, `StageSecurity.c:18–105`): those privileged
+metadata opens use unconditional case-insensitive names, and the grant is a separate DACL check. They cannot supply the new bound
+authority. The existing public backend factory (`StagePublic.c:395–510`) instead asks NTFS with the original effective subject,
+but deliberately requires DELETE; ordinary staged writers must not acquire that delete-only capability.
+
+For a bound writer, capture the original CREATE subject on the original callback before queueing. On the unimpersonated system
+worker, outside namespace/stream/spin locks, validate the supported fixed-NTFS instance and resolve the original request with its
+original case flags and no-reparse rules. A present target gets a **noncreating, nontruncating FILE_OPEN** under that captured
+subject, with the original requested rights and sharing. NTFS decides authorization, including mandatory integrity and traversal;
+never add backup/restore privilege or substitute SYSTEM. Capture identity and grants from that same checked object. Model each
+disposition's extra native checks: present FILE_CREATE retains its collision result; overwrite needs implicit write and applicable
+EA/attribute authority; supersede needs the native delete/parent DELETE_CHILD alternative and applicable EA/attribute authority.
+Implicit check rights are separate from the rights exposed on the app's handle. A supersede permission check does not grant an
+ordinary writer DELETE. Creation-only flags must not cause mutation during the probe. The operation/flag matrix requires native
+controls before admission, including caller identification-level tokens; never promote an otherwise unusable subject.
+
+For proven absence, require the original disposition to allow creation, then have NTFS check FILE_ADD_FILE on the exact parent
+with that same subject and original path/case semantics. Assign the private view's descriptor from the exact held parent's security
+and the original CREATE descriptor/subject, without granting a right merely because the worker can create a backing file. Preserve
+the supported CREATE-option matrix and security-only public-open behavior; combined unsupported metadata changes remain refused.
+Overwrite retains the existing descriptor; supersede/new creation use the descriptor NTFS would assign from the exact parent,
+original CREATE descriptor and subject. Include owner/group, inheritance, SACL and mandatory labels, not only a DACL copy. A
+discrepancy with the native control keeps admission closed; do not silently broaden grants or narrow required product behavior.
+
+Separately open read-only metadata anchors below the original instance, walking each component with its actual directory case
+mode and rejecting reparses. Query the checked source object's canonical long name, verify its parent/leaf against those anchors,
+and retain only the exact full root/parent/target IDs, mount GUID, case mode, leaf and assigned security needed by the private view.
+For absence, perform complete anchored enumeration with the original lookup semantics; an incomplete lookup is not absence.
+Capture the tuple outside namespace locks after reserving the name. Send V23 and persist its exact retry snapshot. Before exposing
+the private open, reopen/recheck those anchors and the target ID or absence outside locks, then revalidate the reserved view,
+predecessor, caller lifetime and service generation under the namespace lock. Repeat the exact disposition-specific NTFS rights,
+sharing, traversal and label checks after the RPC; unchanged IDs alone do not establish unchanged authorization. Capture the
+resulting descriptor again. Any mismatch retains/discards the private candidate
+through the existing exact receipt path. It cannot expose a different source, rename a public file or grant DELETE.
+
+The public DELETE/read-only native factory remains separate and retains its actual NTFS-checked backend. Its original-sharing and
+last-close timing must not be changed by this allocation correction. Both new allocation authority and native delete authority
+eventually feed the same bound head/permit pipeline; neither enables live admission by itself. Required controls include ordinary
+and denied access, DELETE_CHILD/SUPERSEDE, case-sensitive/short-name resolution, label/traversal denial, target/parent replacement,
+and unchanged native sharing/cleanup behavior. The integrated lifetime/lock/retirement review still precedes the first revised boot.
+
+**Current review status, 2026-10-12: REVISE; admission remains disabled.** The live writer identity check on allocation replay is
+implemented in `dbe02d04`, both before and after replay; PID/session/SID/creation identify ownership, not filesystem authority.
+Kernel permission capture, seed transport and descriptor assignment are not yet integrated.
+
+#### Seed sharing and read-authority correction
+
+The service's current second public-source read open (`StagedDestinationDirectory.cs:68`) can fail a CREATE whose original sharing
+would succeed. The proposed replacement seeds through the exact original-rights/share-checked live FILE_OBJECT in the kernel,
+after post-RPC revalidation, into the exclusive private backing. Do not add READ_DATA to the app's handle. Use explicit offsets,
+bounded aligned chunks, exact EOF/flush and complete source/anchor revalidation before expose. The existing service public-read
+route must be removed from this live path, rather than adding a share bypass to it. This proposal still needs source range-lock,
+oplock and compatible concurrent-writer controls; an open full-ID object is not an atomic content snapshot. No new residual
+behavior is approved by this note. See Microsoft's [FltReadFile contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltreadfile).
+
+Full blocked-save hand-back is a separate read disclosure. The allocator seeds old public bytes for OPEN/OPEN_IF, and the existing
+publisher copies the entire blocked snapshot to a hand-back with user FR access (`StagedBoundTransferAllocator.cs:57–68`,
+`StagedTransferPublisher.cs:235–245,693–706`, `StagedHandbackCopier.cs:916–920`). A subject may be allowed to append to a file while
+being denied its old contents. Returning those contents in another file must not create read authority.
+
+Do not confuse a write-only requested handle with a read-denied subject: ordinary users can request FileAccess.Write while
+remaining authorized to open the same file for reading. Preserve their existing hand-back and justification behavior. The reviewed
+candidate checks READ authorization independently on the exact source under the retained original effective subject, without
+reading through that probe or exposing it to the app. An ignore-share authorization probe is only a candidate for this separate
+read check; the original CREATE check never bypasses sharing. Its oplock/audit effects and exact identity must be controlled.
+Explicit access/label denial and an indeterminate probe have distinct diagnostics; neither establishes permission to export old
+bytes. Validate the eventual hand-back recipient too; the process-primary SID is not the original thread's effective subject.
+
+Persist source provenance plus affirmative read/recipient authorization with the bound allocation, carrying it through any seeded
+private predecessor. New/absent targets and truncating/superseding dispositions start without old public bytes and retain the
+ordinary hand-back path; do not infer provenance from final length or a changed write mask. No new journal state is needed.
+
+#### Owner choice pending — unreadable seeded bytes
+
+1. **Preserve native write-only editing.** Clean saves publish normally with the required destination permissions. If a blocked
+   version contains prior bytes whose read/export authority is denied or unresolved, keep it service-private using existing
+   Blocked + HandbackState.Failed with a named diagnostic/tray reason. No readable full-file hand-back is made. Existing behavior
+   closes justification without verified hand-back and prevents cleanup of that blocked stage. Normal read-authorized saves keep
+   their current hand-back and justification. Users of a write-only protected log can continue clean appends, but cannot retrieve
+   the entire blocked log through SafeUpload.
+2. **Require read authority for edits that preserve old bytes.** Refuse such an existing-file open when read/export authority
+   cannot be proved. Those apps cannot edit or append through SafeUpload in that mode; new and full-replacement saves continue.
+   Admitted blocked saves retain the full-file hand-back model. This deliberately narrows native Windows editing behavior.
+
+This is a failure-policy/product decision required by the owner's stop-and-ask rule. Neither option is implemented or approved.
