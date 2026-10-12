@@ -20,10 +20,14 @@ public static class BoundPublicationNativeControl {
  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
  static extern SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int kind, byte[] data, uint size);
- [DllImport("kernel32.dll", SetLastError=true)] static extern bool FlushFileBuffers(SafeFileHandle handle);
  [DllImport("ntdll.dll")] static extern int NtCreateFile(out SafeFileHandle handle, uint access, ref ObjectAttributes attributes,
   out IoStatusBlock status, IntPtr allocation, uint fileAttributes, uint share, uint disposition, uint options, IntPtr ea, uint eaLength);
  [DllImport("ntdll.dll")] static extern int NtSetInformationFile(SafeFileHandle handle, out IoStatusBlock status, byte[] data, uint size, int kind);
+ [DllImport("ntdll.dll")] static extern int NtWriteFile(SafeFileHandle handle, IntPtr waitEvent, IntPtr apc, IntPtr context,
+  out IoStatusBlock status, IntPtr data, uint size, ref long offset, IntPtr key);
+ [DllImport("ntdll.dll")] static extern int NtFlushBuffersFile(SafeFileHandle handle, out IoStatusBlock status);
+ [DllImport("ntdll.dll")] static extern int NtQueryObject(SafeFileHandle handle, int kind, [Out] byte[] data, uint size, out uint returned);
+ [DllImport("ntdll.dll")] static extern int NtQueryInformationFile(SafeFileHandle handle, out IoStatusBlock status, [Out] byte[] data, uint size, int kind);
  [DllImport("ntdll.dll")] static extern uint RtlNtStatusToDosError(int status);
  static void Check(int status) { if(status!=0) throw new Win32Exception((int)RtlNtStatusToDosError(status), "Native status 0x"+status.ToString("X8")); }
  static void Leaf(string leaf) {
@@ -54,11 +58,39 @@ public static class BoundPublicationNativeControl {
    Marshal.StructureToPtr(value,unicode,false);
    var attributes=new ObjectAttributes{Length=(uint)Marshal.SizeOf(typeof(ObjectAttributes)),Root=parent.DangerousGetHandle(),Name=unicode,Attributes=0x40};
    SafeFileHandle file; IoStatusBlock io;
-   int status=NtCreateFile(out file,0x40110000,ref attributes,out io,IntPtr.Zero,0x80,0,2,0x00200062,IntPtr.Zero,0);
+   int status=NtCreateFile(out file,0x00110082,ref attributes,out io,IntPtr.Zero,0x80,0,2,0x0020006A,IntPtr.Zero,0);
    if(status!=0) { file.Dispose(); Check(status); }
    if(file.IsInvalid) { file.Dispose(); throw new IOException("Native create returned no handle."); }
+   if(io.Status!=IntPtr.Zero || io.Information.ToUInt64()!=2) { file.Dispose(); throw new IOException("Native create did not report FILE_CREATED."); }
    return file;
   } finally { if(held) parent.DangerousRelease(); Marshal.FreeHGlobal(unicode); Marshal.FreeHGlobal(name); }
+ }
+ public static void RequireHandleContract(SafeFileHandle file) {
+  byte[] basic=new byte[56]; uint returned;
+  Check(NtQueryObject(file,0,basic,(uint)basic.Length,out returned));
+  if(BitConverter.ToUInt32(basic,4)!=0x00110082) throw new IOException("Temporary has unexpected granted access.");
+  byte[] mode=new byte[4]; IoStatusBlock io;
+  Check(NtQueryInformationFile(file,out io,mode,4,16));
+  if(io.Status!=IntPtr.Zero || BitConverter.ToUInt32(mode,0)!=0x6A) throw new IOException("Temporary has unexpected buffering/synchronization mode.");
+ }
+ public static void WriteAlignedExact(SafeFileHandle file,byte[] bytes) {
+  const int alignment=4096;
+  if(bytes.Length>alignment) throw new ArgumentException("Control payload exceeds one aligned block.");
+  if(bytes.Length!=0) {
+   IntPtr raw=Marshal.AllocHGlobal(alignment*2-1);
+   try {
+    long address=(raw.ToInt64()+alignment-1)&~((long)alignment-1);
+    IntPtr aligned=new IntPtr(address); byte[] padded=new byte[alignment]; bytes.CopyTo(padded,0);
+    Marshal.Copy(padded,0,aligned,padded.Length); long offset=0; IoStatusBlock io;
+    Check(NtWriteFile(file,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero,out io,aligned,alignment,ref offset,IntPtr.Zero));
+    if(io.Status!=IntPtr.Zero || io.Information.ToUInt64()!=alignment) throw new IOException("Aligned native write was incomplete.");
+   } finally { Marshal.FreeHGlobal(raw); }
+  }
+  IoStatusBlock end; byte[] eof=BitConverter.GetBytes((long)bytes.Length);
+  Check(NtSetInformationFile(file,out end,eof,8,20));
+  if(end.Status!=IntPtr.Zero) throw new IOException("EOF operation did not complete.");
+  Check(NtFlushBuffersFile(file,out end));
+  if(end.Status!=IntPtr.Zero) throw new IOException("Flush did not complete.");
  }
  public static byte[] RenameBuffer(IntPtr parent,string leaf) {
   Leaf(leaf); byte[] name=Encoding.Unicode.GetBytes(leaf); int offset=IntPtr.Size==8?20:12;
@@ -103,18 +135,15 @@ try {
         $file = [BoundPublicationNativeControl]::CreateRelative($parent, $temporary)
         try {
             $id = [BoundPublicationNativeControl]::Identity($file)
-            # FileStream owns this handle. Keep the original object through rename.
-            $stream = [IO.FileStream]::new($file, [IO.FileAccess]::Write, 4096, $false)
-            try {
-                $stream.Write($bytes,0,$bytes.Length); $stream.Flush($true)
-                [BoundPublicationNativeControl]::RenameRelative($file,$parent,$leaf)
-                if ([BoundPublicationNativeControl]::Identity($file) -ne $id) { throw 'Rename changed full identity.' }
-            } finally { $stream.Dispose() }
+            [BoundPublicationNativeControl]::RequireHandleContract($file)
+            [BoundPublicationNativeControl]::WriteAlignedExact($file,$bytes)
+            [BoundPublicationNativeControl]::RenameRelative($file,$parent,$leaf)
+            if ([BoundPublicationNativeControl]::Identity($file) -ne $id) { throw 'Rename changed full identity.' }
         } finally { $file.Dispose() }
         if (([IO.File]::ReadAllBytes((Join-Path $parentPath $leaf)) -join ',') -ne ($bytes -join ',')) { throw 'Published bytes differ.' }
         if (Test-Path -LiteralPath (Join-Path $parentPath $temporary)) { throw 'Temporary name remains.' }
         if ([BoundPublicationNativeControl]::Identity($parent) -ne $parentId) { throw 'Parent identity changed.' }
-        Write-Output ('ParentRelativeCreateRename_'+$size+'=PASS Identity='+$id)
+        Write-Output ('ParentRelativeCreateRename_'+$size+'=PASS GrantedAccess=0x00110082 Mode=0x6A Identity='+$id)
     }
     Write-Output 'BoundPublicationNativeControl=PASS'
 } finally {
