@@ -1,0 +1,16 @@
+T4GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T4DriverLoaded PASS the filter is still loaded after the cycles
+T4VerifierActive PASS runtime Verifier 0x13B still verifies SafeUpload.sys
+T4CyclesCompleted PASS 256 of 256 cycles reached their outcome; outcomes {"resave-approve": {"Ok": 48, "Failed": 0}, "new-approve": {"Ok": 48, "Failed": 0}, "replace-approve": {"Ok": 48, "Failed": 0}, "mapped-approve": {"Ok": 48, "Failed": 0}, "resave-block": {"Ok": 16, "Failed": 0}, "new-block": {"Ok": 16, "Failed": 0}, "replace-block": {"Ok": 16, "Failed": 0}, "mapped-block": {"Ok": 16, "Failed": 0}}; no failures
+T4ActorStopped PASS the actor acknowledged stop
+T4StopReason INFO completed; attempted 256; failures 0
+T4NoBlockedBytesPublished PASS no blocked version reached its public name
+T4PoolFlat PASS driver nonpaged bytes (Verifier pool tracking) from cycle 64: 6398760 -> 6390600 at cycle 256, after idle 6428632; slope -23.175 B/cycle (limit 4); peak 6956488
+T4VersionsReleased PASS after settle: live versions 0, views 0, created 256, released 256, views released 256
+T4TombstonesReleased PASS after the actor exited: tombstones 0
+T4NoCapRefusal PASS cap refusals 0, tombstone refusals 0
+T4StageFilesDeleted PASS stage files after idle 0 (journal manifests 256, hand-backs 64); driver deletes 192, failures 0
+T4StageWorkerIdle PASS stage worker passes over 60 s with nothing waiting: 0 (timer fires 0; waiting versions 0)
+T4WorkerWakes INFO {"wakeCleanup": 256, "wakeClose": 256, "wakeDispose": 256, "wakeConnect": 1, "wakeExit": 93, "wakeTimer": 319, "wakeInline": 0, "timerArms": 501, "disposeHeld": 256, "disposeNotHeld": 0, "disposeStale": 0, "disposeDeferred": 0, "passes": 1176}
+T4CycleTime INFO median 1185 ms, p95 1674 ms, max 2689 ms over 256 cycles
+T4Duration INFO 1008 s (verifier-from-boot, 256 cycles)

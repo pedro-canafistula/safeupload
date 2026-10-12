@@ -1,0 +1,79 @@
+== run disk
+== baseline
+== stage files and install
+PolicyAclApplied=True
+Directory=C:\ProgramData\SafeUpload
+File=C:\ProgramData\SafeUpload\policy.json
+[SC] ChangeServiceConfig SUCCESS
+BootPolicySeededAsSystem=True
+[SC] ChangeServiceConfig SUCCESS
+DriverBootStartConfigured=True
+DriverStartedByInstaller=False
+[SC] CreateService SUCCESS
+ServiceCommandLine="C:\Program Files\SafeUpload\Agent\SafeUpload.Agent.Service.exe" --Interception:Mode=Minifilter --Interception:StagingPrototype=true --CentroAdministracao:BaseUrl=
+[SC] ChangeServiceConfig2 SUCCESS
+ServiceName=SafeUploadAgent
+ServiceSidType=UNRESTRICTED
+ServiceConfigured=True
+ServiceStarted=False
+Protection activates after reboot.
+DriverStart=0
+INSTALL_DONE=True
+The operation completed successfully.
+The operation completed successfully.
+T4MemorySetup=True
+VERIFIER_FROM_BOOT_CONFIGURED=True
+== reboot
+VERIFIER_FROM_FIRST_LOAD=True
+READY=True
+LAST_AGENT_FRAME={"type":"status","policyVersion":1,"activeCategories":1,"protectionActive":true,"auditOnly":false,"admissionCoverage":"Ready","admissionCoverageReason":"Ready","nativePolicyGeneration":2147483647}
+READINESS_ELAPSED_MS=142
+DRIVER_LOADED=True
+T4MemorySnapshot=control-idle-before
+T4MemorySnapshot=control-idle-after
+T4MemorySnapshot=control-fixed-created
+T4MemorySnapshot=control-fixed-first
+T4MemorySnapshot=control-fixed-repeat
+T4MemorySnapshot=control-disjoint
+T4MemorySnapshot=control-settled
+T4MemoryControls=PASS
+== actor, Verifier (verifier-from-boot) and the coordinator
+ACTOR_PROFILE=C:\Users\t4actor hr=0x00000000
+VERIFIER_ARMED=True
+COORDINATOR_STARTED=True
+T4DeadlineSeconds=3600
+progress after 60s: RUNNING 36
+progress after 121s: RUNNING 78
+progress after 182s: RUNNING 128
+progress after 243s: RUNNING 171
+progress after 305s: RUNNING 210
+progress after 366s: RUNNING 256
+progress after 427s: RUNNING 256
+wait ended after 489s: DONE alive=yes reason=coordinator-finished
+T4GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T4DriverLoaded PASS the filter is still loaded after the cycles
+T4VerifierActive PASS runtime Verifier 0x13B still verifies SafeUpload.sys
+T4CyclesCompleted PASS 256 of 256 cycles reached their outcome; outcomes {"resave-approve": {"Ok": 48, "Failed": 0}, "new-approve": {"Ok": 48, "Failed": 0}, "replace-approve": {"Ok": 48, "Failed": 0}, "mapped-approve": {"Ok": 48, "Failed": 0}, "resave-block": {"Ok": 16, "Failed": 0}, "new-block": {"Ok": 16, "Failed": 0}, "replace-block": {"Ok": 16, "Failed": 0}, "mapped-block": {"Ok": 16, "Failed": 0}}; no failures
+T4ActorStopped PASS the actor acknowledged stop
+T4StopReason INFO completed; attempted 256; failures 0
+T4NoBlockedBytesPublished PASS no blocked version reached its public name
+T4PoolFlat PASS driver nonpaged bytes (Verifier pool tracking) from cycle 64: 6398760 -> 6390600 at cycle 256, after idle 6428632; slope -23.175 B/cycle (limit 4); peak 6956488
+T4VersionsReleased PASS after settle: live versions 0, views 0, created 256, released 256, views released 256
+T4TombstonesReleased PASS after the actor exited: tombstones 0
+T4NoCapRefusal PASS cap refusals 0, tombstone refusals 0
+T4StageFilesDeleted PASS stage files after idle 0 (journal manifests 256, hand-backs 64); driver deletes 192, failures 0
+T4StageWorkerIdle PASS stage worker passes over 60 s with nothing waiting: 0 (timer fires 0; waiting versions 0)
+T4WorkerWakes INFO {"wakeCleanup": 256, "wakeClose": 256, "wakeDispose": 256, "wakeConnect": 1, "wakeExit": 93, "wakeTimer": 319, "wakeInline": 0, "timerArms": 501, "disposeHeld": 256, "disposeNotHeld": 0, "disposeStale": 0, "disposeDeferred": 0, "passes": 1176}
+T4CycleTime INFO median 1185 ms, p95 1674 ms, max 2689 ms over 256 cycles
+T4Duration INFO 1008 s (verifier-from-boot, 256 cycles)
+T4MemorySnapshot=teardown-before
+T4MemorySnapshot=teardown-after
+T4MemoryTeardown=PASS
+T4StopReason=completed;ExitCode=0;Phase=memory-teardown;Progress=DONE;ElapsedSeconds=489
+== discard the run disk
+RunDiskXmlUnchanged=True
+2026-10-12T23:47:28Z run-disk win10-debug3: deleted /var/lib/libvirt/images/win10-debug3.safeupload-run-m2t4memdiag1.qcow2
+RunDiskOverlayDeleted=True
+RunDiskBaseUntouched=True
+2026-10-12T23:47:28Z run-disk win10-debug3: run m2t4memdiag1 ended; the domain is shut off on /var/lib/libvirt/images/win10-debug3.base-20261009.qcow2
+T4IndependentRestoration=PASS

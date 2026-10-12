@@ -1,0 +1,13 @@
+﻿LABEL=m2-driver5-t11
+ARCHIVE_SHA256=8ADEED0A8CAC974A81034564A2B1E3C75C3004CFD53F4CB97E041A7590E07B44
+MANIFEST_SHA256=FF7D3BFFFE3BD6D4286C2486FA675D046593EFC90A4F43B24BF5BDD551DB350E
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-10T17:44:57.0185594Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=D328C4A5D55F31D771089941F74E86DF0A9CB86B585002199C6510EAFD32EF1F
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=D49464A61DF974B6F66AD8823C7115D9C22E642B08D81755E5F8B8F010898A5F
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=622F2B42B7F4462AE94833145057BAA2D69D49635F2F4D71ECA3930A4AFB422B
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=844720A40C81A07EEE61711926B431169331CA6341E7217386AA9F03302F4E86
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=7A02C094C6CF706A661AA932189AA002777E01AC2BED09093867C75FB7E527D8
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=CD37FD32DD7BE7A67915784C3249D747F4CC635ABB57EACB2DE963FFCF75E6A5
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=38514730B1B791FFF1CB183043651A6742B310D25A4C78CFA75EE8582E5C2726
+sign : exit=0 unsigned_sha256=D49464A61DF974B6F66AD8823C7115D9C22E642B08D81755E5F8B8F010898A5F signing_copy_sha256=D49464A61DF974B6F66AD8823C7115D9C22E642B08D81755E5F8B8F010898A5F unsigned_unchanged=True store=LocalMachine output_sha256=EBDFCE549EA1DC271498A5F6A38D151AC952ADE9105D476B073A313EB271C851 signed_sha256=EBDFCE549EA1DC271498A5F6A38D151AC952ADE9105D476B073A313EB271C851 signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38

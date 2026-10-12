@@ -1,0 +1,471 @@
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.032 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.047 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Connected to Windows 10 19041 x64 target at (Tue Oct 13 00:38:16.169 2026 (UTC + 1:00)), ptr64 TRUE
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+OK                                             C:\T4Memory\symbols
+Deferred                                       srv*C:\T4Memory\symcache*https://msdl.microsoft.com/download/symbols
+Symbol search path is: C:\T4Memory\symbols;srv*C:\T4Memory\symcache*https://msdl.microsoft.com/download/symbols
+Executable search path is: 
+Windows 10 Kernel Version 19041 MP (2 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff803`4ce1b000 PsLoadedModuleList = 0xfffff803`4da452b0
+Debug session time: Tue Oct 13 00:38:16.404 2026 (UTC + 1:00)
+System Uptime: 0 days 0:05:57.116
+lkd> kd: Reading initial command '$$><C:\T4Memory\output\context-allocation-detail.commands.txt'
+T4_MEMORY_BEGIN
+Browse full module list
+start             end                 module name
+fffff803`4e8d0000 fffff803`4efcc000   SafeUpload   (private pdb symbols)  c:\t4memory\symbols\SafeUpload.pdb
+    Loaded symbol image file: SafeUpload.sys
+    Image path: SafeUpload.sys
+    Image name: SafeUpload.sys
+    Browse all global symbols  functions  data  Symbol Reload
+    Timestamp:        Sat Oct 10 18:44:20 2026 (6ACA7974)
+    CheckSum:         0005F524
+    ImageSize:        006FC000
+    Translations:     0000.04b0 0000.04e4 0409.04b0 0409.04e4
+    Information from resource tables:
+          FLTMGR!_ALLOCATE_CONTEXT_HEADER
+          FLTMGR!_ALLOCATE_CONTEXT_LOOKASIDE
+          FLTMGR!_ALLOCATE_CONTEXT_DIRECT
+          FLTMGR!_ALLOCATE_CONTEXT_ROUTINES
+   +0x000 Filter           : 0xffff8287`a08622c0 _FLT_FILTER
+      +0x000 Base             : _FLT_OBJECT
+         +0x000 Flags            : 2000000 ( FLT_OBFL_TYPE_FILTER )
+         +0x004 PointerCount     : 2
+         +0x008 RundownRef       : _EX_RUNDOWN_REF
+            +0x000 Count            : 0xafe
+            +0x000 Ptr              : 0x00000000`00000afe Void
+         +0x010 PrimaryLink      : _LIST_ENTRY [ 0xffff8287`a4293a70 - 0xffff8287`d868e020 ]
+            +0x000 Flink            : 0xffff8287`a4293a70 _LIST_ENTRY [ 0xffff8287`d869ba30 - 0xffff8287`a08622d0 ]
+            +0x008 Blink            : 0xffff8287`d868e020 _LIST_ENTRY [ 0xffff8287`a08622d0 - 0xffff8287`a096d0c0 ]
+         +0x020 UniqueIdentifier : _GUID {f6dae7ae-000a-0000-24f5-05007479ca6a}
+            +0x000 Data1            : 0xf6dae7ae
+            +0x004 Data2            : 0xa
+            +0x006 Data3            : 0
+            +0x008 Data4            : [8]  "$???"
+      +0x030 Frame            : 0xffff8287`a096d010 _FLTP_FRAME
+         +0x000 Type             : _FLT_TYPE
+            +0x000 Signature        : 0xf103
+            +0x002 Size             : 0x780
+         +0x008 Links            : _LIST_ENTRY [ 0xfffff803`4cc396c0 - 0xfffff803`4cc396c0 ]
+            +0x000 Flink            : 0xfffff803`4cc396c0 _LIST_ENTRY [ 0xffff8287`a096d018 - 0xffff8287`a096d018 ]
+            +0x008 Blink            : 0xfffff803`4cc396c0 _LIST_ENTRY [ 0xffff8287`a096d018 - 0xffff8287`a096d018 ]
+         +0x018 FrameID          : 0
+         +0x020 AltitudeIntervalLow : _UNICODE_STRING "0"
+            +0x000 Length           : 2
+            +0x002 MaximumLength    : 2
+            +0x008 Buffer           : 0xffffe607`d0b3d590  "0"
+         +0x030 AltitudeIntervalHigh : _UNICODE_STRING "409800"
+            +0x000 Length           : 0xc
+            +0x002 MaximumLength    : 0xc
+            +0x008 Buffer           : 0xffffe607`d0aa2e30  "409800"
+         +0x040 LargeIrpCtrlStackSize : 0x5 ''
+         +0x041 SmallIrpCtrlStackSize : 0x1 ''
+         +0x048 RegisteredFilters : _FLT_RESOURCE_LIST_HEAD
+            +0x000 rLock            : _ERESOURCE
+            +0x068 rList            : _LIST_ENTRY [ 0xffff8287`d868e020 - 0xffff8287`a08738b0 ]
+            +0x078 rCount           : 0xa
+         +0x0c8 AttachedVolumes  : _FLT_RESOURCE_LIST_HEAD
+            +0x000 rLock            : _ERESOURCE
+            +0x068 rList            : _LIST_ENTRY [ 0xffff8287`a0858020 - 0xffff8287`a31044f0 ]
+            +0x078 rCount           : 6
+         +0x148 MountingVolumes  : _LIST_ENTRY [ 0xffff8287`a096d158 - 0xffff8287`a096d158 ]
+            +0x000 Flink            : 0xffff8287`a096d158 _LIST_ENTRY [ 0xffff8287`a096d158 - 0xffff8287`a096d158 ]
+            +0x008 Blink            : 0xffff8287`a096d158 _LIST_ENTRY [ 0xffff8287`a096d158 - 0xffff8287`a096d158 ]
+         +0x158 AttachedFileSystems : _FLT_MUTEX_LIST_HEAD
+            +0x000 mLock            : _FAST_MUTEX
+            +0x038 mList            : _LIST_ENTRY [ 0xffff8287`a085cee8 - 0xffff8287`d6bef438 ]
+            +0x048 mCount           : 0xc
+            +0x048 mInvalid         : 0y0
+         +0x1a8 ZombiedFltObjectContexts : _FLT_MUTEX_LIST_HEAD
+            +0x000 mLock            : _FAST_MUTEX
+            +0x038 mList            : _LIST_ENTRY [ 0xffff8287`a9c19e08 - 0xffff8287`b33a7f88 ]
+            +0x048 mCount           : 0x7de
+            +0x048 mInvalid         : 0y0
+         +0x1f8 KtmResourceManagerHandle : 0xffffffff`800001d8 Void
+         +0x200 KtmResourceManager : 0xffff8287`a0862050 _KRESOURCEMANAGER
+         +0x208 FilterUnloadLock : _ERESOURCE
+            +0x000 SystemResourcesList : _LIST_ENTRY [ 0xffff8287`a096d058 - 0xfffff803`4cc39658 ]
+            +0x010 OwnerTable       : (null) 
+            +0x018 ActiveCount      : 0n0
+            +0x01a Flag             : 0
+            +0x01a ReservedLowFlags : 0 ''
+            +0x01b WaiterPriority   : 0 ''
+            +0x020 SharedWaiters    : (null) 
+            +0x028 ExclusiveWaiters : (null) 
+            +0x030 OwnerEntry       : _OWNER_ENTRY
+            +0x040 ActiveEntries    : 0
+            +0x044 ContentionCount  : 0
+            +0x048 NumberOfSharedWaiters : 0
+            +0x04c NumberOfExclusiveWaiters : 0
+            +0x050 Reserved2        : (null) 
+            +0x058 Address          : (null) 
+            +0x058 CreatorBackTraceIndex : 0
+            +0x060 SpinLock         : 0
+         +0x270 DeviceObjectAttachLock : _FAST_MUTEX
+            +0x000 Count            : 0n1
+            +0x008 Owner            : (null) 
+            +0x010 Contention       : 0
+            +0x018 Event            : _KEVENT
+            +0x030 OldIrql          : 0
+         +0x2a8 Prcb             : 0xffff8287`9eff4cc0 _FLT_PRCB
+            +0x000 PPIrpCtrlLookasideLists : [2] _FLTPP_LOOKASIDE_LIST
+         +0x2b0 PrcbPoolToFree   : 0xffff8287`9eff4c90 Void
+         +0x2b8 LookasidePoolToFree : 0xffff8287`a094e280 Void
+         +0x2c0 IrpCtrlStackProfiler : _FLTP_IRPCTRL_STACK_PROFILER
+            +0x000 Frame            : 0xffff8287`a096d010 _FLTP_FRAME
+            +0x008 Profile          : [10] 0
+            +0x030 Timer            : _KTIMER
+            +0x070 Dpc              : _KDPC
+            +0x0b0 WorkItem         : _WORK_QUEUE_ITEM
+            +0x0d0 Mutex            : _FAST_MUTEX
+            +0x108 WorkItemFlags    : 1
+            +0x10c Flags            : 1
+            +0x110 AllocCount       : 0
+         +0x400 SmallIrpCtrlLookasideList : _NPAGED_LOOKASIDE_LIST
+            +0x000 L                : _GENERAL_LOOKASIDE
+         +0x480 LargeIrpCtrlLookasideList : _NPAGED_LOOKASIDE_LIST
+            +0x000 L                : _GENERAL_LOOKASIDE
+         +0x500 ReserveIrpCtrls  : _RESERVE_IRPCTRL
+            +0x000 StaticIrpCtrl    : [10] 0xffff8287`a096d7e0 _IRP_CTRL
+            +0x050 StaticOwningThread : [10] (null) 
+            +0x0a0 StaticLock       : [10] _KSEMAPHORE
+            +0x1e0 EntriesLock      : _KSEMAPHORE
+            +0x200 Entries          : [3] _BACKPOCKET_THREAD_ENTRY
+      +0x038 Name             : _UNICODE_STRING "SafeUpload"
+         +0x000 Length           : 0x14
+         +0x002 MaximumLength    : 0x14
+         +0x008 Buffer           : 0xffff8287`a0862ad0  "SafeUpload"
+      +0x048 DefaultAltitude  : _UNICODE_STRING "321410"
+         +0x000 Length           : 0xc
+         +0x002 MaximumLength    : 0xe
+         +0x008 Buffer           : 0xffffe607`d0aa2f70  "321410"
+      +0x058 Flags            : 0x16 (No matching name)
+      +0x060 DriverObject     : 0xffff8287`a0874b40 _DRIVER_OBJECT
+         +0x000 Type             : 0n4
+         +0x002 Size             : 0n336
+         +0x008 DeviceObject     : (null) 
+         +0x010 Flags            : 0x12
+         +0x018 DriverStart      : 0xfffff803`4e8d0000 Void
+         +0x020 DriverSize       : 0x6fc000
+         +0x028 DriverSection    : 0xffff8287`9ea60010 Void
+         +0x030 DriverExtension  : 0xffff8287`a0874c90 _DRIVER_EXTENSION
+            +0x000 DriverObject     : 0xffff8287`a0874b40 _DRIVER_OBJECT
+            +0x008 AddDevice        : (null) 
+            +0x010 Count            : 0
+            +0x018 ServiceKeyName   : _UNICODE_STRING "SafeUpload"
+         +0x038 DriverName       : _UNICODE_STRING "\FileSystem\SafeUpload"
+            +0x000 Length           : 0x2c
+            +0x002 MaximumLength    : 0x2c
+            +0x008 Buffer           : 0xffff8287`a0b58fd0  "\FileSystem\SafeUpload"
+         +0x048 HardwareDatabase : 0xfffff803`4db49990 _UNICODE_STRING "--- memory read error at address 0xfffff803`4d7a8a40 ---"
+            +0x000 Length           : 0x5a
+            +0x002 MaximumLength    : 0x5c
+            +0x008 Buffer           : 0xfffff803`4d7a8a40  "--- memory read error at address 0xfffff803`4d7a8a40 ---"
+         +0x050 FastIoDispatch   : (null) 
+         +0x058 DriverInit       : 0xfffff803`4efc8180           long  SafeUpload!GsDriverEntry+0
+         +0x060 DriverStartIo    : (null) 
+         +0x068 DriverUnload     : (null) 
+         +0x070 MajorFunction    : [28] 0xfffff803`4d1309c0           long  nt!IopInvalidDeviceRequest+0
+      +0x068 InstanceList     : _FLT_RESOURCE_LIST_HEAD
+         +0x000 rLock            : _ERESOURCE
+            +0x000 SystemResourcesList : _LIST_ENTRY [ 0xffff8287`a08e7f08 - 0xfffff803`4e94b300 ]
+            +0x010 OwnerTable       : (null) 
+            +0x018 ActiveCount      : 0n0
+            +0x01a Flag             : 0
+            +0x01a ReservedLowFlags : 0 ''
+            +0x01b WaiterPriority   : 0 ''
+            +0x020 SharedWaiters    : (null) 
+            +0x028 ExclusiveWaiters : (null) 
+            +0x030 OwnerEntry       : _OWNER_ENTRY
+            +0x040 ActiveEntries    : 0
+            +0x044 ContentionCount  : 0
+            +0x048 NumberOfSharedWaiters : 0
+            +0x04c NumberOfExclusiveWaiters : 0
+            +0x050 Reserved2        : (null) 
+            +0x058 Address          : (null) 
+            +0x058 CreatorBackTraceIndex : 0
+            +0x060 SpinLock         : 0
+         +0x068 rList            : _LIST_ENTRY [ 0xffff8287`a0cc90c0 - 0xffff8287`d6dbd080 ]
+            +0x000 Flink            : 0xffff8287`a0cc90c0 _LIST_ENTRY [ 0xffff8287`a3314080 - 0xffff8287`a0862390 ]
+            +0x008 Blink            : 0xffff8287`d6dbd080 _LIST_ENTRY [ 0xffff8287`a0862390 - 0xffff8287`d6bed080 ]
+         +0x078 rCount           : 4
+      +0x0e8 VerifierExtension : 0xffff8287`a084c560 _FLT_VERIFIER_EXTENSION
+         +0x000 Flags            : 0 (No matching name)
+         +0x008 FilterUnload     : (null) 
+         +0x010 InstanceSetup    : 0xfffff803`4efaf530           long  SafeUpload!SafeUploadInstanceSetup+0
+         +0x018 InstanceQueryTeardown : 0xfffff803`4efaf7f0           long  SafeUpload!SafeUploadInstanceQueryTeardown+0
+         +0x020 InstanceTeardownStart : 0xfffff803`4efaf850           void  SafeUpload!SafeUploadInstanceTeardownStart+0
+         +0x028 InstanceTeardownComplete : 0xfffff803`4efaf8c0           void  SafeUpload!SafeUploadInstanceTeardownComplete+0
+         +0x030 GenerateFileName : 0xfffff803`4e8dafa0           long  SafeUpload!SafeUploadStageGenerateName+0
+         +0x038 NormalizeNameComponent : 0xfffff803`4e8db310           long  SafeUpload!SafeUploadStageNormalizeComponent+0
+         +0x040 NormalizeNameComponentEx : (null) 
+         +0x048 Operations       : [50] FLT_VERIFIER_OPERATIONS
+            +0x000 PreOperation     : (null) 
+            +0x008 PostOperation    : (null) 
+         +0x368 Name             : 0xffff8287`9eabea50  "SafeUpload"
+         +0x380 FltVerifierObjectsLookasideList : _NPAGED_LOOKASIDE_LIST
+            +0x000 L                : _GENERAL_LOOKASIDE
+         +0x400 List             : _TREE_ROOT
+            +0x000 Tree             : 0xffff8287`a0ca32a0 _RTL_SPLAY_LINKS
+         +0x408 Lock             : 0
+         +0x410 Count            : [11] 0
+         +0x43c FltVerifierObjectsAllocFailures : 0n0
+         +0x440 FltVerifierObjectsUnlinkFailures : 0n0
+      +0x0f0 VerifiedFiltersLink : _LIST_ENTRY [ 0xfffff803`4cc3a838 - 0xfffff803`4cc3a838 ]
+         +0x000 Flink            : 0xfffff803`4cc3a838 _LIST_ENTRY [ 0xffff8287`a08623b0 - 0xffff8287`a08623b0 ]
+            +0x000 Flink            : 0xffff8287`a08623b0 _LIST_ENTRY [ 0xfffff803`4cc3a838 - 0xfffff803`4cc3a838 ]
+            +0x008 Blink            : 0xffff8287`a08623b0 _LIST_ENTRY [ 0xfffff803`4cc3a838 - 0xfffff803`4cc3a838 ]
+         +0x008 Blink            : 0xfffff803`4cc3a838 _LIST_ENTRY [ 0xffff8287`a08623b0 - 0xffff8287`a08623b0 ]
+            +0x000 Flink            : 0xffff8287`a08623b0 _LIST_ENTRY [ 0xfffff803`4cc3a838 - 0xfffff803`4cc3a838 ]
+            +0x008 Blink            : 0xffff8287`a08623b0 _LIST_ENTRY [ 0xfffff803`4cc3a838 - 0xfffff803`4cc3a838 ]
+      +0x100 FilterUnload     : 0xfffff803`4efaf3e0        long  SafeUpload!SafeUploadUnload+0
+      +0x108 InstanceSetup    : 0xfffff803`4cc6ffb0        long  FLTMGR!FltvInstanceSetup+0
+      +0x110 InstanceQueryTeardown : 0xfffff803`4cc6fea0        long  FLTMGR!FltvInstanceQueryTeardown+0
+      +0x118 InstanceTeardownStart : 0xfffff803`4cc701d0        void  FLTMGR!FltvInstanceTeardownStart+0
+      +0x120 InstanceTeardownComplete : 0xfffff803`4cc700d0        void  FLTMGR!FltvInstanceTeardownComplete+0
+      +0x128 SupportedContextsListHead : 0xffff8287`a084c010 _ALLOCATE_CONTEXT_HEADER
+         +0x000 Filter           : 0xffff8287`a08622c0 _FLT_FILTER
+            +0x000 Base             : _FLT_OBJECT
+            +0x030 Frame            : 0xffff8287`a096d010 _FLTP_FRAME
+            +0x038 Name             : _UNICODE_STRING "SafeUpload"
+            +0x048 DefaultAltitude  : _UNICODE_STRING "321410"
+            +0x058 Flags            : 0x16 (No matching name)
+            +0x060 DriverObject     : 0xffff8287`a0874b40 _DRIVER_OBJECT
+            +0x068 InstanceList     : _FLT_RESOURCE_LIST_HEAD
+            +0x0e8 VerifierExtension : 0xffff8287`a084c560 _FLT_VERIFIER_EXTENSION
+            +0x0f0 VerifiedFiltersLink : _LIST_ENTRY [ 0xfffff803`4cc3a838 - 0xfffff803`4cc3a838 ]
+            +0x100 FilterUnload     : 0xfffff803`4efaf3e0              long  SafeUpload!SafeUploadUnload+0
+            +0x108 InstanceSetup    : 0xfffff803`4cc6ffb0              long  FLTMGR!FltvInstanceSetup+0
+            +0x110 InstanceQueryTeardown : 0xfffff803`4cc6fea0              long  FLTMGR!FltvInstanceQueryTeardown+0
+            +0x118 InstanceTeardownStart : 0xfffff803`4cc701d0              void  FLTMGR!FltvInstanceTeardownStart+0
+            +0x120 InstanceTeardownComplete : 0xfffff803`4cc700d0              void  FLTMGR!FltvInstanceTeardownComplete+0
+            +0x128 SupportedContextsListHead : 0xffff8287`a084c010 _ALLOCATE_CONTEXT_HEADER
+            +0x130 SupportedContexts : [7] (null) 
+            +0x168 PreVolumeMount   : 0xfffff803`4e8dab60              _FLT_PREOP_CALLBACK_STATUS  SafeUpload!SafeUploadStageDispatch+0
+            +0x170 PostVolumeMount  : 0xfffff803`4e8db520              _FLT_POSTOP_CALLBACK_STATUS  SafeUpload!SafeUploadStagePostOperation+0
+            +0x178 GenerateFileName : 0xfffff803`4cc6f4c0              long  FLTMGR!FltvGenerateFileName+0
+            +0x180 NormalizeNameComponent : 0xfffff803`4cc702d0              long  FLTMGR!FltvNormalizeNameComponent+0
+            +0x188 NormalizeNameComponentEx : (null) 
+            +0x190 NormalizeContextCleanup : (null) 
+            +0x198 KtmNotification  : 0xfffff803`4e8ece90              long  SafeUpload!SafeUploadStageTransactionNotification+0
+            +0x1a0 SectionNotification : (null) 
+            +0x1a8 Operations       : 0xffff8287`a0862570 _FLT_OPERATION_REGISTRATION
+            +0x1b0 OldDriverUnload  : (null) 
+            +0x1b8 ActiveOpens      : _FLT_MUTEX_LIST_HEAD
+            +0x208 ConnectionList   : _FLT_MUTEX_LIST_HEAD
+            +0x258 PortList         : _FLT_MUTEX_LIST_HEAD
+            +0x2a8 PortLock         : _EX_PUSH_LOCK
+         +0x008 ContextCleanupCallback : 0xfffff803`4e8d11b0           void  SafeUpload!SafeUploadInstanceContextCleanup+0
+         +0x010 Next             : (null) 
+         +0x018 ContextType      : 2
+         +0x01a Flags            : 0x1 ''
+         +0x01b AllocationType   : 0x1 ''
+      +0x130 SupportedContexts : [7] (null) 
+      +0x168 PreVolumeMount   : 0xfffff803`4e8dab60        _FLT_PREOP_CALLBACK_STATUS  SafeUpload!SafeUploadStageDispatch+0
+      +0x170 PostVolumeMount  : 0xfffff803`4e8db520        _FLT_POSTOP_CALLBACK_STATUS  SafeUpload!SafeUploadStagePostOperation+0
+      +0x178 GenerateFileName : 0xfffff803`4cc6f4c0        long  FLTMGR!FltvGenerateFileName+0
+      +0x180 NormalizeNameComponent : 0xfffff803`4cc702d0        long  FLTMGR!FltvNormalizeNameComponent+0
+      +0x188 NormalizeNameComponentEx : (null) 
+      +0x190 NormalizeContextCleanup : (null) 
+      +0x198 KtmNotification  : 0xfffff803`4e8ece90        long  SafeUpload!SafeUploadStageTransactionNotification+0
+      +0x1a0 SectionNotification : (null) 
+      +0x1a8 Operations       : 0xffff8287`a0862570 _FLT_OPERATION_REGISTRATION
+         +0x000 MajorFunction    : 0 ''
+         +0x004 Flags            : 0
+         +0x008 PreOperation     : 0xfffff803`4cc6ce80           _FLT_PREOP_CALLBACK_STATUS  FLTMGR!FltvPreOperation+0
+         +0x010 PostOperation    : 0xfffff803`4cc6cc40           _FLT_POSTOP_CALLBACK_STATUS  FLTMGR!FltvPostOperation+0
+         +0x018 Reserved1        : (null) 
+      +0x1b0 OldDriverUnload  : (null) 
+      +0x1b8 ActiveOpens      : _FLT_MUTEX_LIST_HEAD
+         +0x000 mLock            : _FAST_MUTEX
+            +0x000 Count            : 0n1
+            +0x008 Owner            : (null) 
+            +0x010 Contention       : 0xd
+            +0x018 Event            : _KEVENT
+            +0x030 OldIrql          : 0
+         +0x038 mList            : _LIST_ENTRY [ 0xffff8287`a08624b0 - 0xffff8287`a08624b0 ]
+            +0x000 Flink            : 0xffff8287`a08624b0 _LIST_ENTRY [ 0xffff8287`a08624b0 - 0xffff8287`a08624b0 ]
+            +0x008 Blink            : 0xffff8287`a08624b0 _LIST_ENTRY [ 0xffff8287`a08624b0 - 0xffff8287`a08624b0 ]
+         +0x048 mCount           : 0
+         +0x048 mInvalid         : 0y0
+      +0x208 ConnectionList   : _FLT_MUTEX_LIST_HEAD
+         +0x000 mLock            : _FAST_MUTEX
+            +0x000 Count            : 0n1
+            +0x008 Owner            : (null) 
+            +0x010 Contention       : 0
+            +0x018 Event            : _KEVENT
+            +0x030 OldIrql          : 0
+         +0x038 mList            : _LIST_ENTRY [ 0xffff8287`a093aef0 - 0xffff8287`a093aef0 ]
+            +0x000 Flink            : 0xffff8287`a093aef0 _LIST_ENTRY [ 0xffff8287`a0862500 - 0xffff8287`a0862500 ]
+            +0x008 Blink            : 0xffff8287`a093aef0 _LIST_ENTRY [ 0xffff8287`a0862500 - 0xffff8287`a0862500 ]
+         +0x048 mCount           : 2
+         +0x048 mInvalid         : 0y0
+      +0x258 PortList         : _FLT_MUTEX_LIST_HEAD
+         +0x000 mLock            : _FAST_MUTEX
+            +0x000 Count            : 0n1
+            +0x008 Owner            : (null) 
+            +0x010 Contention       : 0
+            +0x018 Event            : _KEVENT
+            +0x030 OldIrql          : 0
+         +0x038 mList            : _LIST_ENTRY [ 0xffff8287`c07d2920 - 0xffff8287`c07d2920 ]
+            +0x000 Flink            : 0xffff8287`c07d2920 _LIST_ENTRY [ 0xffff8287`a0862550 - 0xffff8287`a0862550 ]
+            +0x008 Blink            : 0xffff8287`c07d2920 _LIST_ENTRY [ 0xffff8287`a0862550 - 0xffff8287`a0862550 ]
+         +0x048 mCount           : 2
+         +0x048 mInvalid         : 0y0
+      +0x2a8 PortLock         : _EX_PUSH_LOCK
+         +0x000 Locked           : 0y0
+         +0x000 Waiting          : 0y0
+         +0x000 Waking           : 0y0
+         +0x000 MultipleShared   : 0y0
+         +0x000 Shared           : 0y000000000000000000000000000000000000000000000000000000000000 (0)
+         +0x000 Value            : 0
+         +0x000 Ptr              : (null) 
+   +0x008 ContextCleanupCallback : 0xfffff803`4e8d1120     void  SafeUpload!SafeUploadStreamContextCleanup+0
+   +0x010 Next             : (null) 
+   +0x018 ContextType      : 8
+   +0x01a Flags            : 0x1 ''
+   +0x01b AllocationType   : 0x1 ''
+
+FLT_FILTER: ffff8287a08622c0 "SafeUpload" "321410"
+   InstanceList             : (ffff8287a0862328)
+      Resource (ffff8287a0862390) List [ffff8287a0cc90c0-ffff8287d6dbd080] rCount=4 
+         FLT_INSTANCE: ffff8287a0cc9050 "SafeUpload Instance" "321410"
+            FLT_OBJECT: ffff8287a0cc9050  [01000000] Instance
+               RundownRef               : 0x0000000000000000 (0)
+               PointerCount             : 0x00000002 
+               PrimaryLink              : [ffff8287a09ce8b0-ffff8287a0858118] 
+            OperationRundownRef      : ffff8287a0cbb160 
+               Number                   : 2 
+               PoolToFree               : ffff8287a0ca2170 
+               OperationsRefs           : ffff8287a0ca2180  (0)
+                  PerProcessor Ref[0]      : 0x0000000000000000 (0)
+                  PerProcessor Ref[1]      : 0x0000000000000000 (0)
+            Flags                    : [00000020] HasSetStreamBasedContexts
+            Volume                   : ffff8287a0858010 "\Device\Mup"
+            Filter                   : ffff8287a08622c0 "SafeUpload"
+            TrackCompletionNodes     : ffff8287a0cbc7c0 
+            ContextLock              : (ffff8287a0cc90d0)
+            Context                  : ffff8287a0cc9ae0 
+            CallbackNodes            : (ffff8287a0cc90f0)
+            VolumeLink               : [ffff8287a09ce8b0-ffff8287a0858118] 
+            FilterLink               : [ffff8287a3314080-ffff8287a0862390] 
+         ---
+         FLT_INSTANCE: ffff8287a3314010 "SafeUpload Instance" "321410"
+            FLT_OBJECT: ffff8287a3314010  [01000000] Instance
+               RundownRef               : 0x00000000000001d8 (236)
+               PointerCount             : 0x00000004 
+               PrimaryLink              : [ffff8287d86a0a30-ffff8287a0cfa388] 
+            OperationRundownRef      : ffff8287a0cbb5e0 
+               Number                   : 2 
+               PoolToFree               : ffff8287d8e59b00 
+               OperationsRefs           : ffff8287d8e59b00  (2)
+                  PerProcessor Ref[0]      : 0x0000000000000b78 (1468)
+                  PerProcessor Ref[1]      : 0xfffffffffffff48c (-1466)
+            Flags                    : [00000020] HasSetStreamBasedContexts
+            Volume                   : ffff8287a0cfa280 "\Device\HarddiskVolume3"
+            Filter                   : ffff8287a08622c0 "SafeUpload"
+            TrackCompletionNodes     : ffff82879eefb210 
+            ContextLock              : (ffff8287a3314090)
+            Context                  : ffff8287a3313c00 
+            CallbackNodes            : (ffff8287a33140b0)
+            VolumeLink               : [ffff8287d86a0a30-ffff8287a0cfa388] 
+            FilterLink               : [ffff8287d6bed080-ffff8287a0cc90c0] 
+         ---
+         FLT_INSTANCE: ffff8287d6bed010 "SafeUpload Instance" "321410"
+            FLT_OBJECT: ffff8287d6bed010  [01000000] Instance
+               RundownRef               : 0x0000000000000000 (0)
+               PointerCount             : 0x00000002 
+               PrimaryLink              : [ffff8287a327b020-ffff8287d6bf0118] 
+            OperationRundownRef      : ffff8287a0cbbbb0 
+               Number                   : 2 
+               PoolToFree               : ffff8287c5bed880 
+               OperationsRefs           : ffff8287c5bed880  (0)
+                  PerProcessor Ref[0]      : 0x0000000000000008 (4)
+                  PerProcessor Ref[1]      : 0xfffffffffffffff8 (-4)
+            Flags                    : [00000020] HasSetStreamBasedContexts
+            Volume                   : ffff8287d6bf0010 "\Device\HarddiskVolume1"
+            Filter                   : ffff8287a08622c0 "SafeUpload"
+            TrackCompletionNodes     : ffff8287d175b480 
+            ContextLock              : (ffff8287d6bed090)
+            Context                  : ffff8287d6bee010 
+            CallbackNodes            : (ffff8287d6bed0b0)
+            VolumeLink               : [ffff8287a327b020-ffff8287d6bf0118] 
+            FilterLink               : [ffff8287d6dbd080-ffff8287a3314080] 
+         ---
+         FLT_INSTANCE: ffff8287d6dbd010 "SafeUpload Instance" "321410"
+            FLT_OBJECT: ffff8287d6dbd010  [01000000] Instance
+               RundownRef               : 0x0000000000000000 (0)
+               PointerCount             : 0x00000002 
+               PrimaryLink              : [ffff8287d6db91f0-ffff8287a31045e8] 
+            OperationRundownRef      : ffff8287a393f910 
+               Number                   : 2 
+               PoolToFree               : ffff8287a0d71610 
+               OperationsRefs           : ffff8287a0d71640  (0)
+                  PerProcessor Ref[0]      : 0x0000000000000004 (2)
+                  PerProcessor Ref[1]      : 0xfffffffffffffffc (-2)
+            Flags                    : [00000020] HasSetStreamBasedContexts
+            Volume                   : ffff8287a31044e0 "\Device\HarddiskVolume4"
+            Filter                   : ffff8287a08622c0 "SafeUpload"
+            TrackCompletionNodes     : ffff8287a3117e30 
+            ContextLock              : (ffff8287d6dbd090)
+            Context                  : ffff8287d6dbdaa0 
+            CallbackNodes            : (ffff8287d6dbd0b0)
+            VolumeLink               : [ffff8287d6db91f0-ffff8287a31045e8] 
+            FilterLink               : [ffff8287a0862390-ffff8287d6bed080] 
+         ---
+   Object usage/reference information: 
+      References to FLT_CONTEXT                : 0 
+      Allocations of FLT_CALLBACK_DATA         : 0 
+      Allocations of FLT_DEFERRED_IO_WORKITEM  : 0 
+      Allocations of FLT_GENERIC_WORKITEM      : 0 
+      References to FLT_FILE_NAME_INFORMATION  : 0 
+      Open files                               : 0 
+      References to FLT_OBJECT                 : 470 
+   List of objects used/referenced:: 
+      FLT_VERIFIER_OBJECT: ffff8287a0dfb240 
+         Object: ffff8287a0cfa280  Type: (null)  RefCount: 00000235
+      FLT_VERIFIER_OBJECT: ffff8287a0ca32a0 
+         Object: ffff8287a3314010  Type: (null)  RefCount: 00000235
+T4_MEMORY_END
+quit:
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\winrt.natvis'

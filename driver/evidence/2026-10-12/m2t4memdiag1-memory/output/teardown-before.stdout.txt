@@ -1,0 +1,1317 @@
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.032 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.047 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Connected to Windows 10 19041 x64 target at (Tue Oct 13 00:46:59.404 2026 (UTC + 1:00)), ptr64 TRUE
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+OK                                             C:\T4Memory\symbols
+Deferred                                       srv*C:\T4Memory\symcache*https://msdl.microsoft.com/download/symbols
+Symbol search path is: C:\T4Memory\symbols;srv*C:\T4Memory\symcache*https://msdl.microsoft.com/download/symbols
+Executable search path is: 
+Windows 10 Kernel Version 19041 MP (2 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff803`4ce1b000 PsLoadedModuleList = 0xfffff803`4da452b0
+Debug session time: Tue Oct 13 00:46:59.622 2026 (UTC + 1:00)
+System Uptime: 0 days 0:14:40.335
+lkd> kd: Reading initial command '$$><C:\T4Memory\output\teardown-before.commands.txt'
+T4_MEMORY_BEGIN
+Windows 10 Kernel Version 19041 MP (2 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff803`4ce1b000 PsLoadedModuleList = 0xfffff803`4da452b0
+Debug session time: Tue Oct 13 00:46:59.654 2026 (UTC + 1:00)
+System Uptime: 0 days 0:14:40.366
+Local KD
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+command line: '"C:\T4Memory\x64\kd.exe" -kl -y "C:\T4Memory\symbols;srv*C:\T4Memory\symcache*https://msdl.microsoft.com/download/symbols" -c "$$><C:\T4Memory\output\teardown-before.commands.txt" '  Debugger Process 0xB4C 
+dbgeng:  image 10.0.28000.2705, 
+        [path: C:\T4Memory\x64\dbgeng.dll]
+dbghelp: image 10.0.28000.2705, 
+        [path: C:\T4Memory\x64\dbghelp.dll]
+        DIA version: 0
+Extension DLL search Path:
+    C:\T4Memory\x64\WINXP;C:\T4Memory\x64\winext;C:\T4Memory\x64\winext\arcade;C:\T4Memory\x64\pri;C:\T4Memory\x64;C:\Users\vika\AppData\Local\Dbg\EngineExtensions;C:\T4Memory\x64;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program Files\Git\cmd;C:\Windows\system32\config\systemprofile\AppData\Local\Microsoft\WindowsApps;C:\Users\vika\AppData\Local\Microsoft\WindowsApps;
+Extension DLL chain:
+    wdfkd: image 10.0.28000.2705, API 1.0.0, 
+        [path: C:\T4Memory\x64\winext\wdfkd.dll]
+    dbghelp: image 10.0.28000.2705, API 10.0.6, 
+        [path: C:\T4Memory\x64\dbghelp.dll]
+    exts: image 10.0.28000.2705, API 1.0.0, 
+        [path: C:\T4Memory\x64\WINXP\exts.dll]
+    kext: image 10.0.28000.2705, API 1.0.0, 
+        [path: C:\T4Memory\x64\winext\kext.dll]
+    kdexts: image 10.0.28000.2705, API 1.0.0, 
+        [path: C:\T4Memory\x64\winxp\kdexts.dll]
+        Driver verifier enabled, level 0x13b
+Browse full module list
+start             end                 module name
+fffff803`4e8d0000 fffff803`4efcc000   SafeUpload   (private pdb symbols)  c:\t4memory\symbols\SafeUpload.pdb
+    Loaded symbol image file: SafeUpload.sys
+    Image path: SafeUpload.sys
+    Image name: SafeUpload.sys
+    Browse all global symbols  functions  data  Symbol Reload
+    Timestamp:        Sat Oct 10 18:44:20 2026 (6ACA7974)
+    CheckSum:         0005F524
+    ImageSize:        006FC000
+    Translations:     0000.04b0 0000.04e4 0409.04b0 0409.04e4
+    Information from resource tables:
+   +0x008 Filter                    : Ptr64 _FLT_FILTER
+
+Filter List: ffff8287a096d0c0 "Frame 0" 
+   FLT_FILTER: ffff8287d868e010 "bindflt" "[ERROR READING NAME]"
+      FLT_OBJECT: ffff8287d868e010  [02000000] Filter
+         RundownRef               : 0x0000000000000004 (2)
+         PointerCount             : 0x00000002 
+         PrimaryLink              : [ffff8287a08622d0-ffff8287a096d0c0] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000016] FilteringInitiated NameProvider BackedByPagefile
+      DriverObject             : ffff8287be7efa90 
+      FilterLink               : [ffff8287a08622d0-ffff8287a096d0c0] 
+      PreVolumeMount           : fffff80108c44ef0  (no symbol) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff80108c51c70  (no symbol) 
+      InstanceSetup            : fffff80108c47810  (no symbol) 
+      InstanceQueryTeardown    : fffff80108c47720  (no symbol) 
+      InstanceTeardownStart    : fffff80108c47c20  (no symbol) 
+      InstanceTeardownComplete : fffff80108c47c10  (no symbol) 
+      ActiveOpens              : (ffff8287d868e1c8)  mCount=0 
+      Communication Port List  : (ffff8287d868e218)  mCount=1 
+      Client Port List         : (ffff8287d868e268)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287d868e2c0 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287d868e140)
+         VolumeContexts           : (ffff8287d868e140)
+         InstanceContexts         : (ffff8287d868e148)
+            ALLOCATE_CONTEXT_NODE: ffff8287a323d0a0  [01] LookasideList
+               Filter                   : ffff8287d868e010 "bindflt"
+               ContextCleanupCallback   : fffff80108c47100  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0002] InstanceContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 56 
+                  PoolTag                  : BFic 
+            ---
+         FileContexts             : (ffff8287d868e150)
+         StreamContexts           : (ffff8287d868e158)
+            ALLOCATE_CONTEXT_NODE: ffff8287a323d1e0  [02] AllocateDirectly
+               Filter                   : ffff8287d868e010 "bindflt"
+               ContextCleanupCallback   : fffff80108c47100  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0008] StreamContext
+               Flags                    : [00]
+                  PoolTag                  : BFsc 
+            ---
+         StreamHandleContexts     : (ffff8287d868e160)
+            ALLOCATE_CONTEXT_NODE: ffff8287a323d210  [02] AllocateDirectly
+               Filter                   : ffff8287d868e010 "bindflt"
+               ContextCleanupCallback   : fffff80108c47100  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0010] StreamHandleContext
+               Flags                    : [00]
+                  PoolTag                  : BFsh 
+            ---
+         TransactionContext       : (ffff8287d868e168)
+         (null)                   : (ffff8287d868e170)
+      InstanceList             : (ffff8287d868e078)
+   ---
+   FLT_FILTER: ffff8287a08622c0 "SafeUpload" "321410"
+      FLT_OBJECT: ffff8287a08622c0  [02000000] Filter
+         RundownRef               : 0x0000000000000fde (2031)
+         PointerCount             : 0x00000002 
+         PrimaryLink              : [ffff8287a4293a70-ffff8287d868e020] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000016] FilteringInitiated NameProvider BackedByPagefile
+      DriverObject             : ffff8287a0874b40 
+      FilterLink               : [ffff8287a4293a70-ffff8287d868e020] 
+      PreVolumeMount           : fffff8034e8dab60  SafeUpload!SafeUploadStageDispatch 
+      PostVolumeMount          : fffff8034e8db520  SafeUpload!SafeUploadStagePostOperation 
+      FilterUnload             : fffff8034efaf3e0  SafeUpload!SafeUploadUnload 
+      InstanceSetup            : fffff8034cc6ffb0  FLTMGR!FltvInstanceSetup 
+      InstanceQueryTeardown    : fffff8034cc6fea0  FLTMGR!FltvInstanceQueryTeardown 
+      InstanceTeardownStart    : fffff8034cc701d0  FLTMGR!FltvInstanceTeardownStart 
+      InstanceTeardownComplete : fffff8034cc700d0  FLTMGR!FltvInstanceTeardownComplete 
+      ActiveOpens              : (ffff8287a0862478)  mCount=0 
+      Communication Port List  : (ffff8287a08624c8)  mCount=1 
+      Client Port List         : (ffff8287a0862518)  mCount=1 
+      VerifierExtension        : ffff8287a084c560 
+      Operations               : ffff8287a0862570 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287a08623f0)
+         VolumeContexts           : (ffff8287a08623f0)
+         InstanceContexts         : (ffff8287a08623f8)
+            ALLOCATE_CONTEXT_NODE: ffff8287a084c010  [01] LookasideList
+               Filter                   : ffff8287a08622c0 "SafeUpload"
+               ContextCleanupCallback   : fffff8034e8d11b0  SafeUpload!SafeUploadInstanceContextCleanup 
+               Next                     : 0000000000000000 
+               ContextType              : [0002] InstanceContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 752 
+                  PoolTag                  : SUfl 
+            ---
+         FileContexts             : (ffff8287a0862400)
+         StreamContexts           : (ffff8287a0862408)
+            ALLOCATE_CONTEXT_NODE: ffff8287a084c150  [01] LookasideList
+               Filter                   : ffff8287a08622c0 "SafeUpload"
+               ContextCleanupCallback   : fffff8034e8d1120  SafeUpload!SafeUploadStreamContextCleanup 
+               Next                     : 0000000000000000 
+               ContextType              : [0008] StreamContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 104 
+                  PoolTag                  : SUfl 
+            ---
+         StreamHandleContexts     : (ffff8287a0862410)
+            ALLOCATE_CONTEXT_NODE: ffff8287a084c290  [01] LookasideList
+               Filter                   : ffff8287a08622c0 "SafeUpload"
+               ContextCleanupCallback   : fffff8034e8d1290  SafeUpload!SafeUploadHandleContextCleanup 
+               Next                     : 0000000000000000 
+               ContextType              : [0010] StreamHandleContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 24 
+                  PoolTag                  : SUfl 
+            ---
+         TransactionContext       : (ffff8287a0862418)
+            ALLOCATE_CONTEXT_NODE: ffff8287a084c3d0  [01] LookasideList
+               Filter                   : ffff8287a08622c0 "SafeUpload"
+               ContextCleanupCallback   : 0000000000000000  (null) 
+               Next                     : 0000000000000000 
+               ContextType              : [0020] TransactionContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 8 
+                  PoolTag                  : SUfl 
+            ---
+         (null)                   : (ffff8287a0862420)
+      InstanceList             : (ffff8287a0862328)
+         FLT_INSTANCE: ffff8287a0cc9050 "SafeUpload Instance" "321410"
+         FLT_INSTANCE: ffff8287a3314010 "SafeUpload Instance" "321410"
+         FLT_INSTANCE: ffff8287d6bed010 "SafeUpload Instance" "321410"
+         FLT_INSTANCE: ffff8287d6dbd010 "SafeUpload Instance" "321410"
+   ---
+   FLT_FILTER: ffff8287a4293a60 "storqosflt" "[ERROR READING NAME]"
+      FLT_OBJECT: ffff8287a4293a60  [02000000] Filter
+         RundownRef               : 0x0000000000000004 (2)
+         PointerCount             : 0x00000002 
+         PrimaryLink              : [ffff8287d869ba30-ffff8287a08622d0] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000012] FilteringInitiated BackedByPagefile
+      DriverObject             : ffff8287be7dda90 
+      FilterLink               : [ffff8287d869ba30-ffff8287a08622d0] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff80108c22ef0  (no symbol) 
+      InstanceSetup            : fffff80108c211f0  (no symbol) 
+      InstanceQueryTeardown    : fffff80108c23150  (no symbol) 
+      InstanceTeardownStart    : fffff80108c19020  (no symbol) 
+      InstanceTeardownComplete : fffff80108c23240  (no symbol) 
+      ActiveOpens              : (ffff8287a4293c18)  mCount=0 
+      Communication Port List  : (ffff8287a4293c68)  mCount=1 
+      Client Port List         : (ffff8287a4293cb8)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287a4293d10 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287a4293b90)
+         VolumeContexts           : (ffff8287a4293b90)
+         InstanceContexts         : (ffff8287a4293b98)
+            ALLOCATE_CONTEXT_NODE: ffff8287c3b382b0  [01] LookasideList
+               Filter                   : ffff8287a4293a60 "storqosflt"
+               ContextCleanupCallback   : fffff80108c230b0  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0002] InstanceContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 4416 
+                  PoolTag                  : SQSF 
+            ---
+         FileContexts             : (ffff8287a4293ba0)
+         StreamContexts           : (ffff8287a4293ba8)
+         StreamHandleContexts     : (ffff8287a4293bb0)
+            ALLOCATE_CONTEXT_NODE: ffff8287c3b383f0  [01] LookasideList
+               Filter                   : ffff8287a4293a60 "storqosflt"
+               ContextCleanupCallback   : fffff80108c20ac0  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0010] StreamHandleContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 40 
+                  PoolTag                  : SQSF 
+            ---
+         TransactionContext       : (ffff8287a4293bb8)
+         (null)                   : (ffff8287a4293bc0)
+      InstanceList             : (ffff8287a4293ac8)
+   ---
+   FLT_FILTER: ffff8287d869ba20 "wcifs" "[ERROR READING NAME]"
+      FLT_OBJECT: ffff8287d869ba20  [02000000] Filter
+         RundownRef               : 0x0000000000000004 (2)
+         PointerCount             : 0x00000002 
+         PrimaryLink              : [ffff8287aa304a30-ffff8287a4293a70] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000016] FilteringInitiated NameProvider BackedByPagefile
+      DriverObject             : ffff8287a5fd6080 
+      FilterLink               : [ffff8287aa304a30-ffff8287a4293a70] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff80108b6e020  (no symbol) 
+      InstanceSetup            : fffff80108b6ce40  (no symbol) 
+      InstanceQueryTeardown    : fffff80108b6d880  (no symbol) 
+      InstanceTeardownStart    : fffff80108b6d900  (no symbol) 
+      InstanceTeardownComplete : fffff80108b6d900  (no symbol) 
+      ActiveOpens              : (ffff8287d869bbd8)  mCount=0 
+      Communication Port List  : (ffff8287d869bc28)  mCount=1 
+      Client Port List         : (ffff8287d869bc78)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287d869bcd0 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287d869bb50)
+         VolumeContexts           : (ffff8287d869bb50)
+         InstanceContexts         : (ffff8287d869bb58)
+            ALLOCATE_CONTEXT_NODE: ffff8287d86aeba0  [02] AllocateDirectly
+               Filter                   : ffff8287d869ba20 "wcifs"
+               ContextCleanupCallback   : fffff80108b51010  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0002] InstanceContext
+               Flags                    : [00]
+                  PoolTag                  : WCic 
+            ---
+         FileContexts             : (ffff8287d869bb60)
+            ALLOCATE_CONTEXT_NODE: ffff8287d86aebd0  [01] LookasideList
+               Filter                   : ffff8287d869ba20 "wcifs"
+               ContextCleanupCallback   : fffff80108b51010  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0004] FileContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 96 
+                  PoolTag                  : WCfc 
+            ---
+         StreamContexts           : (ffff8287d869bb68)
+            ALLOCATE_CONTEXT_NODE: ffff8287d86aed10  [01] LookasideList
+               Filter                   : ffff8287d869ba20 "wcifs"
+               ContextCleanupCallback   : fffff80108b51010  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0008] StreamContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 152 
+                  PoolTag                  : WCsc 
+            ---
+         StreamHandleContexts     : (ffff8287d869bb70)
+            ALLOCATE_CONTEXT_NODE: ffff8287d86aee50  [01] LookasideList
+               Filter                   : ffff8287d869ba20 "wcifs"
+               ContextCleanupCallback   : fffff80108b51010  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0010] StreamHandleContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 600 
+                  PoolTag                  : WCsh 
+            ---
+         TransactionContext       : (ffff8287d869bb78)
+         (null)                   : (ffff8287d869bb80)
+      InstanceList             : (ffff8287d869ba88)
+   ---
+   FLT_FILTER: ffff8287aa304a20 "CldFlt" "[ERROR READING NAME]"
+      FLT_OBJECT: ffff8287aa304a20  [02000000] Filter
+         RundownRef               : 0x0000000000000014 (10)
+         PointerCount             : 0x00000002 
+         PrimaryLink              : [ffff8287a31ae9f0-ffff8287d869ba30] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000012] FilteringInitiated BackedByPagefile
+      DriverObject             : ffff8287be7f6b90 
+      FilterLink               : [ffff8287a31ae9f0-ffff8287d869ba30] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff80108bea7b0  (no symbol) 
+      InstanceSetup            : fffff80108bd6dc0  (no symbol) 
+      InstanceQueryTeardown    : fffff80108bea730  (no symbol) 
+      InstanceTeardownStart    : 0000000000000000  (null) 
+      InstanceTeardownComplete : 0000000000000000  (null) 
+      ActiveOpens              : (ffff8287aa304bd8)  mCount=0 
+      Communication Port List  : (ffff8287aa304c28)  mCount=1 
+      Client Port List         : (ffff8287aa304c78)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287aa304cd0 
+      OldDriverUnload          : fffff8034cc65aa0  FLTMGR!FltpMiniFilterDriverUnload 
+      SupportedContexts        : (ffff8287aa304b50)
+         VolumeContexts           : (ffff8287aa304b50)
+         InstanceContexts         : (ffff8287aa304b58)
+            ALLOCATE_CONTEXT_NODE: ffff8287d86a7a20  [01] LookasideList
+               Filter                   : ffff8287aa304a20 "CldFlt"
+               ContextCleanupCallback   : fffff80108be8ca0  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0002] InstanceContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 416 
+                  PoolTag                  : HsIc 
+            ---
+         FileContexts             : (ffff8287aa304b60)
+            ALLOCATE_CONTEXT_NODE: ffff8287d86a7b60  [01] LookasideList
+               Filter                   : ffff8287aa304a20 "CldFlt"
+               ContextCleanupCallback   : fffff80108bb21c0  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0004] FileContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 240 
+                  PoolTag                  : HsFc 
+            ---
+         StreamContexts           : (ffff8287aa304b68)
+            ALLOCATE_CONTEXT_NODE: ffff8287d86a7ca0  [01] LookasideList
+               Filter                   : ffff8287aa304a20 "CldFlt"
+               ContextCleanupCallback   : fffff80108bc6cb0  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0008] StreamContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 160 
+                  PoolTag                  : HsSc 
+            ---
+         StreamHandleContexts     : (ffff8287aa304b70)
+            ALLOCATE_CONTEXT_NODE: ffff8287d86a7de0  [01] LookasideList
+               Filter                   : ffff8287aa304a20 "CldFlt"
+               ContextCleanupCallback   : fffff80108bc5890  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0010] StreamHandleContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 88 
+                  PoolTag                  : HsHc 
+            ---
+         TransactionContext       : (ffff8287aa304b78)
+         (null)                   : (ffff8287aa304b80)
+      InstanceList             : (ffff8287aa304a88)
+         FLT_INSTANCE: ffff8287d86a0a20 "CldFlt" "180451"
+   ---
+   FLT_FILTER: ffff8287a31ae9e0 "FileCrypt" "[ERROR READING NAME]"
+      FLT_OBJECT: ffff8287a31ae9e0  [02000000] Filter
+         RundownRef               : 0x0000000000000002 (1)
+         PointerCount             : 0x00000001 
+         PrimaryLink              : [ffff8287d86aa020-ffff8287aa304a30] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000002] FilteringInitiated
+      DriverObject             : ffff8287a331cae0 
+      FilterLink               : [ffff8287d86aa020-ffff8287aa304a30] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff801077abc10  (no symbol) 
+      InstanceSetup            : fffff801077aa010  (no symbol) 
+      InstanceQueryTeardown    : fffff801077aa4a0  (no symbol) 
+      InstanceTeardownStart    : 0000000000000000  (null) 
+      InstanceTeardownComplete : 0000000000000000  (null) 
+      ActiveOpens              : (ffff8287a31aeb98)  mCount=0 
+      Communication Port List  : (ffff8287a31aebe8)  mCount=0 
+      Client Port List         : (ffff8287a31aec38)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287a31aec90 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287a31aeb10)
+         VolumeContexts           : (ffff8287a31aeb10)
+            ALLOCATE_CONTEXT_NODE: ffff8287a3318d30  [01] LookasideList
+               Filter                   : ffff8287a31ae9e0 "FileCrypt"
+               ContextCleanupCallback   : fffff801077abbb0  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0001] VolumeContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 56 
+                  PoolTag                  : FCvx 
+            ---
+         InstanceContexts         : (ffff8287a31aeb18)
+         FileContexts             : (ffff8287a31aeb20)
+         StreamContexts           : (ffff8287a31aeb28)
+            ALLOCATE_CONTEXT_NODE: ffff8287a3318e70  [01] LookasideList
+               Filter                   : ffff8287a31ae9e0 "FileCrypt"
+               ContextCleanupCallback   : fffff801077abb70  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0008] StreamContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 40 
+                  PoolTag                  : FCsx 
+            ---
+         StreamHandleContexts     : (ffff8287a31aeb30)
+         TransactionContext       : (ffff8287a31aeb38)
+         (null)                   : (ffff8287a31aeb40)
+      InstanceList             : (ffff8287a31aea48)
+   ---
+   FLT_FILTER: ffff8287d86aa010 "luafv" "[ERROR READING NAME]"
+      FLT_OBJECT: ffff8287d86aa010  [02000000] Filter
+         RundownRef               : 0x0000000000000008 (4)
+         PointerCount             : 0x00000001 
+         PrimaryLink              : [ffff8287d6be65d0-ffff8287a31ae9f0] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000016] FilteringInitiated NameProvider BackedByPagefile
+      DriverObject             : ffff8287a5fd8de0 
+      FilterLink               : [ffff8287d6be65d0-ffff8287a31ae9f0] 
+      PreVolumeMount           : fffff80108b110d0  (no symbol) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : 0000000000000000  (null) 
+      InstanceSetup            : fffff80108b1eec0  (no symbol) 
+      InstanceQueryTeardown    : 0000000000000000  (null) 
+      InstanceTeardownStart    : 0000000000000000  (null) 
+      InstanceTeardownComplete : 0000000000000000  (null) 
+      ActiveOpens              : (ffff8287d86aa1c8)  mCount=1 
+      Communication Port List  : (ffff8287d86aa218)  mCount=0 
+      Client Port List         : (ffff8287d86aa268)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287d86aa2c0 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287d86aa140)
+         VolumeContexts           : (ffff8287d86aa140)
+         InstanceContexts         : (ffff8287d86aa148)
+            ALLOCATE_CONTEXT_NODE: ffff82879ea80c40  [01] LookasideList
+               Filter                   : ffff8287d86aa010 "luafv"
+               ContextCleanupCallback   : fffff80108b2be40  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0002] InstanceContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 856 
+                  PoolTag                  : Luaf 
+            ---
+         FileContexts             : (ffff8287d86aa150)
+         StreamContexts           : (ffff8287d86aa158)
+         StreamHandleContexts     : (ffff8287d86aa160)
+            ALLOCATE_CONTEXT_NODE: ffff82879ea80d80  [01] LookasideList
+               Filter                   : ffff8287d86aa010 "luafv"
+               ContextCleanupCallback   : fffff80108b224e0  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0010] StreamHandleContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 24 
+                  PoolTag                  : Luaf 
+            ---
+         TransactionContext       : (ffff8287d86aa168)
+         (null)                   : (ffff8287d86aa170)
+      InstanceList             : (ffff8287d86aa078)
+         FLT_INSTANCE: ffff8287d86ac010 "luafv" "135000"
+   ---
+   FLT_FILTER: ffff8287d6be65c0 "npsvctrig" "[ERROR READING NAME]"
+      FLT_OBJECT: ffff8287d6be65c0  [02000000] Filter
+         RundownRef               : 0x0000000000000006 (3)
+         PointerCount             : 0x00000001 
+         PrimaryLink              : [ffff8287a085a020-ffff8287d86aa020] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [0000001a] FilteringInitiated SupportsPipesMailslots BackedByPagefile
+      DriverObject             : ffff8287d6be6400 
+      FilterLink               : [ffff8287a085a020-ffff8287d86aa020] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff801070a8970  (no symbol) 
+      InstanceSetup            : fffff801070a7330  (no symbol) 
+      InstanceQueryTeardown    : 0000000000000000  (null) 
+      InstanceTeardownStart    : fffff801070a8b90  (no symbol) 
+      InstanceTeardownComplete : 0000000000000000  (null) 
+      ActiveOpens              : (ffff8287d6be6778)  mCount=0 
+      Communication Port List  : (ffff8287d6be67c8)  mCount=0 
+      Client Port List         : (ffff8287d6be6818)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287d6be6870 
+      OldDriverUnload          : fffff801070a8580  (no symbol) 
+      SupportedContexts        : (ffff8287d6be66f0)
+         VolumeContexts           : (ffff8287d6be66f0)
+         InstanceContexts         : (ffff8287d6be66f8)
+            ALLOCATE_CONTEXT_NODE: ffff8287a3d7dad0  [01] LookasideList
+               Filter                   : ffff8287d6be65c0 "npsvctrig"
+               ContextCleanupCallback   : fffff801070a8800  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0002] InstanceContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 176 
+                  PoolTag                  : Nptg 
+            ---
+         FileContexts             : (ffff8287d6be6700)
+         StreamContexts           : (ffff8287d6be6708)
+         StreamHandleContexts     : (ffff8287d6be6710)
+         TransactionContext       : (ffff8287d6be6718)
+         (null)                   : (ffff8287d6be6720)
+      InstanceList             : (ffff8287d6be6628)
+         FLT_INSTANCE: ffff8287d6be9010 "npsvctrig" "46000"
+   ---
+   FLT_FILTER: ffff8287a085a010 "Wof" "40700"
+      FLT_OBJECT: ffff8287a085a010  [02000000] Filter
+         RundownRef               : 0x0000000000000358 (428)
+         PointerCount             : 0x00000001 
+         PrimaryLink              : [ffff8287a08738b0-ffff8287d6be65d0] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000012] FilteringInitiated BackedByPagefile
+      DriverObject             : ffff8287a0874910 
+      FilterLink               : [ffff8287a08738b0-ffff8287d6be65d0] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff8034e8a4ed0  (no symbol) 
+      InstanceSetup            : fffff8034e8a2f20  (no symbol) 
+      InstanceQueryTeardown    : fffff8034e8a5020  (no symbol) 
+      InstanceTeardownStart    : fffff8034e8a53d0  (no symbol) 
+      InstanceTeardownComplete : fffff8034e8a5390  (no symbol) 
+      ActiveOpens              : (ffff8287a085a1c8)  mCount=0 
+      Communication Port List  : (ffff8287a085a218)  mCount=0 
+      Client Port List         : (ffff8287a085a268)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287a085a2c0 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287a085a140)
+         VolumeContexts           : (ffff8287a085a140)
+         InstanceContexts         : (ffff8287a085a148)
+            ALLOCATE_CONTEXT_NODE: ffff8287a0960010  [01] LookasideList
+               Filter                   : ffff8287a085a010 "Wof"
+               ContextCleanupCallback   : fffff8034e8a2630  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0002] InstanceContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 456 
+                  PoolTag                  : WofV 
+            ---
+         FileContexts             : (ffff8287a085a150)
+            ALLOCATE_CONTEXT_NODE: ffff8287a0960150  [01] LookasideList
+               Filter                   : ffff8287a085a010 "Wof"
+               ContextCleanupCallback   : fffff8034e8a2630  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0004] FileContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 88 
+                  PoolTag                  : WofF 
+            ---
+         StreamContexts           : (ffff8287a085a158)
+            ALLOCATE_CONTEXT_NODE: ffff8287a0960290  [01] LookasideList
+               Filter                   : ffff8287a085a010 "Wof"
+               ContextCleanupCallback   : fffff8034e8a2630  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0008] StreamContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 128 
+                  PoolTag                  : WofS 
+            ---
+         StreamHandleContexts     : (ffff8287a085a160)
+            ALLOCATE_CONTEXT_NODE: ffff8287a09603d0  [01] LookasideList
+               Filter                   : ffff8287a085a010 "Wof"
+               ContextCleanupCallback   : fffff8034e8a2630  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0010] StreamHandleContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 56 
+                  PoolTag                  : WofH 
+            ---
+         TransactionContext       : (ffff8287a085a168)
+            ALLOCATE_CONTEXT_NODE: ffff8287a0960510  [01] LookasideList
+               Filter                   : ffff8287a085a010 "Wof"
+               ContextCleanupCallback   : fffff8034e8a2630  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0020] TransactionContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 96 
+                  PoolTag                  : Woft 
+            ---
+         (null)                   : (ffff8287a085a170)
+      InstanceList             : (ffff8287a085a078)
+         FLT_INSTANCE: ffff8287a30d5b00 "Wof Instance" "40700"
+         FLT_INSTANCE: ffff8287d6db91e0 "Wof Instance" "40700"
+   ---
+   FLT_FILTER: ffff8287a08738a0 "FileInfo" "[ERROR READING NAME]"
+      FLT_OBJECT: ffff8287a08738a0  [02000000] Filter
+         RundownRef               : 0x0000000000007868 (15412)
+         PointerCount             : 0x00000001 
+         PrimaryLink              : [ffff8287a096d0c0-ffff8287a085a020] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000032] FilteringInitiated BackedByPagefile SupportsDaxVolume
+      DriverObject             : ffff8287a086cdc0 
+      FilterLink               : [ffff8287a096d0c0-ffff8287a085a020] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff8034e873e30  (no symbol) 
+      InstanceSetup            : 0000000000000000  (null) 
+      InstanceQueryTeardown    : 0000000000000000  (null) 
+      InstanceTeardownStart    : 0000000000000000  (null) 
+      InstanceTeardownComplete : 0000000000000000  (null) 
+      ActiveOpens              : (ffff8287a0873a58)  mCount=0 
+      Communication Port List  : (ffff8287a0873aa8)  mCount=0 
+      Client Port List         : (ffff8287a0873af8)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287a0873b50 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287a08739d0)
+         VolumeContexts           : (ffff8287a08739d0)
+         InstanceContexts         : (ffff8287a08739d8)
+            ALLOCATE_CONTEXT_NODE: ffff8287a084dc20  [01] LookasideList
+               Filter                   : ffff8287a08738a0 "FileInfo"
+               ContextCleanupCallback   : fffff8034e86f7e0  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0002] InstanceContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 672 
+                  PoolTag                  : FIcv 
+            ---
+         FileContexts             : (ffff8287a08739e0)
+         StreamContexts           : (ffff8287a08739e8)
+            ALLOCATE_CONTEXT_NODE: ffff8287a084dd60  [01] LookasideList
+               Filter                   : ffff8287a08738a0 "FileInfo"
+               ContextCleanupCallback   : fffff8034e86c8c0  (no symbol) 
+               Next                     : 0000000000000000 
+               ContextType              : [0008] StreamContext
+               Flags                    : [01] LookAsideListInited
+                  Size                     : 80 
+                  PoolTag                  : FIcs 
+            ---
+         StreamHandleContexts     : (ffff8287a08739f0)
+         TransactionContext       : (ffff8287a08739f8)
+         (null)                   : (ffff8287a0873a00)
+      InstanceList             : (ffff8287a0873908)
+         FLT_INSTANCE: ffff8287a09ce8a0 "FileInfo" "40500"
+         FLT_INSTANCE: ffff8287a330f560 "FileInfo" "40500"
+         FLT_INSTANCE: ffff8287a327b010 "FileInfo" "40500"
+         FLT_INSTANCE: ffff8287d6db65f0 "FileInfo" "40500"
+   ---
+---
+unable to get nt!PspSessionIdBitmap
+..
+ Sorting by NonPaged Pool Consumed
+
+               NonPaged                  Paged
+ Tag     Allocs         Used     Allocs         Used
+
+ SUfl      2029       475608          0            0	UNKNOWN pooltag 'SUfl', please update pooltag.txt
+
+TOTAL      2029       475608          0            0
+..
+ Sorting by NonPaged Pool Consumed
+
+               NonPaged                  Paged
+ Tag     Allocs         Used     Allocs         Used
+
+ SwUr       268      6411392  18446744073709551614        -1080	UNKNOWN pooltag 'SwUr', please update pooltag.txt
+
+TOTAL       268      6411392  18446744073709551614        -1080
+
+Verify Flags Level 0x0000013b
+
+  STANDARD FLAGS:
+    [X] (0x00000000) Automatic Checks
+    [X] (0x00000001) Special pool
+    [X] (0x00000002) Force IRQL checking
+    [X] (0x00000008) Pool tracking
+    [X] (0x00000010) I/O verification
+    [X] (0x00000020) Deadlock detection
+    [ ] (0x00000080) DMA checking
+    [X] (0x00000100) Security checks
+    [ ] (0x00000800) Miscellaneous checks
+    [ ] (0x00020000) DDI compliance checking
+
+  ADDITIONAL FLAGS:
+    [ ] (0x00000004) Randomized low resources simulation
+    [ ] (0x00000200) Force pending I/O requests
+    [ ] (0x00000400) IRP logging
+    [ ] (0x00002000) Invariant MDL checking for stack
+    [ ] (0x00004000) Invariant MDL checking for driver
+    [ ] (0x00008000) Power framework delay fuzzing
+    [ ] (0x00010000) Port/miniport interface checking
+    [ ] (0x00040000) Systematic low resources simulation
+    [ ] (0x00080000) DDI compliance checking (additional)
+    [ ] (0x00200000) NDIS/WIFI verification
+    [ ] (0x00800000) Kernel synchronization delay fuzzing
+    [ ] (0x01000000) VM switch verification
+    [ ] (0x02000000) Code integrity checks
+
+    [X] Indicates flag is enabled
+
+
+Summary of All Verifier Statistics
+
+  RaiseIrqls           0x0
+  AcquireSpinLocks     0x0
+  Synch Executions     0x0
+  Trims                0x44199
+
+  Pool Allocations Attempted             0x96b0e8
+  Pool Allocations Succeeded             0x96b0eb
+  Pool Allocations Succeeded SpecialPool 0x96b0ee
+  Pool Allocations With NO TAG           0x0
+  Pool Allocations Failed                0x0
+
+  Current paged pool allocations         0x0 for 00000000 bytes
+  Peak paged pool allocations            0x9 for 000441C0 bytes
+  Current nonpaged pool allocations      0x217 for 00627658 bytes
+  Peak nonpaged pool allocations         0x2d0 for 006A25C8 bytes
+
+Driver Verification List
+------------------------
+
+nt!_VF_TARGET_DRIVER 0xffff82879ea93da0: SafeUpload.sys (Loaded)
+
+    Pool Allocation Statistics: ( NonPagedPool / PagedPool )
+
+      Current Pool Allocations: ( 0x00000214 / 0x00000000 )
+      Current Pool Bytes:       ( 0x00625a38 / 0x00000000 )
+      Peak Pool Allocations:    ( 0x000002d0 / 0x00000009 )
+      Peak Pool Bytes:          ( 0x006a25c8 / 0x000441c0 )
+      Contiguous Memory Bytes:       0x00000000
+      Peak Contiguous Memory Bytes:  0x00000000
+
+    Pool Allocations:
+
+      Address             Length      Tag   Caller Address    
+      ------------------  ----------  ----  ------------------
+      0xffff8287db95afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc01e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc4406a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dcb54fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc45efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc426fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc672fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc45a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc452fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc42afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc44e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc46a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc430fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc416fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc4186a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc424fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc6846a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc43a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc422fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc442fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc9966a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc6e26a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc43c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc4346a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db8f46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc41c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc740fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc4906a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc436fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc88c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc6806a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc7f4fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc6c8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc49cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbaee6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc7fa6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc4a8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dcb1a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc9c46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc4b8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287a0e446a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc686fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc8046a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc6f8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc7c0fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc8406a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dba54fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc7d46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc4cefd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc682fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc876fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc4286a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc64c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc5386a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db94e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc42cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db66efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db6a8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbf10fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc7eafd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc57c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbe0cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc8206a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc4206a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc55e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db7ba6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc7486a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc7ee6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc8446a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db99efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbfa86a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db99cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db9b86a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc0aa6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db6246a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbb60fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db6386a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4206a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db432fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc41e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db996fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db886fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db9a0fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbb786a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287a0e026a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbb346a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc3186a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da59efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc0e06a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db856fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc31cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbc1efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbdfc6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc7a0fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbd32fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbbc86a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbe94fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7e66a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc83efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc0286a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6386a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbc2cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbad2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbd026a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dba206a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc05cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbd086a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc0fefd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287a0beefd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbd9e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db8406a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbdaafd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7f4fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5aafd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbe526a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc726fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbd4a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbfea6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbe4a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc350fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc388fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db6206a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbf506a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc43efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc578fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbd3cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc0c6fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc0c46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db6586a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbce0fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc0c2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc0c06a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc0bcfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc0ba6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc0b6fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc0b46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbf226a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4fcfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5aefd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dba186a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc0b2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7526a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db8826a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db884fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db6fc6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc7466a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db6a06a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db7e46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbd2e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbe16fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc066fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7f66a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc0b0fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da78c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db69afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db41e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dcb426a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db608fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc48a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc95a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db40efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db4fafd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db4f86a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da7d4fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db4e46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db52efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db6566a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db65efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db71a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db684fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc456fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db68a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db628fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db680fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db67e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db67afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db6786a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6986a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db676fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db6826a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db686fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc486fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db95efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc890fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc334fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7f06a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db68cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db504fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7166a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db480fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc4d4fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db788fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7866a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db6746a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db7a2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc6eafd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db718fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db6166a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db7d8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7aa6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db7c0fc0  0x00000038  SUfl  0xfffff8034e8d426c  SafeUpload!SafeUploadEpochAllocate+0x1c
+      0xffff8287db6106a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287a0be6fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5a46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db7b8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db54efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db76a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db780fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db59a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db768fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db77afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7786a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db7706a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db7606a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db5866a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db7acfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7bc6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4466a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4f6fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7646a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db44afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5806a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db74cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db75c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db75efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db74e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db75afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7586a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db726fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7246a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db746fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287b14eb000  0x00005250  SUfl  0xfffff8034efb2cd1  SafeUpload!SafeUploadSetPolicy+0xb1
+      0xffff8287dba4c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4ecfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5fa6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db738fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dbc026a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db7446a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbc066a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dba1c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db762fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc81c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db5626a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db5606a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db57cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5a2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db72c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db544fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5426a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db570fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db56e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db56cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db56a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db520fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5666a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db55afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5226a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db556fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7286a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db72efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db540fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db53e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db53cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5466a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db50cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5506a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db51efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db72afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7406a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db518fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5166a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db514fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db50e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4f2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db4f06a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4aefd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db4946a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4bafd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db4926a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4b6fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc51efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7c26a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db65afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db444fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db45c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db47efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5106a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4486a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db474fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db454fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db468fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db4666a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4b46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db6366a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db42cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db4726a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db43a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db442fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db4406a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db42afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db44c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db47c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc7a8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc79a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db438fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db4366a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da7da6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db47a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbc86fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db5b4fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dc0d8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7ee6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbb166a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db44efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7b4fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da78e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da7b0fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7ae6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da7acfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7aa6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da7a6fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7a2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7986a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db4106a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da7a46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da79efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da796fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da79afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7906a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287db5526a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da78a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da784fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7826a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da77efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da77c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da77afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da76a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da778fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7766a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da772fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7706a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dc51c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287dbc96fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da74cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da74a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da748fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7426a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da746fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7446a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6e2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7126a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da740fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da73e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da73afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da67c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da732fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7306a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da72efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da72c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da72afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7286a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da726fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7246a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6b8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6c46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da722fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7206a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6b2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da71cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da71a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da7046a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da716fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da710fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da794fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7746a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da70efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da70c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da70afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6d46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6fcfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6fa6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6f8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6f66a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6f4fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6f26a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6f0fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6ee6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6ecfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6ea6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6e8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6c66a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6e6fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6e46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6e0fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6de6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6d8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6d66a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6dcfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6da6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6c2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6c06a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6d2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6d06a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6cefd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6b66a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6ccfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6ca6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6c8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7146a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6b46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da79c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da71efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6a6fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6a46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6a2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6a06a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da69cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da69a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da696fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6946a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da692fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6806a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da690fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da68e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da68afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da67e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da688fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6826a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da684fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6766a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da67afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6786a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da672fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da66e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da652fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6506a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da64efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da64c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da648fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6466a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da642fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6406a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da63efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da63c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da622fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da63a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da632fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6306a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da62efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da62c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da628fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6266a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da620fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da61e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da61cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da60cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da60a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da610fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da614fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da61a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da618fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da7186a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da60e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da6fe6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5e2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5e06a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5defd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5dc6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da552fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6126a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5d66a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5586a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5d4fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5d26a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5c8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5c66a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da58efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da6166a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5886a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5dafd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5d86a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5cefd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5b46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5c2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5c46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da54e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5bcfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5b8fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5a86a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5befd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5b2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5aefd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5aa6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5b06a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da7e4fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287dba966a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5a2fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5a06a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5a66a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da594fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5926a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da596fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da59afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5986a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5a4fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da570fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5786a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da56cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5846a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da56afd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da582fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5806a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5866a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da58cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db60efd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287db7befd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da58a6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da57cfd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287da5766a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da56e6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5ba6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287a0f1eff0  0x0000000c  SAUt  0xfffff8034efaf11b  SafeUpload!SafeUploadSetInstanceContext+0x13b
+      0xffff8287a0ec46a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287a0eb0ff0  0x0000000c  SAUt  0xfffff8034efaf11b  SafeUpload!SafeUploadSetInstanceContext+0x13b
+      0xffff8287da59c6a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287a0e146a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287a0e226a0  0x00000960  SwUr  0xfffff8034e8f0fb5  SafeUpload!StageRegistryAllocateNamedShell+0x25
+      0xffff8287da5b6fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+      0xffff8287a0e1aff0  0x0000000c  SAUt  0xfffff8034efaf11b  SafeUpload!SafeUploadSetInstanceContext+0x13b
+      0xffff8287a0bd4ff0  0x0000000c  SAUt  0xfffff8034efaf11b  SafeUpload!SafeUploadSetInstanceContext+0x13b
+      0xffff8287a2010000  0x00581000  SwUr  0xfffff8034e8ee7ba  SafeUpload!SafeUploadStageWritersInitialize+0x5a
+      0xffff8287db7b0fd0  0x00000030  SUwH  0xfffff8034efbc98d  SafeUpload!SafeUploadStageWritersReserveCreate+0x6bd
+
+    Contiguous allocations are not displayed with public symbols.
+
+T4_MEMORY_END
+quit:
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\winrt.natvis'

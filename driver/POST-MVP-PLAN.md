@@ -172,11 +172,11 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
 - [x] Reviewed allocation-reply cleanup/timing on isolated protocol-18 agent `6198eee7`;
   [four-profile matrix](evidence/2026-10-12/exact-agent-matrix-t4-rejected-allocation1-summary.txt): 558 normal / 625 feature tests each, no skips, 0/0.
 - [ ] **Memory attribution:** [analysis and independent Luna lifetime review](evidence/2026-10-12/t4-memory-direction.md).
-  - [x] Latest `m2t4reject256a1`: 256/256 saves, zero leftover stages/versions/views/tombstones, idle worker;
-    [separate restoration passed](evidence/2026-10-12/t4-instrumented-short-result.md). Pool slope 318.863 B/cycle still fails the limit of 4.
-  - [ ] Attribute live registry entries and SUfl contexts in a bounded diagnostic before changing reclamation. The older 10k module-pool
-    PASS did not cover SUfl growth. Owner approved the diagnostic; optional local-KD harness passes PowerShell 5.1/self-checks
-    ([preparation evidence](evidence/2026-10-12/t4-memory-direction.md)). All thresholds/assertions remain; runtime attribution is pending.
+  - [x] Approved diagnostic `m2t4memdiag1`: 256/256, original short assertions pass, zero staged leftovers; unload returns SUfl/SwUr
+    and Verifier allocations to zero; separate restoration passes ([result and raw evidence](evidence/2026-10-12/t4-memory-attribution-result.md)).
+  - [ ] Establish bounded retention while loaded: stream contexts account for much of SUfl; the bounded registry sample has live
+    holders, no retired entries. Unload release is not a loaded-memory bound. No new reclamation or relaxed gate is justified;
+    clean short/10k qualification and recurring coverage-query warnings remain open. Diagnostic overhead excludes this run from qualification.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
 - [ ] Pass the complete short and 10k rows. Last 10k: 8,740/10,000, four stages left;

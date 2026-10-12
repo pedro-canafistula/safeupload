@@ -1,0 +1,462 @@
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.016 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.016 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Connected to Windows 10 19041 x64 target at (Tue Oct 13 00:47:16.076 2026 (UTC + 1:00)), ptr64 TRUE
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+OK                                             C:\T4Memory\symbols
+Deferred                                       srv*C:\T4Memory\symcache*https://msdl.microsoft.com/download/symbols
+Symbol search path is: C:\T4Memory\symbols;srv*C:\T4Memory\symcache*https://msdl.microsoft.com/download/symbols
+Executable search path is: 
+Windows 10 Kernel Version 19041 MP (2 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff803`4ce1b000 PsLoadedModuleList = 0xfffff803`4da452b0
+Debug session time: Tue Oct 13 00:47:16.201 2026 (UTC + 1:00)
+System Uptime: 0 days 0:14:56.913
+lkd> kd: Reading initial command '$$><C:\T4Memory\output\teardown-after.commands.txt'
+T4_MEMORY_BEGIN
+Windows 10 Kernel Version 19041 MP (2 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff803`4ce1b000 PsLoadedModuleList = 0xfffff803`4da452b0
+Debug session time: Tue Oct 13 00:47:16.201 2026 (UTC + 1:00)
+System Uptime: 0 days 0:14:56.913
+Local KD
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+command line: '"C:\T4Memory\x64\kd.exe" -kl -y "C:\T4Memory\symbols;srv*C:\T4Memory\symcache*https://msdl.microsoft.com/download/symbols" -c "$$><C:\T4Memory\output\teardown-after.commands.txt" '  Debugger Process 0x12C4 
+dbgeng:  image 10.0.28000.2705, 
+        [path: C:\T4Memory\x64\dbgeng.dll]
+dbghelp: image 10.0.28000.2705, 
+        [path: C:\T4Memory\x64\dbghelp.dll]
+        DIA version: 0
+Extension DLL search Path:
+    C:\T4Memory\x64\WINXP;C:\T4Memory\x64\winext;C:\T4Memory\x64\winext\arcade;C:\T4Memory\x64\pri;C:\T4Memory\x64;C:\Users\vika\AppData\Local\Dbg\EngineExtensions;C:\T4Memory\x64;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program Files\Git\cmd;C:\Windows\system32\config\systemprofile\AppData\Local\Microsoft\WindowsApps;C:\Users\vika\AppData\Local\Microsoft\WindowsApps;
+Extension DLL chain:
+    wdfkd: image 10.0.28000.2705, API 1.0.0, 
+        [path: C:\T4Memory\x64\winext\wdfkd.dll]
+    dbghelp: image 10.0.28000.2705, API 10.0.6, 
+        [path: C:\T4Memory\x64\dbghelp.dll]
+    exts: image 10.0.28000.2705, API 1.0.0, 
+        [path: C:\T4Memory\x64\WINXP\exts.dll]
+    kext: image 10.0.28000.2705, API 1.0.0, 
+        [path: C:\T4Memory\x64\winext\kext.dll]
+    kdexts: image 10.0.28000.2705, API 1.0.0, 
+        [path: C:\T4Memory\x64\winxp\kdexts.dll]
+        Driver verifier enabled, level 0x13b
+
+"SafeUpload.sys" was not found in the image list.
+Debugger will attempt to load "SafeUpload.sys" at given base 00000000`00000000.
+
+Please provide the full image name, including the extension (i.e. kernel32.dll)
+for more reliable results.Base address and size overrides can be given as
+.reload <image.ext>=<base>,<size>.
+*** WARNING: Unable to verify timestamp for SafeUpload.sys
+*** ERROR: Module load completed but symbols could not be loaded for SafeUpload.sys
+Unable to add module at 00000000`00000000
+Browse full module list
+start             end                 module name
+Symbol SafeUpload!_SAFEUPLOAD_DATA not found.
+
+Filter List: ffff8287a096d0c0 "Frame 0" 
+   FLT_FILTER: ffff8287d868e010 "bindflt" "409800"
+      FLT_OBJECT: ffff8287d868e010  [02000000] Filter
+         RundownRef               : 0x0000000000000004 (2)
+         PointerCount             : 0x00000002 
+         PrimaryLink              : [ffff8287a4293a70-ffff8287a096d0c0] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000016] FilteringInitiated NameProvider BackedByPagefile
+      DriverObject             : ffff8287be7efa90 
+      FilterLink               : [ffff8287a4293a70-ffff8287a096d0c0] 
+      PreVolumeMount           : fffff80108c44ef0  (no symbol) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff80108c51c70  (no symbol) 
+      InstanceSetup            : fffff80108c47810  (no symbol) 
+      InstanceQueryTeardown    : fffff80108c47720  (no symbol) 
+      InstanceTeardownStart    : fffff80108c47c20  (no symbol) 
+      InstanceTeardownComplete : fffff80108c47c10  (no symbol) 
+      ActiveOpens              : (ffff8287d868e1c8)  mCount=0 
+      Communication Port List  : (ffff8287d868e218)  mCount=1 
+      Client Port List         : (ffff8287d868e268)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287d868e2c0 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287d868e140)
+         VolumeContexts           : (ffff8287d868e140)
+         InstanceContexts         : (ffff8287d868e140)
+         FileContexts             : (ffff8287d868e140)
+         StreamContexts           : (ffff8287d868e140)
+         StreamHandleContexts     : (ffff8287d868e140)
+         TransactionContext       : (ffff8287d868e140)
+         (null)                   : (ffff8287d868e140)
+      InstanceList             : (ffff8287d868e078)
+   ---
+   FLT_FILTER: ffff8287a4293a60 "storqosflt" "244000"
+      FLT_OBJECT: ffff8287a4293a60  [02000000] Filter
+         RundownRef               : 0x0000000000000004 (2)
+         PointerCount             : 0x00000002 
+         PrimaryLink              : [ffff8287d869ba30-ffff8287d868e020] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000012] FilteringInitiated BackedByPagefile
+      DriverObject             : ffff8287be7dda90 
+      FilterLink               : [ffff8287d869ba30-ffff8287d868e020] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff80108c22ef0  (no symbol) 
+      InstanceSetup            : fffff80108c211f0  (no symbol) 
+      InstanceQueryTeardown    : fffff80108c23150  (no symbol) 
+      InstanceTeardownStart    : fffff80108c19020  (no symbol) 
+      InstanceTeardownComplete : fffff80108c23240  (no symbol) 
+      ActiveOpens              : (ffff8287a4293c18)  mCount=0 
+      Communication Port List  : (ffff8287a4293c68)  mCount=1 
+      Client Port List         : (ffff8287a4293cb8)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287a4293d10 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287a4293b90)
+         VolumeContexts           : (ffff8287a4293b90)
+         InstanceContexts         : (ffff8287a4293b90)
+         FileContexts             : (ffff8287a4293b90)
+         StreamContexts           : (ffff8287a4293b90)
+         StreamHandleContexts     : (ffff8287a4293b90)
+         TransactionContext       : (ffff8287a4293b90)
+         (null)                   : (ffff8287a4293b90)
+      InstanceList             : (ffff8287a4293ac8)
+   ---
+   FLT_FILTER: ffff8287d869ba20 "wcifs" "189900"
+      FLT_OBJECT: ffff8287d869ba20  [02000000] Filter
+         RundownRef               : 0x0000000000000004 (2)
+         PointerCount             : 0x00000002 
+         PrimaryLink              : [ffff8287aa304a30-ffff8287a4293a70] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000016] FilteringInitiated NameProvider BackedByPagefile
+      DriverObject             : ffff8287a5fd6080 
+      FilterLink               : [ffff8287aa304a30-ffff8287a4293a70] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff80108b6e020  (no symbol) 
+      InstanceSetup            : fffff80108b6ce40  (no symbol) 
+      InstanceQueryTeardown    : fffff80108b6d880  (no symbol) 
+      InstanceTeardownStart    : fffff80108b6d900  (no symbol) 
+      InstanceTeardownComplete : fffff80108b6d900  (no symbol) 
+      ActiveOpens              : (ffff8287d869bbd8)  mCount=0 
+      Communication Port List  : (ffff8287d869bc28)  mCount=1 
+      Client Port List         : (ffff8287d869bc78)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287d869bcd0 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287d869bb50)
+         VolumeContexts           : (ffff8287d869bb50)
+         InstanceContexts         : (ffff8287d869bb50)
+         FileContexts             : (ffff8287d869bb50)
+         StreamContexts           : (ffff8287d869bb50)
+         StreamHandleContexts     : (ffff8287d869bb50)
+         TransactionContext       : (ffff8287d869bb50)
+         (null)                   : (ffff8287d869bb50)
+      InstanceList             : (ffff8287d869ba88)
+   ---
+   FLT_FILTER: ffff8287aa304a20 "CldFlt" "180451"
+      FLT_OBJECT: ffff8287aa304a20  [02000000] Filter
+         RundownRef               : 0x0000000000000014 (10)
+         PointerCount             : 0x00000002 
+         PrimaryLink              : [ffff8287a31ae9f0-ffff8287d869ba30] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000012] FilteringInitiated BackedByPagefile
+      DriverObject             : ffff8287be7f6b90 
+      FilterLink               : [ffff8287a31ae9f0-ffff8287d869ba30] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff80108bea7b0  (no symbol) 
+      InstanceSetup            : fffff80108bd6dc0  (no symbol) 
+      InstanceQueryTeardown    : fffff80108bea730  (no symbol) 
+      InstanceTeardownStart    : 0000000000000000  (null) 
+      InstanceTeardownComplete : 0000000000000000  (null) 
+      ActiveOpens              : (ffff8287aa304bd8)  mCount=0 
+      Communication Port List  : (ffff8287aa304c28)  mCount=1 
+      Client Port List         : (ffff8287aa304c78)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287aa304cd0 
+      OldDriverUnload          : fffff8034cc65aa0  FLTMGR!FltpMiniFilterDriverUnload 
+      SupportedContexts        : (ffff8287aa304b50)
+         VolumeContexts           : (ffff8287aa304b50)
+            ALLOCATE_CONTEXT_NODE: 000000004cc65aa0 
+Could not read field "AllocationType" of FltMgr!_ALLOCATE_CONTEXT_HEADER from address: 000000004cc65aa0
+Could not read field "Next" of FltMgr!_ALLOCATE_CONTEXT_HEADER from address: 0000000000000000
+   ---
+   FLT_FILTER: ffff8287a31ae9e0 "FileCrypt" "141100"
+      FLT_OBJECT: ffff8287a31ae9e0  [02000000] Filter
+         RundownRef               : 0x0000000000000002 (1)
+         PointerCount             : 0x00000001 
+         PrimaryLink              : [ffff8287d86aa020-ffff8287aa304a30] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000002] FilteringInitiated
+      DriverObject             : ffff8287a331cae0 
+      FilterLink               : [ffff8287d86aa020-ffff8287aa304a30] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff801077abc10  (no symbol) 
+      InstanceSetup            : fffff801077aa010  (no symbol) 
+      InstanceQueryTeardown    : fffff801077aa4a0  (no symbol) 
+      InstanceTeardownStart    : 0000000000000000  (null) 
+      InstanceTeardownComplete : 0000000000000000  (null) 
+      ActiveOpens              : (ffff8287a31aeb98)  mCount=0 
+      Communication Port List  : (ffff8287a31aebe8)  mCount=0 
+      Client Port List         : (ffff8287a31aec38)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287a31aec90 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287a31aeb10)
+         VolumeContexts           : (ffff8287a31aeb10)
+         InstanceContexts         : (ffff8287a31aeb10)
+         FileContexts             : (ffff8287a31aeb10)
+         StreamContexts           : (ffff8287a31aeb10)
+         StreamHandleContexts     : (ffff8287a31aeb10)
+         TransactionContext       : (ffff8287a31aeb10)
+         (null)                   : (ffff8287a31aeb10)
+      InstanceList             : (ffff8287a31aea48)
+   ---
+   FLT_FILTER: ffff8287d86aa010 "luafv" "135000"
+      FLT_OBJECT: ffff8287d86aa010  [02000000] Filter
+         RundownRef               : 0x0000000000000008 (4)
+         PointerCount             : 0x00000001 
+         PrimaryLink              : [ffff8287d6be65d0-ffff8287a31ae9f0] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000016] FilteringInitiated NameProvider BackedByPagefile
+      DriverObject             : ffff8287a5fd8de0 
+      FilterLink               : [ffff8287d6be65d0-ffff8287a31ae9f0] 
+      PreVolumeMount           : fffff80108b110d0  (no symbol) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : 0000000000000000  (null) 
+      InstanceSetup            : fffff80108b1eec0  (no symbol) 
+      InstanceQueryTeardown    : 0000000000000000  (null) 
+      InstanceTeardownStart    : 0000000000000000  (null) 
+      InstanceTeardownComplete : 0000000000000000  (null) 
+      ActiveOpens              : (ffff8287d86aa1c8)  mCount=1 
+      Communication Port List  : (ffff8287d86aa218)  mCount=0 
+      Client Port List         : (ffff8287d86aa268)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287d86aa2c0 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287d86aa140)
+         VolumeContexts           : (ffff8287d86aa140)
+         InstanceContexts         : (ffff8287d86aa140)
+         FileContexts             : (ffff8287d86aa140)
+         StreamContexts           : (ffff8287d86aa140)
+         StreamHandleContexts     : (ffff8287d86aa140)
+         TransactionContext       : (ffff8287d86aa140)
+         (null)                   : (ffff8287d86aa140)
+      InstanceList             : (ffff8287d86aa078)
+         FLT_INSTANCE: ffff8287d86ac010 "luafv" "135000"
+   ---
+   FLT_FILTER: ffff8287d6be65c0 "npsvctrig" "46000"
+      FLT_OBJECT: ffff8287d6be65c0  [02000000] Filter
+         RundownRef               : 0x0000000000000006 (3)
+         PointerCount             : 0x00000001 
+         PrimaryLink              : [ffff8287a085a020-ffff8287d86aa020] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [0000001a] FilteringInitiated SupportsPipesMailslots BackedByPagefile
+      DriverObject             : ffff8287d6be6400 
+      FilterLink               : [ffff8287a085a020-ffff8287d86aa020] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff801070a8970  (no symbol) 
+      InstanceSetup            : fffff801070a7330  (no symbol) 
+      InstanceQueryTeardown    : 0000000000000000  (null) 
+      InstanceTeardownStart    : fffff801070a8b90  (no symbol) 
+      InstanceTeardownComplete : 0000000000000000  (null) 
+      ActiveOpens              : (ffff8287d6be6778)  mCount=0 
+      Communication Port List  : (ffff8287d6be67c8)  mCount=0 
+      Client Port List         : (ffff8287d6be6818)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287d6be6870 
+      OldDriverUnload          : fffff801070a8580  (no symbol) 
+      SupportedContexts        : (ffff8287d6be66f0)
+         VolumeContexts           : (ffff8287d6be66f0)
+            ALLOCATE_CONTEXT_NODE: 00000000070a8580 
+Could not read field "AllocationType" of FltMgr!_ALLOCATE_CONTEXT_HEADER from address: 00000000070a8580
+Could not read field "Next" of FltMgr!_ALLOCATE_CONTEXT_HEADER from address: 0000000000000000
+   ---
+   FLT_FILTER: ffff8287a085a010 "Wof" "40700"
+      FLT_OBJECT: ffff8287a085a010  [02000000] Filter
+         RundownRef               : 0x0000000000000358 (428)
+         PointerCount             : 0x00000001 
+         PrimaryLink              : [ffff8287a08738b0-ffff8287d6be65d0] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000012] FilteringInitiated BackedByPagefile
+      DriverObject             : ffff8287a0874910 
+      FilterLink               : [ffff8287a08738b0-ffff8287d6be65d0] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff8034e8a4ed0  (no symbol) 
+      InstanceSetup            : fffff8034e8a2f20  (no symbol) 
+      InstanceQueryTeardown    : fffff8034e8a5020  (no symbol) 
+      InstanceTeardownStart    : fffff8034e8a53d0  (no symbol) 
+      InstanceTeardownComplete : fffff8034e8a5390  (no symbol) 
+      ActiveOpens              : (ffff8287a085a1c8)  mCount=0 
+      Communication Port List  : (ffff8287a085a218)  mCount=0 
+      Client Port List         : (ffff8287a085a268)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287a085a2c0 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287a085a140)
+         VolumeContexts           : (ffff8287a085a140)
+         InstanceContexts         : (ffff8287a085a140)
+         FileContexts             : (ffff8287a085a140)
+         StreamContexts           : (ffff8287a085a140)
+         StreamHandleContexts     : (ffff8287a085a140)
+         TransactionContext       : (ffff8287a085a140)
+         (null)                   : (ffff8287a085a140)
+      InstanceList             : (ffff8287a085a078)
+         FLT_INSTANCE: ffff8287a30d5b00 "Wof Instance" "40700"
+         FLT_INSTANCE: ffff8287d6db91e0 "Wof Instance" "40700"
+   ---
+   FLT_FILTER: ffff8287a08738a0 "FileInfo" "40500"
+      FLT_OBJECT: ffff8287a08738a0  [02000000] Filter
+         RundownRef               : 0x0000000000007876 (15419)
+         PointerCount             : 0x00000001 
+         PrimaryLink              : [ffff8287a096d0c0-ffff8287a085a020] 
+      Frame                    : ffff8287a096d010 "Frame 0" 
+      Flags                    : [00000032] FilteringInitiated BackedByPagefile SupportsDaxVolume
+      DriverObject             : ffff8287a086cdc0 
+      FilterLink               : [ffff8287a096d0c0-ffff8287a085a020] 
+      PreVolumeMount           : 0000000000000000  (null) 
+      PostVolumeMount          : 0000000000000000  (null) 
+      FilterUnload             : fffff8034e873e30  (no symbol) 
+      InstanceSetup            : 0000000000000000  (null) 
+      InstanceQueryTeardown    : 0000000000000000  (null) 
+      InstanceTeardownStart    : 0000000000000000  (null) 
+      InstanceTeardownComplete : 0000000000000000  (null) 
+      ActiveOpens              : (ffff8287a0873a58)  mCount=0 
+      Communication Port List  : (ffff8287a0873aa8)  mCount=0 
+      Client Port List         : (ffff8287a0873af8)  mCount=0 
+      VerifierExtension        : 0000000000000000 
+      Operations               : ffff8287a0873b50 
+      OldDriverUnload          : 0000000000000000  (null) 
+      SupportedContexts        : (ffff8287a08739d0)
+         VolumeContexts           : (ffff8287a08739d0)
+         InstanceContexts         : (ffff8287a08739d0)
+         FileContexts             : (ffff8287a08739d0)
+         StreamContexts           : (ffff8287a08739d0)
+         StreamHandleContexts     : (ffff8287a08739d0)
+         TransactionContext       : (ffff8287a08739d0)
+         (null)                   : (ffff8287a08739d0)
+      InstanceList             : (ffff8287a0873908)
+         FLT_INSTANCE: ffff8287a09ce8a0 "FileInfo" "40500"
+         FLT_INSTANCE: ffff8287a330f560 "FileInfo" "40500"
+         FLT_INSTANCE: ffff8287a327b010 "FileInfo" "40500"
+         FLT_INSTANCE: ffff8287d6db65f0 "FileInfo" "40500"
+   ---
+---
+unable to get nt!PspSessionIdBitmap
+..
+ Sorting by NonPaged Pool Consumed
+
+               NonPaged                  Paged
+ Tag     Allocs         Used     Allocs         Used
+
+
+TOTAL         0            0          0            0
+..
+ Sorting by NonPaged Pool Consumed
+
+               NonPaged                  Paged
+ Tag     Allocs         Used     Allocs         Used
+
+
+TOTAL         0            0          0            0
+
+Verify Flags Level 0x0000013b
+
+  STANDARD FLAGS:
+    [X] (0x00000000) Automatic Checks
+    [X] (0x00000001) Special pool
+    [X] (0x00000002) Force IRQL checking
+    [X] (0x00000008) Pool tracking
+    [X] (0x00000010) I/O verification
+    [X] (0x00000020) Deadlock detection
+    [ ] (0x00000080) DMA checking
+    [X] (0x00000100) Security checks
+    [ ] (0x00000800) Miscellaneous checks
+    [ ] (0x00020000) DDI compliance checking
+
+  ADDITIONAL FLAGS:
+    [ ] (0x00000004) Randomized low resources simulation
+    [ ] (0x00000200) Force pending I/O requests
+    [ ] (0x00000400) IRP logging
+    [ ] (0x00002000) Invariant MDL checking for stack
+    [ ] (0x00004000) Invariant MDL checking for driver
+    [ ] (0x00008000) Power framework delay fuzzing
+    [ ] (0x00010000) Port/miniport interface checking
+    [ ] (0x00040000) Systematic low resources simulation
+    [ ] (0x00080000) DDI compliance checking (additional)
+    [ ] (0x00200000) NDIS/WIFI verification
+    [ ] (0x00800000) Kernel synchronization delay fuzzing
+    [ ] (0x01000000) VM switch verification
+    [ ] (0x02000000) Code integrity checks
+
+    [X] Indicates flag is enabled
+
+
+Summary of All Verifier Statistics
+
+  RaiseIrqls           0x0
+  AcquireSpinLocks     0x0
+  Synch Executions     0x0
+  Trims                0x4436f
+
+  Pool Allocations Attempted             0x98e7fd
+  Pool Allocations Succeeded             0x98e800
+  Pool Allocations Succeeded SpecialPool 0x98e803
+  Pool Allocations With NO TAG           0x0
+  Pool Allocations Failed                0x0
+
+  Current paged pool allocations         0x0 for 00000000 bytes
+  Peak paged pool allocations            0x9 for 000441C0 bytes
+  Current nonpaged pool allocations      0x0 for 00000000 bytes
+  Peak nonpaged pool allocations         0x2d0 for 006A25C8 bytes
+
+Driver Verification List
+------------------------
+
+  MODULE: 0xffff82879ea4cf80 SafeUpload.sys (Unloaded)
+T4_MEMORY_END
+quit:
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\winrt.natvis'

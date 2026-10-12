@@ -1,0 +1,3 @@
+T4MemorySnapshot=teardown-before
+T4MemorySnapshot=teardown-after
+T4MemoryTeardown=PASS

@@ -145,9 +145,22 @@ function Invoke-T4MemoryTeardown {
         throw 'Diagnostic unload refused: private stage files remain.'
     }
     Save-T4MemorySnapshot 'teardown-before'
-    Stop-Service -Name SafeUploadAgent -ErrorAction Stop
-    & fltmc.exe unload SafeUpload
-    if ($LASTEXITCODE -ne 0) { throw 'Voluntary filter unload was refused.' }
+    $service = Get-Service -Name SafeUploadAgent -ErrorAction Stop
+    $service.Stop()
+    $service.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,
+        [TimeSpan]::FromSeconds(30))
+    $out = Join-Path $script:T4MemoryRoot 'output'
+    $unload = Start-Process -FilePath fltmc.exe -ArgumentList 'unload SafeUpload' -PassThru -NoNewWindow `
+        -RedirectStandardOutput (Join-Path $out 'unload.stdout.txt') `
+        -RedirectStandardError (Join-Path $out 'unload.stderr.txt')
+    $null = $unload.Handle
+    if (-not $unload.WaitForExit(60000)) {
+        # Terminating the caller does not force kernel unload. The host still restores the run disk.
+        $unload.Kill()
+        throw 'Voluntary filter unload exceeded the diagnostic deadline.'
+    }
+    $unload.Refresh()
+    if ($unload.ExitCode -ne 0) { throw 'Voluntary filter unload was refused.' }
     Start-Sleep -Seconds 5
     Save-T4MemorySnapshot 'teardown-after' -AllowUnloaded
     'T4MemoryTeardown=PASS'

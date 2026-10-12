@@ -1,0 +1,280 @@
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.016 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.031 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Connected to Windows 10 19041 x64 target at (Tue Oct 13 00:41:04.216 2026 (UTC + 1:00)), ptr64 TRUE
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+OK                                             C:\T4Memory\symbols
+Deferred                                       srv*C:\T4Memory\symcache*https://msdl.microsoft.com/download/symbols
+Symbol search path is: C:\T4Memory\symbols;srv*C:\T4Memory\symcache*https://msdl.microsoft.com/download/symbols
+Executable search path is: 
+Windows 10 Kernel Version 19041 MP (2 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff803`4ce1b000 PsLoadedModuleList = 0xfffff803`4da452b0
+Debug session time: Tue Oct 13 00:41:04.466 2026 (UTC + 1:00)
+System Uptime: 0 days 0:08:45.179
+lkd> kd: Reading initial command '$$><C:\T4Memory\output\context-counts-during-cycles.commands.txt'
+T4_MEMORY_BEGIN
+Browse full module list
+start             end                 module name
+fffff803`4e8d0000 fffff803`4efcc000   SafeUpload   (private pdb symbols)  c:\t4memory\symbols\SafeUpload.pdb
+    Loaded symbol image file: SafeUpload.sys
+    Image path: SafeUpload.sys
+    Image name: SafeUpload.sys
+    Browse all global symbols  functions  data  Symbol Reload
+    Timestamp:        Sat Oct 10 18:44:20 2026 (6ACA7974)
+    CheckSum:         0005F524
+    ImageSize:        006FC000
+    Translations:     0000.04b0 0000.04e4 0409.04b0 0409.04e4
+    Information from resource tables:
+INSTANCE
+   +0x000 ListHead         : _SLIST_HEADER
+   +0x000 SingleListHead   : _SINGLE_LIST_ENTRY
+   +0x010 Depth            : 4
+   +0x012 MaximumDepth     : 0x100
+   +0x014 TotalAllocates   : 0x40
+   +0x018 AllocateMisses   : 6
+   +0x018 AllocateHits     : 6
+   +0x01c TotalFrees       : 0x3c
+   +0x020 FreeMisses       : 0
+   +0x020 FreeHits         : 0
+   +0x024 Type             : 200 ( NonPagedPoolNx )
+   +0x028 Tag              : 0x6c665553
+   +0x02c Size             : 0x350
+   +0x030 AllocateEx       : 0xfffff803`4d7d2010     void*  nt!ExAllocatePoolWithTag+0
+   +0x030 Allocate         : 0xfffff803`4d7d2010     void*  nt!ExAllocatePoolWithTag+0
+   +0x038 FreeEx           : 0xfffff803`4d7d20b0     void  nt!ExFreePool+0
+   +0x038 Free             : 0xfffff803`4d7d20b0     void  nt!ExFreePool+0
+   +0x040 ListEntry        : _LIST_ENTRY [ 0xffff8287`a084c1d0 - 0xffff8287`a0960590 ]
+   +0x050 LastTotalAllocates : 0x40
+   +0x054 LastAllocateMisses : 6
+   +0x054 LastAllocateHits : 6
+   +0x058 Future           : [2] 0
+STREAM
+   +0x000 ListHead         : _SLIST_HEADER
+   +0x000 SingleListHead   : _SINGLE_LIST_ENTRY
+   +0x010 Depth            : 4
+   +0x012 MaximumDepth     : 0x100
+   +0x014 TotalAllocates   : 0x11a7
+   +0x018 AllocateMisses   : 0xac2
+   +0x018 AllocateHits     : 0xac2
+   +0x01c TotalFrees       : 0xb33
+   +0x020 FreeMisses       : 0x44a
+   +0x020 FreeHits         : 0x44a
+   +0x024 Type             : 200 ( NonPagedPoolNx )
+   +0x028 Tag              : 0x6c665553
+   +0x02c Size             : 0xc8
+   +0x030 AllocateEx       : 0xfffff803`4d7d2010     void*  nt!ExAllocatePoolWithTag+0
+   +0x030 Allocate         : 0xfffff803`4d7d2010     void*  nt!ExAllocatePoolWithTag+0
+   +0x038 FreeEx           : 0xfffff803`4d7d20b0     void  nt!ExFreePool+0
+   +0x038 Free             : 0xfffff803`4d7d20b0     void  nt!ExFreePool+0
+   +0x040 ListEntry        : _LIST_ENTRY [ 0xffff8287`a084c310 - 0xffff8287`a084c090 ]
+   +0x050 LastTotalAllocates : 0x1180
+   +0x054 LastAllocateMisses : 0xaa2
+   +0x054 LastAllocateHits : 0xaa2
+   +0x058 Future           : [2] 0
+HANDLE
+   +0x000 ListHead         : _SLIST_HEADER
+   +0x000 SingleListHead   : _SINGLE_LIST_ENTRY
+   +0x010 Depth            : 4
+   +0x012 MaximumDepth     : 0x100
+   +0x014 TotalAllocates   : 0xa7
+   +0x018 AllocateMisses   : 0x1b
+   +0x018 AllocateHits     : 0x1b
+   +0x01c TotalFrees       : 0x8d
+   +0x020 FreeMisses       : 1
+   +0x020 FreeHits         : 1
+   +0x024 Type             : 200 ( NonPagedPoolNx )
+   +0x028 Tag              : 0x6c665553
+   +0x02c Size             : 0x78
+   +0x030 AllocateEx       : 0xfffff803`4d7d2010     void*  nt!ExAllocatePoolWithTag+0
+   +0x030 Allocate         : 0xfffff803`4d7d2010     void*  nt!ExAllocatePoolWithTag+0
+   +0x038 FreeEx           : 0xfffff803`4d7d20b0     void  nt!ExFreePool+0
+   +0x038 Free             : 0xfffff803`4d7d20b0     void  nt!ExFreePool+0
+   +0x040 ListEntry        : _LIST_ENTRY [ 0xffff8287`a084c450 - 0xffff8287`a084c1d0 ]
+   +0x050 LastTotalAllocates : 0xa4
+   +0x054 LastAllocateMisses : 0x1a
+   +0x054 LastAllocateHits : 0x1a
+   +0x058 Future           : [2] 0
+TRANSACTION
+   +0x000 ListHead         : _SLIST_HEADER
+   +0x000 SingleListHead   : _SINGLE_LIST_ENTRY
+   +0x010 Depth            : 4
+   +0x012 MaximumDepth     : 0x100
+   +0x014 TotalAllocates   : 0
+   +0x018 AllocateMisses   : 0
+   +0x018 AllocateHits     : 0
+   +0x01c TotalFrees       : 0
+   +0x020 FreeMisses       : 0
+   +0x020 FreeHits         : 0
+   +0x024 Type             : 200 ( NonPagedPoolNx )
+   +0x028 Tag              : 0x6c665553
+   +0x02c Size             : 0x68
+   +0x030 AllocateEx       : 0xfffff803`4d7d2010     void*  nt!ExAllocatePoolWithTag+0
+   +0x030 Allocate         : 0xfffff803`4d7d2010     void*  nt!ExAllocatePoolWithTag+0
+   +0x038 FreeEx           : 0xfffff803`4d7d20b0     void  nt!ExFreePool+0
+   +0x038 Free             : 0xfffff803`4d7d20b0     void  nt!ExFreePool+0
+   +0x040 ListEntry        : _LIST_ENTRY [ 0xffff8287`a084c920 - 0xffff8287`a084c310 ]
+   +0x050 LastTotalAllocates : 0
+   +0x054 LastAllocateMisses : 0
+   +0x054 LastAllocateHits : 0
+   +0x058 Future           : [2] 0
+   Filter Manager Debugger Extensions:
+       For the following extensions, [detail] is a value from 0 to 1 which specifies
+       the level of detail to show.  The default detail level is 0.
+
+       For the following extensions, [flags] allows you to control what information is displayed
+       for the given object.  The default flags is 0, so minimal information is shown.
+
+   cbd [addr] [flags] [detail]               Dump IRP_CTRL or CALLBACK_DATA
+      where [flags] specify what information to dump:
+         0x00000001 Extended detail on each completion stack
+
+   irpctrl [addr] [flags] [detail]           Dump IRP_CTRL or CALLBACK_DATA
+      where [flags] specify what information to dump:
+         0x00000001 Extended detail on each completion stack
+
+   contextlist [addr] [detail]               Dump CONTEXT_LIST_CTRL
+
+   ctx [addr] [detail]                       Dump CONTEXT_NODE
+
+   fileList [addr] [flags] [detail]          Dump FILE_LIST_CTRL given fileObject or FileList address
+      where [flags] specify what information to dump:
+         0x00000001 File list ctrl's file context info
+
+   filter [addr] [flags] [detail]            Dump FLT_FILTER
+      where [flags] specify what information to dump:
+         0x00000001 Basic filter information
+         0x00000002 Filter's context registration information
+         0x00000004 Filter's context usage information
+         0x00000008 Filter's object usage/reference information
+         0x00000010 Filter's Verifier information
+         0x00000020 Filter's Port information
+
+   filters [flags] [detail]                  Dumps all the filters registered in the system
+      where [flags] specify what information to dump:
+         0x00000001 Basic filter information
+         0x00000002 Filter's context registration information
+         0x00000004 Filter's context usage information
+         0x00000008 Filter's object usage/reference information
+         0x00000010 Filter's Verifier information
+         0x00000020 Filter's Port information
+
+   fltobj [addr] [detail]                    Dump FLT_OBJECT
+      where [flags] specify what information to dump:
+         0x00000001 Basic object information
+         0x00000002 Rundown log information on the object
+
+   frame [addr] [flags] [detail]             Dump FLTP_FRAME
+      where [flags] specify what information to dump:
+         0x00000001 Basic frame information
+         0x00000002 Frame's PRCB information
+         0x00000004 Frame's VOLUME information
+
+   frames [flags] [detail]                   Dumps all the frames in the system
+      where [flags] specify what information to dump:
+         0x00000001 Basic frame information
+         0x00000002 Frame's PRCB information
+         0x00000004 Frame's VOLUME information
+
+   instance [addr] [flags] [detail]          Dump FLT_INSTANCE
+      where [flags] specify what information to dump:
+         0x00000001 Basic instance information
+         0x00000002 Instance's context information
+         0x00000004 Instance's operation callbacks
+         0x00000008 Instance's completion node information
+
+   msgq [addr] [flags] [detail]              Dumps supplied message queue
+      where [flags] specify what information to dump:
+         0x00000001 Extended detail on each message
+
+   namecachelist [addr] [detail]             Dump NAME_CACHE_LIST_CTRL
+
+   oplock [addr] [flags]                     Dump oplock given address of owning FILE_OBJECT or stuck IRP (tells you what oplock it is waiting for)
+      where [flags] specify what information to dump:
+         0x00000001 [addr] points to an OPLOCK (default is FILE_OBJECT or IRP)
+
+   port [addr]                               Dumps connection port
+
+   portlist [filter object addr] [flags] [detail]  Dumps all port connections of specified filter
+      where [flags] specify what information to dump:
+         0x00000001 Extended detail on each port
+
+   relobjs [addr]                            Dump IRP_CTRL
+
+   tree [addr] [detail]                      Dump tree
+
+   streamList [addr] [flags] [detail]        Dump STREAM_LIST_CTRL given fileObject or StreamList address
+      where [flags] specify what information to dump:
+         0x00000001 Stream list ctrl's stream context info
+         0x00000002 Stream list ctrl's stream handle context info
+         0x00000004 Stream list ctrl's normalized name info
+         0x00000008 Stream list ctrl's opened name info
+         0x00000010 Stream list ctrl's short name info
+         0x00000020 Stream list ctrl's section context info
+
+   traceflags [flags]                        Sets trace flags. Displays current setting if not supplied
+
+   tracelevel [level]                        Sets trace level. Displays current setting if not supplied
+
+   volume [addr] [flags] [detail]            Dump FLT_VOLUME given deviceObject or FltVolume address
+      where [flags] specify what information to dump:
+         0x00000001 Basic volume information
+         0x00000002 Volume's context information
+         0x00000004 Volume's operation callbacks
+         0x00000008 Volume's name cache information
+         0x00000010 Volume's stream list control information
+         0x00000020 Volume's file list control information
+
+   volumes [flags] [detail]                  Dump all the volumes to which the filter manager is attached
+      where [flags] specify what information to dump:
+         0x00000001 Basic volume information
+         0x00000002 Volume's context information
+         0x00000004 Volume's operation callbacks
+         0x00000008 Volume's name cache information
+         0x00000010 Volume's stream list control information
+         0x00000020 Volume's file list control information
+
+   work [detail]                             Dump Throttled worker queue information
+
+   stats                                     Dumps statistics
+
+T4_MEMORY_END
+quit:
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\T4Memory\x64\Visualizers\winrt.natvis'

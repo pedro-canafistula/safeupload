@@ -1,0 +1,2 @@
+RunDiskEfiReset=True
+2026-10-12T23:47:29Z run-disk win10-debug3: run m2t4memdiag1restore on /var/lib/libvirt/images/win10-debug3.safeupload-run-m2t4memdiag1restore.qcow2 (base /var/lib/libvirt/images/win10-debug3.base-20261009.qcow2)

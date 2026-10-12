@@ -11,6 +11,9 @@ and disjoint corpora, and observes voluntary unload only after the original row'
 not milestone qualification. No kernel change or host-wide configuration is involved.
 The [Windows PowerShell 5.1 gate](harness-windows-gate-t4-memory-attribution1.txt) passes all 19 self-checks; the
 [final helper check](harness-t4-memory-final-helper.txt) additionally validates the final output checks and real NTFS identity controls.
+The [completed diagnostic and separate restoration](t4-memory-attribution-result.md) now provide context-type and unload accounting.
+Both investigated tags return to zero at unload; bounded retention while loaded remains open. This supersedes the pending-execution
+status above, without changing the qualification gates or authorizing speculative reclamation.
 
 ## What the evidence separates
 
