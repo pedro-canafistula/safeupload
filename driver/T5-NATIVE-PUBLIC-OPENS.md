@@ -193,20 +193,18 @@ named-file diagnostics, generation floor, supported capability gates and indepen
 or protocol state is introduced; live admission and runtime qualification remain pending. Native replay uses a new version 22 layout
 for the captured GUID; version 21 is rejected rather than silently reinterpreted. Core v18/v20 layouts and persisted enum values remain unchanged.
 
-**Scope correction — fixed-reporting USB (Luna 6 review).** The current classifier in `SafeUpload.Minifilter/Context.c:238–276`
-checks only `FILE_REMOVABLE_MEDIA` and otherwise returns `SafeUploadVolumeFixed`; the admission gate and coverage readiness then
-accept `Fixed + NTFS`, and `SafeUploadStageNativeReserve` inherits that gate. I found no separate USB/bus-type check in the instance
-context, boot-scope, coverage, native-reserve, or public-open admission paths in the reviewed source. That was insufficient for M2: Microsoft defines
-`FILE_REMOVABLE_MEDIA` as removable *media*, not a removable device, while `FILE_PORTABLE_DEVICE` denotes a device on a portable
-bus such as USB. Before enabling the T5 native CREATE producer, query `FileFsDeviceInformation` through
+**Scope correction — fixed-reporting USB (implemented; runtime pending).** The original volume classifier only checked
+`FILE_REMOVABLE_MEDIA`. Commit `1d3f47cc` additionally captures complete `FileFsDeviceInformation` through
 [`FltQueryVolumeInformation`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltqueryvolumeinformation)
-at `PASSIVE_LEVEL`, retain the portable/unqualified result in the per-instance admission evidence, and reject `FILE_PORTABLE_DEVICE`
-from the fixed-NTFS scope in the instance gate, coverage, native reserve, and metadata query. Query failure, incomplete data, or an
-unknown portability result must fail closed; require a successful `FltQueryVolumeInformation` result with
-`IO_STATUS_BLOCK.Information == sizeof(FILE_FS_DEVICE_INFORMATION)`. This is the minimum M2 scope guard, not T21 implementation. The metadata-only query can
-proceed without T21 only for positively admitted local fixed NTFS instances; for portable/removable/unknown instances it must return
-unknown and keep any recovery hold. Microsoft references: [FILE_FS_DEVICE_INFORMATION](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/616b66d5-b335-4e1c-8f87-b4a55e8d3e4a)
-defines both flags, and the `FltQueryVolumeInformation` contract lists `FileFsDeviceInformation` and requires `PASSIVE_LEVEL`.
+at `PASSIVE_LEVEL` in `SafeUpload.Minifilter/Context.c:383`. The instance gate (`Context.c:514`), coverage readiness
+(`StageAdmission.c:481`), native reserve and metadata observer require this positive local fixed-NTFS admission;
+the public binding factory repeats it (`StagePublic.c:434`). Portable, removable, remote, unknown and incomplete query results fail closed.
+The query must succeed with `IO_STATUS_BLOCK.Information == sizeof(FILE_FS_DEVICE_INFORMATION)`.
+[Static gates pass](evidence/2026-10-11/t5-native-volume-static-gates.md); actual fixed-reporting USB refusal still needs runtime evidence.
+This guards M2 scope and adds no T21 capability or additional bus-probing requirement. On an unqualified instance the metadata observer
+returns failure and retains any recovery hold. Microsoft defines `FILE_REMOVABLE_MEDIA` as removable *media* and
+`FILE_PORTABLE_DEVICE` as a device on a portable bus such as USB in
+[FILE_FS_DEVICE_INFORMATION](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/616b66d5-b335-4e1c-8f87-b4a55e8d3e4a).
 
 If the name still maps to original A, or exact enumeration establishes absence, automatically downgrade AcceptedUnresolved to the
 existing nonblocking scheduled-intent representation (Admitted plus an immutable native-on-close kind field). Retain the scheduled
@@ -308,3 +306,75 @@ qualification remain open; the startup path refuses an unresolved hold until tha
 - Deterministic native deletes before seal and after independent publication observation; native scheduled-delete/publication races.
 - Inject pre/post-CREATE tracking failures, identity replacement, service disconnect and mandatory unload without hiding accepted mutations.
 - Existing private disposition assertions, real Notepad clean/CPF rows in all three modes, independent byte observers and separate restoration.
+
+## Allocation and publication integration — reviewed contract
+
+The current allocator orders manifests by pathname and its ordinary allocation payload carries no original volume/root/case binding.
+The destination head is keyed by those identities. The current publisher does not consult that head. Therefore connecting the native
+observer alone must not enable exceptional hold release or make startup Ready. This proposal completes that shared integration;
+it changes no approved delete, empty-file, permission, generation, or recovery policy.
+
+Use an explicitly 4-byte-packed feature-only bound-allocation payload, version 23, of 124 bytes within the existing 126-byte valid
+image-name payload limit (the buffer is 128 bytes; keep its terminator/unused tail zero):
+the existing allocation header/reservation/reference/disposition fields (48), captured public source FILE_ID_128 (16),
+recorded Mount Manager GUID (16), root FILE_ID_128 (16), parent volume serial/full ID (24),
+parent case mode (2), and canonical-leaf byte count (2). Require explicit size/offset assertions and matching managed packing.
+The source ID replaces the redundant request DriverInstanceId: obtain that instance only from the authenticated active connection,
+and persist it with the intent. The source ID denotes the exact captured public target, independent of whether bytes are copied;
+zero means proven public absence. With no private reference, FILE_OPEN/FILE_OVERWRITE require a target and FILE_CREATE requires absence.
+With a FOLLOWUP reference, existence comes from the separately journaled exact private predecessor; a tombstone reference keeps its
+fresh-create rule. An existing private predecessor is seeded only from its exact held stage identity. For FILE_OPEN/FILE_OPEN_IF
+public seeding, open relative to the checked parent, compare the complete opened ID with the captured source ID and copy from that
+held handle; a swapped locator cannot select the seed. Preserve disposition-specific existence checks and fail closed on mismatch.
+Use a dedicated V23 carrier marker and exact 124-byte parser, with zero unused bytes and path tail; the generic V20 parser stays unchanged.
+Its leaf is the checked final component of the driver's normalized request path, whose full bytes remain in the existing path field.
+Validate UTF-16 length, no stream/wildcard selector and the exact final-component boundary. The full path is a locator, not the
+destination identity. Root serial must equal the parent serial. Capture anchors through a no-reparse component walk that respects
+each directory's case mode; do not use the existing unconditional OBJ_CASE_INSENSITIVE helper as authority. Resolve an existing
+short-name alias to its actual NTFS long leaf and verify the requested leaf against the original CREATE. Persist the exact UTF-16 leaf;
+do not use ToUpperInvariant as authority or independently fold in the driver. One bucket resolver uses
+CompareStringOrdinal(..., TRUE) for insensitive names and exact ordinal comparison for sensitive names, consistently across every
+head lookup, queue, allocation, publication, delete and recovery path. Equivalent leaves under the same volume/root/parent/case bucket
+select one retained head. Legacy folded heads require conservative bucket reconciliation, with conflicting candidates held, never
+silently duplicated or published from a reconstructed locator. Qualification tests verify equivalent spellings/aliases share a head;
+any divergence from actual NTFS name equivalence keeps admission closed until the comparator matches. Tests cannot replace this resolver.
+Capture the actual root/parent/case binding, source ID and canonical NTFS leaf on the original instance before the allocation RPC;
+reserve the name, release namespace locks for metadata/RPC, and revalidate the exact name/parent binding and captured public target ID
+or absence after the RPC before exposing the private open.
+Missing, changed, unsupported or ambiguous authority fails closed. A descriptor conveys no DELETE or new caller access grant.
+
+Negotiate a new feature-only head-aware capability before live staging admission. An old pair cannot silently use the old publication
+path alongside native deletes. Leave normal builds compiled out and existing core/v19/v20 layouts intact; reserve older enum slots.
+Existing legacy private recovery remains conservative. An exact still-live driver-owned transfer may supply its checked binding;
+never reconstruct a lost original binding from an old manifest locator or invent its volume GUID after a restart.
+
+The allocator obtains the destination allocation turn, reserves max(manifest high-water for this exact identity, destination head)+1
+and persists that full binding and generation with the manifest before replying. Allocation replay binds the exact descriptor,
+source ID, transfer, authenticated driver and ancestry. Hold the allocation turn through the durable manifest claim.
+A partial backing/head/manifest transaction is a private nonpublishable recovery candidate; retry the same exact reservation or
+retain its cleanup obligation without rolling back the high-water mark or authorizing an older commit.
+
+The publisher opens the recorded volume/root/parent by GUID and file ID, checks full identities/non-reparse type/case mode, and creates
+its inspected temporary relative to that held parent. On NTFS use the 64-bit ID selector only when the captured high half is zero,
+then re-query and compare the complete 128-bit identity. Never substitute the saved pathname or export driver directory handles.
+Use two linked one-use driver permits: create bound to the checked parent, unique temporary leaf and allocation/generation; then
+rename bound to the created temporary's full ID, destination, expected head and inspected digest. The temporary ID is not known
+before creation. Bind permits to actual callback file objects and checked parent/leaf identities, not path strings or an ignored volume.
+Prepare inspection and temporary bytes outside the short physical turn. Within the destination turn, persist the exact commit intent,
+use the rename permit, rename relative to the checked parent with the qualified POSIX replacement semantics,
+then durably record Published/Released before dropping that turn. Actual operation anchors must match the permit; locator equality is
+insufficient. A native unresolved hold blocks that public name; an unrelated name must continue. Waiting work must release global locks,
+the receive loop and any bounded execution slot. Rename/delete continuations acquire multiple destination turns in a stable key order.
+
+Every publisher retry, recovery and interrupted-Publishing reconciliation must use this bound head/permit path; the current
+path-and-digest-only ReconcilePublishingAsync is not sufficient for a bound entry. Dispatch allocation and journal continuations
+asynchronously off the synchronous filter-port receive loop, so cleanup/close and unrelated names can progress during disk work.
+After every physical publication/namespace mutation uses this head and permit path, connect the native observer and lifetime proof to
+startup and last-close reconciliation. Reconcile interrupted publication intents against exact identity/rename outcome before resolving
+native holds or announcing Ready. Release only the
+exceptional barrier, preserve its generation floor, keep unresolved named-file diagnostics, and retain separate exact cleanup ACKs.
+The single integrated kernel lifetime/lock/retirement review remains required before first revised VM boot; this proposal requests a
+product-security design review of authority transport and shared commit integration, not a per-revision kernel review.
+The [Luna design review](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md) is READY WITH TWO REQUIRED CONTRACT
+CORRECTIONS for non-live implementation: source ID/absence revalidation and consistent ordinal filename bucket resolution, specified
+above. Full pipeline integration, the kernel lifetime review and protected runtime gates still precede live admission. No revised boot has occurred.
