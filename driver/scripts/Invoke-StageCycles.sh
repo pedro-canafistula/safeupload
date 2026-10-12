@@ -473,6 +473,21 @@ print('\n'.join(out))
 sys.exit(0 if all(' PASS ' in l or ' INFO ' in l for l in out) else 1)
 PY
 verdict_status=$?
+if [ "$verdict_status" -eq 0 ] && [ "$alive" = yes ]; then
+    # Check status recovery after the original idle/memory observations. Reuse
+    # the bounded readiness reader; do not hide transient query warnings or
+    # accept an earlier Ready receipt as proof of current coverage.
+    phase=final-readiness
+    remote <<'PS' | tee "$ev/$tag-post-idle-ready.txt"
+& 'C:\Users\vika\Documents\t4-agent-readiness.ps1'
+PS
+    if ! grep -qx 'READY=True' "$ev/$tag-post-idle-ready.txt"; then
+        stop_reason=admission-not-ready-after-idle
+        echo 'T4AdmissionRecovered FAIL current coverage did not return to Ready after idle' | tee -a "$ev/$tag-verdict.txt"
+        exit 26
+    fi
+    echo 'T4AdmissionRecovered PASS current coverage returned to Ready after idle' | tee -a "$ev/$tag-verdict.txt"
+fi
 if [ "$memory_enabled" = yes ] && [ "$alive" = yes ]; then
     phase=memory-teardown
     remote <<'PS' | tee "$ev/$tag-memory-teardown.txt"

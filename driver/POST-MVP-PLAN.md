@@ -176,7 +176,8 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
     and Verifier allocations to zero; separate restoration passes ([result and raw evidence](evidence/2026-10-12/t4-memory-attribution-result.md)).
   - [ ] Establish bounded retention while loaded: stream contexts account for much of SUfl; the bounded registry sample has live
     holders, no retired entries. Unload release is not a loaded-memory bound. No new reclamation or relaxed gate is justified;
-    clean short/10k qualification and recurring coverage-query warnings remain open. Diagnostic overhead excludes this run from qualification.
+    clean short/10k qualification remains open. [Coverage-retry source and a final Ready check](evidence/2026-10-12/t4-coverage-retry-analysis.md)
+    are recorded; runtime availability remains open. Diagnostic overhead excludes the prior run from qualification.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
 - [ ] Pass the complete short and 10k rows. Last 10k: 8,740/10,000, four stages left;
