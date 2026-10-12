@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 
 namespace SafeUpload.Agent.App.ClipboardWatch;
@@ -66,6 +67,12 @@ public sealed class ClipboardMonitor : IDisposable
 
     private long _sequence;
     private CurrentCopy? _current;
+
+    /// <summary>
+    /// Se o texto pode ir ao serviço. Com o canal desligado, o texto não sai
+    /// deste processo: a porta pergunta antes (<c>state</c>, sem texto).
+    /// </summary>
+    private readonly ClipboardChannelGate _gate = new();
     private (string CopyId, string Destination)? _lastProbe;
 
     /// <summary>A cópia em vigor, como o serviço a classificou.</summary>
@@ -160,6 +167,28 @@ public sealed class ClipboardMonitor : IDisposable
             return;
         }
 
+        // Sem saber que o canal está ligado, pergunta antes de ler e mandar o
+        // texto. Desligado ou sem resposta: o clipboard fica limpo e o texto
+        // não sai daqui.
+        if (_gate.MustAskFirst)
+        {
+            ClipboardResponse? state = await _client.SendAsync(
+                ClipboardRequest.State(),
+                ClipboardProtocol.ClassifyTimeout);
+
+            if (sequence != Interlocked.Read(ref _sequence))
+            {
+                return;
+            }
+
+            if (!_gate.OnStateResponse(state))
+            {
+                _current = null;
+                _lastProbe = null;
+                return;
+            }
+        }
+
         string? text = await ReadTextAsync();
 
         // Outra cópia começou enquanto esta esperava. A mais nova vale.
@@ -179,6 +208,10 @@ public sealed class ClipboardMonitor : IDisposable
         ClipboardResponse? response = await _client.SendAsync(
             ClipboardRequest.Classify(text, source),
             ClipboardProtocol.ClassifyTimeout);
+
+        // A resposta também diz se o canal continua ligado; desligado, a próxima
+        // cópia volta a perguntar antes de mandar texto.
+        _gate.OnClassifyResponse(response);
 
         if (sequence != Interlocked.Read(ref _sequence))
         {

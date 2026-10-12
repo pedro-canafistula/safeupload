@@ -67,8 +67,18 @@ public sealed record Policy(
     /// <summary>
     /// O bloco de clipboard em vigor. Uma política sem o bloco vale como canal
     /// desligado, para que um arquivo antigo continue carregando igual.
+    ///
+    /// Com <see cref="AuditOnly"/> ligado, <c>Block</c> vale como <c>Audit</c>:
+    /// a política inteira em observação não pode ter um canal que ainda nega,
+    /// e os canais de arquivo e web já seguem essa regra. <c>Off</c> e
+    /// <c>Audit</c> não mudam.
     /// </summary>
-    public ClipboardPolicy EffectiveClipboard => Clipboard ?? ClipboardPolicy.Disabled;
+    public ClipboardPolicy EffectiveClipboard =>
+        Clipboard is null
+            ? ClipboardPolicy.Disabled
+            : AuditOnly && Clipboard.Mode == ClipboardMode.Block
+                ? Clipboard with { Mode = ClipboardMode.Audit }
+                : Clipboard;
 
     /// <summary>Limite da RN-013 convertido para bytes.</summary>
     public long MaxFileSizeBytes => (long)MaxFileSizeMb * 1024 * 1024;
@@ -104,7 +114,10 @@ public sealed record Policy(
             throw new InvalidPolicyException("inspectionTimeoutSeconds precisa ser maior que zero.");
         }
 
-        EffectiveClipboard.EnsureValid();
+        // Valida o bloco como foi configurado, e não o efetivo: um Block sem
+        // destino de saída é erro de configuração mesmo com auditOnly ligado,
+        // porque deixaria de ser auditoria no dia em que auditOnly fosse desligado.
+        (Clipboard ?? ClipboardPolicy.Disabled).EnsureValid();
     }
 
     /// <summary>

@@ -8,7 +8,7 @@ namespace SafeUpload.Agent.Core.Contracts;
 /// <summary>
 /// Pedido do App ao serviço, numa linha NDJSON.
 ///
-/// <para>Duas perguntas pelo mesmo canal, distinguidas por <see cref="Type"/>:</para>
+/// <para>Três perguntas pelo mesmo canal, distinguidas por <see cref="Type"/>:</para>
 /// <list type="bullet">
 /// <item><c>classify</c>, no Ctrl+C: "este texto suja o clipboard?". Leva o
 /// texto, o tamanho real e quem copiou.</item>
@@ -16,6 +16,9 @@ namespace SafeUpload.Agent.Core.Contracts;
 /// só o <see cref="CopyId"/> devolvido na classificação e o processo de
 /// destino. O texto não viaja de novo: quem guarda o estado da cópia é o
 /// serviço.</item>
+/// <item><c>state</c>, antes de mandar texto: "o canal está ligado?". Não leva
+/// nada. Existe para o aplicativo não mandar o texto copiado a um serviço com o
+/// canal desligado, onde ele seria só descartado.</item>
 /// </list>
 ///
 /// <para>Um record só, e não dois, porque o leitor do pipe precisa decidir o
@@ -48,6 +51,9 @@ public sealed record ClipboardRequest(
     /// <summary>Monta um pedido de colagem.</summary>
     public static ClipboardRequest Paste(string copyId, string? destinationProcess) =>
         new(ClipboardProtocol.PasteType, CopyId: copyId, DestinationProcess: destinationProcess);
+
+    /// <summary>Monta a pergunta "o canal está ligado?". Não carrega texto nenhum.</summary>
+    public static ClipboardRequest State() => new(ClipboardProtocol.StateType);
 }
 
 /// <summary>
@@ -56,7 +62,12 @@ public sealed record ClipboardRequest(
 /// <para>Para <c>classify</c>: <see cref="CopyId"/>, <see cref="Dirty"/>,
 /// <see cref="Categories"/> e <see cref="Findings"/> (já mascarados). Para
 /// <c>paste</c>: <see cref="Verdict"/> e, quando houve registro,
-/// <see cref="EventId"/>.</para>
+/// <see cref="EventId"/>. Para <c>state</c> e <c>classify</c>:
+/// <see cref="Enabled"/>.</para>
+///
+/// <para><see cref="Enabled"/> é opcional e fica fora da linha quando é nulo.
+/// Um serviço antigo, que não o envia, é tratado pelo aplicativo como canal
+/// ligado: é o comportamento que existia antes do campo.</para>
 ///
 /// <para>Nenhum campo carrega o texto copiado (RN-006).</para>
 /// </summary>
@@ -67,7 +78,8 @@ public sealed record ClipboardResponse(
     [property: JsonPropertyName("categories")] IReadOnlyList<Category>? Categories = null,
     [property: JsonPropertyName("findings")] IReadOnlyList<string>? Findings = null,
     [property: JsonPropertyName("verdict")] ClipboardPasteVerdict Verdict = ClipboardPasteVerdict.Allow,
-    [property: JsonPropertyName("eventId")] string? EventId = null);
+    [property: JsonPropertyName("eventId")] string? EventId = null,
+    [property: JsonPropertyName("enabled")] bool? Enabled = null);
 
 /// <summary>
 /// Formato do canal de clipboard: NDJSON sobre named pipe, como os outros dois.
@@ -91,6 +103,9 @@ public static class ClipboardProtocol
 
     /// <summary>Tipo do pedido feito no Ctrl+V.</summary>
     public const string PasteType = "paste";
+
+    /// <summary>Tipo da pergunta "o canal está ligado?".</summary>
+    public const string StateType = "state";
 
     /// <summary>
     /// Teto de caracteres de texto que o protocolo transporta.
@@ -184,6 +199,7 @@ public static class ClipboardProtocol
                               request.TextLength >= request.Text.Length => request,
             PasteType when !string.IsNullOrWhiteSpace(request.CopyId) &&
                            request.CopyId.Length <= 64 => request,
+            StateType => request,
             _ => null
         };
     }
@@ -202,7 +218,7 @@ public static class ClipboardProtocol
         try
         {
             var response = JsonSerializer.Deserialize<ClipboardResponse>(line, JsonOptions);
-            return response is not null && response.Type is ClassifyType or PasteType ? response : null;
+            return response is not null && response.Type is ClassifyType or PasteType or StateType ? response : null;
         }
         catch (JsonException)
         {

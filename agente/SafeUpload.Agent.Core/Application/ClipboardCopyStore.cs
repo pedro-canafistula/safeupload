@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace SafeUpload.Agent.Service.Clipboard;
+namespace SafeUpload.Agent.Core.Application;
 
 /// <summary>
 /// A cópia em vigor: o que o serviço precisa lembrar para decidir uma colagem.

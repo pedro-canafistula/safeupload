@@ -23,7 +23,7 @@ resto do agente.
 
 | Pergunta | Decisão | Onde está no código |
 |---|---|---|
-| Suja só pelo conteúdo ou também por processo contaminado no driver? | **Só pelo conteúdo.** Usar a contaminação de processo do driver fica como evolução, em aberto com o Victor. | `ClipboardRules.Classify` |
+| Suja só pelo conteúdo ou também por processo contaminado no driver? | **Só pelo conteúdo.** Usar a contaminação de processo do driver ficou como evolução, em aberto com o Victor. **Atualização de 12/10/2026: essa evolução não vai existir.** O plano pós-MVP do driver registra as decisões do dono *no process taint* (em vigor) e *Reads are never refused* (T7, de 08/10/2026), em `driver/POST-MVP-PLAN.md`. | `ClipboardRules.Classify` |
 | Texto grande demais para varrer suja ou fica limpo? | **Suja** (`oversizedTextIsDirty = true` por padrão). Segue a regra do driver para origem: o que não foi olhado marca. O contrário abriria o furo de copiar um texto grande com o CPF no fim. Configurável na política. | `ClipboardPolicy.OversizedTextIsDirty`, `ClipboardCopyReason.TextTooLarge` |
 | A lista de saída é de bloqueio ou de permissão? | **De bloqueio.** O que está em `egressDestinations` é saída; o que não está é aplicativo local. | `ClipboardPolicy.IsEgressDestination` |
 
@@ -106,8 +106,13 @@ Testes xUnit, 243 passando no agente (os já existentes e os novos):
 
 ## Pontos em aberto
 
-| Ponto | Com quem |
+| Ponto | Situação | Com quem |
+|---|---|---|
+| O backend Spring reconhece a chave `clipboard` da política? | **Conferido em 12/10/2026: não reconhece.** Nem o backend nem o front do painel mencionam `clipboard`, e a política que o backend entrega ao agente (`AgentContracts.Policy`) não tem o bloco. No modo painel, que é o padrão do `appsettings.json`, o canal fica **sempre desligado**, sem erro. | Time do painel |
+| Coluna de canal e `fk_id_objeto` nulo na tabela `eventos`, porque uma colagem não tem arquivo | **Conferido em 12/10/2026:** o backend não tem nenhum campo de canal; guarda cada evento num `ReceivedEvent` genérico (`eventKey`, `kind`, `occurredAtUtc`, `payload`). O canal `Web` da inspeção TLS tem o mesmo problema (PR #28), então é um pedido só, dos dois canais. | Time do painel, com o Pedro |
+
+### Resolvidos
+
+| Ponto | Como foi resolvido |
 |---|---|
-| Usar a contaminação de processo do driver como fonte de "sujo" (exige mensagem nova no protocolo do kernel) | Victor |
-| O backend Spring reconhece a chave `clipboard` da política? Se não reconhecer, o canal fica desligado, sem erro | Time do backend |
-| Coluna de canal e `fk_id_objeto` nulo na tabela `eventos`, porque uma colagem não tem arquivo | Time do banco e do painel |
+| Usar a contaminação de processo do driver como fonte de "sujo" (exigiria mensagem nova no protocolo do kernel) | **Encerrado em 12/10/2026, pela negativa.** O driver não terá contaminação de processo nem recusa de leitura, por decisão do dono (`driver/POST-MVP-PLAN.md`, T7). A detecção do clipboard continua só por conteúdo. |

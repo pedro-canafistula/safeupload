@@ -11,7 +11,7 @@ namespace SafeUpload.Agent.Tests;
 /// cópia, mede e nunca interfere. Cada teste aqui é uma linha da entrega da
 /// fase.
 /// </summary>
-public class ClipboardServiceTests
+public class ClipboardInspectionServiceTests
 {
     private const string CpfValido = "529.982.247-25";
     private const string CpfSemMascara = "52998224725";
@@ -64,27 +64,41 @@ public class ClipboardServiceTests
             Lines.Add(formatter(state, exception) + (exception is null ? string.Empty : " | " + exception));
     }
 
+    /// <summary>
+    /// O motor e o que a ponte no serviço faria com ele: cada pedido passa pelo
+    /// motor, e a observação é escrita com o mesmo <see cref="ClipboardLog"/>
+    /// do serviço. Assim o que os testes leem em <see cref="Logger"/> é o que
+    /// iria para o log de verdade.
+    /// </summary>
     private sealed class Harness
     {
         public Harness(Policy? policy)
         {
-            Logger = new RecordingLogger<ClipboardService>();
-            Service = new ClipboardService(
+            Service = new ClipboardInspectionService(
                 new FixedPolicyStore(policy),
                 new ClipboardCopyStore(),
-                new ClipboardMetrics(),
-                Logger);
+                new ClipboardMetrics());
         }
 
-        public RecordingLogger<ClipboardService> Logger { get; }
+        public RecordingLogger<ClipboardInspectionService> Logger { get; } = new();
 
-        public ClipboardService Service { get; }
+        public ClipboardInspectionService Service { get; }
 
         public Task<ClipboardResponse> Copiar(string texto, string? origem = "notepad", uint? sessao = 1) =>
-            Service.HandleAsync(ClipboardRequest.Classify(texto, origem), sessao, CancellationToken.None);
+            Pedir(ClipboardRequest.Classify(texto, origem), sessao);
 
         public Task<ClipboardResponse> Foco(string copyId, string? destino, uint? sessao = 1) =>
-            Service.HandleAsync(ClipboardRequest.Paste(copyId, destino), sessao, CancellationToken.None);
+            Pedir(ClipboardRequest.Paste(copyId, destino), sessao);
+
+        public Task<ClipboardResponse> Estado(uint? sessao = 1) =>
+            Pedir(ClipboardRequest.State(), sessao);
+
+        public async Task<ClipboardResponse> Pedir(ClipboardRequest pedido, uint? sessao)
+        {
+            var resultado = await Service.HandleAsync(pedido, sessao, CancellationToken.None);
+            ClipboardLog.Write(Logger, resultado.Observation);
+            return resultado.Response;
+        }
     }
 
     // ---------------------------------------------------------- classificação
@@ -178,7 +192,7 @@ public class ClipboardServiceTests
             TextLength: 500_000,
             SourceProcess: "notepad");
 
-        var resposta = await h.Service.HandleAsync(pedido, 1, CancellationToken.None);
+        var resposta = await h.Pedir(pedido, 1);
 
         Assert.True(resposta.Dirty);
     }
@@ -309,5 +323,108 @@ public class ClipboardServiceTests
         // Fase 1 que o ignora. A conta é a mesma nos dois modos.
         Assert.Equal(ClipboardPasteVerdict.Block, foco.Verdict);
         Assert.Equal(1, h.Service.Metrics.FocusOnEgressWhileDirty);
+    }
+
+    // ------------------------------------------------- estado do canal (state)
+
+    [Theory]
+    [InlineData(ClipboardMode.Audit, true)]
+    [InlineData(ClipboardMode.Block, true)]
+    [InlineData(ClipboardMode.Off, false)]
+    public async Task Pergunta_de_estado_diz_se_o_canal_esta_ligado(ClipboardMode mode, bool ligado)
+    {
+        var resposta = await new Harness(Politica(mode)).Estado();
+
+        Assert.Equal(ClipboardProtocol.StateType, resposta.Type);
+        Assert.Equal(ligado, resposta.Enabled);
+    }
+
+    [Fact]
+    public async Task Pergunta_de_estado_nao_mexe_na_copia_nem_nos_contadores()
+    {
+        var h = new Harness(Politica(ClipboardMode.Audit));
+        var suja = await h.Copiar("CPF " + CpfValido);
+
+        await h.Estado();
+        var foco = await h.Foco(suja.CopyId!, "chrome");
+
+        Assert.Equal(ClipboardPasteVerdict.AuditOnly, foco.Verdict);
+        Assert.Equal(1, h.Service.Metrics.Copies);
+    }
+
+    [Theory]
+    [InlineData(ClipboardMode.Audit, true)]
+    [InlineData(ClipboardMode.Off, false)]
+    public async Task Classificacao_diz_se_o_canal_esta_ligado(ClipboardMode mode, bool ligado)
+    {
+        var resposta = await new Harness(Politica(mode)).Copiar("qualquer coisa");
+
+        Assert.Equal(ligado, resposta.Enabled);
+    }
+
+    [Fact]
+    public async Task Politica_que_nao_carrega_diz_canal_desligado_e_registra_so_o_tipo_do_erro()
+    {
+        var h = new Harness(policy: null);
+
+        var estado = await h.Estado();
+        var copia = await h.Copiar("CPF " + CpfValido);
+
+        Assert.False(estado.Enabled);
+        Assert.False(copia.Enabled);
+        Assert.False(copia.Dirty);
+        Assert.Contains(h.Logger.Lines, l => l.Contains(nameof(InvalidPolicyException), StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Logger.Lines, l => l.Contains("política de teste inválida", StringComparison.Ordinal));
+    }
+
+    // --------------------------------------------- auditOnly global da política
+
+    [Fact]
+    public async Task Com_auditOnly_ligado_o_bloqueio_vira_auditoria()
+    {
+        var h = new Harness(Politica(ClipboardMode.Block) with { AuditOnly = true });
+        var suja = await h.Copiar("CPF " + CpfValido, origem: "notepad");
+
+        var foco = await h.Foco(suja.CopyId!, "WhatsApp");
+
+        Assert.Equal(ClipboardPasteVerdict.AuditOnly, foco.Verdict);
+    }
+
+    [Fact]
+    public async Task Sem_auditOnly_o_bloqueio_continua_bloqueio()
+    {
+        var h = new Harness(Politica(ClipboardMode.Block) with { AuditOnly = false });
+        var suja = await h.Copiar("CPF " + CpfValido, origem: "notepad");
+
+        var foco = await h.Foco(suja.CopyId!, "WhatsApp");
+
+        Assert.Equal(ClipboardPasteVerdict.Block, foco.Verdict);
+    }
+
+    [Theory]
+    [InlineData(ClipboardMode.Off)]
+    [InlineData(ClipboardMode.Audit)]
+    public void AuditOnly_nao_muda_um_canal_desligado_nem_em_auditoria(ClipboardMode mode)
+    {
+        var politica = Politica(mode) with { AuditOnly = true };
+
+        Assert.Equal(mode, politica.EffectiveClipboard.Mode);
+    }
+
+    [Fact]
+    public void Block_sem_destino_de_saida_continua_recusado_mesmo_com_auditOnly()
+    {
+        var politica = Politica(ClipboardMode.Block) with
+        {
+            AuditOnly = true,
+            Clipboard = new ClipboardPolicy(
+                ClipboardMode.Block,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                1000,
+                OversizedTextIsDirty: true)
+        };
+
+        Assert.Throws<InvalidPolicyException>(politica.EnsureValid);
     }
 }

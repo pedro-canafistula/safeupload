@@ -72,17 +72,16 @@ public class ClipboardPipeTests
         public Server(string? pipeName = null, TimeSpan? retryDelay = null)
         {
             PipeName = pipeName ?? "SafeUpload.Test.Clipboard." + Guid.NewGuid().ToString("N");
-            Service = new ClipboardService(
+            Service = new ClipboardInspectionService(
                 new FixedPolicyStore(Politica()),
                 new ClipboardCopyStore(),
-                new ClipboardMetrics(),
-                NullLogger<ClipboardService>.Instance);
+                new ClipboardMetrics());
             _server = new ClipboardPipeServer(Service, Log, PipeName, retryDelay);
         }
 
         public string PipeName { get; }
 
-        public ClipboardService Service { get; }
+        public ClipboardInspectionService Service { get; }
 
         public ErrorLog<ClipboardPipeServer> Log { get; } = new();
 
@@ -184,6 +183,22 @@ public class ClipboardPipeTests
 
         Assert.NotNull(resposta);
         Assert.True(resposta.Dirty);
+    }
+
+    [Fact]
+    public async Task Pergunta_de_estado_vai_e_volta_pelo_pipe_sem_texto()
+    {
+        await using var server = new Server();
+        await server.StartAsync();
+
+        var linha = ClipboardProtocol.Serialize(ClipboardRequest.State());
+        var resposta = await server.PerguntarAsync(linha + "\n");
+
+        Assert.DoesNotContain("\"text\"", linha, StringComparison.Ordinal);
+        Assert.NotNull(resposta);
+        Assert.Equal(ClipboardProtocol.StateType, resposta.Type);
+        Assert.True(resposta.Enabled);
+        Assert.Equal(0, server.Service.Metrics.Copies);
     }
 
     [Fact]
