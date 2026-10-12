@@ -105,7 +105,13 @@ internal sealed record StagedDestinationNameObservation(StagedDestinationIdentit
 internal sealed record StagedDestinationCommitIntent(Guid OperationId, StagedDestinationMutation Mutation,
     Guid TransferId, long Generation, StagedStageIdentity? ExpectedPublicIdentity,
     StagedStageIdentity? TemporaryIdentity = null, long? Length = null, string? Sha256Hex = null);
-internal sealed record StagedDestinationMutationResult(StagedDestinationCommitIntent Intent, bool Succeeded);
+internal sealed record StagedDestinationMutationResult(StagedDestinationCommitIntent Intent, bool Succeeded,
+    Guid? PublicationCreateNonce = null);
+// Optional exact native receipt, not another persisted protocol state. Base64
+// retains the complete immutable wire row without exposing mutable arrays.
+internal sealed record StagedPublicationNativeReceipt(Guid DriverInstanceId, ulong ConnectionEpoch,
+    ulong Revision, uint OsBootSequence, string FactsBase64, ulong? AcknowledgedRevision = null,
+    ulong? AcknowledgedConnectionEpoch = null);
 // Immutable original-operation facts. These are durable replay evidence;
 // they confer no handle, token, DELETE right or permission to repeat I/O.
 internal sealed record StagedPublicRelayIntent(Guid OpenTransferId, Guid OpenNonce, Guid OpenOperationId,
@@ -120,7 +126,8 @@ internal sealed record StagedDestinationHead(StagedDestinationIdentity Destinati
     long LatestPublished, StagedStageIdentity? PublishedIdentity, long CommittedDelete,
     StagedDestinationCommitIntent? PendingCommit, StagedPublicDeleteRecord[] Deletes,
     StagedDestinationMutationResult? LastMutationResult = null,
-    StagedPublicRelayReceipt[]? PublicRelayReceipts = null);
+    StagedPublicRelayReceipt[]? PublicRelayReceipts = null,
+    StagedPublicationNativeReceipt[]? PublicationNativeReceipts = null);
 
 public sealed partial class StagedTransferJournal
 {
@@ -755,6 +762,10 @@ public sealed partial class StagedTransferJournal
         try
         {
             var head = await RequireDestinationHeadCoreAsync(turn.Destination, CancellationToken.None).ConfigureAwait(false);
+            if (head.LastMutationResult?.PublicationCreateNonce is not null || (head.PublicationNativeReceipts?.Length ?? 0) != 0 ||
+                File.Exists(ManifestPath(transferId)) &&
+                    (await ReadCoreAsync(transferId, CancellationToken.None).ConfigureAwait(false)).BoundAllocation is not null)
+                throw new IOException("Bound publication requires the exact native receipt, not a Boolean result.");
             if (IsResultReplay(head, operationId, StagedDestinationMutation.Publication, transferId,
                     exactRenamedIdentity, renameCommitted)) return;
             var intent = RequirePendingCommit(head, operationId, StagedDestinationMutation.Publication, transferId);
@@ -1100,5 +1111,6 @@ public sealed partial class StagedTransferJournal
             }
         }
         ValidatePublicRelayReceipts(head);
+        ValidatePublicationNativeReceipts(head);
     }
 }

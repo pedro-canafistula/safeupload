@@ -262,6 +262,25 @@ public static unsafe class BoundPublicationV26
         return new(actualDriver, actualEpoch, actualRevision, boot, startIndex, complete, rows);
     }
 
+    // Durable service receipts store exactly the validated native row, not a
+    // lossy Boolean projection. This parser confers no execution authority.
+    public static BoundPublicationReplayRow DecodeFactRow(ReadOnlySpan<byte> bytes, Guid driver, ulong epoch, uint boot)
+    {
+        if (bytes.Length != RowBytes || driver == Guid.Empty || epoch == 0)
+            throw new IOException("Invalid durable publication facts scope/size.");
+        return DecodeRow(bytes, driver, epoch, boot);
+    }
+
+    public static byte[] EncodeFactRow(BoundPublicationReplay replay, BoundPublicationReplayRow row)
+    {
+        if (replay.Revision == 0 || !replay.Records.Any(candidate => ReferenceEquals(candidate, row)))
+            throw new ArgumentException("Publication facts must belong to one retained complete replay.");
+        byte[] bytes = new byte[RowBytes]; var facts = row.Facts;
+        MemoryMarshal.Write(bytes, in facts);
+        _ = DecodeFactRow(bytes, replay.DriverInstanceId, replay.ConnectionEpoch, replay.OsBootSequence);
+        return bytes;
+    }
+
     private static BoundPublicationReplayRow DecodeRow(ReadOnlySpan<byte> bytes, Guid driver, ulong epoch, uint boot)
     {
         var r = MemoryMarshal.Read<BoundPublicationFactsRowV26>(bytes); var f = r.Flags;
