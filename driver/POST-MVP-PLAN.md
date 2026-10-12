@@ -183,7 +183,11 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
     the stop reason. [PowerShell 5.1 gate](evidence/2026-10-11/harness-windows-gate-t4-stop-evidence-1011-a1.txt): all 18 self-checks
     pass; 27 new controls include two real native actor failures and orderly stop. Revised protected runtime remains pending.
   - [x] Owner approved the focused recovery fix on 2026-10-12; [implementation design](T4-STAGE-LIFETIME.md#11-journal-failure-recovery--2026-10-12).
-  - [ ] Qualify the recovery candidate and failure-injection tests before a protected retry. No retry launched.
+  - [x] Recovery implemented through `0cd58e79`; [Windows agent matrix](evidence/2026-10-12/exact-agent-matrix-t4-journal-recovery4-summary.txt):
+    normal Debug/Release 895 tests each, feature Debug/Release 1,245 each, zero skipped, builds at 0 warnings/errors. Includes
+    publication/hand-back fault injection and rejection of stale native-success receipts.
+  - [ ] Qualify the isolated `fix/t4-journal-recovery-v18` backport (`0cfdc7c6`) for the existing T4 driver; the M2 agent requires
+    newer T5 startup negotiation. Then run short Verifier, 10,000 cycles and separate restoration. No protected retry launched.
 - [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
 
 The preceding `m2t4boot10k9` stopped after 4,714/10,000 without a final result; it is not a pass. Its run disk was deleted and base

@@ -280,8 +280,13 @@ received a Luna 6 max security review in this conversation before implementation
 - Recovery runs single-flight, with per-transfer persistence retry delays of 250 ms up to 8 s, using a monotonic clock. No retry delay
   holds the journal gate. Other transfers continue. The current journal scan remains; indexing old history is a separate optimization.
 
-Qualification pending: deliberate failures immediately before/after manifest replacement; native publication followed by failed
-Released persistence; unchanged/changed public bytes; lost receipt at restart; live/restarted hand-back recovery without duplicate
-copies; exact-version rejection; unchanged agent matrix, short Verifier run, 10,000 cycles, raw-observer regressions and independent
-restoration. The older restart test now requires a held reservation, preserving its byte/non-overwrite assertions and adding refusal
+The [Windows agent matrix](evidence/2026-10-12/exact-agent-matrix-t4-journal-recovery4-summary.txt) at `0cd58e79` passes normal
+Debug/Release (895 tests each) and feature Debug/Release (1,245 each), with no skipped tests and all agent/app/test builds at 0/0.
+It includes 15 new cases: deliberate failures before/after manifest replacement; native publication followed by failed Released
+persistence; unchanged/changed public bytes; lost receipt at restart; live/restarted hand-back recovery without duplicate copies;
+and exact-version rejection after a prepared rename. These are Windows service tests, not protected VM qualification.
+
+The protocol-18 backport on `fix/t4-journal-recovery-v18` preserves the existing T4 driver pairing; it does not enable unfinished
+T5 capabilities. Qualification still requires its agent matrix, short Verifier run, 10,000 cycles, raw-observer regressions and
+independent restoration. The older restart test now requires a held reservation, preserving its byte/non-overwrite assertions and adding refusal
 of a later allocation. This records the approved failure-policy change, not a relaxation of any product byte assertion.
