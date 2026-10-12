@@ -1,6 +1,7 @@
 #include "Filter.h"
 #include "Stage.h"
 #include "StageNativeRecords.h"
+#include "StageBoundPublication.h"
 
 static NTSTATUS StageSendVersionRequest(_In_ UINT32 Operation, _In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName);
 static NTSTATUS StageAllocateInternal(

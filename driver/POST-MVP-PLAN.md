@@ -145,8 +145,9 @@ Keep the broad application/metadata matrix in T8; all existing assertions and th
 The [latest progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md), covering `8255f350` and the `d5779d5a` gates,
 confirms the architecture and scope but finds delivery still fragmented. Original ordinary dispositions and known-cleanup ACK/retirement
 are connected; no revised protected T5 pair has run. Finish checked writer authority, shared publication/deletes and automatic recovery
-as one delivery checkpoint. The [publication contract](T5-BOUND-PUBLICATION.md) needs three review corrections before transport code;
-the seeded-content hand-back owner choice remains open. Unprotected native controls do not qualify this pair.
+as one delivery checkpoint. The [publication contract](T5-BOUND-PUBLICATION.md) now has its corrected Luna design review;
+transport, kernel object integration and recovery remain unfinished. The seeded-content hand-back owner choice remains open.
+Unprotected native controls do not qualify this pair.
 
 ### T4. Remove the 128-saves-per-boot ceiling
 
