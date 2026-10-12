@@ -1,0 +1,13 @@
+﻿LABEL=t5-public-relay2
+ARCHIVE_SHA256=72A483573B773F9422024103C761E935B74702FD1C231355A8F447958392FE7D
+SOURCE_COMMIT=d5779d5a57ddc776738c6b7772a6d935e5560b2b
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-12T10:50:20.2657317Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=5A6C68111DA8B5A8A3875937FF6AFB5125E22D8F4D753E53FFC9E53ACE527981
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=53D1D862753C74DF328226805ACF56E9FF957612EB3A0894419046A67CC3F2BA
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=85DF3C8026F30B7894A8318B8BD8B9B7B082D063F4F50A6F6F4738D01BFF7409
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=9F299053B7D25EA39FF2967F63BDB5F409C8DAB2D04BB6E3E56C8EC4891CBE95
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=81F947366B1127C4B650C24290D25B213449F5BE12FA85A08C64F5986C1F7026
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=B91FDE5E0EF88A03E2D70393100FC2395C1A71EBB3F94D50772DF1FB1F5F81B1
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=0C435CAA4CF3FBA4497C35F9BCE09A906B562B01BE0C888DB7FBC93655E1F207
+sign : exit=0 unsigned_sha256=53D1D862753C74DF328226805ACF56E9FF957612EB3A0894419046A67CC3F2BA signing_copy_sha256=53D1D862753C74DF328226805ACF56E9FF957612EB3A0894419046A67CC3F2BA unsigned_unchanged=True store=LocalMachine output_sha256=09290A71D8DF4C0ADC02E268AE3C6FBE305690311AB88713931DF066F3AB11F9 signed_sha256=09290A71D8DF4C0ADC02E268AE3C6FBE305690311AB88713931DF066F3AB11F9 signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38

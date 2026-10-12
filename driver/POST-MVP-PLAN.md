@@ -236,7 +236,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [static gates](evidence/2026-10-11/t5-native-replay-static-gates.md). Authenticated read-only replay is built/tested (`aa1a2a46`);
     durable destination-head discovery exists (`e97585cb`). Gated original-CREATE producer/typed lifecycle and terminal receipt removal
     are connected (`b6e3d1b6`–`dcf4b276`); [26 lifecycle controls pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md).
-    Ordinary disposition, startup/directory-event activation and integrated pre-boot kernel review remain pending; capability stays off.
+    Ordinary native disposition is connected at `d5779d5a`; combined backends, startup/directory-event activation and pre-boot review remain pending; capability stays off.
   - [x] [Startup epoch security design](evidence/2026-10-11/t5-native-startup-epoch-design-review-luna6.md) reviewed with corrections:
     authenticated boot metadata, asynchronous private preflight and visible readiness gate implemented (`9c1f9737`);
     [agent gates pass](evidence/2026-10-11/t5-native-startup-static-gates.md). Anchored native hold release/runtime remain open.
@@ -248,11 +248,11 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     post-allocation authorization and live replay identity; see the [current review](evidence/2026-10-12/m2-progress-direction-review.md).
     Replay identity is fixed (`dbe02d04`); [kernel seed/read-authority corrections and the owner hand-back choice](T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes) remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
-    sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
+    sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)
-    design is READY WITH CORRECTIONS. Native FALSE no-op journaling/head capture is built/tested (`dcf4b276`); the relay remains unconnected.
-    Ordinary native-open producer/replay/service binding is connected (`8ef80fcc`); [all static gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md).
-    Disposition phases remain denied; no protected boot qualification exists. The integrated lifetime review remains required.
+    design is READY WITH CORRECTIONS. Original native-open/disposition producer, typed permit/result and known-cleanup ACK/retirement
+    are connected (`10a8ea4e`, `d5779d5a`); [all static gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md), including 22 ordinary controls.
+    The capability stays off; owner tombstones, combined backends, startup/events and protected qualification remain open. Pre-boot lifetime review is required.
     [Reviewed integration contract](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md), V23 transport and
     Windows filename resolver are implemented (`827b3f41`, `5f294008`) with [passing static gates](evidence/2026-10-12/t5-bound-allocation-static-gates.md).
   - [x] Service V23 dispatch → anchored seeding → bound manifest/head claim and receipt validation connected (`ca5a9cfa`–`be78b958`);
@@ -267,12 +267,12 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: agent `8ef80fcc`, identical kernel subtree to WDK source `450c8d74`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
-**876/876** per normal profile and **1171/1171** per feature profile, every discovered case executed once without skips,
+Latest static gates: matched agent/kernel source `d5779d5a`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
+**880/880** per normal profile and **1183/1183** per feature profile, every discovered case executed once without skips,
 service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-12/t5-bound-service-allocation-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
-V23 allocation and the gated native CREATE/close dispatcher pass these gates. Bound-writer capture, ordinary public disposition,
-shared physical commits, startup activation and resolving directory events remain open; reopened-journal controls are not service-restart qualification.
+V23 allocation, native CREATE/close and ordinary native disposition/known-cleanup dispatch pass these gates. Bound-writer capture,
+combined backends, owner tombstones, shared physical commits, startup and directory events remain open; reopening is not service-restart qualification.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
 [matrix self-checks](evidence/2026-10-11/t5-agent-matrix-runner-selfcheck.txt) pass.
