@@ -2633,7 +2633,7 @@ static NTSTATUS StageAttachCaptureCreateInput(PFLT_CALLBACK_DATA Data, PSTAGE_CR
             if (!RtlValidSecurityDescriptor(supplied)) return STATUS_INVALID_SECURITY_DESCR;
             /* Absolute and self-relative descriptors share this documented
              * header; the descriptor was validated above. No private DDI. */
-            control = ((PSECURITY_DESCRIPTOR_RELATIVE)supplied)->Control;
+            control = ((SECURITY_DESCRIPTOR_RELATIVE *)supplied)->Control;
             bytes = RtlLengthSecurityDescriptor(supplied);
             if (bytes < sizeof(SECURITY_DESCRIPTOR_RELATIVE)) return STATUS_INVALID_SECURITY_DESCR;
             Input->Security = ExAllocatePool2(POOL_FLAG_NON_PAGED, bytes, STAGE_TAG);
