@@ -565,6 +565,21 @@ NTSTATUS SafeUploadStageNativeReadIdentity(GUID *DriverInstanceId, PULONG OsBoot
     return STATUS_SUCCESS;
 }
 
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageNativeReadRevision(PUINT64 Revision)
+{
+    KIRQL irql;
+    NTSTATUS status;
+    *Revision = 0;
+    if (!NativeEnter()) return STATUS_DEVICE_NOT_READY;
+    NativeAcquire(&irql);
+    status = NativeReplayUsable ? STATUS_SUCCESS : STATUS_INTEGER_OVERFLOW;
+    if (NT_SUCCESS(status)) *Revision = NativeRevision;
+    NativeRelease(irql);
+    ExReleaseRundownProtection(&NativeCalls);
+    return status;
+}
+
 static NTSTATUS NativeReadPage(UINT64 ExpectedRevision, ULONG Offset,
     PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Rows, ULONG Capacity, PULONG Count, PUINT64 Revision, PBOOLEAN Complete,
     BOOLEAN Ordinary)

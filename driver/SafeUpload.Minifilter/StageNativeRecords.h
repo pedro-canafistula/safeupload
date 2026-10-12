@@ -121,6 +121,8 @@ NTSTATUS SafeUploadStagePublicOpenReplayControl(_In_opt_ PVOID PortCookie,
     _Out_writes_bytes_(OutputLength) PVOID Output, _In_ ULONG OutputLength, _Out_ PULONG Returned);
 _IRQL_requires_max_(APC_LEVEL)
 NTSTATUS SafeUploadStageNativeReadIdentity(_Out_ GUID *DriverInstanceId, _Out_ PULONG OsBootSequence);
+_IRQL_requires_max_(APC_LEVEL)
+NTSTATUS SafeUploadStageNativeReadRevision(_Out_ PUINT64 Revision);
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeReplayControl(_In_opt_ PVOID PortCookie,
     _In_reads_bytes_(InputLength) PVOID Input, _In_ ULONG InputLength,

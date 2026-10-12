@@ -206,6 +206,7 @@ typedef struct _STAGE_ATTACH_TRANSACTION {
     SECURITY_CLIENT_CONTEXT PublicDeleteSubject;
     BOOLEAN PublicDeleteSubjectValid;
     PSAFEUPLOAD_STAGE_NATIVE_RECORD NativeRecord;
+    SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT NativeSnapshot;
     UINT64 NativeGeneration;
     UINT64 NativePrepareRevision;
     UINT64 NativePrepareAuthority;
@@ -3479,7 +3480,7 @@ static BOOLEAN StageAttachNativeEligible(PFLT_CALLBACK_DATA Data)
 
 static NTSTATUS StageAttachExchangeNative(PSTAGE_ATTACH_TRANSACTION Transaction)
 {
-    SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT snapshot;
+    PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT snapshot = &Transaction->NativeSnapshot;
     SAFEUPLOAD_NATIVE_LIFECYCLE_REPLY reply;
     UINT64 attemptedRevision = 0;
     NTSTATUS status = STATUS_DEVICE_NOT_READY;
@@ -3490,19 +3491,19 @@ static NTSTATUS StageAttachExchangeNative(PSTAGE_ATTACH_TRANSACTION Transaction)
             return STATUS_CANCELLED;
         {
             NTSTATUS readStatus = SafeUploadStageNativeSnapshot(Transaction->NativeRecord,
-                &snapshot, &Transaction->NativePrepareRevision);
+                snapshot, &Transaction->NativePrepareRevision);
             if (!NT_SUCCESS(readStatus)) return readStatus;
         }
-        if (snapshot.Forwarded || snapshot.CreateOutcomeKnown || snapshot.CleanupCoverageLost)
+        if (snapshot->Forwarded || snapshot->CreateOutcomeKnown || snapshot->CleanupCoverageLost)
             return STATUS_INVALID_DEVICE_STATE;
         if (attemptedRevision == Transaction->NativePrepareRevision) return status;
         attemptedRevision = Transaction->NativePrepareRevision;
         if (Transaction->OrdinaryPublicOpen) {
-            status = SafeUploadStagePublicOpenExchange(&snapshot, attemptedRevision, SAFEUPLOAD_PUBLIC_OPEN_PREPARE,
+            status = SafeUploadStagePublicOpenExchange(snapshot, attemptedRevision, SAFEUPLOAD_PUBLIC_OPEN_PREPARE,
                 &Transaction->PublicOpenReceipt, &Transaction->NativePrepareAuthority);
             if (status == STATUS_SUCCESS) { Transaction->NativeGeneration = 0; return status; }
         } else {
-            status = SafeUploadStageNativeExchange(&snapshot, attemptedRevision, SAFEUPLOAD_NATIVE_PREPARE,
+            status = SafeUploadStageNativeExchange(snapshot, attemptedRevision, SAFEUPLOAD_NATIVE_PREPARE,
                 &reply, &Transaction->NativePrepareAuthority);
             if (status == STATUS_SUCCESS) { Transaction->NativeGeneration = reply.JournalGeneration; return status; }
         }
@@ -5915,14 +5916,10 @@ static VOID StageNativeFlushFacts(VOID)
                 (rows[index].JournalGeneration == 0 || rows[index].JournalGeneration == reply.JournalGeneration)) {
                 status = SafeUploadStageNativeAcknowledge(&rows[index].Binding);
                 if (NT_SUCCESS(status)) {
-                    SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT unused;
                     UINT64 afterRevision;
-                    ULONG afterCount;
-                    BOOLEAN afterComplete;
                     /* Confirmation cannot erase the durable receipt unless
                      * authenticated replay proves this exact record is gone. */
-                    status = SafeUploadStageNativeReadPage(0, 0, &unused, 1,
-                        &afterCount, &afterRevision, &afterComplete);
+                    status = SafeUploadStageNativeReadRevision(&afterRevision);
                     if (NT_SUCCESS(status)) (VOID)SafeUploadStageNativeExchange(&rows[index], afterRevision,
                         SAFEUPLOAD_NATIVE_FACTS_CHANGED, &reply, NULL);
                     /* Removal changed pagination; its event restarts the pass. */
