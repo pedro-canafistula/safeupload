@@ -120,6 +120,22 @@ internal static class StagedDestinationFile
                 new Win32Exception(Marshal.GetLastWin32Error()));
     }
 
+    // Capture the object on the held publication handle, never by reopening
+    // its temporary name. The receipt is retained only after rename succeeds.
+    internal static StagedStageIdentity ReadIdentity(SafeFileHandle output)
+    {
+        byte[] id = new byte[24]; // FILE_ID_INFO: volume serial + 128-bit ID
+        if (!GetFileInformationByHandleEx(output, 18, id, (uint)id.Length))
+            throw new IOException("Could not identify the publication object.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        return new(BitConverter.ToUInt64(id, 0), BitConverter.ToUInt64(id, 16), BitConverter.ToUInt64(id, 8));
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandleEx(SafeFileHandle file,
+        int informationClass, byte[] buffer, uint size);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool FlushFileBuffers(SafeFileHandle file);

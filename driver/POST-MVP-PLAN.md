@@ -78,6 +78,12 @@ review, freeze/pin manifests or disposition JSON. The Git commit hash identifies
 T item and have at most two levels. Stop and ask on repeated identical failures, changed VM baselines, or product/taint/cutover/failure-policy
 choices. Every option must explain what users will notice.
 
+**2026-10-12 — T4 recovery.** The owner approves automatic recovery of interrupted bookkeeping: retry only the unfinished
+recording step, never repeat an already-completed public save. Preserve pending hand-back work across journal failures and verify an
+existing returned copy. An uncertain publication keeps its name held and gets a named tray explanation/diagnostic; historical
+unbound Publishing records without an exact native receipt cannot be released from a digest match. Identity/content failures keep
+their terminal handling. Prove deliberate failure cases before the short Verifier gate and another 10,000-cycle run.
+
 **Earlier decisions still in force:**
 
 - Protection starts before applications open protected files for editing; installation may need an initial restart (reconfirmed 2026-10-10).
@@ -135,7 +141,7 @@ M1 passed 69/69 cells on `m1-driver21` (`498f4ed7`) plus agent `4d02039a`, with 
 
 ## M2 — active
 
-**Next delivery checkpoint:** T4 fixes/retry await the pending owner direction after repeated failures. Meanwhile complete the
+**Next delivery checkpoint:** Qualify the owner-approved T4 journal recovery repair, then retry the short/10,000-cycle gates. Complete the
 integrated T5 pair: bound allocation/manifests/seeding, every physical publication/delete through the shared head and permits,
 exact close/startup reconciliation, cleanup acknowledgements and teardown. Group implementation and static checks around that
 integration. After the single pre-boot kernel lifetime review, qualify native deletes in both forced orders and real Notepad
@@ -176,7 +182,8 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
   - [x] Harness stops on the second identical failure, captures private journal records and full-ID stage metadata, and records
     the stop reason. [PowerShell 5.1 gate](evidence/2026-10-11/harness-windows-gate-t4-stop-evidence-1011-a1.txt): all 18 self-checks
     pass; 27 new controls include two real native actor failures and orderly stop. Revised protected runtime remains pending.
-  - [ ] Owner reply before product fixes/retry after repeated identical failures. No retry launched.
+  - [x] Owner approved the focused recovery fix on 2026-10-12; [implementation design](T4-STAGE-LIFETIME.md#11-journal-failure-recovery--2026-10-12).
+  - [ ] Qualify the recovery candidate and failure-injection tests before a protected retry. No retry launched.
 - [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
 
 The preceding `m2t4boot10k9` stopped after 4,714/10,000 without a final result; it is not a pass. Its run disk was deleted and base

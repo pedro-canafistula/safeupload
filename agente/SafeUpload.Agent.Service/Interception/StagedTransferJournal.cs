@@ -21,6 +21,7 @@ public sealed partial class StagedTransferJournal
     private readonly FileSecurity? _fileSecurity;
     private readonly SecurityIdentifier? _owner;
     private readonly string _driverEpochPath;
+    private readonly Action<StagedJournalWritePoint, TransferJournalEntry>? _writeObserver;
 
     // The publish loop (every 250 ms) and every destination-version scan used to open, ACL-check and JSON-parse EVERY
     // historical manifest, so each stage operation cost O(journal age): latency grew ~3 ms per retained record (C04
@@ -177,11 +178,13 @@ public sealed partial class StagedTransferJournal
 
     // Small capacities let tests exercise the actual disk-reading scan path at
     // its bound; production always uses the fixed maximum above.
-    internal StagedTransferJournal(string directory, bool requireProtectedParent, int scanCacheCapacity)
+    internal StagedTransferJournal(string directory, bool requireProtectedParent, int scanCacheCapacity,
+        Action<StagedJournalWritePoint, TransferJournalEntry>? writeObserver = null)
     {
         if (scanCacheCapacity <= 0 || scanCacheCapacity > MaximumScanCacheEntries)
             throw new ArgumentOutOfRangeException(nameof(scanCacheCapacity));
         _scanCacheCapacity = scanCacheCapacity;
+        _writeObserver = writeObserver;
         _directory = Path.GetFullPath(directory);
         _driverEpochPath = Path.Combine(_directory, "driver-epoch.state");
         for (string? path = _directory; path is not null; path = Path.GetDirectoryName(path))
@@ -2772,10 +2775,10 @@ public sealed partial class StagedTransferJournal
     }
 
     /// <summary>
-    /// Resolve a crash after publication started without copying again over
-    /// a destination another process may have changed. An exact digest match
-    /// proves the approved bytes landed; a mismatch retains the stage for
-    /// review. An unreachable destination remains Publishing for a retry.
+    /// Validate unresolved legacy publications at startup. A digest match
+    /// cannot prove this transfer's rename committed. Without an exact native
+    /// receipt, retain Publishing and its destination reservation; the live
+    /// recovery dispatcher reports the hold without publishing again.
     /// </summary>
     public async Task ReconcilePublishingAsync(CancellationToken cancellationToken)
     {
@@ -2788,50 +2791,6 @@ public sealed partial class StagedTransferJournal
             if (entry.BoundAllocation is not null)
                 throw new IOException("Bound publishing recovery requires the anchored head/permit dispatcher.");
 
-            if (!HasMeasuredSeal(entry))
-            {
-                // Legacy manifests with no measured seal may already have
-                // reached the destination before this boot. Never retry a
-                // publication or infer a release from that legacy state.
-                await TransitionAsync(entry.Transfer.TransferId, TransferJournalState.Publishing,
-                    TransferJournalState.Retained, null, cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-
-            bool matches;
-            try
-            {
-                await using var destination = new FileStream(
-                    entry.Transfer.DestinationPath,
-                    FileMode.Open, FileAccess.Read, FileShare.Read,
-                    64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
-                string digest = Convert.ToHexString(
-                    await SHA256.HashDataAsync(destination, cancellationToken).ConfigureAwait(false));
-                matches = string.Equals(digest, entry.Sha256Hex,
-                    StringComparison.OrdinalIgnoreCase);
-            }
-            catch (FileNotFoundException)
-            {
-                matches = false;
-            }
-            catch (DirectoryNotFoundException)
-            {
-                // A USB drive or network share may return later.
-                continue;
-            }
-            catch (IOException)
-            {
-                continue;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                continue;
-            }
-
-            await TransitionAsync(entry.Transfer.TransferId,
-                TransferJournalState.Publishing,
-                matches ? TransferJournalState.Released : TransferJournalState.Retained,
-                null, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -2909,24 +2868,46 @@ public sealed partial class StagedTransferJournal
     {
         ValidateEntry(entry, entry.Transfer.TransferId);
         string temporary = manifestPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        string step = "create-temporary";
+        bool replacementReturned = false;
+        Exception? writeFailure = null;
         try
         {
             await using (var stream = CreatePrivateTemporary(temporary))
             {
+                step = "serialize";
                 await JsonSerializer.SerializeAsync(stream, entry, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
                 if (stream.Length > StagedJournalFile.MaximumManifestBytes)
                     throw new InvalidDataException("Journal manifest exceeds the qualified size bound.");
+                step = "replace";
+                _writeObserver?.Invoke(StagedJournalWritePoint.BeforeReplacement, entry);
                 StagedDestinationFile.Commit(stream, temporary, manifestPath);
+                replacementReturned = true;
+                _writeObserver?.Invoke(StagedJournalWritePoint.AfterReplacement, entry);
+                step = "close-temporary";
             }
-            ForgetScanned(entry.Transfer.TransferId);
+        }
+        catch (Exception error) when (error is not InvalidDataException &&
+            error is (IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception))
+        {
+            writeFailure = error;
+            throw new StagedJournalPersistenceException(manifestPath, temporary, entry,
+                step, replacementReturned, error);
         }
         finally
         {
-            if (File.Exists(temporary))
+            // The replacement can have succeeded even when disposal or its
+            // caller failed. Never keep a cached pre-write state after an
+            // uncertain outcome; the next operation reads the actual file.
+            ForgetScanned(entry.Transfer.TransferId);
+            try
             {
-                File.Delete(temporary);
+                if (File.Exists(temporary)) File.Delete(temporary);
             }
+            catch (Exception cleanup) when (writeFailure is not null &&
+                cleanup is (IOException or UnauthorizedAccessException))
+            { writeFailure.Data["TemporaryCleanupFailure"] = cleanup.ToString(); }
         }
     }
 

@@ -255,3 +255,33 @@ cleared, and no timer or rescan is added. The registry lock is released before t
 Qualification still requires all four WDK/PREfast/ApiValidator builds, Luna review before the first VM boot of this lifetime
 change, runtime Verifier plus the unchanged short and 10,000-cycle pool assertions, raw-volume regression rows, and untouched-base
 restoration. This candidate has not run on a debuggee and M2 remains incomplete.
+
+## 11. Journal failure recovery — 2026-10-12
+
+The latest [10,000-cycle verdict](evidence/2026-10-11/m2t4boot10k1011a2-verdict.txt) passes pool/cap/idle checks but fails outcomes and
+cleanup. Four private manifest replacements failed with native error 5; two followed successful public publication, two preceded
+hand-back. The [diagnosis](evidence/2026-10-11/t4-journal-failure-diagnosis.md) establishes the skipped Publishing recovery path; the
+native denial's cause and exact historical transfer/name associations remain unproven. The kernel reclamation fix stays intact.
+
+Owner-approved behavior: automatically finish interrupted bookkeeping; never repeat a confirmed public save. The focused design
+received a Luna 6 max security review in this conversation before implementation. It adds no persisted protocol states:
+
+- A typed journal persistence error records the transfer/generation, intended state, write step, native error and manifest/temp names.
+  It is distinct from validation, identity and content failures. After any uncertain write, invalidate cached state and reread disk.
+- After a successful native publication rename, retain an in-process receipt bound to the exact transfer, generation, namespace,
+  measured stage/digest and committed temporary identity. The worker may finish only the matching journal record, then existing
+  notification/disposal. It never calls publication again. The same native result cannot authorize a changed journal version.
+- A legacy publication without a surviving exact receipt stays Publishing after restart, preserving its reservation. A matching
+  destination hash cannot invent a successful operation. The tray names the file and directs the user to diagnostics. T5 bound
+  records still require the existing anchored destination-head/native-receipt dispatcher; this repair does not activate it.
+- A failed hand-back intent/completion write keeps NotAttempted/Copying (or Verified if replacement succeeded before the error).
+  Fresh durable reads decide which step remains. Live and startup recovery reuse the transfer-specific copier, verifying an existing
+  copy instead of overwriting it. Identity/content/copier failures retain the existing Failed behavior and private stage.
+- Recovery runs single-flight, with per-transfer persistence retry delays of 250 ms up to 8 s, using a monotonic clock. No retry delay
+  holds the journal gate. Other transfers continue. The current journal scan remains; indexing old history is a separate optimization.
+
+Qualification pending: deliberate failures immediately before/after manifest replacement; native publication followed by failed
+Released persistence; unchanged/changed public bytes; lost receipt at restart; live/restarted hand-back recovery without duplicate
+copies; exact-version rejection; unchanged agent matrix, short Verifier run, 10,000 cycles, raw-observer regressions and independent
+restoration. The older restart test now requires a held reservation, preserving its byte/non-overwrite assertions and adding refusal
+of a later allocation. This records the approved failure-policy change, not a relaxation of any product byte assertion.

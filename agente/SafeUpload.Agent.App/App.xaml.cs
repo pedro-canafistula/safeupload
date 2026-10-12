@@ -150,6 +150,10 @@ public partial class App : System.Windows.Application
                             $"{fileName}: o resultado da exclusão ainda não pôde ser confirmado. Os próximos salvamentos continuam privados. Colete os diagnósticos do SafeUpload para suporte.",
                         StagedRecoveryAdvice.RestartWindows =>
                             $"{fileName}: uma falha do volume impediu confirmar o fechamento. Os próximos salvamentos continuam privados. Use Reiniciar no Windows; o SafeUpload confere o resultado automaticamente. Desligar e ligar não substitui Reiniciar.",
+                        StagedRecoveryAdvice.JournalRecovery =>
+                            $"{fileName}: o SafeUpload está concluindo a recuperação automática desta operação. Se o aviso persistir, colete os diagnósticos do SafeUpload para suporte.",
+                        StagedRecoveryAdvice.PublicationUnresolved =>
+                            $"{fileName}: não foi possível confirmar o último salvamento. Novos salvamentos nesse nome estão bloqueados. Colete os diagnósticos do SafeUpload para suporte.",
                         null => $"{fileName} permanece guardado localmente. O envio será tentado novamente.",
                         _ => $"{fileName}: os próximos salvamentos continuam privados. Colete os diagnósticos do SafeUpload para suporte."
                     });

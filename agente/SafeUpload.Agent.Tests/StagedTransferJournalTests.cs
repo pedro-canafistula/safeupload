@@ -929,11 +929,10 @@ public sealed class StagedTransferJournalTests : IDisposable
     }
 
     [Theory]
-    [InlineData(true, TransferJournalState.Released)]
-    [InlineData(false, TransferJournalState.Retained)]
-    public async Task Crash_after_publication_does_not_overwrite_a_changed_destination(
-        bool sameContent,
-        TransferJournalState expected)
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Crash_after_publication_without_a_receipt_keeps_the_hold_and_never_overwrites(
+        bool sameContent)
     {
         var transfer = Transfer();
         var journal = Journal();
@@ -959,10 +958,12 @@ public sealed class StagedTransferJournalTests : IDisposable
 
         await Journal().ReconcilePublishingAsync(CancellationToken.None);
 
-        Assert.Equal(expected,
+        Assert.Equal(TransferJournalState.Publishing,
             (await journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
         Assert.Equal(sameContent ? approved : "changed by another writer",
             await File.ReadAllTextAsync(transfer.DestinationPath));
+        var later = Transfer();
+        await Assert.ThrowsAsync<IOException>(() => journal.CreateAsync(later, CancellationToken.None));
     }
 
     [Fact]

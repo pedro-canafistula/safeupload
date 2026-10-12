@@ -41,7 +41,9 @@ public enum StagedRecoveryAdvice
     CloseApplication = 1,
     RestartService = 2,
     CollectDiagnostics = 3,
-    RestartWindows = 4
+    RestartWindows = 4,
+    JournalRecovery = 5,
+    PublicationUnresolved = 6
 }
 
 /// <summary>

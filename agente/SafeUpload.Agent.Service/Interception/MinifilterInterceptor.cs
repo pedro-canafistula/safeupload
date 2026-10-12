@@ -1229,11 +1229,19 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
         while (!cancellationToken.IsCancellationRequested && _stageV20Ready && _stagingRecoveryReady)
         {
+            await _stagePublisher.RecoverConfirmedPublicationsAsync(cancellationToken).ConfigureAwait(false);
             foreach (var entry in await _stageJournal.ReadPendingAsync(cancellationToken)
                          .ConfigureAwait(false))
             {
                 if (entry.PendingRename is not null) continue;
                 if (entry.State == TransferJournalState.LegacyEmptyHeld) continue; // guarded startup migration only
+                if (entry.State == TransferJournalState.Publishing ||
+                    entry.State == TransferJournalState.Blocked &&
+                    entry.HandbackState is StagedHandbackState.NotAttempted or StagedHandbackState.Copying)
+                {
+                    await _stagePublisher.RecoverPendingTransferAsync(entry, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
                 if (entry.State == TransferJournalState.Blocked)
                 {
                     try
@@ -1415,7 +1423,11 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             foreach (TransferJournalEntry entry in _stageJournal.ReadPendingAsync(stoppingToken)
                          .GetAwaiter().GetResult())
             {
-                if (entry.State == TransferJournalState.Blocked)
+                if (entry.State == TransferJournalState.Publishing ||
+                    entry.State == TransferJournalState.Blocked &&
+                    entry.HandbackState is StagedHandbackState.NotAttempted or StagedHandbackState.Copying)
+                    _stagePublisher.RecoverPendingTransferAsync(entry, stoppingToken).GetAwaiter().GetResult();
+                else if (entry.State == TransferJournalState.Blocked)
                     _stagePublisher.RecoverBlockedAsync(entry, stoppingToken).GetAwaiter().GetResult();
                 else if (entry.State == TransferJournalState.Released &&
                          entry.HandbackState == StagedHandbackState.Verified &&
