@@ -148,6 +148,8 @@ public sealed class StagedTransferPublisherTests : IDisposable
             TransferJournalState.Sealed, null, CancellationToken.None);
         await Assert.ThrowsAsync<StagedJournalPersistenceException>(() => publisher.PublishAsync(transfer, CancellationToken.None));
         string nextName = Path.Combine(Path.GetDirectoryName(transfer.DestinationPath)!, "new-name.txt");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => journal.TransitionAsync(transfer.TransferId,
+            TransferJournalState.Released, TransferJournalState.Sealed, null, CancellationToken.None));
         await journal.PrepareRenameAsync(transfer.TransferId, 41, transfer.ProcessId, nextName, true, CancellationToken.None);
         var renamed = await journal.CompleteRenameAsync(transfer.TransferId, 41, transfer.ProcessId, nextName, true, CancellationToken.None);
 
@@ -156,6 +158,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal(renamed.Transfer, after.Transfer);
         Assert.Equal(renamed.DestinationGeneration, after.DestinationGeneration);
         Assert.Equal(TransferJournalState.Sealed, after.State);
+        Assert.Null(after.Sha256Hex); // The old approval never authorizes the new name.
         Assert.False(File.Exists(nextName));
         Assert.Equal("approved first version", await File.ReadAllTextAsync(transfer.DestinationPath));
         Assert.True(File.Exists(transfer.StagePath));

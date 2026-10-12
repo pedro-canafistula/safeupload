@@ -3029,6 +3029,10 @@ public sealed partial class StagedTransferJournal
         (TransferJournalState.Blocked, TransferJournalState.Inspecting) => true,
         (TransferJournalState.Blocked, TransferJournalState.Sealed) => true,
         (TransferJournalState.Retained, TransferJournalState.Sealed) => true,
+        // CompleteRenameAsync clears approval and reinspects a still-owned
+        // released version at its new name. TransitionAsync independently
+        // refuses direct resealing of Released entries.
+        (TransferJournalState.Released, TransferJournalState.Sealed) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Retained) => true,
         (TransferJournalState.Approved, TransferJournalState.Retained) => true,
         (TransferJournalState.Approved, TransferJournalState.Publishing) => true,
