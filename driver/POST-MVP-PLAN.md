@@ -186,8 +186,11 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
   - [x] Recovery implemented through `0cd58e79`; [Windows agent matrix](evidence/2026-10-12/exact-agent-matrix-t4-journal-recovery4-summary.txt):
     normal Debug/Release 895 tests each, feature Debug/Release 1,245 each, zero skipped, builds at 0 warnings/errors. Includes
     publication/hand-back fault injection and rejection of stale native-success receipts.
-  - [ ] Qualify the isolated `fix/t4-journal-recovery-v18` backport (`0cfdc7c6`) for the existing T4 driver; the M2 agent requires
-    newer T5 startup negotiation. Then run short Verifier, 10,000 cycles and separate restoration. No protected retry launched.
+  - [x] Isolated protocol-18 agent matrix: `91c6a3be`, [four-profile gate](evidence/2026-10-12/exact-agent-matrix-t4-recovery-v18a3-summary.txt),
+    547 normal / 611 feature tests per configuration, no skips and builds at 0/0. Includes the live hand-back notification correction.
+  - [ ] Short Verifier retry `m2t4recover256a1` (`0cfdc7c6` + unchanged `m2-driver5-t11`) failed: 255/256 outcomes, one residual stage,
+    pool slope 192.225 B/cycle. No journal-write failures; two replies had no waiter. [Diagnosis and raw evidence](evidence/2026-10-12/t4-allocation-reply-diagnosis.md).
+    Separate restoration passed. Owner approved focused diagnosis/fix on 2026-10-12; no further VM run until reviewed and built.
 - [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
 
 The preceding `m2t4boot10k9` stopped after 4,714/10,000 without a final result; it is not a pass. Its run disk was deleted and base

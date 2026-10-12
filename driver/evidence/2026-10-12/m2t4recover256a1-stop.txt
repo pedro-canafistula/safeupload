@@ -1,0 +1,1 @@
+T4StopReason=completed-with-failures;ExitCode=1;Phase=collect-results;Progress=DONE;ElapsedSeconds=493

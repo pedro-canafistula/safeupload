@@ -1,0 +1,16 @@
+T4GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T4DriverLoaded PASS the filter is still loaded after the cycles
+T4VerifierActive PASS runtime Verifier 0x13B still verifies SafeUpload.sys
+T4CyclesCompleted FAIL 255 of 256 cycles reached their outcome; outcomes {"resave-approve": {"Ok": 47, "Failed": 1}, "new-approve": {"Ok": 48, "Failed": 0}, "replace-approve": {"Ok": 48, "Failed": 0}, "mapped-approve": {"Ok": 48, "Failed": 0}, "resave-block": {"Ok": 16, "Failed": 0}, "new-block": {"Ok": 16, "Failed": 0}, "replace-block": {"Ok": 16, "Failed": 0}, "mapped-block": {"Ok": 16, "Failed": 0}}; first failures ['121 resave-approve actor: error Exception calling "WriteAllBytes" with "2" argument(s): "Access to the path \'C:\\Protected\\t4\\same-1.txt\' is denied."']
+T4ActorStopped PASS the actor acknowledged stop
+T4StopReason INFO completed-with-failures; attempted 256; failures 1
+T4NoBlockedBytesPublished PASS no blocked version reached its public name
+T4PoolFlat FAIL driver nonpaged bytes (Verifier pool tracking) from cycle 64: 6381384 -> 6428136 at cycle 256, after idle 6399976; slope 192.225 B/cycle (limit 4); peak 6749680
+T4VersionsReleased PASS after settle: live versions 0, views 0, created 255, released 255, views released 255
+T4TombstonesReleased PASS after the actor exited: tombstones 0
+T4NoCapRefusal PASS cap refusals 0, tombstone refusals 0
+T4StageFilesDeleted FAIL stage files after idle 1 (journal manifests 256, hand-backs 64); driver deletes 191, failures 0
+T4StageWorkerIdle PASS stage worker passes over 60 s with nothing waiting: 0 (timer fires 0; waiting versions 0)
+T4WorkerWakes INFO {"wakeCleanup": 255, "wakeClose": 255, "wakeDispose": 255, "wakeConnect": 1, "wakeExit": 106, "wakeTimer": 324, "wakeInline": 0, "timerArms": 506, "disposeHeld": 255, "disposeNotHeld": 0, "disposeStale": 0, "disposeDeferred": 0, "passes": 1190}
+T4CycleTime INFO median 1218 ms, p95 2064 ms, max 32162 ms over 256 cycles
+T4Duration INFO 682 s (verifier-from-boot, 256 cycles)
