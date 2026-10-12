@@ -86,6 +86,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     private readonly AdmissionEvidenceEndpoint _admissionEvidence;
     private byte[]? _acceptedPolicyFingerprint;
     private StagedNativeStartupRecovery? _nativeStartupRecovery;
+    private StagedPublicOpenDispatcher? _publicOpenDispatcher;
 #endif
 
     /// <summary>Compõe o interceptador.</summary>
@@ -253,6 +254,13 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     _admissionEvidence.TryBind(evidenceSender, _policyVersion, _acceptedPolicyFingerprint);
                 if (_stagingEnabled && _stageJournal is not null)
                 {
+                    _publicOpenDispatcher = new(_stageJournal, port.ReadPublicOpenReplayV25, port.ObserveNativeName,
+                        StagedPublicOpenDispatcher.ResolveLocator, row =>
+                        {
+                            var live = SessionResolver.GetRequiredProcessIdentity(checked((int)row.CallerProcessId));
+                            if (live.CreationTimeFileTime != row.CallerProcessCreationTime)
+                                throw new IOException("The ordinary open creator lifetime changed.");
+                        });
                     _nativeStartupRecovery = new(_stageJournal, port.ReadNativeRecordReplay,
                         token => { RecoverStagingSubsystem(token); return Task.CompletedTask; },
                         (head, delete) => StagedNativeRecoveryNotifications.Publish(_hub, _logger, head, delete,
@@ -300,6 +308,15 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                        port.TryGetMessage(out SafeUploadRequest request, out ulong messageId, stoppingToken))
                 {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
+                    if (request.Operation == PublicDispositionV25.Operation || request.Reserved == PublicDispositionV25.Version)
+                    {
+                        SafeUploadRequest publicRequest = request;
+                        ulong publicMessageId = messageId;
+                        Guid? publicDriver = _activeDriverInstanceId;
+                        boundContinuations.Dispatch(token =>
+                            ReplyPublicOpenAsync(port, publicRequest, publicMessageId, publicDriver, token));
+                        continue;
+                    }
                     if (request.Operation == NativeLifecycleV24.Operation || request.Reserved == NativeLifecycleV24.Version)
                     {
                         SafeUploadRequest nativeRequest = request;
@@ -498,6 +515,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 try { boundContinuations.DrainAsync().GetAwaiter().GetResult(); }
                 catch (Exception error)
                 { _logger.LogError(error, "Bound allocation continuations drained with a failure before FilterPort close."); }
+                _publicOpenDispatcher?.Dispose();
+                _publicOpenDispatcher = null;
 #endif
                 if (startupTask is not null)
                 {

@@ -440,11 +440,12 @@ NTSTATUS SafeUploadStagePublicCaptureNativeName(PFLT_INSTANCE Instance,
         Name->Name.Length == 0 || Name->Name.Length > SAFEUPLOAD_MAX_PATH_BYTES ||
         (Name->Name.Length & 1) != 0 || Name->Name.Length > Name->Name.MaximumLength ||
         Subject == NULL || Subject->ClientToken == NULL || OriginalRequestorProcess == NULL ||
-        (OriginalCreateOptions >> 24) != FILE_OPEN || !FlagOn(OriginalCreateOptions, FILE_DELETE_ON_CLOSE) ||
+        (OriginalCreateOptions >> 24) != FILE_OPEN ||
         FlagOn(OriginalCreateOptions, FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID | FILE_OPEN_REPARSE_POINT) ||
         !FlagOn(OriginalDesiredAccess, DELETE) ||
-        FlagOn(OriginalDesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES |
+        FlagOn(OriginalDesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
             FILE_DELETE_CHILD | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED) ||
+        (FlagOn(OriginalCreateOptions, FILE_DELETE_ON_CLOSE) && FlagOn(OriginalDesiredAccess, FILE_WRITE_ATTRIBUTES)) ||
         FlagOn(OriginalShareAccess, ~(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)) ||
         IoGetTopLevelIrp() != NULL || !PsIsSystemThread(PsGetCurrentThread()) ||
         PsGetCurrentProcess() != PsInitialSystemProcess) return STATUS_INVALID_PARAMETER;

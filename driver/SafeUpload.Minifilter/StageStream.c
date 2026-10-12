@@ -209,6 +209,8 @@ typedef struct _STAGE_ATTACH_TRANSACTION {
     UINT64 NativeGeneration;
     UINT64 NativePrepareRevision;
     UINT64 NativePrepareAuthority;
+    SAFEUPLOAD_PUBLIC_RELAY_REPLY PublicOpenReceipt;
+    BOOLEAN OrdinaryPublicOpen;
     BOOLEAN NativePath;
     ULONG RequestorProcessId;
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
@@ -3469,10 +3471,10 @@ static BOOLEAN StageAttachNativeEligible(PFLT_CALLBACK_DATA Data)
     if (Data->Iopb->Parameters.Create.SecurityContext == NULL) return FALSE;
     access = Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess;
     return (Data->Iopb->Parameters.Create.Options >> 24) == FILE_OPEN && FlagOn(access, DELETE) &&
-        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&
         !FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID | FILE_OPEN_REPARSE_POINT) &&
-        !FlagOn(access, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES |
-            FILE_DELETE_CHILD | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED);
+        !FlagOn(access, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
+            FILE_DELETE_CHILD | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED) &&
+        !(FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) && FlagOn(access, FILE_WRITE_ATTRIBUTES));
 }
 
 static NTSTATUS StageAttachExchangeNative(PSTAGE_ATTACH_TRANSACTION Transaction)
@@ -3495,9 +3497,15 @@ static NTSTATUS StageAttachExchangeNative(PSTAGE_ATTACH_TRANSACTION Transaction)
             return STATUS_INVALID_DEVICE_STATE;
         if (attemptedRevision == Transaction->NativePrepareRevision) return status;
         attemptedRevision = Transaction->NativePrepareRevision;
-        status = SafeUploadStageNativeExchange(&snapshot, attemptedRevision, SAFEUPLOAD_NATIVE_PREPARE,
-            &reply, &Transaction->NativePrepareAuthority);
-        if (NT_SUCCESS(status)) { Transaction->NativeGeneration = reply.JournalGeneration; return status; }
+        if (Transaction->OrdinaryPublicOpen) {
+            status = SafeUploadStagePublicOpenExchange(&snapshot, attemptedRevision, SAFEUPLOAD_PUBLIC_OPEN_PREPARE,
+                &Transaction->PublicOpenReceipt, &Transaction->NativePrepareAuthority);
+            if (status == STATUS_SUCCESS) { Transaction->NativeGeneration = 0; return status; }
+        } else {
+            status = SafeUploadStageNativeExchange(&snapshot, attemptedRevision, SAFEUPLOAD_NATIVE_PREPARE,
+                &reply, &Transaction->NativePrepareAuthority);
+            if (status == STATUS_SUCCESS) { Transaction->NativeGeneration = reply.JournalGeneration; return status; }
+        }
         /* Retry only after a real map event changed the snapshot. The exact
          * transfer/nonce/operation replays its durable intent at the new revision. */
     }
@@ -3512,6 +3520,7 @@ static NTSTATUS StageAttachPrepareNative(PSTAGE_ATTACH_TRANSACTION Transaction)
     NTSTATUS status;
     RtlZeroMemory(&binding, sizeof(binding));
     Transaction->NativePath = TRUE;
+    Transaction->OrdinaryPublicOpen = !FlagOn(Transaction->CallbackData->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE);
     if (!Transaction->PublicDeleteSubjectValid ||
         !SafeUploadConnectionGetAuthenticatedIdentity(NULL, &cookie, &epoch, &servicePid) ||
         !SafeUploadStageProtocolNativeForwardAllowed((UINT64)epoch, 0)) return STATUS_DEVICE_NOT_READY;
@@ -3620,7 +3629,8 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
                 StageFindView(Transaction->RequestorProcess, &Transaction->NameInfo->Name) != NULL)
                 Status = STATUS_CANCELLED;
             else Status = SafeUploadStageNativeMarkForwarded(record,
-                Transaction->NativeGeneration, Transaction->NativePrepareRevision, Transaction->NativePrepareAuthority);
+                Transaction->NativeGeneration, Transaction->NativePrepareRevision, Transaction->NativePrepareAuthority,
+                Transaction->OrdinaryPublicOpen ? &Transaction->PublicOpenReceipt : NULL);
             StageRelease(&StageNamespaceResource);
             if (Status != STATUS_RETRY) break;
             Status = StageAttachExchangeNative(Transaction); /* I/O is outside NamespaceResource. */
@@ -3633,9 +3643,25 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
             Transaction->ReferencedFileObject = NULL;
             FltCompletePendedPreOperation(Transaction->CallbackData, FLT_PREOP_SUCCESS_WITH_CALLBACK, record);
         } else {
+            BOOLEAN nativeReadFallback = FALSE;
             if (record != NULL) {
                 (VOID)SafeUploadStageNativeMarkNotForwarded(record);
                 SafeUploadStageNativeReleaseRecord(record);
+            }
+            if (Transaction->OrdinaryPublicOpen && !cancelled) {
+                StageAcquire(&StageNamespaceResource);
+                nativeReadFallback = !StageStopping &&
+                    !StageFindView(Transaction->RequestorProcess, &Transaction->NameInfo->Name) &&
+                    !StageAttachIsInstanceTearingDown(Transaction->InstanceIdentity);
+                StageRelease(&StageNamespaceResource);
+            }
+            if (nativeReadFallback) {
+                /* Failed metadata tracking cannot invent a failed ordinary
+                 * read open. Forward the original CREATE without disposition
+                 * authority; a later mutation requires exact automatic rebind.
+                 * The negative reservation receipt stays for lease release. */
+                FltCompletePendedPreOperation(Transaction->CallbackData, FLT_PREOP_SUCCESS_NO_CALLBACK, NULL);
+                goto CompletionFinished;
             }
             Transaction->CallbackData->IoStatus.Status = Status;
             Transaction->CallbackData->IoStatus.Information = 0;
@@ -5797,6 +5823,52 @@ static VOID StageWorkerPass(PLIST_ENTRY Released, PLIST_ENTRY Rpcs,
 }
 
 static KSTART_ROUTINE StageWorker;
+static VOID StagePublicOpenFlushFacts(VOID)
+{
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    static UINT64 attemptedRevision, attemptedAuthority;
+    static LONG attemptedChannel;
+    PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT rows;
+    UINT64 revision = 0, authority = SafeUploadStageProtocolNativeAuthority();
+    ULONG offset = 0, count = 0, index;
+    BOOLEAN complete = FALSE;
+    LONG channel = SafeUploadStageProtocolChannelGeneration();
+    NTSTATUS status;
+    if (!SafeUploadStageProtocolNativeForwardAllowed(0, authority)) return;
+    rows = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*rows) * SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS, STAGE_TAG);
+    if (rows == NULL) return;
+    do {
+        UINT64 current;
+        status = SafeUploadStagePublicOpenReadPage(revision, offset, rows, SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS,
+            &count, &current, &complete);
+        if (!NT_SUCCESS(status)) break;
+        if (offset == 0) {
+            revision = current;
+            if (revision == attemptedRevision && authority == attemptedAuthority && channel == attemptedChannel) break;
+            attemptedRevision = revision; attemptedAuthority = authority; attemptedChannel = channel;
+        }
+        for (index = 0; index < count; ++index) {
+            SAFEUPLOAD_PUBLIC_RELAY_REPLY reply;
+            UINT64 replyAuthority;
+            if (rows[index].PublicOpenConfirmed && !rows[index].LastHandleCleanedUp &&
+                !rows[index].CancelledBeforeHandle && !rows[index].CancelledCloseObserved &&
+                !rows[index].CleanupCoverageLost) continue;
+            if (!rows[index].CreateOutcomeKnown && !rows[index].CancelledBeforeHandle &&
+                !rows[index].CancelledCloseObserved && !rows[index].CleanupCoverageLost) continue;
+            status = SafeUploadStagePublicOpenExchange(&rows[index], revision, SAFEUPLOAD_PUBLIC_OPEN_FACTS,
+                &reply, &replyAuthority);
+            if (status == STATUS_SUCCESS && reply.Result == SAFEUPLOAD_PUBLIC_RELAY_RECORDED) {
+                status = SafeUploadStagePublicOpenConfirm(&rows[index].Binding, replyAuthority);
+                if (NT_SUCCESS(status)) goto Exit; /* Map/pagination may have changed; its event resumes. */
+            }
+        }
+        offset += count;
+    } while (!complete && count != 0 && offset < SAFEUPLOAD_NATIVE_REPLAY_MAX_RECORDS);
+Exit:
+    ExFreePoolWithTag(rows, STAGE_TAG);
+#endif
+}
+
 static VOID StageNativeFlushFacts(VOID)
 {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -5908,6 +5980,7 @@ static VOID StageWorker(PVOID Context)
         }
         StageRelease(&StageNamespaceResource);
         StageNativeFlushFacts(); /* No namespace/native lock spans FilterPort I/O. */
+        StagePublicOpenFlushFacts();
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (InterlockedCompareExchange(&StageReconcileInFlight, 0, 0)) {
             const SAFEUPLOAD_REQUEST *drainReplay = StageEpochDrainRequestValid &&

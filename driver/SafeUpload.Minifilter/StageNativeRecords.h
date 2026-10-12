@@ -1,6 +1,7 @@
 #ifndef SAFEUPLOAD_STAGE_NATIVE_RECORDS_H
 #define SAFEUPLOAD_STAGE_NATIVE_RECORDS_H
 #include "StagePublic.h"
+#include "StagePublicRelay.h"
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 typedef struct _SAFEUPLOAD_STAGE_NATIVE_RECORD SAFEUPLOAD_STAGE_NATIVE_RECORD,
@@ -20,6 +21,16 @@ typedef struct _SAFEUPLOAD_STAGE_NATIVE_BINDING {
     SAFEUPLOAD_STAGE_PUBLIC_BINDING Public;
 } SAFEUPLOAD_STAGE_NATIVE_BINDING, *PSAFEUPLOAD_STAGE_NATIVE_BINDING;
 
+typedef struct _SAFEUPLOAD_STAGE_PUBLIC_MUTATION {
+    UINT64 Sequence, Generation;
+    GUID TransferId, Nonce, OperationId;
+    ULONG InformationClass, DispositionFlags, RequestorMode, Facts;
+    NTSTATUS Status;
+    LONG64 ActorProcessCreationTime;
+    ULONG ActorProcessId, ActorSessionId, ActorSidBytes;
+    UCHAR ActorSid[SAFEUPLOAD_NATIVE_REPLAY_SID_BYTES];
+} SAFEUPLOAD_STAGE_PUBLIC_MUTATION, *PSAFEUPLOAD_STAGE_PUBLIC_MUTATION;
+
 typedef struct _SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT {
     SAFEUPLOAD_STAGE_NATIVE_BINDING Binding;
     UINT64 JournalGeneration;
@@ -34,6 +45,12 @@ typedef struct _SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT {
     NTSTATUS CreateStatus;
     NTSTATUS IdentityStatus;
     FLT_INSTANCE_TEARDOWN_FLAGS TeardownReason;
+    BOOLEAN PublicOpenPrepared;
+    BOOLEAN PublicOpenConfirmed;
+    UINT64 PublishedGeneration;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 PublishedIdentity;
+    ACCESS_MASK GrantedAccess; /* explicit requested subset, only after checked native CREATE */
+    SAFEUPLOAD_STAGE_PUBLIC_MUTATION PublicOperation;
 } SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT, *PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT;
 
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -51,7 +68,8 @@ NTSTATUS SafeUploadStageNativeReserve(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OB
     _Outptr_result_nullonfailure_ PSAFEUPLOAD_STAGE_NATIVE_RECORD *Record);
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeMarkForwarded(_In_ PSAFEUPLOAD_STAGE_NATIVE_RECORD Record,
-    _In_ UINT64 DurableGeneration, _In_ UINT64 ExpectedRevision, _In_ UINT64 AuthorityRevision);
+    _In_ UINT64 DurableGeneration, _In_ UINT64 ExpectedRevision, _In_ UINT64 AuthorityRevision,
+    _In_opt_ const SAFEUPLOAD_PUBLIC_RELAY_REPLY *PublicOpenReceipt);
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeSnapshot(_In_ PSAFEUPLOAD_STAGE_NATIVE_RECORD Record,
     _Out_ PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Snapshot, _Out_ PUINT64 Revision);
@@ -94,6 +112,14 @@ NTSTATUS SafeUploadStageNativeReadPage(_In_ UINT64 ExpectedRevision, _In_ ULONG 
     _Out_writes_to_(Capacity, *Count) PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Rows, _In_ ULONG Capacity,
     _Out_ PULONG Count, _Out_ PUINT64 Revision, _Out_ PBOOLEAN Complete);
 _IRQL_requires_max_(APC_LEVEL)
+NTSTATUS SafeUploadStagePublicOpenReadPage(_In_ UINT64 ExpectedRevision, _In_ ULONG Offset,
+    _Out_writes_to_(Capacity, *Count) PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Rows, _In_ ULONG Capacity,
+    _Out_ PULONG Count, _Out_ PUINT64 Revision, _Out_ PBOOLEAN Complete);
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicOpenReplayControl(_In_opt_ PVOID PortCookie,
+    _In_reads_bytes_(InputLength) PVOID Input, _In_ ULONG InputLength,
+    _Out_writes_bytes_(OutputLength) PVOID Output, _In_ ULONG OutputLength, _Out_ PULONG Returned);
+_IRQL_requires_max_(APC_LEVEL)
 NTSTATUS SafeUploadStageNativeReadIdentity(_Out_ GUID *DriverInstanceId, _Out_ PULONG OsBootSequence);
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeReplayControl(_In_opt_ PVOID PortCookie,
@@ -109,6 +135,10 @@ NTSTATUS SafeUploadStageNativeNameControl(_In_opt_ PVOID PortCookie,
  * never merely after releasing the exceptional publication hold. */
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeAcknowledge(_In_ const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding);
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicOpenConfirm(_In_ const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding,
+    _In_ UINT64 AuthorityRevision);
+_IRQL_requires_(PASSIVE_LEVEL)
 BOOLEAN SafeUploadStageNativeTryCloseAdmission(VOID);
 VOID SafeUploadStageNativeReopenAdmission(VOID);
 #endif

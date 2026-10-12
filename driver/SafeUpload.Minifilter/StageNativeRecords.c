@@ -62,6 +62,18 @@ static VOID NativeChanged(VOID)
 static VOID NativeWake(VOID)
 { KeSetEvent(NativeWakeEvent, IO_NO_INCREMENT, FALSE); }
 
+static BOOLEAN NativeScheduled(const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding)
+{ return FlagOn(Binding->CreateOptions, FILE_DELETE_ON_CLOSE) != 0; }
+
+/* No native data lifetime is owned by this ordinary-read record. In-flight
+ * binding/callbacks and future disposition/cleanup obligations still veto. */
+static BOOLEAN NativeOrdinaryIdle(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record)
+{
+    return !NativeScheduled(&Record->Snapshot.Binding) && Record->Snapshot.PublicOpenConfirmed &&
+        Record->References == 1 && !Record->CreateCallbackOwned && !Record->CloseCallbackOwned &&
+        Record->Snapshot.PublicOperation.Sequence == 0;
+}
+
 static BOOLEAN NativeGuidEqual(const GUID *Left, const GUID *Right)
 { return RtlEqualMemory(Left, Right, sizeof(*Left)); }
 
@@ -101,7 +113,8 @@ static BOOLEAN NativeBindingValid(const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding
         Binding->OsBootSequence != NativeBootSequence || (Binding->CreateOptions >> 24) != FILE_OPEN ||
         FlagOn(Binding->CreateOptions, FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID | FILE_OPEN_REPARSE_POINT) ||
         FlagOn(p->OriginalDesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
-            FILE_WRITE_ATTRIBUTES | FILE_DELETE_CHILD | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED) ||
+            FILE_DELETE_CHILD | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED) ||
+        (NativeScheduled(Binding) && FlagOn(p->OriginalDesiredAccess, FILE_WRITE_ATTRIBUTES)) ||
         !FlagOn(p->OriginalDesiredAccess, DELETE) || p->GrantedAccess != 0 ||
         FlagOn(p->OriginalShareAccess, ~(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)) ||
         p->CallerProcessId == 0 || p->CallerProcessCreationTime <= 0 ||
@@ -287,20 +300,41 @@ NTSTATUS SafeUploadStageNativeSnapshot(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record,
 
 _Use_decl_annotations_
 NTSTATUS SafeUploadStageNativeMarkForwarded(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record,
-    UINT64 DurableGeneration, UINT64 ExpectedRevision, UINT64 AuthorityRevision)
+    UINT64 DurableGeneration, UINT64 ExpectedRevision, UINT64 AuthorityRevision,
+    const SAFEUPLOAD_PUBLIC_RELAY_REPLY *PublicOpenReceipt)
 {
+    static const FILE_ID_128 zero = {0};
     KIRQL irql;
     NTSTATUS status = STATUS_SUCCESS;
+    if (!NativeScheduled(&Record->Snapshot.Binding)) {
+        if (PublicOpenReceipt == NULL || PublicOpenReceipt->Request.Phase != SAFEUPLOAD_PUBLIC_OPEN_PREPARE ||
+            PublicOpenReceipt->Request.NativeMapRevision != ExpectedRevision ||
+            !NativeGuidEqual(&PublicOpenReceipt->Request.OpenNonce, &Record->Snapshot.Binding.RequestNonce) ||
+            !NativeGuidEqual(&PublicOpenReceipt->Request.OperationId, &Record->Snapshot.Binding.OperationId) ||
+            PublicOpenReceipt->PublishedGeneration > (UINT64)MAXLONGLONG ||
+            (PublicOpenReceipt->PublishedGeneration == 0 ?
+                (PublicOpenReceipt->PublishedIdentity.VolumeSerialNumber != 0 ||
+                 !RtlEqualMemory(&PublicOpenReceipt->PublishedIdentity.FileId, &zero, sizeof(zero))) :
+                (PublicOpenReceipt->PublishedIdentity.VolumeSerialNumber != Record->Snapshot.Binding.Public.PublicIdentity.VolumeSerialNumber ||
+                 RtlEqualMemory(&PublicOpenReceipt->PublishedIdentity.FileId, &zero, sizeof(zero)))))
+            return STATUS_INVALID_PARAMETER;
+    }
     NativeAcquire(&irql);
     if (ExpectedRevision != 0 && ExpectedRevision != NativeRevision) status = STATUS_RETRY;
     else if (!NativeAccepting || !NativeReplayUsable || ExpectedRevision == 0 ||
         AuthorityRevision == 0 ||
         !SafeUploadStageProtocolNativeForwardAllowed(Record->Snapshot.Binding.ConnectionEpoch, AuthorityRevision) ||
-        DurableGeneration == 0 || Record->Snapshot.Forwarded ||
+        (NativeScheduled(&Record->Snapshot.Binding) ? DurableGeneration == 0 :
+            DurableGeneration != 0) || Record->Snapshot.Forwarded ||
         Record->Snapshot.CreateOutcomeKnown || Record->Snapshot.CleanupCoverageLost ||
         SafeUploadStageAttachInstanceRetiring(Record->Instance)) status = STATUS_INVALID_DEVICE_STATE;
     else {
         Record->Snapshot.JournalGeneration = DurableGeneration;
+        if (PublicOpenReceipt != NULL) {
+            Record->Snapshot.PublicOpenPrepared = TRUE;
+            Record->Snapshot.PublishedGeneration = PublicOpenReceipt->PublishedGeneration;
+            Record->Snapshot.PublishedIdentity = PublicOpenReceipt->PublishedIdentity;
+        }
         Record->Snapshot.Forwarded = TRUE;
         Record->CreateCallbackOwned = TRUE; /* producer reference transfers to post-CREATE */
         NativeChanged();
@@ -351,6 +385,7 @@ BOOLEAN SafeUploadStageNativePostCreate(PFLT_CALLBACK_DATA Data,
     FILE_ID_INFORMATION identity;
     NTSTATUS identityStatus = STATUS_UNSUCCESSFUL;
     ULONG returned = 0;
+    ACCESS_MASK granted = 0;
     BOOLEAN accepted, checked = FALSE, cancelledBeforeHandle = FALSE, exactObject;
     KIRQL irql;
     if (!NativeEnter()) return FALSE;
@@ -374,6 +409,10 @@ BOOLEAN SafeUploadStageNativePostCreate(PFLT_CALLBACK_DATA Data,
         checked = NT_SUCCESS(identityStatus) && returned == sizeof(identity) &&
             RtlEqualMemory(&identity, &record->Snapshot.Binding.Public.PublicIdentity, sizeof(identity)) &&
             Objects->FileObject->DeleteAccess && !Objects->FileObject->WriteAccess;
+        if (checked) {
+            granted = record->Snapshot.Binding.Public.OriginalDesiredAccess;
+            RtlMapGenericMask(&granted, IoGetFileObjectGenericMapping());
+        }
     }
     NativeAcquire(&irql);
     record->Snapshot.CreateStatus = Data->IoStatus.Status;
@@ -395,6 +434,7 @@ BOOLEAN SafeUploadStageNativePostCreate(PFLT_CALLBACK_DATA Data,
         record->Snapshot.CreateAccepted = accepted;
         record->Snapshot.IdentityAndDeleteGrantChecked = checked;
         record->Snapshot.IdentityStatus = identityStatus;
+        if (checked) record->Snapshot.GrantedAccess = granted;
         if (!accepted) record->FileObject = NULL;
     }
     record->CreateFileObject = NULL;
@@ -525,9 +565,9 @@ NTSTATUS SafeUploadStageNativeReadIdentity(GUID *DriverInstanceId, PULONG OsBoot
     return STATUS_SUCCESS;
 }
 
-_Use_decl_annotations_
-NTSTATUS SafeUploadStageNativeReadPage(UINT64 ExpectedRevision, ULONG Offset,
-    PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Rows, ULONG Capacity, PULONG Count, PUINT64 Revision, PBOOLEAN Complete)
+static NTSTATUS NativeReadPage(UINT64 ExpectedRevision, ULONG Offset,
+    PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Rows, ULONG Capacity, PULONG Count, PUINT64 Revision, PBOOLEAN Complete,
+    BOOLEAN Ordinary)
 {
     PLIST_ENTRY link;
     ULONG index = 0;
@@ -543,6 +583,7 @@ NTSTATUS SafeUploadStageNativeReadPage(UINT64 ExpectedRevision, ULONG Offset,
     if (ExpectedRevision != 0 && ExpectedRevision != NativeRevision) { status = STATUS_RETRY; goto Exit; }
     for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
         PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+        if (NativeScheduled(&record->Snapshot.Binding) == Ordinary) continue;
         if (index++ < Offset) continue;
         if (*Count == Capacity) break;
         Rows[*Count] = record->Snapshot;
@@ -555,6 +596,16 @@ Exit:
     ExReleaseRundownProtection(&NativeCalls);
     return status;
 }
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageNativeReadPage(UINT64 ExpectedRevision, ULONG Offset,
+    PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Rows, ULONG Capacity, PULONG Count, PUINT64 Revision, PBOOLEAN Complete)
+{ return NativeReadPage(ExpectedRevision, Offset, Rows, Capacity, Count, Revision, Complete, FALSE); }
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicOpenReadPage(UINT64 ExpectedRevision, ULONG Offset,
+    PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Rows, ULONG Capacity, PULONG Count, PUINT64 Revision, PBOOLEAN Complete)
+{ return NativeReadPage(ExpectedRevision, Offset, Rows, Capacity, Count, Revision, Complete, TRUE); }
 
 _Use_decl_annotations_
 NTSTATUS SafeUploadStageNativeAcknowledge(const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding)
@@ -591,14 +642,73 @@ NTSTATUS SafeUploadStageNativeAcknowledge(const SAFEUPLOAD_STAGE_NATIVE_BINDING 
     return status;
 }
 
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicOpenConfirm(const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding, UINT64 AuthorityRevision)
+{
+    PLIST_ENTRY link;
+    PSAFEUPLOAD_STAGE_NATIVE_RECORD retired = NULL;
+    KIRQL irql;
+    NTSTATUS status = STATUS_NOT_FOUND;
+    if (!NativeEnter()) return STATUS_DEVICE_NOT_READY;
+    if (!NativeBindingValid(Binding) || NativeScheduled(Binding)) {
+        ExReleaseRundownProtection(&NativeCalls); return STATUS_INVALID_PARAMETER;
+    }
+    NativeAcquire(&irql);
+    if (AuthorityRevision == 0 || !SafeUploadStageProtocolNativeForwardAllowed(0, AuthorityRevision))
+        status = STATUS_DEVICE_NOT_READY;
+    else for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
+        PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+        if (!NativeBindingEqual(&record->Snapshot.Binding, Binding)) continue;
+        if (!record->Snapshot.CreateOutcomeKnown && !record->Snapshot.CancelledBeforeHandle &&
+            !record->Snapshot.CancelledCloseObserved && !record->Snapshot.CleanupCoverageLost) {
+            status = STATUS_DEVICE_BUSY; break;
+        }
+        if (!record->Snapshot.PublicOpenConfirmed) {
+            record->Snapshot.PublicOpenConfirmed = TRUE;
+            NativeChanged();
+        }
+        if (NativeOrdinaryIdle(record) && record->FileObject == NULL) {
+            RemoveEntryList(&record->Link); record->References = 0; retired = record;
+            NativeChanged();
+        }
+        status = STATUS_SUCCESS;
+        break;
+    }
+    NativeRelease(irql);
+    if (retired != NULL) NativeDestroy(retired);
+    if (NT_SUCCESS(status)) NativeWake();
+    ExReleaseRundownProtection(&NativeCalls);
+    return status;
+}
+
+_Use_decl_annotations_
 BOOLEAN SafeUploadStageNativeTryCloseAdmission(VOID)
 {
     KIRQL irql;
-    BOOLEAN closed;
+    BOOLEAN closed = TRUE;
+    LIST_ENTRY idle;
+    PLIST_ENTRY link;
+    InitializeListHead(&idle);
     NativeAcquire(&irql);
-    closed = InterlockedCompareExchange(&NativeRecordCount, 0, 0) == 0;
-    if (closed) NativeAccepting = FALSE;
+    for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
+        PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+        if (!NativeOrdinaryIdle(record)) { closed = FALSE; break; }
+    }
+    if (closed) {
+        NativeAccepting = FALSE;
+        while (!IsListEmpty(&NativeRecords)) {
+            link = RemoveHeadList(&NativeRecords);
+            PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+            record->FileObject = NULL; record->References = 0;
+            InsertTailList(&idle, link);
+        }
+        NativeChanged();
+    }
     NativeRelease(irql);
+    while (!IsListEmpty(&idle)) {
+        PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(RemoveHeadList(&idle), SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+        NativeDestroy(record);
+    }
     return closed;
 }
 
