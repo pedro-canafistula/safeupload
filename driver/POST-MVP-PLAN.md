@@ -251,8 +251,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)
     design is READY WITH CORRECTIONS. Native FALSE no-op journaling/head capture is built/tested (`dcf4b276`); the relay remains unconnected.
-    Ordinary native-open producer/replay/service binding is connected (`8ef80fcc`); four WDK profiles pass 0/0 on `450c8d74`.
-    Agent matrix `t5-public-open3` is running; disposition phases remain denied and this pair has no protected boot qualification.
+    Ordinary native-open producer/replay/service binding is connected (`8ef80fcc`); [all static gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md).
+    Disposition phases remain denied; no protected boot qualification exists. The integrated lifetime review remains required.
     [Reviewed integration contract](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md), V23 transport and
     Windows filename resolver are implemented (`827b3f41`, `5f294008`) with [passing static gates](evidence/2026-10-12/t5-bound-allocation-static-gates.md).
   - [x] Service V23 dispatch → anchored seeding → bound manifest/head claim and receipt validation connected (`ca5a9cfa`–`be78b958`);
@@ -267,8 +267,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: matched driver/agent source `dcf4b276`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
-**876/876** per normal profile and **1156/1156** per feature profile, every discovered case executed once without skips,
+Latest static gates: agent `8ef80fcc`, identical kernel subtree to WDK source `450c8d74`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
+**876/876** per normal profile and **1171/1171** per feature profile, every discovered case executed once without skips,
 service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-12/t5-bound-service-allocation-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
 V23 allocation and the gated native CREATE/close dispatcher pass these gates. Bound-writer capture, ordinary public disposition,
