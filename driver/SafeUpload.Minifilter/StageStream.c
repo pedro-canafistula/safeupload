@@ -5834,6 +5834,7 @@ static VOID StageNativeFlushFacts(VOID)
              * against the durable pre-CREATE intent, never a fabricated failed
              * CREATE receipt. Do not strand it behind CreateOutcomeKnown. */
             if (!rows[index].CreateOutcomeKnown && !rows[index].CancelledBeforeHandle &&
+                !rows[index].CancelledCloseObserved && !rows[index].LastHandleCleanedUp &&
                 !rows[index].CleanupCoverageLost) continue;
             status = SafeUploadStageNativeExchange(&rows[index], revision, SAFEUPLOAD_NATIVE_FACTS_CHANGED, &reply, &replyAuthority);
             if (!NT_SUCCESS(status)) continue; // A later map/channel event retries; no idle timer.
