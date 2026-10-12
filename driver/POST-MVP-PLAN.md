@@ -228,13 +228,15 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [x] Named-file recovery guidance, exact owner-session/SID delivery and structured diagnostics (`a3b3b81e`, `6ee1112e`);
     [18 cases pass in each agent profile](evidence/2026-10-11/t5-native-notice4-static-gates.md), including real emission-record reopening and qualified Restart advice.
     Startup preflight now emits owner-scoped diagnostics (`9e9dea9d`); [10 startup cases pass per feature profile](evidence/2026-10-11/t5-native-startup-notice-static-gates.md).
-    Last-close dispatch remains pending; notification emission cannot clear a hold.
+    Gated last-close dispatch now reuses this guidance (`da66fef4`); startup activation/runtime remain pending. Emission cannot clear a hold.
   - [x] Owner approves the [forced-instance exception](evidence/2026-10-11/t5-native-instance-teardown-feasibility-luna6.md) for M2 fixed NTFS:
     keep the named-file hold until qualified Restart recovery; T21 must reconcile at remount instead. Implementation/runtime remain open.
   - [x] Bounded native-object record map, exact CREATE/CLEANUP/cancellation ownership and unload veto (`5591afe8`, `e9458807`);
     [canceled-CREATE design review](evidence/2026-10-11/t5-native-cancelled-create-design-luna6.md) and
     [static gates](evidence/2026-10-11/t5-native-replay-static-gates.md). Authenticated read-only replay is built/tested (`aa1a2a46`);
-    durable destination-head discovery exists (`e97585cb`). CREATE producer and integrated pre-boot kernel review remain pending.
+    durable destination-head discovery exists (`e97585cb`). Gated original-CREATE producer/typed lifecycle and terminal receipt removal
+    are connected (`b6e3d1b6`–`da66fef4`); [22 lifecycle controls pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md).
+    Ordinary disposition, startup/directory-event activation and integrated pre-boot kernel review remain pending; capability stays off.
   - [x] [Startup epoch security design](evidence/2026-10-11/t5-native-startup-epoch-design-review-luna6.md) reviewed with corrections:
     authenticated boot metadata, asynchronous private preflight and visible readiness gate implemented (`9c1f9737`);
     [agent gates pass](evidence/2026-10-11/t5-native-startup-static-gates.md). Anchored native hold release/runtime remain open.
@@ -250,7 +252,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [Reviewed integration contract](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md), V23 transport and
     Windows filename resolver are implemented (`827b3f41`, `5f294008`) with [passing static gates](evidence/2026-10-12/t5-bound-allocation-static-gates.md).
   - [x] Service V23 dispatch → anchored seeding → bound manifest/head claim and receipt validation connected (`ca5a9cfa`–`be78b958`);
-    [agent gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md), including 12 allocation/continuation cases per feature profile.
+    [agent gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md), including 13 allocation/continuation cases per feature profile.
     Interrupted claims retain exact private cleanup obligations. Kernel producer/physical commits remain open; admission stays disabled.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
   - [x] Prepare clean/CPF forced-order coordinator gates and no-empty-leftover verdicts; Windows PowerShell 5.1 parsing,
@@ -261,11 +263,12 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: driver/agent `dbe02d04`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
-**863/863** per normal profile and **1113/1113** per feature profile, every discovered case executed once without skips,
+Latest static gates: driver/agent `da66fef4`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
+**866/866** per normal profile and **1139/1139** per feature profile, every discovered case executed once without skips,
 service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-12/t5-bound-service-allocation-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
-The V23 sender and concurrent RPC authority fence pass these gates; CREATE capture and the connected commit/recovery path remain open.
+V23 allocation and the gated native CREATE/close dispatcher pass these gates. Bound-writer capture, ordinary public disposition,
+shared physical commits, startup activation and resolving directory events remain open; reopened-journal controls are not service-restart qualification.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
 [matrix self-checks](evidence/2026-10-11/t5-agent-matrix-runner-selfcheck.txt) pass.

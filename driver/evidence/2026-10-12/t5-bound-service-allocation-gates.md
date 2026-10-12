@@ -1,53 +1,55 @@
-# T5 connected service allocation — builder gates
+# T5 connected native lifecycle and allocation — builder gates
 
-Driver and agent source: `dbe02d0485fcc416726c9d316d1b58dd0063c369`; matrix/WDK label `t5-rpc-integration1`.
-**AgentMatrixGate=True; independent discovery/execution gate PASS.** No revised driver pair was installed or booted.
-The bound-head capability remains unadvertised and live admission disabled.
+Driver and agent source: `da66fef4df9215cfd87d85d6825a154174f43138`.
+WDK label **t5-native-lifecycle4**; agent matrix **t5-native-lifecycle3**.
+**Four WDK profiles 0 warnings / 0 errors, PREfast/ApiValidator; AgentMatrixGate=True.**
+No revised pair was installed or booted. Bound-head capability remains unadvertised and admission disabled.
 
-| Agent profile | Passed / discovered / unique executions | New allocation/continuation cases |
-| --- | ---: | ---: |
-| Normal Debug | 863 / 863 / 863 | compiled out |
-| Normal Release | 863 / 863 / 863 | compiled out |
-| Feature Debug | 1113 / 1113 / 1113 | 12 / 12 |
-| Feature Release | 1113 / 1113 / 1113 | 12 / 12 |
+| Agent profile | Passed / discovered / unique executions | Native lifecycle controls | Bound allocation controls |
+| --- | ---: | ---: | ---: |
+| Normal Debug | 866 / 866 / 866 | compiled out | compiled out |
+| Normal Release | 866 / 866 / 866 | compiled out | compiled out |
+| Feature Debug | 1139 / 1139 / 1139 | 22 / 22 | 13 / 13 |
+| Feature Release | 1139 / 1139 / 1139 | 22 / 22 | 13 / 13 |
 
-Every service, tray, test, discovery and Release-package leg passes at **0 warnings / 0 errors**; no skipped tests.
-The host gate independently checks discovered/executed totals and unique IDs. The 12 allocation results were additionally recounted
-from both feature user TRX files: all Passed with unique executions. Eleven cases use the real Windows filesystem; one proves
-unrelated continuation progress and cancellation/drain. These are service controls, not a protected FilterPort or Verifier run.
+Root independently verified aggregate execution files equal the disjoint user + SYSTEM union:
+841 + 25 normal, 1114 + 25 feature; every result Passed, unique IDs, no skipped cases.
+Every service/tray/test/discovery/Release-package leg passes at 0/0. Inspector/writer builds and
+signature verification also pass ([raw WDK summary](exact-t5-native-lifecycle4-summary.txt)).
+Signed feature Debug SHA-256: `9052C6FB76BC0E7443AE1B0AC6F9571168350E2B2E633D053870BF3D80844B3B`.
 
-The receive branch now calls the V23 allocator asynchronously, copies each message before enqueueing, and drains accepted work
-before port close. Allocation serializes duplicate reservation GUIDs and the destination turn, bounds active disk work, reopens
-the recorded volume/parent by identity, validates full IDs and case mode, and seeds only an exact held source. Receipt validation
-uses those anchors rather than the saved locator. A flushed bound manifest precedes its head claim; a failed claim retains the
-private candidate, exact replay completes it, and an overtaken candidate cannot roll the head back. Bound entries are refused by
-legacy pathname publication/recovery while the anchored commit pipeline is unfinished.
+The gated kernel producer now captures the original CREATE subject and metadata anchors without a
+second target-file open, reserves its bounded record and sends a strict V24 prepare. The service
+reads exact authenticated replay, includes retained manifests/tombstones in max+1 and flushes the
+pre-CREATE intent before its typed receipt. Map revision and local channel-authority revision fence
+forwarding of the unchanged original CREATE; generic verdicts/timeouts cannot authorize it.
 
-Allocation replay now checks the live process PID/session/SID/creation before and after replay. Its regression uses a real
-Windows process and allocation, refuses stale lifetime/session/SID/PID tuples, and confirms the candidate stays private.
-The kernel V23 sender retains a byte-identical replay request and validates packed binding, PID and zero tails. Ordinary RPCs
-no longer hold a global mutex while allocation waits; epoch transitions remain serialized and an authority revision prevents
-an old same-channel reply from restoring a grant after reconcile/drain. The producer is still unwired; these are static gates.
+CREATE/CLEANUP/canceled-CLOSE/teardown facts feed the event-driven worker and asynchronous service
+lifecycle dispatcher. It records immutable original request/outcome facts, reconciles last close
+with exact lifetime/name evidence, and retains terminal receipts until authenticated record removal.
+The pre-ACK map revision is durable; same-revision absence is refused. Later cleanup-coverage loss
+or undecidable name reconciliation restores the existing AcceptedUnresolved hold, with approved
+named-file diagnostics/Restart guidance. No persisted enum is renumbered or new recovery state added.
 
-Controls cover existing-target dispositions and exact replay after reopen, parent rename plus locator replacement, changed
-public identity/false absence, an actual native head-write failure after manifest flush, recovery of that same private identity
-and generation, overtaken-candidate retention, concurrent GUID reuse, and continuation drain. The last source also proves a
-failed head claim cannot produce an allocation receipt. Existing transport, generation, inspection and privacy assertions remain.
+Controls cover lost prepare/terminal replies, exact replay, negative never-forwarded receipts,
+live-handle refusal, automatic dispatch after cleanup, journal reopening, stale bindings, changed
+request/outcome facts, malformed carriers, premature receipt removal and both initially checked
+and unbound recovery failures. They use the real journal with injected driver replay/name observations:
+**journal reopening is not a qualified service restart; these are not protected FilterPort/Verifier runs.**
+The 13 bound allocation controls retain their Windows filesystem/replay/continuation coverage.
 
-Normal Release package SHA-256: `A93C2B0EDB3FB561D3F146E201A40162D5AE855315EFCD237CC8DB6CF93F5364`.
-Feature Release package SHA-256: `A2BFB9D2639AA4B2F615BCDFEE0DA74AA8A17F70B324CE0EB955BB1D24D6D1C9`.
-Raw output stays local in `output/exact-agent-matrix/t5-rpc-integration1/` and the matching
-`exact-agent-matrix-t5-rpc-integration1-*` / `t5-rpc-integration1-agent-host.txt` evidence files.
+Normal Release package SHA-256: `FA5D6B11F79BB75CA61E7B9A623949961AB9BB3394AF7C8C0323E911204ED470`.
+Feature Release package SHA-256: `C2217C7A68CF74434684164493824CDEF30977DB0D806E079D84F542B250CD46`.
+Raw output remains local in `output/exact-agent-matrix/t5-native-lifecycle3/`,
+`exact-agent-matrix-t5-native-lifecycle3-*`, `t5-native-lifecycle3-agent-host.txt`,
+`exact-t5-native-lifecycle4-*` and `t5-native-lifecycle4-wdk-host.txt`.
 
-Earlier attempts remain retained: service1 stopped before delivery because the builder was off; service2 passed both normal
-profiles and feature service builds, then failed the test analyzer on the assertion overload; service3 passed all four profiles.
-Service4 passed at `be78b958`; the current integration gate supersedes it. No failure was relabeled as a pass.
+Earlier attempts remain retained: lifecycle1 WDK feature builds found C28170/C28172 paging annotation
+errors; corrected without relaxing PREfast. Lifecycle2/3 WDK and earlier agent matrices passed their
+recorded sources. The final source adds later coverage-loss/undecidable-reconciliation holds.
 
-All four WDK profiles on this same source pass at 0 warnings / 0 errors with PREfast/ApiValidator, as do the inspector/writer
-builds and signature verification ([raw summary](exact-t5-rpc-integration1-summary.txt)). The signed feature Debug SHA-256 is
-`F03AA35EF06EFBD923D41CC0D68E285E012F971D9A1C5DF16C2680EBA0777D08`.
-Before building, only regenerable project bin/obj from completed old builder runs were removed; source, output logs and packages
-were retained. Builder free space rose from 234 MB to 6.22 GB; no host or VM configuration was changed.
-This does not complete T5: kernel capture/revalidation, seed-sharing/read-authority design, all
-physical publication/delete permits, exact native close/startup recovery, acknowledgements and teardown still need integration,
-the single pre-boot lifetime review, and protected native/Notepad/fault rows with independent bytes and separate restoration.
+T5 remains open: ordinary public disposition/proxy handling, kernel bound-writer authority and
+seeding, all physical publication/delete permits, startup activation and resolving directory events
+must share the head. Then perform the single integrated pre-boot lifetime review and both forced
+orders, real Notepad/fault/compatibility rows in all modes, independent bytes and separate restoration.
+No host-wide configuration or product VM state changed during these builder gates.

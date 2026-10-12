@@ -1,0 +1,13 @@
+﻿LABEL=t5-native-lifecycle4
+ARCHIVE_SHA256=A5CFC859E197E70DEF5ADD4E21BC8E1399DD796CEB1EAC0DF95CC995410BC86F
+SOURCE_COMMIT=da66fef4df9215cfd87d85d6825a154174f43138
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-12T07:10:17.0060166Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=5DD571494420A7422081CDD41234A5C3303B7F028E55AFE24FB4071D203E20A7
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=71C87753AC9C0DFBF9DD6E9BEBF3D1013EFE43F4A590F2DE8232F825D5F62075
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=94CF17D02658338028A1D857220C870FD4B13BA55525B49D8B8FFE8FF9DDAFEC
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=165CA80899673DA1DDFDAF4C063AEA1816E48895B9B623A0DFDC4E6BD8076FA9
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=B278D2764126436901430A83BB87B31636DA5AC544C87D4C2A3E433571F0812B
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=24293A796C76018F62282CA8F26F97AC67D15F5B3F1A26F9EE2776C96C7A1BDF
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=349495888D4AF6D1AEC941568D350A89633115FD23CF7B31F67C9F00F0BA288B
+sign : exit=0 unsigned_sha256=71C87753AC9C0DFBF9DD6E9BEBF3D1013EFE43F4A590F2DE8232F825D5F62075 signing_copy_sha256=71C87753AC9C0DFBF9DD6E9BEBF3D1013EFE43F4A590F2DE8232F825D5F62075 unsigned_unchanged=True store=LocalMachine output_sha256=9052C6FB76BC0E7443AE1B0AC6F9571168350E2B2E633D053870BF3D80844B3B signed_sha256=9052C6FB76BC0E7443AE1B0AC6F9571168350E2B2E633D053870BF3D80844B3B signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38
