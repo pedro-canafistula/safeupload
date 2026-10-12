@@ -107,8 +107,9 @@ generation when the caller requests disposition. Windows remains the authority f
 or parent DELETE_CHILD; there is no SYSTEM reopen, share widening, added privilege or path-based replacement capability.
 
 An ordinary disposition uses the same currently open native FILE_OBJECT and the one-use, exact-object service transaction under the
-destination journal turn. The exported service handle is ephemeral and cannot prevent last-handle cleanup. Return NTFS's actual
-result. Ordinary TRUE/FALSE cancellation and accepted-disposition reservations remain as specified in T5-DELETES section 4.2.
+destination journal turn. The service orders and journals the original operation without an exported second application handle;
+combined private DELETE+write opens retain the separately checked backend described above. Return NTFS's actual result.
+Ordinary TRUE/FALSE cancellation and accepted-disposition reservations remain as specified in T5-DELETES section 4.2.
 
 ## Native scheduled delete: preserve timing without holding all future saves
 

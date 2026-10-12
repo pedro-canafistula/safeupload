@@ -142,10 +142,10 @@ integration. After the single pre-boot kernel lifetime review, qualify native de
 clean/CPF Save As in all three modes, with independent bytes and separate restoration. Component passes do not complete T5.
 Keep the broad application/metadata matrix in T8; all existing assertions and the full milestone sequence remain required.
 
-The [latest progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md) confirms the architecture and scope.
-The gated native CREATE/close path is now connected and statically tested; no revised protected T5 pair has run. Finish ordinary
-disposition and the shared publication/recovery path before adding component checkpoints. Ordinary CREATE authority and the
-seeded-content hand-back owner choice remain open; component checkmarks do not qualify the product.
+The [latest progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md), covering `ffd47a97` and unfinished relay changes,
+confirms the architecture and scope but finds delivery still fragmented. Native CREATE/close and ordinary-open binding pass static
+gates; no revised protected T5 pair has run. Finish ordinary disposition, cleanup/receipt retirement and shared publication/recovery
+as one delivery checkpoint. Bound-writer CREATE authority and the seeded-content hand-back owner choice remain open.
 
 ### T4. Remove the 128-saves-per-boot ceiling
 
@@ -222,7 +222,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [x] Native accepted/unresolved journal component (`960ba2d7`, `e9458807`) with immutable on-close kind, current-session cleanup/cancellation/qualified-boot proof,
     automatic queue wake and retained generation floor; all 28 component cases pass in each agent profile. The
     [boot-lifetime review](evidence/2026-10-11/t5-native-boot-lifetime-design-review-luna6.md) rejects counter-only release;
-    live dispatcher and automatic startup/last-close reconciliation remain pending.
+    gated last-close dispatch is now connected; startup activation and protected automatic-recovery qualification remain pending.
   - [x] Anchored native parent observer (`3df7aa97`) without child opens, using complete repeated 128-bit directory enumeration;
     all 14 buffer/native-handle cases pass in each agent profile. The metadata RPC below replaces handle export; live recovery remains pending.
   - [x] Named-file recovery guidance, exact owner-session/SID delivery and structured diagnostics (`a3b3b81e`, `6ee1112e`);
@@ -256,7 +256,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [Reviewed integration contract](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md), V23 transport and
     Windows filename resolver are implemented (`827b3f41`, `5f294008`) with [passing static gates](evidence/2026-10-12/t5-bound-allocation-static-gates.md).
   - [x] Service V23 dispatch → anchored seeding → bound manifest/head claim and receipt validation connected (`ca5a9cfa`–`be78b958`);
-    [agent gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md), including 13 allocation/continuation cases per feature profile.
+    [agent gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md), including 14 allocation/continuation and two native Windows controls per feature profile.
     Interrupted claims retain exact private cleanup obligations. Kernel producer/physical commits remain open; admission stays disabled.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
   - [x] Prepare clean/CPF forced-order coordinator gates and no-empty-leftover verdicts; Windows PowerShell 5.1 parsing,
