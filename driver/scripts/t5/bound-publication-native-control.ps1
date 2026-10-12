@@ -71,7 +71,12 @@ public static class BoundPublicationNativeControl {
   if(BitConverter.ToUInt32(basic,4)!=0x00110082) throw new IOException("Temporary has unexpected granted access.");
   byte[] mode=new byte[4]; IoStatusBlock io;
   Check(NtQueryInformationFile(file,out io,mode,4,16));
-  if(io.Status!=IntPtr.Zero || BitConverter.ToUInt32(mode,0)!=0x6A) throw new IOException("Temporary has unexpected buffering/synchronization mode.");
+  // FILE_MODE_INFORMATION reports I/O modes, not NON_DIRECTORY or OPEN_REPARSE_POINT.
+  uint actual=BitConverter.ToUInt32(mode,0);
+  if(io.Status!=IntPtr.Zero || actual!=0x2A) throw new IOException("Temporary has unexpected I/O mode 0x"+actual.ToString("X8"));
+  byte[] attributes=new byte[40];
+  if(!GetFileInformationByHandleEx(file,0,attributes,40) || (BitConverter.ToUInt32(attributes,32)&0x410)!=0)
+   throw new IOException("Temporary is not a regular non-reparse file.");
  }
  public static void WriteAlignedExact(SafeFileHandle file,byte[] bytes) {
   const int alignment=4096;
@@ -143,7 +148,7 @@ try {
         if (([IO.File]::ReadAllBytes((Join-Path $parentPath $leaf)) -join ',') -ne ($bytes -join ',')) { throw 'Published bytes differ.' }
         if (Test-Path -LiteralPath (Join-Path $parentPath $temporary)) { throw 'Temporary name remains.' }
         if ([BoundPublicationNativeControl]::Identity($parent) -ne $parentId) { throw 'Parent identity changed.' }
-        Write-Output ('ParentRelativeCreateRename_'+$size+'=PASS GrantedAccess=0x00110082 Mode=0x6A Identity='+$id)
+        Write-Output ('ParentRelativeCreateRename_'+$size+'=PASS GrantedAccess=0x00110082 IoMode=0x2A RegularNonReparse=True Identity='+$id)
     }
     Write-Output 'BoundPublicationNativeControl=PASS'
 } finally {
