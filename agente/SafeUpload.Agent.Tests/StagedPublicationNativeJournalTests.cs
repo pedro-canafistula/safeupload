@@ -164,7 +164,7 @@ public sealed class StagedPublicationNativeJournalTests : IDisposable
         Assert.Equal(later.Entry.DestinationGeneration, head.CurrentSaveGeneration);
         Assert.Equal(later.Entry.Transfer.TransferId, head.CurrentSaveTransferId);
         Assert.Equal(fixture.Entry.DestinationGeneration, head.LatestPublished);
-        Assert.Equal(1, head.PublicationNativeReceipts!.Length);
+        Assert.Single(head.PublicationNativeReceipts!);
     }
 
     [Theory]
