@@ -36,7 +36,7 @@ namespace SafeUpload.Agent.Service.Interception;
 /// e o ponto certo dessa troca só se conhece medindo com arquivo de verdade.
 /// Cada estouro continua contado e registrado.</para>
 /// </summary>
-public sealed class MinifilterInterceptor : BackgroundService
+public sealed partial class MinifilterInterceptor : BackgroundService
 {
     /// <summary>
     /// O que o motor recebe, derivado da RN-012 quando a política carrega.
@@ -241,6 +241,10 @@ public sealed class MinifilterInterceptor : BackgroundService
             Task? coverageTask = null;
             Task? discardCleanupTask = null;
             Task? startupTask = null;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            _stageBoundHeadReady = false;
+            using var boundContinuations = new StagedRequestContinuations(publishCancellation.Token);
+#endif
             try
             {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
@@ -295,6 +299,16 @@ public sealed class MinifilterInterceptor : BackgroundService
                 while (!stoppingToken.IsCancellationRequested &&
                        port.TryGetMessage(out SafeUploadRequest request, out ulong messageId, stoppingToken))
                 {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                    if (request.Reserved == Contract.StageBoundAllocationVersion &&
+                        request.Operation == Operation.StageAllocate)
+                    {
+                        Guid? capturedDriver = _activeDriverInstanceId;
+                        boundContinuations.Dispatch(token =>
+                            ReplyBoundAllocationAsync(port, request, messageId, capturedDriver, token));
+                        continue;
+                    }
+#endif
                     uint verdict;
                     string? stageName = null;
                     StagedAllocationReply? typedCreateReply = null;
@@ -466,6 +480,12 @@ public sealed class MinifilterInterceptor : BackgroundService
                 }
 #endif
                 publishCancellation.Cancel();
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                _stageBoundHeadReady = false;
+                try { boundContinuations.DrainAsync().GetAwaiter().GetResult(); }
+                catch (Exception error)
+                { _logger.LogError(error, "Bound allocation continuations drained with a failure before FilterPort close."); }
+#endif
                 if (startupTask is not null)
                 {
                     try { startupTask.GetAwaiter().GetResult(); }

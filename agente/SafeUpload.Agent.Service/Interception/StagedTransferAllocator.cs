@@ -9,7 +9,7 @@ namespace SafeUpload.Agent.Service.Interception;
 /// returning that name to the driver. Only the service can independently open
 /// the backing file; the driver authorizes the app's virtual destination.
 /// </summary>
-public sealed class StagedTransferAllocator
+public sealed partial class StagedTransferAllocator
 {
     // Matches the currently qualified owned-stream STAGE_MAX_BYTES bound.
     internal const long MaximumSeedBytes = 16 * 1024 * 1024;

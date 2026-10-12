@@ -36,6 +36,12 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         Assert.Null(typeof(SafeUploadRequest).Assembly.GetType(
             "SafeUpload.Agent.Minifilter.SafeUploadStageAllocateV23"));
         Assert.Null(typeof(SafeUploadRequest).GetMethod("TryReadBoundAllocationV23"));
+        Assert.Null(typeof(StagedTransferAllocator).GetMethod("AllocateV23Async",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic));
+        Assert.Null(typeof(StagedTransferAllocator).Assembly.GetType(
+            "SafeUpload.Agent.Service.Interception.StagedDestinationDirectory"));
+        Assert.Null(typeof(StagedTransferAllocator).Assembly.GetType(
+            "SafeUpload.Agent.Service.Interception.StagedRequestContinuations"));
 #endif
     }
 

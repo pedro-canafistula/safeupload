@@ -398,7 +398,8 @@ public sealed partial class StagedTransferJournal
         {
             TransferJournalEntry current = await ReadCoreAsync(intent.ReservationId, cancellationToken)
                 .ConfigureAwait(false);
-            if (current.Transfer != expectedTransfer || current.CreateReservationId != intent.ReservationId ||
+            if (current.BoundAllocation is not null || current.AllocationExtensionVersion is not null ||
+                current.Transfer != expectedTransfer || current.CreateReservationId != intent.ReservationId ||
                 current.AllocationDisposition != intent.Disposition ||
                 current.AllocationReferenceId != (intent.ParentTransferId == Guid.Empty
                     ? null : intent.ParentTransferId) ||
@@ -1453,6 +1454,24 @@ public sealed partial class StagedTransferJournal
                  requestorSid.Any(char.IsWhiteSpace))) ||
             (transfer.RequestorProcessCreationTime is <= 0))
             throw new InvalidDataException("The transfer manifest has invalid identity or state.");
+        if (entry.AllocationExtensionVersion is not null || entry.BoundAllocation is not null)
+        {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            if (entry.AllocationExtensionVersion != 23 || entry.BoundAllocation is not { } bound)
+                throw new InvalidDataException("The bound allocation marker and descriptor must agree.");
+            bound.Validate();
+            if (bound.ReservationId != id || entry.CreateReservationId != id ||
+                entry.DriverInstanceId != bound.DriverInstanceId ||
+                entry.AllocationDisposition != bound.Disposition ||
+                entry.AllocationReferenceKind != bound.ReferenceKind ||
+                entry.AllocationReferenceId != (bound.ParentTransferId == Guid.Empty ? null : bound.ParentTransferId) ||
+                entry.ParentDirectoryIdentity != bound.Parent || entry.DestinationGeneration <= 0 || entry.StageIdentity is null ||
+                !bound.Destination.LeafEquals(Path.GetFileName(transfer.DestinationPath)))
+                throw new InvalidDataException("The bound allocation manifest lost its exact committed tuple.");
+#else
+            throw new InvalidDataException("This build cannot recover or publish bound allocation manifests.");
+#endif
+        }
         RequireManifestPath(transfer.StagePath);
         RequireManifestPath(transfer.DestinationPath);
         if (entry.Sha256Hex is not null && (entry.Sha256Hex.Length != 64 || !entry.Sha256Hex.All(Uri.IsHexDigit)))
@@ -1574,6 +1593,17 @@ public sealed partial class StagedTransferJournal
         for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
         {
             RequireManifestPath(name.DestinationPath);
+            if (name.AllocationBindingV23 is { } tombstoneBinding)
+            {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                tombstoneBinding.Validate();
+                if (!tombstoneBinding.Destination.LeafEquals(Path.GetFileName(name.DestinationPath)) ||
+                    tombstoneBinding.DriverInstanceId != entry.DriverInstanceId || entry.BoundAllocation is null)
+                    throw new InvalidDataException("The namespace tombstone lost its bound authority.");
+#else
+                throw new InvalidDataException("This build cannot recover identity-bound namespace tombstones.");
+#endif
+            }
             // Generations belong to independent destination slots. A source
             // tombstone may be greater than the current target generation.
             if (++count > 16 || name.Generation <= 0)
@@ -2714,6 +2744,16 @@ public sealed partial class StagedTransferJournal
 
     private async Task<bool> IsCurrentDestinationAsync(TransferJournalEntry current, CancellationToken token)
     {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        if (current.BoundAllocation is { } bound)
+        {
+            var head = await ReadDestinationHeadCoreAsync(bound.Destination, token).ConfigureAwait(false);
+            return head is not null && head.CurrentSaveTransferId == current.Transfer.TransferId &&
+                head.CurrentSaveGeneration == current.DestinationGeneration &&
+                current.DestinationGeneration > PublicationGenerationFloor(head) &&
+                head.PendingCommit is null && current.PendingRename is null;
+        }
+#endif
         var versions = await DestinationVersionsAsync(current.Transfer.DestinationPath, token).ConfigureAwait(false);
         long generation = versions.Select(e => e.Generation).DefaultIfEmpty(0).Max();
         return current.DestinationGeneration == generation &&
@@ -2736,6 +2776,8 @@ public sealed partial class StagedTransferJournal
             {
                 continue;
             }
+            if (entry.BoundAllocation is not null)
+                throw new IOException("Bound publishing recovery requires the anchored head/permit dispatcher.");
 
             if (!HasMeasuredSeal(entry))
             {
@@ -3027,6 +3069,8 @@ public sealed record TransferJournalEntry(
     public Guid? DriverInstanceId { get; init; }
     public StagedStageIdentity? ParentDirectoryIdentity { get; init; }
     public uint? AllocationDisposition { get; init; }
+    public uint? AllocationExtensionVersion { get; init; }
+    public StagedAllocationBindingV23? BoundAllocation { get; init; }
     /// <summary>Durable attachment transaction state; None is legacy/unattached v18 data.</summary>
     public StagedAttachmentStateV20 AttachmentStateV20 { get; init; }
     public ulong? AttachPrepareRequestIdV20 { get; init; }
@@ -3076,6 +3120,7 @@ public sealed record TransferJournalEntry(
             AllocationReferenceId == other.AllocationReferenceId &&
             AllocationReferenceKind == other.AllocationReferenceKind && DriverInstanceId == other.DriverInstanceId &&
             ParentDirectoryIdentity == other.ParentDirectoryIdentity &&
+            AllocationExtensionVersion == other.AllocationExtensionVersion && BoundAllocation == other.BoundAllocation &&
             AllocationDisposition == other.AllocationDisposition && DiscardReservationId == other.DiscardReservationId &&
             AttachmentStateV20 == other.AttachmentStateV20 &&
             AttachPrepareRequestIdV20 == other.AttachPrepareRequestIdV20 &&
@@ -3124,6 +3169,8 @@ public sealed record TransferJournalEntry(
         hash.Add(DriverInstanceId);
         hash.Add(ParentDirectoryIdentity);
         hash.Add(AllocationDisposition);
+        hash.Add(AllocationExtensionVersion);
+        hash.Add(BoundAllocation);
         hash.Add(AttachmentStateV20);
         hash.Add(AttachPrepareRequestIdV20);
         hash.Add(AttachCommitRequestIdV20);
@@ -3262,7 +3309,10 @@ public enum StagedHandbackState
 
 // Linked records provide value equality across serialization/reply-loss retries.
 public sealed record StagedNameTombstone(string DestinationPath, long Generation,
-    StagedNameTombstone? Previous);
+    StagedNameTombstone? Previous)
+{
+    public StagedAllocationBindingV23? AllocationBindingV23 { get; init; }
+}
 
 public sealed record StagedRename(ulong TransactionId, string DestinationPath, bool SealedVersion);
 

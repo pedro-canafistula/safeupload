@@ -78,6 +78,8 @@ public sealed class StagedTransferPublisher
 
         var journalEntry = await _journal.ReadAsync(transfer.TransferId, cancellationToken)
             .ConfigureAwait(false);
+        if (journalEntry.BoundAllocation is not null)
+            throw new IOException("Bound publication requires the anchored head/permit dispatcher.");
         if (journalEntry.State == TransferJournalState.LegacyEmptyHeld)
         {
             journalEntry = await _journal.TryMigrateLegacyEmptyAsync(transfer.TransferId, cancellationToken)

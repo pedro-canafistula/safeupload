@@ -15,6 +15,15 @@ internal static class StagedBackingFile
         await using var input = source is null ? null : new FileStream(source,
             FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await CreateFromHeldSourceAsync(input, destination, maximumBytes, token).ConfigureAwait(false);
+    }
+
+    // The bound allocator supplies the already checked source FILE_OBJECT.
+    // Borrow it through the durable allocation claim; never reopen its locator.
+    internal static async Task CreateFromHeldSourceAsync(FileStream? input, string destination,
+        long maximumBytes, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
         // Check on the held source handle before creating or writing output.
         // A streamed bound below also prevents growth from consuming more disk.
         if (input is not null && input.Length > maximumBytes)
