@@ -521,7 +521,7 @@ public sealed class MinifilterInterceptor : BackgroundService
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            await _stagePublisher.RecoverConfirmedPublicationsAsync(cancellationToken).ConfigureAwait(false);
+            await _stagePublisher.RecoverJournalProgressAsync(cancellationToken).ConfigureAwait(false);
             foreach (var entry in await _stageJournal.ReadPendingAsync(cancellationToken)
                          .ConfigureAwait(false))
             {
@@ -584,6 +584,8 @@ public sealed class MinifilterInterceptor : BackgroundService
                 }
                 catch (Exception ex)
                 {
+                    if (ex is StagedJournalPersistenceException)
+                        _stagePublisher.QueueJournalProgress(entry);
                     _logger.LogError(ex, "Falha ao inspecionar transferencia selada {TransferId}.",
                         entry.Transfer.TransferId);
                     var current = await _stageJournal.ReadAsync(

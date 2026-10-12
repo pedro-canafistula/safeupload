@@ -14,6 +14,10 @@ public sealed partial class StagedTransferPublisher
         FileOperation Operation,
         InspectionResult Inspection, bool Justified);
     private readonly Dictionary<Guid, ConfirmedPublication> _confirmedPublications = new();
+    // Known interrupted progress can already be Verified on disk. Keep the
+    // worker obligation until its existing notification/justification work
+    // also finishes; the durable record is reread before every attempt.
+    private readonly Dictionary<Guid, TransferJournalEntry> _pendingJournalProgress = new();
     private readonly SemaphoreSlim _recoveryGate = new(1, 1);
     private readonly Dictionary<Guid, (int Failures, long RetryAt)> _recoveryRetries = new();
     private readonly HashSet<Guid> _recoveryNotified = new();
@@ -43,10 +47,16 @@ public sealed partial class StagedTransferPublisher
         lock (_confirmedPublications) return _confirmedPublications.ContainsKey(id);
     }
 
-    internal async Task RecoverConfirmedPublicationsAsync(CancellationToken token)
+    internal void QueueJournalProgress(TransferJournalEntry entry)
+    {
+        lock (_confirmedPublications) _pendingJournalProgress[entry.Transfer.TransferId] = entry;
+    }
+
+    internal async Task RecoverJournalProgressAsync(CancellationToken token)
     {
         TransferJournalEntry[] pending;
-        lock (_confirmedPublications) pending = _confirmedPublications.Values.Select(r => r.Intent).ToArray();
+        lock (_confirmedPublications) pending = _confirmedPublications.Values.Select(r => r.Intent)
+            .Concat(_pendingJournalProgress.Values).DistinctBy(e => e.Transfer.TransferId).ToArray();
         foreach (var entry in pending)
             await RecoverPendingTransferAsync(entry, token).ConfigureAwait(false);
     }
@@ -70,14 +80,15 @@ public sealed partial class StagedTransferPublisher
                 ReportRecoveryHold(entry, "publication_receipt_unavailable", null);
                 return; // T5 bound records require their existing anchored receipt dispatcher.
             }
-            else if (entry.State == TransferJournalState.Blocked &&
-                entry.HandbackState is StagedHandbackState.NotAttempted or StagedHandbackState.Copying)
+            else if (entry.State == TransferJournalState.Blocked)
                 await RecoverBlockedAsync(entry, token).ConfigureAwait(false);
+            lock (_confirmedPublications) _pendingJournalProgress.Remove(id);
             _recoveryRetries.Remove(id);
             _recoveryNotified.Remove(id);
         }
         catch (StagedJournalPersistenceException error)
         {
+            QueueJournalProgress(entry);
             ScheduleRecoveryRetry(id);
             ReportRecoveryHold(entry, "journal_progress_pending", error);
         }
@@ -86,6 +97,7 @@ public sealed partial class StagedTransferPublisher
             // A mismatch or unreadable record is never permission to release
             // or recopy. Keep the obligation, diagnose it, and let unrelated
             // transfers continue. A future attempt must validate from scratch.
+            QueueJournalProgress(entry);
             ScheduleRecoveryRetry(id);
             ReportRecoveryHold(entry, "recovery_evidence_unavailable", error);
         }

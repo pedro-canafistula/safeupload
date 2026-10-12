@@ -85,7 +85,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal("approved first version", await File.ReadAllTextAsync(transfer.DestinationPath));
         if (changePublicBytes) await File.WriteAllTextAsync(transfer.DestinationPath, "newer public content");
 
-        await publisher.RecoverConfirmedPublicationsAsync(CancellationToken.None);
+        await publisher.RecoverJournalProgressAsync(CancellationToken.None);
         Assert.Equal(TransferJournalState.Released,
             (await journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
         Assert.False(publisher.HasConfirmedPublication(transfer.TransferId));
@@ -163,7 +163,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         await journal.PrepareRenameAsync(transfer.TransferId, 41, transfer.ProcessId, nextName, true, CancellationToken.None);
         var renamed = await journal.CompleteRenameAsync(transfer.TransferId, 41, transfer.ProcessId, nextName, true, CancellationToken.None);
 
-        await publisher.RecoverConfirmedPublicationsAsync(CancellationToken.None);
+        await publisher.RecoverJournalProgressAsync(CancellationToken.None);
         var after = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
         Assert.Equal(renamed.Transfer, after.Transfer);
         Assert.Equal(renamed.DestinationGeneration, after.DestinationGeneration);
