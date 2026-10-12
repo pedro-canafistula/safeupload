@@ -441,6 +441,28 @@ public sealed partial class StagedTransferJournal
         finally { _gate.Release(); }
     }
 
+    // A previously tracked native open can lose cleanup coverage later. This
+    // uses the existing exceptional state; accepted CREATE facts stay immutable.
+    internal async Task<StagedPublicDeleteRecord> RetainNativeReconciliationHoldAsync(
+        DestinationCommitTurn turn, StagedPublicDeleteBinding binding, Guid operationId, CancellationToken token)
+    {
+        turn.Require(this, StagedDestinationTurnPurpose.Reconciliation);
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var head = await RequireDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
+            RequireNoPendingPhysicalCommit(head);
+            var delete = RequireExactNativeDelete(head, binding, operationId);
+            if (delete.State != StagedPublicDeleteState.Admitted) return delete;
+            if (delete.NativeCreateAccepted == false)
+                throw new IOException("A failed original CREATE cannot regain a publication hold.");
+            delete = delete with { State = StagedPublicDeleteState.AcceptedUnresolved, UpdatedAtUtc = DateTimeOffset.UtcNow };
+            await WriteDestinationHeadCoreAsync(ReplaceDelete(head, delete), token).ConfigureAwait(false);
+            return delete;
+        }
+        finally { _gate.Release(); }
+    }
+
     // Called by exact last-handle CLEANUP or startup recovery, after a checked
     // complete parent enumeration and session-bound native-record replay. A
     // boot counter alone, new service epoch or driver GUID is not lifetime

@@ -126,15 +126,21 @@ public sealed class StagedNativeLifecycleDispatcherTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Unresolved_close_names_the_held_file_and_uses_only_the_approved_recovery_advice(bool coverageLost)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Unresolved_close_names_the_held_file_and_uses_only_the_approved_recovery_advice(
+        bool coverageLost, bool initiallyChecked)
     {
         var prepared = await Send(Request(NativeLifecycleV24.Prepare));
         Advance(Row with { JournalGeneration = prepared.JournalGeneration,
             Facts = NativeRecordFacts.Forwarded | NativeRecordFacts.CreateOutcomeKnown | NativeRecordFacts.CreateAccepted |
-                (coverageLost ? NativeRecordFacts.CleanupCoverageLost : NativeRecordFacts.LastHandleCleanedUp),
-            CreateStatus = 0, IdentityStatus = unchecked((int)0xc0000001) });
+                (initiallyChecked ? NativeRecordFacts.IdentityChecked : 0),
+            CreateStatus = 0, IdentityStatus = initiallyChecked ? 0 : unchecked((int)0xc0000001) });
+        await Send(Request(NativeLifecycleV24.FactsChanged)); // Prove the previously admitted path too.
+        Advance(Row with { Facts = Row.Facts |
+            (coverageLost ? NativeRecordFacts.CleanupCoverageLost : NativeRecordFacts.LastHandleCleanedUp) });
         _child = Id(99); // A replacement with no durable newer publication cannot release the hold.
         var reports = new List<(StagedDestinationHead Head, StagedPublicDeleteRecord Delete, StagedRecoveryAdvice Advice)>();
         var dispatcher = new StagedNativeLifecycleDispatcher(_journal, () => _replay, expected => new(expected, _child),

@@ -75,6 +75,9 @@ internal sealed class StagedNativeLifecycleDispatcher(
             saved = await journal.RecordNativeDeleteOnCloseCreateResultAsync(recoveryTurn, binding,
                 row.OperationId, accepted, checkedIdentity, outcome).ConfigureAwait(false);
         }
+        if (row.Facts.HasFlag(NativeRecordFacts.CleanupCoverageLost) && saved.State == StagedPublicDeleteState.Admitted)
+            saved = await journal.RetainNativeReconciliationHoldAsync(recoveryTurn, binding, row.OperationId, token)
+                .ConfigureAwait(false);
         RequireSameReplay(request, replay);
         heads = await journal.ReadDestinationHeadsAsync(token).ConfigureAwait(false);
         var records = StagedNativeStartupRecovery.ReconcileRecords(replay, heads);
@@ -115,6 +118,12 @@ internal sealed class StagedNativeLifecycleDispatcher(
                     // publication progress is never a reason to grant an override.
                     var currentHead = AssertExactHead(await journal.ReadDestinationHeadsAsync(token).ConfigureAwait(false), destination);
                     var currentDelete = currentHead.Deletes.Single(d => d.Binding == binding && d.OperationId == row.OperationId);
+                    if (currentDelete.State == StagedPublicDeleteState.Admitted)
+                    {
+                        currentDelete = await journal.RetainNativeReconciliationHoldAsync(recoveryTurn, binding,
+                            row.OperationId, token).ConfigureAwait(false);
+                        currentHead = AssertExactHead(await journal.ReadDestinationHeadsAsync(token).ConfigureAwait(false), destination);
+                    }
                     if (currentDelete.State == StagedPublicDeleteState.AcceptedUnresolved)
                         reportUnresolved?.Invoke(currentHead, currentDelete, StagedRecoveryAdvice.CollectDiagnostics,
                             "NativeAnchoredReconciliationUnresolved");
