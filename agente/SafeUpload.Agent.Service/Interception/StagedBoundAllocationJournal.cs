@@ -5,6 +5,13 @@ namespace SafeUpload.Agent.Service.Interception;
 
 public sealed partial class StagedTransferJournal
 {
+    private static void RequireBoundAllocationSource(TransferJournalEntry entry, CancellationToken token)
+    {
+        if (entry.BoundAllocation is not { } binding) return;
+        using var directory = StagedDestinationDirectory.Open(binding);
+        directory.RequirePublicTarget(binding.PublicTarget, token);
+    }
+
     internal async Task<TransferJournalEntry?> FindBoundAllocationAsync(Guid reservation, CancellationToken token)
     {
         if (reservation == Guid.Empty) throw new ArgumentException("An allocation needs a reservation.");

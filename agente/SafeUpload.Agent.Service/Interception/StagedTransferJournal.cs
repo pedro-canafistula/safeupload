@@ -461,12 +461,15 @@ public sealed partial class StagedTransferJournal
                 throw new IOException("The allocation stage identity changed before reply or replay.");
             if (requireCurrentDestination)
             {
-                if (current.ParentDirectoryIdentity is { } expectedDirectory &&
+                if (current.BoundAllocation is null && current.ParentDirectoryIdentity is { } expectedDirectory &&
                     StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(current.Transfer.DestinationPath)!) !=
                         expectedDirectory)
                     throw new IOException("The destination parent directory changed during allocation.");
                 if (current.DeleteVersionIdentity is not null && PathExists(current.Transfer.DestinationPath))
                     throw new IOException("The public destination appeared during private allocation.");
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                RequireBoundAllocationSource(current, cancellationToken);
+#endif
                 await RequireCurrentDestinationAsync(current, cancellationToken).ConfigureAwait(false);
             }
             if (current.DeleteVersionIdentity is { } deleted)
@@ -510,7 +513,8 @@ public sealed partial class StagedTransferJournal
                 if (stage.Identity != expectedVersion.StageIdentity || stage.Stream.Length < 0)
                     throw new IOException("The allocation stage changed before its reply.");
             }
-            if (requireCurrentDestination && current.ParentDirectoryIdentity is { } expectedDirectory &&
+            if (requireCurrentDestination && current.BoundAllocation is null &&
+                current.ParentDirectoryIdentity is { } expectedDirectory &&
                 StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(current.Transfer.DestinationPath)!) !=
                     expectedDirectory)
                 throw new IOException("The destination parent directory changed before the allocation reply.");
@@ -527,7 +531,12 @@ public sealed partial class StagedTransferJournal
                     throw new IOException("The exact delete predecessor changed before the allocation reply.");
             }
             if (requireCurrentDestination)
+            {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                RequireBoundAllocationSource(current, cancellationToken);
+#endif
                 await RequireCurrentDestinationAsync(current, cancellationToken).ConfigureAwait(false);
+            }
             return current;
         }
         finally { _gate.Release(); }

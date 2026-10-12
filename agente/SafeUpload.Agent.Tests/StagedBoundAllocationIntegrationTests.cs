@@ -82,7 +82,10 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         Directory.Move(Parent, Path.Combine(_workspace.Root, "renamed-original"));
         Directory.CreateDirectory(Parent);
         File.WriteAllText(Path.Combine(Parent, "save.txt"), "replacement locator bytes");
-        var result = await Allocate(new(Stages, new StagedTransferJournal(Journal)), binding);
+        var journal = new StagedTransferJournal(Journal);
+        var result = await Allocate(new(Stages, journal), binding);
+        await journal.ValidateAllocationReplyAsync(new(result.Transfer.TransferId, result.DestinationGeneration,
+            result.StageIdentity), binding.ReservationId, CancellationToken.None);
         Assert.Equal("original approved source", File.ReadAllText(result.Transfer.StagePath));
         Assert.Equal("replacement locator bytes", File.ReadAllText(Path.Combine(Parent, "save.txt")));
     }
@@ -119,6 +122,9 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         Assert.Equal(TransferJournalState.Allocated, candidate.State);
         Assert.True(File.Exists(candidate.Transfer.StagePath));
         Assert.Equal(0, new FileInfo(candidate.Transfer.StagePath).Length);
+        await Assert.ThrowsAsync<IOException>(() => journal.ValidateAllocationReplyAsync(
+            new(candidate.Transfer.TransferId, candidate.DestinationGeneration, candidate.StageIdentity!),
+            binding.ReservationId, CancellationToken.None));
         Directory.Delete(blockedHead);
         var reopened = new StagedTransferJournal(Journal);
         var replay = await Allocate(new(Stages, reopened), binding);
