@@ -142,6 +142,10 @@ integration. After the single pre-boot kernel lifetime review, qualify native de
 clean/CPF Save As in all three modes, with independent bytes and separate restoration. Component passes do not complete T5.
 Keep the broad application/metadata matrix in T8; all existing assertions and the full milestone sequence remain required.
 
+The [2026-10-12 progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md) confirms the architecture and scope,
+but identifies delivery fragmentation: group the remaining T5 work around the protected runtime checkpoint. The current design for
+capturing CREATE permissions needs correction before implementation; component checkmarks do not qualify the product.
+
 ### T4. Remove the 128-saves-per-boot ceiling
 
 **Problem:** retired versions retained slots; later saves failed until reboot. Idle writer-context retention also affected pool accounting.
@@ -237,6 +241,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     volume-GUID/legacy-hold and portable-device guards implemented (`1d3f47cc`, `e088cde4`) with [passing static gates](evidence/2026-10-11/t5-native-volume-static-gates.md).
     Authenticated metadata RPC and strict receiver implemented (`13a8fb8b`, `589e9034`), with [passing query static gates](evidence/2026-10-11/t5-native-query-static-gates.md)
     including 42 new query cases per feature profile. Live recovery and runtime portability/hold-release checks remain open.
+  - [ ] Correct ordinary CREATE authority: disposition-specific rights, case/identity anchors, native sharing, complete security labels,
+    post-allocation authorization and live replay identity; see the [current review](evidence/2026-10-12/m2-progress-direction-review.md).
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
     [Reviewed integration contract](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md), V23 transport and
@@ -257,6 +263,7 @@ Latest static gates: driver `827b3f41`, four WDK builds at **0 warnings / 0 erro
 agent `be78b958`, **863/863** per normal profile and **1112/1112** per feature profile, every discovered case executed once without skips,
 service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-12/t5-bound-service-allocation-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
+In-progress kernel protocol changes are not covered by these passes; gate the resulting committed integration source before boot.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
 [matrix self-checks](evidence/2026-10-11/t5-agent-matrix-runner-selfcheck.txt) pass.
