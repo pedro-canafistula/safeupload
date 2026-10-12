@@ -64,7 +64,8 @@ public sealed class StagedHandbackTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(transfer.DestinationPath)!);
         await File.WriteAllTextAsync(transfer.DestinationPath, "original public content");
         var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
-        var publisher = Publisher(journal, policy, new StagedJustifications(), copier);
+        var justifications = new StagedJustifications();
+        var publisher = Publisher(journal, policy, justifications, copier);
 
         var failure = await Assert.ThrowsAsync<StagedJournalPersistenceException>(() =>
             publisher.PublishAsync(transfer, CancellationToken.None));
@@ -83,13 +84,32 @@ public sealed class StagedHandbackTests : IDisposable
         if (restart)
         {
             journal = new StagedTransferJournal(_journalRoot);
-            publisher = Publisher(journal, policy, new StagedJustifications(), copier);
+            justifications = new StagedJustifications();
+            publisher = Publisher(journal, policy, justifications, copier);
         }
-        await publisher.RecoverPendingTransferAsync(interrupted, CancellationToken.None);
+        using var subscription = _notifications.Subscribe(7, TestRequestorSid);
+        if (restart) await publisher.RecoverPendingTransferAsync(interrupted, CancellationToken.None);
+        else
+        {
+            // The service worker queues this obligation from its persistence
+            // catch, even when the manifest already says Verified.
+            publisher.QueueJournalProgress(interrupted);
+            await publisher.RecoverJournalProgressAsync(CancellationToken.None);
+            await publisher.RecoverJournalProgressAsync(CancellationToken.None);
+        }
         var recovered = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
         Assert.Equal(StagedHandbackState.Verified, recovered.HandbackState);
         Assert.Null(recovered.HandbackFailureReason);
         Assert.Equal(1, copier.CopyCount);
+        var notices = new List<TransferNotification>();
+        while (subscription.Reader.TryRead(out var notice))
+            if (notice is TransferNotification transferNotice) notices.Add(transferNotice);
+        var blocked = Assert.Single(notices, n => n.Phase == TransferPhase.Blocked);
+        Assert.True(blocked.OverrideAllowed);
+        Assert.True(blocked.HandbackVerified);
+        Assert.Equal(recovered.HandbackPath, blocked.HandbackPath);
+        Assert.True(justifications.TryConsume(transfer.TransferId.ToString(), 7, TestRequestorSid, out var retry));
+        Assert.NotNull(retry);
         Assert.Equal("CPF: 529.982.247-25", await File.ReadAllTextAsync(recovered.HandbackPath!));
         Assert.Equal("original public content", await File.ReadAllTextAsync(transfer.DestinationPath));
         Assert.True(File.Exists(transfer.StagePath)); // Existing justification window still applies.
