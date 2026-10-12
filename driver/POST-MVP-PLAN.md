@@ -191,6 +191,9 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
   - [ ] Short Verifier retry `m2t4recover256a1` (`0cfdc7c6` + unchanged `m2-driver5-t11`) failed: 255/256 outcomes, one residual stage,
     pool slope 192.225 B/cycle. No journal-write failures; two replies had no waiter. [Diagnosis and raw evidence](evidence/2026-10-12/t4-allocation-reply-diagnosis.md).
     Separate restoration passed. Owner approved focused diagnosis/fix on 2026-10-12; no further VM run until reviewed and built.
+  - [x] Luna-reviewed unaccepted-allocation cleanup and request timing: `6198eee7` on the isolated T4 branch;
+    [agent matrix](evidence/2026-10-12/exact-agent-matrix-t4-rejected-allocation1-summary.txt), 558 normal / 625 feature tests per configuration, 0/0 builds.
+  - [ ] Attribute delay/pool growth and qualify the candidate under Verifier before retrying 10,000 cycles. No kernel change or assertion waived.
 - [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
 
 The preceding `m2t4boot10k9` stopped after 4,714/10,000 without a final result; it is not a pass. Its run disk was deleted and base

@@ -290,3 +290,28 @@ The protocol-18 backport on `fix/t4-journal-recovery-v18` preserves the existing
 T5 capabilities. Qualification still requires its agent matrix, short Verifier run, 10,000 cycles, raw-observer regressions and
 independent restoration. The older restart test now requires a held reservation, preserving its byte/non-overwrite assertions and adding refusal
 of a later allocation. This records the approved failure-policy change, not a relaxation of any product byte assertion.
+
+## 12. Unaccepted allocation reply — 2026-10-12
+
+The [short retry diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md) records 255/256 successful saves, one residual
+stage, and a failed pool slope, with separate restoration passed. There were no journal replacement failures. Two replies returned
+`ERROR_FLT_NO_WAITER_FOR_REPLY`; the historical logs do not bind them to an operation/transfer, so they cannot authorize cleanup.
+
+Owner approved focused diagnosis/fix after these repeated errors. Luna 6 max reviewed the narrow repair: the exact NO_WAITER
+result from the sole native reply proves that this request did not receive its fresh allocation basename. Keep the original
+transfer/generation and full file identity from the creation handle through that call. All other errors and restart ambiguity
+retain the existing private recovery behavior. No kernel or wire change is needed for this limited case.
+
+Candidate `6198eee7` on `fix/t4-journal-recovery-v18` queues that exact rejection for the existing worker. It revalidates the original
+Allocated record under the journal gate, opens the original file exclusively and checks its full identity, journals Unsealed,
+then deletes through that handle. Keep the manifest/generation; never manufacture verified hand-back or reuse StageDeleted.
+An uncertain journal write retries only the exact intended disposition. The volatile receipt is not reconstructed after a crash.
+The random stage name has no other issuer: no driver stream was created, hence no legitimate later seal can arrive for this
+particular Unsealed record. This does not make Unsealed terminal in general.
+
+Fault tests cover successful/other native replies, changed identity/state/generation, before/after-write failures, sharing failure
+and retry, absent identity, and restart without a rejection receipt. Monotonic request diagnostics separate owner/policy, backing,
+journal wait/scan/write and reply latency. The patch does not claim to fix the failed pool slope or establish the delay's cause.
+It remains isolated from the unfinished T5 allocation protocol. The [Windows agent gate](evidence/2026-10-12/exact-agent-matrix-t4-rejected-allocation1-summary.txt)
+passes at `6198eee7`: 558 normal / 625 feature tests per configuration, no skips, all service/app/test builds at 0/0, packages independently
+verified. The harness's PowerShell 5.1 parse and cleanup self-checks passed. Protected qualification remains pending.

@@ -53,3 +53,15 @@ Both debug VMs are off; only win10-debug3 was used.
 
 Native API reference: [FltSendMessage](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltsendmessage)
 documents that a wait can end before a reply (timeout, disconnection or thread termination); the current evidence does not distinguish them.
+
+## Prepared repair
+
+`6198eee7` on `fix/t4-journal-recovery-v18` implements the Luna-reviewed narrow cleanup and monotonic phase diagnostics described
+in [T4-STAGE-LIFETIME §12](../../T4-STAGE-LIFETIME.md#12-unaccepted-allocation-reply--2026-10-12). Only the exact native NO_WAITER
+result for one correlated new allocation creates cleanup authority. Other errors retain private data. Cleanup verifies the original
+full file identity, retains the Unsealed journal/generation, and deletes through that handle off the receive loop.
+
+The [four-profile agent matrix](exact-agent-matrix-t4-rejected-allocation1-summary.txt) passes: 558 normal / 625 feature tests per
+configuration, no skipped cases, service/app/test builds at zero warnings/errors. Eleven new general cases plus three feature native-status
+cases cover changed identity/state/generation, journal-write ambiguity, sharing, retry and restart. This does not prove the historical
+leftover's identity or resolve the delay and failed pool slope; protected runtime has not been repeated.

@@ -1,0 +1,62 @@
+﻿LABEL=t4-rejected-allocation1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=6198eee7cc7065b2d5db66eda5ddab9e597d07ec
+ARCHIVE_SHA256=F58161B7C0761D0885F62DB8274CD4DAFBD45E9E1C49FEECED73583C76703859
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-debug-tests-user: exit=0 warnings=0 errors=0
+normal-debug-tests-system-identity: S-1-5-18
+normal-debug-tests-system: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=558
+normal-release: admission_evidence=false
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-app-build: exit=0 warnings=0 errors=0
+normal-release-test-build: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-release-tests-user: exit=0 warnings=0 errors=0
+normal-release-tests-system-identity: S-1-5-18
+normal-release-tests-system: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=558
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_manifest_sha256=83E6D74E2DC8B9AE6D9372F329736788080990F69FDE7213B3EC7415DA304C2B
+normal-release: package_sha256=F12FAA9A0DACBAC83ED8F9FD2034F14EE7D3660A289C668E636AB0A8263FEB26
+normal-release: exe_sha256=5AD51D0C99575D0DC5635BE7CF79FF8DBC9A61FCAAD39D7BA2CFD87450874EDA
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=0 warnings=0 errors=0
+feature-debug-tests-system-identity: S-1-5-18
+feature-debug-tests-system: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=625
+feature-release: admission_evidence=true
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-app-build: exit=0 warnings=0 errors=0
+feature-release-test-build: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-release-tests-user: exit=0 warnings=0 errors=0
+feature-release-tests-system-identity: S-1-5-18
+feature-release-tests-system: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=625
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_manifest_sha256=1192E6BD887DD6CE70B430C743706DBEE389192EE265360F701ECF8B2187935B
+feature-release: package_sha256=21F725DD4995603979CF173C43499477B45E2CC5085404AFC594C5B04CD5293F
+feature-release: exe_sha256=42D299787F48AE28812BE915ECEF5F8D8A6BF1940CCF8546DBE4DE233CD39BA2
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-12T16:33:07.6119847Z
