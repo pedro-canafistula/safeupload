@@ -65,9 +65,14 @@ public static class WriterPermissionNativeControl {
  [DllImport("ntdll.dll")] static extern int NtCreateFile(out SafeFileHandle handle, uint access, ref ObjectAttributes attributes,
   out IoStatusBlock status, IntPtr allocation, uint attributesMask, uint share, uint disposition, uint options, IntPtr ea, uint eaLength);
  [DllImport("ntdll.dll")] static extern int NtQueryObject(SafeFileHandle handle, int kind, [Out] byte[] data, uint size, out uint returned);
+ [DllImport("ntdll.dll")] static extern int NtQueryInformationFile(SafeFileHandle handle, out IoStatusBlock status,
+  [Out] byte[] data,uint size,int kind);
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetFileInformationByHandleEx(SafeFileHandle handle,int kind,byte[] data,uint size);
  public static Result Open(string path,uint access,uint share,uint disposition) {
   return OpenCore(path,access,share,disposition,0x00200060,null);
+ }
+ public static Result OpenWriterLease(string path,uint access,bool synchronous) {
+  return OpenCore(path,access,0,1,synchronous ? 0x00200060u : 0x00200040u,null);
  }
  public static Result OpenWithDescriptor(string path,uint access,uint share,uint disposition,byte[] security) {
   return OpenCore(path,access,share,disposition,0x00200060,security);
@@ -106,7 +111,13 @@ public static class WriterPermissionNativeControl {
  public static string IdentityHandle(SafeFileHandle handle) {
   byte[] bytes=new byte[24];
   if(!GetFileInformationByHandleEx(handle,18,bytes,24)) throw new IOException("Full file-ID query failed: "+Marshal.GetLastWin32Error());
-  return BitConverter.ToString(bytes).Replace("-","");
+  byte[] native=new byte[24]; IoStatusBlock io;
+  int status=NtQueryInformationFile(handle,out io,native,24,59); // FileIdInformation
+  if(status!=0 || io.Status.ToInt64()!=0 || io.Information.ToUInt64()!=24)
+   throw new IOException("Native FileIdInformation query failed: "+status.ToString("X8"));
+  string identity=BitConverter.ToString(bytes).Replace("-","");
+  if(identity!=BitConverter.ToString(native).Replace("-","")) throw new IOException("Native file-ID query disagrees with Win32.");
+  return identity;
  }
  public static string Security(SafeFileHandle handle) {
   uint needed; GetKernelObjectSecurity(handle,0x1F,null,0,out needed); byte[] data=new byte[needed];
@@ -196,34 +207,45 @@ try {
     [WriterPermissionNativeControl]::RequireSubject()
     if ([WriterPermissionNativeControl]::ProcessPrivileges() -ne $processPrivileges) { throw 'Subject check changed process privileges.' }
     Write-Output 'PrivateNativeSubjectRestoreDisabled=PASS ProcessTokenUnchanged=True'
+    $leaseRows=0
     foreach ($denyAttributes in @($false,$true)) {
-        $path=Join-Path $root ('zero-revalidation-' + $denyAttributes + '.txt')
+      foreach($synchronous in @($false,$true)) {
+       foreach($dataAccess in @(2,4)) {
+        $path=Join-Path $root ('retained-writer-' + $denyAttributes + '-' + $synchronous + '-' + $dataAccess + '.txt')
         [IO.File]::WriteAllBytes($path,$bytes)
         $identity=[WriterPermissionNativeControl]::Identity($path)
         Set-FixtureAcl $path $false $(if($denyAttributes) {128} else {0})
-        $lease=$null; $zero=$null; $metadata=$null
+        $lease=$null; $metadata=$null
         try {
-            $lease=[WriterPermissionNativeControl]::Open($path,0x00100002,0,1)
+            $access=$dataAccess
+            if($synchronous) {$access=$access -bor 0x00100000}
+            $lease=[WriterPermissionNativeControl]::OpenWriterLease($path,$access,$synchronous)
             if(-not $lease.Accepted) { throw 'Original share-zero writer lease failed.' }
-            $zero=[WriterPermissionNativeControl]::Revalidate($path)
-            if(-not $zero.Accepted -or $zero.GrantedAccess -ne 0) { throw 'Zero-access path check failed or acquired authority.' }
-            $zeroId=$null; $zeroIdError=$null
-            try { $zeroId=[WriterPermissionNativeControl]::IdentityHandle($zero.Handle) }
-            catch { $zeroIdError=$_.Exception.Message }
-            if($null -ne $zeroId -and $zeroId -ne $identity) { throw 'Zero-access check resolved another file.' }
+            if($lease.GrantedAccess -ne $access) {throw 'Writer lease acquired additional access.'}
+            # The rejected a6 zero-access reopen remains recorded in raw evidence.
+            # Query the original Windows-checked object directly: no second
+            # data open and no READ_ATTRIBUTES/SYNCHRONIZE added to async opens.
+            $leaseId=[WriterPermissionNativeControl]::IdentityHandle($lease.Handle)
+            if($leaseId -ne $identity) { throw 'Retained writer resolved another file.' }
             $metadata=[WriterPermissionNativeControl]::Metadata($path)
             if(-not $metadata.Accepted -or $metadata.GrantedAccess -ne 0x01020000) { throw 'Read-only security metadata check failed or acquired data authority.' }
             $security=[WriterPermissionNativeControl]::Security($metadata.Handle)
-            Write-Output ([pscustomobject]@{Control='ShareZeroRevalidation';DenyReadAttributes=$denyAttributes;
-                ZeroGranted=('0x{0:X8}' -f $zero.GrantedAccess);ZeroId=$zeroId;ZeroIdError=$zeroIdError;
+            Write-Output ([pscustomobject]@{Control='RetainedWriterIdentity';DenyReadAttributes=$denyAttributes;
+                Synchronous=$synchronous;Requested=('0x{0:X8}' -f $access);Granted=('0x{0:X8}' -f $lease.GrantedAccess);
+                Status=('0x{0:X8}' -f $lease.Status);NativeFileIdStatus='0x00000000';LeaseId=$leaseId;
                 MetadataGranted=('0x{0:X8}' -f $metadata.GrantedAccess);Security=$security} | ConvertTo-Json -Compress)
+            $leaseRows++
         } finally {
-            if($null -ne $metadata) {$metadata.Dispose()}; if($null -ne $zero) {$zero.Dispose()}; if($null -ne $lease) {$lease.Dispose()}
+            if($null -ne $metadata) {$metadata.Dispose()}; if($null -ne $lease) {$lease.Dispose()}
         }
         Set-FixtureAcl $path $false 0
         if([WriterPermissionNativeControl]::Identity($path) -ne $identity -or
             ([IO.File]::ReadAllBytes($path) -join ',') -ne ($bytes -join ',')) { throw 'Revalidation changed source identity or bytes.' }
+       }
+      }
     }
+    if($leaseRows -ne 8) {throw 'Retained writer control matrix is incomplete.'}
+    Write-Output ('RetainedWriterIdentityRows=' + $leaseRows)
     $explicit=New-Object Security.AccessControl.FileSecurity
     $explicit.SetSecurityDescriptorSddlForm(('O:'+ $sid.Value + 'G:' + $sid.Value + 'D:P(A;;FR;;;' + $sid.Value + ')'))
     $explicitBytes=$explicit.GetSecurityDescriptorBinaryForm()

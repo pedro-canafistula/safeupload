@@ -147,8 +147,8 @@ confirms the architecture and scope but finds delivery still fragmented. Origina
 are connected; no revised protected T5 pair has run. Finish checked writer authority, shared publication/deletes and automatic recovery
 as one delivery checkpoint. The [publication contract](T5-BOUND-PUBLICATION.md) now has its corrected Luna design review;
 transport/client and durable native-result journal are implemented; kernel object integration and recovery remain unfinished.
-The seeded-content hand-back owner choice remains open. Writer-capture review remains REVISE: retain the original checked object;
-the later zero-access reopen control failed. Unprotected native controls do not qualify this pair.
+The seeded-content hand-back owner choice remains open. The retained-object construction passed its direct native query gate and
+is ready to implement; the failed zero-access reopen is discarded. Unprotected native controls do not qualify this pair.
 
 ### T4. Remove the 128-saves-per-boot ceiling
 
@@ -252,6 +252,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     Replay identity is fixed (`dbe02d04`); [kernel seed/read-authority corrections and the owner hand-back choice](T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes) remain open.
     [Native rights/grant controls](evidence/2026-10-12/writer-permission-native-control-a5.txt), `0a5add63`: 980 comparisons pass on the builder;
     existing supersede with NULL descriptor preserves queried security. Qualified-platform, assignment, seed and kernel integration remain open.
+    Every queued CREATE now captures its original static subject and owned access/share/options/case/EA/supplied-security inputs;
+    [direct native ID controls](evidence/2026-10-12/writer-permission-native-control-a8.txt) pass all eight retained share-0 cases.
+    Checked backends, assigned security/seeding transport, four revised WDK gates and runtime qualification remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)

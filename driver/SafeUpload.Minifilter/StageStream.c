@@ -185,6 +185,28 @@ typedef struct _STAGE_ADMISSION_TOKEN_SLOT {
 } STAGE_ADMISSION_TOKEN_SLOT, *PSTAGE_ADMISSION_TOKEN_SLOT;
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+/* Captured on the original CREATE before it is queued. Variable inputs are
+ * owned copies, never pointers into a caller buffer or a later thread token.
+ * This describes the request; only an NTFS-checked backend grants authority. */
+typedef struct _STAGE_CREATE_INPUT {
+    ACCESS_MASK DesiredAccess;
+    ACCESS_MASK OriginalDesiredAccess;
+    ACCESS_MASK RemainingDesiredAccess;
+    ACCESS_MASK PreviouslyGrantedAccess;
+    ULONG Options;
+    USHORT FileAttributes;
+    USHORT ShareAccess;
+    LARGE_INTEGER AllocationSize;
+    UCHAR OperationFlags;
+    KPROCESSOR_MODE RequestorMode;
+    BOOLEAN NativeEligible;
+    BOOLEAN SuppliedSecurity;
+    USHORT EaLength;
+    PVOID EaBuffer;
+    ULONG SecurityBytes;
+    PSECURITY_DESCRIPTOR Security;
+} STAGE_CREATE_INPUT, *PSTAGE_CREATE_INPUT;
+
 typedef struct _STAGE_ATTACH_TRANSACTION {
     LIST_ENTRY QueueLink;
     LIST_ENTRY LookupLink;
@@ -203,8 +225,9 @@ typedef struct _STAGE_ATTACH_TRANSACTION {
     PSTAGE_STREAM Stream;
     PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN AdmissionToken;
     PEPROCESS RequestorProcess;
-    SECURITY_CLIENT_CONTEXT PublicDeleteSubject;
-    BOOLEAN PublicDeleteSubjectValid;
+    SECURITY_CLIENT_CONTEXT OriginalSubject;
+    BOOLEAN OriginalSubjectValid;
+    STAGE_CREATE_INPUT CreateInput;
     PSAFEUPLOAD_STAGE_NATIVE_RECORD NativeRecord;
     SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT NativeSnapshot;
     UINT64 NativeGeneration;
@@ -2560,6 +2583,78 @@ static VOID StageAttachReference(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction)
     InterlockedIncrement(&Transaction->References);
 }
 
+static VOID StageAttachReleaseCreateInput(PSTAGE_CREATE_INPUT Input)
+{
+    if (Input->EaBuffer != NULL) {
+        ExFreePoolWithTag(Input->EaBuffer, STAGE_TAG);
+        Input->EaBuffer = NULL;
+    }
+    if (Input->Security != NULL) {
+        ExFreePoolWithTag(Input->Security, STAGE_TAG);
+        Input->Security = NULL;
+    }
+}
+
+/* Runs before queue publication, in the original callback's process context.
+ * A failed capture leaves partial owned buffers for transaction destruction.
+ * Do not assign a descriptor, widen access or mutate the original CREATE here. */
+static NTSTATUS StageAttachCaptureCreateInput(PFLT_CALLBACK_DATA Data, PSTAGE_CREATE_INPUT Input)
+{
+    PIO_SECURITY_CONTEXT security = Data->Iopb->Parameters.Create.SecurityContext;
+    PSECURITY_DESCRIPTOR supplied;
+    SECURITY_DESCRIPTOR_CONTROL control;
+    ULONG revision, bytes, returned;
+    NTSTATUS status = STATUS_SUCCESS;
+    if (security == NULL || security->AccessState == NULL) return STATUS_ACCESS_DENIED;
+    Input->DesiredAccess = security->DesiredAccess;
+    Input->OriginalDesiredAccess = security->AccessState->OriginalDesiredAccess;
+    Input->RemainingDesiredAccess = security->AccessState->RemainingDesiredAccess;
+    Input->PreviouslyGrantedAccess = security->AccessState->PreviouslyGrantedAccess;
+    Input->Options = Data->Iopb->Parameters.Create.Options;
+    Input->FileAttributes = Data->Iopb->Parameters.Create.FileAttributes;
+    Input->ShareAccess = Data->Iopb->Parameters.Create.ShareAccess;
+    Input->AllocationSize = Data->Iopb->Parameters.Create.AllocationSize;
+    Input->OperationFlags = Data->Iopb->OperationFlags; /* Includes SL_CASE_SENSITIVE. */
+    Input->RequestorMode = Data->RequestorMode;
+    Input->NativeEligible = StageAttachNativeEligible(Data);
+    Input->EaLength = Data->Iopb->Parameters.Create.EaLength;
+    supplied = security->AccessState->SecurityDescriptor;
+    Input->SuppliedSecurity = supplied != NULL;
+    __try {
+        if (Input->EaLength != 0) {
+            if (Data->Iopb->Parameters.Create.EaBuffer == NULL) return STATUS_INVALID_PARAMETER;
+            Input->EaBuffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, Input->EaLength, STAGE_TAG);
+            if (Input->EaBuffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+            RtlCopyMemory(Input->EaBuffer, Data->Iopb->Parameters.Create.EaBuffer, Input->EaLength);
+            /* Retain the exact bytes. Native disposition semantics decide
+             * whether to apply or validate EAs; capture is not that decision. */
+        }
+        if (supplied != NULL) {
+            if (!RtlValidSecurityDescriptor(supplied)) return STATUS_INVALID_SECURITY_DESCR;
+            status = RtlGetControlSecurityDescriptor(supplied, &control, &revision);
+            if (!NT_SUCCESS(status)) return status;
+            bytes = RtlLengthSecurityDescriptor(supplied);
+            if (bytes < sizeof(SECURITY_DESCRIPTOR_RELATIVE)) return STATUS_INVALID_SECURITY_DESCR;
+            Input->Security = ExAllocatePool2(POOL_FLAG_NON_PAGED, bytes, STAGE_TAG);
+            if (Input->Security == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+            if (FlagOn(control, SE_SELF_RELATIVE)) {
+                RtlCopyMemory(Input->Security, supplied, bytes);
+                returned = bytes;
+            } else {
+                returned = bytes;
+                status = RtlAbsoluteToSelfRelativeSD(supplied, Input->Security, &returned);
+                if (!NT_SUCCESS(status)) return status;
+            }
+            if (returned > bytes || !RtlValidRelativeSecurityDescriptor(Input->Security, returned, 0))
+                return STATUS_INVALID_SECURITY_DESCR;
+            Input->SecurityBytes = returned;
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        status = GetExceptionCode();
+    }
+    return status;
+}
+
 static VOID StageAttachTransactionDereference(PSTAGE_ATTACH_TRANSACTION Transaction)
 {
     if (Transaction == NULL || InterlockedDecrement(&Transaction->References) != 0) return;
@@ -2570,7 +2665,8 @@ static VOID StageAttachTransactionDereference(PSTAGE_ATTACH_TRANSACTION Transact
     if (Transaction->NameInfo != NULL && Transaction->NameInfoIsSynthetic)
         ExFreePoolWithTag(Transaction->NameInfo, STAGE_TAG);
     if (Transaction->RequestorProcess != NULL) ObDereferenceObject(Transaction->RequestorProcess);
-    if (Transaction->PublicDeleteSubjectValid) SeDeleteClientSecurity(&Transaction->PublicDeleteSubject);
+    if (Transaction->OriginalSubjectValid) SeDeleteClientSecurity(&Transaction->OriginalSubject);
+    StageAttachReleaseCreateInput(&Transaction->CreateInput);
     if (Transaction->ReferencedFileObject != NULL)
         ObDereferenceObject(Transaction->ReferencedFileObject);
     if (Transaction->ReferencedVolume != NULL)
@@ -2589,10 +2685,11 @@ static VOID StageAttachTransactionDereference(PSTAGE_ATTACH_TRANSACTION Transact
 static VOID StageAttachReleaseRelatedObjects(PSTAGE_ATTACH_TRANSACTION Transaction)
 {
     if (Transaction == NULL) return;
-    if (Transaction->PublicDeleteSubjectValid) {
-        SeDeleteClientSecurity(&Transaction->PublicDeleteSubject);
-        Transaction->PublicDeleteSubjectValid = FALSE;
+    if (Transaction->OriginalSubjectValid) {
+        SeDeleteClientSecurity(&Transaction->OriginalSubject);
+        Transaction->OriginalSubjectValid = FALSE;
     }
+    StageAttachReleaseCreateInput(&Transaction->CreateInput);
     if (Transaction->NameInfo != NULL && Transaction->NameInfoIsSynthetic) {
         ExFreePoolWithTag(Transaction->NameInfo, STAGE_TAG);
         Transaction->NameInfo = NULL;
@@ -2735,15 +2832,14 @@ static NTSTATUS StageAttachQueueCreate(PFLT_CALLBACK_DATA Data,
     if (transaction->RequestorProcess == NULL) { status = STATUS_ACCESS_DENIED; goto Fail; }
     ObReferenceObject(transaction->RequestorProcess);
     transaction->RequestorProcessId = FltGetRequestorProcessId(Data);
-    if (Data->Iopb->Parameters.Create.SecurityContext != NULL &&
-        (FlagOn(Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess, DELETE | GENERIC_ALL | MAXIMUM_ALLOWED) ||
-         FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE))) {
-        status = StageAttachNativeEligible(Data) && SafeUploadStageProtocolNativeForwardAllowed(0, 0) ?
-            SafeUploadStagePublicCaptureNativeSubject(Data, &transaction->PublicDeleteSubject) :
-            SafeUploadStagePublicCaptureSubject(Data, &transaction->PublicDeleteSubject);
-        if (!NT_SUCCESS(status)) goto Fail;
-        transaction->PublicDeleteSubjectValid = TRUE;
-    }
+    /* Every queued writer, including an existing-view reopen, owns the
+     * original effective static subject. Preserve its actual token level;
+     * later backend checks cannot promote it or substitute SYSTEM. */
+    status = SafeUploadStagePublicCaptureNativeSubject(Data, &transaction->OriginalSubject);
+    if (!NT_SUCCESS(status)) goto Fail;
+    transaction->OriginalSubjectValid = TRUE;
+    status = StageAttachCaptureCreateInput(Data, &transaction->CreateInput);
+    if (!NT_SUCCESS(status)) goto Fail;
     transaction->VolumeKind = VolumeKind;
     transaction->ExpectedGeneration = ExpectedGeneration;
     transaction->PrivateNamespace = PrivateNamespace;
@@ -3521,14 +3617,14 @@ static NTSTATUS StageAttachPrepareNative(PSTAGE_ATTACH_TRANSACTION Transaction)
     NTSTATUS status;
     RtlZeroMemory(&binding, sizeof(binding));
     Transaction->NativePath = TRUE;
-    Transaction->OrdinaryPublicOpen = !FlagOn(Transaction->CallbackData->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE);
-    if (!Transaction->PublicDeleteSubjectValid ||
+    Transaction->OrdinaryPublicOpen = !FlagOn(Transaction->CreateInput.Options, FILE_DELETE_ON_CLOSE);
+    if (!Transaction->OriginalSubjectValid ||
         !SafeUploadConnectionGetAuthenticatedIdentity(NULL, &cookie, &epoch, &servicePid) ||
         !SafeUploadStageProtocolNativeForwardAllowed((UINT64)epoch, 0)) return STATUS_DEVICE_NOT_READY;
     binding.DriverInstanceId = Transaction->DriverInstanceId;
     binding.ConnectionEpoch = (UINT64)epoch;
     binding.OsBootSequence = SharedUserData->BootId;
-    binding.CreateOptions = Transaction->CallbackData->Iopb->Parameters.Create.Options;
+    binding.CreateOptions = Transaction->CreateInput.Options;
     status = ExUuidCreate(&binding.TransferId);
     if (!NT_SUCCESS(status)) return status;
     status = ExUuidCreate(&binding.RequestNonce);
@@ -3536,9 +3632,9 @@ static NTSTATUS StageAttachPrepareNative(PSTAGE_ATTACH_TRANSACTION Transaction)
     status = ExUuidCreate(&binding.OperationId);
     if (!NT_SUCCESS(status)) return status;
     status = SafeUploadStagePublicCaptureNativeName(Transaction->RelatedObjects.Instance, Transaction->NameInfo,
-        &Transaction->PublicDeleteSubject, Transaction->RequestorProcess,
-        Transaction->CallbackData->Iopb->Parameters.Create.SecurityContext->DesiredAccess,
-        Transaction->CallbackData->Iopb->Parameters.Create.ShareAccess, binding.CreateOptions, &binding.Public);
+        &Transaction->OriginalSubject, Transaction->RequestorProcess,
+        Transaction->CreateInput.DesiredAccess,
+        Transaction->CreateInput.ShareAccess, binding.CreateOptions, &binding.Public);
     if (!NT_SUCCESS(status)) return status;
     status = SafeUploadStageNativeReserve(Transaction->RelatedObjects.Instance,
         Transaction->RelatedObjects.FileObject, &binding, &Transaction->NativeRecord);
@@ -3551,7 +3647,7 @@ static NTSTATUS StageAttachWorkerBody(_Inout_ PSTAGE_ATTACH_TRANSACTION Transact
     BOOLEAN newBinding = FALSE;
     NTSTATUS status;
     if (!Transaction->PrivateNamespace && !Transaction->ById && Transaction->VolumeKind == SafeUploadVolumeFixed &&
-        StageAttachNativeEligible(Transaction->CallbackData) && SafeUploadStageProtocolNativeForwardAllowed(0, 0)) {
+        Transaction->CreateInput.NativeEligible && SafeUploadStageProtocolNativeForwardAllowed(0, 0)) {
         BOOLEAN ownerView;
         StageAcquire(&StageNamespaceResource);
         ownerView = StageFindView(Transaction->RequestorProcess, &Transaction->NameInfo->Name) != NULL;

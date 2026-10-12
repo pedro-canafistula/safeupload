@@ -564,6 +564,17 @@ the four absent-target dispositions apply the tested supplied descriptor; all fi
 supersede, retain the prior queried descriptor. These results do not prove arbitrary descriptor assignment, protected publication
 or qualified-platform behaviour.
 
+**Retained-object gate:** the [direct-query a8 control](evidence/2026-10-12/writer-permission-native-control-a8.txt) passes Windows
+PowerShell 5.1 parsing/self-checks, all eight retained share-0 write/append cases and the unchanged 980 permission comparisons.
+`NtQueryInformationFile(FileIdInformation)` returns exact success and 24 bytes matching the original full ID, including async
+handles without SYNCHRONIZE and explicit READ_ATTRIBUTES denial. Luna's existing design review is ready for implementation after
+this direct-query gate, retaining its complete-ancestor/full-descriptor/per-app-lease requirements. This is builder evidence only.
+The kernel now captures every queued CREATE's original static effective subject and owned request inputs before cancellation or
+queue publication: access masks, sharing/options/attributes, case flags/requestor mode, allocation size, exact EA bytes and a
+self-relative supplied descriptor copy. Native preparation consumes the immutable access/share/options snapshot. Destruction and
+local teardown free partial or complete copies. This does not yet create the checked writer backend, transport assigned security,
+seed content or expose bound admission; their integration and the single pre-boot lifetime review remain required.
+
 #### Seed sharing and read-authority correction
 
 The service's current second public-source read open (`StagedDestinationDirectory.cs:68`) can fail a CREATE whose original sharing
