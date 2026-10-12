@@ -162,7 +162,7 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
             catch (IOException) { return null; }
         }
         var replies = await Task.WhenAll(Attempt(first), Attempt(second));
-        var winner = Assert.Single(replies.Where(r => r is not null))!;
+        var winner = Assert.Single(replies, r => r is not null)!;
         using var held = StagedStageFile.Open(winner.Transfer.StagePath);
         Assert.Equal(winner.StageIdentity, held.Identity);
         Assert.Equal(0, held.Stream.Length);
