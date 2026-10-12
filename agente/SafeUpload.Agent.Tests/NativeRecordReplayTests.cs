@@ -58,6 +58,14 @@ public sealed class NativeRecordReplayTests
         Assert.Equal(Driver, replay.DriverInstanceId);
     }
 
+    [Fact]
+    public void Scheduled_create_replay_cannot_reclassify_an_ordinary_open_as_native_delete_on_close()
+    {
+        byte[] page = Page(0, 1, true);
+        W32(page, 64 + 164, 0x01000000);
+        Assert.Throws<IOException>(() => NativeRecordReplayWire.DecodePage(page, 0));
+    }
+
     [Theory]
     [InlineData("version")]
     [InlineData("legacy-volume-identity-version")]
@@ -250,7 +258,7 @@ public sealed class NativeRecordReplayTests
         for (int i = 1; i <= 3; i++) new Guid((int)index + 1, 0, (short)i, new byte[8]).TryWriteBytes(b.Slice(i * 16, 16));
         W64(b, 64, Epoch - 1); W64(b, 72, index + 1); W64(b, 80, 12345678);
         for (int i = 0; i < 3; i++) { W64(b, 88 + i * 24, 20); W64(b, 96 + i * 24, (ulong)i + 1); W64(b, 104 + i * 24, 0xAABBCCDDEEFF1122); }
-        W32(b, 160, Boot); W32(b, 164, 1u << 24); W32(b, 168, 0x10000); W32(b, 172, 7);
+        W32(b, 160, Boot); W32(b, 164, (1u << 24) | 0x1000); W32(b, 168, 0x10000); W32(b, 172, 7);
         W32(b, 176, 100); W32(b, 180, 1); W32(b, 184, 12); W32(b, 196, 1);
         b[216] = 1; b[217] = 1; b[223] = 5; b[224] = 18; // S-1-5-18
         byte[] leaf = Encoding.Unicode.GetBytes($"file{index}.txt");
