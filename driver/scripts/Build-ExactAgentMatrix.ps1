@@ -422,6 +422,50 @@ function Assert-TrxLeg {
     }
     return $total
 }
+function Remove-CompletedProfileOutputs {
+    param([Parameter(Mandatory)][string] $ProfileSource, [Parameter(Mandatory)][string] $EvidenceDirectory,
+        [Parameter(Mandatory)][System.Collections.IDictionary] $ExpectedInputs)
+    $profilePath = [IO.Path]::GetFullPath($ProfileSource).TrimEnd('\')
+    $evidencePath = [IO.Path]::GetFullPath($EvidenceDirectory).TrimEnd('\')
+    if ([IO.Path]::GetDirectoryName($profilePath) -ne $evidencePath -or
+        [IO.Path]::GetFileName($profilePath) -notmatch '^profile-src-(normal|feature)-(debug|release)$') {
+        throw 'Generated-output cleanup is outside a completed matrix profile.'
+    }
+    $agentPath = Join-Path $profilePath 'agente'
+    foreach ($parent in @($evidencePath, $profilePath, $agentPath)) {
+        if (((Get-Item -LiteralPath $parent).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'Generated-output cleanup parent is a reparse point.'
+        }
+    }
+    $generatedPaths = @()
+    foreach ($project in @(Get-ChildItem -LiteralPath $agentPath -Directory)) {
+        if (((Get-Item -LiteralPath $project.FullName).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'Generated-output cleanup project is a reparse point.'
+        }
+        if (@(Get-ChildItem -LiteralPath $project.FullName -Filter '*.csproj' -File).Count -eq 0) { continue }
+        foreach ($leaf in @('bin', 'obj')) {
+            $relative = 'agente/' + $project.Name + '/' + $leaf + '/'
+            foreach ($inputPath in $ExpectedInputs.Keys) {
+                if ($inputPath.StartsWith($relative, [StringComparison]::OrdinalIgnoreCase)) {
+                    throw 'Generated-output cleanup would remove a source input.'
+                }
+            }
+            $generated = Join-Path $project.FullName $leaf
+            if (-not (Test-Path -LiteralPath $generated)) { continue }
+            if (((Get-Item -LiteralPath $generated).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+                @(Get-ChildItem -LiteralPath $generated -Recurse -Force | Where-Object {
+                    ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+                }).Count -ne 0) {
+                throw 'Generated-output cleanup contains a reparse point.'
+            }
+            $generatedPaths += ,$generated
+        }
+    }
+    foreach ($generated in $generatedPaths) { Remove-Item -LiteralPath $generated -Recurse -Force }
+    Write-Output ('PROFILE_OUTPUT_CLEANUP=' + [IO.Path]::GetFileName($profilePath) +
+        '; directories=' + $generatedPaths.Count + '; source_and_evidence_retained=True')
+}
+
 function Invoke-CleanupSelfTest {
     Add-Type -TypeDefinition $nativeJobSource
     $testRoot = Join-Path 'C:\Users\vika\Documents' ('exact-agent-matrix-cleanup-selftest-' + $Label + '-' + [guid]::NewGuid().ToString('N'))
@@ -470,6 +514,37 @@ function Invoke-CleanupSelfTest {
             $treeProcess.TerminateJobAndWait(15000)
             if (-not $treeProcess.WaitForJobEmpty(0)) { throw 'Descendant self-test left a job member.' }
         } finally { $treeProcess.Dispose() }
+        # Completed profiles need their source and raw evidence, not four
+        # simultaneous bin/obj trees. Check the deletion boundary independently
+        # of the native-process job controls above.
+        $fakeOut = Join-Path $testRoot 'out'
+        $fakeProfile = Join-Path $fakeOut 'profile-src-normal-debug'
+        $fakeProject = Join-Path $fakeProfile 'agente\Project'
+        [void][IO.Directory]::CreateDirectory((Join-Path $fakeProject 'bin'))
+        [void][IO.Directory]::CreateDirectory((Join-Path $fakeProject 'obj'))
+        [IO.File]::WriteAllText((Join-Path $fakeProject 'Project.csproj'), '<Project />')
+        [IO.File]::WriteAllText((Join-Path $fakeProject 'source.cs'), 'retained source')
+        [IO.File]::WriteAllText((Join-Path $fakeProject 'bin\generated.dll'), 'generated')
+        [IO.File]::WriteAllText((Join-Path $fakeProject 'obj\generated.cache'), 'generated')
+        [IO.File]::WriteAllText((Join-Path $fakeOut 'raw.trx'), 'retained evidence')
+        $rejected = $false
+        try {
+            Remove-CompletedProfileOutputs $fakeProfile $fakeOut @{'agente/Project/bin/generated.dll' = 'input'}
+        } catch {
+            if ($_.Exception.Message -ne 'Generated-output cleanup would remove a source input.') { throw }
+            $rejected = $true
+        }
+        if (-not $rejected -or -not (Test-Path -LiteralPath (Join-Path $fakeProject 'bin\generated.dll'))) {
+            throw 'Generated-output self-test failed to preserve a protected source input.'
+        }
+        Remove-CompletedProfileOutputs $fakeProfile $fakeOut @{'agente/Project/source.cs' = 'input'}
+        if ((Test-Path -LiteralPath (Join-Path $fakeProject 'bin')) -or
+            (Test-Path -LiteralPath (Join-Path $fakeProject 'obj')) -or
+            -not (Test-Path -LiteralPath (Join-Path $fakeProject 'source.cs')) -or
+            -not (Test-Path -LiteralPath (Join-Path $fakeOut 'raw.trx'))) {
+            throw 'Generated-output self-test did not retain source and evidence.'
+        }
+        Write-Output 'PROFILE_OUTPUT_CLEANUP_SELFTEST=PASS source_input_refused,source_and_evidence_retained'
         $completed = $true
         Write-Output 'SYSTEM_JOB_CLEANUP_SELFTEST=PASS spawn_record_failure,timeout,descendant_cleanup'
     } finally {
@@ -843,6 +918,9 @@ try {
                     throw 'Profile source changed during build.'
                 }
             }
+            # All test processes have ended, Release packages are retained and
+            # source inputs are rechecked. Bound disk use to the current profile.
+            Remove-CompletedProfileOutputs $profileSource $out $expected
         }
     }
     # The build outputs live outside src; recheck all captured inputs after execution.

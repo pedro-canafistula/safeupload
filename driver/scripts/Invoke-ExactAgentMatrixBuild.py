@@ -588,12 +588,17 @@ Write-Output ('BUILDER_PREFLIGHT_MATCH UTC='+[DateTime]::UtcNow.ToString('o'))
     remote_tool = 'C:\\Users\\vika\\Documents\\Build-ExactAgentMatrix-' + args.label + '.ps1'
     cleanup_selftest = "$ErrorActionPreference='Stop'\n"
     cleanup_selftest += "if((Get-FileHash -LiteralPath '" + remote_tool + "' -Algorithm SHA256).Hash -ne '" + tool_sha + "'){throw 'Uploaded build tool hash mismatch.'}\n"
+    cleanup_selftest += "if($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1){throw 'Harness parsing requires Windows PowerShell 5.1.'}\n"
+    cleanup_selftest += "$parseTokens=$null; $parseErrors=$null; [void][System.Management.Automation.Language.Parser]::ParseFile('" + remote_tool + "',[ref]$parseTokens,[ref]$parseErrors); if($parseErrors.Count){throw 'Harness PowerShell 5.1 parse failed.'}; Write-Output 'HARNESS_POWERSHELL51_PARSE=PASS'\n"
     cleanup_selftest += "& '" + remote_tool + "' -Label '" + args.label + "' -ArchiveSha256 '" + archive_sha + "' -SourceCommit '" + commit + "' -CleanupSelfTestOnly\n"
     selftest_exit = remote(cleanup_selftest, 'system-job-cleanup-selftest')
     selftest_log = evidence / (prefix + '-system-job-cleanup-selftest.stdout.txt')
     if (selftest_exit != 0 or not selftest_log.exists()
             or b'SYSTEM_JOB_CLEANUP_SELFTEST=PASS spawn_record_failure,timeout,descendant_cleanup'
-            not in selftest_log.read_bytes()):
+            not in selftest_log.read_bytes() or
+            b'PROFILE_OUTPUT_CLEANUP_SELFTEST=PASS source_input_refused,source_and_evidence_retained'
+            not in selftest_log.read_bytes() or
+            b'HARNESS_POWERSHELL51_PARSE=PASS' not in selftest_log.read_bytes()):
         raise RuntimeError('Builder process-job cleanup self-test failed; matrix execution was not started')
     ps = "$ErrorActionPreference='Stop'\n"
     ps += "if((Get-FileHash -LiteralPath '" + remote_tool + "' -Algorithm SHA256).Hash -ne '" + tool_sha + "'){throw 'Uploaded build tool hash mismatch.'}\n"
