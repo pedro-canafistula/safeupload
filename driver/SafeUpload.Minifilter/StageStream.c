@@ -201,7 +201,7 @@ typedef struct _STAGE_CREATE_INPUT {
     KPROCESSOR_MODE RequestorMode;
     BOOLEAN NativeEligible;
     BOOLEAN SuppliedSecurity;
-    USHORT EaLength;
+    ULONG EaLength;
     PVOID EaBuffer;
     ULONG SecurityBytes;
     PSECURITY_DESCRIPTOR Security;
@@ -2603,7 +2603,7 @@ static NTSTATUS StageAttachCaptureCreateInput(PFLT_CALLBACK_DATA Data, PSTAGE_CR
     PIO_SECURITY_CONTEXT security = Data->Iopb->Parameters.Create.SecurityContext;
     PSECURITY_DESCRIPTOR supplied;
     SECURITY_DESCRIPTOR_CONTROL control;
-    ULONG revision, bytes, returned;
+    ULONG bytes, returned;
     NTSTATUS status = STATUS_SUCCESS;
     if (security == NULL || security->AccessState == NULL) return STATUS_ACCESS_DENIED;
     Input->DesiredAccess = security->DesiredAccess;
@@ -2631,8 +2631,9 @@ static NTSTATUS StageAttachCaptureCreateInput(PFLT_CALLBACK_DATA Data, PSTAGE_CR
         }
         if (supplied != NULL) {
             if (!RtlValidSecurityDescriptor(supplied)) return STATUS_INVALID_SECURITY_DESCR;
-            status = RtlGetControlSecurityDescriptor(supplied, &control, &revision);
-            if (!NT_SUCCESS(status)) return status;
+            /* Absolute and self-relative descriptors share this documented
+             * header; the descriptor was validated above. No private DDI. */
+            control = ((PSECURITY_DESCRIPTOR_RELATIVE)supplied)->Control;
             bytes = RtlLengthSecurityDescriptor(supplied);
             if (bytes < sizeof(SECURITY_DESCRIPTOR_RELATIVE)) return STATUS_INVALID_SECURITY_DESCR;
             Input->Security = ExAllocatePool2(POOL_FLAG_NON_PAGED, bytes, STAGE_TAG);
