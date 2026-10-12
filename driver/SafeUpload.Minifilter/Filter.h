@@ -475,6 +475,11 @@ typedef struct _SAFEUPLOAD_EXCHANGE {
     LONG ChannelGeneration;
     /* Opaque Filter Manager connection identity for this particular send. */
     PVOID ChannelCookie;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* A same-channel reconciliation/drain revokes in-flight grants even
+     * when the port cookie and connection generation did not change. */
+    UINT64 StageAuthorityRevision;
+#endif
 
 } SAFEUPLOAD_EXCHANGE, *PSAFEUPLOAD_EXCHANGE;
 

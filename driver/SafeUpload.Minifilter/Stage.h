@@ -2,6 +2,7 @@
 #define SAFEUPLOAD_STAGE_H
 
 #include "Filter.h"
+#include "StageBoundAllocation.h"
 
 NTSTATUS SafeUploadStageInitialize(VOID);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -87,6 +88,13 @@ NTSTATUS SafeUploadStageAllocateV19(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PUNICO
 NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *AllocationRequest,
     _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
     _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity);
+NTSTATUS SafeUploadStageAllocateBoundV23(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PUNICODE_STRING CanonicalName, _In_ const SAFEUPLOAD_STAGE_ALLOCATE_V23 *Binding,
+    _In_ const GUID *DriverInstanceId,
+    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
+    _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity,
+    _Out_ PSAFEUPLOAD_STAGE_ALLOCATE_V19 RetainedIntent,
+    _Out_ PSAFEUPLOAD_REQUEST AllocationRequest, _Out_ PBOOLEAN AllocationMayExist);
 NTSTATUS SafeUploadStageReconcileV20(_In_ const GUID *DriverInstanceId,
     _In_ LONG ExpectedChannelGeneration, _In_opt_ const SAFEUPLOAD_REQUEST *DrainReplayRequest);
 NTSTATUS SafeUploadStageAttachmentExchangeV20(_In_ ULONG ProcessId,

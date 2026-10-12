@@ -19,6 +19,7 @@ static NTSTATUS StageAllocateInternal(
     _Out_opt_ PBOOLEAN AllocationMayExist);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 static BOOLEAN StageV19IdentityNonzero(_In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *Identity);
+static BOOLEAN StageProtocolBytesZero(_In_reads_bytes_(Length) const UCHAR *Bytes, _In_ SIZE_T Length);
 static NTSTATUS StageSendVersionRequestV19(_In_ UINT32 Operation, _In_ ULONG ProcessId,
     _In_ PUNICODE_STRING StageName, _In_opt_ const GUID *ReservationId,
     _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity, _In_ UINT64 DestinationGeneration,
@@ -38,6 +39,7 @@ static BOOLEAN StageProtocolValidDrainReplayRequest(_In_ const SAFEUPLOAD_REQUES
 #pragma alloc_text(PAGE, StageAllocateInternal)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #pragma alloc_text(PAGE, SafeUploadStageAllocateV19)
+#pragma alloc_text(PAGE, SafeUploadStageAllocateBoundV23)
 #pragma alloc_text(PAGE, SafeUploadStageRenameExchangeV19)
 #pragma alloc_text(PAGE, SafeUploadStageReplayAllocationV19)
 #pragma alloc_text(PAGE, SafeUploadStageReconcileV20)
@@ -101,7 +103,7 @@ static BOOLEAN StageProtocolGuidEqual(_In_ const GUID *Left, _In_ const GUID *Ri
 static BOOLEAN StageProtocolGuidNonzero(_In_ const GUID *Id)
 {
     static const GUID empty = {0};
-    return !StageProtocolGuidEqual(Id, &empty);
+    return Id != NULL && !StageProtocolGuidEqual(Id, &empty);
 }
 
 static NTSTATUS StageProtocolReadCreateReply(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
@@ -163,6 +165,8 @@ static volatile LONG SafeUploadStageV19ReadyGeneration;
 static volatile LONG SafeUploadStageV20ChannelActive;
 static volatile LONG SafeUploadStageV20ChannelGeneration;
 static PVOID volatile SafeUploadStageV20ConnectionCookie;
+/* Protected by StateLock. Distinguishes authority transitions on one port. */
+static UINT64 SafeUploadStageV20AuthorityRevision;
 /* A result-13 reconciliation authenticates only this exact previously
  * committed epoch-drain request on the current port connection. It never
  * enables ordinary stage traffic. Protected by SafeUploadStageV20StateLock. */
@@ -434,6 +438,7 @@ VOID SafeUploadStageInitializeProtocol(VOID)
     InterlockedExchange(&SafeUploadStageV20ChannelActive, 0);
     InterlockedExchange(&SafeUploadStageV20ChannelGeneration, 1);
     InterlockedExchangePointer(&SafeUploadStageV20ConnectionCookie, NULL);
+    SafeUploadStageV20AuthorityRevision = 1;
     SafeUploadStageV20DrainReplayReady = FALSE;
     SafeUploadStageV20DrainReplayGeneration = 0;
     SafeUploadStageV20DrainReplayCookie = NULL;
@@ -459,6 +464,7 @@ VOID SafeUploadStageProtocolPublishClientPort(_In_ PVOID ConnectionCookie)
     InterlockedExchange(&SafeUploadStageV20ChannelActive, 0);
     InterlockedExchange(&SafeUploadStageV19ReadyGeneration, 0);
     InterlockedIncrement(&SafeUploadStageV20ChannelGeneration);
+    ++SafeUploadStageV20AuthorityRevision;
     StageProtocolClearDrainReplayLocked();
     InterlockedExchangePointer(&SafeUploadStageV20ConnectionCookie, ConnectionCookie);
     InterlockedExchange(&SafeUploadStageV20ChannelActive, 1);
@@ -475,12 +481,19 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
     BOOLEAN replayMatches;
     BOOLEAN channelCurrent;
     BOOLEAN channelUsePinned;
+    BOOLEAN serializeTransition;
     LONG channelGeneration;
     LONG expectedGeneration;
     PVOID channelCookie;
     KIRQL stateIrql;
     if (Exchange == NULL || Verdict == NULL || Answered == NULL) return STATUS_INVALID_PARAMETER;
-    ExAcquireFastMutex(&SafeUploadStageV19ExchangeMutex);
+    /* Only epoch transitions serialize with one another. An ordinary
+     * allocation can await a destination hold which CLEANUP/recovery must
+     * resolve through this same channel; no global exchange lock may span
+     * that wait. Each exchange owns its request and pinned connection. */
+    serializeTransition = IsReconcile ||
+        Exchange->Request.Operation == SAFEUPLOAD_OPERATION_STAGE_EPOCH_DRAIN;
+    if (serializeTransition) ExAcquireFastMutex(&SafeUploadStageV19ExchangeMutex);
     KeAcquireSpinLock(&SafeUploadStageV20StateLock, &stateIrql);
     channelGeneration = SafeUploadStageProtocolChannelGeneration();
     expectedGeneration = Exchange->ChannelGeneration;
@@ -490,9 +503,10 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
     if (!channelActive || channelCookie == NULL ||
         InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) == 0 ||
         (IsReconcile && (expectedGeneration == 0 || expectedGeneration != channelGeneration ||
-            Exchange->ChannelCookie != channelCookie))) {
+            Exchange->ChannelCookie != channelCookie || Exchange->StageAuthorityRevision == 0 ||
+            Exchange->StageAuthorityRevision != SafeUploadStageV20AuthorityRevision))) {
         KeReleaseSpinLock(&SafeUploadStageV20StateLock, stateIrql);
-        ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
+        if (serializeTransition) ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
         *Verdict = SAFEUPLOAD_VERDICT_DENY;
         *Answered = FALSE;
         return STATUS_PORT_DISCONNECTED;
@@ -517,7 +531,7 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
     if (!IsReconcile && ((!isDrain && !channelReady) ||
         (isDrain && !channelReady && !replayMatches))) {
         KeReleaseSpinLock(&SafeUploadStageV20StateLock, stateIrql);
-        ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
+        if (serializeTransition) ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
         *Verdict = SAFEUPLOAD_VERDICT_DENY;
         *Answered = FALSE;
         return STATUS_DEVICE_NOT_READY;
@@ -528,7 +542,7 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
     channelUsePinned = SafeUploadConnectionPinForStage(channelCookie);
     if (!channelUsePinned) {
         KeReleaseSpinLock(&SafeUploadStageV20StateLock, stateIrql);
-        ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
+        if (serializeTransition) ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
         *Verdict = SAFEUPLOAD_VERDICT_DENY;
         *Answered = FALSE;
         return STATUS_PORT_DISCONNECTED;
@@ -538,6 +552,7 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
          * exact request replayable but close every ordinary stage path even
          * if the response is lost or malformed. */
         InterlockedExchange(&SafeUploadStageV19ReadyGeneration, 0);
+        ++SafeUploadStageV20AuthorityRevision;
         SafeUploadStageV20DrainReplayReady = TRUE;
         SafeUploadStageV20DrainReplayGeneration = channelGeneration;
         SafeUploadStageV20DrainReplayCookie = channelCookie;
@@ -549,6 +564,7 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
             SafeUploadStageV20DrainReplayNonce = payload->DrainNonce;
         }
     }
+    Exchange->StageAuthorityRevision = SafeUploadStageV20AuthorityRevision;
     KeReleaseSpinLock(&SafeUploadStageV20StateLock, stateIrql);
     /* The request path checks the opaque connection cookie again immediately
      * before FltSendMessage and pins that connection through the reply.
@@ -561,10 +577,12 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
      * MayHaveReachedService and can replay its byte-identical request. */
     KeAcquireSpinLock(&SafeUploadStageV20StateLock, &stateIrql);
     channelCurrent = channelGeneration == SafeUploadStageProtocolChannelGeneration() &&
+        Exchange->StageAuthorityRevision == SafeUploadStageV20AuthorityRevision &&
         InterlockedCompareExchange(&SafeUploadStageV20ChannelActive, 0, 0) != 0 &&
         InterlockedCompareExchangePointer(&SafeUploadStageV20ConnectionCookie, NULL, NULL) ==
             channelCookie &&
-        InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0;
+        InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0 &&
+        (serializeTransition || StageProtocolReadyForGenerationLocked(channelGeneration));
     KeReleaseSpinLock(&SafeUploadStageV20StateLock, stateIrql);
     if (!channelCurrent) {
         *Verdict = SAFEUPLOAD_VERDICT_DENY;
@@ -572,7 +590,7 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
         status = STATUS_PORT_DISCONNECTED;
     }
     NT_ASSERT(!channelUsePinned);
-    ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
+    if (serializeTransition) ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
     return status;
 }
 
@@ -911,12 +929,116 @@ NTSTATUS SafeUploadStageAllocateV19(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PUNICO
         DriverInstanceId, AllocationIntent, AllocationRequest, AllocationMayExist);
 }
 
+static BOOLEAN StageProtocolValidBoundAllocation(_In_ const SAFEUPLOAD_STAGE_ALLOCATE_V23 *Binding,
+    _In_reads_bytes_(PathBytes) const WCHAR *Path, _In_ USHORT PathBytes)
+{
+    static const FILE_ID_128 zeroId = {0};
+    USHORT chars, begin, index;
+    BOOLEAN targetPresent;
+    if (Binding == NULL || Path == NULL || PathBytes == 0 || (PathBytes & 1) != 0 ||
+        PathBytes > SAFEUPLOAD_MAX_PATH_BYTES || Binding->Version != SAFEUPLOAD_STAGE_BOUND_ALLOCATION_VERSION ||
+        Binding->StructSize != sizeof(*Binding) || !StageProtocolGuidNonzero(&Binding->AllocationReservationId) ||
+        !StageProtocolGuidNonzero(&Binding->MountManagerVolumeId) ||
+        RtlEqualMemory(&Binding->VolumeRootId, &zeroId, sizeof(zeroId)) ||
+        !StageV19IdentityNonzero(&Binding->ParentIdentity) || Binding->ParentCaseSensitive > 1 ||
+        Binding->Disposition > FILE_OVERWRITE_IF || Binding->ReferenceKind > SAFEUPLOAD_STAGE_ALLOC_REFERENCE_TOMBSTONE ||
+        ((Binding->ReferenceKind == SAFEUPLOAD_STAGE_ALLOC_REFERENCE_NONE) !=
+            !StageProtocolGuidNonzero(&Binding->ParentTransferId)) ||
+        Binding->CanonicalLeafBytes == 0 || (Binding->CanonicalLeafBytes & 1) != 0 ||
+        Binding->CanonicalLeafBytes > 255 * sizeof(WCHAR)) return FALSE;
+    targetPresent = !RtlEqualMemory(&Binding->PublicTargetId, &zeroId, sizeof(zeroId));
+    if ((Binding->ReferenceKind == SAFEUPLOAD_STAGE_ALLOC_REFERENCE_NONE &&
+         (((Binding->Disposition == FILE_OPEN || Binding->Disposition == FILE_OVERWRITE) && !targetPresent) ||
+          (Binding->Disposition == FILE_CREATE && targetPresent))) ||
+        (Binding->ReferenceKind == SAFEUPLOAD_STAGE_ALLOC_REFERENCE_TOMBSTONE &&
+         (Binding->Disposition != FILE_CREATE || targetPresent))) return FALSE;
+    chars = PathBytes / sizeof(WCHAR);
+    begin = chars;
+    for (index = 0; index < chars; ++index) {
+        WCHAR ch = Path[index];
+        if (ch == 0 || ch == L'/') return FALSE;
+        if (ch == L'\\') begin = index + 1;
+        if (ch >= 0xd800 && ch <= 0xdbff) {
+            if (++index >= chars || Path[index] < 0xdc00 || Path[index] > 0xdfff) return FALSE;
+        } else if (ch >= 0xdc00 && ch <= 0xdfff) return FALSE;
+    }
+    if (begin <= 1 || begin >= chars || (chars - begin) * sizeof(WCHAR) != Binding->CanonicalLeafBytes ||
+        Path[chars - 1] == L'.' || Path[chars - 1] == L' ' ||
+        (chars - begin == 1 && Path[begin] == L'.') ||
+        (chars - begin == 2 && Path[begin] == L'.' && Path[begin + 1] == L'.')) return FALSE;
+    for (index = begin; index < chars; ++index)
+        if (Path[index] < 32 || Path[index] == L':' || Path[index] == L'*' || Path[index] == L'?' ||
+            Path[index] == L'"' || Path[index] == L'<' || Path[index] == L'>' || Path[index] == L'|') return FALSE;
+    return TRUE;
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageAllocateBoundV23(PFLT_CALLBACK_DATA Data, PUNICODE_STRING CanonicalName,
+    const SAFEUPLOAD_STAGE_ALLOCATE_V23 *Binding, const GUID *DriverInstanceId,
+    PWCH StageName, PUSHORT StageNameLength, PUINT64 DestinationGeneration,
+    PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity, PSAFEUPLOAD_STAGE_ALLOCATE_V19 RetainedIntent,
+    PSAFEUPLOAD_REQUEST AllocationRequest, PBOOLEAN AllocationMayExist)
+{
+    PSAFEUPLOAD_EXCHANGE exchange;
+    UINT32 verdict = SAFEUPLOAD_VERDICT_DENY;
+    BOOLEAN answered = FALSE;
+    NTSTATUS status;
+    PAGED_CODE();
+    *StageNameLength = 0;
+    *DestinationGeneration = 0;
+    *AllocationMayExist = FALSE;
+    RtlZeroMemory(StageIdentity, sizeof(*StageIdentity));
+    RtlZeroMemory(RetainedIntent, sizeof(*RetainedIntent));
+    RtlZeroMemory(AllocationRequest, sizeof(*AllocationRequest));
+    if (Data == NULL || Data->Iopb == NULL || Data->Iopb->MajorFunction != IRP_MJ_CREATE || CanonicalName == NULL ||
+        CanonicalName->Length > CanonicalName->MaximumLength ||
+        !StageProtocolGuidNonzero(DriverInstanceId) || FltGetRequestorProcessId(Data) == 0 ||
+        FltGetRequestorProcessId(Data) > (ULONG)MAXLONG ||
+        !StageProtocolValidBoundAllocation(Binding, CanonicalName->Buffer, CanonicalName->Length) ||
+        Binding->Disposition != ((Data->Iopb->Parameters.Create.Options >> 24) & 0xff))
+        return STATUS_INVALID_PARAMETER;
+    exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG);
+    if (exchange == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    RtlZeroMemory(exchange, sizeof(*exchange));
+    exchange->Request.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    exchange->Request.StructSize = sizeof(SAFEUPLOAD_REQUEST);
+    exchange->Request.RequestId = (UINT64)InterlockedIncrement64(&SafeUploadData.NextRequestId);
+    exchange->Request.Operation = SAFEUPLOAD_OPERATION_STAGE_ALLOCATE;
+    exchange->Request.Flags = SAFEUPLOAD_REQUEST_FLAG_STAGE_V19_REPLY; /* Fixed NTFS only. */
+    exchange->Request.RequestorProcessId = FltGetRequestorProcessId(Data);
+    exchange->Request.Reserved = SAFEUPLOAD_STAGE_BOUND_ALLOCATION_VERSION;
+    exchange->Request.ImageNameLength = sizeof(*Binding);
+    exchange->Request.PathLength = CanonicalName->Length;
+    RtlCopyMemory(exchange->Request.ImageName, Binding, sizeof(*Binding));
+    RtlCopyMemory(exchange->Request.Path, CanonicalName->Buffer, CanonicalName->Length);
+    /* Retain the unchanged core lifecycle tuple locally. Its driver identity
+     * is not transported as a second, independently supplied authority. */
+    RetainedIntent->Version = SAFEUPLOAD_STAGE_EXTENSION_VERSION;
+    RetainedIntent->StructSize = sizeof(*RetainedIntent);
+    RetainedIntent->AllocationReservationId = Binding->AllocationReservationId;
+    RetainedIntent->ParentTransferId = Binding->ParentTransferId;
+    RetainedIntent->DriverInstanceId = *DriverInstanceId;
+    RetainedIntent->Disposition = Binding->Disposition;
+    RetainedIntent->ReferenceKind = Binding->ReferenceKind;
+    *AllocationRequest = exchange->Request;
+    status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
+    *AllocationMayExist = exchange->MayHaveReachedService;
+    status = SafeUploadStageExchangeResult(status, answered, verdict);
+    if (NT_SUCCESS(status))
+        status = StageProtocolReadCreateReply(exchange, &Binding->AllocationReservationId,
+            StageName, StageNameLength, DestinationGeneration, StageIdentity);
+    ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);
+    return status;
+}
+
 NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *AllocationRequest,
     _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
     _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity)
 {
     PSAFEUPLOAD_EXCHANGE exchange;
     SAFEUPLOAD_STAGE_ALLOCATE_V19 intent;
+    SAFEUPLOAD_STAGE_ALLOCATE_V23 bound;
+    GUID reservation;
     UINT32 verdict = SAFEUPLOAD_VERDICT_DENY;
     BOOLEAN answered = FALSE;
     NTSTATUS status;
@@ -927,22 +1049,38 @@ NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *Alloc
     if (AllocationRequest == NULL || AllocationRequest->Version != SAFEUPLOAD_PROTOCOL_VERSION ||
         AllocationRequest->StructSize != sizeof(SAFEUPLOAD_REQUEST) ||
         AllocationRequest->Operation != SAFEUPLOAD_OPERATION_STAGE_ALLOCATE ||
-        AllocationRequest->Reserved != SAFEUPLOAD_STAGE_EXTENSION_VERSION ||
+        (AllocationRequest->Reserved != SAFEUPLOAD_STAGE_EXTENSION_VERSION &&
+         AllocationRequest->Reserved != SAFEUPLOAD_STAGE_BOUND_ALLOCATION_VERSION) ||
         (AllocationRequest->Flags & SAFEUPLOAD_REQUEST_FLAG_STAGE_V19_REPLY) == 0 ||
-        AllocationRequest->ImageNameLength != sizeof(intent) ||
         AllocationRequest->RequestId == 0 ||
         AllocationRequest->PathLength == 0 ||
         AllocationRequest->PathLength > SAFEUPLOAD_MAX_PATH_BYTES ||
         (AllocationRequest->PathLength & 1) != 0)
         return STATUS_INVALID_PARAMETER;
-    RtlCopyMemory(&intent, AllocationRequest->ImageName, sizeof(intent));
-    if (intent.Version != SAFEUPLOAD_STAGE_EXTENSION_VERSION || intent.StructSize != sizeof(intent) ||
-        !StageProtocolGuidNonzero(&intent.AllocationReservationId) ||
-        !StageProtocolGuidNonzero(&intent.DriverInstanceId) ||
-        intent.ReferenceKind > SAFEUPLOAD_STAGE_ALLOC_REFERENCE_TOMBSTONE ||
-        ((intent.ReferenceKind == SAFEUPLOAD_STAGE_ALLOC_REFERENCE_NONE) !=
-            !StageProtocolGuidNonzero(&intent.ParentTransferId)))
-        return STATUS_INVALID_PARAMETER;
+    if (AllocationRequest->Reserved == SAFEUPLOAD_STAGE_BOUND_ALLOCATION_VERSION) {
+        static const UCHAR zeroTail[sizeof(AllocationRequest->ImageName) - sizeof(bound)] = {0};
+        if (AllocationRequest->Flags != SAFEUPLOAD_REQUEST_FLAG_STAGE_V19_REPLY ||
+            AllocationRequest->RequestorProcessId == 0 || AllocationRequest->RequestorProcessId > (ULONG)MAXLONG ||
+            AllocationRequest->ImageNameLength != sizeof(bound) ||
+            !RtlEqualMemory((const UCHAR *)AllocationRequest->ImageName + sizeof(bound), zeroTail, sizeof(zeroTail)) ||
+            !StageProtocolBytesZero((const UCHAR *)AllocationRequest->Path + AllocationRequest->PathLength,
+                sizeof(AllocationRequest->Path) - AllocationRequest->PathLength))
+            return STATUS_INVALID_PARAMETER;
+        RtlCopyMemory(&bound, AllocationRequest->ImageName, sizeof(bound));
+        if (!StageProtocolValidBoundAllocation(&bound, AllocationRequest->Path, (USHORT)AllocationRequest->PathLength))
+            return STATUS_INVALID_PARAMETER;
+        reservation = bound.AllocationReservationId;
+    } else {
+        if (AllocationRequest->ImageNameLength != sizeof(intent)) return STATUS_INVALID_PARAMETER;
+        RtlCopyMemory(&intent, AllocationRequest->ImageName, sizeof(intent));
+        if (intent.Version != SAFEUPLOAD_STAGE_EXTENSION_VERSION || intent.StructSize != sizeof(intent) ||
+            !StageProtocolGuidNonzero(&intent.AllocationReservationId) ||
+            !StageProtocolGuidNonzero(&intent.DriverInstanceId) ||
+            intent.ReferenceKind > SAFEUPLOAD_STAGE_ALLOC_REFERENCE_TOMBSTONE ||
+            ((intent.ReferenceKind == SAFEUPLOAD_STAGE_ALLOC_REFERENCE_NONE) !=
+                !StageProtocolGuidNonzero(&intent.ParentTransferId))) return STATUS_INVALID_PARAMETER;
+        reservation = intent.AllocationReservationId;
+    }
     exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG);
     if (exchange == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     RtlZeroMemory(exchange, sizeof(*exchange));
@@ -950,7 +1088,7 @@ NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *Alloc
     status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
     status = SafeUploadStageExchangeResult(status, answered, verdict);
     if (NT_SUCCESS(status))
-        status = StageProtocolReadCreateReply(exchange, &intent.AllocationReservationId,
+        status = StageProtocolReadCreateReply(exchange, &reservation,
             StageName, StageNameLength, DestinationGeneration, StageIdentity);
     ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);
     return status;
@@ -1197,12 +1335,13 @@ static BOOLEAN StageProtocolValidDrainReplayRequest(_In_ const SAFEUPLOAD_REQUES
  * each spin-lock critical section in resident code, then return to its caller
  * at the original PASSIVE_LEVEL before it touches pageable state again. */
 __declspec(noinline) static BOOLEAN StageProtocolReconcileBegin(_In_ LONG ExchangeGeneration,
-    _Out_ PVOID *ExchangeCookie)
+    _Out_ PVOID *ExchangeCookie, _Out_ PUINT64 AuthorityRevision)
 {
     KIRQL stateIrql;
     PVOID exchangeCookie;
     BOOLEAN channelCurrent;
     *ExchangeCookie = NULL;
+    *AuthorityRevision = 0;
     KeAcquireSpinLock(&SafeUploadStageV20StateLock, &stateIrql);
     exchangeCookie = InterlockedCompareExchangePointer(&SafeUploadStageV20ConnectionCookie, NULL, NULL);
     channelCurrent = SafeUploadStageProtocolChannelGeneration() == ExchangeGeneration &&
@@ -1211,15 +1350,17 @@ __declspec(noinline) static BOOLEAN StageProtocolReconcileBegin(_In_ LONG Exchan
         InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0;
     if (channelCurrent) {
         InterlockedExchange(&SafeUploadStageV19ReadyGeneration, 0);
+        ++SafeUploadStageV20AuthorityRevision;
         StageProtocolClearDrainReplayLocked();
         *ExchangeCookie = exchangeCookie;
+        *AuthorityRevision = SafeUploadStageV20AuthorityRevision;
     }
     KeReleaseSpinLock(&SafeUploadStageV20StateLock, stateIrql);
     return channelCurrent;
 }
 
 __declspec(noinline) static BOOLEAN StageProtocolReconcilePublish(_In_ LONG ExchangeGeneration,
-    _In_ PVOID ExchangeCookie, _In_ BOOLEAN CapabilitiesAccepted,
+    _In_ PVOID ExchangeCookie, _In_ UINT64 AuthorityRevision, _In_ BOOLEAN CapabilitiesAccepted,
     _In_ BOOLEAN DrainReplayValid, _In_ GUID DriverInstanceId,
     _In_ UINT64 DrainReplayRequestId, _In_ UINT64 DrainNonce)
 {
@@ -1227,6 +1368,7 @@ __declspec(noinline) static BOOLEAN StageProtocolReconcilePublish(_In_ LONG Exch
     BOOLEAN channelCurrent;
     KeAcquireSpinLock(&SafeUploadStageV20StateLock, &stateIrql);
     channelCurrent = SafeUploadStageProtocolChannelGeneration() == ExchangeGeneration &&
+        AuthorityRevision != 0 && AuthorityRevision == SafeUploadStageV20AuthorityRevision &&
         InterlockedCompareExchangePointer(&SafeUploadStageV20ConnectionCookie, NULL, NULL) ==
             ExchangeCookie &&
         InterlockedCompareExchange(&SafeUploadStageV20ChannelActive, 0, 0) != 0 &&
@@ -1252,11 +1394,12 @@ __declspec(noinline) static BOOLEAN StageProtocolReconcilePublish(_In_ LONG Exch
 }
 
 __declspec(noinline) static VOID StageProtocolReconcileFailure(_In_ LONG ExchangeGeneration,
-    _In_ PVOID ExchangeCookie)
+    _In_ PVOID ExchangeCookie, _In_ UINT64 AuthorityRevision)
 {
     KIRQL stateIrql;
     KeAcquireSpinLock(&SafeUploadStageV20StateLock, &stateIrql);
     if (SafeUploadStageProtocolChannelGeneration() == ExchangeGeneration &&
+        AuthorityRevision != 0 && AuthorityRevision == SafeUploadStageV20AuthorityRevision &&
         InterlockedCompareExchangePointer(&SafeUploadStageV20ConnectionCookie, NULL, NULL) ==
             ExchangeCookie) {
         InterlockedExchange(&SafeUploadStageV19ReadyGeneration, 0);
@@ -1275,6 +1418,7 @@ NTSTATUS SafeUploadStageReconcileV20(_In_ const GUID *DriverInstanceId,
     BOOLEAN answered = FALSE;
     UINT64 drainNonce = 0;
     UINT64 drainReplayRequestId = 0;
+    UINT64 authorityRevision = 0;
     BOOLEAN drainReplayValid = FALSE;
     LONG exchangeGeneration;
     PVOID exchangeCookie;
@@ -1295,7 +1439,7 @@ NTSTATUS SafeUploadStageReconcileV20(_In_ const GUID *DriverInstanceId,
      * ordinary readiness and any prior drain-only replay before sending; a
      * timeout, malformed reply, or stale generation must leave no old grant. */
     ExAcquireFastMutex(&SafeUploadStageV19ExchangeMutex);
-    channelCurrent = StageProtocolReconcileBegin(exchangeGeneration, &exchangeCookie);
+    channelCurrent = StageProtocolReconcileBegin(exchangeGeneration, &exchangeCookie, &authorityRevision);
     ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
     if (!channelCurrent) return STATUS_PORT_DISCONNECTED;
     exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG);
@@ -1315,6 +1459,7 @@ NTSTATUS SafeUploadStageReconcileV20(_In_ const GUID *DriverInstanceId,
     RtlCopyMemory(exchange->Request.ImageName, &payload, sizeof(payload));
     exchange->ChannelGeneration = exchangeGeneration;
     exchange->ChannelCookie = exchangeCookie;
+    exchange->StageAuthorityRevision = authorityRevision;
     status = StageSendV19Exchange(exchange, TRUE, &verdict, &answered);
     status = SafeUploadStageExchangeResult(status, answered, verdict);
     if (NT_SUCCESS(status)) {
@@ -1342,13 +1487,13 @@ NTSTATUS SafeUploadStageReconcileV20(_In_ const GUID *DriverInstanceId,
                 status = STATUS_INVALID_BUFFER_SIZE;
             } else if (reply.Result == SAFEUPLOAD_STAGE_RESULT_CAPABILITIES_ACCEPTED) {
                 ExAcquireFastMutex(&SafeUploadStageV19ExchangeMutex);
-                channelCurrent = StageProtocolReconcilePublish(exchangeGeneration, exchangeCookie,
+                channelCurrent = StageProtocolReconcilePublish(exchangeGeneration, exchangeCookie, authorityRevision,
                     TRUE, FALSE, *DriverInstanceId, 0, 0);
                 ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
                 if (!channelCurrent) status = STATUS_PORT_DISCONNECTED;
             } else {
                 ExAcquireFastMutex(&SafeUploadStageV19ExchangeMutex);
-                channelCurrent = StageProtocolReconcilePublish(exchangeGeneration, exchangeCookie,
+                channelCurrent = StageProtocolReconcilePublish(exchangeGeneration, exchangeCookie, authorityRevision,
                     FALSE, drainReplayValid, *DriverInstanceId,
                     drainReplayRequestId, drainNonce);
                 ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
@@ -1358,7 +1503,7 @@ NTSTATUS SafeUploadStageReconcileV20(_In_ const GUID *DriverInstanceId,
     } else {
         /* A stale/timed-out reply may not clear readiness on a replacement
          * channel. Only clear the generation that began this handshake. */
-        StageProtocolReconcileFailure(exchangeGeneration, exchangeCookie);
+        StageProtocolReconcileFailure(exchangeGeneration, exchangeCookie, authorityRevision);
     }
     ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);
     return status;

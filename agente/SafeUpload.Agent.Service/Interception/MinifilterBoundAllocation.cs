@@ -62,6 +62,7 @@ public sealed partial class MinifilterInterceptor
                 payload.ParentCaseSensitive == 1, leaf, payload.PublicTargetPresent
                     ? new(parent.VolumeSerialNumber, payload.PublicTargetIdHigh, payload.PublicTargetIdLow) : null);
             DestinationKind kind = ClassifyStagedDestination(request.TypedFlags);
+            var requestor = SessionResolver.GetRequiredProcessIdentity(processId);
             TransferJournalEntry? saved = await journal.FindBoundAllocationAsync(binding.ReservationId, token)
                 .ConfigureAwait(false);
             if (saved is not null)
@@ -71,13 +72,15 @@ public sealed partial class MinifilterInterceptor
                     !string.Equals(saved.Transfer.DestinationPath, Path.GetFullPath(destination), StringComparison.Ordinal))
                     throw new IOException("The bound reservation belongs to a different request.");
                 var writer = saved.Transfer;
-                return await allocator.AllocateV23Async(destination, kind, writer.ProcessName, processId,
+                RequireBoundWriterIdentity(writer, processId);
+                var replay = await allocator.AllocateV23Async(destination, kind, writer.ProcessName, processId,
                     writer.SessionId ?? throw new IOException("The saved bound writer has no session."),
                     writer.RequestorSid ?? throw new IOException("The saved bound writer has no SID."),
                     writer.RequestorProcessCreationTime ?? throw new IOException("The saved writer has no process lifetime."),
                     binding, token).ConfigureAwait(false);
+                RequireBoundWriterIdentity(writer, processId);
+                return replay;
             }
-            var requestor = SessionResolver.GetRequiredProcessIdentity(processId);
             string processName = Process.GetProcessById(processId).ProcessName;
             Policy policy = await _policyStore.LoadAsync(token).ConfigureAwait(false);
             var operation = new FileOperation(destination, Path.GetFileName(destination), Path.GetExtension(destination),
@@ -98,6 +101,15 @@ public sealed partial class MinifilterInterceptor
             _logger.LogWarning(error, "Bound allocation refused for request {RequestId}.", request.RequestId);
             return null;
         }
+    }
+
+    internal static void RequireBoundWriterIdentity(StagedTransfer writer, int processId)
+    {
+        var current = SessionResolver.GetRequiredProcessIdentity(processId);
+        if (writer.ProcessId != processId || writer.SessionId != current.SessionId ||
+            writer.RequestorProcessCreationTime != current.CreationTimeFileTime ||
+            !string.Equals(writer.RequestorSid, current.UserSid.Value, StringComparison.Ordinal))
+            throw new IOException("The original bound writer changed before allocation replay.");
     }
 }
 #endif

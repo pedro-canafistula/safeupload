@@ -5,6 +5,7 @@ using System.Security.Principal;
 using System.Text;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Service.Interception;
+using SafeUpload.Agent.Service.Notifications;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -71,6 +72,31 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         var reopened = new StagedTransferJournal(Journal);
         var replay = await Allocate(new(Stages, reopened), binding);
         Assert.Equal(first, replay);
+    }
+
+    [Fact]
+    public async Task Saved_allocation_replay_requires_the_live_owner_lifetime_and_session()
+    {
+        var binding = Binding("owned.txt", 2, false);
+        var journal = new StagedTransferJournal(Journal);
+        var allocated = await Allocate(new(Stages, journal), binding);
+        using var process = Process.GetCurrentProcess();
+        var live = SessionResolver.GetRequiredProcessIdentity(process.Id);
+        Assert.Equal(live.CreationTimeFileTime, allocated.Transfer.RequestorProcessCreationTime);
+        MinifilterInterceptor.RequireBoundWriterIdentity(allocated.Transfer, process.Id);
+        Assert.Throws<IOException>(() => MinifilterInterceptor.RequireBoundWriterIdentity(
+            allocated.Transfer with { RequestorProcessCreationTime = live.CreationTimeFileTime - 1 }, process.Id));
+        Assert.Throws<IOException>(() => MinifilterInterceptor.RequireBoundWriterIdentity(
+            allocated.Transfer with { SessionId = live.SessionId + 1 }, process.Id));
+        Assert.Throws<IOException>(() => MinifilterInterceptor.RequireBoundWriterIdentity(
+            allocated.Transfer with { RequestorSid = "S-1-0-0" }, process.Id));
+        Assert.Throws<IOException>(() => MinifilterInterceptor.RequireBoundWriterIdentity(
+            allocated.Transfer with { ProcessId = process.Id + 1 }, process.Id));
+        var saved = await journal.ReadAsync(binding.ReservationId, CancellationToken.None);
+        Assert.Equal(TransferJournalState.Allocated, saved.State);
+        Assert.Equal(allocated.StageIdentity, saved.StageIdentity);
+        Assert.True(File.Exists(saved.Transfer.StagePath));
+        Assert.False(File.Exists(Path.Combine(Parent, binding.CanonicalLeaf)));
     }
 
     [Fact]
