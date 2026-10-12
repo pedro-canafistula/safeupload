@@ -104,18 +104,19 @@ public sealed class PublicOpenBindingTests : IDisposable
     }
 
     [Fact]
-    public unsafe void Ordinary_request_fits_opaque_slots_and_cannot_be_decoded_as_image_text()
+    public void Ordinary_request_fits_opaque_slots_and_cannot_be_decoded_as_image_text()
     {
         PublicDispositionV25.Verify();
         var request = Request(PublicDispositionV25.OpenPrepare);
         SafeUploadRequest outer = new() { Version = Contract.Version, StructSize = Contract.RequestSize,
             RequestId = 17, Operation = 21, Reserved = 25, Flags = Contract.StageV19ReplyFlag,
             RequestorProcessId = 1234, ImageNameLength = 80 };
-        Buffer.MemoryCopy(&request, outer.ImageName, 128, 80);
+        var slot = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref outer, 1));
+        MemoryMarshal.Write(slot[1064..], in request);
         Assert.True(outer.TryReadPublicDispositionV25(out _)); Assert.True(outer.HasKnownFlags);
         var opaque = outer;
         Assert.Throws<InvalidOperationException>(() => opaque.GetImageName());
-        outer.ImageName[40] = 'x';
+        slot[1064 + 80] = 1;
         Assert.False(outer.TryReadPublicDispositionV25(out _));
     }
 
