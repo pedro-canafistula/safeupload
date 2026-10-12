@@ -1,14 +1,15 @@
 # M2 progress and direction review — 2026-10-12
 
-Latest review covers committed source `c546a71b` and eight uncommitted code/design files
-(381 insertions, nine deletions). Codex checked source, plan, raw run verdict/restoration,
+Latest review covers committed source `fa687b61495f47c0bb9485ccf6547552a197254a`.
+Codex checked source, plan, raw run verdict/restoration,
 WDK summary and TRX execution files; Luna 6 at max effort independently audited direction
 and status. This is the owner's progress review, not the final M2 adversarial qualification
 or the integrated pre-boot lifetime review.
 
 **Verdict:** the architecture and milestone scope follow the owner's decisions. Delivery needs
-more focus: the preceding review identified delivery fragmentation, and no revised protected
-T5 pair has run since. Static/component passes are real progress, but do not prove Save As,
+more focus: native CREATE/close is now a connected, statically tested lifecycle, resolving the
+preceding review's no-production-caller finding. No revised protected T5 pair has run.
+Static/component passes are real progress, but do not prove Save As,
 public deletes or recovery. No materially false completed product claim was found.
 M2 remains unfinished; the MVP is not ready.
 
@@ -29,39 +30,39 @@ private-journal replacements and the resulting reservation/hand-back failures. T
 native error 5 is unproven. Do not loosen permissions or sharing on that assumption.
 The cycle row's sampled no-blocked-publication check does not replace raw-volume regression rows.
 
-## T5 — substantial service progress, no live qualification
+## T5 — connected lifecycle progress, no protected qualification
 
-- [x] Latest matching driver/agent [gates](t5-bound-service-allocation-gates.md) cover **`dbe02d04`**:
-  four WDK profiles at **0 warnings / 0 errors**, PREfast and ApiValidator
-  ([raw summary](exact-t5-rpc-integration1-summary.txt)), and **863/863 normal**, **1113/1113 feature**.
-  Root independently verified each aggregate TRX is the disjoint user + SYSTEM execution union:
-  838 + 25 normal, 1088 + 25 feature; all Passed, unique IDs, no skipped cases.
-- [x] Since the preceding review, `dbe02d04` adds the retained V23 request, concurrent-RPC
-  authority fence and live allocation-replay ownership check. These are source changes.
-- [ ] Live integration is incomplete. `MinifilterBoundAllocation.cs:12–15,45–50` keeps admission false;
-  `StagedTransferPublisher.cs:81–83` refuses bound publication. `StageStream.c:2259` still calls
-  the old allocator; the V23 sender and native-name capture have no production callers.
-  No revised pair has booted. The eight dirty files are outside the passing gates.
-- [ ] Correct kernel CREATE permission capture before implementation. Luna's design verdict is
-  **REVISE**, covering disposition-specific implicit rights and collision results, case-aware
-  identity anchors, native sharing during seed reads, full descriptor/mandatory-label handling,
-  post-allocation authorization recheck and live writer identity on replay.
-  - [ ] `StagedDestinationDirectory.cs:68` uses a read open with share mask 1. Establish how seeding
-    preserves the original CREATE's native sharing behavior; merely closing the probe is insufficient.
-  - [x] Allocation replay now checks live PID/session/SID/creation before and after replay
-    (`dbe02d04`). Ownership is separate from the effective subject's filesystem authority.
+- [x] Latest agent [gates](t5-bound-service-allocation-gates.md) cover **`fa687b61`**:
+  **866/866 normal**, **1140/1140 feature**, in both Debug and Release. Root independently verified
+  aggregate TRX equals the disjoint user + SYSTEM union: 841 + 25 normal, 1115 + 25 feature;
+  all Passed, unique IDs, no skips. Every build/package leg is 0/0.
+  - [x] Four WDK profiles at **0 warnings / 0 errors**, PREfast and ApiValidator, on `da66fef4`.
+    Its kernel subtree is identical at `fa687b61`; raw summaries are linked in the gate record.
+- [x] Native-name capture now has its producer in `StageStream.c:3528–3536`; the receive loop
+  dispatches V24 (`MinifilterInterceptor.cs:303–310`). Prepare persists before forward; lifecycle
+  facts feed exact-name/last-close reconciliation and retained terminal receipts
+  (`StagedNativeLifecycleDispatcher.cs:38–140,154–179`). All 22 lifecycle controls pass per feature profile.
+- [x] Ordinary and native delete allocation include retained bound-manifest high-water under the
+  turn/journal gate (`StagedDestinationCommitJournal.cs:312–320`); both orders pass within 14 allocation controls.
+- [ ] No protected FilterPort/Verifier run qualifies the revised pair. `_stageBoundHeadReady` remains
+  false (`MinifilterBoundAllocation.cs:14,23–30,45–50`); native capability is unadvertised. The publisher
+  refuses bound entries (`StagedTransferPublisher.cs:81–83`). Journal reopening is not service-restart qualification.
+- [ ] Ordinary public disposition remains unimplemented: `StageSetDisposition` still handles private
+  streams (`StageStream.c:4120–4175,4594–4599`). The separately checked backend factory remains unconnected.
+  - [ ] Luna's bounded relay verdict is **REVISE**: require exact link/open and binding-time Published
+    identity; one forward/no replay; strict successful typed permit; native FALSE no-op; preserve the
+    combined DELETE+write backend and original caller context. Corrections are recorded in
+    [the design](../../T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12).
+    These preserve approved behavior and do not themselves force a new owner choice.
+- [ ] Bound-writer permission/sharing/security-label capture, all physical publication/delete through
+  the shared head, startup activation and resolving directory events remain open. Startup currently
+  refuses unresolved heads (`StagedNativeStartupRecovery.cs:83–107`); diagnostics cannot release a hold.
   - [ ] The [unreadable-seeded-bytes hand-back choice](../../T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes)
     awaits owner decision. Full-file hand-back must not disclose old bytes without read authority.
-  - [ ] Native scheduled-CREATE transport is independently ready for implementation, not boot
-    qualification. Startup must compare full CREATE-outcome/identity/generation facts;
-    `StagedNativeStartupRecovery.cs:120` currently projects only part of that evidence.
 
-These are pre-admission blockers; this review establishes no leak through the disabled new path.
-The current transport review requires no new owner decision; the separate seeded-content
-hand-back decision remains pending. Ask before a new denial, grant or failure behavior.
-The kernel EmptyHeld/successor chain is removed, but reserved values, guarded migration and
-some legacy service cleanup APIs/tests remain intentionally. Operation 10 is denied
-(`MinifilterInterceptor.cs:357–359`); finish classified removal without deleting safeguards blindly.
+No new security leak or unsafe product-completion claim surfaced. The disabled path does not establish
+live safety. The kernel EmptyHeld/successor chain is removed; reserved values, guarded migration and
+legacy cleanup protections remain intentionally. Finish classified removal without deleting safeguards blindly.
 
 ## T6–T11 — M2 still has work beyond T5
 
@@ -79,11 +80,10 @@ some legacy service cleanup APIs/tests remain intentionally. Operation 10 is den
 
 ## T5 — delivery correction
 
-- [ ] Complete one connected fixed-NTFS public-delete path: original subject/anchored identity,
-  durable destination intent before forwarding unchanged native CREATE, exact close/startup
-  reconciliation, and terminal receipt retention until confirmed kernel-record removal.
-  Connect ordinary disposition/allocation and every physical publication/delete/recovery path
-  to the shared head; keep admission disabled throughout incomplete integration.
+- [ ] Close the finite ordinary-relay design corrections once, then connect ordinary disposition,
+  bound-writer allocation, every physical commit and automatic close/startup recovery to the same head.
+  Keep admission disabled throughout incomplete integration; do not extend an unused exported
+  service-handle path in parallel or add routine component reviews.
   - [ ] Gate the exact resulting committed source, perform the single integrated pre-boot lifetime/
     lock-order/retirement review, then run both forced-delete orders and real Notepad clean/CPF
     in all required modes, with independent byte observation and separate restoration.
@@ -92,6 +92,6 @@ Group implementation around that runtime checkpoint. Do not create another compo
 per-patch review unless integration exposes a new product-security design decision. Harness fixes
 continue to need PS5.1 parsing, self-checks and real execution, not review manifests/dispositions.
 
-At latest audit start, committed `feat/driver-m2` matched its tracked remote through `c546a71b`.
-This review changes no product code, test assertions, VM baseline or host-wide configuration
-and launches no product retry. The in-progress files remain outside the static gate.
+At latest audit start, committed `feat/driver-m2` matched its tracked remote through `fa687b61`.
+The status plan remains close to the requested M1 size. This review updates status/design documentation,
+changes no product code, test assertions, VM baseline or host-wide configuration and launches no product retry.

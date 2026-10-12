@@ -2,10 +2,17 @@
 
 ## Ordinary public disposition integration — proposal for review, 2026-10-12
 
+**Review status: REVISE; the mandatory corrections below are recorded, but the relay is not implemented or qualified.**
+
 The remaining ordinary-delete path must preserve the actual NTFS open and caller's DELETE grant. The earlier exported service
 handle introduces a second application handle count on that same FILE_OBJECT and difficult foreign-handle revocation/reuse races.
 Proposed correction: the service orders and journals the transaction, while a one-use driver permit releases the **original outer
-SetInformation operation once** to NTFS. No service reopen, exported handle, TargetFileObject substitution or synthesized data FCB.
+SetInformation operation once** to NTFS. For non-writing native public opens, keep the original TargetFileObject. No service reopen,
+exported handle or synthesized data FCB. Combined private DELETE+write opens retain their separately NTFS-checked public backend;
+for ordinary disposition only, retarget to that exact same-volume backend, call FltSetCallbackDataDirty and pin it through postoperation.
+Preserve the original operation flags, requestor mode and thread. Never route data, cache/sections or FILE_DISPOSITION_ON_CLOSE through
+this retarget path. It does not revive the rejected synthetic public-FCB design. The supported retarget contract is documented in
+[FLT_IO_PARAMETER_BLOCK](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_io_parameter_block).
 This is a proposed implementation change requiring Luna security-design review; it is not permission to change product behavior.
 
 1. Extend the local native-object map to distinguish ordinary non-writing FILE_OPEN + DELETE from CREATE delete-on-close. Ordinary
@@ -15,7 +22,9 @@ This is a proposed implementation change requiring Luna security-design review; 
    NTFS owns reads, cache, sections, byte locks and sharing. Failed ordinary tracking grants no disposition authority; original open
    results remain native. Rebinding an accepted read-only object must be exact and automatic before a disposition can be authorized.
 2. Capture the destination's durable Published generation at ordinary binding as evidence, without allocating a delete version.
-   A later disposition gets a fresh transfer/nonce/operation and max+1 generation. An old open must never confer DELETE on a
+   Bind the case-aware parent/leaf, volume and full file ID, including the binding-time Published identity. Under the destination
+   turn, recheck that exact link and head before forwarding. A later delete gets a fresh transfer/nonce/operation and max+1 generation.
+   An old open must never confer DELETE on a
    replacement: if exact observation shows a different identity and the shared head proves that replacement was Published after
    this open bound, the old-object operation cannot delete or tombstone the replacement. An allocated/unsealed/blocked successor
    supplies no such suppression evidence. Unexplained identity changes fail closed. Native scheduled ordering remains unchanged.
@@ -23,17 +32,23 @@ This is a proposed implementation change requiring Luna security-design review; 
    inherited handles. Capture the complete original flags/information-class, requestor mode and operation sequence. Do not use
    a primary PID token as filesystem authority or recheck a DACL under SYSTEM. Pin only references needed by pending I/O, with no
    extra application handle. Normal FALSE clears still affect all provisional ordinary intents on that same checked name/object,
-   across handles/owners; they cannot cancel native CREATE delete-on-close or completed deletion.
+   across handles/owners; they cannot cancel native CREATE delete-on-close or completed deletion. FALSE without an ordinary provisional
+   intent remains a native no-op: reuse ClearDisposition/PendingCommit for the exact checked object, allocate no delete generation,
+   and record the actual NTFS result. The current journal's refusal of that no-op must be corrected before connecting the relay.
 4. The service acquires the destination reconciliation turn, includes retained manifest/tombstone high-water and durably records
    the existing ordinary delete intent/PendingCommit before returning a typed, exact one-use forward permit. It retains the logical
    turn through NTFS result recording, outside global locks and bounded disk slots. The kernel atomically checks current channel
    authority, immutable object binding, operation sequence, cancellation and instance retirement before releasing the original
    SetInformation to NTFS. No service grant substitutes for Windows' actual handle DELETE/parent DELETE_CHILD authorization.
+   Accept only exact STATUS_SUCCESS and a complete typed reply matching phase/nonce/epoch/operation/object/revision; NT_SUCCESS
+   cannot authorize forwarding because FltSendMessage's STATUS_TIMEOUT is a success code. Atomically consume the permit once.
+   Cancellation before consumption records exact no-forward resolution. After consumption, lost results or timeouts retain
+   PendingCommit and its barrier; never replay SetInformation or infer that no mutation happened.
 5. Preserve the original I/O's security/privilege context and flags through the lower operation. Preferred preoperation path is an
    inline prepare at supported IRQL, without namespace/stream/spin locks, so the original callback thread proceeds to NTFS unchanged.
-   If a pended worker is necessary, it needs a reviewed mechanism preserving the original operation subject, including privilege
-   checks, without modifying Data->Thread or falling back to SYSTEM. An unsupported mechanism must be rejected before implementation.
-6. Postoperation captures the actual NTSTATUS and sends immutable result facts away from unsafe callback contexts. Persist accepted
+   Require this inline path; no pended worker fallback is approved. Any proposed fallback needs a separately established mechanism
+   preserving the original operation subject and privileges without modifying Data->Thread or falling back to SYSTEM.
+6. Postoperation captures the actual NTSTATUS and complete immutable operation facts away from unsafe callback contexts. Persist accepted
    or failed disposition before completing the caller when possible. Never turn an NTFS-accepted mutation into an artificial failure
    after lost bookkeeping; retain the durable intent/hold and reconcile automatically. Original NTFS failure remains a failure.
    Close/reconnect/timeout/cancellation must release local references and permit ownership exactly once; they never imply no mutation.

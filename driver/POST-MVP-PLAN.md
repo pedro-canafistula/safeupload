@@ -142,10 +142,10 @@ integration. After the single pre-boot kernel lifetime review, qualify native de
 clean/CPF Save As in all three modes, with independent bytes and separate restoration. Component passes do not complete T5.
 Keep the broad application/metadata matrix in T8; all existing assertions and the full milestone sequence remain required.
 
-The [latest 2026-10-12 progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md) confirms the architecture and scope,
-but finds that delivery fragmentation persists: no revised protected T5 pair has run. Complete the connected fixed-NTFS delete/recovery
-path and shared publication head before adding component checkpoints. Ordinary CREATE authority and the seeded-content hand-back
-owner choice remain open; native transport design readiness and component checkmarks do not qualify the product.
+The [latest progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md) confirms the architecture and scope.
+The gated native CREATE/close path is now connected and statically tested; no revised protected T5 pair has run. Finish ordinary
+disposition and the shared publication/recovery path before adding component checkpoints. Ordinary CREATE authority and the
+seeded-content hand-back owner choice remain open; component checkmarks do not qualify the product.
 
 ### T4. Remove the 128-saves-per-boot ceiling
 
@@ -249,6 +249,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     Replay identity is fixed (`dbe02d04`); [kernel seed/read-authority corrections and the owner hand-back choice](T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes) remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The new journal layer is not live.
+    [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)
+    remains unimplemented; Luna requires exact-link binding, native FALSE no-op, the checked combined-write backend and exactly-once forwarding.
     [Reviewed integration contract](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md), V23 transport and
     Windows filename resolver are implemented (`827b3f41`, `5f294008`) with [passing static gates](evidence/2026-10-12/t5-bound-allocation-static-gates.md).
   - [x] Service V23 dispatch → anchored seeding → bound manifest/head claim and receipt validation connected (`ca5a9cfa`–`be78b958`);
@@ -263,8 +265,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: driver/agent `da66fef4`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
-**866/866** per normal profile and **1139/1139** per feature profile, every discovered case executed once without skips,
+Latest static gates: agent `fa687b61`, unchanged kernel subtree from WDK source `da66fef4`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
+**866/866** per normal profile and **1140/1140** per feature profile, every discovered case executed once without skips,
 service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-12/t5-bound-service-allocation-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
 V23 allocation and the gated native CREATE/close dispatcher pass these gates. Bound-writer capture, ordinary public disposition,

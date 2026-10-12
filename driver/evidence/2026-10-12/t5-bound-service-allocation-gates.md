@@ -1,7 +1,9 @@
 # T5 connected native lifecycle and allocation — builder gates
 
-Driver and agent source: `da66fef4df9215cfd87d85d6825a154174f43138`.
-WDK label **t5-native-lifecycle4**; agent matrix **t5-native-lifecycle3**.
+Latest agent source: `fa687b61495f47c0bb9485ccf6547552a197254a`; matrix **t5-ordinary-highwater1**.
+WDK source: `da66fef4df9215cfd87d85d6825a154174f43138`; label **t5-native-lifecycle4**.
+The kernel subtree is identical at both commits (`dc44387caeabeae1ae38437523031885068b60b7`);
+the newer source changes ordinary-delete high-water accounting and its agent regression, plus design documentation.
 **Four WDK profiles 0 warnings / 0 errors, PREfast/ApiValidator; AgentMatrixGate=True.**
 No revised pair was installed or booted. Bound-head capability remains unadvertised and admission disabled.
 
@@ -9,13 +11,14 @@ No revised pair was installed or booted. Bound-head capability remains unadverti
 | --- | ---: | ---: | ---: |
 | Normal Debug | 866 / 866 / 866 | compiled out | compiled out |
 | Normal Release | 866 / 866 / 866 | compiled out | compiled out |
-| Feature Debug | 1139 / 1139 / 1139 | 22 / 22 | 13 / 13 |
-| Feature Release | 1139 / 1139 / 1139 | 22 / 22 | 13 / 13 |
+| Feature Debug | 1140 / 1140 / 1140 | 22 / 22 | 14 / 14 |
+| Feature Release | 1140 / 1140 / 1140 | 22 / 22 | 14 / 14 |
 
 Root independently verified aggregate execution files equal the disjoint user + SYSTEM union:
-841 + 25 normal, 1114 + 25 feature; every result Passed, unique IDs, no skipped cases.
+841 + 25 normal, 1115 + 25 feature; every result Passed, unique IDs, no skipped cases.
 Every service/tray/test/discovery/Release-package leg passes at 0/0. Inspector/writer builds and
-signature verification also pass ([raw WDK summary](exact-t5-native-lifecycle4-summary.txt)).
+signature verification also pass ([raw WDK summary](exact-t5-native-lifecycle4-summary.txt),
+[raw agent summary](exact-agent-matrix-t5-ordinary-highwater1-summary.txt)).
 Signed feature Debug SHA-256: `9052C6FB76BC0E7443AE1B0AC6F9571168350E2B2E633D053870BF3D80844B3B`.
 
 The gated kernel producer now captures the original CREATE subject and metadata anchors without a
@@ -36,12 +39,13 @@ live-handle refusal, automatic dispatch after cleanup, journal reopening, stale 
 request/outcome facts, malformed carriers, premature receipt removal and both initially checked
 and unbound recovery failures. They use the real journal with injected driver replay/name observations:
 **journal reopening is not a qualified service restart; these are not protected FilterPort/Verifier runs.**
-The 13 bound allocation controls retain their Windows filesystem/replay/continuation coverage.
+The 14 bound allocation controls retain their Windows filesystem/replay/continuation coverage, including ordinary and native
+delete generation allocation above a retained bound manifest after destination-head loss.
 
-Normal Release package SHA-256: `FA5D6B11F79BB75CA61E7B9A623949961AB9BB3394AF7C8C0323E911204ED470`.
-Feature Release package SHA-256: `C2217C7A68CF74434684164493824CDEF30977DB0D806E079D84F542B250CD46`.
-Raw output remains local in `output/exact-agent-matrix/t5-native-lifecycle3/`,
-`exact-agent-matrix-t5-native-lifecycle3-*`, `t5-native-lifecycle3-agent-host.txt`,
+Normal Release package SHA-256: `7C2EF7E6E44507E235E1C463AE2DD324596312855548D601EAA7463B5C90D799`.
+Feature Release package SHA-256: `91AC4602D8FD8330ACB7A4E76C9DB4DBD5D0E6F24805C7A5080BA363D37BBB20`.
+Raw output remains local in `output/exact-agent-matrix/t5-ordinary-highwater1/`,
+`exact-agent-matrix-t5-ordinary-highwater1-*`, `t5-ordinary-highwater1-agent-host.txt`,
 `exact-t5-native-lifecycle4-*` and `t5-native-lifecycle4-wdk-host.txt`.
 
 Earlier attempts remain retained: lifecycle1 WDK feature builds found C28170/C28172 paging annotation
