@@ -147,8 +147,8 @@ confirms the architecture and scope but finds delivery still fragmented. Origina
 are connected; no revised protected T5 pair has run. Finish checked writer authority, shared publication/deletes and automatic recovery
 as one delivery checkpoint. The [publication contract](T5-BOUND-PUBLICATION.md) now has its corrected Luna design review;
 transport/client and durable native-result journal are implemented; kernel object integration and recovery remain unfinished.
-The seeded-content hand-back owner choice remains open.
-Unprotected native controls do not qualify this pair.
+The seeded-content hand-back owner choice remains open. Writer-capture review remains REVISE: retain the original checked object;
+the later zero-access reopen control failed. Unprotected native controls do not qualify this pair.
 
 ### T4. Remove the 128-saves-per-boot ceiling
 

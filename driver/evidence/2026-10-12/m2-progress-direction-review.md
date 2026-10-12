@@ -1,7 +1,8 @@
 # M2 progress and direction review — 2026-10-12
 
 Owner-requested refresh covers gated agent source **`a7e238ff`** and WDK source **`19d5f33c`**, whose kernel source is unchanged
-through the agent commit. Codex checked source, plan, raw build summaries, the T4 verdict and separate restoration. The earlier
+through the agent commit and reviewed HEAD **`283fff88`**: kernel and agent subtree hashes remain identical, so its later native-control
+and documentation changes introduce no new product-build result. Codex checked source, plan, raw build summaries, the T4 verdict and separate restoration. The earlier
 Luna 6 max direction review found the architecture aligned but delivery fragmented; the corrected publication design subsequently
 received READY WITH CORRECTIONS. This refresh is not the final M2 adversarial gate or the integrated pre-boot lifetime review.
 
@@ -61,6 +62,12 @@ Flat pool and clean restoration do not make the failed product row pass. Sampled
   - [ ] The [unreadable-seeded-bytes hand-back choice](../../T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes)
     awaits the owner. Neither policy option is approved; full-file hand-back must not disclose prior bytes without read authority.
 
+The subsequent native writer controls settle 980 tested rights/share/grant comparisons on builder **19045.6466**, not the
+qualification VM. The later zero-access revalidation candidate failed; the separate nine supplied-descriptor cases completed.
+The [existing writer design](../../T5-NATIVE-PUBLIC-OPENS.md#kernel-permission-and-identity-capture--required-integration-corrections)
+records both outcomes and Luna's retained-object correction. Its verdict remains REVISE, and none of these controls is a protected
+runtime pass. Further controls should resolve those finite implementation prerequisites, not become another component milestone.
+
 Journal reopening and injected replay tests are not qualified service restart or app-close recovery. The runtime rows must prove
 the owner's automatic hold release, both deterministic DeleteFile orders and real clean/CPF Notepad Save As with independent bytes.
 
@@ -83,7 +90,7 @@ Earlier-pair passes do not qualify the changed pair. Builds and test counts do n
 - [ ] Both original mapping repros, new destination observers, combined stress/crash/recovery/latency and cutover remain unqualified.
 
 Taint stays; normal builds compile staging out; unsupported destinations remain disabled. The writable-state detour remains parked
-on `wip/t5-writable-state-20261011`. The plan is 480 lines, close to the owner's requested M1 size, with checklists at most two levels.
+on `wip/t5-writable-state-20261011`. The plan remains roughly the owner's requested M1 size, with checklists at most two levels.
 
 ## T5 — next delivery checkpoint
 

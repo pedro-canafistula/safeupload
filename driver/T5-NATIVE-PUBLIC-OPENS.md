@@ -479,20 +479,23 @@ and the original CREATE descriptor/subject, without granting a right merely beca
 the supported CREATE-option matrix and security-only public-open behavior; combined unsupported metadata changes remain refused.
 Overwrite retains the existing descriptor. Supersede must follow actual NTFS semantics: the native controls below retain the
 queried existing descriptor when no CREATE descriptor is supplied; do not replace it blindly with a newly inherited descriptor.
-Fresh creation uses the descriptor NTFS would assign from the exact parent, original CREATE descriptor and subject. Explicit
-descriptor cases still need their native comparison. Include owner/group, inheritance, SACL and mandatory labels, not only a DACL copy. A
+Fresh creation uses the descriptor NTFS would assign from the exact parent, original CREATE descriptor and subject. The supplied
+descriptor controls below establish the tested existing/absent distinction; full assignment still needs implementation and comparison.
+Include owner/group, inheritance, SACL and mandatory labels, not only a DACL copy. A
 discrepancy with the native control keeps admission closed; do not silently broaden grants or narrow required product behavior.
 
 Separately open read-only metadata anchors below the original instance, walking each component with its actual directory case
 mode and rejecting reparses. Query the checked source object's canonical long name, verify its parent/leaf against those anchors,
-and retain the exact full root/parent/target IDs, mount GUID, case mode, leaf and assigned security needed by the private view.
+and retain the full identity, case mode and security snapshot of every ancestor, the parent and target, plus mount GUID, leaf and
+assigned security needed by the private view.
 The exact subject/share-checked object also remains owned through the app object's cleanup to preserve its native share reservation.
 For absence, perform complete anchored enumeration with the original lookup semantics; an incomplete lookup is not absence.
 Capture the tuple outside namespace locks after reserving the name. Send V23 and persist its exact retry snapshot. Before exposing
 the private open, reopen/recheck those anchors and the target ID or absence outside locks, then revalidate the reserved view,
-predecessor, caller lifetime and service generation under the namespace lock. Repeat the exact disposition-specific NTFS rights,
-sharing, traversal and label checks after the RPC; unchanged IDs alone do not establish unchanged authorization. Capture the
-resulting descriptor again. Any mismatch retains/discards the private candidate
+predecessor, caller lifetime and service generation under the namespace lock. Do not reopen the target with the writer's rights
+or zero access after the RPC: the retained original share reservation makes that construction unsuitable. The original NTFS-checked
+object remains the caller authority. Metadata-only anchored checks must compare every relevant identity, leaf link, case mode and
+complete descriptor against the captured state; they establish no new caller grant or traversal requirement. Any mismatch retains/discards the private candidate
 through the existing exact receipt path. It cannot expose a different source, rename a public file or grant DELETE.
 
 The public DELETE/read-only native factory remains separate and retains its actual NTFS-checked backend. Its original-sharing and
@@ -537,7 +540,7 @@ mutating the public target. These corrections introduce no new owner policy; the
 Kernel permission capture, seed transport and descriptor assignment are not yet integrated.
 
 **Native rights/grant evidence:** source `0a5add63`, [raw Windows control](evidence/2026-10-12/writer-permission-native-control-a5.txt),
-Windows 10 **19045.6456 builder**, Windows PowerShell 5.1 parse/self-checks and real execution pass. All **980** existing-target
+Windows 10 **19045.6466 builder**, Windows PowerShell 5.1 parse/self-checks and real execution pass. All **980** existing-target
 comparisons match exact native status and projected app grant: seven ACL profiles, four existing-share conditions, five
 dispositions and seven explicit/generic/maximum-access masks. The permission probe uses supplemental overwrite/supersede check
 rights; projection onto the mapped original request (or checked maximum grant) matches the raw native app grant. This is a
@@ -549,6 +552,17 @@ remains unchanged for NULL supplied descriptors, including supersede. Every prob
 security; Restore is disabled only on a private token copy, and process privileges compare unchanged. This settles these controls,
 not fully assigned descriptor construction, absent-parent checks, supplied descriptors, case/labels, seed coherence or lifecycle.
 It is not qualification on product VM **19045.2965** and supplies no protected FilterPort/Verifier or byte-privacy evidence.
+
+**Later control outcomes, source `283fff88`:** the [combined a6 attempt](evidence/2026-10-12/writer-permission-native-control-a6.txt)
+fails at its zero-access revalidation assertion and is not a passing control run. Luna's bounded design review remains **REVISE**:
+retain the original-subject object per app handle, obtain its ID directly without a READ_ATTRIBUTES query, and use separate
+metadata anchors for post-RPC state validation. Native write-only/asynchronous ID-query controls, complete ancestor snapshots,
+assigned-descriptor transport and per-handle cleanup ownership remain finite implementation gates; do not add caller rights or
+narrow supported opens to make them pass. No kernel code or activation depends on the rejected revalidation candidate.
+The [separate supplied-descriptor control](evidence/2026-10-12/writer-supplied-descriptor-native-a6.txt) completes nine native cases:
+the four absent-target dispositions apply the tested supplied descriptor; all five existing-target dispositions, including
+supersede, retain the prior queried descriptor. These results do not prove arbitrary descriptor assignment, protected publication
+or qualified-platform behaviour.
 
 #### Seed sharing and read-authority correction
 

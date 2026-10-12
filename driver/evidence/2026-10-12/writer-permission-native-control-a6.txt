@@ -1,0 +1,49 @@
+NativeControlPlatform=Microsoft Windows 10 Pro Version=10.0.19045.6466
+WindowsPowerShell=5.1.19041.6456 ParseErrors=0
+NativePackingAndImplicitAccessSelfCheck=PASS
+NativePackingAndImplicitAccessSelfCheck=PASS
+"Privilege Name","Description","State"
+"SeIncreaseQuotaPrivilege","Adjust memory quotas for a process","Enabled"
+"SeSecurityPrivilege","Manage auditing and security log","Enabled"
+"SeTakeOwnershipPrivilege","Take ownership of files or other objects","Enabled"
+"SeLoadDriverPrivilege","Load and unload device drivers","Enabled"
+"SeSystemProfilePrivilege","Profile system performance","Enabled"
+"SeSystemtimePrivilege","Change the system time","Enabled"
+"SeProfileSingleProcessPrivilege","Profile single process","Enabled"
+"SeIncreaseBasePriorityPrivilege","Increase scheduling priority","Enabled"
+"SeCreatePagefilePrivilege","Create a pagefile","Enabled"
+"SeBackupPrivilege","Back up files and directories","Enabled"
+"SeRestorePrivilege","Restore files and directories","Enabled"
+"SeShutdownPrivilege","Shut down the system","Enabled"
+"SeDebugPrivilege","Debug programs","Enabled"
+"SeSystemEnvironmentPrivilege","Modify firmware environment values","Enabled"
+"SeChangeNotifyPrivilege","Bypass traverse checking","Enabled"
+"SeRemoteShutdownPrivilege","Force shutdown from a remote system","Enabled"
+"SeUndockPrivilege","Remove computer from docking station","Enabled"
+"SeManageVolumePrivilege","Perform volume maintenance tasks","Enabled"
+"SeImpersonatePrivilege","Impersonate a client after authentication","Enabled"
+"SeCreateGlobalPrivilege","Create global objects","Enabled"
+"SeIncreaseWorkingSetPrivilege","Increase a process working set","Enabled"
+"SeTimeZonePrivilege","Change the time zone","Enabled"
+"SeCreateSymbolicLinkPrivilege","Create symbolic links","Enabled"
+"SeDelegateSessionUserImpersonatePrivilege","Obtain an impersonation token for another user in the same session","Enabled"
+PrivateNativeSubjectRestoreDisabled=PASS ProcessTokenUnchanged=True
+Zero-access path check failed or acquired authority.
+At C:\Users\vika\Documents\safeupload-native-writer-permission-20261012-a6\writer-permission-native
+-control.ps1:209 char:69
++ ... ss -ne 0) { throw 'Zero-access path check failed or acquired authorit ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Zero-access pat...ired authority.:String) [], Run 
+   timeException
+    + FullyQualifiedErrorId : Zero-access path check failed or acquired authority.
+ 
+Native permission control failed.
+At C:\Users\vika\AppData\Local\Temp\remote_ps_f14d6bae1b0a49a39500bddde028f03e.ps1:19 char:22
++ if ($LASTEXITCODE) { throw 'Native permission control failed.' }
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Native permission control failed.:String) [], Run 
+   timeException
+    + FullyQualifiedErrorId : Native permission control failed.
+ 
+#< CLIXML
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>
