@@ -138,7 +138,9 @@ public sealed class StagedPublicationNativeJournalTests : IDisposable
         var changed = new BoundPublicationReplayRow(f); var journal = Journal();
         using var turn = await journal.EnterDestinationCommitTurnAsync(fixture.Binding.Destination, StagedDestinationTurnPurpose.PhysicalCommit, default);
         await Begin(journal, turn, original);
-        await Assert.ThrowsAnyAsync<IOException>(() => journal.RecordBoundPublicationNativeResultAsync(turn, Replay(changed), changed));
+        Func<Task> record = () => journal.RecordBoundPublicationNativeResultAsync(turn, Replay(changed), changed);
+        if (change == "destination") await Assert.ThrowsAsync<InvalidDataException>(record);
+        else await Assert.ThrowsAsync<IOException>(record);
         var head = (await Journal().ReadDestinationHeadAsync(fixture.Binding.Destination, default))!;
         Assert.Equal(0, head.LatestPublished); Assert.NotNull(head.PendingCommit); Assert.Empty(head.PublicationNativeReceipts ?? []);
     }
