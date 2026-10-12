@@ -1,25 +1,23 @@
 # T5 connected native lifecycle and allocation — builder gates
 
-Latest agent source: `fa687b61495f47c0bb9485ccf6547552a197254a`; matrix **t5-ordinary-highwater1**.
-WDK source: `da66fef4df9215cfd87d85d6825a154174f43138`; label **t5-native-lifecycle4**.
-The kernel subtree is identical at both commits (`dc44387caeabeae1ae38437523031885068b60b7`);
-the newer source changes ordinary-delete high-water accounting and its agent regression, plus design documentation.
+Driver and agent source: `dcf4b27640c56e78202e41cb22274fa9cde90425`.
+WDK and agent label: **t5-native-reconcile2**.
 **Four WDK profiles 0 warnings / 0 errors, PREfast/ApiValidator; AgentMatrixGate=True.**
 No revised pair was installed or booted. Bound-head capability remains unadvertised and admission disabled.
 
-| Agent profile | Passed / discovered / unique executions | Native lifecycle controls | Bound allocation controls |
+| Agent profile | Passed / discovered / unique executions | Native lifecycle controls | Allocation / native Windows controls |
 | --- | ---: | ---: | ---: |
-| Normal Debug | 866 / 866 / 866 | compiled out | compiled out |
-| Normal Release | 866 / 866 / 866 | compiled out | compiled out |
-| Feature Debug | 1140 / 1140 / 1140 | 22 / 22 | 14 / 14 |
-| Feature Release | 1140 / 1140 / 1140 | 22 / 22 | 14 / 14 |
+| Normal Debug | 876 / 876 / 876 | compiled out | compiled out |
+| Normal Release | 876 / 876 / 876 | compiled out | compiled out |
+| Feature Debug | 1156 / 1156 / 1156 | 26 / 26 | 16 / 16 |
+| Feature Release | 1156 / 1156 / 1156 | 26 / 26 | 16 / 16 |
 
 Root independently verified aggregate execution files equal the disjoint user + SYSTEM union:
-841 + 25 normal, 1115 + 25 feature; every result Passed, unique IDs, no skipped cases.
+851 + 25 normal, 1131 + 25 feature; every result Passed, unique IDs, no skipped cases.
 Every service/tray/test/discovery/Release-package leg passes at 0/0. Inspector/writer builds and
-signature verification also pass ([raw WDK summary](exact-t5-native-lifecycle4-summary.txt),
-[raw agent summary](exact-agent-matrix-t5-ordinary-highwater1-summary.txt)).
-Signed feature Debug SHA-256: `9052C6FB76BC0E7443AE1B0AC6F9571168350E2B2E633D053870BF3D80844B3B`.
+signature verification also pass ([raw WDK summary](exact-t5-native-reconcile2-summary.txt),
+[raw agent summary](exact-agent-matrix-t5-native-reconcile2-summary.txt)).
+Signed feature Debug SHA-256: `CE023D283F8C1AD829E27EA4C906A2A0FB5F092D3B3A3B35527685006B81D1D2`.
 
 The gated kernel producer now captures the original CREATE subject and metadata anchors without a
 second target-file open, reserves its bounded record and sends a strict V24 prepare. The service
@@ -42,15 +40,28 @@ and unbound recovery failures. They use the real journal with injected driver re
 The 14 bound allocation controls retain their Windows filesystem/replay/continuation coverage, including ordinary and native
 delete generation allocation above a retained bound manifest after destination-head loss.
 
-Normal Release package SHA-256: `7C2EF7E6E44507E235E1C463AE2DD324596312855548D601EAA7463B5C90D799`.
-Feature Release package SHA-256: `91AC4602D8FD8330ACB7A4E76C9DB4DBD5D0E6F24805C7A5080BA363D37BBB20`.
-Raw output remains local in `output/exact-agent-matrix/t5-ordinary-highwater1/`,
-`exact-agent-matrix-t5-ordinary-highwater1-*`, `t5-ordinary-highwater1-agent-host.txt`,
-`exact-t5-native-lifecycle4-*` and `t5-native-lifecycle4-wdk-host.txt`.
+Ordinary native-open head capture allocates no delete version. FALSE without an ordinary intent uses existing
+ClearDisposition/PendingCommit plus exact name observation, records the real NTFS result, and leaves scheduled on-close state
+and generation floors unchanged. Ten journal controls cover no-op success/failure, retained intent across reopening, queue wake,
+wrong/incomplete name refusal and unchanged scheduled records; every previous completed-delete/wrong-object assertion stays.
+Two actual Windows controls use checked DELETE handles and stable directory enumeration: FALSE preserves the exact bytes/identity,
+and an independent CREATE delete-on-close still removes the name after all original handles close.
+
+The connected kernel worker now dispatches canceled/cleanup/coverage facts even when CREATE acceptance is unknown. Four lifecycle
+controls require exact cancellation lifetime evidence and anchored original/absent state without inventing a failed CREATE receipt.
+A broad counterpart-close wake was removed: metadata observation could wake itself, while excluding all service reads would miss
+real source readers. Resolving directory-event activation remains open; this readout does not claim that wake-up is implemented.
+
+Normal Release package SHA-256: `6495B9F95443A361467215B2A6EEE64E4C4525A7B6BC7195589542C2D6770E58`.
+Feature Release package SHA-256: `E3D6824AC527621B679BE66BE299FEA0D99FD5819747DCAF93E1888E33C635D8`.
+Raw output remains local in `output/exact-agent-matrix/t5-native-reconcile2/`,
+`exact-agent-matrix-t5-native-reconcile2-*`, `t5-native-reconcile2-agent-host.txt`,
+`exact-t5-native-reconcile2-*` and `t5-native-reconcile2-wdk-host.txt`.
 
 Earlier attempts remain retained: lifecycle1 WDK feature builds found C28170/C28172 paging annotation
 errors; corrected without relaxing PREfast. Lifecycle2/3 WDK and earlier agent matrices passed their
-recorded sources. The final source adds later coverage-loss/undecidable-reconciliation holds.
+recorded sources. Native-reconcile1 found a wrong expectation in the new cancellation fixture; `dcf4b276` corrects it to the
+reviewed canceled-before-handle or exact canceled-close evidence. No existing assertion or product policy changed.
 
 T5 remains open: ordinary public disposition/proxy handling, kernel bound-writer authority and
 seeding, all physical publication/delete permits, startup activation and resolving directory events
