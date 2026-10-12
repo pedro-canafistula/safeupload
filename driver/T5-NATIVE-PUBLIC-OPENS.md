@@ -467,3 +467,84 @@ ordinary hand-back path; do not infer provenance from final length or a changed 
    Admitted blocked saves retain the full-file hand-back model. This deliberately narrows native Windows editing behavior.
 
 This is a failure-policy/product decision required by the owner's stop-and-ask rule. Neither option is implemented or approved.
+
+### Native scheduled-CREATE integration transport — reviewed contract
+
+**2026-10-12: Luna 6 max effort READY for transport/producer implementation after the revision, high-water and receipt-retention
+corrections below.** This is design readiness; the integrated lifetime review and first protected boot remain pending.
+
+The reviewed original-CREATE construction still lacks the request path between the kernel record map and the durable destination
+head. Connect that path without exporting a second file handle, serializing a token, or treating read-only metadata as DELETE
+authority. This transport preserves the approved native result, generation ordering and accepted/unresolved failure policy.
+The pending seeded-content hand-back choice is independent and remains unimplemented.
+
+Reserve feature-only operation 20 and carrier version 24. A 4-byte-packed 72-byte payload contains version/size (8), phase and
+reserved-zero (8), transfer GUID (16), request nonce (16), operation GUID (16) and native-map revision (8). Phases are pre-CREATE
+prepare and facts-changed. Require exact image length, zero unused image/path bytes, no path-as-authority fallback and explicit
+size/offset assertions. Driver/connection identity comes from the exact authenticated channel, not a second payload authority.
+
+Before prepare, resolve the normalized parent/leaf by metadata only and reserve the bounded nonpaged record against the original
+unopened FILE_OBJECT. Capture the original CREATE subject before queueing; record its caller SID/session and referenced process
+lifetime. Keep GrantedAccess zero: neither directory enumeration nor the requested DELETE mask is an authorization grant.
+No target-file backend is opened. Support this initial path only for the already reviewed non-writing FILE_OPEN with explicit
+DELETE and native FILE_DELETE_ON_CLOSE, with no owner-private view; other supported requests keep their respective staged paths.
+This first connection does not complete ordinary public disposition handling or widen the supported request surface.
+
+The asynchronous service prepare handler obtains complete authenticated native replay (control 30) and matches the payload's
+immutable transfer/nonce/operation and revision to exactly one unforwarded record on that channel. Check caller/header identity,
+boot, volume GUID, full root/parent/target IDs, case/leaf and supported original flags; reject missing/duplicate/mismatched records.
+Take the destination allocation turn, include retained manifests/tombstones in max+1, and flush the existing native pre-CREATE
+AcceptedUnresolved intent before replying. The request does not authorize a service mutation. Only the original Windows CREATE
+decides access, sharing and whether native scheduled deletion is accepted. The reply echoes request/phase/transfer/operation and
+the exact positive journal generation; a lost or stale reply is not authority to forward.
+
+Prepare is explicitly fail closed: require an actual typed reply, not NT_SUCCESS(STATUS_TIMEOUT) or the generic fail-open verdict.
+Echo/validate request ID, phase, transfer, nonce, operation and exact map revision. Prepare requires the row's original connection
+epoch to equal the current authenticated connection; facts after reconnect retain the original epoch while using the new channel.
+MarkForwarded must compare the expected revision atomically under the native lock, alongside cancellation/channel/instance checks.
+A stale prepare can replay from a fresh revision event while the original CREATE remains pending; otherwise MarkNotForwarded.
+Compute retained manifest/tombstone high-water for the exact destination under the allocation turn and journal gate; no caller-
+supplied default or stale scalar is enough.
+
+After all cancellation and instance/channel checks, MarkForwarded transfers the producer reference to the original post-CREATE
+callback and complete the pended preoperation with SUCCESS_WITH_CALLBACK. Preserve the original CREATE/options exactly. Do not
+cancel an NTFS-accepted scheduled delete to hide a tracking failure. A preparation/cancellation failure calls MarkNotForwarded;
+its exact negative receipt remains replayable even when the durable prepare result was lost. Release local producer references
+through the existing rundown; no record owns an extra public FILE_OBJECT reference that would prevent cleanup/CLOSE.
+
+CREATE/CLEANUP/canceled-CLOSE/teardown update the existing record map and wake the bounded kernel worker. Coalesce facts-changed
+requests by revision; no RPC or observation runs under namespace/native locks, and no timer polls an unchanged map. The service
+reconciles exact outcomes with the durable head. After accepted-but-unbound CREATE, preserve AcceptedUnresolved and its publication
+hold. Use fresh complete replay plus identity-anchored observation (control 31) and the existing reconciliation turn for last-close
+and startup release. All physical publication/delete/recovery paths must already use the shared head before this release is enabled.
+Same-channel revision changes are retried from an event; stale/partial facts never become absence or lifetime evidence.
+
+Use a separate typed reply, with exact request/phase/transfer/operation/generation echoes and a result distinguishing durable
+prepare, recorded progress and terminal cleanup acknowledgement. Recording CREATE acceptance or releasing an exceptional hold
+is not terminal cleanup. ACK/remove the kernel record only after the exact scheduled-link disposition is terminal with independent
+identity evidence, or after exact never-forwarded cancellation is durable. Pending original links retain cleanup obligations;
+directory-change wakeups and startup reconciliation must complete them without a busy timer. A newer Published identity may
+supersede the old link only under the existing durable published-identity rules, not because a later allocation exists.
+
+The native terminal transition uses existing Complete only after exact lifetime-ended proof and independent anchored absence,
+advancing CommittedDelete; an unexplained replacement fails closed. Superseded requires the exact newer durable PublishedIdentity.
+An original still-present/pending link stays Admitted. Neither hold release nor CREATE-result recording permits terminal ACK.
+Keep the terminal head receipt after replying: local Acknowledge can be busy or its response lost. Retire that receipt only after
+a later complete authenticated same-driver replay/explicit confirmation proves the exact record was removed. Startup must still
+match every forwarded row to its retained durable intent. Consume the full forwarded/CREATE-outcome/identity/generation facts,
+not only a lifetime projection; exact never-forwarded negative receipts become Failed before ACK. Ambiguous acceptance remains
+AcceptedUnresolved. A false trackingBound result cannot later become true merely because a replay supplies a bool.
+
+Persist the original CREATE options/desired-access/share tuple and immutable CREATE outcome facts with that existing receipt;
+these are evidence fields, not new states. Before a terminal reply, persist its native-map revision. Same-driver retirement
+requires a later complete authenticated map with a greater revision and no matching transfer/nonce/operation. Keep maxAllocated
+and the completed-delete floor after receipt removal. A lost terminal reply replays the same receipt; it never repeats CREATE.
+
+The feature-only reply is 88 bytes: the exact 72-byte request followed by positive journal generation, result and reserved zero.
+The outer request ID is also exact. A generic verdict, short reply, nonzero tail or timeout cannot authorize forwarding.
+
+Keep the bound-head capability unadvertised and producer forwarding disabled until native prepare/facts/ACK, ordinary disposition,
+all physical commits and startup/last-close recovery are connected. Kernel lifetime/lock-order/retirement review still precedes
+the first revised boot. Required controls include lost prepare/result/ACK, canceled before forwarding, native identity mismatch,
+service reconnect, stale map revision, original ShareAccess=0, duplicate handles, last cleanup, unchanged accepted results and both
+deterministic delete orders, followed by the real three-mode Notepad/raw-observer/restoration gate.

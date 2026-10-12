@@ -100,6 +100,29 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Native_prepare_high_water_includes_retained_bound_manifest_even_after_head_loss()
+    {
+        Directory.CreateDirectory(Parent);
+        File.WriteAllText(Path.Combine(Parent, "save.txt"), "approved source");
+        var binding = Binding("save.txt", 1, true);
+        var journal = new StagedTransferJournal(Journal);
+        var save = await Allocate(new(Stages, journal), binding);
+        File.Delete(Path.Combine(Journal, "destination-" + binding.Destination.StorageKey + ".state"));
+        var native = new StagedPublicDeleteBinding(Guid.NewGuid(), Guid.NewGuid(), _driver, 11,
+            binding.PublicTarget!, save.Transfer.ProcessId, save.Transfer.RequestorProcessCreationTime!.Value,
+            save.Transfer.SessionId!.Value, save.Transfer.RequestorSid!, 42, binding.MountManagerVolumeId);
+        using var turn = await journal.EnterDestinationCommitTurnAsync(binding.Destination,
+            StagedDestinationTurnPurpose.Allocation, CancellationToken.None);
+        var prepared = await journal.BeginNativeDeleteOnCloseCreateAsync(turn, native, Guid.NewGuid(),
+            save.Transfer.DestinationPath, retainedManifestHighWater: 0, CancellationToken.None);
+        Assert.Equal(save.DestinationGeneration + 1, prepared.Generation);
+        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved, prepared.State);
+        var head = (await journal.ReadDestinationHeadAsync(binding.Destination, CancellationToken.None))!;
+        Assert.Equal(prepared.Generation, head.MaxAllocated);
+        Assert.Equal(binding, (await journal.ReadAsync(binding.ReservationId, CancellationToken.None)).BoundAllocation);
+    }
+
+    [Fact]
     public async Task Renamed_parent_and_replaced_locator_cannot_select_different_seed_bytes()
     {
         Directory.CreateDirectory(Parent);

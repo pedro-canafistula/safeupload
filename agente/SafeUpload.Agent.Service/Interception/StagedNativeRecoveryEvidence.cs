@@ -35,7 +35,8 @@ internal sealed class StagedNativeRecoverySession
     }
 
     internal Proof ReconcileReplay(Guid replayDriverInstanceId, ulong replayConnectionEpoch,
-        bool complete, bool reconciled, IReadOnlyList<StagedNativeRecordReplay> records)
+        bool complete, bool reconciled, IReadOnlyList<StagedNativeRecordReplay> records,
+        ulong? nativeMapRevision = null)
     {
         ArgumentNullException.ThrowIfNull(records);
         lock (_sync)
@@ -59,7 +60,7 @@ internal sealed class StagedNativeRecoverySession
                     !transfers.Add(record.Binding.TransferId) || !nonces.Add(record.Binding.RequestNonce))
                     throw new IOException("The native replay contains an unbound or duplicate original-object record.");
             }
-            return _currentProof = new Proof(this, revision, complete, reconciled, copy);
+            return _currentProof = new Proof(this, revision, complete, reconciled, copy, nativeMapRevision);
         }
     }
 
@@ -72,11 +73,37 @@ internal sealed class StagedNativeRecoverySession
         private readonly bool _complete;
         private readonly bool _reconciled;
         private readonly StagedNativeRecordReplay[] _records;
+        private readonly ulong? _nativeMapRevision;
 
         internal Proof(StagedNativeRecoverySession session, long revision, bool complete,
-            bool reconciled, StagedNativeRecordReplay[] records)
-            => (_session, _revision, _complete, _reconciled, _records) =
-                (session, revision, complete, reconciled, records);
+            bool reconciled, StagedNativeRecordReplay[] records, ulong? nativeMapRevision = null)
+            => (_session, _revision, _complete, _reconciled, _records, _nativeMapRevision) =
+                (session, revision, complete, reconciled, records, nativeMapRevision);
+
+        internal void RequireExactRecordRemoved(StagedPublicDeleteBinding binding, Guid operationId,
+            ulong acknowledgedMapRevision)
+        {
+            lock (_session._sync)
+            {
+                if (!_session._active || !ReferenceEquals(_session._currentProof, this) ||
+                    _revision != _session._replayRevision || !_complete || !_reconciled ||
+                    _records.Any(r => r.OperationId == operationId || r.Binding.TransferId == binding.TransferId ||
+                        r.Binding.RequestNonce == binding.RequestNonce))
+                    throw new IOException("Native receipt retirement requires complete authenticated record removal.");
+                if (_session._driverInstanceId == binding.DriverInstanceId)
+                {
+                    if (_session._connectionEpoch < binding.ConnectionEpoch || acknowledgedMapRevision == 0 ||
+                        _nativeMapRevision is not { } currentRevision || currentRevision <= acknowledgedMapRevision)
+                        throw new IOException("The native replay does not follow the exact acknowledgement revision.");
+                }
+                else
+                {
+                    // A qualified full boot proves the old map cannot survive.
+                    // Reload, a new service epoch or a counter alone does not.
+                    RequireExactLifetimeEnded(binding, operationId);
+                }
+            }
+        }
 
         // This authenticates current boot metadata only. It says nothing about
         // private staged objects: the epoch caller must separately complete

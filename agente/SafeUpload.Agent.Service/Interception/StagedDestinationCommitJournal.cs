@@ -91,7 +91,11 @@ internal sealed record StagedPublicDeleteBinding(Guid TransferId, Guid RequestNo
     uint? OsBootSequence = null, Guid? MountManagerVolumeId = null);
 internal sealed record StagedPublicDeleteRecord(StagedPublicDeleteBinding Binding, long Generation,
     StagedPublicDeleteState State, DateTimeOffset UpdatedAtUtc, Guid? OperationId = null,
-    StagedPublicDeleteKind Kind = StagedPublicDeleteKind.Ordinary, bool? NativeCreateAccepted = null);
+    StagedPublicDeleteKind Kind = StagedPublicDeleteKind.Ordinary, bool? NativeCreateAccepted = null,
+    StagedNativeCreateIntent? NativeIntent = null, StagedNativeCreateOutcome? NativeOutcome = null,
+    ulong? NativeAcknowledgementRevision = null);
+internal sealed record StagedNativeCreateIntent(uint CreateOptions, uint DesiredAccess, uint ShareAccess);
+internal sealed record StagedNativeCreateOutcome(uint Facts, int CreateStatus, int IdentityStatus);
 // These are checked dispatcher inputs, not publication/delete permits. A
 // complete anchored directory query proves a name mapping, never a native
 // link's delete-pending state or an exact physical-cleanup acknowledgement.
@@ -361,7 +365,8 @@ public sealed partial class StagedTransferJournal
     // This receipt never permits repeating CREATE after a lost response.
     internal async Task<StagedPublicDeleteRecord> BeginNativeDeleteOnCloseCreateAsync(
         DestinationCommitTurn turn, StagedPublicDeleteBinding binding, Guid operationId,
-        string locator, long retainedManifestHighWater, CancellationToken token)
+        string locator, long retainedManifestHighWater, CancellationToken token,
+        StagedNativeCreateIntent? nativeIntent = null)
     {
         turn.Require(this, StagedDestinationTurnPurpose.Allocation);
         ValidatePublicDeleteBinding(binding, turn.Destination);
@@ -379,17 +384,23 @@ public sealed partial class StagedTransferJournal
             if (head.Deletes.FirstOrDefault(d => d.Binding.TransferId == binding.TransferId ||
                     d.Binding.RequestNonce == binding.RequestNonce) is { } replay)
             {
-                if (replay.Binding != binding || replay.OperationId != operationId ||
+                if (replay.Binding != binding || replay.OperationId != operationId || replay.NativeIntent != nativeIntent ||
                     replay.Kind != StagedPublicDeleteKind.NativeOnClose)
                     throw new IOException("Native CREATE replay changed its capability or operation.");
                 return replay;
             }
             if (head.Deletes.Any(IsPublicationReservation))
                 throw new IOException("An unresolved native or physical delete already holds this destination.");
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            // The turn and journal gate protect the scan and the claim together.
+            // A dispatcher scalar cannot omit a retained bound manifest/tombstone.
+            retainedManifestHighWater = Math.Max(retainedManifestHighWater,
+                await BoundManifestHighWaterCoreAsync(turn.Destination, token).ConfigureAwait(false));
+#endif
             long generation = checked(Math.Max(head.MaxAllocated, retainedManifestHighWater) + 1);
             var intent = new StagedPublicDeleteRecord(binding, generation,
                 StagedPublicDeleteState.AcceptedUnresolved, DateTimeOffset.UtcNow, operationId,
-                StagedPublicDeleteKind.NativeOnClose);
+                StagedPublicDeleteKind.NativeOnClose, NativeIntent: nativeIntent);
             await WriteDestinationHeadCoreAsync(head with { MaxAllocated = generation,
                 Deletes = [.. head.Deletes, intent] }, token).ConfigureAwait(false);
             return intent;
@@ -402,7 +413,7 @@ public sealed partial class StagedTransferJournal
     // NTFS-accepted result or authorize another open/mutation.
     internal async Task<StagedPublicDeleteRecord> RecordNativeDeleteOnCloseCreateResultAsync(
         DestinationCommitTurn turn, StagedPublicDeleteBinding binding, Guid operationId,
-        bool ntfsAccepted, bool trackingBound)
+        bool ntfsAccepted, bool trackingBound, StagedNativeCreateOutcome? nativeOutcome = null)
     {
         turn.Require(this, StagedDestinationTurnPurpose.Reconciliation);
         if (!ntfsAccepted && trackingBound) throw new ArgumentException("A failed CREATE cannot own a live native record.");
@@ -414,12 +425,14 @@ public sealed partial class StagedTransferJournal
             var delete = RequireExactNativeDelete(head, binding, operationId);
             if (delete.NativeCreateAccepted is { } recorded)
             {
-                if (recorded != ntfsAccepted) throw new IOException("The native CREATE result changed on replay.");
+                if (recorded != ntfsAccepted || (delete.NativeOutcome is not null && delete.NativeOutcome != nativeOutcome))
+                    throw new IOException("The native CREATE result changed on replay.");
                 return delete; // An unresolved receipt is released only by reconciliation, never a later bool.
             }
             if (delete.State != StagedPublicDeleteState.AcceptedUnresolved)
                 throw new IOException("No unresolved pre-CREATE intent remains for this result.");
-            delete = delete with { NativeCreateAccepted = ntfsAccepted, UpdatedAtUtc = DateTimeOffset.UtcNow,
+            delete = delete with { NativeCreateAccepted = ntfsAccepted, NativeOutcome = nativeOutcome,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
                 State = !ntfsAccepted ? StagedPublicDeleteState.Failed :
                     trackingBound ? StagedPublicDeleteState.Admitted : StagedPublicDeleteState.AcceptedUnresolved };
             await WriteDestinationHeadCoreAsync(ReplaceDelete(head, delete), CancellationToken.None).ConfigureAwait(false);
@@ -464,6 +477,51 @@ public sealed partial class StagedTransferJournal
             // Keep the original scheduled intent and its generation floor.
             await WriteDestinationHeadCoreAsync(ReplaceDelete(head, delete), token).ConfigureAwait(false);
             return delete;
+        }
+        finally { _gate.Release(); }
+    }
+
+    // Terminal native-link evidence is stronger than releasing the exceptional
+    // hold. The dispatcher must retain this receipt until exact driver-record
+    // removal is confirmed; this method does not acknowledge the kernel map.
+    internal async Task<StagedPublicDeleteRecord> CompleteNativeDeleteOnCloseAsync(
+        DestinationCommitTurn turn, StagedPublicDeleteBinding binding, Guid operationId,
+        StagedNativeRecoverySession.Proof lifetimeProof,
+        StagedDestinationNameObservation observation, CancellationToken token)
+    {
+        turn.Require(this, StagedDestinationTurnPurpose.Reconciliation);
+        ArgumentNullException.ThrowIfNull(lifetimeProof);
+        ArgumentNullException.ThrowIfNull(observation);
+        if (observation.Destination != turn.Destination || !observation.CompleteEnumeration ||
+            observation.ParentBefore != turn.Destination.Parent || observation.ParentAfter != turn.Destination.Parent)
+            throw new IOException("Native completion requires the exact stable anchored name observation.");
+        if (observation.PublicIdentity is not null) RequireSameVolumeIdentity(turn.Destination, observation.PublicIdentity);
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var head = await RequireDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
+            RequireNoPendingPhysicalCommit(head);
+            var delete = RequireExactNativeDelete(head, binding, operationId);
+            lifetimeProof.RequireExactLifetimeEnded(binding, operationId);
+            if (delete.State is StagedPublicDeleteState.Complete or StagedPublicDeleteState.Superseded) return delete;
+            if (delete.State is not (StagedPublicDeleteState.Admitted or StagedPublicDeleteState.AcceptedUnresolved))
+                throw new IOException("Native completion has no retained scheduled-link intent.");
+            if (observation.PublicIdentity is null)
+            {
+                delete = delete with { State = StagedPublicDeleteState.Complete, UpdatedAtUtc = DateTimeOffset.UtcNow };
+                await WriteDestinationHeadCoreAsync(ReplaceDelete(head, delete) with
+                    { CommittedDelete = Math.Max(head.CommittedDelete, delete.Generation) }, token).ConfigureAwait(false);
+                return delete;
+            }
+            if (head.LatestPublished > delete.Generation && head.PublishedIdentity == observation.PublicIdentity)
+            {
+                delete = delete with { State = StagedPublicDeleteState.Superseded, UpdatedAtUtc = DateTimeOffset.UtcNow };
+                await WriteDestinationHeadCoreAsync(ReplaceDelete(head, delete), token).ConfigureAwait(false);
+                return delete;
+            }
+            if (observation.PublicIdentity != binding.PublicIdentity)
+                throw new IOException("An unexplained replacement cannot complete the native link.");
+            return delete; // The original may still be delete-pending behind another reader.
         }
         finally { _gate.Release(); }
     }
@@ -651,9 +709,54 @@ public sealed partial class StagedTransferJournal
             var head = await RequireDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
             RequireNoPendingPhysicalCommit(head);
             var delete = RequireExactDelete(head, binding);
+            if (delete.Kind == StagedPublicDeleteKind.NativeOnClose)
+                throw new IOException("Native receipt retirement requires confirmed kernel-record removal.");
             if (delete.State is not (StagedPublicDeleteState.Canceled or StagedPublicDeleteState.Superseded or
                 StagedPublicDeleteState.Complete or StagedPublicDeleteState.Failed))
                 throw new IOException("An unresolved delete receipt cannot be compacted.");
+            await WriteDestinationHeadCoreAsync(head with { Deletes = head.Deletes.Where(d => d != delete).ToArray() },
+                token).ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+    }
+
+    internal async Task ArmNativeAcknowledgementAsync(DestinationCommitTurn turn,
+        StagedPublicDeleteBinding binding, Guid operationId, ulong mapRevision, CancellationToken token)
+    {
+        turn.Require(this, StagedDestinationTurnPurpose.Reconciliation);
+        if (mapRevision == 0) throw new ArgumentOutOfRangeException(nameof(mapRevision));
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var head = await RequireDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
+            RequireNoPendingPhysicalCommit(head);
+            var delete = RequireExactNativeDelete(head, binding, operationId);
+            if (delete.State is not (StagedPublicDeleteState.Complete or StagedPublicDeleteState.Superseded or
+                StagedPublicDeleteState.Failed)) throw new IOException("A live native link cannot be acknowledged.");
+            if (delete.NativeAcknowledgementRevision is { } previous && previous > mapRevision)
+                throw new IOException("The native acknowledgement revision went backwards.");
+            await WriteDestinationHeadCoreAsync(ReplaceDelete(head,
+                delete with { NativeAcknowledgementRevision = mapRevision }), token).ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+    }
+
+    internal async Task RetireNativeDeleteReceiptAsync(DestinationCommitTurn turn,
+        StagedPublicDeleteBinding binding, Guid operationId, StagedNativeRecoverySession.Proof removalProof,
+        ulong acknowledgedMapRevision, CancellationToken token)
+    {
+        turn.Require(this, StagedDestinationTurnPurpose.Reconciliation);
+        ArgumentNullException.ThrowIfNull(removalProof);
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var head = await RequireDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
+            RequireNoPendingPhysicalCommit(head);
+            var delete = RequireExactNativeDelete(head, binding, operationId);
+            if (delete.State is not (StagedPublicDeleteState.Complete or StagedPublicDeleteState.Superseded or
+                StagedPublicDeleteState.Failed))
+                throw new IOException("A nonterminal native receipt cannot be retired.");
+            removalProof.RequireExactRecordRemoved(binding, operationId, acknowledgedMapRevision);
             await WriteDestinationHeadCoreAsync(head with { Deletes = head.Deletes.Where(d => d != delete).ToArray() },
                 token).ConfigureAwait(false);
         }
@@ -829,13 +932,18 @@ public sealed partial class StagedTransferJournal
                     StagedPublicDeleteState.AcceptedUnresolved) && delete.OperationId is null) ||
                 !Enum.IsDefined(delete.State) || !Enum.IsDefined(delete.Kind) ||
                 (delete.Kind == StagedPublicDeleteKind.Ordinary &&
-                    (delete.State == StagedPublicDeleteState.AcceptedUnresolved || delete.NativeCreateAccepted is not null)) ||
+                    (delete.State == StagedPublicDeleteState.AcceptedUnresolved || delete.NativeCreateAccepted is not null ||
+                     delete.NativeIntent is not null || delete.NativeOutcome is not null || delete.NativeAcknowledgementRevision is not null)) ||
                 (delete.Kind == StagedPublicDeleteKind.NativeOnClose &&
                     (delete.Binding.OsBootSequence is null || delete.OperationId is null ||
                      delete.State is (StagedPublicDeleteState.Intent or StagedPublicDeleteState.Accepted or StagedPublicDeleteState.Canceled) ||
                      (delete.State == StagedPublicDeleteState.Failed && delete.NativeCreateAccepted != false) ||
                      (delete.State != StagedPublicDeleteState.Failed && delete.NativeCreateAccepted == false))) ||
                 delete.UpdatedAtUtc == default || delete.UpdatedAtUtc.Offset != TimeSpan.Zero ||
+                (delete.NativeAcknowledgementRevision is { } ack && (ack == 0 ||
+                    delete.State is not (StagedPublicDeleteState.Complete or StagedPublicDeleteState.Superseded or StagedPublicDeleteState.Failed))) ||
+                (delete.NativeOutcome is { } outcome && ((outcome.Facts & ~0x0fu) != 0 || (outcome.Facts & 2) == 0 ||
+                    delete.NativeCreateAccepted is null || delete.NativeCreateAccepted != ((outcome.Facts & 4) != 0))) ||
                 (delete.State == StagedPublicDeleteState.Complete && delete.Generation > head.CommittedDelete))
                 throw new InvalidDataException("The durable public-delete receipt is invalid.");
         }

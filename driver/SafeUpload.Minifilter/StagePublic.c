@@ -86,11 +86,13 @@ Exit:
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStagePublicCaptureSubject)
+#pragma alloc_text(PAGE, SafeUploadStagePublicCaptureNativeSubject)
 #pragma alloc_text(PAGE, SafeUploadStagePublicOpenBackend)
 #pragma alloc_text(PAGE, SafeUploadStagePublicCloseBackend)
 #pragma alloc_text(PAGE, SafeUploadStagePublicDereferenceBackend)
 #pragma alloc_text(PAGE, SafeUploadStagePublicReleaseOperation)
 #pragma alloc_text(PAGE, SafeUploadStagePublicReadMountGuid)
+#pragma alloc_text(PAGE, SafeUploadStagePublicCaptureNativeName)
 #endif
 
 _Use_decl_annotations_
@@ -130,9 +132,8 @@ Exit:
     return status;
 }
 
-_Use_decl_annotations_
-NTSTATUS SafeUploadStagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
-    PSECURITY_CLIENT_CONTEXT Subject)
+static NTSTATUS StagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
+    PSECURITY_CLIENT_CONTEXT Subject, BOOLEAN RequireImpersonation)
 {
     PIO_SECURITY_CONTEXT security;
     PSECURITY_SUBJECT_CONTEXT source;
@@ -146,7 +147,7 @@ NTSTATUS SafeUploadStagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
     if (security == NULL || security->AccessState == NULL) return STATUS_ACCESS_DENIED;
     source = &security->AccessState->SubjectSecurityContext;
     if (source->ClientToken == NULL && source->PrimaryToken == NULL) return STATUS_ACCESS_DENIED;
-    if (source->ClientToken != NULL && source->ImpersonationLevel < SecurityImpersonation)
+    if (RequireImpersonation && source->ClientToken != NULL && source->ImpersonationLevel < SecurityImpersonation)
         return STATUS_BAD_IMPERSONATION_LEVEL;
     RtlZeroMemory(&qos, sizeof(qos));
     qos.Length = sizeof(qos);
@@ -162,6 +163,14 @@ NTSTATUS SafeUploadStagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
      * https://learn.microsoft.com/windows-hardware/drivers/ddi/ntifs/nf-ntifs-secreateclientsecurityfromsubjectcontext */
     return SeCreateClientSecurityFromSubjectContext(source, &qos, FALSE, Subject);
 }
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicCaptureSubject(PFLT_CALLBACK_DATA Data, PSECURITY_CLIENT_CONTEXT Subject)
+{ return StagePublicCaptureSubject(Data, Subject, TRUE); }
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicCaptureNativeSubject(PFLT_CALLBACK_DATA Data, PSECURITY_CLIENT_CONTEXT Subject)
+{ return StagePublicCaptureSubject(Data, Subject, FALSE); }
 
 static VOID StagePublicCloseObject(PHANDLE Handle, PFILE_OBJECT *FileObject)
 {
@@ -306,7 +315,7 @@ static NTSTATUS StagePublicOpenMetadataDirectory(PFLT_INSTANCE Instance,
 }
 
 static NTSTATUS StagePublicBindAnchoredName(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend,
-    PFLT_FILE_NAME_INFORMATION Name)
+    PFLT_FILE_NAME_INFORMATION Name, BOOLEAN TargetIdentityKnown)
 {
     UNICODE_STRING root = Name->Name;
     UNICODE_STRING component;
@@ -375,7 +384,8 @@ static NTSTATUS StagePublicBindAnchoredName(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Bac
             (entry->FileNameLength & 1) != 0 || entry->FileNameLength > returned - prefix ||
             entry->FileNameLength > 255 * sizeof(WCHAR) ||
             FlagOn(entry->FileAttributes, FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT) ||
-            !RtlEqualMemory(&entry->FileId, &Backend->Binding.PublicIdentity.FileId, sizeof(FILE_ID_128)))
+            (TargetIdentityKnown &&
+             !RtlEqualMemory(&entry->FileId, &Backend->Binding.PublicIdentity.FileId, sizeof(FILE_ID_128))))
             status = STATUS_FILE_INVALID;
         else {
             actual.Buffer = entry->FileName;
@@ -385,9 +395,104 @@ static NTSTATUS StagePublicBindAnchoredName(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Bac
              * is the authority; wildcard/stream selectors were never allowed. */
             Backend->Binding.CanonicalLeafBytes = actual.Length;
             RtlCopyMemory(Backend->Binding.CanonicalLeaf, actual.Buffer, actual.Length);
+            if (!TargetIdentityKnown) {
+                static const FILE_ID_128 zero = {0};
+                if (RtlEqualMemory(&entry->FileId, &zero, sizeof(zero))) status = STATUS_FILE_INVALID;
+                else {
+                    Backend->Binding.PublicIdentity.VolumeSerialNumber = parentIdentity.VolumeSerialNumber;
+                    Backend->Binding.PublicIdentity.FileId = entry->FileId;
+                }
+            }
         }
     }
     ExFreePoolWithTag(entry, STAGE_PUBLIC_TAG);
+    return status;
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicCaptureNativeName(PFLT_INSTANCE Instance,
+    PFLT_FILE_NAME_INFORMATION Name, PSECURITY_CLIENT_CONTEXT Subject,
+    PEPROCESS OriginalRequestorProcess, ACCESS_MASK OriginalDesiredAccess,
+    ULONG OriginalShareAccess, ULONG OriginalCreateOptions, PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding)
+{
+    PSAFEUPLOAD_STAGE_PUBLIC_BACKEND metadata = NULL;
+    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+    PACCESS_TOKEN oldToken;
+    BOOLEAN copyOnOpen, effectiveOnly, sensitive;
+    SECURITY_IMPERSONATION_LEVEL level;
+    FILE_ID_INFORMATION identity;
+    ULONG index;
+    GUID volumeId;
+    NTSTATUS status;
+    PAGED_CODE();
+    if (Binding == NULL) return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(Binding, sizeof(*Binding));
+    if (Instance == NULL || Name == NULL || Name->Name.Buffer == NULL ||
+        Name->Name.Length == 0 || Name->Name.Length > SAFEUPLOAD_MAX_PATH_BYTES ||
+        (Name->Name.Length & 1) != 0 || Name->Name.Length > Name->Name.MaximumLength ||
+        Subject == NULL || Subject->ClientToken == NULL || OriginalRequestorProcess == NULL ||
+        (OriginalCreateOptions >> 24) != FILE_OPEN || !FlagOn(OriginalCreateOptions, FILE_DELETE_ON_CLOSE) ||
+        FlagOn(OriginalCreateOptions, FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID | FILE_OPEN_REPARSE_POINT) ||
+        !FlagOn(OriginalDesiredAccess, DELETE) ||
+        FlagOn(OriginalDesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES |
+            FILE_DELETE_CHILD | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED) ||
+        FlagOn(OriginalShareAccess, ~(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)) ||
+        IoGetTopLevelIrp() != NULL || !PsIsSystemThread(PsGetCurrentThread()) ||
+        PsGetCurrentProcess() != PsInitialSystemProcess) return STATUS_INVALID_PARAMETER;
+    for (index = 0; index < Name->Name.Length / sizeof(WCHAR); ++index) {
+        WCHAR ch = Name->Name.Buffer[index];
+        if (ch < 32 || ch == L':' || ch == L'*' || ch == L'?' || ch == L'"' ||
+            ch == L'<' || ch == L'>' || ch == L'|') return STATUS_OBJECT_PATH_INVALID;
+    }
+    oldToken = PsReferenceImpersonationToken(PsGetCurrentThread(), &copyOnOpen, &effectiveOnly, &level);
+    if (oldToken != NULL) {
+        PsDereferenceImpersonationToken(oldToken);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    status = FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context);
+    if (!NT_SUCCESS(status)) return status;
+    if (context->VolumeKind != SafeUploadVolumeFixed || context->FileSystemType != FLT_FSTYPE_NTFS ||
+        context->DeviceInformationStatus != STATUS_SUCCESS || context->StorageDeviceType != FILE_DEVICE_DISK ||
+        FlagOn(context->StorageDeviceCharacteristics, FILE_PORTABLE_DEVICE | FILE_REMOVABLE_MEDIA | FILE_REMOTE_DEVICE))
+        status = STATUS_NOT_SUPPORTED;
+    FltReleaseContext(context);
+    if (!NT_SUCCESS(status)) return status;
+    metadata = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*metadata), STAGE_PUBLIC_TAG);
+    if (metadata == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    metadata->References = 1;
+    ExInitializeRundownProtection(&metadata->Operations);
+    KeInitializeEvent(&metadata->Closed, NotificationEvent, FALSE);
+    status = FltObjectReference(Instance);
+    if (!NT_SUCCESS(status)) goto Exit;
+    metadata->Instance = Instance;
+    status = SafeUploadStagePublicReadMountGuid(Instance, &metadata->Binding.MountManagerVolumeId);
+    if (!NT_SUCCESS(status)) goto Exit;
+    metadata->Binding.OriginalDesiredAccess = OriginalDesiredAccess;
+    metadata->Binding.OriginalShareAccess = OriginalShareAccess;
+    status = StagePublicBindCaller(Subject, OriginalRequestorProcess, &metadata->Binding);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = StagePublicBindAnchoredName(metadata, Name, FALSE);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = StagePublicReadIdentity(Instance, metadata->RootObject, TRUE, &identity, NULL);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (!RtlEqualMemory(&identity, &metadata->Binding.VolumeRootIdentity, sizeof(identity))) {
+        status = STATUS_FILE_INVALID; goto Exit;
+    }
+    status = StagePublicReadIdentity(Instance, metadata->ParentObject, TRUE, &identity, &sensitive);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (!RtlEqualMemory(&identity, &metadata->Binding.ParentIdentity, sizeof(identity)) ||
+        sensitive != metadata->Binding.ParentCaseSensitive) { status = STATUS_FILE_INVALID; goto Exit; }
+    status = SafeUploadStagePublicReadMountGuid(Instance, &volumeId);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (!RtlEqualMemory(&volumeId, &metadata->Binding.MountManagerVolumeId, sizeof(volumeId))) {
+        status = STATUS_FILE_INVALID; goto Exit;
+    }
+    /* All directory handles close before the original app CREATE. Their
+     * temporary lifetime is not exported as a public-file capability. */
+    RtlCopyMemory(Binding, &metadata->Binding, sizeof(*Binding));
+Exit:
+    SafeUploadStagePublicDereferenceBackend(metadata);
+    if (!NT_SUCCESS(status)) RtlZeroMemory(Binding, sizeof(*Binding));
     return status;
 }
 
@@ -492,7 +597,7 @@ NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRIN
     if (!NT_SUCCESS(status)) goto Exit;
     status = FltParseFileNameInformation(name);
     if (!NT_SUCCESS(status)) goto Exit;
-    status = StagePublicBindAnchoredName(result, name);
+    status = StagePublicBindAnchoredName(result, name, TRUE);
     if (!NT_SUCCESS(status)) goto Exit;
     if (result->Binding.PublicIdentity.VolumeSerialNumber != result->Binding.ParentIdentity.VolumeSerialNumber) {
         status = STATUS_NOT_SAME_DEVICE;

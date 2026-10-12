@@ -300,6 +300,15 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                        port.TryGetMessage(out SafeUploadRequest request, out ulong messageId, stoppingToken))
                 {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
+                    if (request.Operation == NativeLifecycleV24.Operation || request.Reserved == NativeLifecycleV24.Version)
+                    {
+                        SafeUploadRequest nativeRequest = request;
+                        ulong nativeMessageId = messageId;
+                        Guid? nativeDriver = _activeDriverInstanceId;
+                        boundContinuations.Dispatch(token =>
+                            ReplyNativeLifecycleAsync(port, nativeRequest, nativeMessageId, nativeDriver, token));
+                        continue;
+                    }
                     if (request.Reserved == Contract.StageBoundAllocationVersion &&
                         request.Operation == Operation.StageAllocate)
                     {

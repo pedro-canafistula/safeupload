@@ -76,7 +76,7 @@ internal sealed class StagedNativeStartupRecovery
                 session = _session = new(replay.DriverInstanceId, replay.ConnectionEpoch, replay.OsBootSequence);
             }
             var proof = session.ReconcileReplay(replay.DriverInstanceId, replay.ConnectionEpoch,
-                complete: true, reconciled: true, records);
+                complete: true, reconciled: true, records, nativeMapRevision: replay.Revision);
             var result = await _journal.ReconcileDriverStartupAsync(replay.DriverInstanceId, 0x3f, proof,
                 async recoveryToken =>
                 {
@@ -117,7 +117,7 @@ internal sealed class StagedNativeStartupRecovery
         catch { Invalidate(); throw; }
     }
 
-    private static StagedNativeRecordReplay[] ReconcileRecords(NativeRecordReplay replay,
+    internal static StagedNativeRecordReplay[] ReconcileRecords(NativeRecordReplay replay,
         IReadOnlyList<StagedDestinationHead> heads)
     {
         var records = new List<StagedNativeRecordReplay>();
@@ -146,6 +146,18 @@ internal sealed class StagedNativeStartupRecovery
             {
                 throw new IOException("The native replay does not match its exact durable destination intent.");
             }
+            else
+            {
+                var saved = candidates[0].Delete;
+                if ((saved.NativeIntent is { } intent && intent != new StagedNativeCreateIntent(
+                        row.CreateOptions, row.OriginalDesiredAccess, row.OriginalShareAccess)) ||
+                    (saved.NativeOutcome is { } outcome && outcome != new StagedNativeCreateOutcome(
+                        (uint)row.Facts & 0x0f, row.CreateStatus, row.IdentityStatus)) ||
+                    (saved.NativeCreateAccepted is { } accepted &&
+                        (!row.Facts.HasFlag(NativeRecordFacts.CreateOutcomeKnown) ||
+                         accepted != row.Facts.HasFlag(NativeRecordFacts.CreateAccepted))))
+                    throw new IOException("Native CREATE outcome or original request changed during startup replay.");
+            }
             records.Add(new(binding, row.OperationId, row.Facts.HasFlag(NativeRecordFacts.LastHandleCleanedUp),
                 row.Facts.HasFlag(NativeRecordFacts.CancelledBeforeHandle), row.Facts.HasFlag(NativeRecordFacts.CancelledCloseObserved)));
         }
@@ -154,5 +166,13 @@ internal sealed class StagedNativeStartupRecovery
 
     private static StagedStageIdentity Identity(SafeUploadStageIdentityV19 value)
         => new(value.VolumeSerialNumber, value.FileIdHigh, value.FileIdLow);
+
+    internal static StagedDestinationIdentity Destination(NativeRecordReplayRow row) =>
+        new(Identity(row.VolumeRootIdentity), Identity(row.ParentIdentity), row.ParentCaseSensitive,
+            row.CanonicalLeaf, row.MountManagerVolumeId);
+    internal static StagedPublicDeleteBinding Binding(NativeRecordReplayRow row) =>
+        new(row.TransferId, row.RequestNonce, row.DriverInstanceId, row.OriginalConnectionEpoch, Identity(row.PublicIdentity),
+            checked((int)row.CallerProcessId), row.CallerProcessCreationTime, row.CallerSessionId, row.CallerSid,
+            row.OsBootSequence, row.MountManagerVolumeId);
 }
 #endif

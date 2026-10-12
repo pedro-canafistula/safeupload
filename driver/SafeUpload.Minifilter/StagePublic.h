@@ -28,9 +28,25 @@ typedef struct _SAFEUPLOAD_STAGE_PUBLIC_BINDING {
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStagePublicCaptureSubject(_In_ PFLT_CALLBACK_DATA Data,
     _Out_ PSECURITY_CLIENT_CONTEXT Subject);
+/* Metadata identity only: retain the actual token level. Never impersonate
+ * this copy or promote it; the unchanged original CREATE performs access checks. */
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicCaptureNativeSubject(_In_ PFLT_CALLBACK_DATA Data,
+    _Out_ PSECURITY_CLIENT_CONTEXT Subject);
 
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStagePublicReadMountGuid(_In_ PFLT_INSTANCE Instance, _Out_ GUID *VolumeId);
+
+/* Metadata-only preparation for the ORIGINAL native scheduled CREATE. No
+ * child file open, DELETE grant, disposition, or service permit is produced.
+ * Subject was captured before queueing; Name is the parsed normalized name.
+ * The original NTFS CREATE must independently establish the actual grant. */
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicCaptureNativeName(_In_ PFLT_INSTANCE Instance,
+    _In_ PFLT_FILE_NAME_INFORMATION Name, _In_ PSECURITY_CLIENT_CONTEXT Subject,
+    _In_ PEPROCESS OriginalRequestorProcess, _In_ ACCESS_MASK OriginalDesiredAccess,
+    _In_ ULONG OriginalShareAccess, _In_ ULONG OriginalCreateOptions,
+    _Out_ PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding);
 
 /* Runs on an unimpersonated system worker, outside namespace/stream/spin
  * locks. Capture Subject in the original CREATE before queueing. NTFS checks

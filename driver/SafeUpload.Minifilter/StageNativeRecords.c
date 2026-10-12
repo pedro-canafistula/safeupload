@@ -271,12 +271,31 @@ Exit:
 }
 
 _Use_decl_annotations_
-NTSTATUS SafeUploadStageNativeMarkForwarded(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record, UINT64 DurableGeneration)
+NTSTATUS SafeUploadStageNativeSnapshot(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record,
+    PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Snapshot, PUINT64 Revision)
+{
+    KIRQL irql;
+    NTSTATUS status = STATUS_SUCCESS;
+    RtlZeroMemory(Snapshot, sizeof(*Snapshot));
+    *Revision = 0;
+    NativeAcquire(&irql);
+    if (!NativeAccepting || !NativeReplayUsable || Record->References < 2) status = STATUS_DEVICE_NOT_READY;
+    else { *Snapshot = Record->Snapshot; *Revision = NativeRevision; }
+    NativeRelease(irql);
+    return status;
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageNativeMarkForwarded(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record,
+    UINT64 DurableGeneration, UINT64 ExpectedRevision)
 {
     KIRQL irql;
     NTSTATUS status = STATUS_SUCCESS;
     NativeAcquire(&irql);
-    if (!NativeAccepting || DurableGeneration == 0 || Record->Snapshot.Forwarded ||
+    if (ExpectedRevision != 0 && ExpectedRevision != NativeRevision) status = STATUS_RETRY;
+    else if (!NativeAccepting || !NativeReplayUsable || ExpectedRevision == 0 ||
+        !SafeUploadStageProtocolNativeForwardAllowed(Record->Snapshot.Binding.ConnectionEpoch) ||
+        DurableGeneration == 0 || Record->Snapshot.Forwarded ||
         Record->Snapshot.CreateOutcomeKnown || Record->Snapshot.CleanupCoverageLost ||
         SafeUploadStageAttachInstanceRetiring(Record->Instance)) status = STATUS_INVALID_DEVICE_STATE;
     else {
@@ -318,6 +337,7 @@ VOID SafeUploadStageNativeReleaseRecord(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record)
     NT_ASSERT(Record->References > 1); /* the map is retired only with no other users */
     NT_ASSERT(!Record->CreateCallbackOwned);
     Record->References -= 1;
+    if (Record->References == 1) NativeChanged(); /* ACK eligibility changed, even without new CREATE facts. */
     NativeRelease(irql);
     NativeWake(); /* an ACK previously refused for an active producer may now proceed */
 }

@@ -234,6 +234,75 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Native_terminal_unlink_retains_receipt_until_post_ack_authenticated_removal(bool trackingBound)
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        var native = await NativeCreateIntent(journal, destination, binding, operation);
+        using var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None);
+        await journal.RecordNativeDeleteOnCloseCreateResultAsync(turn, binding, operation, true, trackingBound);
+        var session = new StagedNativeRecoverySession(binding.DriverInstanceId, binding.ConnectionEpoch + 1, 42);
+        var live = session.ReconcileReplay(binding.DriverInstanceId, binding.ConnectionEpoch + 1, true, true,
+            [new(binding, operation, false)], nativeMapRevision: 17);
+        await Assert.ThrowsAsync<IOException>(() => journal.CompleteNativeDeleteOnCloseAsync(turn, binding, operation,
+            live, Observation(destination, null), CancellationToken.None));
+        var cleaned = session.ReconcileReplay(binding.DriverInstanceId, binding.ConnectionEpoch + 1, true, true,
+            [new(binding, operation, true)], nativeMapRevision: 17);
+        var pending = await journal.CompleteNativeDeleteOnCloseAsync(turn, binding, operation,
+            cleaned, Observation(destination, _publicIdentity), CancellationToken.None);
+        Assert.Equal(trackingBound ? StagedPublicDeleteState.Admitted : StagedPublicDeleteState.AcceptedUnresolved, pending.State);
+        await Assert.ThrowsAsync<IOException>(() => journal.CompleteNativeDeleteOnCloseAsync(turn, binding, operation,
+            cleaned, Observation(destination, _temporaryIdentity), CancellationToken.None));
+        var complete = await journal.CompleteNativeDeleteOnCloseAsync(turn, binding, operation,
+            cleaned, Observation(destination, null), CancellationToken.None);
+        Assert.Equal(StagedPublicDeleteState.Complete, complete.State);
+        var retained = (await Journal().ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+        Assert.Equal(native.Generation, retained.CommittedDelete);
+        Assert.Equal(complete, Assert.Single(retained.Deletes));
+        await Assert.ThrowsAsync<IOException>(() => journal.RetirePublicDeleteReceiptAsync(turn, binding, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.RetireNativeDeleteReceiptAsync(turn, binding, operation,
+            cleaned, 17, CancellationToken.None));
+        var stale = session.ReconcileReplay(binding.DriverInstanceId, binding.ConnectionEpoch + 1, true, true, [], nativeMapRevision: 17);
+        await Assert.ThrowsAsync<IOException>(() => journal.RetireNativeDeleteReceiptAsync(turn, binding, operation,
+            stale, 17, CancellationToken.None));
+        var removed = session.ReconcileReplay(binding.DriverInstanceId, binding.ConnectionEpoch + 1, true, true, [], nativeMapRevision: 18);
+        await journal.RetireNativeDeleteReceiptAsync(turn, binding, operation, removed, 17, CancellationToken.None);
+        retained = (await Journal().ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+        Assert.Empty(retained.Deletes);
+        Assert.Equal(native.Generation, retained.CommittedDelete);
+        Assert.Equal(native.Generation, retained.MaxAllocated);
+    }
+
+    [Fact]
+    public async Task Native_terminal_supersede_requires_newer_published_identity_and_retains_cleanup_receipt()
+    {
+        var journal = Journal(); var destination = Destination(); var operation = Guid.NewGuid();
+        var binding = Binding() with { OsBootSequence = 42 };
+        await NativeCreateIntent(journal, destination, binding, operation);
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+            await journal.RecordNativeDeleteOnCloseCreateResultAsync(turn, binding, operation, true, true);
+        var successor = Guid.NewGuid(); long generation = await Allocate(journal, destination, successor);
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+            await Assert.ThrowsAsync<IOException>(() => journal.CompleteNativeDeleteOnCloseAsync(turn, binding, operation,
+                CleanupProof(binding, operation), Observation(destination, _temporaryIdentity), CancellationToken.None));
+        await Publish(journal, destination, successor, generation);
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+            Assert.Equal(StagedPublicDeleteState.Superseded,
+                (await journal.CompleteNativeDeleteOnCloseAsync(turn, binding, operation,
+                    CleanupProof(binding, operation), Observation(destination, _temporaryIdentity), CancellationToken.None)).State);
+        var head = (await Journal().ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+        Assert.Equal(StagedPublicDeleteState.Superseded, Assert.Single(head.Deletes).State);
+        Assert.Equal(generation, head.LatestPublished); Assert.Equal(_temporaryIdentity, head.PublishedIdentity);
+        Assert.Equal(0, head.CommittedDelete);
+    }
+
+    [Theory]
     [InlineData("below", false)]
     [InlineData("below", true)]
     [InlineData("above", false)]

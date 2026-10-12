@@ -53,6 +53,7 @@ public static class Contract
     // A distinct reserved carrier, never interpreted as image-name text.
     // The bound payload and its parser compile only in feature builds.
     public const uint StageBoundAllocationVersion = 23;
+    public const uint StageNativeLifecycleVersion = 24;
     public const uint StageV19ReplyFlag = 0x00000200;
     public const uint StageV20ReplyFlag = StageV19ReplyFlag;
     public const int StageIdentityV19Size = 24;
@@ -87,6 +88,7 @@ public static class Contract
     {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
         BoundAllocationV23Contract.Verify();
+        NativeLifecycleV24.Verify();
 #endif
         Check(nameof(SafeUploadRequest), sizeof(SafeUploadRequest), RequestSize);
         Check(nameof(SafeUploadResponse), sizeof(SafeUploadResponse), ResponseSize);
@@ -511,6 +513,14 @@ public unsafe partial struct SafeUploadRequest
         get
         {
             const uint legacyKnown = 0x000001ff;
+            if (Reserved == Contract.StageNativeLifecycleVersion || Operation == 20)
+            {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                return Reserved == Contract.StageNativeLifecycleVersion && Operation == 20 && Flags == Contract.StageV19ReplyFlag;
+#else
+                return false;
+#endif
+            }
             if (Reserved == Contract.StageBoundAllocationVersion)
             {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
@@ -609,7 +619,8 @@ public unsafe partial struct SafeUploadRequest
         return true;
     }
 
-    public bool UsesStageBinaryPayload => Reserved == Contract.StageBoundAllocationVersion ||
+    public bool UsesStageBinaryPayload => Reserved == Contract.StageNativeLifecycleVersion || Operation == 20 ||
+        Reserved == Contract.StageBoundAllocationVersion ||
         Reserved == Contract.StageExtensionVersion ||
         IsStageV20TypedOperation(Operation) ||
         (Operation == global::SafeUpload.Agent.Minifilter.Operation.StageAllocate &&

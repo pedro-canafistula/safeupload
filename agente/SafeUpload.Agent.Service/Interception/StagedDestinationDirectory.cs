@@ -18,6 +18,17 @@ internal sealed class StagedDestinationDirectory : IDisposable
     private StagedDestinationDirectory(SafeFileHandle root, SafeFileHandle parent,
         StagedDestinationIdentity destination) => (VolumeRoot, Parent, Destination) = (root, parent, destination);
 
+    // Diagnostic locator only. Identity-bound opens/commits never reopen it.
+    internal string ReadLocator()
+    {
+        var name = new StringBuilder(32768);
+        uint length = GetFinalPathNameByHandleW(Parent, name, checked((uint)name.Capacity), 1);
+        if (length == 0 || length >= name.Capacity)
+            throw new IOException("Could not name the recorded parent.", new Win32Exception(Marshal.GetLastWin32Error()));
+        RequireIdentity(Parent, Destination.Parent, directory: true);
+        return Path.Combine(name.ToString(), Destination.CanonicalLeaf);
+    }
+
     internal static StagedDestinationDirectory Open(StagedAllocationBindingV23 binding)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Bound staging requires Windows NTFS.");
@@ -157,6 +168,8 @@ internal sealed class StagedDestinationDirectory : IDisposable
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct IoStatusBlock { internal IntPtr Status; internal UIntPtr Information; }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, StringBuilder name, uint capacity, uint flags);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern SafeFileHandle CreateFileW(string path, uint access, uint share,
         IntPtr security, uint disposition, uint flags, IntPtr template);
