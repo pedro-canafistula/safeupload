@@ -192,8 +192,8 @@ Copy-Item -LiteralPath "$d\SafeUpload.pdb" -Destination C:\T4Memory\symbols\Safe
 Copy-Item -LiteralPath "$d\memory-debugger.ps1" -Destination "$d\t4-memory-debugger.ps1"
 & bcdedit.exe /debug on
 if($LASTEXITCODE -ne 0){throw 'Could not enable local debugging on the run disk.'}
-& bcdedit.exe /dbgsettings local
-if($LASTEXITCODE -ne 0){throw 'Could not select local debug transport.'}
+# This VM already has a debugger transport. KD -kl can use it as configured;
+# changing NET to LOCAL replaces its Windows network adapter and loses the test IP.
 'T4MemorySetup=True'
 PS
     grep -qx 'T4MemorySetup=True' "$ev/$tag-memory-setup.txt" || exit 16
