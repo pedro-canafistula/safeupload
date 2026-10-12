@@ -196,6 +196,8 @@ internal sealed class StagedPublicOpenDispatcher : IDisposable
                 cell.Mutation = await _journal.BeginPublicRelayAsync(cell.MutationTurn, binding, request.OperationId,
                     original, new(destination, destination.Parent, destination.Parent, true,
                         observed.ChildIdentity is { } id ? Identity(id) : null), token).ConfigureAwait(false);
+                if (cell.Mutation.NativeStatus is not null)
+                    throw new IOException("A recorded native result can never authorize a second forwarding.");
             }
             catch
             {

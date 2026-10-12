@@ -556,8 +556,8 @@ static FLT_PREOP_CALLBACK_STATUS NativeDispositionPrepare(PFLT_CALLBACK_DATA Dat
         if (status != STATUS_SUCCESS) break;
         status = NativeDispositionFlags(Data, &actualFlags);
         if (!NT_SUCCESS(status) || actualFlags != operation.DispositionFlags ||
-            Data->Iopb->Parameters.SetFileInformation.FileInformationClass != operation.InformationClass ||
-            Data->RequestorMode != operation.RequestorMode) { status = STATUS_INVALID_PARAMETER; break; }
+            (ULONG)Data->Iopb->Parameters.SetFileInformation.FileInformationClass != operation.InformationClass ||
+            (ULONG)Data->RequestorMode != operation.RequestorMode) { status = STATUS_INVALID_PARAMETER; break; }
         if (FltIsIoCanceled(Data)) { status = STATUS_CANCELLED; break; }
         NativeAcquire(&irql);
         if (NativeRevision != revision) status = STATUS_RETRY;

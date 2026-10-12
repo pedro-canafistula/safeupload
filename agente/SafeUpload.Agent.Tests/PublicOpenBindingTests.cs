@@ -309,6 +309,22 @@ public sealed class PublicOpenBindingTests : IDisposable
         await Assert.ThrowsAsync<IOException>(() => Send(PublicDispositionV25.OpenFacts));
     }
 
+    [Fact]
+    public async Task Replayed_capture_after_a_durable_result_never_returns_a_second_forward_permit()
+    {
+        await ReadyOpenAsync(); CaptureMutation(1);
+        var prepared = await MutationSend(PublicDispositionV25.DispositionPrepare);
+        Outcome(0, prepared.MutationGeneration); await MutationSend(PublicDispositionV25.DispositionFacts);
+        var row = _replay.Records[0];
+        _replay = _replay with { Revision = _replay.Revision + 1, Records = [row with
+            { OperationFacts = PublicOperationFacts.Captured, OperationStatus = 259, MutationGeneration = 0 }] };
+        await Assert.ThrowsAsync<IOException>(() => MutationSend(PublicDispositionV25.DispositionPrepare));
+        var head = (await _journal.ReadDestinationHeadAsync(StagedNativeStartupRecovery.Destination(Open), default))!;
+        Assert.Null(head.PendingCommit); Assert.Equal(0, Assert.Single(head.PublicRelayReceipts!).NativeStatus);
+        Assert.Equal(StagedPublicDeleteState.Accepted, Assert.Single(head.Deletes).State);
+        Assert.Equal(1, head.MaxAllocated);
+    }
+
     private byte[] Page()
     {
         byte[] bytes = new byte[PublicDispositionV25.ReplayPageBytes];
