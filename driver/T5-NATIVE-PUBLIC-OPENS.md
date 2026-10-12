@@ -467,7 +467,8 @@ original case flags and no-reparse rules. A present target gets a **noncreating,
 subject, with the original requested rights and sharing. NTFS decides authorization, including mandatory integrity and traversal;
 never add backup/restore privilege or substitute SYSTEM. Capture identity and grants from that same checked object. Model each
 disposition's extra native checks: present FILE_CREATE retains its collision result; overwrite needs implicit write and applicable
-EA/attribute authority; supersede needs the native delete/parent DELETE_CHILD alternative and applicable EA/attribute authority.
+EA/attribute authority; supersede needs the documented DELETE check and applicable EA/attribute authority. Any claimed parent
+DELETE_CHILD alternative must be proved against native supersede controls before it can be used.
 Implicit check rights are separate from the rights exposed on the app's handle. A supersede permission check does not grant an
 ordinary writer DELETE. Creation-only flags must not cause mutation during the probe. The operation/flag matrix requires native
 controls before admission, including caller identification-level tokens; never promote an otherwise unusable subject.
@@ -482,7 +483,8 @@ discrepancy with the native control keeps admission closed; do not silently broa
 
 Separately open read-only metadata anchors below the original instance, walking each component with its actual directory case
 mode and rejecting reparses. Query the checked source object's canonical long name, verify its parent/leaf against those anchors,
-and retain only the exact full root/parent/target IDs, mount GUID, case mode, leaf and assigned security needed by the private view.
+and retain the exact full root/parent/target IDs, mount GUID, case mode, leaf and assigned security needed by the private view.
+The exact subject/share-checked object also remains owned through the app object's cleanup to preserve its native share reservation.
 For absence, perform complete anchored enumeration with the original lookup semantics; an incomplete lookup is not absence.
 Capture the tuple outside namespace locks after reserving the name. Send V23 and persist its exact retry snapshot. Before exposing
 the private open, reopen/recheck those anchors and the target ID or absence outside locks, then revalidate the reserved view,
@@ -499,6 +501,37 @@ and unchanged native sharing/cleanup behavior. The integrated lifetime/lock/reti
 
 **Current review status, 2026-10-12: REVISE; admission remains disabled.** The live writer identity check on allocation replay is
 implemented in `dbe02d04`, both before and after replay; PID/session/SID/creation identify ownership, not filesystem authority.
+
+The latest Luna 6 max review identifies four remaining implementation prerequisites; this records its corrections, not a READY
+decision. First, every routed writer CREATE and existing-view reopen must retain the original effective static subject, requestor
+process lifetime, mapped/previously granted access, share mask, disposition, options, attributes and supported supplied EA/security
+inputs in owned storage before queueing. `StageAttachQueueCreate` currently captures `PublicDeleteSubject` only for DELETE-like
+requests (`StageStream.c:2738–2745`); cached `view->Security` on reopen (`:2186–2190`) cannot replace a current native check.
+Retain original `SL_CASE_SENSITIVE` separately from the parent's case-sensitive mode; V23 currently carries only the latter.
+
+Second, the nonmutating check must cover disposition-implied rights as well as the requested mask, preserve native status and
+`IoStatus.Information`, and keep its exact original-share reservation through the app file object's cleanup. Supplemental check
+rights never become the app handle's grant. Validate supersede's DELETE requirement and any parent alternative against direct
+native controls; do not assume DELETE_CHILD satisfies supersede. No share bypass or mutating probe option is allowed. The current
+`StageSecurity.c:18–42,63–103,105–234` helper does not establish these facts. See Microsoft's
+[NtCreateFile contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntcreatefile) and
+[CREATE operation flags](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_io_parameter_block).
+
+Third, descriptor assignment must retain owner/group, ordered DACL/SACL, labels, inheritance and control/defaulted flags from the
+correct original subject, supplied descriptor and exact parent/target. Its immutable assigned descriptor and seed/read provenance
+need an approved typed metadata transport: current V23/SAFEUPLOAD_REQUEST has neither (`StageBoundAllocation.h:11–39`,
+`Protocol.h:216–278`). The service supplies that assignment on its original temporary CREATE; the kernel compares both callback
+and actual post-CREATE security. Post-allocation target/descriptor changes retire the candidate before exposure. SYSTEM defaults,
+private-stage ACLs and stale overwrite descriptors cannot substitute for this assignment.
+
+Fourth, seeding must use the exact checked source with its original sharing and prove coherent bytes/EOF under range locks,
+oplocks and concurrent writers. Independently check READ authority under the original subject; requesting only WRITE is not a
+READ denial, and a share failure is unresolved. Verify exact-object `FltReadFile` behavior without adding READ_DATA to the app grant;
+its [documented contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltreadfile) does not
+promise an access bypass or atomic snapshot. A privileged second read open cannot silently replace this proof. Seeded provenance
+and affirmative recipient/read authority persist through private predecessors and later writes. Native-versus-candidate controls
+must cover each supported disposition, rights/privileges, labels/traversal, case, full descriptors, sharing and source races without
+mutating the public target. These corrections introduce no new owner policy; the hand-back choice below stays pending.
 Kernel permission capture, seed transport and descriptor assignment are not yet integrated.
 
 #### Seed sharing and read-authority correction
@@ -519,8 +552,8 @@ being denied its old contents. Returning those contents in another file must not
 Do not confuse a write-only requested handle with a read-denied subject: ordinary users can request FileAccess.Write while
 remaining authorized to open the same file for reading. Preserve their existing hand-back and justification behavior. The reviewed
 candidate checks READ authorization independently on the exact source under the retained original effective subject, without
-reading through that probe or exposing it to the app. An ignore-share authorization probe is only a candidate for this separate
-read check; the original CREATE check never bypasses sharing. Its oplock/audit effects and exact identity must be controlled.
+reading through that probe or exposing it to the app. A share failure is unresolved, not an access denial; a share-bypassing read
+open cannot substitute for the original source/read-authority proof. Its oplock/audit effects and exact identity must be controlled.
 Explicit access/label denial and an indeterminate probe have distinct diagnostics; neither establishes permission to export old
 bytes. Validate the eventual hand-back recipient too; the process-primary SID is not the original thread's effective subject.
 

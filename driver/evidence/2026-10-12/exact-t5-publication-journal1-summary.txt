@@ -1,0 +1,13 @@
+﻿LABEL=t5-publication-journal1
+ARCHIVE_SHA256=29F99A4164260C0D8C2C0CA938EB9BCEAEB889E7E2B4067B0BEDC910EFF34FF9
+SOURCE_COMMIT=19d5f33c1c4d0de024227a5b6e12a8cad96adc61
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-12T12:53:12.4713721Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=36EF717197CC2F6B42A1C64828FA58C14E73B625A5D4CC3F4C93FB200FE13533
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=BD4BA0D7B0B3D323872289141F6FC7E323171762754054F35236B951E8162FA2
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=DF93377213ECD490E8681BEC5DB843C220F2F1BFF2EC3149C169BE12CD87D31B
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=0D88D54ACEE4912BA30C1C1C7AB16E5AB50224E4406AE0B664A1EBA99F9910DE
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=E5E672323A2293A445007D2D07B81C3B602D2B66421912D6421C05357F07EFD4
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=B634AB50E0FAF8368CAD300EF28390371A99FA778697A554DCC32FD0B7860A39
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=6FE62A53F3F0D8AC5EAA957F5E46069DCF51C0F1A7697784CB7119E512E04B65
+sign : exit=0 unsigned_sha256=BD4BA0D7B0B3D323872289141F6FC7E323171762754054F35236B951E8162FA2 signing_copy_sha256=BD4BA0D7B0B3D323872289141F6FC7E323171762754054F35236B951E8162FA2 unsigned_unchanged=True store=LocalMachine output_sha256=0F9A576611D3F1DCB53A92A37BA9F2944F1D8F13E5AD0F056D6715F65D7BE7C7 signed_sha256=0F9A576611D3F1DCB53A92A37BA9F2944F1D8F13E5AD0F056D6715F65D7BE7C7 signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38

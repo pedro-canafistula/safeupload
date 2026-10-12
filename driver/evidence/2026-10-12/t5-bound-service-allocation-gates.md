@@ -1,24 +1,25 @@
 # T5 shared pipeline — latest builder gates
 
-Source: **`a15fc7584f74a2797f93db528eda4961a0f39766`** for both agent and WDK.
-Labels: **t5-bound-publication-wire1**. Kernel subtree: `15251c35099a789e4ca1556428c399c373aea64e`.
-Agent subtree: `dc7af491b16849f50023ed60e39a7b23ddc3f179`.
+Agent source: **`a7e238ff73d4d003bb0c502f17ddce107e24aeed`**, label **t5-publication-journal4**.
+WDK source: **`19d5f33c1c4d0de024227a5b6e12a8cad96adc61`**, label **t5-publication-journal1**;
+kernel subtree `15251c35099a789e4ca1556428c399c373aea64e` is unchanged through the agent source.
+Agent subtree: `4ffceecab5f0035a7bbfe859c29b9e658335b363`.
 **Four WDK profiles 0 warnings / 0 errors, PREfast/ApiValidator; AgentMatrixGate=True.**
 No revised pair was installed or booted. Bound-head capability remains unadvertised and admission disabled.
 
-| Agent profile | Passed / discovered / unique executions | Ordinary controls | Native lifecycle | Allocation / native Windows | Publication client |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Normal Debug | 880 / 880 / 880 | compiled out | compiled out | compiled out | compiled out |
-| Normal Release | 880 / 880 / 880 | compiled out | compiled out | compiled out | compiled out |
-| Feature Debug | 1217 / 1217 / 1217 | 22 / 22 | 26 / 26 | 16 / 16 | 34 / 34 |
-| Feature Release | 1217 / 1217 / 1217 | 22 / 22 | 26 / 26 | 16 / 16 | 34 / 34 |
+| Agent profile | Passed / discovered / unique executions | Ordinary controls | Native lifecycle | Allocation / native Windows | Publication client | Native-result journal |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Normal Debug | 880 / 880 / 880 | compiled out | compiled out | compiled out | compiled out | compiled out |
+| Normal Release | 880 / 880 / 880 | compiled out | compiled out | compiled out | compiled out | compiled out |
+| Feature Debug | 1230 / 1230 / 1230 | 22 / 22 | 26 / 26 | 16 / 16 | 34 / 34 | 13 / 13 |
+| Feature Release | 1230 / 1230 / 1230 | 22 / 22 | 26 / 26 | 16 / 16 | 34 / 34 | 13 / 13 |
 
 Root independently verified aggregate execution files equal the disjoint user + SYSTEM union:
-855 + 25 normal, 1192 + 25 feature; every result Passed, unique execution IDs, no skipped cases.
+855 + 25 normal, 1205 + 25 feature; every result Passed, unique execution IDs, no skipped cases.
 Every service/tray/test/discovery/Release-package leg passes at 0/0. Inspector/writer builds and
-signature verification pass ([raw WDK summary](exact-t5-bound-publication-wire1-summary.txt),
-[raw agent summary](exact-agent-matrix-t5-bound-publication-wire1-summary.txt)).
-Signed feature Debug SHA-256: `2E346764EA6F6E654372635776B9D2FE51F37408ADA4D0AAD37B6EF1023415D2`.
+signature verification pass ([raw WDK summary](exact-t5-publication-journal1-summary.txt),
+[raw agent summary](exact-agent-matrix-t5-publication-journal4-summary.txt)).
+Signed feature Debug SHA-256: `0F9A576611D3F1DCB53A92A37BA9F2944F1D8F13E5AD0F056D6715F65D7BE7C7`.
 
 The [corrected publication contract](../../T5-BOUND-PUBLICATION.md) received READY WITH CORRECTIONS from Luna 6 max before code.
 `a15fc758` adds matching feature-only C/managed v26 layouts and a FilterPort client, preserving core v18 and all existing layouts.
@@ -27,7 +28,13 @@ unfenced or in-flight renames, changed target/source identity, pending native re
 Conclusive failed CREATE can retire without a nonexistent temporary cleanup; malformed outcomes and coverage loss cannot ACK.
 All 34 publication-client controls pass per feature profile. C layout assertions pass in the feature WDK builds.
 
-This is the **wire/client side**, not the kernel permit producer or execution map. Control 33 has no live producer/handler,
+`19d5f33c` connects exact native-result persistence to the shared destination head. Unknown rename outcomes retain PendingCommit;
+known outcomes atomically retain the complete native status/identity/operation row before its Boolean projection and Published
+floor. Bound manifests cannot use Boolean-only completion. Later cleanup replay is monotonic and cannot republish an older
+generation, including after manifest compaction. All 13 controls pass on the real private journal with injected native receipts.
+Publication pre-CREATE intent, ACK retirement, publisher calls and integrated startup are still open.
+
+This is the **wire/client and durable-result side**, not the kernel permit producer or execution map. Control 33 has no live producer/handler,
 and the existing bound publisher still refuses publication. These tests inject native control receipts. They do not prove actual
 driver fencing, target serialization, descriptor assignment or recovery. The exact-mask
 [native PowerShell 5.1 control](bound-publication-native-ab6dc0b9.txt) separately proves 0/37-byte parent-relative NTFS create,
@@ -70,12 +77,14 @@ teardown must finish together. Unknown-result/forced-teardown startup recovery a
 Then perform the single integrated pre-boot lifetime review, both forced orders, real Notepad and all fault/compatibility
 rows in every required mode, independent destination bytes and separate restoration. Capability stays off until then.
 
-Normal Release package SHA-256: `1A99807DAC55A5D2B58AE94A269975B320047C60DDEC884B4BF5AD128E65E6E0`.
-Feature Release package SHA-256: `20822873E82EE3AE4FA05DC384D0F156F8A1C58D91DF4401874306BF677D340C`.
-Raw output remains local in `output/exact-agent-matrix/t5-bound-publication-wire1/`,
-`exact-agent-matrix-t5-bound-publication-wire1-*` and `exact-t5-bound-publication-wire1-*`.
+Normal Release package SHA-256: `5E0125CAFB98FA14F40B52EF308D2E7E6AE6444243C381F9B678F501747BC4DD`.
+Feature Release package SHA-256: `F60692902011271D1024A91B535CE3A5F2E95857422430DEC9BE99957CF9EE5A`.
+Raw output remains local in `output/exact-agent-matrix/t5-publication-journal4/`,
+`exact-agent-matrix-t5-publication-journal4-*` and `exact-t5-publication-journal1-*`.
 
-Earlier failed attempts remain local. The first native-mask control queried a creation-only flag as an I/O mode; `ab6dc0b9`
+Earlier failed attempts remain local. Journal attempts 1–3 found a collection analyzer error, missing fixture inspection digest
+and wrong expected rejection type. Commits `b2414dea`, `07a748a6`, `a7e238ff` correct them; no assertion is removed.
+The first native-mask control queried a creation-only flag as an I/O mode; `ab6dc0b9`
 corrected that harness assumption without changing CREATE rights/options, then passed. Public-relay1 found two signed/unsigned comparisons in the feature kernel builds;
 `d5779d5a` adds explicit wire-field casts without relaxing warnings-as-errors or static analysis.
 Its initial agent matrix passed 880/1182; the final matrix adds the second-forwarding guard/control.

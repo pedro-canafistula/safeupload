@@ -142,11 +142,12 @@ integration. After the single pre-boot kernel lifetime review, qualify native de
 clean/CPF Save As in all three modes, with independent bytes and separate restoration. Component passes do not complete T5.
 Keep the broad application/metadata matrix in T8; all existing assertions and the full milestone sequence remain required.
 
-The [latest progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md), covering `8255f350` and the `d5779d5a` gates,
+The [latest progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md), covering `a7e238ff` and the latest builder attempts,
 confirms the architecture and scope but finds delivery still fragmented. Original ordinary dispositions and known-cleanup ACK/retirement
 are connected; no revised protected T5 pair has run. Finish checked writer authority, shared publication/deletes and automatic recovery
 as one delivery checkpoint. The [publication contract](T5-BOUND-PUBLICATION.md) now has its corrected Luna design review;
-transport, kernel object integration and recovery remain unfinished. The seeded-content hand-back owner choice remains open.
+transport/client and durable native-result journal are implemented; kernel object integration and recovery remain unfinished.
+The seeded-content hand-back owner choice remains open.
 Unprotected native controls do not qualify this pair.
 
 ### T4. Remove the 128-saves-per-boot ceiling
@@ -269,11 +270,12 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: matched agent/kernel source `a15fc758`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
-**880/880** per normal profile and **1217/1217** per feature profile, every discovered case executed once without skips,
+Latest static gates: agent `a7e238ff`, WDK `19d5f33c` with unchanged kernel source through the agent commit;
+four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator; **880/880** per normal profile and **1230/1230** per feature profile,
+every discovered case executed once without skips,
 service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-12/t5-bound-service-allocation-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
-V23 allocation, native CREATE/close, ordinary disposition/known-cleanup and 34 v26 publication-client controls pass these gates;
+V23 allocation, native CREATE/close, ordinary disposition/known-cleanup, 34 v26 publication-client and 13 native-result journal controls pass;
 kernel publication records/hooks remain open. Bound-writer capture,
 combined backends, owner tombstones, shared physical commits, startup and directory events remain open; reopening is not service-restart qualification.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
