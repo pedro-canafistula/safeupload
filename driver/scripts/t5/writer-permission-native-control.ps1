@@ -24,6 +24,7 @@ public static class WriterPermissionNativeControl {
  [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool LookupPrivilegeValue(string system,string name,out Luid id);
  [DllImport("advapi32.dll",SetLastError=true)] static extern bool AdjustTokenPrivileges(IntPtr token,bool disableAll,ref TokenPrivileges state,uint size,out TokenPrivileges previous,out uint returned);
  [DllImport("advapi32.dll",SetLastError=true)] static extern bool GetTokenInformation(IntPtr token,int kind,byte[] data,uint size,out uint returned);
+ [DllImport("advapi32.dll",SetLastError=true)] static extern bool GetKernelObjectSecurity(SafeFileHandle handle,uint information,byte[] data,uint size,out uint needed);
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
  // Only the private impersonation-token copy is changed. Restore the
  // previous thread context on every exit; never adjust the process token.
@@ -66,16 +67,25 @@ public static class WriterPermissionNativeControl {
  [DllImport("ntdll.dll")] static extern int NtQueryObject(SafeFileHandle handle, int kind, [Out] byte[] data, uint size, out uint returned);
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetFileInformationByHandleEx(SafeFileHandle handle,int kind,byte[] data,uint size);
  public static Result Open(string path,uint access,uint share,uint disposition) {
+  return OpenCore(path,access,share,disposition,0x00200060,null);
+ }
+ public static Result OpenWithDescriptor(string path,uint access,uint share,uint disposition,byte[] security) {
+  return OpenCore(path,access,share,disposition,0x00200060,security);
+ }
+ public static Result Revalidate(string path) { return OpenCore(path,0,7,1,0x00200040,null); }
+ public static Result Metadata(string path) { return OpenCore(path,0x01020000,7,1,0x00200040,null); }
+ static Result OpenCore(string path,uint access,uint share,uint disposition,uint options,byte[] security) {
   using(var subject=new Subject()) {
   byte[] bytes=Encoding.Unicode.GetBytes("\\??\\"+Path.GetFullPath(path));
-  IntPtr name=Marshal.AllocHGlobal(bytes.Length+2), unicode=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(UnicodeString)));
+  IntPtr name=Marshal.AllocHGlobal(bytes.Length+2), unicode=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(UnicodeString))), descriptor=IntPtr.Zero;
   try {
+   if(security!=null) { descriptor=Marshal.AllocHGlobal(security.Length); Marshal.Copy(security,0,descriptor,security.Length); }
    Marshal.Copy(bytes,0,name,bytes.Length); Marshal.WriteInt16(name,bytes.Length,0);
    var value=new UnicodeString{Length=(ushort)bytes.Length,MaximumLength=(ushort)(bytes.Length+2),Buffer=name};
    Marshal.StructureToPtr(value,unicode,false);
-   var attributes=new ObjectAttributes{Length=(uint)Marshal.SizeOf(typeof(ObjectAttributes)),Name=unicode,Attributes=0x40};
+   var attributes=new ObjectAttributes{Length=(uint)Marshal.SizeOf(typeof(ObjectAttributes)),Name=unicode,Attributes=0x40,Security=descriptor};
    SafeFileHandle handle; IoStatusBlock io;
-   int status=NtCreateFile(out handle,access,ref attributes,out io,IntPtr.Zero,0x80,share,disposition,0x00200060,IntPtr.Zero,0);
+   int status=NtCreateFile(out handle,access,ref attributes,out io,IntPtr.Zero,0x80,share,disposition,options,IntPtr.Zero,0);
    var result=new Result{Status=status,IoStatus=io.Status.ToInt64(),Information=io.Information.ToUInt64(),Handle=handle};
    if(result.Accepted) {
     byte[] basic=new byte[56]; uint returned;
@@ -84,16 +94,24 @@ public static class WriterPermissionNativeControl {
     result.GrantedAccess=BitConverter.ToUInt32(basic,4);
    }
    return result;
-  } finally { Marshal.FreeHGlobal(unicode); Marshal.FreeHGlobal(name); }
+  } finally { if(descriptor!=IntPtr.Zero) Marshal.FreeHGlobal(descriptor); Marshal.FreeHGlobal(unicode); Marshal.FreeHGlobal(name); }
   }
  }
  public static string Identity(string path) {
   using(var result=Open(path,0x00100080,7,1)) {
    if(!result.Accepted) throw new IOException("Identity open failed: "+result.Status.ToString("X8"));
-   byte[] bytes=new byte[24];
-   if(!GetFileInformationByHandleEx(result.Handle,18,bytes,24)) throw new IOException("Full file-ID query failed.");
-   return BitConverter.ToString(bytes).Replace("-","");
+   return IdentityHandle(result.Handle);
   }
+ }
+ public static string IdentityHandle(SafeFileHandle handle) {
+  byte[] bytes=new byte[24];
+  if(!GetFileInformationByHandleEx(handle,18,bytes,24)) throw new IOException("Full file-ID query failed: "+Marshal.GetLastWin32Error());
+  return BitConverter.ToString(bytes).Replace("-","");
+ }
+ public static string Security(SafeFileHandle handle) {
+  uint needed; GetKernelObjectSecurity(handle,0x1F,null,0,out needed); byte[] data=new byte[needed];
+  if(!GetKernelObjectSecurity(handle,0x1F,data,needed,out needed)) throw new IOException("Complete security query failed: "+Marshal.GetLastWin32Error());
+  return new System.Security.AccessControl.RawSecurityDescriptor(data,0).GetSddlForm(System.Security.AccessControl.AccessControlSections.All);
  }
  public static uint CheckAccess(uint original,uint disposition) {
   // SeRestorePrivilege must not be enabled in these controls. This is a
@@ -178,6 +196,57 @@ try {
     [WriterPermissionNativeControl]::RequireSubject()
     if ([WriterPermissionNativeControl]::ProcessPrivileges() -ne $processPrivileges) { throw 'Subject check changed process privileges.' }
     Write-Output 'PrivateNativeSubjectRestoreDisabled=PASS ProcessTokenUnchanged=True'
+    foreach ($denyAttributes in @($false,$true)) {
+        $path=Join-Path $root ('zero-revalidation-' + $denyAttributes + '.txt')
+        [IO.File]::WriteAllBytes($path,$bytes)
+        $identity=[WriterPermissionNativeControl]::Identity($path)
+        Set-FixtureAcl $path $false $(if($denyAttributes) {128} else {0})
+        $lease=$null; $zero=$null; $metadata=$null
+        try {
+            $lease=[WriterPermissionNativeControl]::Open($path,0x00100002,0,1)
+            if(-not $lease.Accepted) { throw 'Original share-zero writer lease failed.' }
+            $zero=[WriterPermissionNativeControl]::Revalidate($path)
+            if(-not $zero.Accepted -or $zero.GrantedAccess -ne 0) { throw 'Zero-access path check failed or acquired authority.' }
+            $zeroId=$null; $zeroIdError=$null
+            try { $zeroId=[WriterPermissionNativeControl]::IdentityHandle($zero.Handle) }
+            catch { $zeroIdError=$_.Exception.Message }
+            if($null -ne $zeroId -and $zeroId -ne $identity) { throw 'Zero-access check resolved another file.' }
+            $metadata=[WriterPermissionNativeControl]::Metadata($path)
+            if(-not $metadata.Accepted -or $metadata.GrantedAccess -ne 0x01020000) { throw 'Read-only security metadata check failed or acquired data authority.' }
+            $security=[WriterPermissionNativeControl]::Security($metadata.Handle)
+            Write-Output ([pscustomobject]@{Control='ShareZeroRevalidation';DenyReadAttributes=$denyAttributes;
+                ZeroGranted=('0x{0:X8}' -f $zero.GrantedAccess);ZeroId=$zeroId;ZeroIdError=$zeroIdError;
+                MetadataGranted=('0x{0:X8}' -f $metadata.GrantedAccess);Security=$security} | ConvertTo-Json -Compress)
+        } finally {
+            if($null -ne $metadata) {$metadata.Dispose()}; if($null -ne $zero) {$zero.Dispose()}; if($null -ne $lease) {$lease.Dispose()}
+        }
+        Set-FixtureAcl $path $false 0
+        if([WriterPermissionNativeControl]::Identity($path) -ne $identity -or
+            ([IO.File]::ReadAllBytes($path) -join ',') -ne ($bytes -join ',')) { throw 'Revalidation changed source identity or bytes.' }
+    }
+    $explicit=New-Object Security.AccessControl.FileSecurity
+    $explicit.SetSecurityDescriptorSddlForm(('O:'+ $sid.Value + 'G:' + $sid.Value + 'D:P(A;;FR;;;' + $sid.Value + ')'))
+    $explicitBytes=$explicit.GetSecurityDescriptorBinaryForm()
+    foreach($present in @($false,$true)) {
+        $dispositions=$(if($present) {@(0,1,3,4,5)} else {@(0,2,3,5)})
+        foreach($disposition in $dispositions) {
+            $path=Join-Path $root ('explicit-descriptor-' + $present + '-' + $disposition + '.txt')
+            $before=$null
+            if($present) {
+                [IO.File]::WriteAllBytes($path,$bytes)
+                $before=[IO.File]::GetAccessControl($path,[Security.AccessControl.AccessControlSections]::All).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)
+            }
+            $file=[WriterPermissionNativeControl]::OpenWithDescriptor($path,0x00100002,7,$disposition,$explicitBytes)
+            try {
+                if(-not $file.Accepted) { throw ('Explicit descriptor native CREATE failed: 0x{0:X8}' -f $file.Status) }
+                $after=[IO.File]::GetAccessControl($path,[Security.AccessControl.AccessControlSections]::All).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)
+                Write-Output ([pscustomobject]@{Control='SuppliedDescriptor';Present=$present;Disposition=$disposition;
+                    Information=$file.Information;Granted=('0x{0:X8}' -f $file.GrantedAccess);SecurityBefore=$before;SecurityAfter=$after;
+                    ExistingSecurityRetained=($present -and $before -eq $after)} | ConvertTo-Json -Compress)
+            } finally {$file.Dispose()}
+            Set-FixtureAcl $path $false 0
+        }
+    }
     foreach ($profile in $cases) {
         foreach ($disposition in @(0, 1, 3, 4, 5)) {
           foreach ($access in @([uint32]0x00100002, [uint32]0x00100004, [uint32]0x00100001,
