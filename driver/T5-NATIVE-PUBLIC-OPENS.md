@@ -464,7 +464,7 @@ but deliberately requires DELETE; ordinary staged writers must not acquire that 
 For a bound writer, capture the original CREATE subject on the original callback before queueing. On the unimpersonated system
 worker, outside namespace/stream/spin locks, validate the supported fixed-NTFS instance and resolve the original request with its
 original case flags and no-reparse rules. A present target gets a **noncreating, nontruncating FILE_OPEN** under that captured
-subject, with the original requested rights and sharing. NTFS decides authorization, including mandatory integrity and traversal;
+subject, with the calibrated disposition-check rights and original sharing. NTFS decides authorization, including mandatory integrity and traversal;
 never add backup/restore privilege or substitute SYSTEM. Capture identity and grants from that same checked object. Model each
 disposition's extra native checks: present FILE_CREATE retains its collision result; overwrite needs implicit write and applicable
 EA/attribute authority; supersede needs the documented DELETE check and applicable EA/attribute authority. Any claimed parent
@@ -472,6 +472,12 @@ DELETE_CHILD alternative must be proved against native supersede controls before
 Implicit check rights are separate from the rights exposed on the app's handle. A supersede permission check does not grant an
 ordinary writer DELETE. Creation-only flags must not cause mutation during the probe. The operation/flag matrix requires native
 controls before admission, including caller identification-level tokens; never promote an otherwise unusable subject.
+
+The disposition-check handle is temporary. Close it completely after capturing identity/security/anchors, then make a second
+nonmutating FILE_OPEN under the same captured subject with only the original requested rights and share. Compare this object's
+full ID and descriptor/ancestor tuple to the check snapshot, reject any mismatch, and retain only this original-grant object for
+the app file object's lifetime. Keeping supersede's supplemental DELETE right would change later sharing. Preserve the original
+disposition's app-visible Information result; neither helper's FILE_OPENED result is the application's result.
 
 For proven absence, require the original disposition to allow creation, then have NTFS check FILE_ADD_FILE on the exact parent
 with that same subject and original path/case semantics. Assign the private view's descriptor from the exact held parent's security
@@ -488,7 +494,7 @@ Separately open read-only metadata anchors below the original instance, walking 
 mode and rejecting reparses. Query the checked source object's canonical long name, verify its parent/leaf against those anchors,
 and retain the full identity, case mode and security snapshot of every ancestor, the parent and target, plus mount GUID, leaf and
 assigned security needed by the private view.
-The exact subject/share-checked object also remains owned through the app object's cleanup to preserve its native share reservation.
+The exact original-grant/share-checked object remains owned through the app object's cleanup to preserve its native share reservation.
 For absence, perform complete anchored enumeration with the original lookup semantics; an incomplete lookup is not absence.
 Capture the tuple outside namespace locks after reserving the name. Send V23 and persist its exact retry snapshot. Before exposing
 the private open, reopen/recheck those anchors and the target ID or absence outside locks, then revalidate the reserved view,
@@ -574,6 +580,21 @@ queue publication: access masks, sharing/options/attributes, case flags/requesto
 self-relative supplied descriptor copy. Native preparation consumes the immutable access/share/options snapshot. Destruction and
 local teardown free partial or complete copies. This does not yet create the checked writer backend, transport assigned security,
 seed content or expose bound admission; their integration and the single pre-boot lifetime review remain required.
+
+**Supplemental-rights lifetime correction:** the [focused native control](evidence/2026-10-12/writer-implicit-rights-share-lifetime-a1.txt)
+finds that keeping a supersede check's supplemental DELETE grant rejects a later share-3 reader which the native supersede
+handle allows. The 980 initial-status/grant comparisons do not establish persistent sharing. Luna's existing design review requires
+the two sequential checks above, with complete snapshot equality and no overlapping check/lease handles. The
+[split-sequence control](evidence/2026-10-12/writer-split-share-lifetime-native-a9.txt) then passes 90 unique cases:
+five dispositions × read/write/append requested masks × original share 0/7 × later-reader share 1/3/7. Native status/IOSB and
+final grant match, candidate bytes stay unchanged and process privileges stay unchanged; PowerShell 5.1 parse/self-checks pass.
+This satisfies the review's bounded implementation gate, with no new owner decision. Complete ancestors, assigned security,
+source coherence and per-app cleanup remain required; the backend is not implemented or runtime-qualified yet.
+
+**Capture builds:** kernel source `f5cff550` passes [all four WDK builds](evidence/2026-10-12/exact-t5-writer-capture3-summary.txt)
+at 0 warnings/0 errors with PREfast/ApiValidator; Inspector, writer fixture and test signature pass. Earlier compiler failures are
+retained locally and fixed in `fe1c9738`/`f5cff550`. Agent source is unchanged from the 880/1230-per-profile passing matrix.
+These are static gates, not a protected-pair or lifetime-review result.
 
 #### Seed sharing and read-authority correction
 

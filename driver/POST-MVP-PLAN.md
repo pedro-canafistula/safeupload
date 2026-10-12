@@ -254,7 +254,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     existing supersede with NULL descriptor preserves queried security. Qualified-platform, assignment, seed and kernel integration remain open.
     Every queued CREATE now captures its original static subject and owned access/share/options/case/EA/supplied-security inputs;
     [direct native ID controls](evidence/2026-10-12/writer-permission-native-control-a8.txt) pass all eight retained share-0 cases.
-    Checked backends, assigned security/seeding transport, four revised WDK gates and runtime qualification remain open.
+    Capture source `f5cff550` passes [four revised WDK 0/0 gates](evidence/2026-10-12/exact-t5-writer-capture3-summary.txt).
+    [90 native sharing cases](evidence/2026-10-12/writer-split-share-lifetime-native-a9.txt) validate closing supplemental checks
+    before retaining the original-grant lease. Checked backends, assigned security/seeding transport and runtime remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)
@@ -275,7 +277,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
-Latest static gates: agent `a7e238ff`, WDK `19d5f33c` with unchanged kernel source through the agent commit;
+Latest static gates: agent `a7e238ff`, WDK `f5cff550`; agent subtree is unchanged through the WDK commit.
 four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator; **880/880** per normal profile and **1230/1230** per feature profile,
 every discovered case executed once without skips,
 service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-12/t5-bound-service-allocation-gates.md)).

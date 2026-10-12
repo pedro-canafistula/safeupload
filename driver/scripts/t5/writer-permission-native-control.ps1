@@ -1,6 +1,6 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([switch]$SelfCheckOnly)
+param([switch]$SelfCheckOnly, [switch]$ShareLifetimeOnly)
 # Unprotected NTFS controls for the bound-writer design. No driver boot or
 # protected-byte claim. All ACL changes are confined to the temporary fixture.
 $ErrorActionPreference = 'Stop'
@@ -179,6 +179,68 @@ function Set-FixtureAcl([string]$Path, [bool]$Directory, [int]$DeniedRights) {
     if ($Directory) { [IO.Directory]::SetAccessControl($Path, $acl) }
     else { [IO.File]::SetAccessControl($Path, $acl) }
 }
+function Invoke-ShareLifetimeControls {
+    $processPrivileges=[WriterPermissionNativeControl]::ProcessPrivileges()
+    $count=0
+    try {
+        [void][IO.Directory]::CreateDirectory($root)
+        foreach($disposition in @(0,1,3,4,5)) {
+         foreach($requested in @(0x00100001,0x00100002,0x00100004)) {
+          foreach($originalShare in @(0,7)) {
+           foreach($laterShare in @(1,3,7)) {
+            $outcomes=@()
+            foreach($kind in @('Native','SplitProbe')) {
+                $path=Join-Path $root ($kind+'-'+$disposition+'-'+$requested+'-'+$originalShare+'-'+$laterShare+'.txt')
+                [IO.File]::WriteAllBytes($path,$bytes)
+                $originalId=[WriterPermissionNativeControl]::Identity($path)
+                $check=$null; $lease=$null; $later=$null; $metadata=$null
+                try {
+                    if($kind -eq 'SplitProbe') {
+                        $check=[WriterPermissionNativeControl]::Open($path,
+                            [WriterPermissionNativeControl]::CheckAccess($requested,$disposition),$originalShare,1)
+                        if(-not $check.Accepted) {throw 'Supplemental native check failed.'}
+                        $checkId=[WriterPermissionNativeControl]::IdentityHandle($check.Handle)
+                        if($checkId -ne $originalId) {throw 'Supplemental check resolved another file.'}
+                        $metadata=[WriterPermissionNativeControl]::Metadata($path)
+                        if(-not $metadata.Accepted) {throw 'Probe security metadata open failed.'}
+                        $checkSecurity=[WriterPermissionNativeControl]::Security($metadata.Handle)
+                        $metadata.Dispose(); $metadata=$null
+                        $check.Dispose(); $check=$null
+                        $lease=[WriterPermissionNativeControl]::Open($path,$requested,$originalShare,1)
+                    } else {
+                        $lease=[WriterPermissionNativeControl]::Open($path,$requested,$originalShare,$disposition)
+                    }
+                    if(-not $lease.Accepted -or $lease.GrantedAccess -ne $requested) {throw 'Final original-grant lease failed or acquired additional access.'}
+                    if($kind -eq 'SplitProbe') {
+                        if([WriterPermissionNativeControl]::IdentityHandle($lease.Handle) -ne $checkId) {throw 'Final lease resolved another file.'}
+                        $metadata=[WriterPermissionNativeControl]::Metadata($path)
+                        if(-not $metadata.Accepted -or [WriterPermissionNativeControl]::Security($metadata.Handle) -ne $checkSecurity) {throw 'Security changed between the two checks.'}
+                        $metadata.Dispose(); $metadata=$null
+                    }
+                    $later=[WriterPermissionNativeControl]::Open($path,0x00100001,$laterShare,1)
+                    $outcomes+=[pscustomobject]@{Kind=$kind;LeaseGranted=('0x{0:X8}' -f $lease.GrantedAccess);
+                        LaterStatus=('0x{0:X8}' -f $later.Status);LaterIoStatus=$later.IoStatus;LaterAccepted=$later.Accepted}
+                } finally {
+                    if($null -ne $metadata) {$metadata.Dispose()}; if($null -ne $later) {$later.Dispose()}
+                    if($null -ne $lease) {$lease.Dispose()}; if($null -ne $check) {$check.Dispose()}
+                }
+                if($kind -eq 'SplitProbe' -and ([IO.File]::ReadAllBytes($path) -join ',') -ne ($bytes -join ',')) {throw 'Permission check changed public bytes.'}
+            }
+            $same=$outcomes[0].LaterStatus -eq $outcomes[1].LaterStatus -and $outcomes[0].LaterIoStatus -eq $outcomes[1].LaterIoStatus
+            [pscustomobject]@{Control='SplitCheckShareLifetime';Disposition=$disposition;Requested=('0x{0:X8}' -f $requested);
+                OriginalShare=$originalShare;LaterReaderShare=$laterShare;Native=$outcomes[0];Split=$outcomes[1];Equivalent=$same} | ConvertTo-Json -Depth 4 -Compress
+            if(-not $same) {throw 'Split probe changed subsequent native sharing.'}
+            $count++
+           }
+          }
+         }
+        }
+        if($count -ne 90) {throw 'Share-lifetime control matrix is incomplete.'}
+        if([WriterPermissionNativeControl]::ProcessPrivileges() -ne $processPrivileges) {throw 'Process privileges changed.'}
+        Write-Output ('SplitCheckShareLifetimeRows='+$count+' Mismatches=0 ProcessPrivilegesRetained=PASS')
+    } finally {if(Test-Path -LiteralPath $root) {Remove-Item -LiteralPath $root -Recurse -Force}}
+}
+if($ShareLifetimeOnly) {Invoke-ShareLifetimeControls; return}
 $profiles = @(
     @{ Name='full'; Deny=0; ParentDenyDeleteChild=$true },
     @{ Name='deny-write-data'; Deny=2; ParentDenyDeleteChild=$true },

@@ -1,9 +1,10 @@
 # T5 shared pipeline — latest builder gates
 
 Agent source: **`a7e238ff73d4d003bb0c502f17ddce107e24aeed`**, label **t5-publication-journal4**.
-WDK source: **`19d5f33c1c4d0de024227a5b6e12a8cad96adc61`**, label **t5-publication-journal1**;
-kernel subtree `15251c35099a789e4ca1556428c399c373aea64e` is unchanged through the agent source.
-Agent subtree: `4ffceecab5f0035a7bbfe859c29b9e658335b363`.
+Latest WDK source: **`f5cff550271990540998721dfc0fd3929dd79e46`**, label **t5-writer-capture3**;
+kernel subtree `2a438aa04c36138e1dbf7c186b967770eeb9854b`.
+Agent subtree `4ffceecab5f0035a7bbfe859c29b9e658335b363` is unchanged from the matrix source through this WDK commit;
+the existing complete matrix is reused, not reported as a new execution. Earlier WDK `19d5f33c` covered publication-journal1.
 **Four WDK profiles 0 warnings / 0 errors, PREfast/ApiValidator; AgentMatrixGate=True.**
 No revised pair was installed or booted. Bound-head capability remains unadvertised and admission disabled.
 
@@ -17,9 +18,15 @@ No revised pair was installed or booted. Bound-head capability remains unadverti
 Root independently verified aggregate execution files equal the disjoint user + SYSTEM union:
 855 + 25 normal, 1205 + 25 feature; every result Passed, unique execution IDs, no skipped cases.
 Every service/tray/test/discovery/Release-package leg passes at 0/0. Inspector/writer builds and
-signature verification pass ([raw WDK summary](exact-t5-publication-journal1-summary.txt),
+signature verification pass ([latest raw WDK summary](exact-t5-writer-capture3-summary.txt),
 [raw agent summary](exact-agent-matrix-t5-publication-journal4-summary.txt)).
-Signed feature Debug SHA-256: `0F9A576611D3F1DCB53A92A37BA9F2944F1D8F13E5AD0F056D6715F65D7BE7C7`.
+Latest signed feature Debug SHA-256: `22D92DC741347451E559B498636629C2D06F650B114E144F47D8B561880E235A`.
+
+Kernel capture now retains every queued CREATE's original static effective subject and owned request inputs, including supplied
+security/EA buffers; native preparation uses the captured access/share/options fields. Partial/full copies are released before
+local transaction rundown completes. `fe1c9738`/`f5cff550` fix field width and descriptor-header declarations found by the first
+two compiler attempts; the final four raw WDK logs independently pass 0/0 with PREfast/ApiValidator. No assertion was relaxed.
+Raw capture logs remain local under `output/exact-driver/t5-writer-capture3/out/`. Writer-backend integration remains open.
 
 The [corrected publication contract](../../T5-BOUND-PUBLICATION.md) received READY WITH CORRECTIONS from Luna 6 max before code.
 `a15fc758` adds matching feature-only C/managed v26 layouts and a FilterPort client, preserving core v18 and all existing layouts.
