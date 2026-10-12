@@ -150,6 +150,14 @@ $profiles = @(
     @{ Name='deny-delete-parent-allows'; Deny=65536; ParentDenyDeleteChild=$false },
     @{ Name='deny-read-data'; Deny=1; ParentDenyDeleteChild=$true }
 )
+$cases = @()
+foreach ($profile in $profiles) {
+    $cases += $profile
+    foreach ($share in @(1, 3, 7)) {
+        $cases += @{ Name=($profile.Name + '-guard-share-' + $share); Deny=$profile.Deny;
+            ParentDenyDeleteChild=$profile.ParentDenyDeleteChild; GuardShare=$share }
+    }
+}
 try {
     [void][IO.Directory]::CreateDirectory($root)
     # Process privileges are recorded and never changed. Native calls use
@@ -161,7 +169,7 @@ try {
     [WriterPermissionNativeControl]::RequireSubject()
     if ([WriterPermissionNativeControl]::ProcessPrivileges() -ne $processPrivileges) { throw 'Subject check changed process privileges.' }
     Write-Output 'PrivateNativeSubjectRestoreDisabled=PASS ProcessTokenUnchanged=True'
-    foreach ($profile in $profiles) {
+    foreach ($profile in $cases) {
         foreach ($disposition in @(0, 1, 3, 4, 5)) {
             $case = Join-Path $root ($profile.Name + '-' + $disposition)
             [void][IO.Directory]::CreateDirectory($case)
@@ -174,21 +182,32 @@ try {
             Set-FixtureAcl $nativePath $false $profile.Deny
             Set-FixtureAcl $probePath $false $profile.Deny
             $descriptor = [IO.File]::GetAccessControl($probePath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)
-            $native = $null; $probe = $null
+            $native = $null; $probe = $null; $nativeGuard = $null; $probeGuard = $null
             try {
+                if ($null -ne $profile.GuardShare) {
+                    # The guard observes attributes only when READ_DATA is denied.
+                    # Otherwise it reserves the native read-sharing class.
+                    $guardAccess = $(if (($profile.Deny -band 1) -ne 0) { 0x00100080 } else { 0x00100081 })
+                    $nativeGuard = [WriterPermissionNativeControl]::Open($nativePath, $guardAccess, $profile.GuardShare, 1)
+                    $probeGuard = [WriterPermissionNativeControl]::Open($probePath, $guardAccess, $profile.GuardShare, 1)
+                    if (-not $nativeGuard.Accepted -or -not $probeGuard.Accepted) { throw 'Sharing guard could not open.' }
+                }
                 $native = [WriterPermissionNativeControl]::Open($nativePath, 0x00100002, 7, $disposition)
                 $checkAccess = [WriterPermissionNativeControl]::CheckAccess(0x00100002, $disposition)
                 $probe = [WriterPermissionNativeControl]::Open($probePath, $checkAccess, 7, 1)
-                $row = [pscustomobject]@{ Profile=$profile.Name; Disposition=$disposition;
+                if ($profile.Name -eq 'full' -and -not $native.Accepted) { throw 'Positive native fixture was denied.' }
+                $row = [pscustomobject]@{ Profile=$profile.Name; Disposition=$disposition; GuardShare=$profile.GuardShare;
                     NativeStatus=('0x{0:X8}' -f $native.Status); NativeIoStatus=$native.IoStatus;
                     NativeInformation=$native.Information; NativeGranted=('0x{0:X8}' -f $native.GrantedAccess);
                     ProbeStatus=('0x{0:X8}' -f $probe.Status); ProbeIoStatus=$probe.IoStatus;
                     ProbeInformation=$probe.Information; ProbeGranted=('0x{0:X8}' -f $probe.GrantedAccess);
-                    OutcomeEquivalent=($native.Accepted -eq $probe.Accepted) }
+                    OutcomeEquivalent=($native.Accepted -eq $probe.Accepted -and $native.Status -eq $probe.Status) }
                 $rows.Add($row); Write-Output ($row | ConvertTo-Json -Compress)
             } finally {
                 if ($null -ne $probe) { $probe.Dispose() }
                 if ($null -ne $native) { $native.Dispose() }
+                if ($null -ne $probeGuard) { $probeGuard.Dispose() }
+                if ($null -ne $nativeGuard) { $nativeGuard.Dispose() }
             }
             if ([WriterPermissionNativeControl]::Identity($probePath) -ne $id) { throw 'Probe changed full file identity.' }
             if ([IO.File]::GetAccessControl($probePath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All) -ne $descriptor) { throw 'Probe changed security.' }
