@@ -1,6 +1,7 @@
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -44,8 +45,13 @@ public sealed class StagedPublicationNativeJournalTests : IDisposable
             await journal.ApplyAttachmentV20Async(new(operation, request, version, _driver, binding.Parent,
                 allocated.Transfer.DestinationPath, process.Id), true, true, default);
         var entry = await journal.SealAsync(allocated.Transfer.TransferId, process.Id, allocated.Transfer.StagePath, default, version);
-        await journal.TransitionAsync(entry.Transfer.TransferId, TransferJournalState.Sealed, TransferJournalState.Inspecting, entry.Sha256Hex, default);
-        entry = await journal.TransitionAsync(entry.Transfer.TransferId, TransferJournalState.Inspecting, TransferJournalState.Approved, entry.Sha256Hex, default);
+        using var snapshot = StagedStageFile.Open(allocated.Transfer.StagePath);
+        Assert.Equal(entry.StageIdentity, snapshot.Identity);
+        Assert.Equal(entry.SealedLength, snapshot.Stream.Length);
+        string digest = Convert.ToHexString(await SHA256.HashDataAsync(snapshot.Stream));
+        Assert.Equal(entry.SealedLength, snapshot.Stream.Length);
+        await journal.TransitionAsync(entry.Transfer.TransferId, TransferJournalState.Sealed, TransferJournalState.Inspecting, digest, default);
+        entry = await journal.TransitionAsync(entry.Transfer.TransferId, TransferJournalState.Inspecting, TransferJournalState.Approved, digest, default);
         return (binding, allocated, entry);
     }
 
