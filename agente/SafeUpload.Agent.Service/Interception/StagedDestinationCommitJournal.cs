@@ -309,6 +309,10 @@ public sealed partial class StagedTransferJournal
             if (head.Deletes.Any(d => IsPublicationReservation(d) &&
                     d.Binding.PublicIdentity != binding.PublicIdentity))
                 throw new IOException("The public object conflicts with an accepted deletion reservation.");
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            retainedManifestHighWater = Math.Max(retainedManifestHighWater,
+                await BoundManifestHighWaterCoreAsync(turn.Destination, token).ConfigureAwait(false));
+#endif
             long generation = checked(Math.Max(head.MaxAllocated, retainedManifestHighWater) + 1);
             var admitted = new StagedPublicDeleteRecord(binding, generation, StagedPublicDeleteState.Admitted,
                 DateTimeOffset.UtcNow);

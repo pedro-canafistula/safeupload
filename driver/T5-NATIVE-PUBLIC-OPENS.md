@@ -1,5 +1,62 @@
 # T5 native public opens and delete lifetime
 
+## Ordinary public disposition integration — proposal for review, 2026-10-12
+
+The remaining ordinary-delete path must preserve the actual NTFS open and caller's DELETE grant. The earlier exported service
+handle introduces a second application handle count on that same FILE_OBJECT and difficult foreign-handle revocation/reuse races.
+Proposed correction: the service orders and journals the transaction, while a one-use driver permit releases the **original outer
+SetInformation operation once** to NTFS. No service reopen, exported handle, TargetFileObject substitution or synthesized data FCB.
+This is a proposed implementation change requiring Luna security-design review; it is not permission to change product behavior.
+
+1. Extend the local native-object map to distinguish ordinary non-writing FILE_OPEN + DELETE from CREATE delete-on-close. Ordinary
+   open does not allocate a delete generation, delete or tombstone a name. Reserve its nonpaged record before the original CREATE;
+   establish a short logical destination binding reservation, then forward the original CREATE unchanged. Binding and reservation
+   release use the exact original object/volume/root/parent/leaf and actual DeleteAccess. No local object reference prevents cleanup.
+   NTFS owns reads, cache, sections, byte locks and sharing. Failed ordinary tracking grants no disposition authority; original open
+   results remain native. Rebinding an accepted read-only object must be exact and automatic before a disposition can be authorized.
+2. Capture the destination's durable Published generation at ordinary binding as evidence, without allocating a delete version.
+   A later disposition gets a fresh transfer/nonce/operation and max+1 generation. An old open must never confer DELETE on a
+   replacement: if exact observation shows a different identity and the shared head proves that replacement was Published after
+   this open bound, the old-object operation cannot delete or tombstone the replacement. An allocated/unsealed/blocked successor
+   supplies no such suppression evidence. Unexplained identity changes fail closed. Native scheduled ordering remains unchanged.
+3. Queue each ordinary disposition under its exact currently open FILE_OBJECT and checked DELETE grant, including duplicate or
+   inherited handles. Capture the complete original flags/information-class, requestor mode and operation sequence. Do not use
+   a primary PID token as filesystem authority or recheck a DACL under SYSTEM. Pin only references needed by pending I/O, with no
+   extra application handle. Normal FALSE clears still affect all provisional ordinary intents on that same checked name/object,
+   across handles/owners; they cannot cancel native CREATE delete-on-close or completed deletion.
+4. The service acquires the destination reconciliation turn, includes retained manifest/tombstone high-water and durably records
+   the existing ordinary delete intent/PendingCommit before returning a typed, exact one-use forward permit. It retains the logical
+   turn through NTFS result recording, outside global locks and bounded disk slots. The kernel atomically checks current channel
+   authority, immutable object binding, operation sequence, cancellation and instance retirement before releasing the original
+   SetInformation to NTFS. No service grant substitutes for Windows' actual handle DELETE/parent DELETE_CHILD authorization.
+5. Preserve the original I/O's security/privilege context and flags through the lower operation. Preferred preoperation path is an
+   inline prepare at supported IRQL, without namespace/stream/spin locks, so the original callback thread proceeds to NTFS unchanged.
+   If a pended worker is necessary, it needs a reviewed mechanism preserving the original operation subject, including privilege
+   checks, without modifying Data->Thread or falling back to SYSTEM. An unsupported mechanism must be rejected before implementation.
+6. Postoperation captures the actual NTSTATUS and sends immutable result facts away from unsafe callback contexts. Persist accepted
+   or failed disposition before completing the caller when possible. Never turn an NTFS-accepted mutation into an artificial failure
+   after lost bookkeeping; retain the durable intent/hold and reconcile automatically. Original NTFS failure remains a failure.
+   Close/reconnect/timeout/cancellation must release local references and permit ownership exactly once; they never imply no mutation.
+7. A service crash loses its ephemeral turn but not PendingCommit. Startup reconciles exact native operation facts and anchored name
+   state before releasing that destination's barrier or allowing another physical commit. No replay invokes original SetInformation
+   a second time. Actual last cleanup and resolving directory events complete deletion/clear receipts. Owner tombstones appear only
+   after actual accepted disposition and apply to the checked name/object, never a newer proven published replacement.
+8. Ordinary read-only opens alone must not add an unload veto when no private work, mutation, RPC or cleanup is outstanding: NTFS
+   owns their complete data lifetime. In-flight binding/disposition, accepted/uncertain deletion and callback/worker references veto
+   voluntary unload. Mandatory shutdown drains only local work without waiting on the service, retaining durable uncertainty.
+
+The concrete ABI must preserve existing operation/enum numbers and use distinct feature-only versions with exact packing/length,
+zero-tail and phase/nonce/operation/sequence/object/generation checks. Read-only replay must expose enough immutable operation facts
+to reconcile the durable intent; never infer execution from PID, a counter, absence alone or a generic verdict. Add no persisted
+recovery state beyond the already approved AcceptedUnresolved; ordinary Intent/Accepted/Failed/Canceled/Complete remain as defined.
+Keep admission disabled until all ordinary/native disposition, publication and recovery paths share this head.
+
+Required controls: original ShareAccess=0, denied DELETE and parent DELETE_CHILD, readonly/image/byte-lock restrictions, FALSE across
+owners, duplicate handles, old handle after a newer Published replacement, blocked successor, canceled before/after forward, lost
+prepare/result, service crash/restart at each durable transition, resolving last close, all forced-order/Notepad/raw-byte assertions,
+and the single integrated kernel lifetime review before the first revised boot. If the relay changes who may delete, accepted results,
+or the owner's timing/automatic-recovery guarantees, stop and ask with user-visible options before implementing it.
+
 Date: 2026-10-11. **Security design READY WITH CORRECTIONS; implementation and runtime qualification remain pending.**
 The [focused Luna review](evidence/2026-10-11/t5-automatic-native-delete-recovery-review-luna6.md) requires the corrections below.
 This replaces the synthetic public-FCB proposal at `05ad4df9`, rejected by the

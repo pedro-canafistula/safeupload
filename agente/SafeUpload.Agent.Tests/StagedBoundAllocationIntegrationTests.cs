@@ -99,8 +99,10 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         Assert.False(File.Exists(Path.Combine(Parent, binding.CanonicalLeaf)));
     }
 
-    [Fact]
-    public async Task Native_prepare_high_water_includes_retained_bound_manifest_even_after_head_loss()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Delete_high_water_includes_retained_bound_manifest_even_after_head_loss(bool nativeScheduled)
     {
         Directory.CreateDirectory(Parent);
         File.WriteAllText(Path.Combine(Parent, "save.txt"), "approved source");
@@ -113,10 +115,13 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
             save.Transfer.SessionId!.Value, save.Transfer.RequestorSid!, 42, binding.MountManagerVolumeId);
         using var turn = await journal.EnterDestinationCommitTurnAsync(binding.Destination,
             StagedDestinationTurnPurpose.Allocation, CancellationToken.None);
-        var prepared = await journal.BeginNativeDeleteOnCloseCreateAsync(turn, native, Guid.NewGuid(),
-            save.Transfer.DestinationPath, retainedManifestHighWater: 0, CancellationToken.None);
+        var prepared = nativeScheduled
+            ? await journal.BeginNativeDeleteOnCloseCreateAsync(turn, native, Guid.NewGuid(),
+                save.Transfer.DestinationPath, retainedManifestHighWater: 0, CancellationToken.None)
+            : await journal.AdmitPublicDeleteAsync(turn, native, save.Transfer.DestinationPath,
+                retainedManifestHighWater: 0, CancellationToken.None);
         Assert.Equal(save.DestinationGeneration + 1, prepared.Generation);
-        Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved, prepared.State);
+        Assert.Equal(nativeScheduled ? StagedPublicDeleteState.AcceptedUnresolved : StagedPublicDeleteState.Admitted, prepared.State);
         var head = (await journal.ReadDestinationHeadAsync(binding.Destination, CancellationToken.None))!;
         Assert.Equal(prepared.Generation, head.MaxAllocated);
         Assert.Equal(binding, (await journal.ReadAsync(binding.ReservationId, CancellationToken.None)).BoundAllocation);
