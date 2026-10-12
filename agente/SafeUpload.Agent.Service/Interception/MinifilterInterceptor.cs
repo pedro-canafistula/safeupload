@@ -59,6 +59,8 @@ public sealed class MinifilterInterceptor : BackgroundService
     private StagedTransferJournal? _stageJournal;
     private StagedTransferPublisher? _stagePublisher;
 
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, StagedRejectedAllocation>
+        _rejectedAllocations = new();
     private long _overBudget;
     private long _answered;
     private bool _overrideAllowed;
@@ -256,6 +258,8 @@ public sealed class MinifilterInterceptor : BackgroundService
                 while (!stoppingToken.IsCancellationRequested &&
                        port.TryGetMessage(out SafeUploadRequest request, out ulong messageId, stoppingToken))
                 {
+                    var timing = new StagedRequestTiming();
+                    StagedAllocation? allocation = null;
                     uint verdict;
                     string? stageName = null;
                     if (request.Version != Contract.Version || request.StructSize != Contract.RequestSize ||
@@ -265,7 +269,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     }
                     else if (request.Operation == Operation.StageAllocate)
                     {
-                        (verdict, stageName) = AllocateStage(request);
+                        (verdict, stageName) = AllocateStage(request, timing, out allocation);
                     }
                     else if (request.Operation == Operation.StageSeal)
                     {
@@ -290,11 +294,29 @@ public sealed class MinifilterInterceptor : BackgroundService
 
                     try
                     {
-                        port.Reply(messageId, request.RequestId, verdict, stageName);
+                        timing.Mark("handler");
+                        FilterReplyResult reply = port.Reply(messageId, request.RequestId, verdict, stageName);
+                        timing.Mark("reply");
+                        StagedRejectedAllocation? rejected = StagedRejectedAllocation.FromReply(
+                            messageId, request.RequestId, allocation, reply);
+                        if (rejected is not null)
+                            _rejectedAllocations.TryAdd(rejected.Allocation.Entry.Transfer.TransferId, rejected);
+                        if (reply == FilterReplyResult.NoWaiter || timing.ElapsedMs >= 1000)
+                            _logger.LogWarning("Staged request {RequestId}, message {MessageId}, operation {Operation}, " +
+                                "verdict {Verdict}, reply {Reply}, transfer {TransferId}, generation {Generation}, " +
+                                "file {FileIdentity}, elapsed {ElapsedMs:F1} ms, phases {Phases}.",
+                                request.RequestId, messageId, request.Operation, verdict,
+                                reply == FilterReplyResult.NoWaiter ? "ERROR_FLT_NO_WAITER_FOR_REPLY (0x801F0020)" : "Delivered",
+                                allocation?.Entry.Transfer.TransferId, allocation?.Entry.DestinationGeneration,
+                                allocation?.Identity, timing.ElapsedMs, timing.ToString());
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Falha ao responder o veredito {RequestId}.", request.RequestId);
+                        _logger.LogWarning(ex, "Reply failed: request {RequestId}, message {MessageId}, " +
+                            "operation {Operation}, transfer {TransferId}, generation {Generation}, file {FileIdentity}, " +
+                            "elapsed {ElapsedMs:F1} ms, phases {Phases}. Allocation remains private.",
+                            request.RequestId, messageId, request.Operation, allocation?.Entry.Transfer.TransferId,
+                            allocation?.Entry.DestinationGeneration, allocation?.Identity, timing.ElapsedMs, timing.ToString());
                     }
                 }
             }
@@ -387,8 +409,10 @@ public sealed class MinifilterInterceptor : BackgroundService
         flags.HasFlag(RequestFlags.StageNetwork) ? DestinationKind.NetworkShare :
         flags.HasFlag(RequestFlags.StageRemovable) ? DestinationKind.RemovableDrive : DestinationKind.Cloud;
 
-    private (uint Verdict, string? StageName) AllocateStage(SafeUploadRequest request)
+    private (uint Verdict, string? StageName) AllocateStage(SafeUploadRequest request,
+        StagedRequestTiming timing, out StagedAllocation? allocation)
     {
+        allocation = null;
         if (_stageAllocator is null || request.Version != Contract.Version ||
             !request.HasKnownFlags ||
             request.TypedFlags.HasFlag(RequestFlags.PathTruncated) ||
@@ -458,19 +482,20 @@ public sealed class MinifilterInterceptor : BackgroundService
                 previous = prior.Transfer;
                 processName = previous.ProcessName;
             }
-            var transfer = _stageAllocator.AllocateAsync(
+            timing.Mark("policy-and-owner");
+            allocation = _stageAllocator.AllocateForReplyAsync(
                 destination, kind, processName,
                 requestorProcessId,
                 requestor.SessionId,
                 request.Reserved, previous,
                 CancellationToken.None, tombstoneOwner, requestor.UserSid.Value,
-                requestor.CreationTimeFileTime).GetAwaiter().GetResult();
-            return (PortVerdict.Allow, Path.GetFileName(transfer.StagePath));
+                requestor.CreationTimeFileTime, timing).GetAwaiter().GetResult();
+            return (PortVerdict.Allow, Path.GetFileName(allocation.Entry.Transfer.StagePath));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Falha ao reservar estagio para a requisicao {RequestId}.",
-                request.RequestId);
+            _logger.LogError(ex, "Allocation failed for request {RequestId}, elapsed {ElapsedMs:F1} ms, phases {Phases}.",
+                request.RequestId, timing.ElapsedMs, timing.ToString());
             return (PortVerdict.Deny, null);
         }
     }
@@ -515,12 +540,40 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
     }
 
+    private async Task RecoverRejectedAllocationsAsync(CancellationToken token)
+    {
+        if (_stageJournal is null) return;
+        foreach (var pair in _rejectedAllocations)
+        {
+            StagedRejectedAllocation rejected = pair.Value;
+            if (Stopwatch.GetTimestamp() < rejected.RetryAt) continue;
+            try
+            {
+                await _stageJournal.RetireRejectedAllocationAsync(rejected, token).ConfigureAwait(false);
+                _rejectedAllocations.TryRemove(pair.Key, out _);
+                _logger.LogInformation("Reclaimed unaccepted allocation {TransferId}, generation {Generation}, " +
+                    "request {RequestId}, message {MessageId}, file {FileIdentity} after exact NO_WAITER reply.",
+                    pair.Key, rejected.Allocation.Entry.DestinationGeneration, rejected.RequestId,
+                    rejected.MessageId, rejected.Allocation.Identity);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            {
+                rejected.Backoff();
+                _logger.LogWarning(error, "Rejected allocation cleanup remains private: transfer {TransferId}, " +
+                    "request {RequestId}, message {MessageId}, file {FileIdentity}.", pair.Key,
+                    rejected.RequestId, rejected.MessageId, rejected.Allocation.Identity);
+            }
+        }
+    }
+
     private async Task PublishSealedLoopAsync(CancellationToken cancellationToken)
     {
         if (_stageJournal is null || _stagePublisher is null) return;
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            await RecoverRejectedAllocationsAsync(cancellationToken).ConfigureAwait(false);
             await _stagePublisher.RecoverJournalProgressAsync(cancellationToken).ConfigureAwait(false);
             foreach (var entry in await _stageJournal.ReadPendingAsync(cancellationToken)
                          .ConfigureAwait(false))

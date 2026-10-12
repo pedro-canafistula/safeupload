@@ -199,7 +199,7 @@ public sealed partial class FilterPort : IDisposable
         return true;
     }
 
-    public unsafe void Reply(ulong messageId, ulong requestId, uint verdict,
+    public unsafe FilterReplyResult Reply(ulong messageId, ulong requestId, uint verdict,
         string? stageName = null)
     {
         if (stageName is { Length: >= Contract.MaxStageNameChars } ||
@@ -237,14 +237,18 @@ public sealed partial class FilterPort : IDisposable
         }
 
         int hr = FilterReplyMessage(Handle, (IntPtr) buffer, (uint) size);
+        return DecodeReplyResult(hr);
+    }
 
-        // A reply that misses its window is not fatal: the driver has
-        // already timed out and allowed the operation. Worth counting,
-        // not worth throwing over.
-        if (hr != 0 && hr != unchecked((int) 0x8007010B))
-        {
+    internal static FilterReplyResult DecodeReplyResult(int hr)
+    {
+        // Staged allocation refuses an unanswered request. Only this native
+        // result proves our one reply was not delivered; other errors stay
+        // ambiguous and must never authorize unclaimed-stage deletion.
+        if (hr == unchecked((int)0x801F0020)) return FilterReplyResult.NoWaiter;
+        if (hr != 0)
             throw new Win32Exception(hr, $"FilterReplyMessage falhou: 0x{hr:X8}");
-        }
+        return FilterReplyResult.Delivered;
     }
 
     /// <summary>

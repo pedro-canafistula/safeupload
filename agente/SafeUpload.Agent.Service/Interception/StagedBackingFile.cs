@@ -9,7 +9,7 @@ namespace SafeUpload.Agent.Service.Interception;
 // do not invalidate. Use aligned, noncached writes from the first byte onward.
 internal static class StagedBackingFile
 {
-    public static async Task CreateAsync(string? source, string destination, long maximumBytes, CancellationToken token)
+    public static async Task<StagedStageIdentity> CreateAsync(string? source, string destination, long maximumBytes, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         await using var input = source is null ? null : new FileStream(source,
@@ -51,6 +51,7 @@ internal static class StagedBackingFile
                 throw new IOException("Could not durably finish private backing.", new Win32Exception());
         }
         finally { Marshal.FreeHGlobal(allocation); }
+        return StagedDestinationFile.ReadIdentity(output);
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

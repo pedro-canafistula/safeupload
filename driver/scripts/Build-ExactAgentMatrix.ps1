@@ -461,7 +461,19 @@ function Remove-CompletedProfileOutputs {
             $generatedPaths += ,$generated
         }
     }
-    foreach ($generated in $generatedPaths) { Remove-Item -LiteralPath $generated -Recurse -Force }
+    foreach ($generated in $generatedPaths) {
+        # Scanner/image-handle release may lag the already-drained build job.
+        # Retry only these validated generated paths; a persistent denial fails.
+        for ($attempt = 0; ; $attempt++) {
+            try {
+                if (Test-Path -LiteralPath $generated) { Remove-Item -LiteralPath $generated -Recurse -Force -ErrorAction Stop }
+                break
+            } catch {
+                if ($attempt -ge 4) { throw }
+                Start-Sleep -Milliseconds (250 * [Math]::Pow(2, $attempt))
+            }
+        }
+    }
     Write-Output ('PROFILE_OUTPUT_CLEANUP=' + [IO.Path]::GetFileName($profilePath) +
         '; directories=' + $generatedPaths.Count + '; source_and_evidence_retained=True')
 }

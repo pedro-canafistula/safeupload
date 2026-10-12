@@ -119,6 +119,15 @@ public sealed class StagedTransferAllocator
         Guid? tombstoneOwner = null,
         string? requestorSid = null,
         long? requestorProcessCreationTime = null)
+        => (await AllocateForReplyAsync(destinationPath, destination, processName, processId,
+            sessionId, disposition, previous, cancellationToken, tombstoneOwner, requestorSid,
+            requestorProcessCreationTime).ConfigureAwait(false)).Entry.Transfer;
+
+    internal async Task<StagedAllocation> AllocateForReplyAsync(
+        string destinationPath, DestinationKind destination, string processName, int processId,
+        uint? sessionId, uint disposition, StagedTransfer? previous, CancellationToken cancellationToken,
+        Guid? tombstoneOwner = null, string? requestorSid = null,
+        long? requestorProcessCreationTime = null, StagedRequestTiming? timing = null)
     {
         string fullDestination = Path.GetFullPath(destinationPath);
         if (string.IsNullOrEmpty(Path.GetFileName(fullDestination)) ||
@@ -181,11 +190,13 @@ public sealed class StagedTransferAllocator
         }
 
         bool copyExisting = disposition is 1 or 3 && sourceExists;
+        StagedStageIdentity? identity = null;
+        timing?.Mark("prepare");
         try
         {
             if (OperatingSystem.IsWindows())
             {
-                await StagedBackingFile.CreateAsync(copyExisting ? source ?? fullDestination : null,
+                identity = await StagedBackingFile.CreateAsync(copyExisting ? source ?? fullDestination : null,
                     transfer.StagePath, MaximumSeedBytes, cancellationToken).ConfigureAwait(false);
             }
             else if (copyExisting)
@@ -224,10 +235,12 @@ public sealed class StagedTransferAllocator
             if (_fileSecurity is not null)
                 new FileInfo(transfer.StagePath).SetAccessControl(_fileSecurity);
 
+            timing?.Mark("backing");
         // CreateAsync flushes the manifest to disk and atomically makes it
         // visible. Nothing is returned to the driver before this succeeds.
-            await _journal.CreateAsync(transfer, cancellationToken, tombstoneOwner).ConfigureAwait(false);
-            return transfer;
+            TransferJournalEntry entry = await _journal.CreateAsync(transfer, cancellationToken,
+                tombstoneOwner, timing is null ? null : timing.Observe).ConfigureAwait(false);
+            return new StagedAllocation(entry, identity);
         }
         catch
         {

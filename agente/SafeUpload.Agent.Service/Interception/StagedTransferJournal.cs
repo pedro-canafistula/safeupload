@@ -115,7 +115,8 @@ public sealed partial class StagedTransferJournal
     public async Task<TransferJournalEntry> CreateAsync(
         StagedTransfer transfer,
         CancellationToken cancellationToken,
-        Guid? tombstoneOwner = null)
+        Guid? tombstoneOwner = null,
+        Action<string, double>? phaseTiming = null)
     {
         ArgumentNullException.ThrowIfNull(transfer);
         if (transfer.TransferId == Guid.Empty)
@@ -133,9 +134,12 @@ public sealed partial class StagedTransferJournal
         string path = ManifestPath(transfer.TransferId);
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
 
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            phaseTiming?.Invoke("journal-wait", System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            started = System.Diagnostics.Stopwatch.GetTimestamp();
             var versions = await DestinationVersionsAsync(transfer.DestinationPath, cancellationToken)
                 .ConfigureAwait(false);
             if (versions.Any(e => e.Reserved))
@@ -156,6 +160,8 @@ public sealed partial class StagedTransferJournal
             }
             entry = entry with { DestinationGeneration = checked(versions.Select(e => e.Generation)
                 .DefaultIfEmpty(0).Max() + 1) };
+            phaseTiming?.Invoke("journal-scan", System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            started = System.Diagnostics.Stopwatch.GetTimestamp();
             await using (var stream = CreatePrivateTemporary(temporary))
             {
                 await JsonSerializer.SerializeAsync(stream, entry, cancellationToken: cancellationToken)
@@ -169,6 +175,7 @@ public sealed partial class StagedTransferJournal
             // duplicate ID cannot take over an earlier destination.
             File.Move(temporary, path);
             ForgetScanned(transfer.TransferId);
+            phaseTiming?.Invoke("journal-write", System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
         finally
         {
