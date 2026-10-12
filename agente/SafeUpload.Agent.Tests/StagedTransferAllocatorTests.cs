@@ -23,6 +23,23 @@ public sealed class StagedTransferAllocatorTests : IDisposable
     public void Dispose() => _workspace.Dispose();
 
     [Fact]
+    public void Bound_allocation_marker_is_opaque_and_cannot_fall_back_to_v20_or_image_text()
+    {
+        SafeUploadRequest request = MakeAllocateRequest(Contract.StageBoundAllocationVersion,
+            RequestFlags.StageV19Reply, new byte[124]);
+        Assert.True(request.UsesStageBinaryPayload);
+        Assert.False(request.TryReadStagePayload<SafeUploadStageAllocateV19>(
+            Operation.StageAllocate, out _));
+        Assert.Throws<InvalidOperationException>(() => request.GetImageName());
+#if !SAFEUPLOAD_ADMISSION_EVIDENCE
+        Assert.False(request.HasKnownFlags);
+        Assert.Null(typeof(SafeUploadRequest).Assembly.GetType(
+            "SafeUpload.Agent.Minifilter.SafeUploadStageAllocateV23"));
+        Assert.Null(typeof(SafeUploadRequest).GetMethod("TryReadBoundAllocationV23"));
+#endif
+    }
+
+    [Fact]
     public void V19_allocate_marker_with_legacy_reserved_value_is_rejected_before_text_decode()
     {
         SafeUploadRequest request = MakeAllocateRequest(3, RequestFlags.StageV19Reply,

@@ -2,6 +2,7 @@
  * It exports no object addresses, handles, grants or mutation permits. */
 #include "StageNativeRecords.h"
 #include "StageNativeWire.h"
+#include "StageBoundAllocation.h"
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #define NATIVE_WIRE_TAG 'wUpS'

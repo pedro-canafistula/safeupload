@@ -50,6 +50,9 @@ public static class Contract
     // Stage-only v20 is an opt-in typed payload layered on the unchanged v18
     // request/response. It does not change the ordinary verdict ABI.
     public const uint StageExtensionVersion = 20;
+    // A distinct reserved carrier, never interpreted as image-name text.
+    // The bound payload and its parser compile only in feature builds.
+    public const uint StageBoundAllocationVersion = 23;
     public const uint StageV19ReplyFlag = 0x00000200;
     public const uint StageV20ReplyFlag = StageV19ReplyFlag;
     public const int StageIdentityV19Size = 24;
@@ -82,6 +85,9 @@ public static class Contract
     /// </summary>
     public static unsafe void Verify()
     {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        BoundAllocationV23Contract.Verify();
+#endif
         Check(nameof(SafeUploadRequest), sizeof(SafeUploadRequest), RequestSize);
         Check(nameof(SafeUploadResponse), sizeof(SafeUploadResponse), ResponseSize);
         Check(nameof(SafeUploadControl), sizeof(SafeUploadControl), ControlSize);
@@ -484,7 +490,7 @@ public unsafe struct SafeUploadAdmissionCoverageStatus
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
-public unsafe struct SafeUploadRequest
+public unsafe partial struct SafeUploadRequest
 {
     public uint Version;
     public uint StructSize;
@@ -505,6 +511,17 @@ public unsafe struct SafeUploadRequest
         get
         {
             const uint legacyKnown = 0x000001ff;
+            if (Reserved == Contract.StageBoundAllocationVersion)
+            {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                const uint boundKnown = 0x000000c0 | Contract.StageV19ReplyFlag;
+                return Operation == global::SafeUpload.Agent.Minifilter.Operation.StageAllocate &&
+                    (Flags & ~boundKnown) == 0 && (Flags & 0x000000c0) != 0x000000c0 &&
+                    (Flags & Contract.StageV19ReplyFlag) != 0;
+#else
+                return false;
+#endif
+            }
             if (Reserved == Contract.StageExtensionVersion &&
                 !IsStageV20TypedOperation(Operation) &&
                 Operation != global::SafeUpload.Agent.Minifilter.Operation.StageAllocate &&
@@ -592,7 +609,8 @@ public unsafe struct SafeUploadRequest
         return true;
     }
 
-    public bool UsesStageBinaryPayload => Reserved == Contract.StageExtensionVersion ||
+    public bool UsesStageBinaryPayload => Reserved == Contract.StageBoundAllocationVersion ||
+        Reserved == Contract.StageExtensionVersion ||
         IsStageV20TypedOperation(Operation) ||
         (Operation == global::SafeUpload.Agent.Minifilter.Operation.StageAllocate &&
             (Reserved == Contract.StageExtensionVersion ||
