@@ -12,6 +12,9 @@
 #
 # Evidence: driver/evidence/<day>/<tag>-*.txt|jsonl; the verdict is <tag>-verdict.txt; the exit status is 0 only when every required
 # line passes.
+# T4_MEMORY_TOOLS may name a local directory containing debuggers.zip and the exact SafeUpload.pdb.
+# This adds read-only local-KD attribution and fixed-identity controls on the throwaway disk. It is diagnostic,
+# not milestone qualification; all original verdicts remain unchanged. No host debugger/configuration is installed.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; cycles="${5:-10000}"; mode="${6:-runtime-verifier}"; sample_every="${7:-500}"
@@ -19,6 +22,14 @@ dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?
 [[ "$cycles" =~ ^[0-9]{1,6}$ ]] || { echo 'Invalid cycle count'; exit 2; }
 [[ "$sample_every" =~ ^[1-9][0-9]{0,5}$ ]] || { echo 'Invalid sample interval'; exit 2; }
 case "$mode" in ordinary|runtime-verifier|verifier-from-boot) ;; *) echo 'Unknown mode'; exit 2;; esac
+memory_tools=${T4_MEMORY_TOOLS:-}
+memory_enabled=no
+if [ -n "$memory_tools" ]; then
+    [ "$mode" = verifier-from-boot ] && [ -s "$memory_tools/debuggers.zip" ] && [ -s "$memory_tools/SafeUpload.pdb" ] || {
+        echo 'Memory attribution requires boot Verifier, debugger archive and exact PDB'; exit 2;
+    }
+    memory_enabled=yes
+fi
 # verifier-from-boot: the same Verifier flags (0x13B) configured persistently before the install reboot, so pool tracking covers the
 # driver from its first allocation and the agent reaches Ready through the normal boot path (runtime-verifier's fltmc load after
 # boot is a late attach, which never reports Ready).
@@ -65,6 +76,16 @@ finish() {
     trap - EXIT TERM INT HUP
     printf 'T4StopReason=%s;ExitCode=%s;Phase=%s;Progress=%s;ElapsedSeconds=%s\n' \
         "$stop_reason" "$test_status" "$phase" "$state" "$waited" | tee "$ev/$tag-stop.txt"
+    if [ "$memory_enabled" = yes ]; then
+        mkdir -p "$ev/$tag-memory"
+        if timeout 60 scp -r "${opts[@]}" "vika@$host:C:/T4Memory/output" "$ev/$tag-memory/" \
+            > "$ev/$tag-memory-export.txt" 2>&1; then
+            echo 'T4MemoryEvidenceExport=PASS' >> "$ev/$tag-memory-export.txt"
+        else
+            echo 'T4MemoryEvidenceExport=FAILED' >> "$ev/$tag-memory-export.txt"
+            test_status=25
+        fi
+    fi
     if [ "$phase" = cycles ]; then
         # Preserve partial progress even when the launcher receives a signal.
         timeout 90 scp "${opts[@]}" "vika@$host:C:/T4/cycles.jsonl" "$ev/$tag-cycles-at-stop.jsonl" >/dev/null 2>&1 || true
@@ -159,6 +180,24 @@ Set-Content -LiteralPath "$data\policy.json" -Value $policy -Encoding UTF8
 'INSTALL_DONE=True'
 PS
 grep -qx 'INSTALL_DONE=True' "$ev/$tag-install.txt" || { echo 'install failed'; exit 15; }
+if [ "$memory_enabled" = yes ]; then
+    scp "${opts[@]}" "$memory_tools/debuggers.zip" "$memory_tools/SafeUpload.pdb" \
+        driver/scripts/t4/memory-debugger.ps1 "vika@$host:$guest/" || exit 14
+    remote <<'PS' | tee "$ev/$tag-memory-setup.txt"
+$ErrorActionPreference='Stop'
+$d='C:\Users\vika\Documents'
+New-Item -ItemType Directory -Path C:\T4Memory\symbols -Force | Out-Null
+Expand-Archive -LiteralPath "$d\debuggers.zip" -DestinationPath C:\T4Memory
+Copy-Item -LiteralPath "$d\SafeUpload.pdb" -Destination C:\T4Memory\symbols\SafeUpload.pdb
+Copy-Item -LiteralPath "$d\memory-debugger.ps1" -Destination "$d\t4-memory-debugger.ps1"
+& bcdedit.exe /debug on
+if($LASTEXITCODE -ne 0){throw 'Could not enable local debugging on the run disk.'}
+& bcdedit.exe /dbgsettings local
+if($LASTEXITCODE -ne 0){throw 'Could not select local debug transport.'}
+'T4MemorySetup=True'
+PS
+    grep -qx 'T4MemorySetup=True' "$ev/$tag-memory-setup.txt" || exit 16
+fi
 if [ "$mode" = runtime-verifier ]; then
     remote <<'PS' | tee "$ev/$tag-demand-held.txt"
 $ErrorActionPreference = 'Stop'
@@ -206,6 +245,17 @@ remote <<'PS' | tee "$ev/$tag-ready.txt"
 & 'C:\Users\vika\Documents\t4-agent-readiness.ps1'
 PS
 grep -qx 'READY=True' "$ev/$tag-ready.txt" || { stop_reason=admission-not-ready; echo 'agent never Ready'; exit 19; }
+if [ "$memory_enabled" = yes ]; then
+    phase=memory-controls
+    remote <<'PS' | tee "$ev/$tag-memory-controls.txt"
+$ErrorActionPreference='Stop'
+. 'C:\Users\vika\Documents\t4-memory-debugger.ps1'
+Invoke-T4MemoryControls
+PS
+    grep -qx 'T4MemoryControls=PASS' "$ev/$tag-memory-controls.txt" || {
+        stop_reason=memory-controls-failed; exit 23;
+    }
+fi
 
 phase=coordinator-start
 echo "== actor, Verifier ($mode) and the coordinator"
@@ -260,13 +310,14 @@ if ('__MODE__' -in 'runtime-verifier', 'verifier-from-boot') {
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $coordinatorArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t4-cycles-coordinator.ps1" -Cycles __CYCLES__ -SampleEvery __SAMPLE_EVERY__'
 if ('__MODE__' -in 'runtime-verifier', 'verifier-from-boot') { $coordinatorArgs += ' -RequireVerifierPool' }
+if ('__MEMORY__' -eq 'yes') { $coordinatorArgs += ' -MemoryDiagnostic' }
 $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $coordinatorArgs
 Register-ScheduledTask -TaskName 't4-coordinator' -Principal $principal -Action $coordinator -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 't4-coordinator'
 'COORDINATOR_STARTED=True'
 PS
 )
-setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}
+setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 if [ "$mode" != ordinary ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
@@ -421,3 +472,16 @@ open(verdict_path, 'w').write('\n'.join(out) + '\n')
 print('\n'.join(out))
 sys.exit(0 if all(' PASS ' in l or ' INFO ' in l for l in out) else 1)
 PY
+verdict_status=$?
+if [ "$memory_enabled" = yes ] && [ "$alive" = yes ]; then
+    phase=memory-teardown
+    remote <<'PS' | tee "$ev/$tag-memory-teardown.txt"
+$ErrorActionPreference='Stop'
+. 'C:\Users\vika\Documents\t4-memory-debugger.ps1'
+Invoke-T4MemoryTeardown
+PS
+    grep -qx 'T4MemoryTeardown=PASS' "$ev/$tag-memory-teardown.txt" || {
+        stop_reason=memory-teardown-failed; exit 24;
+    }
+fi
+exit "$verdict_status"

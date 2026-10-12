@@ -14,7 +14,8 @@ param(
     [string]$ActorUser = 't4actor',
     [string]$ActorTask = 't4-actor',
     [string]$Diagnostics = 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1',
-    [switch]$RequireVerifierPool
+    [switch]$RequireVerifierPool,
+    [switch]$MemoryDiagnostic
 )
 $ErrorActionPreference = 'Stop'
 function Read-T4ControlText([string]$Path) {
@@ -42,6 +43,7 @@ function Write-T4ResultLine([string]$Path, [string]$Line) {
     try { $stream.Write($bytes, 0, $bytes.Length); $stream.Flush() } finally { $stream.Dispose() }
 }
 . (Join-Path $PSScriptRoot 'failure-evidence.ps1')
+if ($MemoryDiagnostic) { . (Join-Path $PSScriptRoot 't4-memory-debugger.ps1') }
 $out = 'C:\T4'; $control = Join-Path $out 'control'; $root = 'C:\Protected\t4'
 $handback = $null   # the actor's profile, resolved from its SID once the actor has logged on
 $stageDir = 'C:\ProgramData\SafeUpload\staging'; $journalDir = 'C:\ProgramData\SafeUpload\staging-journal'
@@ -127,6 +129,9 @@ function Get-Sample([int]$Cycle, [string]$Label) {
     $sample.JournalFiles = @(Get-ChildItem -LiteralPath $journalDir -Filter *.json -File -Force -ErrorAction SilentlyContinue).Count
     $sample.Handbacks = @(Get-ChildItem -LiteralPath $handback -File -Force -ErrorAction SilentlyContinue).Count
     Write-T4ResultLine (Join-Path $out 'samples.jsonl') ($sample | ConvertTo-Json -Depth 6 -Compress)
+    if ($MemoryDiagnostic -and $Label -in @('start','cycle','idle')) {
+        $null = Save-T4MemorySnapshot ('cycles-' + $Cycle + '-' + $Label)
+    }
     $sample
 }
 

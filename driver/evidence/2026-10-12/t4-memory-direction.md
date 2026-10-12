@@ -4,6 +4,14 @@
 Current evidence establishes a failed gate, not a new kernel leak. No code, assertion, threshold, sample window or VM state
 is changed by this analysis. Further VM runs remain stopped under the owner's repeated-failure rule.
 
+**Execution update:** the owner subsequently approved this diagnostic ("Great, do it"). The optional local-KD harness uses the
+unchanged `60fecdbc` kernel and `6198eee7` agent, with their retained hashes verified. The exact driver's PDB GUID/age matches.
+It enables local debugging only on the throwaway disk, retains context/pool/Verifier output, checks full identities for fixed
+and disjoint corpora, and observes voluntary unload only after the original row's results are exported. It is attribution,
+not milestone qualification. No kernel change or host-wide configuration is involved.
+The [Windows PowerShell 5.1 gate](harness-windows-gate-t4-memory-attribution1.txt) passes all 19 self-checks; the
+[final helper check](harness-t4-memory-final-helper.txt) additionally validates the final output checks and real NTFS identity controls.
+
 ## What the evidence separates
 
 The latest [short result](t4-instrumented-short-result.md) has 256/256 successful outcomes, zero private stage files,

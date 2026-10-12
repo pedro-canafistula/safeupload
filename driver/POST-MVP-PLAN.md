@@ -175,7 +175,8 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
   - [x] Latest `m2t4reject256a1`: 256/256 saves, zero leftover stages/versions/views/tombstones, idle worker;
     [separate restoration passed](evidence/2026-10-12/t4-instrumented-short-result.md). Pool slope 318.863 B/cycle still fails the limit of 4.
   - [ ] Attribute live registry entries and SUfl contexts in a bounded diagnostic before changing reclamation. The older 10k module-pool
-    PASS did not cover SUfl growth. All thresholds/assertions remain; VM runs remain stopped under the repeated-failure rule.
+    PASS did not cover SUfl growth. Owner approved the diagnostic; optional local-KD harness passes PowerShell 5.1/self-checks
+    ([preparation evidence](evidence/2026-10-12/t4-memory-direction.md)). All thresholds/assertions remain; runtime attribution is pending.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
 - [ ] Pass the complete short and 10k rows. Last 10k: 8,740/10,000, four stages left;
