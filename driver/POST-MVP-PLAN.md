@@ -158,52 +158,30 @@ is ready to implement; the failed zero-access reopen is discarded. Unprotected n
 
 ### T4. Remove the 128-saves-per-boot ceiling
 
-**Problem:** retired versions retained slots; later saves failed until reboot. Idle writer-context retention also affected pool accounting.
+**Problem:** retired versions retained slots; later saves failed until reboot. Registry/context memory attribution remains unresolved.
 **Done when:** 10,000 mixed approve/block saves in one boot pass with flat nonpaged pool, no Verifier hit, no cap refusal, zero residual
 versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01 pass in all three modes.
 
-- [x] Lifetime fix and pre-boot review, including `60fecdbc`; `m2-driver5-t11` has all four WDK/PREfast/ApiValidator builds at 0/0.
-- [x] Simplified VM setup and harness gates (`04fc6bbb`); [PowerShell 5.1 gate](evidence/2026-10-11/harness-windows-gate-t4-resume-1011-a1.txt).
-- [x] Bounded readiness reads; real ready/silent/absent pipe controls and all harness self-checks pass in
-  [Windows PowerShell 5.1](evidence/2026-10-11/harness-windows-gate-t4-readiness-1011-a2.txt).
-- [ ] **Failed:** `m2t4boot10k1011a2`, win10-debug3, `m2-driver5-t11` + `t4-af1`, Verifier from boot: 8,740/10,000 passed;
-  845 same-name access denials, 413 rename sharing violations and two missing hand-backs. Four stage files remained.
-  - [x] Retained [verdict](evidence/2026-10-11/m2t4boot10k1011a2-verdict.txt), [all cycle outcomes](evidence/2026-10-11/m2t4boot10k1011a2-cycles.jsonl),
-    [pool/Verifier samples](evidence/2026-10-11/m2t4boot10k1011a2-samples.jsonl), [raw Verifier queries](evidence/2026-10-11/m2t4boot10k1011a2-verifier/),
-    [final result/counters](evidence/2026-10-11/m2t4boot10k1011a2-after.txt)
-    and [service errors](evidence/2026-10-11/m2t4boot10k1011a2-service-events.txt). Pool slope 1.501 B/cycle, no cap refusal, idle worker;
-    settle versions/views failed, though they reached zero after actor exit. No assertion waived.
-  - [x] [Stop reason](evidence/2026-10-11/m2t4boot10k1011a2-stop.txt), [test-disk restoration](evidence/2026-10-11/m2t4boot10k1011a2-final-restored-state.txt)
-    and [separate fresh-disk baseline/restoration](evidence/2026-10-11/m2t4boot10k1011a2-independent-restoration.txt) passed;
-    both [test start](evidence/2026-10-11/m2t4boot10k1011a2-checkpoint.txt) and [verification start](evidence/2026-10-11/m2t4boot10k1011a2restore-start.txt)
-    record EFI reset.
-  - [x] [Read-only diagnosis](evidence/2026-10-11/t4-journal-failure-diagnosis.md): four failed private-journal replacements;
-    two leave Publishing reservations, two prevent hand-back. The underlying native error 5 remains unproven.
-  - [x] Harness stops on the second identical failure, captures private journal records and full-ID stage metadata, and records
-    the stop reason. [PowerShell 5.1 gate](evidence/2026-10-11/harness-windows-gate-t4-stop-evidence-1011-a1.txt): all 18 self-checks
-    pass; 27 new controls include two real native actor failures and orderly stop. Revised protected runtime remains pending.
-  - [x] Owner approved the focused recovery fix on 2026-10-12; [implementation design](T4-STAGE-LIFETIME.md#11-journal-failure-recovery--2026-10-12).
-  - [x] Recovery implemented through `aea1ec16`; [Windows agent matrix at `8e0156c9`](evidence/2026-10-12/exact-agent-matrix-t4-journal-recovery6-summary.txt):
-    normal Debug/Release 895 tests each, feature Debug/Release 1,245 each, zero skipped, builds at 0 warnings/errors. Includes
-    publication/hand-back fault injection, live notification completion and rejection of stale native-success receipts.
-  - [x] Isolated protocol-18 agent matrix: `91c6a3be`, [four-profile gate](evidence/2026-10-12/exact-agent-matrix-t4-recovery-v18a3-summary.txt),
-    547 normal / 611 feature tests per configuration, no skips and builds at 0/0. Includes the live hand-back notification correction.
-  - [ ] Short Verifier retry `m2t4recover256a1` (`0cfdc7c6` + unchanged `m2-driver5-t11`) failed: 255/256 outcomes, one residual stage,
-    pool slope 192.225 B/cycle. No journal-write failures; two replies had no waiter. [Diagnosis and raw evidence](evidence/2026-10-12/t4-allocation-reply-diagnosis.md).
-    Separate restoration passed. Owner approved focused diagnosis/fix on 2026-10-12; no further VM run until reviewed and built.
-  - [x] Luna-reviewed unaccepted-allocation cleanup and request timing: `6198eee7` on the isolated T4 branch;
-    [agent matrix](evidence/2026-10-12/exact-agent-matrix-t4-rejected-allocation1-summary.txt), 558 normal / 625 feature tests per configuration, 0/0 builds.
-  - [ ] **Memory gate still fails:** `m2t4reject256a1`, win10-debug3, `6198eee7` + `m2-driver5-t11`: 256/256 saves passed, no reply/journal errors,
-    zero leftover stages/versions/views/tombstones, idle worker; pool slope 318.863 B/cycle against 4. [Result/restoration evidence](evidence/2026-10-12/t4-instrumented-short-result.md).
-    Separate restoration passed. Further tests stop under the owner's repeated-failure rule; registry-memory attribution remains open.
-- [ ] Run the listed raw-observer regression cells, then rerun T4 on the final M2 pair.
-
-The preceding `m2t4boot10k9` stopped after 4,714/10,000 without a final result; it is not a pass. Its run disk was deleted and base
-verified untouched. The cycle row's sampled public checks do not replace the raw-volume invariant regressions.
-Attempt `m2t4boot10k1011a1` [stopped before any cycles](evidence/2026-10-11/m2t4boot10k1011a1-stop-request.txt): the selected agent lacked admission-evidence support (`UnknownReceiptFlags`).
-The retry uses admission-evidence agent `t4-af1` (596 tests passed, protocol 18); this stopped attempt provides no T4 qualification.
-Its [run-disk restoration](evidence/2026-10-11/m2t4boot10k1011a1-final-restored-state.txt) and
-[separate fresh-disk baseline verification](evidence/2026-10-11/m2t4boot10k1011a1-independent-restoration.txt) passed.
+- [x] Lifetime fix and pre-boot review, including `60fecdbc`; `m2-driver5-t11` has
+  [all four WDK/PREfast/ApiValidator builds at 0/0](evidence/2026-10-10/exact-m2-driver5-t11-summary.txt).
+- [x] Simplified VM setup, bounded readiness and repeated-failure capture/stop:
+  [PowerShell 5.1 readiness controls](evidence/2026-10-11/harness-windows-gate-t4-readiness-1011-a2.txt) and
+  [18 self-checks plus 27 failure controls](evidence/2026-10-11/harness-windows-gate-t4-stop-evidence-1011-a1.txt).
+- [x] Journal recovery through `aea1ec16`; [main agent matrix at `8e0156c9`](evidence/2026-10-12/exact-agent-matrix-t4-journal-recovery6-summary.txt):
+  normal Debug/Release 895 tests each, feature Debug/Release 1,245 each, no skips, 0 warnings/errors.
+- [x] Reviewed allocation-reply cleanup/timing on isolated protocol-18 agent `6198eee7`;
+  [four-profile matrix](evidence/2026-10-12/exact-agent-matrix-t4-rejected-allocation1-summary.txt): 558 normal / 625 feature tests each, no skips, 0/0.
+- [ ] **Memory attribution:** [analysis and independent Luna lifetime review](evidence/2026-10-12/t4-memory-direction.md).
+  - [x] Latest `m2t4reject256a1`: 256/256 saves, zero leftover stages/versions/views/tombstones, idle worker;
+    [separate restoration passed](evidence/2026-10-12/t4-instrumented-short-result.md). Pool slope 318.863 B/cycle still fails the limit of 4.
+  - [ ] Attribute live registry entries and SUfl contexts in a bounded diagnostic before changing reclamation. The older 10k module-pool
+    PASS did not cover SUfl growth. All thresholds/assertions remain; VM runs remain stopped under the repeated-failure rule.
+- [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
+  The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
+- [ ] Pass the complete short and 10k rows. Last 10k: 8,740/10,000, four stages left;
+  [journal-failure diagnosis and raw evidence](evidence/2026-10-11/t4-journal-failure-diagnosis.md).
+- [ ] Run the required raw-volume regression cells above, then rerun T4 on the final M2 pair.
+  The cycle row's sampled public-byte checks do not replace the raw-volume observer.
 
 ### T5. Empty saves, Notepad Save As and deletes
 
