@@ -477,8 +477,10 @@ For proven absence, require the original disposition to allow creation, then hav
 with that same subject and original path/case semantics. Assign the private view's descriptor from the exact held parent's security
 and the original CREATE descriptor/subject, without granting a right merely because the worker can create a backing file. Preserve
 the supported CREATE-option matrix and security-only public-open behavior; combined unsupported metadata changes remain refused.
-Overwrite retains the existing descriptor; supersede/new creation use the descriptor NTFS would assign from the exact parent,
-original CREATE descriptor and subject. Include owner/group, inheritance, SACL and mandatory labels, not only a DACL copy. A
+Overwrite retains the existing descriptor. Supersede must follow actual NTFS semantics: the native controls below retain the
+queried existing descriptor when no CREATE descriptor is supplied; do not replace it blindly with a newly inherited descriptor.
+Fresh creation uses the descriptor NTFS would assign from the exact parent, original CREATE descriptor and subject. Explicit
+descriptor cases still need their native comparison. Include owner/group, inheritance, SACL and mandatory labels, not only a DACL copy. A
 discrepancy with the native control keeps admission closed; do not silently broaden grants or narrow required product behavior.
 
 Separately open read-only metadata anchors below the original instance, walking each component with its actual directory case
@@ -533,6 +535,20 @@ and affirmative recipient/read authority persist through private predecessors an
 must cover each supported disposition, rights/privileges, labels/traversal, case, full descriptors, sharing and source races without
 mutating the public target. These corrections introduce no new owner policy; the hand-back choice below stays pending.
 Kernel permission capture, seed transport and descriptor assignment are not yet integrated.
+
+**Native rights/grant evidence:** source `0a5add63`, [raw Windows control](evidence/2026-10-12/writer-permission-native-control-a5.txt),
+Windows 10 **19045.6456 builder**, Windows PowerShell 5.1 parse/self-checks and real execution pass. All **980** existing-target
+comparisons match exact native status and projected app grant: seven ACL profiles, four existing-share conditions, five
+dispositions and seven explicit/generic/maximum-access masks. The permission probe uses supplemental overwrite/supersede check
+rights; projection onto the mapped original request (or checked maximum grant) matches the raw native app grant. This is a
+Windows baseline comparison, not authority to broaden a staged data handle. Apply the existing T10 restriction separately:
+staged data handles never receive WRITE_DAC, WRITE_OWNER or ACCESS_SYSTEM_SECURITY (`StageSecurity.c:123–141`,
+`StageStream.c:8015–8019`); supported security operations use their separately NTFS-checked real-public-file route.
+Parent DELETE_CHILD can satisfy the native supersede check in these cases. Native owner/group/DACL/SACL SDDL queried before/after
+remains unchanged for NULL supplied descriptors, including supersede. Every probe retains source bytes, full identity and queried
+security; Restore is disabled only on a private token copy, and process privileges compare unchanged. This settles these controls,
+not fully assigned descriptor construction, absent-parent checks, supplied descriptors, case/labels, seed coherence or lifecycle.
+It is not qualification on product VM **19045.2965** and supplies no protected FilterPort/Verifier or byte-privacy evidence.
 
 #### Seed sharing and read-authority correction
 

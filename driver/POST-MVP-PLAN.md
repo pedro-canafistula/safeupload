@@ -250,6 +250,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [ ] Correct ordinary CREATE authority: disposition-specific rights, case/identity anchors, native sharing, complete security labels,
     post-allocation authorization and live replay identity; see the [current review](evidence/2026-10-12/m2-progress-direction-review.md).
     Replay identity is fixed (`dbe02d04`); [kernel seed/read-authority corrections and the owner hand-back choice](T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes) remain open.
+    [Native rights/grant controls](evidence/2026-10-12/writer-permission-native-control-a5.txt), `0a5add63`: 980 comparisons pass on the builder;
+    existing supersede with NULL descriptor preserves queried security. Qualified-platform, assignment, seed and kernel integration remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)
