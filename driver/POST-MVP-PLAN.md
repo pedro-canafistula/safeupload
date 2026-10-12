@@ -210,12 +210,13 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [x] Native accepted/unresolved journal component (`960ba2d7`, `e9458807`) with immutable on-close kind, current-session cleanup/cancellation/qualified-boot proof,
     automatic queue wake and retained generation floor; all 28 component cases pass in each agent profile. The
     [boot-lifetime review](evidence/2026-10-11/t5-native-boot-lifetime-design-review-luna6.md) rejects counter-only release;
-    live dispatcher, startup recovery and notification emission remain pending.
+    live dispatcher and automatic startup/last-close reconciliation remain pending.
   - [x] Anchored native parent observer (`3df7aa97`) without child opens, using complete repeated 128-bit directory enumeration;
     all 14 buffer/native-handle cases pass in each agent profile. The metadata RPC below replaces handle export; live recovery remains pending.
   - [x] Named-file recovery guidance, exact owner-session/SID delivery and structured diagnostics (`a3b3b81e`, `6ee1112e`);
     [18 cases pass in each agent profile](evidence/2026-10-11/t5-native-notice4-static-gates.md), including real emission-record reopening and qualified Restart advice.
-    The notification helper is not connected to the live recovery dispatcher and cannot clear a hold.
+    Startup preflight now emits owner-scoped diagnostics (`9e9dea9d`); [10 startup cases pass per feature profile](evidence/2026-10-11/t5-native-startup-notice-static-gates.md).
+    Last-close dispatch remains pending; notification emission cannot clear a hold.
   - [x] Owner approves the [forced-instance exception](evidence/2026-10-11/t5-native-instance-teardown-feasibility-luna6.md) for M2 fixed NTFS:
     keep the named-file hold until qualified Restart recovery; T21 must reconcile at remount instead. Implementation/runtime remain open.
   - [x] Bounded native-object record map, exact CREATE/CLEANUP/cancellation ownership and unload veto (`5591afe8`, `e9458807`);
@@ -241,8 +242,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
 - [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
 
 Latest static gates: driver `589e9034`, four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator;
-agent `1756bfe9`, **857/857** per normal profile and **1024/1024** per feature profile, every discovered case executed once without skips,
-service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-11/t5-native-query-static-gates.md)).
+agent `9e9dea9d`, **857/857** per normal profile and **1026/1026** per feature profile, every discovered case executed once without skips,
+service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-11/t5-native-startup-notice-static-gates.md)).
 Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
 Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
 delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
