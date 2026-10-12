@@ -1038,7 +1038,7 @@ NTSTATUS SafeUploadStageAllocateBoundV23(PFLT_CALLBACK_DATA Data, PUNICODE_STRIN
 }
 
 _Use_decl_annotations_
-BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(UINT64 ConnectionEpoch)
+BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(UINT64 ConnectionEpoch, UINT64 AuthorityRevision)
 {
     KIRQL irql;
     PVOID cookie;
@@ -1047,6 +1047,7 @@ BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(UINT64 ConnectionEpoch)
     BOOLEAN allowed;
     KeAcquireSpinLock(&SafeUploadStageV20StateLock, &irql);
     allowed = FlagOn(SafeUploadStageAcceptedCapabilities, SAFEUPLOAD_STAGE_CAPABILITY_BOUND_DESTINATION_HEAD) &&
+        (AuthorityRevision == 0 || AuthorityRevision == SafeUploadStageV20AuthorityRevision) &&
         StageProtocolReadyForGenerationLocked(SafeUploadStageProtocolChannelGeneration()) &&
         SafeUploadConnectionGetAuthenticatedIdentity(NULL, &cookie, &epoch, &processId) &&
         cookie == InterlockedCompareExchangePointer(&SafeUploadStageV20ConnectionCookie, NULL, NULL) &&
@@ -1056,8 +1057,19 @@ BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(UINT64 ConnectionEpoch)
 }
 
 _Use_decl_annotations_
+UINT64 SafeUploadStageProtocolNativeAuthority(VOID)
+{
+    KIRQL irql;
+    UINT64 revision;
+    KeAcquireSpinLock(&SafeUploadStageV20StateLock, &irql);
+    revision = SafeUploadStageV20AuthorityRevision;
+    KeReleaseSpinLock(&SafeUploadStageV20StateLock, irql);
+    return revision;
+}
+
+_Use_decl_annotations_
 NTSTATUS SafeUploadStageNativeExchange(const SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT *Snapshot,
-    UINT64 MapRevision, UINT32 Phase, PSAFEUPLOAD_NATIVE_LIFECYCLE_REPLY Reply)
+    UINT64 MapRevision, UINT32 Phase, PSAFEUPLOAD_NATIVE_LIFECYCLE_REPLY Reply, PUINT64 AuthorityRevision)
 {
     PSAFEUPLOAD_EXCHANGE exchange;
     SAFEUPLOAD_NATIVE_LIFECYCLE payload;
@@ -1066,6 +1078,7 @@ NTSTATUS SafeUploadStageNativeExchange(const SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT *S
     NTSTATUS status;
     PAGED_CODE();
     RtlZeroMemory(Reply, sizeof(*Reply));
+    if (AuthorityRevision != NULL) *AuthorityRevision = 0;
     if (Snapshot == NULL || MapRevision == 0 || (Phase != SAFEUPLOAD_NATIVE_PREPARE && Phase != SAFEUPLOAD_NATIVE_FACTS_CHANGED) ||
         !StageProtocolGuidNonzero(&Snapshot->Binding.TransferId) ||
         !StageProtocolGuidNonzero(&Snapshot->Binding.RequestNonce) ||
@@ -1110,6 +1123,7 @@ NTSTATUS SafeUploadStageNativeExchange(const SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT *S
         }
     }
     if (!NT_SUCCESS(status)) RtlZeroMemory(Reply, sizeof(*Reply));
+    else if (AuthorityRevision != NULL) *AuthorityRevision = exchange->StageAuthorityRevision;
     ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);
     return status;
 }

@@ -208,6 +208,7 @@ typedef struct _STAGE_ATTACH_TRANSACTION {
     PSAFEUPLOAD_STAGE_NATIVE_RECORD NativeRecord;
     UINT64 NativeGeneration;
     UINT64 NativePrepareRevision;
+    UINT64 NativePrepareAuthority;
     BOOLEAN NativePath;
     ULONG RequestorProcessId;
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
@@ -2734,7 +2735,7 @@ static NTSTATUS StageAttachQueueCreate(PFLT_CALLBACK_DATA Data,
     if (Data->Iopb->Parameters.Create.SecurityContext != NULL &&
         (FlagOn(Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess, DELETE | GENERIC_ALL | MAXIMUM_ALLOWED) ||
          FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE))) {
-        status = StageAttachNativeEligible(Data) && SafeUploadStageProtocolNativeForwardAllowed(0) ?
+        status = StageAttachNativeEligible(Data) && SafeUploadStageProtocolNativeForwardAllowed(0, 0) ?
             SafeUploadStagePublicCaptureNativeSubject(Data, &transaction->PublicDeleteSubject) :
             SafeUploadStagePublicCaptureSubject(Data, &transaction->PublicDeleteSubject);
         if (!NT_SUCCESS(status)) goto Fail;
@@ -3494,7 +3495,8 @@ static NTSTATUS StageAttachExchangeNative(PSTAGE_ATTACH_TRANSACTION Transaction)
             return STATUS_INVALID_DEVICE_STATE;
         if (attemptedRevision == Transaction->NativePrepareRevision) return status;
         attemptedRevision = Transaction->NativePrepareRevision;
-        status = SafeUploadStageNativeExchange(&snapshot, attemptedRevision, SAFEUPLOAD_NATIVE_PREPARE, &reply);
+        status = SafeUploadStageNativeExchange(&snapshot, attemptedRevision, SAFEUPLOAD_NATIVE_PREPARE,
+            &reply, &Transaction->NativePrepareAuthority);
         if (NT_SUCCESS(status)) { Transaction->NativeGeneration = reply.JournalGeneration; return status; }
         /* Retry only after a real map event changed the snapshot. The exact
          * transfer/nonce/operation replays its durable intent at the new revision. */
@@ -3512,7 +3514,7 @@ static NTSTATUS StageAttachPrepareNative(PSTAGE_ATTACH_TRANSACTION Transaction)
     Transaction->NativePath = TRUE;
     if (!Transaction->PublicDeleteSubjectValid ||
         !SafeUploadConnectionGetAuthenticatedIdentity(NULL, &cookie, &epoch, &servicePid) ||
-        !SafeUploadStageProtocolNativeForwardAllowed((UINT64)epoch)) return STATUS_DEVICE_NOT_READY;
+        !SafeUploadStageProtocolNativeForwardAllowed((UINT64)epoch, 0)) return STATUS_DEVICE_NOT_READY;
     binding.DriverInstanceId = Transaction->DriverInstanceId;
     binding.ConnectionEpoch = (UINT64)epoch;
     binding.OsBootSequence = SharedUserData->BootId;
@@ -3539,7 +3541,7 @@ static NTSTATUS StageAttachWorkerBody(_Inout_ PSTAGE_ATTACH_TRANSACTION Transact
     BOOLEAN newBinding = FALSE;
     NTSTATUS status;
     if (!Transaction->PrivateNamespace && !Transaction->ById && Transaction->VolumeKind == SafeUploadVolumeFixed &&
-        StageAttachNativeEligible(Transaction->CallbackData) && SafeUploadStageProtocolNativeForwardAllowed(0)) {
+        StageAttachNativeEligible(Transaction->CallbackData) && SafeUploadStageProtocolNativeForwardAllowed(0, 0)) {
         BOOLEAN ownerView;
         StageAcquire(&StageNamespaceResource);
         ownerView = StageFindView(Transaction->RequestorProcess, &Transaction->NameInfo->Name) != NULL;
@@ -3618,7 +3620,7 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
                 StageFindView(Transaction->RequestorProcess, &Transaction->NameInfo->Name) != NULL)
                 Status = STATUS_CANCELLED;
             else Status = SafeUploadStageNativeMarkForwarded(record,
-                Transaction->NativeGeneration, Transaction->NativePrepareRevision);
+                Transaction->NativeGeneration, Transaction->NativePrepareRevision, Transaction->NativePrepareAuthority);
             StageRelease(&StageNamespaceResource);
             if (Status != STATUS_RETRY) break;
             Status = StageAttachExchangeNative(Transaction); /* I/O is outside NamespaceResource. */
@@ -5800,13 +5802,15 @@ static VOID StageNativeFlushFacts(VOID)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     static UINT64 attemptedRevision;
     static LONG attemptedChannel;
+    static UINT64 attemptedAuthority;
     PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT rows;
     UINT64 revision = 0;
     ULONG offset = 0, count = 0, index;
     BOOLEAN complete = FALSE;
     LONG channel = SafeUploadStageProtocolChannelGeneration();
+    UINT64 authority = SafeUploadStageProtocolNativeAuthority();
     NTSTATUS status;
-    if (!SafeUploadStageProtocolNativeForwardAllowed(0)) return;
+    if (!SafeUploadStageProtocolNativeForwardAllowed(0, authority)) return;
     rows = ExAllocatePool2(POOL_FLAG_PAGED,
         sizeof(*rows) * SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS, STAGE_TAG);
     if (rows == NULL) return;
@@ -5817,16 +5821,19 @@ static VOID StageNativeFlushFacts(VOID)
         if (!NT_SUCCESS(status)) break;
         if (offset == 0) {
             revision = currentRevision;
-            if (revision == attemptedRevision && channel == attemptedChannel) break;
+            if (revision == attemptedRevision && channel == attemptedChannel && authority == attemptedAuthority) break;
             attemptedRevision = revision;
             attemptedChannel = channel;
+            attemptedAuthority = authority;
         }
         for (index = 0; index < count; ++index) {
             SAFEUPLOAD_NATIVE_LIFECYCLE_REPLY reply;
+            UINT64 replyAuthority;
             if (!rows[index].CreateOutcomeKnown) continue;
-            status = SafeUploadStageNativeExchange(&rows[index], revision, SAFEUPLOAD_NATIVE_FACTS_CHANGED, &reply);
+            status = SafeUploadStageNativeExchange(&rows[index], revision, SAFEUPLOAD_NATIVE_FACTS_CHANGED, &reply, &replyAuthority);
             if (!NT_SUCCESS(status)) continue; // A later map/channel event retries; no idle timer.
             if (reply.Result == SAFEUPLOAD_NATIVE_TERMINAL &&
+                SafeUploadStageProtocolNativeForwardAllowed(0, replyAuthority) &&
                 (rows[index].JournalGeneration == 0 || rows[index].JournalGeneration == reply.JournalGeneration)) {
                 status = SafeUploadStageNativeAcknowledge(&rows[index].Binding);
                 if (NT_SUCCESS(status)) {
@@ -5839,7 +5846,7 @@ static VOID StageNativeFlushFacts(VOID)
                     status = SafeUploadStageNativeReadPage(0, 0, &unused, 1,
                         &afterCount, &afterRevision, &afterComplete);
                     if (NT_SUCCESS(status)) (VOID)SafeUploadStageNativeExchange(&rows[index], afterRevision,
-                        SAFEUPLOAD_NATIVE_FACTS_CHANGED, &reply);
+                        SAFEUPLOAD_NATIVE_FACTS_CHANGED, &reply, NULL);
                     /* Removal changed pagination; its event restarts the pass. */
                     goto Exit;
                 }

@@ -11,9 +11,12 @@ VOID SafeUploadStageSetFilteringReady(VOID);
 struct _SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT;
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeExchange(_In_ const struct _SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT *Snapshot,
-    _In_ UINT64 MapRevision, _In_ UINT32 Phase, _Out_ PSAFEUPLOAD_NATIVE_LIFECYCLE_REPLY Reply);
+    _In_ UINT64 MapRevision, _In_ UINT32 Phase, _Out_ PSAFEUPLOAD_NATIVE_LIFECYCLE_REPLY Reply,
+    _Out_opt_ PUINT64 AuthorityRevision);
 _IRQL_requires_max_(DISPATCH_LEVEL)
-BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(_In_ UINT64 ConnectionEpoch);
+BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(_In_ UINT64 ConnectionEpoch, _In_ UINT64 AuthorityRevision);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+UINT64 SafeUploadStageProtocolNativeAuthority(VOID);
 #endif
 NTSTATUS SafeUploadStageStartWorker(VOID);
 VOID SafeUploadStageStopWorker(VOID);

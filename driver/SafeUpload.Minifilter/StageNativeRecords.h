@@ -51,7 +51,7 @@ NTSTATUS SafeUploadStageNativeReserve(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OB
     _Outptr_result_nullonfailure_ PSAFEUPLOAD_STAGE_NATIVE_RECORD *Record);
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeMarkForwarded(_In_ PSAFEUPLOAD_STAGE_NATIVE_RECORD Record,
-    _In_ UINT64 DurableGeneration, _In_ UINT64 ExpectedRevision);
+    _In_ UINT64 DurableGeneration, _In_ UINT64 ExpectedRevision, _In_ UINT64 AuthorityRevision);
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeSnapshot(_In_ PSAFEUPLOAD_STAGE_NATIVE_RECORD Record,
     _Out_ PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Snapshot, _Out_ PUINT64 Revision);

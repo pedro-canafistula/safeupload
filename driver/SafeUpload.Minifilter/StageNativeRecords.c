@@ -287,14 +287,15 @@ NTSTATUS SafeUploadStageNativeSnapshot(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record,
 
 _Use_decl_annotations_
 NTSTATUS SafeUploadStageNativeMarkForwarded(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record,
-    UINT64 DurableGeneration, UINT64 ExpectedRevision)
+    UINT64 DurableGeneration, UINT64 ExpectedRevision, UINT64 AuthorityRevision)
 {
     KIRQL irql;
     NTSTATUS status = STATUS_SUCCESS;
     NativeAcquire(&irql);
     if (ExpectedRevision != 0 && ExpectedRevision != NativeRevision) status = STATUS_RETRY;
     else if (!NativeAccepting || !NativeReplayUsable || ExpectedRevision == 0 ||
-        !SafeUploadStageProtocolNativeForwardAllowed(Record->Snapshot.Binding.ConnectionEpoch) ||
+        AuthorityRevision == 0 ||
+        !SafeUploadStageProtocolNativeForwardAllowed(Record->Snapshot.Binding.ConnectionEpoch, AuthorityRevision) ||
         DurableGeneration == 0 || Record->Snapshot.Forwarded ||
         Record->Snapshot.CreateOutcomeKnown || Record->Snapshot.CleanupCoverageLost ||
         SafeUploadStageAttachInstanceRetiring(Record->Instance)) status = STATUS_INVALID_DEVICE_STATE;
