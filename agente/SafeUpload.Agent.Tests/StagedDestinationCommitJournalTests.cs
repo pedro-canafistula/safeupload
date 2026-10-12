@@ -814,6 +814,99 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
         Assert.Equal(1, head.CommittedDelete); Assert.Equal(StagedPublicDeleteState.Complete, Assert.Single(head.Deletes).State);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Native_false_no_op_has_durable_intent_without_delete_generation_and_preserves_scheduled_state(
+        bool scheduledOnClose, bool ntfsSucceeded)
+    {
+        var journal = Journal(); var destination = Destination();
+        using (var bind = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Allocation, CancellationToken.None))
+        {
+            var captured = await journal.CapturePublicOpenHeadAsync(bind, _publicIdentity, Locator(),
+                Observation(destination, _publicIdentity), CancellationToken.None);
+            Assert.Equal(0, captured.MaxAllocated); Assert.Null(captured.CurrentSaveTransferId);
+            Assert.Equal(0, captured.LatestPublished); Assert.Null(captured.PublishedIdentity);
+            Assert.Empty(captured.Deletes);
+        }
+        if (scheduledOnClose)
+            await NativeCreateIntent(journal, destination, Binding() with { OsBootSequence = 42 }, Guid.NewGuid());
+        var before = (await journal.ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+        Guid operation = Guid.NewGuid();
+        using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+            await journal.BeginPublicDeleteClearAsync(turn, operation, _publicIdentity, CancellationToken.None,
+                Observation(destination, _publicIdentity));
+        var restarted = Journal();
+        var pending = (await restarted.ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+        Assert.Equal(before.MaxAllocated, pending.MaxAllocated); Assert.Equal(before.Deletes, pending.Deletes);
+        Assert.Equal(StagedDestinationMutation.ClearDisposition, pending.PendingCommit!.Mutation);
+        Assert.Equal(operation, pending.PendingCommit.OperationId); Assert.Equal(0, pending.PendingCommit.Generation);
+        using var cancel = new CancellationTokenSource();
+        var held = restarted.EnterDestinationCommitTurnAsync(destination, StagedDestinationTurnPurpose.PhysicalCommit, cancel.Token);
+        Assert.False(held.IsCompleted);
+        using (var turn = await restarted.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+        {
+            await Assert.ThrowsAsync<IOException>(() => restarted.RecordPublicDeleteClearResultAsync(turn,
+                operation, _publicIdentity with { FileIdLow = 99 }, ntfsSucceeded));
+            await restarted.RecordPublicDeleteClearResultAsync(turn, operation, _publicIdentity, ntfsSucceeded);
+            await restarted.RecordPublicDeleteClearResultAsync(turn, operation, _publicIdentity, ntfsSucceeded);
+        }
+        var after = (await Journal().ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+        Assert.Null(after.PendingCommit); Assert.Equal(before.MaxAllocated, after.MaxAllocated);
+        Assert.Equal(before.Deletes, after.Deletes); Assert.Equal(before.CommittedDelete, after.CommittedDelete);
+        Assert.Equal(ntfsSucceeded, after.LastMutationResult!.Succeeded);
+        if (scheduledOnClose)
+        {
+            Assert.Equal(StagedPublicDeleteState.AcceptedUnresolved, Assert.Single(after.Deletes).State);
+            Assert.False(held.IsCompleted); cancel.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => held);
+        }
+        else
+        {
+            using var resumed = await held.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(StagedDestinationTurnPurpose.PhysicalCommit, resumed.Purpose);
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public async Task Native_no_op_without_provisional_intent_refuses_incomplete_or_changed_link_evidence(int change)
+    {
+        var journal = Journal(); var destination = Destination();
+        using (var bind = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Allocation, CancellationToken.None))
+            await journal.CapturePublicOpenHeadAsync(bind, _publicIdentity, Locator(),
+                Observation(destination, _publicIdentity), CancellationToken.None);
+        var observed = Observation(destination, _publicIdentity);
+        StagedDestinationNameObservation? invalid = change switch
+        {
+            0 => null,
+            1 => observed with { CompleteEnumeration = false },
+            2 => observed with { ParentBefore = _temporaryIdentity },
+            3 => observed with { ParentAfter = _temporaryIdentity },
+            4 => observed with { PublicIdentity = null },
+            _ => observed with { Destination = Destination("other.txt") }
+        };
+        string statePath = Assert.Single(Directory.GetFiles(JournalPath, "destination-*.state"));
+        byte[] before = await File.ReadAllBytesAsync(statePath);
+        using var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+            StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None);
+        await Assert.ThrowsAsync<IOException>(() => journal.BeginPublicDeleteClearAsync(turn,
+            Guid.NewGuid(), _publicIdentity, CancellationToken.None, invalid));
+        Assert.Equal(before, await File.ReadAllBytesAsync(statePath));
+        Assert.Null((await journal.ReadDestinationHeadAsync(destination, CancellationToken.None))!.PendingCommit);
+    }
+
     [Fact]
     public async Task Restart_preserves_unknown_physical_intent_and_never_uses_path_absence_as_a_receipt()
     {

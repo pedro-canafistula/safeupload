@@ -323,6 +323,35 @@ public sealed partial class StagedTransferJournal
         finally { _gate.Release(); }
     }
 
+    // Original native opens do not allocate a delete version. Capture the
+    // durable Published head while the short binding turn orders against
+    // physical commits. Exact directory metadata proves the link only; the
+    // kernel's original NTFS open supplies its independent checked grant.
+    internal async Task<StagedDestinationHead> CapturePublicOpenHeadAsync(DestinationCommitTurn turn,
+        StagedStageIdentity exactPublicIdentity, string locator,
+        StagedDestinationNameObservation checkedName, CancellationToken token)
+    {
+        turn.Require(this, StagedDestinationTurnPurpose.Allocation);
+        RequireExactPublicName(turn.Destination, exactPublicIdentity, checkedName);
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var head = await ReadDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
+            if (head is not null)
+            {
+                RequireNoPendingPhysicalCommit(head);
+                return head;
+            }
+            head = NewDestinationHead(turn.Destination, locator);
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            head = head with { MaxAllocated = await BoundManifestHighWaterCoreAsync(turn.Destination, token).ConfigureAwait(false) };
+#endif
+            await WriteDestinationHeadCoreAsync(head, token).ConfigureAwait(false);
+            return head;
+        }
+        finally { _gate.Release(); }
+    }
+
     internal async Task<StagedPublicDeleteRecord> BeginPublicDeleteDispositionAsync(
         DestinationCommitTurn turn, StagedPublicDeleteBinding binding, Guid operationId, CancellationToken token)
     {
@@ -581,7 +610,8 @@ public sealed partial class StagedTransferJournal
     }
 
     internal async Task BeginPublicDeleteClearAsync(DestinationCommitTurn turn, Guid operationId,
-        StagedStageIdentity exactPublicIdentity, CancellationToken token)
+        StagedStageIdentity exactPublicIdentity, CancellationToken token,
+        StagedDestinationNameObservation? checkedName = null)
     {
         turn.Require(this, StagedDestinationTurnPurpose.Reconciliation);
         if (operationId == Guid.Empty) throw new ArgumentException("A clear needs a unique operation ID.");
@@ -593,17 +623,24 @@ public sealed partial class StagedTransferJournal
             RequireNoPendingPhysicalCommit(head);
             if (!head.Deletes.Any(d => d.Kind == StagedPublicDeleteKind.Ordinary && d.Binding.PublicIdentity == exactPublicIdentity &&
                     d.State is (StagedPublicDeleteState.Admitted or StagedPublicDeleteState.Accepted)))
-                throw new IOException("No provisional disposition is bound to this exact public object.");
+            {
+                // Native FALSE can be a no-op. Without an ordinary intent, the
+                // dispatcher must prove the exact currently opened link; a
+                // same-volume ID alone cannot authorize a clear of another
+                // name or resurrect a completed delete. This observation is
+                // ordering evidence, not Windows DELETE authority or a permit.
+                RequireExactPublicName(turn.Destination, exactPublicIdentity, checkedName);
+            }
             await WriteDestinationHeadCoreAsync(head with { PendingCommit = new(operationId,
                 StagedDestinationMutation.ClearDisposition, Guid.Empty, 0, exactPublicIdentity) }, token).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
     }
 
-    // The dispatcher verifies that ordinary FALSE actually cleared NTFS state
-    // using an independently checked DELETE handle. This clears every owner's
-    // provisional ordinary intent for that exact object; scheduled ON_CLOSE
-    // must use a separate handle-intent record in the forthcoming kernel path.
+    // The dispatcher records the original NTFS FALSE result, including a
+    // successful no-op. Clear only ordinary provisional intents for that exact
+    // object; scheduled ON_CLOSE remains independent and no generation is
+    // allocated. A directory observation never supplies the DELETE grant.
     internal async Task RecordPublicDeleteClearResultAsync(DestinationCommitTurn turn, Guid operationId,
         StagedStageIdentity exactPublicIdentity, bool ntfsCleared)
     {
@@ -844,6 +881,17 @@ public sealed partial class StagedTransferJournal
             throw new ArgumentException("The object is not bound to the destination volume.");
     }
 
+    private static void RequireExactPublicName(StagedDestinationIdentity destination,
+        StagedStageIdentity exactPublicIdentity, StagedDestinationNameObservation? checkedName)
+    {
+        RequireSameVolumeIdentity(destination, exactPublicIdentity);
+        if (destination.MountManagerVolumeId is null || checkedName is null ||
+            checkedName.Destination != destination || !checkedName.CompleteEnumeration ||
+            checkedName.ParentBefore != destination.Parent || checkedName.ParentAfter != destination.Parent ||
+            checkedName.PublicIdentity != exactPublicIdentity)
+            throw new IOException("The native no-op/open needs the exact checked public link.");
+    }
+
     private static void ValidatePublicDeleteBinding(StagedPublicDeleteBinding binding, StagedDestinationIdentity destination)
     {
         ArgumentNullException.ThrowIfNull(binding);
@@ -999,10 +1047,7 @@ public sealed partial class StagedTransferJournal
                     break;
                 case StagedDestinationMutation.ClearDisposition:
                     if (intent.TransferId != Guid.Empty || intent.Generation != 0 || intent.ExpectedPublicIdentity is null ||
-                        intent.TemporaryIdentity is not null || intent.Length is not null || intent.Sha256Hex is not null ||
-                        !head.Deletes.Any(d => d.Kind == StagedPublicDeleteKind.Ordinary &&
-                            d.Binding.PublicIdentity == intent.ExpectedPublicIdentity &&
-                            d.State is (StagedPublicDeleteState.Admitted or StagedPublicDeleteState.Accepted)))
+                        intent.TemporaryIdentity is not null || intent.Length is not null || intent.Sha256Hex is not null)
                         throw new InvalidDataException("Invalid ordinary clear intent.");
                     break;
             }

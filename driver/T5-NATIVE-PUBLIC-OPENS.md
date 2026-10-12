@@ -2,7 +2,8 @@
 
 ## Ordinary public disposition integration — proposal for review, 2026-10-12
 
-**Review status: REVISE; the mandatory corrections below are recorded, but the relay is not implemented or qualified.**
+**Review status: READY WITH CORRECTIONS; Luna 6 max confirms the recorded conditions permit implementation.**
+This is design approval only; the relay, integrated lifetime review and protected runtime remain open.
 
 The remaining ordinary-delete path must preserve the actual NTFS open and caller's DELETE grant. The earlier exported service
 handle introduces a second application handle count on that same FILE_OBJECT and difficult foreign-handle revocation/reuse races.
@@ -13,7 +14,7 @@ for ordinary disposition only, retarget to that exact same-volume backend, call 
 Preserve the original operation flags, requestor mode and thread. Never route data, cache/sections or FILE_DISPOSITION_ON_CLOSE through
 this retarget path. It does not revive the rejected synthetic public-FCB design. The supported retarget contract is documented in
 [FLT_IO_PARAMETER_BLOCK](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_io_parameter_block).
-This is a proposed implementation change requiring Luna security-design review; it is not permission to change product behavior.
+The independent security-design review is complete; this does not permit a change in product behavior.
 
 1. Extend the local native-object map to distinguish ordinary non-writing FILE_OPEN + DELETE from CREATE delete-on-close. Ordinary
    open does not allocate a delete generation, delete or tombstone a name. Reserve its nonpaged record before the original CREATE;

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Service.Interception;
 using SafeUpload.Agent.Service.Notifications;
@@ -144,6 +145,85 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         Assert.Equal("replacement locator bytes", File.ReadAllText(Path.Combine(Parent, "save.txt")));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Native_false_no_op_preserves_exact_bytes_and_independent_create_on_close(bool scheduledOnClose)
+    {
+        Directory.CreateDirectory(Parent);
+        string path = Path.Combine(Parent, "native-clear.txt");
+        byte[] original = Encoding.UTF8.GetBytes("original public bytes");
+        File.WriteAllBytes(path, original);
+        var binding = Binding("native-clear.txt", 1, true);
+        var destination = binding.Destination;
+        using var parent = StagedDestinationDirectory.Open(binding);
+        var observation = StagedDestinationNameObserver.Observe(parent.VolumeRoot, parent.Parent,
+            destination, CancellationToken.None);
+        var journal = new StagedTransferJournal(Journal);
+        using (var bind = await journal.EnterDestinationCommitTurnAsync(destination,
+                   StagedDestinationTurnPurpose.Allocation, CancellationToken.None))
+        {
+            var head = await journal.CapturePublicOpenHeadAsync(bind, binding.PublicTarget!, path,
+                observation, CancellationToken.None);
+            Assert.Equal(0, head.MaxAllocated); Assert.Empty(head.Deletes);
+        }
+        StagedPublicDeleteBinding? scheduled = null;
+        Guid createOperation = Guid.NewGuid();
+        if (scheduledOnClose)
+        {
+            using var process = Process.GetCurrentProcess();
+            using var user = WindowsIdentity.GetCurrent();
+            scheduled = new(Guid.NewGuid(), Guid.NewGuid(), _driver, 11, binding.PublicTarget!, process.Id,
+                process.StartTime.ToFileTimeUtc(), checked((uint)process.SessionId), user.User!.Value, 42,
+                binding.MountManagerVolumeId);
+            using var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+                StagedDestinationTurnPurpose.Allocation, CancellationToken.None);
+            await journal.BeginNativeDeleteOnCloseCreateAsync(turn, scheduled, createOperation,
+                path, 0, CancellationToken.None);
+        }
+        using (var regular = CreateFileW(path, 0x10000, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero))
+        {
+            Assert.False(regular.IsInvalid, $"Checked DELETE open failed: {Marshal.GetLastWin32Error()}");
+            using var creator = scheduledOnClose
+                ? CreateFileW(path, 0x10000, 7, IntPtr.Zero, 3, 0x04000080, IntPtr.Zero) : null;
+            if (creator is not null)
+            {
+                Assert.False(creator.IsInvalid, $"Native on-close CREATE failed: {Marshal.GetLastWin32Error()}");
+                using var accepted = await journal.EnterDestinationCommitTurnAsync(destination,
+                    StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None);
+                await journal.RecordNativeDeleteOnCloseCreateResultAsync(accepted, scheduled!, createOperation, true, true);
+            }
+            var before = (await journal.ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+            Guid operation = Guid.NewGuid();
+            using (var turn = await journal.EnterDestinationCommitTurnAsync(destination,
+                       StagedDestinationTurnPurpose.Reconciliation, CancellationToken.None))
+            {
+                var checkedName = StagedDestinationNameObserver.Observe(parent.VolumeRoot, parent.Parent,
+                    destination, CancellationToken.None);
+                Assert.Equal(binding.PublicTarget, checkedName.PublicIdentity);
+                await journal.BeginPublicDeleteClearAsync(turn, operation, binding.PublicTarget!,
+                    CancellationToken.None, checkedName);
+                byte clear = 0;
+                bool result = SetFileInformationByHandle(regular, 4, ref clear, 1);
+                int error = Marshal.GetLastWin32Error();
+                await journal.RecordPublicDeleteClearResultAsync(turn, operation, binding.PublicTarget!, result);
+                Assert.True(result, $"Native FALSE/no-op failed: {error}");
+            }
+            var after = (await new StagedTransferJournal(Journal).ReadDestinationHeadAsync(destination, CancellationToken.None))!;
+            Assert.Equal(before.MaxAllocated, after.MaxAllocated); Assert.Equal(before.Deletes, after.Deletes);
+            Assert.Equal(before.CommittedDelete, after.CommittedDelete); Assert.Null(after.PendingCommit);
+            using var bytes = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            byte[] observed = new byte[original.Length];
+            bytes.ReadExactly(observed); Assert.Equal(original, observed); Assert.Equal(original.Length, bytes.Length);
+        }
+        Assert.Equal(!scheduledOnClose, File.Exists(path));
+        if (!scheduledOnClose)
+        {
+            using var exact = StagedStageFile.Open(path);
+            Assert.Equal(binding.PublicTarget, exact.Identity); Assert.Equal(original, File.ReadAllBytes(path));
+        }
+    }
+
     [Fact]
     public async Task Replaced_public_identity_and_false_absence_never_create_a_manifest()
     {
@@ -256,5 +336,14 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetVolumeNameForVolumeMountPointW(string root, StringBuilder volume, int size);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security,
+        uint disposition, uint flags, IntPtr template);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetFileInformationByHandle(SafeFileHandle file, int informationClass,
+        ref byte information, uint size);
 }
 #endif
