@@ -50,7 +50,8 @@ changes; the owner's direction below accepts the review with specific changes.
   preserve native write-only editing; a blocked version containing prior bytes without read/export authority stays service-private with
   a named reason, and no full-file hand-back or justification is offered until that authority exists.
 - **Lab tooling now:** only make [Invoke-StagedSuiteBatch.sh](scripts/Invoke-StagedSuiteBatch.sh) fail on any failed or missing case and
-  require an explicit approved target. Defer the readiness doctor, build-capacity preflight, CI, Ansible and Packer until after the T5
+  require an explicit approved target (done in `18849424`: 29 offline controls; a single-case runner exit 1 counts only when the
+  incomplete table is its sole failure). Defer the readiness doctor, build-capacity preflight, CI, Ansible and Packer until after the T5
   integration checkpoint. Terraform is not adopted.
 - **False Degraded notices (T18).** A coverage query answered `ERROR_RETRY` (writer registry changed during the snapshot) reports
   Degraded at once; T4 short rows log 12–21 per run. Retry that answer briefly before reporting Degraded, with admission authority
@@ -267,6 +268,9 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
     The historical [clean short result](evidence/2026-10-12/t4-clean-short-result.md) is retained unchanged; its slope is now informational.
   - [ ] Hand-back attribution diagnostic (owner-authorized 2026-10-13, non-qualifying; see owner decisions): block-heavy mix, handle
     holders of kept files after purge, SUfl after deleting only the hand-backs. Decide the next step from the drop, not before.
+    - [x] Harness `e642e212` (`T4_HANDBACK_DIAGNOSTIC=yes`); [PowerShell 5.1 gate](evidence/2026-10-13/harness-windows-gate-t4-handback-diag1.txt)
+      PASS with a holder self-check; offline replay proves the diagnostic changes no gate line.
+    - [ ] Row `m2t4hbdiag1`: 2,000 boot-Verifier cycles on the unchanged k11/`6198eee7` pair.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
 - [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):
@@ -897,6 +901,8 @@ has independent server-side destination-byte run evidence, and is ready for comb
 - [ ] Stop false Degraded notices (owner direction 2026-10-13): retry an `ERROR_RETRY` coverage answer briefly before reporting
   Degraded; T4 short rows log 12–21 `CoverageQueryFailed` notices each ([analysis](evidence/2026-10-12/t4-coverage-retry-analysis.md)).
   Sol design review first; admission authority, Unknown and real query failures are unchanged.
+  - [x] [Design](T18-COVERAGE-RETRY.md): up to three retries (10/20/40 ms) of exactly `0x800704D5` within one poll; nothing held or synthesized.
+  - [ ] Sol 6.1 xhigh review, implementation, agent matrix.
 
 ### T19. Continuous evidence
 
