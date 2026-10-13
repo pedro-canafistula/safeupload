@@ -11,6 +11,7 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import zipfile
 
@@ -79,20 +80,28 @@ def pdf(path, tail):
         output.write(('trailer\n<< /Size ' + str(len(offsets)) + ' /Root 1 0 R >>\nstartxref\n' + str(start) + '\n%%EOF\n').encode())
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('label')
-    parser.add_argument('--commit', default='HEAD')
-    parser.add_argument('--prepare-only', action='store_true')
-    args = parser.parse_args()
-    if not re.fullmatch('[A-Za-z0-9._-]{3,60}', args.label):
-        parser.error('Invalid label')
-    commit = subprocess.check_output(['git', 'rev-parse', '--verify', args.commit + '^{commit}'], cwd=REPO, text=True).strip()
-    work = REPO / 'output/inspection-measure' / args.label
-    work.mkdir(parents=True, exist_ok=False)
-    subprocess.run(['git', 'archive', '--format=zip', '-o', str(work/'source.zip'), commit,
-                    'agente', 'driver/scripts/InspectionMeasure'], cwd=REPO, check=True)
+def prepare_corpus(work, reuse):
     corpus = work/'corpus'
+    if reuse:
+        original = REPO/'output/inspection-measure'/reuse
+        cases = json.loads((original/'corpus/cases.json').read_text())
+        if len(cases) != 14 or len({case['name'] for case in cases}) != 14:
+            raise RuntimeError('Retained corpus is incomplete')
+        for case in cases:
+            if not re.fullmatch(r'[a-z0-9-]+\.(txt|docx|xlsx|pdf)', case['name']):
+                raise RuntimeError('Unsafe retained corpus name')
+            path = original/'corpus'/case['name']
+            if path.is_symlink() or path.stat().st_size != case['inputBytes'] or matrix.sha(path).upper() != case['sha256']:
+                raise RuntimeError('Retained input changed: '+case['name'])
+        shutil.copytree(original/'corpus', corpus)
+        shutil.copyfile(original/'corpus.zip', work/'corpus.zip')
+        with zipfile.ZipFile(work/'corpus.zip') as archive:
+            if set(archive.namelist()) != {case['name'] for case in cases} | {'cases.json'} or archive.testzip() is not None:
+                raise RuntimeError('Retained corpus archive changed')
+            for case in cases:
+                if hashlib.sha256(archive.read(case['name'])).hexdigest().upper() != case['sha256']:
+                    raise RuntimeError('Retained archive input mismatch')
+        return cases
     corpus.mkdir()
     cases = []
     for extension in ['.txt', '.docx', '.xlsx', '.pdf']:
@@ -115,11 +124,30 @@ def main():
     with zipfile.ZipFile(work/'corpus.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(corpus.iterdir()):
             archive.write(path, path.name)
+    return cases
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('label')
+    parser.add_argument('--commit', default='HEAD')
+    parser.add_argument('--prepare-only', action='store_true')
+    parser.add_argument('--corpus-from', help='Reuse an unchanged retained corpus from this measurement label')
+    args = parser.parse_args()
+    for label in [args.label, args.corpus_from]:
+        if label is not None and not re.fullmatch('[A-Za-z0-9._-]{3,60}', label):
+            parser.error('Invalid label')
+    commit = subprocess.check_output(['git', 'rev-parse', '--verify', args.commit + '^{commit}'], cwd=REPO, text=True).strip()
+    work = REPO / 'output/inspection-measure' / args.label
+    work.mkdir(parents=True, exist_ok=False)
+    subprocess.run(['git', 'archive', '--format=zip', '-o', str(work/'source.zip'), commit,
+                    'agente', 'driver/scripts/InspectionMeasure'], cwd=REPO, check=True)
+    cases = prepare_corpus(work, args.corpus_from)
     evidence = REPO/'driver/evidence'/datetime.date.today().isoformat()
     evidence.mkdir(parents=True, exist_ok=True)
     prefix = 'inspection-measure-'+args.label
     provenance = dict(sourceCommit=commit, sourceSha256=matrix.sha(work/'source.zip').upper(),
-                      corpusSha256=matrix.sha(work/'corpus.zip').upper(), cases=cases)
+                      corpusSha256=matrix.sha(work/'corpus.zip').upper(), corpusFrom=args.corpus_from, cases=cases)
     (evidence/(prefix+'-source.json')).write_text(json.dumps(provenance, indent=2)+'\n')
     print('SOURCE_COMMIT='+commit+'; prepared 14 retained fixtures', flush=True)
     if args.prepare_only:
