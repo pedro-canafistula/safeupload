@@ -62,6 +62,7 @@ changes; the owner's direction below accepts the review with specific changes.
   (Ansible, Packer and related tooling), T21 USB/removable and T22 SMB/UNC. Designs only: no implementation, no host-wide or
   qualified-baseline change, and USB/SMB stay disabled until their owner decisions, Sol 6.1 xhigh design reviews and gates.
   This replaces the earlier "defer the tooling" bullet for design work only; tooling implementation still waits for the T5 checkpoint.
+  Drafts: [LAB-WORKFLOW-DESIGN.md](LAB-WORKFLOW-DESIGN.md), [T21](T21-USB-REMOVABLE-DESIGN.md), [T22](T22-SMB-UNC-DESIGN.md); all decisions pending.
 
 **2026-10-11 — destinations and completion.** Follow the order above. M4 covers local NTFS, USB including surprise removal,
 UNC/SMB, and a real sync client with independent destination-byte observers. Both mapping leaks need their repros rerun and closed.
@@ -856,6 +857,8 @@ change the file. Prove that lifetime boundary and validate the returning volume/
 not an acceptable removable-media recovery remedy; the M2 fixed-NTFS exception does not extend here. Do not implement this in M2.
 
 - [ ] Complete the dedicated USB/removable design before implementation.
+  - [x] [Design draft](T21-USB-REMOVABLE-DESIGN.md) (2026-10-13, Astra): NTFS-first envelope, local private staging, two lifetime proofs
+    for surprise removal, automatic remount reconciliation, decisions D1–D7 and native controls. Author-side review said REVISE.
   - [ ] Record owner decisions on supported filesystems/removal behavior, explaining what users notice under each option; obtain Sol 6.1 xhigh design review.
   - [ ] Design automatic remount reconciliation after surprise removal; retain the exact identity/generation hold until verified.
 - [ ] Implement only the approved scope; keep unsupported combinations disabled.
@@ -869,6 +872,8 @@ not an acceptable removable-media recovery remedy; the M2 fixed-NTFS exception d
 has independent server-side destination-byte run evidence, and is ready for combined M4 qualification.
 
 - [ ] Complete the dedicated SMB/UNC design before implementation.
+  - [x] [Design draft](T22-SMB-UNC-DESIGN.md) (2026-10-13, Astra): local fixed-NTFS stage, enrolled UNC identity, Kerberos caller
+    authority, remote replacement gap and commit options, decisions D1–D13 and native controls N01–N0x.
   - [ ] Cover canonical names, redirector identity, remote authorization, commit ordering and disconnect/retry; record owner choices with user-visible effects and obtain Sol 6.1 xhigh design review.
 - [ ] Implement only the approved scope; keep unsupported network capabilities disabled.
 - [ ] Qualify an actual SMB server with independent server-side destination-byte observation.
