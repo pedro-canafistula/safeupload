@@ -63,6 +63,7 @@ public sealed class PolicyContentBindingTests : IDisposable
     {
         var policy = LocalPolicyStore.CreateDefault() with
         {
+            Clipboard = null,
             MonitoredScopes = LocalPolicyStore.CreateDefault().MonitoredScopes with { DestinationPaths = [@"C:\a", @"C:\b"] }
         };
         var reordered = policy with
