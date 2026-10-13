@@ -30,7 +30,8 @@ public sealed class SpreadsheetStreamingInspectionTests(ITestOutputHelper output
         using var reader = await new OpenXmlSheetExtractor().OpenReaderAsync(input, CancellationToken.None);
         var text = new StringBuilder(); var buffer = new char[chunk]; int count;
         while ((count = await reader.ReadAsync(buffer.AsMemory())) != 0) text.Append(buffer, 0, count);
-        Assert.Equal("CPF: 529.982.247-25\n11222333\n000181\npassword: abcde\n\"AKIAIOSFODNN7EXAMPLE\"\nclean result\n", text.ToString());
+        Assert.Equal("CPF: 529.982.247-25\n11222333\n000181\npassword: abcde\n\"AKIAIOSFODNN7EXAMPLE\"\nclean result\n" +
+            "Plan1\n1\nrId1\n1\nA1\ns\nB1\ninlineStr\nC1\nstr\n", text.ToString());
         var findings = ContentScanner.Scan(text.ToString(), Enum.GetValues<Category>().ToHashSet());
         Assert.Equal(new[] { Category.Cpf, Category.Password, Category.Secret }, findings.Select(f => f.Category));
         Assert.Equal(original, Hash(path));
@@ -49,8 +50,9 @@ public sealed class SpreadsheetStreamingInspectionTests(ITestOutputHelper output
         Assert.Equal(Verdict.Blocked, staged.Verdict); Assert.Null(staged.Reason);
         Assert.Equal(Category.Cpf, Assert.Single(staged.Findings).Category);
         var legacy = await service.InspectAsync(operation, CancellationToken.None);
-        Assert.Equal(referenced ? Verdict.Blocked : Verdict.Approved, legacy.Verdict);
-        Assert.Equal(referenced ? 2 : 0, legacy.Findings.Count);
+        // Legacy now consumes the same complete stored-text reader.
+        Assert.Equal(Verdict.Blocked, legacy.Verdict); Assert.Null(legacy.Reason);
+        Assert.Equal(Category.Cpf, Assert.Single(legacy.Findings).Category);
         Assert.Equal(original, Hash(path));
     }
 
@@ -119,7 +121,8 @@ public sealed class SpreadsheetStreamingInspectionTests(ITestOutputHelper output
                 if (characters >= nextSample)
                 { peak = Math.Max(peak, GC.GetTotalMemory(forceFullCollection: true)); nextSample = characters + 1024 * 1024; samples++; }
             }
-            Assert.Equal((long)length + tail.Length + 1, characters);
+            string metadata = "Plan1\n1\nrId1\n1\n" + (shape == "shared" ? "" : "A1\n" + (shape == "inline" ? "inlineStr\n" : "str\n"));
+            Assert.Equal((long)length + tail.Length + 1 + metadata.Length, characters);
             Assert.True(samples >= 8); Assert.InRange(peak - baseline, 0, 4L * 1024 * 1024);
             output.WriteLine($"SpreadsheetLive shape={shape} text_characters={length} collected_managed_delta_bytes={peak - baseline} samples={samples}");
         }

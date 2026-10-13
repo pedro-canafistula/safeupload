@@ -18,6 +18,7 @@ internal sealed class SpreadsheetTextReader : TextReader
     private readonly char[] _characters = new char[8192];
     private readonly StringBuilder _reference = new(32);
     private XmlReader? _xml;
+    private readonly TextReader _auxiliary;
     private int _partIndex, _offset, _count, _lookahead = -2, _textDepth = -1, _cellDepth = -1;
     private int _sharedCount;
     private string _cellType = "";
@@ -29,15 +30,14 @@ internal sealed class SpreadsheetTextReader : TextReader
         _document = SpreadsheetDocument.Open(new BorrowedStream(content), isEditable: false);
         try
         {
-            OpenXmlInspectionGuard.RejectUnsupportedPayloads(_document, token);
+            var parts = OpenXmlInspectionGuard.Inspect(_document, content, token);
+            _auxiliary = OpenXmlAuxiliaryText.Create(parts);
             var workbook = _document.WorkbookPart ?? throw new InvalidDataException("The spreadsheet has no workbook part.");
+            if (parts.OfType<WorkbookPart>().Count() != 1) throw new UnsupportedContentException();
             Add(workbook, "workbook", Kind.Workbook);
-            if (workbook.SharedStringTablePart is { } table) Add(table, "sst", Kind.SharedStrings);
-            foreach (var sheet in workbook.WorksheetParts)
-            {
-                Add(sheet, "worksheet", Kind.Worksheet);
-                if (sheet.WorksheetCommentsPart is { } comments) Add(comments, "comments", Kind.Comments);
-            }
+            foreach (var table in parts.OfType<SharedStringTablePart>()) Add(table, "sst", Kind.SharedStrings);
+            foreach (var sheet in parts.OfType<WorksheetPart>()) Add(sheet, "worksheet", Kind.Worksheet);
+            foreach (var comments in parts.OfType<WorksheetCommentsPart>()) Add(comments, "comments", Kind.Comments);
         }
         catch { _document.Dispose(); throw; }
 
@@ -96,7 +96,11 @@ internal sealed class SpreadsheetTextReader : TextReader
             token.ThrowIfCancellationRequested();
             if (_xml is null)
             {
-                if (_partIndex == _parts.Count) return false;
+                if (_partIndex == _parts.Count)
+                {
+                    _offset = 0; _count = _auxiliary.ReadAsync(_characters.AsMemory(), token).GetAwaiter().GetResult();
+                    return _count != 0;
+                }
                 var stream = _parts[_partIndex].Value.GetStream(FileMode.Open, FileAccess.Read);
                 try { _xml = XmlReader.Create(stream, new XmlReaderSettings { CloseInput = true,
                     DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, IgnoreWhitespace = true }); }
@@ -196,7 +200,7 @@ internal sealed class SpreadsheetTextReader : TextReader
     protected override void Dispose(bool disposing)
     {
         if (disposing && !_disposed)
-        { _disposed = true; try { _xml?.Dispose(); } finally { _document.Dispose(); } }
+        { _disposed = true; try { _xml?.Dispose(); _auxiliary.Dispose(); } finally { _document.Dispose(); } }
         base.Dispose(disposing);
     }
 

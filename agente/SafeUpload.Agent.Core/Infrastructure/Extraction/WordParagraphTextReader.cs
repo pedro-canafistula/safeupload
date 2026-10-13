@@ -18,6 +18,7 @@ internal sealed class WordParagraphTextReader : TextReader
     private readonly List<Paragraph> _paragraphs = [];
     private readonly char[] _characters = new char[8192];
     private XmlReader? _xml;
+    private readonly TextReader _auxiliary;
     private int _partIndex, _characterOffset, _characterCount, _bodyDepth = -1;
     private int _lookahead = -2;
     private bool _rootSeen, _bodySeen, _value, _newline, _disposed;
@@ -27,14 +28,14 @@ internal sealed class WordParagraphTextReader : TextReader
         _document = WordprocessingDocument.Open(new BorrowedStream(content), isEditable: false);
         try
         {
-            OpenXmlInspectionGuard.RejectUnsupportedPayloads(_document, token);
-            var main = _document.MainDocumentPart ?? throw new InvalidDataException("The Word package has no main document part.");
-            foreach (var header in main.HeaderParts) Add(header, "hdr");
-            Add(main, "document", bodyRequired: true);
-            foreach (var footer in main.FooterParts) Add(footer, "ftr");
-            if (main.FootnotesPart is { } footnotes) Add(footnotes, "footnotes");
-            if (main.EndnotesPart is { } endnotes) Add(endnotes, "endnotes");
-            if (main.WordprocessingCommentsPart is { } comments) Add(comments, "comments");
+            var parts = OpenXmlInspectionGuard.Inspect(_document, content, token);
+            _auxiliary = OpenXmlAuxiliaryText.Create(parts);
+            _ = _document.MainDocumentPart ?? throw new InvalidDataException("The Word package has no main document part.");
+            foreach (var part in parts)
+            {
+                if (part is MainDocumentPart or HeaderPart or FooterPart or FootnotesPart or EndnotesPart or WordprocessingCommentsPart)
+                    Add(part, OpenXmlInspectionGuard.Root(part).Root, part is MainDocumentPart);
+            }
         }
         catch { _document.Dispose(); throw; }
 
@@ -109,7 +110,12 @@ internal sealed class WordParagraphTextReader : TextReader
             token.ThrowIfCancellationRequested();
             if (_xml is null)
             {
-                if (_partIndex == _parts.Count) return false;
+                if (_partIndex == _parts.Count)
+                {
+                    _characterOffset = 0;
+                    _characterCount = _auxiliary.ReadAsync(_characters.AsMemory(), token).GetAwaiter().GetResult();
+                    return _characterCount != 0;
+                }
                 var stream = _parts[_partIndex].Value.GetStream(FileMode.Open, FileAccess.Read);
                 try
                 {
@@ -144,7 +150,7 @@ internal sealed class WordParagraphTextReader : TextReader
                 }
                 if (_parts[_partIndex].BodyRequired && word && _xml.LocalName == "body" && _xml.Depth == 1)
                 { _bodySeen = true; if (!_xml.IsEmptyElement) _bodyDepth = _xml.Depth; }
-                if (word && _xml.LocalName == "p" && (!_parts[_partIndex].BodyRequired || _bodyDepth >= 0))
+                if ((word || OpenXmlAuxiliaryText.NamespaceMatches(_xml.NamespaceURI, OpenXmlInspectionGuard.Drawing)) && _xml.LocalName == "p" && (!_parts[_partIndex].BodyRequired || _bodyDepth >= 0))
                 {
                     // Text boxes may contain nested paragraphs. Emit each
                     // paragraph once, separating it from surrounding text.
@@ -175,7 +181,7 @@ internal sealed class WordParagraphTextReader : TextReader
         if (disposing && !_disposed)
         {
             _disposed = true;
-            try { _xml?.Dispose(); }
+            try { _xml?.Dispose(); _auxiliary.Dispose(); }
             finally { _document.Dispose(); }
         }
         base.Dispose(disposing);

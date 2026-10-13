@@ -1,78 +1,44 @@
 using UglyToad.PdfPig;
-using UglyToad.PdfPig.Content;
 
 namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 
-/// <summary>Consumes page letters in content order without Page.Text or a document-wide string.</summary>
+/// <summary>Streams page letters and auxiliary payloads without a document-wide text copy.</summary>
 internal sealed class PdfTextReader : TextReader
 {
     private readonly PdfDocument _document;
-    private Page? _page;
-    private int _pageNumber = 1, _letter, _letterOffset, _newlineOffset, _lookahead = -2;
-    private bool _disposed;
+    private readonly ChunkedTextReader _reader;
 
-    public PdfTextReader(Stream content) => _document = PdfDocument.Open(new BorrowedStream(content));
-
-    public override ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken token = default) =>
-        ValueTask.FromResult(Fill(buffer.Span, token));
-    public override int Read(Span<char> buffer) => Fill(buffer, CancellationToken.None);
-    public override int Read(char[] buffer, int index, int count)
-    { ArgumentNullException.ThrowIfNull(buffer); return Fill(buffer.AsSpan(index, count), CancellationToken.None); }
-    public override int Read()
-    { Span<char> one = stackalloc char[1]; return Fill(one, CancellationToken.None) == 0 ? -1 : one[0]; }
-    public override int Peek()
+    public PdfTextReader(Stream content)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_lookahead == -2)
-        { Span<char> one = stackalloc char[1]; _lookahead = FillCore(one, CancellationToken.None) == 0 ? -1 : one[0]; }
-        return _lookahead;
+        _document = PdfDocument.Open(new BorrowedStream(content), new ParsingOptions
+        { UseLenientParsing = false, SkipMissingFonts = false, UseActualText = false, MaxStackDepth = 256 });
+        _reader = new ChunkedTextReader(ReadChunks);
     }
-    private int Fill(Span<char> buffer, CancellationToken token)
+    private IEnumerable<ReadOnlyMemory<char>> ReadChunks(Func<CancellationToken> token)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this); token.ThrowIfCancellationRequested();
-        if (buffer.IsEmpty || _lookahead == -1) return 0;
-        if (_lookahead < 0) return FillCore(buffer, token);
-        buffer[0] = (char)_lookahead; _lookahead = -2;
-        return 1 + FillCore(buffer[1..], token);
-    }
-    private int FillCore(Span<char> buffer, CancellationToken token)
-    {
-        int written = 0;
-        while (written < buffer.Length)
+        var auxiliary = new PdfAuxiliaryText(_document);
+        for (int number = 1; number <= _document.NumberOfPages; number++)
         {
-            token.ThrowIfCancellationRequested();
-            if (_page is null)
-            {
-                if (_pageNumber > _document.NumberOfPages) break;
-                // The parser still owns page/document metadata allocations.
-                // This reader removes extracted-text copies; it does not
-                // claim a worst-case parser memory bound.
-                _page = _document.GetPage(_pageNumber++);
-                if (_page.NumberOfImages != 0) throw new UnsupportedContentException();
-                _letter = _letterOffset = _newlineOffset = 0;
-            }
-            if (_letter < _page.Letters.Count)
-            {
-                string value = _page.Letters[_letter].Value;
-                int count = Math.Min(value.Length - _letterOffset, buffer.Length - written);
-                value.AsSpan(_letterOffset, count).CopyTo(buffer[written..]);
-                written += count; _letterOffset += count;
-                if (_letterOffset == value.Length) { _letter++; _letterOffset = 0; }
-            }
-            else
-            {
-                string newline = Environment.NewLine;
-                int count = Math.Min(newline.Length - _newlineOffset, buffer.Length - written);
-                newline.AsSpan(_newlineOffset, count).CopyTo(buffer[written..]);
-                written += count; _newlineOffset += count;
-                if (_newlineOffset == newline.Length) _page = null;
-            }
+            token().ThrowIfCancellationRequested();
+            // PdfPig still owns page/document allocations; bounded extraction
+            // buffers do not establish a worst-case parser memory bound.
+            var page = _document.GetPage(number);
+            if (page.NumberOfImages != 0) throw new UnsupportedContentException();
+            foreach (var letter in page.Letters)
+            { token().ThrowIfCancellationRequested(); yield return letter.Value.AsMemory(); }
+            yield return Environment.NewLine.AsMemory();
+            foreach (var text in auxiliary.ReadPage(page, token)) yield return text;
         }
-        return written;
+        foreach (var text in auxiliary.ReadDocument(token)) yield return text;
     }
+    public override ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken token = default) => _reader.ReadAsync(buffer, token);
+    public override int Read(Span<char> buffer) => _reader.Read(buffer);
+    public override int Read(char[] buffer, int index, int count) => _reader.Read(buffer, index, count);
+    public override int Read() => _reader.Read();
+    public override int Peek() => _reader.Peek();
     protected override void Dispose(bool disposing)
     {
-        if (disposing && !_disposed) { _disposed = true; _page = null; _document.Dispose(); }
+        if (disposing) { try { _reader.Dispose(); } finally { _document.Dispose(); } }
         base.Dispose(disposing);
     }
 

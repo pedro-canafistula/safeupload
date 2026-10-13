@@ -461,6 +461,13 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     annotation contents/form-field values; refuse embedded files, PDF attachments, XFA and other unconsumed payloads.
   - [ ] Replace the Office part denylist with an allowlist; independent fixtures include a clean cell plus a CPF-only drawing text box,
     a CPF chart label, a clean PDF page plus a CPF annotation or form value, an attachment and an unknown part type.
+  - [x] First increment (Astra worker, integrated here): 27-type read allowlist, unreferenced/unknown parts refused, drawings/charts/VML/
+    threaded comments/properties read; PDF annotations/fields/outlines/Info/XMP read; attachments/XFA/JS/AP/RC refused; legacy uses the
+    streaming readers. [Matrix `t9-coverage1`](evidence/2026-10-13/exact-agent-matrix-t9-coverage1-summary.txt): 1,210 normal / 1,580 feature
+    tests per Debug/Release profile, no skips, 0/0. [Coverage table](../agente/docs/INSPECTION-COVERAGE.md).
+  - [ ] Round 2 (fail-closed gaps that block ordinary files): read Excel tables, cell metadata, pivot caches, external links, Word people/
+    comment extensions/glossary, custom properties and custom XML; scan External relationship targets; accept PDF appearance streams that
+    draw no text. Filled-form text appearances, incremental PDF revisions and page-level metadata stay refused (recorded below) until read.
 - [x] Failure classification, bounded worker concurrency, notifications, single-handle snapshot input, parser-integrity controls and
   bounded numeric-scanner scratch space are implemented; [component gates](evidence/2026-10-10/m2-agent-component-gates.json).
 - [ ] Finish whole-file streaming, format/encoding/extraction coverage, stage-space accounting/orphan cleanup and seeding cost.

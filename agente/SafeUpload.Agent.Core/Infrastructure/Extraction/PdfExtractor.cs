@@ -1,6 +1,3 @@
-using UglyToad.PdfPig;
-using UglyToad.PdfPig.Content;
-
 namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 
 /// <summary>
@@ -35,34 +32,14 @@ public sealed class PdfExtractor : IStreamingTextExtractor
     }
 
     /// <inheritdoc />
-    public Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken)
+    public async Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(content);
-
-        // PdfPig é síncrono e trabalha sobre um stream posicionável. Quem
-        // chama entrega um FileStream, então não há cópia extra aqui.
-        using PdfDocument document = PdfDocument.Open(content);
-
+        using var reader = await OpenReaderAsync(content, cancellationToken).ConfigureAwait(false);
         var text = new System.Text.StringBuilder();
-
-        foreach (Page page in document.GetPages())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            // Scanning the text layer cannot approve an uninspected raster image.
-            // A clean cover page or a token of text on the image page does not
-            // turn partial extraction into whole-file inspection.
-            if (page.NumberOfImages != 0) throw new UnsupportedContentException();
-
-            // ContentOrderTextExtractor respeita a ordem em que o texto foi
-            // desenhado, e não a posição na página. Para varredura é o que se
-            // quer: um CPF quebrado entre dois blocos posicionados lado a
-            // lado continua contíguo na ordem de desenho, enquanto ordenar
-            // por coordenada poderia intercalar uma coluna vizinha no meio
-            // dos dígitos e destruir o número.
-            text.AppendLine(page.Text);
-        }
-
-        return Task.FromResult(text.ToString());
+        var buffer = new char[8192];
+        int count;
+        while ((count = await reader.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) != 0)
+            text.Append(buffer, 0, count);
+        return text.ToString();
     }
 }

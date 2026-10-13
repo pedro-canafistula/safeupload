@@ -1,8 +1,3 @@
-using System.Text;
-using DocumentFormat.OpenXml;
-using DocumentFormat.OpenXml.Packaging;
-using DocumentFormat.OpenXml.Wordprocessing;
-
 namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 
 /// <summary>
@@ -28,71 +23,14 @@ public sealed class OpenXmlWordExtractor : IStreamingTextExtractor
     }
 
     /// <inheritdoc />
-    public Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken)
+    public async Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(content);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        using var document = WordprocessingDocument.Open(content, isEditable: false);
-        OpenXmlInspectionGuard.RejectUnsupportedPayloads(document, cancellationToken);
-        var mainPart = document.MainDocumentPart
-            ?? throw new InvalidDataException("The Word package has no main document part.");
-        var body = mainPart.Document?.Body
-            ?? throw new InvalidDataException("The Word document has no body.");
-
-        var builder = new StringBuilder();
-
-        foreach (var header in mainPart.HeaderParts)
-        {
-            AppendParagraphs(builder, header.Header ?? throw new InvalidDataException("The Word header has no root."), cancellationToken);
-        }
-
-        AppendParagraphs(builder, body, cancellationToken);
-
-        foreach (var footer in mainPart.FooterParts)
-        {
-            AppendParagraphs(builder, footer.Footer ?? throw new InvalidDataException("The Word footer has no root."), cancellationToken);
-        }
-
-        if (mainPart.FootnotesPart is { } footnotes)
-            AppendParagraphs(builder, footnotes.Footnotes ?? throw new InvalidDataException("The Word footnotes have no root."), cancellationToken);
-        if (mainPart.EndnotesPart is { } endnotes)
-            AppendParagraphs(builder, endnotes.Endnotes ?? throw new InvalidDataException("The Word endnotes have no root."), cancellationToken);
-        if (mainPart.WordprocessingCommentsPart is { } comments)
-            AppendParagraphs(builder, comments.Comments ?? throw new InvalidDataException("The Word comments have no root."), cancellationToken);
-
-        return Task.FromResult(builder.ToString());
-    }
-
-    /// <summary>
-    /// Percorre parágrafo a parágrafo — inclusive os que estão dentro de
-    /// tabelas — em vez de pegar o <c>InnerText</c> do bloco inteiro.
-    ///
-    /// A diferença importa: <c>InnerText</c> emenda os parágrafos sem nenhum
-    /// caractere entre eles, e um parágrafo terminado em dígito seguido de
-    /// outro começado em dígito viraria uma única sequência numérica que não
-    /// existe no documento. Cada parágrafo sai numa linha própria, e quebra de
-    /// linha não é separador válido dentro de um número para a varredura.
-    /// </summary>
-    private static void AppendParagraphs(
-        StringBuilder builder,
-        OpenXmlElement? root,
-        CancellationToken cancellationToken)
-    {
-        if (root is null)
-        {
-            return;
-        }
-
-        foreach (var paragraph in root.Descendants<Paragraph>())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var text = paragraph.InnerText;
-            if (!string.IsNullOrEmpty(text))
-            {
-                builder.Append(text).Append('\n');
-            }
-        }
+        using var reader = await OpenReaderAsync(content, cancellationToken).ConfigureAwait(false);
+        var text = new System.Text.StringBuilder();
+        var buffer = new char[8192];
+        int count;
+        while ((count = await reader.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) != 0)
+            text.Append(buffer, 0, count);
+        return text.ToString();
     }
 }
