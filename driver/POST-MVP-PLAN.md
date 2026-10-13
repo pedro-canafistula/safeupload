@@ -384,7 +384,7 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
 - [x] Failure classification, bounded worker concurrency, notifications, single-handle snapshot input, parser-integrity controls and
   bounded numeric-scanner scratch space are implemented; [component gates](evidence/2026-10-10/m2-agent-component-gates.json).
 - [ ] Finish whole-file streaming, format/encoding/extraction coverage, stage-space accounting/orphan cleanup and seeding cost.
-  - Office auxiliary-text implementation (matrix pending): Word footnotes/endnotes/comments and classic Excel comment text/authors
+  - Office auxiliary-text implementation (`41ed0f66`): Word footnotes/endnotes/comments and classic Excel comment text/authors
     are included in extraction, with paragraph/note boundaries preserved. Present Word header/footer/note parts must have a root;
     malformed auxiliary XML cannot become a clean partial extraction. Independent package-XML controls exercise identifiers only
     in these parts, empty/clean notes, numeric fragments across adjacent notes, corruption, masked findings and unchanged bytes.
@@ -393,6 +393,12 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     This does not close streaming or complete Office coverage: modern/threaded comments, images/OCR, drawings/charts, embedded/external
     content, formula completeness and other metadata remain unqualified. The existing declarations of excluded content do not prove
     staged whole-content inspection; these remaining cases require inspection or explicit incomplete-inspection refusal.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-office-notes1-summary.txt) passes 974 normal/1,344 feature tests
+    per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. All
+    [12 independent package controls](evidence/2026-10-13/t9-office-notes1-controls.json) pass in every profile; sensitive/corrupt
+    cases exercise both legacy and staged outcomes and preserve original package bytes. Valid empty note text remains accepted.
+    [Preflight duplicate-output cleanup](evidence/2026-10-13/t9-office-notes1-preflight-cleanup.stdout.txt) preserves the previous
+    verified source/packages/evidence. No product pair was installed or booted; T4's stop and T5 NotReady remain in force.
 - [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
   - Strict current-policy implementation (`bfffa535`): staged inspection, approval, justification, allocation/rename/attach
     admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and

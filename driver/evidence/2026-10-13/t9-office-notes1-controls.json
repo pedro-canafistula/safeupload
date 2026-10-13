@@ -1,0 +1,222 @@
+{
+  "sourceCommit": "41ed0f669ad3bf1b93350773d73658d0954d01b5",
+  "scope": "Independent Office package XML: Word footnotes/endnotes/comments and classic Excel comments; no full-format or protected qualification",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "rawTrxSha256": "8a706322de9dd023b252ad1638578295ded861d8f8aad31581698bc0a25e5170",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "rawTrxSha256": "a00d10330a3648bdd15d472aca8ce584d7fd31da49ef8a7f395fa511ab58b986",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "rawTrxSha256": "447abdef40575fd97d06937b8543fb8f77cec66a4334dff485449dea84b19928",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "rawTrxSha256": "05e81922726dc60e63ec39805b3055d8f01e4e8c66a2f5ef011c78cbe39a964d",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Adjacent_notes_do_not_invent_a_number_and_empty_text_remains_valid(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"comments\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"endnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"footnotes\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Sensitive_auxiliary_text_is_scanned_without_changing_the_package(part: \"sheet-comments\")",
+          "outcome": "Passed"
+        }
+      ]
+    }
+  ]
+}
