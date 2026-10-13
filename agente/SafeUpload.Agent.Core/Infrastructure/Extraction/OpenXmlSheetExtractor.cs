@@ -18,11 +18,19 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 /// Imagens, miniaturas e objetos/pacotes/controles incorporados são recusados
 /// explicitamente em vez de aprovar apenas a camada de texto.
 /// </summary>
-public sealed class OpenXmlSheetExtractor : ITextExtractor
+public sealed class OpenXmlSheetExtractor : IStreamingTextExtractor
 {
     /// <inheritdoc />
     public IReadOnlySet<string> SupportedExtensions { get; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".xlsx" };
+
+    /// <inheritdoc />
+    public Task<TextReader> OpenReaderAsync(Stream content, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<TextReader>(new SpreadsheetTextReader(content, cancellationToken));
+    }
 
     /// <inheritdoc />
     public Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken)
