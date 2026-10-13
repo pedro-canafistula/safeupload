@@ -13,7 +13,7 @@ public sealed partial class StagedTransferJournal
         token.ThrowIfCancellationRequested();
         var legacyClaims = new Dictionary<string, (long Generation, HashSet<Guid> Transfers)>(StringComparer.OrdinalIgnoreCase);
         var boundClaims = new SortedDictionary<StagedDestinationIdentity, (long Generation, HashSet<Guid> Transfers)>(
-            Comparer<StagedDestinationIdentity>.Create(CompareDestinations));
+            StagedDestinationIdentity.OrderedComparer);
         var byId = new Dictionary<Guid, TransferJournalEntry>(entries.Count);
         var protectedIds = new HashSet<Guid>();
         foreach (var entry in entries)
@@ -60,19 +60,5 @@ public sealed partial class StagedTransferJournal
         if (!claims.TryGetValue(destination, out var maximum) || generation > maximum.Generation)
             claims[destination] = (generation, [transfer]);
         else if (generation == maximum.Generation) maximum.Transfers.Add(transfer);
-    }
-
-    private static int CompareDestinations(StagedDestinationIdentity left, StagedDestinationIdentity right)
-    {
-        // Parent serials equal their volume-root serials by construction. Order
-        // every other identity field before the leaf, using precisely the same
-        // Windows comparator as destination equality. No leaf hash is needed.
-        var leftIdentity = (left.VolumeRoot.VolumeSerialNumber, left.VolumeRoot.FileIdHigh, left.VolumeRoot.FileIdLow,
-            left.Parent.FileIdHigh, left.Parent.FileIdLow, left.CaseSensitive, left.MountManagerVolumeId);
-        var rightIdentity = (right.VolumeRoot.VolumeSerialNumber, right.VolumeRoot.FileIdHigh, right.VolumeRoot.FileIdLow,
-            right.Parent.FileIdHigh, right.Parent.FileIdLow, right.CaseSensitive, right.MountManagerVolumeId);
-        int order = leftIdentity.CompareTo(rightIdentity);
-        return order != 0 ? order : StagedDestinationLeafComparer.Compare(left.CanonicalLeaf, right.CanonicalLeaf,
-            left.CaseSensitive);
     }
 }

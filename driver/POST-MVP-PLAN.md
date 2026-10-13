@@ -434,6 +434,12 @@ cannot publish unapproved bytes, proven by the observer.
     for 2k/20k/100k bound claims; the 50k-reference chain takes 58.403 ms. These are scoped measurements, not end-to-end latency
     assertions. [Preflight duplicate-output cleanup](evidence/2026-10-13/t11-scaling-preflight-cleanup.stdout.txt) preserves the
     previous source/packages/evidence and prevents another builder disk-full failure. No product pair was installed or booted.
+  - Destination-index follow-up (matrix pending): live queue cells and startup head duplicate detection now share the
+    compactor's ordered full-identity/Windows-leaf comparator. This removes same-parent leaf-hash collision chains from all
+    three indexes while preserving alias serialization and duplicate-head refusal. Real private-journal controls exercise
+    1k/10k simultaneously retained queue cells, canceled alias waits, distinct case/volume/parent identities, exact zero-cell
+    teardown and 1k/10k on-disk head reads with unchanged generation tuples. Per-destination durable-head resolution still
+    scans every head; that I/O cost and final-pair qualification remain open.
 - [ ] Close every M2 review condition against the final matched pair.
 
 ## M3 — after M2

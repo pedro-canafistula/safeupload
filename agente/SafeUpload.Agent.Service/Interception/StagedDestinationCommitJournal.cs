@@ -52,6 +52,23 @@ internal sealed record StagedDestinationIdentity
     // may collide in this in-memory hash; only the comparator selects a head.
     public override int GetHashCode() => HashCode.Combine(VolumeRoot, Parent, CaseSensitive, MountManagerVolumeId);
 
+    internal static IComparer<StagedDestinationIdentity> OrderedComparer { get; } =
+        Comparer<StagedDestinationIdentity>.Create(Compare);
+
+    private static int Compare(StagedDestinationIdentity left, StagedDestinationIdentity right)
+    {
+        // Parent serials equal their volume-root serials by construction. Order
+        // every other identity field before the leaf, using precisely the same
+        // Windows comparator as destination equality. No leaf hash is needed.
+        var leftIdentity = (left.VolumeRoot.VolumeSerialNumber, left.VolumeRoot.FileIdHigh, left.VolumeRoot.FileIdLow,
+            left.Parent.FileIdHigh, left.Parent.FileIdLow, left.CaseSensitive, left.MountManagerVolumeId);
+        var rightIdentity = (right.VolumeRoot.VolumeSerialNumber, right.VolumeRoot.FileIdHigh, right.VolumeRoot.FileIdLow,
+            right.Parent.FileIdHigh, right.Parent.FileIdLow, right.CaseSensitive, right.MountManagerVolumeId);
+        int order = leftIdentity.CompareTo(rightIdentity);
+        return order != 0 ? order : StagedDestinationLeafComparer.Compare(left.CanonicalLeaf, right.CanonicalLeaf,
+            left.CaseSensitive);
+    }
+
     private static bool IsWellFormedUtf16(string value)
     {
         for (int i = 0; i < value.Length; i++)
@@ -131,7 +148,9 @@ internal sealed record StagedDestinationHead(StagedDestinationIdentity Destinati
 
 public sealed partial class StagedTransferJournal
 {
-    private readonly Dictionary<StagedDestinationIdentity, DestinationQueueCell> _destinationQueues = new();
+    private readonly SortedDictionary<StagedDestinationIdentity, DestinationQueueCell> _destinationQueues =
+        new(StagedDestinationIdentity.OrderedComparer);
+    internal int DestinationQueueCells { get { lock (_destinationQueues) return _destinationQueues.Count; } }
 
     internal sealed class DestinationQueueCell
     {
@@ -254,7 +273,7 @@ public sealed partial class StagedTransferJournal
         try
         {
             var heads = new List<StagedDestinationHead>();
-            var identities = new HashSet<StagedDestinationIdentity>();
+            var identities = new SortedSet<StagedDestinationIdentity>(StagedDestinationIdentity.OrderedComparer);
             foreach (string path in Directory.EnumerateFiles(_directory, "destination-*.state"))
             {
                 token.ThrowIfCancellationRequested();
