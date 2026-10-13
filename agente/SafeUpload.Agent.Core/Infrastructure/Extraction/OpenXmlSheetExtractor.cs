@@ -53,6 +53,22 @@ public sealed class OpenXmlSheetExtractor : ITextExtractor
                     }
                 }
             }
+            if (worksheetPart.WorksheetCommentsPart is { } commentsPart)
+            {
+                var comments = commentsPart.Comments
+                    ?? throw new InvalidDataException("The worksheet comments have no root.");
+                foreach (var author in comments.Descendants<Author>())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    builder.Append(author.InnerText).Append('\n');
+                }
+                foreach (var comment in comments.Descendants<Comment>())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    // Comment text is optional; an empty note remains valid.
+                    builder.Append(comment.CommentText?.InnerText).Append('\n');
+                }
+            }
         }
 
         return Task.FromResult(builder.ToString());

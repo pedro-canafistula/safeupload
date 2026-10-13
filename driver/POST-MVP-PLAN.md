@@ -384,6 +384,15 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
 - [x] Failure classification, bounded worker concurrency, notifications, single-handle snapshot input, parser-integrity controls and
   bounded numeric-scanner scratch space are implemented; [component gates](evidence/2026-10-10/m2-agent-component-gates.json).
 - [ ] Finish whole-file streaming, format/encoding/extraction coverage, stage-space accounting/orphan cleanup and seeding cost.
+  - Office auxiliary-text implementation (matrix pending): Word footnotes/endnotes/comments and classic Excel comment text/authors
+    are included in extraction, with paragraph/note boundaries preserved. Present Word header/footer/note parts must have a root;
+    malformed auxiliary XML cannot become a clean partial extraction. Independent package-XML controls exercise identifiers only
+    in these parts, empty/clean notes, numeric fragments across adjacent notes, corruption, masked findings and unchanged bytes.
+    Source mechanisms follow Microsoft's [Word part API](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.packaging.maindocumentpart?view=openxml-3.0.1)
+    and [Spreadsheet comments model](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.comments?view=openxml-3.0.1).
+    This does not close streaming or complete Office coverage: modern/threaded comments, images/OCR, drawings/charts, embedded/external
+    content, formula completeness and other metadata remain unqualified. The existing declarations of excluded content do not prove
+    staged whole-content inspection; these remaining cases require inspection or explicit incomplete-inspection refusal.
 - [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
   - Strict current-policy implementation (`bfffa535`): staged inspection, approval, justification, allocation/rename/attach
     admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and

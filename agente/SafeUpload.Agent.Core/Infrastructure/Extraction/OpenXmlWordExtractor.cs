@@ -8,9 +8,8 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 /// <summary>
 /// Extrator de documentos do Word (<c>.docx</c>), via Open XML.
 ///
-/// Cobre o corpo do documento mais cabeçalhos e rodapés, que é onde costuma
-/// aparecer o dado que interessa. Fora do alcance desta entrega, e por isso
-/// declarado: comentários, controle de alterações, texto dentro de imagens
+/// Cobre corpo, cabeçalhos, rodapés, notas de rodapé/finais e comentários.
+/// Fora do alcance desta entrega: texto dentro de imagens
 /// (não há OCR) e objetos incorporados. O formato antigo <c>.doc</c>, binário,
 /// também não é lido.
 /// </summary>
@@ -36,15 +35,22 @@ public sealed class OpenXmlWordExtractor : ITextExtractor
 
         foreach (var header in mainPart.HeaderParts)
         {
-            AppendParagraphs(builder, header.Header, cancellationToken);
+            AppendParagraphs(builder, header.Header ?? throw new InvalidDataException("The Word header has no root."), cancellationToken);
         }
 
         AppendParagraphs(builder, body, cancellationToken);
 
         foreach (var footer in mainPart.FooterParts)
         {
-            AppendParagraphs(builder, footer.Footer, cancellationToken);
+            AppendParagraphs(builder, footer.Footer ?? throw new InvalidDataException("The Word footer has no root."), cancellationToken);
         }
+
+        if (mainPart.FootnotesPart is { } footnotes)
+            AppendParagraphs(builder, footnotes.Footnotes ?? throw new InvalidDataException("The Word footnotes have no root."), cancellationToken);
+        if (mainPart.EndnotesPart is { } endnotes)
+            AppendParagraphs(builder, endnotes.Endnotes ?? throw new InvalidDataException("The Word endnotes have no root."), cancellationToken);
+        if (mainPart.WordprocessingCommentsPart is { } comments)
+            AppendParagraphs(builder, comments.Comments ?? throw new InvalidDataException("The Word comments have no root."), cancellationToken);
 
         return Task.FromResult(builder.ToString());
     }
