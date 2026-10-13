@@ -56,6 +56,8 @@ changes; the owner's direction below accepts the review with specific changes.
 - **False Degraded notices (T18).** A coverage query answered `ERROR_RETRY` (writer registry changed during the snapshot) reports
   Degraded at once; T4 short rows log 12–21 per run. Retry that answer briefly before reporting Degraded, with admission authority
   unchanged. Write the small design and obtain the Sol review before implementation.
+- **Later the same day — T4 KD attribution authorized.** One identity-resolved local-KD attribution row (see T4), non-qualifying,
+  on win10-debug3 with the unchanged pair; the stop on other product VM rows is unchanged.
 - **Workers.** Claude may delegate to Codex `gpt-6-astra`, `gpt-6.1-sol` and `gpt-6-luna` at any effort up to max, with the fast tier.
   Reviews required by the review policy remain Sol 6.1 xhigh.
 - **Later the same day — design work in parallel.** While M2 jobs run, start the design notes for the improved lab/development workflow
@@ -281,9 +283,9 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
     - [x] Static audit ([Astra, read-only](evidence/2026-10-13/t4-delete-context-audit.md)): create → disposition → cleanup context
       references are balanced in the tested `60fecdbc`; writer nodes/SOP slots own no context or FILE_OBJECT. The only owning driver
       file reference is the activation anchor (`StageWriters.c:5882–5885`), unproven for these files. Cause undetermined.
-    - [ ] **Waiting for owner authorization:** one identity-resolved local-KD attribution row on win10-debug3 with the unchanged pair
+    - [ ] **Owner-authorized 2026-10-13:** one identity-resolved local-KD attribution row on win10-debug3 with the unchanged pair
       (bounded unprotected corpus, fresh baseline, serial deletes, `!fltkd` stream/context walks, anchor census, FILE_OBJECT/control-
-      area ownership). Product VM rows stay stopped until then; no threshold, assertion or reclamation change.
+      area ownership). Non-qualifying; other product VM rows stay stopped; no threshold, assertion or reclamation change.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
 - [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):

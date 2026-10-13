@@ -69,7 +69,7 @@ Inspect structured summaries, complete test discovery/execution coverage, packag
 
 ## Lab boundaries and stop rules
 
-- Check the status plan before any product VM action. **The T4 loaded-context failure currently stops further product VM rows pending owner direction; the only exception is the owner-authorized 2026-10-13 hand-back attribution diagnostic.** A request to review or plan is not permission to resume those rows.
+- Check the status plan before any product VM action. **The T4 loaded-context failure currently stops further product VM rows pending owner direction; the only exceptions are the owner-authorized 2026-10-13 hand-back attribution diagnostic (done) and one KD delete-attribution row.** A request to review or plan is not permission to resume those rows.
 - The approved target is **`win10-debug3` only**. Keep `win10-debug2` off because it shares the guest IP. Set `SAFEUPLOAD_DEBUGGEE=win10-debug3` explicitly; older runner defaults/inventory are broader than current authorization.
 - The recorded builder is separate from the qualified Windows 10 **19045.2965** target. Native behavior observed on builder 19045.6466 is mechanism evidence, not target qualification.
 - Use existing disposable qcow2 overlays, reset EFI variables at each start, no TPM, test signing and Secure Boot off. Preserve the original base/XML and delete the run disk. Verify restoration separately with the existing baseline procedure.
