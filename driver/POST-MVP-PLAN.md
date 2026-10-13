@@ -861,7 +861,8 @@ not an acceptable removable-media recovery remedy; the M2 fixed-NTFS exception d
     for surprise removal, automatic remount reconciliation, decisions D1–D7 and native controls.
     [Independent Sol 6.1 xhigh review](evidence/2026-10-13/t21-design-review-sol61.md): REVISE — select a routing owner that survives
     removal for live upper streams; couple each external-copy exposure to current shared-head eligibility. Revised (StageFs routing
-    owner, range admission coupled to head eligibility, device-resource ACK contract); independent re-review pending.
+    owner, range admission coupled to head eligibility, device-resource ACK contract). [Re-review](evidence/2026-10-13/t21-design-rereview-sol61.md):
+    REVISE — select the StageFs→USB public-delete relay; reconcile review provenance. Second revision in progress.
   - [ ] Record owner decisions on supported filesystems/removal behavior, explaining what users notice under each option; obtain Sol 6.1 xhigh design review.
   - [ ] Design automatic remount reconciliation after surprise removal; retain the exact identity/generation hold until verified.
 - [ ] Implement only the approved scope; keep unsupported combinations disabled.
@@ -878,7 +879,8 @@ has independent server-side destination-byte run evidence, and is ready for comb
   - [x] [Design draft](T22-SMB-UNC-DESIGN.md) (2026-10-13, Astra): local fixed-NTFS stage, enrolled UNC identity, Kerberos caller
     authority, remote replacement gap and commit options, decisions D1–D13 and native controls.
     [Independent Sol 6.1 xhigh review](evidence/2026-10-13/t22-design-review-sol61.md): ACCEPT WITH CONDITIONS — forced-teardown
-    coverage-loss gate, corrected cross-volume retargeting rationale, enumerated diagnostic candidates. Revised; re-review pending.
+    coverage-loss gate, corrected cross-volume retargeting rationale, enumerated diagnostic candidates. Revised; [re-review](evidence/2026-10-13/t22-design-rereview-sol61.md):
+    REVISE — atomic per-range ordering against destination-head changes (reuse T21's protocol). Second revision in progress.
   - [ ] Cover canonical names, redirector identity, remote authorization, commit ordering and disconnect/retry; record owner choices with user-visible effects and obtain Sol 6.1 xhigh design review.
 - [ ] Implement only the approved scope; keep unsupported network capabilities disabled.
 - [ ] Qualify an actual SMB server with independent server-side destination-byte observation.

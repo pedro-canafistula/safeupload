@@ -1,0 +1,17 @@
+**REVISE** — independent **Sol 6.1, xhigh** review of `0953036a`.
+
+1. **High — missing cross-device public-delete relay.** StageFs puts combined DELETE+write handles on a separate volume, but merely inherits T5’s public-operation contract ([T21:298](driver/T21-USB-REMOVABLE-DESIGN.md:298), [309](driver/T21-USB-REMOVABLE-DESIGN.md:309)). T5’s selected relay uses a same-volume backend and preserves the original inline thread/security context ([T5:12](driver/T5-NATIVE-PUBLIC-OPENS.md:12), [48](driver/T5-NATIVE-PUBLIC-OPENS.md:48)). That mechanism does not transfer automatically.
+
+   **Required change:** explicitly select the StageFs→USB relay. Microsoft permits cross-volume retargeting with both `TargetInstance` and `TargetFileObject`, subject to same-filter/altitude and target-stack-size constraints. Specify original-subject preservation, one-use admission, native results, cancellation, removal and backend cleanup ownership. Distinguish public deletion from private discard. Add finite combined-handle TRUE/FALSE, duplicate/inherited, impersonated/restricted-subject, sharing, scheduled-delete and removal controls. SYSTEM synthesis or silently refusing required operations is insufficient. [Microsoft retarget contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_io_parameter_block).
+
+2. **Low — review provenance and references need reconciliation.** [T21:7](driver/T21-USB-REMOVABLE-DESIGN.md:7) and [18](driver/T21-USB-REMOVABLE-DESIGN.md:18) assert ACCEPT WITH CONDITIONS, while the retained receipt says REVISE and [POST-MVP-PLAN:862](driver/POST-MVP-PLAN.md:862) says re-review pending. Several references are stale: T21:511 points to POST:912 for continuous evidence; the requirement is now at POST:937–942.
+
+   **Required change:** identify each reviewed revision and exact receipt, preserve prior reports, synchronize status and refresh citations, preferably using section links.
+
+Earlier finding **1 is partially resolved**: StageFs selects a surviving owner for dispatch, cache, sections and retirement; public-disposition coverage remains incomplete as above. Earlier finding **2 is resolved at design level**: section 5.3 couples exposure admission to shared-head transitions and defines bounded, already-admitted writes and C9 races.
+
+The remaining privacy/recovery rules are coherent under the proposed scope: private fixed storage, fresh authority after remount, separate device/stage retirement, retained uncertain outcomes and no ordinary USB Restart remedy. Microsoft supports the cited removal and callback-cutoff contracts. [Removal](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/handling-an-irp-mn-surprise-removal-request), [teardown](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_instance_teardown_callback).
+
+D1–D8 explain user effects honestly; their recommendations are reasonable. C1/C4/C9/C10 and Q1–Q8 provide suitable exits once relay controls are added. Owner decisions, numerical budgets, T5 prerequisites, pre-boot kernel review and complete independent byte-observed qualification remain required.
+
+Read-only review completed. No files changed, builds or VM runs performed; T4’s stop remains in force.
