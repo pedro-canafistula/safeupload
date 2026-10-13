@@ -27,6 +27,13 @@ public interface ITextExtractor
     Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken);
 }
 
+/// <summary>Opens a bounded text reader; disposing it must leave the caller's stream open.</summary>
+public interface IStreamingTextExtractor : ITextExtractor
+{
+    /// <summary>No source reopen, whole-file capture or temporary file is permitted.</summary>
+    Task<TextReader> OpenReaderAsync(Stream content, CancellationToken cancellationToken);
+}
+
 /// <summary>Content requires an inspection capability this extractor does not provide.</summary>
 public sealed class UnsupportedContentException : NotSupportedException
 {

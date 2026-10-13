@@ -92,6 +92,11 @@ public static partial class SecretDetector
         (JsonWebToken, "JSON Web Token")
     ];
 
+    // These existing patterns have a maximum 259-character match. The other
+    // two rules require streaming state because their values are unbounded.
+    internal static IEnumerable<(Regex Pattern, string Kind)> BoundedRules =>
+        Rules.Take(4).Select(static rule => (rule.Pattern(), rule.Kind));
+
     /// <summary>
     /// Devolve todas as credenciais reconhecidas, na ordem em que aparecem.
     /// </summary>

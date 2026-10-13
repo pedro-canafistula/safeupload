@@ -6,7 +6,8 @@ public enum InspectionFailureKind
     TooLarge,
     UnsupportedFormat,
     Timeout,
-    ReadOrParse
+    ReadOrParse,
+    Limit
 }
 
 /// <summary>
@@ -17,7 +18,7 @@ public enum InspectionFailureKind
 /// <param name="Reason">
 /// Motivo padronizado quando não houve inspeção de conteúdo. Segue a mesma
 /// grafia usada na auditoria: file_too_large, unsupported_format,
-/// inspection_timeout, parse_error:Tipo, out_of_scope.
+/// inspection_timeout, inspection_limit, parse_error:Tipo, out_of_scope.
 /// </param>
 /// <param name="ElapsedMs">
 /// Tempo da decisão, em milissegundos. É o número que demonstra os requisitos
@@ -59,6 +60,7 @@ public sealed record InspectionResult(
         "file_too_large" => InspectionFailureKind.TooLarge,
         "unsupported_format" => InspectionFailureKind.UnsupportedFormat,
         "inspection_timeout" => InspectionFailureKind.Timeout,
+        "inspection_limit" => InspectionFailureKind.Limit,
         { } reason when reason.StartsWith("parse_error:", StringComparison.Ordinal) => InspectionFailureKind.ReadOrParse,
         _ => null
     };

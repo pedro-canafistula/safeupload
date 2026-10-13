@@ -113,6 +113,7 @@ public partial class BlockNotificationWindow : Window
             InspectionFailureKind.TooLarge => "O arquivo ultrapassa o limite de inspeção atual.",
             InspectionFailureKind.UnsupportedFormat => "Não há suporte para inspecionar este formato.",
             InspectionFailureKind.Timeout => "A análise não terminou dentro do prazo.",
+            InspectionFailureKind.Limit => "O conteúdo excedeu a capacidade de análise completa desta versão.",
             _ => "Não foi possível ler ou analisar todo o arquivo."
         };
         InspectionFailureText.Text = _fileNames.Count == 1

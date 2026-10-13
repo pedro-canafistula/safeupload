@@ -38,6 +38,10 @@ public static partial class PasswordHeuristic
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex KeyValuePattern();
 
+    [GeneratedRegex(@"\A(?:senha|password|passwd|pwd)\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex LabelPattern();
+    internal static bool IsLabel(string label) => LabelPattern().IsMatch(label);
+
     /// <summary>
     /// Devolve todas as ocorrências do padrão chave-valor no texto, na ordem
     /// em que aparecem.

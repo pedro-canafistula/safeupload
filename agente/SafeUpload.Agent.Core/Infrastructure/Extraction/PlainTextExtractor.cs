@@ -9,7 +9,7 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 /// isso é o que se quer: vírgula e ponto-e-vírgula não são separadores válidos
 /// dentro de um número, então células vizinhas não se colam por acidente.
 /// </summary>
-public sealed class PlainTextExtractor : ITextExtractor
+public sealed class PlainTextExtractor : IStreamingTextExtractor
 {
     /// <inheritdoc />
     public IReadOnlySet<string> SupportedExtensions { get; } =
@@ -17,6 +17,13 @@ public sealed class PlainTextExtractor : ITextExtractor
 
     /// <inheritdoc />
     public async Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken)
+    {
+        using var reader = await OpenReaderAsync(content, cancellationToken).ConfigureAwait(false);
+        return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<TextReader> OpenReaderAsync(Stream content, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(content);
 
@@ -33,14 +40,12 @@ public sealed class PlainTextExtractor : ITextExtractor
             length += read;
         }
         var encoding = DetectEncoding(header.AsSpan(0, length), out int bomLength);
-        using var prefixed = new PrefixReadStream(content, header.AsMemory(bomLength, length - bomLength));
-        using var reader = new StreamReader(
+        var prefixed = new PrefixReadStream(content, header.AsMemory(bomLength, length - bomLength));
+        return new StreamReader(
             prefixed,
             encoding,
             detectEncodingFromByteOrderMarks: false,
-            leaveOpen: true);
-
-        return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            leaveOpen: false); // Disposes the prefix wrapper, never the caller's stream.
     }
 
     private static Encoding DetectEncoding(ReadOnlySpan<byte> header, out int bomLength)

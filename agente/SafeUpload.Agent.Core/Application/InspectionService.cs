@@ -207,6 +207,11 @@ public sealed class InspectionService
                 return fromCache;
             }
         }
+        catch (InspectionLimitException)
+        {
+            return await CompleteAsync(operation, policy, stopwatch, inspectionFailure, [],
+                "inspection_limit", auditAndCache, cancellationToken).ConfigureAwait(false);
+        }
         catch (UnsupportedContentException)
         {
             return await CompleteAsync(
@@ -345,6 +350,15 @@ public sealed class InspectionService
             // never reuses approval cache entries. Keep this exact file object
             // open through extraction; a replaced name cannot change its bytes.
             await using var input = OpenInspectionInput(operation.FilePath);
+            if (extractor is IStreamingTextExtractor streaming)
+            {
+                var findings = await StreamingContentScanner.ScanAsync(() =>
+                {
+                    input.Position = 0;
+                    return streaming.OpenReaderAsync(input, cancellationToken);
+                }, policy.ActiveCategories, cancellationToken).ConfigureAwait(false);
+                return (findings, null, null);
+            }
             text = await extractor.ExtractAsync(input, cancellationToken).ConfigureAwait(false);
         }
 
