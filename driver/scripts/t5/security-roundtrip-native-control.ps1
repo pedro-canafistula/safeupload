@@ -1,6 +1,6 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([switch]$SelfCheckOnly)
+param([switch]$SelfCheckOnly, [switch]$CompareAutoInheritanceRequests)
 # One unprotected NTFS measurement, not a driver or SeAssignSecurityEx gate.
 # SYSTEM creator baseline only; ordinary/restricted/low-level subjects remain open.
 $ErrorActionPreference = 'Stop'
@@ -57,6 +57,8 @@ $cases = @(
     @{Name='moved-inherited-target';Sddl=$null;Defaulted=$false;Moved=$true}
 )
 $rows = New-Object 'Collections.Generic.List[object]'
+$constructions = @('stored')
+if ($CompareAutoInheritanceRequests) { $constructions += 'dacl-auto-inherit-request' }
 try {
     Set-ParentFixture $root 'FR'
     Write-Output ('FixtureRoot=' + $root)
@@ -105,37 +107,58 @@ try {
             if (-not $parentMetadata.Accepted -or
                 [BoundPublicationNativeControl]::Identity($parentMetadata.Handle) -ne $parentId) { throw 'Parent metadata observer failed.' }
             $parentSecurity = [WriterPermissionNativeControl]::SecurityBinary($parentMetadata.Handle)
-            $leaf = 'publication.tmp'
-            $temporary = [BoundPublicationNativeControl]::CreateRelativeWithDescriptor($parent, $leaf, $stored)
-            [BoundPublicationNativeControl]::RequireHandleContract($temporary)
-            $temporaryPath = Join-Path $parentPath $leaf
-            $tempMetadata = [WriterPermissionNativeControl]::SystemMetadata($temporaryPath, $false)
-            if (-not $tempMetadata.Accepted -or $tempMetadata.GrantedAccess -ne 0x01020000 -or
-                [BoundPublicationNativeControl]::Identity($tempMetadata.Handle) -ne
-                [BoundPublicationNativeControl]::Identity($temporary)) { throw 'Temporary metadata observer failed under share zero.' }
-            $actual = [WriterPermissionNativeControl]::SecurityBinary($tempMetadata.Handle)
-            $actualCompact = Get-CompactDescriptor $actual
-            if ((Get-Hex ([WriterPermissionNativeControl]::SecurityBinary($source.Handle))) -ne (Get-Hex $stored) -or
-                (Get-Hex ([WriterPermissionNativeControl]::SecurityBinary($parentMetadata.Handle))) -ne (Get-Hex $parentSecurity) -or
-                [BoundPublicationNativeControl]::Identity($parent) -ne $parentId) { throw 'Control changed source security or parent identity.' }
-            $row = [pscustomobject]@{Case=$case.Name;CreatorStatus='0x00000000';CreatorGrant='0x00100002';
-                SourceId=$initialId;MetadataGrant='0x01020000';MetadataPrivateSeSecurityEnabled=$true;TempGrant='0x00110082';IoMode='0x2A';
-                SuppliedInputHex=$(if ($null -eq $supplied) {$null} else {Get-Hex $supplied});
-                StoredSourceHex=(Get-Hex $stored);TempStoredHex=(Get-Hex $actual);
-                SuppliedControl=$(if ($null -eq $supplied) {$null} else {[BitConverter]::ToUInt16($supplied,2)});
-                SourceControl=[BitConverter]::ToUInt16($stored,2);TempControl=[BitConverter]::ToUInt16($actual,2);
-                RawStoredEqual=((Get-Hex $stored) -eq (Get-Hex $actual));
-                CompactStoredEqual=((Get-Hex $sourceCompact) -eq (Get-Hex $actualCompact));
-                SourceSddl=([WriterPermissionNativeControl]::Security($source.Handle));
-                TempSddl=([WriterPermissionNativeControl]::Security($tempMetadata.Handle))}
-            $rows.Add($row)
-            Write-Output ($row | ConvertTo-Json -Compress)
+            foreach ($construction in $constructions) {
+                $inputDescriptor = [byte[]]$stored.Clone()
+                $leaf = 'publication.tmp'
+                if ($construction -eq 'dacl-auto-inherit-request') {
+                    # Request native assignment on CREATE, without masking any
+                    # expected stored bit, changing ACEs or adding protection.
+                    $inputDescriptor[3] = $inputDescriptor[3] -bor 1 # SE_DACL_AUTO_INHERIT_REQ = 0x0100.
+                    $leaf = 'publication-auto-request.tmp'
+                }
+                try {
+                    $temporary = [BoundPublicationNativeControl]::CreateRelativeWithDescriptor($parent, $leaf, $inputDescriptor)
+                    [BoundPublicationNativeControl]::RequireHandleContract($temporary)
+                    $temporaryPath = Join-Path $parentPath $leaf
+                    $tempMetadata = [WriterPermissionNativeControl]::SystemMetadata($temporaryPath, $false)
+                    if (-not $tempMetadata.Accepted -or $tempMetadata.GrantedAccess -ne 0x01020000 -or
+                        [BoundPublicationNativeControl]::Identity($tempMetadata.Handle) -ne
+                        [BoundPublicationNativeControl]::Identity($temporary)) { throw 'Temporary metadata observer failed under share zero.' }
+                    $actual = [WriterPermissionNativeControl]::SecurityBinary($tempMetadata.Handle)
+                    $actualCompact = Get-CompactDescriptor $actual
+                    if ((Get-Hex ([WriterPermissionNativeControl]::SecurityBinary($source.Handle))) -ne (Get-Hex $stored) -or
+                        (Get-Hex ([WriterPermissionNativeControl]::SecurityBinary($parentMetadata.Handle))) -ne (Get-Hex $parentSecurity) -or
+                        [BoundPublicationNativeControl]::Identity($parent) -ne $parentId) { throw 'Control changed source security or parent identity.' }
+                    $row = [pscustomobject]@{Case=$case.Name;Construction=$construction;CreatorStatus='0x00000000';CreatorGrant='0x00100002';
+                        SourceId=$initialId;MetadataGrant='0x01020000';MetadataPrivateSeSecurityEnabled=$true;TempGrant='0x00110082';IoMode='0x2A';
+                        SuppliedInputHex=$(if ($null -eq $supplied) {$null} else {Get-Hex $supplied});
+                        ConstructionInputHex=(Get-Hex $inputDescriptor);ConstructionControl=[BitConverter]::ToUInt16($inputDescriptor,2);
+                        StoredSourceHex=(Get-Hex $stored);TempStoredHex=(Get-Hex $actual);
+                        SuppliedControl=$(if ($null -eq $supplied) {$null} else {[BitConverter]::ToUInt16($supplied,2)});
+                        SourceControl=[BitConverter]::ToUInt16($stored,2);TempControl=[BitConverter]::ToUInt16($actual,2);
+                        RawStoredEqual=((Get-Hex $stored) -eq (Get-Hex $actual));
+                        CompactStoredEqual=((Get-Hex $sourceCompact) -eq (Get-Hex $actualCompact));
+                        SourceSddl=([WriterPermissionNativeControl]::Security($source.Handle));
+                        TempSddl=([WriterPermissionNativeControl]::Security($tempMetadata.Handle))}
+                    $rows.Add($row)
+                    Write-Output ($row | ConvertTo-Json -Compress)
+                } finally {
+                    foreach ($handle in @($tempMetadata,$temporary)) { if ($null -ne $handle) {$handle.Dispose()} }
+                    $tempMetadata = $null; $temporary = $null
+                }
+            }
         } finally {
             foreach ($handle in @($tempMetadata,$temporary,$parentMetadata,$parent,$source,$writer)) { if ($null -ne $handle) {$handle.Dispose()} }
         }
     }
     if ([WriterPermissionNativeControl]::ProcessPrivileges() -ne $beforePrivileges) { throw 'Control changed process privileges.' }
     $different = @($rows | Where-Object {-not $_.CompactStoredEqual})
+    foreach ($construction in $constructions) {
+        $constructionRows = @($rows | Where-Object {$_.Construction -eq $construction})
+        if ($constructionRows.Count -ne $cases.Count) { throw 'Native construction measurements are incomplete.' }
+        Write-Output ('NativeConstruction=' + $construction + ' Rows=' + $constructionRows.Count +
+            ' StoredMismatches=' + @($constructionRows | Where-Object {-not $_.CompactStoredEqual}).Count)
+    }
     Write-Output ('NativeSecurityRoundTripRows=' + $rows.Count + ' StoredMismatches=' + $different.Count + ' ProcessPrivilegesRetained=PASS')
     Write-Output 'SecurityRoundTripMeasurement=PASS Qualification=False KernelConstructorAndOtherSubjects=False'
 } finally {

@@ -1,0 +1,156 @@
+{
+  "formatVersion": 1,
+  "rawEvidenceSha256": "399e0446be822eb916a0d0ba7a8d10946b6eca912c1731277e15e82ee449b332",
+  "scope": "SYSTEM unprotected NTFS original CREATE; full stored descriptor expectation unchanged; no product qualification.",
+  "conclusion": "SE_DACL_AUTO_INHERIT_REQ on construction input does not preserve SE_DACL_AUTO_INHERITED on these two cases.",
+  "measurements": [
+    {
+      "case": "inherited-null-input",
+      "construction": "stored",
+      "sourceControl": "0x8C04",
+      "constructionControl": "0x8C04",
+      "temporaryControl": "0x8804",
+      "exactStoredEqual": false,
+      "differenceOffsets": [
+        3
+      ],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "inherited-null-input",
+      "construction": "dacl-auto-inherit-request",
+      "sourceControl": "0x8C04",
+      "constructionControl": "0x8D04",
+      "temporaryControl": "0x8804",
+      "exactStoredEqual": false,
+      "differenceOffsets": [
+        3
+      ],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "protected-read-only",
+      "construction": "stored",
+      "sourceControl": "0x9804",
+      "constructionControl": "0x9804",
+      "temporaryControl": "0x9804",
+      "exactStoredEqual": true,
+      "differenceOffsets": [],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "protected-read-only",
+      "construction": "dacl-auto-inherit-request",
+      "sourceControl": "0x9804",
+      "constructionControl": "0x9904",
+      "temporaryControl": "0x9804",
+      "exactStoredEqual": true,
+      "differenceOffsets": [],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "unprotected-defaulted",
+      "construction": "stored",
+      "sourceControl": "0x8804",
+      "constructionControl": "0x8804",
+      "temporaryControl": "0x8804",
+      "exactStoredEqual": true,
+      "differenceOffsets": [],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "unprotected-defaulted",
+      "construction": "dacl-auto-inherit-request",
+      "sourceControl": "0x8804",
+      "constructionControl": "0x8904",
+      "temporaryControl": "0x8804",
+      "exactStoredEqual": true,
+      "differenceOffsets": [],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "protected-empty-dacl",
+      "construction": "stored",
+      "sourceControl": "0x9804",
+      "constructionControl": "0x9804",
+      "temporaryControl": "0x9804",
+      "exactStoredEqual": true,
+      "differenceOffsets": [],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "protected-empty-dacl",
+      "construction": "dacl-auto-inherit-request",
+      "sourceControl": "0x9804",
+      "constructionControl": "0x9904",
+      "temporaryControl": "0x9804",
+      "exactStoredEqual": true,
+      "differenceOffsets": [],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "null-dacl",
+      "construction": "stored",
+      "sourceControl": "0x8804",
+      "constructionControl": "0x8804",
+      "temporaryControl": "0x8804",
+      "exactStoredEqual": true,
+      "differenceOffsets": [],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "null-dacl",
+      "construction": "dacl-auto-inherit-request",
+      "sourceControl": "0x8804",
+      "constructionControl": "0x8904",
+      "temporaryControl": "0x8804",
+      "exactStoredEqual": true,
+      "differenceOffsets": [],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "explicit-low-label",
+      "construction": "stored",
+      "sourceControl": "0x9814",
+      "constructionControl": "0x9814",
+      "temporaryControl": "0x9814",
+      "exactStoredEqual": true,
+      "differenceOffsets": [],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "explicit-low-label",
+      "construction": "dacl-auto-inherit-request",
+      "sourceControl": "0x9814",
+      "constructionControl": "0x9914",
+      "temporaryControl": "0x9814",
+      "exactStoredEqual": true,
+      "differenceOffsets": [],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "moved-inherited-target",
+      "construction": "stored",
+      "sourceControl": "0x8C04",
+      "constructionControl": "0x8C04",
+      "temporaryControl": "0x8804",
+      "exactStoredEqual": false,
+      "differenceOffsets": [
+        3
+      ],
+      "allBytesExceptControlEqual": true
+    },
+    {
+      "case": "moved-inherited-target",
+      "construction": "dacl-auto-inherit-request",
+      "sourceControl": "0x8C04",
+      "constructionControl": "0x8D04",
+      "temporaryControl": "0x8804",
+      "exactStoredEqual": false,
+      "differenceOffsets": [
+        3
+      ],
+      "allBytesExceptControlEqual": true
+    }
+  ]
+}

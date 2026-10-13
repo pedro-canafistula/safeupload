@@ -1,6 +1,7 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9._-]{3,60}$')][string]$Label)
+param([Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9._-]{3,60}$')][string]$Label,
+    [switch]$CompareAutoInheritanceRequests)
 $ErrorActionPreference = 'Stop'
 $taskName = 'SafeUpload-SecurityRoundTrip-' + $Label
 $output = Join-Path $PSScriptRoot ('security-roundtrip-' + $Label + '.txt')
@@ -11,11 +12,12 @@ if ((Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) -or
     (Test-Path -LiteralPath $output) -or (Test-Path -LiteralPath $complete) -or
     (Test-Path -LiteralPath $worker) -or (Test-Path -LiteralPath $pidRecord)) { throw 'Native control destination already exists.' }
 $control = Join-Path $PSScriptRoot 'security-roundtrip-native-control.ps1'
+$controlArguments = if ($CompareAutoInheritanceRequests) { ' -CompareAutoInheritanceRequests' } else { '' }
 $body = @"
 `$ErrorActionPreference='Stop'
 ([string]`$PID + ';' + (Get-Process -Id `$PID).StartTime.ToUniversalTime().Ticks) | Set-Content -LiteralPath '$pidRecord' -Encoding Ascii
 try {
-    & '$control' *> '$output'
+    & '$control'$controlArguments *> '$output'
     0 | Set-Content -LiteralPath '$complete' -Encoding Ascii
 } catch {
     (`$_ | Out-String) | Add-Content -LiteralPath '$output'

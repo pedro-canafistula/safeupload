@@ -306,6 +306,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     limitation: two inherited descriptors lose `SE_DACL_AUTO_INHERITED` on the original temporary CREATE. Exact control equality
     is unresolved; no masking, protection repair or privileged post-set is approved. Metadata share-zero queries pass with a
     private SYSTEM SeSecurityPrivilege copy, not extra original-writer or temporary-handle rights.
+    The [14-row inheritance-request comparison](evidence/2026-10-13/t5-security-auto-request1.txt) adds only the documented
+    `SE_DACL_AUTO_INHERIT_REQ` to candidate CREATE inputs; both constructions retain the same five matches/two inherited-control
+    failures. The exact expected descriptor is unchanged, so this candidate is rejected. PowerShell 5.1 and strict independent
+    fixture/task/worker restoration pass; publication remains NotReady, with no kernel/agent change or product boot.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)

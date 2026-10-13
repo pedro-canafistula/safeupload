@@ -726,6 +726,19 @@ zero retained fixture directories or tasks on builder 19045.6466. The
 [PowerShell 5.1 gate](evidence/2026-10-13/harness-windows-gate-t5-security-roundtrip4.txt) passes parsing and native signatures;
 this is measurement evidence, not protected-pair or M2 qualification.
 
+The [14-row follow-up](evidence/2026-10-13/t5-security-auto-request1.txt) tests a second construction input on each of the same
+seven sources: an exact copy of the queried descriptor with only `SE_DACL_AUTO_INHERIT_REQ` (`0x0100`) added. This uses the
+documented [inheritance request control](https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-control)
+on the original CREATE; it changes no expected stored bit, ACE, protection flag, source/parent security or handle grant.
+The request does **not** resolve either counterexample on builder 19045.6466. Both constructions produce five exact matches
+and the same two `0x8C04` → `0x8804` failures. The [independent byte/input audit](evidence/2026-10-13/t5-security-auto-request1-byte-audit.json)
+confirms that only the request bit changed in the candidate input and that all result bytes except the auto-inherited control
+bit remain equal. This candidate is rejected as an exact publication construction; the stored-descriptor contract and NotReady
+gate remain unchanged. No claim is made about other subjects, kernel assignment or every use of this request flag.
+The [PowerShell 5.1 gate](evidence/2026-10-13/harness-windows-gate-t5-security-auto-request1.txt) passes, and
+[strict independent restoration](evidence/2026-10-13/t5-security-auto-request1-independent-restoration2.txt) confirms zero fixture
+directories/tasks, an absent exact worker and worker script, and no loaded SafeUpload driver. No product VM was booted.
+
 ### Native scheduled-CREATE integration transport — reviewed contract
 
 **2026-10-12: Luna 6 max effort READY for transport/producer implementation after the revision, high-water and receipt-retention
