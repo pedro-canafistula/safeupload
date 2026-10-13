@@ -1,0 +1,154 @@
+{
+  "sourceCommit": "f4be7e09701eb8107b010615ee77e42873645936",
+  "gate": "FAIL",
+  "failure": "Normal Debug passed 1125/1125. Normal Release user gate failed only the unchanged missing-cache staged spreadsheet formula control: expected unsupported_format, observed inspection_timeout. All nine replay controls passed in both executed profiles. Feature profiles/packages unqualified. Raw receipts retained; one full identical-source retry allowed, no assertion, budget, timing limit or test-filter change.",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "counters": {
+        "total": "1125",
+        "executed": "1125",
+        "passed": "1125",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "rawTrxSha256": "925cdd658889aa1dac38ec55f62734c505459d9060e8585c1940cb134b8dfcf3",
+      "replayControls": [
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "183dd16d-28cd-4b3d-aa07-63dd21885432"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.A_late_extraction_failure_cannot_turn_captured_sensitive_text_into_a_complete_scan",
+          "outcome": "Passed",
+          "executionId": "4c39d078-4560-42e9-af7f-d9199987341a"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 33)",
+          "outcome": "Passed",
+          "executionId": "3704a232-d071-496d-ade5-847c20057ad1"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "b136c4ec-0e4d-41f4-801b-cdeecb8813b2"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 31)",
+          "outcome": "Passed",
+          "executionId": "822948d7-87ca-411e-9aed-300aa5a0fba3"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "d237df76-588d-43ad-b115-b9b0449bc94b"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 32)",
+          "outcome": "Passed",
+          "executionId": "3ea9ecc3-0677-4943-8d5c-8f610125816f"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Owner_disposal_invalidates_replay_and_cancellation_cannot_yield_a_partial_read",
+          "outcome": "Passed",
+          "executionId": "f3e1f2f2-920c-45ff-b98d-94a4c92a4940"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Abandoned_capture_reopens_the_full_source_without_serving_its_prefix",
+          "outcome": "Passed",
+          "executionId": "a3579275-b14e-4326-ba76-a6e1ad9982af"
+        }
+      ],
+      "failures": []
+    },
+    {
+      "profile": "normal-release-user",
+      "counters": {
+        "total": "1100",
+        "executed": "1100",
+        "passed": "1099",
+        "failed": "1",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "rawTrxSha256": "ba3fbcc8dc2266c97a8fef915ab24d6e570a80772e2f0b6c8e79052c65ec2f06",
+      "replayControls": [
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Abandoned_capture_reopens_the_full_source_without_serving_its_prefix",
+          "outcome": "Passed",
+          "executionId": "7625ce85-60d5-438f-b45e-d9f6c467d6fd"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "d0cba82c-4b09-4042-8539-6fd477a5115e"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "91a2c707-76ef-4e6b-bee9-9991c6c4477c"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "35842b0b-d0e2-4f1c-8645-ca8fbafee742"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 31)",
+          "outcome": "Passed",
+          "executionId": "9186433a-cd91-45ed-9516-b7381caca468"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 32)",
+          "outcome": "Passed",
+          "executionId": "3cb6fb1d-a85f-4981-9929-0065ca183cec"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.A_late_extraction_failure_cannot_turn_captured_sensitive_text_into_a_complete_scan",
+          "outcome": "Passed",
+          "executionId": "84ca92f2-3b46-4ea7-8bb3-a42caf96faf1"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 33)",
+          "outcome": "Passed",
+          "executionId": "0884d3f5-621f-449c-ac4c-81ab09140da0"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Owner_disposal_invalidates_replay_and_cancellation_cannot_yield_a_partial_read",
+          "outcome": "Passed",
+          "executionId": "b3cdc1d5-f4b3-4633-b293-cd43c33494f1"
+        }
+      ],
+      "failures": [
+        {
+          "name": "SafeUpload.Agent.Tests.SpreadsheetFormulaInspectionTests.Formula_text_and_cached_results_are_both_inspected_and_missing_results_refuse(shape: \"missing-cache\", staged: True)",
+          "outcome": "Failed",
+          "executionId": "b4fb8804-b83f-4787-91e0-ce4edb7f1bdf",
+          "message": "Assert.Equal() Failure: Strings differ\r\n           \u2193 (pos 0)\r\nExpected: \"unsupported_format\"\r\nActual:   \"inspection_timeout\"\r\n           \u2191 (pos 0)"
+        }
+      ]
+    }
+  ]
+}

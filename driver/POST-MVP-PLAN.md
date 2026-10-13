@@ -623,13 +623,19 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     the added replay storage; it does not bound the underlying PDF/ZIP/XML parser. The
     [first replay matrix](evidence/2026-10-13/t9-text-replay1-retained-failure.json) compiles at 0/0 but fails seven normal Debug user
     cases: six unchanged plaintext controls require multiple fresh readers, and the new late-failure fixture omitted its synchronous
-    reader implementation. The correction preserves those assertions, restricts replay to PDF and fixes the fixture. Fresh full-matrix
-    and repeated measurement qualification remain pending. Corpus-reuse tooling (`c351236e`) verifies the retained archive, manifest
+    reader implementation. The correction preserves those assertions, restricts replay to PDF and fixes the fixture. Its
+    [first corrected matrix](evidence/2026-10-13/t9-pdf-replay2-retained-failure.json) passes 1,125/1,125 normal Debug cases, then normal
+    Release fails only the unchanged staged missing-cache spreadsheet formula control (UnsupportedFormat became Timeout).
+    All nine replay controls pass in both executed profiles. One complete identical-source retry is pending; no assertion, budget,
+    timing limit or test filter changes. Full-matrix and repeated measurement qualification remain pending.
+    Corpus-reuse tooling (`c351236e`) verifies the retained archive, manifest
     and every fixture byte/hash before copying; its offline reuse control passed, so before/after inputs stay identical.
     [Headroom preflight](evidence/2026-10-13/t9-text-replay1-preflight.host.json) stopped before delivery;
     [scoped recovery](evidence/2026-10-13/t9-text-replay1-headroom.host.json) removed only two hash-verified unpacked duplicates,
     preserving source/packages/manifests/raw evidence. The
     [corrected preflight](evidence/2026-10-13/t9-pdf-replay2-preflight.host.json) passes without further cleanup/configuration changes.
+    [Retry headroom recovery](evidence/2026-10-13/t9-pdf-replay3-headroom.host.json) removes only two verified old completed lifecycle
+    unpacked duplicates; their source/packages/manifests/evidence remain retained.
     No product pair was installed or booted.
   - Large-plaintext component controls (`c2dd8033`, complete matrix at `6b13ce8f` above): real 1/20 MiB ASCII snapshots are read
     completely on first/repeat scans under the unchanged 20 MiB/five-second default. Clean and EOF-only CPF cases prove approval/block,

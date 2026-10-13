@@ -1,0 +1,7 @@
+{
+  "exitCode": 0,
+  "scope": "Only two hash-verified unpacked duplicate outputs of completed native-lifecycle2; source, ZIPs/manifests and raw evidence retained.",
+  "payloadSha256": "abcbd4bfe9de9ae0ffba07dd46367e6281c2b5664fc48f65b852febb17eacbaa",
+  "stdoutSha256": "a533cc79755a885a14ec6824956d5bec47f59963c3ed2c09d772e96c312363fd",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
