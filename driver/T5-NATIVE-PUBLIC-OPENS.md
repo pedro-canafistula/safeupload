@@ -695,6 +695,37 @@ No wire producer currently supplies this record, and live admission remains off.
 The metadata RPC, complete checked snapshot, rename rebinding, original publication CREATE descriptor, seed/export provenance
 and integrated kernel lifetime review remain required before protected qualification.
 
+#### Native publication security control, 2026-10-13
+
+The [seven-case SYSTEM measurement](evidence/2026-10-13/t5-security-roundtrip-native4.txt) supplies the queried descriptor on the
+original parent-relative UserMode NtCreateFile. Every temporary retains the required `0x00110082` grant, share zero and `0x2A`
+I/O mode. A separate metadata-only observer obtains `0x01020000` under the live writer/temporary share-zero handles and matches
+their full IDs. Its private SYSTEM token enables SeSecurityPrivilege for SACL queries; creator/process privileges remain unchanged.
+The initial SYSTEM task's disabled privilege produced `STATUS_PRIVILEGE_NOT_HELD`; it was not a sharing failure. This proves the
+tested Win32 observer route, not the corresponding kernel DDI, all security-information classes or other original subjects.
+
+Five stored descriptors round-trip exactly (protected read-only, unprotected/defaulted, protected empty DACL, NULL DACL and low
+label). Two do not: inherited NULL-input creation and an inherited existing file moved from another parent both change
+`0x8C04` to `0x8804`. Independently compared bytes differ only at the `SE_DACL_AUTO_INHERITED` bit; owner/group, ACL bytes and
+ACE flags/order remain equal. The supplied/defaulted input also confirms `SE_DACL_DEFAULTED` does not survive native assignment.
+Native initial WRITE_DATA grants succeed in the protected read-only/empty-DACL creator cases without checking those newly
+assigned DACLs as existing objects.
+
+The current exact inheritance/control contract therefore has a concrete counterexample even for a SYSTEM-only baseline.
+The storage codec must not erase that bit or silently redefine expected stored security. No protection-bit repair, privileged
+post-set or CREATE access-state injection is approved; publication stays NotReady until a native-equivalent construction strategy
+is proved or the owner explicitly revises that contract. Kernel assignment and ordinary/restricted/low-token controls remain open.
+See Microsoft's [control semantics](https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-control) and
+[assignment/inheritance rules](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-seassignsecurityex).
+
+The first complete measurement failed only its fixture teardown because the reset unnecessarily requested owner/group changes.
+DACL-only cleanup now succeeds; the [retained fixture recovery](evidence/2026-10-13/t5-security-roundtrip-recover3.txt) validates all
+seven source identities before removing the exact fourteen-file fixture. The final run removes its fixture and restores its scoped
+SYSTEM task/worker. [Independent restoration](evidence/2026-10-13/t5-security-roundtrip-independent-restoration.txt) confirms
+zero retained fixture directories or tasks on builder 19045.6466. The
+[PowerShell 5.1 gate](evidence/2026-10-13/harness-windows-gate-t5-security-roundtrip4.txt) passes parsing and native signatures;
+this is measurement evidence, not protected-pair or M2 qualification.
+
 ### Native scheduled-CREATE integration transport — reviewed contract
 
 **2026-10-12: Luna 6 max effort READY for transport/producer implementation after the revision, high-water and receipt-retention

@@ -49,21 +49,29 @@ public static class BoundPublicationNativeControl {
   return BitConverter.ToString(data).Replace("-","");
  }
  public static SafeFileHandle CreateRelative(SafeFileHandle parent,string leaf) {
+  return CreateRelativeWithDescriptor(parent,leaf,null);
+ }
+ public static SafeFileHandle CreateRelativeWithDescriptor(SafeFileHandle parent,string leaf,byte[] security) {
   Leaf(leaf); byte[] bytes=Encoding.Unicode.GetBytes(leaf);
   IntPtr name=Marshal.AllocHGlobal(bytes.Length+2), unicode=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(UnicodeString)));
+  IntPtr descriptor=IntPtr.Zero;
   bool held=false;
   try {
+   if(security!=null) {
+    new System.Security.AccessControl.RawSecurityDescriptor(security,0); // Validate without rewriting supplied bytes.
+    descriptor=Marshal.AllocHGlobal(security.Length); Marshal.Copy(security,0,descriptor,security.Length);
+   }
    parent.DangerousAddRef(ref held); Marshal.Copy(bytes,0,name,bytes.Length); Marshal.WriteInt16(name,bytes.Length,0);
    var value=new UnicodeString{Length=(ushort)bytes.Length,MaximumLength=(ushort)(bytes.Length+2),Buffer=name};
    Marshal.StructureToPtr(value,unicode,false);
-   var attributes=new ObjectAttributes{Length=(uint)Marshal.SizeOf(typeof(ObjectAttributes)),Root=parent.DangerousGetHandle(),Name=unicode,Attributes=0x40};
+   var attributes=new ObjectAttributes{Length=(uint)Marshal.SizeOf(typeof(ObjectAttributes)),Root=parent.DangerousGetHandle(),Name=unicode,Attributes=0x40,Security=descriptor};
    SafeFileHandle file; IoStatusBlock io;
    int status=NtCreateFile(out file,0x00110082,ref attributes,out io,IntPtr.Zero,0x80,0,2,0x0020006A,IntPtr.Zero,0);
    if(status!=0) { file.Dispose(); Check(status); }
    if(file.IsInvalid) { file.Dispose(); throw new IOException("Native create returned no handle."); }
    if(io.Status!=IntPtr.Zero || io.Information.ToUInt64()!=2) { file.Dispose(); throw new IOException("Native create did not report FILE_CREATED."); }
    return file;
-  } finally { if(held) parent.DangerousRelease(); Marshal.FreeHGlobal(unicode); Marshal.FreeHGlobal(name); }
+  } finally { if(held) parent.DangerousRelease(); if(descriptor!=IntPtr.Zero) Marshal.FreeHGlobal(descriptor); Marshal.FreeHGlobal(unicode); Marshal.FreeHGlobal(name); }
  }
  public static void RequireHandleContract(SafeFileHandle file) {
   byte[] basic=new byte[56]; uint returned;

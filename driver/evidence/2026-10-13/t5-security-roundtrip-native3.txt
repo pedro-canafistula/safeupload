@@ -1,0 +1,65 @@
+SourceSHA256={"Invoke-SecurityRoundTripNativeControl.ps1": "2F9D8A2D1148EC298BBEA9280239C338095B3D1C35406EC58A44E4C57C2DEB30", "bound-publication-native-control.ps1": "33B1D8F9AD8AB2ADA00FB5EF7CDC8E8118A1B918C52B6DAD1F18A56AC3A79D72", "security-roundtrip-native-control.ps1": "ED69897E9DBA00A85B7C11797CB5237C78247E7D9AABAE77DCEB24D3F1D69E62", "writer-permission-native-control.ps1": "A514EA02263BCA1FE6EFEAF049F9F1D6FA2B78BC3CA5103F3208227A4BE974B0"}
+NativePackingAndImplicitAccessSelfCheck=PASS
+NativePackingAndLeafSelfCheck=PASS
+SecurityRoundTripSignatureSelfCheck=PASS NativeCalls=False
+NativeControlPlatform=Microsoft Windows 10 Pro Version=10.0.19045
+WindowsPowerShell=5.1.19041.6456 Subject=SYSTEM PrivateCreatorRestoreDisabled=True
+"Privilege Name","Description","State"
+"SeAssignPrimaryTokenPrivilege","Replace a process level token","Disabled"
+"SeLockMemoryPrivilege","Lock pages in memory","Enabled"
+"SeIncreaseQuotaPrivilege","Adjust memory quotas for a process","Disabled"
+"SeTcbPrivilege","Act as part of the operating system","Enabled"
+"SeSecurityPrivilege","Manage auditing and security log","Disabled"
+"SeTakeOwnershipPrivilege","Take ownership of files or other objects","Disabled"
+"SeLoadDriverPrivilege","Load and unload device drivers","Disabled"
+"SeSystemProfilePrivilege","Profile system performance","Enabled"
+"SeSystemtimePrivilege","Change the system time","Disabled"
+"SeProfileSingleProcessPrivilege","Profile single process","Enabled"
+"SeIncreaseBasePriorityPrivilege","Increase scheduling priority","Enabled"
+"SeCreatePagefilePrivilege","Create a pagefile","Enabled"
+"SeCreatePermanentPrivilege","Create permanent shared objects","Enabled"
+"SeBackupPrivilege","Back up files and directories","Disabled"
+"SeRestorePrivilege","Restore files and directories","Disabled"
+"SeShutdownPrivilege","Shut down the system","Disabled"
+"SeDebugPrivilege","Debug programs","Enabled"
+"SeAuditPrivilege","Generate security audits","Enabled"
+"SeSystemEnvironmentPrivilege","Modify firmware environment values","Disabled"
+"SeChangeNotifyPrivilege","Bypass traverse checking","Enabled"
+"SeUndockPrivilege","Remove computer from docking station","Disabled"
+"SeManageVolumePrivilege","Perform volume maintenance tasks","Disabled"
+"SeImpersonatePrivilege","Impersonate a client after authentication","Enabled"
+"SeCreateGlobalPrivilege","Create global objects","Enabled"
+"SeIncreaseWorkingSetPrivilege","Increase a process working set","Enabled"
+"SeTimeZonePrivilege","Change the time zone","Enabled"
+"SeCreateSymbolicLinkPrivilege","Create symbolic links","Enabled"
+"SeDelegateSessionUserImpersonatePrivilege","Obtain an impersonation token for another user in the same session","Enabled"
+{"Control":"SourceMetadata","Case":"inherited-null-input","Status":"0x00000000","IoStatus":0,"Granted":"0x01020000"}
+{"Case":"inherited-null-input","CreatorStatus":"0x00000000","CreatorGrant":"0x00100002","SourceId":"7F2F63D64463D64AB9EC0D00000011000000000000000000","MetadataGrant":"0x01020000","MetadataPrivateSeSecurityEnabled":true,"TempGrant":"0x00110082","IoMode":"0x2A","SuppliedInputHex":null,"StoredSourceHex":"0100048C1400000020000000000000002C0000000101000000000005120000000101000000000005120000000200300002000000001014008900120001010000000000010000000000101400FF011F00010100000000000512000000","TempStoredHex":"010004881400000020000000000000002C0000000101000000000005120000000101000000000005120000000200300002000000001014008900120001010000000000010000000000101400FF011F00010100000000000512000000","SuppliedControl":null,"SourceControl":35844,"TempControl":34820,"RawStoredEqual":false,"CompactStoredEqual":false,"SourceSddl":"O:SYG:SYD:AI(A;ID;FR;;;WD)(A;ID;FA;;;SY)","TempSddl":"O:SYG:SYD:(A;ID;FR;;;WD)(A;ID;FA;;;SY)"}
+{"Control":"SourceMetadata","Case":"protected-read-only","Status":"0x00000000","IoStatus":0,"Granted":"0x01020000"}
+{"Case":"protected-read-only","CreatorStatus":"0x00000000","CreatorGrant":"0x00100002","SourceId":"7F2F63D64463D64A43FF0D00000011000000000000000000","MetadataGrant":"0x01020000","MetadataPrivateSeSecurityEnabled":true,"TempGrant":"0x00110082","IoMode":"0x2A","SuppliedInputHex":"010004901400000020000000000000002C00000001010000000000051200000001010000000000051200000002001C00010000000000140089001200010100000000000512000000","StoredSourceHex":"010004981400000020000000000000002C00000001010000000000051200000001010000000000051200000002001C00010000000000140089001200010100000000000512000000","TempStoredHex":"010004981400000020000000000000002C00000001010000000000051200000001010000000000051200000002001C00010000000000140089001200010100000000000512000000","SuppliedControl":36868,"SourceControl":38916,"TempControl":38916,"RawStoredEqual":true,"CompactStoredEqual":true,"SourceSddl":"O:SYG:SYD:P(A;;FR;;;SY)","TempSddl":"O:SYG:SYD:P(A;;FR;;;SY)"}
+{"Control":"SourceMetadata","Case":"unprotected-defaulted","Status":"0x00000000","IoStatus":0,"Granted":"0x01020000"}
+{"Case":"unprotected-defaulted","CreatorStatus":"0x00000000","CreatorGrant":"0x00100002","SourceId":"7F2F63D64463D64A860D0E00000046000000000000000000","MetadataGrant":"0x01020000","MetadataPrivateSeSecurityEnabled":true,"TempGrant":"0x00110082","IoMode":"0x2A","SuppliedInputHex":"01000C801400000020000000000000002C00000001010000000000051200000001010000000000051200000002001C00010000000000140089001200010100000000000512000000","StoredSourceHex":"010004881400000020000000000000002C0000000101000000000005120000000101000000000005120000000200300002000000000014008900120001010000000000010000000000001400FF011F00010100000000000512000000","TempStoredHex":"010004881400000020000000000000002C0000000101000000000005120000000101000000000005120000000200300002000000000014008900120001010000000000010000000000001400FF011F00010100000000000512000000","SuppliedControl":32780,"SourceControl":34820,"TempControl":34820,"RawStoredEqual":true,"CompactStoredEqual":true,"SourceSddl":"O:SYG:SYD:(A;;FR;;;WD)(A;;FA;;;SY)","TempSddl":"O:SYG:SYD:(A;;FR;;;WD)(A;;FA;;;SY)"}
+{"Control":"SourceMetadata","Case":"protected-empty-dacl","Status":"0x00000000","IoStatus":0,"Granted":"0x01020000"}
+{"Case":"protected-empty-dacl","CreatorStatus":"0x00000000","CreatorGrant":"0x00100002","SourceId":"7F2F63D64463D64A8E0D0E0000009D000000000000000000","MetadataGrant":"0x01020000","MetadataPrivateSeSecurityEnabled":true,"TempGrant":"0x00110082","IoMode":"0x2A","SuppliedInputHex":"010004901400000020000000000000002C0000000101000000000005120000000101000000000005120000000200080000000000","StoredSourceHex":"010004981400000020000000000000002C0000000101000000000005120000000101000000000005120000000200080000000000","TempStoredHex":"010004981400000020000000000000002C0000000101000000000005120000000101000000000005120000000200080000000000","SuppliedControl":36868,"SourceControl":38916,"TempControl":38916,"RawStoredEqual":true,"CompactStoredEqual":true,"SourceSddl":"O:SYG:SYD:P","TempSddl":"O:SYG:SYD:P"}
+{"Control":"SourceMetadata","Case":"null-dacl","Status":"0x00000000","IoStatus":0,"Granted":"0x01020000"}
+{"Case":"null-dacl","CreatorStatus":"0x00000000","CreatorGrant":"0x00100002","SourceId":"7F2F63D64463D64A940D0E0000004C000000000000000000","MetadataGrant":"0x01020000","MetadataPrivateSeSecurityEnabled":true,"TempGrant":"0x00110082","IoMode":"0x2A","SuppliedInputHex":"0100048014000000200000000000000000000000010100000000000512000000010100000000000512000000","StoredSourceHex":"0100048814000000200000000000000000000000010100000000000512000000010100000000000512000000","TempStoredHex":"0100048814000000200000000000000000000000010100000000000512000000010100000000000512000000","SuppliedControl":32772,"SourceControl":34820,"TempControl":34820,"RawStoredEqual":true,"CompactStoredEqual":true,"SourceSddl":"O:SYG:SYD:NO_ACCESS_CONTROL","TempSddl":"O:SYG:SYD:NO_ACCESS_CONTROL"}
+{"Control":"SourceMetadata","Case":"explicit-low-label","Status":"0x00000000","IoStatus":0,"Granted":"0x01020000"}
+{"Case":"explicit-low-label","CreatorStatus":"0x00000000","CreatorGrant":"0x00100002","SourceId":"7F2F63D64463D64A990D0E00000020000000000000000000","MetadataGrant":"0x01020000","MetadataPrivateSeSecurityEnabled":true,"TempGrant":"0x00110082","IoMode":"0x2A","SuppliedInputHex":"0100149014000000200000002C0000004800000001010000000000051200000001010000000000051200000002001C0001000000110014000100000001010000000000100010000002001C00010000000000140089001200010100000000000512000000","StoredSourceHex":"010014981400000020000000480000002C00000001010000000000051200000001010000000000051200000002001C0001000000000014008900120001010000000000051200000002001C00010000001100140001000000010100000000001000100000","TempStoredHex":"010014981400000020000000480000002C00000001010000000000051200000001010000000000051200000002001C0001000000000014008900120001010000000000051200000002001C00010000001100140001000000010100000000001000100000","SuppliedControl":36884,"SourceControl":38932,"TempControl":38932,"RawStoredEqual":true,"CompactStoredEqual":true,"SourceSddl":"O:SYG:SYD:P(A;;FR;;;SY)S:AI","TempSddl":"O:SYG:SYD:P(A;;FR;;;SY)S:AI"}
+{"Control":"SourceMetadata","Case":"moved-inherited-target","Status":"0x00000000","IoStatus":0,"Granted":"0x01020000"}
+{"Case":"moved-inherited-target","CreatorStatus":"0x00000000","CreatorGrant":"0x00100002","SourceId":"7F2F63D64463D64ADD0D0E0000001E000000000000000000","MetadataGrant":"0x01020000","MetadataPrivateSeSecurityEnabled":true,"TempGrant":"0x00110082","IoMode":"0x2A","SuppliedInputHex":null,"StoredSourceHex":"0100048C1400000020000000000000002C0000000101000000000005120000000101000000000005120000000200300002000000001014008900120001010000000000010000000000101400FF011F00010100000000000512000000","TempStoredHex":"010004881400000020000000000000002C0000000101000000000005120000000101000000000005120000000200300002000000001014008900120001010000000000010000000000101400FF011F00010100000000000512000000","SuppliedControl":null,"SourceControl":35844,"TempControl":34820,"RawStoredEqual":false,"CompactStoredEqual":false,"SourceSddl":"O:SYG:SYD:AI(A;ID;FR;;;WD)(A;ID;FA;;;SY)","TempSddl":"O:SYG:SYD:(A;ID;FR;;;WD)(A;ID;FA;;;SY)"}
+NativeSecurityRoundTripRows=7 StoredMismatches=2 ProcessPrivilegesRetained=PASS
+SecurityRoundTripMeasurement=PASS Qualification=False KernelConstructorAndOtherSubjects=False
+ForEach-Object : Exception calling "SetAccessControl" with "2" argument(s): "Attempted to perform an unauthorized 
+operation."
+At C:\Users\vika\Documents\t5-security-roundtrip-native3\security-roundtrip-native-control.ps1:142 char:66
++ ... File -Recurse -Force | ForEach-Object {Reset-FileFixture $_.FullName}
++                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [ForEach-Object], MethodInvocationException
+    + FullyQualifiedErrorId : UnauthorizedAccessException,Microsoft.PowerShell.Commands.ForEachObjectCommand
+ 
+
+NativeControlTaskRestored=PASS TaskAbsent=True WorkerStopped=True
+
+RemoteStderr=#< CLIXML
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><S S="Error">Native control failed: exit=1_x000D__x000A_</S><S S="Error">At _x000D__x000A_</S><S S="Error">C:\Users\vika\Documents\t5-security-roundtrip-native3\Invoke-SecurityRoundTripNativeControl.ps1:40 _x000D__x000A_</S><S S="Error">char:24_x000D__x000A_</S><S S="Error">+ ...   if ($code -ne 0) { throw ('Native control failed: exit=' + $code) }_x000D__x000A_</S><S S="Error">+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~_x000D__x000A_</S><S S="Error">    + CategoryInfo          : OperationStopped: (Native control failed: exit=1:String) [], Runtime _x000D__x000A_</S><S S="Error">   Exception_x000D__x000A_</S><S S="Error">    + FullyQualifiedErrorId : Native control failed: exit=1_x000D__x000A_</S><S S="Error"> _x000D__x000A_</S></Objs>
+RemoteExit=1

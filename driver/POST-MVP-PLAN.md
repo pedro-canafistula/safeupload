@@ -302,6 +302,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [Windows matrix passes](evidence/2026-10-13/exact-agent-matrix-t5-security-storage2-summary.txt) at 913 normal/1,269 feature
     tests per Debug/Release profile with no skips and 0 warnings/errors. Lost committed metadata refuses replay and retains backing.
     Complete native snapshot production, metadata RPC, rename rebinding and publication descriptor use remain open.
+    [Seven native SYSTEM security cases](evidence/2026-10-13/t5-security-roundtrip-native4.txt) expose a publication-construction
+    limitation: two inherited descriptors lose `SE_DACL_AUTO_INHERITED` on the original temporary CREATE. Exact control equality
+    is unresolved; no masking, protection repair or privileged post-set is approved. Metadata share-zero queries pass with a
+    private SYSTEM SeSecurityPrivilege copy, not extra original-writer or temporary-handle rights.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)

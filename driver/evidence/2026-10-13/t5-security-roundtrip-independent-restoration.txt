@@ -1,0 +1,4 @@
+Read-only audit on builder 192.168.122.210 after the final measurement and retained-fixture recovery.
+IndependentNativeRestoration: Fixtures=0 Tasks=0
+IndependentNativeRestoration=PASS
+BuilderUBR=6466

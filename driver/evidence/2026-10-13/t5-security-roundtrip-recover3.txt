@@ -1,0 +1,8 @@
+SourceSHA256={"Invoke-SecurityRoundTripNativeControl.ps1": "2F9D8A2D1148EC298BBEA9280239C338095B3D1C35406EC58A44E4C57C2DEB30", "bound-publication-native-control.ps1": "33B1D8F9AD8AB2ADA00FB5EF7CDC8E8118A1B918C52B6DAD1F18A56AC3A79D72", "security-roundtrip-native-control.ps1": "72DC7FD3E3DA6187C4C5CF1B1E35D7799D71AE74E1E49A12A7CA2F5FACD1AB31", "writer-permission-native-control.ps1": "A514EA02263BCA1FE6EFEAF049F9F1D6FA2B78BC3CA5103F3208227A4BE974B0"}
+NativePackingAndImplicitAccessSelfCheck=PASS
+NativePackingAndLeafSelfCheck=PASS
+RetainedFixtureRecovery=PASS Sources=7 Files=14 ExactSourceIdentities=True ReparsePoints=False FixtureAbsent=True
+NativeControlTaskRestored=PASS TaskAbsent=True WorkerStopped=True
+
+RemoteStderr=
+RemoteExit=0

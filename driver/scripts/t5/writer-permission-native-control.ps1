@@ -30,7 +30,7 @@ public static class WriterPermissionNativeControl {
  // previous thread context on every exit; never adjust the process token.
  sealed class Subject : IDisposable {
   IntPtr token; WindowsImpersonationContext context;
-  public Subject() {
+  public Subject(bool metadataSecurity=false) {
    IntPtr source=IntPtr.Zero;
    try {
     if(!OpenProcessToken(new IntPtr(-1),0xA,out source) ||
@@ -39,14 +39,26 @@ public static class WriterPermissionNativeControl {
     var state=new TokenPrivileges{Count=1,Id=restore}; TokenPrivileges previous; uint returned;
     if(!AdjustTokenPrivileges(token,false,ref state,(uint)Marshal.SizeOf(typeof(TokenPrivileges)),out previous,out returned))
      throw new IOException("Private-token privilege adjustment failed.");
+    Luid security=new Luid();
+    if(metadataSecurity) {
+     using(var identity=WindowsIdentity.GetCurrent()) { if(!identity.IsSystem) throw new IOException("Metadata privilege copy requires SYSTEM."); }
+     if(!LookupPrivilegeValue(null,"SeSecurityPrivilege",out security)) throw new IOException("Metadata security privilege lookup failed.");
+     state=new TokenPrivileges{Count=1,Id=security,Attributes=2};
+     if(!AdjustTokenPrivileges(token,false,ref state,(uint)Marshal.SizeOf(typeof(TokenPrivileges)),out previous,out returned) || Marshal.GetLastWin32Error()==1300)
+      throw new IOException("Private metadata privilege adjustment failed.");
+    }
     uint needed; GetTokenInformation(token,3,null,0,out needed); byte[] data=new byte[needed];
     if(!GetTokenInformation(token,3,data,needed,out needed)) throw new IOException("Private-token privilege query failed.");
     uint count=BitConverter.ToUInt32(data,0);
+    bool securityEnabled=!metadataSecurity;
     for(uint i=0;i<count;i++) {
      int offset=checked(4+(int)i*12);
      if(BitConverter.ToUInt32(data,offset)==restore.Low && BitConverter.ToInt32(data,offset+4)==restore.High &&
         (BitConverter.ToUInt32(data,offset+8)&2)!=0) throw new IOException("Restore privilege remains enabled.");
+     if(metadataSecurity && BitConverter.ToUInt32(data,offset)==security.Low && BitConverter.ToInt32(data,offset+4)==security.High &&
+        (BitConverter.ToUInt32(data,offset+8)&2)!=0) securityEnabled=true;
     }
+    if(!securityEnabled) throw new IOException("Private metadata security privilege is not enabled.");
     context=WindowsIdentity.Impersonate(token);
    } catch { Dispose(); throw; }
    finally { if(source!=IntPtr.Zero) CloseHandle(source); }
@@ -79,8 +91,10 @@ public static class WriterPermissionNativeControl {
  }
  public static Result Revalidate(string path) { return OpenCore(path,0,7,1,0x00200040,null); }
  public static Result Metadata(string path) { return OpenCore(path,0x01020000,7,1,0x00200040,null); }
- static Result OpenCore(string path,uint access,uint share,uint disposition,uint options,byte[] security) {
-  using(var subject=new Subject()) {
+ public static Result MetadataDirectory(string path) { return OpenCore(path,0x01020000,7,1,0x00200001,null); }
+ public static Result SystemMetadata(string path,bool directory) { return OpenCore(path,0x01020000,7,1,directory?0x00200001u:0x00200040u,null,true); }
+ static Result OpenCore(string path,uint access,uint share,uint disposition,uint options,byte[] security,bool metadataSecurity=false) {
+  using(var subject=new Subject(metadataSecurity)) {
   byte[] bytes=Encoding.Unicode.GetBytes("\\??\\"+Path.GetFullPath(path));
   IntPtr name=Marshal.AllocHGlobal(bytes.Length+2), unicode=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(UnicodeString))), descriptor=IntPtr.Zero;
   try {
@@ -119,9 +133,13 @@ public static class WriterPermissionNativeControl {
   if(identity!=BitConverter.ToString(native).Replace("-","")) throw new IOException("Native file-ID query disagrees with Win32.");
   return identity;
  }
- public static string Security(SafeFileHandle handle) {
+ public static byte[] SecurityBinary(SafeFileHandle handle) {
   uint needed; GetKernelObjectSecurity(handle,0x1F,null,0,out needed); byte[] data=new byte[needed];
   if(!GetKernelObjectSecurity(handle,0x1F,data,needed,out needed)) throw new IOException("Complete security query failed: "+Marshal.GetLastWin32Error());
+  return data;
+ }
+ public static string Security(SafeFileHandle handle) {
+  byte[] data=SecurityBinary(handle);
   return new System.Security.AccessControl.RawSecurityDescriptor(data,0).GetSddlForm(System.Security.AccessControl.AccessControlSections.All);
  }
  public static uint CheckAccess(uint original,uint disposition) {
