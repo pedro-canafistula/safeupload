@@ -76,6 +76,18 @@ public sealed class InspectionService
         => InspectCoreAsync(operation, staged: true, cancellationToken);
 
     /// <summary>
+    /// Inspects an owned read lease on the publisher's held snapshot, without
+    /// reopening its pathname. The worker disposes the lease only when it
+    /// finishes, including after a caller-visible timeout.
+    /// </summary>
+    public Task<InspectionResult> InspectStagedAsync(FileOperation operation,
+        Func<Stream> openSnapshot, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(openSnapshot);
+        return InspectCoreAsync(operation, staged: true, cancellationToken, openSnapshot);
+    }
+
+    /// <summary>
     /// A staged approval may only be published under the same policy that
     /// inspected it. Reload just before publication; a changed or unreadable
     /// policy keeps the file local for a new inspection.
@@ -122,7 +134,7 @@ public sealed class InspectionService
             cancellationToken, eventId, publishedSha256Hex);
 
     private async Task<InspectionResult> InspectCoreAsync(
-        FileOperation operation, bool staged, CancellationToken cancellationToken)
+        FileOperation operation, bool staged, CancellationToken cancellationToken, Func<Stream>? openSnapshot = null)
     {
         ArgumentNullException.ThrowIfNull(operation);
 
@@ -155,7 +167,7 @@ public sealed class InspectionService
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                using var input = OpenInspectionInput(operation.FilePath);
+                using var input = OpenStagedInput(operation, openSnapshot);
                 if (input.Length != 0)
                     throw new IOException("The empty inspection snapshot contains bytes.");
                 return await CompleteAsync(operation, policy, stopwatch, Verdict.Approved, [], null,
@@ -191,7 +203,7 @@ public sealed class InspectionService
 
         try
         {
-            var inspected = await InspectWithBudgetAsync(extractor, operation, policy, auditAndCache, cancellationToken)
+            var inspected = await InspectWithBudgetAsync(extractor, operation, policy, auditAndCache, cancellationToken, openSnapshot)
                 .ConfigureAwait(false);
             fingerprint = inspected.Fingerprint;
             findings = inspected.Findings;
@@ -252,7 +264,8 @@ public sealed class InspectionService
     }
 
     private async Task<(IReadOnlyList<Finding> Findings, string? Fingerprint, InspectionResult? Cached)> InspectWithBudgetAsync(
-        ITextExtractor extractor, FileOperation operation, Policy policy, bool useCache, CancellationToken cancellationToken)
+        ITextExtractor extractor, FileOperation operation, Policy policy, bool useCache, CancellationToken cancellationToken,
+        Func<Stream>? openSnapshot)
     {
         var budget = Stopwatch.StartNew();
         if (!await _inspectionSlots.WaitAsync(policy.InspectionTimeout, cancellationToken).ConfigureAwait(false))
@@ -273,7 +286,7 @@ public sealed class InspectionService
             {
                 try
                 {
-                    return await ExtractAndScanAsync(extractor, operation, policy, useCache, workerToken)
+                    return await ExtractAndScanAsync(extractor, operation, policy, useCache, workerToken, openSnapshot)
                         .ConfigureAwait(false);
                 }
                 finally
@@ -324,7 +337,8 @@ public sealed class InspectionService
         FileOperation operation,
         Policy policy,
         bool useCache,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<Stream>? openSnapshot)
     {
         string text;
         string? fingerprint = null;
@@ -349,7 +363,7 @@ public sealed class InspectionService
             // Staged publication owns a separate service-only snapshot and
             // never reuses approval cache entries. Keep this exact file object
             // open through extraction; a replaced name cannot change its bytes.
-            await using var input = OpenInspectionInput(operation.FilePath);
+            await using var input = OpenStagedInput(operation, openSnapshot);
             if (extractor is IStreamingTextExtractor streaming)
             {
                 var findings = await StreamingContentScanner.ScanAsync(() =>
@@ -371,6 +385,20 @@ public sealed class InspectionService
         // A source reader must coexist with the publisher's final rename.
         FileAccess.Read, FileShare.Read | FileShare.Delete, 64 * 1024,
         FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+    private static Stream OpenStagedInput(FileOperation operation, Func<Stream>? openSnapshot)
+    {
+        if (openSnapshot is null) return OpenInspectionInput(operation.FilePath);
+        Stream input = openSnapshot() ?? throw new IOException("The snapshot read lease is missing.");
+        try
+        {
+            if (!input.CanRead || !input.CanSeek || input.CanWrite || input.Length != operation.SizeBytes)
+                throw new IOException("The snapshot read lease does not match the measured content.");
+            input.Position = 0;
+            return input;
+        }
+        catch { input.Dispose(); throw; }
+    }
 
     private async Task<InspectionResult> CompleteAsync(
         FileOperation operation,

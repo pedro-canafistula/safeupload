@@ -143,10 +143,10 @@ public sealed partial class StagedTransferPublisher
         // File sharing does not revoke an already mapped writable section.
         // Inspect and publish a separate service-only snapshot, so even a
         // delayed paging write cannot change the inspected publication bytes.
-        InspectionSnapshot snapshot;
+        StagedInspectionSnapshot snapshot;
         try
         {
-            snapshot = await InspectionSnapshot.CreateAsync(sealedFile, _stagingRoot,
+            snapshot = await StagedInspectionSnapshot.CreateAsync(sealedFile, _stagingRoot,
                 Path.GetExtension(destinationPath), journalEntry.SealedLength.Value, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -193,7 +193,7 @@ public sealed partial class StagedTransferPublisher
         InspectionResult result;
         try
         {
-            result = await _inspection.InspectStagedAsync(operation, cancellationToken).ConfigureAwait(false);
+            result = await _inspection.InspectStagedAsync(operation, snapshot.OpenRead, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
@@ -535,7 +535,7 @@ public sealed partial class StagedTransferPublisher
                 FileStream source = sourceFile.Stream;
                 if (sourceFile.Identity != entry.StageIdentity || source.Length != entry.SealedLength)
                     throw new IOException("The blocked stage no longer has its measured identity and length.");
-                await using InspectionSnapshot snapshot = await InspectionSnapshot.CreateAsync(
+                await using StagedInspectionSnapshot snapshot = await StagedInspectionSnapshot.CreateAsync(
                     source, _stagingRoot, Path.GetExtension(entry.Transfer.DestinationPath), entry.SealedLength.Value, token)
                     .ConfigureAwait(false);
                 string digest = snapshot.Digest;
@@ -893,52 +893,6 @@ public sealed partial class StagedTransferPublisher
             throw new IOException("Blocked staging contains a reparse point.");
     }
 
-    private sealed class InspectionSnapshot : IAsyncDisposable
-    {
-        public string Path { get; }
-        public FileStream Stream { get; }
-        public string Digest { get; }
-        private InspectionSnapshot(string path, FileStream stream, string digest)
-            => (Path, Stream, Digest) = (path, stream, digest);
-
-        public static async Task<InspectionSnapshot> CreateAsync(FileStream source,
-            string root, string extension, long expectedLength, CancellationToken token)
-        {
-            string path = System.IO.Path.Combine(root, Guid.NewGuid().ToString("N") +
-                ".inspection" + extension);
-            FileStream? captured = null;
-            try
-            {
-                await using (var output = new FileStream(path, FileMode.CreateNew,
-                    FileAccess.Write, FileShare.None, 64 * 1024,
-                    FileOptions.Asynchronous | FileOptions.WriteThrough))
-                {
-                    await StagedSnapshotCopy.CopyAsync(source, output, expectedLength, token).ConfigureAwait(false);
-                    output.Flush(flushToDisk: true);
-                }
-                source.Position = 0;
-                captured = new FileStream(path, FileMode.Open, FileAccess.Read,
-                    FileShare.Read, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
-                if (captured.Length != expectedLength)
-                    throw new IOException("The inspection snapshot does not match the measured seal length.");
-                string digest = Convert.ToHexString(await SHA256.HashDataAsync(captured, token).ConfigureAwait(false));
-                captured.Position = 0;
-                return new(path, captured, digest);
-            }
-            catch
-            {
-                if (captured is not null) await captured.DisposeAsync().ConfigureAwait(false);
-                if (File.Exists(path)) File.Delete(path);
-                throw;
-            }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            await Stream.DisposeAsync().ConfigureAwait(false);
-            File.Delete(Path);
-        }
-    }
 }
 
 public sealed record StagedTransfer(
