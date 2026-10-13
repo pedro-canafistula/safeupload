@@ -1,0 +1,9 @@
+BOOTSTRAP_PACKAGE_PRESERVED=PASS t5-security-storage2/normal-release
+UNPACKED_DUPLICATE_REMOVED=t5-security-storage2/feature-release
+UNPACKED_DUPLICATE_REMOVED=t4-journal-recovery6/normal-release
+UNPACKED_DUPLICATE_REMOVED=t4-journal-recovery6/feature-release
+UNPACKED_DUPLICATE_REMOVED=t5-publication-journal4/normal-release
+UNPACKED_DUPLICATE_REMOVED=t5-publication-journal4/feature-release
+UNPACKED_DUPLICATE_REMOVED=t5-bound-publication-wire1/normal-release
+UNPACKED_DUPLICATE_REMOVED=t5-bound-publication-wire1/feature-release
+SCOPED_GENERATED_CLEANUP=PASS directories=7 free_before=75194368 free_after=705847296 source_packages_evidence_retained=True

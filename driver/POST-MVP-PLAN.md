@@ -403,11 +403,19 @@ cannot publish unapproved bytes, proven by the observer.
 - [x] Nested sealed-stage query guard (`203d31e9`), 32-bit serial-generation arithmetic (`b8394357`), journal cache eviction (`cb1d0930`).
 - [ ] Validate SOP lifetime at startup; retire changed-SOP registry entries with a lifetime review before first boot.
 - [ ] Finish journal compaction without losing generation barriers or unresolved identity/cleanup obligations.
-  - 2026-10-13 component checkpoint (Windows matrix pending): compaction now groups bound generation claims by full
+  - 2026-10-13 component checkpoint (`16c980a4`): compaction now groups bound generation claims by full
     volume-root/parent/mount/case/leaf identity, keeping legacy pathname claims separate. Its retained-reference closure
     includes allocation-reference owners as well as exact parent/delete versions. Journal-only controls cover distinct
     identities sharing a locator, case-sensitive tombstones, case-insensitive aliases, legacy separation, lost-head recovery
-    and tombstone-owner replay after restart. This does not close the full compaction/scaling or final-pair review gate.
+    and tombstone-owner replay after restart. The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t11-bound-compaction2-summary.txt)
+    passes 913 normal/1,278 feature tests per Debug/Release profile, including all nine new compaction controls, with exact
+    discovery/execution coverage, no skips and 0 warnings/errors. This does not close the full compaction/scaling or final-pair review gate.
+    The destination hash deliberately omits the leaf to preserve Windows equality; many names under one parent share its
+    bucket. That index and the repeated reference-closure scans still need a bounded design/large-journal measurement.
+    The [first matrix stopped on builder disk exhaustion](evidence/2026-10-13/exact-agent-matrix-t11-bound-compaction1-build.stderr.txt)
+    after both normal test profiles passed. [Scoped recovery](evidence/2026-10-13/t11-builder-generated-cleanup2.stdout.txt)
+    verified eight unpacked publication copies against host-retained ZIPs/manifests before removal (one inline bootstrap,
+    then seven copies), preserving source, packages and evidence; the fresh matrix above passes without product VM boots.
 - [ ] Close every M2 review condition against the final matched pair.
 
 ## M3 — after M2

@@ -1,0 +1,3 @@
+scp: write remote "C:/Users/vika/AppData/Local/Temp/remote_ps_3bed11cf88cf420bbf2ff6dcb7bccfed.ps1": Failure
+scp: failed to upload file /tmp/tmp30kbbpib.ps1 to C:/Users/vika/AppData/Local/Temp/remote_ps_3bed11cf88cf420bbf2ff6dcb7bccfed.ps1
+Could not stage the long script on the guest
