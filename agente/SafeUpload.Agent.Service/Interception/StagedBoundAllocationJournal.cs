@@ -29,10 +29,12 @@ public sealed partial class StagedTransferJournal
     // replay completes that claim only if it has not been overtaken. Neither
     // failure rolls a generation back or erases the backing cleanup obligation.
     internal async Task<TransferJournalEntry> CommitBoundAllocationAsync(DestinationCommitTurn turn,
-        StagedTransfer transfer, StagedAllocationBindingV23 binding, CancellationToken token)
+        StagedTransfer transfer, StagedAllocationBindingV23 binding, CancellationToken token,
+        StagedAllocationSecuritySnapshot? security = null)
     {
         turn.Require(this, StagedDestinationTurnPurpose.Allocation);
         binding.Validate();
+        security?.RequireBinding(binding);
         if (turn.Destination != binding.Destination || transfer.TransferId != binding.ReservationId ||
             transfer.ProcessId <= 0 || transfer.SessionId is null ||
             string.IsNullOrWhiteSpace(transfer.RequestorSid) || transfer.RequestorProcessCreationTime is not > 0 ||
@@ -49,6 +51,7 @@ public sealed partial class StagedTransferJournal
             if (existing is not null)
             {
                 if (existing.Transfer != transfer || existing.BoundAllocation != binding ||
+                    existing.AllocationSecurity != security?.Reference() ||
                     existing.AllocationExtensionVersion != 23 || existing.StageIdentity != stage.Identity ||
                     existing.SealedOnce || existing.PendingRename is not null ||
                     existing.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed))
@@ -78,9 +81,11 @@ public sealed partial class StagedTransferJournal
                 AllocationDisposition = binding.Disposition, AllocationReferenceKind = binding.ReferenceKind,
                 AllocationReferenceId = binding.ParentTransferId == Guid.Empty ? null : binding.ParentTransferId,
                 DriverInstanceId = binding.DriverInstanceId, ParentDirectoryIdentity = binding.Parent,
-                AllocationExtensionVersion = 23, BoundAllocation = binding
+                AllocationExtensionVersion = 23, BoundAllocation = binding,
+                AllocationSecurity = security?.Reference()
             };
             ValidateEntry(entry, transfer.TransferId);
+            if (security is not null) await PersistAllocationSecurityCoreAsync(security, token).ConfigureAwait(false);
             string path = ManifestPath(transfer.TransferId);
             string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try

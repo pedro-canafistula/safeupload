@@ -297,6 +297,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     The [focused writer-authority report](<../reports/T5 native writer authority.md>) records seven finite control groups and
     unresolved low-token capture, native assignment/creator-grant, metadata and coherent-seed mechanisms. It is provisional
     design evidence; admission, the pending owner hand-back choice and the product-run stop are unchanged.
+    The [durable allocation security record](T5-NATIVE-PUBLIC-OPENS.md#durable-allocation-security-record-implementation-checkpoint)
+    is connected to manifest commit, exact replay/recovery and retention-aware cleanup; Windows validation is pending.
+    Complete native snapshot production, metadata RPC, rename rebinding and publication descriptor use remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)

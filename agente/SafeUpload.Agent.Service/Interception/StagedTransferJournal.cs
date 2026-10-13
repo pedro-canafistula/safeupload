@@ -228,7 +228,7 @@ public sealed partial class StagedTransferJournal
                 // validate each object again for its handle-based ACL update.
                 foreach (string path in Directory.EnumerateFileSystemEntries(_directory))
                 {
-                    using var file = StagedJournalFile.Open(path);
+                    using var file = StagedJournalFile.Open(path, maximumBytes: StagedJournalFile.RecoverySizeBound(path));
                     var security = file.GetAccessControl();
                     if (owner.IsWellKnown(WellKnownSidType.LocalSystemSid))
                         RequireTrustedOwner(security, "journal manifest");
@@ -242,7 +242,8 @@ public sealed partial class StagedTransferJournal
             AddPrivateRules(_fileSecurity, owner, inherit: false);
             foreach (string path in Directory.EnumerateFiles(_directory))
             {
-                using var file = StagedJournalFile.Open(path, recoverAcl: true);
+                using var file = StagedJournalFile.Open(path, recoverAcl: true,
+                    maximumBytes: StagedJournalFile.RecoverySizeBound(path));
                 var security = file.GetAccessControl();
                 if (owner.IsWellKnown(WellKnownSidType.LocalSystemSid))
                 {
@@ -1395,6 +1396,10 @@ public sealed partial class StagedTransferJournal
         }
         catch (JsonException error) { throw new InvalidDataException("The transfer manifest is invalid JSON.", error); }
         ValidateEntry(entry, transferId);
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        if (entry!.AllocationSecurity is not null)
+            _ = await ReadAllocationSecurityCoreAsync(entry, cancellationToken).ConfigureAwait(false);
+#endif
         return entry!;
     }
 
@@ -1466,12 +1471,13 @@ public sealed partial class StagedTransferJournal
                  requestorSid.Any(char.IsWhiteSpace))) ||
             (transfer.RequestorProcessCreationTime is <= 0))
             throw new InvalidDataException("The transfer manifest has invalid identity or state.");
-        if (entry.AllocationExtensionVersion is not null || entry.BoundAllocation is not null)
+        if (entry.AllocationExtensionVersion is not null || entry.BoundAllocation is not null || entry.AllocationSecurity is not null)
         {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
             if (entry.AllocationExtensionVersion != 23 || entry.BoundAllocation is not { } bound)
                 throw new InvalidDataException("The bound allocation marker and descriptor must agree.");
             bound.Validate();
+            entry.AllocationSecurity?.Validate();
             if (bound.ReservationId != id || entry.CreateReservationId != id ||
                 entry.DriverInstanceId != bound.DriverInstanceId ||
                 entry.AllocationDisposition != bound.Disposition ||
@@ -2396,6 +2402,12 @@ public sealed partial class StagedTransferJournal
                 ForgetScanned(id);
                 removed++;
             }
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            await CompactAllocationSecurityCoreAsync(entries.Where(e =>
+                    !finished.Contains(e.Transfer.TransferId) || protectedIds.Contains(e.Transfer.TransferId))
+                .Select(e => e.AllocationSecurity?.SnapshotId).OfType<Guid>().ToHashSet(),
+                cutoffUtc, cancellationToken).ConfigureAwait(false);
+#endif
             return removed;
         }
         finally { _gate.Release(); }
@@ -3075,6 +3087,8 @@ public sealed record TransferJournalEntry(
     public uint? AllocationDisposition { get; init; }
     public uint? AllocationExtensionVersion { get; init; }
     public StagedAllocationBindingV23? BoundAllocation { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public StagedAllocationSecurityReference? AllocationSecurity { get; init; }
     /// <summary>Durable attachment transaction state; None is legacy/unattached v18 data.</summary>
     public StagedAttachmentStateV20 AttachmentStateV20 { get; init; }
     public ulong? AttachPrepareRequestIdV20 { get; init; }
@@ -3125,6 +3139,7 @@ public sealed record TransferJournalEntry(
             AllocationReferenceKind == other.AllocationReferenceKind && DriverInstanceId == other.DriverInstanceId &&
             ParentDirectoryIdentity == other.ParentDirectoryIdentity &&
             AllocationExtensionVersion == other.AllocationExtensionVersion && BoundAllocation == other.BoundAllocation &&
+            AllocationSecurity == other.AllocationSecurity &&
             AllocationDisposition == other.AllocationDisposition && DiscardReservationId == other.DiscardReservationId &&
             AttachmentStateV20 == other.AttachmentStateV20 &&
             AttachPrepareRequestIdV20 == other.AttachPrepareRequestIdV20 &&
@@ -3175,6 +3190,7 @@ public sealed record TransferJournalEntry(
         hash.Add(AllocationDisposition);
         hash.Add(AllocationExtensionVersion);
         hash.Add(BoundAllocation);
+        hash.Add(AllocationSecurity);
         hash.Add(AttachmentStateV20);
         hash.Add(AttachPrepareRequestIdV20);
         hash.Add(AttachCommitRequestIdV20);

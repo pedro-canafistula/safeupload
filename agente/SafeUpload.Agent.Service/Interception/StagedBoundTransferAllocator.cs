@@ -12,9 +12,10 @@ public sealed partial class StagedTransferAllocator
     internal async Task<StagedAllocationReply> AllocateV23Async(string destinationPath,
         DestinationKind destination, string processName, int processId, uint sessionId,
         string requestorSid, long requestorProcessCreationTime, StagedAllocationBindingV23 binding,
-        CancellationToken token)
+        CancellationToken token, StagedAllocationSecuritySnapshot? security = null)
     {
         binding.Validate();
+        security?.RequireBinding(binding);
         string locator = Path.GetFullPath(destinationPath);
         string extension = Path.GetExtension(binding.CanonicalLeaf);
         if (!binding.Destination.LeafEquals(Path.GetFileName(locator)) ||
@@ -41,7 +42,7 @@ public sealed partial class StagedTransferAllocator
             .ConfigureAwait(false);
         if (existing is not null)
         {
-            TransferJournalEntry replay = await _journal.CommitBoundAllocationAsync(turn, transfer, binding, token)
+            TransferJournalEntry replay = await _journal.CommitBoundAllocationAsync(turn, transfer, binding, token, security)
                 .ConfigureAwait(false);
             return BoundAllocationReply(replay);
         }
@@ -70,7 +71,7 @@ public sealed partial class StagedTransferAllocator
             using (StagedStageFile created = StagedStageFile.Open(transfer.StagePath))
                 createdIdentity = created.Identity;
             directory.RequirePublicTarget(binding.PublicTarget, token);
-            TransferJournalEntry entry = await _journal.CommitBoundAllocationAsync(turn, transfer, binding, token)
+            TransferJournalEntry entry = await _journal.CommitBoundAllocationAsync(turn, transfer, binding, token, security)
                 .ConfigureAwait(false);
             return BoundAllocationReply(entry);
         }

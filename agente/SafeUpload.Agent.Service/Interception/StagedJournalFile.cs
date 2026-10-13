@@ -10,6 +10,15 @@ internal static class StagedJournalFile
 {
     internal const int MaximumManifestBytes = 128 * 1024;
 
+    internal static int RecoverySizeBound(string path)
+    {
+        string[] parts = Path.GetFileName(path).Split('.');
+        bool snapshot = parts.Length == 2 && parts[1] == "security" && Guid.TryParseExact(parts[0], "N", out _);
+        bool temporary = parts.Length == 4 && parts[1] == "security" && parts[3] == "tmp" &&
+            Guid.TryParseExact(parts[0], "N", out _) && Guid.TryParseExact(parts[2], "N", out _);
+        return snapshot || temporary ? StagedAllocationSecuritySnapshot.MaximumBytes : MaximumManifestBytes;
+    }
+
     public static FileStream Open(string path, bool recoverAcl = false, bool writable = false, int maximumBytes = MaximumManifestBytes)
     {
         if (!OperatingSystem.IsWindows())

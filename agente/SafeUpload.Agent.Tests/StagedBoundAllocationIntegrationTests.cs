@@ -38,13 +38,90 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
     }
 
     private Task<StagedAllocationReply> Allocate(StagedTransferAllocator allocator,
-        StagedAllocationBindingV23 binding, string? locator = null)
+        StagedAllocationBindingV23 binding, string? locator = null, StagedAllocationSecuritySnapshot? security = null)
     {
         using var identity = WindowsIdentity.GetCurrent();
         using var process = Process.GetCurrentProcess();
         return allocator.AllocateV23Async(locator ?? Path.Combine(Parent, binding.CanonicalLeaf), DestinationKind.Cloud,
             process.ProcessName, process.Id, checked((uint)process.SessionId), identity.User!.Value,
-            process.StartTime.ToFileTimeUtc(), binding, CancellationToken.None);
+            process.StartTime.ToFileTimeUtc(), binding, CancellationToken.None, security);
+    }
+
+    [Fact]
+    public async Task Security_snapshot_is_committed_before_reply_and_exact_replay_survives_restart()
+    {
+        var binding = Binding("save.txt", 2, false);
+        byte[] construction = SecuritySnapshotFixture.Descriptor(), stored = construction.ToArray();
+        stored[2] &= 0xf7;
+        var snapshot = StagedAllocationSecuritySnapshot.Create(Guid.NewGuid(), binding, 1, 0x7f, construction, stored);
+        var journal = new StagedTransferJournal(Journal);
+        var first = await Allocate(new(Stages, journal), binding, security: snapshot);
+        var entry = await journal.ReadAsync(binding.ReservationId, CancellationToken.None);
+        Assert.Equal(snapshot.Reference(), entry.AllocationSecurity);
+        var reopened = new StagedTransferJournal(Journal);
+        Assert.Equal(snapshot, await reopened.ReadBoundAllocationSecurityAsync(binding.ReservationId, CancellationToken.None));
+        Assert.Equal(first, await Allocate(new(Stages, reopened), binding, security: snapshot));
+        await Assert.ThrowsAsync<IOException>(() => Allocate(new(Stages, reopened), binding));
+        await Assert.ThrowsAsync<IOException>(() => Allocate(new(Stages, reopened), binding,
+            security: snapshot with { AssignmentRevision = 2 }));
+        Assert.Equal(entry, await reopened.ReadAsync(binding.ReservationId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Full_descriptor_pair_fits_private_storage_without_expanding_the_manifest_bound()
+    {
+        var binding = Binding("large.txt", 2, false);
+        byte[] descriptor = SecuritySnapshotFixture.Descriptor(duplicateAces: 3150);
+        var snapshot = StagedAllocationSecuritySnapshot.Create(Guid.NewGuid(), binding, 1, 0x7f, descriptor, descriptor);
+        Assert.True(snapshot.Encode().Length > 128 * 1024);
+        var journal = new StagedTransferJournal(Journal);
+        await Allocate(new(Stages, journal), binding, security: snapshot);
+        Assert.True(new FileInfo(Path.Combine(Journal, binding.ReservationId.ToString("N") + ".json")).Length < 128 * 1024);
+        var reopened = new StagedTransferJournal(Journal);
+        Assert.Equal(snapshot, await reopened.ReadBoundAllocationSecurityAsync(binding.ReservationId, CancellationToken.None));
+        await reopened.CompactAsync(DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None);
+        Assert.Equal(snapshot, await reopened.ReadBoundAllocationSecurityAsync(binding.ReservationId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Unreferenced_flushed_security_record_is_private_and_compacted_after_retention()
+    {
+        var binding = Binding("orphan.txt", 2, false);
+        byte[] descriptor = SecuritySnapshotFixture.Descriptor();
+        var snapshot = StagedAllocationSecuritySnapshot.Create(Guid.NewGuid(), binding, 1, 0x7f, descriptor, descriptor);
+        var journal = new StagedTransferJournal(Journal);
+        string path = Path.Combine(Journal, snapshot.SnapshotId.ToString("N") + ".security");
+        File.WriteAllBytes(path, snapshot.Encode()); // Simulate flush followed by a crash before manifest commit.
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddHours(-1), CancellationToken.None));
+        Assert.True(File.Exists(path));
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+        Assert.False(File.Exists(path));
+        Assert.Empty(Directory.EnumerateFiles(Journal, "*.json"));
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("changed")]
+    [InlineData("replaced-binding")]
+    public async Task Missing_or_changed_security_cannot_be_recovered_as_allocation_authority(string change)
+    {
+        var binding = Binding("save.txt", 2, false);
+        byte[] descriptor = SecuritySnapshotFixture.Descriptor();
+        var snapshot = StagedAllocationSecuritySnapshot.Create(Guid.NewGuid(), binding, 1, 0x7f, descriptor, descriptor);
+        var journal = new StagedTransferJournal(Journal);
+        var reply = await Allocate(new(Stages, journal), binding, security: snapshot);
+        string path = Path.Combine(Journal, snapshot.SnapshotId.ToString("N") + ".security");
+        if (change == "missing") File.Delete(path);
+        else
+        {
+            byte[] bytes = File.ReadAllBytes(path);
+            bytes[change == "changed" ? bytes.Length - 1 : 80] ^= 1;
+            File.WriteAllBytes(path, bytes);
+        }
+        var reopened = new StagedTransferJournal(Journal);
+        await Assert.ThrowsAnyAsync<IOException>(() => reopened.ReadAsync(binding.ReservationId, CancellationToken.None));
+        await Assert.ThrowsAnyAsync<IOException>(() => Allocate(new(Stages, reopened), binding, security: snapshot));
+        Assert.True(File.Exists(reply.Transfer.StagePath));
     }
 
     [Theory]

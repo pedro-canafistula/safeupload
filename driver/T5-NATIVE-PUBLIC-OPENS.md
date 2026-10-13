@@ -660,6 +660,31 @@ an assigned descriptor to a SYSTEM temporary CREATE is not proven idempotent; in
 denied by rechecking the newly assigned DACL as an existing object. Exact-object full-security queries, kernel reads and whole-copy
 coherence also remain mechanism gates. The report specifies finite differential controls rather than assuming these contracts.
 
+#### Durable allocation security record, implementation checkpoint
+
+The service allocation journal now accepts an immutable security snapshot alongside a V23 binding. Construction and expected
+native stored descriptors are separate binary values; the storage codec never derives assignment, access or a stored form from
+construction flags. Format 1 packs component offsets and outer padding while preserving the complete control/RM bytes, SID values,
+ACL bytes, ACE order and opaque payloads. Its structural checks are not a substitute for the checked driver's native descriptor
+validation or assignment controls.
+
+Two full descriptors can exceed the existing 128-KiB manifest limit. A bounded private `.security` record is therefore flushed
+before the allocation manifest records its snapshot GUID, exact length and SHA-256. The 112-byte header binds driver, reservation,
+assignment/query provenance and a binary digest of every V23 binding field, including exact UTF-16 leaf bytes. Each descriptor's
+component bound is 131,228 bytes (two maximal ACLs, two maximal SIDs and alignment); the binary record bound is 262,568 bytes.
+The JSON manifest limit and published wire layouts stay unchanged. Replay cannot add, remove or replace a committed snapshot.
+Recovery reads the no-follow, single-link private object and verifies the full reference and allocation tuple; missing or changed
+data cannot become permission through a current SYSTEM observation.
+
+Compaction keeps snapshots referenced by retained high-water/ancestry manifests. A flushed record interrupted before manifest
+commit remains private and is eligible after the ordinary retention cutoff; cleanup checks the held object and deletes only its
+exact identity. Startup ACL recovery recognizes this bounded binary file and its private temporary form. Crash-left temporary
+cleanup remains part of T11's general temporary-file retention work.
+
+Validation is pending the Windows agent matrix. No wire producer currently supplies this record, and live admission remains off.
+The metadata RPC, complete checked snapshot, rename rebinding, original publication CREATE descriptor, seed/export provenance
+and integrated kernel lifetime review remain required before protected qualification.
+
 ### Native scheduled-CREATE integration transport — reviewed contract
 
 **2026-10-12: Luna 6 max effort READY for transport/producer implementation after the revision, high-water and receipt-retention
