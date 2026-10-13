@@ -366,11 +366,17 @@ public sealed class InspectionService
             await using var input = OpenStagedInput(operation, openSnapshot);
             if (extractor is IStreamingTextExtractor streaming)
             {
-                var findings = await StreamingContentScanner.ScanAsync(() =>
+                // Seven detector passes can otherwise parse the same PDF or
+                // package seven times. Keep at most four MiB of private text
+                // for this worker; overflow uses the existing streaming path.
+                // Replay becomes usable only after complete extraction EOF.
+                using var replay = new BoundedTextReplay(() =>
                 {
                     input.Position = 0;
                     return streaming.OpenReaderAsync(input, cancellationToken);
-                }, policy.ActiveCategories, cancellationToken).ConfigureAwait(false);
+                }, maximumCharacters: 2 * 1024 * 1024);
+                var findings = await StreamingContentScanner.ScanAsync(replay.OpenAsync,
+                    policy.ActiveCategories, cancellationToken).ConfigureAwait(false);
                 return (findings, null, null);
             }
             text = await extractor.ExtractAsync(input, cancellationToken).ConfigureAwait(false);
