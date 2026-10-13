@@ -418,6 +418,11 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     in the preceding test commit). Integrated `t5-option1-int2` failed one timing assertion (`Rn012_timeout_libera_a_operacao` 7,549 ms
     vs 7,000; first failure in 307 runs; receipt kept); identical rerun [`t5-option1-int3`](evidence/2026-10-13/exact-agent-matrix-t5-option1-int3-summary.txt)
     PASS at 1,387 normal / 1,769 feature tests per profile, 0/0, that test at ~5.0 s.
+  - [ ] Increments 2–4 (kernel + agent, dormant; Astra workers; side branches `wt/t5-inc2..4`): original-authority writer lease and
+    capture with nine named refusals; paged writer-metadata carrier (control 34 / extension 27) — [review](evidence/2026-10-13/t5-carrier-review-sol61.md)
+    REVISE, [re-review](evidence/2026-10-13/t5-carrier-rereview-sol61.md) ACCEPT WITH CONDITIONS; gated V23 selection and kernel seed copy with
+    `seed_coherence_unproved` / `seed_completion_unproved` refusals. Kernel builds `t5-inc2a/b` and `t5-inc3a` failed on PREfast
+    C6001/SAL classes (receipts kept, fixed); four-build gates and matrices pending before landing.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
