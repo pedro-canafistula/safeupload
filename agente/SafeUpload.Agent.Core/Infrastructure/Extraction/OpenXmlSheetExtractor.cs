@@ -12,8 +12,9 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 /// compartilhadas — sem isso a maior parte do texto de um <c>.xlsx</c> real
 /// apareceria como número de índice e a varredura não veria nada.
 ///
-/// Fora do alcance: resultado de fórmula que o Excel não tenha gravado em
-/// cache, gráficos, caixas de texto e o formato antigo <c>.xls</c>.
+/// Inspeciona a expressão das fórmulas e seus resultados em cache. Uma fórmula
+/// sem resultado em cache é recusada: o agente não executa a planilha.
+/// Gráficos, caixas de texto e o formato antigo <c>.xls</c> permanecem fora do alcance.
 /// Imagens, miniaturas e objetos/pacotes/controles incorporados são recusados
 /// explicitamente em vez de aprovar apenas a camada de texto.
 /// </summary>
@@ -45,6 +46,16 @@ public sealed class OpenXmlSheetExtractor : ITextExtractor
             {
                 foreach (var cell in row.Elements<Cell>())
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (cell.CellFormula is { } formula)
+                    {
+                        // Cached display text does not cover literals inside
+                        // a formula. Inspect both without evaluating workbook
+                        // code, links or external data. A missing result cannot
+                        // stand for a completely inspected calculation.
+                        if (cell.CellValue is null) throw new UnsupportedContentException();
+                        builder.Append(formula.InnerText).Append('\n');
+                    }
                     var value = ReadCell(cell, sharedStrings);
                     if (!string.IsNullOrEmpty(value))
                     {
