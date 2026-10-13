@@ -517,7 +517,7 @@ if times:
 out.append(f"T4Duration INFO {elapsed} s ({mode}, {cycles} cycles)")
 open(verdict_path, 'w').write('\n'.join(out) + '\n')
 print('\n'.join(out))
-sys.exit(0 if all(' PASS ' in l or ' INFO ' in l for l in out) else 1)
+sys.exit(0 if all(l.split(' ', 2)[1] in ('PASS', 'INFO') for l in out) else 1)
 PY
 verdict_status=$?
 if [ "$verdict_status" -eq 0 ] && [ "$alive" = yes ]; then

@@ -113,4 +113,29 @@ capacity_failure = copy.deepcopy(result)
 capacity_failure['Idle']['WriterState']['registryCapacityFailures'] = 1
 lines, _ = replay(changed_result(capacity_failure), long_samples + [purged], 10000)
 require(lines, 'T4RegistryBounded', 'FAIL')
+
+# A contexts-only failure includes "purge NTSTATUS PASS" in its explanation.
+# That text must never turn the FAIL status into a successful launcher exit.
+healthy = json.loads(re.search(r'^RESULT=(.*)$', short_after, re.M).group(1))
+healthy.update(Cycles=10000, Completed=10000, Attempted=10000)
+healthy['Outcomes'] = {pattern + '-' + decision: {'Ok': count, 'Failed': 0}
+                       for pattern in ('resave', 'new', 'replace', 'mapped')
+                       for decision, count in [('approve', 1875), ('block', 625)]}
+for label in ('Settled', 'AfterActorExit', 'Idle'):
+    healthy[label]['Cycle'] = 10000
+    for key in ('versionsCreated', 'versionsReleased', 'viewsReleased'):
+        healthy[label]['StageWorker'][key] = 10000
+healthy['Purge'] = copy.deepcopy(result['Purge'])
+healthy['Purged'] = copy.deepcopy(purged)
+healthy['Purged']['TagSUfl']['NonPagedAllocs'] += 1
+healthy_samples = long_samples + [healthy['Purged']]
+lines, code = replay(changed_result(healthy), healthy_samples, 10000)
+require(lines, 'T4ContextsReleased', 'FAIL', 'purge NTSTATUS PASS')
+assert [name for name, line in lines.items() if line.split()[1] == 'FAIL'] == ['T4ContextsReleased']
+assert code == 1, 'Embedded PASS in a FAIL explanation must not make the row pass'
+healthy['Purged']['TagSUfl']['NonPagedAllocs'] -= 1
+lines, code = replay(changed_result(healthy), healthy_samples, 10000)
+require(lines, 'T4ContextsReleased', 'PASS')
+assert code == 0, 'The otherwise identical passing row must return success'
+print('T4VerdictExitStatusControl=PASS; contexts-only failure returns 1 despite embedded PASS')
 print('T4VerdictSelfCheck=PASS; retained replay and context/registry refusal controls; Qualification=False')

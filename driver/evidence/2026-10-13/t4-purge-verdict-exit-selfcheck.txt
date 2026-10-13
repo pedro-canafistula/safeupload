@@ -1,0 +1,7 @@
+m2t4clean256b1: T4PoolEndpoint PASS driver nonpaged bytes (Verifier pool tracking) from cycle 64: 6361800; after idle 6380680; limit 6427336
+m2t4clean256b1: T4PoolSlope INFO 461.600 B/cycle (smoke row; judged only on the 10,000-cycle row)
+m2t4clean256b1: T4RegistryBounded PASS 8 samples within registry capacity; idle capacity failures 0; invalid samples []
+m2t4boot10k1011a2: T4PoolFlat PASS driver nonpaged bytes (Verifier pool tracking) from cycle 1000: 6401512 -> 6414600 at cycle 10000, after idle 6404632; slope 1.501 B/cycle (limit 4); peak 6727928
+m2t4boot10k1011a2: T4ContextsReleased FAIL SUfl live start 343, purged None; limit start + 2048; released None of idle growth since start 14553; purge NTSTATUS FAIL []; purged sample missing
+T4VerdictExitStatusControl=PASS; contexts-only failure returns 1 despite embedded PASS
+T4VerdictSelfCheck=PASS; retained replay and context/registry refusal controls; Qualification=False

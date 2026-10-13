@@ -203,16 +203,21 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
 - [ ] **Memory attribution:** [analysis and independent Luna lifetime review](evidence/2026-10-12/t4-memory-direction.md).
   - [x] Approved diagnostic `m2t4memdiag1`: 256/256, original short assertions pass, zero staged leftovers; unload returns SUfl/SwUr
     and Verifier allocations to zero; separate restoration passes ([result and raw evidence](evidence/2026-10-12/t4-memory-attribution-result.md)).
-  - [ ] Establish bounded retention while loaded with the owner-approved purge gate above. The
-    [clean short result](evidence/2026-10-12/t4-clean-short-result.md) has an informational occupancy slope (461.600 B/cycle) under this
-    decision; its historical FAIL is retained unchanged. Unload release is not a loaded-memory bound. No kernel reclamation is authorized.
-    [Coverage-retry explanation/final Ready check](evidence/2026-10-12/t4-coverage-retry-analysis.md) is prepared;
-    runtime availability remains open. Diagnostic overhead excludes the prior diagnostic from qualification.
+  - [ ] Establish bounded retention while loaded with the owner-approved purge gate above. The new
+    [10k verdict](evidence/2026-10-12/m2t4purge10ka1-verdict.txt) fails `T4ContextsReleased`: start 335, idle 15,952, purged 2,712;
+    limit 2,383, exceeded by 329. All five native statuses are zero; purge releases 13,240 allocations (84.8% of idle growth).
+    This proves substantial release while loaded, but does not meet the chosen bound. No kernel reclamation or threshold change is authorized.
+    The historical [clean short result](evidence/2026-10-12/t4-clean-short-result.md) is retained unchanged; its slope is now informational.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
-- [ ] Pass the complete short and 10k rows with the revised harness. Latest historical short: 256/256, cleanup PASS, original slope FAIL;
-  no purge sample, long retry not started. Last 10k: 8,740/10,000, four stages left;
-  [journal-failure diagnosis and raw evidence](evidence/2026-10-11/t4-journal-failure-diagnosis.md).
+- [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):
+  256/256, every required assertion PASS, 69.8% of idle SUfl growth released. New 10k: 10,000/10,000, functional/pool/registry/Ready
+  assertions PASS, pool slope −1.293 B/cycle; contexts bound FAIL above. Both separate restorations PASS; further product VM runs stopped.
+  The historical [journal-failure diagnosis](evidence/2026-10-11/t4-journal-failure-diagnosis.md) remains preserved.
+- [x] Correct verdict exit classification found by the new long row: an explanatory `purge NTSTATUS PASS` incorrectly made its
+  `T4ContextsReleased FAIL` line return success. Read the status token only; the
+  [offline contexts-only failure control](evidence/2026-10-13/t4-purge-verdict-exit-selfcheck.txt) requires exit 1 with all other assertions PASS.
+  Original run evidence, including the incorrect exit 0 receipt, is retained unchanged; no further VM row was run for this reporting fix.
 - [ ] Run the required raw-volume regression cells above, then rerun T4 on the final M2 pair.
   The cycle row's sampled public-byte checks do not replace the raw-volume observer.
 
