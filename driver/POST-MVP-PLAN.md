@@ -482,6 +482,22 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     collection; it is not a process-peak or protected measurement. [Scoped preflight](evidence/2026-10-13/t9-sheet-stream1-preflight.host.json)
     removes only verified unpacked duplicates, retaining source/packages/manifests/evidence. No product pair was installed or booted;
     source/evidence remain local pending the earlier push approval. T9 overall and M2 final/runtime gates remain open.
+  - Staged PDF extracted-text streaming (`33ca257e`): consume page letter values in content order, with existing platform page
+    newlines and raster-image refusal, without Page.Text or a document-wide extracted-output string. A read-only stream facade
+    preserves the caller's held snapshot across page/package disposal; cancellation is checked between letter/page operations.
+    Legacy capture/extraction/cache and policy/worker budgets remain unchanged. The pinned PdfPig 0.1.16
+    [Page.Text implementation](https://github.com/UglyToad/PdfPig/blob/v0.1.16/src/UglyToad.PdfPig/Content/Page.cs)
+    concatenates these same letter values; [page construction](https://github.com/UglyToad/PdfPig/blob/v0.1.16/src/UglyToad.PdfPig/Content/Pages.cs)
+    still parses a page's content and retains document structures/resources. This removes output copies, not a worst-case parser bound.
+    Large individual pages, metadata/resource caches, annotations/forms/ActualText and other PDF content, encryption/corruption and
+    parser behavior remain qualification findings; the existing lenient parser setting was not changed by this checkpoint.
+    The [complete Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-pdf-stream1-summary.txt) passes 1,079 normal/1,449 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips, 0 warnings/errors and both verified packages. All
+    [six independent raw-PDF controls](evidence/2026-10-13/t9-pdf-stream1-controls.json) pass in every profile: independently authored
+    object/xref structures, fragmented reads, page/numeric boundaries, last-page CPF, blank pages, scalar/peek/EOF/cancellation and
+    source ownership/SHA-256. Existing image-content refusal and privacy controls remain in the full suite. This is not a PDF process-peak
+    or protected measurement. [Scoped preflight](evidence/2026-10-13/t9-pdf-stream1-preflight.host.json) preserves completed source,
+    packages/manifests and evidence. No product pair was installed or booted; commits remain local pending the earlier push approval.
 - [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
   - Strict current-policy implementation (`bfffa535`): staged inspection, approval, justification, allocation/rename/attach
     admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and
