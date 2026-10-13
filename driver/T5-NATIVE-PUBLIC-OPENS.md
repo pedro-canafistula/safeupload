@@ -596,6 +596,14 @@ at 0 warnings/0 errors with PREfast/ApiValidator; Inspector, writer fixture and 
 retained locally and fixed in `fe1c9738`/`f5cff550`. Agent source is unchanged from the 880/1230-per-profile passing matrix.
 These are static gates, not a protected-pair or lifetime-review result.
 
+**Original lookup capture, 2026-10-13:** queued CREATE now retains its opened name or exact original related-file-object/raw-ID
+lookup pair in owned nonpaged storage. Relative requests keep the original root object rather than reconstructing its pathname;
+same-volume and directory checks precede publication to the worker queue. Absolute requests capture the opened form, preserving
+the original case flags separately. Active transaction rundown releases the root/name alongside the original subject before lookup
+removal. The empty final destructor remains nonpageable because cancellation can drop the final reference at DISPATCH_LEVEL.
+This completes capture only: it does not establish an NTFS grant, assigned descriptor, coherent seed or bound-head admission.
+The checked writer backend and post-allocation ancestor/security comparisons remain required.
+
 #### Seed sharing and read-authority correction
 
 The service's current second public-source read open (`StagedDestinationDirectory.cs:68`) can fail a CREATE whose original sharing

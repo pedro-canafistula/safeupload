@@ -188,25 +188,6 @@ typedef struct _STAGE_ADMISSION_TOKEN_SLOT {
 /* Captured on the original CREATE before it is queued. Variable inputs are
  * owned copies, never pointers into a caller buffer or a later thread token.
  * This describes the request; only an NTFS-checked backend grants authority. */
-typedef struct _STAGE_CREATE_INPUT {
-    ACCESS_MASK DesiredAccess;
-    ACCESS_MASK OriginalDesiredAccess;
-    ACCESS_MASK RemainingDesiredAccess;
-    ACCESS_MASK PreviouslyGrantedAccess;
-    ULONG Options;
-    USHORT FileAttributes;
-    USHORT ShareAccess;
-    LARGE_INTEGER AllocationSize;
-    UCHAR OperationFlags;
-    KPROCESSOR_MODE RequestorMode;
-    BOOLEAN NativeEligible;
-    BOOLEAN SuppliedSecurity;
-    ULONG EaLength;
-    PVOID EaBuffer;
-    ULONG SecurityBytes;
-    PSECURITY_DESCRIPTOR Security;
-} STAGE_CREATE_INPUT, *PSTAGE_CREATE_INPUT;
-
 typedef struct _STAGE_ATTACH_TRANSACTION {
     LIST_ENTRY QueueLink;
     LIST_ENTRY LookupLink;
@@ -227,7 +208,7 @@ typedef struct _STAGE_ATTACH_TRANSACTION {
     PEPROCESS RequestorProcess;
     SECURITY_CLIENT_CONTEXT OriginalSubject;
     BOOLEAN OriginalSubjectValid;
-    STAGE_CREATE_INPUT CreateInput;
+    SAFEUPLOAD_STAGE_CREATE_INPUT CreateInput;
     PSAFEUPLOAD_STAGE_NATIVE_RECORD NativeRecord;
     SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT NativeSnapshot;
     UINT64 NativeGeneration;
@@ -2583,8 +2564,9 @@ static VOID StageAttachReference(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction)
     InterlockedIncrement(&Transaction->References);
 }
 
-static VOID StageAttachReleaseCreateInput(PSTAGE_CREATE_INPUT Input)
+static VOID StageAttachReleaseCreateInput(PSAFEUPLOAD_STAGE_CREATE_INPUT Input)
 {
+    SafeUploadStagePublicFreeCreateLookup(Input);
     if (Input->EaBuffer != NULL) {
         ExFreePoolWithTag(Input->EaBuffer, STAGE_TAG);
         Input->EaBuffer = NULL;
@@ -2598,7 +2580,7 @@ static VOID StageAttachReleaseCreateInput(PSTAGE_CREATE_INPUT Input)
 /* Runs before queue publication, in the original callback's process context.
  * A failed capture leaves partial owned buffers for transaction destruction.
  * Do not assign a descriptor, widen access or mutate the original CREATE here. */
-static NTSTATUS StageAttachCaptureCreateInput(PFLT_CALLBACK_DATA Data, PSTAGE_CREATE_INPUT Input)
+static NTSTATUS StageAttachCaptureCreateInput(PFLT_CALLBACK_DATA Data, PSAFEUPLOAD_STAGE_CREATE_INPUT Input)
 {
     PIO_SECURITY_CONTEXT security = Data->Iopb->Parameters.Create.SecurityContext;
     PSECURITY_DESCRIPTOR supplied;
@@ -2836,10 +2818,12 @@ static NTSTATUS StageAttachQueueCreate(PFLT_CALLBACK_DATA Data,
     /* Every queued writer, including an existing-view reopen, owns the
      * original effective static subject. Preserve its actual token level;
      * later backend checks cannot promote it or substitute SYSTEM. */
-    status = SafeUploadStagePublicCaptureNativeSubject(Data, &transaction->OriginalSubject);
+    status = SafeUploadStagePublicCaptureCreateSubject(Data, &transaction->OriginalSubject);
     if (!NT_SUCCESS(status)) goto Fail;
     transaction->OriginalSubjectValid = TRUE;
     status = StageAttachCaptureCreateInput(Data, &transaction->CreateInput);
+    if (!NT_SUCCESS(status)) goto Fail;
+    status = SafeUploadStagePublicCaptureCreateLookup(Data, Objects, &transaction->CreateInput);
     if (!NT_SUCCESS(status)) goto Fail;
     transaction->VolumeKind = VolumeKind;
     transaction->ExpectedGeneration = ExpectedGeneration;

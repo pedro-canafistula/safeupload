@@ -5,6 +5,29 @@
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 typedef struct _SAFEUPLOAD_STAGE_PUBLIC_BACKEND SAFEUPLOAD_STAGE_PUBLIC_BACKEND,
     *PSAFEUPLOAD_STAGE_PUBLIC_BACKEND;
+/* Immutable original CREATE inputs owned by the attach transaction. Capturing
+ * these is not authorization. EA/security storage is released by that owner. */
+typedef struct _SAFEUPLOAD_STAGE_CREATE_INPUT {
+    ACCESS_MASK DesiredAccess;
+    ACCESS_MASK OriginalDesiredAccess;
+    ACCESS_MASK RemainingDesiredAccess;
+    ACCESS_MASK PreviouslyGrantedAccess;
+    ULONG Options;
+    USHORT FileAttributes;
+    USHORT ShareAccess;
+    LARGE_INTEGER AllocationSize;
+    UCHAR OperationFlags;
+    KPROCESSOR_MODE RequestorMode;
+    BOOLEAN NativeEligible;
+    BOOLEAN SuppliedSecurity;
+    ULONG EaLength;
+    PVOID EaBuffer;
+    ULONG SecurityBytes;
+    PSECURITY_DESCRIPTOR Security;
+    UNICODE_STRING LookupName; /* Opened absolute form, or unchanged relative/raw ID form. */
+    PFILE_OBJECT LookupRoot; /* Referenced original RelatedFileObject, never a name reconstruction. */
+    BOOLEAN LookupById;
+} SAFEUPLOAD_STAGE_CREATE_INPUT, *PSAFEUPLOAD_STAGE_CREATE_INPUT;
 
 /* Kernel-only binding. It grants no service permit and changes no wire ABI. */
 typedef struct _SAFEUPLOAD_STAGE_PUBLIC_BINDING {
@@ -33,6 +56,16 @@ NTSTATUS SafeUploadStagePublicCaptureSubject(_In_ PFLT_CALLBACK_DATA Data,
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStagePublicCaptureNativeSubject(_In_ PFLT_CALLBACK_DATA Data,
     _Out_ PSECURITY_CLIENT_CONTEXT Subject);
+/* Retain the actual static subject for a later caller-checked probe. This
+ * copy grants no authority and must never be promoted to a stronger level. */
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicCaptureCreateSubject(_In_ PFLT_CALLBACK_DATA Data,
+    _Out_ PSECURITY_CLIENT_CONTEXT Subject);
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicCaptureCreateLookup(_In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _Inout_ PSAFEUPLOAD_STAGE_CREATE_INPUT Input);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID SafeUploadStagePublicFreeCreateLookup(_Inout_ PSAFEUPLOAD_STAGE_CREATE_INPUT Input);
 
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStagePublicReadMountGuid(_In_ PFLT_INSTANCE Instance, _Out_ GUID *VolumeId);

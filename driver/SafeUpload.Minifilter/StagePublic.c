@@ -90,6 +90,8 @@ Exit:
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStagePublicCaptureSubject)
 #pragma alloc_text(PAGE, SafeUploadStagePublicCaptureNativeSubject)
+#pragma alloc_text(PAGE, SafeUploadStagePublicCaptureCreateSubject)
+#pragma alloc_text(PAGE, SafeUploadStagePublicCaptureCreateLookup)
 #pragma alloc_text(PAGE, SafeUploadStagePublicOpenBackend)
 #pragma alloc_text(PAGE, SafeUploadStagePublicCloseBackend)
 #pragma alloc_text(PAGE, SafeUploadStagePublicDereferenceBackend)
@@ -179,6 +181,97 @@ NTSTATUS SafeUploadStagePublicCaptureNativeSubject(PFLT_CALLBACK_DATA Data, PSEC
 {
     PAGED_CODE();
     return StagePublicCaptureSubject(Data, Subject, FALSE);
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicCaptureCreateSubject(PFLT_CALLBACK_DATA Data, PSECURITY_CLIENT_CONTEXT Subject)
+{
+    PAGED_CODE();
+    return StagePublicCaptureSubject(Data, Subject, FALSE);
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicCaptureCreateLookup(PFLT_CALLBACK_DATA Data,
+    PCFLT_RELATED_OBJECTS Objects, PSAFEUPLOAD_STAGE_CREATE_INPUT Input)
+{
+    PFLT_FILE_NAME_INFORMATION opened = NULL;
+    PFLT_VOLUME volume = NULL;
+    PFILE_OBJECT root;
+    UNICODE_STRING lookup;
+    BOOLEAN directory;
+    NTSTATUS status;
+    PAGED_CODE();
+    if (Data == NULL || Data->Iopb == NULL || Objects == NULL || Objects->Filter == NULL ||
+        Input == NULL || Objects->FileObject == NULL ||
+        Objects->Volume == NULL || Objects->Instance == NULL ||
+        Data->Iopb->MajorFunction != IRP_MJ_CREATE || Input->LookupName.Buffer != NULL ||
+        Input->LookupRoot != NULL) return STATUS_INVALID_PARAMETER;
+    root = Objects->FileObject->RelatedFileObject;
+    Input->LookupById = BooleanFlagOn(Input->Options, FILE_OPEN_BY_FILE_ID);
+    if (root != NULL || Input->LookupById) {
+        /* Preserve this exact pair, including a rooted-looking string. The
+         * original file object owns these inputs while the callback runs. */
+        lookup = Objects->FileObject->FileName;
+        if (root != NULL) {
+            if (!FlagOn(root->Flags, FO_HANDLE_CREATED)) return STATUS_INVALID_DEVICE_STATE;
+            status = FltGetVolumeFromFileObject(Objects->Filter, root, &volume);
+            if (!NT_SUCCESS(status)) return status;
+            if (volume != Objects->Volume) { status = STATUS_NOT_SAME_DEVICE; goto Exit; }
+            if (!Input->LookupById) {
+                status = FltIsDirectory(root, Objects->Instance, &directory);
+                if (!NT_SUCCESS(status)) goto Exit;
+                if (!directory) { status = STATUS_NOT_A_DIRECTORY; goto Exit; }
+            }
+            ObReferenceObject(root);
+            Input->LookupRoot = root;
+        }
+    } else {
+        status = FltGetFileNameInformation(Data, FLT_FILE_NAME_OPENED | FLT_FILE_NAME_QUERY_FILESYSTEM_ONLY, &opened);
+        if (!NT_SUCCESS(status)) return status;
+        status = FltParseFileNameInformation(opened);
+        if (!NT_SUCCESS(status)) goto Exit;
+        status = FltGetVolumeFromName(Objects->Filter, &opened->Volume, &volume);
+        if (!NT_SUCCESS(status)) goto Exit;
+        if (volume != Objects->Volume) { status = STATUS_NOT_SAME_DEVICE; goto Exit; }
+        lookup = opened->Name;
+    }
+    if (lookup.Buffer == NULL || lookup.Length == 0 || lookup.Length > lookup.MaximumLength ||
+        lookup.Length > SAFEUPLOAD_MAX_PATH_BYTES ||
+        (!Input->LookupById && (lookup.Length & 1) != 0)) {
+        status = STATUS_OBJECT_PATH_INVALID;
+        goto Exit;
+    }
+    Input->LookupName.Buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, lookup.Length, STAGE_PUBLIC_TAG);
+    if (Input->LookupName.Buffer == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    __try {
+        RtlCopyMemory(Input->LookupName.Buffer, lookup.Buffer, lookup.Length);
+        Input->LookupName.Length = lookup.Length;
+        Input->LookupName.MaximumLength = lookup.Length;
+        status = STATUS_SUCCESS;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        status = GetExceptionCode();
+    }
+Exit:
+    if (volume != NULL) FltObjectDereference(volume);
+    if (opened != NULL) FltReleaseFileNameInformation(opened);
+    /* Partial captures are owned by the transaction's normal destructor. */
+    return status;
+}
+
+_Use_decl_annotations_
+VOID SafeUploadStagePublicFreeCreateLookup(PSAFEUPLOAD_STAGE_CREATE_INPUT Input)
+{
+    /* Active rundown drops these pins before unlinking the transaction.
+     * The cancel callback can then release the final, empty transaction at
+     * DISPATCH_LEVEL, so even the no-op destructor must be nonpageable. */
+    if (Input->LookupRoot != NULL) {
+        ObDereferenceObject(Input->LookupRoot);
+        Input->LookupRoot = NULL;
+    }
+    if (Input->LookupName.Buffer != NULL) {
+        ExFreePoolWithTag(Input->LookupName.Buffer, STAGE_PUBLIC_TAG);
+        RtlZeroMemory(&Input->LookupName, sizeof(Input->LookupName));
+    }
 }
 
 static VOID StagePublicCloseObject(PHANDLE Handle, PFILE_OBJECT *FileObject)
