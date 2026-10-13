@@ -1,0 +1,66 @@
+[
+  {
+    "label": "t5-empty4",
+    "name": "normal-release",
+    "archiveSha256": "DCEDB3B3E48D562EC40DFFFC0BD193F62C426302BFCFC7E99D2E9D1EFD8787F2",
+    "manifestSha256": "7DE4BBCAE0A214E37EB05186D0637A0671631E87D54D32D93252A87B78BA2EA3",
+    "files": [
+      {
+        "name": "appsettings.json",
+        "sha256": "ADE4FAA45582090F6A8FD302D353C51A43C70386016363B33754AEC9FBA5535E"
+      },
+      {
+        "name": "SafeUpload.Agent.Core.pdb",
+        "sha256": "313A778ECF6A01DF6D82688716365B7DC3A383E93587E3E06AA808146523A126"
+      },
+      {
+        "name": "SafeUpload.Agent.Minifilter.pdb",
+        "sha256": "B510627CCA5F17481506D7DD55888EAB196542E23B3500C428C3F0BABD1A5376"
+      },
+      {
+        "name": "SafeUpload.Agent.Network.pdb",
+        "sha256": "4D5B292B00E2DCE88C3D6620AA2EF4E935BDDB1227BA22236D5677215328D4E7"
+      },
+      {
+        "name": "SafeUpload.Agent.Service.exe",
+        "sha256": "3949FD24FA663C395E5304443CC6F75B17A4F196066BD58103BD75E50D465A61"
+      },
+      {
+        "name": "SafeUpload.Agent.Service.pdb",
+        "sha256": "1255A4CD79149C1906F547CBD2822E743A571A6810AC1BA9C0099F6B1BCB9F83"
+      }
+    ]
+  },
+  {
+    "label": "t5-empty4",
+    "name": "feature-release",
+    "archiveSha256": "40F73A48252B0B8BD90BBAC1CA2E15E5BBA4D7B9DD4332AFFF78381B9962CD3E",
+    "manifestSha256": "AC7EF9B153F95FC0E517DCA740C18D5E1FE6D0962628F43DED3436A75333CC6A",
+    "files": [
+      {
+        "name": "appsettings.json",
+        "sha256": "ADE4FAA45582090F6A8FD302D353C51A43C70386016363B33754AEC9FBA5535E"
+      },
+      {
+        "name": "SafeUpload.Agent.Core.pdb",
+        "sha256": "403187219B7535F621134AED4F85DBEBA483746148D676C9D2746950912E7323"
+      },
+      {
+        "name": "SafeUpload.Agent.Minifilter.pdb",
+        "sha256": "6E70AB7128274131A611D6E8AB386EBB395DD1D02A73C597B34F0B8E67197570"
+      },
+      {
+        "name": "SafeUpload.Agent.Network.pdb",
+        "sha256": "83228A97229CD9559D1F51AAD5FAB5E7D823BA0FA70699AABA4CBAB719B886CA"
+      },
+      {
+        "name": "SafeUpload.Agent.Service.exe",
+        "sha256": "5C7DA36A5FAFEC8AEECA819AEA8024117AE70AA0B11A54BC4A0751BEC28FD0F8"
+      },
+      {
+        "name": "SafeUpload.Agent.Service.pdb",
+        "sha256": "D348EDBF1FD8F3615522293BA0C2994B468FE43F5589F35C63935D4DD9BAA207"
+      }
+    ]
+  }
+]

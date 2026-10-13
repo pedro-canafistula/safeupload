@@ -1,0 +1,66 @@
+PROFILE_OUTPUT_CLEANUP=profile-src-normal-debug; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-normal-release; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-feature-debug; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-feature-release; directories=12; source_and_evidence_retained=True
+LABEL=t9-preparation3
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=e62b658a004ff651db7ef4080b21cae15087a540
+ARCHIVE_SHA256=1F99D0F45B72F496CFE9E043C1D30F60B31AB61CBD33B5ED30F51A7A481A34A2
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-debug-tests-user: exit=0 warnings=0 errors=0
+normal-debug-tests-system-identity: S-1-5-18
+normal-debug-tests-system: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=992
+normal-release: admission_evidence=false
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-app-build: exit=0 warnings=0 errors=0
+normal-release-test-build: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-release-tests-user: exit=0 warnings=0 errors=0
+normal-release-tests-system-identity: S-1-5-18
+normal-release-tests-system: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=992
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_manifest_sha256=375F6261490ED2319C3D52354ECC79E57115FACF9DB6A01BC8C6E8B125E78970
+normal-release: package_sha256=57E083296C32565E6CF2AC8F73793B24063F6FBACA32958D86F1586444CE0D91
+normal-release: exe_sha256=7AF5943B130A3782DF2F13EA37286D5228B13BB67BF78CB11296BE875B4114F2
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=0 warnings=0 errors=0
+feature-debug-tests-system-identity: S-1-5-18
+feature-debug-tests-system: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=1362
+feature-release: admission_evidence=true
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-app-build: exit=0 warnings=0 errors=0
+feature-release-test-build: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-release-tests-user: exit=0 warnings=0 errors=0
+feature-release-tests-system-identity: S-1-5-18
+feature-release-tests-system: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=1362
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_manifest_sha256=9304F8E5A60CE9D0A1C764E530DD5BBEB65D5315F3B97BE93717F4E66BF20B30
+feature-release: package_sha256=43E8D127CBD92576AF881C1C1EF5CB507E5695C4C0A094170075DC0B3A341670
+feature-release: exe_sha256=3B45F18EAA5B46290937423CE7ABEE752B1B7D80D1EB5200E565F6E392B81764
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-13T11:10:47.7764646Z

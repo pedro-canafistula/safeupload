@@ -1,0 +1,8 @@
+LABEL=t9-preparation1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=e3cee4e044d22db711ef681da173d33e796e3fac
+ARCHIVE_SHA256=457A9B3B75769D13AC90933B630F3D86B0990C64D9FEC563E5220B2105063F82
+normal-debug: admission_evidence=false
+normal-debug-build: exit=1 warnings=0 errors=2
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-13T10:56:25.4749753Z

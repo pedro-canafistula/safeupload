@@ -1,0 +1,245 @@
+{
+  "summary.txt": {
+    "Fetched": true,
+    "Bytes": 342,
+    "SHA256": "4eeeaaa90cb9bb9aceadb6a0db8b8ee558f297ac953c0736799ee189cd959833"
+  },
+  "dotnet-info.txt": {
+    "Fetched": true,
+    "Bytes": 2696,
+    "SHA256": "560a57cd44c346ce185ddd6573f1e43eda687f1ab6648d6561c1549a036e9327"
+  },
+  "normal-debug-build.txt": {
+    "Fetched": true,
+    "Bytes": 4990,
+    "SHA256": "f0ebcb30bc99c87f6cf94519aea0ac554d711094a90544b694f5d37fb4592501"
+  },
+  "normal-debug-app-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-test-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-tests-user.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-tests-system.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-tests-system.txt.stderr": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-tests-discovery-list.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-tests-discovery-fqns.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-results/agent-tests-discovered-fq.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-results/agent-tests-user.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-results/agent-tests-system.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-app-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-test-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-tests-user.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-tests-system.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-tests-system.txt.stderr": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-tests-discovery-list.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-tests-discovery-fqns.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-results/agent-tests-discovered-fq.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-results/agent-tests-user.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-results/agent-tests-system.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-publish.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-package-manifest.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-service-publish.zip": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-app-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-test-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests-user.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests-system.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests-system.txt.stderr": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests-discovery-list.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests-discovery-fqns.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-results/agent-tests-discovered-fq.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-results/agent-tests-user.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-results/agent-tests-system.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-app-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-test-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests-user.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests-system.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests-system.txt.stderr": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests-discovery-list.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests-discovery-fqns.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-results/agent-tests-discovered-fq.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-results/agent-tests-user.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-results/agent-tests-system.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-publish.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-package-manifest.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-service-publish.zip": {
+    "Fetched": false,
+    "Exit": 1
+  }
+}

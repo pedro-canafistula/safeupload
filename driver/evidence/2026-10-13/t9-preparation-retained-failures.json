@@ -1,0 +1,25 @@
+{
+  "firstBuild": {
+    "label": "t9-preparation1",
+    "sourceCommit": "e3cee4e044d22db711ef681da173d33e796e3fac",
+    "cause": "Missed blocked-recovery caller after InspectionSnapshot.CreateAsync gained the required durable length parameter; corrected in 3d2d5979. No tests ran."
+  },
+  "secondMatrix": {
+    "label": "t9-preparation2",
+    "sourceCommit": "3d2d59796a004b1ca93f0a7d57cdfe724171eb31",
+    "profile": "normal-debug",
+    "rawUserTrxSha256": "dc8dab6b2edc010a0979022fc35508aa841fe7d0f7b308645b3aac43ab7b22a1",
+    "cases": [
+      {
+        "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Snapshot_creation_denied_retains_the_exact_stage_notifies_only_its_owner_and_can_be_reinspected",
+        "outcome": "Failed"
+      },
+      {
+        "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Initial_current_policy_failure_retains_bytes_and_reports_no_parser_or_policy_details",
+        "outcome": "Passed"
+      }
+    ],
+    "cause": "Access-denial retention assertions passed; subsequent release expected Released but got Retained. The fixture passed an unchanged DirectorySecurity to SetAccessControl, which persists modified sections only. e62b658a explicitly restores/verifies the saved DACL and proves file creation before retry. Production behavior/assertions/thresholds unchanged.",
+    "primaryApiSource": "https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.FileSystem.AccessControl/src/System/Security/AccessControl/FileSystemSecurity.cs"
+  }
+}

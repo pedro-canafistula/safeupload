@@ -442,6 +442,25 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     control at 7,707 ms against its unchanged 7,500 ms bound. One complete retry of the identical source passes above; no timing
     threshold, test filter or assertion was changed. All failed raw receipts remain retained. Scoped duplicate-output cleanup
     preserves source/packages/evidence; no product pair was installed or booted. T9 streaming/runtime and M2 final gates remain open.
+  - Ordinary-publisher preparation failures (`c6f1f435`, recovery call corrected in `3d2d5979`, tested source `e62b658a`): snapshot
+    creation, durable-length validation and hashing finish together before inspection starts. I/O/access failure transitions the exact
+    version to Retained, closes its exception window and sends only safe read/parse-failure metadata to its owner; initial current-policy
+    read failures also carry that metadata. The tray explains that analysis did not finish and bytes were not sent. These holds neither
+    publish nor register a justification callback; a trusted snapshot/current policy must be available before new inspection can proceed.
+    Existing private bytes and prior public bytes survive. Without trusted preparation/authority, this path cannot claim a verified
+    hand-back or inspected digest. Retained startup/retry UX, disk-full, snapshot orphan cleanup/storage budgets and protected UI/runtime
+    qualification remain open; the controls invoke a fresh ordinary publisher inspection directly, not automatic service/UI retry.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-preparation3-summary.txt) passes 992 normal/1,362 feature tests
+    per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. Both
+    [new failure controls](evidence/2026-10-13/t9-preparation3-controls.json) pass in every profile: real directory CreateFiles denial,
+    exact DACL restoration/access recovery, durable stage retention, owner-only notification, preserved public bytes, safe failure
+    metadata, no callback/permit, and successful explicit reinspection after the failure clears. Source changes include application builds;
+    no protected pair was installed or booted, and bound-publication integration is not qualified by these ordinary-publisher controls.
+    [Retained failures](evidence/2026-10-13/t9-preparation-retained-failures.json) record the missed recovery caller's first build error
+    and the second matrix's fixture restoration failure. The fixture now explicitly marks/restores the saved DACL and proves recovered
+    creation access: [.NET persists changed security sections only](https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.FileSystem.AccessControl/src/System/Security/AccessControl/FileSystemSecurity.cs).
+    No assertion or timing limit was relaxed. [Scoped preflight cleanup](evidence/2026-10-13/t9-preparation1-preflight-host.json)
+    preserves completed source/packages/evidence. Commits remain local while the earlier source/evidence push approval is pending.
 - [ ] Measure cold/warm throughput and peak memory before choosing defaults; existing 256 MiB warm-input measurements are not staged qualification.
 - [ ] Qualify large clean/CPF, corrupt/encrypted/password-protected, parser/extraction-limit, timeout and disk-full cases.
 - [ ] Resolve the all-zero payment-card classification question with user-visible options before changing its current verdict.
