@@ -10,6 +10,8 @@ using System.Text.Json.Nodes;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -39,6 +41,104 @@ public sealed class StagedTransferPublisherTests : IDisposable
     }
 
     public void Dispose() => _workspace.Dispose();
+
+    [Fact]
+    public async Task Snapshot_creation_denied_retains_the_exact_stage_notifies_only_its_owner_and_can_be_reinspected()
+    {
+        var transfer = Transfer("snapshot-denied.txt", "clean private bytes");
+        await File.WriteAllTextAsync(transfer.DestinationPath, "prior public bytes");
+        byte[] original = await File.ReadAllBytesAsync(transfer.StagePath);
+        var gate = new CountingPublicationGate();
+        var publisher = new StagedTransferPublisher(new InspectionService(
+            new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
+            ExtractorRegistry.CreateDefault(), new VerdictCache()), _notifications, _journal, _stagingRoot, gate,
+            sessionUserSidResolver: _ => TestRequestorSid);
+        using var owner = _notifications.Subscribe(7, TestRequestorSid);
+        using var other = _notifications.Subscribe(7, "S-1-5-21-111-222-333-1001");
+        var directory = new DirectoryInfo(_stagingRoot);
+        var originalSecurity = directory.GetAccessControl();
+        var denied = directory.GetAccessControl();
+        using var identity = WindowsIdentity.GetCurrent();
+        denied.AddAccessRule(new FileSystemAccessRule(identity.User!, FileSystemRights.CreateFiles,
+            InheritanceFlags.None, PropagationFlags.None, AccessControlType.Deny));
+        directory.SetAccessControl(denied);
+        try
+        {
+            // This is a real directory access denial, not an injected extractor failure.
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                File.WriteAllTextAsync(Path.Combine(_stagingRoot, "denied-probe"), ""));
+            Assert.Equal(StagedTransferOutcome.Retained,
+                await publisher.PublishAsync(transfer, CancellationToken.None));
+            Assert.Equal(original, await File.ReadAllBytesAsync(transfer.StagePath));
+            Assert.Equal("prior public bytes", await File.ReadAllTextAsync(transfer.DestinationPath));
+            Assert.Equal(0, gate.AuthorizeCalls);
+            Assert.Empty(Directory.GetFiles(_stagingRoot, "*.inspection*"));
+            var durable = await new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"))
+                .ReadAsync(transfer.TransferId, CancellationToken.None);
+            Assert.Equal(TransferJournalState.Retained, durable.State);
+            Assert.Equal(transfer, durable.Transfer);
+            Assert.False(durable.StageDeleted);
+            var notice = Assert.IsType<TransferNotification>(await owner.Reader.ReadAsync().AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(TransferPhase.Retained, notice.Phase);
+            Assert.Equal(InspectionFailureKind.ReadOrParse, notice.InspectionFailure);
+            Assert.False(notice.OverrideAllowed);
+            Assert.Null(notice.HandbackPath);
+            Assert.Null(notice.SnapshotSha256Hex);
+            Assert.False(other.Reader.TryRead(out _));
+        }
+        finally { directory.SetAccessControl(originalSecurity); }
+
+        Assert.Equal(StagedTransferOutcome.Released,
+            await publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.Equal(1, gate.AuthorizeCalls);
+        Assert.Equal("clean private bytes", await File.ReadAllTextAsync(transfer.DestinationPath));
+        Assert.Empty(Directory.GetFiles(_stagingRoot, "*.inspection*"));
+    }
+
+    [Fact]
+    public async Task Initial_current_policy_failure_retains_bytes_and_reports_no_parser_or_policy_details()
+    {
+        var transfer = Transfer("policy-read-failed.txt", "clean private bytes");
+        await File.WriteAllTextAsync(transfer.DestinationPath, "prior public bytes");
+        byte[] original = await File.ReadAllBytesAsync(transfer.StagePath);
+        var store = new FailingCurrentPolicyStore(new LocalPolicyStore(_workspace.PolicyFile));
+        var gate = new CountingPublicationGate();
+        var publisher = new StagedTransferPublisher(new InspectionService(store,
+            new LocalQueueAuditSink(_workspace.QueueFile), ExtractorRegistry.CreateDefault(), new VerdictCache()),
+            _notifications, _journal, _stagingRoot, gate, sessionUserSidResolver: _ => TestRequestorSid);
+        using var owner = _notifications.Subscribe(7, TestRequestorSid);
+        Assert.Equal(StagedTransferOutcome.Retained, await publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.Equal(original, await File.ReadAllBytesAsync(transfer.StagePath));
+        Assert.Equal("prior public bytes", await File.ReadAllTextAsync(transfer.DestinationPath));
+        Assert.Equal(0, gate.AuthorizeCalls);
+        Assert.Empty(Directory.GetFiles(_stagingRoot, "*.inspection*"));
+        Assert.Equal(TransferJournalState.Retained,
+            (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+        var notices = new List<TransferNotification>();
+        while (owner.Reader.TryRead(out var notification))
+            if (notification is TransferNotification notice) notices.Add(notice);
+        var held = Assert.Single(notices, n => n.Phase == TransferPhase.Retained);
+        Assert.Equal(InspectionFailureKind.ReadOrParse, held.InspectionFailure);
+        Assert.False(held.OverrideAllowed);
+        Assert.Null(held.HandbackPath);
+        Assert.DoesNotContain(FailingCurrentPolicyStore.Diagnostic,
+            System.Text.Json.JsonSerializer.Serialize<AgentNotification>(held), StringComparison.Ordinal);
+
+        store.Fail = false;
+        Assert.Equal(StagedTransferOutcome.Released, await publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.Equal(1, gate.AuthorizeCalls);
+        Assert.Equal("clean private bytes", await File.ReadAllTextAsync(transfer.DestinationPath));
+    }
+
+    private sealed class FailingCurrentPolicyStore(IPolicyStore inner) : IPolicyStore
+    {
+        public const string Diagnostic = "test-private-policy-parser-detail";
+        public bool Fail = true;
+        public Task<Policy> LoadAsync(CancellationToken token) => inner.LoadAsync(token);
+        public Task<Policy> LoadCurrentAsync(CancellationToken token) => Fail
+            ? throw new IOException(Diagnostic) : inner.LoadCurrentAsync(token);
+    }
 
     [Theory]
     [InlineData(false, false)]

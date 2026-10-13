@@ -143,22 +143,28 @@ public sealed partial class StagedTransferPublisher
         // File sharing does not revoke an already mapped writable section.
         // Inspect and publish a separate service-only snapshot, so even a
         // delayed paging write cannot change the inspected publication bytes.
-        await using var snapshot = await InspectionSnapshot.CreateAsync(
-            sealedFile, _stagingRoot, Path.GetExtension(destinationPath), cancellationToken)
-            .ConfigureAwait(false);
-        FileStream inspectedFile = snapshot.Stream;
-        if (inspectedFile.Length != journalEntry.SealedLength)
+        InspectionSnapshot snapshot;
+        try
         {
+            snapshot = await InspectionSnapshot.CreateAsync(sealedFile, _stagingRoot,
+                Path.GetExtension(destinationPath), journalEntry.SealedLength.Value, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception error) when ((error is IOException or UnauthorizedAccessException) &&
+            !cancellationToken.IsCancellationRequested)
+        {
+            _logger?.LogWarning(error, "Staged inspection snapshot failed for {TransferId}.", transfer.TransferId);
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
-                null, cancellationToken).ConfigureAwait(false);
+                null, CancellationToken.None, transfer, closeJustificationWindow: true).ConfigureAwait(false);
             PublishTransferNotification(transfer, new TransferNotification(
-                transfer.TransferId, fileName, TransferPhase.Retained));
+                transfer.TransferId, fileName, TransferPhase.Retained,
+                InspectionFailure: InspectionFailureKind.ReadOrParse));
             return StagedTransferOutcome.Retained;
         }
-        string inspectedDigest = Convert.ToHexString(
-            await SHA256.HashDataAsync(inspectedFile, cancellationToken).ConfigureAwait(false));
-        inspectedFile.Position = 0;
+        await using var snapshotLifetime = snapshot;
+        FileStream inspectedFile = snapshot.Stream;
+        string inspectedDigest = snapshot.Digest;
         if (justified is not null && !string.Equals(inspectedDigest, justified.Digest,
                 StringComparison.Ordinal))
         {
@@ -196,7 +202,8 @@ public sealed partial class StagedTransferPublisher
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
                 null, CancellationToken.None).ConfigureAwait(false);
             PublishTransferNotification(transfer, new TransferNotification(
-                transfer.TransferId, fileName, TransferPhase.Retained));
+                transfer.TransferId, fileName, TransferPhase.Retained,
+                InspectionFailure: InspectionFailureKind.ReadOrParse));
             return StagedTransferOutcome.Retained;
         }
 
@@ -891,13 +898,16 @@ public sealed partial class StagedTransferPublisher
     {
         public string Path { get; }
         public FileStream Stream { get; }
-        private InspectionSnapshot(string path, FileStream stream) => (Path, Stream) = (path, stream);
+        public string Digest { get; }
+        private InspectionSnapshot(string path, FileStream stream, string digest)
+            => (Path, Stream, Digest) = (path, stream, digest);
 
         public static async Task<InspectionSnapshot> CreateAsync(FileStream source,
-            string root, string extension, CancellationToken token)
+            string root, string extension, long expectedLength, CancellationToken token)
         {
             string path = System.IO.Path.Combine(root, Guid.NewGuid().ToString("N") +
                 ".inspection" + extension);
+            FileStream? captured = null;
             try
             {
                 await using (var output = new FileStream(path, FileMode.CreateNew,
@@ -909,11 +919,17 @@ public sealed partial class StagedTransferPublisher
                     output.Flush(flushToDisk: true);
                 }
                 source.Position = 0;
-                return new(path, new FileStream(path, FileMode.Open, FileAccess.Read,
-                    FileShare.Read, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan));
+                captured = new FileStream(path, FileMode.Open, FileAccess.Read,
+                    FileShare.Read, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                if (captured.Length != expectedLength)
+                    throw new IOException("The inspection snapshot does not match the measured seal length.");
+                string digest = Convert.ToHexString(await SHA256.HashDataAsync(captured, token).ConfigureAwait(false));
+                captured.Position = 0;
+                return new(path, captured, digest);
             }
             catch
             {
+                if (captured is not null) await captured.DisposeAsync().ConfigureAwait(false);
                 if (File.Exists(path)) File.Delete(path);
                 throw;
             }
