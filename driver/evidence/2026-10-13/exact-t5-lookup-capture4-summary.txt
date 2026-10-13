@@ -1,0 +1,13 @@
+﻿LABEL=t5-lookup-capture4
+ARCHIVE_SHA256=B67314E3A0FD31E0011A72F5BDE1E5A57778F8833FF12542D20DB7DE92E53805
+SOURCE_COMMIT=4b478e1019c93076eae74e389289878ceb88126c
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-13T04:50:56.7154251Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=8BBC1E31C272F3BDF81019580428E01292CBEABA65204B82CF9205E0A2A795BB
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=A4110BEDF9869961133BF04BF6997B6393CBDAA8FE9E10AEF32B097637054BC7
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=7D92F5CFEC3F1AF0E89E2271067CFFC5A09B99F963E64690DEED74B2A788B179
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=C3D390646A10291235A1F6242BB97130D71443834F26D9A5CC3DFE730F0A65A8
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=EBB6A68C0EFB9836D73937D1D5DA2B42051A617EEBBD46E5D36FBDE761727464
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=B2270FD5D8B58EA43BD24FDA834AB1BC68F13F72BB2903493445254FA4C2D2EC
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=33FD74F13D548EDA9122FD7632C2616F719EBB2272A44271E19171AF213E459B
+sign : exit=0 unsigned_sha256=A4110BEDF9869961133BF04BF6997B6393CBDAA8FE9E10AEF32B097637054BC7 signing_copy_sha256=A4110BEDF9869961133BF04BF6997B6393CBDAA8FE9E10AEF32B097637054BC7 unsigned_unchanged=True store=LocalMachine output_sha256=321E18AED68EB2934A13DA3AD020D298D3AB450C7D0C2909957BC735148FA4DA signed_sha256=321E18AED68EB2934A13DA3AD020D298D3AB450C7D0C2909957BC735148FA4DA signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38

@@ -603,6 +603,8 @@ the original case flags separately. Active transaction rundown releases the root
 removal. The empty final destructor remains nonpageable because cancellation can drop the final reference at DISPATCH_LEVEL.
 This completes capture only: it does not establish an NTFS grant, assigned descriptor, coherent seed or bound-head admission.
 The checked writer backend and post-allocation ancestor/security comparisons remain required.
+Source `4b478e10` passes [all four WDK/PREfast/ApiValidator builds at 0 warnings/errors](evidence/2026-10-13/exact-t5-lookup-capture4-summary.txt);
+Inspector, writer fixture and signature gates also pass. No revised protected pair has booted.
 
 #### Seed sharing and read-authority correction
 

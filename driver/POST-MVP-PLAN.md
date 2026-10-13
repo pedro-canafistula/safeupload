@@ -290,6 +290,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     Every queued CREATE now captures its original static subject and owned access/share/options/case/EA/supplied-security inputs;
     [direct native ID controls](evidence/2026-10-12/writer-permission-native-control-a8.txt) pass all eight retained share-0 cases.
     Capture source `f5cff550` passes [four revised WDK 0/0 gates](evidence/2026-10-12/exact-t5-writer-capture3-summary.txt).
+    Original opened/relative/raw-ID lookup and root capture at `4b478e10` passes
+    [four WDK/PREfast/ApiValidator 0/0 builds](evidence/2026-10-13/exact-t5-lookup-capture4-summary.txt), including nonpageable cancellation cleanup.
     [90 native sharing cases](evidence/2026-10-12/writer-split-share-lifetime-native-a9.txt) validate closing supplemental checks
     before retaining the original-grant lease. Checked backends, assigned security/seeding transport and runtime remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
