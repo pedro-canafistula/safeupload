@@ -416,6 +416,12 @@ cannot publish unapproved bytes, proven by the observer.
     after both normal test profiles passed. [Scoped recovery](evidence/2026-10-13/t11-builder-generated-cleanup2.stdout.txt)
     verified eight unpacked publication copies against host-retained ZIPs/manifests before removal (one inline bootstrap,
     then seven copies), preserving source, packages and evidence; the fresh matrix above passes without product VM boots.
+  - Follow-up implementation (matrix pending): the bound claim index uses an ordered tree with the same Windows ordinal
+    filename comparator as destination equality, avoiding leaf-hash collision chains. A GUID-indexed queue walks retained
+    parent/delete/allocation references once each, including shared references/cycles. Snapshot controls exercise 1k/10k/50k
+    ancestor chains, up to 50k bound destinations/100k claims under one parent, maximum ties, cancellation and native Unicode
+    equality under Turkish culture. Eligibility and durable file validation remain in the existing compactor. Index timings
+    qualify only that in-memory decision phase; full journal I/O/scaling and final-pair review remain open.
 - [ ] Close every M2 review condition against the final matched pair.
 
 ## M3 — after M2
