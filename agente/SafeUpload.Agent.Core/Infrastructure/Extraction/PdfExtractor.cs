@@ -20,11 +20,19 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 /// O arquivo inteiro recebe <c>unsupported_format</c>; staged bloqueia e
 /// devolve a versão. Uma página realmente vazia continua válida.</para>
 /// </summary>
-public sealed class PdfExtractor : ITextExtractor
+public sealed class PdfExtractor : IStreamingTextExtractor
 {
     /// <inheritdoc />
     public IReadOnlySet<string> SupportedExtensions { get; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".pdf" };
+
+    /// <inheritdoc />
+    public Task<TextReader> OpenReaderAsync(Stream content, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<TextReader>(new PdfTextReader(content));
+    }
 
     /// <inheritdoc />
     public Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken)
