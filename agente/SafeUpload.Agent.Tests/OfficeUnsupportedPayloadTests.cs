@@ -31,16 +31,10 @@ public sealed class OfficeUnsupportedPayloadTests : IDisposable
     [InlineData("sheet", "body", "package")]
     [InlineData("sheet", "body", "control")]
     [InlineData("sheet", "package", "thumbnail")]
-    [InlineData("word", "body", "customXml")]
-    [InlineData("word", "header", "customXml")]
-    [InlineData("word", "footnotes", "customXml")]
     [InlineData("word", "body", "opaque")]
     [InlineData("word", "header", "opaque")]
-    [InlineData("word", "package", "custom-properties")]
-    [InlineData("sheet", "workbook", "customXml")]
     [InlineData("sheet", "body", "opaque")]
     [InlineData("sheet", "drawing", "opaque")]
-    [InlineData("sheet", "package", "custom-properties")]
     public async Task Clean_text_does_not_approve_uninspected_payloads(string format, string owner, string kind)
     {
         string path = Fixture(format, owner, kind);
@@ -64,6 +58,44 @@ public sealed class OfficeUnsupportedPayloadTests : IDisposable
     }
 
     [Theory]
+    [InlineData("word", "body", "customXml")]
+    [InlineData("word", "header", "customXml")]
+    [InlineData("word", "footnotes", "customXml")]
+    [InlineData("word", "package", "custom-properties")]
+    [InlineData("sheet", "workbook", "customXml")]
+    [InlineData("sheet", "package", "custom-properties")]
+    public async Task Custom_xml_and_properties_are_inspected(string format, string owner, string kind)
+    {
+        foreach (bool sensitive in new[] { false, true })
+        {
+            string path = Fixture(format, owner, kind, sensitive);
+            byte[] original = File.ReadAllBytes(path);
+            ITextExtractor extractor = format == "word" ? new OpenXmlWordExtractor() : new OpenXmlSheetExtractor();
+            using (var input = File.OpenRead(path))
+            {
+                string text = await extractor.ExtractAsync(input, CancellationToken.None);
+                if (sensitive) Assert.Contains("529.982.247-25", text);
+                else Assert.DoesNotContain("529.982.247-25", text);
+            }
+            var service = Service();
+            foreach (bool staged in new[] { false, true })
+            {
+                var result = staged ? await service.InspectStagedAsync(TestWorkspace.Operation(path), CancellationToken.None)
+                    : await service.InspectAsync(TestWorkspace.Operation(path), CancellationToken.None);
+                Assert.Equal(sensitive ? Verdict.Blocked : Verdict.Approved, result.Verdict);
+                Assert.Null(result.FailureKind); Assert.Null(result.Reason);
+                if (sensitive)
+                {
+                    Assert.Equal(Category.Cpf, Assert.Single(result.Categories)); Assert.NotEmpty(result.Findings);
+                    Assert.All(result.Findings, finding => { Assert.Equal(Category.Cpf, finding.Category); Assert.Equal("•••••••••25", finding.MaskedSnippet); });
+                }
+                else Assert.Empty(result.Findings);
+                Assert.Equal(original, File.ReadAllBytes(path));
+            }
+        }
+    }
+
+    [Theory]
     [InlineData("word")]
     [InlineData("sheet")]
     public async Task Text_only_package_still_passes_the_payload_check(string format)
@@ -81,7 +113,7 @@ public sealed class OfficeUnsupportedPayloadTests : IDisposable
             : _workspace.WriteSpreadsheet(stem + ".xlsx", "Clean cell.");
     }
 
-    private string Fixture(string format, string owner, string kind)
+    private string Fixture(string format, string owner, string kind, bool sensitive = true)
     {
         string path = CleanFixture(format);
         using var archive = ZipFile.Open(path, ZipArchiveMode.Update);
@@ -128,6 +160,7 @@ public sealed class OfficeUnsupportedPayloadTests : IDisposable
                 "fmtid=\"{D5CDD505-2E9C-101B-9397-08002B2CF9AE}\" pid=\"2\" name=\"Private\"><vt:lpwstr>CPF: 529.982.247-25</vt:lpwstr></property></Properties>",
             _ => "<html><body>CPF: 529.982.247-25</body></html>"
         };
+        if (!sensitive) payload = payload.Replace("529.982.247-25", "clean", StringComparison.Ordinal);
         string payloadName = "payloads/secret." + extension;
         AddPart(archive, parent, payloadName, relationship, contentType, payload);
         if (kind is "image" or "thumbnail")

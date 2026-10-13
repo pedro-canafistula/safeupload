@@ -482,9 +482,14 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     threaded comments/properties read; PDF annotations/fields/outlines/Info/XMP read; attachments/XFA/JS/AP/RC refused; legacy uses the
     streaming readers. [Matrix `t9-coverage1`](evidence/2026-10-13/exact-agent-matrix-t9-coverage1-summary.txt): 1,210 normal / 1,580 feature
     tests per Debug/Release profile, no skips, 0/0. [Coverage table](../agente/docs/INSPECTION-COVERAGE.md).
-  - [ ] Round 2 (fail-closed gaps that block ordinary files): read Excel tables, cell metadata, pivot caches, external links, Word people/
-    comment extensions/glossary, custom properties and custom XML; scan External relationship targets; accept PDF appearance streams that
-    draw no text. Filled-form text appearances, incremental PDF revisions and page-level metadata stay refused (recorded below) until read.
+  - [x] Round 2: 17 more XML part types read (tables, cell metadata, pivot caches, external links, people, comment extensions, glossary,
+    custom properties/XML), External relationship targets scanned, graphics-only PDF appearance streams accepted after strict decoding and
+    lexing. [Matrix `t9-round2-int2`](evidence/2026-10-13/exact-agent-matrix-t9-round2-int2-summary.txt): 1,356 normal / 1,726 feature tests per
+    Debug/Release profile, no skips, 0/0 (`t9-round2-int1` failed on a fixture that appended zero bytes; receipt kept, fixture fixed).
+  - Conservative holds recorded 2026-10-13 (fail-closed, owner may revisit): filled PDF form fields and FreeText annotations whose
+    appearance draws text, incrementally saved PDFs (earlier revisions are not inventoried) and page-level PDF metadata are Blocked as
+    `unsupported_format`; binary printer settings, images, OLE/packages, ActiveX, altChunk and VBA stay refused. Users of such files
+    see the existing unsupported-content block with hand-back until those payloads are read.
 - [x] Failure classification, bounded worker concurrency, notifications, single-handle snapshot input, parser-integrity controls and
   bounded numeric-scanner scratch space are implemented; [component gates](evidence/2026-10-10/m2-agent-component-gates.json).
 - [ ] Finish whole-file streaming, format/encoding/extraction coverage, stage-space accounting/orphan cleanup and seeding cost.

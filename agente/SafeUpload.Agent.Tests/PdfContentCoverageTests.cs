@@ -8,7 +8,7 @@ using SafeUpload.Agent.Core.Infrastructure.Extraction;
 namespace SafeUpload.Agent.Tests;
 
 // Hand-authored object dictionaries, streams and xref bytes; no PdfPig writer.
-public sealed class PdfContentCoverageTests : IDisposable
+public sealed partial class PdfContentCoverageTests : IDisposable
 {
     private const string Cpf = "529.982.247-25";
     private readonly TestWorkspace _workspace = new();
@@ -193,7 +193,8 @@ public sealed class PdfContentCoverageTests : IDisposable
         }
     }
 
-    private string RawPdf(string catalog, string page, IReadOnlyList<string> extra, bool info = false, string? pageContent = null)
+    private string RawPdf(string catalog, string page, IReadOnlyList<string> extra, bool info = false, string? pageContent = null,
+        IReadOnlyDictionary<int, byte[]>? binaryObjects = null)
     {
         var objects = new List<string>
         {
@@ -204,18 +205,25 @@ public sealed class PdfContentCoverageTests : IDisposable
             Stream(pageContent ?? "BT /F1 12 Tf 40 740 Td (clean page) Tj ET\n")
         };
         objects.AddRange(extra);
-        var pdf = new StringBuilder("%PDF-1.4\n"); var offsets = new List<int> { 0 };
+        using var output = new MemoryStream();
+        void Write(string value) => output.Write(Encoding.UTF8.GetBytes(value));
+        Write("%PDF-1.4\n"); var offsets = new List<long> { 0 };
         for (int i = 0; i < objects.Count; i++)
         {
-            offsets.Add(Encoding.UTF8.GetByteCount(pdf.ToString()));
-            pdf.Append(i + 1).Append(" 0 obj\n").Append(objects[i]).Append("\nendobj\n");
+            offsets.Add(output.Position);
+            Write((i + 1).ToString(CultureInfo.InvariantCulture) + " 0 obj\n");
+            if (binaryObjects is not null && binaryObjects.TryGetValue(i + 1, out var bytes)) output.Write(bytes);
+            else Write(objects[i]);
+            Write("\nendobj\n");
         }
-        int xref = Encoding.UTF8.GetByteCount(pdf.ToString());
+        long xref = output.Position;
+        var pdf = new StringBuilder();
         pdf.Append("xref\n0 ").Append(objects.Count + 1).Append("\n0000000000 65535 f \n");
-        foreach (int offset in offsets.Skip(1)) pdf.Append(offset.ToString("D10", CultureInfo.InvariantCulture)).Append(" 00000 n \n");
+        foreach (long offset in offsets.Skip(1)) pdf.Append(offset.ToString("D10", CultureInfo.InvariantCulture)).Append(" 00000 n \n");
         pdf.Append("trailer\n<< /Size ").Append(objects.Count + 1).Append(" /Root 1 0 R").Append(info ? " /Info 6 0 R" : "")
             .Append(" >>\nstartxref\n").Append(xref).Append("\n%%EOF\n");
-        string path = Path.Combine(_workspace.Root, Guid.NewGuid() + ".pdf"); File.WriteAllBytes(path, Encoding.UTF8.GetBytes(pdf.ToString())); return path;
+        Write(pdf.ToString());
+        string path = Path.Combine(_workspace.Root, Guid.NewGuid() + ".pdf"); File.WriteAllBytes(path, output.ToArray()); return path;
     }
     private static string Stream(string value, string dictionary = "") => "<< /Length " + Encoding.UTF8.GetByteCount(value) + " " + dictionary + " >>\nstream\n" + value + "\nendstream";
     private static string Literal(string value) => "(" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("(", "\\(", StringComparison.Ordinal).Replace(")", "\\)", StringComparison.Ordinal) + ")";

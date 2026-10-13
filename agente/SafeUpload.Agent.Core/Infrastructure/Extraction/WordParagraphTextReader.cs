@@ -29,7 +29,7 @@ internal sealed class WordParagraphTextReader : TextReader
         try
         {
             var parts = OpenXmlInspectionGuard.Inspect(_document, content, token);
-            _auxiliary = OpenXmlAuxiliaryText.Create(parts);
+            _auxiliary = OpenXmlAuxiliaryText.Create(parts, content);
             _ = _document.MainDocumentPart ?? throw new InvalidDataException("The Word package has no main document part.");
             foreach (var part in parts)
             {

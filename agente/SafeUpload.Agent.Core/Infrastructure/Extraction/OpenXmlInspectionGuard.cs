@@ -12,7 +12,8 @@ internal static class OpenXmlInspectionGuard
     internal const string Sheet = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     internal const string Drawing = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-    // Every admitted type has a reader route and a required XML root. Formatting
+    // Every admitted type has a reader route and a required XML root (custom XML
+    // alone permits an arbitrary well-formed root). Formatting
     // parts are READ too: style names, number formats, numbering labels, font
     // names and settings can contain user strings. There is no opaque/no-text
     // exception. In particular printer settings are binary and remain refused.
@@ -45,6 +46,23 @@ internal static class OpenXmlInspectionGuard
         ThemePart => ("theme", Drawing), // Theme/font/color names and values.
         ThemeOverridePart => ("themeOverride", Drawing), // Overrides have the same string-bearing structures.
         CalculationChainPart => ("calcChain", Sheet), // Normally references only; still parse/read instead of trusting opaque XML.
+        TableDefinitionPart => ("table", Sheet), // Table/column names, formulas and labels.
+        CellMetadataPart => ("metadata", Sheet), // Dynamic-array metadata and stored metadata strings.
+        PivotTablePart => ("pivotTableDefinition", Sheet), // Pivot labels, captions and formulas.
+        PivotTableCacheDefinitionPart => ("pivotCacheDefinition", Sheet), // Field names and shared cached values.
+        PivotTableCacheRecordsPart => ("pivotCacheRecords", Sheet), // Independent stored copies of source data.
+        QueryTablePart => ("queryTable", Sheet), // Query and field names.
+        ConnectionsPart => ("connections", Sheet), // Connection strings, commands and descriptions.
+        ExternalWorkbookPart => ("externalLink", Sheet), // External-workbook cached values; no network fetch.
+        CustomXmlMappingsPart => ("MapInfo", Sheet), // Map names and inline schema text.
+        WordprocessingPeoplePart => ("people", "http://schemas.microsoft.com/office/word/2012/wordml"), // Comment-author identities.
+        WordprocessingCommentsExPart => ("commentsEx", "http://schemas.microsoft.com/office/word/2012/wordml"), // Extended comment metadata.
+        WordprocessingCommentsIdsPart => ("commentsIds", "http://schemas.microsoft.com/office/word/2016/wordml/cid"), // Comment identity metadata.
+        WordCommentsExtensiblePart => ("commentsExtensible", "http://schemas.microsoft.com/office/word/2018/wordml/cex"), // Extensible comment metadata.
+        GlossaryDocumentPart => ("glossaryDocument", Word), // Stored building-block paragraphs and attributes.
+        CustomFilePropertiesPart => ("Properties", "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties"), // Enterprise labels and arbitrary property values.
+        CustomXmlPart => ("*", ""), // Arbitrary well-formed XML root; all text and attributes are read.
+        CustomXmlPropertiesPart => ("datastoreItem", "http://schemas.openxmlformats.org/officeDocument/2006/customXml"), // Data-store identity and schema references.
         _ => throw new UnsupportedContentException()
     };
 

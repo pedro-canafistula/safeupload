@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Xml;
 using DocumentFormat.OpenXml.Packaging;
 using SafeUpload.Agent.Core.Domain;
@@ -6,9 +7,9 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 
 internal static class OpenXmlAuxiliaryText
 {
-    internal static TextReader Create(IReadOnlyList<OpenXmlPart> parts) => new ChunkedTextReader(token => Read(parts, token));
+    internal static TextReader Create(IReadOnlyList<OpenXmlPart> parts, Stream content) => new ChunkedTextReader(token => Read(parts, content, token));
 
-    private static IEnumerable<ReadOnlyMemory<char>> Read(IReadOnlyList<OpenXmlPart> parts, Func<CancellationToken> token)
+    private static IEnumerable<ReadOnlyMemory<char>> Read(IReadOnlyList<OpenXmlPart> parts, Stream content, Func<CancellationToken> token)
     {
         var buffer = new char[8192];
         foreach (var part in parts)
@@ -33,7 +34,8 @@ internal static class OpenXmlAuxiliaryText
                         if (!rootSeen)
                         {
                             var root = OpenXmlInspectionGuard.Root(part);
-                            if (xml.Depth != 0 || xml.LocalName != root.Root || !NamespaceMatches(xml.NamespaceURI, root.Namespace))
+                            if (xml.Depth != 0 || part is not CustomXmlPart &&
+                                (xml.LocalName != root.Root || !NamespaceMatches(xml.NamespaceURI, root.Namespace)))
                                 throw new InvalidDataException("The Office part has an invalid root.");
                             rootSeen = true;
                         }
@@ -97,6 +99,40 @@ internal static class OpenXmlAuxiliaryText
                 if (text) yield return "\n".AsMemory();
             }
         }
+        foreach (var text in ReadExternalTargets(content, buffer, token)) yield return text;
+    }
+
+    private static IEnumerable<ReadOnlyMemory<char>> ReadExternalTargets(Stream content, char[] buffer, Func<CancellationToken> token)
+    {
+        // Inventory already validated these entries. Read the raw Target value,
+        // not the SDK Uri representation, which can normalize/escape user text.
+        long position = content.Position;
+        try
+        {
+            content.Position = 0;
+            using var zip = new ZipArchive(content, ZipArchiveMode.Read, leaveOpen: true);
+            foreach (var entry in zip.Entries)
+            {
+                token().ThrowIfCancellationRequested();
+                string name = entry.FullName;
+                if (name != "_rels/.rels" && !(name.Contains("/_rels/", StringComparison.Ordinal) && name.EndsWith(".rels", StringComparison.Ordinal))) continue;
+                using var stream = entry.Open();
+                using var xml = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
+                while (xml.Read())
+                {
+                    token().ThrowIfCancellationRequested();
+                    if (xml.Depth > 256) throw new InspectionLimitException();
+                    if (xml.NodeType != XmlNodeType.Element || xml.LocalName != "Relationship" || xml.GetAttribute("TargetMode") != "External") continue;
+                    if (!xml.MoveToAttribute("Target")) throw new InvalidDataException("The external relationship has no target.");
+                    int count;
+                    while ((count = xml.ReadValueChunk(buffer, 0, buffer.Length)) != 0)
+                    { token().ThrowIfCancellationRequested(); yield return buffer.AsMemory(0, count); }
+                    yield return "\n".AsMemory();
+                    xml.MoveToElement();
+                }
+            }
+        }
+        finally { content.Position = position; }
     }
 
     internal static bool NamespaceMatches(string actual, string expected) => actual == expected ||

@@ -9,7 +9,7 @@ using SafeUpload.Agent.Core.Infrastructure.Extraction;
 namespace SafeUpload.Agent.Tests;
 
 // Fixtures are independent package XML, not Open XML SDK serialization.
-public sealed class OfficeContentCoverageTests : IDisposable
+public sealed partial class OfficeContentCoverageTests : IDisposable
 {
     private const string Cpf = "529.982.247-25";
     private const string W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";

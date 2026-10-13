@@ -31,7 +31,7 @@ internal sealed class SpreadsheetTextReader : TextReader
         try
         {
             var parts = OpenXmlInspectionGuard.Inspect(_document, content, token);
-            _auxiliary = OpenXmlAuxiliaryText.Create(parts);
+            _auxiliary = OpenXmlAuxiliaryText.Create(parts, content);
             var workbook = _document.WorkbookPart ?? throw new InvalidDataException("The spreadsheet has no workbook part.");
             if (parts.OfType<WorkbookPart>().Count() != 1) throw new UnsupportedContentException();
             Add(workbook, "workbook", Kind.Workbook);
