@@ -15,6 +15,7 @@ struct _SAFEUPLOAD_STAGE_PUBLIC_BACKEND {
     KEVENT Closed;
     BOOLEAN Counted;
     BOOLEAN TeardownSelected;
+    BOOLEAN WriterLease;
     LIST_ENTRY Link;
     PFLT_INSTANCE Instance;
     HANDLE PublicHandle;
@@ -25,6 +26,66 @@ struct _SAFEUPLOAD_STAGE_PUBLIC_BACKEND {
     PFILE_OBJECT ParentObject;
     SAFEUPLOAD_STAGE_PUBLIC_BINDING Binding;
 };
+
+/* Bounds on capture, not promises about the supported product surface. A
+ * limit hit is a named refusal; no prefix of an ancestor vector is usable. */
+#define STAGE_WRITER_MAX_ANCHORS 128UL
+#define STAGE_WRITER_MAX_LEASES 128L
+#define STAGE_WRITER_SECURITY_BUDGET (2UL * 1024 * 1024)
+#define STAGE_WRITER_STORED_SECURITY_LIMIT 65536UL
+/* Documented all-parts query (includes labels, resource attributes and CAP).
+ * This is a query mask, NOT backup intent or a privilege grant. No subset
+ * fallback if the kernel/filesystem cannot supply it. Kernel qualification is
+ * still required: learn.microsoft.com/windows/win32/secauthz/security-information */
+#define STAGE_WRITER_SECURITY_INFORMATION BACKUP_SECURITY_INFORMATION
+
+typedef struct _STAGE_WRITER_ANCHOR {
+    HANDLE Handle;
+    PFILE_OBJECT Object;
+    FILE_ID_INFORMATION Identity;
+    FILE_ATTRIBUTE_TAG_INFORMATION Attributes;
+    FILE_BASIC_INFORMATION Basic;
+    FILE_STANDARD_INFORMATION Standard;
+    BOOLEAN CaseSensitive;
+    USHORT ComponentOffset; /* Bytes into Snapshot->Name; root includes trailing slash. */
+    USHORT ComponentBytes;
+    ULONG SecurityBytes;
+    PSECURITY_DESCRIPTOR Security;
+} STAGE_WRITER_ANCHOR, *PSTAGE_WRITER_ANCHOR;
+
+typedef struct _STAGE_WRITER_SNAPSHOT {
+    UNICODE_STRING Name;
+    GUID MountId;
+    ULONG Count; /* root, all intermediate directories, parent, target (once each) */
+    ULONG SecurityBytes;
+    STAGE_WRITER_ANCHOR Anchors[STAGE_WRITER_MAX_ANCHORS];
+} STAGE_WRITER_SNAPSHOT, *PSTAGE_WRITER_SNAPSHOT;
+
+struct _SAFEUPLOAD_STAGE_WRITER_LEASE {
+    SAFEUPLOAD_STAGE_PUBLIC_BACKEND Lifetime; /* common list/rundown, never a DELETE capability */
+    SAFEUPLOAD_STAGE_CREATE_INPUT Input;
+    SECURITY_CLIENT_CONTEXT Subject;
+    BOOLEAN SubjectValid;
+    PEPROCESS Process;
+    HANDLE ProcessHandle; /* SYNCHRONIZE-only internal lifetime observation, never caller authority */
+    PSTAGE_WRITER_SNAPSHOT Snapshot;
+    /* Independent representations/provenance. The construction slot remains
+     * empty until a native-equivalent constructor is proved. Neither a supplied
+     * descriptor nor queried stored bytes may silently fill that slot. */
+    PSECURITY_DESCRIPTOR ConstructionSecurity;
+    ULONG ConstructionSecurityBytes;
+    PSECURITY_DESCRIPTOR ExpectedStoredSecurity;
+    ULONG ExpectedStoredSecurityBytes;
+    ULONG OriginalInformation;
+    ACCESS_MASK NativeGrantedAccess; /* actual retained handle; Binding projects T10 exclusions */
+    volatile LONG Revalidating; /* at most one additional bounded snapshot per lease */
+};
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_STAGE_WRITER_LEASE, Lifetime) == 0);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageWriterCloseHandles(_Inout_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease);
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageWriterFree(_Inout_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease);
 
 /* ZwQueryObject's documented public ObjectBasicInformation layout. */
 typedef struct _STAGE_PUBLIC_OBJECT_BASIC_INFORMATION {
@@ -41,13 +102,89 @@ static LIST_ENTRY StagePublicBackends;
 static EX_RUNDOWN_REF StagePublicOpens;
 static KEVENT StagePublicDrained;
 static BOOLEAN StagePublicOpensDrained;
+static BOOLEAN StagePublicAdmissionClosed;
+static LONG StagePublicFactories;
+static DECLSPEC_ALIGN(8) volatile LONG64 StageWriterRefusals[StageWriterRefusalCount];
+
+static const PCSTR StageWriterReasonNames[StageWriterRefusalCount] = {
+    "none", "writer_subject_unrepresentable", "native_create_security_unproved",
+    "publication_security_not_equivalent", "writer_creator_grant_unproved",
+    "writer_create_semantics_unproved", "writer_lookup_unproved",
+    "writer_metadata_unproved", "writer_snapshot_changed", "writer_capture_limit"
+};
+
+_Use_decl_annotations_
+VOID SafeUploadStagePublicRecordWriterRefusal(SAFEUPLOAD_STAGE_WRITER_REFUSAL Reason)
+{
+    if (Reason > StageWriterNoRefusal && Reason < StageWriterRefusalCount)
+        InterlockedIncrement64(&StageWriterRefusals[Reason]);
+}
+
+_Use_decl_annotations_
+LONG64 SafeUploadStagePublicWriterRefusalCount(SAFEUPLOAD_STAGE_WRITER_REFUSAL Reason)
+{
+    if (Reason <= StageWriterNoRefusal || Reason >= StageWriterRefusalCount) return 0;
+    return InterlockedCompareExchange64(&StageWriterRefusals[Reason], 0, 0);
+}
+
+_Use_decl_annotations_
+PCSTR SafeUploadStagePublicWriterRefusalName(SAFEUPLOAD_STAGE_WRITER_REFUSAL Reason)
+{
+    if (Reason < StageWriterNoRefusal || Reason >= StageWriterRefusalCount) return "invalid_writer_refusal";
+    return StageWriterReasonNames[Reason];
+}
+
+/* Serialize voluntary preflight against factory publication. No I/O/waits
+ * under this lock. A veto leaves factory/worker/retry admission usable. */
+BOOLEAN SafeUploadStagePublicTryCloseAdmission(VOID)
+{
+    BOOLEAN allowed;
+    FltAcquirePushLockExclusive(&StagePublicListLock);
+    allowed = StagePublicFactories == 0 && InterlockedCompareExchange(&StagePublicBackendCount, 0, 0) == 0;
+    if (allowed) StagePublicAdmissionClosed = TRUE;
+    FltReleasePushLock(&StagePublicListLock);
+    return allowed;
+}
+
+VOID SafeUploadStagePublicReopenAdmission(VOID)
+{
+    FltAcquirePushLockExclusive(&StagePublicListLock);
+    if (!SafeUploadStageMandatoryTeardownActive()) StagePublicAdmissionClosed = FALSE;
+    FltReleasePushLock(&StagePublicListLock);
+}
+
+static BOOLEAN StagePublicBeginOpen(VOID)
+{
+    BOOLEAN allowed;
+    if (!ExAcquireRundownProtection(&StagePublicOpens)) return FALSE;
+    FltAcquirePushLockExclusive(&StagePublicListLock);
+    allowed = !StagePublicAdmissionClosed && !SafeUploadStageMandatoryTeardownActive();
+    if (allowed) ++StagePublicFactories;
+    FltReleasePushLock(&StagePublicListLock);
+    if (!allowed) ExReleaseRundownProtection(&StagePublicOpens);
+    return allowed;
+}
+
+static VOID StagePublicEndOpen(VOID)
+{
+    FltAcquirePushLockExclusive(&StagePublicListLock);
+    NT_ASSERT(StagePublicFactories > 0);
+    --StagePublicFactories;
+    FltReleasePushLock(&StagePublicListLock);
+    ExReleaseRundownProtection(&StagePublicOpens);
+}
 
 VOID SafeUploadStagePublicInitialize(VOID)
 {
+    ULONG index;
     FltInitializePushLock(&StagePublicListLock);
     InitializeListHead(&StagePublicBackends);
     ExInitializeRundownProtection(&StagePublicOpens);
     StagePublicOpensDrained = FALSE;
+    StagePublicAdmissionClosed = FALSE;
+    StagePublicFactories = 0;
+    for (index = 0; index < StageWriterRefusalCount; ++index)
+        InterlockedExchange64(&StageWriterRefusals[index], 0);
     KeInitializeEvent(&StagePublicDrained, NotificationEvent, TRUE);
 }
 
@@ -92,6 +229,7 @@ VOID SafeUploadStagePublicDrainBackends(VOID)
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StagePublicBindCaller(PSECURITY_CLIENT_CONTEXT Subject,
     PEPROCESS RequestorProcess, PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding);
+_IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
     PSECURITY_CLIENT_CONTEXT Subject, BOOLEAN RequireImpersonation);
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -155,6 +293,7 @@ Exit:
 #pragma alloc_text(PAGE, SafeUploadStagePublicCaptureNativeSubject)
 #pragma alloc_text(PAGE, SafeUploadStagePublicCaptureCreateSubject)
 #pragma alloc_text(PAGE, SafeUploadStagePublicCaptureCreateLookup)
+#pragma alloc_text(PAGE, SafeUploadStagePublicCloseCreateLookup)
 #pragma alloc_text(PAGE, SafeUploadStagePublicOpenBackend)
 #pragma alloc_text(PAGE, SafeUploadStagePublicCloseBackend)
 #pragma alloc_text(PAGE, SafeUploadStagePublicDereferenceBackend)
@@ -200,12 +339,14 @@ Exit:
     return status;
 }
 
+_Use_decl_annotations_
 static NTSTATUS StagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
     PSECURITY_CLIENT_CONTEXT Subject, BOOLEAN RequireImpersonation)
 {
     PIO_SECURITY_CONTEXT security;
     PSECURITY_SUBJECT_CONTEXT source;
     SECURITY_QUALITY_OF_SERVICE qos;
+    NTSTATUS status;
     PAGED_CODE();
     if (Subject == NULL) return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(Subject, sizeof(*Subject));
@@ -229,7 +370,9 @@ static NTSTATUS StagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
      * tracking copies the effective token, including restricted-token state;
      * a later PID/thread-token lookup is neither needed nor authorization.
      * https://learn.microsoft.com/windows-hardware/drivers/ddi/ntifs/nf-ntifs-secreateclientsecurityfromsubjectcontext */
-    return SeCreateClientSecurityFromSubjectContext(source, &qos, FALSE, Subject);
+    status = SeCreateClientSecurityFromSubjectContext(source, &qos, FALSE, Subject);
+    if (!NT_SUCCESS(status)) RtlZeroMemory(Subject, sizeof(*Subject));
+    return status;
 }
 
 _Use_decl_annotations_
@@ -249,8 +392,12 @@ NTSTATUS SafeUploadStagePublicCaptureNativeSubject(PFLT_CALLBACK_DATA Data, PSEC
 _Use_decl_annotations_
 NTSTATUS SafeUploadStagePublicCaptureCreateSubject(PFLT_CALLBACK_DATA Data, PSECURITY_CLIENT_CONTEXT Subject)
 {
+    NTSTATUS status;
     PAGED_CODE();
-    return StagePublicCaptureSubject(Data, Subject, FALSE);
+    status = StagePublicCaptureSubject(Data, Subject, TRUE);
+    if (status == STATUS_BAD_IMPERSONATION_LEVEL)
+        SafeUploadStagePublicRecordWriterRefusal(StageWriterSubjectUnrepresentable);
+    return status;
 }
 
 _Use_decl_annotations_
@@ -268,7 +415,7 @@ NTSTATUS SafeUploadStagePublicCaptureCreateLookup(PFLT_CALLBACK_DATA Data,
         Input == NULL || Objects->FileObject == NULL ||
         Objects->Volume == NULL || Objects->Instance == NULL ||
         Data->Iopb->MajorFunction != IRP_MJ_CREATE || Input->LookupName.Buffer != NULL ||
-        Input->LookupRoot != NULL) return STATUS_INVALID_PARAMETER;
+        Input->LookupRoot != NULL || Input->LookupRootHandle != NULL) return STATUS_INVALID_PARAMETER;
     root = Objects->FileObject->RelatedFileObject;
     Input->LookupById = BooleanFlagOn(Input->Options, FILE_OPEN_BY_FILE_ID);
     if (root != NULL || Input->LookupById) {
@@ -276,7 +423,8 @@ NTSTATUS SafeUploadStagePublicCaptureCreateLookup(PFLT_CALLBACK_DATA Data,
          * original file object owns these inputs while the callback runs. */
         lookup = Objects->FileObject->FileName;
         if (root != NULL) {
-            if (!FlagOn(root->Flags, FO_HANDLE_CREATED)) return STATUS_INVALID_DEVICE_STATE;
+            if (!FlagOn(root->Flags, FO_HANDLE_CREATED) || FlagOn(root->Flags, FO_CLEANUP_COMPLETE))
+                return STATUS_INVALID_DEVICE_STATE;
             status = FltGetVolumeFromFileObject(Objects->Filter, root, &volume);
             if (!NT_SUCCESS(status)) return status;
             if (volume != Objects->Volume) { status = STATUS_NOT_SAME_DEVICE; goto Exit; }
@@ -287,6 +435,16 @@ NTSTATUS SafeUploadStagePublicCaptureCreateLookup(PFLT_CALLBACK_DATA Data,
             }
             ObReferenceObject(root);
             Input->LookupRoot = root;
+            /* Pin an existing original root handle while still on the CREATE
+             * callback. Zero desired access is an internal object locator,
+             * not a target reopen or an application grant. */
+            status = ObOpenObjectByPointer(root, OBJ_KERNEL_HANDLE, NULL, 0,
+                *IoFileObjectType, KernelMode, &Input->LookupRootHandle);
+            if (!NT_SUCCESS(status)) goto Exit;
+            if (FlagOn(root->Flags, FO_CLEANUP_COMPLETE)) {
+                status = STATUS_FILE_CLOSED;
+                goto Exit;
+            }
         }
     } else {
         status = FltGetFileNameInformation(Data, FLT_FILE_NAME_OPENED | FLT_FILE_NAME_QUERY_FILESYSTEM_ONLY, &opened);
@@ -327,6 +485,7 @@ VOID SafeUploadStagePublicFreeCreateLookup(PSAFEUPLOAD_STAGE_CREATE_INPUT Input)
     /* Active rundown drops these pins before unlinking the transaction.
      * The cancel callback can then release the final, empty transaction at
      * DISPATCH_LEVEL, so even the no-op destructor must be nonpageable. */
+    NT_ASSERT(Input->LookupRootHandle == NULL); /* closed by PASSIVE active/failure rundown */
     if (Input->LookupRoot != NULL) {
         ObDereferenceObject(Input->LookupRoot);
         Input->LookupRoot = NULL;
@@ -337,10 +496,22 @@ VOID SafeUploadStagePublicFreeCreateLookup(PSAFEUPLOAD_STAGE_CREATE_INPUT Input)
     }
 }
 
-static VOID StagePublicCloseObject(PHANDLE Handle, PFILE_OBJECT *FileObject)
+_Use_decl_annotations_
+VOID SafeUploadStagePublicCloseCreateLookup(PSAFEUPLOAD_STAGE_CREATE_INPUT Input)
+{
+    PAGED_CODE();
+    if (Input->LookupRootHandle != NULL) {
+        ZwClose(Input->LookupRootHandle);
+        Input->LookupRootHandle = NULL;
+    }
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StagePublicCloseObject(_Inout_ PHANDLE Handle, _Inout_ PFILE_OBJECT *FileObject)
 {
     PFILE_OBJECT object = *FileObject;
     HANDLE handle = *Handle;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     *FileObject = NULL;
     *Handle = NULL;
     /* The handle still pins the FILE_OBJECT while its extra reference is
@@ -352,7 +523,7 @@ static VOID StagePublicCloseObject(PHANDLE Handle, PFILE_OBJECT *FileObject)
 _Use_decl_annotations_
 VOID SafeUploadStagePublicReferenceBackend(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend)
 {
-    NT_ASSERT(Backend != NULL && Backend->References > 0);
+    NT_ASSERT(Backend != NULL && InterlockedCompareExchange(&Backend->References, 0, 0) > 0);
     InterlockedIncrement(&Backend->References);
 }
 
@@ -368,6 +539,11 @@ VOID SafeUploadStagePublicCloseBackend(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend)
      * public hold preventing the last close which deletion is waiting for. */
     ExWaitForRundownProtectionRelease(&Backend->Operations);
     StagePublicCloseObject(&Backend->PublicHandle, &Backend->PublicObject);
+    if (Backend->WriterLease)
+        StageWriterCloseHandles(CONTAINING_RECORD(Backend, SAFEUPLOAD_STAGE_WRITER_LEASE, Lifetime));
+    /* Close all owned metadata anchors before dependent last-close waits. */
+    StagePublicCloseObject(&Backend->ParentHandle, &Backend->ParentObject);
+    StagePublicCloseObject(&Backend->RootHandle, &Backend->RootObject);
     KeSetEvent(&Backend->Closed, IO_NO_INCREMENT, FALSE);
 }
 
@@ -386,6 +562,8 @@ VOID SafeUploadStagePublicDereferenceBackend(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Ba
     SafeUploadStagePublicCloseBackend(Backend);
     StagePublicCloseObject(&Backend->ParentHandle, &Backend->ParentObject);
     StagePublicCloseObject(&Backend->RootHandle, &Backend->RootObject);
+    if (Backend->WriterLease)
+        StageWriterFree(CONTAINING_RECORD(Backend, SAFEUPLOAD_STAGE_WRITER_LEASE, Lifetime));
     if (Backend->Instance != NULL) FltObjectDereference(Backend->Instance);
     if (Backend->Counted && InterlockedDecrement(&StagePublicBackendCount) == 0)
         KeSetEvent(&StagePublicDrained, IO_NO_INCREMENT, FALSE);
@@ -803,7 +981,7 @@ NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRIN
     PAGED_CODE();
     if (Backend == NULL) return STATUS_INVALID_PARAMETER;
     *Backend = NULL;
-    if (!ExAcquireRundownProtection(&StagePublicOpens)) return STATUS_FLT_DELETING_OBJECT;
+    if (!StagePublicBeginOpen()) return STATUS_FLT_DELETING_OBJECT;
     if (SafeUploadStageMandatoryTeardownActive()) status = STATUS_FLT_DELETING_OBJECT;
     else status = StagePublicOpenBackend(Instance, PublicName, Subject, OriginalRequestorProcess,
         OriginalDesiredAccess, OriginalShareAccess, OriginalCreateOptions, CaseSensitiveOpen, &backend);
@@ -811,7 +989,813 @@ NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRIN
         status = STATUS_FLT_DELETING_OBJECT;
     if (NT_SUCCESS(status)) *Backend = backend;
     else SafeUploadStagePublicDereferenceBackend(backend);
-    ExReleaseRundownProtection(&StagePublicOpens);
+    StagePublicEndOpen();
     return status;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageWriterFreeAnchor(_Inout_ PSTAGE_WRITER_ANCHOR Anchor);
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageWriterFreeSnapshot(_In_opt_ PSTAGE_WRITER_SNAPSHOT Snapshot);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWriterFullId(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Object,
+    _Out_ PFILE_ID_INFORMATION Identity);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWriterReadSecurity(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Object,
+    _Outptr_result_nullonfailure_ PSECURITY_DESCRIPTOR *Security, _Out_ PULONG Bytes);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWriterOpenAnchor(_In_ PFLT_INSTANCE Instance, _In_opt_ HANDLE Root,
+    _In_ PUNICODE_STRING Component, _In_ BOOLEAN Directory, _In_ BOOLEAN CaseSensitive,
+    _Inout_ PSTAGE_WRITER_ANCHOR Anchor);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWriterCheckLink(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Parent,
+    _In_ PUNICODE_STRING Leaf, _In_ const FILE_ID_INFORMATION *Identity);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWriterCaptureSnapshot(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    _In_ PFILE_OBJECT Source, _Outptr_result_nullonfailure_ PSTAGE_WRITER_SNAPSHOT *Snapshot,
+    _Out_ SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason);
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageWriterEqualSnapshots(_In_ const STAGE_WRITER_SNAPSHOT *Left,
+    _In_ const STAGE_WRITER_SNAPSHOT *Right);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWriterCopyInput(_In_ const SAFEUPLOAD_STAGE_CREATE_INPUT *Input,
+    _Inout_ PSAFEUPLOAD_STAGE_CREATE_INPUT Copy);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWriterOpenOriginal(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    _In_ ACCESS_MASK Desired, _Out_ PHANDLE Handle,
+    _Outptr_result_nullonfailure_ PFILE_OBJECT *Object);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWriterValidateRequest(_In_ const SAFEUPLOAD_STAGE_CREATE_INPUT *Input,
+    _In_ PSECURITY_CLIENT_CONTEXT Subject, _Out_ PACCESS_MASK CheckAccess,
+    _Out_ SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason);
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageWriterProcessRunning(_In_ HANDLE ProcessHandle);
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageWriterCloseHandles)
+#pragma alloc_text(PAGE, StageWriterFree)
+#pragma alloc_text(PAGE, StageWriterFreeAnchor)
+#pragma alloc_text(PAGE, StageWriterFreeSnapshot)
+#pragma alloc_text(PAGE, StageWriterFullId)
+#pragma alloc_text(PAGE, StageWriterReadSecurity)
+#pragma alloc_text(PAGE, StageWriterOpenAnchor)
+#pragma alloc_text(PAGE, StageWriterCheckLink)
+#pragma alloc_text(PAGE, StageWriterCaptureSnapshot)
+#pragma alloc_text(PAGE, StageWriterEqualSnapshots)
+#pragma alloc_text(PAGE, StageWriterCopyInput)
+#pragma alloc_text(PAGE, StageWriterOpenOriginal)
+#pragma alloc_text(PAGE, StageWriterValidateRequest)
+#pragma alloc_text(PAGE, StageWriterProcessRunning)
+#pragma alloc_text(PAGE, SafeUploadStagePublicOpenWriter)
+#pragma alloc_text(PAGE, SafeUploadStagePublicReleaseWriter)
+#pragma alloc_text(PAGE, SafeUploadStagePublicRevalidateWriter)
+#pragma alloc_text(PAGE, SafeUploadStagePublicCheckWriterSecurity)
+#endif
+
+_Use_decl_annotations_
+static VOID StageWriterFreeAnchor(PSTAGE_WRITER_ANCHOR Anchor)
+{
+    PAGED_CODE();
+    StagePublicCloseObject(&Anchor->Handle, &Anchor->Object);
+    if (Anchor->Security != NULL) ExFreePoolWithTag(Anchor->Security, STAGE_PUBLIC_TAG);
+    Anchor->Security = NULL;
+}
+
+_Use_decl_annotations_
+static VOID StageWriterFreeSnapshot(PSTAGE_WRITER_SNAPSHOT Snapshot)
+{
+    ULONG index;
+    PAGED_CODE();
+    if (Snapshot == NULL) return;
+    for (index = 0; index < Snapshot->Count; ++index) StageWriterFreeAnchor(&Snapshot->Anchors[index]);
+    if (Snapshot->Name.Buffer != NULL) ExFreePoolWithTag(Snapshot->Name.Buffer, STAGE_PUBLIC_TAG);
+    ExFreePoolWithTag(Snapshot, STAGE_PUBLIC_TAG);
+}
+
+_Use_decl_annotations_
+static VOID StageWriterCloseHandles(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease)
+{
+    ULONG index;
+    PAGED_CODE();
+    /* Operation rundown completed; no reader can still dereference these
+     * metadata objects. Keep immutable evidence until the last lease owner. */
+    if (Lease->Snapshot != NULL) {
+        for (index = 0; index < Lease->Snapshot->Count; ++index) {
+            PSTAGE_WRITER_ANCHOR anchor = &Lease->Snapshot->Anchors[index];
+            StagePublicCloseObject(&anchor->Handle, &anchor->Object);
+        }
+    }
+    SafeUploadStagePublicCloseCreateLookup(&Lease->Input);
+    SafeUploadStagePublicFreeCreateLookup(&Lease->Input);
+    if (Lease->ProcessHandle != NULL) {
+        ZwClose(Lease->ProcessHandle);
+        Lease->ProcessHandle = NULL;
+    }
+}
+
+_Use_decl_annotations_
+static VOID StageWriterFree(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease)
+{
+    PAGED_CODE();
+    StageWriterFreeSnapshot(Lease->Snapshot);
+    if (Lease->ConstructionSecurity != NULL)
+        ExFreePoolWithTag(Lease->ConstructionSecurity, STAGE_PUBLIC_TAG);
+    if (Lease->ExpectedStoredSecurity != NULL)
+        ExFreePoolWithTag(Lease->ExpectedStoredSecurity, STAGE_PUBLIC_TAG);
+    if (Lease->Input.Security != NULL) ExFreePoolWithTag(Lease->Input.Security, STAGE_PUBLIC_TAG);
+    if (Lease->Input.EaBuffer != NULL) ExFreePoolWithTag(Lease->Input.EaBuffer, STAGE_PUBLIC_TAG);
+    /* Own reference to the immutable STATIC token, not another token capture
+     * or a new SeCreateClientSecurityFromSubjectContext result. */
+    if (Lease->SubjectValid) ObDereferenceObject(Lease->Subject.ClientToken);
+    if (Lease->Process != NULL) ObDereferenceObject(Lease->Process);
+}
+
+_Use_decl_annotations_
+static NTSTATUS StageWriterFullId(PFLT_INSTANCE Instance, PFILE_OBJECT Object,
+    PFILE_ID_INFORMATION Identity)
+{
+    static const FILE_ID_128 zero = {0};
+    ULONG returned = 0;
+    NTSTATUS status;
+    PAGED_CODE();
+    RtlZeroMemory(Identity, sizeof(*Identity));
+    /* FIRST query on the original lease: no READ_ATTRIBUTES prerequisite. */
+    status = FltQueryInformationFile(Instance, Object, Identity, sizeof(*Identity),
+        FileIdInformation, &returned);
+    if (status != STATUS_SUCCESS || returned != sizeof(*Identity) ||
+        RtlEqualMemory(&Identity->FileId, &zero, sizeof(zero))) {
+        RtlZeroMemory(Identity, sizeof(*Identity));
+        return status != STATUS_SUCCESS ? status : STATUS_FILE_INVALID;
+    }
+    return STATUS_SUCCESS;
+}
+
+_Use_decl_annotations_
+static NTSTATUS StageWriterReadSecurity(PFLT_INSTANCE Instance, PFILE_OBJECT Object,
+    PSECURITY_DESCRIPTOR *Security, PULONG Bytes)
+{
+    PSECURITY_DESCRIPTOR buffer = NULL;
+    ULONG needed = 0, returned = 0;
+    NTSTATUS status;
+    PAGED_CODE();
+    *Security = NULL;
+    *Bytes = 0;
+    status = FltQuerySecurityObject(Instance, Object, STAGE_WRITER_SECURITY_INFORMATION,
+        NULL, 0, &needed);
+    if (status != STATUS_BUFFER_TOO_SMALL) return NT_SUCCESS(status) ? STATUS_INVALID_SECURITY_DESCR : status;
+    if (needed < sizeof(SECURITY_DESCRIPTOR_RELATIVE) || needed > STAGE_WRITER_STORED_SECURITY_LIMIT)
+        return STATUS_INVALID_BUFFER_SIZE;
+    buffer = ExAllocatePool2(POOL_FLAG_PAGED, needed, STAGE_PUBLIC_TAG);
+    if (buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    status = FltQuerySecurityObject(Instance, Object, STAGE_WRITER_SECURITY_INFORMATION,
+        buffer, needed, &returned);
+    if (status == STATUS_SUCCESS && (returned < sizeof(SECURITY_DESCRIPTOR_RELATIVE) || returned > needed ||
+        !RtlValidRelativeSecurityDescriptor(buffer, returned,
+            OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | SACL_SECURITY_INFORMATION)))
+        status = STATUS_INVALID_SECURITY_DESCR;
+    if (status != STATUS_SUCCESS && NT_SUCCESS(status)) status = STATUS_NOT_SUPPORTED;
+    if (status == STATUS_SUCCESS) {
+        /* Preserve original binary controls, RM byte, SID/ACL bytes and order.
+         * Byte equality may conservatively refuse representation differences;
+         * it cannot erase meaningful construction or stored flags. */
+        *Security = buffer;
+        *Bytes = returned;
+    } else {
+        ExFreePoolWithTag(buffer, STAGE_PUBLIC_TAG);
+    }
+    return status;
+}
+
+_Use_decl_annotations_
+static NTSTATUS StageWriterOpenAnchor(PFLT_INSTANCE Instance, HANDLE Root,
+    PUNICODE_STRING Component, BOOLEAN Directory, BOOLEAN CaseSensitive,
+    PSTAGE_WRITER_ANCHOR Anchor)
+{
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK io = {0};
+    FILE_CASE_SENSITIVE_INFORMATION caseInfo = {0};
+    ULONG returned = 0;
+    NTSTATUS status;
+    PAGED_CODE();
+    InitializeObjectAttributes(&attributes, Component, OBJ_KERNEL_HANDLE | OBJ_DONT_REPARSE |
+        (CaseSensitive ? 0 : OBJ_CASE_INSENSITIVE), Root, NULL);
+    /* Metadata observer only, never data/delete authority. No privilege
+     * adjustment and no share bypass. A missing full-query privilege is a
+     * refusal, never permission to fall back to owner/group/DACL only. */
+    status = FltCreateFileEx2(SafeUploadData.Filter, Instance, &Anchor->Handle, &Anchor->Object,
+        READ_CONTROL | ACCESS_SYSTEM_SECURITY | FILE_READ_ATTRIBUTES |
+            (Directory ? FILE_LIST_DIRECTORY : 0),
+        &attributes, &io, NULL, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        FILE_OPEN, (Directory ? FILE_DIRECTORY_FILE : FILE_NON_DIRECTORY_FILE) | FILE_OPEN_REPARSE_POINT,
+        NULL, 0, IO_STOP_ON_SYMLINK, NULL);
+    if (status == STATUS_STOPPED_ON_SYMLINK && io.Information != 0) ExFreePool((PVOID)io.Information);
+    if (status != STATUS_SUCCESS) return status;
+    if (io.Status != STATUS_SUCCESS || io.Information != FILE_OPENED || Anchor->Object == NULL || Anchor->Handle == NULL)
+        return STATUS_FILE_INVALID;
+    status = StageWriterFullId(Instance, Anchor->Object, &Anchor->Identity);
+    if (status != STATUS_SUCCESS) return status;
+    status = FltQueryInformationFile(Instance, Anchor->Object, &Anchor->Attributes,
+        sizeof(Anchor->Attributes), FileAttributeTagInformation, &returned);
+    if (status != STATUS_SUCCESS) return status;
+    if (returned != sizeof(Anchor->Attributes) || Anchor->Attributes.ReparseTag != 0 ||
+        FlagOn(Anchor->Attributes.FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT) ||
+        BooleanFlagOn(Anchor->Attributes.FileAttributes, FILE_ATTRIBUTE_DIRECTORY) != Directory)
+        return STATUS_REPARSE_POINT_ENCOUNTERED;
+    status = FltQueryInformationFile(Instance, Anchor->Object, &Anchor->Basic,
+        sizeof(Anchor->Basic), FileBasicInformation, &returned);
+    if (status != STATUS_SUCCESS) return status;
+    if (returned != sizeof(Anchor->Basic)) return STATUS_INVALID_BUFFER_SIZE;
+    status = FltQueryInformationFile(Instance, Anchor->Object, &Anchor->Standard,
+        sizeof(Anchor->Standard), FileStandardInformation, &returned);
+    if (status != STATUS_SUCCESS) return status;
+    if (returned != sizeof(Anchor->Standard) || Anchor->Standard.Directory != Directory ||
+        Anchor->Standard.DeletePending) return STATUS_FILE_INVALID;
+    if (Directory) {
+        status = FltQueryInformationFile(Instance, Anchor->Object, &caseInfo,
+            sizeof(caseInfo), FileCaseSensitiveInformation, &returned);
+        if (status != STATUS_SUCCESS) return status;
+        if (returned != sizeof(caseInfo) || FlagOn(caseInfo.Flags, ~FILE_CS_FLAG_CASE_SENSITIVE_DIR))
+            return STATUS_NOT_SUPPORTED;
+        Anchor->CaseSensitive = BooleanFlagOn(caseInfo.Flags, FILE_CS_FLAG_CASE_SENSITIVE_DIR);
+    }
+    return StageWriterReadSecurity(Instance, Anchor->Object, &Anchor->Security, &Anchor->SecurityBytes);
+}
+
+_Use_decl_annotations_
+static NTSTATUS StageWriterCheckLink(PFLT_INSTANCE Instance, PFILE_OBJECT Parent,
+    PUNICODE_STRING Leaf, const FILE_ID_INFORMATION *Identity)
+{
+    PFILE_ID_EXTD_DIR_INFORMATION entry;
+    const ULONG prefix = FIELD_OFFSET(FILE_ID_EXTD_DIR_INFORMATION, FileName);
+    const ULONG bytes = FIELD_OFFSET(FILE_ID_EXTD_DIR_INFORMATION, FileName) + 255 * sizeof(WCHAR);
+    ULONG returned = 0;
+    BOOLEAN restart = TRUE, found = FALSE;
+    NTSTATUS status;
+    PAGED_CODE();
+    entry = ExAllocatePool2(POOL_FLAG_PAGED, bytes, STAGE_PUBLIC_TAG);
+    if (entry == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    /* Complete scan, no wildcard filter, no short/truncated result treated as
+     * absence. The normalized object's exact long component is the selector. */
+    for (;;) {
+        UNICODE_STRING actual;
+        if (SafeUploadStageMandatoryTeardownActive()) { status = STATUS_FLT_DELETING_OBJECT; break; }
+        status = FltQueryDirectoryFile(Instance, Parent, entry, bytes,
+            FileIdExtdDirectoryInformation, TRUE, NULL, restart, &returned);
+        restart = FALSE;
+        if (status == STATUS_NO_MORE_FILES) { status = found ? STATUS_SUCCESS : STATUS_FILE_INVALID; break; }
+        if (status != STATUS_SUCCESS) break;
+        if (returned < prefix || returned > bytes || entry->NextEntryOffset != 0 ||
+            entry->FileNameLength == 0 || (entry->FileNameLength & 1) != 0 ||
+            entry->FileNameLength > returned - prefix) { status = STATUS_FILE_INVALID; break; }
+        actual.Buffer = entry->FileName;
+        actual.Length = (USHORT)entry->FileNameLength;
+        actual.MaximumLength = actual.Length;
+        if (!RtlEqualUnicodeString(&actual, Leaf, FALSE)) continue;
+        if (found || !RtlEqualMemory(&entry->FileId, &Identity->FileId, sizeof(FILE_ID_128)) ||
+            FlagOn(entry->FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT)) { status = STATUS_FILE_INVALID; break; }
+        found = TRUE;
+    }
+    ExFreePoolWithTag(entry, STAGE_PUBLIC_TAG);
+    return status;
+}
+
+_Use_decl_annotations_
+static NTSTATUS StageWriterCaptureSnapshot(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease, PFILE_OBJECT Source,
+    PSTAGE_WRITER_SNAPSHOT *Snapshot, SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason)
+{
+    PFLT_FILE_NAME_INFORMATION name = NULL;
+    PSTAGE_WRITER_SNAPSHOT result = NULL;
+    FILE_ID_INFORMATION sourceIdentity, lookupIdentity;
+    STAGE_WRITER_ANCHOR local;
+    ULONG cursor, end, chars, index;
+    BOOLEAN lookupFound, localOwned = FALSE;
+    NTSTATUS status;
+    PAGED_CODE();
+    RtlZeroMemory(&local, sizeof(local));
+    *Snapshot = NULL;
+    *Reason = StageWriterMetadataUnproved;
+    status = StageWriterFullId(Lease->Lifetime.Instance, Source, &sourceIdentity);
+    if (status != STATUS_SUCCESS) goto Exit;
+    status = FltGetFileNameInformationUnsafe(Source, Lease->Lifetime.Instance,
+        FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_FILESYSTEM_ONLY, &name);
+    if (status != STATUS_SUCCESS) goto Exit;
+    status = FltParseFileNameInformation(name);
+    if (status != STATUS_SUCCESS) goto Exit;
+    *Reason = StageWriterLookupUnproved;
+    if (name->Volume.Length == 0 || name->Stream.Length != 0 || name->FinalComponent.Length == 0 ||
+        name->FinalComponent.Length > 255 * sizeof(WCHAR) || (name->Name.Length & 1) != 0 ||
+        name->Name.Length > SAFEUPLOAD_MAX_PATH_BYTES ||
+        name->Volume.Length + sizeof(WCHAR) >= name->Name.Length ||
+        name->Name.Buffer[name->Volume.Length / sizeof(WCHAR)] != L'\\') {
+        status = STATUS_OBJECT_PATH_INVALID; goto Exit;
+    }
+    result = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*result), STAGE_PUBLIC_TAG);
+    if (result == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    RtlZeroMemory(result, sizeof(*result));
+    result->Name.Buffer = ExAllocatePool2(POOL_FLAG_PAGED, name->Name.Length, STAGE_PUBLIC_TAG);
+    if (result->Name.Buffer == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    result->Name.Length = result->Name.MaximumLength = name->Name.Length;
+    RtlCopyMemory(result->Name.Buffer, name->Name.Buffer, name->Name.Length);
+    status = SafeUploadStagePublicReadMountGuid(Lease->Lifetime.Instance, &result->MountId);
+    if (status != STATUS_SUCCESS) goto Exit;
+    chars = result->Name.Length / sizeof(WCHAR);
+    cursor = 0;
+    end = name->Volume.Length / sizeof(WCHAR) + 1;
+    while (cursor < chars) {
+        PSTAGE_WRITER_ANCHOR anchor, parent = NULL;
+        UNICODE_STRING component;
+        BOOLEAN directory = end != chars;
+        if (result->Count == STAGE_WRITER_MAX_ANCHORS) {
+            *Reason = StageWriterCaptureLimit; status = STATUS_QUOTA_EXCEEDED; goto Exit;
+        }
+        if (result->Count != 0) parent = &result->Anchors[result->Count - 1];
+        /* Fill a fully initialized local and publish it into the counted array
+         * only when complete; a failed component is released through `local`. */
+        anchor = &local;
+        RtlZeroMemory(anchor, sizeof(*anchor));
+        localOwned = TRUE;
+        anchor->ComponentOffset = (USHORT)(cursor * sizeof(WCHAR));
+        anchor->ComponentBytes = (USHORT)((end - cursor) * sizeof(WCHAR));
+        component.Buffer = &result->Name.Buffer[cursor];
+        component.Length = component.MaximumLength = anchor->ComponentBytes;
+        if (component.Length == 0) { status = STATUS_OBJECT_PATH_INVALID; goto Exit; }
+        *Reason = StageWriterMetadataUnproved;
+        status = StageWriterOpenAnchor(Lease->Lifetime.Instance, parent != NULL ? parent->Handle : NULL,
+            &component, directory, parent != NULL ? parent->CaseSensitive : FALSE, anchor);
+        if (status != STATUS_SUCCESS) goto Exit;
+        if (anchor->Identity.VolumeSerialNumber != sourceIdentity.VolumeSerialNumber) {
+            status = STATUS_NOT_SAME_DEVICE; goto Exit;
+        }
+        if (parent != NULL) {
+            status = StageWriterCheckLink(Lease->Lifetime.Instance, parent->Object, &component, &anchor->Identity);
+            if (status != STATUS_SUCCESS) goto Exit;
+        }
+        if (anchor->SecurityBytes > STAGE_WRITER_SECURITY_BUDGET - result->SecurityBytes) {
+            *Reason = StageWriterCaptureLimit; status = STATUS_QUOTA_EXCEEDED; goto Exit;
+        }
+        result->SecurityBytes += anchor->SecurityBytes;
+        result->Anchors[result->Count] = local;
+        ++result->Count;
+        localOwned = FALSE;
+        RtlZeroMemory(&local, sizeof(local));
+        cursor = end;
+        if (cursor < chars && result->Name.Buffer[cursor] == L'\\') ++cursor;
+        end = cursor;
+        while (end < chars && result->Name.Buffer[end] != L'\\') ++end;
+    }
+    if (result->Count < 2 || !RtlEqualMemory(&sourceIdentity,
+        &result->Anchors[result->Count - 1].Identity, sizeof(sourceIdentity))) {
+        *Reason = StageWriterSnapshotChanged; status = STATUS_FILE_INVALID; goto Exit;
+    }
+    if (Lease->Input.LookupById && result->Anchors[result->Count - 1].Standard.NumberOfLinks != 1) {
+        *Reason = StageWriterLookupUnproved; status = STATUS_NOT_SUPPORTED; goto Exit;
+    }
+    /* Bind the original retained relative root to this ancestor chain, rather
+     * than substituting a same-ID hard link elsewhere. A raw-volume root that
+     * cannot return a full identity is an explicit lookup refusal. */
+    lookupFound = Lease->Input.LookupRoot == NULL;
+    if (!lookupFound) {
+        *Reason = StageWriterLookupUnproved;
+        status = StageWriterFullId(Lease->Lifetime.Instance, Lease->Input.LookupRoot, &lookupIdentity);
+        if (status != STATUS_SUCCESS) goto Exit;
+        for (index = 0; index + 1 < result->Count; ++index)
+            if (RtlEqualMemory(&lookupIdentity, &result->Anchors[index].Identity, sizeof(lookupIdentity))) lookupFound = TRUE;
+    }
+    if (!lookupFound) { *Reason = StageWriterLookupUnproved; status = STATUS_FILE_INVALID; goto Exit; }
+    *Snapshot = result;
+    result = NULL;
+    *Reason = StageWriterNoRefusal;
+    status = STATUS_SUCCESS;
+Exit:
+    if (localOwned) StageWriterFreeAnchor(&local);
+    if (name != NULL) FltReleaseFileNameInformation(name);
+    StageWriterFreeSnapshot(result);
+    return status != STATUS_SUCCESS && NT_SUCCESS(status) ? STATUS_NOT_SUPPORTED : status;
+}
+
+_Use_decl_annotations_
+static BOOLEAN StageWriterEqualSnapshots(const STAGE_WRITER_SNAPSHOT *Left, const STAGE_WRITER_SNAPSHOT *Right)
+{
+    ULONG index;
+    PAGED_CODE();
+    if (Left->Count != Right->Count || !RtlEqualUnicodeString(&Left->Name, &Right->Name, FALSE) ||
+        !RtlEqualMemory(&Left->MountId, &Right->MountId, sizeof(GUID))) return FALSE;
+    for (index = 0; index < Left->Count; ++index) {
+        const STAGE_WRITER_ANCHOR *a = &Left->Anchors[index], *b = &Right->Anchors[index];
+        if (!RtlEqualMemory(&a->Identity, &b->Identity, sizeof(a->Identity)) ||
+            !RtlEqualMemory(&a->Attributes, &b->Attributes, sizeof(a->Attributes)) ||
+            !RtlEqualMemory(&a->Basic, &b->Basic, sizeof(a->Basic)) ||
+            !RtlEqualMemory(&a->Standard, &b->Standard, sizeof(a->Standard)) ||
+            a->CaseSensitive != b->CaseSensitive || a->ComponentOffset != b->ComponentOffset ||
+            a->ComponentBytes != b->ComponentBytes || a->SecurityBytes != b->SecurityBytes ||
+            !RtlEqualMemory(a->Security, b->Security, a->SecurityBytes)) return FALSE;
+    }
+    return TRUE;
+}
+
+_Use_decl_annotations_
+static NTSTATUS StageWriterCopyInput(const SAFEUPLOAD_STAGE_CREATE_INPUT *Input, PSAFEUPLOAD_STAGE_CREATE_INPUT Copy)
+{
+    NTSTATUS status;
+    PAGED_CODE();
+    *Copy = *Input;
+    Copy->LookupName.Buffer = NULL;
+    Copy->LookupName.MaximumLength = Input->LookupName.Length;
+    Copy->LookupRoot = NULL;
+    Copy->LookupRootHandle = NULL;
+    Copy->EaBuffer = NULL;
+    Copy->Security = NULL;
+    Copy->LookupName.Buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, Input->LookupName.Length, STAGE_PUBLIC_TAG);
+    if (Copy->LookupName.Buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    RtlCopyMemory(Copy->LookupName.Buffer, Input->LookupName.Buffer, Input->LookupName.Length);
+    if (Input->LookupRoot != NULL) {
+        if (Input->LookupRootHandle == NULL || FlagOn(Input->LookupRoot->Flags, FO_CLEANUP_COMPLETE))
+            return STATUS_FILE_CLOSED;
+        ObReferenceObject(Input->LookupRoot);
+        Copy->LookupRoot = Input->LookupRoot;
+        status = ObOpenObjectByPointer(Copy->LookupRoot, OBJ_KERNEL_HANDLE, NULL, 0,
+            *IoFileObjectType, KernelMode, &Copy->LookupRootHandle);
+        if (!NT_SUCCESS(status)) return status;
+        if (FlagOn(Copy->LookupRoot->Flags, FO_CLEANUP_COMPLETE)) return STATUS_FILE_CLOSED;
+    }
+    if (Input->EaLength != 0) {
+        Copy->EaBuffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, Input->EaLength, STAGE_PUBLIC_TAG);
+        if (Copy->EaBuffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+        RtlCopyMemory(Copy->EaBuffer, Input->EaBuffer, Input->EaLength);
+    }
+    if (Input->SecurityBytes != 0) {
+        Copy->Security = ExAllocatePool2(POOL_FLAG_NON_PAGED, Input->SecurityBytes, STAGE_PUBLIC_TAG);
+        if (Copy->Security == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+        RtlCopyMemory(Copy->Security, Input->Security, Input->SecurityBytes);
+    }
+    return STATUS_SUCCESS;
+}
+
+_Use_decl_annotations_
+static NTSTATUS StageWriterOpenOriginal(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease, ACCESS_MASK Desired,
+    PHANDLE Handle, PFILE_OBJECT *Object)
+{
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK io = {0};
+    HANDLE handle = NULL;
+    PFILE_OBJECT object = NULL;
+    NTSTATUS status;
+    PAGED_CODE();
+    *Handle = NULL;
+    *Object = NULL;
+    status = SeImpersonateClientEx(&Lease->Subject, NULL);
+    if (status != STATUS_SUCCESS) return NT_SUCCESS(status) ? STATUS_NOT_SUPPORTED : status;
+    InitializeObjectAttributes(&attributes, &Lease->Input.LookupName,
+        OBJ_KERNEL_HANDLE | OBJ_FORCE_ACCESS_CHECK | OBJ_DONT_REPARSE |
+        (FlagOn(Lease->Input.OperationFlags, SL_CASE_SENSITIVE) ? 0 : OBJ_CASE_INSENSITIVE),
+        Lease->Input.LookupRootHandle, NULL);
+    /* Exact original lookup bytes/root, never Snapshot->Name. No mutation,
+     * sharing bypass, token adjustment, creation allocation, EA or SD injection.
+     * Unproved option/input transformations are refused before this call. */
+    status = FltCreateFileEx2(SafeUploadData.Filter, Lease->Lifetime.Instance, &handle, &object,
+        Desired, &attributes, &io, NULL, 0, Lease->Input.ShareAccess, FILE_OPEN,
+        (Lease->Input.Options & 0x00ffffff) | FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT,
+        NULL, 0, IO_STOP_ON_SYMLINK, NULL);
+    SeStopImpersonatingClient();
+    if (status == STATUS_STOPPED_ON_SYMLINK && io.Information != 0) ExFreePool((PVOID)io.Information);
+    if (status == STATUS_SUCCESS && (io.Status != STATUS_SUCCESS || io.Information != FILE_OPENED ||
+        handle == NULL || object == NULL)) status = STATUS_FILE_INVALID;
+    /* Informational CREATE results are not completed leases. Preserve all
+     * native failure statuses; never report an unowned pointer as success. */
+    if (status != STATUS_SUCCESS && NT_SUCCESS(status)) status = STATUS_NOT_SUPPORTED;
+    if (status != STATUS_SUCCESS) {
+        StagePublicCloseObject(&handle, &object);
+    } else {
+        /* Transfer only a validated lease. Failure outputs stay NULL even
+         * when the native open or a later consistency check fails. */
+        *Handle = handle;
+        *Object = object;
+    }
+    return status;
+}
+
+_Use_decl_annotations_
+static NTSTATUS StageWriterValidateRequest(const SAFEUPLOAD_STAGE_CREATE_INPUT *Input,
+    PSECURITY_CLIENT_CONTEXT Subject, PACCESS_MASK CheckAccess, SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason)
+{
+    const ULONG options = FILE_WRITE_THROUGH | FILE_SEQUENTIAL_ONLY | FILE_RANDOM_ACCESS |
+        FILE_NO_INTERMEDIATE_BUFFERING | FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT |
+        FILE_NON_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT | FILE_OPEN_BY_FILE_ID;
+    PTOKEN_PRIVILEGES privileges = NULL;
+    ACCESS_MASK original, remaining, desired;
+    ULONG index, disposition = Input->Options >> 24;
+    NTSTATUS status;
+    PAGED_CODE();
+    *CheckAccess = 0;
+    *Reason = StageWriterSubjectUnrepresentable;
+    if (Subject->ClientToken == NULL || Subject->DirectlyAccessClientToken ||
+        Subject->SecurityQos.ContextTrackingMode != SECURITY_STATIC_TRACKING ||
+        Subject->SecurityQos.ImpersonationLevel < SecurityImpersonation)
+        return STATUS_BAD_IMPERSONATION_LEVEL;
+    *Reason = StageWriterLookupUnproved;
+    if (Input->LookupName.Buffer == NULL || Input->LookupName.Length == 0 ||
+        Input->LookupName.Length > Input->LookupName.MaximumLength ||
+        Input->LookupName.Length > SAFEUPLOAD_MAX_PATH_BYTES) return STATUS_OBJECT_PATH_INVALID;
+    if (Input->LookupById != BooleanFlagOn(Input->Options, FILE_OPEN_BY_FILE_ID)) return STATUS_INVALID_PARAMETER;
+    if (Input->LookupById) {
+        /* Never parse a binary selector as Unicode or replace its original
+         * root with a normalized pathname. Other ID forms stay unproved. */
+        if (Input->LookupRoot == NULL || Input->LookupRootHandle == NULL ||
+            (Input->LookupName.Length != sizeof(LONGLONG) && Input->LookupName.Length != sizeof(FILE_ID_128)))
+            return STATUS_NOT_SUPPORTED;
+    } else {
+        if ((Input->LookupName.Length & 1) != 0) return STATUS_OBJECT_PATH_INVALID;
+        for (index = 0; index < Input->LookupName.Length / sizeof(WCHAR); ++index) {
+            WCHAR ch = Input->LookupName.Buffer[index];
+            if (ch < 32 || ch == L':' || ch == L'*' || ch == L'?' || ch == L'"' ||
+                ch == L'<' || ch == L'>' || ch == L'|') return STATUS_OBJECT_PATH_INVALID;
+        }
+    }
+    *Reason = StageWriterCreateSemanticsUnproved;
+    if (Input->RequestorMode != UserMode || Input->PreviouslyGrantedAccess != 0 ||
+        FlagOn(Input->OperationFlags, ~SL_CASE_SENSITIVE) ||
+        FlagOn(Input->Options & 0x00ffffff, ~options) ||
+        FlagOn(Input->ShareAccess, ~(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)) ||
+        Input->EaLength != 0 || Input->AllocationSize.QuadPart != 0 ||
+        FlagOn(Input->FileAttributes, ~(FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_ARCHIVE)) ||
+        disposition > FILE_OVERWRITE_IF || disposition == FILE_CREATE)
+        return STATUS_NOT_SUPPORTED;
+    original = Input->OriginalDesiredAccess;
+    remaining = Input->RemainingDesiredAccess;
+    desired = Input->DesiredAccess;
+    RtlMapGenericMask(&original, IoGetFileObjectGenericMapping());
+    RtlMapGenericMask(&remaining, IoGetFileObjectGenericMapping());
+    RtlMapGenericMask(&desired, IoGetFileObjectGenericMapping());
+    if (original != desired || remaining != desired) return STATUS_NOT_SUPPORTED;
+    if (Input->SuppliedSecurity || Input->Security != NULL || Input->SecurityBytes != 0) {
+        *Reason = StageWriterNativeCreateSecurityUnproved;
+        return STATUS_NOT_SUPPORTED;
+    }
+    /* The measured supplemental mask is Restore-disabled. Never disable the
+     * original privilege to force this candidate to fit the control evidence. */
+    status = SeQueryInformationToken(Subject->ClientToken, TokenPrivileges, (PVOID *)&privileges);
+    if (!NT_SUCCESS(status)) return status;
+    if (privileges == NULL) return STATUS_INVALID_PARAMETER;
+    for (index = 0; index < privileges->PrivilegeCount; ++index) {
+        if (RtlEqualMemory(&privileges->Privileges[index].Luid, &SeExports->SeRestorePrivilege, sizeof(LUID)) &&
+            FlagOn(privileges->Privileges[index].Attributes, SE_PRIVILEGE_ENABLED)) {
+            ExFreePool(privileges);
+            return STATUS_NOT_SUPPORTED;
+        }
+    }
+    ExFreePool(privileges);
+    *CheckAccess = Input->DesiredAccess;
+    if (disposition == FILE_SUPERSEDE) *CheckAccess |= DELETE | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES;
+    if (disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF)
+        *CheckAccess |= FILE_WRITE_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES;
+    *Reason = StageWriterNoRefusal;
+    return STATUS_SUCCESS;
+}
+
+_Use_decl_annotations_
+static BOOLEAN StageWriterProcessRunning(HANDLE ProcessHandle)
+{
+    LARGE_INTEGER noWait = {0};
+    PAGED_CODE();
+    /* A process can choose STATUS_PENDING as its exit code. Observe its
+     * dispatcher state instead. This instant check never replaces the later
+     * namespace/cancellation/lifetime check at the exposure boundary. */
+    return ZwWaitForSingleObject(ProcessHandle, FALSE, &noWait) == STATUS_TIMEOUT;
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicOpenWriter(PFLT_INSTANCE Instance, const SAFEUPLOAD_STAGE_CREATE_INPUT *Input,
+    PSECURITY_CLIENT_CONTEXT Subject, PEPROCESS OriginalRequestorProcess,
+    PSAFEUPLOAD_STAGE_WRITER_LEASE *Lease, SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason)
+{
+    PSAFEUPLOAD_STAGE_WRITER_LEASE result = NULL;
+    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+    PSTAGE_WRITER_SNAPSHOT checkSnapshot = NULL;
+    HANDLE checkHandle = NULL;
+    PFILE_OBJECT checkObject = NULL;
+    PACCESS_TOKEN oldToken;
+    BOOLEAN copyOnOpen, effectiveOnly;
+    SECURITY_IMPERSONATION_LEVEL level;
+    ACCESS_MASK checkAccess = 0, mappedAccess;
+    STAGE_PUBLIC_OBJECT_BASIC_INFORMATION basic = {0};
+    ULONG returned = 0, disposition;
+    PSTAGE_WRITER_ANCHOR target, parent;
+    NTSTATUS status;
+    PAGED_CODE();
+    *Lease = NULL;
+    *Reason = StageWriterNoRefusal;
+    if (Instance == NULL || Input == NULL || Subject == NULL || OriginalRequestorProcess == NULL ||
+        IoGetTopLevelIrp() != NULL || !PsIsSystemThread(PsGetCurrentThread()) ||
+        PsGetCurrentProcess() != PsInitialSystemProcess) return STATUS_INVALID_PARAMETER;
+    /* An initially unimpersonated system worker is required. Never revert a
+     * pre-existing token belonging to somebody else's operation. */
+    oldToken = PsReferenceImpersonationToken(PsGetCurrentThread(), &copyOnOpen, &effectiveOnly, &level);
+    if (oldToken != NULL) {
+        PsDereferenceImpersonationToken(oldToken);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    if (!StagePublicBeginOpen()) return STATUS_FLT_DELETING_OBJECT;
+    FltAcquirePushLockExclusive(&StagePublicListLock);
+    status = StagePublicFactories + InterlockedCompareExchange(&StagePublicBackendCount, 0, 0) > STAGE_WRITER_MAX_LEASES ?
+        STATUS_QUOTA_EXCEEDED : STATUS_SUCCESS;
+    FltReleasePushLock(&StagePublicListLock);
+    if (!NT_SUCCESS(status)) { *Reason = StageWriterCaptureLimit; goto Exit; }
+    status = StageWriterValidateRequest(Input, Subject, &checkAccess, Reason);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (context->VolumeKind != SafeUploadVolumeFixed || context->FileSystemType != FLT_FSTYPE_NTFS ||
+        context->DeviceInformationStatus != STATUS_SUCCESS || context->StorageDeviceType != FILE_DEVICE_DISK ||
+        FlagOn(context->StorageDeviceCharacteristics, FILE_PORTABLE_DEVICE | FILE_REMOVABLE_MEDIA | FILE_REMOTE_DEVICE)) {
+        status = STATUS_NOT_SUPPORTED; goto Exit;
+    }
+    result = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*result), STAGE_PUBLIC_TAG);
+    if (result == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    /* The common destructor may run after any following acquisition fails. */
+    RtlZeroMemory(result, sizeof(*result));
+    result->Lifetime.References = 1;
+    result->Lifetime.WriterLease = TRUE;
+    ExInitializeRundownProtection(&result->Lifetime.Operations);
+    KeInitializeEvent(&result->Lifetime.Closed, NotificationEvent, FALSE);
+    status = FltObjectReference(Instance);
+    if (!NT_SUCCESS(status)) goto Exit;
+    result->Lifetime.Instance = Instance;
+    ObReferenceObject(OriginalRequestorProcess);
+    result->Process = OriginalRequestorProcess;
+    status = ObOpenObjectByPointer(result->Process, OBJ_KERNEL_HANDLE, NULL, SYNCHRONIZE,
+        *PsProcessType, KernelMode, &result->ProcessHandle);
+    if (!NT_SUCCESS(status)) goto Exit;
+    result->Subject = *Subject;
+    ObReferenceObject(result->Subject.ClientToken); /* retain the original static copy, never recapture */
+    result->SubjectValid = TRUE;
+    status = StageWriterCopyInput(Input, &result->Input);
+    if (!NT_SUCCESS(status)) { *Reason = StageWriterLookupUnproved; goto Exit; }
+    status = StagePublicBindCaller(&result->Subject, result->Process, &result->Lifetime.Binding);
+    if (!NT_SUCCESS(status)) goto Exit;
+    disposition = Input->Options >> 24;
+    *Reason = StageWriterNoRefusal;
+    status = StageWriterOpenOriginal(result, checkAccess, &checkHandle, &checkObject);
+    if (status != STATUS_SUCCESS) {
+        /* An unsuccessful open is NOT an absence proof. In particular, do
+         * not authorize creation or recheck a prospective creator's new DACL.
+         * Preserve native absence failure for noncreating dispositions. */
+        if ((status == STATUS_OBJECT_NAME_NOT_FOUND || status == STATUS_OBJECT_PATH_NOT_FOUND) &&
+            disposition != FILE_OPEN && disposition != FILE_OVERWRITE) {
+            *Reason = StageWriterCreatorGrantUnproved;
+            status = STATUS_NOT_SUPPORTED;
+        }
+        if (status == STATUS_BAD_IMPERSONATION_LEVEL) *Reason = StageWriterSubjectUnrepresentable;
+        goto Exit;
+    }
+    status = StageWriterCaptureSnapshot(result, checkObject, &checkSnapshot, Reason);
+    if (status != STATUS_SUCCESS) goto Exit;
+    /* Mandatory ordering: close EVERY supplemental/metadata handle and drop
+     * its independent object ref before the original-rights/share FILE_OPEN.
+     * Keep only immutable comparison bytes across this race window. */
+    {
+        ULONG index;
+        for (index = 0; index < checkSnapshot->Count; ++index)
+            StagePublicCloseObject(&checkSnapshot->Anchors[index].Handle, &checkSnapshot->Anchors[index].Object);
+    }
+    StagePublicCloseObject(&checkHandle, &checkObject);
+    if (SafeUploadStageMandatoryTeardownActive()) { status = STATUS_FLT_DELETING_OBJECT; goto Exit; }
+    status = StageWriterOpenOriginal(result, Input->DesiredAccess,
+        &result->Lifetime.PublicHandle, &result->Lifetime.PublicObject);
+    if (status != STATUS_SUCCESS) { *Reason = StageWriterSnapshotChanged; goto Exit; }
+    status = StageWriterCaptureSnapshot(result, result->Lifetime.PublicObject, &result->Snapshot, Reason);
+    if (status != STATUS_SUCCESS) goto Exit;
+    if (!StageWriterEqualSnapshots(checkSnapshot, result->Snapshot)) {
+        *Reason = StageWriterSnapshotChanged; status = STATUS_FILE_INVALID; goto Exit;
+    }
+    *Reason = StageWriterCreateSemanticsUnproved;
+    status = ZwQueryObject(result->Lifetime.PublicHandle, ObjectBasicInformation, &basic, sizeof(basic), &returned);
+    if (status != STATUS_SUCCESS) goto Exit;
+    if (returned != sizeof(basic)) { status = STATUS_INVALID_BUFFER_SIZE; goto Exit; }
+    mappedAccess = Input->DesiredAccess;
+    RtlMapGenericMask(&mappedAccess, IoGetFileObjectGenericMapping());
+    if ((!FlagOn(mappedAccess, MAXIMUM_ALLOWED) && basic.GrantedAccess != mappedAccess) ||
+        !FlagOn(basic.GrantedAccess, FILE_WRITE_DATA | FILE_APPEND_DATA)) {
+        status = STATUS_NOT_SUPPORTED; goto Exit;
+    }
+    /* The retained NTFS lease's grant is never widened or overwritten. Only
+     * the projected future staged-data grant excludes T10 security mutators. */
+    result->Lifetime.Binding.OriginalDesiredAccess = Input->OriginalDesiredAccess;
+    result->NativeGrantedAccess = basic.GrantedAccess;
+    result->Lifetime.Binding.OriginalShareAccess = Input->ShareAccess;
+    result->Lifetime.Binding.GrantedAccess = basic.GrantedAccess & ~(WRITE_DAC | WRITE_OWNER | ACCESS_SYSTEM_SECURITY);
+    target = &result->Snapshot->Anchors[result->Snapshot->Count - 1];
+    parent = &result->Snapshot->Anchors[result->Snapshot->Count - 2];
+    result->Lifetime.Binding.MountManagerVolumeId = result->Snapshot->MountId;
+    result->Lifetime.Binding.VolumeRootIdentity = result->Snapshot->Anchors[0].Identity;
+    result->Lifetime.Binding.ParentIdentity = parent->Identity;
+    result->Lifetime.Binding.ParentCaseSensitive = parent->CaseSensitive;
+    result->Lifetime.Binding.PublicIdentity = target->Identity;
+    result->Lifetime.Binding.CanonicalLeafBytes = target->ComponentBytes;
+    RtlCopyMemory(result->Lifetime.Binding.CanonicalLeaf,
+        (PUCHAR)result->Snapshot->Name.Buffer + target->ComponentOffset, target->ComponentBytes);
+    result->ExpectedStoredSecurity = ExAllocatePool2(POOL_FLAG_PAGED, target->SecurityBytes, STAGE_PUBLIC_TAG);
+    if (result->ExpectedStoredSecurity == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    RtlCopyMemory(result->ExpectedStoredSecurity, target->Security, target->SecurityBytes);
+    result->ExpectedStoredSecurityBytes = target->SecurityBytes;
+    /* Not FILE_OPENED merely because both probes use FILE_OPEN. This remains
+     * a candidate app result until the CREATE semantics gate is qualified. */
+    result->OriginalInformation = disposition == FILE_SUPERSEDE ? FILE_SUPERSEDED :
+        ((disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF) ? FILE_OVERWRITTEN : FILE_OPENED);
+    if (SafeUploadStageMandatoryTeardownActive() || !StageWriterProcessRunning(result->ProcessHandle)) {
+        status = STATUS_CANCELLED; goto Exit;
+    }
+    FltAcquirePushLockExclusive(&StagePublicListLock);
+    result->Lifetime.Counted = TRUE;
+    InsertTailList(&StagePublicBackends, &result->Lifetime.Link);
+    InterlockedIncrement(&StagePublicBackendCount);
+    KeClearEvent(&StagePublicDrained);
+    FltReleasePushLock(&StagePublicListLock);
+    *Lease = result; /* one caller reference; list is a lookup, not another owner */
+    result = NULL;
+    *Reason = StageWriterNoRefusal;
+    status = STATUS_SUCCESS;
+Exit:
+    StagePublicCloseObject(&checkHandle, &checkObject);
+    StageWriterFreeSnapshot(checkSnapshot);
+    if (context != NULL) FltReleaseContext(context);
+    if (result != NULL) SafeUploadStagePublicDereferenceBackend(&result->Lifetime);
+    if (status != STATUS_SUCCESS && NT_SUCCESS(status)) status = STATUS_NOT_SUPPORTED;
+    if (status != STATUS_SUCCESS) SafeUploadStagePublicRecordWriterRefusal(*Reason);
+    StagePublicEndOpen();
+    return status;
+}
+
+_Use_decl_annotations_
+VOID SafeUploadStagePublicReleaseWriter(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease)
+{
+    PAGED_CODE();
+    if (Lease != NULL) SafeUploadStagePublicDereferenceBackend(&Lease->Lifetime);
+}
+
+_Use_decl_annotations_
+VOID SafeUploadStagePublicGetWriterBinding(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding)
+{
+    *Binding = Lease->Lifetime.Binding; /* immutable, caller holds a lease reference */
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicRevalidateWriter(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason)
+{
+    PFLT_INSTANCE instance = NULL;
+    PFILE_OBJECT object = NULL;
+    PSTAGE_WRITER_SNAPSHOT current = NULL;
+    PACCESS_TOKEN oldToken;
+    BOOLEAN copyOnOpen, effectiveOnly;
+    SECURITY_IMPERSONATION_LEVEL level;
+    NTSTATUS status;
+    PAGED_CODE();
+    *Reason = StageWriterNoRefusal;
+    if (IoGetTopLevelIrp() != NULL || !PsIsSystemThread(PsGetCurrentThread()) ||
+        PsGetCurrentProcess() != PsInitialSystemProcess) return STATUS_INVALID_DEVICE_STATE;
+    oldToken = PsReferenceImpersonationToken(PsGetCurrentThread(), &copyOnOpen, &effectiveOnly, &level);
+    if (oldToken != NULL) {
+        PsDereferenceImpersonationToken(oldToken);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    if (!SafeUploadStagePublicAcquireOperation(&Lease->Lifetime, &instance, &object))
+        return STATUS_FLT_DELETING_OBJECT;
+    if (InterlockedCompareExchange(&Lease->Revalidating, 1, 0) != 0) {
+        SafeUploadStagePublicReleaseOperation(&Lease->Lifetime);
+        return STATUS_DEVICE_BUSY;
+    }
+    /* Never reopen the target with writer rights or zero access. This directly
+     * queries the retained lease and rewalks only metadata anchors/selected links. */
+    status = StageWriterCaptureSnapshot(Lease, object, &current, Reason);
+    if (status == STATUS_SUCCESS && (!StageWriterEqualSnapshots(Lease->Snapshot, current) ||
+        !StageWriterProcessRunning(Lease->ProcessHandle))) {
+        *Reason = StageWriterSnapshotChanged;
+        status = STATUS_FILE_INVALID;
+    }
+    if (status == STATUS_SUCCESS && SafeUploadStageMandatoryTeardownActive()) status = STATUS_FLT_DELETING_OBJECT;
+    StageWriterFreeSnapshot(current);
+    InterlockedExchange(&Lease->Revalidating, 0);
+    SafeUploadStagePublicReleaseOperation(&Lease->Lifetime);
+    if (status != STATUS_SUCCESS) SafeUploadStagePublicRecordWriterRefusal(*Reason);
+    return status;
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicCheckWriterSecurity(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason)
+{
+    PAGED_CODE();
+    /* No native-equivalent construction producer exists. Keeping these slots
+     * separate prevents a future transport from claiming queried stored bits
+     * are construction authority. In particular 0x8C04 -> 0x8804 is NOT fixed
+     * by masking SE_DACL_AUTO_INHERITED, protection, or a privileged post-set. */
+    *Reason = StageWriterNativeCreateSecurityUnproved;
+    if (Lease->ExpectedStoredSecurity != NULL &&
+        Lease->ExpectedStoredSecurityBytes >= sizeof(SECURITY_DESCRIPTOR_RELATIVE) &&
+        FlagOn(((SECURITY_DESCRIPTOR_RELATIVE *)Lease->ExpectedStoredSecurity)->Control, SE_DACL_AUTO_INHERITED))
+        *Reason = StageWriterPublicationSecurityNotEquivalent;
+    SafeUploadStagePublicRecordWriterRefusal(*Reason);
+    return STATUS_NOT_SUPPORTED;
 }
 #endif

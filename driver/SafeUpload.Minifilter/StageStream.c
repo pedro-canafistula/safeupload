@@ -209,6 +209,9 @@ typedef struct _STAGE_ATTACH_TRANSACTION {
     SECURITY_CLIENT_CONTEXT OriginalSubject;
     BOOLEAN OriginalSubjectValid;
     SAFEUPLOAD_STAGE_CREATE_INPUT CreateInput;
+    /* Increment 4 may transfer a prepared per-CREATE lease here. Increment 2
+     * never invokes the factory from live CREATE and never selects V23. */
+    PSAFEUPLOAD_STAGE_WRITER_LEASE WriterLease;
     PSAFEUPLOAD_STAGE_NATIVE_RECORD NativeRecord;
     SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT NativeSnapshot;
     UINT64 NativeGeneration;
@@ -2611,6 +2614,10 @@ static NTSTATUS StageAttachCaptureCreateInput(PFLT_CALLBACK_DATA Data, PSAFEUPLO
     Input->SuppliedSecurity = supplied != NULL;
     __try {
         if (Input->EaLength != 0) {
+            if (Input->EaLength > SAFEUPLOAD_STAGE_CREATE_EA_LIMIT) {
+                SafeUploadStagePublicRecordWriterRefusal(StageWriterCaptureLimit);
+                return STATUS_QUOTA_EXCEEDED;
+            }
             if (Data->Iopb->Parameters.Create.EaBuffer == NULL) return STATUS_INVALID_PARAMETER;
             Input->EaBuffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, Input->EaLength, STAGE_TAG);
             if (Input->EaBuffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
@@ -2625,6 +2632,10 @@ static NTSTATUS StageAttachCaptureCreateInput(PFLT_CALLBACK_DATA Data, PSAFEUPLO
             control = ((SECURITY_DESCRIPTOR_RELATIVE *)supplied)->Control;
             bytes = RtlLengthSecurityDescriptor(supplied);
             if (bytes < sizeof(SECURITY_DESCRIPTOR_RELATIVE)) return STATUS_INVALID_SECURITY_DESCR;
+            if (bytes > SAFEUPLOAD_STAGE_CREATE_SECURITY_LIMIT) {
+                SafeUploadStagePublicRecordWriterRefusal(StageWriterCaptureLimit);
+                return STATUS_QUOTA_EXCEEDED;
+            }
             Input->Security = ExAllocatePool2(POOL_FLAG_NON_PAGED, bytes, STAGE_TAG);
             if (Input->Security == NULL) return STATUS_INSUFFICIENT_RESOURCES;
             if (FlagOn(control, SE_SELF_RELATIVE)) {
@@ -2650,6 +2661,10 @@ static VOID StageAttachTransactionDereference(PSTAGE_ATTACH_TRANSACTION Transact
     if (Transaction == NULL || InterlockedDecrement(&Transaction->References) != 0) return;
     NT_ASSERT(!Transaction->LookupLinked);
     NT_ASSERT(!Transaction->WorkItemQueued);
+    /* Final cancellation release can be DISPATCH_LEVEL. PASSIVE failure or
+     * active rundown must already have closed every new owned handle. */
+    NT_ASSERT(Transaction->WriterLease == NULL);
+    NT_ASSERT(Transaction->CreateInput.LookupRootHandle == NULL);
     if (Transaction->AdmissionToken != NULL)
         SafeUploadPolicyAdmissionRelease(Transaction->AdmissionToken);
     if (Transaction->NameInfo != NULL && Transaction->NameInfoIsSynthetic)
@@ -2675,6 +2690,10 @@ static VOID StageAttachTransactionDereference(PSTAGE_ATTACH_TRANSACTION Transact
 static VOID StageAttachReleaseRelatedObjects(PSTAGE_ATTACH_TRANSACTION Transaction)
 {
     if (Transaction == NULL) return;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    SafeUploadStagePublicReleaseWriter(Transaction->WriterLease);
+    Transaction->WriterLease = NULL;
+    SafeUploadStagePublicCloseCreateLookup(&Transaction->CreateInput);
     if (Transaction->OriginalSubjectValid) {
         SeDeleteClientSecurity(&Transaction->OriginalSubject);
         Transaction->OriginalSubjectValid = FALSE;
@@ -2906,7 +2925,6 @@ static NTSTATUS StageAttachQueueCreate(PFLT_CALLBACK_DATA Data,
     return STATUS_PENDING;
 
 Fail:
-    if (lookupLinked) lookupRemoved = StageAttachRemoveLookup(transaction);
     if (transaction->CancelRegistered) {
         NTSTATUS clearStatus = FltClearCancelCompletion(Data);
         if (clearStatus == STATUS_CANCELLED) {
@@ -2917,6 +2935,9 @@ Fail:
     }
     /* On failure the dispatch callback still owns AdmissionSlot->Token. */
     transaction->AdmissionToken = NULL;
+    /* Close root/lease holds before removing the instance-rundown lookup. */
+    StageAttachReleaseRelatedObjects(transaction);
+    if (lookupLinked) lookupRemoved = StageAttachRemoveLookup(transaction);
     StageAttachTransactionDereference(transaction);
     if (lookupRemoved) StageAttachReleaseActive();
     return status;
@@ -6609,6 +6630,7 @@ static VOID StageRollbackUnloadPreparation(VOID)
     StageRelease(&StageNamespaceResource);
     StageSetUnloadAdmissionClosed(FALSE);
     SafeUploadStageNativeReopenAdmission();
+    SafeUploadStagePublicReopenAdmission();
     KeSetEvent(&StageWorkEvent, IO_NO_INCREMENT, FALSE);
 }
 #endif
@@ -6641,6 +6663,11 @@ NTSTATUS SafeUploadStagePrepareUnload(_In_ BOOLEAN Mandatory)
      * exists, especially after instance teardown hid its CLEANUP callback. */
     if (!SafeUploadStageNativeTryCloseAdmission()) {
         SafeUploadStageRecordUnloadVeto(SAFEUPLOAD_UNLOAD_VETO_STAGE_DRAIN, STATUS_DEVICE_BUSY);
+        return STATUS_FLT_DO_NOT_DETACH;
+    }
+    if (!SafeUploadStagePublicTryCloseAdmission()) {
+        SafeUploadStageNativeReopenAdmission();
+        SafeUploadStageRecordUnloadVeto(SAFEUPLOAD_UNLOAD_VETO_STAGE_OBJECTS, STATUS_DEVICE_BUSY);
         return STATUS_FLT_DO_NOT_DETACH;
     }
 

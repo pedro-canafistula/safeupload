@@ -739,6 +739,65 @@ The [PowerShell 5.1 gate](evidence/2026-10-13/harness-windows-gate-t5-security-a
 [strict independent restoration](evidence/2026-10-13/t5-security-auto-request1-independent-restoration2.txt) confirms zero fixture
 directories/tasks, an absent exact worker and worker script, and no loaded SafeUpload driver. No product VM was booted.
 
+### Implementation note — increment 2
+
+`StagePublic` now has a distinct opaque writer lease and `SafeUploadStagePublicOpenWriter`; the DELETE factory still requires
+its original DELETE grant. The writer factory is **preparation only**, with no live CREATE caller. It uses the captured static
+effective token and exact original root/name bytes (including supported binary ID selectors), original case, access and sharing.
+A supplemental, nonmutating FILE_OPEN captures a comparison snapshot; **all** supplemental and observer handles/references close
+before the original-rights FILE_OPEN. The second snapshot must match. Actual retained access and the prospective T10-limited staged
+grant remain separate, as does the original disposition's prospective Information result. No token privilege is enabled or removed.
+
+Snapshots retain root, every ancestor, parent and target: mount GUID, volume/full ID, exact canonical components, directory case,
+non-reparse/type, basic/standard metadata and complete binary stored security. The all-parts `BACKUP_SECURITY_INFORMATION` query
+has no partial-security fallback; it is not a privilege grant. Metadata observers have no target data/delete rights or sharing bypass.
+`SafeUploadStagePublicRevalidateWriter` directly requeries the held lease and recaptures all metadata after RPC. Later integration
+must still check reservation, predecessor, policy/channel generations, cancellation and caller lifetime under the namespace lock.
+It must retire the exact candidate on failure; this hook does not perform RPC or authorize exposure.
+
+Original supplied input, construction security and expected stored security have separate owners/slots. Expected stored security
+comes from the exact checked target. **Construction remains absent**, rather than being derived from stored bits or supplied input;
+`SafeUploadStagePublicCheckWriterSecurity` always refuses. It reports `publication_security_not_equivalent` for auto-inherited
+stored descriptors (including the recorded `0x8C04 → 0x8804` counterexample), otherwise `native_create_security_unproved`.
+Low token levels report `writer_subject_unrepresentable`; absent creating candidates report `writer_creator_grant_unproved`.
+Present FILE_CREATE precedence, pregrants, supplied descriptors/EAs, allocation hints, enabled Restore and unqualified flags are
+`writer_create_semantics_unproved` or `native_create_security_unproved`. Unprovable roots/ID-selected links, incomplete metadata,
+changed snapshots and capture limits have distinct `writer_lookup_unproved`, `writer_metadata_unproved`, `writer_snapshot_changed`
+and `writer_capture_limit` counters. These refusals are development gates, not approval to narrow M2. Creator grants are never
+rechecked against a prospective new DACL. There is no control-bit repair, protected-DACL substitution, post-set or AccessState injection.
+
+Ownership follows the existing backend list/operation rundown. Each prepared writer owns an instance pin, process reference and
+SYNCHRONIZE-only lifetime handle, a reference to the original static token, copied CREATE inputs/root locator, retained writer
+handle/object and snapshot metadata handles/objects/buffers. Factories unwind locally; successful return transfers one owner to the
+caller, released by `SafeUploadStagePublicReleaseWriter`. No new worker is created. The attach transaction has a dormant lease slot;
+its PASSIVE failure/active rundown closes lease/root handles **before** removing the instance lookup. Final cancellation destruction
+remains nonpageable and handle-free. Voluntary preflight atomically fences factories and vetoes their active count or any backend;
+rollback reopens admission. Mandatory close drains factories/local operations, closes public/root/ancestor/process handles outside
+the list lock, then waits for dependent owner retirement. No new service dependency is introduced. All I/O, waits, token work and
+descriptor allocation are PASSIVE and outside namespace/stream/list locks; the list lock only protects admission/counts/list pins.
+
+Capture has explicit temporary safety bounds: 128 factory/backend slots for writer preparation, 128 anchors, 2 MiB stored-security
+bytes per snapshot, 64 KiB per queried NTFS descriptor, 64 KiB supplied EA and 131,228 bytes supplied descriptor. Both race-window
+snapshots can coexist. A bound hit refuses the entire capture; these are not approved final resource defaults.
+
+Finite builder controls (the report's seven groups; run serially, retain failures, no protected VM):
+
+| Group | Increment-2 control and existing entry point |
+|---|---|
+| 1 — subject/CREATE | Run `writer-permission-native-control.ps1` without switches: 980 comparisons, eight direct-ID cases, nine supplied-descriptor cases. Missing kernel controls: actual primary/anonymous/identification/impersonation/delegation and restricted/deny-only subjects; six dispositions/presence, pregrants, privileges, EA/options/attributes, collision and creator precedence. |
+| 2 — lookup/metadata/races | The same script supplies the eight user-mode ID/metadata baselines. Missing kernel controls: exact 24-byte FltQueryInformationFile, all-parts security, original root close/rename, relative/`..`/raw-ID/case/short-name/hard-link selectors, and target/every-ancestor/link/case/security replacement in both windows. No existing script qualifies those kernel/race cases. |
+| 3 — binary security | Run `bound-publication-native-control.ps1`, then `Invoke-SecurityRoundTripNativeControl.ps1 -Label <fresh-label>` (SYSTEM wrapper, seven cases). Inspect binary control/ACE equality and creator grants; the two known mismatches must remain failures of equivalence. Do not rerun the already rejected `-CompareAutoInheritanceRequests` candidate without a new hypothesis. Kernel assignment, complete query classes and non-SYSTEM subjects remain unproved. |
+| 4 — carrier/replay | No carrier is added. Preserve V18/V23/V26 layouts; malicious page/replay controls belong to increment 3. |
+| 5 — seed coherence | No read/copy is added. Exact-object kernel reads and deterministic whole-copy races belong to increment 4; no existing script closes them. |
+| 6 — export/recipient | No export authority is asserted. Option 1 remains controlling; recipient/provenance controls belong to the agent/seed increments. |
+| 7 — lifetime | Run `writer-permission-native-control.ps1 -ShareLifetimeOnly` (90 cases). Missing kernel controls: cancellation at each acquisition, root cleanup, duplicate/inherited versus independent app objects, process/instance teardown, reversible veto and mandatory close-before-wait. These need the later reviewed kernel harness/pair, not a user-mode script. |
+
+Before native execution, run Windows PowerShell **5.1** parsing and each of the three `*native-control.ps1 -SelfCheckOnly` entry
+points. The orchestrator owns the four WDK/PREfast/ApiValidator builds and builder execution. This checkout has not been built or
+booted. V23 remains uncalled, bound capability remains NotReady, legacy `StageSecurity` behavior and published wire layouts are
+unchanged, normal builds compile the additions out. Review full-query semantics/observer side effects, original-root cleanup races,
+snapshot consistency, diagnostic refusal coverage and teardown ordering before the first authorized boot.
+
 ### Native scheduled-CREATE integration transport — reviewed contract
 
 **2026-10-12: Luna 6 max effort READY for transport/producer implementation after the revision, high-water and receipt-retention

@@ -5,6 +5,24 @@
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 typedef struct _SAFEUPLOAD_STAGE_PUBLIC_BACKEND SAFEUPLOAD_STAGE_PUBLIC_BACKEND,
     *PSAFEUPLOAD_STAGE_PUBLIC_BACKEND;
+typedef struct _SAFEUPLOAD_STAGE_WRITER_LEASE SAFEUPLOAD_STAGE_WRITER_LEASE,
+    *PSAFEUPLOAD_STAGE_WRITER_LEASE;
+/* Kernel diagnostics only; do not append these to a published wire layout. */
+typedef enum _SAFEUPLOAD_STAGE_WRITER_REFUSAL {
+    StageWriterNoRefusal = 0,
+    StageWriterSubjectUnrepresentable,
+    StageWriterNativeCreateSecurityUnproved,
+    StageWriterPublicationSecurityNotEquivalent,
+    StageWriterCreatorGrantUnproved,
+    StageWriterCreateSemanticsUnproved,
+    StageWriterLookupUnproved,
+    StageWriterMetadataUnproved,
+    StageWriterSnapshotChanged,
+    StageWriterCaptureLimit,
+    StageWriterRefusalCount
+} SAFEUPLOAD_STAGE_WRITER_REFUSAL;
+#define SAFEUPLOAD_STAGE_CREATE_EA_LIMIT 65536UL
+#define SAFEUPLOAD_STAGE_CREATE_SECURITY_LIMIT 131228UL
 /* Immutable original CREATE inputs owned by the attach transaction. Capturing
  * these is not authorization. EA/security storage is released by that owner. */
 typedef struct _SAFEUPLOAD_STAGE_CREATE_INPUT {
@@ -26,6 +44,7 @@ typedef struct _SAFEUPLOAD_STAGE_CREATE_INPUT {
     PSECURITY_DESCRIPTOR Security;
     UNICODE_STRING LookupName; /* Opened absolute form, or unchanged relative/raw ID form. */
     PFILE_OBJECT LookupRoot; /* Referenced original RelatedFileObject, never a name reconstruction. */
+    HANDLE LookupRootHandle; /* Internal locator only, captured before the original root can clean up. */
     BOOLEAN LookupById;
 } SAFEUPLOAD_STAGE_CREATE_INPUT, *PSAFEUPLOAD_STAGE_CREATE_INPUT;
 
@@ -66,6 +85,35 @@ NTSTATUS SafeUploadStagePublicCaptureCreateLookup(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects, _Inout_ PSAFEUPLOAD_STAGE_CREATE_INPUT Input);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 VOID SafeUploadStagePublicFreeCreateLookup(_Inout_ PSAFEUPLOAD_STAGE_CREATE_INPUT Input);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStagePublicCloseCreateLookup(_Inout_ PSAFEUPLOAD_STAGE_CREATE_INPUT Input);
+
+/* Preparation only, NOT permission to allocate/expose/publish. No live CREATE
+ * calls this factory in increment 2. The caller owns the returned lease until
+ * ReleaseWriter; future independent CREATEs need independent leases. */
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicOpenWriter(_In_ PFLT_INSTANCE Instance,
+    _In_ const SAFEUPLOAD_STAGE_CREATE_INPUT *Input, _In_ PSECURITY_CLIENT_CONTEXT Subject,
+    _In_ PEPROCESS OriginalRequestorProcess,
+    _Outptr_result_nullonfailure_ PSAFEUPLOAD_STAGE_WRITER_LEASE *Lease,
+    _Out_ SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStagePublicReleaseWriter(_In_opt_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease);
+/* Outside namespace/stream locks after RPC. Caller must additionally validate
+ * reservation/predecessor/policy/channel/cancellation under its own lock. */
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicRevalidateWriter(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    _Out_ SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason);
+/* Always refuses in this increment: construction/creator/round-trip mechanisms
+ * have no qualified producer. Never derive construction from queried security. */
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicCheckWriterSecurity(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    _Out_ SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason);
+VOID SafeUploadStagePublicGetWriterBinding(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    _Out_ PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding);
+VOID SafeUploadStagePublicRecordWriterRefusal(_In_ SAFEUPLOAD_STAGE_WRITER_REFUSAL Reason);
+LONG64 SafeUploadStagePublicWriterRefusalCount(_In_ SAFEUPLOAD_STAGE_WRITER_REFUSAL Reason);
+PCSTR SafeUploadStagePublicWriterRefusalName(_In_ SAFEUPLOAD_STAGE_WRITER_REFUSAL Reason);
 
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStagePublicReadMountGuid(_In_ PFLT_INSTANCE Instance, _Out_ GUID *VolumeId);
@@ -107,6 +155,8 @@ VOID SafeUploadStagePublicReleaseOperation(_In_ PSAFEUPLOAD_STAGE_PUBLIC_BACKEND
 VOID SafeUploadStagePublicGetBinding(_In_ PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend,
     _Out_ PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding);
 LONG SafeUploadStagePublicBackendCount(VOID);
+BOOLEAN SafeUploadStagePublicTryCloseAdmission(VOID);
+VOID SafeUploadStagePublicReopenAdmission(VOID);
 VOID SafeUploadStagePublicInitialize(VOID);
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStagePublicCloseAllBackends(VOID);
