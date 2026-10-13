@@ -13,11 +13,19 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 /// alternativas causam recusa explícita: não há OCR nem inspeção desses payloads.
 /// O formato antigo <c>.doc</c>, binário, também não é lido.
 /// </summary>
-public sealed class OpenXmlWordExtractor : ITextExtractor
+public sealed class OpenXmlWordExtractor : IStreamingTextExtractor
 {
     /// <inheritdoc />
     public IReadOnlySet<string> SupportedExtensions { get; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".docx" };
+
+    /// <inheritdoc />
+    public Task<TextReader> OpenReaderAsync(Stream content, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<TextReader>(new WordParagraphTextReader(content, cancellationToken));
+    }
 
     /// <inheritdoc />
     public Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken)
