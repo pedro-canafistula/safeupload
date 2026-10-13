@@ -1,0 +1,11 @@
+**REVISE — Sol 6.1, xhigh review at `3f3e5a1a`.**
+
+1. **High — fresh payload-capable opens lack enforcement during callback loss.** [T22:573](driver/T22-SMB-UNC-DESIGN.md:573) allows unregistered native opens during an uncovered interval. [C1–C3](driver/T22-SMB-UNC-DESIGN.md:520) cover surviving synthetic objects, publisher operations and previously mediated native handles. The population barrier holds recovery/publication; it cannot refuse fresh application I/O.
+
+   **Counterexample:** after forced cutoff, a write-authorized standard user opens a protected UNC file afresh and writes forbidden bytes, or creates it with an EA buffer. Microsoft confirms [new callbacks stop at teardown start](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_instance_teardown_callback); SMB independently accepts [EA mutations under `FILE_WRITE_EA`](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb2/43cf22fe-84cb-49cf-b3e7-e3d7d766a7b7) and [CREATE EA buffers](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb2/989faa38-d972-43c1-91be-624acd6a7622). Every head could remain held while uninspected bytes reach the server. This is a documented design counterexample, **not an observed leak**.
+
+   **Required change:** specify a supported enforcement boundary, independent of the detached instance, preventing fresh payload opens/operations throughout coverage loss, including aliases and reconnect. If unavailable, this architecture cannot meet T22’s all-state privacy contract. Extend [N09](driver/T22-SMB-UNC-DESIGN.md:714) and qualification with fresh data/append/EA/generic opens and CREATE-EA marker attempts **before reattachment**, crossing service availability and disconnect/reconnect. Require continuous independent server byte evidence; population holds cannot pass.
+
+All nine historical findings are closed **at design level**: C1/C2, retargeting, finite candidates, range/head ordering, provenance, existing native-handle barriers, D14 conflicts, T21 anchor, and EA refusal/observation. Owner decisions and feasibility gates remain open.
+
+No files changed; no builds, tests or VM actions performed. SMB remains disabled.
