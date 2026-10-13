@@ -49,10 +49,11 @@ public sealed class StagedTransferPublisherTests : IDisposable
         await File.WriteAllTextAsync(transfer.DestinationPath, "prior public bytes");
         byte[] original = await File.ReadAllBytesAsync(transfer.StagePath);
         var gate = new CountingPublicationGate();
+        var broker = new StagedJustifications();
         var publisher = new StagedTransferPublisher(new InspectionService(
             new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
             ExtractorRegistry.CreateDefault(), new VerdictCache()), _notifications, _journal, _stagingRoot, gate,
-            sessionUserSidResolver: _ => TestRequestorSid);
+            justifications: broker, sessionUserSidResolver: _ => TestRequestorSid);
         using var owner = _notifications.Subscribe(7, TestRequestorSid);
         using var other = _notifications.Subscribe(7, "S-1-5-21-111-222-333-1001");
         var directory = new DirectoryInfo(_stagingRoot);
@@ -78,6 +79,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
             Assert.Equal(TransferJournalState.Retained, durable.State);
             Assert.Equal(transfer, durable.Transfer);
             Assert.False(durable.StageDeleted);
+            Assert.True(durable.JustificationWindowClosed);
             var notice = Assert.IsType<TransferNotification>(await owner.Reader.ReadAsync().AsTask()
                 .WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.Equal(TransferPhase.Retained, notice.Phase);
@@ -85,6 +87,8 @@ public sealed class StagedTransferPublisherTests : IDisposable
             Assert.False(notice.OverrideAllowed);
             Assert.Null(notice.HandbackPath);
             Assert.Null(notice.SnapshotSha256Hex);
+            Assert.False(broker.TryConsume(transfer.TransferId.ToString("D"), 7, TestRequestorSid, out var callback));
+            Assert.Null(callback);
             Assert.False(other.Reader.TryRead(out _));
         }
         finally { directory.SetAccessControl(originalSecurity); }
@@ -104,9 +108,11 @@ public sealed class StagedTransferPublisherTests : IDisposable
         byte[] original = await File.ReadAllBytesAsync(transfer.StagePath);
         var store = new FailingCurrentPolicyStore(new LocalPolicyStore(_workspace.PolicyFile));
         var gate = new CountingPublicationGate();
+        var broker = new StagedJustifications();
         var publisher = new StagedTransferPublisher(new InspectionService(store,
             new LocalQueueAuditSink(_workspace.QueueFile), ExtractorRegistry.CreateDefault(), new VerdictCache()),
-            _notifications, _journal, _stagingRoot, gate, sessionUserSidResolver: _ => TestRequestorSid);
+            _notifications, _journal, _stagingRoot, gate, justifications: broker,
+            sessionUserSidResolver: _ => TestRequestorSid);
         using var owner = _notifications.Subscribe(7, TestRequestorSid);
         Assert.Equal(StagedTransferOutcome.Retained, await publisher.PublishAsync(transfer, CancellationToken.None));
         Assert.Equal(original, await File.ReadAllBytesAsync(transfer.StagePath));
@@ -122,6 +128,8 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal(InspectionFailureKind.ReadOrParse, held.InspectionFailure);
         Assert.False(held.OverrideAllowed);
         Assert.Null(held.HandbackPath);
+        Assert.False(broker.TryConsume(transfer.TransferId.ToString("D"), 7, TestRequestorSid, out var callback));
+        Assert.Null(callback);
         Assert.DoesNotContain(FailingCurrentPolicyStore.Diagnostic,
             System.Text.Json.JsonSerializer.Serialize<AgentNotification>(held), StringComparison.Ordinal);
 
