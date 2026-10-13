@@ -940,7 +940,11 @@ has independent server-side destination-byte run evidence, and is ready for comb
   Sol design review first; admission authority, Unknown and real query failures are unchanged.
   - [x] [Design](T18-COVERAGE-RETRY.md): up to three retries (10/20/40 ms) of exactly `0x800704D5` within one poll; nothing held or synthesized.
   - [x] [Sol 6.1 xhigh review](evidence/2026-10-13/t18-coverage-retry-review-sol61.md): ACCEPT WITH CONDITIONS; conditions folded into the design.
-  - [ ] Implementation with the review's controls; agent matrix.
+  - [x] Implementation (Sol worker, integrated here): `AdmissionCoverageRetry` retries only `Win32Exception.NativeErrorCode == 0x800704D5`
+    with 10/20/40 ms delays; startup flags applied after the final receipt; retry/exhaustion counters in diagnostics; 31 controls.
+    Draft [matrix `t18-retry1`](evidence/2026-10-13/exact-agent-matrix-t18-retry1-summary.txt) PASS; integrated
+    [matrix `t18-integrated1`](evidence/2026-10-13/exact-agent-matrix-t18-integrated1-summary.txt): 1,241 normal / 1,611 feature tests
+    per Debug/Release profile, no skips, 0/0.
 
 ### T19. Continuous evidence
 

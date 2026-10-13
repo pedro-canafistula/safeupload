@@ -14,6 +14,20 @@ public sealed class DriverDiagnosticsSource
     private FilterPort? _port;
     private bool _layoutVerified;
     private string? _layoutError;
+    private long _admissionCoverageRetries;
+    private long _admissionCoverageExhaustedSequences;
+
+    internal void RecordAdmissionCoverageRetry(int retriesUsed, bool exhausted)
+    {
+        Interlocked.Add(ref _admissionCoverageRetries, retriesUsed);
+        if (exhausted) Interlocked.Increment(ref _admissionCoverageExhaustedSequences);
+    }
+
+    internal JsonObject ReadAdmissionCoverageRetryCounters() => new()
+    {
+        ["retries"] = Interlocked.Read(ref _admissionCoverageRetries),
+        ["exhaustedSequences"] = Interlocked.Read(ref _admissionCoverageExhaustedSequences),
+    };
 
     public void Bind(FilterPort port)
     {
@@ -39,7 +53,7 @@ public sealed class DriverDiagnosticsSource
         }
     }
 
-    /// <summary>Driver counters plus the writer-state status (registry, reclaim worker, sections, stage streams).</summary>
+    /// <summary>Driver/writer-state counters plus coverage-query retry totals for this service lifetime.</summary>
     public JsonObject ReadCounters()
     {
         return WithPort(port =>
@@ -48,6 +62,7 @@ public sealed class DriverDiagnosticsSource
             SafeUploadWriterStateStatus writer = port.ReadWriterStateStatus();
             return new JsonObject
             {
+                ["admissionCoverageQuery"] = ReadAdmissionCoverageRetryCounters(),
                 ["refusals"] = new JsonObject
                 {
                     ["recorded"] = diag.DenyRecorded,

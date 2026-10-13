@@ -1554,13 +1554,20 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         while (!cancellationToken.IsCancellationRequested)
         {
             AdmissionCoverageDecision decision;
+            var retryCounts = new AdmissionCoverageRetryCounts();
             try
             {
-                AdmissionCoverageReceipt receipt = port.GetAdmissionCoverageStatus();
-                decision = AdmissionCoverageEvaluator.Evaluate(receipt, expectedPrefixes,
-                    expectedPolicyFlags, boundNativeGeneration);
-                if (boundNativeGeneration == 0 && decision.NativePolicyGeneration != 0)
-                    boundNativeGeneration = decision.NativePolicyGeneration;
+                var result = await QueryAndEvaluateAdmissionCoverageAsync(
+                    port.GetAdmissionCoverageStatus, Task.Delay, expectedPrefixes,
+                    expectedPolicyFlags, boundNativeGeneration, cancellationToken, retryCounts
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                    , coverage => ApplyStageStartupReadiness(coverage, _stageV20Ready, _stagingRecoveryReady,
+                        _nativeStartupRecovery?.HasFailed == true)
+#endif
+                    ).ConfigureAwait(false);
+                decision = result.Decision;
+                if (boundNativeGeneration == 0 && result.Coverage.NativePolicyGeneration != 0)
+                    boundNativeGeneration = result.Coverage.NativePolicyGeneration;
                 lastQueryFailure = null;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1569,19 +1576,21 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             }
             catch (Exception ex)
             {
-                if (lastQueryFailure != ex.GetType().Name)
+                if (ShouldLogCoverageQueryFailure(ex, ref lastQueryFailure))
                 {
-                    _logger.LogWarning(ex, "Admission coverage receipt is unavailable; status remains degraded.");
-                    lastQueryFailure = ex.GetType().Name;
+                    _logger.LogWarning(ex,
+                        "Admission coverage receipt is unavailable; status remains degraded. Retries: {Retries}; exhausted: {Exhausted}.",
+                        retryCounts.RetriesUsed, retryCounts.Exhausted);
                 }
                 decision = new AdmissionCoverageDecision(
                     AdmissionCoverageReadiness.Degraded, "CoverageQueryFailed", boundNativeGeneration);
             }
+            finally
+            {
+                // Count every sequence, even when its duplicate warning is suppressed.
+                _diagnostics.RecordAdmissionCoverageRetry(retryCounts.RetriesUsed, retryCounts.Exhausted);
+            }
 
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
-            decision = ApplyStageStartupReadiness(decision, _stageV20Ready, _stagingRecoveryReady,
-                _nativeStartupRecovery?.HasFailed == true);
-#endif
             AdmissionCoverageStatus status = decision.Readiness switch
             {
                 AdmissionCoverageReadiness.Ready => AdmissionCoverageStatus.Ready,
@@ -1617,6 +1626,33 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
             await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    internal static async Task<(AdmissionCoverageDecision Coverage, AdmissionCoverageDecision Decision)>
+        QueryAndEvaluateAdmissionCoverageAsync(
+            Func<AdmissionCoverageReceipt> query,
+            Func<TimeSpan, CancellationToken, Task> delay,
+            IReadOnlyList<string> expectedPrefixes,
+            uint expectedPolicyFlags,
+            uint boundNativeGeneration,
+            CancellationToken token,
+            AdmissionCoverageRetryCounts retryCounts,
+            Func<AdmissionCoverageDecision, AdmissionCoverageDecision>? applyStartupReadiness = null)
+    {
+        AdmissionCoverageReceipt receipt = await AdmissionCoverageRetry.QueryAsync(
+            query, delay, token, retryCounts).ConfigureAwait(false);
+        AdmissionCoverageDecision coverage = AdmissionCoverageEvaluator.Evaluate(
+            receipt, expectedPrefixes, expectedPolicyFlags, boundNativeGeneration);
+        // Invoke, rather than capture startup inputs before awaiting the retry.
+        return (coverage, applyStartupReadiness is null ? coverage : applyStartupReadiness(coverage));
+    }
+
+    internal static bool ShouldLogCoverageQueryFailure(Exception exception, ref string? lastQueryFailure)
+    {
+        string failure = exception.GetType().Name;
+        if (lastQueryFailure == failure) return false;
+        lastQueryFailure = failure;
+        return true;
     }
 
     internal static AdmissionCoverageDecision ApplyStageStartupReadiness(AdmissionCoverageDecision coverage,
