@@ -1,0 +1,400 @@
+{
+  "sourceCommit": "99473988271e34176b8971fcb7dcabc7b73e634d",
+  "scope": "Staged Word pull reader over the held snapshot, without part DOMs or complete text-node/output strings. All 13 focused controls pass in every full matrix profile. Scalar/lookahead, EOF, cancellation and borrowed-stream lifetime included. No protected pair qualification.",
+  "measurementLimits": "Collected live managed reader state at checkpoints on 8/32 MiB repeated-text nodes in real packages; isolated test collection. This does not measure process peak memory, hostile XML attributes/name tables, package relationship metadata, complete Office content or default-limit throughput.",
+  "limits": {
+    "selectedParts": 16384,
+    "xmlDepth": 256,
+    "behavior": "Explicit inspection_limit Blocked; no partial approval"
+  },
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "matrixTotal": 1057,
+      "rawTrxSha256": "2a3fbf7edb7fca052d584cbbdc5e7693df71b41226020849c018402953674db4",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "e5e65386-7324-4f62-a516-627172118999",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "5416a06e-70cd-404e-997e-93117b3cbbf7",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "d76dbca3-e49a-49e9-828d-28af2a1e95b5",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"dtd\")",
+          "outcome": "Passed",
+          "executionId": "40747510-ed1e-4ed7-8d9c-6eaa05fe6364",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"late-corruption\")",
+          "outcome": "Passed",
+          "executionId": "fc6e8640-4f1e-4fd3-8cf8-776052820d7c",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"missing-body\")",
+          "outcome": "Passed",
+          "executionId": "0a2dbc2a-595e-4df0-92fd-54db367caeb1",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"wrong-root\")",
+          "outcome": "Passed",
+          "executionId": "6e975317-a021-4d62-b673-608207f93cc2",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "a7c69f80-117f-472a-ad86-c45f1452f3f1",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "ce501ec4-4726-4777-95f4-c01d0cf58ada",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_text_node_reader_keeps_collected_live_state_bounded(megabytes: 32)",
+          "outcome": "Passed",
+          "executionId": "73d255f1-cc22-4b7b-9b98-80c07ad8376f",
+          "measurements": [
+            {
+              "textCharacters": 33554432,
+              "collectedManagedDeltaBytes": 147928,
+              "samples": 32
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_text_node_reader_keeps_collected_live_state_bounded(megabytes: 8)",
+          "outcome": "Passed",
+          "executionId": "1cb07a4c-ece5-4d92-b064-d692936908b6",
+          "measurements": [
+            {
+              "textCharacters": 8388608,
+              "collectedManagedDeltaBytes": 87392,
+              "samples": 8
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Nested_textbox_paragraphs_are_emitted_once_with_real_boundaries",
+          "outcome": "Passed",
+          "executionId": "f2ea2a74-12e7-420a-98ac-cf75dc24c6ef",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Reader_cancellation_and_disposal_preserve_the_borrowed_source_stream",
+          "outcome": "Passed",
+          "executionId": "33c290d6-5179-4d11-85e6-cadb7bc3d738",
+          "measurements": []
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "matrixTotal": 1057,
+      "rawTrxSha256": "50be57040ef6f2e10be30a19b3e79205fcd8a97100781d01bb111bc503982fd4",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "ae22c8ce-1736-4375-9446-10c1f68507a2",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "5ed15287-6839-4363-b136-d49fc8ba9013",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "b21b38b0-b131-4263-ad66-69525d830723",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"dtd\")",
+          "outcome": "Passed",
+          "executionId": "078e29f1-53f5-4dcc-9ead-4287a05265b6",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"late-corruption\")",
+          "outcome": "Passed",
+          "executionId": "230379b1-4b1b-450c-b863-4950e7f39e4f",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"missing-body\")",
+          "outcome": "Passed",
+          "executionId": "3947e198-c971-4699-a527-a727415757bc",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"wrong-root\")",
+          "outcome": "Passed",
+          "executionId": "b3582c99-9e37-4343-ba0e-5fbd3f0ffb55",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "44406de5-9663-4eae-8dba-7cbe4f09c846",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "9c13beac-49f4-4c97-98a1-8edb36e009c9",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_text_node_reader_keeps_collected_live_state_bounded(megabytes: 32)",
+          "outcome": "Passed",
+          "executionId": "961a2372-a00a-4fad-bc18-1db805a386ed",
+          "measurements": [
+            {
+              "textCharacters": 33554432,
+              "collectedManagedDeltaBytes": 148008,
+              "samples": 32
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_text_node_reader_keeps_collected_live_state_bounded(megabytes: 8)",
+          "outcome": "Passed",
+          "executionId": "136e7f51-9787-4529-9015-86db7e425280",
+          "measurements": [
+            {
+              "textCharacters": 8388608,
+              "collectedManagedDeltaBytes": 90528,
+              "samples": 8
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Nested_textbox_paragraphs_are_emitted_once_with_real_boundaries",
+          "outcome": "Passed",
+          "executionId": "ebbffda7-0599-4208-9ebe-46f04222b7bd",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Reader_cancellation_and_disposal_preserve_the_borrowed_source_stream",
+          "outcome": "Passed",
+          "executionId": "50a94972-f808-4cf5-a532-b671550e5bfc",
+          "measurements": []
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "matrixTotal": 1427,
+      "rawTrxSha256": "fc0b5d24e1e58faa86bb841be8349fc0f0fb1531ff7f064e4d1d9cfbbbcac526",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "c4cad756-622b-4ca3-8a50-fdb5ee4a9f09",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "55ce4909-b567-42c8-9a7c-6e71ef9a7780",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "27a7a53f-eb27-4005-9b69-469de148ebd6",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"dtd\")",
+          "outcome": "Passed",
+          "executionId": "93aaba20-f9da-4cd3-9502-eeeaacc68b24",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"late-corruption\")",
+          "outcome": "Passed",
+          "executionId": "435967a7-420c-4d3f-b97f-8ac228fd0721",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"missing-body\")",
+          "outcome": "Passed",
+          "executionId": "2b30f7c3-04eb-406f-9e5b-b6e9b8b8443d",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"wrong-root\")",
+          "outcome": "Passed",
+          "executionId": "e2c8fe45-4b46-47b0-8b22-a9f300c646ec",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "604b7450-5966-453d-bfec-636fd18c419a",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "ccc754c4-113b-4cef-9a13-73f6d39464f4",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_text_node_reader_keeps_collected_live_state_bounded(megabytes: 32)",
+          "outcome": "Passed",
+          "executionId": "c1f1f193-b826-4b05-827a-c0af401ae8c1",
+          "measurements": [
+            {
+              "textCharacters": 33554432,
+              "collectedManagedDeltaBytes": 147928,
+              "samples": 32
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_text_node_reader_keeps_collected_live_state_bounded(megabytes: 8)",
+          "outcome": "Passed",
+          "executionId": "7d29fff6-1261-4f63-9726-c010914f464d",
+          "measurements": [
+            {
+              "textCharacters": 8388608,
+              "collectedManagedDeltaBytes": 74120,
+              "samples": 8
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Nested_textbox_paragraphs_are_emitted_once_with_real_boundaries",
+          "outcome": "Passed",
+          "executionId": "e1c3aef0-7ff5-40f1-8412-c4e9e6c9ffcb",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Reader_cancellation_and_disposal_preserve_the_borrowed_source_stream",
+          "outcome": "Passed",
+          "executionId": "130f65d6-ed1e-4df4-b1c7-5647d254b44a",
+          "measurements": []
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "matrixTotal": 1427,
+      "rawTrxSha256": "66fec99b4f82776231e71a532582fcdc3b4688f7446542ef9fdd8b1dab484996",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "ff670cd6-fb21-4d52-9360-76a5bacbde9a",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "ae0a694f-a8f1-496c-807f-ba4ecdce6db5",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "532caba9-2f46-48f7-aee8-74c25c50474f",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"dtd\")",
+          "outcome": "Passed",
+          "executionId": "5aca3efb-0aad-4106-b334-a0d504343e20",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"late-corruption\")",
+          "outcome": "Passed",
+          "executionId": "e2af96ab-2e24-46c2-9c64-a40984d97b90",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"missing-body\")",
+          "outcome": "Passed",
+          "executionId": "53f210e6-5c9b-4a64-b055-4ca963d19fea",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"wrong-root\")",
+          "outcome": "Passed",
+          "executionId": "39eb72b9-7187-464e-a826-f776c0667e63",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "42580f6f-dc5d-4663-88de-4577da0ec645",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "428ed980-54ba-4bd2-98ff-84b9e0364dd7",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_text_node_reader_keeps_collected_live_state_bounded(megabytes: 32)",
+          "outcome": "Passed",
+          "executionId": "e7ad3d18-44fb-4f24-8b8b-898857c421e2",
+          "measurements": [
+            {
+              "textCharacters": 33554432,
+              "collectedManagedDeltaBytes": 151936,
+              "samples": 32
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_text_node_reader_keeps_collected_live_state_bounded(megabytes: 8)",
+          "outcome": "Passed",
+          "executionId": "9a4e0158-36f3-4986-8dff-f1d03594ddc9",
+          "measurements": [
+            {
+              "textCharacters": 8388608,
+              "collectedManagedDeltaBytes": 90528,
+              "samples": 8
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Nested_textbox_paragraphs_are_emitted_once_with_real_boundaries",
+          "outcome": "Passed",
+          "executionId": "5ed8fb49-2e5a-452d-a355-f666305f7f01",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Reader_cancellation_and_disposal_preserve_the_borrowed_source_stream",
+          "outcome": "Passed",
+          "executionId": "9a520ff4-a199-41f1-92e7-a1018b0199c4",
+          "measurements": []
+        }
+      ]
+    }
+  ]
+}

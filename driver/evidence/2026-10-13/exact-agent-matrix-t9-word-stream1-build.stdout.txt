@@ -1,0 +1,66 @@
+PROFILE_OUTPUT_CLEANUP=profile-src-normal-debug; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-normal-release; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-feature-debug; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-feature-release; directories=12; source_and_evidence_retained=True
+LABEL=t9-word-stream1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=6840afe3a16fed07b70c9216b2d40e57f9bc0d2d
+ARCHIVE_SHA256=75BA3E35A259260F4D6EEFF5BE515E2129E1233904AE5E44F7C61CE991B809D8
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-debug-tests-user: exit=0 warnings=0 errors=0
+normal-debug-tests-system-identity: S-1-5-18
+normal-debug-tests-system: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=1055
+normal-release: admission_evidence=false
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-app-build: exit=0 warnings=0 errors=0
+normal-release-test-build: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-release-tests-user: exit=0 warnings=0 errors=0
+normal-release-tests-system-identity: S-1-5-18
+normal-release-tests-system: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=1055
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_manifest_sha256=93696998B57DB114AECC3057F618384FED38199B5DEA4BE773EFA10A38F228C3
+normal-release: package_sha256=729A615B3FD15511AABEBC13B71CA07DD04C4EA86A7A997B01365198684EC1E9
+normal-release: exe_sha256=26F0925867897E0724A9C6E6F15939E7641462EF5D0561C1E65E6DAB833AA69E
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=0 warnings=0 errors=0
+feature-debug-tests-system-identity: S-1-5-18
+feature-debug-tests-system: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=1425
+feature-release: admission_evidence=true
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-app-build: exit=0 warnings=0 errors=0
+feature-release-test-build: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-release-tests-user: exit=0 warnings=0 errors=0
+feature-release-tests-system-identity: S-1-5-18
+feature-release-tests-system: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=1425
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_manifest_sha256=E213FFEEB96A25961C1867F93534DE0482D826D4FFD5FF3F5C4F41E00DCC89A3
+feature-release: package_sha256=5A9F264E07CB8681834C3720ECDEDEB7006062BD4E9BA457D7A24E03A202B629
+feature-release: exe_sha256=2B8833BC46848F14EA961DF49A10D8E38C3BFF959E267A85B57633767F8830FC
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-13T13:22:40.8814030Z

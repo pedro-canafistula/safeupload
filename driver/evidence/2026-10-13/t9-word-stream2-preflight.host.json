@@ -1,0 +1,8 @@
+{
+  "exitCode": 0,
+  "payloadSha256": "4172f01e1af7373e63baa50330a777a25b600622226c0025acca416f29f22025",
+  "stdoutSha256": "5d70d20a9aa0d20dbb85eea40974872730889c85ef728b62756e48a912caf65a",
+  "stderrSha256": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+  "reviewTimeoutBeforeExecution": true,
+  "directInvocationRetry": true
+}

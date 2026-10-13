@@ -440,6 +440,29 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors, with both release packages
     independently verified. All [20 formula and 11 large-input controls](evidence/2026-10-13/t9-formula1-controls-measurements.json)
     pass in every profile. No protected pair was installed or booted; commits remain local pending the earlier push approval.
+  - Staged Word text streaming (`6840afe3`, scalar/lookahead correction `6127e878`, tested source `99473988`): each pass opens
+    package parts on the same held snapshot through a facade that cannot dispose the caller stream. Header/body/footer/notes/comments
+    use XML pull readers with 8 KiB value chunks; part DOMs, complete text-node strings and a complete extracted-output string are
+    absent from this staged path. Legacy extraction/cache stays unchanged. Roots and the main body are required, DTDs/external XML
+    resolution are disabled, corrupt tails refuse the whole scan, and all part/package readers dispose on completion/failure.
+    Paragraph/run/table boundaries are preserved. Nested text-box paragraphs are emitted once on separate lines, preserving surrounding
+    text instead of duplicating descendants through the outer paragraph's InnerText. Selected-part/depth budgets (16,384/256) produce
+    explicit `inspection_limit` Blocked, without partial findings/approval. Existing policy size/deadline, worker and unsupported-payload
+    gates remain intact. This is text-node streaming, not proof of complete Word coverage or bounded hostile metadata: XML attributes,
+    parser name tables, SDK/package relationship metadata and other Office content remain qualification findings.
+    The [initial matrix](evidence/2026-10-13/exact-agent-matrix-t9-word-stream1-summary.txt) passes 1,055 normal/1,425 feature tests
+    per Debug/Release profile and all [11 initial controls](evidence/2026-10-13/t9-word-stream1-controls.json). The
+    [corrected complete matrix](evidence/2026-10-13/exact-agent-matrix-t9-word-stream3-summary.txt) passes 1,057 normal/1,427 feature
+    tests per profile, exact discovery/execution coverage, no skips, 0 warnings/errors and both verified release packages. All
+    [13 controls and live-state samples](evidence/2026-10-13/t9-word-stream3-controls-memory.json) pass: fragmented reads, nested
+    paragraphs, 8 MiB single text nodes with clean/EOF CPF, malformed/missing roots/body/tails, DTD refusal, scalar/peek/EOF behavior,
+    cancellation and source ownership/SHA-256. Isolated 8/32 MiB real-package controls collect live reader state at checkpoints; these
+    are not process-peak, hostile-metadata or protected measurements. The [prior corrected-source matrix](evidence/2026-10-13/t9-word-stream2-retained-failure.json)
+    failed the existing legacy queue/parsing deadline control at 8,162 ms against its unchanged 7,500 ms upper bound. One full identical-source
+    retry passes above; no assertion, policy budget, timing bound or test filter changed. Failed raw evidence remains retained.
+    Scoped duplicate-output cleanup preserves source/packages/manifests/evidence
+    ([initial](evidence/2026-10-13/t9-word-stream1-preflight.host.json), [corrected](evidence/2026-10-13/t9-word-stream2-preflight.host.json),
+    [retry](evidence/2026-10-13/t9-word-stream3-preflight.host.json)). No product pair was installed or booted; source/evidence remain local.
 - [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
   - Strict current-policy implementation (`bfffa535`): staged inspection, approval, justification, allocation/rename/attach
     admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and

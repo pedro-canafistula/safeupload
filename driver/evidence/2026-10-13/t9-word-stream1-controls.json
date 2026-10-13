@@ -1,0 +1,250 @@
+{
+  "sourceCommit": "6840afe3a16fed07b70c9216b2d40e57f9bc0d2d",
+  "scope": "Initial staged Word text-node streaming matrix. All 11 focused Word controls pass; scalar/lookahead correction and collected live-state controls are separate later source commits, pending the next matrix. No claim of complete Office coverage, hostile-metadata memory bounds or protected qualification.",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "rawTrxSha256": "b389a0feb7341785f169f84444a31d8f82d2d5949a4df5d8c158d673cbd2d219",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "bf10874a-c1ec-4208-b3d6-f6ef325e7d97"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "f1443169-1e9e-418f-b33a-b96514811eae"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "d1357907-275c-430e-a965-fe76250ab4f2"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"dtd\")",
+          "outcome": "Passed",
+          "executionId": "6f5c7bd1-2cdb-4f33-8233-d7de17075592"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"late-corruption\")",
+          "outcome": "Passed",
+          "executionId": "1f153f9c-a769-44f0-ab94-6ee6fdaef3db"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"missing-body\")",
+          "outcome": "Passed",
+          "executionId": "740702ec-902a-4014-8c12-d6a2d6ea6889"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"wrong-root\")",
+          "outcome": "Passed",
+          "executionId": "e3e01e08-1215-472a-9b88-b5bb8ff5778b"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "dcb21d38-b43a-4266-bc90-c20e45106096"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "96285da1-c206-4651-8835-8d1754fd5520"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Nested_textbox_paragraphs_are_emitted_once_with_real_boundaries",
+          "outcome": "Passed",
+          "executionId": "06b15332-91c0-40c5-8dcb-b38d1296a23d"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Reader_cancellation_and_disposal_preserve_the_borrowed_source_stream",
+          "outcome": "Passed",
+          "executionId": "e643691c-0a74-4012-a940-df6098a2702a"
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "rawTrxSha256": "54d08aaa3055a9ad814fa0ce4cba9846a536c3fda691742708d4e9297d89aff8",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "03cd8ae7-ca9c-412b-836e-12a9a883375f"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "832ec35c-8ddb-4f45-ab18-ec87b8d02feb"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "b0cf528f-fd37-40e8-9ac2-b97abf8ce5ec"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"dtd\")",
+          "outcome": "Passed",
+          "executionId": "1ccb9077-d1c3-41e4-8609-cb607c7b54ef"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"late-corruption\")",
+          "outcome": "Passed",
+          "executionId": "9f4e0ce4-6cfa-4a1d-af78-997c41f2c937"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"missing-body\")",
+          "outcome": "Passed",
+          "executionId": "a47713c7-5b83-49bb-ab7e-d5304fd82fdc"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"wrong-root\")",
+          "outcome": "Passed",
+          "executionId": "2ae88e18-81f2-4481-94d7-b335c62332aa"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "212add1f-8b98-42ee-826f-690a302bf1e5"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "9f6e550e-8e1e-4dfa-aeff-0a89c6a8881a"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Nested_textbox_paragraphs_are_emitted_once_with_real_boundaries",
+          "outcome": "Passed",
+          "executionId": "61921130-85b1-4663-8555-5e295cf10bc7"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Reader_cancellation_and_disposal_preserve_the_borrowed_source_stream",
+          "outcome": "Passed",
+          "executionId": "434e1bf9-82e9-4e4d-8d80-9f4ad6fd27ad"
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "rawTrxSha256": "410ab164fd3e39aaae37c1e14d4607da49f13f8dc1f101ddf44d19b837f7232f",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "099fb574-65bd-4e62-8081-7556df84fdf8"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "9e538019-c84d-44ef-bd84-e43357ab39e6"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "32cd5b24-a024-4275-9fbe-a535f745e840"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"dtd\")",
+          "outcome": "Passed",
+          "executionId": "3dfde4b7-7e6d-4c3c-8017-b44a3bf29d64"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"late-corruption\")",
+          "outcome": "Passed",
+          "executionId": "ba9a1f1d-98dd-4726-b1c1-46aca1bcbd1a"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"missing-body\")",
+          "outcome": "Passed",
+          "executionId": "6bbe5279-41ed-4b20-a5c5-4618486ff4cd"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"wrong-root\")",
+          "outcome": "Passed",
+          "executionId": "0af8d412-793b-4d06-9876-a77a770e4bc2"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "11277bcf-6f42-476a-945d-05e8d708c298"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "df2a404d-387a-452c-88a2-8a43e707169d"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Nested_textbox_paragraphs_are_emitted_once_with_real_boundaries",
+          "outcome": "Passed",
+          "executionId": "a4c679f8-b28e-4c8a-ad2f-0d5178faca89"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Reader_cancellation_and_disposal_preserve_the_borrowed_source_stream",
+          "outcome": "Passed",
+          "executionId": "54bbafc4-4c92-4fa9-aa01-4f95dd224d7d"
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "rawTrxSha256": "e55aebb19e67838d0c77ebf62d1b0f07121cfbdb418286de04d8dade2e8bdb4e",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "126604fb-9556-4abf-ad52-0f98b020586e"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "dee435a2-7f98-4fc5-bcdc-751635cc3c75"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Fragmented_word_readers_preserve_paragraph_run_and_table_boundaries(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "b9311c4c-3fb0-4caa-8cab-ae9046e4e39a"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"dtd\")",
+          "outcome": "Passed",
+          "executionId": "ba24ea91-d8af-422c-a337-018ae574ec07"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"late-corruption\")",
+          "outcome": "Passed",
+          "executionId": "4b937d4f-92b5-4809-b17f-edd9360045b8"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"missing-body\")",
+          "outcome": "Passed",
+          "executionId": "32f5f032-0817-4685-aa6c-b83b3bc3fc57"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Incomplete_or_unsafe_xml_cannot_return_a_partial_staged_approval(shape: \"wrong-root\")",
+          "outcome": "Passed",
+          "executionId": "6527ac06-fdd4-4db8-beb8-7e80f74def93"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "22e384c5-71b1-4e0c-8d11-946992574b37"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Large_single_text_node_reaches_eof_without_full_node_materialization(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "517cfda9-9737-49bd-9ef2-a571e2347cfe"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Nested_textbox_paragraphs_are_emitted_once_with_real_boundaries",
+          "outcome": "Passed",
+          "executionId": "0e4919eb-9551-46e5-affb-f1b7ac92b5f3"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.WordStreamingInspectionTests.Reader_cancellation_and_disposal_preserve_the_borrowed_source_stream",
+          "outcome": "Passed",
+          "executionId": "d1578892-1f55-46f6-94a3-8cfc3781eb74"
+        }
+      ]
+    }
+  ]
+}

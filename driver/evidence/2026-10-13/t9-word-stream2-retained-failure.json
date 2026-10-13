@@ -1,0 +1,15 @@
+{
+  "sourceCommit": "99473988271e34176b8971fcb7dcabc7b73e634d",
+  "matrixLabel": "t9-word-stream2",
+  "matrixGate": "FAIL",
+  "scope": "Normal Debug completed; normal Release user leg failed existing shared queue/parsing deadline control at 8162 ms against unchanged 5500\u20137500 ms bounds. No threshold, assertion, filter or production budget change. Later profiles did not run. Raw receipts preserved; one identical-source full retry planned.",
+  "rawTrxSha256": "da11c7329545ee7bcd24191a7ba492c3ee32bb2cbf0b14db6c7d8dc1cf3f0aad",
+  "failedCases": [
+    {
+      "name": "SafeUpload.Agent.Tests.InspectionWorkBudgetTests.Waiting_for_capacity_and_parsing_share_one_policy_deadline(staged: False)",
+      "outcome": "Failed",
+      "message": "Assert.InRange() Failure: Value not in range\r\nRange:  (5500 - 7500)\r\nActual: 8162"
+    }
+  ],
+  "retryOutcome": "Full identical-source t9-word-stream3 passes all four test profiles and both release package gates; no assertion, timing bound, policy budget or filter changed."
+}
