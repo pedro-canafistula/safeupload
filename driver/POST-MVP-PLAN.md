@@ -162,6 +162,35 @@ is ready to implement; the failed zero-access reopen is discarded. Unprotected n
 **Done when:** 10,000 mixed approve/block saves in one boot pass with flat nonpaged pool, no Verifier hit, no cap refusal, zero residual
 versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01 pass in all three modes.
 
+**Owner decision — 2026-10-12: smoke occupancy and loaded-context release.** The 256-cycle row is a smoke test; its module-pool
+slope is informational and is never a stop reason. SafeUpload.sys Verifier bytes are almost entirely the writer registry: fixed pool
+plus 2,400 bytes per live named entry, capped at 4,096. Live occupancy floats around 220–280; one entry at the last of four samples
+moves the slope by 11.25 B/cycle. In `m2t4clean256b1`, module bytes rose 89,856 between cycles 64 and 256 while SwUr rose
+39 × 2,400 = 93,600 bytes. Short slopes (−23, 192, 319, 462 B/cycle) are occupancy noise. The 10k slope of 1.501 B/cycle over
+cycles 1,000–10,000 is the meaningful measurement. The short row retains the 64 KiB idle endpoint band (`T4PoolEndpoint`);
+leak detection remains the 10,000-cycle row's unchanged slope < 4 B/cycle from cycle 1,000 and the 64 KiB endpoint band (`T4PoolFlat`).
+
+Strengthen the 10k gate with `T4ContextsReleased`: after the existing idle sample, as SYSTEM enable privileges 13 and 5, then empty
+working sets, flush the modified list and purge the standby list through `NtSetSystemInformation` class 80, commands 2/3/4 in order.
+Record every NTSTATUS without throwing on failure, wait 30 seconds for NTFS delayed close, then sample `purged`. Require all purge
+statuses to succeed and live SUfl allocations at `purged` ≤ `start` + 2,048; missing purge evidence fails the 10k assertion. Short rows
+report this check as INFO. No handles, driver calls or file deletion are part of the purge. Every sampled registry entry count must
+remain within capacity and idle capacity failures must be zero (`T4RegistryBounded`, all rows).
+
+In `m2t4boot10k1011a2`, live SUfl grew from 343 to 14,898, tracking roughly 13,100 created/kept files (9,155 journal manifests,
+2,075 hand-backs, approximately 1,875 new public files). `m2t4memdiag1` proves unload releases them; the new check establishes whether
+memory pressure releases contexts while the driver stays loaded. This adds a gate and does not relax the long-row or functional
+assertions. The repeated-failure stop rule applies to the 10k row and functional assertions, never a short slope.
+
+Validate the actual purge Add-Type signature on Windows PowerShell 5.1 with the harness gate, and replay retained evidence with
+`python3 driver/scripts/t4/verdict-selfcheck.py` before any run. Use win10-debug3 only, the existing disposable disk/reset-NVRAM and
+separate-restoration workflow, unchanged k11 (`EBDFCE549EA1DC271498A5F6A38D151AC952ADE9105D476B073A313EB271C851`) and agent
+`6198eee7` archive (`21F725DD4995603979CF173C43499477B45E2CC5085404AFC594C5B04CD5293F`), verifying both hashes before boot.
+Run 256 boot-Verifier cycles sampled every 64 first. Stop if any required assertion fails, any purge status fails, purge evidence is
+missing, or purge releases less than half of the SUfl growth since start; understand that measurement before a long run. Only after
+smoke passes run 10,000 boot-Verifier cycles and require every assertion, including post-idle `T4AdmissionRecovered`. Only after both
+pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run failure other than the informational short slope.
+
 - [x] Lifetime fix and pre-boot review, including `60fecdbc`; `m2-driver5-t11` has
   [all four WDK/PREfast/ApiValidator builds at 0/0](evidence/2026-10-10/exact-m2-driver5-t11-summary.txt).
 - [x] Simplified VM setup, bounded readiness and repeated-failure capture/stop:
@@ -174,14 +203,15 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
 - [ ] **Memory attribution:** [analysis and independent Luna lifetime review](evidence/2026-10-12/t4-memory-direction.md).
   - [x] Approved diagnostic `m2t4memdiag1`: 256/256, original short assertions pass, zero staged leftovers; unload returns SUfl/SwUr
     and Verifier allocations to zero; separate restoration passes ([result and raw evidence](evidence/2026-10-12/t4-memory-attribution-result.md)).
-  - [ ] Establish bounded retention while loaded: stream contexts account for much of SUfl; the bounded registry sample has live
-    holders, no retired entries. Unload release is not a loaded-memory bound. No new reclamation or relaxed gate is justified;
-    latest [clean short result](evidence/2026-10-12/t4-clean-short-result.md) again fails pool slope (461.600 B/cycle); VM tests stopped
-    pending owner authorization. [Coverage-retry explanation/final Ready check](evidence/2026-10-12/t4-coverage-retry-analysis.md) is prepared;
-    runtime availability remains open. Diagnostic overhead excludes the prior run from qualification.
+  - [ ] Establish bounded retention while loaded with the owner-approved purge gate above. The
+    [clean short result](evidence/2026-10-12/t4-clean-short-result.md) has an informational occupancy slope (461.600 B/cycle) under this
+    decision; its historical FAIL is retained unchanged. Unload release is not a loaded-memory bound. No kernel reclamation is authorized.
+    [Coverage-retry explanation/final Ready check](evidence/2026-10-12/t4-coverage-retry-analysis.md) is prepared;
+    runtime availability remains open. Diagnostic overhead excludes the prior diagnostic from qualification.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
-- [ ] Pass the complete short and 10k rows. Latest short: 256/256, cleanup PASS, memory FAIL; long retry not started. Last 10k: 8,740/10,000, four stages left;
+- [ ] Pass the complete short and 10k rows with the revised harness. Latest historical short: 256/256, cleanup PASS, original slope FAIL;
+  no purge sample, long retry not started. Last 10k: 8,740/10,000, four stages left;
   [journal-failure diagnosis and raw evidence](evidence/2026-10-11/t4-journal-failure-diagnosis.md).
 - [ ] Run the required raw-volume regression cells above, then rerun T4 on the final M2 pair.
   The cycle row's sampled public-byte checks do not replace the raw-volume observer.

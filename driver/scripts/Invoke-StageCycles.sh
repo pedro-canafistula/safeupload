@@ -434,13 +434,60 @@ if mode in ('runtime-verifier', 'verifier-from-boot') and len(cyc) >= 4:
     first = ys[0]
     # Before T4 every staged save kept about 4.5 KB of nonpaged pool (version plus view); flat means well under 1/1000 of that.
     ok = slope < 4.0 and final is not None and final <= first + 65536
-    verdict('T4PoolFlat', ok, f"driver nonpaged bytes (Verifier pool tracking) from cycle {xs[0]}: {first} -> {ys[-1]} at cycle {xs[-1]}, "
-            f"after idle {final}; slope {slope:.3f} B/cycle (limit 4); peak {(settled.get('Verifier') or {}).get('PeakNonPagedBytes')}")
+    if cycles >= 10000:
+        verdict('T4PoolFlat', ok, f"driver nonpaged bytes (Verifier pool tracking) from cycle {xs[0]}: {first} -> {ys[-1]} at cycle {xs[-1]}, "
+                f"after idle {final}; slope {slope:.3f} B/cycle (limit 4); peak {(settled.get('Verifier') or {}).get('PeakNonPagedBytes')}")
+    else:
+        verdict('T4PoolEndpoint', final is not None and final <= first + 65536,
+                f"driver nonpaged bytes (Verifier pool tracking) from cycle {xs[0]}: {first}; after idle {final}; limit {first + 65536}")
+        out.append(f"T4PoolSlope INFO {slope:.3f} B/cycle (smoke row; judged only on the 10,000-cycle row)")
 elif mode in ('runtime-verifier', 'verifier-from-boot'):
-    verdict('T4PoolFlat', False, f"only {len(cyc)} Verifier pool samples")
+    verdict('T4PoolFlat' if cycles >= 10000 else 'T4PoolEndpoint', False, f"only {len(cyc)} Verifier pool samples")
+    if cycles < 10000:
+        out.append('T4PoolSlope INFO unavailable B/cycle (smoke row; judged only on the 10,000-cycle row)')
 def stage(s, k):
     return ((s or {}).get('StageWorker') or {}).get(k)
 settled = (result or {}).get('Settled'); exited = (result or {}).get('AfterActorExit'); idle = (result or {}).get('Idle')
+registry_bad = []
+for sample in samples:
+    writer = sample.get('WriterState') or {}
+    entries = writer.get('registryEntries'); capacity = writer.get('registryCapacity')
+    if not isinstance(entries, int) or not isinstance(capacity, int) or entries > capacity:
+        registry_bad.append(f"{sample.get('Label')}@{sample.get('Cycle')}: {entries}/{capacity}")
+capacity_failures = ((idle or {}).get('WriterState') or {}).get('registryCapacityFailures')
+verdict('T4RegistryBounded', bool(samples) and not registry_bad and capacity_failures == 0,
+        f"{len(samples)} samples within registry capacity; idle capacity failures {capacity_failures}; invalid samples {registry_bad}")
+def sufl_live(sample):
+    tag = (sample or {}).get('TagSUfl') or {}
+    allocs = tag.get('NonPagedAllocs'); frees = tag.get('NonPagedFrees')
+    return allocs - frees if isinstance(allocs, int) and isinstance(frees, int) else None
+start = next((s for s in samples if s.get('Label') == 'start'), None)
+last_cycle = next((s for s in reversed(samples) if s.get('Label') == 'cycle'), None)
+purged = (result or {}).get('Purged')
+for label, sample in [('start', start), ('last-cycle', last_cycle), ('idle', idle), ('purged', purged)]:
+    out.append(f"T4Memory INFO {label}: SUfl live {sufl_live(sample)}, bytes {((sample or {}).get('TagSUfl') or {}).get('NonPagedUsed')}; "
+               f"SwUr bytes {((sample or {}).get('TagSwUr') or {}).get('NonPagedUsed')}; "
+               f"module bytes {((sample or {}).get('Verifier') or {}).get('NonPagedBytes')}")
+purge = (result or {}).get('Purge') or []
+expected_purge = [('RtlAdjustPrivilege', 13), ('RtlAdjustPrivilege', 5),
+                  ('NtSetSystemInformation', 2), ('NtSetSystemInformation', 3), ('NtSetSystemInformation', 4)]
+purge_ok = isinstance(purge, list) and len(purge) == len(expected_purge) and all(
+    isinstance(record, dict) and (record.get('Operation'), record.get('Privilege', record.get('Command'))) == expected
+    and isinstance(record.get('NTSTATUS'), int) and 0 <= record['NTSTATUS'] < 0x80000000
+    for record, expected in zip(purge, expected_purge))
+start_live = sufl_live(start); purged_live = sufl_live(purged)
+idle_live = sufl_live(idle)
+growth = idle_live - start_live if idle_live is not None and start_live is not None else None
+released = idle_live - purged_live if idle_live is not None and purged_live is not None else None
+contexts_ok = purge_ok and (purged or {}).get('Label') == 'purged' and start_live is not None and purged_live is not None and purged_live <= start_live + 2048
+contexts_reason = (f"SUfl live start {start_live}, purged {purged_live}; limit start + 2048; "
+                   f"released {released} of idle growth since start {growth}; "
+                   f"purge NTSTATUS {'PASS' if purge_ok else 'FAIL'} {json.dumps(purge)}; "
+                   f"purged sample {'present' if purged else 'missing'}")
+if cycles >= 10000:
+    verdict('T4ContextsReleased', contexts_ok, contexts_reason)
+else:
+    out.append(f"T4ContextsReleased INFO check {'PASS' if contexts_ok else 'FAIL'}; {contexts_reason}")
 verdict('T4VersionsReleased', stage(settled, 'liveVersions') == 0 and stage(settled, 'liveViews') == 0,
         f"after settle: live versions {stage(settled, 'liveVersions')}, views {stage(settled, 'liveViews')}, created {stage(settled, 'versionsCreated')}, "
         f"released {stage(settled, 'versionsReleased')}, views released {stage(settled, 'viewsReleased')}")

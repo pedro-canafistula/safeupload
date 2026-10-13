@@ -135,6 +135,38 @@ function Get-Sample([int]$Cycle, [string]$Label) {
     $sample
 }
 
+function Invoke-T4MemoryPurge {
+    # The coordinator runs as SYSTEM. Record all native statuses, including
+    # failures, so a refused purge cannot prevent the final sample/report.
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class T4MemoryPurge {
+    [DllImport("ntdll.dll", ExactSpelling = true)]
+    public static extern int RtlAdjustPrivilege(uint privilege,
+        [MarshalAs(UnmanagedType.U1)] bool enable,
+        [MarshalAs(UnmanagedType.U1)] bool currentThread,
+        [MarshalAs(UnmanagedType.U1)] out bool previouslyEnabled);
+    [DllImport("ntdll.dll", ExactSpelling = true)]
+    public static extern int NtSetSystemInformation(int infoClass, ref int command, int length);
+}
+'@
+    foreach ($privilege in 13, 5) {
+        $previous = $false
+        $status = [T4MemoryPurge]::RtlAdjustPrivilege($privilege, $true, $false, [ref]$previous)
+        [pscustomobject]@{ Operation = 'RtlAdjustPrivilege'; Privilege = $privilege; NTSTATUS = $status;
+            StatusHex = '0x' + $status.ToString('X8'); Succeeded = $status -ge 0 }
+    }
+    # SYSTEM_MEMORY_LIST_COMMAND: empty working sets, flush modified list,
+    # purge standby list. This opens no handles and makes no driver calls.
+    foreach ($command in 2, 3, 4) {
+        $value = [int]$command
+        $status = [T4MemoryPurge]::NtSetSystemInformation(80, [ref]$value, 4)
+        [pscustomobject]@{ Operation = 'NtSetSystemInformation'; Command = $command; NTSTATUS = $status;
+            StatusHex = '0x' + $status.ToString('X8'); Succeeded = $status -ge 0 }
+    }
+}
+
 function Read-Public([string]$Path) {
     try {
         $stream = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
@@ -245,6 +277,9 @@ try {
     $result.AfterActorExit = Get-Sample $Cycles 'actor-exited'
     Start-Sleep -Seconds 60
     $result.Idle = Get-Sample $Cycles 'idle'
+    $result.Purge = @(Invoke-T4MemoryPurge)
+    Start-Sleep -Seconds 30   # NTFS delayed close after cache pressure
+    $result.Purged = Get-Sample $Cycles 'purged'
 } catch {
     $result.Error = $_.Exception.Message
     $result.ErrorDetail = $_.Exception.ToString()
