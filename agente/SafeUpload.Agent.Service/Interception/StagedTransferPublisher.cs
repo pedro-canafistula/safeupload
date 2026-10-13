@@ -913,8 +913,7 @@ public sealed partial class StagedTransferPublisher
                     FileAccess.Write, FileShare.None, 64 * 1024,
                     FileOptions.Asynchronous | FileOptions.WriteThrough))
                 {
-                    source.Position = 0;
-                    await source.CopyToAsync(output, token).ConfigureAwait(false);
+                    await StagedSnapshotCopy.CopyAsync(source, output, expectedLength, token).ConfigureAwait(false);
                     output.Flush(flushToDisk: true);
                 }
                 source.Position = 0;
