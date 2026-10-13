@@ -108,8 +108,10 @@ public sealed class WordStreamingInspectionTests : IDisposable
         using var cancellation = new CancellationTokenSource();
         using (var reader = await new OpenXmlWordExtractor().OpenReaderAsync(input, CancellationToken.None))
         {
+            Assert.Equal((int)'c', reader.Peek()); Assert.Equal((int)'c', reader.Peek());
             var first = new char[1];
             Assert.Equal(1, reader.Read(first, 0, 1)); Assert.Equal('c', first[0]);
+            Assert.Equal((int)'l', reader.Read());
             cancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reader.ReadAsync(new char[8].AsMemory(), cancellation.Token).AsTask());
         }

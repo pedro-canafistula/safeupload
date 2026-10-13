@@ -19,6 +19,7 @@ internal sealed class WordParagraphTextReader : TextReader
     private readonly char[] _characters = new char[8192];
     private XmlReader? _xml;
     private int _partIndex, _characterOffset, _characterCount, _bodyDepth = -1;
+    private int _lookahead = -2;
     private bool _rootSeen, _bodySeen, _value, _newline, _disposed;
 
     public WordParagraphTextReader(Stream content, CancellationToken token)
@@ -49,6 +50,21 @@ internal sealed class WordParagraphTextReader : TextReader
         => ValueTask.FromResult(Fill(buffer.Span, token));
 
     public override int Read(Span<char> buffer) => Fill(buffer, CancellationToken.None);
+    public override int Read()
+    {
+        Span<char> character = stackalloc char[1];
+        return Fill(character, CancellationToken.None) == 0 ? -1 : character[0];
+    }
+    public override int Peek()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_lookahead == -2)
+        {
+            Span<char> character = stackalloc char[1];
+            _lookahead = FillCore(character, CancellationToken.None) == 0 ? -1 : character[0];
+        }
+        return _lookahead;
+    }
     public override int Read(char[] buffer, int index, int count)
     {
         ArgumentNullException.ThrowIfNull(buffer);
@@ -59,6 +75,17 @@ internal sealed class WordParagraphTextReader : TextReader
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         token.ThrowIfCancellationRequested();
+        if (buffer.Length == 0 || _lookahead == -1) return 0;
+        if (_lookahead >= 0)
+        {
+            buffer[0] = (char)_lookahead; _lookahead = -2;
+            return 1 + FillCore(buffer[1..], token);
+        }
+        return FillCore(buffer, token);
+    }
+
+    private int FillCore(Span<char> buffer, CancellationToken token)
+    {
         int written = 0;
         while (written < buffer.Length)
         {
