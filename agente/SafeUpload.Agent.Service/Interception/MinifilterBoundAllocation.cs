@@ -82,7 +82,7 @@ public sealed partial class MinifilterInterceptor
                 return replay;
             }
             string processName = Process.GetProcessById(processId).ProcessName;
-            Policy policy = await _policyStore.LoadAsync(token).ConfigureAwait(false);
+            Policy policy = await _policyStore.LoadCurrentAsync(token).ConfigureAwait(false);
             var operation = new FileOperation(destination, Path.GetFileName(destination), Path.GetExtension(destination),
                 0, DateTime.MinValue, processName, processId, destination, kind);
             if (!policy.IsMonitoredDestination(operation)) return null;

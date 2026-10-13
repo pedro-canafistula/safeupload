@@ -15,17 +15,26 @@ namespace SafeUpload.Agent.Core.Application;
 /// registrá-la no composition root. Nada além da composição muda: o motor de
 /// inspeção depende desta interface e não sabe da origem da política.
 ///
-/// A interface é deliberadamente mínima — uma única operação de leitura — para
-/// que a versão HTTP não precise expor semântica de rede a quem a consome.
+/// Legacy consumers may keep protection available with a validated fallback.
+/// Staged decisions require a distinct current read, so a fallback can never
+/// silently become authority to publish, justify or export retained bytes.
 /// </summary>
 public interface IPolicyStore
 {
     /// <summary>
-    /// Devolve a política vigente, já validada.
+    /// Devolve uma política validada, admitindo o fallback documentado pelo provedor.
     /// </summary>
     /// <exception cref="InvalidPolicyException">
     /// Se a política armazenada não puder ser aplicada, entre outros motivos
     /// por não ter categoria ativa nenhuma (RN-009).
     /// </exception>
     Task<Policy> LoadAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Loads the current validated policy. Read failures cannot substitute a
+    /// previous/default fallback. Initial local provisioning may create and
+    /// validate a live policy file before returning it.
+    /// Providers must implement this contract explicitly.
+    /// </summary>
+    Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken);
 }

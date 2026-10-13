@@ -188,6 +188,34 @@ public class PolicyTests : IDisposable
         Assert.Contains("C:\\Protected", retained.MonitoredScopes.DestinationPaths);
     }
 
+    [Fact]
+    public async Task Current_policy_rejects_weak_acl_even_with_a_valid_fallback_and_recovers_after_repair()
+    {
+        _workspace.WritePolicy("""{"version":7,"activeCategories":["Cpf"]}""");
+        bool trusted = true;
+        var store = new LocalPolicyStore(_workspace.PolicyFile, _ => trusted);
+        var original = await store.LoadAsync(CancellationToken.None);
+        _workspace.WritePolicy("""{"version":8,"activeCategories":["Secret"]}""");
+        trusted = false;
+        Assert.Same(original, await store.LoadAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<PolicyFileAclRejectedException>(() => store.LoadCurrentAsync(CancellationToken.None));
+        trusted = true;
+        var current = await store.LoadCurrentAsync(CancellationToken.None);
+        Assert.Equal(8, current.Version);
+        Assert.Equal(Category.Secret, Assert.Single(current.ActiveCategories));
+    }
+
+    [Fact]
+    public async Task Missing_current_policy_after_load_cannot_be_replaced_with_a_default()
+    {
+        _workspace.WritePolicy("""{"version":7,"activeCategories":["Cpf"]}""");
+        var store = new LocalPolicyStore(_workspace.PolicyFile);
+        await store.LoadCurrentAsync(CancellationToken.None);
+        File.Delete(_workspace.PolicyFile);
+        await Assert.ThrowsAsync<FileNotFoundException>(() => store.LoadCurrentAsync(CancellationToken.None));
+        Assert.False(File.Exists(_workspace.PolicyFile));
+    }
+
     /// <summary>
     /// Categoria desconhecida convivendo com categorias conhecidas é ignorada,
     /// e o agente continua funcionando. Um painel mais novo pode publicar uma

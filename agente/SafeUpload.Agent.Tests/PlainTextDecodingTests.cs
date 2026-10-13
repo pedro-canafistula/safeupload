@@ -129,6 +129,7 @@ public sealed class PlainTextDecodingTests : IDisposable
     private sealed class FixedPolicyStore(Policy policy) : IPolicyStore
     {
         public Task<Policy> LoadAsync(CancellationToken token) => Task.FromResult(policy);
+        public Task<Policy> LoadCurrentAsync(CancellationToken token) => LoadAsync(token);
     }
 
     // One byte per read splits every BOM and multibyte code point. A

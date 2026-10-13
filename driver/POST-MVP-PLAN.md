@@ -385,6 +385,11 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
   bounded numeric-scanner scratch space are implemented; [component gates](evidence/2026-10-10/m2-agent-component-gates.json).
 - [ ] Finish whole-file streaming, format/encoding/extraction coverage, stage-space accounting/orphan cleanup and seeding cost.
 - [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
+  - Strict current-policy implementation (matrix pending): staged inspection, approval, justification, allocation/rename/attach
+    admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and
+    HTTP failure/empty responses cannot substitute cached/default policy authority. Legacy fallback remains available to its
+    existing consumers. Controls cover provider failures/recovery, all staged decision routes, retention during an ACL failure
+    before publication, and refusal to export hand-back bytes. Whole-file streaming, failure UI and protected qualification remain open.
 - [ ] Measure cold/warm throughput and peak memory before choosing defaults; existing 256 MiB warm-input measurements are not staged qualification.
 - [ ] Qualify large clean/CPF, corrupt/encrypted/password-protected, parser/extraction-limit, timeout and disk-full cases.
 - [ ] Resolve the all-zero payment-card classification question with user-visible options before changing its current verdict.

@@ -142,6 +142,7 @@ public sealed class StagedInspectionFailureTests : IDisposable
     private sealed class FixedPolicyStore(Policy policy) : IPolicyStore
     {
         public Task<Policy> LoadAsync(CancellationToken cancellationToken) => Task.FromResult(policy);
+        public Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken) => LoadAsync(cancellationToken);
     }
 
     private sealed class FailingExtractor(bool timeout, CancellationToken release) : ITextExtractor

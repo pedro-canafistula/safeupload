@@ -813,6 +813,35 @@ public sealed class StagedTransferPublisherTests : IDisposable
     }
 
     [Fact]
+    public async Task Rejected_policy_acl_during_inspection_retains_bytes_without_requesting_publication()
+    {
+        bool trusted = true;
+        await new LocalPolicyStore(_workspace.PolicyFile).LoadAsync(CancellationToken.None);
+        var store = new LocalPolicyStore(_workspace.PolicyFile, _ => trusted);
+        var extractor = new PausingExtractor(); var gate = new CountingPublicationGate();
+        var inspector = new InspectionService(store, new LocalQueueAuditSink(_workspace.QueueFile),
+            new ExtractorRegistry([extractor]), new VerdictCache());
+        var publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot, gate);
+        var transfer = Transfer("acl-rejected.txt", "Clean private bytes.");
+        Directory.CreateDirectory(Path.GetDirectoryName(transfer.DestinationPath)!);
+        File.WriteAllText(transfer.DestinationPath, "Existing public bytes.");
+        var publication = publisher.PublishAsync(transfer, CancellationToken.None);
+        try
+        {
+            await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            trusted = false;
+            extractor.Continue.TrySetResult();
+            Assert.Equal(StagedTransferOutcome.Retained, await publication);
+            Assert.Equal(0, gate.AuthorizeCalls);
+            Assert.Equal("Existing public bytes.", await File.ReadAllTextAsync(transfer.DestinationPath));
+            Assert.Equal("Clean private bytes.", await File.ReadAllTextAsync(transfer.StagePath));
+            Assert.Equal(TransferJournalState.Retained, (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+            Assert.Empty(Directory.EnumerateFiles(_stagingRoot, "*.inspection*"));
+        }
+        finally { extractor.Continue.TrySetResult(); await publication; }
+    }
+
+    [Fact]
     public async Task Writable_section_prevents_inspection_after_its_file_handle_closes()
     {
         var extractor = new PausingExtractor();

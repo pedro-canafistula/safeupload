@@ -552,6 +552,30 @@ public sealed class StagedHandbackTests : IDisposable
         Assert.Empty(Directory.EnumerateFileSystemEntries(outside));
     }
 
+    [Fact]
+    public async Task Handback_never_exports_bytes_using_a_rejected_policy_fallback()
+    {
+        await new LocalPolicyStore(_workspace.PolicyFile).LoadAsync(CancellationToken.None);
+        bool trusted = true;
+        var policy = new LocalPolicyStore(_workspace.PolicyFile, _ => trusted);
+        await policy.LoadAsync(CancellationToken.None);
+        trusted = false;
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var user = identity.User!;
+        string profile = Path.Combine(_workspace.Root, "current-policy-profile");
+        Directory.CreateDirectory(profile);
+        var copier = new StagedHandbackCopier(policy, new TestHandbackEnvironment(user, profile));
+        string path = _workspace.WriteText("current-policy-source.txt", "Private retained bytes.");
+        var transfer = new StagedTransfer(Guid.NewGuid(), path, Path.Combine(_workspace.Root, "protected", "report.txt"),
+            DestinationKind.RemovableDrive, "explorer.exe", 1234, 7) { RequestorSid = user.Value };
+        string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(await File.ReadAllBytesAsync(path)));
+        await using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        await Assert.ThrowsAsync<PolicyFileAclRejectedException>(() => copier.CopyVerifiedAsync(transfer, source,
+            source.Length, digest, CancellationToken.None));
+        Assert.Empty(Directory.EnumerateFiles(profile, "*", SearchOption.AllDirectories));
+        Assert.Equal("Private retained bytes.", await File.ReadAllTextAsync(path));
+    }
+
     private async Task<IPolicyStore> PolicyAsync(bool allowJustification)
     {
         var store = new LocalPolicyStore(_workspace.PolicyFile);

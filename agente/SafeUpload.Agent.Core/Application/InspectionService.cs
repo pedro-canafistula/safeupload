@@ -90,7 +90,7 @@ public sealed class InspectionService
             return false;
         }
 
-        var current = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
         return current.Version == result.PolicyVersion &&
             !current.IsExcludedProcess(operation.ProcessName) &&
             current.IsMonitoredDestination(operation) &&
@@ -101,7 +101,7 @@ public sealed class InspectionService
         FileOperation operation, InspectionResult result, CancellationToken cancellationToken)
     {
         if (!result.InScope || !result.IsBlocked) return false;
-        var current = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
         return current.OverrideAllowed && current.Version == result.PolicyVersion &&
             !current.IsExcludedProcess(operation.ProcessName) &&
             current.IsMonitoredDestination(operation) &&
@@ -125,7 +125,8 @@ public sealed class InspectionService
         ArgumentNullException.ThrowIfNull(operation);
 
         var stopwatch = Stopwatch.StartNew();
-        var policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var policy = await (staged ? _policyStore.LoadCurrentAsync(cancellationToken)
+            : _policyStore.LoadAsync(cancellationToken)).ConfigureAwait(false);
         bool auditAndCache = !staged;
         var inspectionFailure = staged ? Verdict.Blocked : Verdict.AllowedWithoutInspection;
 

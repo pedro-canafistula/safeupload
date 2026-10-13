@@ -67,7 +67,12 @@ public sealed class LocalPolicyStore : IPolicyStore
     public string PolicyFilePath => _policyFile;
 
     /// <inheritdoc />
-    public async Task<Policy> LoadAsync(CancellationToken cancellationToken)
+    public Task<Policy> LoadAsync(CancellationToken cancellationToken) => LoadCoreAsync(true, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken) => LoadCoreAsync(false, cancellationToken);
+
+    private async Task<Policy> LoadCoreAsync(bool allowFallback, CancellationToken cancellationToken)
     {
         await _loadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -85,6 +90,8 @@ public sealed class LocalPolicyStore : IPolicyStore
 
                 if (!File.Exists(_policyFile))
                 {
+                    if (!allowFallback && _lastGoodPolicy is not null)
+                        throw new FileNotFoundException("The current staged policy is unavailable.", _policyFile);
                     await WriteDefaultAsync(cancellationToken).ConfigureAwait(false);
                 }
 
@@ -114,7 +121,7 @@ public sealed class LocalPolicyStore : IPolicyStore
                 _lastGoodPolicy = policy;
                 return policy;
             }
-            catch (PolicyFileAclRejectedException) when (_lastGoodPolicy is not null)
+            catch (PolicyFileAclRejectedException) when (allowFallback && _lastGoodPolicy is not null)
             {
                 // Do not read or adopt a policy whose ACL is weaker. Existing
                 // service users keep the prior in-memory policy; first start

@@ -158,6 +158,7 @@ public sealed class InspectionWorkBudgetTests : IDisposable
     private sealed class FixedPolicyStore(Policy policy) : IPolicyStore
     {
         public Task<Policy> LoadAsync(CancellationToken token) => Task.FromResult(policy);
+        public Task<Policy> LoadCurrentAsync(CancellationToken token) => LoadAsync(token);
     }
 
     private sealed class NoncooperativeExtractor(bool lateFailure) : ITextExtractor

@@ -260,7 +260,7 @@ internal sealed class StagedHandbackCopier : IStagedHandbackCopier
         HashSet<DirectoryIdentity> targetAncestors = OpenDirectoryAncestors(target,
             allowMissingSuffix: true);
         var registeredRoots = new HashSet<DirectoryIdentity>();
-        var policy = await _policyStore.LoadAsync(token).ConfigureAwait(false);
+        var policy = await _policyStore.LoadCurrentAsync(token).ConfigureAwait(false);
         foreach (string scope in policy.MonitoredScopes.DestinationPaths)
         {
             DirectoryIdentity identity = OpenDirectoryIdentity(scope);

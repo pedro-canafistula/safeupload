@@ -604,7 +604,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     .GetAwaiter().GetResult();
                 return PortVerdict.Allow;
             }
-            var policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var policy = _policyStore.LoadCurrentAsync(CancellationToken.None).GetAwaiter().GetResult();
             var operation = new FileOperation(destination, Path.GetFileName(destination),
                 Path.GetExtension(destination), 0, DateTime.MinValue, entry.Transfer.ProcessName,
                 entry.Transfer.ProcessId, destination, entry.Transfer.Destination);
@@ -700,7 +700,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
             SessionResolver.ProcessIdentity requestor = SessionResolver.GetRequiredProcessIdentity(processId);
             string processName = Process.GetProcessById(processId).ProcessName;
-            Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            Policy policy = _policyStore.LoadCurrentAsync(CancellationToken.None).GetAwaiter().GetResult();
             var operation = new FileOperation(destination, Path.GetFileName(destination),
                 Path.GetExtension(destination), 0, DateTime.MinValue, processName,
                 processId, destination, kind);
@@ -901,7 +901,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             bool commitPolicyAllowed = false;
             if (request.Operation == Operation.StageAttachCommit)
             {
-                Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+                Policy policy = _policyStore.LoadCurrentAsync(CancellationToken.None).GetAwaiter().GetResult();
                 var operation = new FileOperation(destination, Path.GetFileName(destination),
                     Path.GetExtension(destination), 0, DateTime.MinValue, entry.Transfer.ProcessName,
                     entry.Transfer.ProcessId, destination, entry.Transfer.Destination);
@@ -971,7 +971,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 SessionResolver.GetRequiredProcessIdentity(requestorProcessId);
 
             var kind = ClassifyStagedDestination(request.TypedFlags);
-            Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            Policy policy = _policyStore.LoadCurrentAsync(CancellationToken.None).GetAwaiter().GetResult();
             var destinationOperation = new FileOperation(destination, Path.GetFileName(destination),
                 Path.GetExtension(destination), 0, DateTime.MinValue, request.GetImageName(),
                 checked((int)request.RequestorProcessId), destination, kind);

@@ -40,6 +40,7 @@ public class ClipboardServiceTests
 
     private sealed class FixedPolicyStore(Policy? policy) : IPolicyStore
     {
+        public Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken) => LoadAsync(cancellationToken);
         public Task<Policy> LoadAsync(CancellationToken cancellationToken) =>
             policy is null
                 ? throw new InvalidPolicyException("política de teste inválida")

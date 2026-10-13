@@ -59,7 +59,12 @@ public sealed class HttpPolicyStore : IPolicyStore
     /// Política publicada pelo painel, ou o padrão embutido quando o painel não
     /// puder ser consultado. Nunca lança por causa da rede.
     /// </summary>
-    public async Task<Policy> LoadAsync(CancellationToken cancellationToken)
+    public Task<Policy> LoadAsync(CancellationToken cancellationToken) => LoadCoreAsync(true, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken) => LoadCoreAsync(false, cancellationToken);
+
+    private async Task<Policy> LoadCoreAsync(bool allowFallback, CancellationToken cancellationToken)
     {
         PolicyDocument? document;
 
@@ -78,7 +83,7 @@ public sealed class HttpPolicyStore : IPolicyStore
             // host encerrar o que estiver em andamento.
             throw;
         }
-        catch (Exception)
+        catch (Exception) when (allowFallback)
         {
             // Qualquer outra coisa — HttpRequestException, timeout que virou
             // TaskCanceledException sem cancelamento nosso, JsonException — é
@@ -87,9 +92,9 @@ public sealed class HttpPolicyStore : IPolicyStore
             document = null;
         }
 
-        var policy = document is null
-            ? LocalPolicyStore.CreateDefault()
-            : document.ToPolicy();
+        if (document is null && !allowFallback)
+            throw new InvalidPolicyException("The policy service returned no current policy.");
+        var policy = document is null ? LocalPolicyStore.CreateDefault() : document.ToPolicy();
 
         // Mesma regra da versão local: valida no carregamento, não no uso. Uma
         // política publicada sem categoria ativa é erro de configuração do
