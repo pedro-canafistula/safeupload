@@ -1,0 +1,175 @@
+{
+  "sourceCommit": "9a46baf3b20ac69327304286c6409a13141ff5d8",
+  "matrixGate": "PASS",
+  "scope": "Copies no more than the measured seal length with fixed 64-KiB scratch space; refuses initial mismatch, late growth, short input and caller cancellation. Seven controls per exact Windows profile. Does not establish per-user/total storage quotas, durable orphan cleanup, complete parser-memory bounds or protected runtime qualification.",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "matrixTotal": 1086,
+      "rawTrxSha256": "f25ab5f3a28fd697becdd3a0bd492b786a90fd4140aad99871db3f09aa1a938b",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Caller_cancellation_does_not_copy_a_partial_snapshot",
+          "outcome": "Passed",
+          "executionId": "f82eb48d-a089-42a7-ad75-750f476e6d6e"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Early_eof_and_initial_length_mismatch_are_incomplete_capture_failures",
+          "outcome": "Passed",
+          "executionId": "16f5c3fe-f3bb-4f2d-a4fc-81b7057f8f74"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 0)",
+          "outcome": "Passed",
+          "executionId": "52c468fe-b54e-425c-96ba-c5aa08b8d2e1"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 1)",
+          "outcome": "Passed",
+          "executionId": "79a1ec2e-41fe-4987-b9fd-331dee328330"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65536)",
+          "outcome": "Passed",
+          "executionId": "ef2a6838-a0cb-4f0a-ac12-6a17e53d8219"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65537)",
+          "outcome": "Passed",
+          "executionId": "4659229f-90a5-4139-aa01-3de183b0bad9"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Late_source_growth_never_copies_bytes_beyond_the_measured_snapshot_budget",
+          "outcome": "Passed",
+          "executionId": "bb4f0565-89d1-4b33-a5d4-ba870ee93d60"
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "matrixTotal": 1086,
+      "rawTrxSha256": "ad7778adc9dfa8375ebd2aabaff7138aa785e0fa36404e1303c9d3770d05ef11",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Caller_cancellation_does_not_copy_a_partial_snapshot",
+          "outcome": "Passed",
+          "executionId": "ce7f6fbf-90ef-4106-8c5a-f6ef872c16ba"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Early_eof_and_initial_length_mismatch_are_incomplete_capture_failures",
+          "outcome": "Passed",
+          "executionId": "22b3169c-e242-47c9-b0ef-1d734f7fcb3c"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 0)",
+          "outcome": "Passed",
+          "executionId": "692ee5e9-bccc-44ab-b7ff-adf6e3166019"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 1)",
+          "outcome": "Passed",
+          "executionId": "2e8d3d78-8c91-40fc-8cfe-5f8d26af1659"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65536)",
+          "outcome": "Passed",
+          "executionId": "8b0b4ccf-57e3-4bd2-9a24-fbff84bcaebd"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65537)",
+          "outcome": "Passed",
+          "executionId": "67cb96a8-ff1e-462a-834f-a83596f64bc2"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Late_source_growth_never_copies_bytes_beyond_the_measured_snapshot_budget",
+          "outcome": "Passed",
+          "executionId": "73c0e439-0e25-49b2-bab2-08c916914059"
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "matrixTotal": 1456,
+      "rawTrxSha256": "fc52b691bbcb86c7fef5e34bd398e55a26bdfb9df7b06da4f964d1fbfe8c107a",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Caller_cancellation_does_not_copy_a_partial_snapshot",
+          "outcome": "Passed",
+          "executionId": "e8380d37-7b41-4bec-9c93-8882cbe54cc3"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Early_eof_and_initial_length_mismatch_are_incomplete_capture_failures",
+          "outcome": "Passed",
+          "executionId": "5868c480-8d80-4666-b837-8bb3762aba9a"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 0)",
+          "outcome": "Passed",
+          "executionId": "6081b87e-e85f-4f81-b905-6ce88d2030c5"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 1)",
+          "outcome": "Passed",
+          "executionId": "9f67c3dd-0fb7-4c0e-82f4-06823e48bce5"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65536)",
+          "outcome": "Passed",
+          "executionId": "bda4afaa-6270-455b-bdef-a7909e89d135"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65537)",
+          "outcome": "Passed",
+          "executionId": "5136a271-823a-4ea4-95a2-6a20bcf498b6"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Late_source_growth_never_copies_bytes_beyond_the_measured_snapshot_budget",
+          "outcome": "Passed",
+          "executionId": "1a5eba84-9135-4b17-b5b4-f8e5b6111fb8"
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "matrixTotal": 1456,
+      "rawTrxSha256": "0c16823ca46379df36e5b770e693e7990d80577c177b0ce1ee1d4c1a63d620a0",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Caller_cancellation_does_not_copy_a_partial_snapshot",
+          "outcome": "Passed",
+          "executionId": "4be90d0a-a87e-45ba-b72c-b6375673e8f5"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Early_eof_and_initial_length_mismatch_are_incomplete_capture_failures",
+          "outcome": "Passed",
+          "executionId": "291f1bb9-216c-47ed-a108-82964655ae15"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 0)",
+          "outcome": "Passed",
+          "executionId": "dea95f50-0b32-46ff-98df-56e528a5175b"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 1)",
+          "outcome": "Passed",
+          "executionId": "dd9875c6-ff42-47fc-abb5-ddc8ce699577"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65536)",
+          "outcome": "Passed",
+          "executionId": "04b9924b-e4f6-492a-9222-c37765c551c7"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65537)",
+          "outcome": "Passed",
+          "executionId": "4c09db03-78c0-4834-9c51-65a44136f975"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Late_source_growth_never_copies_bytes_beyond_the_measured_snapshot_budget",
+          "outcome": "Passed",
+          "executionId": "5dc1663d-15c2-458b-9985-586c71c94872"
+        }
+      ]
+    }
+  ]
+}

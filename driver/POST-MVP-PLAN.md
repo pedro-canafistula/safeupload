@@ -498,6 +498,24 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     source ownership/SHA-256. Existing image-content refusal and privacy controls remain in the full suite. This is not a PDF process-peak
     or protected measurement. [Scoped preflight](evidence/2026-10-13/t9-pdf-stream1-preflight.host.json) preserves completed source,
     packages/manifests and evidence. No product pair was installed or booted; commits remain local pending the earlier push approval.
+  - Measured snapshot-copy bound (`9a46baf3`): copy at most the sealed length with fixed 64 KiB scratch space. Initial length
+    mismatch, growth during capture, premature EOF and cancellation cannot yield a complete inspection snapshot. Existing digest,
+    publication and failure handling remain intact. The [complete exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-snapshot-bound2-summary.txt)
+    passes 1,086 normal/1,456 feature tests per Debug/Release profile, exact discovery/execution coverage, no skips, 0 warnings/errors
+    and both independently verified Release packages. All [seven copy controls](evidence/2026-10-13/t9-snapshot-bound2-controls.json)
+    pass in every profile, including source growth from 128 KiB to 8 MiB while copied/read bytes stay at 128 KiB.
+    The [initial matrix](evidence/2026-10-13/t9-snapshot-bound1-retained-failure.json) passed every test but failed final feature ZIP
+    creation on builder disk exhaustion; its empty summary/partial ZIP remain failure evidence. One identical-source retry passes,
+    without changing assertions, policy budgets, timing bounds or filters. Scoped duplicate-output cleanup
+    ([initial](evidence/2026-10-13/t9-snapshot-bound1-preflight.host.json), [retry](evidence/2026-10-13/t9-snapshot-bound2-preflight.host.json))
+    preserves source/packages/manifests/raw evidence. No product pair was installed or booted; commits remain local pending push approval.
+  - Snapshot storage finding: ordinary-publisher inspection copies use random private `.inspection` names, with no durable
+    snapshot-owner/cleanup obligation in the transfer journal. Process interruption can leave copies, and deletion failure can
+    mask capture/cleanup errors or surface after an already-completed transfer. Source/inspection/publication authority must remain
+    separate from cleanup success. Durable identity-bound cleanup and storage charging remain required; filename matching, an
+    unverified pathname or digest alone must not authorize deletion. The exact-length copy safeguard does not solve these findings
+    or introduce per-user/total quotas, and no startup deletion sweep is implemented by that change. Capture also precedes
+    InspectionService's bounded worker/deadline admission; those parser slots alone do not bound concurrent snapshot storage.
 - [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
   - Strict current-policy implementation (`bfffa535`): staged inspection, approval, justification, allocation/rename/attach
     admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and

@@ -1,0 +1,153 @@
+{
+  "sourceCommit": "9a46baf3b20ac69327304286c6409a13141ff5d8",
+  "matrixGate": "FAIL",
+  "failure": "All four test profiles passed; final feature Release ZIP creation failed on builder disk exhaustion. Empty summary and incomplete ZIP do not prove matrix/package completion. All raw evidence retained.",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "testTotal": 1086,
+      "rawTrxSha256": "bb7a9e448ba8bd46a39661ef285db72db2004743091e362095f46662885a5a98",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 1)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Caller_cancellation_does_not_copy_a_partial_snapshot",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Early_eof_and_initial_length_mismatch_are_incomplete_capture_failures",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Late_source_growth_never_copies_bytes_beyond_the_measured_snapshot_budget",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 0)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65537)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65536)",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "testTotal": 1086,
+      "rawTrxSha256": "05a1d83c88b4ed9db800f0203265e96eb5ebc06130f366ec581f1d5d7b3e4d3c",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Late_source_growth_never_copies_bytes_beyond_the_measured_snapshot_budget",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Caller_cancellation_does_not_copy_a_partial_snapshot",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 1)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Early_eof_and_initial_length_mismatch_are_incomplete_capture_failures",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 0)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65536)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65537)",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "testTotal": 1456,
+      "rawTrxSha256": "aecbd92f6f06e503afeca0413e83e8a1d5d0d19430af6b52397db74b7025c711",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 0)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Late_source_growth_never_copies_bytes_beyond_the_measured_snapshot_budget",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Early_eof_and_initial_length_mismatch_are_incomplete_capture_failures",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65537)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 1)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Caller_cancellation_does_not_copy_a_partial_snapshot",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65536)",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "testTotal": 1456,
+      "rawTrxSha256": "65ce57eaf05a47b2f26a5540b2125e37ae96823f2568803c37a49adbdf14244f",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Late_source_growth_never_copies_bytes_beyond_the_measured_snapshot_budget",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 0)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65536)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Caller_cancellation_does_not_copy_a_partial_snapshot",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 65537)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Early_eof_and_initial_length_mismatch_are_incomplete_capture_failures",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedSnapshotCopyTests.Exact_snapshot_copy_reads_every_measured_byte_and_rewinds_the_source(length: 1)",
+          "outcome": "Passed"
+        }
+      ]
+    }
+  ],
+  "identicalSourceRetry": {
+    "label": "t9-snapshot-bound2",
+    "matrixGate": "PASS",
+    "controls": "t9-snapshot-bound2-controls.json",
+    "scope": "All four profiles and both independent package checks passed; no assertion, policy budget, timing bound or test filter changed. The prior failure and raw evidence remain retained."
+  }
+}
