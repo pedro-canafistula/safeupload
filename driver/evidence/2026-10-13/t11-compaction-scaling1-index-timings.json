@@ -1,0 +1,287 @@
+{
+  "formatVersion": 1,
+  "sourceCommit": "23b7eed9c19a8b6903f53f7acdc5396fee1583e2",
+  "scope": "In-memory retention index; excludes input construction, journal filesystem I/O and protected runtime. Single measurements, not a latency gate.",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "rawTrxSha256": "05e09574414274600070b966aea5bb281d0690858db4fba412274fffbcc9c9f2",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Cancelled_index_selection_stops_before_creating_a_retention_result",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Every_maximum_generation_tie_keeps_its_own_reference_chain",
+          "outcome": "Passed",
+          "shape": "maximum-ties",
+          "entries": 4,
+          "retained": 4,
+          "elapsedMs": 0.071
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 1000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 1001,
+          "retained": 1000,
+          "elapsedMs": 0.36
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 10000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 10001,
+          "retained": 10000,
+          "elapsedMs": 4.905
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 50000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 50001,
+          "retained": 50000,
+          "elapsedMs": 37.921
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Shared_references_and_cycles_are_visited_without_losing_any_reachable_record",
+          "outcome": "Passed",
+          "shape": "shared-cycle",
+          "entries": 4,
+          "retained": 3,
+          "elapsedMs": 0.207
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "rawTrxSha256": "dfbacfe6d708b81bae04af69dcf86c441b2ded5ec44edaf8481feb16b3e61e48",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Cancelled_index_selection_stops_before_creating_a_retention_result",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Every_maximum_generation_tie_keeps_its_own_reference_chain",
+          "outcome": "Passed",
+          "shape": "maximum-ties",
+          "entries": 4,
+          "retained": 4,
+          "elapsedMs": 0.076
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 1000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 1001,
+          "retained": 1000,
+          "elapsedMs": 0.444
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 10000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 10001,
+          "retained": 10000,
+          "elapsedMs": 26.297
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 50000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 50001,
+          "retained": 50000,
+          "elapsedMs": 41.264
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Shared_references_and_cycles_are_visited_without_losing_any_reachable_record",
+          "outcome": "Passed",
+          "shape": "shared-cycle",
+          "entries": 4,
+          "retained": 3,
+          "elapsedMs": 0.219
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "rawTrxSha256": "6ca35e197111af8f71adb20ffa3a68d572024268b8c8cfe814c677bcfef7d5b8",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Cancelled_index_selection_stops_before_creating_a_retention_result",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Every_maximum_generation_tie_keeps_its_own_reference_chain",
+          "outcome": "Passed",
+          "shape": "maximum-ties",
+          "entries": 4,
+          "retained": 4,
+          "elapsedMs": 0.073
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(destinations: 1000)",
+          "outcome": "Passed",
+          "shape": "bound-names-one-parent",
+          "entries": 2000,
+          "retained": 1000,
+          "elapsedMs": 10.995
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(destinations: 10000)",
+          "outcome": "Passed",
+          "shape": "bound-names-one-parent",
+          "entries": 20000,
+          "retained": 10000,
+          "elapsedMs": 155.316
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(destinations: 50000)",
+          "outcome": "Passed",
+          "shape": "bound-names-one-parent",
+          "entries": 100000,
+          "retained": 50000,
+          "elapsedMs": 1423.55
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(caseSensitive: False)",
+          "outcome": "Passed",
+          "shape": "native-unicode",
+          "entries": 17,
+          "retained": 15,
+          "elapsedMs": 0.271
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(caseSensitive: True)",
+          "outcome": "Passed",
+          "shape": "native-unicode",
+          "entries": 17,
+          "retained": 17,
+          "elapsedMs": 0.058
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 1000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 1001,
+          "retained": 1000,
+          "elapsedMs": 0.435
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 10000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 10001,
+          "retained": 10000,
+          "elapsedMs": 5.685
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 50000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 50001,
+          "retained": 50000,
+          "elapsedMs": 50.389
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Shared_references_and_cycles_are_visited_without_losing_any_reachable_record",
+          "outcome": "Passed",
+          "shape": "shared-cycle",
+          "entries": 4,
+          "retained": 3,
+          "elapsedMs": 0.234
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "rawTrxSha256": "9138e04bdc66eb6ae6b9535ae6b3abbb5a8155684f77c10a37778bee46fcadf9",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Cancelled_index_selection_stops_before_creating_a_retention_result",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Every_maximum_generation_tie_keeps_its_own_reference_chain",
+          "outcome": "Passed",
+          "shape": "maximum-ties",
+          "entries": 4,
+          "retained": 4,
+          "elapsedMs": 1.597
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(destinations: 1000)",
+          "outcome": "Passed",
+          "shape": "bound-names-one-parent",
+          "entries": 2000,
+          "retained": 1000,
+          "elapsedMs": 12.897
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(destinations: 10000)",
+          "outcome": "Passed",
+          "shape": "bound-names-one-parent",
+          "entries": 20000,
+          "retained": 10000,
+          "elapsedMs": 209.442
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(destinations: 50000)",
+          "outcome": "Passed",
+          "shape": "bound-names-one-parent",
+          "entries": 100000,
+          "retained": 50000,
+          "elapsedMs": 1208.669
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(caseSensitive: False)",
+          "outcome": "Passed",
+          "shape": "native-unicode",
+          "entries": 17,
+          "retained": 15,
+          "elapsedMs": 1.089
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(caseSensitive: True)",
+          "outcome": "Passed",
+          "shape": "native-unicode",
+          "entries": 17,
+          "retained": 17,
+          "elapsedMs": 0.057
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 1000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 1001,
+          "retained": 1000,
+          "elapsedMs": 0.356
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 10000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 10001,
+          "retained": 10000,
+          "elapsedMs": 3.81
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(count: 50000)",
+          "outcome": "Passed",
+          "shape": "reference-chain",
+          "entries": 50001,
+          "retained": 50000,
+          "elapsedMs": 58.403
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Shared_references_and_cycles_are_visited_without_losing_any_reachable_record",
+          "outcome": "Passed",
+          "shape": "shared-cycle",
+          "entries": 4,
+          "retained": 3,
+          "elapsedMs": 0.27
+        }
+      ]
+    }
+  ]
+}

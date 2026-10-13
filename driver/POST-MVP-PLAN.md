@@ -411,17 +411,25 @@ cannot publish unapproved bytes, proven by the observer.
     passes 913 normal/1,278 feature tests per Debug/Release profile, including all nine new compaction controls, with exact
     discovery/execution coverage, no skips and 0 warnings/errors. This does not close the full compaction/scaling or final-pair review gate.
     The destination hash deliberately omits the leaf to preserve Windows equality; many names under one parent share its
-    bucket. That index and the repeated reference-closure scans still need a bounded design/large-journal measurement.
+    bucket. The follow-up below replaces that lookup and repeated closure scans in the compactor; other destination-index
+    users and full journal I/O remain outside this checkpoint.
     The [first matrix stopped on builder disk exhaustion](evidence/2026-10-13/exact-agent-matrix-t11-bound-compaction1-build.stderr.txt)
     after both normal test profiles passed. [Scoped recovery](evidence/2026-10-13/t11-builder-generated-cleanup2.stdout.txt)
     verified eight unpacked publication copies against host-retained ZIPs/manifests before removal (one inline bootstrap,
     then seven copies), preserving source, packages and evidence; the fresh matrix above passes without product VM boots.
-  - Follow-up implementation (matrix pending): the bound claim index uses an ordered tree with the same Windows ordinal
+  - Follow-up implementation (`23b7eed9`): the bound claim index uses an ordered tree with the same Windows ordinal
     filename comparator as destination equality, avoiding leaf-hash collision chains. A GUID-indexed queue walks retained
     parent/delete/allocation references once each, including shared references/cycles. Snapshot controls exercise 1k/10k/50k
     ancestor chains, up to 50k bound destinations/100k claims under one parent, maximum ties, cancellation and native Unicode
     equality under Turkish culture. Eligibility and durable file validation remain in the existing compactor. Index timings
     qualify only that in-memory decision phase; full journal I/O/scaling and final-pair review remain open.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t11-compaction-scaling1-summary.txt) passes 919 normal/1,289
+    feature tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. All six normal
+    and eleven feature index controls pass, alongside the nine disk-backed bound retention/restart controls. In feature Release,
+    the [single index measurements](evidence/2026-10-13/t11-compaction-scaling1-index-timings.json) are 12.897/209.442/1,208.669 ms
+    for 2k/20k/100k bound claims; the 50k-reference chain takes 58.403 ms. These are scoped measurements, not end-to-end latency
+    assertions. [Preflight duplicate-output cleanup](evidence/2026-10-13/t11-scaling-preflight-cleanup.stdout.txt) preserves the
+    previous source/packages/evidence and prevents another builder disk-full failure. No product pair was installed or booted.
 - [ ] Close every M2 review condition against the final matched pair.
 
 ## M3 — after M2
