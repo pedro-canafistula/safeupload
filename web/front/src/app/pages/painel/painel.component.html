@@ -1,27 +1,16 @@
-<header class="page-header"><h2>Visão geral</h2><p>Indicadores calculados a partir dos eventos recebidos.</p>
-  <button class="btn-secondary" (click)="refresh.next()">Atualizar</button></header>
-<ng-container *ngIf="state$ | async as state">
-  <p role="status" *ngIf="state.loading">Carregando painel…</p>
-  <p role="alert" *ngIf="state.error">{{ state.error }} <a routerLink="/login">Entrar</a></p>
-  <ng-container *ngIf="state.data as dados">
-    <p>{{ dados.periodo }}</p>
-    <div class="metrics">
-      <section class="card"><h3>Inspeções</h3><strong>{{ dados.resumo.total | number }}</strong></section>
-      <section class="card"><h3>Bloqueados</h3><strong>{{ dados.resumo.bloqueados | number }}</strong>
-        <p>{{ percentage(dados.resumo.bloqueados, dados.resumo.total) | number:'1.1-1' }}% do total</p></section>
-      <section class="card"><h3>Aprovados</h3><strong>{{ dados.resumo.aprovados | number }}</strong>
-        <p>{{ percentage(dados.resumo.aprovados, dados.resumo.total) | number:'1.1-1' }}% do total</p></section>
-      <section class="card"><h3>Liberados sem inspeção</h3><strong>{{ dados.resumo.liberadosSemInspecao | number }}</strong>
-        <p>{{ percentage(dados.resumo.liberadosSemInspecao, dados.resumo.total) | number:'1.1-1' }}% do total</p></section>
-    </div>
-    <section class="card"><h3>Inspeções por dia</h3><ul class="daily-counts">
-      <li *ngFor="let day of dados.tendencia"><span>{{ day.data | date:'dd/MM':'UTC' }}</span><strong>{{ day.quantidade }}</strong></li>
-    </ul></section>
-    <section class="card"><h3>Categorias em arquivos bloqueados</h3>
-      <p *ngIf="!dados.categoriasBloqueadas.length">Nenhum bloqueio no período.</p>
-      <ol><li *ngFor="let category of dados.categoriasBloqueadas">{{ category.nome }}: {{ category.quantidade }}</li></ol></section>
-    <section class="card"><h3>Categorias da política vigente</h3><ul>
-      <li *ngFor="let category of dados.categoriasAtivas">{{ categories[category] }}</li></ul></section>
-    <section class="card"><h3>Últimas 6 inspeções recebidas</h3><app-event-table [events]="dados.recentes" /></section>
-  </ng-container>
-</ng-container>
+<section class="dashboard" *ngIf="painel$ | async as painel; else loadError">
+  <header class="dashboard-topbar"><h1>Painel</h1><div class="toolbar"><label class="search"><span aria-hidden="true">⌕</span><input type="search" placeholder="Buscar incidente, usuário ou política" aria-label="Buscar incidente, usuário ou política" /></label><select aria-label="Período do painel"><option>{{ painel.periodo.rotulo }}</option></select><button type="button" class="theme-button">Tema</button></div></header>
+  <div class="kpi-grid">
+    <article class="metric-card"><span>Incidentes abertos</span><strong>{{ painel.indicadores.incidentesAbertos.valor }}</strong><small [class.negative]="painel.indicadores.incidentesAbertos.tom === 'negativo'">+{{ painel.indicadores.incidentesAbertos.variacaoPercentual }}% {{ painel.indicadores.incidentesAbertos.comparacao }}</small></article>
+    <article class="metric-card"><span>Críticos sem tratamento</span><strong>{{ painel.indicadores.criticosSemTratamento.valor }}</strong><small class="negative">{{ painel.indicadores.criticosSemTratamento.acimaDe24Horas }} acima de 24 h</small></article>
+    <article class="metric-card"><span>Dados bloqueados</span><strong>{{ painel.indicadores.dadosBloqueados.valor | number }}</strong><small class="positive">{{ painel.indicadores.dadosBloqueados.variacaoPercentual }}% {{ painel.indicadores.dadosBloqueados.comparacao }}</small></article>
+    <article class="metric-card"><span>Agentes protegidos</span><strong>{{ painel.indicadores.agentesProtegidos.percentual | number:'1.1-1' }}%</strong><small class="positive">{{ painel.indicadores.agentesProtegidos.semComunicacao }} sem comunicação</small></article>
+  </div>
+  <div class="dashboard-grid">
+    <section class="panel-card chart-card"><h2>Incidentes por dia</h2><div class="bar-chart" aria-label="Incidentes por dia"><div class="bar-column" *ngFor="let day of painel.incidentesPorDia"><span class="bar" [style.height.%]="barHeight(day.quantidade, painel.incidentesPorDia)"></span><span class="bar-label">{{ day.rotulo }}</span></div></div></section>
+    <section class="panel-card categories-card"><h2>Por canal</h2><ul><li *ngFor="let channel of painel.porCanal"><div><strong>{{ channel.canal }}</strong><span>{{ channel.percentual }}%</span></div><span class="progress"><i [style.width.%]="channel.percentual"></i></span></li></ul></section>
+    <section class="panel-card recent-card"><div class="card-heading"><h2>Incidentes recentes</h2><a routerLink="/auditoria">Ver todas</a></div><div class="recent-table"><table><caption class="sr-only">Incidentes recentes</caption><thead><tr><th>ID</th><th>Severidade</th><th>Política</th><th>Usuário</th><th>Canal</th><th>Ação</th><th>Status</th><th>Quando</th></tr></thead><tbody><tr *ngFor="let event of painel.incidentesRecentes"><td>{{ event.id }}</td><td><span class="status-pill" [class.blocked]="event.severidade === 'Crítico'">{{ event.severidade }}</span></td><td>{{ event.politica }}</td><td>{{ event.usuario }}<small>{{ event.area }}</small></td><td>{{ event.canal }}</td><td>{{ event.acao }}</td><td><span class="status-pill">{{ event.status }}</span></td><td>{{ event.ocorridoHa }}</td></tr></tbody></table></div></section>
+    <section class="panel-card policy-card"><h2>Usuários de maior risco</h2><div class="policy-tags"><span *ngFor="let user of painel.usuariosMaiorRisco">{{ user.usuario }} · {{ user.pontuacao }}<small>{{ user.area }}</small></span></div></section>
+  </div>
+</section>
+<ng-template #loadError><section class="dashboard"><div class="data-error"><h1>Não foi possível carregar o painel</h1><p>O arquivo <code>/data/painel.json</code> não foi encontrado. Reinicie <code>npm start</code> após a atualização da configuração do Angular.</p></div></section></ng-template>

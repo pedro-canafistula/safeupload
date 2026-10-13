@@ -12,9 +12,12 @@ import { AuthService } from '../core/auth.service';
 export class LayoutComponent {
   menu = [
     { rota: '/painel', titulo: 'Painel' },
-    { rota: '/auditoria', titulo: 'Auditoria' },
-    { rota: '/endpoints', titulo: 'Endpoints' },
-    { rota: '/relatorios', titulo: 'Relatórios' }
+    { rota: '/auditoria', titulo: 'Incidentes' },
+    { rota: '/politicas', titulo: 'Políticas' },
+    { rota: '/endpoints', titulo: 'Endpoints e agentes' },
+    { rota: '/relatorios', titulo: 'Relatórios' },
+    { rota: '/usuarios', titulo: 'Usuários e funções' },
+    { rota: '/configuracoes', titulo: 'Configurações' }
   ];
 
   constructor(public auth: AuthService, private router: Router) {}
@@ -23,4 +26,3 @@ export class LayoutComponent {
     this.auth.logout().subscribe({ next: () => this.router.navigate(['/login']) });
   }
 }
-

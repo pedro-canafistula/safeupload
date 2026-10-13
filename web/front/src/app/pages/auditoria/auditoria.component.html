@@ -1,15 +1,1 @@
-<h2>Auditoria</h2>
-<button class="btn-secondary" (click)="refresh.next()">Atualizar</button>
-<ng-container *ngIf="state$ | async as state">
-  <p role="status" *ngIf="state.loading">Carregando auditoria…</p>
-  <p role="alert" *ngIf="state.error">{{ state.error }} <a routerLink="/login">Entrar</a></p>
-  <section class="card" *ngIf="state.data as dados">
-    <p *ngIf="dados.endpoint">Auditoria do endpoint {{ dados.endpoint }} · <a routerLink="/auditoria">Limpar filtro</a></p>
-    <div class="resumo">
-      <span>Total {{ dados.resumo.total }}</span><span>Bloqueados {{ dados.resumo.bloqueados }}</span>
-      <span>Aprovados {{ dados.resumo.aprovados }}</span><span>Liberados sem inspeção {{ dados.resumo.liberadosSemInspecao }}</span>
-    </div>
-    <app-event-table [events]="dados.eventos" />
-  </section>
-</ng-container>
-
+<header class="title"><h1>Incidentes</h1><label><input [(ngModel)]="query" placeholder="Buscar incidente, usuário ou política" /></label></header><section class="surface"><div class="filters"><select [(ngModel)]="severity"><option value="">Todas as severidades</option><option>Crítico</option><option>Alto</option><option>Médio</option><option>Baixo</option></select><select [(ngModel)]="status"><option value="">Todos os status</option><option>Novo</option><option>Em análise</option><option>Resolvido</option><option>Escalado</option></select><button (click)="exportCsv()">Exportar CSV</button></div><div class="table-scroll"><table><thead><tr><th>ID</th><th>Severidade</th><th>Política</th><th>Usuário</th><th>Canal</th><th>Ação</th><th>Status</th><th>Quando</th></tr></thead><tbody><tr *ngFor="let item of incidents"><td>{{item.id}}</td><td><span class="severity" [class.critical]="item.severity==='Crítico'" [class.high]="item.severity==='Alto'" [class.medium]="item.severity==='Médio'" [class.low]="item.severity==='Baixo'">{{item.severity}}</span></td><td>{{item.policy}}</td><td>{{item.user}}<small>{{item.area}}</small></td><td>{{item.channel}}</td><td>{{item.action}}</td><td><span class="status">{{item.status}}</span></td><td>{{item.when}}</td></tr></tbody></table></div></section>
