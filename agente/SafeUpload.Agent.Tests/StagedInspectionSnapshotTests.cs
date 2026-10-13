@@ -224,11 +224,18 @@ public sealed class StagedInspectionSnapshotTests : IDisposable
             Assert.True(File.Exists(ready));
             Assert.True(File.Exists(temporary));
             child.Kill(entireProcessTree: true);
-            await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            // WaitForExitAsync can finish from HasExited's early exit-code
+            // check. Wait for the native process object before testing handle
+            // cleanup; retain the same ten-second bound and immediate absence.
+            Assert.True(await Task.Run(() => child.WaitForExit(10_000)));
             Assert.False(File.Exists(temporary));
             Assert.Equal("Retained private stage.", await File.ReadAllTextAsync(sentinel));
         }
-        finally { if (!child.HasExited) { child.Kill(entireProcessTree: true); await child.WaitForExitAsync(); } }
+        finally
+        {
+            if (!child.HasExited) child.Kill(entireProcessTree: true);
+            Assert.True(await Task.Run(() => child.WaitForExit(10_000)));
+        }
     }
 
     private InspectionService Service(ITextExtractor? extractor = null, int timeoutSeconds = 5) => new(
