@@ -527,8 +527,12 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     absent after WaitForExit(int), without cleanup polling, path deletion or purge. The failure is consistent with .NET's
     [early exit-code HasExited path](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/ProcessManager.Windows.cs)
     allowing WaitForExitAsync to complete before the native process object is signaled. Test correction `e2854de5` waits for that
-    actual signal, retaining the ten-second bound and immediate absence assertion. Full-matrix qualification is pending; both
-    failures remain retained. No product assertion, policy budget, original backing/public-file cleanup or kernel code changed.
+    actual signal, retaining the ten-second bound and immediate absence assertion. The
+    [complete matrix at `0581833c`](evidence/2026-10-13/exact-agent-matrix-t9-office-stores1-summary.txt) passes 1,116 normal/1,486 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips, 0 warnings/errors and both independently verified
+    Release packages. All [19 snapshot lifecycle controls](evidence/2026-10-13/t9-office-stores1-controls.json) pass in each profile,
+    including the unchanged immediate-absence assertion after native process completion. Both failures remain retained.
+    No product assertion, policy budget, original backing/public-file cleanup or kernel code changed.
     [Scoped duplicate-output recovery](evidence/2026-10-13/t9-snapshot-handles1-preflight.host.json) preserved source/packages/evidence;
     subsequent [snapshot](evidence/2026-10-13/t9-snapshot-handles2-preflight.host.json) and
     [combined-matrix](evidence/2026-10-13/t9-office-stores1-preflight.host.json) headroom checks were read-only, with no further cleanup.
@@ -540,8 +544,10 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     confirms these stores persist data inside Office files. The relationship walk caps its unique visited parts at 16,384, matching
     the staged text-reader part budget, with explicit inspection_limit. This bounds the walk's own state/work, not SDK/ZIP/XML
     metadata allocation before enumeration. Ten independent Word/Excel payload cases and a 17,000-header package control cover
-    refusal/classification in both modes and unchanged source bytes. The combined exact matrix is pending; complete format coverage,
-    hostile parser metadata, storage budgets and the protected milestone gate remain open.
+    refusal/classification in both modes and unchanged source bytes. The complete matrix above also passes all
+    [26 payload and one relationship-budget controls](evidence/2026-10-13/t9-office-stores1-controls.json) in each profile, including
+    the existing image/embedded-payload and clean-package controls. Complete format coverage, hostile parser metadata,
+    storage budgets and the protected milestone gate remain open. No product pair was installed or booted; commits remain local.
   - Snapshot storage finding: the prior ordinary-publisher inspection lifecycle used random private `.inspection` names, with no durable
     snapshot-owner/cleanup obligation in the transfer journal. Process interruption could leave copies, and deletion failure could
     mask capture/cleanup errors or surface after an already-completed transfer. Source/inspection/publication authority must remain

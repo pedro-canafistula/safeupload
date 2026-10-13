@@ -370,5 +370,12 @@
         }
       ]
     }
-  ]
+  ],
+  "correctedFullMatrix": {
+    "label": "t9-office-stores1",
+    "sourceCommit": "0581833c0f43db3899271100c3556bbd331f1154",
+    "matrixGate": "PASS",
+    "controls": "t9-office-stores1-controls.json",
+    "scope": "Corrected native handle mode/process-signal wait plus Office safeguards; all four profiles and both package checks passed. Original failure/raw receipts retained; immediate file-absence postcondition and ten-second bound unchanged."
+  }
 }
