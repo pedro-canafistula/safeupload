@@ -293,7 +293,9 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
     - [x] Row `m2t4delattr1` ([result](evidence/2026-10-13/t4-delete-kd-attribution-result.md)): 256/256, restoration PASS. Deleting
       corpus files with attached contexts released them (728 → 566); the hand-back growth therefore follows delete opens on streams
       already torn down. KD identity data was lost to a harness syntax error (MASM `&&`); voluntary unload was refused at teardown.
-    - [ ] Harness fix offline; a second KD row needs owner authorization.
+    - [x] Harness fix `a22a604a`; row `m2t4delattr2` (restoration PASS): activation anchors ruled out (0); contexts are live FltMgr
+      stream contexts (logical = pool); deleting files with attached contexts releases them. Identity walk blocked by `!poolfind` syntax.
+    - [ ] Row 3: hand-back deletion (the growth case) with KD identity walk.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
 - [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):

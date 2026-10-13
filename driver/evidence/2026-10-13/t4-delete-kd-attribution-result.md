@@ -38,3 +38,25 @@ Raw KD scripts/stdout and summaries are retained locally under `m2t4delattr1-mem
 Fix the harness offline (C++ evaluator for every compound condition, one KD session per command block so a failure
 cannot lose the rest, explicit teardown-veto capture), pass the Windows PowerShell 5.1 gate, and **ask the owner** before
 a second row: the authorization covered one row. No gate, threshold, assertion or reclamation change.
+
+## Row 2 — `m2t4delattr2` (harness `a22a604a`)
+
+256/256, restoration PASS, launcher exit 0 (voluntary unload succeeded this time). [Verdict](m2t4delattr2-verdict.txt),
+[pair](m2t4delattr2-pair.txt), [host log](m2t4delattr2-host.txt).
+
+| Snapshot | Live SUfl | FltMgr logical outstanding / pool storage | Activation anchors |
+|---|---:|---:|---:|
+| del-baseline | 764 | 723 / 725 | 0 (walk complete) |
+| del-after | 563 | 539 / 541 | 0 |
+| del-after-purge | 527 | 525 / 529 | 0 |
+
+- **The activation anchor is ruled out** as the owner: the census completed and found none.
+- **These are live FltMgr stream contexts**, not lookaside caching: logical outstanding equals pool storage within 2–4.
+- Deleting files whose contexts were attached again released them. Newly written files kept their contexts through a
+  purge (baseline 764 vs 517 before the corpus), so the purge does not tear down recently written streams.
+- The per-block identity walk saw no blocks: `!poolfind SUfl 0` uses an older syntax this debugger rejects (it printed
+  usage). The hand-back scenario of `m2t4hbdiag1` — files whose contexts the purge had already released, then deleted — was
+  not reproduced by this corpus design.
+
+Next: row 3 combines the hand-back deletion with the KD snapshots (`!poolfind SUfl`), so the contexts created by deleting
+already-released files are walked to their stream, FILE_OBJECT and control-area owners.
