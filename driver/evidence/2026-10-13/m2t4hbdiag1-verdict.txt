@@ -1,0 +1,30 @@
+T4Diagnostic INFO hand-back attribution row (owner-authorized 2026-10-13, block-heavy mix); non-qualifying: no line in this file passes or fails a T4 gate
+T4GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T4DriverLoaded PASS the filter is still loaded after the cycles
+T4VerifierActive PASS runtime Verifier 0x13B still verifies SafeUpload.sys
+T4CyclesCompleted PASS 2000 of 2000 cycles reached their outcome; outcomes {"resave-approve": {"Ok": 125, "Failed": 0}, "new-approve": {"Ok": 125, "Failed": 0}, "replace-approve": {"Ok": 125, "Failed": 0}, "mapped-approve": {"Ok": 125, "Failed": 0}, "resave-block": {"Ok": 375, "Failed": 0}, "new-block": {"Ok": 375, "Failed": 0}, "replace-block": {"Ok": 375, "Failed": 0}, "mapped-block": {"Ok": 375, "Failed": 0}}; no failures
+T4ActorStopped PASS the actor acknowledged stop
+T4StopReason INFO completed; attempted 2000; failures 0
+T4NoBlockedBytesPublished PASS no blocked version reached its public name
+T4PoolEndpoint PASS driver nonpaged bytes (Verifier pool tracking) from cycle 500: 6389848; after idle 6369880; limit 6455384
+T4PoolSlope INFO -18.171 B/cycle (smoke row; judged only on the 10,000-cycle row)
+T4RegistryBounded PASS 15 samples within registry capacity; idle capacity failures 0; invalid samples []
+T4Memory INFO start: SUfl live 349, bytes 102376; SwUr bytes 6325664; module bytes 6355432
+T4Memory INFO last-cycle: SUfl live 4776, bytes 1093944; SwUr bytes 6347264; module bytes 6380952
+T4Memory INFO idle: SUfl live 4773, bytes 1093272; SwUr bytes 6340064; module bytes 6369880
+T4Memory INFO purged: SUfl live 583, bytes 154520; SwUr bytes 6340064; module bytes 6369880
+T4ContextsReleased INFO check PASS; SUfl live start 349, purged 583; limit start + 2048; released 4190 of idle growth since start 4424; purge NTSTATUS PASS [{"Operation": "RtlAdjustPrivilege", "Privilege": 13, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "RtlAdjustPrivilege", "Privilege": 5, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 2, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 3, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 4, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}]; purged sample present
+T4HandbackAttribution INFO SUfl live start 349, purged 583 (above start 234); hand-backs deleted 1500, delete failures 0, left 0; after delete 2670 (released -2087); after second purge 2633 (released -2050); released per deleted hand-back -1.367; delete errors []
+T4HandbackPurge INFO second purge statuses [["RtlAdjustPrivilege", "0x00000000"], ["RtlAdjustPrivilege", "0x00000000"], ["NtSetSystemInformation", "0x00000000"], ["NtSetSystemInformation", "0x00000000"], ["NtSetSystemInformation", "0x00000000"]]
+T4FileHolders INFO Handbacks: files 1500, error None, holders []
+T4FileHolders INFO Journals: files 2000, error None, holders []
+T4FileHolders INFO Public: files 128, error None, holders []
+T4VersionsReleased PASS after settle: live versions 0, views 0, created 2000, released 2000, views released 2000
+T4TombstonesReleased PASS after the actor exited: tombstones 0
+T4NoCapRefusal PASS cap refusals 0, tombstone refusals 0
+T4StageFilesDeleted PASS stage files after idle 0 (journal manifests 2000, hand-backs 1500); driver deletes 500, failures 0
+T4StageWorkerIdle PASS stage worker passes over 60 s with nothing waiting: 0 (timer fires 0; waiting versions 0)
+T4WorkerWakes INFO {"wakeCleanup": 2000, "wakeClose": 2000, "wakeDispose": 2000, "wakeConnect": 1, "wakeExit": 514, "wakeTimer": 2601, "wakeInline": 0, "timerArms": 3970, "disposeHeld": 2000, "disposeNotHeld": 0, "disposeStale": 0, "disposeDeferred": 0, "passes": 9092}
+T4CycleTime INFO median 1245 ms, p95 1929 ms, max 36465 ms over 2000 cycles
+T4Duration INFO 3394 s (verifier-from-boot, 2000 cycles)
+T4AdmissionRecovered PASS current coverage returned to Ready after idle

@@ -1,0 +1,4 @@
+ebdfce549ea1dc271498a5f6a38d151ac952ade9105d476b073a313eb271c851  /tmp/safeupload-t4-memory-tools/SafeUpload-stage-prototype.sys
+21f725dd4995603979cf173c43499477b45e2cc5085404afc594c5b04cd5293f  /tmp/safeupload-t4-memory-tools/feature-release-service-publish.zip
+HarnessCommit=1884942407faccd873e0ffa0581a168feaa1f4b1
+Mode=T4_HANDBACK_DIAGNOSTIC=yes cycles=2000 verifier-from-boot sample_every=250 target=win10-debug3
