@@ -394,16 +394,25 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. All
     [13 new authority/fallback controls](evidence/2026-10-13/t9-current-policy1-controls.json) pass in every profile. Initial local
     provisioning may still create/validate its live default file; disappearance after loading refuses a current read without
-    recreating a default. Policy version remains the publication/justification identity: same-version semantic edits still need
-    an adversarial control and complete policy binding. This checkpoint does not claim that separate condition closed.
+    recreating a default. That checkpoint identified same-version semantic edits as a separate publication/justification
+    binding gap; the follow-up below addresses it.
     [Scoped preflight cleanup](evidence/2026-10-13/t9-current-policy-preflight-cleanup.stdout.txt) preserves the previous verified
     source/packages/evidence. No product pair was installed or booted; T4's stopped gate and T5 NotReady remain in force.
-  - Complete-policy binding implementation (matrix pending): staged results carry a deterministic fingerprint of every policy
+  - Complete-policy binding implementation (`f792d437`, corrected fixture `aa6ad3a8`): staged results carry a deterministic fingerprint of every policy
     field, with collection order normalized and exact strings/strict UTF-8 preserved. Approval and justification require both
     that fingerprint and the version. Blocked manifests persist the binding; recovery rechecks it before restoring a callback.
     Missing historical bindings or same-version edits retain the exact private version for a new inspection, without inventing
     prior authority or deleting backing. Controls cover every field, framing/order/encoding, same-version decision/publication
     races, durable restart/justification and malformed/missing metadata. Audit/UI payloads and driver ABI remain unchanged.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-policy-binding3-summary.txt) passes 962 normal/1,332 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. All
+    [27 targeted binding/recovery controls](evidence/2026-10-13/t9-policy-binding3-controls.json) pass in every profile. The
+    [first matrix](evidence/2026-10-13/exact-agent-matrix-t9-policy-binding1-summary.txt) correctly distinguished the configured
+    clipboard defaults from an omitted block; the equality fixture was corrected to represent omitted/explicit empty defaults.
+    The [second matrix](evidence/2026-10-13/exact-agent-matrix-t9-policy-binding2-summary.txt) failed the existing queued-deadline
+    control at 7,707 ms against its unchanged 7,500 ms bound. One complete retry of the identical source passes above; no timing
+    threshold, test filter or assertion was changed. All failed raw receipts remain retained. Scoped duplicate-output cleanup
+    preserves source/packages/evidence; no product pair was installed or booted. T9 streaming/runtime and M2 final gates remain open.
 - [ ] Measure cold/warm throughput and peak memory before choosing defaults; existing 256 MiB warm-input measurements are not staged qualification.
 - [ ] Qualify large clean/CPF, corrupt/encrypted/password-protected, parser/extraction-limit, timeout and disk-full cases.
 - [ ] Resolve the all-zero payment-card classification question with user-visible options before changing its current verdict.

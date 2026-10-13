@@ -1,0 +1,265 @@
+{
+  "summary.txt": {
+    "Fetched": true,
+    "Bytes": 1420,
+    "SHA256": "946fd0e72bd796add6e404dd9e715efb65e4ff3a292577dc5c70cee42999ed31"
+  },
+  "dotnet-info.txt": {
+    "Fetched": true,
+    "Bytes": 2696,
+    "SHA256": "560a57cd44c346ce185ddd6573f1e43eda687f1ab6648d6561c1549a036e9327"
+  },
+  "normal-debug-build.txt": {
+    "Fetched": true,
+    "Bytes": 3338,
+    "SHA256": "6e616bd46a0719253970b8b5426bb14b9122710ffd957ce05d64cd54e66f42eb"
+  },
+  "normal-debug-app-build.txt": {
+    "Fetched": true,
+    "Bytes": 1458,
+    "SHA256": "8805de811c6ea38a317758f81054ee68cbf14c97f70a8fa0bdf2ef930c842ed7"
+  },
+  "normal-debug-tests.txt": {
+    "Fetched": true,
+    "Bytes": 904,
+    "SHA256": "a162dafa094d52d0c65173b5f6d24bd7dbabfeff6a98144852354d8545a24525"
+  },
+  "normal-debug-test-build.txt": {
+    "Fetched": true,
+    "Bytes": 2750,
+    "SHA256": "e0ae5c6c61e9a79b1116a9a1f1e73ed0b6f17ed8618f44d38017b559779c0fa9"
+  },
+  "normal-debug-tests-user.txt": {
+    "Fetched": true,
+    "Bytes": 768,
+    "SHA256": "443243b0d449cd0aa8ee5fc4b7d0aa45479a97bb4e03193f2fb1f4a0b3f8c6d0"
+  },
+  "normal-debug-tests-system.txt": {
+    "Fetched": true,
+    "Bytes": 518,
+    "SHA256": "b2ed6fc6e246369a178024d4cb202d97d3731bac3a4325986ff7fca62786eaf8"
+  },
+  "normal-debug-tests-system.txt.stderr": {
+    "Fetched": true,
+    "Bytes": 0,
+    "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "normal-debug-tests-discovery-list.txt": {
+    "Fetched": true,
+    "Bytes": 249342,
+    "SHA256": "e2f434199be30638212c0ae7c5a3d04882cc508061145d70dbb7f25518a90eec"
+  },
+  "normal-debug-tests-discovery-fqns.txt": {
+    "Fetched": true,
+    "Bytes": 64,
+    "SHA256": "c211334f2890e4d51b62ca86d0d95c66744fcbdde83f5882f81bcffc2823276a"
+  },
+  "normal-debug-results/agent-tests-discovered-fq.txt": {
+    "Fetched": true,
+    "Bytes": 58012,
+    "SHA256": "e231b3258e18b06a5a7a4cddeb8904f4e3f73e33c71484380de9540d3de224fc"
+  },
+  "normal-debug-results/agent-tests.trx": {
+    "Fetched": true,
+    "Bytes": 1545045,
+    "SHA256": "a6ed730b7678cd891ecbdbb625c06cb80df0f6214b32291ad4ab5535e7d65109"
+  },
+  "normal-debug-results/agent-tests-user.trx": {
+    "Fetched": true,
+    "Bytes": 1506733,
+    "SHA256": "242f32a5c80fc8511bc00e2fc54639ef6f6bbaa1373d1f46d470f334f1f577df"
+  },
+  "normal-debug-results/agent-tests-system.trx": {
+    "Fetched": true,
+    "Bytes": 40003,
+    "SHA256": "4b1f8e98dd8d205bf5d38cdc7ae7e183b13c2f022b4bbeb7799d09d184274e32"
+  },
+  "normal-release-build.txt": {
+    "Fetched": true,
+    "Bytes": 3378,
+    "SHA256": "287ea18fbbb599582161cdfb111ed6c5cdf9d9961fee129e1abc1f4f2e59b691"
+  },
+  "normal-release-app-build.txt": {
+    "Fetched": true,
+    "Bytes": 1478,
+    "SHA256": "0d0920d166ab4e5a99c88773bc4742a7afad898ad94b8a167e0ba7bb08033382"
+  },
+  "normal-release-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-test-build.txt": {
+    "Fetched": true,
+    "Bytes": 2794,
+    "SHA256": "237788ef0dd81e9a8d9582ddc2061fdea0621942fbf507cea5cdf84e5f77bb57"
+  },
+  "normal-release-tests-user.txt": {
+    "Fetched": true,
+    "Bytes": 3638,
+    "SHA256": "4ebaa087d3fdb0375c401d2ed273d284621bbde40aa0731fdd03c0ef54306198"
+  },
+  "normal-release-tests-system.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-tests-system.txt.stderr": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-tests-discovery-list.txt": {
+    "Fetched": true,
+    "Bytes": 249342,
+    "SHA256": "e2f434199be30638212c0ae7c5a3d04882cc508061145d70dbb7f25518a90eec"
+  },
+  "normal-release-tests-discovery-fqns.txt": {
+    "Fetched": true,
+    "Bytes": 64,
+    "SHA256": "c211334f2890e4d51b62ca86d0d95c66744fcbdde83f5882f81bcffc2823276a"
+  },
+  "normal-release-results/agent-tests-discovered-fq.txt": {
+    "Fetched": true,
+    "Bytes": 58012,
+    "SHA256": "e231b3258e18b06a5a7a4cddeb8904f4e3f73e33c71484380de9540d3de224fc"
+  },
+  "normal-release-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-results/agent-tests-user.trx": {
+    "Fetched": true,
+    "Bytes": 1516436,
+    "SHA256": "60fe17d11196db8ebfcf19581ca20556c48acb098b7bb137a07f184a085fe052"
+  },
+  "normal-release-results/agent-tests-system.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-publish.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-package-manifest.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-service-publish.zip": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-app-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-test-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests-user.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests-system.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests-system.txt.stderr": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests-discovery-list.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests-discovery-fqns.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-results/agent-tests-discovered-fq.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-results/agent-tests-user.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-results/agent-tests-system.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-app-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-test-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests-user.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests-system.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests-system.txt.stderr": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests-discovery-list.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests-discovery-fqns.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-results/agent-tests-discovered-fq.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-results/agent-tests-user.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-results/agent-tests-system.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-publish.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-package-manifest.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-service-publish.zip": {
+    "Fetched": false,
+    "Exit": 1
+  }
+}

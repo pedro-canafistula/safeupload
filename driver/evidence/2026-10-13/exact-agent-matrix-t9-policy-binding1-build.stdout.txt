@@ -1,0 +1,14 @@
+LABEL=t9-policy-binding1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=f792d437599942549e40b30d180b28f964c54e23
+ARCHIVE_SHA256=8ABF4C645251F4301CF58F5220DD5FEA3645A92A79F996C807934EAB0227269D
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-debug-tests-user: exit=1 warnings=0 errors=0
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-13T09:41:04.3675090Z

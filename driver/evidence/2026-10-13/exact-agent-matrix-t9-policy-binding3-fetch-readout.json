@@ -1,0 +1,302 @@
+{
+  "summary.txt": {
+    "Fetched": true,
+    "Bytes": 3684,
+    "SHA256": "97cfd6e2d4fdc06ea35ebb4a140ef726a99e454c53d746f25542d13fb1b77763"
+  },
+  "dotnet-info.txt": {
+    "Fetched": true,
+    "Bytes": 2696,
+    "SHA256": "560a57cd44c346ce185ddd6573f1e43eda687f1ab6648d6561c1549a036e9327"
+  },
+  "normal-debug-build.txt": {
+    "Fetched": true,
+    "Bytes": 3330,
+    "SHA256": "c2663d07bf92e9a264b4976ce228e50d16b3b35d9117962942f0d8c794b5bc92"
+  },
+  "normal-debug-app-build.txt": {
+    "Fetched": true,
+    "Bytes": 1458,
+    "SHA256": "f9475b07b3446c67ef3da5544dbee47bf979a96a9e79ba3e8a8a4024c90a9b84"
+  },
+  "normal-debug-tests.txt": {
+    "Fetched": true,
+    "Bytes": 903,
+    "SHA256": "1fec1ac8196277c5ad961e5854cd9565b036d4e4e00abac5316ac3f29579c63b"
+  },
+  "normal-debug-test-build.txt": {
+    "Fetched": true,
+    "Bytes": 2750,
+    "SHA256": "2804cff86b62418d7252d24cce235b42cb4f0d72d6a87908901d84c637780126"
+  },
+  "normal-debug-tests-user.txt": {
+    "Fetched": true,
+    "Bytes": 766,
+    "SHA256": "e0f2252c87d87e0988aba53d361a3b330b1d5a7dfd0cd7fac22c12fb79d81ef1"
+  },
+  "normal-debug-tests-system.txt": {
+    "Fetched": true,
+    "Bytes": 518,
+    "SHA256": "bdeb4eac9b5bd901ec3e8fede202c5c3f37c075b83470cab5f4b04c9921f7807"
+  },
+  "normal-debug-tests-system.txt.stderr": {
+    "Fetched": true,
+    "Bytes": 0,
+    "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "normal-debug-tests-discovery-list.txt": {
+    "Fetched": true,
+    "Bytes": 249342,
+    "SHA256": "e2f434199be30638212c0ae7c5a3d04882cc508061145d70dbb7f25518a90eec"
+  },
+  "normal-debug-tests-discovery-fqns.txt": {
+    "Fetched": true,
+    "Bytes": 64,
+    "SHA256": "c211334f2890e4d51b62ca86d0d95c66744fcbdde83f5882f81bcffc2823276a"
+  },
+  "normal-debug-results/agent-tests-discovered-fq.txt": {
+    "Fetched": true,
+    "Bytes": 58012,
+    "SHA256": "e231b3258e18b06a5a7a4cddeb8904f4e3f73e33c71484380de9540d3de224fc"
+  },
+  "normal-debug-results/agent-tests.trx": {
+    "Fetched": true,
+    "Bytes": 1545045,
+    "SHA256": "8ded1acc36663cad01e6a745badb1e389b0f8b21083f5c18c99fb92d23c26e05"
+  },
+  "normal-debug-results/agent-tests-user.trx": {
+    "Fetched": true,
+    "Bytes": 1506733,
+    "SHA256": "a4fbc0fb4222c238d1825f58bda3bf173a3a11b15c220588afdfcd3b026620d7"
+  },
+  "normal-debug-results/agent-tests-system.trx": {
+    "Fetched": true,
+    "Bytes": 40003,
+    "SHA256": "a4b823689ca4690cdcf66fc95dcab04425437c0a9c45e833fd1fe39a8ebfaab6"
+  },
+  "normal-release-build.txt": {
+    "Fetched": true,
+    "Bytes": 3380,
+    "SHA256": "963ba240b3e05c24677c883d15ea6ccbb141a7d44558e719208993b83b1371b5"
+  },
+  "normal-release-app-build.txt": {
+    "Fetched": true,
+    "Bytes": 1478,
+    "SHA256": "1b7c98906358e924db4637c23b7dd34fa856f43d7ba1b222eb4679a127059fa5"
+  },
+  "normal-release-tests.txt": {
+    "Fetched": true,
+    "Bytes": 907,
+    "SHA256": "c925483b59a70d447d08a98c914608e72c797d87bbae6668fa18fd68c6a07dbc"
+  },
+  "normal-release-test-build.txt": {
+    "Fetched": true,
+    "Bytes": 2794,
+    "SHA256": "66831263aceea51b5304526bf61b603fc3d91173c382de8ad8201bcc5997f9d9"
+  },
+  "normal-release-tests-user.txt": {
+    "Fetched": true,
+    "Bytes": 770,
+    "SHA256": "e16e69150c8f92a6981591ef138e90273100c1a935d68e58d58f52af18db57b9"
+  },
+  "normal-release-tests-system.txt": {
+    "Fetched": true,
+    "Bytes": 520,
+    "SHA256": "2333158fe503b0e5579786a5608782c80003140c5f694adfcfab97d82b9b2350"
+  },
+  "normal-release-tests-system.txt.stderr": {
+    "Fetched": true,
+    "Bytes": 0,
+    "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "normal-release-tests-discovery-list.txt": {
+    "Fetched": true,
+    "Bytes": 249342,
+    "SHA256": "e2f434199be30638212c0ae7c5a3d04882cc508061145d70dbb7f25518a90eec"
+  },
+  "normal-release-tests-discovery-fqns.txt": {
+    "Fetched": true,
+    "Bytes": 64,
+    "SHA256": "c211334f2890e4d51b62ca86d0d95c66744fcbdde83f5882f81bcffc2823276a"
+  },
+  "normal-release-results/agent-tests-discovered-fq.txt": {
+    "Fetched": true,
+    "Bytes": 58012,
+    "SHA256": "e231b3258e18b06a5a7a4cddeb8904f4e3f73e33c71484380de9540d3de224fc"
+  },
+  "normal-release-results/agent-tests.trx": {
+    "Fetched": true,
+    "Bytes": 1552742,
+    "SHA256": "b88871df2e6790914828bc64f4015b15bd2e7b53612255135cb57c92aeefd800"
+  },
+  "normal-release-results/agent-tests-user.trx": {
+    "Fetched": true,
+    "Bytes": 1514230,
+    "SHA256": "9207a9d4b96325cf949bc407db443f91fd3198ead89d01f374b388febb0a3aec"
+  },
+  "normal-release-results/agent-tests-system.trx": {
+    "Fetched": true,
+    "Bytes": 40203,
+    "SHA256": "ad9d42f1d81c6ae1bb97e7fe8ba2715fb6e571a2080db8dd1c29378840dc6b76"
+  },
+  "normal-release-publish.txt": {
+    "Fetched": true,
+    "Bytes": 3472,
+    "SHA256": "a8b90fd86ef2545e55b1577485a25358a9695915d6ab9cea9c82609f164993fb"
+  },
+  "normal-release-package-manifest.txt": {
+    "Fetched": true,
+    "Bytes": 567,
+    "SHA256": "ddbf69bacc1a0d061d54f3e8fd96eeb92d6092caa277da3c52e1ea418247d071"
+  },
+  "normal-release-service-publish.zip": {
+    "Fetched": true,
+    "Bytes": 36725833,
+    "SHA256": "667632d3b974b5fa721910d5ce2f64bcf65edeeb9b7c60588b8e38661e8d065b"
+  },
+  "feature-debug-build.txt": {
+    "Fetched": true,
+    "Bytes": 3346,
+    "SHA256": "98d012668674451952dcec7adb7256ed61743b7e87422bc1be7ea578ab2c6371"
+  },
+  "feature-debug-app-build.txt": {
+    "Fetched": true,
+    "Bytes": 1464,
+    "SHA256": "ec27b876ad649506c970ff31ed1867165a3aff5f45ed4c3c05b8a057b16789d6"
+  },
+  "feature-debug-tests.txt": {
+    "Fetched": true,
+    "Bytes": 906,
+    "SHA256": "3a3a59a50094066e888a37a39e7b927c56fa8f36e759dcb6caa798a88cdb5c3b"
+  },
+  "feature-debug-test-build.txt": {
+    "Fetched": true,
+    "Bytes": 2762,
+    "SHA256": "802c704c45076826ae7b1b45b8f02209be015e543a8f52739b85f40eb8d84ee6"
+  },
+  "feature-debug-tests-user.txt": {
+    "Fetched": true,
+    "Bytes": 770,
+    "SHA256": "050b12062af914e70c96d0d19781c15ab0d33b7423eddaf026e859cc5278a3d1"
+  },
+  "feature-debug-tests-system.txt": {
+    "Fetched": true,
+    "Bytes": 519,
+    "SHA256": "d11010e05fefd339997f7bb0282c41b7dad9aa92ec071949e01fcad6f0531170"
+  },
+  "feature-debug-tests-system.txt.stderr": {
+    "Fetched": true,
+    "Bytes": 0,
+    "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "feature-debug-tests-discovery-list.txt": {
+    "Fetched": true,
+    "Bytes": 350168,
+    "SHA256": "c3c400dbbad23ea8ac9c9b00b27ae462c0fc471fb607f46ebbf8a5f82df8bb23"
+  },
+  "feature-debug-tests-discovery-fqns.txt": {
+    "Fetched": true,
+    "Bytes": 64,
+    "SHA256": "c211334f2890e4d51b62ca86d0d95c66744fcbdde83f5882f81bcffc2823276a"
+  },
+  "feature-debug-results/agent-tests-discovered-fq.txt": {
+    "Fetched": true,
+    "Bytes": 72907,
+    "SHA256": "61f6182d87d9483ecf7ca2ffb3a650bfba8287a1860aa7958cbdbfb6e5045308"
+  },
+  "feature-debug-results/agent-tests.trx": {
+    "Fetched": true,
+    "Bytes": 2149236,
+    "SHA256": "4a46e8b4e941acb67f328c5659fe0959dd9cb3040219f121826e7f0e0328b048"
+  },
+  "feature-debug-results/agent-tests-user.trx": {
+    "Fetched": true,
+    "Bytes": 2110874,
+    "SHA256": "87bea9f4f12b06f9446089ca89429f9d8b1c15e5d698993403ac225b8338d405"
+  },
+  "feature-debug-results/agent-tests-system.trx": {
+    "Fetched": true,
+    "Bytes": 40053,
+    "SHA256": "6b06a4193aa65858818e52d717415ff9feccb607b1a3cec33dd35f5d5900b36b"
+  },
+  "feature-release-build.txt": {
+    "Fetched": true,
+    "Bytes": 3396,
+    "SHA256": "a1ff4710d6ca317106b12e074af64d6023e9629e23c63fe4c386550817523155"
+  },
+  "feature-release-app-build.txt": {
+    "Fetched": true,
+    "Bytes": 1484,
+    "SHA256": "0e26f4e4bf2ff576ab11a98af92db05766552fae14af91fcfa0cfa51c3071710"
+  },
+  "feature-release-tests.txt": {
+    "Fetched": true,
+    "Bytes": 910,
+    "SHA256": "9bf41aa4413e5807e40f568048a093cd73a5cd3ef95795347ce13bd3f480090b"
+  },
+  "feature-release-test-build.txt": {
+    "Fetched": true,
+    "Bytes": 2806,
+    "SHA256": "bb5058283717c30f137d0784a39753e4b59041ea1c1b7871cd4604fbf013b2ce"
+  },
+  "feature-release-tests-user.txt": {
+    "Fetched": true,
+    "Bytes": 774,
+    "SHA256": "3cf11b9d801fcc1009c2528c92d5be4f888f70ad407027e9342660973f89068f"
+  },
+  "feature-release-tests-system.txt": {
+    "Fetched": true,
+    "Bytes": 521,
+    "SHA256": "4825fe50656a549182617a6f4d99d17e4684775b59b64e1128b2caeda6225c61"
+  },
+  "feature-release-tests-system.txt.stderr": {
+    "Fetched": true,
+    "Bytes": 0,
+    "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "feature-release-tests-discovery-list.txt": {
+    "Fetched": true,
+    "Bytes": 350168,
+    "SHA256": "c3c400dbbad23ea8ac9c9b00b27ae462c0fc471fb607f46ebbf8a5f82df8bb23"
+  },
+  "feature-release-tests-discovery-fqns.txt": {
+    "Fetched": true,
+    "Bytes": 64,
+    "SHA256": "c211334f2890e4d51b62ca86d0d95c66744fcbdde83f5882f81bcffc2823276a"
+  },
+  "feature-release-results/agent-tests-discovered-fq.txt": {
+    "Fetched": true,
+    "Bytes": 72907,
+    "SHA256": "61f6182d87d9483ecf7ca2ffb3a650bfba8287a1860aa7958cbdbfb6e5045308"
+  },
+  "feature-release-results/agent-tests.trx": {
+    "Fetched": true,
+    "Bytes": 2159894,
+    "SHA256": "c538eb9781646495a6f301ca9d93a286fc8f96a2aa2b1897328f4c49c89303db"
+  },
+  "feature-release-results/agent-tests-user.trx": {
+    "Fetched": true,
+    "Bytes": 2121332,
+    "SHA256": "189dc364b713b19869c1bbcef4ad1ede9e7d1f981101dabee12150dd3433a371"
+  },
+  "feature-release-results/agent-tests-system.trx": {
+    "Fetched": true,
+    "Bytes": 40253,
+    "SHA256": "b9788a5e86ae5fefbee29085f21e4dbe65cb50d339c50bec207f8a0ea1d18d83"
+  },
+  "feature-release-publish.txt": {
+    "Fetched": true,
+    "Bytes": 3494,
+    "SHA256": "6cf52b69236de7c1ec34de214112a644bbd4e5f9d570aee7507d5353bed03bb1"
+  },
+  "feature-release-package-manifest.txt": {
+    "Fetched": true,
+    "Bytes": 567,
+    "SHA256": "3aed7ee938f237f5787db7d99139beca50e34cafd3670a338db5ec86ca431d8e"
+  },
+  "feature-release-service-publish.zip": {
+    "Fetched": true,
+    "Bytes": 36842610,
+    "SHA256": "784de4633211e56a51b050190a6f2b45e16f4c5d011cf49237655813e26b8960"
+  }
+}

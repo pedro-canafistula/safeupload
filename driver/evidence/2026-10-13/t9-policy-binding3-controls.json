@@ -1,0 +1,462 @@
+{
+  "sourceCommit": "aa6ad3a899469ab6b9c689baa84428a1bc79f5f3",
+  "scope": "Complete policy content, same-version publication and durable justification/reinspection controls; no protected qualification",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "rawTrxSha256": "8ded1acc36663cad01e6a745badb1e389b0f8b21083f5c18c99fb92d23c26e05",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Collection_order_and_implicit_clipboard_defaults_do_not_change_the_binding",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"audit\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"categories\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-egress\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-excluded\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-mode\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-oversized\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-size\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"excluded\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"extensions\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"fail-open\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"network\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"override\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"paths\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"removable\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"size\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"timeout\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"version\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Invalid_utf16_cannot_be_silently_replaced_in_a_policy_binding",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Same_version_semantic_edit_revokes_a_staged_decision_until_the_exact_policy_returns(blocked: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Same_version_semantic_edit_revokes_a_staged_decision_until_the_exact_policy_returns(blocked: True)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Malformed_durable_policy_binding_is_rejected_without_removing_backing",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"legacy-missing\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"same-version-edit\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"unchanged\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Policy_change_during_inspection_retains_the_file(changeVersion: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Policy_change_during_inspection_retains_the_file(changeVersion: True)",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "rawTrxSha256": "b88871df2e6790914828bc64f4015b15bd2e7b53612255135cb57c92aeefd800",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Collection_order_and_implicit_clipboard_defaults_do_not_change_the_binding",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"audit\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"categories\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-egress\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-excluded\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-mode\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-oversized\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-size\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"excluded\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"extensions\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"fail-open\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"network\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"override\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"paths\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"removable\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"size\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"timeout\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"version\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Invalid_utf16_cannot_be_silently_replaced_in_a_policy_binding",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Same_version_semantic_edit_revokes_a_staged_decision_until_the_exact_policy_returns(blocked: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Same_version_semantic_edit_revokes_a_staged_decision_until_the_exact_policy_returns(blocked: True)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Malformed_durable_policy_binding_is_rejected_without_removing_backing",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"legacy-missing\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"same-version-edit\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"unchanged\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Policy_change_during_inspection_retains_the_file(changeVersion: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Policy_change_during_inspection_retains_the_file(changeVersion: True)",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "rawTrxSha256": "4a46e8b4e941acb67f328c5659fe0959dd9cb3040219f121826e7f0e0328b048",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Collection_order_and_implicit_clipboard_defaults_do_not_change_the_binding",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"audit\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"categories\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-egress\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-excluded\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-mode\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-oversized\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-size\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"excluded\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"extensions\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"fail-open\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"network\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"override\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"paths\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"removable\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"size\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"timeout\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"version\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Invalid_utf16_cannot_be_silently_replaced_in_a_policy_binding",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Same_version_semantic_edit_revokes_a_staged_decision_until_the_exact_policy_returns(blocked: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Same_version_semantic_edit_revokes_a_staged_decision_until_the_exact_policy_returns(blocked: True)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Malformed_durable_policy_binding_is_rejected_without_removing_backing",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"legacy-missing\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"same-version-edit\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"unchanged\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Policy_change_during_inspection_retains_the_file(changeVersion: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Policy_change_during_inspection_retains_the_file(changeVersion: True)",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "rawTrxSha256": "c538eb9781646495a6f301ca9d93a286fc8f96a2aa2b1897328f4c49c89303db",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Collection_order_and_implicit_clipboard_defaults_do_not_change_the_binding",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"audit\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"categories\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-egress\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-excluded\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-mode\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-oversized\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"clipboard-size\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"excluded\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"extensions\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"fail-open\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"network\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"override\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"paths\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"removable\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"size\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"timeout\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Every_policy_field_changes_the_content_binding(field: \"version\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Invalid_utf16_cannot_be_silently_replaced_in_a_policy_binding",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Same_version_semantic_edit_revokes_a_staged_decision_until_the_exact_policy_returns(blocked: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyContentBindingTests.Same_version_semantic_edit_revokes_a_staged_decision_until_the_exact_policy_returns(blocked: True)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Malformed_durable_policy_binding_is_rejected_without_removing_backing",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"legacy-missing\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"same-version-edit\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Restart_restores_justification_only_for_the_original_complete_policy(shape: \"unchanged\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Policy_change_during_inspection_retains_the_file(changeVersion: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Policy_change_during_inspection_retains_the_file(changeVersion: True)",
+          "outcome": "Passed"
+        }
+      ]
+    }
+  ]
+}
