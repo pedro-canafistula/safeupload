@@ -614,7 +614,7 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     case is Blocked with inspection_timeout at 5.022 seconds and peaks at 148.5 MiB; the PDF CPF case was not run. No failure/limit
     was relaxed. These are inspector-only observations: filesystem cache is uncontrolled, no publisher copy/policy I/O is measured,
     and cold-filesystem, hostile-parser, protected and complete-format qualification remain open. No default has been chosen/changed.
-  - Bounded per-worker PDF text replay (`a7aaabc6`, PDF-only correction `f4be7e09`, qualification pending): retain at most four MiB
+  - Bounded per-worker PDF text replay (`a7aaabc6`, PDF-only correction `f4be7e09`): retain at most four MiB
     of extracted PDF characters inside one staged worker, usable only after complete extraction EOF. Later detector passes keep the same precedence/masks on those exact
     characters; overflow abandons/clears the replay and follows the existing full streaming passes. Disposal clears the character
     buffer, including failure/timeout worker completion. Plaintext/Office retain their fresh readers. There is no persistent text or cached approval, and legacy behavior,
@@ -626,8 +626,11 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     reader implementation. The correction preserves those assertions, restricts replay to PDF and fixes the fixture. Its
     [first corrected matrix](evidence/2026-10-13/t9-pdf-replay2-retained-failure.json) passes 1,125/1,125 normal Debug cases, then normal
     Release fails only the unchanged staged missing-cache spreadsheet formula control (UnsupportedFormat became Timeout).
-    All nine replay controls pass in both executed profiles. One complete identical-source retry is pending; no assertion, budget,
-    timing limit or test filter changes. Full-matrix and repeated measurement qualification remain pending.
+    All nine replay controls pass in both executed profiles. The
+    [complete identical-source retry](evidence/2026-10-13/exact-agent-matrix-t9-pdf-replay3-summary.txt) passes 1,125 normal/1,495 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips, 0 warnings/errors and both verified Release packages.
+    All [21 scoped controls](evidence/2026-10-13/t9-pdf-replay3-controls.json) pass per profile: nine replay, six unchanged strict
+    plaintext-reader and six PDF streaming cases. No assertion, budget, timing limit or test filter changed; original failures remain retained.
     Corpus-reuse tooling (`c351236e`) verifies the retained archive, manifest
     and every fixture byte/hash before copying; its offline reuse control passed, so before/after inputs stay identical.
     [Headroom preflight](evidence/2026-10-13/t9-text-replay1-preflight.host.json) stopped before delivery;
@@ -637,6 +640,13 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     [Retry headroom recovery](evidence/2026-10-13/t9-pdf-replay3-headroom.host.json) removes only two verified old completed lifecycle
     unpacked duplicates; their source/packages/manifests/evidence remain retained.
     No product pair was installed or booted.
+    The [isolated byte-identical measurement rerun](evidence/2026-10-13/t9-inspector-metrics3-result.json) passes all 14 cases and both
+    scans per case, with input, corpus/archive, measured assembly and policy hashes verified. The same clean 1 MiB/16-page PDF that
+    previously timed out now approves in 1.517 seconds, repeats in 0.868 seconds; the EOF-CPF counterpart blocks in 1.583/0.817 seconds.
+    PDF cumulative process peaks remain 148.3–153.7 MiB. Twenty-MiB plaintext/Word/Excel first scans take 1.388–1.884 seconds,
+    repeats 0.789–1.194 seconds, with 41.4–49.7 MiB observed peaks. These are single retained measurements with uncontrolled
+    filesystem cache, not paired statistical latency gates, publisher costs, hostile-parser bounds or protected qualification.
+    PDF runtime improved without policy/default changes; its parser-memory and complete-content findings remain open.
   - Large-plaintext component controls (`c2dd8033`, complete matrix at `6b13ce8f` above): real 1/20 MiB ASCII snapshots are read
     completely on first/repeat scans under the unchanged 20 MiB/five-second default. Clean and EOF-only CPF cases prove approval/block,
     complete reader disposal, no cache/audit shortcut and unchanged source SHA-256. Malformed UTF-8/16/32 tails refuse approval,

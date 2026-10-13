@@ -150,5 +150,11 @@
         }
       ]
     }
-  ]
+  ],
+  "identicalSourceRetry": {
+    "label": "t9-pdf-replay3",
+    "sourceCommit": "f4be7e09701eb8107b010615ee77e42873645936",
+    "gate": "PASS",
+    "scope": "All four profiles and both package checks passed without assertion/budget/timing/filter changes; original failure and raw receipts retained."
+  }
 }

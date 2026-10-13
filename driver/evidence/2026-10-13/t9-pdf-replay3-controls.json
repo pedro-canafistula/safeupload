@@ -1,0 +1,455 @@
+{
+  "sourceCommit": "f4be7e09701eb8107b010615ee77e42873645936",
+  "gate": "PASS",
+  "scope": "Bounded per-worker PDF text replay, with unchanged fresh plaintext/Office readers, verdict precedence/masks, size/deadline/candidate limits. Nine replay, six unchanged plaintext strict-reader and six PDF streaming controls per profile. No claim of performance improvement, underlying parser-memory bound, storage budgets or protected M2 qualification.",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "matrixTotal": 1125,
+      "rawTrxSha256": "20ad9aea1e1c9383557e1380089e43a2636f87341da639674d7cc9e5faa91a41",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.A_late_extraction_failure_cannot_turn_captured_sensitive_text_into_a_complete_scan",
+          "outcome": "Passed",
+          "executionId": "e4c377f4-683f-48fe-9f40-87fc2d5cbfa3"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Abandoned_capture_reopens_the_full_source_without_serving_its_prefix",
+          "outcome": "Passed",
+          "executionId": "01346649-3dd6-4eb9-b765-b92222858837"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 31)",
+          "outcome": "Passed",
+          "executionId": "fc03c52e-b23c-496b-bcd0-f7206ff2c553"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 32)",
+          "outcome": "Passed",
+          "executionId": "43d78c35-6183-4e02-b883-e2cc948c42fe"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 33)",
+          "outcome": "Passed",
+          "executionId": "c150158f-2eb2-40bf-8f14-5488fd6debf4"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "555f1044-cb3f-4637-a563-ad7bc5292a70"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "2397de8f-9749-4b72-891f-4dbc419aa49a"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "98b7ad3b-434d-4539-acf0-5c225ba950e1"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Owner_disposal_invalidates_replay_and_cancellation_cannot_yield_a_partial_read",
+          "outcome": "Passed",
+          "executionId": "c3dd50c4-1cc8-425f-8d44-57bbdfe6c2ea"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Complete_staged_pdf_reads_sensitive_content_on_the_last_page(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "a607d46d-d45c-4df7-95c4-5e8ebac0cb86"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Complete_staged_pdf_reads_sensitive_content_on_the_last_page(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "e20ac9a4-bc15-4b3f-a19a-7c260eb0f209"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "1c475965-6687-4089-a8b0-45f984050a39"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "3dd8ddd7-94f7-4fb8-89d6-2a75b6f72ad1"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "9b9b6068-6744-43e1-adfd-d56b87cc0c25"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Scalar_peek_cancellation_and_disposal_leave_the_source_open",
+          "outcome": "Passed",
+          "executionId": "8772bb1a-156b-4d77-832c-be781d815707"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16be\")",
+          "outcome": "Passed",
+          "executionId": "0238c123-8333-4679-8aa7-2e81abf413f2"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16le\")",
+          "outcome": "Passed",
+          "executionId": "3e288fd8-c545-4517-ad3a-5aa49bd44dbe"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32be\")",
+          "outcome": "Passed",
+          "executionId": "31d31600-e6c2-47a8-8f8e-1d11370200ee"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32le\")",
+          "outcome": "Passed",
+          "executionId": "15cb3722-3491-4ec7-8920-7bcfd1f1d951"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8\")",
+          "outcome": "Passed",
+          "executionId": "d332bec7-06b7-459c-bec0-ce80a9bec2ed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8-bom\")",
+          "outcome": "Passed",
+          "executionId": "a20c63b6-7940-4366-9bfc-0c1842bb60f2"
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "matrixTotal": 1125,
+      "rawTrxSha256": "68faf7b8dca70cc2e20d7286d328ca35061350e1fa7caec935fb8b03c7dfe63f",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.A_late_extraction_failure_cannot_turn_captured_sensitive_text_into_a_complete_scan",
+          "outcome": "Passed",
+          "executionId": "0612e771-500a-40a1-a03f-fa5a8b00e482"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Abandoned_capture_reopens_the_full_source_without_serving_its_prefix",
+          "outcome": "Passed",
+          "executionId": "04da96bc-7caf-4479-b8fb-c15078d1f929"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 31)",
+          "outcome": "Passed",
+          "executionId": "3e9ccd57-bfd1-410f-9e8e-203a44111a13"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 32)",
+          "outcome": "Passed",
+          "executionId": "1de01e05-cd9e-4a6a-8405-67c53f1fdc1f"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 33)",
+          "outcome": "Passed",
+          "executionId": "29438b87-c781-42fc-8975-725967658692"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "fe684803-0173-4b7f-abf1-b3e462632063"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "cc86c70c-5033-4ac6-bb45-d7334efc2123"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "c22ee5e3-4955-4e7c-bbf2-28f6a2233080"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Owner_disposal_invalidates_replay_and_cancellation_cannot_yield_a_partial_read",
+          "outcome": "Passed",
+          "executionId": "20c9fafe-c40a-40b6-81bc-15a5f6f93cde"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Complete_staged_pdf_reads_sensitive_content_on_the_last_page(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "e5af593d-5851-4edb-be83-e991813c7ac0"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Complete_staged_pdf_reads_sensitive_content_on_the_last_page(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "2af844c7-3801-4e36-bd04-d80d5b02afc6"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "e1126538-518c-4ec0-892a-32c4663b1380"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "89c9ada7-9f11-47e5-9508-020052ddee3c"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "8c14ce93-7dcc-427d-b73f-565fb4c502b2"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Scalar_peek_cancellation_and_disposal_leave_the_source_open",
+          "outcome": "Passed",
+          "executionId": "c3e80cc6-cb7f-4d5c-b662-f8a549423eb3"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16be\")",
+          "outcome": "Passed",
+          "executionId": "d2a82a24-e25b-420e-8a21-95c72233c094"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16le\")",
+          "outcome": "Passed",
+          "executionId": "1588e182-1f6f-4b4c-a482-fbfa13c7d162"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32be\")",
+          "outcome": "Passed",
+          "executionId": "a7d26656-bfc5-4a45-bd04-d5832209d03e"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32le\")",
+          "outcome": "Passed",
+          "executionId": "28fefd6f-a901-42ca-aa6b-4d48a9e924a3"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8\")",
+          "outcome": "Passed",
+          "executionId": "dd08a4ea-adac-4f6e-9633-770abcbe3c73"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8-bom\")",
+          "outcome": "Passed",
+          "executionId": "b82cd470-19eb-460c-8f89-02b5cff7765a"
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "matrixTotal": 1495,
+      "rawTrxSha256": "d98e14ab24bde1fa306974a60ee906126253ac42462801be971485d0e4247312",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.A_late_extraction_failure_cannot_turn_captured_sensitive_text_into_a_complete_scan",
+          "outcome": "Passed",
+          "executionId": "b92dc1e9-5c92-4f9a-8a8c-94ce61a6392b"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Abandoned_capture_reopens_the_full_source_without_serving_its_prefix",
+          "outcome": "Passed",
+          "executionId": "7d684dbc-79ca-4cab-8759-25245dee0c18"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 31)",
+          "outcome": "Passed",
+          "executionId": "0e553e05-97e5-4015-b85a-95ddfd1cad2f"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 32)",
+          "outcome": "Passed",
+          "executionId": "8c2ced1c-9e1c-4356-a18d-e33c7b31cc06"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 33)",
+          "outcome": "Passed",
+          "executionId": "84837788-e595-43d5-a933-4b6ecd6a03ae"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "5f52ffde-d14d-4bfd-b67d-25e9e20a0f9d"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "a70be22d-b932-4df7-9fe8-77ac97d00456"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "5df985fc-1dc4-46e7-8dd8-8dc177a53dbb"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Owner_disposal_invalidates_replay_and_cancellation_cannot_yield_a_partial_read",
+          "outcome": "Passed",
+          "executionId": "a91f56e9-4694-4590-a767-a1949e7b6b67"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Complete_staged_pdf_reads_sensitive_content_on_the_last_page(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "165811d5-161c-4b8a-ab8b-002f6d481da1"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Complete_staged_pdf_reads_sensitive_content_on_the_last_page(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "8c6c9785-42eb-4966-b39d-c4e5f694f61d"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "b7580967-96fa-47ec-9445-d894db890645"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "60aa6a36-0e86-41b0-b839-816a0acb25a1"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "a610f71b-a376-4a7e-8fc8-4eebb4d7a6c4"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Scalar_peek_cancellation_and_disposal_leave_the_source_open",
+          "outcome": "Passed",
+          "executionId": "ca6d7aa2-3cfc-45af-a6d7-f091a4293eca"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16be\")",
+          "outcome": "Passed",
+          "executionId": "eb76dfb0-b834-428f-8948-4accdd3c9268"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16le\")",
+          "outcome": "Passed",
+          "executionId": "c10df898-480e-4ec0-85b2-730d33df8eeb"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32be\")",
+          "outcome": "Passed",
+          "executionId": "f03e1c77-ecaf-4bce-84ca-1d408f17baae"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32le\")",
+          "outcome": "Passed",
+          "executionId": "9119e9d6-bdac-4a88-86f3-13d34ee19fca"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8\")",
+          "outcome": "Passed",
+          "executionId": "f8cb61a5-7628-4661-b1a6-72469c4592e7"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8-bom\")",
+          "outcome": "Passed",
+          "executionId": "8ea59dcd-512c-48eb-853e-90c902ec5786"
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "matrixTotal": 1495,
+      "rawTrxSha256": "ec7f2eac41de27b8062a9383f30db416b2f995fe137d5e7ab16c0ff6b9621995",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.A_late_extraction_failure_cannot_turn_captured_sensitive_text_into_a_complete_scan",
+          "outcome": "Passed",
+          "executionId": "6a1690cb-7190-4115-8a49-b9a9a49eeae5"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Abandoned_capture_reopens_the_full_source_without_serving_its_prefix",
+          "outcome": "Passed",
+          "executionId": "e92aa114-6cb7-4e19-8790-0e29d3e2ed66"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 31)",
+          "outcome": "Passed",
+          "executionId": "03b71144-b8e7-4414-84a7-cdbf522444bc"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 32)",
+          "outcome": "Passed",
+          "executionId": "dff51bdb-72ad-4cfe-adef-a6b89d8cd0ed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 33)",
+          "outcome": "Passed",
+          "executionId": "18dbcecf-a0e8-44c5-bba3-70fb8509f7ba"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "56d0d2d0-02c3-4407-a890-6b382b45dfa7"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "7d6b40a1-fe3d-47cb-a6a7-825f32b0c592"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "bbd93370-b603-4b9a-a92b-df2ac1291cdd"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Owner_disposal_invalidates_replay_and_cancellation_cannot_yield_a_partial_read",
+          "outcome": "Passed",
+          "executionId": "6f543a1e-f7b2-4bfb-ad3a-d617d5f15824"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Complete_staged_pdf_reads_sensitive_content_on_the_last_page(sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "722f57d3-3306-4470-916e-02a9e7743402"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Complete_staged_pdf_reads_sensitive_content_on_the_last_page(sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "ed0f5a83-1f26-4e41-94ed-070d27437fee"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 1)",
+          "outcome": "Passed",
+          "executionId": "f200e51b-0afc-4c7e-a3ed-5ad92aa67a9f"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 7)",
+          "outcome": "Passed",
+          "executionId": "6bbcc510-bf5c-4b46-80bb-0c8744f5132e"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Raw_pdf_content_order_and_page_boundaries_match_legacy_text(chunk: 8192)",
+          "outcome": "Passed",
+          "executionId": "257b2286-8bbf-4136-8346-a36bb52a58ce"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PdfStreamingInspectionTests.Scalar_peek_cancellation_and_disposal_leave_the_source_open",
+          "outcome": "Passed",
+          "executionId": "716a8b36-27ad-42b2-9ebb-a81559be3f54"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16be\")",
+          "outcome": "Passed",
+          "executionId": "1398f2b6-d746-44eb-bb05-401bd4af2834"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16le\")",
+          "outcome": "Passed",
+          "executionId": "1b34217f-4b4e-4849-bf37-eecea2d4057f"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32be\")",
+          "outcome": "Passed",
+          "executionId": "dcfdbf69-7155-4839-aa54-a453f0d17c45"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32le\")",
+          "outcome": "Passed",
+          "executionId": "8031c478-7d08-4761-8529-e461d7cc747f"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8\")",
+          "outcome": "Passed",
+          "executionId": "284fb434-262f-4ee8-82ec-d906f52126df"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8-bom\")",
+          "outcome": "Passed",
+          "executionId": "2e58dd56-d019-4a53-b85f-38116a89a99f"
+        }
+      ]
+    }
+  ]
+}
