@@ -48,7 +48,8 @@ internal sealed class BoundedTextReplay(Func<Task<TextReader>> open, int maximum
         public override int Read(char[] buffer, int index, int count) => Read(buffer.AsSpan(index, count));
         public override int Read()
         { Span<char> value = stackalloc char[1]; return Read(value) == 0 ? -1 : value[0]; }
-        public override int Peek() => inner.Peek();
+        public override int Peek()
+        { ObjectDisposedException.ThrowIf(owner._disposed, this); return inner.Peek(); }
         public override async ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken token = default)
         {
             ObjectDisposedException.ThrowIf(owner._disposed, this);

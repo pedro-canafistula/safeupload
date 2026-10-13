@@ -94,15 +94,21 @@ public sealed class BoundedTextReplayTests
     private sealed class LateFailure : TextReader
     {
         private bool _first = true;
-        public override Task<int> ReadAsync(char[] buffer, int index, int count)
-            => ReadAsync(buffer.AsMemory(index, count)).AsTask();
-        public override ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken token = default)
+        public override int Read(char[] buffer, int index, int count) => Read(buffer.AsSpan(index, count));
+        public override int Read(Span<char> buffer)
         {
             if (!_first) throw new InvalidDataException("Late extraction failure.");
             _first = false;
             const string prefix = "CPF: 529.982.247-25";
-            prefix.AsSpan().CopyTo(buffer.Span);
-            return ValueTask.FromResult(prefix.Length);
+            prefix.AsSpan().CopyTo(buffer);
+            return prefix.Length;
+        }
+        public override Task<int> ReadAsync(char[] buffer, int index, int count)
+            => ReadAsync(buffer.AsMemory(index, count)).AsTask();
+        public override ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(Read(buffer.Span));
         }
     }
 }
