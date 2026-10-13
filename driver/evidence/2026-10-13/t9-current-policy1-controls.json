@@ -1,0 +1,238 @@
+{
+  "sourceCommit": "bfffa535e2b87b005e0f5b88d424d03d2d0e4f18",
+  "scope": "Current policy authority and legacy fallback controls; no protected-runtime qualification",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "rawTrxSha256": "98f4304e5a16efd2ebe4b98e438ee433a36ab387da7c2837bbbb0d78954d1418",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_accepts_a_valid_live_response",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"json\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"network\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"null\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"server\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"timeout\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"approval\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"inspection\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"justification\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyTests.Current_policy_rejects_weak_acl_even_with_a_valid_fallback_and_recovers_after_repair",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyTests.Missing_current_policy_after_load_cannot_be_replaced_with_a_default",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Handback_never_exports_bytes_using_a_rejected_policy_fallback",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Rejected_policy_acl_during_inspection_retains_bytes_without_requesting_publication",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "rawTrxSha256": "185925f151660d2cdd4ea0980c81bdb87af2824ca16f46626abb7a16c0f54432",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_accepts_a_valid_live_response",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"json\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"network\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"null\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"server\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"timeout\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"approval\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"inspection\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"justification\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyTests.Current_policy_rejects_weak_acl_even_with_a_valid_fallback_and_recovers_after_repair",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyTests.Missing_current_policy_after_load_cannot_be_replaced_with_a_default",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Handback_never_exports_bytes_using_a_rejected_policy_fallback",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Rejected_policy_acl_during_inspection_retains_bytes_without_requesting_publication",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "rawTrxSha256": "37fb45f7bed23f63ca2697de67ba6690f4751f26f2277178c71cd8a92c0cdc16",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_accepts_a_valid_live_response",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"json\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"network\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"null\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"server\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"timeout\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"approval\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"inspection\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"justification\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyTests.Current_policy_rejects_weak_acl_even_with_a_valid_fallback_and_recovers_after_repair",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyTests.Missing_current_policy_after_load_cannot_be_replaced_with_a_default",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Handback_never_exports_bytes_using_a_rejected_policy_fallback",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Rejected_policy_acl_during_inspection_retains_bytes_without_requesting_publication",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "rawTrxSha256": "4f6a4037cf9f93a1d6ca0ad740f72c837ef87f77150fda43d06de0aab770e66a",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_accepts_a_valid_live_response",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"json\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"network\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"null\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"server\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.HttpPolicyStoreTests.Current_policy_never_uses_the_legacy_default_after_a_provider_failure(failure: \"timeout\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"approval\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"inspection\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(decision: \"justification\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyTests.Current_policy_rejects_weak_acl_even_with_a_valid_fallback_and_recovers_after_repair",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.PolicyTests.Missing_current_policy_after_load_cannot_be_replaced_with_a_default",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Handback_never_exports_bytes_using_a_rejected_policy_fallback",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Rejected_policy_acl_during_inspection_retains_bytes_without_requesting_publication",
+          "outcome": "Passed"
+        }
+      ]
+    }
+  ]
+}

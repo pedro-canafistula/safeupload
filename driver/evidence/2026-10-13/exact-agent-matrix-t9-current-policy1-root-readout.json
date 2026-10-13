@@ -1,0 +1,855 @@
+{
+  "UTC": "2026-10-13T09:17:49.188431+00:00",
+  "AgentMatrixGate": "PASS",
+  "Tests": {
+    "normal-debug": {
+      "total": 936,
+      "unique_execution_ids": 936,
+      "required_passed_result_ids": {
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.EvidenceTypesExistOnlyInFeatureBuilds": [
+          "b8422ba6-7dfb-4467-921d-c64d33fea253"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.Legacy_empty_migration_requires_fresh_exact_content_and_reconciled_obligations": [
+          "f9fab6a4-0cdc-4d1b-a5a7-e2cfec9aedf8",
+          "fb9522a0-a0d9-48aa-97b5-466746ec99fb",
+          "3d50e97c-83e2-4904-aa64-890afeced8d8",
+          "9d6129de-673f-440d-a70c-dd0f0f8453a0",
+          "e4263766-4525-4867-9967-7b5d3f7d473f",
+          "aba8b15c-0568-4e6c-99fa-6d1a245bd517"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.Ordinary_empty_profile_rejects_old_capabilities_before_accepting_an_epoch": [
+          "420da4b4-2bd4-46f6-be7b-aeeb4da98cec"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_attachment_order_blocks_seal_until_handle_receipt_and_allows_positive_save": [
+          "ab9b85c1-22c4-4b94-8ff2-703a15c4b0ac"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_epoch_drain_replay_is_exact_and_does_not_reauthorize_a_different_tuple": [
+          "a5bf4238-3329-4dc1-92f8-64ffc5489245"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_epoch_rejects_unpaired_drain_receipts_without_rewriting_them": [
+          "bc1ddce8-68ef-4879-8988-5ebd410e6483"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_retire_attached_private_requires_measured_zero_and_exact_ack": [
+          "58c7e215-313a-4317-b1e0-5fab34f85e91"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_retire_unexposed_uses_exact_background_delete_ack_and_replays_op16": [
+          "bf9950b5-ec5a-44a6-b8a1-6c7047eac66e"
+        ],
+        "SafeUpload.Agent.Tests.StagedInspectionFailureTests.Trivial_empty_inspection_measures_content_instead_of_trusting_declared_size": [
+          "9feba187-4b83-4942-af6a-006b8b4143ac",
+          "5fe6758f-7950-4d4b-9495-21b6f42ea96f"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch": [
+          "410392f9-62f0-4c6f-bd9f-d50222a34421",
+          "1e6d6367-563d-46db-a38f-2479cfc6ab85",
+          "1ced1bba-d2c6-41b1-bf8d-05cf0204be25"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction": [
+          "e5c10e29-f784-455f-9199-cb5c60ed4f95",
+          "35587b92-d7a0-45b1-a964-647202c88be4"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent": [
+          "6284f12f-723b-4221-a827-5a018f99151b",
+          "1e3100e6-a619-4d89-95ab-33ee71955ca6"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_replacement_blocks_parent_cleanup_without_deleting_replacement": [
+          "b5a1d197-1565-4beb-8192-1e38fe4f4983"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_requires_gate_confirmed_disposal_before_parent_ack": [
+          "86e5b540-2661-4e5a-9471-5639fca1bec7"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Legacy_v19_create_after_preserves_all_legacy_chain_and_rejects_mixed_epoch_request": [
+          "01442d18-338b-4b09-92d4-1d1ba809ac37"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V19_create_after_discard_commits_exact_ancestry_before_backing_and_replays_reservation": [
+          "823c1c82-01cd-4c4c-8b0a-9df98ad1f740"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_create_after_rejects_identityless_or_different_epoch_v1_before_child_intent": [
+          "7a291386-9321-41c2-9326-3b4fb983087d",
+          "be8a5d1c-5d5e-49af-9613-1bb92d0e3991"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_create_after_requires_exact_op19_before_any_journal_mutation": [
+          "321da7e1-741a-45e5-af7f-ad3aa927a311",
+          "dbdc375f-9bcc-48cf-b056-4e8dbe247602",
+          "140f7bfb-ae6d-4c53-8de6-032c3f8e8a04"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_marker_on_an_ordinary_operation_is_rejected_before_image_text_decode": [
+          "6c6a1b77-aad8-465f-b90d-75ca799eb16d"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_typed_allocate_rejects_nonzero_data_after_payload_or_path": [
+          "89699ba9-777c-4c48-9e31-73dba552f6d3"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_typed_allocate_rejects_the_old_v19_profile_marker": [
+          "f179a2f4-df48-4fb2-9564-6fcb46d954c6"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.Empty_stage_is_measured_sealed_with_the_empty_digest_and_reserved_state_cannot_be_forged": [
+          "4d0eae80-4c51-4035-a5b4-89f82c9e8704"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.Exact_private_discard_can_finish_after_a_newer_ordinary_allocation_without_touching_it": [
+          "31d14b35-f104-453c-b33c-db9ff7e2e3d3"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.V19_unattached_allocation_cleanup_cannot_discard_a_sealed_version": [
+          "5cfa02d7-4337-49ef-8763-8a669155d40d"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Changed_length_cannot_turn_a_measured_version_into_an_implicit_empty_approval": [
+          "8a5df857-f539-484b-a315-d05a7dcc2262",
+          "f41a8f3d-9cc1-4703-80b4-79f35d83d129"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Empty_publication_still_requires_the_kernel_permit": [
+          "952d68c1-a2ee-42f5-8a64-4036c77beb85"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Measured_empty_content_publishes_normally_without_extraction_or_private_notice": [
+          "0ee5e511-36de-4024-a098-36f805aa1fc1",
+          "3cdea363-2332-4d19-ac8a-83911318ab36",
+          "c80e2dd0-2c9c-42b5-92ef-4342d801c2f3",
+          "cf0d28ac-f112-408a-ad36-ae0716ec0ddf",
+          "5c6448d5-1687-480c-b18a-ed88c9151e9d",
+          "09315bce-a171-4f0c-8ac0-0c586f6e1e6b"
+        ]
+      }
+    },
+    "normal-release": {
+      "total": 936,
+      "unique_execution_ids": 936,
+      "required_passed_result_ids": {
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.EvidenceTypesExistOnlyInFeatureBuilds": [
+          "8ab0bb44-f9d3-4cac-ac38-93ed806d86f8"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.Legacy_empty_migration_requires_fresh_exact_content_and_reconciled_obligations": [
+          "035d0baf-8f39-437c-8912-37fdfa1dcb01",
+          "166ca4c3-6e7e-4236-a483-dc64cf2a68c1",
+          "1f09e209-f928-43f0-9989-ff29c59e0e1c",
+          "be54285d-040f-4e4c-80bb-d73ed12e612e",
+          "c240a81b-1c0d-4903-8a7c-6019967a8e2c",
+          "0a3074f3-7ea4-4dfd-9868-76fa8514b4f1"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.Ordinary_empty_profile_rejects_old_capabilities_before_accepting_an_epoch": [
+          "24314cec-cadd-4a6f-b0b8-243af7b18b5d"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_attachment_order_blocks_seal_until_handle_receipt_and_allows_positive_save": [
+          "fd04e6dc-dbb7-453d-b82d-94eec597011c"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_epoch_drain_replay_is_exact_and_does_not_reauthorize_a_different_tuple": [
+          "0b99d840-4cf8-413c-9ada-7814a7f427be"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_epoch_rejects_unpaired_drain_receipts_without_rewriting_them": [
+          "3bd3c2bc-5df6-4171-9582-a4f28bcdd074"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_retire_attached_private_requires_measured_zero_and_exact_ack": [
+          "04af7a37-c238-4d0b-b133-02a573034a75"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_retire_unexposed_uses_exact_background_delete_ack_and_replays_op16": [
+          "f8a0f259-439d-4d46-9da0-7d271ac40262"
+        ],
+        "SafeUpload.Agent.Tests.StagedInspectionFailureTests.Trivial_empty_inspection_measures_content_instead_of_trusting_declared_size": [
+          "8c07f39e-c8dd-47a9-8a3d-6803bb2329db",
+          "3b314043-caba-4750-b5a1-43b20c157467"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch": [
+          "bd172c25-e20e-4d76-828b-a28e3d63ee2a",
+          "b540218c-9b0e-4482-abaa-2e9a583258b0",
+          "eda4d4b3-b3f8-47e0-8cc2-b5f5bffa46ad"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction": [
+          "47b0edb5-ca80-404d-b423-025fc2066f7f",
+          "3d7f978b-5ca0-45aa-94bf-96571c922663"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent": [
+          "32f12ee2-0387-45f3-8e4a-9b66286a5319",
+          "b62fc51c-d2dc-4338-a015-4cd2eb9a139e"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_replacement_blocks_parent_cleanup_without_deleting_replacement": [
+          "95010529-d1e9-4959-a036-4ba87ee3949f"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_requires_gate_confirmed_disposal_before_parent_ack": [
+          "8d03c028-ff2f-4913-87eb-e71e0aab3668"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Legacy_v19_create_after_preserves_all_legacy_chain_and_rejects_mixed_epoch_request": [
+          "03dd3e62-f701-43d4-89a9-f6796fe1e42b"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V19_create_after_discard_commits_exact_ancestry_before_backing_and_replays_reservation": [
+          "06182d79-27d9-4f27-bda5-95376248970d"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_create_after_rejects_identityless_or_different_epoch_v1_before_child_intent": [
+          "956db223-63f8-4b72-83d1-316ba096fd77",
+          "8411c416-9d91-4c14-95c7-5354e445dc07"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_create_after_requires_exact_op19_before_any_journal_mutation": [
+          "a6e718bf-752e-4d02-a050-9a8f29f45c4d",
+          "a4498611-62f3-434a-84ce-8d490c30935c",
+          "39743299-15ce-4bef-8205-cf4563d53efe"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_marker_on_an_ordinary_operation_is_rejected_before_image_text_decode": [
+          "8554ab32-4a45-4bfa-af25-f73e7f24b8d1"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_typed_allocate_rejects_nonzero_data_after_payload_or_path": [
+          "0f43a159-56b3-46b0-a476-1727c5553805"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_typed_allocate_rejects_the_old_v19_profile_marker": [
+          "7e2b3041-7156-4966-b62d-cf7b761fdecf"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.Empty_stage_is_measured_sealed_with_the_empty_digest_and_reserved_state_cannot_be_forged": [
+          "980cc2bd-d173-4321-a8c0-1d203647d286"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.Exact_private_discard_can_finish_after_a_newer_ordinary_allocation_without_touching_it": [
+          "7b5dd743-2d75-486e-9090-18acc494d768"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.V19_unattached_allocation_cleanup_cannot_discard_a_sealed_version": [
+          "42ffec36-d672-4141-8614-93b5b0045133"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Changed_length_cannot_turn_a_measured_version_into_an_implicit_empty_approval": [
+          "5a948e01-cf94-4cce-8626-f541ddf04faf",
+          "bf7e80dc-0e9a-4eac-845f-8ea7ba30b45f"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Empty_publication_still_requires_the_kernel_permit": [
+          "bf8d6105-6578-444c-be94-7feeba3fda89"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Measured_empty_content_publishes_normally_without_extraction_or_private_notice": [
+          "e3f98ef5-f5e0-4a61-962e-707d140625b5",
+          "c78ebd65-fc2b-4815-bb65-751fbc9529e0",
+          "47b84666-89d2-45de-b598-1761b17e37f6",
+          "00d11059-9821-4260-bebe-e86f74fd8fc6",
+          "05a4ca5c-c17e-45e6-a15b-5334b22f6747",
+          "f47e56cb-4348-4cb5-91b8-031f0ccf42d0"
+        ]
+      }
+    },
+    "feature-debug": {
+      "total": 1306,
+      "unique_execution_ids": 1306,
+      "required_passed_result_ids": {
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.BackendGenerationDriftProducesIncompleteEvidenceAndStillNeverReady": [
+          "b30a2ed3-de52-4d61-8b1b-f0213b5b2326"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.BackpressureDeadlineCancelsCaptureAndTerminalizesReservedHook": [
+          "87bdd9d1-1a0a-44d4-9f78-7b1e34517652",
+          "5b6dca3e-ffe3-412d-85e3-9b4a9ad24f9f"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.BindingDrainWaitsForAcceptedSendAndRejectsLaterCalls": [
+          "99382c9c-e76d-4b35-8d9c-e16193a2fad5"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.CaptureStreamsStablePagedSnapshotAndRetriesStatusRetryWithoutReadinessClaim": [
+          "b729eb50-4f8c-4029-83a5-8bc379b77a0e"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.EvidenceTypesExistOnlyInFeatureBuilds": [
+          "c1af92b4-5269-46df-8f24-ec35e261cb36"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.NonzeroReservedFlagsInNonTargetActivatingEntryPreserveRawPageAndInvalidateCapture": [
+          "6122f29d-38e6-4605-8b05-e1167934064c"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.PipeAuthorizationRequiresSystemOrAdministratorTokenAndLocalPipePolicy": [
+          "360056a5-c7f5-486e-adc4-0442f6f996ed"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.RawFrameKeepsActualBytesEvenWhenNativeCallFailed": [
+          "56b4e9a4-2187-4e31-9dbd-1a67bc25e6ff"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.RequestParserRequiresExactBoundedCanonicalIdentity": [
+          "e8321ac1-3505-4dcf-89a3-e0a628009ccf"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.RunTargetTombstonesStayUntilBindingClearAndCapacityDoesNotEvictThem": [
+          "d8d196e2-40d4-4b00-bb21-c9f93fa41b19"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.StableSnapshotWithAbsentTargetIsCapturedAndAllowsNextHook": [
+          "fc4854c1-1392-4306-bd7a-c817b1206991"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.StableSnapshotWithAmbiguousTargetCarriesNoSelectedEntryFields": [
+          "e3e2a036-e078-4acd-a15c-1cbd7fe89c6d"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceWireTests.Diagnostic_sends_on_one_port_are_serialized": [
+          "b9925098-ae59-4ed7-beaa-6c6e8d1fb114"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceWireTests.Dispose_drains_an_inflight_diagnostic_send_and_rejects_later_sends": [
+          "fe94dd70-7cd6-4801-8fdd-36d06e4cdeee"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceWireTests.Input_allows_only_readonly_status_commands_and_bounded_start_indices": [
+          "469e28dd-3e16-4373-89cc-bd1e344262ec"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceWireTests.Managed_status_mirrors_match_driver_sizes_and_offsets": [
+          "b685e5a3-2170-4ab9-8b30-4ee23438b30d"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceWireTests.Native_failure_keeps_hresult_and_never_exposes_zeroed_reply_buffer": [
+          "1ee6ac4e-feaa-4adf-a58c-51e38894e5e9"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.Legacy_empty_migration_requires_fresh_exact_content_and_reconciled_obligations": [
+          "2d9feea0-fe95-4a5d-bf3a-f2cfb0efa93f",
+          "16c650a7-0b51-4f47-b2be-24f6066a00b6",
+          "ec65474d-869b-409a-b13c-e5605c08d9e8",
+          "82a48238-59b6-4c01-870e-beb7acc506a8",
+          "84b9f9ee-c9c0-471c-a281-b538fda6fb7e",
+          "bcfa6027-79aa-49a7-aa99-ad5a2fc8fd14"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.Ordinary_empty_profile_rejects_old_capabilities_before_accepting_an_epoch": [
+          "60a27c22-306f-447b-b556-6d7ce648c2f1"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_attachment_order_blocks_seal_until_handle_receipt_and_allows_positive_save": [
+          "03e7876d-3085-4c97-8342-0f9021d5287a"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_epoch_drain_replay_is_exact_and_does_not_reauthorize_a_different_tuple": [
+          "c38c3029-2562-4a34-bfaa-a2a74cfd0f9c"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_epoch_rejects_unpaired_drain_receipts_without_rewriting_them": [
+          "3767e4f5-abf5-4bf1-b8f0-9962d561611d"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_retire_attached_private_requires_measured_zero_and_exact_ack": [
+          "e26051ed-cd0a-4b43-80f7-16fe3785c75b"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_retire_unexposed_uses_exact_background_delete_ack_and_replays_op16": [
+          "5fead285-2fd5-46d3-ba05-c46a60462fd2"
+        ],
+        "SafeUpload.Agent.Tests.StagedInspectionFailureTests.Trivial_empty_inspection_measures_content_instead_of_trusting_declared_size": [
+          "53a9e016-cb5e-448c-b244-da61a2c4b274",
+          "22be4cde-2fe7-4d33-822f-3ebe6953a3c7"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch": [
+          "4751a7e0-d243-421c-b228-bb5432ef9f0a",
+          "3538539b-de2d-4513-adfd-c03e34a3a4c9",
+          "3777d334-4e87-4658-b097-41eed50e1e4b"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction": [
+          "0be287f6-330e-4580-b972-0d3c62e9fd1c",
+          "87aca8a4-5278-49b1-85a4-7983e9cf7842"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent": [
+          "6964fd75-9fcf-45b8-952f-0f1db8b242f5",
+          "1aca6559-f887-427f-bf90-fb4440126a12"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_replacement_blocks_parent_cleanup_without_deleting_replacement": [
+          "91d2929c-4d50-4d3c-84e6-23d400043d6b"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_requires_gate_confirmed_disposal_before_parent_ack": [
+          "b45e9def-899f-4c78-96d6-29ff3e5e5663"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Legacy_v19_create_after_preserves_all_legacy_chain_and_rejects_mixed_epoch_request": [
+          "261a746d-1651-4649-8e4c-c1416fd7e6ce"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V19_create_after_discard_commits_exact_ancestry_before_backing_and_replays_reservation": [
+          "8c544679-ab0f-4e79-a51f-8bb50399579d"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_create_after_rejects_identityless_or_different_epoch_v1_before_child_intent": [
+          "1ce5e02e-1c88-4962-a2b4-1134b1ebab9e",
+          "2a2468ad-f063-4471-bf17-45511ca52aa6"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_create_after_requires_exact_op19_before_any_journal_mutation": [
+          "3f28588e-f827-4a10-aaad-6ae7f88f68e4",
+          "f82a9e09-dd54-42df-ae1a-f9a9d9ca2f45",
+          "14aaa6fa-e644-4e94-83c2-049e213bce44"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_marker_on_an_ordinary_operation_is_rejected_before_image_text_decode": [
+          "8648dfc9-a5bc-48ec-b68f-3caa151c6a2e"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_typed_allocate_rejects_nonzero_data_after_payload_or_path": [
+          "dde9e445-6033-4ae3-8233-9c830024cf7c"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_typed_allocate_rejects_the_old_v19_profile_marker": [
+          "211908d5-068a-4bd2-b1b9-07c43e006a75"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.Empty_stage_is_measured_sealed_with_the_empty_digest_and_reserved_state_cannot_be_forged": [
+          "648971d8-41dd-4032-91cb-7d4809b59346"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.Exact_private_discard_can_finish_after_a_newer_ordinary_allocation_without_touching_it": [
+          "1c3cace8-f47c-4363-9b9f-5c7f61c3fc0e"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.V19_unattached_allocation_cleanup_cannot_discard_a_sealed_version": [
+          "79164740-638f-4ccb-b3ee-251b862195f3"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Changed_length_cannot_turn_a_measured_version_into_an_implicit_empty_approval": [
+          "00b04fd2-87b4-4205-a3df-075144dbd048",
+          "a38e72b4-f337-4df8-8b38-500ae74180f7"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Empty_publication_still_requires_the_kernel_permit": [
+          "f309ca36-d9ce-43f3-98a2-e69927468995"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Measured_empty_content_publishes_normally_without_extraction_or_private_notice": [
+          "8f1c2e94-94e5-4e07-b46f-b831d4ad8a9a",
+          "134742f4-b483-4fd8-90c8-6f1d4ec152e0",
+          "9a5d4d7a-8e10-49e9-8ac3-db86e1846d7a",
+          "c65bcaa1-fda4-4237-8965-a518f1f6419e",
+          "ddb8830a-a763-430c-bb89-a0c3d3cf1af8",
+          "1a760096-2cd5-4d34-90e6-3c7b4671e551"
+        ]
+      }
+    },
+    "feature-release": {
+      "total": 1306,
+      "unique_execution_ids": 1306,
+      "required_passed_result_ids": {
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.BackendGenerationDriftProducesIncompleteEvidenceAndStillNeverReady": [
+          "20310efb-34fb-4caf-baca-0e31b31eff94"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.BackpressureDeadlineCancelsCaptureAndTerminalizesReservedHook": [
+          "86b67417-0f8b-478d-8443-ed4311c5f7a2",
+          "9483821c-fb48-4682-a072-9ea92e3f8333"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.BindingDrainWaitsForAcceptedSendAndRejectsLaterCalls": [
+          "9becd4f0-c32e-4cc2-9d02-fc4912395a34"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.CaptureStreamsStablePagedSnapshotAndRetriesStatusRetryWithoutReadinessClaim": [
+          "9076806b-ff86-4254-ac9e-4c3f9ae2827c"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.EvidenceTypesExistOnlyInFeatureBuilds": [
+          "ec611bcc-76df-4d20-a014-442a1ceacfc0"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.NonzeroReservedFlagsInNonTargetActivatingEntryPreserveRawPageAndInvalidateCapture": [
+          "b93fb17c-ff15-4650-b92c-85b8d1d5c604"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.PipeAuthorizationRequiresSystemOrAdministratorTokenAndLocalPipePolicy": [
+          "ed378e71-e4b3-452c-b8ee-96ad91297664"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.RawFrameKeepsActualBytesEvenWhenNativeCallFailed": [
+          "d578a7bb-1949-4c34-b802-fa342d02f02f"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.RequestParserRequiresExactBoundedCanonicalIdentity": [
+          "f2974203-6b6c-4d95-bea1-4f822de0a8ec"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.RunTargetTombstonesStayUntilBindingClearAndCapacityDoesNotEvictThem": [
+          "973c8171-887a-4dc6-b900-b2eb88a11341"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.StableSnapshotWithAbsentTargetIsCapturedAndAllowsNextHook": [
+          "6f79ea42-049a-4752-8c6f-99189cf1b411"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests.StableSnapshotWithAmbiguousTargetCarriesNoSelectedEntryFields": [
+          "c536287a-e96a-45d4-8486-929fc2a262a8"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceWireTests.Diagnostic_sends_on_one_port_are_serialized": [
+          "ebd0cef8-6e13-4ada-8359-30df8a999e1d"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceWireTests.Dispose_drains_an_inflight_diagnostic_send_and_rejects_later_sends": [
+          "bab3d612-6570-4538-868b-4ae0ff1b3c83"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceWireTests.Input_allows_only_readonly_status_commands_and_bounded_start_indices": [
+          "da923c40-2870-4afa-8965-751a745526d2"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceWireTests.Managed_status_mirrors_match_driver_sizes_and_offsets": [
+          "b3ecb6bc-ef01-4251-a71d-a100de0c7ec8"
+        ],
+        "SafeUpload.Agent.Tests.AdmissionEvidenceWireTests.Native_failure_keeps_hresult_and_never_exposes_zeroed_reply_buffer": [
+          "b8cd5137-5d8f-405e-9708-6f0cae0fb567"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.Legacy_empty_migration_requires_fresh_exact_content_and_reconciled_obligations": [
+          "c64a324d-2f65-47e7-8436-5113d744438b",
+          "77ec9e18-9bd8-4da8-b68f-1f9dd6e2a0f6",
+          "daf63d8c-6921-4b3b-a8fc-c7862094cb93",
+          "efd77adf-7596-41e7-9ddf-7d79e7715bd4",
+          "0a358c3a-9662-456b-be00-abec8272d23f",
+          "d3413d3d-54c5-4e86-9e91-7b3e8bf8811f"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.Ordinary_empty_profile_rejects_old_capabilities_before_accepting_an_epoch": [
+          "4b514465-1dce-47f6-99c0-34083951331f"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_attachment_order_blocks_seal_until_handle_receipt_and_allows_positive_save": [
+          "4bdf33fe-5f4b-44c8-a144-7c5ed4d5e3ab"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_epoch_drain_replay_is_exact_and_does_not_reauthorize_a_different_tuple": [
+          "7fca01bd-91f2-4c82-94fc-ec7f3d99ab32"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_epoch_rejects_unpaired_drain_receipts_without_rewriting_them": [
+          "46aac3b6-bc6d-44e0-9333-a36a91863d28"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_retire_attached_private_requires_measured_zero_and_exact_ack": [
+          "2a6887e9-7f07-44c2-b339-03030ba471a0"
+        ],
+        "SafeUpload.Agent.Tests.StagedAttachmentV20Tests.V20_retire_unexposed_uses_exact_background_delete_ack_and_replays_op16": [
+          "1dda46dc-d382-4cb1-8ec4-937555ed4bc1"
+        ],
+        "SafeUpload.Agent.Tests.StagedInspectionFailureTests.Trivial_empty_inspection_measures_content_instead_of_trusting_declared_size": [
+          "c97299e0-5185-4791-b137-f0699882d33b",
+          "51da29e0-91f5-42bf-9d96-0963353e9510"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch": [
+          "c1257cb5-1a8d-4e34-bb08-6f250f97f1a5",
+          "13ef66f4-29ba-4470-afdb-84c5213bf70f",
+          "989a6c30-0b77-4839-8a32-cd7ab43034ce"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction": [
+          "726bc296-d6d8-41cc-82c7-a28359f2979e",
+          "b41e95a1-f97e-4353-bbf0-9b738cba7cfe"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent": [
+          "0c7829a9-615f-40b7-8142-c3329230bf41",
+          "db81ba79-1c9f-4f93-8ec0-639796dd98e5"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_replacement_blocks_parent_cleanup_without_deleting_replacement": [
+          "9441617e-e8ec-4f6a-8774-fc876c2174ed"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_requires_gate_confirmed_disposal_before_parent_ack": [
+          "b5dc651c-e470-426e-b2b2-0ea06a52fb7d"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Legacy_v19_create_after_preserves_all_legacy_chain_and_rejects_mixed_epoch_request": [
+          "986aec59-4101-4e5f-bc64-a90ae80e99dc"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V19_create_after_discard_commits_exact_ancestry_before_backing_and_replays_reservation": [
+          "b48a1dbe-cab8-4786-9b1b-c33fa64feb5d"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_create_after_rejects_identityless_or_different_epoch_v1_before_child_intent": [
+          "31c39c98-ebe2-469d-b844-bd4fa9a587fc",
+          "aeeaccf5-7da5-4022-9846-7282f4e00a54"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_create_after_requires_exact_op19_before_any_journal_mutation": [
+          "f882a6e4-2829-4d41-89fe-610f2a072a3b",
+          "5170cf2e-b5d6-4e0c-991c-2311f3cb5b1a",
+          "13ac2fc3-fde8-4bfc-9ac6-5fb68f88b0a2"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_marker_on_an_ordinary_operation_is_rejected_before_image_text_decode": [
+          "926b0e18-9772-4238-bee5-fa7eaacc0b4a"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_typed_allocate_rejects_nonzero_data_after_payload_or_path": [
+          "98f6f10a-655b-4111-a8c9-988a1fc53cc5"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.V20_typed_allocate_rejects_the_old_v19_profile_marker": [
+          "ce8cc3e9-e5e2-4721-9567-d0da5d126f52"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.Empty_stage_is_measured_sealed_with_the_empty_digest_and_reserved_state_cannot_be_forged": [
+          "02e917c8-2cca-4191-81e9-dcf7aca5a2ff"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.Exact_private_discard_can_finish_after_a_newer_ordinary_allocation_without_touching_it": [
+          "cfca433d-28f8-4bdb-ac84-e0bd198a1866"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferJournalTests.V19_unattached_allocation_cleanup_cannot_discard_a_sealed_version": [
+          "a7d9516a-0d3e-4805-906f-f2f4ba1bd386"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Changed_length_cannot_turn_a_measured_version_into_an_implicit_empty_approval": [
+          "82c7c141-563a-4cd4-a69e-d5fa4c874916",
+          "0f657a9d-52b7-447c-ae6c-21f137167b2e"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Empty_publication_still_requires_the_kernel_permit": [
+          "b676384c-a95b-422f-a3c3-9488836f63a3"
+        ],
+        "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Measured_empty_content_publishes_normally_without_extraction_or_private_notice": [
+          "2a4a763a-0a2b-4814-9185-4aff438799f7",
+          "694d5552-a793-44ed-a70a-b25e6b6fec8f",
+          "b9c64800-2231-4990-b841-bf8e236a1389",
+          "b7c130a0-526b-4f97-b346-41b7a60512b3",
+          "5b7be32b-9218-4cc0-b525-2386ccb0fd5f",
+          "49cad9b6-aa37-4fb3-b1c1-da00a7c6105a"
+        ]
+      }
+    }
+  },
+  "Packages": {
+    "normal": {
+      "path": "/home/victor/Work/safeupload-staging/output/exact-agent-matrix/t9-current-policy1/out/normal-release-service-publish.zip",
+      "sha256": "8E1F56B8B15728CC9BC3F18119195BD0967C3483E394E8CE5C16FC0C76BD5913",
+      "exe_sha256": "C32554745A47BCDCC255F25DA877B7554AD8B16686AB05BFC1449824F0A81F54",
+      "manifest_sha256": "70F745A6D0B77D7DA64BEB3DD17FAEDA9E91C8D2441485F17158CEC6F916A4A3",
+      "members": 6
+    },
+    "feature": {
+      "path": "/home/victor/Work/safeupload-staging/output/exact-agent-matrix/t9-current-policy1/out/feature-release-service-publish.zip",
+      "sha256": "A2E8081B91701ED0B161DB6B1BA2D0B8D632C58890FD5C4904184CA5FC006330",
+      "exe_sha256": "FFC872A16F64BABF7F714AAC329C4DAF425083DE6B6227FC38CA6EE1E5141A47",
+      "manifest_sha256": "1EED3C8D63FF70F19069E78E45E9684AFB3D587EFF0E6BEC84EDDF85312AAF5F",
+      "members": 6
+    }
+  },
+  "FeatureReleaseCompatibilityView": "/home/victor/Work/safeupload-staging/output/exact-agent-matrix/t9-current-policy1/feature-release-view",
+  "FeatureReleaseZip": "/home/victor/Work/safeupload-staging/output/exact-agent-matrix/t9-current-policy1/feature-release-view/stage-service-publish.zip",
+  "Provenance": {
+    "SourceCommit": "bfffa535e2b87b005e0f5b88d424d03d2d0e4f18",
+    "ArchiveSHA256": "991d6968c6b7dad80117609ffd70f649a0ef0a37c6ae2acfa476955cf93dc7d2"
+  },
+  "Fetched": {
+    "summary.txt": {
+      "Fetched": true,
+      "Bytes": 3684,
+      "SHA256": "8eaaec8800e60c26697e31f65290963739bf5d63da064cafeaa84453450d6f3b"
+    },
+    "dotnet-info.txt": {
+      "Fetched": true,
+      "Bytes": 2696,
+      "SHA256": "560a57cd44c346ce185ddd6573f1e43eda687f1ab6648d6561c1549a036e9327"
+    },
+    "normal-debug-build.txt": {
+      "Fetched": true,
+      "Bytes": 3336,
+      "SHA256": "7c5b5f3f0758f4a9c53a7aaa3e496264468aae381af0b9ab3f5cc965854ee196"
+    },
+    "normal-debug-app-build.txt": {
+      "Fetched": true,
+      "Bytes": 1458,
+      "SHA256": "00bb51b830cb71c3ca51b6325f3aac0d8cc026cd90ce6bde3d076b9a91051eef"
+    },
+    "normal-debug-tests.txt": {
+      "Fetched": true,
+      "Bytes": 904,
+      "SHA256": "1f0ca085924c3196e386a2df080aa106214ec5d04e0f8cb3a1d5ae4059a8dfd0"
+    },
+    "normal-debug-test-build.txt": {
+      "Fetched": true,
+      "Bytes": 2750,
+      "SHA256": "4b95559b1589b0025f23711b421c1a4219c3270b04a4d70398122d68f27b2690"
+    },
+    "normal-debug-tests-user.txt": {
+      "Fetched": true,
+      "Bytes": 768,
+      "SHA256": "10c90ab913c35ec0fec1f10d367c7aeec238d52e1ca1960a98b5ecbc9b7be12d"
+    },
+    "normal-debug-tests-system.txt": {
+      "Fetched": true,
+      "Bytes": 518,
+      "SHA256": "beedef254bb46a4e281934c2ebc2711ff0dcecf822204fb5afa1c309abd2a7d9"
+    },
+    "normal-debug-tests-system.txt.stderr": {
+      "Fetched": true,
+      "Bytes": 0,
+      "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "normal-debug-tests-discovery-list.txt": {
+      "Fetched": true,
+      "Bytes": 242708,
+      "SHA256": "03d947b043b67430e98e76e6365f2431da54097cb46136c286a1c3ccce57a279"
+    },
+    "normal-debug-tests-discovery-fqns.txt": {
+      "Fetched": true,
+      "Bytes": 64,
+      "SHA256": "c211334f2890e4d51b62ca86d0d95c66744fcbdde83f5882f81bcffc2823276a"
+    },
+    "normal-debug-results/agent-tests-discovered-fq.txt": {
+      "Fetched": true,
+      "Bytes": 57317,
+      "SHA256": "940c44ef66091d3283087cdf331f15b77c0bc3799f00e11bd530ff491dbd0eed"
+    },
+    "normal-debug-results/agent-tests.trx": {
+      "Fetched": true,
+      "Bytes": 1503375,
+      "SHA256": "98f4304e5a16efd2ebe4b98e438ee433a36ab387da7c2837bbbb0d78954d1418"
+    },
+    "normal-debug-results/agent-tests-user.trx": {
+      "Fetched": true,
+      "Bytes": 1465063,
+      "SHA256": "0c7e9273ce91680804920c0ed018a1d85a5dc0349a10b719faf10b987b994ac0"
+    },
+    "normal-debug-results/agent-tests-system.trx": {
+      "Fetched": true,
+      "Bytes": 40003,
+      "SHA256": "8315a5e10c6b6101641b4d6e3a75323e1df850e57c292e6f79f517f1cd048161"
+    },
+    "normal-release-build.txt": {
+      "Fetched": true,
+      "Bytes": 3378,
+      "SHA256": "f5fa4b7e92db79f9775c75e4fde2fd5e417414618e44d779436e9002ba3cd49a"
+    },
+    "normal-release-app-build.txt": {
+      "Fetched": true,
+      "Bytes": 1478,
+      "SHA256": "adfcee221c9b0f960adbeea1641d701a9d00679a0816e709787a0fa82c718e63"
+    },
+    "normal-release-tests.txt": {
+      "Fetched": true,
+      "Bytes": 907,
+      "SHA256": "6e73979889c8955840d2870970bc9fba497dcee895f7f4c467f2f45ea154441e"
+    },
+    "normal-release-test-build.txt": {
+      "Fetched": true,
+      "Bytes": 2794,
+      "SHA256": "1fb34f001ad0f4d358d70f8b1ecd3c440aff1923d0886edb591a332d5186feca"
+    },
+    "normal-release-tests-user.txt": {
+      "Fetched": true,
+      "Bytes": 770,
+      "SHA256": "d4e7122e5c87180a5f569e693d4987f781e277ae08b6f1be79fb4c34788748eb"
+    },
+    "normal-release-tests-system.txt": {
+      "Fetched": true,
+      "Bytes": 520,
+      "SHA256": "819163f8425251ed4cb7dfb678f0291e814d9840e8eec7abffb5307cf7f40196"
+    },
+    "normal-release-tests-system.txt.stderr": {
+      "Fetched": true,
+      "Bytes": 0,
+      "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "normal-release-tests-discovery-list.txt": {
+      "Fetched": true,
+      "Bytes": 242708,
+      "SHA256": "03d947b043b67430e98e76e6365f2431da54097cb46136c286a1c3ccce57a279"
+    },
+    "normal-release-tests-discovery-fqns.txt": {
+      "Fetched": true,
+      "Bytes": 64,
+      "SHA256": "c211334f2890e4d51b62ca86d0d95c66744fcbdde83f5882f81bcffc2823276a"
+    },
+    "normal-release-results/agent-tests-discovered-fq.txt": {
+      "Fetched": true,
+      "Bytes": 57317,
+      "SHA256": "940c44ef66091d3283087cdf331f15b77c0bc3799f00e11bd530ff491dbd0eed"
+    },
+    "normal-release-results/agent-tests.trx": {
+      "Fetched": true,
+      "Bytes": 1510863,
+      "SHA256": "185925f151660d2cdd4ea0980c81bdb87af2824ca16f46626abb7a16c0f54432"
+    },
+    "normal-release-results/agent-tests-user.trx": {
+      "Fetched": true,
+      "Bytes": 1472351,
+      "SHA256": "153a4a9f9a1d4cfdb958a2751142ab34853c62977afe786e34f52b90b0e54d0c"
+    },
+    "normal-release-results/agent-tests-system.trx": {
+      "Fetched": true,
+      "Bytes": 40203,
+      "SHA256": "40254026f6916dc9f70ac7583ac778331ade7ffe000ad2f3bcd4d421715510dc"
+    },
+    "normal-release-publish.txt": {
+      "Fetched": true,
+      "Bytes": 3474,
+      "SHA256": "584b40599d0fa3a77a14f14a0ddc7fe6acedeab37994e5c89517f9def2eccc26"
+    },
+    "normal-release-package-manifest.txt": {
+      "Fetched": true,
+      "Bytes": 567,
+      "SHA256": "70f745a6d0b77d7da64beb3dd17faeda9e91c8d2441485f17158cec6f916a4a3"
+    },
+    "normal-release-service-publish.zip": {
+      "Fetched": true,
+      "Bytes": 36723888,
+      "SHA256": "8e1f56b8b15728cc9bc3f18119195bd0967c3483e394e8ce5c16fc0c76bd5913"
+    },
+    "feature-debug-build.txt": {
+      "Fetched": true,
+      "Bytes": 3346,
+      "SHA256": "45fa84b8c2b8428aac2c723ff5768bd4cef355f547c4715ef2cee91b41189568"
+    },
+    "feature-debug-app-build.txt": {
+      "Fetched": true,
+      "Bytes": 1464,
+      "SHA256": "4101aac226f2960f6d557bbbe851848fceeca5dfb9a9c9c9cdb86fc53159ace2"
+    },
+    "feature-debug-tests.txt": {
+      "Fetched": true,
+      "Bytes": 906,
+      "SHA256": "abb3fabe3a947d894b8daa8e29a67ea65382a29b8682094d5a505602f0b79a1b"
+    },
+    "feature-debug-test-build.txt": {
+      "Fetched": true,
+      "Bytes": 2762,
+      "SHA256": "e67382456389ec03198057cfea4ba8e7bcc38ec926bd51a867f4cada25c4e12d"
+    },
+    "feature-debug-tests-user.txt": {
+      "Fetched": true,
+      "Bytes": 770,
+      "SHA256": "08f975cb57a32df413094ba7d2a5a5772317a1e3ddc180e16bcc7e82f5fae399"
+    },
+    "feature-debug-tests-system.txt": {
+      "Fetched": true,
+      "Bytes": 519,
+      "SHA256": "34421d7db77dc2de6944c8a3aece7083a6f5d3af287e6ab0dc18015b2243982e"
+    },
+    "feature-debug-tests-system.txt.stderr": {
+      "Fetched": true,
+      "Bytes": 0,
+      "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "feature-debug-tests-discovery-list.txt": {
+      "Fetched": true,
+      "Bytes": 343534,
+      "SHA256": "e72b5997f61e13050e5007a6cf243d08affae50e11af7ed98dc9c49683600e8e"
+    },
+    "feature-debug-tests-discovery-fqns.txt": {
+      "Fetched": true,
+      "Bytes": 64,
+      "SHA256": "c211334f2890e4d51b62ca86d0d95c66744fcbdde83f5882f81bcffc2823276a"
+    },
+    "feature-debug-results/agent-tests-discovered-fq.txt": {
+      "Fetched": true,
+      "Bytes": 72212,
+      "SHA256": "43df6abaada1c234ba2b15eccbff790beba0c02239563d6073402806820cd1a9"
+    },
+    "feature-debug-results/agent-tests.trx": {
+      "Fetched": true,
+      "Bytes": 2107513,
+      "SHA256": "37fb45f7bed23f63ca2697de67ba6690f4751f26f2277178c71cd8a92c0cdc16"
+    },
+    "feature-debug-results/agent-tests-user.trx": {
+      "Fetched": true,
+      "Bytes": 2069151,
+      "SHA256": "387852d4f4fd25025890250f842497750726d345c1aabfb2896e1f661460938f"
+    },
+    "feature-debug-results/agent-tests-system.trx": {
+      "Fetched": true,
+      "Bytes": 40053,
+      "SHA256": "c730c0921a645be970d9f6a9de109dfaf8c66ef2876b29425760da11ec367d66"
+    },
+    "feature-release-build.txt": {
+      "Fetched": true,
+      "Bytes": 3396,
+      "SHA256": "405cffb86628fcd20ef356b8972677daa59f3c87d1679afd737b49809a33c837"
+    },
+    "feature-release-app-build.txt": {
+      "Fetched": true,
+      "Bytes": 1484,
+      "SHA256": "d38e2a66a67c316ab0d80968cd4fb7d5b7dd25c878217dfb0d7ac2cfa6d7ac38"
+    },
+    "feature-release-tests.txt": {
+      "Fetched": true,
+      "Bytes": 910,
+      "SHA256": "7927c3acc5255422f6cff0d1797e0eb219d53e724d7968c86041e61131cc547c"
+    },
+    "feature-release-test-build.txt": {
+      "Fetched": true,
+      "Bytes": 2806,
+      "SHA256": "e4901b0800e3ecd47b0a03b9fe87b0a40e86be61c42d52154973a1f72f2c0414"
+    },
+    "feature-release-tests-user.txt": {
+      "Fetched": true,
+      "Bytes": 774,
+      "SHA256": "08fe3874d0eb8781589b7d542403ae94e149da400605c9512541a3c9e0b06ce3"
+    },
+    "feature-release-tests-system.txt": {
+      "Fetched": true,
+      "Bytes": 521,
+      "SHA256": "5c8c965998d71aa87711d7f789554c5899853c08e158522f68fbbbd5ad0f552a"
+    },
+    "feature-release-tests-system.txt.stderr": {
+      "Fetched": true,
+      "Bytes": 0,
+      "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "feature-release-tests-discovery-list.txt": {
+      "Fetched": true,
+      "Bytes": 343534,
+      "SHA256": "e72b5997f61e13050e5007a6cf243d08affae50e11af7ed98dc9c49683600e8e"
+    },
+    "feature-release-tests-discovery-fqns.txt": {
+      "Fetched": true,
+      "Bytes": 64,
+      "SHA256": "c211334f2890e4d51b62ca86d0d95c66744fcbdde83f5882f81bcffc2823276a"
+    },
+    "feature-release-results/agent-tests-discovered-fq.txt": {
+      "Fetched": true,
+      "Bytes": 72212,
+      "SHA256": "43df6abaada1c234ba2b15eccbff790beba0c02239563d6073402806820cd1a9"
+    },
+    "feature-release-results/agent-tests.trx": {
+      "Fetched": true,
+      "Bytes": 2117959,
+      "SHA256": "4f6a4037cf9f93a1d6ca0ad740f72c837ef87f77150fda43d06de0aab770e66a"
+    },
+    "feature-release-results/agent-tests-user.trx": {
+      "Fetched": true,
+      "Bytes": 2079397,
+      "SHA256": "a1491ca56565bff8f5a94e2fb90cef0b49de2f3f1434324273cc6494d7d589fd"
+    },
+    "feature-release-results/agent-tests-system.trx": {
+      "Fetched": true,
+      "Bytes": 40253,
+      "SHA256": "5814502ad0d497700c131b3f0fae3866c872744a7cb63187d4401f7a9c5eb3a1"
+    },
+    "feature-release-publish.txt": {
+      "Fetched": true,
+      "Bytes": 3494,
+      "SHA256": "a2b08683929e76abe36317abcdd4a0db426974568fbe5a860bcb49c9ab85026e"
+    },
+    "feature-release-package-manifest.txt": {
+      "Fetched": true,
+      "Bytes": 567,
+      "SHA256": "1eed3c8d63ff70f19069e78e45e9684afb3d587eff0e6bec84eddf85312aaf5f"
+    },
+    "feature-release-service-publish.zip": {
+      "Fetched": true,
+      "Bytes": 36840003,
+      "SHA256": "a2e8081b91701ed0b161db6b1ba2d0b8d632c58890fd5c4904184ca5fc006330"
+    }
+  },
+  "ServiceInstalled": false,
+  "RuntimeQualification": false,
+  "GitMutation": false
+}
