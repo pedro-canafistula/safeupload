@@ -5,6 +5,66 @@ namespace SafeUpload.Agent.Tests;
 
 public sealed class StagedAllocationSecuritySnapshotTests
 {
+    [Theory]
+    [InlineData("read-denied", "seed_export_denied")]
+    [InlineData("label-denied", "seed_export_denied")]
+    [InlineData("sharing-failure", "seed_export_unproven")]
+    [InlineData("unsupported-probe", "seed_export_unproven")]
+    [InlineData("missing-subject", "seed_export_unproven")]
+    [InlineData("other-process-lifetime", "seed_export_unproven")]
+    [InlineData("other-source", "seed_export_unproven")]
+    [InlineData("other-security", "seed_export_unproven")]
+    [InlineData("other-generation", "seed_export_unproven")]
+    [InlineData("effective-thread-is-not-recipient", "seed_export_recipient_unproven")]
+    [InlineData("other-session", "seed_export_recipient_unproven")]
+    [InlineData("recipient-unchecked", "seed_export_recipient_unproven")]
+    [InlineData("independent-read-and-recipient-grants", null)]
+    public void Export_evidence_requires_exact_source_subject_security_and_recipient(string change, string? failure)
+    {
+        var transfer = new StagedTransfer(Guid.NewGuid(), @"C:\private\stage.txt", @"C:\public\save.txt",
+            SafeUpload.Agent.Core.Domain.DestinationKind.Cloud, "write-only.exe", 42, 7)
+            { RequestorSid = "S-1-5-21-111-222-333-1000", RequestorProcessCreationTime = 123456 };
+        var entry = new TransferJournalEntry(transfer, TransferJournalState.Allocated, null, DateTimeOffset.UtcNow)
+            { StageIdentity = new(7, 51, 52), DestinationGeneration = 1 };
+        var (seed, security) = SeedProvenanceFixture.PublicSeed(entry, StagedSeedAuthority.Allowed, StagedSeedAuthority.Allowed);
+        var proof = seed.ExportEvidence!;
+        proof = change switch
+        {
+            "read-denied" or "label-denied" => proof with { ReadAuthority = StagedSeedAuthority.Denied },
+            "sharing-failure" or "unsupported-probe" => proof with { ReadAuthority = StagedSeedAuthority.Unproven },
+            "missing-subject" => proof with { EffectiveSubjectId = Guid.Empty },
+            "other-process-lifetime" => proof with { ProcessCreationTime = 999 },
+            "other-source" => proof with { PublicSource = new(7, 61, 62) },
+            "other-security" => proof with { Security = security.Reference() with { SnapshotId = Guid.NewGuid() } },
+            "effective-thread-is-not-recipient" => proof with { RecipientSid = proof.EffectiveSubjectSid },
+            "other-session" => proof with { RecipientSessionId = 8 },
+            "recipient-unchecked" => proof with { RecipientAuthority = StagedSeedAuthority.Unproven },
+            _ => proof
+        };
+        entry = entry with { SeedProvenance = seed with { ExportEvidence = proof } };
+        if (change == "other-generation") entry = entry with { DestinationGeneration = 2 };
+        var roundtrip = System.Text.Json.JsonSerializer.Deserialize<TransferJournalEntry>(
+            System.Text.Json.JsonSerializer.Serialize(entry))!;
+        Assert.Equal(entry, roundtrip);
+        Assert.Equal(failure, StagedSeedExport.Failure(roundtrip));
+        Assert.NotEqual(transfer.RequestorSid, proof.EffectiveSubjectSid);
+        Assert.Equal(security.Encode(), StagedAllocationSecuritySnapshot.Decode(security.Encode()).Encode());
+    }
+
+    [Fact]
+    public void Missing_bound_provenance_and_stale_failed_diagnostic_are_not_export_authority()
+    {
+        var binding = SecuritySnapshotFixture.Binding();
+        var transfer = new StagedTransfer(binding.ReservationId, @"C:\private\stage", @"C:\public\save.txt",
+            SafeUpload.Agent.Core.Domain.DestinationKind.Cloud, "writer.exe", 42, 7);
+        var entry = new TransferJournalEntry(transfer, TransferJournalState.Allocated, null, DateTimeOffset.UtcNow)
+            { BoundAllocation = binding, DestinationGeneration = 1, StageIdentity = new(7, 21, 22) };
+        Assert.Equal("seed_export_unproven", StagedSeedExport.Failure(entry));
+        Assert.Equal("seed_export_unproven", StagedSeedExport.Failure(entry with
+            { BoundAllocation = null, HandbackFailureReason = "seed_export_unproven", HandbackState = StagedHandbackState.Failed }));
+        Assert.Null(StagedSeedExport.Failure(entry with { BoundAllocation = null }));
+    }
+
     [Fact]
     public void Offset_padding_and_shared_sid_storage_do_not_change_the_security_components()
     {

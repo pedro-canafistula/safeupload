@@ -36,6 +36,8 @@ public sealed partial class StagedTransferJournal
         {
             token.ThrowIfCancellationRequested();
             if (!byId.TryGetValue(id, out var entry)) continue;
+            if (entry.SeedProvenance?.Predecessor is { } seedParent) Retain(seedParent.TransferId);
+            if (entry.SeedProvenance?.SourceBinding is { } source) Retain(source.ReservationId);
             if (entry.ParentVersionIdentity is { } parent) Retain(parent.TransferId);
             if (entry.DeleteVersionIdentity is { } deleted) Retain(deleted.TransferId);
             if (entry.AllocationReferenceId is { } owner) Retain(owner);

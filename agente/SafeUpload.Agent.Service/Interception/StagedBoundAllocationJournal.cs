@@ -30,11 +30,15 @@ public sealed partial class StagedTransferJournal
     // failure rolls a generation back or erases the backing cleanup obligation.
     internal async Task<TransferJournalEntry> CommitBoundAllocationAsync(DestinationCommitTurn turn,
         StagedTransfer transfer, StagedAllocationBindingV23 binding, CancellationToken token,
-        StagedAllocationSecuritySnapshot? security = null)
+        StagedAllocationSecuritySnapshot? security = null, StagedSeedExportEvidence? exportEvidence = null,
+        bool seedPending = false)
     {
         turn.Require(this, StagedDestinationTurnPurpose.Allocation);
         binding.Validate();
         security?.RequireBinding(binding);
+        if (exportEvidence is not null && (binding.Disposition is not (1 or 3) ||
+            binding.ReferenceKind == 1 || binding.PublicTarget is null))
+            throw new InvalidDataException("Export evidence cannot replace inherited or absent seed provenance.");
         if (turn.Destination != binding.Destination || transfer.TransferId != binding.ReservationId ||
             transfer.ProcessId <= 0 || transfer.SessionId is null ||
             string.IsNullOrWhiteSpace(transfer.RequestorSid) || transfer.RequestorProcessCreationTime is not > 0 ||
@@ -52,6 +56,7 @@ public sealed partial class StagedTransferJournal
             {
                 if (existing.Transfer != transfer || existing.BoundAllocation != binding ||
                     existing.AllocationSecurity != security?.Reference() ||
+                    (binding.ReferenceKind != 1 && existing.SeedProvenance?.ExportEvidence != exportEvidence) ||
                     existing.AllocationExtensionVersion != 23 || existing.StageIdentity != stage.Identity ||
                     existing.SealedOnce || existing.PendingRename is not null ||
                     existing.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed))
@@ -84,6 +89,11 @@ public sealed partial class StagedTransferJournal
                 AllocationExtensionVersion = 23, BoundAllocation = binding,
                 AllocationSecurity = security?.Reference()
             };
+            TransferJournalEntry? seedParent = parentIdentity is null ? null :
+                await ReadCoreAsync(parentIdentity.TransferId, token).ConfigureAwait(false);
+            entry = entry with { SeedProvenance = StagedSeedProvenance.ForBound(entry, seedParent, exportEvidence) };
+            if (!seedPending)
+                entry = entry with { SeedCompletion = new(VersionIdentity(entry), stage.Stream.Length) };
             ValidateEntry(entry, transfer.TransferId);
             if (security is not null) await PersistAllocationSecurityCoreAsync(security, token).ConfigureAwait(false);
             string path = ManifestPath(transfer.TransferId);
@@ -103,6 +113,29 @@ public sealed partial class StagedTransferJournal
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
             await ClaimBoundAllocationHeadCoreAsync(entry, token).ConfigureAwait(false);
             return entry;
+        }
+        finally { _gate.Release(); }
+    }
+
+    internal async Task<TransferJournalEntry> CompleteBoundSeedAsync(StagedVersionIdentity allocation,
+        long length, CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(allocation.TransferId, token).ConfigureAwait(false);
+            if (VersionIdentity(current) != allocation || current.SeedProvenance is null ||
+                current.State != TransferJournalState.Allocated || current.SealedOnce || length < 0)
+                throw new IOException("Seed completion no longer belongs to the private allocation.");
+            using var stage = StagedStageFile.Open(current.Transfer.StagePath);
+            if (stage.Identity != allocation.StageIdentity || stage.Stream.Length != length)
+                throw new IOException("Seed completion lost the exact flushed backing.");
+            var completion = new StagedSeedCompletion(allocation, length);
+            if (current.SeedCompletion is not null && current.SeedCompletion != completion)
+                throw new IOException("A committed seed completion is immutable.");
+            var completed = current with { SeedCompletion = completion, UpdatedAtUtc = DateTimeOffset.UtcNow };
+            await ReplaceAsync(ManifestPath(allocation.TransferId), completed, token).ConfigureAwait(false);
+            return completed;
         }
         finally { _gate.Release(); }
     }

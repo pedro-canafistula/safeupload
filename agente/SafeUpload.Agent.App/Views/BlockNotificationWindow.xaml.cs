@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using SafeUpload.Agent.App.Notifications;
 using SafeUpload.Agent.App.ViewModels;
 using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Core.Contracts;
 
 namespace SafeUpload.Agent.App.Views;
 
@@ -50,14 +51,15 @@ public partial class BlockNotificationWindow : Window
         string? handbackPath = null,
         bool? handbackVerified = null,
         string? snapshotSha256Hex = null,
-        InspectionFailureKind? inspectionFailure = null)
+        InspectionFailureKind? inspectionFailure = null,
+        StagedBlockReason? blockReason = null)
     {
         ArgumentNullException.ThrowIfNull(findings);
 
         InitializeComponent();
 
         Add(fileName, findings, justificationEventId, quarantined, staged,
-            handbackPath, handbackVerified, snapshotSha256Hex, inspectionFailure);
+            handbackPath, handbackVerified, snapshotSha256Hex, inspectionFailure, blockReason);
 
         // A área útil exclui a barra de tarefas, então a notificação não fica
         // escondida atrás dela nem em telas com a barra em outra borda.
@@ -76,7 +78,8 @@ public partial class BlockNotificationWindow : Window
         string? handbackPath = null,
         bool? handbackVerified = null,
         string? snapshotSha256Hex = null,
-        InspectionFailureKind? inspectionFailure = null)
+        InspectionFailureKind? inspectionFailure = null,
+        StagedBlockReason? blockReason = null)
     {
         ArgumentNullException.ThrowIfNull(findings);
 
@@ -104,6 +107,8 @@ public partial class BlockNotificationWindow : Window
         // A notificação agrega vários bloqueios. A justificativa sempre
         // nomeia o evento mais recente para não conceder uma exceção a um
         // arquivo diferente daquele mostrado ao lado do campo.
+        bool privateSeed = blockReason == StagedBlockReason.SeedExportRestricted;
+        if (privateSeed) justificationEventId = null;
         _justificationEventId = justificationEventId;
         _staged = staged;
         bool incomplete = staged && inspectionFailure is not null;
@@ -122,14 +127,14 @@ public partial class BlockNotificationWindow : Window
         FindingsHeading.Visibility = _findings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         FindingsHeading.Text = _fileNames.Count == 1 ? "O que foi encontrado" : "Achados nos arquivos bloqueados";
         FindingsList.Visibility = _findings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        GuidanceText.Text = incomplete
+        GuidanceText.Text = privateSeed ? "Peça ajuda ao administrador para verificar as permissões de leitura e devolução do arquivo." : incomplete
             ? "A versão não foi enviada ao destino. Tente salvar novamente ou peça ajuda ao administrador para concluir a análise."
             : "Revise o arquivo, remova ou anonimize as informações e tente novamente.";
         JustificationHelpText.Text = incomplete
             ? "Informe o motivo de negócio para autorizar o envio desta versão mesmo se sua análise não puder ser concluída."
             : "Informe o motivo de negócio para tentar novamente.";
-        QuarantineText.Visibility = quarantined ? Visibility.Visible : Visibility.Collapsed;
-        QuarantineText.Text = staged
+        QuarantineText.Visibility = quarantined || privateSeed ? Visibility.Visible : Visibility.Collapsed;
+        QuarantineText.Text = privateSeed ? StagedSeedBlockPresentation.Explanation : staged
             ? handbackVerified == true && !string.IsNullOrWhiteSpace(handbackPath)
                 ? $"Devolvido para: {handbackPath}\nSHA-256: {snapshotSha256Hex ?? "indisponível"}"
                 : "Não foi possível devolver o arquivo com segurança. A versão permanece no staging protegido do SafeUpload e não foi enviada ao destino."

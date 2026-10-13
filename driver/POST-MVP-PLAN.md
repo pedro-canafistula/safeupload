@@ -405,7 +405,15 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   teardown and readiness composition; one pre-boot Sol 6.1 xhigh lifetime review covers the kernel increments. Unresolved native
   mechanisms (descriptor `0x8C04 → 0x8804`, low-impersonation capture, coherent seed interval, export authority proof) stay
   fail-closed holds with named reasons; none is approved as a narrower contract. Readiness stays false until all increments land.
-  - [ ] Increment 1: option-1 provenance and private/no-export enforcement (agent).
+  - [x] Increment 1: option-1 provenance and private/no-export enforcement (agent; Astra worker, integrated here). Durable
+    `SeedProvenance`/`SeedCompletion` on the allocation manifest; denied/unproven export persists Blocked + Failed with
+    `seed_export_denied|unproven|recipient_unproven`, no hand-back path, justification closed; guards at hand-back, journal APIs,
+    justification registration/recovery/callback, recovery recopy, cleanup/compaction retention; new tray reason
+    `SeedExportRestricted` (value 1). With no kernel producer yet, every bound seed with prior bytes resolves to unproven.
+    Draft matrix `t5-option1a`: 3 profiles PASS, feature Release 1 intermittent publisher-test timeout (pre-existing; hardened
+    in the preceding test commit). Integrated `t5-option1-int2` failed one timing assertion (`Rn012_timeout_libera_a_operacao` 7,549 ms
+    vs 7,000; first failure in 307 runs; receipt kept); identical rerun [`t5-option1-int3`](evidence/2026-10-13/exact-agent-matrix-t5-option1-int3-summary.txt)
+    PASS at 1,387 normal / 1,769 feature tests per profile, 0/0, that test at ~5.0 s.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

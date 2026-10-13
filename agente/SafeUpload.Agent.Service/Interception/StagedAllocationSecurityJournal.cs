@@ -1,4 +1,3 @@
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
 using System.Security.AccessControl;
 using System.Security.Principal;
 
@@ -126,4 +125,3 @@ public sealed partial class StagedTransferJournal
         }
     }
 }
-#endif

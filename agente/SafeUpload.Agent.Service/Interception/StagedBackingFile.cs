@@ -21,16 +21,18 @@ internal static class StagedBackingFile
     // The bound allocator supplies the already checked source FILE_OBJECT.
     // Borrow it through the durable allocation claim; never reopen its locator.
     internal static async Task CreateFromHeldSourceAsync(FileStream? input, string destination,
-        long maximumBytes, CancellationToken token)
+        long maximumBytes, CancellationToken token, StagedStageIdentity? existingPrivateObject = null)
     {
         token.ThrowIfCancellationRequested();
         // Check on the held source handle before creating or writing output.
         // A streamed bound below also prevents growth from consuming more disk.
         if (input is not null && input.Length > maximumBytes)
             throw new IOException("The source exceeds the qualified private-version size limit.");
-        using var output = CreateFile(destination, 0x40000000, 0, IntPtr.Zero, 1,
-            0xA0000080, IntPtr.Zero); // GENERIC_WRITE, CREATE_NEW, NO_BUFFERING | WRITE_THROUGH
+        using var output = CreateFile(destination, 0x40000000, 0, IntPtr.Zero, existingPrivateObject is null ? 1u : 3u,
+            0xA0200080, IntPtr.Zero); // GENERIC_WRITE; CREATE_NEW or exact OPEN_EXISTING; NO_BUFFERING | WRITE_THROUGH | OPEN_REPARSE_POINT
         if (output.IsInvalid) throw new IOException("Could not create private backing.", new Win32Exception());
+        if (existingPrivateObject is not null && StagedDestinationFile.ReadIdentity(output) != existingPrivateObject)
+            throw new IOException("The private seed target changed before copying.");
         const int blockSize = 64 * 1024; // multiple of every admitted sector size
         byte[] bytes = new byte[blockSize];
         IntPtr allocation = Marshal.AllocHGlobal(blockSize * 2);

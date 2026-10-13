@@ -37,6 +37,24 @@ public class NotificationProtocolTests
         false);
 
     [Fact]
+    public void Seed_private_reason_survives_routing_and_tray_suppresses_return_and_justification()
+    {
+        Assert.Equal(0, (int)StagedBlockReason.ReservedEmptySavePrivate);
+        Assert.Equal(1, (int)StagedBlockReason.SeedExportRestricted);
+        var notice = new TransferNotification(Guid.NewGuid(), "private-log.txt", TransferPhase.Blocked,
+            OverrideAllowed: true, HandbackPath: @"C:\stale-return.txt", HandbackVerified: true,
+            BlockReason: StagedBlockReason.SeedExportRestricted);
+        var restored = Assert.IsType<TransferNotification>(NotificationProtocol.Deserialize(NotificationProtocol.Serialize(notice)));
+        Assert.Equal(notice, restored);
+        var display = SafeUpload.Agent.App.Notifications.StagedSeedBlockPresentation.ForDisplay(restored);
+        Assert.False(display.OverrideAllowed); Assert.Null(display.HandbackPath); Assert.False(display.HandbackVerified);
+        Assert.Contains("conteúdo anterior", SafeUpload.Agent.App.Notifications.StagedSeedBlockPresentation.Explanation);
+        Assert.Contains("permanece privada", SafeUpload.Agent.App.Notifications.StagedSeedBlockPresentation.Explanation);
+        var ordinary = notice with { BlockReason = null };
+        Assert.Equal(ordinary, SafeUpload.Agent.App.Notifications.StagedSeedBlockPresentation.ForDisplay(ordinary));
+    }
+
+    [Fact]
     public void Status_leva_o_discriminador_na_raiz()
     {
         var linha = NotificationProtocol.Serialize(new StatusNotification(7, 4, true));

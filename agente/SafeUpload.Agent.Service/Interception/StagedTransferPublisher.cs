@@ -43,7 +43,7 @@ public sealed partial class StagedTransferPublisher
         _stagingRoot = Path.GetFullPath(stagingRoot);
         _justifications = justifications;
         _publicationGate = publicationGate ?? throw new ArgumentNullException(nameof(publicationGate));
-        _handbackCopier = handbackCopier ?? (policyStore is null ? null : new StagedHandbackCopier(policyStore));
+        _handbackCopier = handbackCopier ?? (policyStore is null ? null : new StagedHandbackCopier(policyStore, journal));
         _sessionUserSidResolver = sessionUserSidResolver ??
             (sessionId => SessionResolver.TryGetSessionUserSid(sessionId)?.Value);
         _logger = logger;
@@ -80,6 +80,13 @@ public sealed partial class StagedTransferPublisher
 
         var journalEntry = await _journal.ReadAsync(transfer.TransferId, cancellationToken)
             .ConfigureAwait(false);
+        if (justified is not null)
+        {
+            journalEntry = await _journal.EnforceSeedExportAsync(transfer.TransferId, cancellationToken).ConfigureAwait(false);
+            if (StagedSeedExport.Failure(journalEntry) is not null ||
+                journalEntry.HandbackState != StagedHandbackState.Verified || journalEntry.JustificationWindowClosed)
+                return StagedTransferOutcome.Blocked;
+        }
         if (journalEntry.BoundAllocation is not null)
             throw new IOException("Bound publication requires the anchored head/permit dispatcher.");
         if (journalEntry.State == TransferJournalState.LegacyEmptyHeld)
@@ -219,7 +226,7 @@ public sealed partial class StagedTransferPublisher
         {
             bool ownerSessionMatches = TryGetBoundSession(transfer, out _, out _);
             bool canJustify = false;
-            if (ownerSessionMatches && _justifications is not null)
+            if (ownerSessionMatches && _justifications is not null && StagedSeedExport.Failure(journalEntry) is null)
             {
                 try
                 {
@@ -242,12 +249,15 @@ public sealed partial class StagedTransferPublisher
             await _inspection.RecordTransferOutcomeAsync(operation, result,
                 Verdict.Blocked, result.Reason, cancellationToken,
                 transfer.TransferId).ConfigureAwait(false);
-            TransferJournalEntry blocked = HasRequestorIdentity(transfer)
+            TransferJournalEntry blocked = await _journal.EnforceSeedExportAsync(transfer.TransferId, cancellationToken)
+                .ConfigureAwait(false);
+            blocked = StagedSeedExport.Failure(blocked) is not null ? blocked : HasRequestorIdentity(transfer)
                 ? await HandbackSnapshotAsync(transfer, snapshot.Stream, inspectedFile.Length,
                     inspectedDigest, operation, result, cancellationToken).ConfigureAwait(false)
                 : await RecordHandbackFailureAsync(transfer, operation, result,
                     "requestor_identity_unavailable", CancellationToken.None).ConfigureAwait(false);
-            canJustify = canJustify && blocked.HandbackState == StagedHandbackState.Verified &&
+            canJustify = canJustify && StagedSeedExport.Failure(blocked) is null &&
+                blocked.HandbackState == StagedHandbackState.Verified &&
                 expires is { } expiryAfterCopy && expiryAfterCopy > DateTimeOffset.UtcNow;
             if (!canJustify && !blocked.JustificationWindowClosed)
             {
@@ -257,10 +267,10 @@ public sealed partial class StagedTransferPublisher
             if (canJustify)
             {
                 var version = new JustifiedVersion(inspectedDigest, result.PolicyVersion, result.PolicyContentFingerprint!);
-                _justifications!.Remember(transfer.TransferId, transfer.SessionId!.Value,
+                canJustify = await _justifications!.RememberAsync(_journal, transfer.TransferId, transfer.SessionId!.Value,
                     transfer.RequestorSid!,
                     async token => await PublishCoreAsync(transfer, version, token).ConfigureAwait(false)
-                        == StagedTransferOutcome.Released, expires);
+                        == StagedTransferOutcome.Released, expires, cancellationToken).ConfigureAwait(false);
             }
             PublishTransferNotification(transfer, new TransferNotification(
                 transfer.TransferId, fileName, TransferPhase.Blocked,
@@ -269,7 +279,8 @@ public sealed partial class StagedTransferPublisher
                 HandbackPath: blocked.HandbackPath,
                 HandbackVerified: blocked.HandbackState == StagedHandbackState.Verified,
                 SnapshotSha256Hex: inspectedDigest,
-                InspectionFailure: result.FailureKind));
+                InspectionFailure: result.FailureKind,
+                BlockReason: StagedSeedExport.Failure(blocked) is null ? null : StagedBlockReason.SeedExportRestricted));
             return StagedTransferOutcome.Blocked;
         }
 
@@ -504,7 +515,13 @@ public sealed partial class StagedTransferPublisher
         entry = await _journal.ReadAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
         if (entry.State != TransferJournalState.Blocked || entry.PendingRename is not null ||
             entry.SealedLength is not >= 0 || entry.StageIdentity is null) return;
-        TransferJournalEntry current = entry;
+        TransferJournalEntry current = await _journal.EnforceSeedExportAsync(entry.Transfer.TransferId, token)
+            .ConfigureAwait(false);
+        if (StagedSeedExport.Failure(current) is not null)
+        {
+            PublishSeedRestriction(current);
+            return;
+        }
         if (!HasRequestorIdentity(current.Transfer))
         {
             await RecordOwnerIdentityFailureAsync(current, "requestor_identity_unavailable", token)
@@ -596,7 +613,7 @@ public sealed partial class StagedTransferPublisher
                     CancellationToken.None).ConfigureAwait(false);
             }
         }
-        bool justificationOpen = !current.JustificationWindowClosed &&
+        bool justificationOpen = StagedSeedExport.Failure(current) is null && !current.JustificationWindowClosed &&
             current.JustificationExpiresAtUtc is { } expiry && expiry > DateTimeOffset.UtcNow;
         if (justificationOpen && current.HandbackState == StagedHandbackState.Verified &&
             current.BlockedPolicyVersion > 0 && current.JustificationExpiresAtUtc is { } expiryAt &&
@@ -623,10 +640,10 @@ public sealed partial class StagedTransferPublisher
                 return;
             }
             var version = new JustifiedVersion(sealedDigest, current.BlockedPolicyVersion, policyFingerprint);
-            _justifications.Remember(current.Transfer.TransferId, session,
+            justificationOpen = await _justifications.RememberAsync(_journal, current.Transfer.TransferId, session,
                 current.Transfer.RequestorSid!,
                 async retry => await PublishCoreAsync(current.Transfer, version, retry).ConfigureAwait(false)
-                    == StagedTransferOutcome.Released, expiryAt);
+                    == StagedTransferOutcome.Released, expiryAt, token).ConfigureAwait(false);
         }
 
         if (current.HandbackState is StagedHandbackState.Verified or StagedHandbackState.Failed)
@@ -647,10 +664,17 @@ public sealed partial class StagedTransferPublisher
 
     public async Task ProcessBlockedCleanupAsync(TransferJournalEntry entry, CancellationToken token)
     {
+        entry = await _journal.ReadAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
         if (entry.SealedLength is not >= 0 || entry.StageIdentity is null ||
             entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
             entry.StageDeleted) return;
-        TransferJournalEntry current = entry;
+        TransferJournalEntry current = await _journal.EnforceSeedExportAsync(entry.Transfer.TransferId, token)
+            .ConfigureAwait(false);
+        if (StagedSeedExport.Failure(current) is not null)
+        {
+            PublishSeedRestriction(current);
+            return;
+        }
         if (!HasRequestorIdentity(current.Transfer))
         {
             await RecordOwnerIdentityFailureAsync(current, "requestor_identity_unavailable", token)
@@ -735,6 +759,8 @@ public sealed partial class StagedTransferPublisher
         FileStream snapshot, long length, string digest, FileOperation operation,
         InspectionResult result, CancellationToken token)
     {
+        TransferJournalEntry export = await _journal.EnforceSeedExportAsync(transfer.TransferId, token).ConfigureAwait(false);
+        if (StagedSeedExport.Failure(export) is not null) return export;
         try
         {
             if (!HasRequestorIdentity(transfer))
@@ -742,6 +768,7 @@ public sealed partial class StagedTransferPublisher
             await _journal.BeginHandbackAttemptAsync(transfer.TransferId, token).ConfigureAwait(false);
             if (_handbackCopier is null)
                 throw new IOException("No Windows user-profile hand-back provider is available.");
+            await _journal.RequireSeedExportAsync(transfer, token).ConfigureAwait(false);
             string path = await _handbackCopier.CopyVerifiedAsync(transfer, snapshot, length,
                 digest, token).ConfigureAwait(false);
             return await _journal.CompleteHandbackAsync(transfer.TransferId, path, length, null, token)
@@ -761,6 +788,12 @@ public sealed partial class StagedTransferPublisher
                 "handback_failed", CancellationToken.None).ConfigureAwait(false);
         }
     }
+
+    private void PublishSeedRestriction(TransferJournalEntry entry) =>
+        PublishTransferNotification(entry.Transfer, new TransferNotification(entry.Transfer.TransferId,
+            Path.GetFileName(entry.Transfer.DestinationPath), TransferPhase.Blocked,
+            HandbackVerified: false, SnapshotSha256Hex: entry.Sha256Hex,
+            BlockReason: StagedBlockReason.SeedExportRestricted));
 
     private async Task<TransferJournalEntry> RecordHandbackFailureAsync(StagedTransfer transfer,
         FileOperation operation, InspectionResult result, string reason,

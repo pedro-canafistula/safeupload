@@ -172,6 +172,7 @@ public partial class App : System.Windows.Application
 
     private void ShowStagedBlockNotification(TransferNotification transfer)
     {
+        transfer = StagedSeedBlockPresentation.ForDisplay(transfer);
         string? eventId = transfer.OverrideAllowed ? transfer.TransferId.ToString("D") : null;
         var findings = transfer.Findings ?? [];
         if (_notification is { IsLoaded: true })
@@ -179,14 +180,14 @@ public partial class App : System.Windows.Application
             _notification.Add(transfer.FileName, findings, eventId, quarantined: true, staged: true,
                 handbackPath: transfer.HandbackPath, handbackVerified: transfer.HandbackVerified,
                 snapshotSha256Hex: transfer.SnapshotSha256Hex,
-                inspectionFailure: transfer.InspectionFailure);
+                inspectionFailure: transfer.InspectionFailure, blockReason: transfer.BlockReason);
             return;
         }
         _notification = new BlockNotificationWindow(transfer.FileName, findings,
             eventId, quarantined: true, staged: true,
             handbackPath: transfer.HandbackPath, handbackVerified: transfer.HandbackVerified,
             snapshotSha256Hex: transfer.SnapshotSha256Hex,
-            inspectionFailure: transfer.InspectionFailure);
+            inspectionFailure: transfer.InspectionFailure, blockReason: transfer.BlockReason);
         _notification.Closed += (_, _) => _notification = null;
         if (_panel is { IsVisible: true }) _notification.Owner = _panel;
         _notification.Show();

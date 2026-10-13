@@ -32,7 +32,8 @@ public enum TransferPhase
 /// <summary>Persisted values retained for compatibility; new notifications do not emit retired reasons.</summary>
 public enum StagedBlockReason
 {
-    ReservedEmptySavePrivate = 0
+    ReservedEmptySavePrivate = 0,
+    SeedExportRestricted = 1
 }
 
 /// <summary>Guidance for an unresolved native delete; it grants no recovery or publication action.</summary>

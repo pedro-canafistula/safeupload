@@ -22,7 +22,7 @@ public sealed class StagedBoundCompactionTests : IDisposable
             new(7, 11, 12), new(7, 21, 22), caseSensitive, leaf, null);
 
     private async Task<TransferJournalEntry> Allocate(StagedTransferJournal journal,
-        StagedAllocationBindingV23 binding, StagedTransfer? replay = null)
+        StagedAllocationBindingV23 binding, StagedTransfer? replay = null, StagedAllocationSecuritySnapshot? security = null)
     {
         var transfer = replay ?? new StagedTransfer(binding.ReservationId,
             Path.Combine(_workspace.Root, binding.ReservationId.ToString("N") + ".stage"),
@@ -33,7 +33,7 @@ public sealed class StagedBoundCompactionTests : IDisposable
         if (replay is null) File.WriteAllText(transfer.StagePath, "private version");
         using var turn = await journal.EnterDestinationCommitTurnAsync(binding.Destination,
             StagedDestinationTurnPurpose.Allocation, CancellationToken.None);
-        return await journal.CommitBoundAllocationAsync(turn, transfer, binding, CancellationToken.None);
+        return await journal.CommitBoundAllocationAsync(turn, transfer, binding, CancellationToken.None, security);
     }
 
     private static async Task Discard(StagedTransferJournal journal, TransferJournalEntry entry)
@@ -41,6 +41,54 @@ public sealed class StagedBoundCompactionTests : IDisposable
         await journal.DiscardAsync(entry.Transfer.TransferId, entry.Transfer.ProcessId,
             entry.Transfer.StagePath, CancellationToken.None);
         File.Delete(entry.Transfer.StagePath);
+    }
+
+    [Fact]
+    public async Task Restricted_descendant_retains_private_bytes_ancestry_and_source_security_after_overtaking()
+    {
+        var journal = Journal();
+        var binding = Binding() with { Disposition = 1, PublicTarget = new(7, 91, 92) };
+        var security = StagedAllocationSecuritySnapshot.Create(Guid.NewGuid(), binding, 1, 0xf,
+            SecuritySnapshotFixture.Descriptor(), SecuritySnapshotFixture.Descriptor());
+        var root = await Allocate(journal, binding, security: security);
+        var parent = root;
+        var lineage = new List<TransferJournalEntry> { root };
+        for (int i = 0; i < 2; i++)
+        {
+            await SeedProvenanceFixture.WriteAsync(JournalPath, parent with
+                { State = TransferJournalState.Sealed, StateHistory = [], SealedOnce = true,
+                    SealedLength = new FileInfo(parent.Transfer.StagePath).Length });
+            binding = binding with { ReservationId = Guid.NewGuid(), ParentTransferId = parent.Transfer.TransferId, ReferenceKind = 1 };
+            parent = await Allocate(journal, binding); lineage.Add(parent);
+        }
+        var blocked = parent with { State = TransferJournalState.Blocked, StateHistory = [], SealedOnce = true,
+            SealedLength = new FileInfo(parent.Transfer.StagePath).Length, BlockedPolicyVersion = 1,
+            Sha256Hex = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(parent.Transfer.StagePath))) };
+        await SeedProvenanceFixture.WriteAsync(JournalPath, blocked);
+        blocked = await journal.EnforceSeedExportAsync(blocked.Transfer.TransferId, CancellationToken.None);
+        Assert.Equal("seed_export_unproven", blocked.HandbackFailureReason);
+        Assert.Equal(root.Transfer.TransferId, blocked.SeedProvenance!.SourceBinding!.ReservationId);
+        // Model terminal, cleaned ancestors; the retained descendant still needs
+        // their exact lineage and immutable security. This is no native publish claim.
+        foreach (var ancestor in lineage.Take(2))
+        {
+            var terminal = ancestor with { State = TransferJournalState.Released, StateHistory = [],
+                SealedOnce = true, SealedLength = new FileInfo(ancestor.Transfer.StagePath).Length,
+                Sha256Hex = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(ancestor.Transfer.StagePath))),
+                StageDeleted = true };
+            File.Delete(ancestor.Transfer.StagePath);
+            await SeedProvenanceFixture.WriteAsync(JournalPath, terminal);
+        }
+        var latest = await Allocate(journal, binding with { ReservationId = Guid.NewGuid(),
+            ParentTransferId = Guid.Empty, ReferenceKind = 0, Disposition = 5 });
+        await Discard(journal, latest);
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+        var restarted = Journal();
+        foreach (var ancestor in lineage) await restarted.ReadAsync(ancestor.Transfer.TransferId, CancellationToken.None);
+        Assert.True(File.Exists(blocked.Transfer.StagePath));
+        Assert.True(File.Exists(Path.Combine(JournalPath, security.SnapshotId.ToString("N") + ".security")));
+        Assert.False((await restarted.TryBeginStageCleanupAsync(blocked.Transfer.TransferId, CancellationToken.None)).StageCleanupStarted);
+        Assert.Equal(security, await restarted.ReadBoundAllocationSecurityAsync(root.Transfer.TransferId, CancellationToken.None));
     }
 
     [Theory]

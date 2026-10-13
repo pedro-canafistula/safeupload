@@ -38,6 +38,7 @@ internal interface IStagedHandbackEnvironment
 internal sealed class StagedHandbackCopier : IStagedHandbackCopier
 {
     private readonly IPolicyStore _policyStore;
+    private readonly StagedTransferJournal _journal;
     private readonly IStagedHandbackEnvironment _environment;
     private const uint GenericRead = 0x80000000;
     private const uint GenericWrite = 0x40000000;
@@ -76,12 +77,13 @@ internal sealed class StagedHandbackCopier : IStagedHandbackCopier
     private const int ErrorFileNotFound = 2;
     private const int ErrorPathNotFound = 3;
 
-    public StagedHandbackCopier(IPolicyStore policyStore)
-        : this(policyStore, new WindowsHandbackEnvironment()) { }
+    public StagedHandbackCopier(IPolicyStore policyStore, StagedTransferJournal journal)
+        : this(policyStore, journal, new WindowsHandbackEnvironment()) { }
 
-    internal StagedHandbackCopier(IPolicyStore policyStore,
+    internal StagedHandbackCopier(IPolicyStore policyStore, StagedTransferJournal journal,
         IStagedHandbackEnvironment environment)
     {
+        _journal = journal ?? throw new ArgumentNullException(nameof(journal));
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
         _environment = environment ?? throw new ArgumentNullException(nameof(environment));
     }
@@ -91,6 +93,7 @@ internal sealed class StagedHandbackCopier : IStagedHandbackCopier
     {
         ArgumentNullException.ThrowIfNull(transfer);
         ArgumentNullException.ThrowIfNull(sealedSnapshot);
+        await _journal.RequireSeedExportAsync(transfer, token).ConfigureAwait(false);
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException(
             "Staged hand-back requires Windows handle-relative file operations.");
         if (length < 0 || sha256Hex.Length != 64 || !sha256Hex.All(Uri.IsHexDigit))
@@ -131,6 +134,7 @@ internal sealed class StagedHandbackCopier : IStagedHandbackCopier
             }
         }
 
+        await _journal.RequireSeedExportAsync(transfer, token).ConfigureAwait(false);
         string temporary = ".safeupload-" + transfer.TransferId.ToString("N") + ".tmp";
         DeleteExistingServiceTemporary(directory.Handle, temporary, userSid);
         SafeFileHandle temporaryHandle = CreateRelativeFile(directory.Handle, temporary,
@@ -162,6 +166,7 @@ internal sealed class StagedHandbackCopier : IStagedHandbackCopier
                     output.Flush(flushToDisk: true);
                     VerifyFile(output.SafeFileHandle, userSid, length, sha256Hex);
                     _ = RequireBoundSessionUser(transfer);
+                    await _journal.RequireSeedExportAsync(transfer, token).ConfigureAwait(false);
                     RenameRelativeNoReplace(output.SafeFileHandle, directory.Handle, leaf);
                     VerifyFile(output.SafeFileHandle, userSid, length, sha256Hex);
                     _ = RequireBoundSessionUser(transfer);
@@ -187,6 +192,7 @@ internal sealed class StagedHandbackCopier : IStagedHandbackCopier
         long length, string sha256Hex)
     {
         ArgumentNullException.ThrowIfNull(transfer);
+        _journal.RequireSeedExportAsync(transfer, CancellationToken.None).GetAwaiter().GetResult();
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException(
             "Staged hand-back requires Windows handle-relative file operations.");
         _environment.RequireServiceIdentity();

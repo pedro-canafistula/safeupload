@@ -292,6 +292,7 @@ public sealed partial class StagedTransferJournal
         try
         {
             StagedVersionIdentity? parentIdentity = null;
+            TransferJournalEntry? seedParent = null;
             if (parentTransferId is { } priorId)
             {
                 TransferJournalEntry parent = await ReadCoreAsync(priorId, cancellationToken)
@@ -306,6 +307,7 @@ public sealed partial class StagedTransferJournal
                     throw new IOException("The followup predecessor has no stable sealed stage identity.");
                 await RequireCurrentDestinationAsync(parent, cancellationToken).ConfigureAwait(false);
                 parentIdentity = VersionIdentity(parent);
+                seedParent = parent;
             }
 
             var versions = await DestinationVersionsAsync(transfer.DestinationPath, cancellationToken)
@@ -351,6 +353,10 @@ public sealed partial class StagedTransferJournal
                 DriverInstanceId = driverInstanceId,
                 ParentDirectoryIdentity = parentDirectoryIdentity
             };
+            if (allocationDisposition is 1 or 3 && seedParent is not null &&
+                (seedParent.SeedProvenance is not null || seedParent.BoundAllocation is not null ||
+                 StagedSeedExport.IsFailure(seedParent.HandbackFailureReason)))
+                entry = entry with { SeedProvenance = StagedSeedProvenance.Inherit(entry, seedParent) };
             ValidateEntry(entry, transfer.TransferId);
             await using (var stream = CreatePrivateTemporary(temporary))
             {
@@ -512,6 +518,8 @@ public sealed partial class StagedTransferJournal
                 current.SealedLength is not null || current.CreateReservationId != reservationId ||
                 VersionIdentity(current) != expectedVersion || current.PendingRename is not null)
                 throw new IOException("The allocation reply no longer matches its durable exact tuple.");
+            if (current.BoundAllocation is not null && current.SeedCompletion is null)
+                throw new IOException("The bound seed has no durable completion receipt.");
             using (StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath))
             {
                 if (stage.Identity != expectedVersion.StageIdentity || stage.Stream.Length < 0)
@@ -1396,10 +1404,12 @@ public sealed partial class StagedTransferJournal
         }
         catch (JsonException error) { throw new InvalidDataException("The transfer manifest is invalid JSON.", error); }
         ValidateEntry(entry, transferId);
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
         if (entry!.AllocationSecurity is not null)
             _ = await ReadAllocationSecurityCoreAsync(entry, cancellationToken).ConfigureAwait(false);
-#endif
+        if (entry!.SeedProvenance is { SourceSecurity: not null, SourceBinding: not null } seed)
+            _ = await ReadAllocationSecurityCoreAsync(entry with
+                { AllocationSecurity = seed.SourceSecurity, BoundAllocation = seed.SourceBinding }, cancellationToken)
+                .ConfigureAwait(false);
         return entry!;
     }
 
@@ -1490,6 +1500,10 @@ public sealed partial class StagedTransferJournal
             throw new InvalidDataException("This build cannot recover or publish bound allocation manifests.");
 #endif
         }
+        entry.SeedProvenance?.Validate(entry);
+        if (entry.SeedCompletion is { } completion && (entry.SeedProvenance is null ||
+            completion.Allocation != entry.SeedProvenance.Allocation || completion.Length < 0))
+            throw new InvalidDataException("Invalid seed completion receipt.");
         RequireManifestPath(transfer.StagePath);
         RequireManifestPath(transfer.DestinationPath);
         if (entry.Sha256Hex is not null && (entry.Sha256Hex.Length != 64 || !entry.Sha256Hex.All(Uri.IsHexDigit)))
@@ -1859,7 +1873,8 @@ public sealed partial class StagedTransferJournal
                 (current.StageCleanupStarted || current.StageDeleted))
                 throw new IOException("Staging cleanup has already started.");
             if (expected == TransferJournalState.Blocked && next == TransferJournalState.Inspecting &&
-                current.JustificationWindowClosed)
+                (current.JustificationWindowClosed || current.HandbackState != StagedHandbackState.Verified ||
+                 StagedSeedExport.Failure(current) is not null))
                 throw new IOException("The justification window is already closed.");
 
             // Old prototype manifests can say Retained after recovering an
@@ -1925,6 +1940,8 @@ public sealed partial class StagedTransferJournal
                 StageDeleted = next == TransferJournalState.Blocked ? false : current.StageDeleted,
                 StageCleanupStarted = next == TransferJournalState.Blocked ? false : current.StageCleanupStarted
             };
+            if (next == TransferJournalState.Blocked && (StagedSeedExport.Failure(updated) ?? StagedSeedExport.Failure(current)) is { } seedFailure)
+                updated = StagedSeedExport.PrivateBlocked(updated, seedFailure);
             await ReplaceAsync(ManifestPath(transferId), updated, cancellationToken)
                 .ConfigureAwait(false);
             return updated;
@@ -1949,6 +1966,8 @@ public sealed partial class StagedTransferJournal
                 !string.Equals(current.Transfer.StagePath, Path.GetFullPath(stagePath),
                     StringComparison.OrdinalIgnoreCase) || current.PendingRename is not null)
                 throw new IOException("The seal does not identify an available version owned by this writer.");
+            if (current.BoundAllocation is not null && current.SeedCompletion is null)
+                throw new IOException("An incomplete bound seed cannot be sealed.");
             if (expectedVersion is not null && VersionIdentity(current) != expectedVersion)
                 throw new IOException("The exact v19 seal generation or stage identity changed.");
             if (current.DriverInstanceId is not null &&
@@ -2023,7 +2042,7 @@ public sealed partial class StagedTransferJournal
             throw new ArgumentException("The exact discard request is invalid.", nameof(request));
     }
 
-    private static StagedVersionIdentity VersionIdentity(TransferJournalEntry entry) =>
+    internal static StagedVersionIdentity VersionIdentity(TransferJournalEntry entry) =>
         new(entry.Transfer.TransferId, entry.DestinationGeneration,
             entry.StageIdentity ?? throw new IOException("The journal has no captured stage identity."));
 
@@ -2361,7 +2380,8 @@ public sealed partial class StagedTransferJournal
                  (e.State == TransferJournalState.LegacyEmptyHeld && e.DiscardAcknowledgedAtUtc is not null) ||
                  (e.State == TransferJournalState.Released &&
                   (e.HandbackState == StagedHandbackState.NotAttempted || e.StageDeleted)) ||
-                 (e.State == TransferJournalState.Blocked && e.JustificationWindowClosed && e.StageDeleted &&
+                 (e.State == TransferJournalState.Blocked && StagedSeedExport.Failure(e) is null &&
+                  e.JustificationWindowClosed && e.StageDeleted &&
                   e.HandbackState == StagedHandbackState.Verified));
             var finished = entries.Where(Finished).Select(e => e.Transfer.TransferId).ToHashSet();
             var protectedIds = FindCompactionProtectedTransfers(entries, finished, cancellationToken);
@@ -2375,12 +2395,11 @@ public sealed partial class StagedTransferJournal
                 ForgetScanned(id);
                 removed++;
             }
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
             await CompactAllocationSecurityCoreAsync(entries.Where(e =>
                     !finished.Contains(e.Transfer.TransferId) || protectedIds.Contains(e.Transfer.TransferId))
-                .Select(e => e.AllocationSecurity?.SnapshotId).OfType<Guid>().ToHashSet(),
+                .SelectMany(e => new[] { e.AllocationSecurity?.SnapshotId, e.SeedProvenance?.SourceSecurity?.SnapshotId })
+                .OfType<Guid>().ToHashSet(),
                 cutoffUtc, cancellationToken).ConfigureAwait(false);
-#endif
             return removed;
         }
         finally { _gate.Release(); }
@@ -2415,6 +2434,11 @@ public sealed partial class StagedTransferJournal
         try
         {
             var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (StagedSeedExport.Failure(current) is { } seedFailure)
+            {
+                await PersistSeedRestrictionCoreAsync(current, seedFailure, token).ConfigureAwait(false);
+                throw new IOException(seedFailure);
+            }
             if (current.State != TransferJournalState.Blocked || current.StageCleanupStarted ||
                 current.HandbackState == StagedHandbackState.Verified)
                 throw new IOException("The blocked version is not available for hand-back.");
@@ -2445,6 +2469,11 @@ public sealed partial class StagedTransferJournal
         try
         {
             var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (StagedSeedExport.Failure(current) is { } seedFailure)
+            {
+                await PersistSeedRestrictionCoreAsync(current, seedFailure, token).ConfigureAwait(false);
+                throw new IOException(seedFailure);
+            }
             if (current.State != TransferJournalState.Blocked || current.StageCleanupStarted)
                 throw new IOException("The blocked version is no longer available for hand-back.");
             var updated = current with
@@ -2520,9 +2549,12 @@ public sealed partial class StagedTransferJournal
         try
         {
             var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (StagedSeedExport.Failure(current) is { } seedFailure)
+                return await PersistSeedRestrictionCoreAsync(current, seedFailure, token).ConfigureAwait(false);
             if (current.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
                 current.PendingRename is not null ||
                 current.HandbackState != StagedHandbackState.Verified ||
+                StagedSeedExport.Failure(current) is not null ||
                 !current.JustificationWindowClosed || current.StageDeleted)
                 return current;
             if (current.StageCleanupStarted) return current;
@@ -2542,6 +2574,7 @@ public sealed partial class StagedTransferJournal
             var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
             if (current.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
                 current.HandbackState != StagedHandbackState.Verified ||
+                StagedSeedExport.Failure(current) is not null ||
                 !current.JustificationWindowClosed || !current.StageCleanupStarted)
                 throw new IOException("Staging cleanup prerequisites are not satisfied.");
             if (!StagedStageFile.TryConfirmAbsent(current.Transfer.StagePath, out Exception? absenceFailure))
@@ -3062,6 +3095,10 @@ public sealed record TransferJournalEntry(
     public StagedAllocationBindingV23? BoundAllocation { get; init; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public StagedAllocationSecurityReference? AllocationSecurity { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public StagedSeedProvenance? SeedProvenance { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public StagedSeedCompletion? SeedCompletion { get; init; }
     /// <summary>Durable attachment transaction state; None is legacy/unattached v18 data.</summary>
     public StagedAttachmentStateV20 AttachmentStateV20 { get; init; }
     public ulong? AttachPrepareRequestIdV20 { get; init; }
@@ -3114,7 +3151,8 @@ public sealed record TransferJournalEntry(
             AllocationReferenceKind == other.AllocationReferenceKind && DriverInstanceId == other.DriverInstanceId &&
             ParentDirectoryIdentity == other.ParentDirectoryIdentity &&
             AllocationExtensionVersion == other.AllocationExtensionVersion && BoundAllocation == other.BoundAllocation &&
-            AllocationSecurity == other.AllocationSecurity &&
+            AllocationSecurity == other.AllocationSecurity && SeedProvenance == other.SeedProvenance &&
+            SeedCompletion == other.SeedCompletion &&
             AllocationDisposition == other.AllocationDisposition && DiscardReservationId == other.DiscardReservationId &&
             AttachmentStateV20 == other.AttachmentStateV20 &&
             AttachPrepareRequestIdV20 == other.AttachPrepareRequestIdV20 &&
@@ -3166,6 +3204,8 @@ public sealed record TransferJournalEntry(
         hash.Add(AllocationExtensionVersion);
         hash.Add(BoundAllocation);
         hash.Add(AllocationSecurity);
+        hash.Add(SeedProvenance);
+        hash.Add(SeedCompletion);
         hash.Add(AttachmentStateV20);
         hash.Add(AttachPrepareRequestIdV20);
         hash.Add(AttachCommitRequestIdV20);

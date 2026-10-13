@@ -42,6 +42,26 @@ public sealed class StagedTransferPublisherTests : IDisposable
 
     public void Dispose() => _workspace.Dispose();
 
+    [Theory]
+    [InlineData(StagedSeedAuthority.Denied, "clean appended bytes")]
+    [InlineData(StagedSeedAuthority.Unproven, "clean appended bytes")]
+    [InlineData(StagedSeedAuthority.Denied, "")]
+    public async Task Export_restriction_does_not_refuse_clean_or_empty_publication(StagedSeedAuthority read, string bytes)
+    {
+        var transfer = Transfer("clean-seed.txt", bytes, processCreationTime: 123456);
+        string journalPath = Path.Combine(_workspace.Root, "journal");
+        await SeedProvenanceFixture.AttachAsync(journalPath, _journal, transfer.TransferId, read, StagedSeedAuthority.Allowed);
+        await File.WriteAllTextAsync(transfer.DestinationPath, "previous public bytes");
+        Assert.Equal(StagedTransferOutcome.Released, await _publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.Equal(bytes, await File.ReadAllTextAsync(transfer.DestinationPath));
+        var released = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(TransferJournalState.Released, released.State);
+        Assert.Equal(StagedHandbackState.NotAttempted, released.HandbackState);
+        Assert.Null(released.HandbackPath);
+        Assert.DoesNotContain(released.StateHistory, s => s.State == TransferJournalState.LegacyEmptyHeld);
+        Assert.NotNull(released.SeedProvenance);
+    }
+
     [Fact]
     public async Task Snapshot_creation_denied_retains_the_exact_stage_notifies_only_its_owner_and_can_be_reinspected()
     {
@@ -693,7 +713,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
     }
 
     private StagedTransfer Transfer(string name, string content, DestinationKind kind = DestinationKind.RemovableDrive,
-        string? sourceFile = null)
+        string? sourceFile = null, long? processCreationTime = null)
     {
         string stage = Path.Combine(_stagingRoot, name);
         if (sourceFile is null) File.WriteAllText(stage, content);
@@ -705,7 +725,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
             Guid.NewGuid(), stage, destination,
             kind,
             "explorer.exe", 4242, 7)
-        { RequestorSid = TestRequestorSid };
+        { RequestorSid = TestRequestorSid, RequestorProcessCreationTime = processCreationTime };
         _journal.CreateAsync(transfer, CancellationToken.None).GetAwaiter().GetResult();
         _journal.TransitionAsync(transfer.TransferId,
             TransferJournalState.Allocated, TransferJournalState.Sealed,

@@ -65,14 +65,27 @@ public sealed partial class StagedTransferAllocator
         StagedStageIdentity? createdIdentity = null;
         try
         {
-            await StagedBackingFile.CreateFromHeldSourceAsync(copy ? predecessor?.Stream ?? publicSource : null,
+            await StagedBackingFile.CreateFromHeldSourceAsync(null,
                 transfer.StagePath, MaximumSeedBytes, token).ConfigureAwait(false);
             if (_fileSecurity is not null) new FileInfo(transfer.StagePath).SetAccessControl(_fileSecurity);
             using (StagedStageFile created = StagedStageFile.Open(transfer.StagePath))
                 createdIdentity = created.Identity;
             directory.RequirePublicTarget(binding.PublicTarget, token);
-            TransferJournalEntry entry = await _journal.CommitBoundAllocationAsync(turn, transfer, binding, token, security)
-                .ConfigureAwait(false);
+            TransferJournalEntry entry = await _journal.CommitBoundAllocationAsync(turn, transfer, binding, token, security,
+                seedPending: copy).ConfigureAwait(false);
+            if (copy)
+            {
+                FileStream source = (predecessor?.Stream ?? publicSource)!;
+                long length = source.Length;
+                source.Position = 0;
+                await StagedBackingFile.CreateFromHeldSourceAsync(source, transfer.StagePath,
+                    MaximumSeedBytes, token, createdIdentity).ConfigureAwait(false);
+                if (source.Length != length)
+                    throw new IOException("The seed source changed length during copying.");
+                directory.RequirePublicTarget(binding.PublicTarget, token);
+                entry = await _journal.CompleteBoundSeedAsync(StagedTransferJournal.VersionIdentity(entry),
+                    length, token).ConfigureAwait(false);
+            }
             return BoundAllocationReply(entry);
         }
         catch (Exception allocationFailure)
@@ -100,7 +113,8 @@ public sealed partial class StagedTransferAllocator
     {
         using StagedStageFile stage = StagedStageFile.Open(entry.Transfer.StagePath);
         if (entry.StageIdentity != stage.Identity || entry.BoundAllocation is null ||
-            entry.DestinationGeneration <= 0 || entry.SealedOnce ||
+            entry.DestinationGeneration <= 0 || entry.SealedOnce || entry.SeedCompletion is null ||
+            entry.SeedCompletion.Length != stage.Stream.Length ||
             entry.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed))
             throw new IOException("The bound allocation changed before its typed reply.");
         return new(entry.Transfer, entry.DestinationGeneration, stage.Identity, stage.Stream.Length);

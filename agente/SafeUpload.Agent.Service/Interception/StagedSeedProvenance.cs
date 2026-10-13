@@ -1,0 +1,125 @@
+namespace SafeUpload.Agent.Service.Interception;
+
+public enum StagedSeedOrigin { None, ExistingPublic, PrivatePredecessor }
+public enum StagedSeedAuthority { Unproven, Allowed, Denied }
+
+// Versioned storage evidence, never an authority synthesized from a SYSTEM open,
+// a requested access mask, a digest, or the final length. No wire producer exists
+// yet. The future checked producer must independently check the retained effective
+// subject and the eventual recipient against this exact source/security tuple.
+public sealed record StagedSeedExportEvidence(
+    int FormatVersion, Guid EvidenceId, StagedAllocationBindingV23 SourceBinding,
+    StagedStageIdentity PublicSource, StagedAllocationSecurityReference Security,
+    Guid EffectiveSubjectId, string EffectiveSubjectSid,
+    int ProcessId, long ProcessCreationTime, string RecipientSid, uint RecipientSessionId,
+    StagedSeedAuthority ReadAuthority, StagedSeedAuthority RecipientAuthority);
+
+public sealed record StagedSeedProvenance(
+    int FormatVersion, StagedVersionIdentity Allocation, StagedAllocationBindingV23? AllocationBinding,
+    StagedSeedOrigin Origin, bool ContainsPriorBytes, StagedVersionIdentity? Predecessor,
+    StagedAllocationBindingV23? SourceBinding, StagedStageIdentity? PublicSource,
+    StagedAllocationSecurityReference? SourceSecurity, StagedSeedExportEvidence? ExportEvidence,
+    string? InheritedRestriction)
+{
+    internal static StagedSeedProvenance ForBound(TransferJournalEntry allocation,
+        TransferJournalEntry? parent, StagedSeedExportEvidence? evidence = null)
+    {
+        var binding = allocation.BoundAllocation!;
+        bool copies = binding.Disposition is 1 or 3;
+        if (copies && parent is not null) return Inherit(allocation, parent);
+        bool prior = copies && binding.PublicTarget is not null;
+        return new(1, StagedTransferJournal.VersionIdentity(allocation), binding,
+            prior ? StagedSeedOrigin.ExistingPublic : StagedSeedOrigin.None, prior, null,
+            prior ? binding : null, prior ? binding.PublicTarget : null,
+            prior ? allocation.AllocationSecurity : null, prior ? evidence : null, null);
+    }
+
+    internal static StagedSeedProvenance Inherit(TransferJournalEntry allocation, TransferJournalEntry parent)
+    {
+        var source = parent.SeedProvenance;
+        return new(1, StagedTransferJournal.VersionIdentity(allocation), allocation.BoundAllocation,
+            StagedSeedOrigin.PrivatePredecessor, source?.ContainsPriorBytes ?? true,
+            StagedTransferJournal.VersionIdentity(parent), source?.SourceBinding, source?.PublicSource,
+            source?.SourceSecurity, source?.ExportEvidence, StagedSeedExport.Failure(parent));
+    }
+
+    internal void Validate(TransferJournalEntry entry)
+    {
+        if (FormatVersion != 1 || Allocation is null || (Allocation.TransferId != entry.Transfer.TransferId || Allocation.StageIdentity != entry.StageIdentity ||
+                Allocation.DestinationGeneration <= 0 || Allocation.DestinationGeneration > entry.DestinationGeneration) ||
+            !Enum.IsDefined(Origin) ||
+            (!ContainsPriorBytes && (SourceBinding is not null || PublicSource is not null ||
+                SourceSecurity is not null || ExportEvidence is not null)) || (AllocationBinding is { } binding &&
+                (binding.ReservationId != Allocation.TransferId || binding.DriverInstanceId != entry.DriverInstanceId)) ||
+            (Origin == StagedSeedOrigin.None && (ContainsPriorBytes || Predecessor is not null ||
+                SourceBinding is not null || PublicSource is not null || SourceSecurity is not null || ExportEvidence is not null)) ||
+            (Origin == StagedSeedOrigin.ExistingPublic && (!ContainsPriorBytes || Predecessor is not null ||
+                SourceBinding is null || PublicSource is null || SourceBinding.PublicTarget != PublicSource ||
+                SourceBinding.ReservationId != Allocation.TransferId ||
+                (AllocationBinding is not null && (SourceBinding != AllocationBinding || SourceSecurity != entry.AllocationSecurity)))) ||
+            (Origin == StagedSeedOrigin.PrivatePredecessor && (Predecessor is null ||
+                Predecessor != entry.ParentVersionIdentity)) ||
+            (InheritedRestriction is not null && !StagedSeedExport.IsFailure(InheritedRestriction)))
+            throw new InvalidDataException("The seed provenance lost its allocation/source binding.");
+        if (AllocationBinding is { } captured)
+        {
+            StagedSeedOrigin expected = captured.Disposition is 1 or 3
+                ? captured.ReferenceKind == 1 ? StagedSeedOrigin.PrivatePredecessor
+                    : captured.PublicTarget is null ? StagedSeedOrigin.None : StagedSeedOrigin.ExistingPublic
+                : StagedSeedOrigin.None;
+            if (Origin != expected)
+                throw new InvalidDataException("Seed origin disagrees with the captured allocation result/source.");
+        }
+        AllocationBinding?.Validate();
+        SourceBinding?.Validate();
+        SourceSecurity?.Validate();
+    }
+}
+
+// Completion is separate from the immutable provenance and security snapshot.
+// This is the service copier's observed EOF/flush/revalidation receipt, not a
+// claim that the pending native coherent-copy mechanism has been qualified.
+public sealed record StagedSeedCompletion(StagedVersionIdentity Allocation, long Length);
+
+internal static class StagedSeedExport
+{
+    internal const string Denied = "seed_export_denied";
+    internal const string Unproven = "seed_export_unproven";
+    internal const string RecipientUnproven = "seed_export_recipient_unproven";
+    internal static bool IsFailure(string? reason) => reason is Denied or Unproven or RecipientUnproven;
+
+    internal static string? Failure(TransferJournalEntry entry, string? recipientSid = null)
+    {
+        var seed = entry.SeedProvenance;
+        if (seed is null) return entry.BoundAllocation is not null ? Unproven :
+            IsFailure(entry.HandbackFailureReason) ? entry.HandbackFailureReason : null;
+        if (entry.BoundAllocation is not null && entry.SeedCompletion is null) return Unproven;
+        if (seed.InheritedRestriction is { } restriction) return restriction;
+        if (!seed.ContainsPriorBytes) return null;
+        if (seed.Allocation != StagedTransferJournal.VersionIdentity(entry)) return Unproven;
+        var proof = seed.ExportEvidence;
+        if (proof is null || proof.FormatVersion != 1 || proof.EvidenceId == Guid.Empty ||
+            proof.EffectiveSubjectId == Guid.Empty || string.IsNullOrWhiteSpace(proof.EffectiveSubjectSid) ||
+            proof.EffectiveSubjectSid.Length > 184 || !proof.EffectiveSubjectSid.StartsWith("S-", StringComparison.Ordinal) ||
+            proof.EffectiveSubjectSid.Any(char.IsWhiteSpace) ||
+            seed.SourceBinding is null || seed.PublicSource is null || seed.SourceSecurity is null ||
+            proof.SourceBinding != seed.SourceBinding || proof.PublicSource != seed.PublicSource ||
+            proof.Security != seed.SourceSecurity || proof.ProcessId != entry.Transfer.ProcessId ||
+            proof.ProcessCreationTime != entry.Transfer.RequestorProcessCreationTime ||
+            (entry.BoundAllocation is not null && seed.AllocationBinding != entry.BoundAllocation)) return Unproven;
+        if (proof.ReadAuthority == StagedSeedAuthority.Denied) return Denied;
+        if (proof.ReadAuthority != StagedSeedAuthority.Allowed) return Unproven;
+        // A thread grant and the process-primary SID are never interchangeable.
+        if (proof.RecipientAuthority != StagedSeedAuthority.Allowed ||
+            !string.Equals(proof.RecipientSid, recipientSid ?? entry.Transfer.RequestorSid, StringComparison.OrdinalIgnoreCase) ||
+            proof.RecipientSessionId != entry.Transfer.SessionId) return RecipientUnproven;
+        return null;
+    }
+
+    internal static TransferJournalEntry PrivateBlocked(TransferJournalEntry entry, string reason) => entry with
+    {
+        HandbackState = StagedHandbackState.Failed, HandbackFailureReason = reason,
+        HandbackPath = null, HandbackLength = null, JustificationWindowClosed = true,
+        JustificationExpiresAtUtc = null, StageCleanupStarted = false
+    };
+}

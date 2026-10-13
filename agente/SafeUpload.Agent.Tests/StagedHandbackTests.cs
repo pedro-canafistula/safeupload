@@ -17,6 +17,7 @@ public sealed class StagedHandbackTests : IDisposable
     private readonly TestWorkspace _workspace = new();
     private readonly string _stagingRoot;
     private readonly string _journalRoot;
+    private readonly StagedTransferJournal _copyJournal;
     private readonly NotificationHub _notifications = NotificationTestHub.Create();
 
     public StagedHandbackTests()
@@ -30,11 +31,217 @@ public sealed class StagedHandbackTests : IDisposable
         _stagingRoot = Path.Combine(_workspace.Root, "staging");
         _journalRoot = Path.Combine(_workspace.Root, "journal");
         Directory.CreateDirectory(_stagingRoot);
+        _copyJournal = new StagedTransferJournal(Path.Combine(_workspace.Root, "copy-journal"));
     }
 
     public void Dispose() => _workspace.Dispose();
 
     private readonly TestPublicationGate _gate = new();
+
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    [Fact]
+    public async Task Recovery_of_legacy_bound_manifest_without_provenance_never_recopies_or_registers()
+    {
+        var policy = await PolicyAsync(true); var journal = new StagedTransferJournal(_journalRoot);
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7, processCreationTime: 123456);
+        var entry = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        var binding = SecuritySnapshotFixture.Binding() with { ReservationId = transfer.TransferId,
+            CanonicalLeaf = Path.GetFileName(transfer.DestinationPath), Disposition = 1, PublicTarget = new(7, 91, 92) };
+        var legacy = entry with { State = TransferJournalState.Blocked, StateHistory = [], BlockedPolicyVersion = 1,
+            Sha256Hex = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(transfer.StagePath))),
+            BoundAllocation = binding, AllocationExtensionVersion = 23, AllocationDisposition = 1,
+            AllocationReferenceKind = 0, CreateReservationId = transfer.TransferId,
+            DriverInstanceId = binding.DriverInstanceId, ParentDirectoryIdentity = binding.Parent,
+            JustificationExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(1) };
+        await SeedProvenanceFixture.WriteAsync(_journalRoot, legacy);
+        var restarted = new StagedTransferJournal(_journalRoot); var broker = new StagedJustifications();
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        await Publisher(restarted, policy, broker, copier).RecoverBlockedAsync(legacy, CancellationToken.None);
+        var blocked = await restarted.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(TransferJournalState.Blocked, blocked.State); Assert.Equal(StagedHandbackState.Failed, blocked.HandbackState);
+        Assert.Equal("seed_export_unproven", blocked.HandbackFailureReason); Assert.True(blocked.JustificationWindowClosed);
+        Assert.Equal(0, copier.CopyCount); Assert.Null(blocked.HandbackPath); Assert.Null(blocked.HandbackLength);
+        Assert.False(broker.TryConsume(transfer.TransferId.ToString(), 7, TestRequestorSid, out _));
+        Assert.True(File.Exists(transfer.StagePath)); Assert.False(Directory.Exists(Path.Combine(_workspace.Root, "profile")));
+    }
+#endif
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Legacy_successor_inherits_existing_provenance_only_when_it_copies_prior_bytes(bool truncate)
+    {
+        var journal = new StagedTransferJournal(_journalRoot);
+        var parent = CreateBlockedCandidate(journal, "private prior bytes", 7, processCreationTime: 123456);
+        await SeedProvenanceFixture.AttachAsync(_journalRoot, journal, parent.TransferId);
+        var allocator = new StagedTransferAllocator(_stagingRoot, journal);
+        var child = await allocator.AllocateAsync(parent.DestinationPath, parent.Destination, parent.ProcessName,
+            parent.ProcessId, parent.SessionId, truncate ? 5u : 1u, parent, CancellationToken.None,
+            requestorSid: parent.RequestorSid, requestorProcessCreationTime: parent.RequestorProcessCreationTime);
+        var entry = await new StagedTransferJournal(_journalRoot).ReadAsync(child.TransferId, CancellationToken.None);
+        Assert.Null(entry.BoundAllocation);
+        if (truncate)
+        {
+            Assert.Null(entry.SeedProvenance); Assert.Null(StagedSeedExport.Failure(entry));
+            Assert.Equal(0, new FileInfo(child.StagePath).Length);
+        }
+        else
+        {
+            Assert.Equal(StagedSeedOrigin.PrivatePredecessor, entry.SeedProvenance!.Origin);
+            Assert.Equal(parent.TransferId, entry.SeedProvenance.Predecessor!.TransferId);
+            Assert.Equal("seed_export_unproven", entry.SeedProvenance.InheritedRestriction);
+            Assert.Equal("seed_export_unproven", StagedSeedExport.Failure(entry));
+            Assert.Equal("private prior bytes", await File.ReadAllTextAsync(child.StagePath));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Atomic_blocked_failed_persistence_fault_never_starts_export(bool afterReplacement)
+    {
+        var policy = await PolicyAsync(true); bool injected = false;
+        var journal = new StagedTransferJournal(_journalRoot, false, 100, (point, entry) =>
+        {
+            if (!injected && entry.State == TransferJournalState.Blocked &&
+                entry.HandbackState == StagedHandbackState.Failed &&
+                point == (afterReplacement ? StagedJournalWritePoint.AfterReplacement : StagedJournalWritePoint.BeforeReplacement))
+            { injected = true; throw new IOException("Injected private-block persistence interruption"); }
+        });
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7, processCreationTime: 123456);
+        await SeedProvenanceFixture.AttachAsync(_journalRoot, journal, transfer.TransferId);
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        var broker = new StagedJustifications(); var publisher = Publisher(journal, policy, broker, copier);
+        await Assert.ThrowsAsync<StagedJournalPersistenceException>(() => publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.True(injected); Assert.Equal(0, copier.CopyCount);
+        var restarted = new StagedTransferJournal(_journalRoot);
+        var interrupted = await restarted.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(afterReplacement ? TransferJournalState.Blocked : TransferJournalState.Inspecting, interrupted.State);
+        publisher = Publisher(restarted, policy, broker, copier);
+        if (!afterReplacement)
+        {
+            await restarted.RetainInterruptedAsync(CancellationToken.None);
+            Assert.Equal(StagedTransferOutcome.Blocked, await publisher.PublishAsync(transfer, CancellationToken.None));
+        }
+        else await publisher.RecoverBlockedAsync(interrupted, CancellationToken.None);
+        var final = await restarted.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(TransferJournalState.Blocked, final.State); Assert.Equal(StagedHandbackState.Failed, final.HandbackState);
+        Assert.Equal("seed_export_unproven", final.HandbackFailureReason);
+        Assert.True(final.JustificationWindowClosed); Assert.Null(final.HandbackPath); Assert.Null(final.HandbackLength);
+        Assert.Equal(0, copier.CopyCount); Assert.False(broker.TryConsume(transfer.TransferId.ToString(), 7, TestRequestorSid, out _));
+        Assert.True(File.Exists(transfer.StagePath)); Assert.False(Directory.Exists(Path.Combine(_workspace.Root, "profile")));
+    }
+
+    [Theory]
+    [InlineData(StagedSeedAuthority.Allowed, StagedSeedAuthority.Allowed, null)]
+    [InlineData(StagedSeedAuthority.Denied, StagedSeedAuthority.Allowed, "seed_export_denied")]
+    [InlineData(StagedSeedAuthority.Unproven, StagedSeedAuthority.Allowed, "seed_export_unproven")]
+    [InlineData(StagedSeedAuthority.Allowed, StagedSeedAuthority.Unproven, "seed_export_recipient_unproven")]
+    public async Task Seed_authority_controls_handback_justification_and_owner_only_notice(
+        StagedSeedAuthority read, StagedSeedAuthority recipient, string? failure)
+    {
+        var policy = await PolicyAsync(true); var journal = new StagedTransferJournal(_journalRoot);
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7, processCreationTime: 123456);
+        await SeedProvenanceFixture.AttachAsync(_journalRoot, journal, transfer.TransferId, read, recipient);
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        var broker = new StagedJustifications(); var publisher = Publisher(journal, policy, broker, copier);
+        using var owner = _notifications.Subscribe(7, TestRequestorSid);
+        using var stranger = _notifications.Subscribe(7, "S-1-5-21-111-222-333-1001");
+        Assert.Equal(StagedTransferOutcome.Blocked, await publisher.PublishAsync(transfer, CancellationToken.None));
+        var blocked = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        var notice = Assert.Single(DrainTransfers(owner), n => n.Phase == TransferPhase.Blocked);
+        Assert.False(stranger.Reader.TryRead(out _));
+        Assert.Equal(failure, blocked.HandbackFailureReason);
+        Assert.Equal(failure is null ? 1 : 0, copier.CopyCount);
+        Assert.Equal(failure is null, notice.OverrideAllowed);
+        Assert.Equal(failure is null, broker.TryConsume(transfer.TransferId.ToString(), 7, TestRequestorSid, out var retry));
+        if (failure is null)
+        {
+            Assert.Equal(StagedHandbackState.Verified, blocked.HandbackState);
+            Assert.Null(notice.BlockReason); Assert.NotNull(retry);
+            Directory.CreateDirectory(Path.GetDirectoryName(transfer.DestinationPath)!);
+            Assert.True(await retry!(CancellationToken.None));
+        }
+        else
+        {
+            Assert.Equal(StagedHandbackState.Failed, blocked.HandbackState);
+            Assert.Equal(StagedBlockReason.SeedExportRestricted, notice.BlockReason);
+            Assert.Null(notice.HandbackPath); Assert.False(notice.HandbackVerified);
+            Assert.Null(blocked.HandbackPath); Assert.Null(blocked.HandbackLength);
+            Assert.True(blocked.JustificationWindowClosed); Assert.Null(retry);
+            Assert.True(File.Exists(transfer.StagePath)); Assert.False(File.Exists(transfer.DestinationPath));
+            Assert.False(Directory.Exists(Path.Combine(_workspace.Root, "profile")));
+            Assert.False((await journal.TryBeginStageCleanupAsync(transfer.TransferId, CancellationToken.None)).StageCleanupStarted);
+            await Assert.ThrowsAsync<IOException>(() => journal.CompleteStageCleanupAsync(transfer.TransferId, CancellationToken.None));
+        }
+    }
+
+    [Theory]
+    [InlineData(StagedHandbackState.NotAttempted)]
+    [InlineData(StagedHandbackState.Copying)]
+    [InlineData(StagedHandbackState.Verified)]
+    [InlineData(StagedHandbackState.Failed)]
+    public async Task Interrupted_or_historical_blocked_seed_recovers_failed_without_copy_or_justification(
+        StagedHandbackState interrupted)
+    {
+        var policy = await PolicyAsync(true); var journal = new StagedTransferJournal(_journalRoot);
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7, processCreationTime: 123456);
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        await SeedProvenanceFixture.AttachAsync(_journalRoot, journal, transfer.TransferId);
+        await Publisher(journal, policy, new(), copier).PublishAsync(transfer, CancellationToken.None);
+        var blocked = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        var crash = blocked with { HandbackState = interrupted, JustificationWindowClosed = false,
+            JustificationExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(1),
+            HandbackFailureReason = interrupted == StagedHandbackState.Failed ? "seed_export_unproven" : null,
+            HandbackPath = interrupted == StagedHandbackState.Verified ? Path.Combine(_workspace.Root, "never-created.txt") : null,
+            HandbackLength = interrupted == StagedHandbackState.Verified ? blocked.SealedLength : null };
+        await SeedProvenanceFixture.WriteAsync(_journalRoot, crash);
+        var restarted = new StagedTransferJournal(_journalRoot); var broker = new StagedJustifications();
+        var publisher = Publisher(restarted, policy, broker, copier);
+        await publisher.RecoverBlockedAsync(crash, CancellationToken.None);
+        await publisher.RecoverBlockedAsync(crash, CancellationToken.None); // after notification, same stale scan
+        var recovered = await restarted.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(TransferJournalState.Blocked, recovered.State);
+        Assert.Equal(StagedHandbackState.Failed, recovered.HandbackState);
+        Assert.Equal("seed_export_unproven", recovered.HandbackFailureReason);
+        Assert.True(recovered.JustificationWindowClosed); Assert.Null(recovered.HandbackPath);
+        Assert.Null(recovered.HandbackLength); Assert.Equal(0, copier.CopyCount);
+        Assert.False(broker.TryConsume(transfer.TransferId.ToString(), 7, TestRequestorSid, out _));
+        Assert.False(Directory.Exists(Path.Combine(_workspace.Root, "profile")));
+        await publisher.ProcessBlockedCleanupAsync(crash, CancellationToken.None);
+        Assert.True(File.Exists(transfer.StagePath));
+    }
+
+    [Fact]
+    public async Task Direct_journal_copier_and_stale_justification_cannot_bypass_seed_restriction()
+    {
+        var policy = await PolicyAsync(true); var journal = new StagedTransferJournal(_journalRoot);
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7, processCreationTime: 123456);
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        var broker = new StagedJustifications(); var publisher = Publisher(journal, policy, broker, copier);
+        await publisher.PublishAsync(transfer, CancellationToken.None);
+        Assert.True(broker.TryConsume(transfer.TransferId.ToString(), 7, TestRequestorSid, out var stale));
+        Assert.NotNull(stale);
+        // Model loading a previously written provenance-bearing record after the callback was captured.
+        await SeedProvenanceFixture.AttachAsync(_journalRoot, journal, transfer.TransferId);
+        Assert.False(await stale!(CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.BeginHandbackAttemptAsync(transfer.TransferId, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.CompleteHandbackAsync(transfer.TransferId,
+            Path.Combine(_workspace.Root, "invented.txt"), 10, null, CancellationToken.None));
+        Assert.False(await broker.RememberAsync(journal, transfer.TransferId, 7, TestRequestorSid,
+            _ => throw new InvalidOperationException("Must not execute"), DateTimeOffset.UtcNow.AddMinutes(1), CancellationToken.None));
+        var realCopier = new StagedHandbackCopier(policy, journal,
+            new TestHandbackEnvironment(new SecurityIdentifier(TestRequestorSid), Path.Combine(_workspace.Root, "new-profile")));
+        using var source = File.OpenRead(transfer.StagePath);
+        var blocked = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        await Assert.ThrowsAsync<IOException>(() => realCopier.CopyVerifiedAsync(transfer, source, source.Length,
+            blocked.Sha256Hex!, CancellationToken.None));
+        Assert.Throws<IOException>(() => realCopier.OpenVerifiedReadLease(transfer,
+            Path.Combine(_workspace.Root, "invented.txt"), source.Length, blocked.Sha256Hex!));
+        Assert.Equal("seed_export_unproven", blocked.HandbackFailureReason);
+        Assert.Equal(1, copier.CopyCount); Assert.Equal(0, _gate.AuthorizeCalls);
+        Assert.False(Directory.Exists(Path.Combine(_workspace.Root, "new-profile")));
+    }
 
     [Theory]
     [InlineData("unchanged")]
@@ -401,13 +608,14 @@ public sealed class StagedHandbackTests : IDisposable
         SecurityIdentifier user = identity.User ?? throw new InvalidOperationException("Test user SID missing.");
         string profile = Path.Combine(_workspace.Root, "cancel-profile");
         Directory.CreateDirectory(profile);
-        var copier = new StagedHandbackCopier(await EmptyScopePolicyAsync(),
+        var copier = new StagedHandbackCopier(await EmptyScopePolicyAsync(), _copyJournal,
             new TestHandbackEnvironment(user, profile));
         string sourcePath = _workspace.WriteText("cancel-source.txt", "sealed snapshot");
         var transfer = new StagedTransfer(Guid.NewGuid(), sourcePath,
             Path.Combine(_workspace.Root, "protected", "report.txt"),
             DestinationKind.RemovableDrive, "explorer.exe", 1234, 7)
         { RequestorSid = user.Value };
+        await _copyJournal.CreateAsync(transfer, CancellationToken.None);
         using var cancellation = new CancellationTokenSource();
         await using var source = new CancelDuringCopyFileStream(sourcePath, cancellation);
         string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
@@ -457,13 +665,14 @@ public sealed class StagedHandbackTests : IDisposable
         }
         else syncRoots = [safeUpload];
 
-        var copier = new StagedHandbackCopier(policy,
+        var copier = new StagedHandbackCopier(policy, _copyJournal,
             new TestHandbackEnvironment(user, profile, syncRoots));
         string sourcePath = _workspace.WriteText("scope-source.txt", "sealed snapshot");
         var transfer = new StagedTransfer(Guid.NewGuid(), sourcePath,
             Path.Combine(_workspace.Root, "protected", "report.txt"),
             DestinationKind.RemovableDrive, "explorer.exe", 1234, 7)
         { RequestorSid = user.Value };
+        await _copyJournal.CreateAsync(transfer, CancellationToken.None);
         string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             await File.ReadAllBytesAsync(sourcePath)));
         await using var source = new FileStream(sourcePath, FileMode.Open, FileAccess.Read,
@@ -492,13 +701,14 @@ public sealed class StagedHandbackTests : IDisposable
             ? new JsonArray(JsonValue.Create(missingRoot)) : new JsonArray();
         await File.WriteAllTextAsync(_workspace.PolicyFile, document.ToJsonString());
         string[] syncRoots = scopeKind == "sync" ? [missingRoot] : [];
-        var copier = new StagedHandbackCopier(policy,
+        var copier = new StagedHandbackCopier(policy, _copyJournal,
             new TestHandbackEnvironment(user, profile, syncRoots));
         string sourcePath = _workspace.WriteText("missing-scope-source.txt", "sealed snapshot");
         var transfer = new StagedTransfer(Guid.NewGuid(), sourcePath,
             Path.Combine(_workspace.Root, "protected", "report.txt"),
             DestinationKind.RemovableDrive, "explorer.exe", 1234, 7)
         { RequestorSid = user.Value };
+        await _copyJournal.CreateAsync(transfer, CancellationToken.None);
         string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             await File.ReadAllBytesAsync(sourcePath)));
         await using var source = new FileStream(sourcePath, FileMode.Open, FileAccess.Read,
@@ -520,13 +730,14 @@ public sealed class StagedHandbackTests : IDisposable
         Directory.CreateDirectory(safeUpload);
         string alias = "\\\\?\\" + Path.GetFullPath(safeUpload);
         Assert.True(StagedHandbackCopier.DirectoryPathsHaveSameIdentity(safeUpload, alias));
-        var copier = new StagedHandbackCopier(await EmptyScopePolicyAsync(),
+        var copier = new StagedHandbackCopier(await EmptyScopePolicyAsync(), _copyJournal,
             new TestHandbackEnvironment(user, profile, [alias]));
         string sourcePath = _workspace.WriteText("alias-source.txt", "sealed snapshot");
         var transfer = new StagedTransfer(Guid.NewGuid(), sourcePath,
             Path.Combine(_workspace.Root, "protected", "report.txt"),
             DestinationKind.RemovableDrive, "explorer.exe", 1234, 7)
         { RequestorSid = user.Value };
+        await _copyJournal.CreateAsync(transfer, CancellationToken.None);
         string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             await File.ReadAllBytesAsync(sourcePath)));
         await using var source = new FileStream(sourcePath, FileMode.Open, FileAccess.Read,
@@ -545,13 +756,14 @@ public sealed class StagedHandbackTests : IDisposable
         SecurityIdentifier user = identity.User ?? throw new InvalidOperationException("Test user SID missing.");
         string profile = Path.Combine(_workspace.Root, "test-profile");
         Directory.CreateDirectory(profile);
-        var copier = new StagedHandbackCopier(await EmptyScopePolicyAsync(),
+        var copier = new StagedHandbackCopier(await EmptyScopePolicyAsync(), _copyJournal,
             new TestHandbackEnvironment(user, profile));
         string sourcePath = _workspace.WriteText("sealed.txt", "sealed snapshot");
         var transfer = new StagedTransfer(Guid.NewGuid(), sourcePath,
             Path.Combine(_workspace.Root, "protected", "report.txt"),
             DestinationKind.RemovableDrive, "explorer.exe", 1234, 7)
         { RequestorSid = user.Value };
+        await _copyJournal.CreateAsync(transfer, CancellationToken.None);
         string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             await File.ReadAllBytesAsync(sourcePath)));
         string returned;
@@ -603,13 +815,14 @@ public sealed class StagedHandbackTests : IDisposable
             return; // Windows may disable unprivileged symlink creation on the builder.
         }
 
-        var copier = new StagedHandbackCopier(await EmptyScopePolicyAsync(),
+        var copier = new StagedHandbackCopier(await EmptyScopePolicyAsync(), _copyJournal,
             new TestHandbackEnvironment(user, profile));
         string sourcePath = _workspace.WriteText("reparse-source.txt", "sealed snapshot");
         var transfer = new StagedTransfer(Guid.NewGuid(), sourcePath,
             Path.Combine(_workspace.Root, "protected", "report.txt"),
             DestinationKind.RemovableDrive, "explorer.exe", 1234, 7)
         { RequestorSid = user.Value };
+        await _copyJournal.CreateAsync(transfer, CancellationToken.None);
         string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             await File.ReadAllBytesAsync(sourcePath)));
         await using var source = new FileStream(sourcePath, FileMode.Open, FileAccess.Read,
@@ -631,10 +844,11 @@ public sealed class StagedHandbackTests : IDisposable
         var user = identity.User!;
         string profile = Path.Combine(_workspace.Root, "current-policy-profile");
         Directory.CreateDirectory(profile);
-        var copier = new StagedHandbackCopier(policy, new TestHandbackEnvironment(user, profile));
+        var copier = new StagedHandbackCopier(policy, _copyJournal, new TestHandbackEnvironment(user, profile));
         string path = _workspace.WriteText("current-policy-source.txt", "Private retained bytes.");
         var transfer = new StagedTransfer(Guid.NewGuid(), path, Path.Combine(_workspace.Root, "protected", "report.txt"),
             DestinationKind.RemovableDrive, "explorer.exe", 1234, 7) { RequestorSid = user.Value };
+        await _copyJournal.CreateAsync(transfer, CancellationToken.None);
         string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(await File.ReadAllBytesAsync(path)));
         await using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         await Assert.ThrowsAsync<PolicyFileAclRejectedException>(() => copier.CopyVerifiedAsync(transfer, source,
@@ -665,14 +879,14 @@ public sealed class StagedHandbackTests : IDisposable
     }
 
     private StagedTransfer CreateBlockedCandidate(StagedTransferJournal journal,
-        string contents, uint? sessionId, string? requestorSid = TestRequestorSid)
+        string contents, uint? sessionId, string? requestorSid = TestRequestorSid, long? processCreationTime = null)
     {
         string stage = Path.Combine(_stagingRoot, Guid.NewGuid().ToString("N") + ".txt");
         File.WriteAllText(stage, contents);
         string destination = Path.Combine(_workspace.Root, "protected", Path.GetFileName(stage));
         var transfer = new StagedTransfer(Guid.NewGuid(), stage, destination,
             DestinationKind.RemovableDrive, "explorer.exe", 4321, sessionId)
-        { RequestorSid = requestorSid };
+        { RequestorSid = requestorSid, RequestorProcessCreationTime = processCreationTime };
         journal.CreateAsync(transfer, CancellationToken.None).GetAwaiter().GetResult();
         journal.TransitionAsync(transfer.TransferId, TransferJournalState.Allocated,
             TransferJournalState.Sealed, null, CancellationToken.None).GetAwaiter().GetResult();
