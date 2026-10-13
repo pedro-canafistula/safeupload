@@ -1643,13 +1643,21 @@ NTSTATUS SafeUploadStageAdmissionStartWorker(VOID)
         NULL, NULL, StageCanaryWorker, &CanaryStop);
 }
 
+_Use_decl_annotations_
+VOID SafeUploadStageAdmissionBeginTeardown(VOID)
+{
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    if (CanaryThreadHandle == NULL) return;
+    KeSetEvent(&CanaryStop, IO_NO_INCREMENT, FALSE);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageAdmissionCanaryHoldCancel();
+#endif
+}
+
 VOID SafeUploadStageAdmissionStopWorker(VOID)
 {
     if (CanaryThreadHandle != NULL) {
-        KeSetEvent(&CanaryStop, IO_NO_INCREMENT, FALSE);
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-        SafeUploadStageAdmissionCanaryHoldCancel();
-#endif
+        SafeUploadStageAdmissionBeginTeardown();
         (VOID)ZwWaitForSingleObject(CanaryThreadHandle, FALSE, NULL);
         ZwClose(CanaryThreadHandle);
         CanaryThreadHandle = NULL;

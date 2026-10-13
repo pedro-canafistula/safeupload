@@ -400,7 +400,13 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   mechanisms (descriptor `0x8C04 → 0x8804`, low-impersonation capture, coherent seed interval, export authority proof) stay
   fail-closed holds with named reasons; none is approved as a narrower contract. Readiness stays false until all increments land.
   - [ ] Increment 1: option-1 provenance and private/no-export enforcement (agent).
-  - [ ] Service-independent mandatory teardown for current objects (kernel), extended by later increments.
+  - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
+    fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
+    channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
+    Voluntary `PrepareUnload` is unchanged. Coverage-lost native records stay held. [Four WDK builds](evidence/2026-10-13/exact-t5-teardown2-summary.txt)
+    at 0/0 with PREfast/ApiValidator (`t5-teardown1` failed on 4 PAGED_CODE/SAL errors, receipt kept; fixed). Test signing used the
+    default signer and failed; the pre-boot package will be built with the recorded LocalMachine signer. Part of the pre-boot review
+    package; later increments extend it to new record types. [Implementation note](T5-DELETES.md#7-unload-and-shutdown-rescope).
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
   - [x] Prepare clean/CPF forced-order coordinator gates and no-empty-leftover verdicts; Windows PowerShell 5.1 parsing,
     168 schema assertions and actual unprotected NTFS actor controls pass ([raw output](evidence/2026-10-11/t5-forced-order-harness-controls-1011a5.txt));

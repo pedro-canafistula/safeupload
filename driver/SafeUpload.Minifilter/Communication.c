@@ -109,6 +109,8 @@ static BOOLEAN SafeUploadConnectionCommitAuthentication(_In_opt_ PVOID Connectio
 static VOID SafeUploadCloseUnpublishedClientPort(VOID);
 static NTSTATUS SafeUploadConnectionWaitForUses(VOID);
 static NTSTATUS SafeUploadConnectionWaitForRetirement(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS SafeUploadCloseCommunicationPortInternal(_In_ BOOLEAN Drain);
 
 static NTSTATUS SafeUploadRequestVerdictInternal (
     _Inout_ PSAFEUPLOAD_EXCHANGE Exchange,
@@ -208,6 +210,7 @@ BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID);
     #pragma alloc_text(PAGE, SafeUploadCreateCommunicationPort)
     #pragma alloc_text(PAGE, SafeUploadHasClientConnection)
     #pragma alloc_text(PAGE, SafeUploadCloseCommunicationPort)
+    #pragma alloc_text(PAGE, SafeUploadCloseCommunicationPortInternal)
     #pragma alloc_text(PAGE, SafeUploadWaitForCommunicationDrain)
     #pragma alloc_text(PAGE, SafeUploadTryCommunicationUnloadPreflight)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -430,9 +433,10 @@ Return Value:
 }
 
 
-NTSTATUS
-SafeUploadCloseCommunicationPort (
-    VOID
+_Use_decl_annotations_
+static NTSTATUS
+SafeUploadCloseCommunicationPortInternal (
+    BOOLEAN Drain
     )
 /*++
 
@@ -493,6 +497,8 @@ Return Value:
      * govern the later bounded/unbounded waits. */
     if (serverPortToClose != NULL) FltCloseCommunicationPort(serverPortToClose);
 
+    if (!Drain) return status;
+
     FltAcquirePushLockExclusive(&SafeUploadConnectionTransitionLock);
     {
         NTSTATUS drainStatus = SafeUploadConnectionWaitForUses();
@@ -503,6 +509,24 @@ Return Value:
     FltReleasePushLock(&SafeUploadConnectionTransitionLock);
     return status;
 }
+
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadCloseCommunicationPort(VOID)
+{
+    PAGED_CODE();
+    return SafeUploadCloseCommunicationPortInternal(TRUE);
+}
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+_Use_decl_annotations_
+NTSTATUS SafeUploadCloseCommunicationPortEarly(VOID)
+{
+    /* Revoke and wake sends now; the caller closes public handles before
+     * using the existing explicit local communication drain. */
+    return SafeUploadCloseCommunicationPortInternal(FALSE);
+}
+#endif
 
 
 NTSTATUS
@@ -563,6 +587,9 @@ SafeUploadConnectionUseAcquire (
     currentCookie = InterlockedCompareExchangePointer(&SafeUploadCurrentConnectionCookie, NULL, NULL);
     if (currentCookie != NULL && SafeUploadCurrentConnectionGeneration > 0 &&
         !SafeUploadControlCallbackAdmissionClosed &&
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        !SafeUploadStageMandatoryTeardownActive() &&
+#endif
         (RequestedCookie == NULL || RequestedCookie == currentCookie) &&
         (!RequireAuthentication ||
          InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0) &&
@@ -624,6 +651,9 @@ SafeUploadConnectionIsAuthenticated (
             &SafeUploadCurrentConnectionCookie, NULL, NULL) != NULL &&
         SafeUploadCurrentConnectionGeneration > 0 &&
         !SafeUploadControlCallbackAdmissionClosed &&
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        !SafeUploadStageMandatoryTeardownActive() &&
+#endif
         SafeUploadData.ClientPort != NULL &&
         InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0;
     KeReleaseSpinLock(&SafeUploadConnectionStateLock, oldIrql);
@@ -657,6 +687,9 @@ SafeUploadConnectionGetAuthenticatedIdentity (
         (ExpectedCookie == NULL || currentCookie == ExpectedCookie) &&
         currentGeneration > 0 &&
         !SafeUploadControlCallbackAdmissionClosed &&
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        !SafeUploadStageMandatoryTeardownActive() &&
+#endif
         SafeUploadData.ClientPort != NULL &&
         InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0;
     if (authenticated) {
@@ -684,6 +717,9 @@ SafeUploadConnectionIsAuthenticatedIdentity (
             &SafeUploadCurrentConnectionCookie, NULL, NULL) == ConnectionCookie &&
         SafeUploadCurrentConnectionGeneration == ConnectionGeneration &&
         !SafeUploadControlCallbackAdmissionClosed &&
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        !SafeUploadStageMandatoryTeardownActive() &&
+#endif
         SafeUploadData.ClientPort != NULL &&
         InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0;
     KeReleaseSpinLock(&SafeUploadConnectionStateLock, oldIrql);
@@ -858,6 +894,9 @@ static BOOLEAN SafeUploadConnectionPublishClientPort(
 
     KeAcquireSpinLock(&SafeUploadConnectionStateLock, &oldIrql);
     if (!SafeUploadControlCallbackAdmissionClosed &&
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        !SafeUploadStageMandatoryTeardownActive() &&
+#endif
         InterlockedCompareExchangePointer(
             &SafeUploadCurrentConnectionCookie, NULL, NULL) == NULL &&
         SafeUploadData.ClientPort == NULL
@@ -913,6 +952,9 @@ static BOOLEAN SafeUploadConnectionCommitAuthentication(
     if (currentCookie == ConnectionCookie &&
         SafeUploadCurrentConnectionGeneration > 0 &&
         !SafeUploadControlCallbackAdmissionClosed &&
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        !SafeUploadStageMandatoryTeardownActive() &&
+#endif
         SafeUploadData.ClientPort != NULL) {
         BOOLEAN wasAuthenticated = InterlockedExchange(
             &SafeUploadData.AuthenticatedClient, 1) == 0;
@@ -939,6 +981,9 @@ SafeUploadConnectionUseIsCurrent (
         &SafeUploadCurrentConnectionCookie, NULL, NULL) == ConnectionCookie &&
         SafeUploadCurrentConnectionGeneration > 0 &&
         !SafeUploadControlCallbackAdmissionClosed &&
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        !SafeUploadStageMandatoryTeardownActive() &&
+#endif
         (!RequireAuthentication ||
          InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0);
     KeReleaseSpinLock(&SafeUploadConnectionStateLock, oldIrql);
@@ -961,6 +1006,9 @@ SafeUploadConnectionUseIsCurrentForProcess (
         &SafeUploadCurrentConnectionCookie, NULL, NULL) == ConnectionCookie &&
         SafeUploadCurrentConnectionGeneration > 0 &&
         !SafeUploadControlCallbackAdmissionClosed &&
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        !SafeUploadStageMandatoryTeardownActive() &&
+#endif
         SafeUploadData.InspectorProcessId == ProcessId;
     KeReleaseSpinLock(&SafeUploadConnectionStateLock, oldIrql);
     return current;
@@ -1042,7 +1090,8 @@ SafeUploadControlCallbackEnter (
     *Admitted = *ReferencedFilter != NULL &&
         !SafeUploadControlCallbackAdmissionClosed;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (NewWorkCallback && SafeUploadStageCallbackAdmissionClosed)
+    if (NewWorkCallback && (SafeUploadStageCallbackAdmissionClosed ||
+        SafeUploadStageMandatoryTeardownActive()))
         *Admitted = FALSE;
 #else
     UNREFERENCED_PARAMETER(NewWorkCallback);
@@ -1767,7 +1816,11 @@ BOOLEAN SafeUploadConnectionPinAuthenticatedProcess(PVOID ConnectionCookie,
     if (pinnedCookie == ConnectionCookie &&
         InterlockedCompareExchangePointer(&SafeUploadCurrentConnectionCookie, NULL, NULL) == ConnectionCookie &&
         SafeUploadCurrentConnectionGeneration == ConnectionGeneration &&
-        !SafeUploadControlCallbackAdmissionClosed && !SafeUploadStageCallbackAdmissionClosed &&
+        !SafeUploadControlCallbackAdmissionClosed &&
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        !SafeUploadStageMandatoryTeardownActive() &&
+#endif
+        !SafeUploadStageCallbackAdmissionClosed &&
         InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0 &&
         SafeUploadData.ClientPort != NULL && SafeUploadCurrentConnectionProcess != NULL) {
         ObReferenceObject(SafeUploadCurrentConnectionProcess);

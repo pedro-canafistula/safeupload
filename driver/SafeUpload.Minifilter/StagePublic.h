@@ -107,5 +107,10 @@ VOID SafeUploadStagePublicReleaseOperation(_In_ PSAFEUPLOAD_STAGE_PUBLIC_BACKEND
 VOID SafeUploadStagePublicGetBinding(_In_ PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend,
     _Out_ PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding);
 LONG SafeUploadStagePublicBackendCount(VOID);
+VOID SafeUploadStagePublicInitialize(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStagePublicCloseAllBackends(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStagePublicDrainBackends(VOID);
 #endif
 #endif

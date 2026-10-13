@@ -3,6 +3,7 @@
  * This module never sets disposition, writes data, or changes a public name.
  * See T5-DELETES.md sections 4.1/4.2. */
 #include "StagePublic.h"
+#include "Stage.h"
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #define STAGE_PUBLIC_TAG 'pUpS'
@@ -13,6 +14,8 @@ struct _SAFEUPLOAD_STAGE_PUBLIC_BACKEND {
     volatile LONG Closing;
     KEVENT Closed;
     BOOLEAN Counted;
+    BOOLEAN TeardownSelected;
+    LIST_ENTRY Link;
     PFLT_INSTANCE Instance;
     HANDLE PublicHandle;
     PFILE_OBJECT PublicObject;
@@ -33,15 +36,75 @@ typedef struct _STAGE_PUBLIC_OBJECT_BASIC_INFORMATION {
 } STAGE_PUBLIC_OBJECT_BASIC_INFORMATION;
 
 static volatile LONG StagePublicBackendCount;
+static EX_PUSH_LOCK StagePublicListLock;
+static LIST_ENTRY StagePublicBackends;
+static EX_RUNDOWN_REF StagePublicOpens;
+static KEVENT StagePublicDrained;
+static BOOLEAN StagePublicOpensDrained;
+
+VOID SafeUploadStagePublicInitialize(VOID)
+{
+    FltInitializePushLock(&StagePublicListLock);
+    InitializeListHead(&StagePublicBackends);
+    ExInitializeRundownProtection(&StagePublicOpens);
+    StagePublicOpensDrained = FALSE;
+    KeInitializeEvent(&StagePublicDrained, NotificationEvent, TRUE);
+}
+
+_Use_decl_annotations_
+VOID SafeUploadStagePublicCloseAllBackends(VOID)
+{
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    /* The unload thread is the sole closer; a close retry must not start a
+     * second EX rundown wait on an already completed rundown object. */
+    if (!StagePublicOpensDrained) {
+        ExWaitForRundownProtectionRelease(&StagePublicOpens);
+        StagePublicOpensDrained = TRUE;
+    }
+    for (;;) {
+        PLIST_ENTRY link;
+        PSAFEUPLOAD_STAGE_PUBLIC_BACKEND backend = NULL;
+        FltAcquirePushLockExclusive(&StagePublicListLock);
+        for (link = StagePublicBackends.Flink; link != &StagePublicBackends; link = link->Flink) {
+            PSAFEUPLOAD_STAGE_PUBLIC_BACKEND current = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_PUBLIC_BACKEND, Link);
+            if (current->TeardownSelected) continue;
+            current->TeardownSelected = TRUE;
+            SafeUploadStagePublicReferenceBackend(current);
+            backend = current;
+            break;
+        }
+        FltReleasePushLock(&StagePublicListLock);
+        if (backend == NULL) return;
+        SafeUploadStagePublicCloseBackend(backend);
+        SafeUploadStagePublicDereferenceBackend(backend);
+    }
+}
+
+_Use_decl_annotations_
+VOID SafeUploadStagePublicDrainBackends(VOID)
+{
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    NT_ASSERT(StagePublicOpensDrained);
+    (VOID)KeWaitForSingleObject(&StagePublicDrained, Executive, KernelMode, FALSE, NULL);
+}
+
 
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StagePublicBindCaller(PSECURITY_CLIENT_CONTEXT Subject,
     PEPROCESS RequestorProcess, PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding);
 static NTSTATUS StagePublicCaptureSubject(PFLT_CALLBACK_DATA Data,
     PSECURITY_CLIENT_CONTEXT Subject, BOOLEAN RequireImpersonation);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StagePublicOpenBackend(_In_ PFLT_INSTANCE Instance,
+    _In_ PUNICODE_STRING PublicName, _In_ PSECURITY_CLIENT_CONTEXT Subject,
+    _In_ PEPROCESS OriginalRequestorProcess,
+    _In_ ACCESS_MASK OriginalDesiredAccess, _In_ ULONG OriginalShareAccess,
+    _In_ ULONG OriginalCreateOptions, _In_ BOOLEAN CaseSensitiveOpen,
+    _Outptr_result_nullonfailure_ PSAFEUPLOAD_STAGE_PUBLIC_BACKEND *Backend);
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, StagePublicBindCaller)
 #pragma alloc_text(PAGE, StagePublicCaptureSubject)
+#pragma alloc_text(PAGE, StagePublicOpenBackend)
 #endif
 
 /* RequestorProcess is the original CREATE's referenced process object, not a
@@ -312,12 +375,20 @@ _Use_decl_annotations_
 VOID SafeUploadStagePublicDereferenceBackend(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend)
 {
     PAGED_CODE();
-    if (Backend == NULL || InterlockedDecrement(&Backend->References) != 0) return;
+    if (Backend == NULL) return;
+    FltAcquirePushLockExclusive(&StagePublicListLock);
+    if (InterlockedDecrement(&Backend->References) != 0) {
+        FltReleasePushLock(&StagePublicListLock);
+        return;
+    }
+    if (Backend->Counted) RemoveEntryList(&Backend->Link);
+    FltReleasePushLock(&StagePublicListLock);
     SafeUploadStagePublicCloseBackend(Backend);
     StagePublicCloseObject(&Backend->ParentHandle, &Backend->ParentObject);
     StagePublicCloseObject(&Backend->RootHandle, &Backend->RootObject);
     if (Backend->Instance != NULL) FltObjectDereference(Backend->Instance);
-    if (Backend->Counted) InterlockedDecrement(&StagePublicBackendCount);
+    if (Backend->Counted && InterlockedDecrement(&StagePublicBackendCount) == 0)
+        KeSetEvent(&StagePublicDrained, IO_NO_INCREMENT, FALSE);
     ExFreePoolWithTag(Backend, STAGE_PUBLIC_TAG);
 }
 
@@ -332,7 +403,8 @@ BOOLEAN SafeUploadStagePublicAcquireOperation(PSAFEUPLOAD_STAGE_PUBLIC_BACKEND B
         InterlockedDecrement(&Backend->References); /* caller's owned reference remains */
         return FALSE;
     }
-    if (InterlockedCompareExchange(&Backend->Closing, 0, 0) != 0) {
+    if (SafeUploadStageMandatoryTeardownActive() ||
+        InterlockedCompareExchange(&Backend->Closing, 0, 0) != 0) {
         ExReleaseRundownProtection(&Backend->Operations);
         InterlockedDecrement(&Backend->References);
         return FALSE;
@@ -600,7 +672,7 @@ Exit:
 }
 
 _Use_decl_annotations_
-NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRING PublicName,
+static NTSTATUS StagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRING PublicName,
     PSECURITY_CLIENT_CONTEXT Subject, PEPROCESS OriginalRequestorProcess,
     ACCESS_MASK OriginalDesiredAccess, ULONG OriginalShareAccess,
     ULONG OriginalCreateOptions, BOOLEAN CaseSensitiveOpen, PSAFEUPLOAD_STAGE_PUBLIC_BACKEND *Backend)
@@ -706,14 +778,40 @@ NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRIN
         status = STATUS_NOT_SAME_DEVICE;
         goto Exit;
     }
+    FltAcquirePushLockExclusive(&StagePublicListLock);
     result->Counted = TRUE;
+    InsertTailList(&StagePublicBackends, &result->Link);
     InterlockedIncrement(&StagePublicBackendCount);
+    KeClearEvent(&StagePublicDrained);
+    FltReleasePushLock(&StagePublicListLock);
     *Backend = result;
     result = NULL;
 Exit:
     if (impersonating) SeStopImpersonatingClient();
     if (name != NULL) FltReleaseFileNameInformation(name);
     SafeUploadStagePublicDereferenceBackend(result);
+    return status;
+}
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicOpenBackend(PFLT_INSTANCE Instance, PUNICODE_STRING PublicName,
+    PSECURITY_CLIENT_CONTEXT Subject, PEPROCESS OriginalRequestorProcess,
+    ACCESS_MASK OriginalDesiredAccess, ULONG OriginalShareAccess,
+    ULONG OriginalCreateOptions, BOOLEAN CaseSensitiveOpen, PSAFEUPLOAD_STAGE_PUBLIC_BACKEND *Backend)
+{
+    PSAFEUPLOAD_STAGE_PUBLIC_BACKEND backend = NULL;
+    NTSTATUS status;
+    PAGED_CODE();
+    if (Backend == NULL) return STATUS_INVALID_PARAMETER;
+    *Backend = NULL;
+    if (!ExAcquireRundownProtection(&StagePublicOpens)) return STATUS_FLT_DELETING_OBJECT;
+    if (SafeUploadStageMandatoryTeardownActive()) status = STATUS_FLT_DELETING_OBJECT;
+    else status = StagePublicOpenBackend(Instance, PublicName, Subject, OriginalRequestorProcess,
+        OriginalDesiredAccess, OriginalShareAccess, OriginalCreateOptions, CaseSensitiveOpen, &backend);
+    if (NT_SUCCESS(status) && SafeUploadStageMandatoryTeardownActive())
+        status = STATUS_FLT_DELETING_OBJECT;
+    if (NT_SUCCESS(status)) *Backend = backend;
+    else SafeUploadStagePublicDereferenceBackend(backend);
+    ExReleaseRundownProtection(&StagePublicOpens);
     return status;
 }
 #endif

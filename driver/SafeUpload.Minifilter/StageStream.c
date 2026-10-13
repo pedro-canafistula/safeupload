@@ -299,6 +299,9 @@ static volatile LONG StageUnloadAdmissionClosed;
  * reopen staging admission. Keep cleanup/reconnect work alive and require a
  * later unload retry to finish the transaction. */
 static volatile LONG StageUnloadQuarantined;
+static volatile LONG StageMandatoryTeardown;
+static EX_RUNDOWN_REF StageOwnedCallbackBodies;
+static BOOLEAN StageMandatoryLocalDrained;
 #endif
 static LIST_ENTRY StageViews;
 static KEVENT StageWorkerStop;
@@ -1397,9 +1400,11 @@ static VOID StageRelease(PERESOURCE Resource)
 static BOOLEAN StageCacheAcquire(PVOID Context, BOOLEAN Wait)
 {
     PSTAGE_STREAM stream = Context;
+    if (!ExAcquireRundownProtection(&StageOwnedCallbackBodies)) return FALSE;
     KeEnterCriticalRegion();
     if (!ExAcquireResourceSharedLite(&stream->PagingResource, Wait)) {
         KeLeaveCriticalRegion();
+        ExReleaseRundownProtection(&StageOwnedCallbackBodies);
         return FALSE;
     }
     return TRUE;
@@ -1409,6 +1414,7 @@ static VOID StageCacheRelease(PVOID Context)
 {
     PSTAGE_STREAM stream = Context;
     StageRelease(&stream->PagingResource);
+    ExReleaseRundownProtection(&StageOwnedCallbackBodies);
 }
 
 static CACHE_MANAGER_CALLBACKS StageCacheCallbacks = {
@@ -2313,7 +2319,8 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         } else {
             StageRemoveAllocationNameReservation(stream);
         }
-        if (NT_SUCCESS(status) && StageStopping) status = STATUS_DEVICE_NOT_READY;
+        if (NT_SUCCESS(status) && (StageStopping || SafeUploadStageMandatoryTeardownActive()))
+            status = STATUS_DEVICE_NOT_READY;
         if (NT_SUCCESS(status) && allocationServiceGeneration !=
             InterlockedCompareExchange(&StageServiceGeneration, 0, 0))
             status = STATUS_PORT_DISCONNECTED;
@@ -2722,8 +2729,11 @@ static BOOLEAN StageAttachRemoveLookup(_Inout_ PSTAGE_ATTACH_TRANSACTION Transac
 
 static VOID StageAttachReleaseActive(VOID)
 {
+    KIRQL irql;
+    StageStreamAcquireSpinLock(&StageAttachLock, &irql);
     if (InterlockedDecrement(&StageAttachActiveCount) == 0)
         KeSetEvent(&StageAttachDrained, IO_NO_INCREMENT, FALSE);
+    StageStreamReleaseSpinLock(&StageAttachLock, irql);
     KeSetEvent(&StageAttachChanged, IO_NO_INCREMENT, FALSE);
 }
 
@@ -2940,6 +2950,7 @@ static BOOLEAN StageAttachIsInstanceTearingDown(_In_ PFLT_INSTANCE Instance)
     PLIST_ENTRY link;
     KIRQL irql;
     BOOLEAN found = FALSE;
+    if (SafeUploadStageMandatoryTeardownActive()) return TRUE;
     StageStreamAcquireSpinLock(&StageAttachLock, &irql);
     for (link = StageAttachTearingDownInstances.Flink;
          link != &StageAttachTearingDownInstances; link = link->Flink) {
@@ -2991,8 +3002,8 @@ VOID SafeUploadStageAttachInstanceTeardownStart(_In_ PFLT_INSTANCE Instance)
     KIRQL irql;
     LARGE_INTEGER interval;
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
-    tombstone = ExAllocatePool2(POOL_FLAG_NON_PAGED,
-        sizeof(*tombstone), STAGE_TAG);
+    tombstone = SafeUploadStageMandatoryTeardownActive() ? NULL :
+        ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*tombstone), STAGE_TAG);
     if (tombstone != NULL) {
         RtlZeroMemory(tombstone, sizeof(*tombstone));
         InitializeListHead(&tombstone->Link);
@@ -3008,7 +3019,7 @@ VOID SafeUploadStageAttachInstanceTeardownStart(_In_ PFLT_INSTANCE Instance)
                 STAGE_ATTACH_INSTANCE_TOMBSTONE, Link);
             if (item->Instance == Instance) { alreadyPresent = TRUE; break; }
         }
-        if (!alreadyPresent && tombstone != NULL) {
+        if (!alreadyPresent && tombstone != NULL && !SafeUploadStageMandatoryTeardownActive()) {
             InsertTailList(&StageAttachTearingDownInstances, &tombstone->Link);
             tombstone = NULL;
         } else if (!alreadyPresent) {
@@ -3107,6 +3118,7 @@ static NTSTATUS StageAttachExchangeRetry(_Inout_ PSTAGE_ATTACH_TRANSACTION Trans
     BOOLEAN exactTerminalAllowed = FALSE;
     NTSTATUS status;
     if (Result != NULL) *Result = 0;
+    if (SafeUploadStageMandatoryTeardownActive()) return STATUS_PORT_DISCONNECTED;
     if (Transaction == NULL || (stream = Transaction->Stream) == NULL || Request == NULL || Result == NULL)
         return STATUS_INVALID_PARAMETER;
     if (Request->RequestId == 0 && !StageAttachRetryAllowed(Transaction)) {
@@ -3423,6 +3435,7 @@ static NTSTATUS StageAttachRetireUnexposed(_Inout_ PSTAGE_ATTACH_TRANSACTION Tra
     UINT32 result = 0;
     NTSTATUS status;
     PSTAGE_STREAM parent;
+    if (SafeUploadStageMandatoryTeardownActive()) return STATUS_PORT_DISCONNECTED;
     if (Transaction == NULL || Stream == NULL || !Transaction->UnexposedRetirementAllowed)
         return STATUS_INVALID_DEVICE_STATE;
     StageAcquire(&StageNamespaceResource);
@@ -3662,7 +3675,8 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
         }
         Transaction->CancelRegistered = FALSE;
     }
-    cancelled = clearStatus != STATUS_SUCCESS || FltIsIoCanceled(Transaction->CallbackData) ||
+    cancelled = SafeUploadStageMandatoryTeardownActive() ||
+        clearStatus != STATUS_SUCCESS || FltIsIoCanceled(Transaction->CallbackData) ||
         InterlockedCompareExchange(&Transaction->CancelRequested, 0, 0) != 0 ||
         InterlockedCompareExchange(&Transaction->TeardownRequested, 0, 0) != 0 ||
         StageAttachIsInstanceTearingDown(Transaction->InstanceIdentity);
@@ -3672,7 +3686,8 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
     if (NT_SUCCESS(Status) && Transaction->NeedsAttachCommit && stream != NULL) {
         StageAcquire(&StageNamespaceResource);
         if (stream->View == NULL || stream->View->Current != stream || stream->View->Detached ||
-            !stream->AttachCompletionKnown || stream->AttachTerminalPending || StageStopping) {
+            !stream->AttachCompletionKnown || stream->AttachTerminalPending || StageStopping ||
+            SafeUploadStageMandatoryTeardownActive()) {
             Status = STATUS_DELETE_PENDING;
         } else {
             stream->AttachAcknowledged = TRUE;
@@ -3732,7 +3747,7 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
             }
             if (Transaction->OrdinaryPublicOpen && !cancelled) {
                 StageAcquire(&StageNamespaceResource);
-                nativeReadFallback = !StageStopping &&
+                nativeReadFallback = !StageStopping && !SafeUploadStageMandatoryTeardownActive() &&
                     !StageFindView(Transaction->RequestorProcess, &Transaction->NameInfo->Name) &&
                     !StageAttachIsInstanceTearingDown(Transaction->InstanceIdentity);
                 StageRelease(&StageNamespaceResource);
@@ -3751,6 +3766,19 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
         }
         goto CompletionFinished;
     }
+    if (NT_SUCCESS(Status)) {
+        KIRQL irql;
+        /* Serialize the last staged success decision, including an ordinary
+         * reopen without a new attachment ACK, with the permanent fence.
+         * A success claimed first already owns its counted FILE_OBJECT;
+         * teardown drains it even if completion returns after the fence. */
+        StageStreamAcquireSpinLock(&StageAttachLock, &irql);
+        if (SafeUploadStageMandatoryTeardownActive()) Status = STATUS_CANCELLED;
+        else InterlockedExchange(&Transaction->ExposeClaimed, 1);
+        StageStreamReleaseSpinLock(&StageAttachLock, irql);
+    }
+    if (!NT_SUCCESS(Status) && Transaction->BindingInstalled && stream != NULL)
+        StageAttachRollbackBinding(Transaction, stream);
     Transaction->CallbackData->IoStatus.Status = Status;
     if (!NT_SUCCESS(Status)) Transaction->CallbackData->IoStatus.Information = 0;
     FltCompletePendedPreOperation(Transaction->CallbackData, FLT_PREOP_COMPLETE, NULL);
@@ -3778,7 +3806,8 @@ static VOID StageAttachDrainTransaction(_Inout_ PSTAGE_ATTACH_TRANSACTION Transa
     if (!NT_SUCCESS(status) && Transaction->BindingInstalled && Transaction->Stream != NULL) {
         StageAttachRollbackBinding(Transaction, Transaction->Stream);
     }
-    if (!NT_SUCCESS(status) && Transaction->UnexposedRetirementAllowed &&
+    if (!SafeUploadStageMandatoryTeardownActive() &&
+        !NT_SUCCESS(status) && Transaction->UnexposedRetirementAllowed &&
         Transaction->Stream != NULL) {
         /* The binding must be gone before op16 can claim exact absence. A
          * failed op16 leaves the stage private and replayable, never kind-5. */
@@ -4618,7 +4647,7 @@ Fail:
 }
 
 
-static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
+static FLT_PREOP_CALLBACK_STATUS StagePreOperationCore(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext,
     PSTAGE_ADMISSION_TOKEN_SLOT AdmissionSlot)
 {
@@ -4877,6 +4906,22 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
     return FLT_PREOP_COMPLETE;
 }
 
+static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
+    PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext,
+    PSTAGE_ADMISSION_TOKEN_SLOT AdmissionSlot)
+{
+    FLT_PREOP_CALLBACK_STATUS result;
+    if (!ExAcquireRundownProtection(&StageOwnedCallbackBodies)) {
+        *CompletionContext = NULL;
+        Data->IoStatus.Status = STATUS_FLT_DELETING_OBJECT;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
+    result = StagePreOperationCore(Data, Objects, CompletionContext, AdmissionSlot);
+    ExReleaseRundownProtection(&StageOwnedCallbackBodies);
+    return result;
+}
+
 NTSTATUS SafeUploadStageGenerateName(PFLT_INSTANCE Instance, PFILE_OBJECT FileObject,
     PFLT_CALLBACK_DATA Data, FLT_FILE_NAME_OPTIONS Options, PBOOLEAN CacheName,
     PFLT_NAME_CONTROL Output)
@@ -4890,10 +4935,12 @@ NTSTATUS SafeUploadStageGenerateName(PFLT_INSTANCE Instance, PFILE_OBJECT FileOb
     if (stream != NULL) {
         if (FltGetFileNameFormat(Options) == FLT_FILE_NAME_SHORT)
             return STATUS_OBJECT_NAME_NOT_FOUND;
+        if (!ExAcquireRundownProtection(&StageOwnedCallbackBodies)) return STATUS_FLT_DELETING_OBJECT;
         StageAcquire(&stream->Resource);
         status = FltCheckAndGrowNameControl(Output, stream->Name.Length);
         if (NT_SUCCESS(status)) RtlCopyUnicodeString(&Output->Name, &stream->Name);
         StageRelease(&stream->Resource);
+        ExReleaseRundownProtection(&StageOwnedCallbackBodies);
         return status;
     }
     Options &= ~FLT_FILE_NAME_REQUEST_FROM_CURRENT_PROVIDER;
@@ -5219,7 +5266,7 @@ static VOID StageTeardownReleased(PLIST_ENTRY Released)
         ExWaitForRundownProtectionRelease(&stream->PagingRundown);
         if (stream->Disposed && stream->DisposeOutcome == SAFEUPLOAD_STAGE_DISPOSE_RELEASED) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-            StageDeleteReleasedStage(stream);
+            if (!SafeUploadStageMandatoryTeardownActive()) StageDeleteReleasedStage(stream);
 #else
             StageDeleteReleasedStage(stream);
 #endif
@@ -5478,7 +5525,8 @@ static VOID StagePerformAllocationRecoveryRpcs(PLIST_ENTRY Rpcs)
         NTSTATUS status;
         InitializeListHead(&stream->RecoveryLink);
         RtlZeroMemory(&identity, sizeof(identity));
-        status = SafeUploadStageReplayAllocationV19(&stream->AllocationRequest,
+        status = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED :
+            SafeUploadStageReplayAllocationV19(&stream->AllocationRequest,
                 basename, &basenameLength, &generation, &identity);
 
         StageAcquire(&StageNamespaceResource);
@@ -5555,7 +5603,8 @@ static VOID StagePerformHandleReceiptRpcs(PLIST_ENTRY Rpcs)
         BOOLEAN requestMayExist = FALSE;
         NTSTATUS status;
         InitializeListHead(&stream->RpcLink);
-        status = SafeUploadStageAttachmentExchangeV20(stream->RpcProcessIdSnapshot,
+        status = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED :
+            SafeUploadStageAttachmentExchangeV20(stream->RpcProcessIdSnapshot,
             &stream->Name, stream->RpcVolumeKindSnapshot,
             SAFEUPLOAD_OPERATION_STAGE_ATTACH_HANDLE_OBSERVED, &stream->RpcTransferIdSnapshot,
             stream->RpcGenerationSnapshot, &stream->RpcIdentitySnapshot,
@@ -5609,7 +5658,8 @@ static VOID StagePerformDiscardRpcs(PLIST_ENTRY Rpcs)
         BOOLEAN requestCurrent;
         NTSTATUS status;
         InitializeListHead(&stream->RpcLink);
-        status = SafeUploadStageDiscardVersionV19(stream->RpcProcessIdSnapshot,
+        status = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED :
+            SafeUploadStageDiscardVersionV19(stream->RpcProcessIdSnapshot,
             &stream->StageName, &stream->RpcReservationSnapshot,
             &stream->RpcIdentitySnapshot, stream->RpcGenerationSnapshot, kind, &result);
 
@@ -5675,7 +5725,8 @@ static VOID StagePerformSealRpcs(PLIST_ENTRY Rpcs)
         PSTAGE_STREAM stream = CONTAINING_RECORD(RemoveHeadList(Rpcs), STAGE_STREAM, RpcLink);
         NTSTATUS status;
         InitializeListHead(&stream->RpcLink);
-        status = SafeUploadStageSealVersionV19(stream->RpcProcessIdSnapshot,
+        status = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED :
+            SafeUploadStageSealVersionV19(stream->RpcProcessIdSnapshot,
             &stream->StageName, &stream->RpcIdentitySnapshot,
             stream->RpcGenerationSnapshot);
 
@@ -5714,7 +5765,8 @@ static VOID StagePerformRenameRpcs(PLIST_ENTRY Rpcs)
         PSAFEUPLOAD_EXCHANGE exchange = stream->RpcRenameExchangeSnapshot;
         NTSTATUS status;
         InitializeListHead(&stream->RpcLink);
-        status = StageExchangeStatus(exchange);
+        status = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED :
+            StageExchangeStatus(exchange);
 
         StageAcquire(&StageNamespaceResource);
         if (stream->View != NULL && stream->RenameExchange == exchange &&
@@ -5725,6 +5777,8 @@ static VOID StagePerformRenameRpcs(PLIST_ENTRY Rpcs)
             StageV19IdentityEqual(&stream->StageIdentity, &stream->RpcIdentitySnapshot)) {
             stream->RenameRpcInFlight = FALSE;
             stream->RpcRenameExchangeSnapshot = NULL;
+            if (SafeUploadStageMandatoryTeardownActive() && !NT_SUCCESS(status))
+                stream->RenameRpcPending = TRUE;
             StageApplyRenameReply(stream, exchange, status);
         } else {
             /* Never apply an ACK to a new view/transfer. The retained request
@@ -5790,6 +5844,7 @@ static VOID StageUpdateRetryTimer(VOID)
     BOOLEAN drain = FALSE;
     KIRQL irql;
     LARGE_INTEGER due;
+    if (SafeUploadStageMandatoryTeardownActive()) return;
     StageStreamAcquireSpinLock(&StageListLock, &irql);
     for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
@@ -5882,6 +5937,7 @@ static VOID StageWorkerPass(PLIST_ENTRY Released, PLIST_ENTRY Rpcs,
     for (index = 0; index < exitCount; ++index) ObDereferenceObject(exited[index]);
     for (;;) {
         PSTAGE_STREAM stream;
+        if (SafeUploadStageMandatoryTeardownActive()) break;
         StageStreamAcquireSpinLock(&StageListLock, &irql);
         if (IsListEmpty(&StageWorkQueue)) {
             StageStreamReleaseSpinLock(&StageListLock, irql);
@@ -5916,7 +5972,8 @@ static VOID StagePublicOpenFlushFacts(VOID)
     BOOLEAN complete = FALSE;
     LONG channel = SafeUploadStageProtocolChannelGeneration();
     NTSTATUS status;
-    if (!SafeUploadStageProtocolNativeForwardAllowed(0, authority)) return;
+    if (SafeUploadStageMandatoryTeardownActive() ||
+        !SafeUploadStageProtocolNativeForwardAllowed(0, authority)) return;
     rows = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*rows) * SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS, STAGE_TAG);
     if (rows == NULL) return;
     do {
@@ -5932,6 +5989,7 @@ static VOID StagePublicOpenFlushFacts(VOID)
         for (index = 0; index < count; ++index) {
             SAFEUPLOAD_PUBLIC_RELAY_REPLY reply;
             UINT64 replyAuthority;
+            if (SafeUploadStageMandatoryTeardownActive()) goto Exit;
             if (rows[index].PublicOperation.Sequence != 0) {
                 if (!FlagOn(rows[index].PublicOperation.Facts, SAFEUPLOAD_PUBLIC_OPERATION_RESULT_KNOWN |
                     SAFEUPLOAD_PUBLIC_OPERATION_NOT_FORWARDED | SAFEUPLOAD_PUBLIC_OPERATION_COVERAGE_LOST)) continue;
@@ -5982,7 +6040,8 @@ static VOID StageNativeFlushFacts(VOID)
     LONG channel = SafeUploadStageProtocolChannelGeneration();
     UINT64 authority = SafeUploadStageProtocolNativeAuthority();
     NTSTATUS status;
-    if (!SafeUploadStageProtocolNativeForwardAllowed(0, authority)) return;
+    if (SafeUploadStageMandatoryTeardownActive() ||
+        !SafeUploadStageProtocolNativeForwardAllowed(0, authority)) return;
     rows = ExAllocatePool2(POOL_FLAG_PAGED,
         sizeof(*rows) * SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS, STAGE_TAG);
     if (rows == NULL) return;
@@ -6001,6 +6060,7 @@ static VOID StageNativeFlushFacts(VOID)
         for (index = 0; index < count; ++index) {
             SAFEUPLOAD_NATIVE_LIFECYCLE_REPLY reply;
             UINT64 replyAuthority;
+            if (SafeUploadStageMandatoryTeardownActive()) goto Exit;
             /* Lower cancellation can conceal CREATE acceptance. Its exact
              * canceled-CLOSE or coverage-loss facts still need reconciliation
              * against the durable pre-CREATE intent, never a fabricated failed
@@ -6064,13 +6124,15 @@ static VOID StageWorker(PVOID Context)
         reconcileAgain = FALSE;
 #endif
         StageAcquire(&StageNamespaceResource);
-        if ((!StageStopping || StageUnloadPrepareWork) && InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) &&
+        if (!SafeUploadStageMandatoryTeardownActive() && (!StageStopping || StageUnloadPrepareWork) &&
+            InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) &&
             !InterlockedCompareExchange(&StageReconcileInFlight, 0, 0)) {
             InterlockedExchange(&StageReconcileInFlight, 1);
             StageReconcileWait = STAGE_WAIT_EXCHANGE;
             reconcileServiceGeneration = InterlockedCompareExchange(&StageServiceGeneration, 0, 0);
             reconcileProtocolGeneration = SafeUploadStageProtocolChannelGeneration();
-        } else if ((!StageStopping || StageUnloadPrepareWork) && !InterlockedCompareExchange(&StageReconcileNeeded, 0, 0)) {
+        } else if (!SafeUploadStageMandatoryTeardownActive() && (!StageStopping || StageUnloadPrepareWork) &&
+            !InterlockedCompareExchange(&StageReconcileNeeded, 0, 0)) {
             StageWorkerPass(&released, &rpcs, &sealRpcs, &renameRpcs, &recoveryRpcs,
                 &handleRpcs);
         }
@@ -6081,7 +6143,8 @@ static VOID StageWorker(PVOID Context)
         if (InterlockedCompareExchange(&StageReconcileInFlight, 0, 0)) {
             const SAFEUPLOAD_REQUEST *drainReplay = StageEpochDrainRequestValid &&
                 StageEpochDrainRequest.RequestId != 0 ? &StageEpochDrainRequest : NULL;
-            NTSTATUS reconcileStatus = SafeUploadStageReconcileV20(&StageDriverInstanceId,
+            NTSTATUS reconcileStatus = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED :
+                SafeUploadStageReconcileV20(&StageDriverInstanceId,
                 reconcileProtocolGeneration, drainReplay);
             StageAcquire(&StageNamespaceResource);
             InterlockedExchange(&StageReconcileInFlight, 0);
@@ -6240,6 +6303,10 @@ NTSTATUS SafeUploadStageInitialize(VOID)
     InterlockedExchange(&StageFilteringReady, 0);
     InterlockedExchange(&StageUnloadAdmissionClosed, 0);
     InterlockedExchange(&StageUnloadQuarantined, 0);
+    InterlockedExchange(&StageMandatoryTeardown, 0);
+    ExInitializeRundownProtection(&StageOwnedCallbackBodies);
+    StageMandatoryLocalDrained = FALSE;
+    SafeUploadStagePublicInitialize();
     StageUnloadPrepareWork = FALSE;
     status = ExUuidCreate(&StageDriverInstanceId);
     if (!NT_SUCCESS(status)) return status;
@@ -6358,13 +6425,24 @@ VOID SafeUploadStageStopWorker(VOID)
         InterlockedExchange(&tx->CancelRequested, 1);
     }
     StageStreamReleaseSpinLock(&StageAttachLock, irql);
+    KeSetEvent(&StageAttachQueueEvent, IO_NO_INCREMENT, FALSE);
+    if (SafeUploadStageMandatoryTeardownActive()) {
+        StageAcquire(&StageNamespaceResource);
+        StageStopping = TRUE;
+        StageUnloadPrepareWork = FALSE;
+        StageRelease(&StageNamespaceResource);
+    }
     /* Deferred attachment callbacks are bounded by StageAttachActiveCount.
      * They observe stopping at every service boundary and complete their
      * pended CREATE exactly once before the filter begins unregistering. */
-    while (InterlockedCompareExchange(&StageAttachActiveCount, 0, 0) != 0) {
+    for (;;) {
+        BOOLEAN drained;
+        StageStreamAcquireSpinLock(&StageAttachLock, &irql);
+        drained = StageAttachActiveCount == 0;
+        if (!drained) KeClearEvent(&StageAttachDrained);
+        StageStreamReleaseSpinLock(&StageAttachLock, irql);
+        if (drained) break;
         (VOID)KeWaitForSingleObject(&StageAttachDrained, Executive, KernelMode, FALSE, NULL);
-        if (InterlockedCompareExchange(&StageAttachActiveCount, 0, 0) != 0)
-            KeClearEvent(&StageAttachDrained);
     }
     if (StageAttachThreadRunning) {
         KeSetEvent(&StageAttachThreadStop, IO_NO_INCREMENT, FALSE);
@@ -6419,6 +6497,100 @@ VOID SafeUploadStageGetUnloadStatus(_Out_ PUINT32 Streams, _Out_ PUINT32 FileObj
 BOOLEAN SafeUploadStageUnloadIsQuarantined(VOID)
 {
     return InterlockedCompareExchange(&StageUnloadQuarantined, 0, 0) != 0;
+}
+#endif
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+_Use_decl_annotations_
+BOOLEAN SafeUploadStageMandatoryTeardownActive(VOID)
+{
+    return InterlockedCompareExchange(&StageMandatoryTeardown, 0, 0) != 0;
+}
+
+_Use_decl_annotations_
+VOID SafeUploadStageBeginMandatoryTeardown(VOID)
+{
+    KIRQL irql;
+    PLIST_ENTRY link;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    /* Publish without acquiring NamespaceResource: a pre-fence user may
+     * still own it across an old exchange. Close the port before joining it. */
+    StageStreamAcquireSpinLock(&StageAttachLock, &irql);
+    InterlockedExchange(&StageMandatoryTeardown, 1);
+    InterlockedExchange(&StageUnloadAdmissionClosed, 1);
+    StageAttachStopping = TRUE;
+    StageAttachAccepting = FALSE;
+    for (link = StageAttachLookup.Flink; link != &StageAttachLookup; link = link->Flink) {
+        PSTAGE_ATTACH_TRANSACTION tx = CONTAINING_RECORD(link, STAGE_ATTACH_TRANSACTION, LookupLink);
+        InterlockedExchange(&tx->TeardownRequested, 1);
+        InterlockedExchange(&tx->CancelRequested, 1);
+    }
+    StageStreamReleaseSpinLock(&StageAttachLock, irql);
+    SafeUploadStageNativeCloseAdmission();
+    KeSetEvent(&StageAttachQueueEvent, IO_NO_INCREMENT, FALSE);
+    KeSetEvent(&StageWorkerStop, IO_NO_INCREMENT, FALSE);
+}
+
+_Use_decl_annotations_
+VOID SafeUploadStageDrainMandatoryTeardown(VOID)
+{
+    PLIST_ENTRY link;
+    LARGE_INTEGER retry;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    NT_ASSERT(SafeUploadStageMandatoryTeardownActive());
+    NT_ASSERT(StageWorkerHandle == NULL && !StageAttachThreadRunning);
+    SafeUploadStageFenceDrainLocal();
+    for (;;) {
+        PSTAGE_ATTACH_INSTANCE_TOMBSTONE tombstone = NULL;
+        KIRQL irql;
+        StageStreamAcquireSpinLock(&StageAttachLock, &irql);
+        if (!IsListEmpty(&StageAttachTearingDownInstances))
+            tombstone = CONTAINING_RECORD(RemoveHeadList(&StageAttachTearingDownInstances),
+                STAGE_ATTACH_INSTANCE_TOMBSTONE, Link);
+        StageStreamReleaseSpinLock(&StageAttachLock, irql);
+        if (tombstone == NULL) break;
+        /* The permanent global gate now supplies this admission key. This
+         * does not retire native coverage-loss evidence or certify last close. */
+        FltObjectDereference(tombstone->Instance);
+        ExFreePoolWithTag(tombstone, STAGE_TAG);
+    }
+    /* Communication and workers have drained. The list now owns every
+     * remaining stream; no producer can allocate/unlink one. Do not use
+     * StageDrain: it is a sealing helper called with resources held. */
+    retry.QuadPart = -250LL * 10 * 1000;
+    for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
+        PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
+        for (;;) {
+            BOOLEAN handles, drained;
+            NTSTATUS status = STATUS_SUCCESS;
+            StageAcquire(&stream->Resource);
+            handles = stream->ShareAccess.OpenCount != 0;
+            StageRelease(&stream->Resource);
+            if (!handles && MmCanFileBeTruncated(&stream->Sections, NULL)) {
+                /* No new CREATE; cleaned upper objects cannot start ordinary
+                 * writes. Cache/paging callbacks remain admitted. All flush,
+                 * purge and subsequent CLOSE callbacks run without our locks. */
+                if (stream->BackingObject != NULL) status = StageFlush(stream);
+                if (NT_SUCCESS(status))
+                    (VOID)CcPurgeCacheSection(&stream->Sections, NULL, 0, TRUE);
+            }
+            StageAcquire(&stream->Resource);
+            drained = NT_SUCCESS(status) && stream->ShareAccess.OpenCount == 0 &&
+                InterlockedCompareExchange(&stream->FileObjects, 0, 0) == 0 &&
+                stream->Sections.SharedCacheMap == NULL && stream->Sections.DataSectionObject == NULL &&
+                stream->Sections.ImageSectionObject == NULL &&
+                InterlockedCompareExchange(&stream->RpcReferences, 0, 0) == 0;
+            StageRelease(&stream->Resource);
+            if (drained) break;
+            /* Unmap has no callback. This only paces a new lifetime check;
+             * elapsed time never grants permission to release anything. */
+            (VOID)KeDelayExecutionThread(KernelMode, FALSE, &retry);
+        }
+    }
+    ExWaitForRundownProtectionRelease(&StageOwnedCallbackBodies);
+    SafeUploadStagePublicDrainBackends();
+    SafeUploadStageNativeDrainLocal();
+    StageMandatoryLocalDrained = TRUE;
 }
 #endif
 
@@ -6777,10 +6949,11 @@ VOID SafeUploadStageReleaseInstanceReferences(VOID)
 
     /* Filter.c first drains communication/channel work and joins both stage
      * workers, including any work already collected into a local batch.
-     * PrepareUnload proved there were no stage FILE_OBJECTs or stage RPCs at
-     * its commit point. Drop Filter Manager instance references before
-     * FltUnregisterFilter so instance teardown cannot wait on references that
-     * this same unload callback would otherwise release afterward. */
+     * Voluntary PrepareUnload proves no upper objects/RPCs; mandatory teardown
+     * instead proves actual local lifetimes without requiring durable ACKs.
+     * Drop instance references before FltUnregisterFilter so teardown cannot
+     * wait on references this callback would otherwise release afterward. */
+    NT_ASSERT(!SafeUploadStageMandatoryTeardownActive() || StageMandatoryLocalDrained);
     for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
         ExWaitForRundownProtectionRelease(&stream->PagingRundown);
@@ -6798,6 +6971,7 @@ VOID SafeUploadStageFree(VOID)
     ULONG exitCount;
     KIRQL irql;
     if (!StageInitialized) return;
+    NT_ASSERT(!SafeUploadStageMandatoryTeardownActive() || StageMandatoryLocalDrained);
     /* A late process-exit notification only returns: it checks the flag again under this lock before using the ring. */
     StageStreamAcquireSpinLock(&StageListLock, &irql);
     StageInitialized = FALSE;
@@ -8286,7 +8460,8 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
      * never opened, so no staged FILE_OBJECT can retain instance references
      * across the DriverEntry unregister/free path. */
     if (Data->Iopb->MajorFunction == IRP_MJ_CREATE &&
-        InterlockedCompareExchange(&StageFilteringReady, 0, 0) == 0) {
+        (InterlockedCompareExchange(&StageFilteringReady, 0, 0) == 0 ||
+         SafeUploadStageMandatoryTeardownActive())) {
         *CompletionContext = NULL;
         Data->IoStatus.Status = STATUS_DEVICE_NOT_READY;
         Data->IoStatus.Information = 0;
@@ -8477,8 +8652,15 @@ NTSTATUS SafeUploadCollectDirectoryOverlay(_In_ ULONG Owner, _In_ PUNICODE_STRIN
     PEPROCESS process = NULL;
     PLIST_ENTRY link, old;
     UNICODE_STRING child;
-    NTSTATUS status = PsLookupProcessByProcessId(ULongToHandle(Owner), &process);
-    if (!NT_SUCCESS(status)) return status;
+    NTSTATUS status;
+    /* Directory handles do not contribute to a stage's FileObjects count,
+     * but StageAddOverlay queries its backing after that count reaches zero. */
+    if (!ExAcquireRundownProtection(&StageOwnedCallbackBodies)) return STATUS_FLT_DELETING_OBJECT;
+    status = PsLookupProcessByProcessId(ULongToHandle(Owner), &process);
+    if (!NT_SUCCESS(status)) {
+        ExReleaseRundownProtection(&StageOwnedCallbackBodies);
+        return status;
+    }
     StageAcquire(&StageNamespaceResource);
     for (old = StageTombstones.Flink; old != &StageTombstones; old = old->Flink) {
         PSTAGE_TOMBSTONE hidden = CONTAINING_RECORD(old, STAGE_TOMBSTONE, Link);
@@ -8499,6 +8681,7 @@ NTSTATUS SafeUploadCollectDirectoryOverlay(_In_ ULONG Owner, _In_ PUNICODE_STRIN
 Exit:
     StageRelease(&StageNamespaceResource);
     ObDereferenceObject(process);
+    ExReleaseRundownProtection(&StageOwnedCallbackBodies);
     return status;
 }
 

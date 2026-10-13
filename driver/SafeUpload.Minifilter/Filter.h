@@ -885,6 +885,8 @@ _IRQL_requires_(PASSIVE_LEVEL)
 BOOLEAN SafeUploadStageFenceTryCommitUnload( VOID );
 VOID SafeUploadStageFenceCancelUnload( VOID );
 VOID SafeUploadStageFenceCommitUnload( VOID );
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageFenceDrainLocal( VOID );
 BOOLEAN SafeUploadStageFenceHasEntries( VOID );
 _IRQL_requires_(PASSIVE_LEVEL)
 BOOLEAN SafeUploadStageFenceTransitionBegin( VOID );
@@ -947,6 +949,7 @@ BOOLEAN SafeUploadConnectionIsAuthenticatedIdentity(
     _In_opt_ PVOID ConnectionCookie,
     _In_ LONG64 ConnectionGeneration);
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 SafeUploadCloseCommunicationPort (
     VOID
@@ -960,6 +963,8 @@ SafeUploadTryCommunicationUnloadPreflight (
     );
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadCloseCommunicationPortEarly(VOID);
 /* Staging unload closes Connect/Message body admission while leaving exact
  * outbound service replies available. A precommit failure may reopen only
  * this narrow gate; successful preparation never does. */

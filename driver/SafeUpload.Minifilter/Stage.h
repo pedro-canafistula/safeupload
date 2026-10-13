@@ -30,6 +30,12 @@ _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStageReleaseInstanceReferences(VOID);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 BOOLEAN SafeUploadStageUnloadIsQuarantined(VOID);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN SafeUploadStageMandatoryTeardownActive(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageBeginMandatoryTeardown(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageDrainMandatoryTeardown(VOID);
 #endif
 VOID SafeUploadStageRecordUnloadVeto(_In_ UINT32 Reason, _In_ NTSTATUS Status);
 VOID SafeUploadStageGetUnloadStatus(_Out_ PUINT32 Streams, _Out_ PUINT32 FileObjects,
@@ -226,6 +232,8 @@ VOID SafeUploadStageWritersInstanceContextFreed(
 VOID SafeUploadStageCanaryTick(VOID);
 NTSTATUS SafeUploadStageAdmissionStartWorker(VOID);
 VOID SafeUploadStageAdmissionStopWorker(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageAdmissionBeginTeardown(VOID);
 
 /* StageWriters.c: bounded writer-history ledger and activation state. */
 #define SAFEUPLOAD_WRITERS_ONLY_CONTEXT ((PVOID)(ULONG_PTR)0x1000)

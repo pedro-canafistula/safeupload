@@ -41,6 +41,8 @@ static volatile LONG NativeRecordCount;
 static BOOLEAN NativeAccepting;
 static BOOLEAN NativeReplayUsable;
 static UINT64 NativeRevision;
+static KEVENT NativeLocalChanged;
+static BOOLEAN NativeCallsDrained;
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 _IRQL_raises_(DISPATCH_LEVEL)
@@ -62,6 +64,7 @@ static VOID NativeChanged(VOID)
 {
     NativeRevision += 1;
     if (NativeRevision == 0) NativeReplayUsable = FALSE;
+    KeSetEvent(&NativeLocalChanged, IO_NO_INCREMENT, FALSE);
 }
 
 static VOID NativeWake(VOID)
@@ -171,8 +174,9 @@ static VOID NativeCopyBinding(PSAFEUPLOAD_STAGE_NATIVE_BINDING Destination,
     RtlCopyMemory(d->CanonicalLeaf, s->CanonicalLeaf, s->CanonicalLeafBytes);
 }
 
-/* NativeLock. The map reference prevents destruction until an exact ACK;
- * callbacks never own the final reference or free objects at elevated IRQL. */
+/* NativeLock. Ordinary retirement requires an exact ACK; mandatory local
+ * retirement instead requires proved terminal lifetime. Callbacks never own
+ * the final reference or free objects at elevated IRQL. */
 static PSAFEUPLOAD_STAGE_NATIVE_RECORD NativeFindObject(PFLT_INSTANCE Instance, PFILE_OBJECT FileObject)
 {
     PLIST_ENTRY link;
@@ -214,6 +218,8 @@ VOID SafeUploadStageNativeInitialize(const GUID *DriverInstanceId, ULONG OsBootS
     KeInitializeSpinLock(&NativeLock);
     ExInitializeRundownProtection(&NativeCalls);
     InitializeListHead(&NativeRecords);
+    KeInitializeEvent(&NativeLocalChanged, NotificationEvent, FALSE);
+    NativeCallsDrained = FALSE;
     NativeDriverInstance = *DriverInstanceId;
     NativeBootSequence = OsBootSequence;
     NativeWakeEvent = WakeEvent;
@@ -493,6 +499,7 @@ static VOID NativeDispositionFlush(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record)
     SAFEUPLOAD_PUBLIC_RELAY_REPLY reply;
     UINT64 revision, authority;
     NTSTATUS status;
+    if (SafeUploadStageMandatoryTeardownActive()) return;
     snapshot = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*snapshot), NATIVE_RECORD_TAG);
     if (snapshot == NULL) return; /* local facts remain replayable */
     status = SafeUploadStageNativeSnapshot(Record, snapshot, &revision);
@@ -1022,8 +1029,60 @@ VOID SafeUploadStageNativeReopenAdmission(VOID)
 {
     KIRQL irql;
     NativeAcquire(&irql);
-    NativeAccepting = TRUE;
+    if (!SafeUploadStageMandatoryTeardownActive()) NativeAccepting = TRUE;
     NativeRelease(irql);
+}
+
+VOID SafeUploadStageNativeCloseAdmission(VOID)
+{
+    KIRQL irql;
+    NativeAcquire(&irql);
+    NativeAccepting = FALSE;
+    NativeRelease(irql);
+}
+
+_Use_decl_annotations_
+VOID SafeUploadStageNativeDrainLocal(VOID)
+{
+    KIRQL irql;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    for (;;) {
+        PLIST_ENTRY link, next;
+        LIST_ENTRY retired;
+        BOOLEAN empty;
+        InitializeListHead(&retired);
+        NativeAcquire(&irql);
+        KeClearEvent(&NativeLocalChanged);
+        for (link = NativeRecords.Flink; link != &NativeRecords; link = next) {
+            PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+            next = link->Flink;
+            /* Local retirement is not an ACK. The durable intent/result is
+             * left for restart reconciliation. Coverage loss alone is never
+             * terminal evidence, even after app/service close or a new GUID. */
+            if (record->References != 1 || record->FileObject != NULL ||
+                record->CreateCallbackOwned || record->CloseCallbackOwned || record->DispositionCallbackOwned ||
+                !(record->Snapshot.LastHandleCleanedUp || record->Snapshot.CancelledBeforeHandle ||
+                  record->Snapshot.CancelledCloseObserved ||
+                  (record->Snapshot.CreateOutcomeKnown && !record->Snapshot.CreateAccepted))) continue;
+            RemoveEntryList(link);
+            record->References = 0;
+            InsertTailList(&retired, link);
+        }
+        empty = IsListEmpty(&NativeRecords);
+        NativeRelease(irql);
+        while (!IsListEmpty(&retired)) {
+            PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(RemoveHeadList(&retired), SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+            NativeDestroy(record); /* instance pin drops outside NativeLock */
+        }
+        if (empty) {
+            /* No record still needs a cleanup callback. Close API body
+             * admission only now; callback source/code stays until unregister. */
+            ExWaitForRundownProtectionRelease(&NativeCalls);
+            NativeCallsDrained = TRUE;
+            return;
+        }
+        (VOID)KeWaitForSingleObject(&NativeLocalChanged, Executive, KernelMode, FALSE, NULL);
+    }
 }
 
 _Use_decl_annotations_
@@ -1035,7 +1094,7 @@ VOID SafeUploadStageNativeUninitialize(VOID)
     NT_ASSERT(InterlockedCompareExchange(&NativeRecordCount, 0, 0) == 0);
     NativeRelease(irql);
     InterlockedExchange(&NativeInitialized, 0);
-    ExWaitForRundownProtectionRelease(&NativeCalls);
+    if (!NativeCallsDrained) ExWaitForRundownProtectionRelease(&NativeCalls);
     NT_ASSERT(IsListEmpty(&NativeRecords));
 }
 #endif

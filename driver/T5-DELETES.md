@@ -373,6 +373,36 @@ The owner already directed mandatory teardown to avoid service waits; no additio
 is required. Any proposal to free live local state or automatically discard retained unsaved stages changes that behavior and requires
 a separate owner decision. Luna must review the concrete lifetime changes before their first VM boot.
 
+### Implementation note — mandatory local teardown
+
+`SafeUploadUnload` selects `SafeUploadStageBeginMandatoryTeardown` instead of the unchanged voluntary
+`SafeUploadStagePrepareUnload(FALSE)` path. The permanent gate denies CREATE/attach, native/publication authority,
+backend opens/operations, fence reservations and fresh channel pins; queued attaches are canceled and the maintenance worker
+is signaled. `SafeUploadCloseCommunicationPortEarly` reuses connection retirement and port closure to wake existing sends.
+Then `SafeUploadStagePublicCloseAllBackends` drains local factories, pins each backend under its list lock and closes its public
+handle outside that lock after local operation rundown. Canary cancellation precedes communication drain.
+
+Communication uses/bodies and channel rundown drain before attach/maintenance/canary joins, including collected batches.
+`SafeUploadStageDrainMandatoryTeardown` joins fence work, replaces instance-admission tombstones with the permanent gate,
+and drains share counts, staged FILE_OBJECTs, cache/sections, RPC references, owned dispatch/name/cache/overlay callbacks and
+backend/native owners. The stable stream list retains ownership; flush/purge and waits run without namespace/stream resources.
+Retry delays only pace fresh lifetime checks. `SafeUploadStageReleaseInstanceReferences` then waits paging rundown, closes
+private backings and drops instance pins. Unregister, final communication callback rundown and `SafeUploadStageFree` follow.
+
+No seal, epoch completion, cleanup ACK, public result or private-stage deletion is synthesized. Exact transfer/generation/identity
+and pending receipts stay intact through local drain; durable intents/results and private files remain for existing recovery.
+Native memory retirement requires no producer/callback reference, no object lookup key and exact terminal evidence; it sends no
+ACK. A coverage-lost record without that evidence remains held indefinitely under the approved fixed-NTFS exception. Releasing
+an admission tombstone proves no native lifetime boundary.
+
+Static controls must confirm that mandatory teardown reaches only local close/drain/join/release helpers, never
+`SafeUploadStageEpochDrainV20` or PrepareUnload's service checks. Check all five worker batch performers, reconciliation,
+attach abort/retire failure unwind, both fact flushes, `NativeDispositionFlush`, protocol guards and common connection-use/current-
+identity checks: none may initiate a fresh cleanup `FltSendMessage` after the gate. A pre-gate transport user may already be sending;
+close wakes that exact port slot and local rundown waits for its reference, without requiring a reply. Review close-before-dependent-
+wait, exact-once pins and the retained unregister/port-callback source-barrier inference. Four WDK/PREfast/ApiValidator builds and
+the current Sol 6.1 xhigh pre-boot review remain required. This implementation does not qualify shutdown/Fast Startup or authorize a VM run.
+
 ## 8. Required qualification
 
 Preserve all existing assertions except the old no-empty-publication assertion. Required assertions are:

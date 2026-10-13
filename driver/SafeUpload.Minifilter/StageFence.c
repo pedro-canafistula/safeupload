@@ -1300,7 +1300,8 @@ static BOOLEAN FenceLateControlReserve(VOID)
     LONG64 oldValue, newValue;
     for (;;) {
         oldValue = FenceLateControlRead();
-        if ((oldValue & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN ||
+        if (SafeUploadStageMandatoryTeardownActive() ||
+            (oldValue & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN ||
             FENCE_LATE_WORK_COUNT(oldValue) > MAXLONGLONG - FENCE_LATE_WORK_UNIT) return FALSE;
         newValue = oldValue + FENCE_LATE_WORK_UNIT;
         if (InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue) {
@@ -1318,7 +1319,8 @@ static BOOLEAN FenceLateControlReserveAttach(VOID)
     LONG64 oldValue, newValue;
     for (;;) {
         oldValue = FenceLateControlRead();
-        if ((oldValue & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_CLOSED ||
+        if (SafeUploadStageMandatoryTeardownActive() ||
+            (oldValue & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_CLOSED ||
             FENCE_LATE_WORK_COUNT(oldValue) > MAXLONGLONG - FENCE_LATE_WORK_UNIT) return FALSE;
         newValue = oldValue + FENCE_LATE_WORK_UNIT;
         if (InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue) {
@@ -1611,6 +1613,17 @@ static VOID FenceWaitForLateWorkers(VOID)
         if (FENCE_LATE_WORK_COUNT(FenceLateControlRead()) == 0) continue;
         KeWaitForSingleObject(&FenceLateRefreshIdle, Executive, KernelMode, FALSE, NULL);
     }
+}
+
+_Use_decl_annotations_
+VOID SafeUploadStageFenceDrainLocal(VOID)
+{
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    if (!FenceInitialized) return;
+    /* No refresh/coverage scan and no new quarantine conclusion. Only join
+     * reservations made before the committed gate, dropping their pins. */
+    FenceWaitForLateWorkers();
+    FenceRetryResetAfterDrain();
 }
 
 /* Final commit is the point after which FilterUnload cannot return DO_NOT_DETACH. Queue admission

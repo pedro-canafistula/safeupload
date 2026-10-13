@@ -24,6 +24,7 @@ Environment:
 
 #include "Filter.h"
 #include "StageNativeRecords.h"
+#include "StagePublic.h"
 
 //
 //  Single instance of the global driver state.
@@ -428,9 +429,6 @@ Return Value:
 {
     NTSTATUS closeStatus;
     NTSTATUS status;
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-    LARGE_INTEGER stageRetryDelay;
-#endif
 
     PAGED_CODE();
 
@@ -439,11 +437,8 @@ Return Value:
 
     //
     //  Ordinary builds keep the existing connected-client veto. The staging
-    //  prototype first prepares exact EmptyHeld/unattached cleanup while the
-    //  client port remains open. A voluntary preparation failure can veto
-    //  before commit; mandatory unload retries with cleanup available. A delay
-    //  paces retries; it is never evidence that FILE_OBJECTs, I/O, service
-    //  work, or instance references have drained.
+    //  prototype keeps voluntary preparation reversible before commit.
+    //  Mandatory teardown closes the channel before any local lifetime wait.
     //
 
     if (!FlagOn( Flags, FLTFL_FILTER_UNLOAD_MANDATORY ) &&
@@ -459,7 +454,7 @@ Return Value:
     }
 
     //
-    //  Order matters here.
+    //  Voluntary staging preparation order:
     //
     //  1. Staging unload first closes CREATE/attach admission and Connect/
     //     Message callback-body admission. It leaves the exact outbound
@@ -479,23 +474,21 @@ Return Value:
     //
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    status = SafeUploadStagePrepareUnload(
-        BooleanFlagOn( Flags, FLTFL_FILTER_UNLOAD_MANDATORY ));
-    if (!NT_SUCCESS(status) && !FlagOn( Flags, FLTFL_FILTER_UNLOAD_MANDATORY )) {
-        /* PrepareUnload rolled back only its reversible, pre-quarantine
-         * gates. If exact cleanup may have committed, it kept the worker,
-         * listener, and stage admission fence available for replay/retry. */
-        return STATUS_FLT_DO_NOT_DETACH;
-    }
-    while (!NT_SUCCESS(status)) {
-        /* Mandatory unload cannot return a veto. Keep the service listener,
-         * stage worker, and already-closed stage fence intact while the
-         * worker, service, and external FILE_OBJECT owners make progress.
-         * The delay only prevents a hot retry loop; it is not a quiescence
-         * signal. A service or external handle may keep this wait unbounded. */
-        stageRetryDelay.QuadPart = -250LL * 10 * 1000;
-        (VOID)KeDelayExecutionThread(KernelMode, FALSE, &stageRetryDelay);
-        status = SafeUploadStagePrepareUnload(TRUE);
+    if (FlagOn(Flags, FLTFL_FILTER_UNLOAD_MANDATORY)) {
+        /* No namespace/stream resource or spin lock spans port close, I/O or
+         * a wait. The local gate takes AttachLock alone; native admission
+         * takes NativeLock separately (native producers nest NativeLock ->
+         * AttachLock). After channel close, snapshots use NamespaceResource
+         * -> stream Resource -> StageListLock, dropping all before rundown.
+         * Never route this branch through PrepareUnload/epoch drain. */
+        SafeUploadStageBeginMandatoryTeardown();
+    } else {
+        status = SafeUploadStagePrepareUnload(FALSE);
+        if (!NT_SUCCESS(status)) {
+            /* PrepareUnload rolls back reversible gates; a quarantined veto
+             * retains the worker/listener and exact cleanup retry state. */
+            return STATUS_FLT_DO_NOT_DETACH;
+        }
     }
 #endif
 
@@ -516,7 +509,8 @@ Return Value:
 #endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    SafeUploadStageFenceCommitUnload();
+    if (!FlagOn(Flags, FLTFL_FILTER_UNLOAD_MANDATORY))
+        SafeUploadStageFenceCommitUnload();
 #endif
 
     /* The listener/client close is the point of no return. If a bounded
@@ -525,12 +519,28 @@ Return Value:
      * This may be unbounded for mandatory teardown and is not a bounded
      * teardown guarantee. */
     for (;;) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (FlagOn(Flags, FLTFL_FILTER_UNLOAD_MANDATORY)) {
+            closeStatus = SafeUploadCloseCommunicationPortEarly();
+            /* Close backend holds before channel/callback drains: their last
+             * close may be precisely the event a local user is waiting on. */
+            SafeUploadStagePublicCloseAllBackends();
+            SafeUploadStageAdmissionBeginTeardown();
+        } else
+#endif
         closeStatus = SafeUploadCloseCommunicationPort();
         if (NT_SUCCESS(closeStatus)) break;
         SafeUploadTrace("unload continues after communication close status 0x%08X\n",
             closeStatus);
         SafeUploadWaitForCommunicationDrain();
     }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (FlagOn(Flags, FLTFL_FILTER_UNLOAD_MANDATORY)) {
+        SafeUploadWaitForCommunicationDrain();
+        SafeUploadStageFenceCommitUnload();
+    }
+#endif
 
     //
     //  3. Drain the send channel. New channel pins are denied from here on,
@@ -543,6 +553,8 @@ Return Value:
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageStopWorker();
+    if (FlagOn(Flags, FLTFL_FILTER_UNLOAD_MANDATORY))
+        SafeUploadStageDrainMandatoryTeardown();
     SafeUploadStageReleaseInstanceReferences();
 #endif
 

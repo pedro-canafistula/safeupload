@@ -196,7 +196,7 @@ static VOID StageProtocolClearDrainReplayLocked(VOID)
 
 static BOOLEAN StageProtocolReadyForGenerationLocked(_In_ LONG Generation)
 {
-    return Generation != 0 &&
+    return !SafeUploadStageMandatoryTeardownActive() && Generation != 0 &&
         SafeUploadStageV20ConnectionCookie != NULL &&
         InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0 &&
         SafeUploadStageV20ChannelActive != 0 &&
@@ -495,6 +495,12 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
     PVOID channelCookie;
     KIRQL stateIrql;
     if (Exchange == NULL || Verdict == NULL || Answered == NULL) return STATUS_INVALID_PARAMETER;
+    if (SafeUploadStageMandatoryTeardownActive()) {
+        *Verdict = SAFEUPLOAD_VERDICT_DENY;
+        *Answered = FALSE;
+        Exchange->MayHaveReachedService = FALSE;
+        return STATUS_PORT_DISCONNECTED;
+    }
     /* Only epoch transitions serialize with one another. An ordinary
      * allocation can await a destination hold which CLEANUP/recovery must
      * resolve through this same channel; no global exchange lock may span
@@ -1081,6 +1087,7 @@ NTSTATUS SafeUploadStageNativeExchange(const SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT *S
     PAGED_CODE();
     RtlZeroMemory(Reply, sizeof(*Reply));
     if (AuthorityRevision != NULL) *AuthorityRevision = 0;
+    if (SafeUploadStageMandatoryTeardownActive()) return STATUS_PORT_DISCONNECTED;
     if (Snapshot == NULL || MapRevision == 0 || (Phase != SAFEUPLOAD_NATIVE_PREPARE && Phase != SAFEUPLOAD_NATIVE_FACTS_CHANGED) ||
         !StageProtocolGuidNonzero(&Snapshot->Binding.TransferId) ||
         !StageProtocolGuidNonzero(&Snapshot->Binding.RequestNonce) ||
@@ -1144,6 +1151,7 @@ NTSTATUS SafeUploadStagePublicOpenExchange(const SAFEUPLOAD_STAGE_NATIVE_SNAPSHO
     PAGED_CODE();
     RtlZeroMemory(Reply, sizeof(*Reply));
     if (AuthorityRevision != NULL) *AuthorityRevision = 0;
+    if (SafeUploadStageMandatoryTeardownActive()) return STATUS_PORT_DISCONNECTED;
     if (Snapshot == NULL || MapRevision == 0 ||
         (!mutation && Phase != SAFEUPLOAD_PUBLIC_OPEN_PREPARE && Phase != SAFEUPLOAD_PUBLIC_OPEN_FACTS) ||
         FlagOn(Snapshot->Binding.CreateOptions, FILE_DELETE_ON_CLOSE) ||

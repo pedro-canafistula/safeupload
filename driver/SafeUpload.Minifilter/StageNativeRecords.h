@@ -158,5 +158,8 @@ NTSTATUS SafeUploadStagePublicOpenConfirm(_In_ const SAFEUPLOAD_STAGE_NATIVE_BIN
 _IRQL_requires_(PASSIVE_LEVEL)
 BOOLEAN SafeUploadStageNativeTryCloseAdmission(VOID);
 VOID SafeUploadStageNativeReopenAdmission(VOID);
+VOID SafeUploadStageNativeCloseAdmission(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageNativeDrainLocal(VOID);
 #endif
 #endif
