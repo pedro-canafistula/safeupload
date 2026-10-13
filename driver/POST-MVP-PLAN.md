@@ -286,6 +286,10 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
     - [ ] **Owner-authorized 2026-10-13:** one identity-resolved local-KD attribution row on win10-debug3 with the unchanged pair
       (bounded unprotected corpus, fresh baseline, serial deletes, `!fltkd` stream/context walks, anchor census, FILE_OBJECT/control-
       area ownership). Non-qualifying; other product VM rows stay stopped; no threshold, assertion or reclamation change.
+    - [x] Row `m2t4delattr1` ([result](evidence/2026-10-13/t4-delete-kd-attribution-result.md)): 256/256, restoration PASS. Deleting
+      corpus files with attached contexts released them (728 → 566); the hand-back growth therefore follows delete opens on streams
+      already torn down. KD identity data was lost to a harness syntax error (MASM `&&`); voluntary unload was refused at teardown.
+    - [ ] Harness fix offline; a second KD row needs owner authorization.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
 - [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):
