@@ -13,7 +13,7 @@ reaches the folder. A blocked version is handed back to the user who wrote it. A
 the adversary. The product fails closed.
 
 The full MVP also requires **T21 USB/removable → T22 SMB/UNC → T23 cloud-sync folders**, in that order after M3 and before combined M4 qualification.
-Each is a separate required milestone with its own design note, recorded owner decisions, Luna 6 max-effort design review and destination
+Each is a separate required milestone with its own design note, recorded owner decisions, Sol 6.1 xhigh design review and destination
 qualification. USB includes surprise removal; SMB runs against an actual server with independent server-side byte observation.
 Supported removable filesystems and network configurations still require their design decisions. These capabilities remain disabled until their
 approved support and qualification gates pass and the owner approves cutover; the historical local-NTFS results do not qualify them.
@@ -166,6 +166,8 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
 
 ## Owner decisions in force
 
+- 2026-10-13: Sol 6.1 xhigh replaces Luna for future reviews; existing review reports retain their historical provenance. See
+  [AGENTS.md](../AGENTS.md) and the [M2 completion review](M2-COMPLETION-PLAN.md). Earlier scope, gates and pending owner choices remain unchanged.
 - 2026-10-11: M2 T4–T11 → M3 T12/T14 → T21 USB/removable → T22 SMB/UNC → T23 cloud sync → M4 T15–T19 qualifying local NTFS and all
   newly supported destinations together. T20 other Windows builds and T24 ReFS remain Later; T13 production signing is owner-deferred.
   USB includes surprise removal; actual SMB and a real sync client need independent destination-byte observers. Taint stays, normal
@@ -200,7 +202,8 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
 
 ## Remaining MVP work
 
-The status plan is [POST-MVP-PLAN.md](POST-MVP-PLAN.md). M1 is complete on its recorded pair. M2 is active, with the T4 10,000-cycle
-run first and T5 deletes next. M3 covers release configuration and install/upgrade/uninstall. Then T21–T23 add and qualify USB,
+The status plan is [POST-MVP-PLAN.md](POST-MVP-PLAN.md). M1 is complete on its recorded pair. M2 is active: T4's loaded-context gate
+failed and further product VM rows are stopped pending owner direction; the revised T5 protected pipeline remains disabled and unfinished.
+The [2026-10-13 completion review](M2-COMPLETION-PLAN.md) gives the proposed next checkpoints. M3 covers release configuration and install/upgrade/uninstall. Then T21–T23 add and qualify USB,
 SMB/UNC and cloud-sync before M4 qualifies them together with local NTFS. The MVP finishes only after all required evidence and the
 owner's taint-removal sign-off. Production signing, other Windows builds and ReFS remain deferred.

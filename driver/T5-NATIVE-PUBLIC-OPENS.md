@@ -633,7 +633,7 @@ Persist source provenance plus affirmative read/recipient authorization with the
 private predecessor. New/absent targets and truncating/superseding dispositions start without old public bytes and retain the
 ordinary hand-back path; do not infer provenance from final length or a changed write mask. No new journal state is needed.
 
-#### Owner choice pending — unreadable seeded bytes
+#### Owner choice — unreadable seeded bytes
 
 1. **Preserve native write-only editing.** Clean saves publish normally with the required destination permissions. If a blocked
    version contains prior bytes whose read/export authority is denied or unresolved, keep it service-private using existing
@@ -645,7 +645,7 @@ ordinary hand-back path; do not infer provenance from final length or a changed 
    cannot be proved. Those apps cannot edit or append through SafeUpload in that mode; new and full-replacement saves continue.
    Admitted blocked saves retain the full-file hand-back model. This deliberately narrows native Windows editing behavior.
 
-This is a failure-policy/product decision required by the owner's stop-and-ask rule. Neither option is implemented or approved.
+**Owner decision, 2026-10-13: option 1.** It is not yet implemented. Option 2 is not approved.
 
 #### Focused implementation research, 2026-10-13
 

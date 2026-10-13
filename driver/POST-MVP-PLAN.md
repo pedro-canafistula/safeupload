@@ -11,9 +11,9 @@ Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](PO
 | M1 | T0–T3: safe to leave loaded | Complete on the recorded M1 pair |
 | **M2** | **T4–T11: everyday file work** | **Active; product VM gates stopped at T4's contexts bound** |
 | M3 | T12, T14: release configuration and lifecycle | After M2 |
-| T21 | USB/removable | After M3; own design, owner decisions, Luna design review and destination qualification |
-| T22 | SMB/UNC | After T21; own design, owner decisions, Luna design review and destination qualification |
-| T23 | Cloud-sync folders | After T22; own design, owner decisions, Luna design review and real-client qualification |
+| T21 | USB/removable | After M3; own design, owner decisions, Sol 6.1 xhigh design review and destination qualification |
+| T22 | SMB/UNC | After T21; own design, owner decisions, Sol 6.1 xhigh design review and destination qualification |
+| T23 | Cloud-sync folders | After T22; own design, owner decisions, Sol 6.1 xhigh design review and real-client qualification |
 | M4 | T15–T19: combined qualification | Qualify local NTFS and T21–T23 together |
 | Later | T20 other Windows builds; T24 ReFS | Outside the current milestone sequence |
 | Owner-deferred | T13 production signing/Secure Boot | Test mode remains in force |
@@ -22,6 +22,41 @@ USB, SMB/UNC and cloud-sync are required MVP work; they are no longer deferred u
 respective support and qualification gates are met and the owner approves cutover.
 
 ## Owner decisions
+
+**2026-10-13 — review model.** Use **Sol 6.1 at xhigh** (`gpt-6.1-sol`) instead of Luna for future reviews. This supersedes the
+reviewer-model choice in earlier decisions, without changing their scope or gates. Historical Luna reports remain valid records of
+who reviewed that work. The review cadence remains product-security designs, one pre-boot review of kernel lifetime/lock-order/retirement
+changes, and an adversarial review of the working milestone pair; no per-revision harness reviews.
+
+The [M2 completion review and proposed sequence](M2-COMPLETION-PLAN.md) records the 2026-10-13 source/evidence audit, concrete remaining
+coverage/integration gaps, and proportionate lab automation recommendations. [AGENTS.md](../AGENTS.md) records contributor instructions.
+Those recommendations alone do not release T4's runtime stop, approve pending seed/metadata/budget choices, or authorize infrastructure
+changes; the owner's direction below accepts the review with specific changes.
+
+**2026-10-13 — M2 completion direction.** The owner accepts the completion review with these changes:
+- **T4 attribution diagnostic authorized.** One harness-only, non-qualifying row on win10-debug3 with the unchanged k11/agent `6198eee7`
+  pair. Hypothesis: the 2,377 SUfl allocations left above start after the 10k purge track the 2,500 kept hand-backs; the smoke row
+  left 440 with 64 hand-backs, so a few hundred are a fixed part. Run a block-heavy mix (about 2,000 cycles), keep the existing idle and
+  purge samples, then record which processes hold kept files open (hand-backs, journal manifests, new public files), delete only the
+  hand-backs and sample again. A drop of about the hand-back count means those contexts followed the files' Windows lifetime; no drop
+  points at a driver-held reference. The `T4ContextsReleased` bound (start + 2,048), every assertion and the stop on other product rows
+  stay unchanged; this row neither passes nor fails the gate. Two retained points cannot distinguish a slow leak from a bounded cache.
+- **T9 coverage first; read common payloads, refuse rare ones.** Read the text of DrawingML shapes/text boxes, charts (titles, axis and
+  series names, labels, cached values), VML drawings/legacy comment boxes, and PDF annotation contents and form-field values. Return
+  `unsupported_format` (staged Blocked) for embedded files, PDF attachments, XFA forms and any other payload the readers cannot consume.
+  Office acceptance becomes an allowlist of part types the readers consume or that carry no user text; any other reachable part is
+  refused, so an unknown part fails closed. Refusing every chart would block many ordinary spreadsheets. This is component work.
+- **Unreadable seeded bytes: option 1** in [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md#owner-choice--unreadable-seeded-bytes):
+  preserve native write-only editing; a blocked version containing prior bytes without read/export authority stays service-private with
+  a named reason, and no full-file hand-back or justification is offered until that authority exists.
+- **Lab tooling now:** only make [Invoke-StagedSuiteBatch.sh](scripts/Invoke-StagedSuiteBatch.sh) fail on any failed or missing case and
+  require an explicit approved target. Defer the readiness doctor, build-capacity preflight, CI, Ansible and Packer until after the T5
+  integration checkpoint. Terraform is not adopted.
+- **False Degraded notices (T18).** A coverage query answered `ERROR_RETRY` (writer registry changed during the snapshot) reports
+  Degraded at once; T4 short rows log 12–21 per run. Retry that answer briefly before reporting Degraded, with admission authority
+  unchanged. Write the small design and obtain the Sol review before implementation.
+- **Workers.** Claude may delegate to Codex `gpt-6-astra`, `gpt-6.1-sol` and `gpt-6-luna` at any effort up to max, with the fast tier.
+  Reviews required by the review policy remain Sol 6.1 xhigh.
 
 **2026-10-11 — destinations and completion.** Follow the order above. M4 covers local NTFS, USB including surprise removal,
 UNC/SMB, and a real sync client with independent destination-byte observers. Both mapping leaks need their repros rerun and closed.
@@ -142,9 +177,11 @@ M1 passed 69/69 cells on `m1-driver21` (`498f4ed7`) plus agent `4d02039a`, with 
 ## M2 — active
 
 **Next delivery checkpoint:** T4's revised smoke passed; its 10,000-cycle row failed the loaded-context bound. Further product VM rows
-remain stopped, with no kernel reclamation or threshold change authorized. Continue component implementation/evidence while that
-runtime gate awaits owner direction. Complete the integrated T5 pair: bound allocation/manifests/seeding, every physical publication/delete through the shared head and permits,
-exact close/startup reconciliation, cleanup acknowledgements and teardown. Group implementation and static checks around that
+remain stopped except the owner-authorized hand-back attribution diagnostic, with no kernel reclamation or threshold change authorized.
+Work order from the 2026-10-13 owner direction: T9 complete-or-refuse coverage (drawings/charts/VML, PDF annotations/forms, Office part
+allowlist); the T4 hand-back diagnostic; batch-wrapper failure propagation; the T18 retry design; then the integrated T5 pair, following
+the [completion sequence](M2-COMPLETION-PLAN.md). Complete the integrated T5 pair: checked allocation/manifests/coherent seeding, every physical publication/delete through the shared head and permits,
+exact close/startup reconciliation, cleanup acknowledgements and service-independent mandatory teardown. Group implementation and static checks around that
 integration. After the single pre-boot kernel lifetime review, qualify native deletes in both forced orders and real Notepad
 clean/CPF Save As in all three modes, with independent bytes and separate restoration. Component passes do not complete T5.
 Keep the broad application/metadata matrix in T8; all existing assertions and the full milestone sequence remain required.
@@ -154,7 +191,7 @@ confirms the architecture and scope but finds delivery still fragmented. Origina
 are connected; no revised protected T5 pair has run. Finish checked writer authority, shared publication/deletes and automatic recovery
 as one delivery checkpoint. The [publication contract](T5-BOUND-PUBLICATION.md) now has its corrected Luna design review;
 transport/client and durable native-result journal are implemented; kernel object integration and recovery remain unfinished.
-The seeded-content hand-back owner choice remains open. The retained-object construction passed its direct native query gate and
+The seeded-content hand-back choice is option 1 (owner, 2026-10-13). The retained-object construction passed its direct native query gate and
 is ready to implement; the failed zero-access reopen is discarded. Unprotected native controls do not qualify this pair.
 
 **Current M2 completion audit — 2026-10-13, source/evidence through `46ba2ae6`.** No T4–T11 completion claim is established by the
@@ -162,16 +199,16 @@ latest inspector matrix. The remaining delivery requirements and their current p
 
 | Item | Required proof still outstanding | Current authoritative state |
 |---|---|---|
-| T4 | Passing loaded-context 10k gate, allocation-reply fault row, raw C01–C04/B01/B02/X01 and final pair | [10k contexts FAIL](evidence/2026-10-12/m2t4purge10ka1-verdict.txt); product VM rows stopped. |
-| T5 | Checked writer/seed/security authority, shared physical commit/recovery pipeline, final WDK/agent gates and three-mode native/Notepad rows | `_stageBoundHeadReady` stays false; the legacy publisher rejects bound manifests. [Unreadable-seed choice](T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes) is unapproved; [native descriptor construction](T5-NATIVE-PUBLIC-OPENS.md#native-publication-security-control-2026-10-13) has two exact-control failures. |
+| T4 | Passing loaded-context 10k gate, allocation-reply fault row, raw C01–C04/B01/B02/X01 and final pair | [10k contexts FAIL](evidence/2026-10-12/m2t4purge10ka1-verdict.txt); product VM rows stopped; one non-qualifying hand-back attribution diagnostic authorized. |
+| T5 | Checked writer/seed/security authority, shared physical commit/recovery pipeline, final WDK/agent gates and three-mode native/Notepad rows | `_stageBoundHeadReady` stays false; the legacy publisher rejects bound manifests. [Unreadable-seed choice](T5-NATIVE-PUBLIC-OPENS.md#owner-choice--unreadable-seeded-bytes) is option 1 (2026-10-13), not yet implemented; [native descriptor construction](T5-NATIVE-PUBLIC-OPENS.md#native-publication-security-control-2026-10-13) has two exact-control failures. |
 | T6 | Directory moves, empty/Explorer moves and final-pair three-mode byte observation | Only the earlier 28/28 copy-fallback component pair is qualified; directory creation/moves remain unresolved. |
 | T7 | Final-pair authorized/denied read rows | Earlier component B02 passes do not cover the revised pair. |
 | T8 | Nine real application workflows in all three modes; agreed owner/DACL/timestamps/attributes/ADS/EAs/labels | Final application/metadata rows and metadata decisions remain missing. |
-| T9 | Stage/seed caps removed under per-user/total budgets; complete format/encoding coverage, bounded parser memory, durable cleanup, interactive failure and protected large-file rows | `StageStream.c:STAGE_MAX_BYTES` and `StagedTransferAllocator.MaximumSeedBytes` remain 16 MiB. The [14-case inspector measurement](evidence/2026-10-13/t9-inspector-metrics3-result.json) covers neither those caps/budgets nor hostile parser memory, publisher costs or protected behavior. |
+| T9 | Stage/seed caps removed under per-user/total budgets; complete format/encoding coverage, bounded parser memory, durable cleanup, interactive failure and protected large-file rows | `StageStream.c:STAGE_MAX_BYTES` and `StagedTransferAllocator.MaximumSeedBytes` remain 16 MiB. The [14-case inspector measurement](evidence/2026-10-13/t9-inspector-metrics3-result.json) covers neither those caps/budgets nor hostile parser memory, publisher costs or protected behavior. The [Sol source review](M2-COMPLETION-PLAN.md#findings-in-delivery-order) identifies unconsumed drawing text and PDF annotation payloads; the owner chose extraction for common payloads and refusal for rare ones (2026-10-13); independent fixtures remain required. |
 | T10 | Repair stage access in phase B and pass the final pair in all modes | `m2t10rv5` stopped at 5/13; admin-only success is insufficient. |
 | T11 | SOP lifetime/retirement, complete journal scaling/recovery and adversarial review of the working final system | Scoped index/compaction/head-read controls pass; O(N) fresh head I/O and final-system review remain open. |
 
-T4's stop and the pending T5 product/security choices remain prerequisites for the integrated delivery. Do not enable admission,
+T4's stop and the open T5 security questions remain prerequisites for the integrated delivery. Do not enable admission,
 change the failed contexts bound, discard native security control bits, add an unapproved descriptor repair, or count an unprotected
 component pass as that delivery. Storage-budget/default decisions require the measured scope and explicit user-visible failure
 behavior; the unchanged inspector defaults and scoped measurements above do not decide them.
@@ -228,6 +265,8 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
     limit 2,383, exceeded by 329. All five native statuses are zero; purge releases 13,240 allocations (84.8% of idle growth).
     This proves substantial release while loaded, but does not meet the chosen bound. No kernel reclamation or threshold change is authorized.
     The historical [clean short result](evidence/2026-10-12/t4-clean-short-result.md) is retained unchanged; its slope is now informational.
+  - [ ] Hand-back attribution diagnostic (owner-authorized 2026-10-13, non-qualifying; see owner decisions): block-heavy mix, handle
+    holders of kept files after purge, SUfl after deleting only the hand-backs. Decide the next step from the drop, not before.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
 - [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):
@@ -304,7 +343,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     including 42 new query cases per feature profile. Live recovery and runtime portability/hold-release checks remain open.
   - [ ] Correct ordinary CREATE authority: disposition-specific rights, case/identity anchors, native sharing, complete security labels,
     post-allocation authorization and live replay identity; see the [current review](evidence/2026-10-12/m2-progress-direction-review.md).
-    Replay identity is fixed (`dbe02d04`); [kernel seed/read-authority corrections and the owner hand-back choice](T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes) remain open.
+    Replay identity is fixed (`dbe02d04`); [kernel seed/read-authority corrections](T5-NATIVE-PUBLIC-OPENS.md#owner-choice--unreadable-seeded-bytes) remain open; the hand-back choice is option 1 (2026-10-13).
     [Native rights/grant controls](evidence/2026-10-12/writer-permission-native-control-a5.txt), `0a5add63`: 980 comparisons pass on the builder;
     existing supersede with NULL descriptor preserves queried security. Qualified-platform, assignment, seed and kernel integration remain open.
     Every queued CREATE now captures its original static subject and owned access/share/options/case/EA/supplied-security inputs;
@@ -401,6 +440,11 @@ the publishing application can reopen the file and agreed metadata is preserved.
 **Done when:** no fixed driver size cap; per-user/total stage budgets fail closed without harming other users; full-content inspection
 uses bounded memory; incomplete inspection is Blocked with hand-back and policy-authorized justification; runtime rows prove privacy.
 
+- [ ] **Complete-or-refuse coverage first** (owner direction 2026-10-13; [review finding](M2-COMPLETION-PLAN.md#findings-in-delivery-order)).
+  - [ ] Read DrawingML shape/text-box text, chart titles/axis and series names/labels/cached values, VML drawing text and PDF
+    annotation contents/form-field values; refuse embedded files, PDF attachments, XFA and other unconsumed payloads.
+  - [ ] Replace the Office part denylist with an allowlist; independent fixtures include a clean cell plus a CPF-only drawing text box,
+    a CPF chart label, a clean PDF page plus a CPF annotation or form value, an attachment and an unknown part type.
 - [x] Failure classification, bounded worker concurrency, notifications, single-handle snapshot input, parser-integrity controls and
   bounded numeric-scanner scratch space are implemented; [component gates](evidence/2026-10-10/m2-agent-component-gates.json).
 - [ ] Finish whole-file streaming, format/encoding/extraction coverage, stage-space accounting/orphan cleanup and seeding cost.
@@ -789,7 +833,7 @@ change the file. Prove that lifetime boundary and validate the returning volume/
 not an acceptable removable-media recovery remedy; the M2 fixed-NTFS exception does not extend here. Do not implement this in M2.
 
 - [ ] Complete the dedicated USB/removable design before implementation.
-  - [ ] Record owner decisions on supported filesystems/removal behavior, explaining what users notice under each option; obtain Luna 6 max-effort design review.
+  - [ ] Record owner decisions on supported filesystems/removal behavior, explaining what users notice under each option; obtain Sol 6.1 xhigh design review.
   - [ ] Design automatic remount reconciliation after surprise removal; retain the exact identity/generation hold until verified.
 - [ ] Implement only the approved scope; keep unsupported combinations disabled.
 - [ ] Qualify attach/detach, surprise removal during write/seal/inspection/publication, reconnect and recovery with an independent observer.
@@ -802,7 +846,7 @@ not an acceptable removable-media recovery remedy; the M2 fixed-NTFS exception d
 has independent server-side destination-byte run evidence, and is ready for combined M4 qualification.
 
 - [ ] Complete the dedicated SMB/UNC design before implementation.
-  - [ ] Cover canonical names, redirector identity, remote authorization, commit ordering and disconnect/retry; record owner choices with user-visible effects and obtain Luna 6 max-effort design review.
+  - [ ] Cover canonical names, redirector identity, remote authorization, commit ordering and disconnect/retry; record owner choices with user-visible effects and obtain Sol 6.1 xhigh design review.
 - [ ] Implement only the approved scope; keep unsupported network capabilities disabled.
 - [ ] Qualify an actual SMB server with independent server-side destination-byte observation.
   - [ ] Cite matched-pair results, mapping/reconnect/recovery evidence, Verifier and separate VM restoration; include the approved scope in M4.
@@ -812,7 +856,7 @@ has independent server-side destination-byte run evidence, and is ready for comb
 **Problem:** sync-client writers, placeholders and upload timing can expose bytes before approval.
 **Done when:** a real supported sync client uploads only approved content, with independent local and remote destination observation.
 
-- [ ] Write a dedicated design note for client/Cloud Files behavior, hydration and uploads; obtain owner decisions and Luna design review.
+- [ ] Write a dedicated design note for client/Cloud Files behavior, hydration and uploads; obtain owner decisions and Sol 6.1 xhigh design review.
 - [ ] Implement the approved client/scope and qualify edits, empty files, delete/rename, conflicts, offline/reconnect and recovery.
 - [ ] Observe the real remote destination independently; retain unsupported-client guards until approved.
 
@@ -850,6 +894,9 @@ has independent server-side destination-byte run evidence, and is ready for comb
 **Done when:** administrators see the durable reason/remedy and Unknown never clears before reboot.
 
 - [ ] Qualify status, notification, diagnostic reason and documented remedy across supported destinations.
+- [ ] Stop false Degraded notices (owner direction 2026-10-13): retry an `ERROR_RETRY` coverage answer briefly before reporting
+  Degraded; T4 short rows log 12–21 `CoverageQueryFailed` notices each ([analysis](evidence/2026-10-12/t4-coverage-retry-analysis.md)).
+  Sol design review first; admission authority, Unknown and real query failures are unchanged.
 
 ### T19. Continuous evidence
 
