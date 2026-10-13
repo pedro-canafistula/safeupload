@@ -1,9 +1,11 @@
 # T22 — staged protection for SMB / UNC destinations
 
 2026-10-13. Historical draft/code baseline: `wt/designs`, `6128a892b30c`.
-This revision starts from document snapshot `0674a37b`; **status: revised, awaiting independent re-review**.
+This revision starts from document snapshot `3f3e5a1a`; **status: revised, awaiting independent re-review**.
 **Not implemented, not qualified, and not permission to enable SMB or run a VM.**
 Owner choices and native feasibility gates remain open; review acceptance is not implementation or runtime qualification.
+**Architectural conclusion — option (b): this endpoint-only MUP design cannot meet T22's all-state SMB privacy contract.**
+Fresh application payload opens bypass it during callback loss; no independent enforcement boundary is supplied. See §8.3 and pending D16.
 
 ## Review history
 
@@ -11,7 +13,8 @@ Owner choices and native feasibility gates remain open; review acceptance is not
 - [Independent re-review](evidence/2026-10-13/t22-design-rereview-sol61.md), Sol 6.1 xhigh at `0953036a`: **REVISE — one remaining security-contract gap**. Earlier findings closed at design level; outbound-range/head ordering and stale provenance require revision.
 - [Third independent review](evidence/2026-10-13/t22-design-review3-sol61.md), Sol 6.1 xhigh at `e6f1990b`: **REVISE**. Earlier findings closed at design level; native application cutoff (a head/lifetime gap, not an observed byte leak), intervening same-object edits and the T21 anchor require revision.
 - [Fourth independent review](evidence/2026-10-13/t22-design-review4-sol61.md), Sol 6.1 xhigh at `0674a37b`: **REVISE**. Earlier findings closed at design level; native EA authority permits a documented post-cutoff payload counterexample, not an observed leak.
-- These are retained repository receipts under `driver/evidence/2026-10-13/`. Current edits add §6.2/D15's EA boundary and refusal route, correct §8.2 and extend N09/N11/qualification; no new independent verdict or native result is claimed.
+- [Fifth independent review](evidence/2026-10-13/t22-design-review5-sol61.md), Sol 6.1 xhigh at `3f3e5a1a`: **REVISE**. Nine historical findings closed at design level; fresh payload opens during callback loss expose a structural counterexample, not an observed leak.
+- These are retained repository receipts under `driver/evidence/2026-10-13/`. Current edits record §8.3's architectural failure, pending D16 and §10.7's fresh-open controls; no new independent verdict or native result is claimed.
 
 ## 1. Authority, scope and acceptance boundary
 
@@ -43,6 +46,8 @@ Windows Server build, NTFS-backed disk shares, SMB **3.1.1**, authenticated Kerb
 equivalent user-session mappings; local fixed-NTFS staging, no DFS, CSC, cluster failover or offloaded mutation.
 This is a proposed support profile, not an approved narrowing of T22 or a claim that these conditions suffice.
 Server identity, write-only seeding and cross-client replacement remain blocking mechanism questions (§§5–7).
+Passing those mechanisms or C1–C3 cannot enable this client-only profile: §8.3 fails the required coverage-loss boundary.
+The mechanisms below remain candidate building blocks for a D16-approved redesign, not a qualification path around that failure.
 
 ## 2. Current repository behavior and the actual gap
 
@@ -57,6 +62,7 @@ Server identity, write-only seeding and cross-client replacement remain blocking
 | `driver/SafeUpload.Minifilter/StageStream.c:3570` | `StageAttachNativeEligible` excludes `FILE_WRITE_EA` alongside data/append and broad-access masks. T22 must preserve that exclusion; C3 is not payload inspection. |
 | `driver/SafeUpload.Minifilter/StageStream.c:1545`, `:1574` | Backing is opened on C: through a separate NTFS instance; sector and device-stack-size conditions are checked. |
 | `driver/SafeUpload.Minifilter/Filter.c:146` | Feature dispatcher registers data, paging-related, section, namespace, security, FSCTL and Fast I/O callbacks. Registration is not proof of remote coverage. |
+| `driver/SafeUpload.Minifilter/Filter.c:185`, `:737`, `:762` | Feature registration rejects service-stop unload and manual detach; teardown updates local lifecycle/accounting. Normal registration has no unload callback. None installs an independent fresh-SMB-open enforcement point. |
 | `agente/SafeUpload.Agent.Service/Interception/StagedDestinationCommitJournal.cs:13` | Head identity uses volume-root/parent full IDs, case mode, leaf and optional Mount Manager GUID; equality includes those fields. |
 | `agente/SafeUpload.Agent.Service/Interception/MinifilterBoundAllocation.cs:14`; `agente/SafeUpload.Agent.Service/Interception/StagedTransferPublisher.cs:83` | Bound admission is false and the legacy publisher rejects bound entries. T22 cannot build on an assumed completed T5 path. |
 
@@ -309,6 +315,7 @@ an allow verdict for the unnamed data stream says nothing about them. No EA name
 Microsoft specifies EA values as byte arrays and authorizes SMB `FileFullEaInformation` updates through the separate `FILE_WRITE_EA` grant. [M39][M40]
 `NtSetEaFile`/`ZwSetEaFile` supply EA buffers; SMB CREATE can also carry an EA buffer. Both are outbound content surfaces. [M41][M42]
 
+Admission interception requires callback coverage; C1 protects surviving private uppers only. These rules cannot intercept fresh opens after cutoff (§8.3).
 **Selected design proposal: refuse EA mutations in the initial profile (D15 A).** Keep the current native eligibility exclusion
 (`driver/SafeUpload.Minifilter/StageStream.c:3570`) and apply it to file/directory requests, effective generic mappings and actual grants:
 
@@ -404,6 +411,7 @@ reconnect handling. Do not infer request replay or exactly-once completion for o
 operation; SafeUpload must not issue another CREATE/rename/disposition after an ambiguous result.
 Service timeout/cancellation, TCP disconnect, local CLOSE or a new session does not prove that the server did nothing.
 Do not promise exactly-once remote mutation from a local journal alone.
+The following notices presume live interception for new requests. After callback loss, use §8.2's exposure warning; no new-write privacy is promised.
 
 | Known state | Action and visible outcome |
 |---|---|
@@ -512,7 +520,8 @@ A share-specific unreachable hold is distinct from machine-wide writer Unknown; 
 
 At `InstanceTeardownStart`, new pre/post callbacks stop; older operations can still receive callbacks. References do not retain coverage. [M30]
 Orderly pre-unregister draining is distinct from this forced cutoff (`driver/T5-NATIVE-PUBLIC-OPENS.md:311`).
-**Admission requires C1, C2 and §8.2's C3 before any supported synthetic, publisher or mutation-capable native application handle is exposed.**
+**C1, C2 and §8.2's C3 are necessary existing-handle/broker gates, not sufficient admission gates.**
+Even if all three pass, fresh application opens remain unmediated during callback loss (§8.3); SMB admission stays disabled.
 An instance flag, journal hold, service shutdown, manual-detach veto or eventual reconnect cannot supply missing enforcement.
 
 | Gate | Required construction and decisive proof |
@@ -545,7 +554,7 @@ on these handles after SafeUpload callbacks stop. DELETE can authorize dispositi
 separate from data-write rights. [M32][M37] Thus “non-writing” does not mean harmless to the head, even when no delete intent exists.
 Classify DELETE, WRITE_DAC, WRITE_OWNER, ACCESS_SYSTEM_SECURITY, FILE_WRITE_ATTRIBUTES and otherwise eligible directory mutation grants as C3 obligations.
 **Exclude `FILE_WRITE_EA` from this native route**, even without FILE_WRITE_DATA or FILE_APPEND_DATA. It carries arbitrary payloads under §6.2, not just head changes.
-Data/EA-writable, mutating-create or uncertain broad-access opens remain private/refused; the native file route has neither data nor EA-write authority.
+While covered, data/EA-writable, mutating-create or uncertain broad-access opens remain private/refused; this native route has no data/EA-write authority.
 Validate requested/effective and actual grants; an unknown or unexpected payload-bearing grant cannot be released as a native app handle.
 Preexisting/reconnectable native EA-write capabilities prevent Ready until exact retirement; C3's population barrier is bookkeeping, not EA inspection.
 
@@ -568,11 +577,13 @@ No snapshot of “instance active” or an instance reference proves that orderi
 Durable pre-open records reconstruct these barriers after service/driver interruption without waiting for a service ACK during mandatory teardown.
 Already admitted broker ranges/results retain their original receipts; later native TRUE/FALSE disposition, rename or security changes may occur
 outside our callbacks. Preserve their actual Windows outcomes; do not invent operation receipts/generations or describe those operations as fenced.
-The barriers refuse new outbound ranges, final publication, SafeUpload native-mutation permits, stale head advancement and cleanup/release by inference.
+The barriers refuse new broker outbound ranges, final publication, SafeUpload native-mutation permits, stale head advancement and cleanup/release by inference.
 Reattachment/reconnect starts with these heads closed. New callbacks, a fresh instance GUID or a replay of only pending deletes cannot clear them.
 An uncovered interval also arms a scope-wide UnknownNativeOpenPopulation barrier: new native opens during that interval may have no ledger entry.
 Apply it to every enrolled scope reachable through the lost instance; reattachment must establish complete admission/lifetime coverage of those
 capabilities too. An empty replay or closing every previously recorded handle cannot clear this population barrier.
+**This barrier cannot refuse fresh application CREATE, WRITE, append or EA traffic.** Such I/O never consults ExposureGate or the journal;
+holding every destination head therefore does not preserve privacy. §8.3 treats this as architectural failure, not a recoverable protection state.
 
 Release requires **all** of the following under a fresh authenticated reconciliation turn:
 
@@ -583,12 +594,48 @@ Release requires **all** of the following under a fresh authenticated reconcilia
 3. Authenticated server/storage-incarnation and namespace/object/security/delete-state reconciliation after that lifetime boundary. Unobserved changes
    are external/uncertain facts, never assumed Published or Canceled; preserve floors and revoke all old attempts/permits. Paths/digests alone do not decide.
 4. Durable reconciled head/barrier facts followed by ExposureGate validation of the same coverage/native-facts/replay revisions. Only then release the
-   applicable barrier and permit fresh allocation/inspection under current authority; a concurrent lifetime event leaves it closed.
+   applicable accounting barrier; a concurrent lifetime event leaves it closed. Fresh supported allocation additionally needs a D16-approved,
+   qualified architecture. Reconciliation cannot erase earlier exposure or qualify this architecture's missing enforcement boundary.
 
 Uninterrupted native lifetime evidence or a qualified authenticated joint client/server retirement receipt must substantiate step 2; N09 proves the exact
 mechanism before this route is admitted. Missing proof retains the hold. Reattachment does not retroactively observe the missing operations.
-The tray names the affected file/scope: “New saves remain private while earlier share handles are verified. Close affected apps and reconnect.”
-Those actions trigger verification, not guaranteed release; persistent uncertainty gives a diagnostic ID. Sticky Unknown remains separately governed.
+The tray names the affected file/scope: “Previously staged versions remain private while earlier share handles are verified.” During coverage loss,
+it must also state: “SMB inspection is unavailable; new network writes may reach the share without inspection.” Service absence can prevent the notice.
+Closing apps/reconnecting triggers verification, not protection or guaranteed release; retain diagnostics. Sticky Unknown remains separately governed.
+
+### 8.3 Fresh opens during coverage loss — architecture fails the all-state contract
+
+**Choose revision option (b).** After the instance stops receiving callbacks, a write-authorized standard user can open the UNC destination afresh
+through MUP/SMB without an owned upper, publisher handle or NativeOpenIntent. Native data/append grants can authorize writes; EA grants and CREATE EA
+buffers supply separate payload routes. [M01][M23][M30][M39][M41] The user need not cause teardown: exploiting the uncovered interval is sufficient.
+This is a documented design counterexample, not measured leakage. Neither later reconciliation nor reattachment can retract server/backup bytes.
+
+| Windows control / candidate boundary | Documented effect and limit for this architecture |
+|---|---|
+| Manual instance detach | InstanceQueryTeardown can reject FilterDetach/FltDetachVolume with STATUS_FLT_DO_NOT_DETACH; omitting that callback also prevents manual detach. It is not called for automatic/mandatory detach. [M44] This is an instance-wide control, not a per-UNC-share lifetime guarantee. |
+| Filter unload controls | Nonmandatory unload can be refused; a registered callback cannot veto an already mandatory unload. A NULL unload callback prevents filter unload. [M45] FLTFL_REGISTRATION_DO_NOT_SUPPORT_SERVICE_STOP rejects the documented mandatory service-stop unload requests while allowing ordinary unload processing. [M46][M47] These controls do not promise that a MUP instance never tears down. |
+| Actual instance teardown / unregister | Teardown reasons include unload, dismount/filesystem deregistration and internal error; once teardown starts, new callbacks cease and instance references do not retain coverage. [M30] FltUnregisterFilter removes callbacks/contexts and starts teardown for each instance. [M48] Blocking cleanup forever is not continued interception. |
+| Another provider name or another local attachment | MUP is the common remote-I/O attachment in the documented redirector model; redirector names can alias it. [M01] No separately proved enforcement point is specified here. Naming mrxsmb/RDBSS, another filter or a watchdog does not establish independent fail-closed lifetime or complete alias/reconnect coverage. |
+
+Current feature code already uses the service-stop flag and rejects manual detach (`driver/SafeUpload.Minifilter/Filter.c:185`, `:762`);
+its teardown callback records local retirement (`driver/SafeUpload.Minifilter/Filter.c:737`). Those facts do not close the counterexample.
+The documents do **not** establish that these controls make callback loss impossible for the qualified MUP stack. Which automatic reason actually
+occurs on 19045.2965, and whether SMB remains/rebecomes reachable before coverage returns, is **UNVERIFIED**: characterize only §10.7's finite controls.
+Do not equate a TCP disconnect, server restart or share remap with MUP-instance teardown. Conversely, a test with no teardown proves no all-state guarantee.
+
+The proposed client has no cutoff-independent deny path for fresh data, append, EA, CREATE-EA or generic-access requests, across existing/new SMB
+sessions, aliases or service absence. Therefore it **cannot meet the current all-state contract**; this is not merely an unproved C3 recovery gate.
+No supported independent boundary is available in this design. This is not a claim that every possible Windows/server architecture is impossible.
+The [fixed-NTFS forced-teardown decision](POST-MVP-PLAN.md#owner-decisions) permits delayed recovery in its named scope; it is not an SMB privacy waiver.
+
+D16 B is the recommended redesign direction: a server-side enforcement/commit component must deny direct payload mutations without exact inspected
+authorization, independently of endpoint attachment and service state. Local private staging stays local. The server must enforce the original caller's
+object/grants/policy/head contract and reject replay; SYSTEM/machine authority cannot rescue an unauthorized caller. Every alias/export/reconnect path
+to protected storage must enforce the boundary, and loss of the server component must deny mutations rather than expose a writable bypass.
+This is a required new architecture, **not an implemented or qualified server mechanism**. A server minifilter with the same cutoff gap, a commit-only
+service leaving ordinary SMB writes available, or upload-then-inspect staging would not satisfy it. D8's commit receipt alone is insufficient.
+Until the owner chooses D16 and any replacement qualifies, keep SMB unsupported. D16 A would explicitly change the invariant; no existing hold or
+ForbiddenByteCount assertion is weakened by this note. Warning users and later deleting leaked bytes are not enforcement.
 
 ## 9. Owner decisions required before dependent implementation
 
@@ -603,7 +650,7 @@ All decisions are **PENDING**. Options describe actual user effects; recommendat
 | D5 — stage location | A: private local fixed NTFS. B: remote hidden/ACL-only stage. | A consumes PC disk and uploads after inspection; B already exposes preinspection bytes to server storage. **Recommend A**; B requires changing the invariant and is unsuitable here. |
 | D6 — authentication | A: Kerberos mutual authentication plus signing, enrolled server principal. B: also NTLM/workgroup credentials with a separately reviewed identity scheme. | A refuses unsupported IP/SPN/credential routes; B broadens credential/session cases. **Recommend A**; never fix failure by using SYSTEM/machine credentials. |
 | D7 — unreachable server | A: deny new uncheckable remote opens; retain already admitted local versions, resume only proven unexecuted work. B: accept offline new saves with deferred authorization. | B can report success without permission/existence proof and needs new conflicts/quotas. **Recommend A**; no automatic discard, no claim that the share contains the save. |
-| D8 — remote commit/receipt mechanism | A: client-only, enable only after N03/N06/N07 prove identity, race exclusion and recovery. B: deploy a server commit component with those guarantees. C: owner-limited no-clobber/new-file pilot. | A may be infeasible; B adds server software/operations; C breaks replacement workflows and is not full T22. **Recommend finite A controls first; if they fail, choose B for full support**, keeping SMB off pending that design. |
+| D8 — remote commit/receipt mechanism | A: client-only mechanism diagnostics for identity/races/recovery; no all-state enablement path under §8.3. B: server commit component integrated with D16 B's independent enforcement. C: owner-limited no-clobber/new-file pilot. | B adds server software/operations; C breaks replacement workflows and still has the cutoff gap. **Recommend B within the D16 redesign**; passing A or C cannot qualify privacy during callback loss. |
 | D9 — write-only remote seed | A: implement an approved server-private inspection/seed capability preserving native rights and no export. B: explicitly exclude edits needing unreadable old bytes from SMB support. | A expands trusted server work and conflicts with a pure endpoint design; B blocks clean appends that native SMB allows. **Recommend A for full parity**, conditional on a separate design; if unacceptable, request explicit B scope approval. Existing option 1 is not revoked. |
 | D10 — metadata fidelity | A: retain native-equivalent owner/ACL/SACL/label and agreed T8 fields for each supported operation. B: accept enumerated server-specific differences. | B may alter who can read/write and app behavior. **Recommend A**; decide B only from N05's exact mismatches, never “best effort ACL.” |
 | D11 — failover / transport extras | A: single-channel TCP, ordinary nonpersistent durable reconnect only; reject multichannel, resilient/persistent/CA/DFS and RDMA. B: qualify those configurations now. | B needs more endpoints and longer-lived authority proofs. **Recommend A**, as P0 in §10.2; loss of connectivity can delay saving but cannot weaken holds. |
@@ -611,6 +658,7 @@ All decisions are **PENDING**. Options describe actual user effects; recommendat
 | D13 — native edit lacks sibling/replace grants | A: prove an internal commit mechanism that preserves the caller's exact native write/append authority without granting extra app rights. B: explicitly exclude these remote edits. | A may require D8's server component; B rejects edits native SMB permits. **Recommend A for full parity**; if infeasible, obtain explicit B approval and disclose the limitation, separately from unreadable seeding. |
 | D14 — intervening same-object edits | A: disclosed last-publisher-wins (§6.1): the inspected whole version replaces intervening bytes/EOF, including other users' appends. B: server-enforced version-conditional commit: a conflict keeps the other version public and this version private for a new save. | A can lose concurrent work; B requires D8's complete server mutation serialization/version proof and can refuse saves. **Recommend A for the initial profile**, preserving native sharing without adding a conflict-detection claim; require explicit owner acceptance of the lost-update limitation. Neither option is approved. |
 | D15 — T8 EA content/support boundary | A: §6.2's explicit EA refusal profile; EA-dependent or EA-unverifiable saves fail with a named reason and existing EAs remain intact. B: private EA capture, complete inspection and cutoff-independent broker publication under an approved T8 catalog. | A limits application/metadata parity; B needs complete EA capture, authority, parser/budget and exposure proofs. **Recommend A initially**, with explicit owner acceptance; no EA content exemption or blind preservation. B never exposes native EA-write authority. Both remain pending. |
+| D16 — all-state SMB boundary | A: accept forced-teardown exposure as an explicit product limit; fresh writes may succeed uninspected and notices may be unavailable. B: require §8.3's independent server-side enforcement; deployment is required, direct/unmediated writers and writes during enforcement outages are denied. C: keep SMB unsupported; users receive no SMB staged-protection guarantee and T22 remains unfinished. | A changes the privacy contract and can expose content permanently through server caches/backups. B adds deployment, compatibility and authority/lifetime proof work; a commit-only helper is insufficient. C leaves a required milestone unmet. **Recommend B for full T22; retain C's disabled state until approved and qualified.** A requires explicit owner acceptance and separately revised scope; none is approved here. |
 
 D7's indefinite **uncertain mutation** hold is the existing no-replay safety rule, not automatic recovery proved by this design.
 If users require automatic resolution after every supported outage, D8 must supply durable server evidence; do not substitute a
@@ -631,7 +679,7 @@ failure stops the dependent feature, not an open-ended search through flags. Bui
 | N06 — commit race/atomicity | Existing/absent targets: pause after final check, then rival client/server-local actor replaces target, parent or export. Attack the temporary during copy, after fence/flush and reconnect with write/EOF/EA/delete/rename/link/security/offload, cached/mapped and durable-handle mutations. Run §10.1 masks/variants, §10.4 same-ID edits and §10.6 EA races; require exclusive temporary mutation, exact-target authority, chosen D14 outcome and complete final bytes. Any gap fails. |
 | N07 — disconnect/replay | P0 only (§10.2): loss before send, after server acceptance before reply, after reply before journal, and after journal before ACK for CREATE/write/flush/rename/delete. Cross TCP loss, service crash, client Restart and server restart; distinguish actual durable reconnect from fresh open. Require no duplicate public mutation and exact recovery/held uncertainty; P1/P2 are separate refusal controls. |
 | N08 — CSC/DFS/failover refusal | Online→offline→online, cached dirty preactivation data, referral swap and attempted CA/persistent connection. Prove unsupported paths stay nonadmitted and cannot later flush forbidden data through replay. If those features are approved, replace refusal rows with complete privacy/recovery rows, not skips. |
-| N09 — deletes/lifetime | Ordinary TRUE/FALSE, scheduled on-close, duplicates, another reader, newer blocked versus Published successor and service-absent shutdown. Repeat N02's four-phase cutoff matrix for publisher duplicates: post-cutoff WRITE/EOF/EA/rename/disposition/security/offload and raw user-handle duplication/mapping/export must fail. Run §10.5's native lifetime matrix and §10.6's forbidden-EA-marker attempts before/after cutoff, with duplicates/reconnect. Require C1/C2 payload enforcement and C3 barriers/qualified release; native EA writes cannot pass merely because a head is held. |
+| N09 — deletes/lifetime and fresh opens | Ordinary TRUE/FALSE, scheduled on-close, duplicates, another reader, newer blocked versus Published successor and service-absent shutdown. Repeat N02's cutoff matrix for publisher duplicates: post-cutoff WRITE/EOF/EA/rename/disposition/security/offload and raw user-handle duplication/mapping/export must fail. Run §10.5's native lifetimes, §10.6's EA markers and §10.7's fresh payload opens **before reattachment** across aliases/service absence/reconnect. Require independent server bytes; C1–C3 or population holds alone cannot pass. |
 | N10 — offload bypass | COPYCHUNK and COPYCHUNK_WRITE, ODX read/write and clone/extent attempts from sensitive remote sources into protected names, including direct native FSCTL callers. Require refusal before server mutation; ordinary inspected copy fallback may then succeed separately. |
 | N11 — observers | Deliberate forbidden-marker writes in a sacrificial unprotected fixture, including short-lived temporary, ADS, write then delete and snapshot. Add §10.6's file/directory EA names/values, overwrite/removal and backup fixtures. Each observer must detect its claimed surface; independent EA payload capture is required alongside mutation events. Sequence gaps/lost events invalidate continuous proof. |
 | N12 — resource/UX | Server and local disk full, quota boundary, low memory, bounded parallel transfers, stale policy, credential expiry, interrupted hand-back and prolonged outage. Require charged retained state, complete-or-refuse inspection and accurate per-user notices, without unbounded worker growth. |
@@ -732,6 +780,37 @@ N05/N06 additionally attach/change an EA after seed and after final validation; 
 N11 writes, changes and deletes a marker EA on a sacrificial file/directory, including a short-lived temporary and a snapshot/backup fixture; its observer
 must capture the EA name/value bytes and all mutation sequence numbers. A final query showing no EA cannot pass this sensitivity control.
 
+### 10.7 Fresh payload opens before reattachment — N01/N09, UNVERIFIED
+
+First characterize real cutoff on the exact client image, only with owner-approved diagnostic infrastructure. Record registration flags, MUP/provider,
+instance identity, actual teardown reason/callback sequence and SMB reachability. Use this finite trigger set: manual FilterDetach/FltDetachVolume;
+nonmandatory FilterUnload/FltUnloadFilter; mandatory SCM stop with the recorded service-stop flag; an explicitly authorized diagnostic build's own
+FltUnregisterFilter; and the existing N07 TCP loss/reconnect/server-restart cases. [M44][M45][M46][M47][M48] No product flag changes or unsafe forced unload
+are authorized here. Current vetoes must be observed as vetoes, not labeled callback-loss passes. A diagnostic unregister demonstrates a real detached
+interval but does not establish how often production MUP encounters automatic teardown; network faults count as cutoff only if traces prove it.
+Record which filter lost coverage: unregistering an unrelated observer is not a candidate cutoff. A surrogate's result is mechanism evidence only;
+replacement qualification requires the actual candidate's coverage-loss window, not a surrogate with the candidate still intercepting fresh I/O.
+No observed automatic trigger is not evidence that loss is impossible. No actual detached/reachable interval means incomplete cutoff coverage.
+
+After a measured cutoff, hold reattachment out until fresh payload attempts and their server observations complete; a stale instance reference or a
+synthetic “coverage=false” variable is not the event. Keep the share reachable during at least one attempt and after each tested reconnect.
+Use a standard user with native, independently verified server permissions. Close all old actor handles so each CREATE is fresh; compare a covered
+baseline, the uncovered interval and reattachment. The uncovered attempts cannot be replaced by requests through a held publisher/private handle.
+Include a protected leaf with no old SafeUpload handle/reservation, plus a never-before-opened leaf, so an unrelated sharing conflict cannot hide the gap.
+
+| Finite dimension | Required cases / observation |
+|---|---|
+| Fresh payload operations | Existing-file FILE_WRITE_DATA write; FILE_APPEND_DATA append; new-file/overwrite plus write; GENERIC_WRITE, GENERIC_ALL and MAXIMUM_ALLOWED opens followed by writes; EA-only open then NtSetEaFile; CREATE with EA buffers independent of data-write intent. Use unique markers in data, EA value and valid EA name; include directory EAs. Capture actual granted authority/results. [M23][M37][M39][M41] |
+| Routes / identities | N03's direct and extended UNC, existing/new user-session mapped drives, short/FQDN/CNAME/IP and share aliases resolving to the same protected storage. Include a native-authorized alias the active product would refuse; it remains a refusal control, not a new supported profile. No path-only exclusion of evidence. |
+| Availability / lifetime | Cross service present and absent, with connected transport, disconnect→reconnect on an existing session and a fresh authenticated connection. Perform attempts immediately after cutoff and after each reconnect, all **before reattachment**. Repeat at N02's before-upload, during-upload, after-fence and after-rename cut points. |
+| Independent byte evidence | N11-validated continuous server mutation/payload capture plus raw/uncached and EA reads cover final names, temporary/new files, EA names/values and snapshot/backup fixtures from before cutoff through reconnect/reattachment and cleanup. Detect write-then-delete transients; missing events/payloads invalidate the cell. |
+
+For the current architecture this is a **counterexample diagnostic**, not a qualifying success path or an authorized product VM run. A forbidden
+marker accepted into server storage records a privacy failure even if every head is held, and must retain its first-failure evidence. Do not clean up
+or reclassify the evidence into a pass. A redesigned D16 B boundary must refuse unapproved fresh mutations throughout the interval and achieve
+ForbiddenByteCount=0 with continuous coverage. Vetoing one trigger, an offline server, denied baseline rights or later reattachment cannot substitute.
+D16 A, if explicitly chosen, requires a separately approved contract/qualification change; this note does not waive the fresh-open assertions.
+
 ## 11. Qualification lab, byte observation and restoration
 
 **No additional lab infrastructure is assumed to exist.** Obtain owner approval for a separate SMB server VM and its exact baseline,
@@ -745,6 +824,8 @@ Do not install a domain controller, modify host routing/firewall/libvirt/polkit 
 The protected client remains **win10-debug3 only**, `SAFEUPLOAD_DEBUGGEE=win10-debug3`; keep win10-debug2 off.
 Builder 19045.6466 is separate from target 19045.2965 ([qualified-target decisions](POST-MVP-PLAN.md#owner-decisions)).
 No loopback share, host-mounted directory or mocked transport substitutes for the real SMB server.
+The current endpoint-only architecture is structurally ineligible for full T22 qualification (§8.3), regardless of ordinary-row results.
+The matrix below applies to a D16-approved replacement; §10.7 may be run only as a separately authorized counterexample diagnostic beforehand.
 The second client runs ordinary SMB readers/racing actors without trusting the protected client's service or cache.
 Each server-side observer executes independently of the publishing service and writes evidence outside the observed share.
 
@@ -772,6 +853,7 @@ Synchronize fault windows on authenticated operation receipts and observer event
 | Mapping / names | Both memory-mapping repros, sections past cleanup, UNC/mapped-drive equivalence, remap while queued, aliases/case/overlapping shares and qualified prefix boundaries. |
 | Permissions / metadata | N04/N05 successful and denied controls under protection; machine account granted while caller denied; share and filesystem denial independently. |
 | EA payload boundary | N09/§10.6 EA-only/generic/CREATE-EA requests, native/private/publisher grants, cutoff/duplicates/reconnect, existing-EA preservation on refusal and N11 continuous server EA-byte sensitivity; no native EA-write capability under C3. |
+| Fresh opens without callbacks | Full §10.7 data/append/EA/generic/CREATE-EA matrix while detached and before reattachment, including aliases, service absence and reconnect. Continuous independent server data/EA-byte evidence and ForbiddenByteCount=0 are required; population holds never pass this family. |
 | Commit / delete | Both forced publication/delete orders, remote competing writer/parent swap, §10.4's same-ID byte/EOF edits with the owner-selected D14 outcome, scheduled delete and only-Published suppression, flush/fence and post-rename broker-write refusal. |
 | Recovery / cutoff | Every N07 P0 boundary, N02/N09 forced-cutoff cell including §10.5's native no-intent/security/duplicate and gap-born handles, and N13 range/head race; reconnect, changed share identity, partial copy, service restart, client/server crash, exact cleanup/ACK and named holds. P1/P2 remain refusal rows. |
 | Unsupported / activation | CSC/DFS/CA/provider/dialect/offload refusal; pre-scope cached writers, startup before edits, policy activation/change, service absent, old/new protocol pairs. |
@@ -793,11 +875,12 @@ Track a concise cited result with commit/artifact hashes, coverage and separate 
 
 ## 12. Implementation increments and review exits
 
-1. **T22 decisions/design:** record D1–D15 outcomes, including the explicit T8 EA boundary, resolve contradictions with T5/T8, obtain independent Sol 6.1 xhigh review.
-   Keep all capability gates closed. An accepted proposal with mechanism conditions is not an implementation/activation verdict.
+1. **T22 architectural decision/design:** resolve D16 before dependent implementation; the current endpoint-only MUP proposal cannot meet all-state privacy.
+   Record D1–D15 outcomes, including T8's EA boundary; for D16 B, design the independent server rejection/authorization/lifetime boundary and obtain
+   independent Sol 6.1 xhigh review. Keep SMB disabled. D16 A would need an explicit invariant/scope change; D16 C leaves T22 unfinished.
 2. **T22 native feasibility:** after lab authorization, implement finite N01–N13 controls in their approved scope, including common exposure ordering.
-   Settle identity, C1/C2/C3 coverage loss, authority/seed, metadata/EA refusal, D14 conflicts, replacement and lost-result recovery before a product backend.
-   If N03/N06/N07 require a server component, return that concrete design/owner choice for security review; do not widen client trust.
+   §10.7's current-architecture diagnostic is not a product qualification pass. A replacement must first prove its fresh-open cutoff boundary, then
+   identity, C1/C2/C3, authority/seed, metadata/EA refusal, D14 conflicts, replacement and recovery. D8 commit evidence alone cannot close D16.
 3. **T22 protocol/head:** introduce negotiated tagged network identity and immutable attempt facts; extend existing allocation,
    head/permit/recovery/compaction with bounded accounting and negative controls. Local fixed-NTFS behavior remains regression-gated.
 4. **T22 integrated backend:** connect original-subject checks, local stage, current-policy approved-only transfer, one-use commit,
@@ -857,3 +940,8 @@ Pages were consulted 2026-10-13. No documentation statement here is claimed as a
 [M41]: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb2/989faa38-d972-43c1-91be-624acd6a7622
 [M42]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-zwseteafile
 [M43]: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fsa/36660930-adcc-4145-a206-f38502e9eb79
+[M44]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_instance_query_teardown_callback
+[M45]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_filter_unload_callback
+[M46]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_registration
+[M47]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/when-the-filterunloadcallback-routine-is-called
+[M48]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltunregisterfilter

@@ -907,7 +907,8 @@ has independent server-side destination-byte run evidence, and is ready for comb
     cutoff contract for native application mutation handles; defined conflict outcome for intervening same-object edits. [Fourth review](evidence/2026-10-13/t22-design-review4-sol61.md): REVISE — keep
     payload-bearing EA writes off the native route after cutoff. [Fifth review](evidence/2026-10-13/t22-design-review5-sol61.md): REVISE —
     no enforcement boundary for fresh payload opens while callback coverage is lost; either specify one or present the contract limit
-    as an owner decision. Fifth revision in progress.
+    as an owner decision. Fifth revision: the endpoint-only architecture cannot meet all-state SMB privacy; pending **D16** (documented
+    exposure limit / server-side enforcement component, recommended / SMB unsupported). Sixth review pending.
   - [ ] Cover canonical names, redirector identity, remote authorization, commit ordering and disconnect/retry; record owner choices with user-visible effects and obtain Sol 6.1 xhigh design review.
 - [ ] Implement only the approved scope; keep unsupported network capabilities disabled.
 - [ ] Qualify an actual SMB server with independent server-side destination-byte observation.
