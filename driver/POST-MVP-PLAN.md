@@ -157,6 +157,25 @@ transport/client and durable native-result journal are implemented; kernel objec
 The seeded-content hand-back owner choice remains open. The retained-object construction passed its direct native query gate and
 is ready to implement; the failed zero-access reopen is discarded. Unprotected native controls do not qualify this pair.
 
+**Current M2 completion audit — 2026-10-13, source/evidence through `46ba2ae6`.** No T4–T11 completion claim is established by the
+latest inspector matrix. The remaining delivery requirements and their current proof are:
+
+| Item | Required proof still outstanding | Current authoritative state |
+|---|---|---|
+| T4 | Passing loaded-context 10k gate, allocation-reply fault row, raw C01–C04/B01/B02/X01 and final pair | [10k contexts FAIL](evidence/2026-10-12/m2t4purge10ka1-verdict.txt); product VM rows stopped. |
+| T5 | Checked writer/seed/security authority, shared physical commit/recovery pipeline, final WDK/agent gates and three-mode native/Notepad rows | `_stageBoundHeadReady` stays false; the legacy publisher rejects bound manifests. [Unreadable-seed choice](T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes) is unapproved; [native descriptor construction](T5-NATIVE-PUBLIC-OPENS.md#native-publication-security-control-2026-10-13) has two exact-control failures. |
+| T6 | Directory moves, empty/Explorer moves and final-pair three-mode byte observation | Only the earlier 28/28 copy-fallback component pair is qualified; directory creation/moves remain unresolved. |
+| T7 | Final-pair authorized/denied read rows | Earlier component B02 passes do not cover the revised pair. |
+| T8 | Nine real application workflows in all three modes; agreed owner/DACL/timestamps/attributes/ADS/EAs/labels | Final application/metadata rows and metadata decisions remain missing. |
+| T9 | Stage/seed caps removed under per-user/total budgets; complete format/encoding coverage, bounded parser memory, durable cleanup, interactive failure and protected large-file rows | `StageStream.c:STAGE_MAX_BYTES` and `StagedTransferAllocator.MaximumSeedBytes` remain 16 MiB. The [14-case inspector measurement](evidence/2026-10-13/t9-inspector-metrics3-result.json) covers neither those caps/budgets nor hostile parser memory, publisher costs or protected behavior. |
+| T10 | Repair stage access in phase B and pass the final pair in all modes | `m2t10rv5` stopped at 5/13; admin-only success is insufficient. |
+| T11 | SOP lifetime/retirement, complete journal scaling/recovery and adversarial review of the working final system | Scoped index/compaction/head-read controls pass; O(N) fresh head I/O and final-system review remain open. |
+
+T4's stop and the pending T5 product/security choices remain prerequisites for the integrated delivery. Do not enable admission,
+change the failed contexts bound, discard native security control bits, add an unapproved descriptor repair, or count an unprotected
+component pass as that delivery. Storage-budget/default decisions require the measured scope and explicit user-visible failure
+behavior; the unchanged inspector defaults and scoped measurements above do not decide them.
+
 ### T4. Remove the 128-saves-per-boot ceiling
 
 **Problem:** retired versions retained slots; later saves failed until reboot. Registry/context memory attribution remains unresolved.
