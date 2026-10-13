@@ -18,6 +18,8 @@
 # T4_HANDBACK_DIAGNOSTIC=yes runs the owner-authorized (2026-10-13) hand-back attribution row: blocks three cycles in four, and after
 # the purged sample records which processes hold the kept files, deletes only the hand-backs and samples again before and after a
 # second purge. It requires boot Verifier and fewer than 10,000 cycles; its verdict is labelled non-qualifying and passes no T4 gate.
+# T4_DELETE_ATTRIBUTION=yes adds a 256-file identity-resolved deletion diagnostic after purged. Requires T4_MEMORY_TOOLS,
+# boot Verifier and cycles < 10000; mutually exclusive with T4_HANDBACK_DIAGNOSTIC. Non-qualifying; original gates unchanged.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; cycles="${5:-10000}"; mode="${6:-runtime-verifier}"; sample_every="${7:-500}"
@@ -39,6 +41,15 @@ case "$handback_diagnostic" in
     yes) [ "$mode" = verifier-from-boot ] && [ "$cycles" -lt 10000 ] || {
             echo 'The hand-back diagnostic requires boot Verifier and fewer than 10,000 cycles'; exit 2; } ;;
     *) echo 'T4_HANDBACK_DIAGNOSTIC must be yes or no'; exit 2 ;;
+esac
+delete_attribution=${T4_DELETE_ATTRIBUTION:-no}
+case "$delete_attribution" in
+    no) ;;
+    yes) [ "$memory_enabled" = yes ] && [ "$mode" = verifier-from-boot ] && [ "$cycles" -lt 10000 ] && [ "$handback_diagnostic" = no ] || {
+            echo 'Delete attribution requires T4_MEMORY_TOOLS, boot Verifier, fewer than 10,000 cycles and no hand-back diagnostic'; exit 2; }
+         [ "$dom" = win10-debug3 ] && [ "${SAFEUPLOAD_DEBUGGEE:-}" = win10-debug3 ] || {
+            echo 'Delete attribution requires explicit SAFEUPLOAD_DEBUGGEE=win10-debug3 and target win10-debug3'; exit 2; } ;;
+    *) echo 'T4_DELETE_ATTRIBUTION must be yes or no'; exit 2 ;;
 esac
 # verifier-from-boot: the same Verifier flags (0x13B) configured persistently before the install reboot, so pool tracking covers the
 # driver from its first allocation and the agent reaches Ready through the normal boot path (runtime-verifier's fltmc load after
@@ -322,19 +333,23 @@ $coordinatorArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t4-cycl
 if ('__MODE__' -in 'runtime-verifier', 'verifier-from-boot') { $coordinatorArgs += ' -RequireVerifierPool' }
 if ('__MEMORY__' -eq 'yes') { $coordinatorArgs += ' -MemoryDiagnostic' }
 if ('__HANDBACK__' -eq 'yes') { $coordinatorArgs += ' -BlockHeavy -HandbackDiagnostic' }
+if ('__DELETE__' -eq 'yes') { $coordinatorArgs += ' -DeleteAttribution' }
 $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $coordinatorArgs
 Register-ScheduledTask -TaskName 't4-coordinator' -Principal $principal -Action $coordinator -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 't4-coordinator'
 'COORDINATOR_STARTED=True'
 PS
 )
-setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}; setup_ps=${setup_ps//__HANDBACK__/$handback_diagnostic}
+setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}; setup_ps=${setup_ps//__HANDBACK__/$handback_diagnostic}; setup_ps=${setup_ps//__DELETE__/$delete_attribution}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 if [ "$mode" != ordinary ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
 
 # The earlier run's median was 2.2 s per cycle. Allow 4 s each on the fast run disk, plus settle and idle samples, at least an hour.
-limit=${T4_DEADLINE_SECONDS:-$(( cycles * 4 + 600 ))}
+# Six extra KD sessions at 180 s, bounded termination, and three 30 s waits.
+extra_diagnostic_seconds=0
+[ "$delete_attribution" = yes ] && extra_diagnostic_seconds=1230
+limit=${T4_DEADLINE_SECONDS:-$(( cycles * 4 + 600 + extra_diagnostic_seconds ))}
 [[ "$limit" =~ ^[0-9]+$ ]] || { echo 'Invalid T4 deadline'; exit 2; }
 [ "$limit" -ge 3600 ] || limit=3600
 if [ "$cycles" -ge 10000 ] && [ "$limit" -lt 21600 ]; then
@@ -397,15 +412,19 @@ else
     : > "$ev/$tag-after.txt"
 fi
 
-python3 - "$ev/$tag-after.txt" "$ev/$tag-samples.jsonl" "$ev/$tag-verdict.txt" "$cycles" "$mode" "$alive" "$(( $(date +%s) - started ))" "$handback_diagnostic" <<'PY'
+python3 - "$ev/$tag-after.txt" "$ev/$tag-samples.jsonl" "$ev/$tag-verdict.txt" "$cycles" "$mode" "$alive" "$(( $(date +%s) - started ))" "$handback_diagnostic" "$delete_attribution" <<'PY'
 import json, re, sys
 after_path, samples_path, verdict_path, cycles, mode, alive, elapsed = sys.argv[1:8]
 handback_diagnostic = len(sys.argv) > 8 and sys.argv[8] == 'yes'
+delete_attribution = len(sys.argv) > 9 and sys.argv[9] == 'yes'
 cycles = int(cycles)
 after = open(after_path, encoding='utf-8', errors='replace').read()
 out = []
 if handback_diagnostic:
     out.append('T4Diagnostic INFO hand-back attribution row (owner-authorized 2026-10-13, block-heavy mix); non-qualifying: '
+               'no line in this file passes or fails a T4 gate')
+if delete_attribution:
+    out.append('T4Diagnostic INFO KD delete attribution (owner-authorized 2026-10-13); non-qualifying: '
                'no line in this file passes or fails a T4 gate')
 def verdict(name, ok, reason):
     out.append(f"{name} {'PASS' if ok else 'FAIL'} {reason}")
@@ -524,6 +543,23 @@ if handback_diagnostic:
             if isinstance(holder, dict):
                 out.append(f"T4FileHolders INFO {holder.get('Category')}: files {holder.get('Files')}, error {holder.get('Error')}, "
                            f"holders {json.dumps(holder.get('Holders'))}")
+if delete_attribution:
+    diag = (result or {}).get('DeleteAttribution')
+    if not isinstance(diag, dict):
+        out.append('T4DeleteAttribution INFO diagnostic result missing')
+    else:
+        out.append(f"T4DeleteAttribution INFO corpus {diag.get('CorpusCount')}; deleted {diag.get('Deleted')}; "
+                   f"delete errors {json.dumps(diag.get('DeleteErrors'))}; errors {json.dumps(diag.get('Errors'))}; "
+                   f"identities {diag.get('CorpusIdentities')}")
+        for sample in diag.get('Samples') or []:
+            if isinstance(sample, dict):
+                out.append(f"T4DeleteAttributionSample INFO {sample.get('Label')}: SUfl live {sufl_live(sample)}")
+        for snapshot in diag.get('Snapshots') or []:
+            if isinstance(snapshot, dict):
+                out.append(f"T4DeleteAttributionSnapshot INFO {snapshot.get('Label')}: counts {json.dumps(snapshot.get('Counts'))}; "
+                           f"classification {snapshot.get('Classification')}; errors {json.dumps(snapshot.get('Errors'))}; "
+                           f"summary {snapshot.get('SummaryFile')}")
+        out.append('T4DeleteAttributionPurge INFO ' + json.dumps(diag.get('Purges')))
 verdict('T4VersionsReleased', stage(settled, 'liveVersions') == 0 and stage(settled, 'liveViews') == 0,
         f"after settle: live versions {stage(settled, 'liveVersions')}, views {stage(settled, 'liveViews')}, created {stage(settled, 'versionsCreated')}, "
         f"released {stage(settled, 'versionsReleased')}, views released {stage(settled, 'viewsReleased')}")

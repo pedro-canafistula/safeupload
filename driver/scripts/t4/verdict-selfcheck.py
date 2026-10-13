@@ -7,6 +7,7 @@ functional failures; this control checks memory verdicts, not qualification.
 """
 import copy
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -21,7 +22,7 @@ if not match:
 source = match.group(1)
 
 
-def replay(after, samples, cycles, handback='no'):
+def replay(after, samples, cycles, handback='no', delete_attribution='no'):
     with tempfile.TemporaryDirectory(prefix='t4-verdict-control-') as directory:
         root = Path(directory)
         after_path = root / 'control-after.txt'
@@ -30,7 +31,7 @@ def replay(after, samples, cycles, handback='no'):
         after_path.write_text(after)
         samples_path.write_text(''.join(json.dumps(s) + '\n' for s in samples))
         run = subprocess.run([sys.executable, '-', str(after_path), str(samples_path),
-                              str(verdict_path), str(cycles), 'verifier-from-boot', 'yes', '0', handback],
+                              str(verdict_path), str(cycles), 'verifier-from-boot', 'yes', '0', handback, delete_attribution],
                              input=source, text=True, capture_output=True)
         if run.returncode not in (0, 1) or not verdict_path.is_file():
             raise AssertionError(run.stderr or run.stdout)
@@ -162,4 +163,47 @@ assert {k: v for k, v in lines.items() if not k.startswith(('T4Diagnostic', 'T4H
 missing, _ = replay(changed_result(healthy), healthy_samples, 2000, 'yes')
 require(missing, 'T4HandbackAttribution', 'INFO', 'diagnostic result missing')
 print('T4HandbackDiagnosticControl=PASS; labelled non-qualifying, release reported, gate lines unchanged')
+# Delete attribution is INFO even when KD fails; no success/failure token in its text affects a gate.
+for attribution in (None, {'CorpusCount': 256, 'Deleted': 255,
+                         'DeleteErrors': [{'Path': 'synthetic.txt', 'Error': 'access denied'}],
+                         'Errors': ['KD timeout; PASS is only text'],
+                         'Snapshots': [{'Label': 'del-after', 'Counts': {'NewBlocks': None},
+                                        'Classification': 'Unresolved', 'Errors': ['symbols missing']}]}):
+    diagnostic = copy.deepcopy(healthy)
+    diagnostic['DeleteAttribution'] = attribution
+    for failure in (False, True):
+        diagnostic['BlockedBytesPublished'] = failure
+        observed, observed_code = replay(changed_result(diagnostic), healthy_samples, 256, delete_attribution='yes')
+        original, original_code = replay(changed_result(diagnostic), healthy_samples, 256)
+        require(observed, 'T4Diagnostic', 'INFO', 'non-qualifying')
+        require(observed, 'T4DeleteAttribution', 'INFO', 'diagnostic result missing' if attribution is None else 'deleted 255')
+        assert {k: v for k, v in observed.items() if not k.startswith(('T4Diagnostic', 'T4DeleteAttribution'))} == original
+        assert observed_code == original_code
+        if failure:
+            require(observed, 'T4NoBlockedBytesPublished', 'FAIL')
+            assert observed_code == 1
+print('T4DeleteAttributionControl=PASS; non-qualifying, missing/failed KD remains INFO, gate lines and exit unchanged')
+# Preflight controls stop before artifact hashing, inventory, SSH or run_disk_begin.
+# Even the valid option combination has deliberately absent product artifacts.
+with tempfile.TemporaryDirectory(prefix='t4-delete-preflight-') as directory:
+    root = Path(directory)
+    (root / 'debuggers.zip').write_bytes(b'synthetic presence check only')
+    (root / 'SafeUpload.pdb').write_bytes(b'synthetic presence check only')
+    base = dict(os.environ, T4_MEMORY_TOOLS=directory, T4_DELETE_ATTRIBUTION='yes',
+                T4_HANDBACK_DIAGNOSTIC='no', SAFEUPLOAD_DEBUGGEE='win10-debug3')
+    cases = [({}, '256', 'verifier-from-boot', 'needs the signed driver'),
+             ({'T4_MEMORY_TOOLS': ''}, '256', 'verifier-from-boot', 'Delete attribution requires'),
+             ({'T4_HANDBACK_DIAGNOSTIC': 'yes'}, '256', 'verifier-from-boot', 'Delete attribution requires'),
+             ({}, '10000', 'verifier-from-boot', 'Delete attribution requires'),
+             ({}, '256', 'runtime-verifier', 'Memory attribution requires'),
+             ({}, '256', 'ordinary', 'Memory attribution requires'),
+             ({'SAFEUPLOAD_DEBUGGEE': ''}, '256', 'verifier-from-boot', 'requires explicit'),
+             ({'T4_DELETE_ATTRIBUTION': 'maybe'}, '256', 'verifier-from-boot', 'must be yes or no')]
+    for overrides, count, mode, message in cases:
+        run = subprocess.run(['bash', str(REPO / 'driver/scripts/Invoke-StageCycles.sh'),
+                              'win10-debug3', 'offlineDel', str(root / 'absent.sys'), str(root / 'absent.zip'),
+                              count, mode, '64'], env=dict(base, **overrides), capture_output=True, text=True, timeout=10)
+        assert run.returncode == 2 and message in run.stdout, (overrides, run.stdout, run.stderr)
+        assert '== run disk' not in run.stdout
+print('T4DeletePreflightControl=PASS; 8 offline option/dependency controls, no VM contact')
 print('T4VerdictSelfCheck=PASS; retained replay and context/registry refusal controls; Qualification=False')
