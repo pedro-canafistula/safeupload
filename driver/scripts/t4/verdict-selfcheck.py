@@ -21,7 +21,7 @@ if not match:
 source = match.group(1)
 
 
-def replay(after, samples, cycles):
+def replay(after, samples, cycles, handback='no'):
     with tempfile.TemporaryDirectory(prefix='t4-verdict-control-') as directory:
         root = Path(directory)
         after_path = root / 'control-after.txt'
@@ -30,7 +30,7 @@ def replay(after, samples, cycles):
         after_path.write_text(after)
         samples_path.write_text(''.join(json.dumps(s) + '\n' for s in samples))
         run = subprocess.run([sys.executable, '-', str(after_path), str(samples_path),
-                              str(verdict_path), str(cycles), 'verifier-from-boot', 'yes', '0'],
+                              str(verdict_path), str(cycles), 'verifier-from-boot', 'yes', '0', handback],
                              input=source, text=True, capture_output=True)
         if run.returncode not in (0, 1) or not verdict_path.is_file():
             raise AssertionError(run.stderr or run.stdout)
@@ -138,4 +138,28 @@ lines, code = replay(changed_result(healthy), healthy_samples, 10000)
 require(lines, 'T4ContextsReleased', 'PASS')
 assert code == 0, 'The otherwise identical passing row must return success'
 print('T4VerdictExitStatusControl=PASS; contexts-only failure returns 1 despite embedded PASS')
+
+# Hand-back attribution diagnostic (non-qualifying): labelled, reports the release, never changes a gate line.
+diagnostic = copy.deepcopy(healthy)
+deleted_sample = copy.deepcopy(diagnostic['Purged']); deleted_sample['Label'] = 'handbacks-deleted'
+deleted_sample['TagSUfl']['NonPagedFrees'] += 1200
+repurged_sample = copy.deepcopy(deleted_sample); repurged_sample['Label'] = 'handbacks-deleted-purged'
+repurged_sample['TagSUfl']['NonPagedFrees'] += 300
+diagnostic['HandbackDiagnostic'] = {
+    'Holders': [{'Category': 'Handbacks', 'Files': 1500, 'Holders': [], 'Error': None},
+                {'Category': 'Journals', 'Files': 2000, 'Holders': [{'Pid': 4, 'App': 'x', 'Service': '', 'Type': 0}], 'Error': None}],
+    'HandbacksDeleted': 1500, 'HandbackDeleteFailures': 0, 'HandbackDeleteErrors': [], 'HandbacksLeft': 0,
+    'AfterDelete': deleted_sample, 'AfterDeletePurged': repurged_sample, 'Purge': copy.deepcopy(result['Purge'])}
+diagnostic_samples = healthy_samples + [deleted_sample, repurged_sample]
+lines, code = replay(changed_result(diagnostic), diagnostic_samples, 2000, 'yes')
+require(lines, 'T4Diagnostic', 'INFO', 'non-qualifying')
+require(lines, 'T4HandbackAttribution', 'INFO', 'released 1500); released per deleted hand-back 1.000')
+require(lines, 'T4FileHolders', 'INFO')
+undiagnosed, _ = replay(changed_result(diagnostic), diagnostic_samples, 2000)
+assert 'T4Diagnostic' not in undiagnosed and 'T4HandbackAttribution' not in undiagnosed
+assert {k: v for k, v in lines.items() if not k.startswith(('T4Diagnostic', 'T4Handback', 'T4FileHolders', 'T4Duration'))} == \
+    {k: v for k, v in undiagnosed.items() if k != 'T4Duration'}, 'The diagnostic must not change any gate line'
+missing, _ = replay(changed_result(healthy), healthy_samples, 2000, 'yes')
+require(missing, 'T4HandbackAttribution', 'INFO', 'diagnostic result missing')
+print('T4HandbackDiagnosticControl=PASS; labelled non-qualifying, release reported, gate lines unchanged')
 print('T4VerdictSelfCheck=PASS; retained replay and context/registry refusal controls; Qualification=False')

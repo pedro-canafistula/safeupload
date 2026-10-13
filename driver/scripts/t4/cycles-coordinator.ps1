@@ -6,6 +6,9 @@ outcome from outside the actor's private namespace:
 Every SampleEvery cycles (and at the start and the end) it records the driver's own pool use as Driver Verifier counts it, our pool
 tags, total nonpaged pool, the driver's stage-lifetime counters, the stage files on disk and the journal size.
 After the last cycle it waits for the stage worker to settle, stops the actor, and samples twice more 60 s apart (idle check).
+-BlockHeavy blocks three cycles in four instead of one. -HandbackDiagnostic (owner-authorized, non-qualifying, 2026-10-13) runs
+after the purged sample: it records which processes hold the kept files open, deletes only the hand-backs, and samples again
+before and after a second purge, to tell whether retained contexts follow those files' Windows lifetime or a driver reference.
 Results: C:\T4\cycles.jsonl (one line per cycle), C:\T4\samples.jsonl, C:\T4\result.json.
 #>
 param(
@@ -15,7 +18,9 @@ param(
     [string]$ActorTask = 't4-actor',
     [string]$Diagnostics = 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1',
     [switch]$RequireVerifierPool,
-    [switch]$MemoryDiagnostic
+    [switch]$MemoryDiagnostic,
+    [switch]$BlockHeavy,
+    [switch]$HandbackDiagnostic
 )
 $ErrorActionPreference = 'Stop'
 function Read-T4ControlText([string]$Path) {
@@ -138,7 +143,8 @@ function Get-Sample([int]$Cycle, [string]$Label) {
 function Invoke-T4MemoryPurge {
     # The coordinator runs as SYSTEM. Record all native statuses, including
     # failures, so a refused purge cannot prevent the final sample/report.
-    Add-Type -TypeDefinition @'
+    # The hand-back diagnostic purges a second time; compile the declarations once.
+    if (-not ('T4MemoryPurge' -as [type])) { Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public static class T4MemoryPurge {
@@ -150,7 +156,7 @@ public static class T4MemoryPurge {
     [DllImport("ntdll.dll", ExactSpelling = true)]
     public static extern int NtSetSystemInformation(int infoClass, ref int command, int length);
 }
-'@
+'@ }
     foreach ($privilege in 13, 5) {
         $previous = $false
         $status = [T4MemoryPurge]::RtlAdjustPrivilege($privilege, $true, $false, [ref]$previous)
@@ -165,6 +171,87 @@ public static class T4MemoryPurge {
         [pscustomobject]@{ Operation = 'NtSetSystemInformation'; Command = $command; NTSTATUS = $status;
             StatusHex = '0x' + $status.ToString('X8'); Succeeded = $status -ge 0 }
     }
+}
+
+function Get-T4FileHolders([string]$Category, [string[]]$Paths) {
+    # Restart Manager reports the processes that hold any of these files open (handles or mapped images); it opens no
+    # handle to the files and makes no driver call. Kernel-only references are invisible to it by design.
+    if (-not ('T4Holders' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class T4Holders {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RM_UNIQUE_PROCESS { public int dwProcessId; public System.Runtime.InteropServices.ComTypes.FILETIME ProcessStartTime; }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct RM_PROCESS_INFO {
+        public RM_UNIQUE_PROCESS Process;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string strAppName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string strServiceShortName;
+        public int ApplicationType; public uint AppStatus; public uint TSSessionId;
+        [MarshalAs(UnmanagedType.Bool)] public bool bRestartable;
+    }
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
+    public static extern int RmStartSession(out uint handle, int flags, System.Text.StringBuilder key);
+    [DllImport("rstrtmgr.dll")]
+    public static extern int RmEndSession(uint handle);
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
+    public static extern int RmRegisterResources(uint handle, uint fileCount, string[] files, uint appCount, IntPtr apps, uint serviceCount, IntPtr services);
+    [DllImport("rstrtmgr.dll")]
+    public static extern int RmGetList(uint handle, out uint needed, ref uint count, [In, Out] RM_PROCESS_INFO[] info, out uint rebootReasons);
+}
+'@
+    }
+    $row = [ordered]@{ Category = $Category; Files = $Paths.Count; Holders = @(); Error = $null }
+    if (-not $Paths.Count) { return [pscustomobject]$row }
+    $handle = [uint32]0; $key = New-Object Text.StringBuilder 64
+    $status = [T4Holders]::RmStartSession([ref]$handle, 0, $key)
+    if ($status -ne 0) { $row.Error = 'RmStartSession ' + $status; return [pscustomobject]$row }
+    try {
+        for ($offset = 0; $offset -lt $Paths.Count; $offset += 500) {
+            $batch = [string[]]($Paths[$offset..([math]::Min($offset + 499, $Paths.Count - 1))])
+            $status = [T4Holders]::RmRegisterResources($handle, [uint32]$batch.Count, $batch, 0, [IntPtr]::Zero, 0, [IntPtr]::Zero)
+            if ($status -ne 0) { $row.Error = 'RmRegisterResources ' + $status; return [pscustomobject]$row }
+        }
+        $needed = [uint32]0; $count = [uint32]0; $reasons = [uint32]0
+        $status = [T4Holders]::RmGetList($handle, [ref]$needed, [ref]$count, $null, [ref]$reasons)
+        if ($status -eq 234) {   # ERROR_MORE_DATA: size the array, then read
+            $count = $needed; $info = New-Object 'T4Holders+RM_PROCESS_INFO[]' $count
+            $status = [T4Holders]::RmGetList($handle, [ref]$needed, [ref]$count, $info, [ref]$reasons)
+            if ($status -eq 0) {
+                $row.Holders = @(for ($j = 0; $j -lt $count; ++$j) {
+                    [pscustomobject]@{ Pid = $info[$j].Process.dwProcessId; App = $info[$j].strAppName; Service = $info[$j].strServiceShortName; Type = $info[$j].ApplicationType }
+                })
+            }
+        }
+        if ($status -ne 0) { $row.Error = 'RmGetList ' + $status }
+    } finally { [void][T4Holders]::RmEndSession($handle) }
+    [pscustomobject]$row
+}
+
+function Invoke-T4HandbackDiagnostic {
+    $diagnostic = [ordered]@{}
+    $sets = [ordered]@{
+        Handbacks = @(Get-ChildItem -LiteralPath $handback -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+        Journals = @(Get-ChildItem -LiteralPath $journalDir -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+        Public = @(Get-ChildItem -LiteralPath $root -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+    }
+    $diagnostic.Holders = @(foreach ($category in $sets.Keys) {
+        try { Get-T4FileHolders $category $sets[$category] } catch { [pscustomobject]@{ Category = $category; Files = $sets[$category].Count; Holders = @(); Error = $_.Exception.Message } }
+    })
+    $deleted = 0; $failed = 0; $errors = @()
+    foreach ($path in $sets.Handbacks) {
+        try { [IO.File]::Delete($path); ++$deleted }
+        catch { ++$failed; if ($errors.Count -lt 5) { $errors += ($path + ': ' + $_.Exception.Message) } }
+    }
+    $diagnostic.HandbacksDeleted = $deleted; $diagnostic.HandbackDeleteFailures = $failed; $diagnostic.HandbackDeleteErrors = $errors
+    $diagnostic.HandbacksLeft = @(Get-ChildItem -LiteralPath $handback -File -Force -ErrorAction SilentlyContinue).Count
+    Start-Sleep -Seconds 30
+    $diagnostic.AfterDelete = Get-Sample $Cycles 'handbacks-deleted'
+    $diagnostic.Purge = @(Invoke-T4MemoryPurge)
+    Start-Sleep -Seconds 30
+    $diagnostic.AfterDeletePurged = Get-Sample $Cycles 'handbacks-deleted-purged'
+    $diagnostic
 }
 
 function Read-Public([string]$Path) {
@@ -210,6 +297,7 @@ try {
     for ($i = 1; $i -le $Cycles; ++$i) {
         $pattern = $patterns[($i - 1) % 4]
         $sensitive = ([math]::Floor(($i - 1) / 4) % 4) -eq 3          # one cycle in four, rotating through the patterns
+        if ($BlockHeavy) { $sensitive = ([math]::Floor(($i - 1) / 4) % 4) -ne 0 }   # three in four, same rotation
         $name = switch ($pattern) { 'resave' { 'same-' + ($i % 8) + '.txt' } 'new' { 'new-' + $i + '.txt' } 'replace' { 'rep-' + ($i % 8) + '.txt' } 'mapped' { 'map-' + ($i % 8) + '.txt' } }
         # A hexadecimal GUID can contain an eleven-digit valid CPF (diag2,
         # cycle 10). Encode its digits as letters so APPROVE fixtures cannot
@@ -280,6 +368,7 @@ try {
     $result.Purge = @(Invoke-T4MemoryPurge)
     Start-Sleep -Seconds 30   # NTFS delayed close after cache pressure
     $result.Purged = Get-Sample $Cycles 'purged'
+    if ($HandbackDiagnostic) { $result.HandbackDiagnostic = Invoke-T4HandbackDiagnostic }
 } catch {
     $result.Error = $_.Exception.Message
     $result.ErrorDetail = $_.Exception.ToString()

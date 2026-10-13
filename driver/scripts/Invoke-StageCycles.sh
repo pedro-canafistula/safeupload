@@ -15,6 +15,9 @@
 # T4_MEMORY_TOOLS may name a local directory containing debuggers.zip and the exact SafeUpload.pdb.
 # This adds read-only local-KD attribution and fixed-identity controls on the throwaway disk. It is diagnostic,
 # not milestone qualification; all original verdicts remain unchanged. No host debugger/configuration is installed.
+# T4_HANDBACK_DIAGNOSTIC=yes runs the owner-authorized (2026-10-13) hand-back attribution row: blocks three cycles in four, and after
+# the purged sample records which processes hold the kept files, deletes only the hand-backs and samples again before and after a
+# second purge. It requires boot Verifier and fewer than 10,000 cycles; its verdict is labelled non-qualifying and passes no T4 gate.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; cycles="${5:-10000}"; mode="${6:-runtime-verifier}"; sample_every="${7:-500}"
@@ -30,6 +33,13 @@ if [ -n "$memory_tools" ]; then
     }
     memory_enabled=yes
 fi
+handback_diagnostic=${T4_HANDBACK_DIAGNOSTIC:-no}
+case "$handback_diagnostic" in
+    no) ;;
+    yes) [ "$mode" = verifier-from-boot ] && [ "$cycles" -lt 10000 ] || {
+            echo 'The hand-back diagnostic requires boot Verifier and fewer than 10,000 cycles'; exit 2; } ;;
+    *) echo 'T4_HANDBACK_DIAGNOSTIC must be yes or no'; exit 2 ;;
+esac
 # verifier-from-boot: the same Verifier flags (0x13B) configured persistently before the install reboot, so pool tracking covers the
 # driver from its first allocation and the agent reaches Ready through the normal boot path (runtime-verifier's fltmc load after
 # boot is a late attach, which never reports Ready).
@@ -311,13 +321,14 @@ $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccou
 $coordinatorArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t4-cycles-coordinator.ps1" -Cycles __CYCLES__ -SampleEvery __SAMPLE_EVERY__'
 if ('__MODE__' -in 'runtime-verifier', 'verifier-from-boot') { $coordinatorArgs += ' -RequireVerifierPool' }
 if ('__MEMORY__' -eq 'yes') { $coordinatorArgs += ' -MemoryDiagnostic' }
+if ('__HANDBACK__' -eq 'yes') { $coordinatorArgs += ' -BlockHeavy -HandbackDiagnostic' }
 $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $coordinatorArgs
 Register-ScheduledTask -TaskName 't4-coordinator' -Principal $principal -Action $coordinator -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 't4-coordinator'
 'COORDINATOR_STARTED=True'
 PS
 )
-setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}
+setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}; setup_ps=${setup_ps//__HANDBACK__/$handback_diagnostic}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 if [ "$mode" != ordinary ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
@@ -386,12 +397,16 @@ else
     : > "$ev/$tag-after.txt"
 fi
 
-python3 - "$ev/$tag-after.txt" "$ev/$tag-samples.jsonl" "$ev/$tag-verdict.txt" "$cycles" "$mode" "$alive" "$(( $(date +%s) - started ))" <<'PY'
+python3 - "$ev/$tag-after.txt" "$ev/$tag-samples.jsonl" "$ev/$tag-verdict.txt" "$cycles" "$mode" "$alive" "$(( $(date +%s) - started ))" "$handback_diagnostic" <<'PY'
 import json, re, sys
 after_path, samples_path, verdict_path, cycles, mode, alive, elapsed = sys.argv[1:8]
+handback_diagnostic = len(sys.argv) > 8 and sys.argv[8] == 'yes'
 cycles = int(cycles)
 after = open(after_path, encoding='utf-8', errors='replace').read()
 out = []
+if handback_diagnostic:
+    out.append('T4Diagnostic INFO hand-back attribution row (owner-authorized 2026-10-13, block-heavy mix); non-qualifying: '
+               'no line in this file passes or fails a T4 gate')
 def verdict(name, ok, reason):
     out.append(f"{name} {'PASS' if ok else 'FAIL'} {reason}")
 m = re.search(r'^RESULT=(.*)$', after, re.M)
@@ -488,6 +503,27 @@ if cycles >= 10000:
     verdict('T4ContextsReleased', contexts_ok, contexts_reason)
 else:
     out.append(f"T4ContextsReleased INFO check {'PASS' if contexts_ok else 'FAIL'}; {contexts_reason}")
+if handback_diagnostic:
+    diag = (result or {}).get('HandbackDiagnostic')
+    if not isinstance(diag, dict):
+        out.append('T4HandbackAttribution INFO diagnostic result missing')
+    else:
+        deleted_live = sufl_live(diag.get('AfterDelete')); repurged_live = sufl_live(diag.get('AfterDeletePurged'))
+        deleted = diag.get('HandbacksDeleted')
+        def delta(a, b):
+            return a - b if isinstance(a, int) and isinstance(b, int) else None
+        released = delta(purged_live, repurged_live)
+        per = f"{released / deleted:.3f}" if isinstance(released, int) and isinstance(deleted, int) and deleted else 'n/a'
+        out.append(f"T4HandbackAttribution INFO SUfl live start {start_live}, purged {purged_live} (above start {delta(purged_live, start_live)}); "
+                   f"hand-backs deleted {deleted}, delete failures {diag.get('HandbackDeleteFailures')}, left {diag.get('HandbacksLeft')}; "
+                   f"after delete {deleted_live} (released {delta(purged_live, deleted_live)}); after second purge {repurged_live} "
+                   f"(released {released}); released per deleted hand-back {per}; delete errors {json.dumps(diag.get('HandbackDeleteErrors'))}")
+        second = diag.get('Purge') or []
+        out.append('T4HandbackPurge INFO second purge statuses ' + json.dumps([(r.get('Operation'), r.get('StatusHex')) for r in second if isinstance(r, dict)]))
+        for holder in diag.get('Holders') or []:
+            if isinstance(holder, dict):
+                out.append(f"T4FileHolders INFO {holder.get('Category')}: files {holder.get('Files')}, error {holder.get('Error')}, "
+                           f"holders {json.dumps(holder.get('Holders'))}")
 verdict('T4VersionsReleased', stage(settled, 'liveVersions') == 0 and stage(settled, 'liveViews') == 0,
         f"after settle: live versions {stage(settled, 'liveVersions')}, views {stage(settled, 'liveViews')}, created {stage(settled, 'versionsCreated')}, "
         f"released {stage(settled, 'versionsReleased')}, views released {stage(settled, 'viewsReleased')}")
