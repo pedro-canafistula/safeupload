@@ -168,7 +168,17 @@ for attribution in (None, {'CorpusCount': 256, 'Deleted': 255,
                          'DeleteErrors': [{'Path': 'synthetic.txt', 'Error': 'access denied'}],
                          'Errors': ['KD timeout; PASS is only text'],
                          'Snapshots': [{'Label': 'del-after', 'Counts': {'NewBlocks': None},
-                                        'Classification': 'Unresolved', 'Errors': ['symbols missing']}]}):
+                                        'Classification': 'Unresolved', 'Errors': ['symbols missing']}]},
+                        {'CorpusCount': 256, 'Deleted': 256, 'DeleteErrors': [],
+                         'Snapshots': [{'Label': 'del-after',
+                                        'Sessions': [{'Label': 'del-after-logical', 'Finished': False,
+                                                      'Errors': ['Numeric expression missing; timeout']},
+                                                     {'Label': 'del-after-poolfind', 'Finished': True}],
+                                        'Counts': {'NewBlocks': 9, 'LogicalOutstanding': None,
+                                                   'Anchors': 0, 'ParsedContexts': 7,
+                                                   'ObservedVerifierSUflAllocations': 3},
+                                        'Classification': 'Unresolved',
+                                        'Errors': ['logical session failed; other sessions retained']}]}):
     diagnostic = copy.deepcopy(healthy)
     diagnostic['DeleteAttribution'] = attribution
     for failure in (False, True):
@@ -176,13 +186,13 @@ for attribution in (None, {'CorpusCount': 256, 'Deleted': 255,
         observed, observed_code = replay(changed_result(diagnostic), healthy_samples, 256, delete_attribution='yes')
         original, original_code = replay(changed_result(diagnostic), healthy_samples, 256)
         require(observed, 'T4Diagnostic', 'INFO', 'non-qualifying')
-        require(observed, 'T4DeleteAttribution', 'INFO', 'diagnostic result missing' if attribution is None else 'deleted 255')
+        require(observed, 'T4DeleteAttribution', 'INFO', 'diagnostic result missing' if attribution is None else f"deleted {attribution['Deleted']}")
         assert {k: v for k, v in observed.items() if not k.startswith(('T4Diagnostic', 'T4DeleteAttribution'))} == original
         assert observed_code == original_code
         if failure:
             require(observed, 'T4NoBlockedBytesPublished', 'FAIL')
             assert observed_code == 1
-print('T4DeleteAttributionControl=PASS; non-qualifying, missing/failed KD remains INFO, gate lines and exit unchanged')
+print('T4DeleteAttributionControl=PASS; non-qualifying, missing/failed/partially successful KD remains INFO, gate lines and exit unchanged')
 # Preflight controls stop before artifact hashing, inventory, SSH or run_disk_begin.
 # Even the valid option combination has deliberately absent product artifacts.
 with tempfile.TemporaryDirectory(prefix='t4-delete-preflight-') as directory:

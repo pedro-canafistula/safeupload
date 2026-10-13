@@ -346,9 +346,9 @@ grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator 
 if [ "$mode" != ordinary ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
 
 # The earlier run's median was 2.2 s per cycle. Allow 4 s each on the fast run disk, plus settle and idle samples, at least an hour.
-# Six extra KD sessions at 180 s, bounded termination, and three 30 s waits.
+# Eighteen extra KD sessions at 180 s + up to 10 s termination each, and three 30 s waits.
 extra_diagnostic_seconds=0
-[ "$delete_attribution" = yes ] && extra_diagnostic_seconds=1230
+[ "$delete_attribution" = yes ] && extra_diagnostic_seconds=3510
 limit=${T4_DEADLINE_SECONDS:-$(( cycles * 4 + 600 + extra_diagnostic_seconds ))}
 [[ "$limit" =~ ^[0-9]+$ ]] || { echo 'Invalid T4 deadline'; exit 2; }
 [ "$limit" -ge 3600 ] || limit=3600

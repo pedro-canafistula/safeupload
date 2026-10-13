@@ -136,6 +136,9 @@ function Invoke-T4MemoryTeardown {
     # Called only after the original T4 observations/verdict have been exported.
     # This is additional attribution, never a way to make the cleanup row pass.
     $c = & 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query counters
+    # This pipe belongs to the service and will disappear when it stops. Retain the entire reply,
+    # including lastUnloadVeto/lastUnloadStatus if that service build exposes them.
+    Write-T4DeleteEvidence (Join-Path $script:T4MemoryRoot 'output\teardown-counters.json') ($c | ConvertTo-Json -Depth 12)
     foreach ($key in 'liveVersions','liveViews','tombstones','waitingVersions') {
         if ($null -eq $c.stageWorker.$key -or $c.stageWorker.$key -ne 0) {
             throw ('Diagnostic unload refused: outstanding ' + $key)
@@ -150,6 +153,7 @@ function Invoke-T4MemoryTeardown {
     $service.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,
         [TimeSpan]::FromSeconds(30))
     $out = Join-Path $script:T4MemoryRoot 'output'
+    $beforeVeto = Save-T4UnloadVeto 'unload-veto-before' $c
     $unload = Start-Process -FilePath fltmc.exe -ArgumentList 'unload SafeUpload' -PassThru -NoNewWindow `
         -RedirectStandardOutput (Join-Path $out 'unload.stdout.txt') `
         -RedirectStandardError (Join-Path $out 'unload.stderr.txt')
@@ -157,10 +161,18 @@ function Invoke-T4MemoryTeardown {
     if (-not $unload.WaitForExit(60000)) {
         # Terminating the caller does not force kernel unload. The host still restores the run disk.
         $unload.Kill()
+        $null = $unload.WaitForExit(5000)
+        $afterVeto = Save-T4UnloadVeto 'unload-veto-after' $null
+        Write-T4DeleteEvidence (Join-Path $out 'unload.result.json') (@{ Finished=$false; ExitCode=$null; Before=$beforeVeto; After=$afterVeto } | ConvertTo-Json -Depth 12)
         throw 'Voluntary filter unload exceeded the diagnostic deadline.'
     }
     $unload.Refresh()
-    if ($unload.ExitCode -ne 0) { throw 'Voluntary filter unload was refused.' }
+    $afterVeto = $null
+    if ($unload.ExitCode -ne 0) { $afterVeto = Save-T4UnloadVeto 'unload-veto-after' $null }
+    Write-T4DeleteEvidence (Join-Path $out 'unload.result.json') (@{ Finished=$true; ExitCode=$unload.ExitCode; Before=$beforeVeto; After=$afterVeto } | ConvertTo-Json -Depth 12)
+    if ($unload.ExitCode -ne 0) {
+        throw ('Voluntary filter unload was refused. Last recorded veto: ' + ($afterVeto.Veto | ConvertTo-Json -Compress) + '; inspect unload-veto-after evidence.')
+    }
     Start-Sleep -Seconds 5
     Save-T4MemorySnapshot 'teardown-after' -AllowUnloaded
     'T4MemoryTeardown=PASS'
@@ -250,8 +262,106 @@ function Get-T4KdSection([string]$Text, [string]$Name) {
 function Get-T4KdErrors([string]$Text) {
     # Retain the raw output too: this recognizes common KD failures, not every possible extension message.
     @($Text -split '\r?\n' | Where-Object {
-        $_ -match '(?i)could not|couldn.t|unable to|cannot|can.t|read error|memory access error|syntax error|invalid (address|parameter)|type information missing|no export|not found|not supported|failed|terminating - searched|\?{8}'
+        $_ -notmatch '^\s*Pool Allocations Failed\s+0x[0-9a-f]+\s*$' -and
+        $_ -match '(?i)numeric expression missing|error reading|could not|couldn.t|unable to|cannot|can.t|read error|memory access error|syntax error|invalid (address|parameter)|type information missing|no export|not found|not supported|failed|terminating - searched|\?{8}'
     })
+}
+
+function ConvertFrom-T4UnloadVeto([string]$Text) {
+    # StageStream.c packs Reason in the high DWORD and NTSTATUS in the low DWORD.
+    # Read that value, never invoke SafeUploadStageGetUnloadStatus in the target.
+    $section = Get-T4KdSection $Text 'UNLOAD_VETO'
+    $m = [regex]::Match($section, '(?m)^\s*[0-9a-fA-F`]{8,17}\s+([0-9a-fA-F`]{16,17})\s*$')
+    if (-not $m.Success) { return $null }
+    $packed = ConvertTo-T4KdAddress $m.Groups[1].Value
+    if (-not $packed) { return $null }
+    $reason = [Convert]::ToUInt32($packed.Substring(0,8),16)
+    $names = @('NONE','CLIENT','FENCE','STAGE_DRAIN','STAGE_OBJECTS','FENCE_COMMIT','STAGE_RENAME','STAGE_DISCARD') # Protocol.h
+    [pscustomobject]@{ Reason=$reason; ReasonName=$(if ($reason -lt $names.Count) { $names[$reason] } else { 'UNRECOGNIZED' });
+        NTSTATUS=('0x' + $packed.Substring(8,8)); Packed=('0x' + $packed); LastRecordedOnly=$true; NonAtomic=$true }
+}
+
+function Save-T4UnloadVeto([string]$Label, $Counters) {
+    $result = [ordered]@{ Label=$Label; Veto=$null; Counters=$Counters; Session=$null; Errors=@(); NonQualifying=$true }
+    try {
+        # Diagnostics cannot be queried after Stop-Service. Private-symbol reads also cover builds
+        # whose diagnostics JSON omits the ABI's LastUnloadVeto/LastUnloadStatus fields.
+        $body = @'
+.echo T4_UNLOAD_VETO_BEGIN
+dq SafeUpload!StageLastUnloadVeto L1
+.echo T4_UNLOAD_VETO_END
+.catch { dd SafeUpload!StageStreamCount L1 }
+.catch { dd SafeUpload!StageFileObjects L1 }
+'@
+        $result.Session = Invoke-T4DeleteKdSession $Label $body
+        $result.Errors += @($result.Session.Errors)
+        if ($result.Session.KernelAttached -and $result.Session.PrivateSymbols -and (Test-Path -LiteralPath $result.Session.Stdout)) {
+            $result.Veto = ConvertFrom-T4UnloadVeto ([IO.File]::ReadAllText($result.Session.Stdout))
+        }
+        if (-not $result.Veto) { $result.Errors += 'Last unload veto unavailable; not equivalent to NONE.' }
+    } catch { $result.Errors += $_.Exception.Message }
+    try { Write-T4DeleteEvidence (Join-Path $script:T4MemoryRoot ('output\' + $Label + '.summary.json')) ($result | ConvertTo-Json -Depth 12) }
+    catch { $result.Errors += $_.Exception.Message }
+    [pscustomobject]$result
+}
+
+function ConvertFrom-T4KdTelemetry([string]$Text) {
+    # These are separate, non-atomic observations, NEVER a substitute for !poolfind's address census.
+    # poolused is decimal; verifier addresses, lengths and counters are explicitly hexadecimal.
+    $poolUsed = @(); $allocations = @(); $stats = $null; $filters = @(); $unparsed = @()
+    foreach ($line in ($Text -split '\r?\n')) {
+        $m = [regex]::Match($line, '^\s*(SUfl|SwUr)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)')
+        if ($m.Success) {
+            # Decimal preserves the real SwUr underflow value 18446744073709551614 without rounding.
+            $n = @(2..5 | ForEach-Object { [decimal]::Parse($m.Groups[$_].Value,[Globalization.CultureInfo]::InvariantCulture) })
+            $poolUsed += [pscustomobject]@{ Tag=$m.Groups[1].Value; NonPagedAllocs=$n[0]; NonPagedBytes=$n[1];
+                PagedAllocs=$n[2]; PagedBytes=$n[3]; Raw=$line; NonAtomic=$true }
+        } elseif ($line -match '^\s*(SUfl|SwUr)\s') { $unparsed += $line }
+    }
+    $driver = [regex]::Match($Text, '(?ms)^nt!_VF_TARGET_DRIVER\s+0x[0-9a-f`]+:\s+SafeUpload\.sys \(Loaded\)\s*\r?\n(.*?)(?=^nt!_VF_TARGET_DRIVER|^T4_|\z)')
+    if ($driver.Success) {
+        $body = $driver.Groups[1].Value
+        $a = [regex]::Match($body, 'Current Pool Allocations:\s*\( 0x([0-9a-f]+) / 0x([0-9a-f]+) \)')
+        $b = [regex]::Match($body, 'Current Pool Bytes:\s*\( 0x([0-9a-f]+) / 0x([0-9a-f]+) \)')
+        if ($a.Success -and $b.Success) {
+            $stats = [pscustomobject]@{ NonPagedAllocs=[Convert]::ToInt64($a.Groups[1].Value,16); PagedAllocs=[Convert]::ToInt64($a.Groups[2].Value,16);
+                NonPagedBytes=[Convert]::ToInt64($b.Groups[1].Value,16); PagedBytes=[Convert]::ToInt64($b.Groups[2].Value,16) }
+        }
+        foreach ($line in ($body -split '\r?\n')) {
+            $m = [regex]::Match($line, '^\s*0x([0-9a-f`]+)\s+0x([0-9a-f]+)\s+(\S{4})\s+0x([0-9a-f`]+)\s*(.*?)\s*$')
+            if ($m.Success) {
+                $allocations += [pscustomobject]@{ Address=ConvertTo-T4KdAddress $m.Groups[1].Value;
+                    Size=[Convert]::ToInt64($m.Groups[2].Value,16); Tag=$m.Groups[3].Value;
+                    Caller=ConvertTo-T4KdAddress $m.Groups[4].Value; Symbol=$m.Groups[5].Value }
+            } elseif ($line -match '^\s*0x[0-9a-f`]+\s+0x') { $unparsed += $line }
+        }
+    }
+    # Bound each filter by the next FLT_FILTER at the same indentation. Historical files have no markers.
+    foreach ($f in [regex]::Matches($Text, '(?ms)^(?<indent>[ \t]*)FLT_FILTER: (?<address>[0-9a-f`]+) "SafeUpload"[^\r\n]*\r?\n(?<body>.*?)(?=^\k<indent>FLT_FILTER:|^T4_|\z)')) {
+        $body=$f.Groups['body'].Value; $usage=[ordered]@{}; $objects=@(); $registrations=@()
+        foreach ($m in [regex]::Matches($body, '(?m)^\s*(References to FLT_\w+|Allocations of FLT_\w+|Open files)\s*:\s*(\d+)\s*$')) {
+            $usage[$m.Groups[1].Value.Trim()]=[long]$m.Groups[2].Value
+        }
+        foreach ($m in [regex]::Matches($body, '(?m)^\s*FLT_VERIFIER_OBJECT:\s*([0-9a-f`]+)\s*\r?\n\s*Object:\s*([0-9a-f`]+)\s+Type:\s*(.*?)\s+RefCount:\s*([0-9a-f]+)\s*$')) {
+            $objects += [pscustomobject]@{ Node=ConvertTo-T4KdAddress $m.Groups[1].Value; Object=ConvertTo-T4KdAddress $m.Groups[2].Value;
+                Type=$m.Groups[3].Value; RefCountHex=$m.Groups[4].Value; RefCount=[Convert]::ToInt64($m.Groups[4].Value,16) }
+        }
+        foreach ($m in [regex]::Matches($body, '(?ms)^\s*ALLOCATE_CONTEXT_NODE:\s*([0-9a-f`]+)\s+\[([0-9a-f]+)\]\s+(\w+)\s*\r?\n(.*?)(?=^\s*---|^\s*ALLOCATE_CONTEXT_NODE:|\z)')) {
+            $entry=$m.Groups[4].Value
+            $type=[regex]::Match($entry,'ContextType\s*:\s*\[([0-9a-f]+)\]\s+(\w+)')
+            $size=[regex]::Match($entry,'(?m)^\s*Size\s*:\s*(\d+)\s*$')
+            $tag=[regex]::Match($entry,'(?m)^\s*PoolTag\s*:\s*(\S{4})\s*$')
+            if ($type.Success -and $size.Success -and $tag.Success) {
+                $registrations += [pscustomobject]@{ Address=ConvertTo-T4KdAddress $m.Groups[1].Value; Allocation=$m.Groups[3].Value;
+                    ContextType=[Convert]::ToInt32($type.Groups[1].Value,16); Name=$type.Groups[2].Value; Size=[int]$size.Groups[1].Value; Tag=$tag.Groups[1].Value }
+            }
+        }
+        $filters += [pscustomobject]@{ Address=ConvertTo-T4KdAddress $f.Groups['address'].Value; ObjectUsage=$usage;
+            VerifierObjects=$objects; ContextRegistrations=$registrations }
+    }
+    [pscustomobject]@{ PoolUsed=$poolUsed; VerifierDriverStats=$stats; VerifierAllocations=$allocations; Filters=$filters;
+        VerifierSectionComplete=[bool](Get-T4KdSection $Text 'VERIFIER'); FilterSectionComplete=[bool](Get-T4KdSection $Text 'FILTER');
+        UnparsedRows=$unparsed; NonAtomic=$true }
 }
 
 function ConvertFrom-T4DeletePass1([string]$Text) {
@@ -299,6 +409,7 @@ function ConvertFrom-T4DeletePass1([string]$Text) {
     if (-not $pool) { $errors += 'Pool scan section absent or incomplete.' }
     if ($unparsed.Count) { $errors += 'Unrecognized SUfl pool rows; census incomplete.' }
     [pscustomobject]@{ Blocks=@($blocks.Values | Sort-Object Address); Layout=$layout; Anchors=$anchors; Logical=$logical; AnchorWalkComplete=$anchorWalkComplete;
+        Telemetry=ConvertFrom-T4KdTelemetry $Text;
         PoolComplete=([bool]$pool -and $pool -match '(?i)(Searching NonPaged pool|Scanning.*pool.*Tag: SUfl)' -and $unparsed.Count -eq 0 -and @(Get-T4KdErrors $pool).Count -eq 0);
         UnparsedPoolRows=$unparsed; Errors=$errors }
 }
@@ -323,14 +434,13 @@ function Get-T4DeleteFileCommands {
     # $t6 is a FILE_OBJECT candidate. Writer/SOP tokens are non-owning and may already be stale.
     @'
 .printf "T4_FILE_OBJECT %p\n", @$t6
-!fileobj @$t6
-!object @$t6 1
-dt nt!_FILE_OBJECT @$t6
-dt nt!_FSRTL_ADVANCED_FCB_HEADER @@c++(((nt!_FILE_OBJECT*)@$t6)->FsContext)
-dt ntfs!_SCB @@c++(((nt!_FILE_OBJECT*)@$t6)->FsContext)
-r? $t7 = ((nt!_FILE_OBJECT*)@$t6)->SectionObjectPointer
-.if (@$t7 != 0) { dt nt!_SECTION_OBJECT_POINTERS @$t7; .if (@@c++(@$t7->DataSectionObject) != 0) { !ca @@c++(@$t7->DataSectionObject) }; .if (@@c++(@$t7->SharedCacheMap) != 0) { dt nt!_SHARED_CACHE_MAP @@c++(@$t7->SharedCacheMap) } }
-!fltkd.streamlist @$t6 0x3f 1
+.catch { !fileobj @$t6 }
+.catch { !object @$t6 1 }
+.catch { dt nt!_FILE_OBJECT @$t6 }
+.catch { dt nt!_FSRTL_ADVANCED_FCB_HEADER @@c++(((nt!_FILE_OBJECT*)@$t6)->FsContext) }
+.catch { dt ntfs!_SCB @@c++(((nt!_FILE_OBJECT*)@$t6)->FsContext) }
+.catch { r? $t7 = ((nt!_FILE_OBJECT*)@$t6)->SectionObjectPointer; .if (@@c++(@$t7 != 0)) { dt nt!_SECTION_OBJECT_POINTERS @$t7; .if (@@c++(@$t7->DataSectionObject != 0)) { !ca @@c++(@$t7->DataSectionObject) }; .if (@@c++(@$t7->SharedCacheMap != 0)) { dt nt!_SHARED_CACHE_MAP @@c++(@$t7->SharedCacheMap) } } }
+.catch { !fltkd.streamlist @$t6 0x3f 1 }
 '@
 }
 
@@ -338,47 +448,94 @@ function Get-T4DeleteSopCommands {
     # $t7 is a symbol-resolved SOP candidate; none of these pointers confers ownership.
     $file = (Get-T4DeleteFileCommands) -replace '\r?\n', '; '
     $commands = @'
-dt nt!_SECTION_OBJECT_POINTERS @$t7
-.if (@@c++(@$t7->SharedCacheMap) != 0) { dt nt!_SHARED_CACHE_MAP @@c++(@$t7->SharedCacheMap) }
-.if (@@c++(@$t7->DataSectionObject) != 0) { .printf "T4_CONTROL_AREA %p\n", @@c++(@$t7->DataSectionObject); !ca @@c++(@$t7->DataSectionObject); r? $t6 = (nt!_FILE_OBJECT*)(((nt!_CONTROL_AREA*)@$t7->DataSectionObject)->FilePointer.Value & ~(unsigned __int64)0xf); .if (@$t6 != 0) { __FILE__ } }
+.catch { dt nt!_SECTION_OBJECT_POINTERS @$t7 }
+.catch { .if (@@c++(@$t7->SharedCacheMap != 0)) { dt nt!_SHARED_CACHE_MAP @@c++(@$t7->SharedCacheMap) } }
+.catch { .if (@@c++(@$t7->DataSectionObject != 0)) { .printf "T4_CONTROL_AREA %p\n", @@c++(@$t7->DataSectionObject); !ca @@c++(@$t7->DataSectionObject); r? $t6 = (nt!_FILE_OBJECT*)(((nt!_CONTROL_AREA*)@$t7->DataSectionObject)->FilePointer.Value & ~(unsigned __int64)0xf); .if (@@c++(@$t6 != 0)) { __FILE__ } } }
 '@
     $commands.Replace('__FILE__',$file)
 }
 
-function Get-T4DeletePass1Commands {
-    $base = (Get-T4MemoryCommands) -replace '(?ms)^\.echo T4_MEMORY_END\s*\r?\nq\s*$', ''
-    $identity = (Get-T4DeleteIdentityCommands) -replace '\r?\n', '; '
-    $file = (Get-T4DeleteFileCommands) -replace '\r?\n', '; '
-    $extra = @'
-!fltkd.help
+
+# Command audit (Microsoft debugger command reference, 2026-10-13):
+# https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/c---numbers-and-operators
+# /-if, /-for: conditions use the default evaluator; wrap the WHOLE condition in @@c++.
+# /r--registers-, /pseudo-register-syntax: r? preserves C++ types; only $t0..$t19 are assigned.
+# /-printf: arguments use MASM unless explicitly wrapped; %p has no modifiers, %I64x preserves IDs.
+# /-catch: a read/type error skips that block, then resumes outside it; not a target exception handler.
+# /-----------------------a---run-script-file-: $$>< condenses lines to one command program.
+# /-poolfind (0=nonpaged), /-pool (2=one block's header), /-poolused (2=sort nonpaged), /-verifier (3=read lists).
+# /dt--display-type-, /d--da--db--dc--dd--dd--df--dp--dq--du--dw--dw--dyb--dyd--display-memor:
+# dt accepts type/address, dd/dq L1 reads one item; /-fileobj, /-object, /-ca only display objects.
+# FltMgr flags/detail verified against THIS build's !fltkd.help in m2t4delattr1 pass1 lines 1262-1380.
+# /-reload--reload-module-, /lm--list-loaded-modules-, /version--show-debugger-version-, /q--qq--quit-:
+# symbol reloads are debugger-side; local KD q exits the debugger. No calls, writes or breakpoints.
+function Get-T4DeleteSessionCommands([string]$Label, [string]$Body) {
+    if ($Label -notmatch '^[a-z0-9-]{1,80}$') { throw 'Invalid KD evidence label.' }
+    $marker = 'T4_KD_' + $Label.Replace('-','_').ToUpperInvariant() + '_END'
+    # A separate process is the isolation boundary even if KD cannot recover a malformed program.
+    # Each body section keeps its own evidence markers INSIDE .catch: an error cannot fabricate completion.
+    (@('.expr /s masm', '.reload /f nt', '.reload /f fltmgr.sys', '.reload /f SafeUpload.sys',
+        'lmvm SafeUpload', '.catch {', $Body, '}', ('.echo ' + $marker), 'q') -join "`r`n")
+}
+
+function Get-T4DeletePass1Commands([ValidateSet('layout','telemetry','logical','anchors','poolfind')][string]$Block) {
+    switch ($Block) {
+        'layout' { @'
 dt fltmgr!_CONTEXT_NODE
 dt nt!_POOL_HEADER
 .printf "T4_LAYOUT %x %x %x\n", @@c++(sizeof(nt!_POOL_HEADER)), @@c++(sizeof(fltmgr!_CONTEXT_NODE)), @@c++(sizeof(SafeUpload!_SAFEUPLOAD_STREAM_CONTEXT))
+.catch { dt fltmgr!_ALLOCATE_CONTEXT_HEADER }
+.catch { dt fltmgr!_ALLOCATE_CONTEXT_LOOKASIDE }
+'@ }
+        'telemetry' {
+            # Preserve all original memory commands, with local catches so an extension failure does not hide its peers.
+            $base = (Get-T4MemoryCommands) -split '\r?\n' | Where-Object { $_ -notmatch '^q$|^\.echo T4_MEMORY|^\.reload|^lmvm' }
+            @($base | ForEach-Object {
+                if ($_ -match '^!verifier ') { '.catch { .echo T4_VERIFIER_BEGIN; ' + $_ + '; .echo T4_VERIFIER_END }' }
+                else { '.catch { ' + $_ + ' }' }
+            }) -join "`r`n"
+            @'
+.catch { !fltkd.help }
+.echo T4_FILTER_BEGIN
 r? $t0 = ((SafeUpload!_SAFEUPLOAD_DATA*)&SafeUpload!SafeUploadData)->Filter
 !fltkd.filter @$t0 0x1f 1
+.echo T4_FILTER_END
+'@
+        }
+        'logical' { @'
+r? $t0 = ((SafeUpload!_SAFEUPLOAD_DATA*)&SafeUpload!SafeUploadData)->Filter
 .echo T4_LOGICAL_BEGIN
 r? $t11 = (fltmgr!_ALLOCATE_CONTEXT_LOOKASIDE*)((fltmgr!_FLT_FILTER*)@$t0)->SupportedContexts[3]
-.if (@@c++(@$t11->ContextType) == 8 && @@c++(@$t11->AllocationType) == 1) { dt nt!_GENERAL_LOOKASIDE @@c++(&@$t11->NonPaged.L); .printf "T4_LOGICAL %x %x %x %x\n", @@c++(@$t11->NonPaged.L.TotalAllocates), @@c++(@$t11->NonPaged.L.TotalFrees), @@c++(@$t11->NonPaged.L.AllocateMisses), @@c++(@$t11->NonPaged.L.FreeMisses) }
+.if (@@c++(@$t11 != 0 && @$t11->ContextType == 8 && @$t11->AllocationType == 1)) { dt nt!_GENERAL_LOOKASIDE @@c++(&@$t11->NonPaged.L); .printf "T4_LOGICAL %x %x %x %x\n", @@c++(@$t11->NonPaged.L.TotalAllocates), @@c++(@$t11->NonPaged.L.TotalFrees), @@c++(@$t11->NonPaged.L.AllocateMisses), @@c++(@$t11->NonPaged.L.FreeMisses) }
 .echo T4_LOGICAL_END
+
+'@ }
+        'anchors' {
+            $identity = (Get-T4DeleteIdentityCommands) -replace '\r?\n', '; '
+            $file = (Get-T4DeleteFileCommands) -replace '\r?\n', '; '
+            $body = @'
 .echo T4_ANCHOR_COUNT_BEGIN
 dd SafeUpload!StageAnchorCount L1
 .echo T4_ANCHOR_COUNT_END
 dt nt!_LIST_ENTRY SafeUpload!StageAnchorList
 r? $t1 = ((nt!_LIST_ENTRY*)&SafeUpload!StageAnchorList)->Flink
 r $t2 = 0
-.for (; (@$t1 != SafeUpload!StageAnchorList) && (@$t1 != 0) && (@$t2 < 0n64); r $t2 = @$t2 + 1) { .echo T4_ANCHOR_BEGIN; r? $t3 = (SafeUpload!_STAGE_ANCHOR*)((char*)@$t1 - (unsigned __int64)&((SafeUpload!_STAGE_ANCHOR*)0)->Link); dt SafeUpload!_STAGE_ANCHOR @$t3; .printf "T4_ANCHOR_OWNER %p %p\n", @@c++(@$t3->Handle), @@c++(@$t3->Object); r? $t4 = @$t3->Entry; .if (@$t4 != 0) { __IDENTITY__ }; r? $t6 = @$t3->Object; .if (@$t6 != 0) { __FILE__ }; .echo T4_ANCHOR_END; r? $t1 = @$t1->Flink }
+.for (; @@c++(@$t1 != &SafeUpload!StageAnchorList && @$t1 != 0 && @$t2 < 64); r $t2 = @$t2 + 1) { .echo T4_ANCHOR_BEGIN; r? $t3 = (SafeUpload!_STAGE_ANCHOR*)((char*)@$t1 - (unsigned __int64)&((SafeUpload!_STAGE_ANCHOR*)0)->Link); dt SafeUpload!_STAGE_ANCHOR @$t3; .printf "T4_ANCHOR_OWNER %p %p\n", @@c++(@$t3->Handle), @@c++(@$t3->Object); r? $t4 = @$t3->Entry; .if (@@c++(@$t4 != 0)) { __IDENTITY__ }; r? $t6 = @$t3->Object; .if (@@c++(@$t6 != 0)) { __FILE__ }; .echo T4_ANCHOR_END; r? $t1 = @$t1->Flink }
 .printf "T4_ANCHOR_WALK_END %p %p\n", @$t1, SafeUpload!StageAnchorList
+
+'@
+            $body.Replace('__IDENTITY__',$identity).Replace('__FILE__',$file)
+        }
+        'poolfind' { @'
 .echo T4_POOL_BEGIN
 !poolfind SUfl 0
 .echo T4_POOL_END
-.echo T4_MEMORY_END
-q
-'@
-    $base + "`r`n" + $extra.Replace('__IDENTITY__',$identity).Replace('__FILE__',$file)
+'@ }
+    }
 }
 
 function Get-T4DeletePass2Commands([object[]]$Blocks, $Layout) {
-    $commands = @('.echo T4_MEMORY_BEGIN', '.reload /f nt', '.reload /f fltmgr.sys', '.reload /f SafeUpload.sys', 'lmvm SafeUpload')
+    $commands = @()
     $identity = (Get-T4DeleteIdentityCommands) -replace '\r?\n', '; '
     $file = (Get-T4DeleteFileCommands) -replace '\r?\n', '; '
     $sop = (Get-T4DeleteSopCommands) -replace '\r?\n', '; '
@@ -386,7 +543,7 @@ function Get-T4DeletePass2Commands([object[]]$Blocks, $Layout) {
         $address = $block.Address
         if ($address -notmatch '^[0-9a-f]{16}$') { throw 'Unvalidated pool address.' }
         $commands += '.echo T4_BLOCK_BEGIN ' + $address
-        $commands += '!pool 0x' + $address + ' 2'
+        $commands += '.catch { !pool 0x' + $address + ' 2 }'
         # Probe the pool header, allocation start and derived payload. Only a validated node yields typed data.
         $candidates = @($address)
         if ($Layout) {
@@ -396,20 +553,21 @@ function Get-T4DeletePass2Commands([object[]]$Blocks, $Layout) {
         }
         foreach ($candidate in $candidates) {
             $commands += '.echo T4_CTX_BEGIN ' + $candidate
-            $commands += '!fltkd.ctx 0x' + $candidate + ' 1'
-            $commands += 'dt fltmgr!_CONTEXT_NODE 0x' + $candidate
-            if ($Layout) {
+            $commands += '.catch {'
+            $commands += '.catch { !fltkd.ctx 0x' + $candidate + ' 1 }'
+            $commands += '.catch { dt fltmgr!_CONTEXT_NODE 0x' + $candidate + ' }'
+            # Only the symbol-derived node gets typed dereferences; other addresses are extension probes.
+            if ($Layout -and $candidate -eq $candidates[1]) {
                 $body = @'
 r? $t3 = (fltmgr!_CONTEXT_NODE*)0x__NODE__
-.if (@@c++(@$t3->RegInfo->ContextType) == 8 && @@c++(@$t3->RegInfo->ContextCleanupCallback) == SafeUpload!SafeUploadStreamContextCleanup) { .echo T4_SAFEUPLOAD_STREAM; r? $t5 = (SafeUpload!_SAFEUPLOAD_STREAM_CONTEXT*)((char*)@$t3 + sizeof(fltmgr!_CONTEXT_NODE)); dt SafeUpload!_SAFEUPLOAD_STREAM_CONTEXT @$t5; .printf "T4_PAYLOAD %p %x\n", @$t5, @@c++(sizeof(SafeUpload!_SAFEUPLOAD_STREAM_CONTEXT)); .printf "T4_WRITERS %p %p %p\n", @@c++(&@$t5->WriterObjects), @@c++(@$t5->WriterObjects.Flink), @@c++(@$t5->WriterObjects.Blink); r? $t4 = (SafeUpload!_STAGE_REGISTRY_ENTRY*)@$t5->WriterRegistryEntry; .printf "T4_REGISTRY %p\n", @$t4; .if (@$t4 != 0) { __IDENTITY__; r? $t7 = (nt!_SECTION_OBJECT_POINTERS*)@$t4->SectionObjectPointer; .if (@$t7 != 0) { __SOP__ } }; r? $t8 = @$t5->WriterObjects.Flink; r $t9 = 0; .for (; (@$t8 != @@c++(&@$t5->WriterObjects)) && (@$t8 != 0) && (@$t9 < 0n8); r $t9 = @$t9 + 1) { r? $t10 = (SafeUpload!_STAGE_WRITER_NODE*)((char*)@$t8 - (unsigned __int64)&((SafeUpload!_STAGE_WRITER_NODE*)0)->Link); dt SafeUpload!_STAGE_WRITER_NODE @$t10; r? $t6 = @$t10->FileObject; .if (@$t6 != 0) { __FILE__ }; r? $t8 = @$t8->Flink }; .echo T4_STREAM_LINK_BEGIN; dt fltmgr!_STREAM_LIST_CTRL poi(@@c++(&@$t3->AttachedObject)); !fltkd.streamlist poi(@@c++(&@$t3->AttachedObject)) 0x3f 1; .echo T4_STREAM_LINK_END }
+.if (@@c++(@$t3->RegInfo != 0 && @$t3->RegInfo->ContextType == 8 && @$t3->RegInfo->ContextCleanupCallback == &SafeUpload!SafeUploadStreamContextCleanup)) { .echo T4_SAFEUPLOAD_STREAM; r? $t5 = (SafeUpload!_SAFEUPLOAD_STREAM_CONTEXT*)((char*)@$t3 + sizeof(fltmgr!_CONTEXT_NODE)); dt SafeUpload!_SAFEUPLOAD_STREAM_CONTEXT @$t5; .printf "T4_PAYLOAD %p %x\n", @$t5, @@c++(sizeof(SafeUpload!_SAFEUPLOAD_STREAM_CONTEXT)); .printf "T4_WRITERS %p %p %p\n", @@c++(&@$t5->WriterObjects), @@c++(@$t5->WriterObjects.Flink), @@c++(@$t5->WriterObjects.Blink); r? $t4 = (SafeUpload!_STAGE_REGISTRY_ENTRY*)@$t5->WriterRegistryEntry; .printf "T4_REGISTRY %p\n", @$t4; .if (@@c++(@$t4 != 0)) { __IDENTITY__; r? $t7 = (nt!_SECTION_OBJECT_POINTERS*)@$t4->SectionObjectPointer; .if (@@c++(@$t7 != 0)) { __SOP__ } }; r? $t8 = @$t5->WriterObjects.Flink; r $t9 = 0; .for (; @@c++(@$t8 != &@$t5->WriterObjects && @$t8 != 0 && @$t9 < 8); r $t9 = @$t9 + 1) { r? $t10 = (SafeUpload!_STAGE_WRITER_NODE*)((char*)@$t8 - (unsigned __int64)&((SafeUpload!_STAGE_WRITER_NODE*)0)->Link); dt SafeUpload!_STAGE_WRITER_NODE @$t10; r? $t6 = @$t10->FileObject; .if (@@c++(@$t6 != 0)) { __FILE__ }; r? $t8 = @$t8->Flink }; .echo T4_STREAM_LINK_BEGIN; dt fltmgr!_STREAM_LIST_CTRL @@c++(*(void**)&@$t3->AttachedObject); !fltkd.streamlist @@c++(*(void**)&@$t3->AttachedObject) 0x3f 1; .echo T4_STREAM_LINK_END }
 '@
                 $commands += $body.Replace('__NODE__',$candidate).Replace('__IDENTITY__',$identity).Replace('__SOP__',$sop).Replace('__FILE__',$file)
             }
-            $commands += '.echo T4_CTX_END'
+            $commands += '}', '.echo T4_CTX_END'
         }
         $commands += '.echo T4_BLOCK_END'
     }
-    $commands += '.echo T4_MEMORY_END', 'q'
     $commands -join "`r`n"
 }
 
@@ -510,9 +668,9 @@ function Write-T4DeleteEvidence([string]$Path, [string]$Text) {
 }
 
 function Invoke-T4DeleteKdSession([string]$Label, [string]$Commands) {
-    # Six sessions maximum for the row. No exception may skip the coordinator's result writer.
+    # Six sessions per snapshot (18 per row), plus two possible teardown veto reads. No exception may skip the coordinator's result writer.
     $out = Join-Path $script:T4MemoryRoot 'output'
-    $record = [ordered]@{ Label=$Label; Finished=$false; Complete=$false; ExitCode=$null; Errors=@(); ElapsedMs=0 }
+    $record = [ordered]@{ Label=$Label; Finished=$false; Complete=$false; ExitCode=$null; Errors=@(); ElapsedMs=0; CompletionMarker=('T4_KD_' + $Label.Replace('-','_').ToUpperInvariant() + '_END') }
     $timer = [Diagnostics.Stopwatch]::StartNew(); $process = $null
     try {
         if ($script:T4DeleteKdUnreaped) { throw 'Earlier KD process could not be reaped; refusing overlapping debugger sessions.' }
@@ -521,7 +679,7 @@ function Invoke-T4DeleteKdSession([string]$Label, [string]$Commands) {
         $stdout = Join-Path $out ($Label + '.stdout.txt'); $stderr = Join-Path $out ($Label + '.stderr.txt')
         foreach ($path in $commandPath,$stdout,$stderr,(Join-Path $out ($Label + '.result.json'))) { if (Test-Path -LiteralPath $path) { throw ('Refuse to overwrite KD evidence: ' + $path) } }
         $record.Stdout=$stdout; $record.Stderr=$stderr; $record.Commands=$commandPath
-        Write-T4DeleteEvidence $commandPath $Commands
+        Write-T4DeleteEvidence $commandPath (Get-T4DeleteSessionCommands $Label $Commands)
         $symbols = $script:T4MemoryRoot + '\symbols;srv*' + $script:T4MemoryRoot + '\symcache*https://msdl.microsoft.com/download/symbols'
         $arguments = '-kl -y "' + $symbols + '" -c "$$><' + $commandPath + '"'
         $process = Start-Process -FilePath (Join-Path $script:T4MemoryRoot 'x64\kd.exe') -ArgumentList $arguments -PassThru -NoNewWindow `
@@ -532,7 +690,7 @@ function Invoke-T4DeleteKdSession([string]$Label, [string]$Commands) {
         if (-not $record.Finished) { $process.Kill(); $null = $process.WaitForExit(5000); $record.Errors += 'KD session exceeded 180 seconds; killed, partial output retained.' }
         $process.Refresh(); if ($process.HasExited) { $record.ExitCode=$process.ExitCode }
         $text = [IO.File]::ReadAllText($stdout)
-        $record.Complete = $text -match '(?m)^T4_MEMORY_END\s*$'
+        $record.Complete = $text -match ('(?m)^' + [regex]::Escape($record.CompletionMarker) + '\s*$')
         if (-not $record.Complete -or $record.ExitCode -ne 0) { $record.Errors += 'KD session incomplete or nonzero exit.' }
         $record.KernelAttached = $text -match 'Windows .*Kernel Version'
         $record.PrivateSymbols = $text -match 'SafeUpload[^\r\n]*\(private pdb symbols\)'
@@ -545,7 +703,7 @@ function Invoke-T4DeleteKdSession([string]$Label, [string]$Commands) {
         if ($process) {
             try { if (-not $process.HasExited) { $process.Kill(); $null=$process.WaitForExit(5000) } } catch { $record.Errors += $_.Exception.Message }
             try { $script:T4DeleteKdUnreaped = -not $process.HasExited } catch { $script:T4DeleteKdUnreaped=$true }
-            $process.Dispose()
+            try { $process.Dispose() } catch { $record.Errors += $_.Exception.Message }
         }
         $record.ElapsedMs=$timer.ElapsedMilliseconds
         try { Write-T4DeleteEvidence (Join-Path $out ($Label + '.result.json')) ($record | ConvertTo-Json -Depth 5) }
@@ -555,7 +713,7 @@ function Invoke-T4DeleteKdSession([string]$Label, [string]$Commands) {
 }
 
 function Save-T4DeleteSnapshot([string]$Label, [object[]]$Corpus, $Baseline) {
-    $summary = [ordered]@{ Label=$Label; NonQualifying=$true; Errors=@(); Pass1=$null; Pass2=$null; Census=$null;
+    $summary = [ordered]@{ Label=$Label; NonQualifying=$true; Errors=@(); Sessions=@(); Pass2=$null; Census=$null;
         Counts=$null; Classification='Unresolved'; Contexts=@(); Attempts=@(); AnchorDetails=@(); NewBlocks=@();
         Limitations=@('Local KD is non-atomic; confirm ownership from raw walks.',
             'New means absent pool address at del-baseline; reuse at an old address is invisible.',
@@ -563,16 +721,31 @@ function Save-T4DeleteSnapshot([string]$Label, [object[]]$Corpus, $Baseline) {
             'A writer/SOP pointer is non-owning. UseCount > 1 does not identify the owner.',
             'Unparsed/free/lookaside storage is not a live attached stream context.') }
     try {
-        $summary.Pass1 = Invoke-T4DeleteKdSession ($Label + '-pass1') (Get-T4DeletePass1Commands)
-        $one = if ($summary.Pass1.Stdout -and (Test-Path -LiteralPath $summary.Pass1.Stdout)) { [IO.File]::ReadAllText($summary.Pass1.Stdout) } else { '' }
+        $texts = @{}; $receipts = @{}
+        foreach ($block in 'layout','telemetry','logical','anchors','poolfind') {
+            # Per-block catch includes command generation/output reads, not just KD startup.
+            $texts[$block] = ''
+            try {
+                $receipt = Invoke-T4DeleteKdSession ($Label + '-' + $block) ((Get-T4DeletePass1Commands $block) -join "`r`n")
+                $receipts[$block] = $receipt; $summary.Sessions += $receipt
+                $summary.Errors += @($receipt.Errors)
+                if ($receipt.Stdout -and (Test-Path -LiteralPath $receipt.Stdout)) {
+                    $raw = [IO.File]::ReadAllText($receipt.Stdout)
+                    if ($receipt.KernelAttached -and $receipt.PrivateSymbols) { $texts[$block] = $raw }
+                }
+            } catch { $summary.Errors += ($block + ': ' + $_.Exception.Message) }
+        }
+        $one = @('layout','telemetry','logical','anchors','poolfind' | ForEach-Object { $texts[$_] }) -join "`r`n"
         $census = ConvertFrom-T4DeletePass1 $one
-        if (-not $summary.Pass1.Finished -or -not $summary.Pass1.Complete -or $summary.Pass1.ExitCode -ne 0 -or -not $summary.Pass1.KernelAttached -or -not $summary.Pass1.PrivateSymbols) { $census.PoolComplete=$false }
+        $poolReceipt = $receipts['poolfind']
+        if (-not $poolReceipt -or -not $poolReceipt.Finished -or -not $poolReceipt.Complete -or $poolReceipt.ExitCode -ne 0) { $census.PoolComplete=$false }
         $summary.Census = $census
         $new = @(Get-T4DeleteNewBlocks $census $Baseline)
         $summary.NewBlocks=$new
         $summary.Pass2 = Invoke-T4DeleteKdSession ($Label + '-pass2') (Get-T4DeletePass2Commands $new $census.Layout)
+        $summary.Sessions += $summary.Pass2
         $two = if ($summary.Pass2.Stdout -and (Test-Path -LiteralPath $summary.Pass2.Stdout)) { [IO.File]::ReadAllText($summary.Pass2.Stdout) } else { '' }
-        $parseOne = if ($summary.Pass1.KernelAttached -and $summary.Pass1.PrivateSymbols) { $one } else { '' }
+        $parseOne = $texts['anchors']
         $parseTwo = if ($summary.Pass2.KernelAttached -and $summary.Pass2.PrivateSymbols) { $two } else { '' }
         $parsed = ConvertFrom-T4DeletePass2 $parseTwo $Corpus $parseOne
         $summary.Contexts = $parsed.Contexts; $summary.Attempts = $parsed.Attempts; $summary.AnchorDetails=$parsed.Anchors
@@ -580,6 +753,9 @@ function Save-T4DeleteSnapshot([string]$Label, [object[]]$Corpus, $Baseline) {
         $summary.Counts = [ordered]@{ ObservedPoolBlocks=$census.Blocks.Count; OutstandingPoolBlocks=$(if ($census.PoolComplete) { $census.Blocks.Count } else { $null }); NewBlocks=$(if ($knownNew) { $new.Count } else { $null });
             SelectedBlocks=[math]::Min(64,$new.Count); InspectedBlocks=[regex]::Matches($two,'(?m)^T4_BLOCK_END\s*$').Count; OmittedNewBlocks=[math]::Max(0,$new.Count-64);
             Pass2Complete=($summary.Pass2.Finished -and $summary.Pass2.Complete -and $summary.Pass2.ExitCode -eq 0);
+            PoolUsedSUfl=@($census.Telemetry.PoolUsed | Where-Object { $_.Tag -ceq 'SUfl' });
+            VerifierDriverStats=$census.Telemetry.VerifierDriverStats;
+            ObservedVerifierSUflAllocations=$(if ($census.Telemetry.VerifierDriverStats) { @($census.Telemetry.VerifierAllocations | Where-Object { $_.Tag -ceq 'SUfl' }).Count } else { $null });
             ParsedContexts=$parsed.Contexts.Count; CorpusContexts=@($parsed.Contexts | Where-Object { $_.CorpusPath }).Count;
             Anchors=$census.Anchors; ParsedAnchors=$parsed.Anchors.Count; AnchorWalkComplete=$census.AnchorWalkComplete;
             LogicalOutstanding=$(if ($census.Logical) { $census.Logical.Outstanding } else { $null });
@@ -591,7 +767,7 @@ function Save-T4DeleteSnapshot([string]$Label, [object[]]$Corpus, $Baseline) {
             ContextsWithUnknownIdentity=@($parsed.Contexts | Where-Object { -not $_.IdentityKnown }).Count;
             ContextsWithUnknownWriterList=@($parsed.Contexts | Where-Object { $null -eq $_.HasWriterNodes }).Count;
             ContextsWithUnknownAttachmentReferences=@($parsed.Contexts | Where-Object { $null -eq $_.ReferencedBeyondAttachment }).Count }
-        $summary.Errors = @($summary.Pass1.Errors) + @($census.Errors) + @($summary.Pass2.Errors)
+        $summary.Errors += @($census.Errors) + @($summary.Pass2.Errors)
         if (-not $knownNew) { $summary.Errors += 'No complete baseline/current pool census; delta unknown, not zero.' }
         if ($summary.Counts.CorpusOwningAnchors -gt 0) { $summary.Classification='SafeUpload owning anchor observed; corroborate non-atomic identity and owner walks' }
         elseif (@($parsed.Contexts | Where-Object { $_.IdentityKnown -and -not $_.CorpusPath }).Count -gt $parsed.Contexts.Count/2) {
