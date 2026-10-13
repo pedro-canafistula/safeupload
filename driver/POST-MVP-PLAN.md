@@ -278,8 +278,12 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
     - [x] Row `m2t4hbdiag1` ([result](evidence/2026-10-13/t4-handback-attribution-result.md), [verdict](evidence/2026-10-13/m2t4hbdiag1-verdict.txt)):
       2,000/2,000, separate restoration PASS. Purge left 234 above start with 1,500 hand-backs present — hypothesis refuted. Deleting
       the unheld hand-backs added 2,087 retained 224-byte contexts (≈1.39 per delete) that a second purge kept; no process held them.
-    - [ ] Next (implied by the negative drop): static audit of DELETE-writer cleanup/node/context ownership; if no driver reference is
-      found, one read-only local-KD attribution row deleting a fixed unprotected file set (needs owner authorization). Gates unchanged.
+    - [x] Static audit ([Astra, read-only](evidence/2026-10-13/t4-delete-context-audit.md)): create → disposition → cleanup context
+      references are balanced in the tested `60fecdbc`; writer nodes/SOP slots own no context or FILE_OBJECT. The only owning driver
+      file reference is the activation anchor (`StageWriters.c:5882–5885`), unproven for these files. Cause undetermined.
+    - [ ] **Waiting for owner authorization:** one identity-resolved local-KD attribution row on win10-debug3 with the unchanged pair
+      (bounded unprotected corpus, fresh baseline, serial deletes, `!fltkd` stream/context walks, anchor census, FILE_OBJECT/control-
+      area ownership). Product VM rows stay stopped until then; no threshold, assertion or reclamation change.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
 - [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):
