@@ -900,7 +900,7 @@ has independent server-side destination-byte run evidence, and is ready for comb
     coverage-loss gate, corrected cross-volume retargeting rationale, enumerated diagnostic candidates. Revised; [re-review](evidence/2026-10-13/t22-design-rereview-sol61.md):
     REVISE — atomic per-range ordering against destination-head changes. [Third review](evidence/2026-10-13/t22-design-review3-sol61.md): REVISE —
     cutoff contract for native application mutation handles; defined conflict outcome for intervening same-object edits. [Fourth review](evidence/2026-10-13/t22-design-review4-sol61.md): REVISE — keep
-    payload-bearing EA writes off the native route after cutoff. Fourth revision in progress.
+    payload-bearing EA writes off the native route after cutoff. Fourth revision done; fifth review pending.
   - [ ] Cover canonical names, redirector identity, remote authorization, commit ordering and disconnect/retry; record owner choices with user-visible effects and obtain Sol 6.1 xhigh design review.
 - [ ] Implement only the approved scope; keep unsupported network capabilities disabled.
 - [ ] Qualify an actual SMB server with independent server-side destination-byte observation.
