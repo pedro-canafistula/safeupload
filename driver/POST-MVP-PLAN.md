@@ -388,6 +388,14 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [x] Service V23 dispatch → anchored seeding → bound manifest/head claim and receipt validation connected (`ca5a9cfa`–`be78b958`);
     [agent gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md), including 14 allocation/continuation and two native Windows controls per feature profile.
     Interrupted claims retain exact private cleanup obligations. Kernel producer/physical commits remain open; admission stays disabled.
+- [ ] **Integrated checkpoint (goal item 5, 2026-10-13).** [Gap inventory and ten-increment plan](evidence/2026-10-13/t5-integration-plan-astra.md)
+  (Astra, read-only, at `a00e7e14`): option-1 provenance → original-authority writer lease → metadata transport → V23 allocation/kernel
+  seeding → V26 permits → bound inspection/publication → unified deletes → startup/last-close recovery → T11 SOP → mandatory local
+  teardown and readiness composition; one pre-boot Sol 6.1 xhigh lifetime review covers the kernel increments. Unresolved native
+  mechanisms (descriptor `0x8C04 → 0x8804`, low-impersonation capture, coherent seed interval, export authority proof) stay
+  fail-closed holds with named reasons; none is approved as a narrower contract. Readiness stays false until all increments land.
+  - [ ] Increment 1: option-1 provenance and private/no-export enforcement (agent).
+  - [ ] Service-independent mandatory teardown for current objects (kernel), extended by later increments.
 - [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
   - [x] Prepare clean/CPF forced-order coordinator gates and no-empty-leftover verdicts; Windows PowerShell 5.1 parsing,
     168 schema assertions and actual unprotected NTFS actor controls pass ([raw output](evidence/2026-10-11/t5-forced-order-harness-controls-1011a5.txt));
