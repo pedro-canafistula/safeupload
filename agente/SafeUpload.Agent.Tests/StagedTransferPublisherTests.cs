@@ -91,7 +91,21 @@ public sealed class StagedTransferPublisherTests : IDisposable
             Assert.Null(callback);
             Assert.False(other.Reader.TryRead(out _));
         }
-        finally { directory.SetAccessControl(originalSecurity); }
+        finally
+        {
+            // SetAccessControl persists modified sections only. Mark the saved
+            // DACL explicitly; a freshly read unchanged object would be a no-op.
+            var restored = new DirectorySecurity();
+            restored.SetSecurityDescriptorBinaryForm(originalSecurity.GetSecurityDescriptorBinaryForm(),
+                AccessControlSections.Access);
+            directory.SetAccessControl(restored);
+        }
+
+        Assert.Equal(originalSecurity.GetSecurityDescriptorSddlForm(AccessControlSections.Access),
+            directory.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+        string recoveredProbe = Path.Combine(_stagingRoot, "recovered-probe");
+        await File.WriteAllTextAsync(recoveredProbe, "");
+        File.Delete(recoveredProbe);
 
         Assert.Equal(StagedTransferOutcome.Released,
             await publisher.PublishAsync(transfer, CancellationToken.None));
