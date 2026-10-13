@@ -463,6 +463,25 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     Scoped duplicate-output cleanup preserves source/packages/manifests/evidence
     ([initial](evidence/2026-10-13/t9-word-stream1-preflight.host.json), [corrected](evidence/2026-10-13/t9-word-stream2-preflight.host.json),
     [retry](evidence/2026-10-13/t9-word-stream3-preflight.host.json)). No product pair was installed or booted; source/evidence remain local.
+  - Staged spreadsheet streaming (`015354d4`): a pull reader consumes stored shared-string items once, including unused entries,
+    then cell formulas/inline/cached values and classic comment authors/text on separate lines. Shared references are checked against
+    the actual parsed table count; neither a complete shared-string array nor worksheet DOM/output string is required. Stored text is
+    ordered by package-part traversal; repeated cell references do not duplicate findings. This deliberately differs from legacy
+    cell-display order/counts and inspects stored credentials that unused shared entries previously hid. Legacy capture/extraction/cache
+    remains unchanged. Workbook defined-name text is also consumed. Present roots are required, malformed tails/invalid references
+    refuse the complete scan, missing formula caches retain unsupported-format refusal, and all part/package readers close without
+    closing the held caller snapshot. Parts/depth/reference-field budgets (16,384/256/32 chars) prevent unbounded selected-part state,
+    nesting and reference accumulation; policy size/deadline/worker limits are unchanged. Hostile XML attributes/name tables,
+    SDK/package metadata and complete spreadsheet content still need separate qualification.
+    The [complete Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-sheet-stream1-summary.txt) passes 1,073 normal/1,443
+    feature tests per Debug/Release profile, exact discovery/execution coverage, no skips, 0 warnings/errors and both verified packages.
+    All [16 new controls and live-state samples](evidence/2026-10-13/t9-sheet-stream1-controls-memory.json) pass in every profile:
+    fragmented rich/shared/inline/formula text, unused/repeated shared references, invalid/oversized indices, corrupt table/sheet tails,
+    large shared/inline/cached values, scalar/peek/cancellation/source lifetime and original SHA-256. Existing formula/comment/empty/
+    malformed-content controls remain in the full matrix. Collected live reader state on real 8 MiB values is sampled in an isolated
+    collection; it is not a process-peak or protected measurement. [Scoped preflight](evidence/2026-10-13/t9-sheet-stream1-preflight.host.json)
+    removes only verified unpacked duplicates, retaining source/packages/manifests/evidence. No product pair was installed or booted;
+    source/evidence remain local pending the earlier push approval. T9 overall and M2 final/runtime gates remain open.
 - [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
   - Strict current-policy implementation (`bfffa535`): staged inspection, approval, justification, allocation/rename/attach
     admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and
