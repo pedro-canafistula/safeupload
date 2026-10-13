@@ -1,9 +1,11 @@
 using DocumentFormat.OpenXml.Packaging;
+using SafeUpload.Agent.Core.Domain;
 
 namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 
 internal static class OpenXmlInspectionGuard
 {
+    private const int MaximumParts = 16_384;
     // Text extraction cannot inspect these payloads. Walk relationships from the
     // package, not just the body/sheet: headers, notes and drawings can own them.
     // This is a known-content refusal, not proof that every Open XML part is covered.
@@ -21,10 +23,12 @@ internal static class OpenXmlInspectionGuard
                 cancellationToken.ThrowIfCancellationRequested();
                 var part = relationship.OpenXmlPart;
                 if (!visited.Add(part.Uri)) continue;
+                if (visited.Count > MaximumParts) throw new InspectionLimitException();
 
                 if (part is ImagePart or ThumbnailPart or EmbeddedObjectPart or EmbeddedPackagePart
                     or AlternativeFormatImportPart or EmbeddedControlPersistencePart
-                    or EmbeddedControlPersistenceBinaryDataPart)
+                    or EmbeddedControlPersistenceBinaryDataPart or CustomXmlPart
+                    or CustomFilePropertiesPart or ExtendedPart)
                     throw new UnsupportedContentException();
 
                 pending.Push(part);

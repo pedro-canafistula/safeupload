@@ -31,6 +31,16 @@ public sealed class OfficeUnsupportedPayloadTests : IDisposable
     [InlineData("sheet", "body", "package")]
     [InlineData("sheet", "body", "control")]
     [InlineData("sheet", "package", "thumbnail")]
+    [InlineData("word", "body", "customXml")]
+    [InlineData("word", "header", "customXml")]
+    [InlineData("word", "footnotes", "customXml")]
+    [InlineData("word", "body", "opaque")]
+    [InlineData("word", "header", "opaque")]
+    [InlineData("word", "package", "custom-properties")]
+    [InlineData("sheet", "workbook", "customXml")]
+    [InlineData("sheet", "body", "opaque")]
+    [InlineData("sheet", "drawing", "opaque")]
+    [InlineData("sheet", "package", "custom-properties")]
     public async Task Clean_text_does_not_approve_uninspected_payloads(string format, string owner, string kind)
     {
         string path = Fixture(format, owner, kind);
@@ -93,6 +103,7 @@ public sealed class OfficeUnsupportedPayloadTests : IDisposable
             parent = name;
         }
         else if (owner == "package") parent = "";
+        else if (owner == "workbook") parent = "xl/workbook.xml";
 
         var (contentType, extension) = kind switch
         {
@@ -101,14 +112,22 @@ public sealed class OfficeUnsupportedPayloadTests : IDisposable
             "package" => ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"),
             "aFChunk" => ("text/html", "html"),
             "control" => ("application/vnd.ms-office.activeX+xml", "xml"),
+            "customXml" or "opaque" => ("application/xml", "xml"),
+            "custom-properties" => ("application/vnd.openxmlformats-officedocument.custom-properties+xml", "xml"),
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
-        string relationship = kind == "thumbnail"
+        string relationship = kind == "opaque" ? "urn:safeupload:uninspected-payload" : kind == "thumbnail"
             ? "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"
             : OfficeRelationships + kind;
-        string payload = kind == "control"
-            ? "<ax:ocx xmlns:ax=\"http://schemas.microsoft.com/office/2006/activeX\" />"
-            : "<html><body>CPF: 529.982.247-25</body></html>";
+        string payload = kind switch
+        {
+            "control" => "<ax:ocx xmlns:ax=\"http://schemas.microsoft.com/office/2006/activeX\" />",
+            "customXml" or "opaque" => "<store><private>CPF: 529.982.247-25</private></store>",
+            "custom-properties" => "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties\" " +
+                "xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\"><property " +
+                "fmtid=\"{D5CDD505-2E9C-101B-9397-08002B2CF9AE}\" pid=\"2\" name=\"Private\"><vt:lpwstr>CPF: 529.982.247-25</vt:lpwstr></property></Properties>",
+            _ => "<html><body>CPF: 529.982.247-25</body></html>"
+        };
         string payloadName = "payloads/secret." + extension;
         AddPart(archive, parent, payloadName, relationship, contentType, payload);
         if (kind is "image" or "thumbnail")
