@@ -525,6 +525,21 @@ cannot publish unapproved bytes, proven by the observer.
     I/O scaling cost remains an explicit finding. Scoped cleanup of four verified unpacked package duplicates preserves
     prior source/packages/evidence ([preflight](evidence/2026-10-13/t11-destination-index-preflight-cleanup.stdout.txt),
     [extra headroom](evidence/2026-10-13/t11-destination-index-headroom-cleanup.stdout.txt)). No product pair was installed or booted.
+  - Fresh head-read batching (`c911d5d0`): startup discovery and each destination resolution now read bounded batches of at most
+    eight heads concurrently per journal. The journal gate remains held; every started reader finishes/disposes before batch failure
+    returns. Single-file reads avoid worker scheduling. Complete fresh validation still covers every head, including unrelated files:
+    owner/ACL, no-follow/single-link/size, JSON schema, full identity/storage filename and alias conflicts are not replaced by a cache.
+    New real-file controls measure 1k/10k lookup paths, corrupt an unrelated head after a successful lookup to prove it still refuses,
+    and prove parse failures drain readers with exclusive leases on every file before recovery; cancellation leaves the journal usable.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t11-head-reads1-summary.txt) passes 995 normal/1,365 feature tests
+    per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. All seven destination integration
+    cases (three new) pass in each profile. [Single full-read measurements and the retained sequential baseline](evidence/2026-10-13/t11-head-reads1-controls-timings.json)
+    report feature Release discovery of 10k real heads at 3,360.008 ms (the preceding `t9-preparation3` run measured 5,536.233 ms),
+    and a 10k-head lookup at 4,501.360 ms. The 1k observations vary between runs; these are suite measurements, not controlled paired
+    benchmarks or latency assertions. This reduces observed long-scan elapsed time while preserving integrity, but every lookup still
+    reads O(number of durable heads): the asymptotic I/O cost, full journal scaling and final-pair review remain open.
+    [Scoped preflight cleanup](evidence/2026-10-13/t11-head-reads1-preflight-host.json) preserves completed source/packages/evidence.
+    No protected pair was installed or booted; this change remains local while the earlier source/evidence push approval is pending.
 - [ ] Close every M2 review condition against the final matched pair.
 
 ## M3 — after M2

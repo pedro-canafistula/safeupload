@@ -1,0 +1,389 @@
+{
+  "sourceCommit": "c911d5d0a4ee1b379b7821555e3dde5d7820a9ac",
+  "scope": "Complete fresh durable-head validation in batches of at most eight per journal. No authority cache or skipped unrelated validation; alias/schema/ACL/no-follow/size/single-link checks stay in the existing reader. Full directory/head scan per lookup remains O(N).",
+  "measurementLimits": "Single test-suite observations, not controlled paired benchmarks or latency assertions; fixture construction excluded, real open/security/JSON validation included. No protected pair qualification.",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "rawTrxSha256": "b9f640db65464c731a847571770901369a38d017644d9ade23e0594a00dc0a2f",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Batch_parse_failure_drains_readers_and_leaves_the_journal_recoverable",
+          "outcome": "Passed",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 1000,
+              "elapsedMs": 32.562
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 1000,
+              "elapsedMs": 2.572
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 10000,
+              "elapsedMs": 278.328
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 10000,
+              "elapsedMs": 26.573
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Resolution_reads_every_real_head_and_keeps_unrelated_corruption_fail_closed(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-resolution",
+              "entries": 1000,
+              "elapsedMs": 2024.672
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Resolution_reads_every_real_head_and_keeps_unrelated_corruption_fail_closed(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-resolution",
+              "entries": 10000,
+              "elapsedMs": 4854.795
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 1000,
+              "elapsedMs": 2186.297
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 10000,
+              "elapsedMs": 4659.052
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "rawTrxSha256": "732b0f5181ac7a84c69a03ab6527736da4147df998779fa4e34b08cf2a257df2",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Batch_parse_failure_drains_readers_and_leaves_the_journal_recoverable",
+          "outcome": "Passed",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 1000,
+              "elapsedMs": 21.841
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 1000,
+              "elapsedMs": 1.193
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 10000,
+              "elapsedMs": 215.41
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 10000,
+              "elapsedMs": 16.757
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Resolution_reads_every_real_head_and_keeps_unrelated_corruption_fail_closed(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-resolution",
+              "entries": 1000,
+              "elapsedMs": 2895.299
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Resolution_reads_every_real_head_and_keeps_unrelated_corruption_fail_closed(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-resolution",
+              "entries": 10000,
+              "elapsedMs": 4539.493
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 1000,
+              "elapsedMs": 2166.963
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 10000,
+              "elapsedMs": 3574.157
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "rawTrxSha256": "7bcdcffec934b5e8aea83c94e0bb0b8788f24019d26145cc1b5dad86fda26ac0",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Batch_parse_failure_drains_readers_and_leaves_the_journal_recoverable",
+          "outcome": "Passed",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 1000,
+              "elapsedMs": 24.804
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 1000,
+              "elapsedMs": 2.165
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 10000,
+              "elapsedMs": 262.894
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 10000,
+              "elapsedMs": 21.305
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Resolution_reads_every_real_head_and_keeps_unrelated_corruption_fail_closed(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-resolution",
+              "entries": 1000,
+              "elapsedMs": 2009.067
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Resolution_reads_every_real_head_and_keeps_unrelated_corruption_fail_closed(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-resolution",
+              "entries": 10000,
+              "elapsedMs": 4442.015
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 1000,
+              "elapsedMs": 2241.722
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 10000,
+              "elapsedMs": 3837.699
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "rawTrxSha256": "3f48e81ecc76b6f9bdbc261963d01103e460dc5a509bdc5b105d7cef7a0044ef",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Batch_parse_failure_drains_readers_and_leaves_the_journal_recoverable",
+          "outcome": "Passed",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 1000,
+              "elapsedMs": 34.391
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 1000,
+              "elapsedMs": 3.87
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 10000,
+              "elapsedMs": 401.66
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 10000,
+              "elapsedMs": 46.091
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Resolution_reads_every_real_head_and_keeps_unrelated_corruption_fail_closed(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-resolution",
+              "entries": 1000,
+              "elapsedMs": 2579.496
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Resolution_reads_every_real_head_and_keeps_unrelated_corruption_fail_closed(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-resolution",
+              "entries": 10000,
+              "elapsedMs": 4501.36
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 1000,
+              "elapsedMs": 2149.418
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 10000,
+              "elapsedMs": 3360.008
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "retainedSequentialBaseline": {
+    "label": "t9-preparation3",
+    "sourceCommit": "e62b658a004ff651db7ef4080b21cae15087a540",
+    "profiles": [
+      {
+        "profile": "normal-release",
+        "rawTrxSha256": "fd783093dbfcba6cc9ed0181651956beb0e418315170b4e02a64682c4da86295",
+        "measurements": [
+          {
+            "entries": 1000,
+            "elapsedMs": 2458.124
+          },
+          {
+            "entries": 10000,
+            "elapsedMs": 5488.713
+          }
+        ]
+      },
+      {
+        "profile": "feature-release",
+        "rawTrxSha256": "22e36f910f28efbd762f8754edd8a6ab51b0c1d028cc54b1c485d1f70d3c81a0",
+        "measurements": [
+          {
+            "entries": 1000,
+            "elapsedMs": 2005.652
+          },
+          {
+            "entries": 10000,
+            "elapsedMs": 5536.233
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "verifiedDuplicateCleanup": [
+    {
+      "scope": "latest",
+      "remoteExit": 0,
+      "payloadSha256": "f1b3a057d49b2ff92f756dac04c50f949f909f47fb3f604a611a087ae7434355",
+      "stdoutSha256": "102d0a8cd0890e7208958e3aa52f30a7bcdc2439d8e1579aa70947cdbe68f8c3",
+      "stderrSha256": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+      "receipt": [
+        "UNPACKED_DUPLICATE_REMOVED=t9-preparation3/normal-release",
+        "UNPACKED_DUPLICATE_REMOVED=t9-preparation3/feature-release",
+        "SCOPED_GENERATED_CLEANUP=PASS directories=2 free_before=258023424 free_after=438243328 source_packages_evidence_retained=True"
+      ]
+    },
+    {
+      "scope": "older",
+      "remoteExit": 0,
+      "payloadSha256": "54655ddae39a7475cb8798a7739c85804c852ff7be61ec9e8657b274bd700b09",
+      "stdoutSha256": "35d083f94b5f2b5c44e29a721c47dc0501b10908f0419763c641fdcbc0dff9ca",
+      "stderrSha256": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+      "receipt": [
+        "UNPACKED_DUPLICATE_REMOVED=t5-bound-service3/normal-release",
+        "UNPACKED_DUPLICATE_REMOVED=t5-bound-service3/feature-release",
+        "SCOPED_GENERATED_CLEANUP=PASS directories=2 free_before=443215872 free_after=623087616 source_packages_evidence_retained=True"
+      ]
+    }
+  ]
+}
