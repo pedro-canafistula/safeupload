@@ -1,0 +1,247 @@
+{
+  "formatVersion": 1,
+  "sourceCommit": "5a825944c4a501d93aa9290c96e69c05193c7072",
+  "scope": "Real private journal I/O and queue lifecycle with synthetic namespace bindings; single timings, not protected runtime or a latency gate. File fixture construction excluded from discovery timing.",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "rawTrxSha256": "24ab6174a861e73363e388a2c9f0a4520a11c2ef682c0f9695fab29ad202d5cb",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 1000,
+              "elapsedMs": 32.908
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 1000,
+              "elapsedMs": 2.737
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 10000,
+              "elapsedMs": 313.379
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 10000,
+              "elapsedMs": 36.51
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 1000,
+              "elapsedMs": 1289.099
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 10000,
+              "elapsedMs": 4374.839
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "rawTrxSha256": "46dc9fde23737e15b03ac42439646ae82b307ce517f80a7f68a38cd1ffa312f2",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 1000,
+              "elapsedMs": 29.919
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 1000,
+              "elapsedMs": 2.991
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 10000,
+              "elapsedMs": 275.201
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 10000,
+              "elapsedMs": 8.547
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 1000,
+              "elapsedMs": 2093.756
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 10000,
+              "elapsedMs": 4093.329
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "rawTrxSha256": "1c9a9d36cde3c7d7dca43d5f238a5e452d66114b1452ac128e2f55d93831dcfd",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 1000,
+              "elapsedMs": 23.161
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 1000,
+              "elapsedMs": 1.556
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 10000,
+              "elapsedMs": 249.433
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 10000,
+              "elapsedMs": 21.168
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 1000,
+              "elapsedMs": 2474.244
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 10000,
+              "elapsedMs": 4200.895
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "rawTrxSha256": "32330f59e725af18a38f0ad79701274ff045e0f203a54b6c17441387d664de4d",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 1000,
+              "elapsedMs": 34.442
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 1000,
+              "elapsedMs": 2.747
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Many_live_names_share_only_equivalent_turns_and_release_every_queue_cell(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "live-queue-acquire",
+              "entries": 10000,
+              "elapsedMs": 370.063
+            },
+            {
+              "shape": "live-queue-release",
+              "entries": 10000,
+              "elapsedMs": 38.711
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 1000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 1000,
+              "elapsedMs": 3058.465
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StagedDestinationIndexIntegrationTests.Startup_reads_every_real_head_and_preserves_its_exact_generation_tuple(count: 10000)",
+          "outcome": "Passed",
+          "measurements": [
+            {
+              "shape": "real-head-discovery",
+              "entries": 10000,
+              "elapsedMs": 6078.922
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

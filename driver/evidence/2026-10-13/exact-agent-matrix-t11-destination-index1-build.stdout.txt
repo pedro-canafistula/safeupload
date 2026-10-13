@@ -1,0 +1,66 @@
+PROFILE_OUTPUT_CLEANUP=profile-src-normal-debug; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-normal-release; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-feature-debug; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-feature-release; directories=12; source_and_evidence_retained=True
+LABEL=t11-destination-index1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=5a825944c4a501d93aa9290c96e69c05193c7072
+ARCHIVE_SHA256=F8FF7F24D885CE7F0DA5C20A5ACC52238D2FD3D52B25DA63FB4A3F552A93BEE2
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-debug-tests-user: exit=0 warnings=0 errors=0
+normal-debug-tests-system-identity: S-1-5-18
+normal-debug-tests-system: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=923
+normal-release: admission_evidence=false
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-app-build: exit=0 warnings=0 errors=0
+normal-release-test-build: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-release-tests-user: exit=0 warnings=0 errors=0
+normal-release-tests-system-identity: S-1-5-18
+normal-release-tests-system: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=923
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_manifest_sha256=DD4634525FB145132BA28198D50A0E0DC55354CD04D00F5711F831882BB36C88
+normal-release: package_sha256=6EF7906205FBBAC4792DC3C537875E26836CC6BA26C585A1E1E8DDF795203547
+normal-release: exe_sha256=13F53A3E577901C50EF2451D97B72D03FEAC121DFFB319DA8A71E441C66E3607
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=0 warnings=0 errors=0
+feature-debug-tests-system-identity: S-1-5-18
+feature-debug-tests-system: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=1293
+feature-release: admission_evidence=true
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-app-build: exit=0 warnings=0 errors=0
+feature-release-test-build: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-release-tests-user: exit=0 warnings=0 errors=0
+feature-release-tests-system-identity: S-1-5-18
+feature-release-tests-system: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=1293
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_manifest_sha256=1AB8DE9E2A95FC27F53CFEBB02E121AF23DF0F326B81FE20E07587E6728AF806
+feature-release: package_sha256=E61B55E8B920ECAA10AFB9D8CC956C33708156F8B23A135249EEA22F3FBC2B57
+feature-release: exe_sha256=72493B20D74759DD10218DB59CE2EC59D8799A40374487720600A69A70F2B858
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-13T08:44:09.2265070Z

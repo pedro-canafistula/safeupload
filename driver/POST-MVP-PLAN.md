@@ -415,8 +415,8 @@ cannot publish unapproved bytes, proven by the observer.
     passes 913 normal/1,278 feature tests per Debug/Release profile, including all nine new compaction controls, with exact
     discovery/execution coverage, no skips and 0 warnings/errors. This does not close the full compaction/scaling or final-pair review gate.
     The destination hash deliberately omits the leaf to preserve Windows equality; many names under one parent share its
-    bucket. The follow-up below replaces that lookup and repeated closure scans in the compactor; other destination-index
-    users and full journal I/O remain outside this checkpoint.
+    bucket. The follow-ups below replace that lookup, repeated closure scans, live queue lookup and startup duplicate
+    indexing; per-destination head resolution and full journal I/O remain separate findings.
     The [first matrix stopped on builder disk exhaustion](evidence/2026-10-13/exact-agent-matrix-t11-bound-compaction1-build.stderr.txt)
     after both normal test profiles passed. [Scoped recovery](evidence/2026-10-13/t11-builder-generated-cleanup2.stdout.txt)
     verified eight unpacked publication copies against host-retained ZIPs/manifests before removal (one inline bootstrap,
@@ -434,12 +434,21 @@ cannot publish unapproved bytes, proven by the observer.
     for 2k/20k/100k bound claims; the 50k-reference chain takes 58.403 ms. These are scoped measurements, not end-to-end latency
     assertions. [Preflight duplicate-output cleanup](evidence/2026-10-13/t11-scaling-preflight-cleanup.stdout.txt) preserves the
     previous source/packages/evidence and prevents another builder disk-full failure. No product pair was installed or booted.
-  - Destination-index follow-up (matrix pending): live queue cells and startup head duplicate detection now share the
+  - Destination-index follow-up (`5a825944`): live queue cells and startup head duplicate detection now share the
     compactor's ordered full-identity/Windows-leaf comparator. This removes same-parent leaf-hash collision chains from all
     three indexes while preserving alias serialization and duplicate-head refusal. Real private-journal controls exercise
     1k/10k simultaneously retained queue cells, canceled alias waits, distinct case/volume/parent identities, exact zero-cell
-    teardown and 1k/10k on-disk head reads with unchanged generation tuples. Per-destination durable-head resolution still
-    scans every head; that I/O cost and final-pair qualification remain open.
+    teardown and 1k/10k on-disk head reads with unchanged generation tuples. The
+    [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t11-destination-index1-summary.txt) passes 923 normal/1,293 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors, including all four new
+    integration controls in each profile and existing alias/duplicate-head/publication controls. The
+    [single feature Release measurements](evidence/2026-10-13/t11-destination-index1-timings.json) acquire/release 10k live queue
+    cells in 370.063/38.711 ms and discover 10k real private head files in 6,078.922 ms, preserving every generation tuple.
+    Timings include the production read/queue paths but exclude fixture-file construction; they are not a latency gate or
+    protected-pair qualification. Per-destination durable-head resolution still scans every head on every request; that
+    I/O scaling cost remains an explicit finding. Scoped cleanup of four verified unpacked package duplicates preserves
+    prior source/packages/evidence ([preflight](evidence/2026-10-13/t11-destination-index-preflight-cleanup.stdout.txt),
+    [extra headroom](evidence/2026-10-13/t11-destination-index-headroom-cleanup.stdout.txt)). No product pair was installed or booted.
 - [ ] Close every M2 review condition against the final matched pair.
 
 ## M3 — after M2
