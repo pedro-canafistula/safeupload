@@ -1,0 +1,15 @@
+**REVISE** — independent Sol 6.1, xhigh review at `35f057ce`. Two implementation blockers remain.
+
+1. **Blocking — the upper stream has no routing owner that survives removal.** [T21:287](driver/T21-USB-REMOVABLE-DESIGN.md:287) acknowledges this but leaves the replacement construction unselected. [StageStream.c:2434](driver/SafeUpload.Minifilter/StageStream.c:2434) installs synthetic FCB/section pointers; late paging depends on dispatch at line 4664. Microsoft explicitly stops new I/O callbacks after instance teardown starts. References cannot restore that routing. [Microsoft teardown contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_instance_teardown_callback).
+
+   **Required change:** select and concretely design a surviving routing owner, covering original grants/sharing, sections, late paging, cleanup/close, queries, handle-relative operations and actual retirement. Review it before any changed-driver diagnostic or product boot.
+
+2. **High — external copy exposure lacks explicit ordering against destination-head changes.** [T21:192](driver/T21-USB-REMOVABLE-DESIGN.md:192) checks head eligibility before copying; lines 201–204 recheck generations/delete floors afterward. Lines 208–211 define per-range admission for policy changes, but omit newer allocations, deletion barriers, private cancellation and AcceptedUnresolved holds arising during copying. The USB temporary is already external exposure; rejecting its final rename cannot recall emitted ranges. T5’s temporary preparation and write fence do not supply this coupling. See [T5 publication:32](driver/T5-BOUND-PUBLICATION.md:32) and [T5 ordering:240](driver/T5-DELETES.md:240).
+
+   **Required change:** atomically couple each exposure admission to current shared-head eligibility and fence subsequent ranges whenever eligibility becomes false. Define already-admitted write behavior explicitly. Add finite copy races against newer allocated/blocked saves, ordinary/scheduled deletes, private cancellation and accepted-but-unresolved tracking failures.
+
+The fixed private-storage boundary, DELETE-only reconciliation, prohibition on reusing remount cleanup authority, and separation of device lifetime from private sealing are sound. Microsoft supports the proposed removal notification, but exact device association and stale-handle isolation remain C1 proof obligations. [Surprise-removal contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/handling-an-irp-mn-surprise-removal-request).
+
+D1–D7 describe user effects honestly; their recommendations are reasonable conditional on owner approval, including the clone boundary and numerical storage budgets. Controls cover the relevant phases, but qualification still requires the concrete device-resource ACK contract, T5 descriptor prerequisites and a validated continuous byte observer.
+
+Read-only review completed. No files changed, builds or VM runs performed; the T4 stop remains in force.

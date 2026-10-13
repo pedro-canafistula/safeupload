@@ -858,7 +858,9 @@ not an acceptable removable-media recovery remedy; the M2 fixed-NTFS exception d
 
 - [ ] Complete the dedicated USB/removable design before implementation.
   - [x] [Design draft](T21-USB-REMOVABLE-DESIGN.md) (2026-10-13, Astra): NTFS-first envelope, local private staging, two lifetime proofs
-    for surprise removal, automatic remount reconciliation, decisions D1–D7 and native controls. Author-side review said REVISE.
+    for surprise removal, automatic remount reconciliation, decisions D1–D7 and native controls.
+    [Independent Sol 6.1 xhigh review](evidence/2026-10-13/t21-design-review-sol61.md): REVISE — select a routing owner that survives
+    removal for live upper streams; couple each external-copy exposure to current shared-head eligibility. Revision in progress.
   - [ ] Record owner decisions on supported filesystems/removal behavior, explaining what users notice under each option; obtain Sol 6.1 xhigh design review.
   - [ ] Design automatic remount reconciliation after surprise removal; retain the exact identity/generation hold until verified.
 - [ ] Implement only the approved scope; keep unsupported combinations disabled.
@@ -873,7 +875,9 @@ has independent server-side destination-byte run evidence, and is ready for comb
 
 - [ ] Complete the dedicated SMB/UNC design before implementation.
   - [x] [Design draft](T22-SMB-UNC-DESIGN.md) (2026-10-13, Astra): local fixed-NTFS stage, enrolled UNC identity, Kerberos caller
-    authority, remote replacement gap and commit options, decisions D1–D13 and native controls N01–N0x.
+    authority, remote replacement gap and commit options, decisions D1–D13 and native controls.
+    [Independent Sol 6.1 xhigh review](evidence/2026-10-13/t22-design-review-sol61.md): ACCEPT WITH CONDITIONS — forced-teardown
+    coverage-loss gate, corrected cross-volume retargeting rationale, enumerated diagnostic candidates. Revision in progress.
   - [ ] Cover canonical names, redirector identity, remote authorization, commit ordering and disconnect/retry; record owner choices with user-visible effects and obtain Sol 6.1 xhigh design review.
 - [ ] Implement only the approved scope; keep unsupported network capabilities disabled.
 - [ ] Qualify an actual SMB server with independent server-side destination-byte observation.
