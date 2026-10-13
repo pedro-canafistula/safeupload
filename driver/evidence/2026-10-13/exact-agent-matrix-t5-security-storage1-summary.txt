@@ -1,0 +1,42 @@
+﻿LABEL=t5-security-storage1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=4c23517287be6aee37c1eff0a6f83b0495dcc23e
+ARCHIVE_SHA256=E0B648FB3B4FEE65DBAC0A167E4435C62A7D67127361ECBD99F822A333339CFB
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-debug-tests-user: exit=0 warnings=0 errors=0
+normal-debug-tests-system-identity: S-1-5-18
+normal-debug-tests-system: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=913
+normal-release: admission_evidence=false
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-app-build: exit=0 warnings=0 errors=0
+normal-release-test-build: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-release-tests-user: exit=0 warnings=0 errors=0
+normal-release-tests-system-identity: S-1-5-18
+normal-release-tests-system: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=913
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_manifest_sha256=8735D9C958F6E4405CD830068EC0EA59479726561AF6C95F4E5922020F8C8F94
+normal-release: package_sha256=559A983963635D23923C91B849158E9EA809A97546EC8E9939C10052DB48D5AC
+normal-release: exe_sha256=2E80250C8FB1777756594D9FC4E4E6D3E8A8C0A4D6EB8E62BD00D341BBF6C18C
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=1 warnings=0 errors=0
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-13T05:28:51.9207179Z

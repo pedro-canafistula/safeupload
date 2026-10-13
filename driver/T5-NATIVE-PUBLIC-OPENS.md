@@ -685,7 +685,12 @@ The first Windows matrix compiled at 0 warnings/errors but the new missing-recor
 a missing committed binary dependency propagated `FileNotFoundException`, which the existing allocation finder interpreted as
 a missing manifest. Missing snapshot dependencies now become `InvalidDataException`, preserving the journaled stage and refusing
 replay; the same control continues to assert stage retention. Two tampering controls had the wrong expected exception family and
-now require the precise corrupt-record result. Revised Windows validation is pending.
+now require the precise corrupt-record result. Revised source `ac69dc00` passes the
+[exact Windows agent matrix](evidence/2026-10-13/exact-agent-matrix-t5-security-storage2-summary.txt): normal Debug/Release
+913 tests each and feature Debug/Release 1,269 each, exact discovered/executed case sets, no skips, and all service/app/test builds
+at 0 warnings/errors. The [earlier failed matrix](evidence/2026-10-13/exact-agent-matrix-t5-security-storage1-summary.txt) is retained.
+These controls qualify binary storage, commit/replay, missing/tampered dependencies and retention; they do not qualify native
+assignment, original-object seeding, publication descriptor comparison or a protected pair.
 No wire producer currently supplies this record, and live admission remains off.
 The metadata RPC, complete checked snapshot, rename rebinding, original publication CREATE descriptor, seed/export provenance
 and integrated kernel lifetime review remain required before protected qualification.

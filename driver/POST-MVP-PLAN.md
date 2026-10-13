@@ -298,7 +298,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     unresolved low-token capture, native assignment/creator-grant, metadata and coherent-seed mechanisms. It is provisional
     design evidence; admission, the pending owner hand-back choice and the product-run stop are unchanged.
     The [durable allocation security record](T5-NATIVE-PUBLIC-OPENS.md#durable-allocation-security-record-implementation-checkpoint)
-    is connected to manifest commit, exact replay/recovery and retention-aware cleanup; Windows validation is pending.
+    is connected to manifest commit, exact replay/recovery and retention-aware cleanup (`4c235172`, `ac69dc00`);
+    [Windows matrix passes](evidence/2026-10-13/exact-agent-matrix-t5-security-storage2-summary.txt) at 913 normal/1,269 feature
+    tests per Debug/Release profile with no skips and 0 warnings/errors. Lost committed metadata refuses replay and retains backing.
     Complete native snapshot production, metadata RPC, rename rebinding and publication descriptor use remain open.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
