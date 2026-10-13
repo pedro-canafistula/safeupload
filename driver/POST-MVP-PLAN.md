@@ -294,6 +294,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [four WDK/PREfast/ApiValidator 0/0 builds](evidence/2026-10-13/exact-t5-lookup-capture4-summary.txt), including nonpageable cancellation cleanup.
     [90 native sharing cases](evidence/2026-10-12/writer-split-share-lifetime-native-a9.txt) validate closing supplemental checks
     before retaining the original-grant lease. Checked backends, assigned security/seeding transport and runtime remain open.
+    The [focused writer-authority report](<../reports/T5 native writer authority.md>) records seven finite control groups and
+    unresolved low-token capture, native assignment/creator-grant, metadata and coherent-seed mechanisms. It is provisional
+    design evidence; admission, the pending owner hand-back choice and the product-run stop are unchanged.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)

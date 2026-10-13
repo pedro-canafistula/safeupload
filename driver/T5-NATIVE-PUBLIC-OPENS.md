@@ -647,6 +647,19 @@ ordinary hand-back path; do not infer provenance from final length or a changed 
 
 This is a failure-policy/product decision required by the owner's stop-and-ask rule. Neither option is implemented or approved.
 
+#### Focused implementation research, 2026-10-13
+
+The [writer-authority report](<../reports/T5 native writer authority.md>) consolidates the native controls, Microsoft contracts
+and current integration gaps into five stages and seven finite control groups. It is provisional design evidence, not an
+integrated kernel review or activation approval. The published V18/V23/V26 layouts, supported CREATE surface and pending owner
+choice remain unchanged.
+
+Three corrections must be resolved before integration: removing the local impersonation-level guard does not remove the capture
+DDI's low-token restriction; construction/defaulted flags require a distinct native stored-descriptor comparator, and supplying
+an assigned descriptor to a SYSTEM temporary CREATE is not proven idempotent; initial absent-object creator grants must not be
+denied by rechecking the newly assigned DACL as an existing object. Exact-object full-security queries, kernel reads and whole-copy
+coherence also remain mechanism gates. The report specifies finite differential controls rather than assuming these contracts.
+
 ### Native scheduled-CREATE integration transport — reviewed contract
 
 **2026-10-12: Luna 6 max effort READY for transport/producer implementation after the revision, high-water and receipt-retention
