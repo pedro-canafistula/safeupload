@@ -2,19 +2,25 @@
 # Run Phase 4 cases serially on the debuggee, one runner invocation per case, each on its own disposable run disk.
 # Optional EXTRA_RUNNER_ARGS (e.g. --dedicated-unheld-latency) is passed to every runner call.
 # Usage: driver/scripts/Invoke-StagedSuiteBatch.sh <driver_label> <driver_commit> <agent_label> <agent_commit> <mode> <tagprefix> CASE...
-# SAFEUPLOAD_DEBUGGEE selects the VM (driver/scripts/debuggees.txt); batches on different VMs may run
-# concurrently from one checkout with distinct tag prefixes, and the checkout must not change meanwhile.
+# SAFEUPLOAD_DEBUGGEE must explicitly select an approved VM (driver/scripts/debuggees.txt).
+# The checkout must not change while a batch runs.
 # Every case runs on a disposable run disk (run-disk.sh): the debuggee idles shut off on its base, each case boots a fresh overlay of
 # it, the baseline is verified on that fresh disk, the case runs (the wrapper verifies its own baseline before its checkpoint and runs
-# an independent restoration check after the restoration reboot), the gate fields are summarized, and the run's files are deleted
-# again, whatever the outcome. A case that left a recovery-required marker or an unclean restoration is reported and the batch goes
-# on, because the next case starts from the untouched base anyway. Stops the batch when a fresh run disk does not reach
-# BaselineClean=True (the base itself changed) or when a run's files cannot be discarded.
+# an independent restoration check after the restoration reboot), the verdict is checked, and the run's files are deleted
+# again, whatever the outcome. A failed or missing verdict stops the batch after discarding that case's run disk.
+# Also stops when a fresh run disk does not reach BaselineClean=True (the base itself changed) or a run cannot be discarded.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 driver_label=$1; driver_commit=$2; agent_label=$3; agent_commit=$4; mode=$5; prefix=$6; shift 6
 policy=29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731
-dom="${SAFEUPLOAD_DEBUGGEE:-win10-debug}"; host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt)
+# POST-MVP-PLAN.md: 2026-10-13 M2 completion direction, Lab tooling now; approved target is win10-debug3 only.
+APPROVED_DEBUGGEES=(win10-debug3)
+dom="${SAFEUPLOAD_DEBUGGEE:-}"
+[ -n "$dom" ] || { echo "SAFEUPLOAD_DEBUGGEE must be set explicitly (approved: ${APPROVED_DEBUGGEES[*]})"; exit 2; }
+approved=false
+for target in "${APPROVED_DEBUGGEES[@]}"; do [ "$dom" != "$target" ] || approved=true; done
+$approved || { echo "Unapproved debuggee $dom (approved: ${APPROVED_DEBUGGEES[*]})"; exit 2; }
+host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt)
 [ -n "$host" ] || { echo "Unknown debuggee $dom (driver/scripts/debuggees.txt)"; exit 2; }
 export SAFEUPLOAD_DEBUGGEE="$dom"; V="virsh -c qemu:///system"
 source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"
@@ -61,7 +67,12 @@ for i in $(seq 1 $#); do  # refuse reused suite tags before touching the guest
         log "STOP: suite index already exists for $tag; choose a fresh tag prefix"; exit 6
     fi
 done
-i=0
+# Refuse shared-address peers before starting any case; an unreadable state is not proof they are off.
+while read -r peer; do
+    state=$($V domstate "$peer") || { log "STOP: cannot determine state of shared-address debuggee $peer"; exit 2; }
+    [ "$state" != running ] || { log "STOP: $peer is running and shares $host with $dom"; exit 2; }
+done < <(awk -v d="$dom" -v h="$host" '$1 !~ /^#/ && $1!=d && $2==h{print $1}' driver/scripts/debuggees.txt)
+i=0; passed=0; total=$#
 for case in "$@"; do
     i=$((i+1)); tag="${prefix}${i}"; disk="$ev/batch-$tag-run-disk.txt"
     run_disk_begin "$dom" "$tag" >> "$disk" 2>&1 || { log "STOP: no fresh run disk for $tag ($disk)"; exit 3; }
@@ -72,19 +83,20 @@ for case in "$@"; do
     log "run $tag $case $mode on $dom"
     python3 driver/scripts/Invoke-StagedInvariantQualification.py "$tag" "$driver_label" "$driver_commit" "$agent_label" "$policy" \
         --cases "$case" --modes "$mode" --agent-source-commit "$agent_commit" ${EXTRA_RUNNER_ARGS:-} > "$ev/batch-$tag-runner.log" 2>&1
-    index=$(ls -t driver/evidence/*/phase4-suite-"$tag"-index.txt 2>/dev/null | head -1)
-    summary=$( [ -n "$index" ] && grep -o '"Verdict": "[A-Z_]*"\|"GatePassed": [a-z]*\|"MvpGatePassed": [a-z]*\|"RestorationClean": [a-z]*\|"ForbiddenByteCount": [0-9a-z]*' "$index" | tr '\n' ' ')
-    log "result $tag $case: ${summary:-no index}"
-    name="boot-start-invariant-$case-$mode-$tag"
-    restored=$(ls driver/evidence/*/"$name"-final-restored-state.txt 2>/dev/null | head -1)
-    if ls driver/evidence/*/"$name"-recovery-required.txt >/dev/null 2>&1; then
-        log "run $tag left a recovery-required marker; its disk is discarded"
-    elif [ -n "$restored" ]; then
-        grep -q '^BaselineClean=True' "$restored" && grep -qx 'ProcessCreationAuditRestored=True' "$restored" ||
-            log "independent restoration of $tag not clean ($restored); its disk is discarded"
+    runner_exit=$?
+    verdict=$(python3 driver/scripts/suite_case_verdict.py "$runner_exit" "$tag" "$case" "$mode")
+    verdict_exit=$?
+    # A helper failure still reaches run_disk_end and can never imply a passing case.
+    if [ "$verdict_exit" -ne 0 ] || [[ "$verdict" != CaseVerdict=PASS\ reason=* ]]; then
+        verdict_exit=1
+        [[ "$verdict" == CaseVerdict=FAIL\ reason=* ]] || verdict="CaseVerdict=FAIL reason=verdict helper failed"
     fi
+    log "result $tag $case: $verdict"
     run_disk_end "$dom" "$tag" >> "$disk" 2>&1 && grep -qx 'RunDiskBaseUntouched=True' "$disk" ||
         { log "STOP: run files of $tag not discarded cleanly ($disk)"; exit 3; }
+    [ "$verdict_exit" -eq 0 ] || { log "STOP: $tag $case failed: ${verdict#* reason=}"; exit 1; }
+    passed=$((passed+1))
     day=$(date +%F); ev=driver/evidence/$day; mkdir -p "$ev"
 done
-log "batch complete"
+log "batch complete: $passed/$total PASS"
+exit 0
