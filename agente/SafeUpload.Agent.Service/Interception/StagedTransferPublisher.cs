@@ -536,10 +536,9 @@ public sealed partial class StagedTransferPublisher
                 if (sourceFile.Identity != entry.StageIdentity || source.Length != entry.SealedLength)
                     throw new IOException("The blocked stage no longer has its measured identity and length.");
                 await using InspectionSnapshot snapshot = await InspectionSnapshot.CreateAsync(
-                    source, _stagingRoot, Path.GetExtension(entry.Transfer.DestinationPath), token)
+                    source, _stagingRoot, Path.GetExtension(entry.Transfer.DestinationPath), entry.SealedLength.Value, token)
                     .ConfigureAwait(false);
-                string digest = Convert.ToHexString(await SHA256.HashDataAsync(
-                    snapshot.Stream, token).ConfigureAwait(false));
+                string digest = snapshot.Digest;
                 if (snapshot.Stream.Length != source.Length ||
                     !string.Equals(digest, entry.Sha256Hex, StringComparison.OrdinalIgnoreCase))
                     throw new IOException("The blocked staging version no longer matches its journal digest.");
