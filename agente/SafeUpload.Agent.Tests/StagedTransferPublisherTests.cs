@@ -809,9 +809,9 @@ public sealed class StagedTransferPublisherTests : IDisposable
         var inspection = new InspectionService(new LocalPolicyStore(_workspace.PolicyFile),
             new LocalQueueAuditSink(_workspace.QueueFile), new ExtractorRegistry([extractor]), new VerdictCache());
         var publisher = new StagedTransferPublisher(inspection, _notifications, _journal, _stagingRoot,
-            new TestPublicationGate());
+            new TestPublicationGate(), sessionUserSidResolver: _ => TestRequestorSid);
         var publication = publisher.PublishAsync(transfer, CancellationToken.None);
-        await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await AwaitExtractionAsync(extractor, publication, TimeSpan.FromSeconds(5));
         await SetLocalPolicyAsync(Path.Combine(_workspace.Root, "other-folder"), 2);
         extractor.Continue.SetResult();
         Assert.Equal(StagedTransferOutcome.Retained, await publication);
@@ -865,7 +865,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
 
         Task<StagedTransferOutcome> publication =
             publisher.PublishAsync(transfer, CancellationToken.None);
-        await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await AwaitExtractionAsync(extractor, publication, TimeSpan.FromSeconds(5));
 
         await Assert.ThrowsAsync<IOException>(() => _journal.PrepareRenameAsync(
             transfer.TransferId, 1, transfer.ProcessId,
@@ -918,7 +918,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
 
         Task<StagedTransferOutcome> publication =
             publisher.PublishAsync(transfer, CancellationToken.None);
-        await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await AwaitExtractionAsync(extractor, publication, TimeSpan.FromSeconds(5));
 
         var policy = JsonNode.Parse(await File.ReadAllTextAsync(_workspace.PolicyFile))!;
         if (changeVersion) policy["version"] = 2;
@@ -953,7 +953,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         var publication = publisher.PublishAsync(transfer, CancellationToken.None);
         try
         {
-            await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await AwaitExtractionAsync(extractor, publication, TimeSpan.FromSeconds(10));
             trusted = false;
             extractor.Continue.TrySetResult();
             Assert.Equal(StagedTransferOutcome.Retained, await publication);
@@ -995,7 +995,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         finally { UnmapViewOfFile(view); }
         mapping.Dispose();
         var publication = publisher.PublishAsync(transfer, CancellationToken.None);
-        await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await AwaitExtractionAsync(extractor, publication, TimeSpan.FromSeconds(5));
         extractor.Continue.SetResult();
         Assert.Equal(StagedTransferOutcome.Blocked, await publication);
         Assert.False(File.Exists(transfer.DestinationPath));
@@ -1248,6 +1248,26 @@ public sealed class StagedTransferPublisherTests : IDisposable
             _publisher.PublishAsync(transfer, CancellationToken.None));
         Assert.False(File.Exists(destination));
         Assert.True(File.Exists(stage));
+    }
+
+    // Wait for extraction to begin. If publication finishes first (early retention, refusal or an exception), fail with
+    // its real outcome instead of an unrelated timeout. On any failure release the paused extractor and observe publication
+    // before the workspace is disposed.
+    private static async Task AwaitExtractionAsync(PausingExtractor extractor, Task<StagedTransferOutcome> publication,
+        TimeSpan timeout)
+    {
+        Task first;
+        try { first = await Task.WhenAny(extractor.Entered.Task, publication).WaitAsync(timeout); }
+        catch (TimeoutException)
+        {
+            extractor.Continue.TrySetResult();
+            await Task.WhenAny(publication, Task.Delay(timeout));
+            throw;
+        }
+        if (first != publication) return;
+        extractor.Continue.TrySetResult();
+        Assert.Fail("Publication finished before extraction started: " + (publication.IsFaulted
+            ? publication.Exception!.GetBaseException().ToString() : publication.Result.ToString()));
     }
 
     private sealed class PausingExtractor : ITextExtractor

@@ -7,8 +7,13 @@ using Xunit.Abstractions;
 
 namespace SafeUpload.Agent.Tests;
 
+// Thousands of real journal files: run apart from timing-sensitive publisher tests (t5-option1a feature Release receipt).
+[CollectionDefinition("Bulk journal I/O", DisableParallelization = true)]
+public sealed class BulkJournalIoCollection { }
+
 // Real private journal files and queues, with synthetic checked namespace
 // identities. These qualify indexing/lifetime, not native caller authority.
+[Collection("Bulk journal I/O")]
 public sealed class StagedDestinationIndexIntegrationTests(ITestOutputHelper output) : IDisposable
 {
     private readonly TestWorkspace _workspace = new();
