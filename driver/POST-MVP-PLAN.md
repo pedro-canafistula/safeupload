@@ -413,6 +413,20 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     unreferenced package content, formula completeness, other metadata and whole-file streaming remain open. No protected run occurred.
     [Scoped builder cleanup](evidence/2026-10-13/t9-office-payload1-preflight-host.json) removed only hash-verified unpacked duplicates
     from completed builds while preserving their source, package ZIPs/manifests and evidence; no host-wide configuration changed.
+  - Staged plaintext streaming (`56e2e53f`): the strict BOM-aware extractor now opens disposable readers on the same held private
+    snapshot. Complete numeric, bounded-regex, unbounded-token and password passes preserve existing category precedence, masks
+    and ordering without capturing the source or full extracted text. Fixed buffers carry boundary context; only offsets, labels and
+    masked findings persist between passes. A 16,384 candidate/finding budget produces explicit `inspection_limit` Blocked with
+    empty findings rather than approving a partial scan. Existing policy size/deadline limits, worker concurrency, legacy capture/cache
+    and Office/PDF paths are unchanged. The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-stream-text1-summary.txt)
+    passes 1,013 normal/1,383 feature tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors.
+    All [18 streaming controls](evidence/2026-10-13/t9-stream-text1-controls.json) pass in each profile: every category subset,
+    fragmented input, all fixed-pattern overlap positions, deterministic mixed text, two-million-character unbounded values/whitespace,
+    strict UTF-8/16/32 readers on real snapshots, explicit budget failure and cancellation/stream ownership. Boundary word categories
+    follow [.NET's regex implementation](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Text.RegularExpressions/src/System/Text/RegularExpressions/RegexCharClass.cs).
+    These component passes do not establish peak live memory, default-limit throughput, protected publication or complete format coverage.
+    [Scoped preflight cleanup](evidence/2026-10-13/t9-stream-text1-preflight.host.json) preserves previous source/packages/evidence.
+    No product pair was installed or booted; source/evidence remain local while the earlier push approval is pending.
 - [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
   - Strict current-policy implementation (`bfffa535`): staged inspection, approval, justification, allocation/rename/attach
     admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and

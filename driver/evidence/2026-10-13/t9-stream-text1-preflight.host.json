@@ -1,0 +1,11 @@
+{
+  "remoteExit": 0,
+  "payloadSha256": "95d8884e1188bc7314f6e6079b4cf6064b58ae7636c9d35a98855f5aaedc74f5",
+  "stdoutSha256": "0f568ec256731c882d02cb254e5c8536274a97790783ba978c3b8ab6ed7048d9",
+  "stderrSha256": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+  "receipt": [
+    "UNPACKED_DUPLICATE_REMOVED=t11-head-reads1/normal-release",
+    "UNPACKED_DUPLICATE_REMOVED=t11-head-reads1/feature-release",
+    "SCOPED_GENERATED_CLEANUP=PASS directories=2 free_before=330829824 free_after=511082496 source_packages_evidence_retained=True"
+  ]
+}

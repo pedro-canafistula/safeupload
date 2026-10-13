@@ -1,0 +1,635 @@
+{
+  "sourceCommit": "56e2e53f12888be963dabd2ce5bb8d7fc5791d82",
+  "scope": "Staged plaintext only: complete bounded detector passes on the same open private snapshot; category/mask/order/precedence compatibility, strict encoding, candidate-limit failure and unchanged legacy path. No protected-pair, large-file throughput/peak-memory or Office/PDF streaming qualification.",
+  "candidateLimit": 16384,
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "matrixTotal": 1013,
+      "rawTrxSha256": "4774ab499e10e3f4945453fccd9ab26bb8af4af3d4b6761f49421d5edad341c0",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Caller_cancellation_closes_readers_and_does_not_become_a_partial_result",
+          "executionId": "4d3d4208-ca11-4344-9cad-05cb83ca3369",
+          "outcome": "Passed",
+          "duration": "00:00:00.0016183",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Candidate_budget_fails_explicitly_instead_of_returning_a_truncated_result",
+          "executionId": "9500ca76-c9e1-40df-aa8c-4b443928bc16",
+          "outcome": "Passed",
+          "duration": "00:00:00.0834275",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Deterministic_mixed_text_matches_the_existing_scanner",
+          "executionId": "41da8b1d-0170-4072-8704-d79a3f0e946d",
+          "outcome": "Passed",
+          "duration": "00:00:00.0139976",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fixed_patterns_preserve_real_boundaries_at_every_overlap_position",
+          "executionId": "94250e3d-67cf-4eae-a828-ea8b9f542edf",
+          "outcome": "Passed",
+          "duration": "00:00:05.5917563",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 1)",
+          "executionId": "f1c63f3f-2005-422a-adf3-0e5d1ceb641f",
+          "outcome": "Passed",
+          "duration": "00:00:00.0518336",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 257)",
+          "executionId": "1f8f3007-a4b1-4158-96d9-234c7e47f896",
+          "outcome": "Passed",
+          "duration": "00:00:00.0203887",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 7)",
+          "executionId": "df03bd27-a69e-4b98-ad20-b2eff0e295de",
+          "outcome": "Passed",
+          "duration": "00:00:00.0327319",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 8192)",
+          "executionId": "7b2ee9f3-5c47-4d67-b7c0-d055acf444e4",
+          "outcome": "Passed",
+          "duration": "00:00:00.0217326",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16be\")",
+          "executionId": "ff75f6dc-cc35-44f9-a3bb-73427ec6d4ad",
+          "outcome": "Passed",
+          "duration": "00:00:00.0120981",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16le\")",
+          "executionId": "c1c014e0-1cce-48e3-bed6-5cfa94c205d8",
+          "outcome": "Passed",
+          "duration": "00:00:00.0115694",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32be\")",
+          "executionId": "f29989e9-4c25-49d3-aa52-169512c88e9d",
+          "outcome": "Passed",
+          "duration": "00:00:00.0121990",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32le\")",
+          "executionId": "36665aed-bd8d-4cd9-acce-4b7c037de93c",
+          "outcome": "Passed",
+          "duration": "00:00:00.0151408",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8\")",
+          "executionId": "db44cb32-fca9-4746-a385-26816b4b930a",
+          "outcome": "Passed",
+          "duration": "00:00:00.0100620",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8-bom\")",
+          "executionId": "fbf00e1a-9cdd-4258-a3ee-21adbc3c7e5c",
+          "outcome": "Passed",
+          "duration": "00:00:00.0149827",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"jwt\")",
+          "executionId": "7963e87d-cfa1-4f9f-9997-89e3c18c3baa",
+          "outcome": "Passed",
+          "duration": "00:00:00.5612524",
+          "measurements": [
+            {
+              "shape": "jwt",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 517.593
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"password\")",
+          "executionId": "2d62c3e2-de3d-4942-81dc-f22d7efcbf52",
+          "outcome": "Passed",
+          "duration": "00:00:00.5008989",
+          "measurements": [
+            {
+              "shape": "password",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 450.191
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"slack\")",
+          "executionId": "232594d4-4afa-4386-865b-e1eeee25efb7",
+          "outcome": "Passed",
+          "duration": "00:00:00.5462582",
+          "measurements": [
+            {
+              "shape": "slack",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 505.768
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"whitespace\")",
+          "executionId": "6c52840d-f582-43ee-bcc0-13c9716abea4",
+          "outcome": "Passed",
+          "duration": "00:00:00.5106335",
+          "measurements": [
+            {
+              "shape": "whitespace",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 452.059
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "matrixTotal": 1013,
+      "rawTrxSha256": "9728ebde1e4db0c6e3496fe00b2ac46fd48a0cad13fdcd48c6a3c1bac863f3db",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Caller_cancellation_closes_readers_and_does_not_become_a_partial_result",
+          "executionId": "09b020cd-d076-43ba-ad43-aa9cba76925d",
+          "outcome": "Passed",
+          "duration": "00:00:00.0013502",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Candidate_budget_fails_explicitly_instead_of_returning_a_truncated_result",
+          "executionId": "dfe3037f-85e2-4afd-8ca8-655f867220c6",
+          "outcome": "Passed",
+          "duration": "00:00:00.0728374",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Deterministic_mixed_text_matches_the_existing_scanner",
+          "executionId": "2858510d-cbf4-4156-b7f9-3fc5f536aea1",
+          "outcome": "Passed",
+          "duration": "00:00:00.0162739",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fixed_patterns_preserve_real_boundaries_at_every_overlap_position",
+          "executionId": "97f3f190-4796-48ca-a8ea-c57679177889",
+          "outcome": "Passed",
+          "duration": "00:00:02.3875330",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 1)",
+          "executionId": "f76f33f2-ba19-4200-96cc-6a29d3907fe6",
+          "outcome": "Passed",
+          "duration": "00:00:00.0711923",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 257)",
+          "executionId": "09930b99-0355-4c16-8d14-5d59af05abf1",
+          "outcome": "Passed",
+          "duration": "00:00:00.0374370",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 7)",
+          "executionId": "038af08f-bc56-47a9-a3a8-bec5008507c3",
+          "outcome": "Passed",
+          "duration": "00:00:00.0444581",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 8192)",
+          "executionId": "c752e4f7-83ff-4b89-be68-477ea46a6a0d",
+          "outcome": "Passed",
+          "duration": "00:00:00.0230459",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16be\")",
+          "executionId": "11a721d4-5c4a-462a-82e9-d53afe72cf1f",
+          "outcome": "Passed",
+          "duration": "00:00:00.0154501",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16le\")",
+          "executionId": "48cbc4ac-c155-4ce9-b8c7-4607b05b90e5",
+          "outcome": "Passed",
+          "duration": "00:00:00.0241023",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32be\")",
+          "executionId": "6d6f9e01-ac43-4a58-97c0-7bb181ddfe9a",
+          "outcome": "Passed",
+          "duration": "00:00:00.0237341",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32le\")",
+          "executionId": "76505c02-fb7e-4edc-ba46-5a6ce775539b",
+          "outcome": "Passed",
+          "duration": "00:00:00.0280816",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8\")",
+          "executionId": "e51c1ed4-0c67-4834-9a53-09b2bbb08557",
+          "outcome": "Passed",
+          "duration": "00:00:00.0234291",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8-bom\")",
+          "executionId": "81f23c42-61e1-481a-9594-5639da75b816",
+          "outcome": "Passed",
+          "duration": "00:00:00.0207542",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"jwt\")",
+          "executionId": "8b051011-eab3-44b8-9777-e920a06d5a1d",
+          "outcome": "Passed",
+          "duration": "00:00:00.2000330",
+          "measurements": [
+            {
+              "shape": "jwt",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 189.786
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"password\")",
+          "executionId": "218aa7b3-3c6a-4bc3-be48-63f73d002275",
+          "outcome": "Passed",
+          "duration": "00:00:00.1743997",
+          "measurements": [
+            {
+              "shape": "password",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 147.159
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"slack\")",
+          "executionId": "3358ec20-f3ed-492a-847c-3756619fb445",
+          "outcome": "Passed",
+          "duration": "00:00:00.2165371",
+          "measurements": [
+            {
+              "shape": "slack",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 196.44
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"whitespace\")",
+          "executionId": "95364989-0144-4446-ba4b-f10d234ac726",
+          "outcome": "Passed",
+          "duration": "00:00:00.1724882",
+          "measurements": [
+            {
+              "shape": "whitespace",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 138.012
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "matrixTotal": 1383,
+      "rawTrxSha256": "8c6336061c7e4fb89c80bce7ada072f4128d07cdc7a2a1b79f6e15c2474fd592",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Caller_cancellation_closes_readers_and_does_not_become_a_partial_result",
+          "executionId": "49a58376-84db-484e-acd0-0516b3c0ad9f",
+          "outcome": "Passed",
+          "duration": "00:00:00.0015740",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Candidate_budget_fails_explicitly_instead_of_returning_a_truncated_result",
+          "executionId": "0640e6ef-29b0-463b-9a7f-6df88b05151c",
+          "outcome": "Passed",
+          "duration": "00:00:00.0841435",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Deterministic_mixed_text_matches_the_existing_scanner",
+          "executionId": "6282215e-ef07-42a7-ab50-74c828202c72",
+          "outcome": "Passed",
+          "duration": "00:00:00.0199795",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fixed_patterns_preserve_real_boundaries_at_every_overlap_position",
+          "executionId": "322d482b-2951-49f6-a158-840ee2e5d290",
+          "outcome": "Passed",
+          "duration": "00:00:05.8004896",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 1)",
+          "executionId": "411a39a8-7c27-4265-8da5-aea1c1c1f487",
+          "outcome": "Passed",
+          "duration": "00:00:00.0484367",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 257)",
+          "executionId": "bc55b631-c41a-47c6-a30c-4995fa0fd569",
+          "outcome": "Passed",
+          "duration": "00:00:00.0170676",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 7)",
+          "executionId": "4e280c73-9c71-4149-8913-6a504996945b",
+          "outcome": "Passed",
+          "duration": "00:00:00.0312148",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 8192)",
+          "executionId": "622787d2-ece3-49f2-85b0-8f1185ca9f1a",
+          "outcome": "Passed",
+          "duration": "00:00:00.0177671",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16be\")",
+          "executionId": "da693848-ecf0-47e6-ac0d-b0c7829a3f1a",
+          "outcome": "Passed",
+          "duration": "00:00:00.0115790",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16le\")",
+          "executionId": "356048aa-5b7a-405e-bcec-6e0374bb4b07",
+          "outcome": "Passed",
+          "duration": "00:00:00.0107694",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32be\")",
+          "executionId": "9853f492-f3cf-4775-9dd2-5908680e2c84",
+          "outcome": "Passed",
+          "duration": "00:00:00.0108339",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32le\")",
+          "executionId": "639c1dfc-6333-44e9-9c2f-30f38b806dab",
+          "outcome": "Passed",
+          "duration": "00:00:00.0132971",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8\")",
+          "executionId": "fdc2bdbb-52c8-4540-823d-3863f1068b44",
+          "outcome": "Passed",
+          "duration": "00:00:00.0110247",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8-bom\")",
+          "executionId": "d3fdf713-71f3-4989-b0b2-3147ce7148f1",
+          "outcome": "Passed",
+          "duration": "00:00:00.0152460",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"jwt\")",
+          "executionId": "8e3a50d7-763e-44e7-b109-4c709514c15f",
+          "outcome": "Passed",
+          "duration": "00:00:00.5538311",
+          "measurements": [
+            {
+              "shape": "jwt",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 512.167
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"password\")",
+          "executionId": "f14d7e3a-647b-494e-888e-ea11f7cb3bad",
+          "outcome": "Passed",
+          "duration": "00:00:00.4972810",
+          "measurements": [
+            {
+              "shape": "password",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 447.157
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"slack\")",
+          "executionId": "f6290f15-4f15-4621-b8f7-24a96d2a89dc",
+          "outcome": "Passed",
+          "duration": "00:00:00.5771468",
+          "measurements": [
+            {
+              "shape": "slack",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 529.639
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"whitespace\")",
+          "executionId": "70cbbf00-a582-474e-b72c-a126e5e0dcef",
+          "outcome": "Passed",
+          "duration": "00:00:00.5052351",
+          "measurements": [
+            {
+              "shape": "whitespace",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 446.867
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "matrixTotal": 1383,
+      "rawTrxSha256": "ca1e1ca89a095f9850cffb48a09c57c582b629cef01646ad8d6e7442d7300e89",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Caller_cancellation_closes_readers_and_does_not_become_a_partial_result",
+          "executionId": "af498ded-eb62-48f5-ab8c-25653fa08d7d",
+          "outcome": "Passed",
+          "duration": "00:00:00.0013304",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Candidate_budget_fails_explicitly_instead_of_returning_a_truncated_result",
+          "executionId": "c311481c-6177-4017-a5ab-bd5afa2479d0",
+          "outcome": "Passed",
+          "duration": "00:00:00.0761051",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Deterministic_mixed_text_matches_the_existing_scanner",
+          "executionId": "e54d05e7-ce49-4674-bebc-4386e767eb2f",
+          "outcome": "Passed",
+          "duration": "00:00:00.0152076",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fixed_patterns_preserve_real_boundaries_at_every_overlap_position",
+          "executionId": "b7194066-854d-46c1-b333-ee6e4d5446f1",
+          "outcome": "Passed",
+          "duration": "00:00:02.4413928",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 1)",
+          "executionId": "a9711aa3-3ed4-48cf-b682-5af76230f6d6",
+          "outcome": "Passed",
+          "duration": "00:00:00.0510873",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 257)",
+          "executionId": "23ad2cad-72f3-42b9-bfbc-05b1be33fd14",
+          "outcome": "Passed",
+          "duration": "00:00:00.0239424",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 7)",
+          "executionId": "ba2ad4d4-ffee-46b6-b3ae-c1509c0fca18",
+          "outcome": "Passed",
+          "duration": "00:00:00.0412202",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Fragmented_input_preserves_full_scanner_categories_masks_order_and_precedence(chunk: 8192)",
+          "executionId": "922e261f-f02d-4fb1-9617-fcb09e0175a4",
+          "outcome": "Passed",
+          "duration": "00:00:00.0249331",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16be\")",
+          "executionId": "d0fd70f5-1403-4d8a-9a2c-804d7491a6f3",
+          "outcome": "Passed",
+          "duration": "00:00:00.0143287",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16le\")",
+          "executionId": "6b2db9a3-7b70-4aed-af6c-f4ae4b6a733d",
+          "outcome": "Passed",
+          "duration": "00:00:00.0160232",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32be\")",
+          "executionId": "3e8fc1a8-1e25-4bd0-9111-114da2a6b3cf",
+          "outcome": "Passed",
+          "duration": "00:00:00.0115602",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32le\")",
+          "executionId": "ffd1f984-72e9-451a-8a69-5c052c101125",
+          "outcome": "Passed",
+          "duration": "00:00:00.0175734",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8\")",
+          "executionId": "8f9cd4d5-5b3b-4db8-9f8a-8138e6499792",
+          "outcome": "Passed",
+          "duration": "00:00:00.0164407",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8-bom\")",
+          "executionId": "c41c1231-e710-4196-817e-ae4f1deb0a6b",
+          "outcome": "Passed",
+          "duration": "00:00:00.0147825",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"jwt\")",
+          "executionId": "0c50d358-55b8-4856-8798-58f45f599d6f",
+          "outcome": "Passed",
+          "duration": "00:00:00.1654716",
+          "measurements": [
+            {
+              "shape": "jwt",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 150.74
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"password\")",
+          "executionId": "299137df-61bf-410a-8e57-0febc6c20f79",
+          "outcome": "Passed",
+          "duration": "00:00:00.1356249",
+          "measurements": [
+            {
+              "shape": "password",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 119.021
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"slack\")",
+          "executionId": "2f6e2f5c-a2b9-4453-a11f-0c6336aaeea4",
+          "outcome": "Passed",
+          "duration": "00:00:00.1688638",
+          "measurements": [
+            {
+              "shape": "slack",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 151.499
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Unbounded_values_and_whitespace_need_no_source_sized_buffer(kind: \"whitespace\")",
+          "executionId": "cda4f785-224d-43a4-906a-1c62eb810371",
+          "outcome": "Passed",
+          "duration": "00:00:00.1424700",
+          "measurements": [
+            {
+              "shape": "whitespace",
+              "repeatedCharacters": 2097152,
+              "elapsedMs": 123.874
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
