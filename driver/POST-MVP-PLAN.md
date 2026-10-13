@@ -176,11 +176,12 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
     and Verifier allocations to zero; separate restoration passes ([result and raw evidence](evidence/2026-10-12/t4-memory-attribution-result.md)).
   - [ ] Establish bounded retention while loaded: stream contexts account for much of SUfl; the bounded registry sample has live
     holders, no retired entries. Unload release is not a loaded-memory bound. No new reclamation or relaxed gate is justified;
-    clean short/10k qualification remains open. [Coverage-retry source and a final Ready check](evidence/2026-10-12/t4-coverage-retry-analysis.md)
-    are recorded; runtime availability remains open. Diagnostic overhead excludes the prior run from qualification.
+    latest [clean short result](evidence/2026-10-12/t4-clean-short-result.md) again fails pool slope (461.600 B/cycle); VM tests stopped
+    pending owner authorization. [Coverage-retry explanation/final Ready check](evidence/2026-10-12/t4-coverage-retry-analysis.md) is prepared;
+    runtime availability remains open. Diagnostic overhead excludes the prior run from qualification.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
-- [ ] Pass the complete short and 10k rows. Last 10k: 8,740/10,000, four stages left;
+- [ ] Pass the complete short and 10k rows. Latest short: 256/256, cleanup PASS, memory FAIL; long retry not started. Last 10k: 8,740/10,000, four stages left;
   [journal-failure diagnosis and raw evidence](evidence/2026-10-11/t4-journal-failure-diagnosis.md).
 - [ ] Run the required raw-volume regression cells above, then rerun T4 on the final M2 pair.
   The cycle row's sampled public-byte checks do not replace the raw-volume observer.

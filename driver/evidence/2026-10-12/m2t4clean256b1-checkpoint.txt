@@ -1,0 +1,2 @@
+RunDiskEfiReset=True
+2026-10-12T23:54:07Z run-disk win10-debug3: run m2t4clean256b1 on /var/lib/libvirt/images/win10-debug3.safeupload-run-m2t4clean256b1.qcow2 (base /var/lib/libvirt/images/win10-debug3.base-20261009.qcow2)
