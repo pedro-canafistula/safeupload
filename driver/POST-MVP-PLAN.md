@@ -58,6 +58,10 @@ changes; the owner's direction below accepts the review with specific changes.
   unchanged. Write the small design and obtain the Sol review before implementation.
 - **Workers.** Claude may delegate to Codex `gpt-6-astra`, `gpt-6.1-sol` and `gpt-6-luna` at any effort up to max, with the fast tier.
   Reviews required by the review policy remain Sol 6.1 xhigh.
+- **Later the same day — design work in parallel.** While M2 jobs run, start the design notes for the improved lab/development workflow
+  (Ansible, Packer and related tooling), T21 USB/removable and T22 SMB/UNC. Designs only: no implementation, no host-wide or
+  qualified-baseline change, and USB/SMB stay disabled until their owner decisions, Sol 6.1 xhigh design reviews and gates.
+  This replaces the earlier "defer the tooling" bullet for design work only; tooling implementation still waits for the T5 checkpoint.
 
 **2026-10-11 — destinations and completion.** Follow the order above. M4 covers local NTFS, USB including surprise removal,
 UNC/SMB, and a real sync client with independent destination-byte observers. Both mapping leaks need their repros rerun and closed.
