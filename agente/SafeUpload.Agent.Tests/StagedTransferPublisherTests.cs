@@ -780,8 +780,10 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal("Clean text.", await File.ReadAllTextAsync(transfer.DestinationPath));
     }
 
-    [Fact]
-    public async Task Policy_change_during_inspection_retains_the_file()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Policy_change_during_inspection_retains_the_file(bool changeVersion)
     {
         var extractor = new PausingExtractor();
         var inspector = new InspectionService(
@@ -797,7 +799,8 @@ public sealed class StagedTransferPublisherTests : IDisposable
         await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         var policy = JsonNode.Parse(await File.ReadAllTextAsync(_workspace.PolicyFile))!;
-        policy["version"] = 2;
+        if (changeVersion) policy["version"] = 2;
+        else policy["activeCategories"] = new JsonArray(JsonValue.Create("Secret"));
         await File.WriteAllTextAsync(_workspace.PolicyFile, policy.ToJsonString());
         extractor.Continue.SetResult();
 

@@ -398,6 +398,12 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     an adversarial control and complete policy binding. This checkpoint does not claim that separate condition closed.
     [Scoped preflight cleanup](evidence/2026-10-13/t9-current-policy-preflight-cleanup.stdout.txt) preserves the previous verified
     source/packages/evidence. No product pair was installed or booted; T4's stopped gate and T5 NotReady remain in force.
+  - Complete-policy binding implementation (matrix pending): staged results carry a deterministic fingerprint of every policy
+    field, with collection order normalized and exact strings/strict UTF-8 preserved. Approval and justification require both
+    that fingerprint and the version. Blocked manifests persist the binding; recovery rechecks it before restoring a callback.
+    Missing historical bindings or same-version edits retain the exact private version for a new inspection, without inventing
+    prior authority or deleting backing. Controls cover every field, framing/order/encoding, same-version decision/publication
+    races, durable restart/justification and malformed/missing metadata. Audit/UI payloads and driver ABI remain unchanged.
 - [ ] Measure cold/warm throughput and peak memory before choosing defaults; existing 256 MiB warm-input measurements are not staged qualification.
 - [ ] Qualify large clean/CPF, corrupt/encrypted/password-protected, parser/extraction-limit, timeout and disk-full cases.
 - [ ] Resolve the all-zero payment-card classification question with user-visible options before changing its current verdict.

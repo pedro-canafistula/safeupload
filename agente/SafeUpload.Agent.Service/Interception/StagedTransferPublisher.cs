@@ -23,7 +23,7 @@ public sealed partial class StagedTransferPublisher
     private readonly IStagedHandbackCopier? _handbackCopier;
     private readonly Func<uint, string?> _sessionUserSidResolver;
     private readonly ILogger? _logger;
-    private sealed record JustifiedVersion(string Digest, int PolicyVersion);
+    private sealed record JustifiedVersion(string Digest, int PolicyVersion, string PolicyFingerprint);
 
     public StagedTransferPublisher(
         InspectionService inspection,
@@ -205,6 +205,7 @@ public sealed partial class StagedTransferPublisher
         // service restart, changed bytes or changed policy revoke it.
         bool justifiedApproval = justified is not null && result.IsBlocked &&
             result.PolicyVersion == justified.PolicyVersion &&
+            result.PolicyContentFingerprint == justified.PolicyFingerprint &&
             await _inspection.IsCurrentStagedJustificationAllowedAsync(
                 operation, result, cancellationToken).ConfigureAwait(false);
         if (result.IsBlocked && !justifiedApproval)
@@ -230,7 +231,7 @@ public sealed partial class StagedTransferPublisher
                 TransferJournalState.Inspecting, TransferJournalState.Blocked,
                 inspectedDigest, cancellationToken, blockedEvidence: new BlockedTransferEvidence(
                     result.PolicyVersion, expires, WindowClosed: !canJustify,
-                    InspectionFailure: result.FailureKind)).ConfigureAwait(false);
+                    InspectionFailure: result.FailureKind) { PolicyFingerprint = result.PolicyContentFingerprint }).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
                 Verdict.Blocked, result.Reason, cancellationToken,
                 transfer.TransferId).ConfigureAwait(false);
@@ -248,7 +249,7 @@ public sealed partial class StagedTransferPublisher
             }
             if (canJustify)
             {
-                var version = new JustifiedVersion(inspectedDigest, result.PolicyVersion);
+                var version = new JustifiedVersion(inspectedDigest, result.PolicyVersion, result.PolicyContentFingerprint!);
                 _justifications!.Remember(transfer.TransferId, transfer.SessionId!.Value,
                     transfer.RequestorSid!,
                     async token => await PublishCoreAsync(transfer, version, token).ConfigureAwait(false)
@@ -504,6 +505,18 @@ public sealed partial class StagedTransferPublisher
             return;
         }
 
+        if (current.BlockedPolicyFingerprint is null)
+        {
+            // A historical version number alone cannot restore an exception.
+            // Preserve its exact backing for a fresh inspection instead of
+            // reconstructing authority from today's policy or cleaning it up.
+            await _journal.TransitionAsync(current.Transfer.TransferId, TransferJournalState.Blocked,
+                TransferJournalState.Retained, null, token, closeJustificationWindow: true).ConfigureAwait(false);
+            PublishTransferNotification(current.Transfer, new TransferNotification(current.Transfer.TransferId,
+                Path.GetFileName(current.Transfer.DestinationPath), TransferPhase.Retained));
+            return;
+        }
+
         if (entry.HandbackState is StagedHandbackState.NotAttempted or
             StagedHandbackState.Copying)
         {
@@ -582,9 +595,28 @@ public sealed partial class StagedTransferPublisher
         if (justificationOpen && current.HandbackState == StagedHandbackState.Verified &&
             current.BlockedPolicyVersion > 0 && current.JustificationExpiresAtUtc is { } expiryAt &&
             current.Transfer.SessionId is { } session &&
-            _justifications is not null && current.Sha256Hex is { } sealedDigest)
+            _justifications is not null && current.Sha256Hex is { } sealedDigest &&
+            current.BlockedPolicyFingerprint is { } policyFingerprint)
         {
-            var version = new JustifiedVersion(sealedDigest, current.BlockedPolicyVersion);
+            var originalResult = new InspectionResult(Verdict.Blocked, [], null, 0, false,
+                current.BlockedPolicyVersion, true) { PolicyContentFingerprint = policyFingerprint };
+            bool policyStillAllows = false;
+            try
+            {
+                policyStillAllows = await _inspection.IsCurrentStagedJustificationAllowedAsync(
+                    OperationFor(current.Transfer, current.SealedLength!.Value, DateTimeOffset.UtcNow),
+                    originalResult, token).ConfigureAwait(false);
+            }
+            catch (Exception) when (!token.IsCancellationRequested) { }
+            if (!policyStillAllows)
+            {
+                await _journal.TransitionAsync(current.Transfer.TransferId, TransferJournalState.Blocked,
+                    TransferJournalState.Retained, null, token, closeJustificationWindow: true).ConfigureAwait(false);
+                PublishTransferNotification(current.Transfer, new TransferNotification(current.Transfer.TransferId,
+                    Path.GetFileName(current.Transfer.DestinationPath), TransferPhase.Retained));
+                return;
+            }
+            var version = new JustifiedVersion(sealedDigest, current.BlockedPolicyVersion, policyFingerprint);
             _justifications.Remember(current.Transfer.TransferId, session,
                 current.Transfer.RequestorSid!,
                 async retry => await PublishCoreAsync(current.Transfer, version, retry).ConfigureAwait(false)

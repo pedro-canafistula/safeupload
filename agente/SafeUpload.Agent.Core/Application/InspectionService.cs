@@ -91,7 +91,8 @@ public sealed class InspectionService
         }
 
         var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
-        return current.Version == result.PolicyVersion &&
+        return current.Version == result.PolicyVersion && result.PolicyContentFingerprint is not null &&
+            string.Equals(result.PolicyContentFingerprint, PolicyContentFingerprint.Compute(current), StringComparison.Ordinal) &&
             !current.IsExcludedProcess(operation.ProcessName) &&
             current.IsMonitoredDestination(operation) &&
             (operation.SizeBytes == 0 || current.IsMonitoredExtension(operation.Extension));
@@ -102,7 +103,8 @@ public sealed class InspectionService
     {
         if (!result.InScope || !result.IsBlocked) return false;
         var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
-        return current.OverrideAllowed && current.Version == result.PolicyVersion &&
+        return current.OverrideAllowed && current.Version == result.PolicyVersion && result.PolicyContentFingerprint is not null &&
+            string.Equals(result.PolicyContentFingerprint, PolicyContentFingerprint.Compute(current), StringComparison.Ordinal) &&
             !current.IsExcludedProcess(operation.ProcessName) &&
             current.IsMonitoredDestination(operation) &&
             current.IsMonitoredExtension(operation.Extension);
@@ -376,7 +378,10 @@ public sealed class InspectionService
             stopwatch.ElapsedMilliseconds,
             FromCache: false,
             policy.Version,
-            InScope: true);
+            InScope: true)
+        {
+            PolicyContentFingerprint = auditAndCache ? null : PolicyContentFingerprint.Compute(policy)
+        };
 
         if (auditAndCache)
         {

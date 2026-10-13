@@ -37,6 +37,73 @@ public sealed class StagedHandbackTests : IDisposable
     private readonly TestPublicationGate _gate = new();
 
     [Theory]
+    [InlineData("unchanged")]
+    [InlineData("same-version-edit")]
+    [InlineData("legacy-missing")]
+    public async Task Restart_restores_justification_only_for_the_original_complete_policy(string shape)
+    {
+        var policy = await PolicyAsync(allowJustification: true);
+        var journal = new StagedTransferJournal(_journalRoot);
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7);
+        Directory.CreateDirectory(Path.GetDirectoryName(transfer.DestinationPath)!);
+        await File.WriteAllTextAsync(transfer.DestinationPath, "original public bytes");
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        Assert.Equal(StagedTransferOutcome.Blocked, await Publisher(journal, policy, new StagedJustifications(), copier)
+            .PublishAsync(transfer, CancellationToken.None));
+        var blocked = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(PolicyContentFingerprint.Compute(await policy.LoadCurrentAsync(CancellationToken.None)), blocked.BlockedPolicyFingerprint);
+        if (shape == "same-version-edit")
+        {
+            var changed = JsonNode.Parse(await File.ReadAllTextAsync(_workspace.PolicyFile))!;
+            changed["maxFileSizeMb"] = changed["maxFileSizeMb"]!.GetValue<int>() + 1;
+            await File.WriteAllTextAsync(_workspace.PolicyFile, changed.ToJsonString());
+        }
+        else if (shape == "legacy-missing")
+        {
+            string path = Path.Combine(_journalRoot, transfer.TransferId.ToString("N") + ".json");
+            var legacy = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+            Assert.True(legacy.Remove("BlockedPolicyFingerprint"));
+            await File.WriteAllTextAsync(path, legacy.ToJsonString());
+        }
+        var restarted = new StagedTransferJournal(_journalRoot); var broker = new StagedJustifications();
+        var current = await restarted.ReadAsync(transfer.TransferId, CancellationToken.None);
+        await Publisher(restarted, policy, broker, copier).RecoverBlockedAsync(current, CancellationToken.None);
+        current = await restarted.ReadAsync(transfer.TransferId, CancellationToken.None);
+        if (shape == "unchanged")
+        {
+            Assert.Equal(blocked.BlockedPolicyFingerprint, current.BlockedPolicyFingerprint);
+            Assert.True(broker.TryConsume(transfer.TransferId.ToString(), 7, TestRequestorSid, out var retry));
+            Assert.NotNull(retry); Assert.True(await retry!(CancellationToken.None));
+            Assert.Equal("CPF: 529.982.247-25", await File.ReadAllTextAsync(transfer.DestinationPath));
+        }
+        else
+        {
+            Assert.False(broker.TryConsume(transfer.TransferId.ToString(), 7, TestRequestorSid, out var retry));
+            Assert.Null(retry); Assert.Equal(TransferJournalState.Retained, current.State);
+            Assert.True(current.JustificationWindowClosed); Assert.False(current.StageDeleted);
+            Assert.Equal("original public bytes", await File.ReadAllTextAsync(transfer.DestinationPath));
+            Assert.Equal("CPF: 529.982.247-25", await File.ReadAllTextAsync(transfer.StagePath));
+            Assert.Equal("CPF: 529.982.247-25", await File.ReadAllTextAsync(current.HandbackPath!));
+            Assert.Equal(0, _gate.AuthorizeCalls);
+        }
+    }
+
+    [Fact]
+    public async Task Malformed_durable_policy_binding_is_rejected_without_removing_backing()
+    {
+        var policy = await PolicyAsync(allowJustification: true); var journal = new StagedTransferJournal(_journalRoot);
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7);
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        await Publisher(journal, policy, new StagedJustifications(), copier).PublishAsync(transfer, CancellationToken.None);
+        string path = Path.Combine(_journalRoot, transfer.TransferId.ToString("N") + ".json");
+        var damaged = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        damaged["BlockedPolicyFingerprint"] = "malformed";
+        await File.WriteAllTextAsync(path, damaged.ToJsonString());
+        await Assert.ThrowsAsync<InvalidDataException>(() => journal.ReadAsync(transfer.TransferId, CancellationToken.None));
+        Assert.True(File.Exists(transfer.StagePath)); Assert.True(File.Exists(path));
+    }
+
+    [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
     [InlineData(true, false, false)]
@@ -691,7 +758,9 @@ public sealed class StagedHandbackTests : IDisposable
     private sealed class TestPublicationGate : IStagedPublicationGate, IDisposable
     {
         public readonly List<(Guid TransferId, uint Outcome)> Disposals = [];
-        public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest) => this;
+        public int AuthorizeCalls { get; private set; }
+        public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest)
+        { AuthorizeCalls++; return this; }
         public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames)
         {
             Disposals.Add((transferId, outcome));

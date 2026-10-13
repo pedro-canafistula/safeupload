@@ -1514,7 +1514,7 @@ public sealed partial class StagedTransferJournal
                 (entry.SealedLength is not null || entry.StageIdentity is null)) ||
             (entry.State == TransferJournalState.LegacyEmptyHeld &&
                 (entry.SealedLength != 0 || entry.StageIdentity is null || entry.Sha256Hex is not null ||
-                 entry.BlockedPolicyVersion != 0 || entry.BlockedInspectionFailure is not null ||
+                 entry.BlockedPolicyVersion != 0 || entry.BlockedPolicyFingerprint is not null || entry.BlockedInspectionFailure is not null ||
                  entry.HandbackState != StagedHandbackState.NotAttempted || entry.HandbackPath is not null ||
                  entry.HandbackLength is not null || entry.HandbackFailureReason is not null ||
                  entry.JustificationExpiresAtUtc is not null || entry.JustificationWindowClosed ||
@@ -1597,6 +1597,8 @@ public sealed partial class StagedTransferJournal
                 entry.DiscardRequestedAtUtc is null))
             throw new InvalidDataException("The transfer manifest has invalid exact-version or cleanup evidence.");
         ValidateAttachmentEvidence(entry);
+        if (entry.BlockedPolicyFingerprint is { } policyFingerprint && !IsExactDigest(policyFingerprint))
+            throw new InvalidDataException("The blocked policy content binding is invalid.");
         if (entry.PendingRename is { } rename)
         {
             RequireManifestPath(rename.DestinationPath);
@@ -1882,6 +1884,8 @@ public sealed partial class StagedTransferJournal
                 throw new InvalidOperationException("A blocked transfer needs a positive policy version.");
             if (blockedEvidence?.InspectionFailure is { } failure && !Enum.IsDefined(failure))
                 throw new InvalidOperationException("Invalid blocked inspection failure classification.");
+            if (blockedEvidence?.PolicyFingerprint is { } policyFingerprint && !IsExactDigest(policyFingerprint))
+                throw new InvalidOperationException("Invalid blocked policy content binding.");
 
             IReadOnlyList<TransferJournalStateChange> history = next == current.State
                 ? current.StateHistory : AppendState(current, next);
@@ -1901,6 +1905,8 @@ public sealed partial class StagedTransferJournal
                     : current.BlockedPolicyVersion,
                 BlockedInspectionFailure = next == TransferJournalState.Blocked
                     ? blockedEvidence?.InspectionFailure : current.BlockedInspectionFailure,
+                BlockedPolicyFingerprint = next == TransferJournalState.Blocked
+                    ? blockedEvidence?.PolicyFingerprint : current.BlockedPolicyFingerprint,
                 JustificationExpiresAtUtc = next == TransferJournalState.Blocked
                     ? blockedEvidence?.JustificationExpiresAtUtc
                     : current.JustificationExpiresAtUtc,
@@ -3081,6 +3087,8 @@ public sealed record TransferJournalEntry(
     public string? LastRenameDestination { get; init; }
     public bool LastRenameCommitted { get; init; }
     public int BlockedPolicyVersion { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? BlockedPolicyFingerprint { get; init; }
     public InspectionFailureKind? BlockedInspectionFailure { get; init; }
     public DateTimeOffset? JustificationExpiresAtUtc { get; init; }
     public bool JustificationWindowClosed { get; init; }
@@ -3125,7 +3133,7 @@ public sealed record TransferJournalEntry(
             DestinationGeneration == other.DestinationGeneration && NamespaceTombstones == other.NamespaceTombstones &&
             PendingRename == other.PendingRename && LastRenameTransactionId == other.LastRenameTransactionId &&
             LastRenameDestination == other.LastRenameDestination && LastRenameCommitted == other.LastRenameCommitted &&
-            BlockedPolicyVersion == other.BlockedPolicyVersion &&
+            BlockedPolicyVersion == other.BlockedPolicyVersion && BlockedPolicyFingerprint == other.BlockedPolicyFingerprint &&
             BlockedInspectionFailure == other.BlockedInspectionFailure &&
             JustificationExpiresAtUtc == other.JustificationExpiresAtUtc &&
             JustificationWindowClosed == other.JustificationWindowClosed && HandbackState == other.HandbackState &&
@@ -3181,6 +3189,7 @@ public sealed record TransferJournalEntry(
         hash.Add(LastRenameDestination);
         hash.Add(LastRenameCommitted);
         hash.Add(BlockedPolicyVersion);
+        hash.Add(BlockedPolicyFingerprint);
         hash.Add(BlockedInspectionFailure);
         hash.Add(JustificationExpiresAtUtc);
         hash.Add(JustificationWindowClosed);
@@ -3284,7 +3293,10 @@ public sealed record StagedAllocationReply(StagedTransfer Transfer, long Destina
 
 public sealed record BlockedTransferEvidence(int PolicyVersion,
     DateTimeOffset? JustificationExpiresAtUtc, bool WindowClosed,
-    InspectionFailureKind? InspectionFailure = null);
+    InspectionFailureKind? InspectionFailure = null)
+{
+    public string? PolicyFingerprint { get; init; }
+}
 
 public enum StagedHandbackState
 {

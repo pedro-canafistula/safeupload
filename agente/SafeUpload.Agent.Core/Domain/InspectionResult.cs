@@ -39,6 +39,10 @@ public sealed record InspectionResult(
     int PolicyVersion,
     bool InScope)
 {
+    /// <summary>Private staged decision binding; not an audit/UI field or driver ABI.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? PolicyContentFingerprint { get; init; }
+
     /// <summary>
     /// Categorias distintas encontradas, na ordem em que apareceram. É o que a
     /// notificação de bloqueio lista para o usuário.
