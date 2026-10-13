@@ -58,6 +58,10 @@ changes; the owner's direction below accepts the review with specific changes.
   unchanged. Write the small design and obtain the Sol review before implementation.
 - **Later the same day — T4 KD attribution authorized.** One identity-resolved local-KD attribution row (see T4), non-qualifying,
   on win10-debug3 with the unchanged pair; the stop on other product VM rows is unchanged.
+- **Later the same day — product VM rows authorized.** Owner, in the session: "I give my ok for every row". Read as lifting the T4 stop
+  for the planned product VM rows (KD attribution reruns, T4 short/10k gates, allocation-reply fault row, raw-volume cells, later M2
+  rows) on win10-debug3 only, under the existing lab rules: serial runs, unchanged-pair hash checks, separate restoration, stop on
+  repeated identical failures. No gate, threshold or assertion change is implied. AGENTS.md's stop sentence is left for the owner to update.
 - **Workers.** Claude may delegate to Codex `gpt-6-astra`, `gpt-6.1-sol` and `gpt-6-luna` at any effort up to max, with the fast tier.
   Reviews required by the review policy remain Sol 6.1 xhigh.
 - **Later the same day — design work in parallel.** While M2 jobs run, start the design notes for the improved lab/development workflow
