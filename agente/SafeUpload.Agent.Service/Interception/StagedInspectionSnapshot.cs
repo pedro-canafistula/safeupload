@@ -19,8 +19,11 @@ internal sealed class StagedInspectionSnapshot : IAsyncDisposable
         string root, string extension, long expectedLength, CancellationToken token)
     {
         string path = System.IO.Path.Combine(root, Guid.NewGuid().ToString("N") + ".inspection" + extension);
+        // Duplicates share one file object: only one asynchronous completion
+        // port can bind it. Use synchronous native handles; .NET's FileStream
+        // still supplies async calls and tracks explicit offsets per stream.
         var captured = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None,
-            64 * 1024, FileOptions.Asynchronous | FileOptions.WriteThrough | FileOptions.DeleteOnClose);
+            64 * 1024, FileOptions.WriteThrough | FileOptions.DeleteOnClose);
         FileStream? read = null;
         try
         {
@@ -57,7 +60,7 @@ internal sealed class StagedInspectionSnapshot : IAsyncDisposable
             read?.Dispose();
             throw new IOException("The held inspection snapshot could not supply a read lease.", new Win32Exception(error));
         }
-        try { return new FileStream(read, FileAccess.Read, 64 * 1024, isAsync: true); }
+        try { return new FileStream(read, FileAccess.Read, 64 * 1024, isAsync: false); }
         catch { read.Dispose(); throw; }
     }
 

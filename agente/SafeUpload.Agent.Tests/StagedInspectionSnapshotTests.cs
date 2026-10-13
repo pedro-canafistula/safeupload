@@ -103,6 +103,34 @@ public sealed class StagedInspectionSnapshotTests : IDisposable
         Assert.Empty(result.Findings);
     }
 
+    [Fact]
+    public async Task Concurrent_read_leases_keep_independent_offsets_on_the_same_native_object()
+    {
+        byte[] original = Enumerable.Range(0, 256 * 1024).Select(i => (byte)(i % 251)).ToArray();
+        string path = Path.Combine(_workspace.Root, "source.txt");
+        await File.WriteAllBytesAsync(path, original);
+        await using var source = File.OpenRead(path);
+        await using var snapshot = await StagedInspectionSnapshot.CreateAsync(source, _workspace.Root, ".txt", source.Length, CancellationToken.None);
+        await using var first = snapshot.OpenRead();
+        await using var second = snapshot.OpenRead();
+        async Task VerifyAsync(Stream reader, int offset)
+        {
+            reader.Position = offset;
+            var buffer = new byte[4096];
+            for (int i = 0; i < 32; i++)
+            {
+                await reader.ReadExactlyAsync(buffer);
+                Assert.Equal(original.AsSpan(offset + i * buffer.Length, buffer.Length).ToArray(), buffer);
+                await Task.Yield();
+            }
+            Assert.Equal(offset + 128L * 1024, reader.Position);
+        }
+        await Task.WhenAll(VerifyAsync(first, 0), VerifyAsync(second, 128 * 1024));
+        snapshot.Stream.Position = 0;
+        Assert.Equal(snapshot.Digest, Convert.ToHexString(await SHA256.HashDataAsync(snapshot.Stream)));
+        Assert.Equal(original, await File.ReadAllBytesAsync(path));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
