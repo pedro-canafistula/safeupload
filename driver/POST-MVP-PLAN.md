@@ -902,7 +902,8 @@ has independent server-side destination-byte run evidence, and is ready for comb
   Degraded; T4 short rows log 12–21 `CoverageQueryFailed` notices each ([analysis](evidence/2026-10-12/t4-coverage-retry-analysis.md)).
   Sol design review first; admission authority, Unknown and real query failures are unchanged.
   - [x] [Design](T18-COVERAGE-RETRY.md): up to three retries (10/20/40 ms) of exactly `0x800704D5` within one poll; nothing held or synthesized.
-  - [ ] Sol 6.1 xhigh review, implementation, agent matrix.
+  - [x] [Sol 6.1 xhigh review](evidence/2026-10-13/t18-coverage-retry-review-sol61.md): ACCEPT WITH CONDITIONS; conditions folded into the design.
+  - [ ] Implementation with the review's controls; agent matrix.
 
 ### T19. Continuous evidence
 
