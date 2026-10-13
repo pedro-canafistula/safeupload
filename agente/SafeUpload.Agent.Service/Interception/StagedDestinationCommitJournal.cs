@@ -274,11 +274,8 @@ public sealed partial class StagedTransferJournal
         {
             var heads = new List<StagedDestinationHead>();
             var identities = new SortedSet<StagedDestinationIdentity>(StagedDestinationIdentity.OrderedComparer);
-            foreach (string path in Directory.EnumerateFiles(_directory, "destination-*.state"))
+            await foreach (var head in ReadAllDestinationHeadFilesCoreAsync(token).ConfigureAwait(false))
             {
-                token.ThrowIfCancellationRequested();
-                var head = await ReadDestinationHeadFileCoreAsync(path, null, token).ConfigureAwait(false)
-                    ?? throw new InvalidDataException("A destination head disappeared during startup recovery.");
                 if (!identities.Add(head.Destination))
                     throw new InvalidDataException("Equivalent destination leaves have conflicting durable heads.");
                 heads.Add(head);
@@ -969,11 +966,8 @@ public sealed partial class StagedTransferJournal
         // folded spelling or another Windows-equivalent spelling must select
         // the same retained head, and duplicates must stop every commit path.
         StagedDestinationHead? selected = null;
-        foreach (string path in Directory.EnumerateFiles(_directory, "destination-*.state"))
+        await foreach (var head in ReadAllDestinationHeadFilesCoreAsync(token).ConfigureAwait(false))
         {
-            token.ThrowIfCancellationRequested();
-            var head = await ReadDestinationHeadFileCoreAsync(path, null, token).ConfigureAwait(false)
-                ?? throw new InvalidDataException("A destination head disappeared during resolution.");
             if (head.Destination != destination) continue;
             if (selected is not null)
                 throw new InvalidDataException("Equivalent destination leaves have conflicting durable heads.");

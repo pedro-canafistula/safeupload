@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using SafeUpload.Agent.Service.Interception;
 using Xunit.Abstractions;
 
@@ -115,5 +116,61 @@ public sealed class StagedDestinationIndexIntegrationTests(ITestOutputHelper out
             Assert.Equal(tuple.Generation, head.MaxAllocated); Assert.Equal(tuple.Generation, head.CurrentSaveGeneration);
         });
         Assert.Equal(0, journal.DestinationQueueCells);
+    }
+
+    [Theory]
+    [InlineData(1000)]
+    [InlineData(10000)]
+    public async Task Resolution_reads_every_real_head_and_keeps_unrelated_corruption_fail_closed(int count)
+    {
+        var journal = new StagedTransferJournal(JournalPath);
+        for (int i = 0; i < count; i++) await WriteHeadAsync(i);
+        var elapsed = Stopwatch.StartNew();
+        var head = await journal.ReadDestinationHeadAsync(Destination(count / 2), CancellationToken.None);
+        elapsed.Stop();
+        output.WriteLine(FormattableString.Invariant($"DestinationIndex shape=real-head-resolution entries={count} elapsed_ms={elapsed.Elapsed.TotalMilliseconds:F3}"));
+        Assert.NotNull(head); Assert.Equal(Destination(count / 2), head.Destination);
+        Assert.Equal(count / 2 % 7 + 1, head.MaxAllocated);
+
+        // A warm lookup still validates unrelated files. An inventory or
+        // selected-head cache must not make this invalid durable state invisible.
+        string unrelated = Path.Combine(JournalPath, "destination-" + Destination(0).StorageKey + ".state");
+        var damaged = JsonNode.Parse(await File.ReadAllTextAsync(unrelated))!;
+        damaged["MaxAllocated"] = -1;
+        await File.WriteAllTextAsync(unrelated, damaged.ToJsonString());
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            journal.ReadDestinationHeadAsync(Destination(count / 2), CancellationToken.None));
+        Assert.Equal(0, journal.DestinationQueueCells);
+    }
+
+    [Fact]
+    public async Task Batch_parse_failure_drains_readers_and_leaves_the_journal_recoverable()
+    {
+        var journal = new StagedTransferJournal(JournalPath);
+        for (int i = 0; i < 64; i++) await WriteHeadAsync(i);
+        string damaged = Path.Combine(JournalPath, "destination-" + Destination(0).StorageKey + ".state");
+        await File.WriteAllTextAsync(damaged, "{broken");
+        await Assert.ThrowsAsync<JsonException>(() => journal.ReadDestinationHeadsAsync(CancellationToken.None));
+        // Exclusive read/write leases cannot coexist with leaked validation
+        // handles. Check every file, including peers of the failed batch.
+        foreach (string path in Directory.EnumerateFiles(JournalPath, "destination-*.state"))
+            using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
+        await WriteHeadAsync(0);
+        Assert.Equal(64, (await journal.ReadDestinationHeadsAsync(CancellationToken.None)).Count);
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            journal.ReadDestinationHeadsAsync(canceled.Token));
+        Assert.Equal(64, (await journal.ReadDestinationHeadsAsync(CancellationToken.None)).Count);
+    }
+
+    private Task WriteHeadAsync(int index)
+    {
+        var destination = Destination(index); long generation = index % 7 + 1;
+        var head = new StagedDestinationHead(destination,
+            Path.Combine(_workspace.Root, "public", destination.CanonicalLeaf), generation, Guid.NewGuid(), generation,
+            0, null, 0, null, []);
+        return File.WriteAllTextAsync(Path.Combine(JournalPath, "destination-" + destination.StorageKey + ".state"),
+            JsonSerializer.Serialize(head));
     }
 }
