@@ -1,0 +1,6 @@
+{
+  "exitCode": 0,
+  "scope": "Read-only identified-builder headroom, no deletion/configuration change; first replay failure retained.",
+  "stdoutSha256": "402789ac74ad8c5575465558adee4857d41db1978c027610b36d62b27de2425c",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

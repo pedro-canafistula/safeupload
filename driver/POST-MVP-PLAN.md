@@ -614,16 +614,23 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     case is Blocked with inspection_timeout at 5.022 seconds and peaks at 148.5 MiB; the PDF CPF case was not run. No failure/limit
     was relaxed. These are inspector-only observations: filesystem cache is uncontrolled, no publisher copy/policy I/O is measured,
     and cold-filesystem, hostile-parser, protected and complete-format qualification remain open. No default has been chosen/changed.
-  - Bounded per-worker text replay (`a7aaabc6`, qualification pending): retain at most four MiB of extracted characters inside one
-    staged worker, usable only after complete extraction EOF. Later detector passes keep the same precedence/masks on those exact
+  - Bounded per-worker PDF text replay (`a7aaabc6`, PDF-only correction `f4be7e09`, qualification pending): retain at most four MiB
+    of extracted PDF characters inside one staged worker, usable only after complete extraction EOF. Later detector passes keep the same precedence/masks on those exact
     characters; overflow abandons/clears the replay and follows the existing full streaming passes. Disposal clears the character
-    buffer, including failure/timeout worker completion. There is no persistent text or cached approval, and legacy behavior,
+    buffer, including failure/timeout worker completion. Plaintext/Office retain their fresh readers. There is no persistent text or cached approval, and legacy behavior,
     candidate limits, policy deadlines/size limits and worker ownership remain unchanged. Nine controls cover fragmented reads,
     full detector parity, capacity/overflow, abandoned/late-failing extraction, scalar/EOF/cancellation and owner disposal. This bounds
-    the added replay storage; it does not bound the underlying PDF/ZIP/XML parser. The fresh full matrix and repeated measurements
-    remain pending. [Headroom preflight](evidence/2026-10-13/t9-text-replay1-preflight.host.json) stopped before delivery;
+    the added replay storage; it does not bound the underlying PDF/ZIP/XML parser. The
+    [first replay matrix](evidence/2026-10-13/t9-text-replay1-retained-failure.json) compiles at 0/0 but fails seven normal Debug user
+    cases: six unchanged plaintext controls require multiple fresh readers, and the new late-failure fixture omitted its synchronous
+    reader implementation. The correction preserves those assertions, restricts replay to PDF and fixes the fixture. Fresh full-matrix
+    and repeated measurement qualification remain pending. Corpus-reuse tooling (`c351236e`) verifies the retained archive, manifest
+    and every fixture byte/hash before copying; its offline reuse control passed, so before/after inputs stay identical.
+    [Headroom preflight](evidence/2026-10-13/t9-text-replay1-preflight.host.json) stopped before delivery;
     [scoped recovery](evidence/2026-10-13/t9-text-replay1-headroom.host.json) removed only two hash-verified unpacked duplicates,
-    preserving source/packages/manifests/raw evidence. No product pair was installed or booted.
+    preserving source/packages/manifests/raw evidence. The
+    [corrected preflight](evidence/2026-10-13/t9-pdf-replay2-preflight.host.json) passes without further cleanup/configuration changes.
+    No product pair was installed or booted.
   - Large-plaintext component controls (`c2dd8033`, complete matrix at `6b13ce8f` above): real 1/20 MiB ASCII snapshots are read
     completely on first/repeat scans under the unchanged 20 MiB/five-second default. Clean and EOF-only CPF cases prove approval/block,
     complete reader disposal, no cache/audit shortcut and unchanged source SHA-256. Malformed UTF-8/16/32 tails refuse approval,

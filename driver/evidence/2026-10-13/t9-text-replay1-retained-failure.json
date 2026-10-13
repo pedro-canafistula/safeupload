@@ -1,0 +1,108 @@
+{
+  "sourceCommit": "a7aaabc6631f08f9b085c67dc9d4142d0a9136c4",
+  "gate": "FAIL",
+  "failure": "First normal Debug user gate: six existing plaintext controls require fresh readers across passes, which generic replay violated; one new late-failure fixture did not implement its synchronous TextReader path. Correction confines replay to PDF and fixes the fixture, preserving all existing assertions, reader expectations and budgets. No later profile/package completion. Raw receipts retained.",
+  "counters": {
+    "total": "1100",
+    "executed": "1100",
+    "passed": "1093",
+    "failed": "7",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "rawTrxSha256": "55bd30596b839a02a2989399716a09e52fb83699a4dbdcb18a4d0a2bdb1037c2",
+  "failures": [
+    {
+      "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16be\")",
+      "outcome": "Failed",
+      "executionId": "6871b6a4-9b3c-48d9-acac-185e4babad63"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf16le\")",
+      "outcome": "Failed",
+      "executionId": "8f246db2-18e6-4ac9-8327-e572132b0f8a"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8\")",
+      "outcome": "Failed",
+      "executionId": "94642939-b0bc-4cf9-8169-c0af34e15115"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.A_late_extraction_failure_cannot_turn_captured_sensitive_text_into_a_complete_scan",
+      "outcome": "Failed",
+      "executionId": "9089b1f7-ef75-458d-b66d-69cd059c6e5d"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32be\")",
+      "outcome": "Failed",
+      "executionId": "e1ffd2a2-e856-4c79-925c-6732cfe38412"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf8-bom\")",
+      "outcome": "Failed",
+      "executionId": "fd0561f1-9ec4-4947-ad2a-460a2d2d3921"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StreamingContentScannerTests.Staged_plaintext_uses_strict_streaming_readers_and_preserves_the_source(name: \"utf32le\")",
+      "outcome": "Failed",
+      "executionId": "b4d4e489-793a-49d9-9f7b-6a9ff10c2436"
+    }
+  ],
+  "replayControls": [
+    {
+      "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 33)",
+      "outcome": "Passed",
+      "executionId": "20fffa4e-4974-4870-9858-6bc1f3a73a1a"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Abandoned_capture_reopens_the_full_source_without_serving_its_prefix",
+      "outcome": "Passed",
+      "executionId": "77df3df5-737a-49d4-8366-e9f33cd56718"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.A_late_extraction_failure_cannot_turn_captured_sensitive_text_into_a_complete_scan",
+      "outcome": "Failed",
+      "executionId": "9089b1f7-ef75-458d-b66d-69cd059c6e5d"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 31)",
+      "outcome": "Passed",
+      "executionId": "3e6ec691-ea24-440c-82cd-e41e79183e72"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 7)",
+      "outcome": "Passed",
+      "executionId": "66b5fe73-ccb8-4f71-8be4-d4415972554a"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 8192)",
+      "outcome": "Passed",
+      "executionId": "d7c40338-d6fc-442d-8e8e-473c45fe68ec"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Capacity_boundary_and_overflow_never_truncate_or_partially_replay_text(length: 32)",
+      "outcome": "Passed",
+      "executionId": "9269a31e-279c-43a0-abfe-4038b52095a4"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Owner_disposal_invalidates_replay_and_cancellation_cannot_yield_a_partial_read",
+      "outcome": "Passed",
+      "executionId": "60a443a4-2dbb-47e4-bb0b-bb55959147ef"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.BoundedTextReplayTests.Complete_replay_keeps_all_detector_precedence_and_masks_with_one_extraction(chunk: 1)",
+      "outcome": "Passed",
+      "executionId": "c17adee5-db75-4a3f-bb5f-ad65fda1d720"
+    }
+  ]
+}
