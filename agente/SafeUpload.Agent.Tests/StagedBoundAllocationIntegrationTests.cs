@@ -119,8 +119,8 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
             File.WriteAllBytes(path, bytes);
         }
         var reopened = new StagedTransferJournal(Journal);
-        await Assert.ThrowsAnyAsync<IOException>(() => reopened.ReadAsync(binding.ReservationId, CancellationToken.None));
-        await Assert.ThrowsAnyAsync<IOException>(() => Allocate(new(Stages, reopened), binding, security: snapshot));
+        await Assert.ThrowsAsync<InvalidDataException>(() => reopened.ReadAsync(binding.ReservationId, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() => Allocate(new(Stages, reopened), binding, security: snapshot));
         Assert.True(File.Exists(reply.Transfer.StagePath));
     }
 

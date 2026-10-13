@@ -681,7 +681,12 @@ commit remains private and is eligible after the ordinary retention cutoff; clea
 exact identity. Startup ACL recovery recognizes this bounded binary file and its private temporary form. Crash-left temporary
 cleanup remains part of T11's general temporary-file retention work.
 
-Validation is pending the Windows agent matrix. No wire producer currently supplies this record, and live admission remains off.
+The first Windows matrix compiled at 0 warnings/errors but the new missing-record control caught an allocation cleanup bug:
+a missing committed binary dependency propagated `FileNotFoundException`, which the existing allocation finder interpreted as
+a missing manifest. Missing snapshot dependencies now become `InvalidDataException`, preserving the journaled stage and refusing
+replay; the same control continues to assert stage retention. Two tampering controls had the wrong expected exception family and
+now require the precise corrupt-record result. Revised Windows validation is pending.
+No wire producer currently supplies this record, and live admission remains off.
 The metadata RPC, complete checked snapshot, rename rebinding, original publication CREATE descriptor, seed/export provenance
 and integrated kernel lifetime review remain required before protected qualification.
 

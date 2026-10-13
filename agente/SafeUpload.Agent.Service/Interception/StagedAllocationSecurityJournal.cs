@@ -53,7 +53,15 @@ public sealed partial class StagedTransferJournal
     {
         var reference = entry.AllocationSecurity!;
         reference.Validate();
-        byte[] bytes = await ReadAllocationSecurityBytesCoreAsync(reference.SnapshotId, token).ConfigureAwait(false);
+        byte[] bytes;
+        try { bytes = await ReadAllocationSecurityBytesCoreAsync(reference.SnapshotId, token).ConfigureAwait(false); }
+        catch (IOException error) when (error is FileNotFoundException or DirectoryNotFoundException)
+        {
+            // FindBoundAllocationAsync treats only a missing MANIFEST as
+            // unjournaled backing. A lost committed dependency must never
+            // enter that orphan-delete path or silently become legacy data.
+            throw new InvalidDataException("The committed allocation security snapshot is missing.", error);
+        }
         var snapshot = StagedAllocationSecuritySnapshot.Decode(bytes);
         snapshot.RequireBinding(entry.BoundAllocation!);
         if (snapshot.Reference() != reference)
