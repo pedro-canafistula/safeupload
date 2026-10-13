@@ -1,0 +1,6 @@
+{
+  "exitCode": 1,
+  "scope": "Read-only identified-builder headroom; no deletion/configuration change. Failed metric run retained.",
+  "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderrSha256": "adbe3657510444b3a51bbaa28dc8aa61eb4cc9d80ad6919bbdd5fa65b9669fa1"
+}

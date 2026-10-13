@@ -604,6 +604,26 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     No assertion or timing limit was relaxed. [Scoped preflight cleanup](evidence/2026-10-13/t9-preparation1-preflight-host.json)
     preserves completed source/packages/evidence. Commits remain local while the earlier source/evidence push approval is pending.
 - [ ] Measure cold/warm throughput and peak memory before choosing defaults; existing 256 MiB warm-input measurements are not staged qualification.
+  - Fresh-process inspector measurement tooling (`c25192a2`): a separate read-only Windows Release process per retained synthetic
+    file measures first/repeat wall/CPU time and cumulative process peak working set. Source/corpus hashes and measured assembly
+    hashes are checked; staged classification never audits/caches an outcome, and inputs remain unchanged. Policy stays at 20 MiB/
+    five seconds. The [first measurement run](evidence/2026-10-13/t9-inspector-metrics2-retained-result.json) builds at 0 warnings/errors
+    and passes 12 plaintext/Word/spreadsheet cases (1/20 MiB decoded text, clean/EOF CPF), with both scans per case. Twenty-MiB first
+    scans take 1.265–1.964 seconds, repeats 0.776–1.004 seconds; observed cumulative process peaks are 41.5–49.9 MiB. Word/Excel
+    fixtures are highly compressed 21–22 KiB packages containing 20 MiB text, not 20 MiB package files. The first 1 MiB/16-page PDF
+    case is Blocked with inspection_timeout at 5.022 seconds and peaks at 148.5 MiB; the PDF CPF case was not run. No failure/limit
+    was relaxed. These are inspector-only observations: filesystem cache is uncontrolled, no publisher copy/policy I/O is measured,
+    and cold-filesystem, hostile-parser, protected and complete-format qualification remain open. No default has been chosen/changed.
+  - Bounded per-worker text replay (`a7aaabc6`, qualification pending): retain at most four MiB of extracted characters inside one
+    staged worker, usable only after complete extraction EOF. Later detector passes keep the same precedence/masks on those exact
+    characters; overflow abandons/clears the replay and follows the existing full streaming passes. Disposal clears the character
+    buffer, including failure/timeout worker completion. There is no persistent text or cached approval, and legacy behavior,
+    candidate limits, policy deadlines/size limits and worker ownership remain unchanged. Nine controls cover fragmented reads,
+    full detector parity, capacity/overflow, abandoned/late-failing extraction, scalar/EOF/cancellation and owner disposal. This bounds
+    the added replay storage; it does not bound the underlying PDF/ZIP/XML parser. The fresh full matrix and repeated measurements
+    remain pending. [Headroom preflight](evidence/2026-10-13/t9-text-replay1-preflight.host.json) stopped before delivery;
+    [scoped recovery](evidence/2026-10-13/t9-text-replay1-headroom.host.json) removed only two hash-verified unpacked duplicates,
+    preserving source/packages/manifests/raw evidence. No product pair was installed or booted.
   - Large-plaintext component controls (`c2dd8033`, complete matrix at `6b13ce8f` above): real 1/20 MiB ASCII snapshots are read
     completely on first/repeat scans under the unchanged 20 MiB/five-second default. Clean and EOF-only CPF cases prove approval/block,
     complete reader disposal, no cache/audit shortcut and unchanged source SHA-256. Malformed UTF-8/16/32 tails refuse approval,

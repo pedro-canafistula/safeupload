@@ -1,0 +1,799 @@
+{
+  "sourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+  "gate": "FAIL",
+  "scope": "12 plaintext/Word/spreadsheet cases passed with first/repeat scans; first 1-MiB/16-page PDF timed out under unchanged defaults. PDF CPF case was not run. Windows Release inspector-only measurements in fresh processes; filesystem cache uncontrolled, process peak cumulative, no publisher, policy I/O, hostile-parser bound or protected qualification.",
+  "sourceArchiveSha256": "13E020BF71B9FE0EEA3F3FCD27430F351EB078B4434E162CB988104D23C2A9F3",
+  "corpusSha256": "462D94C8C89CBF76D523F5EC5CFB7E9FDDC27D9B8F6D1A34DBE3A779469D4190",
+  "coreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+  "measurements": [
+    {
+      "case": {
+        "name": "txt-1m-clean.txt",
+        "kind": "clean",
+        "decodedFixtureBytes": 1048576,
+        "inputBytes": 1048576,
+        "sha256": "B2C8EF8C1DAE05B5011C6C970F9B956334BB7FCEE16AF0609FED53A8C44CF0E5"
+      },
+      "rawSha256": "c58afb3575c585cd9171d0780671e83bc7da71b4f44796c75ba37596bbe1a541",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 4076,
+        "ProcessStartUtcTicks": 639275081480394482,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "txt-1m-clean.txt",
+        "Extension": ".txt",
+        "InputBytes": 1048576,
+        "SourceSha256": "B2C8EF8C1DAE05B5011C6C970F9B956334BB7FCEE16AF0609FED53A8C44CF0E5",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 122.4338,
+            "CpuMs": 109.375,
+            "EngineElapsedMs": 114,
+            "PeakWorkingSetBytes": 34058240,
+            "PeakWorkingSetBeforeBytes": 27279360,
+            "WorkingSetAfterBytes": 34054144,
+            "PrivateBytesAfter": 13312000,
+            "ManagedBytesAfter": 5491288,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 82.5341,
+            "CpuMs": 78.125,
+            "EngineElapsedMs": 82,
+            "PeakWorkingSetBytes": 37961728,
+            "PeakWorkingSetBeforeBytes": 34295808,
+            "WorkingSetAfterBytes": 37957632,
+            "PrivateBytesAfter": 17002496,
+            "ManagedBytesAfter": 2385632,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "txt-1m-cpf.txt",
+        "kind": "cpf",
+        "decodedFixtureBytes": 1048576,
+        "inputBytes": 1048576,
+        "sha256": "ACC748E562A813DC517A572549BF9979329333CE20D4F949A5B4B48F29555555"
+      },
+      "rawSha256": "6a68d3a4616a62ef26b569dca5da99e55eca10aef5206bcd188f7d3f4835e58e",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 4604,
+        "ProcessStartUtcTicks": 639275081483766540,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "txt-1m-cpf.txt",
+        "Extension": ".txt",
+        "InputBytes": 1048576,
+        "SourceSha256": "ACC748E562A813DC517A572549BF9979329333CE20D4F949A5B4B48F29555555",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 128.5047,
+            "CpuMs": 140.625,
+            "EngineElapsedMs": 121,
+            "PeakWorkingSetBytes": 34115584,
+            "PeakWorkingSetBeforeBytes": 27230208,
+            "WorkingSetAfterBytes": 34111488,
+            "PrivateBytesAfter": 13352960,
+            "ManagedBytesAfter": 5494480,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 84.0519,
+            "CpuMs": 93.75,
+            "EngineElapsedMs": 83,
+            "PeakWorkingSetBytes": 37863424,
+            "PeakWorkingSetBeforeBytes": 34205696,
+            "WorkingSetAfterBytes": 37859328,
+            "PrivateBytesAfter": 16801792,
+            "ManagedBytesAfter": 2373984,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "txt-20m-clean.txt",
+        "kind": "clean",
+        "decodedFixtureBytes": 20971520,
+        "inputBytes": 20971520,
+        "sha256": "1527B4F47C327A4B4A7A0D76C95DCBD91C1915D7242E008828C0A269B020112E"
+      },
+      "rawSha256": "5871307890b185f4c1e7cd20e9caeeb09dcfb56e86e65c4d27f7a5bc915bc32c",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 5132,
+        "ProcessStartUtcTicks": 639275081487347352,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "txt-20m-clean.txt",
+        "Extension": ".txt",
+        "InputBytes": 20971520,
+        "SourceSha256": "1527B4F47C327A4B4A7A0D76C95DCBD91C1915D7242E008828C0A269B020112E",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 1264.8536,
+            "CpuMs": 1437.5,
+            "EngineElapsedMs": 1256,
+            "PeakWorkingSetBytes": 43593728,
+            "PeakWorkingSetBeforeBytes": 27344896,
+            "WorkingSetAfterBytes": 43589632,
+            "PrivateBytesAfter": 21598208,
+            "ManagedBytesAfter": 7470816,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 776.031,
+            "CpuMs": 859.375,
+            "EngineElapsedMs": 775,
+            "PeakWorkingSetBytes": 43995136,
+            "PeakWorkingSetBeforeBytes": 43614208,
+            "WorkingSetAfterBytes": 43991040,
+            "PrivateBytesAfter": 21626880,
+            "ManagedBytesAfter": 4692512,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "txt-20m-cpf.txt",
+        "kind": "cpf",
+        "decodedFixtureBytes": 20971520,
+        "inputBytes": 20971520,
+        "sha256": "5A8189DEB917D44E4746CC71A1C6F4FB7352737338E6EB35A3B91CEF04FB9DAD"
+      },
+      "rawSha256": "1c9f7cb97748574d070ec37d4de7aecb24cfd066079904b330af1b57133cdb33",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 1992,
+        "ProcessStartUtcTicks": 639275081509829086,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "txt-20m-cpf.txt",
+        "Extension": ".txt",
+        "InputBytes": 20971520,
+        "SourceSha256": "5A8189DEB917D44E4746CC71A1C6F4FB7352737338E6EB35A3B91CEF04FB9DAD",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 1399.3695,
+            "CpuMs": 1562.5,
+            "EngineElapsedMs": 1391,
+            "PeakWorkingSetBytes": 43536384,
+            "PeakWorkingSetBeforeBytes": 27361280,
+            "WorkingSetAfterBytes": 43532288,
+            "PrivateBytesAfter": 21463040,
+            "ManagedBytesAfter": 7687544,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 811.1296,
+            "CpuMs": 828.125,
+            "EngineElapsedMs": 810,
+            "PeakWorkingSetBytes": 43966464,
+            "PeakWorkingSetBeforeBytes": 43556864,
+            "WorkingSetAfterBytes": 43962368,
+            "PrivateBytesAfter": 21532672,
+            "ManagedBytesAfter": 4867896,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "docx-1m-clean.docx",
+        "kind": "clean",
+        "decodedFixtureBytes": 1048576,
+        "inputBytes": 1836,
+        "sha256": "69F842BAFC3B35323F57E5B08935928694621CCC07E2F8B065028C9AE931F1FF"
+      },
+      "rawSha256": "b45abe029f016d7e3705c2c8b233ee5c845f9b711fdb97b4b7ba83e599c0f0ee",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 5492,
+        "ProcessStartUtcTicks": 639275081533880151,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "docx-1m-clean.docx",
+        "Extension": ".docx",
+        "InputBytes": 1836,
+        "SourceSha256": "69F842BAFC3B35323F57E5B08935928694621CCC07E2F8B065028C9AE931F1FF",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 263.1165,
+            "CpuMs": 250,
+            "EngineElapsedMs": 255,
+            "PeakWorkingSetBytes": 43163648,
+            "PeakWorkingSetBeforeBytes": 27213824,
+            "WorkingSetAfterBytes": 43159552,
+            "PrivateBytesAfter": 16961536,
+            "ManagedBytesAfter": 6523640,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 147.4082,
+            "CpuMs": 156.25,
+            "EngineElapsedMs": 147,
+            "PeakWorkingSetBytes": 45940736,
+            "PeakWorkingSetBeforeBytes": 43196416,
+            "WorkingSetAfterBytes": 45936640,
+            "PrivateBytesAfter": 19550208,
+            "ManagedBytesAfter": 1935936,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "docx-1m-cpf.docx",
+        "kind": "cpf",
+        "decodedFixtureBytes": 1048576,
+        "inputBytes": 1847,
+        "sha256": "BBFE832235ADB08AE2DF484CC0D3F0D978212A3CCF20CF01243D7019DD509B3C"
+      },
+      "rawSha256": "42e66562d58875d0cde5b88bd299ce65bca09b767630e0efb707a6c2eb3da744",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 644,
+        "ProcessStartUtcTicks": 639275081539166358,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "docx-1m-cpf.docx",
+        "Extension": ".docx",
+        "InputBytes": 1847,
+        "SourceSha256": "BBFE832235ADB08AE2DF484CC0D3F0D978212A3CCF20CF01243D7019DD509B3C",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 259.8336,
+            "CpuMs": 250,
+            "EngineElapsedMs": 252,
+            "PeakWorkingSetBytes": 43233280,
+            "PeakWorkingSetBeforeBytes": 27332608,
+            "WorkingSetAfterBytes": 43229184,
+            "PrivateBytesAfter": 17039360,
+            "ManagedBytesAfter": 6521640,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 148.1966,
+            "CpuMs": 156.25,
+            "EngineElapsedMs": 148,
+            "PeakWorkingSetBytes": 46030848,
+            "PeakWorkingSetBeforeBytes": 43266048,
+            "WorkingSetAfterBytes": 46026752,
+            "PrivateBytesAfter": 19623936,
+            "ManagedBytesAfter": 1919968,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "docx-20m-clean.docx",
+        "kind": "clean",
+        "decodedFixtureBytes": 20971520,
+        "inputBytes": 21199,
+        "sha256": "8D86F9A639D10DE888263914522D8C29E4D9A9923B004AF892D2948528B3F56A"
+      },
+      "rawSha256": "1c09acff7d37ff584088b1bda48c4287b38f9218133429ded88849d5d0b046cd",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 1336,
+        "ProcessStartUtcTicks": 639275081544453060,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "docx-20m-clean.docx",
+        "Extension": ".docx",
+        "InputBytes": 21199,
+        "SourceSha256": "8D86F9A639D10DE888263914522D8C29E4D9A9923B004AF892D2948528B3F56A",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 1743.5011,
+            "CpuMs": 2031.25,
+            "EngineElapsedMs": 1736,
+            "PeakWorkingSetBytes": 50487296,
+            "PeakWorkingSetBeforeBytes": 27332608,
+            "WorkingSetAfterBytes": 50483200,
+            "PrivateBytesAfter": 21504000,
+            "ManagedBytesAfter": 7356184,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 972.6878,
+            "CpuMs": 1156.25,
+            "EngineElapsedMs": 972,
+            "PeakWorkingSetBytes": 51265536,
+            "PeakWorkingSetBeforeBytes": 50507776,
+            "WorkingSetAfterBytes": 51261440,
+            "PrivateBytesAfter": 21573632,
+            "ManagedBytesAfter": 2405832,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "docx-20m-cpf.docx",
+        "kind": "cpf",
+        "decodedFixtureBytes": 20971520,
+        "inputBytes": 21213,
+        "sha256": "0A5948D516B0229AE22B7DBDF723EA94D8BB674A371026E5824AB4529CD4AD06"
+      },
+      "rawSha256": "5976a869a240bbfd6d2d1e95296f23344716e00edb1e02fc3f66c7fee6ceabab",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 3780,
+        "ProcessStartUtcTicks": 639275081572792958,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "docx-20m-cpf.docx",
+        "Extension": ".docx",
+        "InputBytes": 21213,
+        "SourceSha256": "0A5948D516B0229AE22B7DBDF723EA94D8BB674A371026E5824AB4529CD4AD06",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 1771.6845,
+            "CpuMs": 2062.5,
+            "EngineElapsedMs": 1764,
+            "PeakWorkingSetBytes": 50266112,
+            "PeakWorkingSetBeforeBytes": 27324416,
+            "WorkingSetAfterBytes": 50262016,
+            "PrivateBytesAfter": 21270528,
+            "ManagedBytesAfter": 7378488,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 810.6671,
+            "CpuMs": 1015.625,
+            "EngineElapsedMs": 810,
+            "PeakWorkingSetBytes": 51175424,
+            "PeakWorkingSetBeforeBytes": 50278400,
+            "WorkingSetAfterBytes": 51171328,
+            "PrivateBytesAfter": 21565440,
+            "ManagedBytesAfter": 2352808,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "xlsx-1m-clean.xlsx",
+        "kind": "clean",
+        "decodedFixtureBytes": 1048576,
+        "inputBytes": 2415,
+        "sha256": "68633BFECFC541999AB4C08F5051C358D9D067388E02DEF7A2DF42E11413F2C6"
+      },
+      "rawSha256": "bbd78edb18bfe1fcf4c19bc4fee94e057aedc46626429e04b2e30e4d18290169",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 1152,
+        "ProcessStartUtcTicks": 639275081599833544,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "xlsx-1m-clean.xlsx",
+        "Extension": ".xlsx",
+        "InputBytes": 2415,
+        "SourceSha256": "68633BFECFC541999AB4C08F5051C358D9D067388E02DEF7A2DF42E11413F2C6",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 256.5788,
+            "CpuMs": 250,
+            "EngineElapsedMs": 249,
+            "PeakWorkingSetBytes": 44056576,
+            "PeakWorkingSetBeforeBytes": 27443200,
+            "WorkingSetAfterBytes": 44052480,
+            "PrivateBytesAfter": 17817600,
+            "ManagedBytesAfter": 7022104,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 145.0252,
+            "CpuMs": 140.625,
+            "EngineElapsedMs": 144,
+            "PeakWorkingSetBytes": 46350336,
+            "PeakWorkingSetBeforeBytes": 44089344,
+            "WorkingSetAfterBytes": 46346240,
+            "PrivateBytesAfter": 19877888,
+            "ManagedBytesAfter": 2437072,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "xlsx-1m-cpf.xlsx",
+        "kind": "cpf",
+        "decodedFixtureBytes": 1048576,
+        "inputBytes": 2427,
+        "sha256": "C22792C84C21E4DDAC6869676062698C56C949FFB573913C2452C3DCA9963CF5"
+      },
+      "rawSha256": "25ca017ccb198e0e522ba240828ede493bcbef279c66a84e76891442e72949af",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 340,
+        "ProcessStartUtcTicks": 639275081605033480,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "xlsx-1m-cpf.xlsx",
+        "Extension": ".xlsx",
+        "InputBytes": 2427,
+        "SourceSha256": "C22792C84C21E4DDAC6869676062698C56C949FFB573913C2452C3DCA9963CF5",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 263.0156,
+            "CpuMs": 265.625,
+            "EngineElapsedMs": 255,
+            "PeakWorkingSetBytes": 44208128,
+            "PeakWorkingSetBeforeBytes": 27353088,
+            "WorkingSetAfterBytes": 44204032,
+            "PrivateBytesAfter": 17850368,
+            "ManagedBytesAfter": 7031592,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 148.6599,
+            "CpuMs": 140.625,
+            "EngineElapsedMs": 148,
+            "PeakWorkingSetBytes": 46489600,
+            "PeakWorkingSetBeforeBytes": 44244992,
+            "WorkingSetAfterBytes": 46485504,
+            "PrivateBytesAfter": 19910656,
+            "ManagedBytesAfter": 2441856,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "xlsx-20m-clean.xlsx",
+        "kind": "clean",
+        "decodedFixtureBytes": 20971520,
+        "inputBytes": 21783,
+        "sha256": "B4BA6CEA770B4AC741B6B22E4358E63F187ECD69841B47FA2538731995206B01"
+      },
+      "rawSha256": "079fa995f57737d974d2971fad1c41ba44bb50c41485cae4d05e226cb4a62716",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 2396,
+        "ProcessStartUtcTicks": 639275081610310466,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "xlsx-20m-clean.xlsx",
+        "Extension": ".xlsx",
+        "InputBytes": 21783,
+        "SourceSha256": "B4BA6CEA770B4AC741B6B22E4358E63F187ECD69841B47FA2538731995206B01",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 1885.5774,
+            "CpuMs": 2171.875,
+            "EngineElapsedMs": 1877,
+            "PeakWorkingSetBytes": 50843648,
+            "PeakWorkingSetBeforeBytes": 27324416,
+            "WorkingSetAfterBytes": 50839552,
+            "PrivateBytesAfter": 21606400,
+            "ManagedBytesAfter": 7937824,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 1004.3478,
+            "CpuMs": 1312.5,
+            "EngineElapsedMs": 1004,
+            "PeakWorkingSetBytes": 52170752,
+            "PeakWorkingSetBeforeBytes": 51048448,
+            "WorkingSetAfterBytes": 52166656,
+            "PrivateBytesAfter": 22056960,
+            "ManagedBytesAfter": 2895224,
+            "Verdict": "Approved",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "xlsx-20m-cpf.xlsx",
+        "kind": "cpf",
+        "decodedFixtureBytes": 20971520,
+        "inputBytes": 21796,
+        "sha256": "96980C8FA2EAC66B083821A6683BC27315BBBE64B56E0FAE99A83EC67BB50AB3"
+      },
+      "rawSha256": "da4838f1c6b7868c1b8ae7a91ec6af7370be07cd4339deb7ad20466faeeef722",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 5304,
+        "ProcessStartUtcTicks": 639275081640447501,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "xlsx-20m-cpf.xlsx",
+        "Extension": ".xlsx",
+        "InputBytes": 21796,
+        "SourceSha256": "96980C8FA2EAC66B083821A6683BC27315BBBE64B56E0FAE99A83EC67BB50AB3",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 1964.4751,
+            "CpuMs": 2312.5,
+            "EngineElapsedMs": 1956,
+            "PeakWorkingSetBytes": 51130368,
+            "PeakWorkingSetBeforeBytes": 27369472,
+            "WorkingSetAfterBytes": 51126272,
+            "PrivateBytesAfter": 21671936,
+            "ManagedBytesAfter": 7913400,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          },
+          {
+            "Scan": "same-process-repeat",
+            "WallMs": 893.5242,
+            "CpuMs": 1187.5,
+            "EngineElapsedMs": 893,
+            "PeakWorkingSetBytes": 52289536,
+            "PeakWorkingSetBeforeBytes": 51331072,
+            "WorkingSetAfterBytes": 52285440,
+            "PrivateBytesAfter": 22065152,
+            "ManagedBytesAfter": 2877720,
+            "Verdict": "Blocked",
+            "Reason": null,
+            "FailureKind": null,
+            "FromCache": false,
+            "FindingCount": 1,
+            "ExpectedResult": true
+          }
+        ],
+        "Gate": "PASS"
+      }
+    },
+    {
+      "case": {
+        "name": "pdf-1m-clean.pdf",
+        "kind": "clean",
+        "decodedFixtureBytes": 1048576,
+        "inputBytes": 1053053,
+        "sha256": "9AE6BD65E1BCF9EF260B24AFBFBFF0754E07B7DD87603CAE659DA5CCF81A7387"
+      },
+      "rawSha256": "6cf85d54e932da30eee9d0796ba31d44996f0a03a72519070848ea390e323da4",
+      "measurement": {
+        "SourceCommit": "c25192a2b23147e3e01116921b9df73e6ab0879b",
+        "ProcessId": 6104,
+        "ProcessStartUtcTicks": 639275081670267527,
+        "CoreAssemblySha256": "19EC78E17A02221E16E8C9B93AEB722C7750AD7B060B470297102102A3FEF297",
+        "FileName": "pdf-1m-clean.pdf",
+        "Extension": ".pdf",
+        "InputBytes": 1053053,
+        "SourceSha256": "9AE6BD65E1BCF9EF260B24AFBFBFF0754E07B7DD87603CAE659DA5CCF81A7387",
+        "SourceUnchanged": true,
+        "PolicyFingerprint": "23B46F89A0D4A11246FBD1CE98C412E3F0E1FA23AB8AF8CE1C988A41F018E2BC",
+        "MaxFileSizeBytes": 20971520,
+        "InspectionTimeoutMs": 5000,
+        "Scope": "Inspector-only fresh-process/repeat measurements; filesystem cache is uncontrolled. Process peak is cumulative. No publisher copy, policy I/O, hostile-format bound or protected qualification.",
+        "Rows": [
+          {
+            "Scan": "fresh-process-first",
+            "WallMs": 5021.6225,
+            "CpuMs": 4843.75,
+            "EngineElapsedMs": 5009,
+            "PeakWorkingSetBytes": 155668480,
+            "PeakWorkingSetBeforeBytes": 27373568,
+            "WorkingSetAfterBytes": 103862272,
+            "PrivateBytesAfter": 74719232,
+            "ManagedBytesAfter": 41528456,
+            "Verdict": "Blocked",
+            "Reason": "inspection_timeout",
+            "FailureKind": "Timeout",
+            "FromCache": false,
+            "FindingCount": 0,
+            "ExpectedResult": false
+          }
+        ],
+        "Gate": "FAIL"
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "exitCode": 0,
+  "scope": "Only two hash-verified unpacked duplicate outputs of a completed matrix; source, ZIPs/manifests and raw evidence retained.",
+  "payloadSha256": "2a3afd629768e2a82b4cf8fe77ea4a1f4365517de7b0862ec9383eb23111ed87",
+  "stdoutSha256": "a824905982ab7320ea5064be2fdd890eb5e67106a483fffbff01f44db36b4d39",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
