@@ -1,0 +1,5 @@
+UNPACKED_DUPLICATE_REMOVED=t5-native-query2/normal-release
+UNPACKED_DUPLICATE_REMOVED=t5-native-query2/feature-release
+UNPACKED_DUPLICATE_REMOVED=t5-native-startup2/normal-release
+UNPACKED_DUPLICATE_REMOVED=t5-native-startup2/feature-release
+SCOPED_GENERATED_CLEANUP=PASS directories=4 free_before=345210880 free_after=704802816 source_packages_evidence_retained=True

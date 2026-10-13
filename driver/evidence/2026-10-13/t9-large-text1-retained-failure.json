@@ -1,0 +1,60 @@
+{
+  "sourceCommit": "c2dd803393183a074b6fd4697f40f8c327878a27",
+  "matrixLabel": "t9-large-text1",
+  "scope": "Retained normal Debug user-leg failure; subsequent legs did not execute. New large-input controls passed. The full identical-source retry passed every test profile, then failed final packaging on builder disk exhaustion. Neither failure is a complete matrix PASS; no assertion, deadline or filter changed.",
+  "rawTrxSha256": "5eec6d6a8437ed33c180f2c24360029cafe02af8a8eb39c4c30ba4e9b31a546e",
+  "failedCases": [
+    {
+      "name": "SafeUpload.Agent.Tests.OfficeAuxiliaryTextTests.Damaged_auxiliary_part_never_becomes_a_clean_partial_extraction(part: \"sheet-comments\")",
+      "outcome": "Failed",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: ReadOrParse\r\nActual:   Timeout",
+      "duration": "00:00:06.8340796"
+    }
+  ],
+  "largeInputCases": [
+    {
+      "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 64, sensitive: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf16\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 1, sensitive: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf32\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf8\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 20, sensitive: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 1, sensitive: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 20, sensitive: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 8, sensitive: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 8, sensitive: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 64, sensitive: False)",
+      "outcome": "Passed"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+HARNESS_POWERSHELL51_PARSE=PASS
+PROFILE_OUTPUT_CLEANUP=profile-src-normal-debug; directories=2; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP_SELFTEST=PASS source_input_refused,source_and_evidence_retained
+SYSTEM_JOB_CLEANUP_SELFTEST=PASS spawn_record_failure,timeout,descendant_cleanup

@@ -1,0 +1,7 @@
+{
+  "exitCode": 0,
+  "transport": "PowerShell stdin, no guest temporary-script file needed on full disk",
+  "payloadSha256": "b583beea6deeab6ac7031318ed50cce1be0bbef2343998013c7af921fda94803",
+  "stdoutSha256": "c4b015db5f5ac233edb5b3da155f40d48b83f1f462ed28825584d2c3ef0e81fb",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

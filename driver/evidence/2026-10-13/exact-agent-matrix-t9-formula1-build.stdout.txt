@@ -1,0 +1,66 @@
+PROFILE_OUTPUT_CLEANUP=profile-src-normal-debug; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-normal-release; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-feature-debug; directories=12; source_and_evidence_retained=True
+PROFILE_OUTPUT_CLEANUP=profile-src-feature-release; directories=12; source_and_evidence_retained=True
+LABEL=t9-formula1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=6b13ce8fc5aad406eb4dd7fc4cb6b5fd8bd6b126
+ARCHIVE_SHA256=73B0D2C495B583BC865363F73AD92E59750826F1005E2917E4249B22A0CB68B2
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-debug-tests-user: exit=0 warnings=0 errors=0
+normal-debug-tests-system-identity: S-1-5-18
+normal-debug-tests-system: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=1044
+normal-release: admission_evidence=false
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-app-build: exit=0 warnings=0 errors=0
+normal-release-test-build: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-release-tests-user: exit=0 warnings=0 errors=0
+normal-release-tests-system-identity: S-1-5-18
+normal-release-tests-system: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=1044
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_manifest_sha256=A68FC27E2D97266F1797C5280E47ECD07EB76820F9C924D1E2F30EECEE6241E0
+normal-release: package_sha256=170B072FA5DE6320E9B44FEE899D267DC57E63CE21AD0F855F42FA1B8C253E91
+normal-release: exe_sha256=7F97CB57D1B6838BD421FDB3CA5C0960536570816ACE6D82D95DE6F4FA9C61CC
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=0 warnings=0 errors=0
+feature-debug-tests-system-identity: S-1-5-18
+feature-debug-tests-system: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=1414
+feature-release: admission_evidence=true
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-app-build: exit=0 warnings=0 errors=0
+feature-release-test-build: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-release-tests-user: exit=0 warnings=0 errors=0
+feature-release-tests-system-identity: S-1-5-18
+feature-release-tests-system: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=1414
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_manifest_sha256=B2038215CBD67C39F77E5D04FA3A58520174C75CBFF418532D98C132C945471E
+feature-release: package_sha256=F071593CF06C4B71B2DA2CC5D25B1D687376E844E043669EF3C40E8700FB2B7D
+feature-release: exe_sha256=5FD941AF8D475F3F6E0043601E3650C449A8125D15ED6E3005737FC644FC7128
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-13T12:54:47.1675695Z

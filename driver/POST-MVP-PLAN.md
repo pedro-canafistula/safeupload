@@ -427,6 +427,19 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     These component passes do not establish peak live memory, default-limit throughput, protected publication or complete format coverage.
     [Scoped preflight cleanup](evidence/2026-10-13/t9-stream-text1-preflight.host.json) preserves previous source/packages/evidence.
     No product pair was installed or booted; source/evidence remain local while the earlier push approval is pending.
+  - Spreadsheet formula coverage (`6b13ce8f`): inspect each formula expression and its cached result on separate lines, including
+    shared-formula masters. Cached clean display text cannot hide a credential literal in the formula. Missing cached results receive
+    `unsupported_format` (staged Blocked, legacy AllowedWithoutInspection); a present empty result remains valid. No formula, link or
+    external data is executed. Microsoft's [formula model](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.cellformula?view=openxml-3.0.1)
+    defines the expression and shared masters; [cell values](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.cellvalue?view=openxml-3.0.1)
+    carry cached results. Independent ZIP/XML controls cover formula-only secrets, cached CPF, both sources, shared formulas,
+    clean/empty results, missing normal/shared caches and numeric boundaries, in both modes with masked findings, audit behavior and
+    unchanged source bytes. This addresses a concrete partial-extraction gap; formula evaluation, external/unreferenced content,
+    other Office content and DOM/output streaming remain open.
+    The [complete exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-formula1-summary.txt) passes 1,044 normal/1,414 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors, with both release packages
+    independently verified. All [20 formula and 11 large-input controls](evidence/2026-10-13/t9-formula1-controls-measurements.json)
+    pass in every profile. No protected pair was installed or booted; commits remain local pending the earlier push approval.
 - [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
   - Strict current-policy implementation (`bfffa535`): staged inspection, approval, justification, allocation/rename/attach
     admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and
@@ -476,6 +489,18 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     No assertion or timing limit was relaxed. [Scoped preflight cleanup](evidence/2026-10-13/t9-preparation1-preflight-host.json)
     preserves completed source/packages/evidence. Commits remain local while the earlier source/evidence push approval is pending.
 - [ ] Measure cold/warm throughput and peak memory before choosing defaults; existing 256 MiB warm-input measurements are not staged qualification.
+  - Large-plaintext component controls (`c2dd8033`, complete matrix at `6b13ce8f` above): real 1/20 MiB ASCII snapshots are read
+    completely on first/repeat scans under the unchanged 20 MiB/five-second default. Clean and EOF-only CPF cases prove approval/block,
+    complete reader disposal, no cache/audit shortcut and unchanged source SHA-256. Malformed UTF-8/16/32 tails refuse approval,
+    including the no-detector extraction path. Isolated 8/64 MiB logical readers measure collected live scanner-state growth at read
+    checkpoints, using no source-sized body; these are not process-peak, cold filesystem-cache, all-format or protected measurements.
+    The [first large-input matrix](evidence/2026-10-13/t9-large-text1-retained-failure.json) failed the existing malformed Excel-comment
+    control when ReadOrParse became Timeout. Its identical-source [retry](evidence/2026-10-13/t9-large-text2-controls-incomplete-matrix.json)
+    passes every test in all four profiles, then fails feature Release packaging on builder disk exhaustion: neither is a complete
+    matrix PASS. Failed raw receipts are preserved; no assertion, timing bound, policy default or test filter changed. Scoped recovery
+    verifies/removes eight older unpacked duplicates while retaining source, ZIPs, manifests and evidence
+    ([full-disk recovery](evidence/2026-10-13/t9-formula1-preflight.host.json), [headroom](evidence/2026-10-13/t9-formula1-headroom.host.json));
+    the fresh complete matrix above passes both test and packaging gates. Protected large-file and memory qualification remains open.
 - [ ] Qualify large clean/CPF, corrupt/encrypted/password-protected, parser/extraction-limit, timeout and disk-full cases.
 - [ ] Resolve the all-zero payment-card classification question with user-visible options before changing its current verdict.
 

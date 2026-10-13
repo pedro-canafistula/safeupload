@@ -1,0 +1,781 @@
+{
+  "sourceCommit": "c2dd803393183a074b6fd4697f40f8c327878a27",
+  "matrixLabel": "t9-large-text2",
+  "matrixGate": "FAIL",
+  "failure": "All four test profiles passed, but feature Release packaging could not launch dotnet on the full builder disk. summary.txt is empty; no completion sentinel or feature package exists. Raw failed receipts retained unchanged.",
+  "measurementScope": "Isolated component observations: 1/20 MiB ASCII real files, all default categories and unchanged 20 MiB/five-second policy, first/repeat scans (no claim of cold filesystem cache); collected live scanner state at read checkpoints on 8/64 MiB logical sources. Heap observations do not measure process peak memory or protected publication, and do not qualify Office/PDF streaming or seeded driver limits.",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "testTotal": 1024,
+      "rawTrxSha256": "b606f205352e9b1d7865227ed17c4311c05f9f3ae0b41a5e9d1e6f3d169b2c6a",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 64, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "178360e7-4b52-47b8-9a5e-4635a59cec37",
+          "measurements": [
+            {
+              "logical_characters": 67108864,
+              "sensitive": false,
+              "collected_managed_delta_bytes": 89336,
+              "samples": 35,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 64, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "02bcdc51-1fb5-4692-8669-9d43cf5fa388",
+          "measurements": [
+            {
+              "logical_characters": 67108864,
+              "sensitive": true,
+              "collected_managed_delta_bytes": 50824,
+              "samples": 35,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 8, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "51d51381-a93d-4f55-8819-e212bbc31a0b",
+          "measurements": [
+            {
+              "logical_characters": 8388608,
+              "sensitive": false,
+              "collected_managed_delta_bytes": 52336,
+              "samples": 7,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 8, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "76648951-87c6-41a0-8008-f6e53711f123",
+          "measurements": [
+            {
+              "logical_characters": 8388608,
+              "sensitive": true,
+              "collected_managed_delta_bytes": 50464,
+              "samples": 7,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 1, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "aeff4653-130e-4948-9fd6-40baf522a8df",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 1048576,
+              "sensitive": false,
+              "elapsed_ms": 151.409,
+              "passes": 7,
+              "allocated_bytes": 4788600,
+              "sampled_managed_delta_bytes": 4778848,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 1048576,
+              "sensitive": false,
+              "elapsed_ms": 146.844,
+              "passes": 7,
+              "allocated_bytes": 4760632,
+              "sampled_managed_delta_bytes": 4761984,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 1, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "4bc6ec1f-8b0a-41be-b02c-172a201e4efb",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 1048576,
+              "sensitive": true,
+              "elapsed_ms": 147.428,
+              "passes": 7,
+              "allocated_bytes": 4760696,
+              "sampled_managed_delta_bytes": 4783320,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 1048576,
+              "sensitive": true,
+              "elapsed_ms": 145.496,
+              "passes": 7,
+              "allocated_bytes": 4749176,
+              "sampled_managed_delta_bytes": 4755736,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 20, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "8053b8c8-7db7-4ffd-a20f-4c6e02150567",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 20971520,
+              "sensitive": false,
+              "elapsed_ms": 2928.648,
+              "passes": 7,
+              "allocated_bytes": 90588200,
+              "sampled_managed_delta_bytes": 8479216,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 20971520,
+              "sensitive": false,
+              "elapsed_ms": 2938.504,
+              "passes": 7,
+              "allocated_bytes": 90509520,
+              "sampled_managed_delta_bytes": 8539168,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 20, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "d7bbffff-1eea-4f0e-af00-c1fe4a23d655",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 20971520,
+              "sensitive": true,
+              "elapsed_ms": 2947.712,
+              "passes": 7,
+              "allocated_bytes": 90503152,
+              "sampled_managed_delta_bytes": 8395640,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 20971520,
+              "sensitive": true,
+              "elapsed_ms": 2928.764,
+              "passes": 7,
+              "allocated_bytes": 90492392,
+              "sampled_managed_delta_bytes": 8388472,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf16\")",
+          "outcome": "Passed",
+          "executionId": "291a335a-f4e0-4a68-ac8d-4bf19a006f0d",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf32\")",
+          "outcome": "Passed",
+          "executionId": "20a394f6-b6b8-4b13-b387-eab678bf3104",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf8\")",
+          "outcome": "Passed",
+          "executionId": "f3db7c63-891d-48c1-bd7e-82e143d164b3",
+          "measurements": []
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "testTotal": 1024,
+      "rawTrxSha256": "5e4b8c8fdcfb4e9716c8271e121a763db772eb67268585d530561f0aa8c8008d",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 64, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "65571840-bb16-40b1-a45b-12c39ca8a2b7",
+          "measurements": [
+            {
+              "logical_characters": 67108864,
+              "sensitive": false,
+              "collected_managed_delta_bytes": 46232,
+              "samples": 35,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 64, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "ee33b6e5-7485-4c00-bdcc-454c6e011acd",
+          "measurements": [
+            {
+              "logical_characters": 67108864,
+              "sensitive": true,
+              "collected_managed_delta_bytes": 23872,
+              "samples": 35,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 8, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "f1edc86d-ec7b-4024-a96a-d1021e37fb05",
+          "measurements": [
+            {
+              "logical_characters": 8388608,
+              "sensitive": false,
+              "collected_managed_delta_bytes": 17944,
+              "samples": 7,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 8, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "2bdfa39d-8ae1-470d-bfb4-6b15d0468a3a",
+          "measurements": [
+            {
+              "logical_characters": 8388608,
+              "sensitive": true,
+              "collected_managed_delta_bytes": 9328,
+              "samples": 7,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 1, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "5fc4168d-018d-4171-93ab-c080d85e7db0",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 1048576,
+              "sensitive": false,
+              "elapsed_ms": 57.445,
+              "passes": 7,
+              "allocated_bytes": 4684800,
+              "sampled_managed_delta_bytes": 4677336,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 1048576,
+              "sensitive": false,
+              "elapsed_ms": 47.969,
+              "passes": 7,
+              "allocated_bytes": 4678936,
+              "sampled_managed_delta_bytes": 4670672,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 1, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "696c94dd-8d06-4b27-b6cb-697121fa62ee",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 1048576,
+              "sensitive": true,
+              "elapsed_ms": 50.948,
+              "passes": 7,
+              "allocated_bytes": 4678784,
+              "sampled_managed_delta_bytes": 4685952,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 1048576,
+              "sensitive": true,
+              "elapsed_ms": 59.061,
+              "passes": 7,
+              "allocated_bytes": 4673048,
+              "sampled_managed_delta_bytes": 4680392,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 20, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "2f2ccf85-29d8-4db1-b70c-89fc133d5f3d",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 20971520,
+              "sensitive": false,
+              "elapsed_ms": 995.237,
+              "passes": 7,
+              "allocated_bytes": 88929472,
+              "sampled_managed_delta_bytes": 8622480,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 20971520,
+              "sensitive": false,
+              "elapsed_ms": 1736.051,
+              "passes": 7,
+              "allocated_bytes": 88950768,
+              "sampled_managed_delta_bytes": 8549936,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 20, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "e2a5bc1e-cf8b-4f55-aa19-7fae367df176",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 20971520,
+              "sensitive": true,
+              "elapsed_ms": 1488.813,
+              "passes": 7,
+              "allocated_bytes": 88917152,
+              "sampled_managed_delta_bytes": 8242224,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 20971520,
+              "sensitive": true,
+              "elapsed_ms": 954.63,
+              "passes": 7,
+              "allocated_bytes": 88917728,
+              "sampled_managed_delta_bytes": 8533960,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf16\")",
+          "outcome": "Passed",
+          "executionId": "4c7e88d8-bd5b-496f-b57f-1a826054dc95",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf32\")",
+          "outcome": "Passed",
+          "executionId": "da8a7b63-7092-4734-a997-6e4771a81b5c",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf8\")",
+          "outcome": "Passed",
+          "executionId": "d4f1907d-2584-46ed-834c-ffdf821d5583",
+          "measurements": []
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "testTotal": 1394,
+      "rawTrxSha256": "1869df290a8f84c12b37d42730edd9b977d37072e97a89d3752fd3163b70556b",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 64, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "c72e1b40-df32-4270-8011-b4c1f031cd50",
+          "measurements": [
+            {
+              "logical_characters": 67108864,
+              "sensitive": false,
+              "collected_managed_delta_bytes": 56544,
+              "samples": 35,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 64, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "6bc4ecc9-1e64-4da2-9f8c-7f36a8e44fca",
+          "measurements": [
+            {
+              "logical_characters": 67108864,
+              "sensitive": true,
+              "collected_managed_delta_bytes": 33768,
+              "samples": 35,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 8, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "acc301f9-bb64-4205-83ed-24b1c51ecda7",
+          "measurements": [
+            {
+              "logical_characters": 8388608,
+              "sensitive": false,
+              "collected_managed_delta_bytes": 52336,
+              "samples": 7,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 8, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "5f420cee-9a06-466d-a1b7-5248c4d52ce9",
+          "measurements": [
+            {
+              "logical_characters": 8388608,
+              "sensitive": true,
+              "collected_managed_delta_bytes": 51280,
+              "samples": 7,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 1, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "20454a29-bc0b-4661-bc18-79037dbe87a2",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 1048576,
+              "sensitive": false,
+              "elapsed_ms": 152.669,
+              "passes": 7,
+              "allocated_bytes": 4788952,
+              "sampled_managed_delta_bytes": 4777416,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 1048576,
+              "sensitive": false,
+              "elapsed_ms": 146.881,
+              "passes": 7,
+              "allocated_bytes": 4760152,
+              "sampled_managed_delta_bytes": 4754744,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 1, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "f1524ead-6318-4fba-8401-17e896daa9bb",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 1048576,
+              "sensitive": true,
+              "elapsed_ms": 145.503,
+              "passes": 7,
+              "allocated_bytes": 4760944,
+              "sampled_managed_delta_bytes": 4773976,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 1048576,
+              "sensitive": true,
+              "elapsed_ms": 153.764,
+              "passes": 7,
+              "allocated_bytes": 4749152,
+              "sampled_managed_delta_bytes": 4763000,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 20, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "6308b538-4bba-4ac1-ab3b-106abc865759",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 20971520,
+              "sensitive": false,
+              "elapsed_ms": 2987.784,
+              "passes": 7,
+              "allocated_bytes": 90536920,
+              "sampled_managed_delta_bytes": 8395544,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 20971520,
+              "sensitive": false,
+              "elapsed_ms": 2994.271,
+              "passes": 7,
+              "allocated_bytes": 90510264,
+              "sampled_managed_delta_bytes": 8532872,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 20, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "3624bc91-7b80-425e-a8a5-829eb031066d",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 20971520,
+              "sensitive": true,
+              "elapsed_ms": 2916.903,
+              "passes": 7,
+              "allocated_bytes": 90503024,
+              "sampled_managed_delta_bytes": 8395664,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 20971520,
+              "sensitive": true,
+              "elapsed_ms": 2922.546,
+              "passes": 7,
+              "allocated_bytes": 90497000,
+              "sampled_managed_delta_bytes": 8541608,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf16\")",
+          "outcome": "Passed",
+          "executionId": "7cc0cbb9-e121-4bed-81d6-0a38c3fa18cf",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf32\")",
+          "outcome": "Passed",
+          "executionId": "f15721f9-dfea-4073-a58e-3ecc4b59de08",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf8\")",
+          "outcome": "Passed",
+          "executionId": "277c2dd7-d0a9-45ff-8313-6675f7dbdfe7",
+          "measurements": []
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "testTotal": 1394,
+      "rawTrxSha256": "cf949e75ea159272c910c52602f80c010383de4c9c88c1854aeaf4de7956b974",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 64, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "f30273fb-087e-48d0-b15b-c7f5737410b4",
+          "measurements": [
+            {
+              "logical_characters": 67108864,
+              "sensitive": false,
+              "collected_managed_delta_bytes": 22056,
+              "samples": 35,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 64, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "3ab818af-cb69-436a-aa1e-1def55c7cfc8",
+          "measurements": [
+            {
+              "logical_characters": 67108864,
+              "sensitive": true,
+              "collected_managed_delta_bytes": 23064,
+              "samples": 35,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 8, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "944ffdf8-6ff7-448e-ab33-38971dcd15e9",
+          "measurements": [
+            {
+              "logical_characters": 8388608,
+              "sensitive": false,
+              "collected_managed_delta_bytes": 17896,
+              "samples": 7,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Collected_live_scanner_state_stays_bounded_when_the_logical_source_grows(megabytes: 8, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "f660c1ef-a677-4e15-9bf3-64182f46ff69",
+          "measurements": [
+            {
+              "logical_characters": 8388608,
+              "sensitive": true,
+              "collected_managed_delta_bytes": 4696,
+              "samples": 7,
+              "passes": 7,
+              "kind": "collected-live-state"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 1, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "9ebe88ce-c21b-4c8a-83a5-f4f148a59582",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 1048576,
+              "sensitive": false,
+              "elapsed_ms": 57.97,
+              "passes": 7,
+              "allocated_bytes": 4687752,
+              "sampled_managed_delta_bytes": 4683096,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 1048576,
+              "sensitive": false,
+              "elapsed_ms": 53.022,
+              "passes": 7,
+              "allocated_bytes": 4682176,
+              "sampled_managed_delta_bytes": 4678784,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 1, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "642993e9-e24d-4ad4-8431-99ff9632acdb",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 1048576,
+              "sensitive": true,
+              "elapsed_ms": 54.499,
+              "passes": 7,
+              "allocated_bytes": 4679376,
+              "sampled_managed_delta_bytes": 4686104,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 1048576,
+              "sensitive": true,
+              "elapsed_ms": 54.698,
+              "passes": 7,
+              "allocated_bytes": 4673992,
+              "sampled_managed_delta_bytes": 4682552,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 20, sensitive: False)",
+          "outcome": "Passed",
+          "executionId": "5bef9be3-3537-4517-b00f-552c850b0e55",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 20971520,
+              "sensitive": false,
+              "elapsed_ms": 1078.499,
+              "passes": 7,
+              "allocated_bytes": 88934056,
+              "sampled_managed_delta_bytes": 8549992,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 20971520,
+              "sensitive": false,
+              "elapsed_ms": 1038.584,
+              "passes": 7,
+              "allocated_bytes": 88958600,
+              "sampled_managed_delta_bytes": 8240528,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Default_limit_inspection_reads_eof_on_first_and_repeat_scans(megabytes: 20, sensitive: True)",
+          "outcome": "Passed",
+          "executionId": "fc70bf61-3fb4-4232-9a88-75617958aea2",
+          "measurements": [
+            {
+              "phase": "first",
+              "bytes": 20971520,
+              "sensitive": true,
+              "elapsed_ms": 1051.643,
+              "passes": 7,
+              "allocated_bytes": 88943072,
+              "sampled_managed_delta_bytes": 8224296,
+              "kind": "default-file"
+            },
+            {
+              "phase": "repeat",
+              "bytes": 20971520,
+              "sensitive": true,
+              "elapsed_ms": 1052.948,
+              "passes": 7,
+              "allocated_bytes": 88917552,
+              "sampled_managed_delta_bytes": 8113640,
+              "kind": "default-file"
+            }
+          ]
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf16\")",
+          "outcome": "Passed",
+          "executionId": "be6e19ff-e713-4c00-bfd2-bbc8d5b3a2a6",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf32\")",
+          "outcome": "Passed",
+          "executionId": "7b9b1245-093e-4bce-a7b5-36dcdd16d4bd",
+          "measurements": []
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.LargePlaintextInspectionTests.Malformed_encoding_at_eof_cannot_become_a_clean_staged_approval(encoding: \"utf8\")",
+          "outcome": "Passed",
+          "executionId": "e9bf9bbb-7a63-4000-92ae-85e4ea46c7e2",
+          "measurements": []
+        }
+      ]
+    }
+  ]
+}

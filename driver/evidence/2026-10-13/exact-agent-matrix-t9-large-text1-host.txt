@@ -1,0 +1,10 @@
+SOURCE_COMMIT=c2dd803393183a074b6fd4697f40f8c327878a27; archive=/home/victor/Work/safeupload-staging/output/exact-agent-matrix/t9-large-text1/src.zip
+DELIVERED; builder identity and archive delivery verified
+BUILD_RETURNED=1; collecting retained evidence
+Traceback (most recent call last):
+  File "/home/victor/Work/safeupload-staging/driver/scripts/Invoke-ExactAgentMatrixBuild.py", line 663, in <module>
+    main()
+    ~~~~^^
+  File "/home/victor/Work/safeupload-staging/driver/scripts/Invoke-ExactAgentMatrixBuild.py", line 639, in main
+    raise RuntimeError('Build or evidence retrieval incomplete; inspect retained logs')
+RuntimeError: Build or evidence retrieval incomplete; inspect retained logs

@@ -1,0 +1,14 @@
+﻿LABEL=t9-large-text1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=c2dd803393183a074b6fd4697f40f8c327878a27
+ARCHIVE_SHA256=79B8E88F6D49CE48BB08408D02753864C2A9A888423510677900B012B016AB74
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-debug-tests-user: exit=1 warnings=0 errors=0
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-13T12:24:50.1936466Z
