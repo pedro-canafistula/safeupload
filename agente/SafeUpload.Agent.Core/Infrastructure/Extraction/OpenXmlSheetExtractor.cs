@@ -14,6 +14,8 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 ///
 /// Fora do alcance: resultado de fórmula que o Excel não tenha gravado em
 /// cache, gráficos, caixas de texto e o formato antigo <c>.xls</c>.
+/// Imagens, miniaturas e objetos/pacotes/controles incorporados são recusados
+/// explicitamente em vez de aprovar apenas a camada de texto.
 /// </summary>
 public sealed class OpenXmlSheetExtractor : ITextExtractor
 {
@@ -28,6 +30,7 @@ public sealed class OpenXmlSheetExtractor : ITextExtractor
         cancellationToken.ThrowIfCancellationRequested();
 
         using var document = SpreadsheetDocument.Open(content, isEditable: false);
+        OpenXmlInspectionGuard.RejectUnsupportedPayloads(document, cancellationToken);
         var workbookPart = document.WorkbookPart
             ?? throw new InvalidDataException("The spreadsheet package has no workbook part.");
 

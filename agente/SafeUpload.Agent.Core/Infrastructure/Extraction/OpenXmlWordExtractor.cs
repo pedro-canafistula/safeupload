@@ -9,9 +9,9 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 /// Extrator de documentos do Word (<c>.docx</c>), via Open XML.
 ///
 /// Cobre corpo, cabeçalhos, rodapés, notas de rodapé/finais e comentários.
-/// Fora do alcance desta entrega: texto dentro de imagens
-/// (não há OCR) e objetos incorporados. O formato antigo <c>.doc</c>, binário,
-/// também não é lido.
+/// Imagens, miniaturas, objetos/pacotes/controles incorporados e importações
+/// alternativas causam recusa explícita: não há OCR nem inspeção desses payloads.
+/// O formato antigo <c>.doc</c>, binário, também não é lido.
 /// </summary>
 public sealed class OpenXmlWordExtractor : ITextExtractor
 {
@@ -26,6 +26,7 @@ public sealed class OpenXmlWordExtractor : ITextExtractor
         cancellationToken.ThrowIfCancellationRequested();
 
         using var document = WordprocessingDocument.Open(content, isEditable: false);
+        OpenXmlInspectionGuard.RejectUnsupportedPayloads(document, cancellationToken);
         var mainPart = document.MainDocumentPart
             ?? throw new InvalidDataException("The Word package has no main document part.");
         var body = mainPart.Document?.Body
