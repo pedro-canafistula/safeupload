@@ -399,6 +399,20 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     cases exercise both legacy and staged outcomes and preserve original package bytes. Valid empty note text remains accepted.
     [Preflight duplicate-output cleanup](evidence/2026-10-13/t9-office-notes1-preflight-cleanup.stdout.txt) preserves the previous
     verified source/packages/evidence. No product pair was installed or booted; T4's stop and T5 NotReady remain in force.
+  - Known unsupported Office payload refusal (`449ddfaf`): before returning extracted text, both Office extractors walk the
+    package's relationship graph with cancellation and a visited-part set. Reachable images, thumbnails, embedded objects/packages,
+    ActiveX persistence parts and alternative-format imports receive `unsupported_format`: staged Blocked, legacy
+    AllowedWithoutInspection, using the existing inspection-failure path. No OCR, embedded execution, file deletion or source rewrite.
+    Traversal follows Microsoft's [part relationship API](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.packaging.openxmlpartcontainer.parts?view=openxml-3.0.1).
+    Independent ZIP/relationship XML controls include Word body/header/footnote images, Excel drawing images, valid raster thumbnails,
+    embedded Word packages, opaque objects/controls, HTML imports, clean text-only packages and unchanged source bytes.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-office-payload1-summary.txt) passes 990 normal/1,360 feature tests
+    per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors; all
+    [16 payload controls](evidence/2026-10-13/t9-office-payload1-controls.json) pass in each profile. This closes the identified known-part
+    partial-approval path, not complete Office coverage: drawings/charts without images, modern/threaded comments, external or
+    unreferenced package content, formula completeness, other metadata and whole-file streaming remain open. No protected run occurred.
+    [Scoped builder cleanup](evidence/2026-10-13/t9-office-payload1-preflight-host.json) removed only hash-verified unpacked duplicates
+    from completed builds while preserving their source, package ZIPs/manifests and evidence; no host-wide configuration changed.
 - [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
   - Strict current-policy implementation (`bfffa535`): staged inspection, approval, justification, allocation/rename/attach
     admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and

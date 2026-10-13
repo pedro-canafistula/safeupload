@@ -1,0 +1,17 @@
+﻿VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+Results File: C:\Users\vika\Documents\exact-agent-matrix-t9-office-payload1\out\normal-release-results\agent-tests-user.trx
+
+Passed!  - Failed:     0, Passed:   965, Skipped:     0, Total:   965, Duration: 1 m 34 s - SafeUpload.Agent.Tests.dll (net10.0)
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+Results File: C:\Users\vika\Documents\exact-agent-matrix-t9-office-payload1\out\normal-release-results\agent-tests-system.trx
+
+Passed!  - Failed:     0, Passed:    25, Skipped:     0, Total:    25, Duration: 3 s - SafeUpload.Agent.Tests.dll (net10.0)
+SYSTEM_TEST_TASK_SID=S-1-5-18
+SYSTEM_TEST_JOB_CLEANUP=active_processes=0
+SYSTEM_TEST_TASK_CLEANUP=task_absent,job_empty,wrapper_absent

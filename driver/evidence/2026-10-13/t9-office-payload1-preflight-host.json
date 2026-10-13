@@ -1,0 +1,28 @@
+{
+  "verifiedDuplicateCleanup": [
+    {
+      "scope": "latest",
+      "remoteExit": 0,
+      "payloadSha256": "a83b8d35f3c721f2180f35f3cfe8652f83bd852f9b3bbffd92386dba4bfe1bf7",
+      "stdoutSha256": "f9e8fae76a4e8a6158a0bc4a650ee460cc284bdec6a56c59732d8efd0d588e6b",
+      "stderrSha256": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+      "receipt": [
+        "UNPACKED_DUPLICATE_REMOVED=t9-office-notes1/normal-release",
+        "UNPACKED_DUPLICATE_REMOVED=t9-office-notes1/feature-release",
+        "SCOPED_GENERATED_CLEANUP=PASS directories=2 free_before=213696512 free_after=393912320 source_packages_evidence_retained=True"
+      ]
+    },
+    {
+      "scope": "older",
+      "remoteExit": 0,
+      "payloadSha256": "819bfcf38d3437de4fcd5be5f88bf75994c78c000972b36f7a3974286d94c810",
+      "stdoutSha256": "5f447a9cef5cfb3d251eb8a9839d5367bbca9477c47c6f04dd80983e45fed9e6",
+      "stderrSha256": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+      "receipt": [
+        "UNPACKED_DUPLICATE_REMOVED=t5-deletejournal2/normal-release",
+        "UNPACKED_DUPLICATE_REMOVED=t5-deletejournal2/feature-release",
+        "SCOPED_GENERATED_CLEANUP=PASS directories=2 free_before=398901248 free_after=578572288 source_packages_evidence_retained=True"
+      ]
+    }
+  ]
+}

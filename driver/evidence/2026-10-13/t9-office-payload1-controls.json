@@ -1,0 +1,286 @@
+{
+  "sourceCommit": "449ddfaf1d36baa47988a74342a6403a6ba119a8",
+  "scope": "Relationship-reachable known unsupported Office images/thumbnails, embedded objects/packages/controls and alternative imports; no complete format, streaming or protected qualification",
+  "profiles": [
+    {
+      "profile": "normal-debug",
+      "rawTrxSha256": "2b45ca6a618088de88bffa9e401ca59706232269647e1f9fd00f63d87fbc0926",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"control\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"oleObject\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"package\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"drawing\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"package\", kind: \"thumbnail\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"aFChunk\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"control\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"oleObject\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"package\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"footnotes\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"header\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"package\", kind: \"thumbnail\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Text_only_package_still_passes_the_payload_check(format: \"sheet\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Text_only_package_still_passes_the_payload_check(format: \"word\")",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "normal-release",
+      "rawTrxSha256": "2220d51cd74c0a0077eff18216b9b12820173e012321e1d72ea7349d04920a42",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"control\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"oleObject\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"package\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"drawing\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"package\", kind: \"thumbnail\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"aFChunk\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"control\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"oleObject\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"package\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"footnotes\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"header\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"package\", kind: \"thumbnail\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Text_only_package_still_passes_the_payload_check(format: \"sheet\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Text_only_package_still_passes_the_payload_check(format: \"word\")",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "feature-debug",
+      "rawTrxSha256": "29ddc9a3b6956ec51d3afc5b4a7e381800ea1acc4e9de4a71a0185d596f3443f",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"control\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"oleObject\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"package\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"drawing\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"package\", kind: \"thumbnail\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"aFChunk\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"control\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"oleObject\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"package\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"footnotes\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"header\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"package\", kind: \"thumbnail\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Text_only_package_still_passes_the_payload_check(format: \"sheet\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Text_only_package_still_passes_the_payload_check(format: \"word\")",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    {
+      "profile": "feature-release",
+      "rawTrxSha256": "b92c50d7c0d8863585056695c1b686687626c4a3b995fc2d1f529fb90cbc96e7",
+      "cases": [
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"control\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"oleObject\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"body\", kind: \"package\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"drawing\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"sheet\", owner: \"package\", kind: \"thumbnail\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"aFChunk\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"control\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"oleObject\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"body\", kind: \"package\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"footnotes\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"header\", kind: \"image\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Clean_text_does_not_approve_uninspected_payloads(format: \"word\", owner: \"package\", kind: \"thumbnail\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Text_only_package_still_passes_the_payload_check(format: \"sheet\")",
+          "outcome": "Passed"
+        },
+        {
+          "name": "SafeUpload.Agent.Tests.OfficeUnsupportedPayloadTests.Text_only_package_still_passes_the_payload_check(format: \"word\")",
+          "outcome": "Passed"
+        }
+      ]
+    }
+  ]
+}
