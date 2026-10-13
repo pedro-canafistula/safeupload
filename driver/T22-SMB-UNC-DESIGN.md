@@ -1,23 +1,24 @@
 # T22 — staged protection for SMB / UNC destinations
 
-2026-10-13. Design proposal against `wt/designs`, source `6128a892b30c`.
+2026-10-13. Historical draft/code baseline: `wt/designs`, `6128a892b30c`.
+This revision starts from document snapshot `0953036a`; **status: revised, awaiting independent re-review**.
 **Not implemented, not qualified, and not permission to enable SMB or run a VM.**
 Owner choices and native feasibility gates remain open; review acceptance is not implementation or runtime qualification.
 
 ## Review history
 
-- 2026-10-13, initial `t22_review`, Sol 6.1 xhigh: **ACCEPT WITH CONDITIONS — design proposal only**; credential binding, temporary exclusion and extra publication-grant findings incorporated.
-- 2026-10-13, Sol 6.1 xhigh at `35f057ce`: **ACCEPT WITH CONDITIONS — design proposal only**; retained [review receipt](evidence/2026-10-13/t22-design-review-sol61.md) (`driver/evidence/2026-10-13/t22-design-review-sol61.md`, read in the staging checkout; absent from this checkout).
-- This revision addresses that receipt's findings: F1 coverage-loss gate (§8.1, N02/N09); F2 retargeting contract (§3.3); F3 finite candidates and connection-specific controls (§§10.1–10.2). No implementation or native result is asserted.
-- 2026-10-13, focused revision review, Sol 6.1 xhigh (`t22_review`): **ACCEPT WITH CONDITIONS — design proposal only**; all three findings addressed, no remaining substantive correction. C1/C2 remain unverified; no runtime or owner approval follows.
+- [First independent review](evidence/2026-10-13/t22-design-review-sol61.md), Sol 6.1 xhigh at `35f057ce`: **ACCEPT WITH CONDITIONS — design proposal only**; coverage-loss, retargeting and finite-diagnostic findings.
+- [Independent re-review](evidence/2026-10-13/t22-design-rereview-sol61.md), Sol 6.1 xhigh at `0953036a`: **REVISE — one remaining security-contract gap**. Earlier findings closed at design level; outbound-range/head ordering and stale provenance require revision.
+- These are retained repository receipts under `driver/evidence/2026-10-13/`. Current edits add §7.4/§10.3 and correct provenance; no new independent verdict or native result is claimed.
 
 ## 1. Authority, scope and acceptance boundary
 
 The binding sequence is M2 → M3 → T21 → **T22** → T23 → combined M4, then owner-approved taint removal.
-Only design work is authorized (`driver/POST-MVP-PLAN.md:9`, `:61`, `:66`, `:850`, `:871`).
-The 2026-10-13 review-model decision supersedes older Luna references (`driver/POST-MVP-PLAN.md:26`).
+Only design work is authorized; see [milestone order](POST-MVP-PLAN.md#milestone-order), [owner decisions](POST-MVP-PLAN.md#owner-decisions)
+and [T22 scope](POST-MVP-PLAN.md#t22-smb--unc).
+The 2026-10-13 [review-model decision](POST-MVP-PLAN.md#owner-decisions) supersedes older Luna references.
 The T4 loaded-context stop remains, with only the specifically authorized hand-back attribution diagnostic excepted
-(`driver/POST-MVP-PLAN.md:36`, `:184`). Nothing in this note uses that exception.
+([owner decisions](POST-MVP-PLAN.md#owner-decisions), [M2 status](POST-MVP-PLAN.md#m2--active)). Nothing here uses that exception.
 
 T22 must prevent unapproved nonempty bytes produced by the protected endpoint from reaching the remote share.
 The boundary includes temporary names, alternate names, server caches, server storage, snapshots and backup input;
@@ -27,7 +28,7 @@ Approved transfer fragments may exist in a publication temporary only after comp
 The final name must expose the previous complete version or the next complete approved version, never an incremental overwrite.
 Empty versions follow ordinary stable seal/inspect/publish; there is no EmptyHeld branch.
 CPF-blocked new saves leave no public file; blocked replacements retain prior bytes unless a separate authorized delete happened
-(`driver/POST-MVP-PLAN.md:73`; `driver/T5-DELETES.md:378`).
+([empty-files/delete decision](POST-MVP-PLAN.md#owner-decisions); `driver/T5-DELETES.md:378`).
 
 The threat boundary remains trusted product service/kernel and administrators, with standard users potentially adversarial
 (`driver/MVP-PLAN.md:9`). A trusted SMB server must enforce its documented security and storage contract.
@@ -269,7 +270,7 @@ Hold a proved coherence boundary over the entire copy/EOF; equal IDs, timestamps
 A remote writer changing the source in place must not produce an inspection-approved torn seed or overwrite conflict silently.
 
 The owner already selected native write-only editing with private retention of unreadable blocked seeds
-(`driver/POST-MVP-PLAN.md:49`; `driver/T5-NATIVE-PUBLIC-OPENS.md:638`). Do not silently choose its rejected read-required alternative.
+([unreadable-seed decision](POST-MVP-PLAN.md#owner-decisions); `driver/T5-NATIVE-PUBLIC-OPENS.md:638`). Do not substitute read-required editing.
 If SMB cannot furnish that private seed without new authority, D9 must decide the remote limitation or a server-side mechanism.
 Fresh/truncating content avoids old-byte seeding but still requires original disposition rights and full publication semantics.
 Hand-back and justification require affirmative original-source read/export and recipient authority carried through predecessors.
@@ -302,11 +303,11 @@ A user-mode server service or lock file alone cannot fence arbitrary SMB clients
    Preserve native absent/existing/disposition outcomes without truncating the real public object as a permission probe.
 2. Drain all owned writers/mappings and local paging I/O; seal exact local stage, EOF and content under T4 lifetime rules.
    Inspect the complete immutable snapshot under current policy; unsupported, timeout or incomplete extraction cannot approve.
-3. Before the **first remote content write**, validate current policy, generation/delete floor, approved destination and original
-   caller authority, then persist a unique publication-attempt/create intent and issue an exact approved-only create permit.
+3. Persist the unique create intent/grant, then install §7.4's Prepared/NoWrite attempt under the common exposure/head protocol.
+   Validate current head/policy and caller authority before the one-use CREATE; exact durable create facts permit TempBound → CopyEnabled.
    The §8.1 kernel publisher creates a unique remote sibling with collision refusal and qualified security/sharing; record its actual identity.
 4. Copy only the inspected snapshot using explicit-offset bounded ordinary writes, never CopyFile's implicit offload route.
-   Bind every write/EOF operation to this temporary, attempt, subject and content; capture partial completion and actual status.
+   Atomically admit **each WRITE and EOF** under §7.4's current head/policy predicate; retain its range receipt and actual completion.
    No caller-mutable buffers, stage rewrites, mappings or writes via duplicate handles may enter the remote temporary.
 5. Fence temporary data irreversibly, drain admitted writes, verify actual EOF/identity, and finish the qualified lower flush.
    SMB FLUSH requests persistence of cached file information; it is not a journal/rename transaction or power-loss proof. [M28]
@@ -316,7 +317,7 @@ A user-mode server service or lock file alone cannot fence arbitrary SMB clients
    Keep all names/parents/incarnation and expected identities bound through the qualified server mutation boundary.
 7. Record actual native success and exact Published receipt in the shared head before Released and releasing the commit turn.
    Fence remains permanent after rename; outstanding temporary handles cannot modify the now-public object.
-   Failed final manifest recording retries that recording only (`driver/POST-MVP-PLAN.md:121`).
+   Failed final manifest recording retries that recording only ([T4 recovery decision](POST-MVP-PLAN.md#owner-decisions)).
 8. Retire local stage, remote temporary residue and native records only through exact receipts/acknowledgements.
    Preserve generation floors and uncertainty across service crash, client restart and server restart; no path-based scavenging.
 
@@ -328,9 +329,9 @@ Lost or unprovable exclusion permanently bars that attempt: retain exact residue
 attempt only when those obligations permit it. Restoring connectivity or reopening the same pathname cannot renew ownership.
 
 Approval is needed at the first outbound data write, not just final rename: remote temporary bytes are already destination bytes.
-Policy/generation change during upload fences additional writes and forbids commit; cancel/drain existing I/O, then reconcile residue.
-Bytes sent under a valid prior approval cannot be recalled from backup. A policy update must order against in-flight egress permits;
-it cannot be acknowledged as fully effective while old-permit writes can still be newly admitted.
+§7.4 fences before a competing head transition commits or native mutation forwards; a pre-copy check and final rename check cannot do this.
+Previously admitted ranges may finish after that fence and cannot be recalled from backup; every later range is refused.
+Policy activation uses the same ordering and cannot acknowledge effectiveness while further old-policy reservations remain possible.
 If product policy instead requires retroactive removal of previously approved destination bytes, that is a new owner decision.
 A remote temporary contains approved data but is not user-visible save completion; ACL/share denial is defense in depth.
 Partial publication preparation never truncates the final target, and empty publication uses the same transaction with zero data writes.
@@ -348,7 +349,7 @@ Do not promise exactly-once remote mutation from a local journal alone.
 | Known state | Action and visible outcome |
 |---|---|
 | No remote mutation forwarded | May resume local preparation after current policy/authority checks; allocate a new attempt only when prior no-forward is affirmative. |
-| Approved temporary partly copied; definitely no rename sent | Hold final name unchanged; resume only a proven unwritten range on the same still-writable bound attempt, or clean that exact temporary and begin a fresh attempt. Never reopen a data fence or blindly rewrite after an unknown write. |
+| Approved temporary partly copied; definitely no rename sent | An uninterrupted CopyEnabled attempt may admit only its next never-admitted range under §7.4. Head change, disconnect/restart or uncertain range receipt fences it permanently; reconcile/clean the exact temporary before a fresh attempt. Never resubmit an admitted range or reopen its fence. |
 | Native rename success retained; journal failed | Record existing success/Published once. “Saved to the share; finishing recovery bookkeeping.” Never re-upload or rename again. |
 | Rename may have reached server; response lost | Retain PendingCommit and name hold. “Save result on \\server\share\file is unconfirmed; newer saves remain private. Reconnect to verify.” |
 | Authentication lost / server unavailable before publication | Keep private stage charged; reject new uncheckable remote opens. “File is kept on this PC; the share is unavailable. Reconnect and sign in.” |
@@ -367,9 +368,62 @@ For a lost scheduled-delete/rename result, exact remote open retirement may requ
 a server-side operation receipt. A simple observer used by the lab is not a trusted production receipt mechanism.
 N07 must identify a supported production proof; if none survives the chosen failures, uncertainty remains held and D7/D8 applies.
 A Windows client Restart cannot extinguish arbitrary server durable/persistent state by assertion.
-The fixed-NTFS forced-teardown exception is local-only (`driver/POST-MVP-PLAN.md:88`); it does not authorize SMB recovery-by-reboot.
+The [forced-teardown exception](POST-MVP-PLAN.md#owner-decisions) is local fixed-NTFS only; it does not authorize SMB recovery-by-reboot.
 The USB remount requirement is likewise not an SMB lifetime proof. Sticky Unknown still clears only under its existing reboot rule;
 even after that reboot, an unresolved remote operation retains its separate destination hold.
+
+### 7.4 Atomic range admission and common head transitions
+
+Reuse [T21's common exposure/head protocol](T21-USB-REMOVABLE-DESIGN.md#53-per-range-exposure-and-shared-head-transitions--finding-2),
+with SMB incarnation/session evidence and the §8.1 kernel publisher as the only submitter. This is a proposed shared core, not another journal.
+One bounded nonpaged **ExposureHead** per canonical destination mirrors the durable head: revision, maxAllocated, Published/delete/cancellation/
+scheduled floors, typed native holds, transition nonce, native-facts/replay revision and one active attempt. Aliases share this record.
+The attempt binds original subject/SMB authority, current inspection/policy epoch, immutable snapshot/EOF, exact temporary, connection epoch,
+next offset/sequence, permanent DataFenced and all admitted-but-unacknowledged operations. It survives service loss independently of MUP.
+One short common **ExposureGate** serializes these fields, policy-epoch revocation and C2 cutoff; it is also the publisher submission gate.
+Preallocate records/buffers outside it. Hold no kernel, namespace/stream or global journal lock across SMB I/O, hashing, allocation, RPC or journal waits.
+
+Installation is **Prepared/NoWrite → TempBound → CopyEnabled**: persist create intent; install Prepared while fencing an older attempt;
+consume the checked CREATE once; bind actual object/security facts durably; enable only if head/policy/epochs and facts still match.
+Its own matched preparation facts do not self-fence; a competing transition does. Unknown CREATE outcome never permits content.
+Before each WRITE/EOF, durably record a unique range intent containing attempt/object, expected head/policy revisions, sequence and exact extent.
+That intent and a queued service request confer no authority. At actual broker reservation, under ExposureGate, require CopyEnabled, exact
+temporary/grant/immutable source, live epochs, current inspected policy, expected head revision, no transition/fence/uncertainty/blocking hold,
+generation == maxAllocated, generation above delete/cancellation/scheduled floors, and no Published result for this attempt.
+Require the contiguous next approved offset, snapshot bounds and no prior in-flight or unacknowledged range. Consume sequence and acquire
+operation rundown atomically; then drop the gate and forward that exact operation once. This reservation is the exposure linearization point.
+Use ordinary explicit-offset SMB writes, at most 64 KiB and one outstanding range per attempt; no append sentinel, implicit padding or offload.
+FltWriteFile supports explicit offsets and completion byte counts but bypasses the issuing instance; the broker must enforce this gate. [M36]
+EOF is a separately sequenced operation with the same predicate, only for the inspected length after all content ranges completed and were recorded.
+No speculative length extension is permitted; an empty version still admits its zero EOF through this gate before normal fence/flush/rename.
+Completion records actual status/bytes under ExposureGate and advances replay revision; partial/error/unknown completion fences permanently.
+Retain the receipt until an exact durable ACK; missing/failed ACK prevents the next range. Neither ACK nor EOF success may clear a fence.
+
+Every allocation, cancellation, delete/disposition/clear, publication and hold-resolution writer must use **BeginHeadChange(expected revision,
+nonce) → durable head/native facts → CommitHeadChange(new revision)**. Begin takes ExposureGate, sets TransitionPending, permanently DataFences
+the old attempt and revokes its unused create/rename grants **before** a newer generation becomes durable, cancellation succeeds or any competing
+native mutation forwards. No later Commit/ACK may regrant that old attempt, including after an aborted transition.
+The service keeps the existing per-destination turn across this transition, never across the upload; it drops global journal locks before SMB I/O.
+For a native delete or scheduled-delete CREATE, reserve the kernel hold and existing durable pre-forward intent before forwarding; no slot/intent
+means refusal. Native acceptance with lost tracking/journal ACK remains AcceptedUnresolved with the old attempt already fenced.
+Commit matches nonce, base revision, connection epoch and the complete native-facts/replay revision under ExposureGate; stale ACKs cannot clear
+an intervening result/hold. Failure or abort retains closure until exact reconciliation; even a proven aborted transition needs a fresh attempt.
+Normal bound NativeOnClose Admitted is a scheduled floor, not a whole-handle barrier; a newer fresh generation may proceed when other gates pass.
+Ordinary accepted-delete and AcceptedUnresolved holds block exposure. Allocation/Blocked never cancels a delete; only Published can suppress it.
+At final rename, retain T5's physical turn, drain admitted ranges and recheck current head/policy plus the one-use namespace permit; copy completion
+alone grants no commit. Publication's own matched intent/results may advance its head but cannot re-enable data writes.
+
+Policy changes use BeginPolicyChange under ExposureGate to revoke the old epoch before policy persistence/activation ACK; this irreversibly fences
+all attempts from that epoch. Install the new current policy only after durable facts agree; new copying requires a fresh matching inspection/attempt.
+If a range wins the gate first, its bounded bytes remain previously authorized even if completion follows a transition; retain that receipt.
+If the transition wins first, the old range/EOF is refused before lower submission. A queued intent is never counted as an admitted range.
+Service disconnect closes admission at the kernel event, increments replay revision and fences attempts before notification; no journal-only writer
+may bypass BeginHeadChange while disconnected. Restart/reconnect replays closed heads, durable range intents, fences and retained native receipts
+before any fresh attempt. A pre-send crash window without affirmative never-forwarded proof stays possibly submitted; no range replay by inference.
+Normal record retirement requires durable fence/result ACKs; compaction retains unresolved intents and the exact receipt/fence watermark.
+Mandatory teardown still drains locally without a service ACK dependency: prior durable intents reconstruct missing receipts/fences as closed,
+possibly submitted work. Driver restart cannot turn missing admission/result evidence into a reusable sequence or a completed mutation.
+The N13 controls in §10.3 prove both orders. No SMB transport behavior is relied on to serialize this client-side authority protocol.
 
 ## 8. Deletes, lifetime and integration with T4/T5
 
@@ -401,16 +455,16 @@ An instance flag, journal hold, service shutdown, manual-detach veto or eventual
 | Gate | Required construction and decisive proof |
 |---|---|
 | C1 — synthetic upper isolation | Every surviving handle, duplicate, section and paging/cleanup route must remain unable to enter MUP/RDBSS/SMB with SafeUpload-owned FsContext/FCB/SOP state after callback cutoff. Require a documented lifetime/dispatch boundary independent of the detached instance, plus N02/N09 traces through final close/unmap. An instance reference or retained memory proves neither. If the proposed synthetic-on-MUP object can fall through to redirector dispatch, this architecture **fails C1** and cannot be admitted. |
-| C2 — publisher mutation cutoff | Keep remote mutation handles exclusively in a kernel publisher using `OBJ_KERNEL_HANDLE`, with no user-mode export, inheritance, duplicate or section-creation API. All generated operations and internal duplicates use one attempt-state submission gate, independently of minifilter pre/post callbacks. Kernel-only handle access is documented [M35]; this broker and its complete call-path coverage remain unverified. A raw writable publisher handle reachable by the service/app fails C2; closing one handle is not revocation of its duplicates. |
+| C2 — publisher mutation cutoff | Keep remote mutation handles exclusively in a kernel publisher using `OBJ_KERNEL_HANDLE`, with no user-mode export, inheritance, duplicate or section-creation API. All generated operations and internal duplicates use §7.4's common ExposureGate/head predicate, independently of minifilter pre/post callbacks. Kernel-only handle access is documented [M35]; this broker and its complete call-path coverage remain unverified. A raw writable publisher handle reachable by the service/app fails C2; closing one handle is not revocation of its duplicates. |
 
 The publisher retains original caller/SMB authority (§6); kernel ownership changes handle exposure, never grants or the authenticating account.
 The service supplies an inspected-stage capability and requests work; it never supplies mutable upload buffers or receives the remote handle.
-One global rundown record binds attempt, object, epoch, immutable source, permanent DataFenced bit and outstanding lower submissions.
-Under its submission lock, reserve each exact operation before releasing the lock for lower I/O; reserved operations count as in flight.
-DataFenced forbids further data/EOF/offload operations; the recorded flush and one-use checked rename remain eligible until cutoff.
+The §7.4 ExposureHead owns attempt/object rundown and outstanding lower submissions; a separate attempt-only lock is insufficient.
+Every WRITE/EOF reservation checks the common head/policy atomically; admitted operations count as in flight before the gate is released.
+DataFenced forbids data/EOF/offload operations; flush/one-use rename still require §7.4 eligibility and an unrevoked permit before cutoff.
 Queries, close and completion remain allowed. Exact temporary cleanup needs a separate one-use kernel permit, checked identity/authority
 and affirmative noncommit facts before cutoff; never delete on a lost rename result. After cutoff retain it for qualified recovery.
-Teardown's first action takes that lock, revokes the epoch and disarms unconsumed mutation permits; queued requests and duplicates fail closed.
+Teardown's first action takes ExposureGate, revokes the epoch and disarms unconsumed mutation permits; queued requests and duplicates fail closed.
 No fresh write, rename, delete or security mutation may be reserved afterward; close/completion and exact bookkeeping remain possible.
 Keep the record and required code/objects alive until all reserved operations and internal handle references drain; never wait for service ACK.
 No publisher mappings are allowed. A surviving writable section, unregistered duplicate or generated-I/O call bypassing this gate fails C2.
@@ -463,6 +517,7 @@ failure stops the dependent feature, not an open-ended search through flags. Bui
 | N10 — offload bypass | COPYCHUNK and COPYCHUNK_WRITE, ODX read/write and clone/extent attempts from sensitive remote sources into protected names, including direct native FSCTL callers. Require refusal before server mutation; ordinary inspected copy fallback may then succeed separately. |
 | N11 — observers | Deliberate forbidden-marker writes in a sacrificial unprotected fixture, including short-lived temporary, ADS, write then delete and snapshot. Each observer must detect its claimed surface; sequence gaps/lost events invalidate continuous proof. |
 | N12 — resource/UX | Server and local disk full, quota boundary, low memory, bounded parallel transfers, stale policy, credential expiry, interrupted hand-back and prolonged outage. Require charged retained state, complete-or-refuse inspection and accurate per-user notices, without unbounded worker growth. |
+| N13 — range/head ordering | Run §10.3's deterministic two-order matrix for WRITE and EOF against allocation, cancellation, delete/clear, policy and recovery transitions. Require no reservation under stale authority; preserve earlier admitted receipts through failed tracking ACKs and service restart. |
 
 Native correctness is a prerequisite, not destination qualification. Record OS/server build, dialect, provider, auth, lease/cache
 configuration, exact inputs/results, source commit and artifact hashes. Do not infer behavior on Samba from Windows Server controls.
@@ -505,6 +560,19 @@ Record actual channel count, durable grant, persistent/resilient flags, server a
 An unexpected P1/P2 transition disarms unconsumed permits and holds the attempt under §8.1; reconnect cannot reopen DataFenced.
 No refusal control authorizes such infrastructure or expands D11. M29's replay branches are configuration-specific, not a universal retry guarantee. [M29]
 
+### 10.3 Deterministic range/head race controls — N13, UNVERIFIED
+
+Use a multi-range approved file and a zero-length version; barrier on the kernel reservation/BeginHeadChange events, not sleeps.
+For WRITE and EOF, cross both orders below with newer allocation (then Blocked), private cancellation, ordinary delete, scheduled delete,
+disposition clear/hold resolution, publication-result replay and policy change. Capture gate/replay revisions plus independent server operation/byte evidence.
+
+| Forced order / fault | Required observation |
+|---|---|
+| Range wins; pause before lower send and again before completion | Begin fences the attempt before competing durable commit/native forward. Only the already admitted exact range may finish; the next range/EOF and stale rename are refused. Newer Blocked/cancelled versions never resurrect the old attempt or cancel a prior delete. |
+| Transition wins; pause before durable head write/native forward | The old WRITE/EOF is refused even while the durable head still shows its prior revision. No remote submission for that intent. Abort/fail the transition: its fence remains and any later copying needs a fresh attempt. |
+| Fault each order | Lose Begin reply, native tracking ACK after accepted delete, Commit reply and range-result ACK; restart the service before/after each durable write. Inject delayed old ACKs during replay. Require closed replay, retained exact range/native facts and no duplicate mutation or stale reopening; a missing result remains held. |
+| Driver interruption / lock check | Restart after durable range intent but before known admission, and after admission before durable result; both replay closed unless exact never-forwarded/completion evidence exists. Delay SMB completion while an unrelated head progresses and teardown/reconciliation runs; prove no kernel/global journal lock is held across the delay. |
+
 ## 11. Qualification lab, byte observation and restoration
 
 **No additional lab infrastructure is assumed to exist.** Obtain owner approval for a separate SMB server VM and its exact baseline,
@@ -516,7 +584,7 @@ Approve capacity, addresses, credentials, fault-injection topology and server sn
 Do not install a domain controller, modify host routing/firewall/libvirt/polkit or alter the qualified client baseline under this note.
 
 The protected client remains **win10-debug3 only**, `SAFEUPLOAD_DEBUGGEE=win10-debug3`; keep win10-debug2 off.
-Builder 19045.6466 is separate from target 19045.2965 (`driver/POST-MVP-PLAN.md:104`, `:132`).
+Builder 19045.6466 is separate from target 19045.2965 ([qualified-target decisions](POST-MVP-PLAN.md#owner-decisions)).
 No loopback share, host-mounted directory or mocked transport substitutes for the real SMB server.
 The second client runs ordinary SMB readers/racing actors without trusting the protected client's service or cache.
 Each server-side observer executes independently of the publishing service and writes evidence outside the observed share.
@@ -543,7 +611,7 @@ Synchronize fault windows on authenticated operation receipts and observer event
 | Mapping / names | Both memory-mapping repros, sections past cleanup, UNC/mapped-drive equivalence, remap while queued, aliases/case/overlapping shares and qualified prefix boundaries. |
 | Permissions / metadata | N04/N05 successful and denied controls under protection; machine account granted while caller denied; share and filesystem denial independently. |
 | Commit / delete | Both forced publication/delete orders, remote competing writer/parent swap, scheduled delete and only-Published suppression, flush/fence and post-rename write refusal. |
-| Recovery / cutoff | Every N07 P0 boundary and N02/N09 forced-cutoff cell, ordinary reconnect, changed share identity, partial copy, service restart, client/server crash, exact cleanup/ACK and named uncertainty holds; P1/P2 remain refusal rows. |
+| Recovery / cutoff | Every N07 P0 boundary, N02/N09 forced-cutoff cell and N13 range/head race, ordinary reconnect, changed share identity, partial copy, service restart, client/server crash, exact cleanup/ACK and named uncertainty holds; P1/P2 remain refusal rows. |
 | Unsupported / activation | CSC/DFS/CA/provider/dialect/offload refusal; pre-scope cached writers, startup before edits, policy activation/change, service absent, old/new protocol pairs. |
 | Stress / coexistence | Approved T4 occupancy/context gates, multi-user outage storage pressure, server quotas, AV/indexer/backup/VSS and required M4 coexistence; no threshold relaxation. |
 
@@ -551,21 +619,21 @@ Run required families in ordinary, runtime-Verifier and boot-Verifier modes on c
 All four normal/feature × Debug/Release WDK builds, PREfast/ApiValidator and agent matrix remain required at 0 warnings/errors.
 Harness changes first pass Windows PowerShell **5.1** parse/native-signature checks and relevant offline self-checks.
 Any server kernel observer/component also needs its applicable static/lifetime/Verifier checks before its authorized boot.
-No skipped required tests, relaxed assertions or diagnostic subset may stand in for the gate (`driver/POST-MVP-PLAN.md:140`).
+No skipped tests, relaxed assertions or diagnostic subset may replace the [required gates](POST-MVP-PLAN.md#gates-that-stay-required).
 
 Run BLOCK windows and mutable builder/target jobs serially, using monotonic deadlines. Stop at required failures, changed baseline
 or repeated identical failures; retain the first receipt and identify a hypothesis before proposing a rerun.
 Use existing disposable qcow2 overlays, reset EFI variables at each start, no TPM, test signing and Secure Boot off for the client.
 Approve a corresponding disposable server/second-client baseline and restore each involved machine separately from the product verdict.
 Verify run-disk deletion, untouched base and unchanged XML independently; retain original base/XML and raw evidence before cleanup
-(`driver/POST-MVP-PLAN.md:96`; `driver/evidence/README.md:3`). No production share is a test fixture.
+([restoration decision](POST-MVP-PLAN.md#owner-decisions); `driver/evidence/README.md:3`). No production share is a test fixture.
 Track a concise cited result with commit/artifact hashes, coverage and separate product/restoration verdicts; no new freeze framework.
 
 ## 12. Implementation increments and review exits
 
 1. **T22 decisions/design:** record D1–D13 outcomes, resolve contradictions with T5/T8, obtain independent Sol 6.1 xhigh review.
    Keep all capability gates closed. An accepted proposal with mechanism conditions is not an implementation/activation verdict.
-2. **T22 native feasibility:** after lab authorization, implement only finite diagnostic controls N01–N11 in their approved scope.
+2. **T22 native feasibility:** after lab authorization, implement finite N01–N13 controls in their approved scope, including common exposure ordering.
    Settle identity, synthetic upper and C1/C2 coverage loss, authority/seed, metadata, replacement and lost-result recovery before a product backend.
    If N03/N06/N07 require a server component, return that concrete design/owner choice for security review; do not widen client trust.
 3. **T22 protocol/head:** introduce negotiated tagged network identity and immutable attempt facts; extend existing allocation,
@@ -619,3 +687,4 @@ Pages were consulted 2026-10-13. No documentation statement here is claimed as a
 [M33]: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb2/ee9614c4-be54-4a3c-98f1-769a7032a0e4
 [M34]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information
 [M35]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltcreatefileex2
+[M36]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltwritefile

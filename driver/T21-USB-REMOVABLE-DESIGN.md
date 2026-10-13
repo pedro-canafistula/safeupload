@@ -1,37 +1,32 @@
 # T21 — USB/removable staged protection
 
-2026-10-13. Design proposal against `wt/designs` at `6128a892b30c0151a9cc2684b45d2cee56040cb1`. No implementation, capability activation, infrastructure change or VM run is authorized by this document. Owner decisions in
+2026-10-13. Second revision of design `0953036a`; implementation baseline remains `wt/designs` at `6128a892b30c0151a9cc2684b45d2cee56040cb1`. No implementation, capability activation, infrastructure change or VM run is authorized by this document. Owner decisions in
 section 9 and the independent Sol 6.1 xhigh security review precede implementation. Windows mechanisms marked **U** are unverified on the qualification target; section 10 gives finite controls. Documentation establishes
 API contracts, not successful SafeUpload integration or protected-runtime qualification.
 
-**Design status: ACCEPT WITH CONDITIONS, independent Sol 6.1 xhigh design review.** Section 6.2 selects a private filesystem
-routing owner; section 5.3 couples external exposure to every shared-head transition. Neither is implemented.
+**Design status: revised, awaiting independent re-review.** Sections 6.2–6.3 select StageFs and its cross-volume public-delete relay;
+section 5.3 couples exposure to shared-head transitions. These are proposed designs, not implemented or qualified mechanisms. D1–D8 remain pending.
 
 ## Review history
 
-- 2026-10-13, independent `gpt-6.1-sol`, `xhigh`, `/root/t21_design_review`: **REVISE**; recorded the lost-routing blocker and incorporated DELETE-only, remount-cleanup authority and separate device-resource retirement
-  corrections.
-- Independent Sol 6.1 xhigh review at `35f057ce`: **REVISE**, findings 1 (surviving owner) and 2 (exposure ordering), [review receipt](evidence/2026-10-13/t21-design-review-sol61.md). The receipt was read in the sibling
-  `safeupload-staging` checkout; it is absent from this checkout and has not been copied or edited.
-- This revision answers finding 1 in section 6.2 and finding 2 in section 5.3; C4/C9 test their mechanisms. D1–D7 remain pending; D8 explicitly requests approval of StageFs's native query surface. Review, qualification
-  and VM authorization remain separate.
-- 2026-10-13 working-tree revision, independent `gpt-6.1-sol`, `xhigh`, `/root/t21_design_review`: **ACCEPT WITH CONDITIONS**; both numbered findings resolved at design level. Conditions: D1–D8, T5 authority/descriptor
-  prerequisites, C1/C4/C9, device-resource/alias retirement and C10 observer proof, pre-boot kernel review and complete qualification. No VM authorization.
+- `35f057ce`, independent Sol 6.1 xhigh: **REVISE**, [first retained receipt](evidence/2026-10-13/t21-design-review-sol61.md). Findings: no surviving routing owner and insufficient shared-head/exposure ordering.
+- `0953036a`, independent Sol 6.1 xhigh: **REVISE**, [retained re-review receipt](evidence/2026-10-13/t21-design-rereview-sol61.md). Routing partly resolved; exposure ordering resolved at design level. Required: concrete StageFs→USB public-delete relay and corrected provenance/references.
+- This second revision adds section 6.3 and C11 for the relay, corrects status and uses status-plan section links. No new independent verdict is claimed. Both receipts are retained unchanged in the sibling `safeupload-staging` repository; links are repository-relative. Review acceptance, owner decisions, pre-boot review and qualification remain separate gates.
 
 ## 1. Binding scope and completion conditions
 
 The sequence is M2 → M3 → T21 → T22 → T23 → combined M4; T21 is required MVP work. USB stays disabled until its approved support envelope, destination gates and owner cutover approval exist. Taint remains enabled; normal
-builds compile staging out. ReFS is T24, outside this design. Sources: `driver/POST-MVP-PLAN.md:7`, `:61`, `:66`, `:813`, `:831`, `:871`, `:936`.
+builds compile staging out. ReFS is T24, outside this design. Sources: [milestone order](POST-MVP-PLAN.md#milestone-order), [owner decisions](POST-MVP-PLAN.md#owner-decisions), [T21](POST-MVP-PLAN.md#t21-usb-and-removable-media), [required gates](POST-MVP-PLAN.md#gates-that-stay-required), [T24](POST-MVP-PLAN.md#t24-refs).
 
 The owner requires automatic reconciliation on remount after proving that the old removed-volume handle can no longer change the file, then validating the returning volume/file state. Windows Restart is not a remedy. The
-forced-teardown Restart exception is strictly M2 local fixed NTFS (`driver/POST-MVP-PLAN.md:88`, `:839`). This note proposes the missing removal proof; it does not generalize instance teardown into that proof.
+forced-teardown Restart exception is strictly M2 local fixed NTFS ([Owner decisions: forced-teardown recovery scope](POST-MVP-PLAN.md#owner-decisions), [T21 requirement](POST-MVP-PLAN.md#t21-usb-and-removable-media)). This note proposes the missing removal proof; it does not generalize instance teardown into that proof.
 
 T21 is done only when the owner-approved combinations survive attach, removal in every save phase and return, with independent medium-byte observations, matched driver/agent results, Verifier and separate restoration. An
 ordinary unchanged return must release decidable recovery holds automatically, even with old app handles open. Ambiguous identity, lost execution facts or genuine global Unknown remain diagnosed failures, not passing
 rows. If ordinary surprise removal routinely reaches those failures, T21 is not done; a reboot instruction cannot close it.
 
 The T4 loaded-context stop remains in force. Its sole authorized attribution diagnostic does not authorize T21 boots. The M2 completion review is proposed execution guidance, not approval of pending choices or target
-changes. Sources: `driver/POST-MVP-PLAN.md:36`, `:184`, `:202`; `driver/M2-COMPLETION-PLAN.md:3`, `:119`.
+changes. Sources: [Owner decisions: M2 completion direction](POST-MVP-PLAN.md#owner-decisions), [M2 status](POST-MVP-PLAN.md#m2--active); `driver/M2-COMPLETION-PLAN.md:3`, `:119`.
 
 ## 2. Current implementation and reusable contracts
 
@@ -87,7 +82,7 @@ raw reads are the test oracle.
 | Returning medium | Full anchors plus lifetime proof and fresh file-state validation; never ID-only. | No approved durable authority construction; refuse protected saves. | Unstable IDs preclude borrowing T5's recovery unchanged; refuse. |
 
 D1 recommends NTFS first and explicit refusal of FAT32/exFAT. Fixed staging makes their byte privacy plausible, but does not solve exact-object recovery, caller semantics or whole-file replacement. Supporting them
-requires a separate coherent revision and owner-approved user contract; removing filesystem guards is not an increment. ReFS remains excluded for destination and backing here (`driver/POST-MVP-PLAN.md:936`).
+requires a separate coherent revision and owner-approved user contract; removing filesystem guards is not an increment. ReFS remains excluded for destination and backing here ([T24](POST-MVP-PLAN.md#t24-refs)).
 
 ### 3.2 Identity and encryption are independent properties
 
@@ -129,7 +124,7 @@ existing persisted keys.
 Bind `removableDrives` to actual volume classification for every path, including mount folders and ID-based opens. `false` removes that policy selector, not independently configured destination scopes or existing
 recovery obligations. Policy changes revoke unconsumed permits; scope expansion obeys preexisting-writer admission, never a scan-based Ready. No new writable authority while activation is incomplete. An old permit is
 invalid on a new mount or service connection. Current Windows caller grants, sharing, effective subject, ancestor traversal and assigned metadata remain T5 gates. Read-denied seeds stay service-private on block/removal;
-no readable full-file hand-back or justification is invented. The binding owner decision is option 1 (`driver/POST-MVP-PLAN.md:49`; `driver/T5-NATIVE-PUBLIC-OPENS.md:636`).
+no readable full-file hand-back or justification is invented. The binding owner decision is option 1 ([Owner decisions: unreadable seeded bytes](POST-MVP-PLAN.md#owner-decisions); `driver/T5-NATIVE-PUBLIC-OPENS.md:636`).
 
 ## 5. Data path and publication under removal
 
@@ -164,7 +159,7 @@ and retain cleanup.
 6. Consume the exact same-volume rename permit once. Capture native status, persist Published before Released, then finish local bookkeeping. No post-rename write permission; no retry of an accepted physical rename.
    Unknown outcome retains PendingCommit and the name hold until exact reconciliation.
 
-### 5.3 Per-range exposure and shared-head transitions — finding 2
+### 5.3 Per-range exposure and shared-head transitions
 
 Add one bounded nonpaged **ExposureHead** per active canonical destination, owned by the common kernel transaction core, not the removable instance. This is the runtime admission mirror of the existing durable head, not
 another journal. It contains driver/connection/mount identity, head revision, maxAllocated, Published/delete/cancellation/scheduled floors, typed native reservations/AcceptedUnresolved bits, transition nonce and at most
@@ -266,7 +261,7 @@ This conjunction is an inference from the documented removal contract plus the i
 alive. It is not established by this note. A missing receipt retains the hold; no reboot remedy or success claim follows. Media exchange in a still-present reader lacks this whole-device proof and stays unsupported until
 separately proved.
 
-### 6.2 Selected surviving owner: SafeUpload.StageFs — finding 1
+### 6.2 Selected surviving owner: SafeUpload.StageFs
 
 Select a dedicated, local **StageFs filesystem driver**, loaded before USB admission. Register its named control device normally [W42]; create a private non-PnP software disk per USB mount incarnation and mount an
 **unnamed StageFs volume device** with its own VPB [W43]. File I/O targets that volume, never the control device. The software disk lives until StageFs drains, independently of USB PnP. Give it a named native target and
@@ -279,7 +274,7 @@ evaluates removable policy through that logical destination binding, never its p
 installs synthetic FCB/section pointers in a USB-owned FILE_OBJECT. That existing construction (`driver/SafeUpload.Minifilter/StageStream.c:2434`, `:4548`, `:4663`) loses dispatch at teardown [W16]. StageFs remains
 loaded until its own objects/sections drain; USB removal neither deletes its device nor unregisters its dispatch. This is a selected architecture, not implemented proof.
 
-**CREATE and authority.** Before reparse, capture the original subject/request and run T5's nonmutating native disposition check, close the supplemental-rights probe, retain the separate original-grant/share lease,
+**CREATE and authority.** Before reparse, capture the original subject/request and run T5's nonmutating native disposition check, close the supplemental-rights probe, retain the separate original-grant/share lease (section 6.3 owns its construction and scheduled-delete exception),
 capture complete assigned security and anchors, and seed coherently. Missing T5 prerequisites deny admission (`driver/T5-NATIVE-PUBLIC-OPENS.md:465`, `:482`, `:498`, `:616`). Reserve the durable generation and private
 backing. StageFs owns a one-use open record containing this tuple, original process lifetime, request masks/options, logical name/view ID, native Information result, backing identity and cancellation state; no kernel
 pointers go to user mode. The minifilter replaces the initial filename with that private volume path plus opaque view/open nonce and returns STATUS_REPARSE, before any app handle exists. Microsoft's SimRep demonstrates
@@ -289,13 +284,13 @@ FsContext/CCB/section pointers and complete the create with exactly the checked 
 allocation requires that ECP; direct device/root opens, guessed allocation paths and user IOCTLs cannot mint one. Two ECP-free **reopen** locators are allowed: an exact live StageFs RelatedFileObject or the returned
 private volume/view path. Resolve only an existing owner view; then capture the new original subject/request and repeat the same native grant/share/anchor and private-view read-authority checks to mint a distinct record.
 A path/view ID is not authority. Unknown, retired, wrong-owner or removed bindings fail; neither route can allocate arbitrary backing. Device namespace access only permits reaching this check; fixed backing keeps its
-SYSTEM-private ACL. Cancellation/removal racing consumption has one winner under the record lock: no successful attach after the fence; failed creates release the native lease and retain exact private allocation-cleanup
-receipts. ECP cleanup drops its record reference, never destroys a consumed CCB. No self-reference to an app FILE_OBJECT is retained until CLOSE.
+SYSTEM-private ACL. For ordinary nonmutating CREATE, cancellation/removal racing consumption has one winner under the record lock: no successful attach after the fence; failed creates release the native lease and retain exact private allocation-cleanup
+receipts. Section 6.3 governs already-accepted scheduled CREATE: a held fallback CCB preserves the accepted result without new data authority. ECP cleanup drops its record reference, never destroys a consumed CCB. No self-reference to an app FILE_OBJECT is retained until CLOSE.
 
 **Sharing and operations.** One CCB per app FILE_OBJECT owns the original grant, native lease and cleanup bit; duplicated/inherited handles share that CCB, while an independent reopen gets a fresh original-subject
 check/lease. Use one locked IoCheckShareAccess/IoRemoveShareAccess domain per logical stream [W29], [W30], shared with the namespace gate so native/public opens and absent-target creates cannot bypass private sharing.
 Present targets also retain NTFS's original share lease through upper CLEANUP; close it exactly once there, not at seal or service ACK. No supplemental DELETE or second public seed-read handle changes sharing. StageFs
-enforces each CCB's read/write/append/delete rights; supported security-only/public-native opens retain T5's separate real-NTFS route. StageFs private cancellation/rename uses the same head turns, not direct USB
+enforces each CCB's read/write/append/delete rights; supported security-only/public-native opens retain T5's separate real-NTFS route. Section 6.3 selects public disposition on combined handles; private cancellation/rename uses the same head turns, not direct USB
 mutation. Keep T5/T10's exact supported/refused QUERY_SECURITY, SET_SECURITY, Basic/EA/ADS and CREATE-option matrix; an assigned descriptor grants no WRITE_DAC, WRITE_OWNER or SACL access
 (`driver/T5-NATIVE-PUBLIC-OPENS.md:482`). Never forward a synthetic upper FILE_OBJECT as the native security/metadata target.
 
@@ -306,7 +301,7 @@ mutation. Keep T5/T10's exact supported/refused QUERY_SECURITY, SET_SECURITY, Ba
 | Removal | Atomically mark the binding RemovedPrivate and close exposure/CREATE admission. Fail new ordinary mutations with STATUS_DEVICE_NOT_CONNECTED; admitted private I/O and existing mappings may still dirty fixed backing. Do not claim to revoke CPU stores or reject mandatory MM synchronization. Even a section created later through an existing authorized handle stays private and keeps the version mutable. |
 | Queries | Return private StageFs volume identity and stable `\v\<view-id>\<leaf>` names, original app grant/mode, per-open position and private EOF/assigned attributes. Preserve opaque per-view IDs and original-namespace overlay lookup (`driver/SafeUpload.Minifilter/StageStream.c:1921`, `:4056`, `:4100`); qualify identity by the actual queried volume. Never call torn-down OriginalInstance or expose backing names/IDs/ACLs. These are virtual-view identities, never public NTFS authority. |
 | Relative opens and IDs | Real USB directory handles stay native: capture their exact related object/raw selector before CREATE reparse. Reopen relative to a StageFs file (including empty-name reopen) resolves its exact view but performs a new subject/grant/share check; a file cannot become a directory. Supported ADS follow T8, others refuse. Private open-by-ID resolves only the exact owner view/mount; public IDs resolve through checked NTFS, never across remount. RelatedFileObject is captured during CREATE only [W32]. |
-| Handle-relative rename/delete | Capture RootDirectory as a file object with ObReferenceObjectByHandle, using UserMode for a user handle [W41]; validate its directory/full anchors/case and use T5's ordered private/public operation. Never rebuild authority from its path. Removed bindings cannot authorize a new destination mutation; public DELETE-only objects retain their native route and removal receipt. |
+| Handle-relative rename/delete | Capture rename RootDirectory as a file object with ObReferenceObjectByHandle, using UserMode for a user handle [W41]; validate its directory/full anchors/case and T5 private-rename contract. Disposition carries no replacement pathname: section 6.3 routes the exact bound public object or private discard. Removed bindings cannot authorize a new public mutation; DELETE-only objects retain their native route. |
 | CLEANUP | Cancel this CCB's queued user I/O, release its byte-range locks/share lease once, process its exact delete/cancellation intent and uninitialize its private cache map [W18], [W30], [W37]. No service ACK wait and no claim that sections have ended. |
 | CLOSE | Release the CCB after actual object-reference rundown [W38]; MM/Cache Manager may deliver paging between CLEANUP and CLOSE. The StageFs dispatch, FCB, backing and callbacks remain valid throughout. |
 
@@ -344,11 +339,66 @@ Preserve namespace → stream ordering, separate paging rundown and non-owning n
 callback drain. Reconciliation uses the existing head turn without waiting under the global journal gate. Mandatory teardown drains local ownership and preserves durable uncertainty without service ACK waits. Voluntary
 unload still vetoes live private/native obligations; see `driver/T5-DELETES.md:333` and `driver/T5-NATIVE-PUBLIC-OPENS.md:309`. Removing a device does not waive T4 retirement or the failed contexts bound.
 
-### 6.3 Writer registry and Unknown
+### 6.3 Selected StageFs→USB public-delete relay
+
+**Route and topology.** Attach the same SafeUpload minifilter to StageFs and USB at the **same altitude**, before exposing a staged handle. The StageFs instance intercepts the original IRP_MJ_SET_INFORMATION;
+for a public disposition it changes **both** TargetInstance to the live USB instance and TargetFileObject to the CCB's exact NTFS backend, calls FltSetCallbackDataDirty and returns FLT_PREOP_SUCCESS_WITH_CALLBACK. No new SetInformation IRP is synthesized.
+Microsoft requires that backend to reside on the target instance's volume and **USB volume DeviceObject.StackSize >= StageFs volume DeviceObject.StackSize** [W49]. Query both via FltGetVolumeFromInstance/FltGetDeviceObject,
+record the pair with a topology revision, and recheck before permit consumption; release query references correctly. StageFs uses its real minimal stack, never falsifies StackSize or transplants DeviceObject/FCBs.
+Unequal altitude, smaller target stack or absent relay instance closes capability admission before CREATE; a later topology change fences existing public relays and requires requalification. C11 must pass equal/larger target stacks and refusal of smaller ones.
+References pin memory, not USB liveness. The original pre/post pair receives its original parameters [W49]; its preallocated completion context therefore owns both endpoints and operation facts. Lower USB filters see the changed target;
+do not depend on another pre-callback at SafeUpload's USB instance to consume the permit. StageFs data/cache/sections/CLEANUP/CLOSE stay on its surviving route; loss of the StageFs filter also fences public delegation in the FSD.
+
+**Backend construction and ownership.** StageFs, not the removable instance or service, owns the original-grant backend handle and bounded close worker. Its factory issues IoCreateFileEx FILE_OPEN through the top of the USB stack (DeviceObjectHint=NULL) [W57],
+with a one-use kernel ECP in IO_DRIVER_CREATE_CONTEXT tied to its owned CREATE record, checked mount/anchors, worker and original request; the USB callback consumes that record to allow only this non-data backend open, without recursive staging. ECP origin alone is insufficient.
+Use T5's captured effective CREATE subject (static client context, restricted state, impersonation level and enabled privileges), SeImpersonateClientEx on an otherwise unimpersonated system worker, OBJ_FORCE_ACCESS_CHECK/OBJ_KERNEL_HANDLE,
+IO_FORCE_ACCESS_CHECK/IO_STOP_ON_SYMLINK, original desired access/share/case and no share bypass or added privilege [W55], [W56], [W57]. Always revert/delete the client context. Close supplemental probes before this sole retained original-rights lease; a public-delete binding requires NTFS's actual DELETE grant.
+An ordinary writer gains no DELETE from supersede's probe. StageFs owns the lease before any USB-instance teardown; its handle is not a minifilter-created helper requiring closure at teardown [W16]. The current factory is fixed-only and strips DELETE_ON_CLOSE
+(`driver/SafeUpload.Minifilter/StagePublic.c:637`, `:672`); neither behavior is the proposed USB factory. No service handle export or second open per disposition is permitted.
+
+| Binding/request | Selected effect |
+|---|---|
+| Existing public object, combined writer with checked DELETE | Bind PublicBound to the original volume/full ID, parent/link, binding-time Published generation and native lease. Ordinary TRUE/FALSE targets that backend. Data remains private; the delete's generation fences older unpublished saves. |
+| Proven absent target / private probe / explicit STAGE_DISCARD | PrivateOnly disposition or typed private discard uses T5's private generation and retirement path. It never reopens USB, acquires public DELETE later, or deletes a subsequently published file. A PublicBound operation cannot fall back to private success after native failure. |
+| Newer replacement at the same public name | Preserve T5's Published-only suppression against the exact bound old link; never retarget to the replacement. Allocated/blocked successors do not suppress deletion. Unexplained identity changes stay held. |
+
+**Original subject and one-use admission.** Serialize this CCB's operations with owned operation records, not a lock held across I/O. Capture the original information class, complete TRUE/FALSE or Ex flags, mode, request thread,
+CCB/open sequence and cancellation state. StageFs validates DELETE and private section restrictions; NTFS checks the public object's native restrictions [W53]. Preserve the original outer operation's per-handle access check; a reduced-right duplicate cannot acquire DELETE from the CCB's broader grant [W41].
+The actual calling thread's effective subject/privileges govern any operation-time checks; neither the creator's primary token nor SYSTEM replaces that subject. Run T5's bounded prepare inline on that original callback thread,
+without impersonating it, pending to a worker or editing Data->Thread/RequestorMode (those fields cannot be changed [W50]). Require current thread == Data->Thread and the qualified IRQL/context. Higher filters can pend onto workers [W51];
+C11/Q8 must establish the inline path for every supported stack/application. A context mismatch is a named capability failure, not permission to synthesize or silently drop an operation; the affected stack cannot qualify by excluding required deletes.
+
+Under the shared destination turn, revalidate anchors/head, run section 5.3 BeginHeadChange, persist PendingCommit and reserve a native-outcome slot before issuing the permit. The permit binds channel epoch, both instance/mount identities,
+topology revision, CCB/backend IDs, operation/class/flags/sequence, current head revision, generation and nonce. Ordinary TRUE allocates a delete generation; FALSE without a provisional intent forwards as a native no-op without allocating one.
+Only exact STATUS_SUCCESS plus a full matching reply authorizes forwarding; FltSendMessage STATUS_TIMEOUT is success-class but is not approval [W52]. Under the short exposure/operation gate, recheck binding, live lease, context, cancellation,
+retirement and revision, then atomically consume once and take rundown. Release locks before the original IRP proceeds to NTFS. No permit may cover data/EOF, rename, private cancellation or a later operation.
+
+**Native results and cancellation.** Before consumption, cancellation/removal/timeout wins the gate and records NotForwarded; release the unconsumed intent only after exact no-forward reconciliation. After consumption the original IRP owns cancellation;
+never manufacture rollback, issue a compensating FALSE or retry SetInformation. A lower cancellation/failure remains its actual result. Postoperation copies native Status/Information and immutable facts into reserved nonpaged storage [W54].
+Queue only result persistence, never the original mutation, to a safe worker; where safe, finish that bounded recording before returning to the caller. No service wait in a draining callback. An accepted result with missing tracking/ACK remains accepted,
+with AcceptedUnresolved and the exposure fence retained. A draining callback supplies no native success evidence. TRUE updates public pending/tombstone facts only after acceptance; a successful effective FALSE clears ordinary provisional intents across
+authorized handles/owners for that exact object, preserving scheduled intents, private discarded generations and completed-delete floors. Query overlays use those facts, never private discard as a public-delete receipt. Source: `driver/T5-NATIVE-PUBLIC-OPENS.md:33`, `:48`, `:53`.
+
+**Scheduled deletion.** For original CREATE FILE_DELETE_ON_CLOSE on a PublicBound writer, reserve its durable scheduled generation and head fence before the final backend FILE_OPEN; carry that flag unchanged on this open, never on a probe [W04].
+Preallocate StageFs CCB/ECP, fallback outcome/cleanup records and private storage first; complete seed preparation before this mutation-capable open and validate its coherence against the final checked lease. No substitute Ex ON_CLOSE operation.
+Native failure leaves the app CREATE failed; native acceptance followed by binding/seed-validation/ACK failure preserves acceptance and enters AcceptedUnresolved. A preallocated StageFs CCB can represent that accepted, held open without granting uncertain data access;
+its actual cleanup still owns the backend close. Canceled reparse/CREATE cannot undo an accepted schedule. Release the normal binding reservation once exact facts are durable; a fully bound NativeOnClose intent is the nonblocking scheduled floor of section 5.3.
+For an actual caller-supplied Ex ON_CLOSE request, use a distinct ScheduledDisposition permit with this same original-IRP cross-volume transport, preserving all flags and actual native supported/unsupported results [W53]. This explicitly extends T5's ordinary-only
+same-volume relay; it never emulates CREATE scheduling. PrivateOnly on-close remains private cancellation; PublicBound scheduling does not also execute STAGE_DISCARD. Ordinary FALSE cannot cancel CREATE scheduling; only an already-Published successor suppresses deletion of the current public name.
+
+**Cleanup, removal and retirement.** The last StageFs handle CLEANUP (not the first duplicate close or section release) atomically claims ClosePending, refuses new relays, cancels unconsumed work and drains consumed operations [W18].
+A reserved PASSIVE system worker closes the sole backend kernel handle with ZwClose, then drops its object reference after actual I/O rundown; closing is not itself an I/O-drain proof [W58]. Complete upper CLEANUP after this local close step,
+without waiting for service ACK, physical unlink or remount. Never retarget upper CLEANUP/CLOSE to USB. NTFS owns backend cleanup/scheduled effects; native other opens can delay unlink. Record backend cleanup separately from private stage retirement.
+On USB removal, close the relay gate immediately. Already consumed operations retain real results or unresolved facts; after DeviceLifetimeEnded and their drain, the removal worker may claim that same close-once lease before app cleanup (section 7.4).
+Later CCB cleanup sees LeaseClosed. Never attach the old backend or permit to the returned instance. Teardown alone lacks this early-close authority: if USB detaches while present, retain the StageFs-owned lease until actual upper cleanup,
+fence public operations and retain uncertainty. Private paging/close continue without USB callbacks. Drop endpoint pins after completion/drain, remove non-owning lookup keys before reuse, and retire operation records only through exact result/device ACKs.
+The selected relay's topology, subject and cleanup integration is **U** until C11 settles it with C1/C4/C6. Their lifetime/lock-order review precedes **any** changed-driver diagnostic or product boot. No default refusal of combined-handle public operations counts as implementing this relay.
+
+### 6.4 Writer registry and Unknown
 
 Expected, fully tracked USB removal is a distinct terminal device event, not generic loss of writer accounting. Old entries cannot transfer Ready to a new mount. Create a fresh admission/canary/registry domain on
 attachment; retain old references until their actual local rundown and removal facts allow retirement. This changes the USB lifecycle integration only; it must not clear existing instance/global sticky Unknown. Any
-genuine tracking loss remains sticky under `driver/POST-MVP-PLAN.md:129`; a new mount cannot launder it. `driver/SafeUpload.Minifilter/StageWriters.c:1370` already widens unexpected context loss to global Unknown. Prove
+genuine tracking loss remains sticky under [Owner decisions: earlier decisions](POST-MVP-PLAN.md#owner-decisions); a new mount cannot launder it. `driver/SafeUpload.Minifilter/StageWriters.c:1370` already widens unexpected context loss to global Unknown. Prove
 by fault controls that the expected-removal path reserves its receipt storage before admitting work and does not require allocation in the removal callback. Resource exhaustion refuses new work before exposing it. If
 routine removal necessarily creates global Unknown, revise the mechanism and return to review; do not ship a Restart-based USB recovery workflow under a different label.
 
@@ -427,17 +477,17 @@ force-release button or Windows Restart for ordinary USB removal.
 
 ## 8. T5/T4 integration rules that cannot change accidentally
 
-Empty saves use ordinary stable seal/inspection/publication; no EmptyHeld resurrection (`driver/POST-MVP-PLAN.md:73`). Public DELETE, native FILE_DELETE_ON_CLOSE and ordinary TRUE/FALSE disposition preserve original
+Empty saves use ordinary stable seal/inspection/publication; no EmptyHeld resurrection ([Owner decisions: empty files and deletes](POST-MVP-PLAN.md#owner-decisions)). Public DELETE, native FILE_DELETE_ON_CLOSE and ordinary TRUE/FALSE disposition preserve original
 Windows results, sharing and last-handle behavior. They share the same USB mount qualification and head with publication. Accepted native mutation cannot be undone by failing its tracking acknowledgement; retain
 AcceptedUnresolved. Only durably Published successors suppress a prior delete; Approved/Publishing/blocked/private successors cannot. Sources: `driver/T5-DELETES.md:166`, `:223`; `driver/T5-NATIVE-PUBLIC-OPENS.md:114`,
-`:147`.
+`:147`. Section 6.3 supplies the selected cross-device transport and StageFs-owned backend lifetime; T5's same-volume relay is not assumed to cover StageFs.
 
 Head ordering survives replug, service crash, old transfer retirement, rename and compaction. Preserve maxAllocated, published identity/generation, committed delete floor and every unresolved operation/cleanup reference.
 A removable journal is never authoritative: it can be edited elsewhere. Persist the authority on fixed private NTFS. Old formats without device/mount binding remain held; no migration fills missing identity from the
 currently present stick. Negotiate feature-only USB binding/fact capabilities with exact lengths and explicit versioning; preserve existing ABI numbers and normal builds. No new numeric layout is assigned by this design.
 
 A device-end receipt says nothing about the private stage's cache/section lifetime or caller read/export authority. Unsealed retention, rejected allocation cleanup, public temporary cleanup and hand-back completion
-remain separate obligations. Retry only unfinished recording, never completed public mutation (`driver/POST-MVP-PLAN.md:121`). M2's forced-instance fixed-NTFS recovery remains unchanged; no USB logic may weaken its
+remain separate obligations. Retry only unfinished recording, never completed public mutation ([Owner decisions: T4 recovery](POST-MVP-PLAN.md#owner-decisions)). M2's forced-instance fixed-NTFS recovery remains unchanged; no USB logic may weaken its
 existing gates.
 
 ## 9. Owner decisions needed before dependent implementation
@@ -480,8 +530,11 @@ hypothesis first. Builder 19045.6466 results are mechanism evidence. Repeat requ
 | C8 — capacity and coverage faults | Reserve exhaustion before admission, private/USB disk full, failed notification registration, truncated descriptor, incomplete enumeration, lost fact page and genuine sticky Unknown. Require named refusal/retention, bounded buffers/records and no timeout-based Ready. Replug must not clear genuine global Unknown. |
 | C9 — exposure/head races | Pause a three-range copy before admission, after admission/before lower completion, and before durable head ACK; force both orders against newer allocated then blocked saves, ordinary DELETE TRUE/FALSE, scheduled delete, private cancellation, accepted native result with failed tracking ACK, and policy change. Repeat at final padded submission/EOF shrink for C3's short/unaligned lengths. Require exact sequence/head revision: only one pre-transition range may finish, zero later range, no old rename/retry or false delete suppression. Keep a bound scheduled handle alive: a newer inspected successor must expose/publish without an extra SafeUpload wait, while the older copy stays fenced. Service crash at Begin/Commit leaves incomplete replay closed. |
 | C10 — continuous observer validation | On disposable images, inject known overlapping/aligned/partial writes, explicit zero/discard, failed completion, pre/post-hot-unplug writes and log truncation. Compare the block filter's ordered payload ledger against independent raw readback and replayed images; all expected positive markers must appear and intentional omissions must fail coverage. Repeat encrypted capture with independent decrypted observation. No product PASS with observer divergence. |
+| C11a — cross-device transport and subject | Compare direct USB NTFS with combined StageFs DELETE+write handles: ordinary TRUE→FALSE, FALSE without TRUE, independent cross-owner clear, basic/Ex flags and public versus PrivateOnly discard. Run duplicate (including reduced-right) and inherited handles, impersonated/restricted callers, denied DELETE plus DELETE_CHILD, allowed parent DELETE_CHILD, disabled privileges, readonly and image-mapped files, ShareAccess=0 and conflicting share masks. Log actual request/current thread, mode, effective subject, both instance altitudes/stack sizes, original and backend grants/IDs, native Status/Information and exactly one lower disposition. Test equal/larger target stack; smaller/mismatched/absent instances and an upper-filter worker handoff must fail capability qualification explicitly, never use SYSTEM or synthetic disposition. Require native success as well as denial cases; rejecting all requests fails. |
+| C11b — scheduling and cleanup | Existing combined CREATE DELETE_ON_CLOSE; caller-supplied Ex ON_CLOSE set/clear and actual unsupported results; ordinary FALSE must not clear CREATE scheduling. Compare native behavior before/after first duplicate close, last duplicate/inherited close, with other native readers and with private sections still alive. Race newer allocated/blocked versus durably Published successors in both orders. Require original-object effects, no extra whole-handle publication wait, one StageFs-owned backend close at upper CLEANUP, no private bytes on USB, and distinct public-delete/private-discard receipts. Fault accepted backend CREATE before StageFs attach and each binding/seed-validation/ACK step; acceptance is never recast as a no-effect failure. |
+| C11c — cancellation, removal and lost results | Pause before/after permit consumption, at native completion, result persistence and backend close; inject cancellation, service loss, USB teardown-only, whole-device removal and remount with old combined/duplicate/mapped handles alive. Verify NotForwarded only before consumption, exact native result afterward, retained AcceptedUnresolved on lost facts, no replay/compensating FALSE and no old-object mutation on returned media. Race app CLEANUP with the removal close worker: require one backend close, no callback/CCB use-after-free, no device-ACK wait on private sections and no early backend close on teardown alone. Repeat under C9's continuous exposure observer. |
 
-No control is claimed executed here. C1 failing its exact association or stale-handle premise blocks this construction. C4 tests the selected StageFs construction; independent kernel lifetime/lock-order review must
+No control is claimed executed here. C1 failing its exact association or stale-handle premise blocks this construction. C4/C11 test StageFs and the selected relay; independent kernel lifetime/lock-order review must
 precede even its first changed-driver diagnostic boot. No experiment is permission to try the rejected USB-instance-owned route. C3 cannot establish arbitrary hardware power-loss atomicity; results define supported
 storage behavior and D3 wording. C5 cannot prove cryptographic identity from noncryptographic identifiers; a scope decision is unavoidable.
 
@@ -508,19 +561,19 @@ host QEMU block-filter observer on the disposable USB image's logical device bou
 boundaries to a separate retained ledger. It never queries SafeUpload for expected bytes. Preserve uncertain or partial writes as uncertain, not absent. A missing sequence, overflow, truncated record or unobserved
 operation fails coverage. Replay that stream onto the immutable initial raw image and compare independent detached raw-device readback; map each exposed file-data range to the separately retained
 approved-snapshot/head-admission ledger. Do not read an active qcow2 file as coherent raw media. This new observer is **U** until C10 validates completeness; its infrastructure/code deployment is part of pending D7, not
-assumed available or authorized by this note. For physical devices, retain raw sampling and the qualified lower-write observation mechanism; no emulator-to-hardware equivalence claim. See `driver/POST-MVP-PLAN.md:912`
+assumed available or authorized by this note. For physical devices, retain raw sampling and the qualified lower-write observation mechanism; no emulator-to-hardware equivalence claim. See [T19: Continuous evidence](POST-MVP-PLAN.md#t19-continuous-evidence)
 for the unchanged continuous-evidence obligation.
 
 | Required row family | Variants and required outcome |
 |---|---|
 | Q1 Attach/admission | Boot-present and hot-attach; fixed-reporting USB; service down; policy on/off/expansion; letter/mount aliases; unsupported FS. No pre-Ready protected write; explicit unsupported refusal. |
-| Q2 Ordinary operations | Empty/clean/CPF new/overwrite, coherent append/seed, native grants/denials, public reads/deletes, rename/copy ingress, required application and both mapping-leak repros. Exact final/blocked prior-byte rules. |
+| Q2 Ordinary operations | Empty/clean/CPF new/overwrite, coherent append/seed, native grants/denials, public reads/deletes including all C11a/b combined-handle cases, rename/copy ingress, required application and both mapping-leak repros. Exact final/blocked prior-byte rules. |
 | Q3 Removal during write/seed | Cached/noncached and mapping variants; duplicate handles and late paging. Medium never contains forbidden bytes; private incomplete version retained. |
 | Q4 Removal during seal/inspect | Before/after writer drain and seal ACK; timeout/parser failure/service crash. No implicit approval or zero-length shortcut. |
 | Q5 Removal during publication | Every C3 cut point and C9 head race; policy change; copy disk full; native success before durable result; uncertain rename. Approved-only physical data, exact earlier-range ordering, no later exposure or duplicate mutation. |
-| Q6 Reconnect/recovery | Unchanged same/other port, old handles still alive, accepted native-delete tracking failure, restart service during absence/return. Automatic exact hold release and a fresh clean successor, no Windows Restart. |
+| Q6 Reconnect/recovery | Unchanged same/other port, old handles still alive, accepted native-delete tracking failure, all C11c relay/close races, restart service during absence/return. Automatic exact hold release and a fresh clean successor, no Windows Restart. |
 | Q7 Changed/absent media | C5 conflicts, no return, locked media, malformed replay and stale permit. Local retention/diagnostics; no substitution or generation reset. |
-| Q8 Stress/coexistence | Serial detach/replug cycles, concurrent independent destinations, resource failures, Defender/approved filter stacks and BitLocker. Bounded retention, no hang/bugcheck, unchanged privacy gates. |
+| Q8 Stress/coexistence | Serial detach/replug cycles, concurrent independent destinations, resource failures, Defender/approved filter stacks and BitLocker. Repeat C11 topology/subject/cleanup checks on each stack. Bounded retention, no hang/bugcheck, unchanged privacy gates. |
 
 Run the required families on the final matched pair in ordinary, runtime-Verifier and boot-Verifier modes. Include Special Pool, Pool Tracking, I/O/Filter verification, deadlock and relevant low-resource rows in the
 existing approved Verifier configuration; record flags rather than silently changing them. BLOCK-window rows run serially. Four normal/feature × Debug/Release WDK builds, PREfast/ApiValidator 0 warnings/errors, complete
@@ -531,23 +584,23 @@ remain separately reported.
 Record source commit, delivered artifact hashes, device descriptors/topology, OS/stack, policy, monotonic cut point, all raw observations and structured verdicts under `driver/evidence/README.md:3`. Preserve the first
 failed attempt. Stop on required failure, repeated identical failure or changed baseline; no weakened threshold/assertion or warning suppression. After evidence retention, independently verify untouched OS/media bases,
 approved domain XML restored, EFI reset, no leaked USB attachment/task and deletion of disposable OS/USB run disks. Restoration is a separate verdict. The owner's existing restoration contract remains
-`driver/POST-MVP-PLAN.md:96`; approve any temporary XML deviation explicitly and compare restoration against the original approved baseline, not against the changed test topology.
+[Owner decisions: VM restoration](POST-MVP-PLAN.md#owner-decisions); approve any temporary XML deviation explicitly and compare restoration against the original approved baseline, not against the changed test topology.
 
 ## 12. Implementation increments and review exits
 
 | Increment | Deliverable and exit |
 |---|---|
-| T21.1 Design | Review StageFs, per-range exposure and device-resource ACK; record D1–D8 choices and obtain Sol 6.1 xhigh security acceptance. USB stays off. No M2 stop release implied. |
+| T21.1 Design | Obtain independent re-review of StageFs, section 6.3 cross-device relay, per-range exposure and device-resource ACK; record pending D1–D8 choices and obtain Sol 6.1 xhigh security acceptance. USB stays off. No M2 stop release implied. |
 | T21.2 Mechanism controls | Implement bounded diagnostic controls/harness with PS5.1 gate; approve topology and runs separately. Settle C1/C2/C3 before selecting support combinations. |
-| T21.3 Bound admission/lifetime | Implement accepted StageFs CREATE/dispatch/retirement, device/mount binding, PnP facts, closed attach gate and registry/rundown integration. Four static builds and component checks. **Independent Sol 6.1 xhigh kernel lifetime/lock-order/retirement review before the first changed-driver boot**, including any diagnostic driver. |
-| T21.4 Shared transaction | Extend the existing T5 exposure permits, head/journal and remount reconciliation together; local retention/read-authority UX and charged storage. No legacy fallback or partial activation. Relevant controls then full delivery matrix. |
+| T21.3 Bound admission/lifetime | Implement accepted StageFs CREATE/dispatch/retirement, relay topology/subject/backend/close ownership, device binding, PnP facts, closed attach gate and registry/rundown integration. Four static builds and component checks. **Independent Sol 6.1 xhigh kernel lifetime/lock-order/retirement review before the first changed-driver boot**, including any diagnostic driver and C11 harness driver. |
+| T21.4 Shared transaction | Integrate relay admission/native-result/cleanup with T5 exposure permits, head/journal and remount reconciliation; local retention/read-authority UX and charged storage. Require C1/C4/C6/C9/C10/C11 exits, then the full delivery matrix. No legacy fallback or partial activation. |
 | T21.5 Destination qualification | Run Q1–Q8/all required modes on the approved envelope, raw/continuous observers and separate restoration; close removal and mapping failures. Final working-pair adversarial Sol review. |
 | T21.6 Handoff to M4 | Cite owner scope, matched hashes, complete evidence and remaining exclusions. Mark ready for combined M4 only when T21 Done when is met; cutover/taint removal still require later owner sign-off. |
 
 ## 13. Documentation references
 
-Microsoft sources below were consulted for the specific contracts cited, not as proof of target qualification. Repository references are file:line locations at the source commit above; newer status decisions take
-precedence.
+Microsoft sources below establish the cited API contracts, not target qualification. W49–W58 and the removal/teardown contracts were checked for this revision. Implementation references use file:line at the stated baseline;
+status-plan links use sections, including T21 and T19, checked against both checkouts. Only the two retained receipts in Review history establish review verdicts; newer owner decisions take precedence.
 
 [W01]: https://learn.microsoft.com/en-us/windows/win32/fileio/filesystem-functionality-comparison
 [W02]: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/ns-fileapi-by_handle_file_information
@@ -596,5 +649,15 @@ precedence.
 [W46]: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 [W47]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/mountmgr/ni-mountmgr-ioctl_mountmgr_volume_arrival_notification
 [W48]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/mountmgr/ni-mountmgr-ioctl_mountmgr_delete_points
+[W49]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_io_parameter_block
+[W50]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_callback_data
+[W51]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/writing-preoperation-callback-routines
+[W52]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltsendmessage
+[W53]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/ns-ntddk-_file_disposition_information_ex
+[W54]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_post_operation_callback
+[W55]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-secreateclientsecurityfromsubjectcontext
+[W56]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-seimpersonateclientex
+[W57]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/nf-ntddk-iocreatefileex
+[W58]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwclose
 [Q01]: https://www.qemu.org/docs/master/system/devices/usb.html
 [Q02]: https://libvirt.org/formatdomain.html
