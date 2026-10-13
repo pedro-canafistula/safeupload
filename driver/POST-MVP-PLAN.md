@@ -403,6 +403,11 @@ cannot publish unapproved bytes, proven by the observer.
 - [x] Nested sealed-stage query guard (`203d31e9`), 32-bit serial-generation arithmetic (`b8394357`), journal cache eviction (`cb1d0930`).
 - [ ] Validate SOP lifetime at startup; retire changed-SOP registry entries with a lifetime review before first boot.
 - [ ] Finish journal compaction without losing generation barriers or unresolved identity/cleanup obligations.
+  - 2026-10-13 component checkpoint (Windows matrix pending): compaction now groups bound generation claims by full
+    volume-root/parent/mount/case/leaf identity, keeping legacy pathname claims separate. Its retained-reference closure
+    includes allocation-reference owners as well as exact parent/delete versions. Journal-only controls cover distinct
+    identities sharing a locator, case-sensitive tombstones, case-insensitive aliases, legacy separation, lost-head recovery
+    and tombstone-owner replay after restart. This does not close the full compaction/scaling or final-pair review gate.
 - [ ] Close every M2 review condition against the final matched pair.
 
 ## M3 — after M2

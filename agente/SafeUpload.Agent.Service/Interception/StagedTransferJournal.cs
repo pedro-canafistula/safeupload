@@ -2331,8 +2331,9 @@ public sealed partial class StagedTransferJournal
     /// Released (approved, or justified with its stage deleted) or Blocked with the window closed, the hand-back verified and the
     /// stage deleted. A Blocked version whose hand-back failed keeps its stage and is never removed.
     /// The greatest generation for each destination (including rename tombstones) is retained as a compact high-water claim.
-    /// Exact parent/delete manifests referenced by that head or any live entry are retained too, so compaction cannot reset a
-    /// destination to generation one or break CREATE_AFTER ancestry.
+    /// Bound claims use the complete destination identity; legacy claims use their pathname comparison rule.
+    /// Exact parent/delete/allocation-reference manifests named by a retained entry are retained too, so compaction cannot
+    /// reset a destination to generation one or break CREATE_AFTER/tombstone replay ancestry.
     /// </summary>
     public async Task<int> CompactAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken)
     {
@@ -2347,11 +2348,11 @@ public sealed partial class StagedTransferJournal
                     throw new InvalidDataException($"Unexpected journal file: {file.FullName}");
                 entries.Add(await ReadCoreAsync(id, cancellationToken).ConfigureAwait(false));
             }
-            static IEnumerable<(string Destination, long Generation)> Claims(TransferJournalEntry entry)
+            static IEnumerable<(string Locator, StagedAllocationBindingV23? Binding, long Generation)> Claims(TransferJournalEntry entry)
             {
-                yield return (entry.Transfer.DestinationPath, entry.DestinationGeneration);
+                yield return (entry.Transfer.DestinationPath, entry.BoundAllocation, entry.DestinationGeneration);
                 for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
-                    yield return (name.DestinationPath, name.Generation);
+                    yield return (name.DestinationPath, name.AllocationBindingV23, name.Generation);
             }
             bool Finished(TransferJournalEntry e) =>
                 e.PendingRename is null && e.UpdatedAtUtc < cutoffUtc && !PathExists(e.Transfer.StagePath) &&
@@ -2363,23 +2364,32 @@ public sealed partial class StagedTransferJournal
                  (e.State == TransferJournalState.Blocked && e.JustificationWindowClosed && e.StageDeleted &&
                   e.HandbackState == StagedHandbackState.Verified));
             var finished = entries.Where(Finished).Select(e => e.Transfer.TransferId).ToHashSet();
-            var byDestination = entries
-                .SelectMany(e => Claims(e).Select(c => (c.Destination, c.Generation, Id: e.Transfer.TransferId)))
-                .GroupBy(c => c.Destination, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+            var legacyClaims = new Dictionary<string, (long Generation, HashSet<Guid> Transfers)>(StringComparer.OrdinalIgnoreCase);
+            var boundClaims = new Dictionary<StagedDestinationIdentity, (long Generation, HashSet<Guid> Transfers)>();
+            static void AddClaim<TKey>(Dictionary<TKey, (long Generation, HashSet<Guid> Transfers)> claims,
+                TKey destination, long generation, Guid transfer) where TKey : notnull
+            {
+                if (!claims.TryGetValue(destination, out var maximum) || generation > maximum.Generation)
+                    claims[destination] = (generation, [transfer]);
+                else if (generation == maximum.Generation) maximum.Transfers.Add(transfer);
+            }
+            foreach (var entry in entries)
+                foreach (var claim in Claims(entry))
+                    if (claim.Binding is { } binding)
+                        AddClaim(boundClaims, binding.Destination, claim.Generation, entry.Transfer.TransferId);
+                    else AddClaim(legacyClaims, claim.Locator, claim.Generation, entry.Transfer.TransferId);
             var protectedIds = entries.Where(e => !finished.Contains(e.Transfer.TransferId))
                 .Select(e => e.Transfer.TransferId).ToHashSet();
             // Retain one durable maximum-generation claim per destination even
             // after its stage is gone. It is the compact high-water mark used
             // by later create attempts and prevents generation reuse.
-            foreach (List<(string Destination, long Generation, Guid Id)> claims in byDestination.Values)
-            {
-                long maximum = claims.Max(c => c.Generation);
-                foreach (var claim in claims.Where(c => c.Generation == maximum))
-                    protectedIds.Add(claim.Id);
-            }
-            // A retained/current CREATE_AFTER child must keep both exact
-            // ancestry records available for tuple validation and safe replay.
+            // A service locator cannot merge different volume/parent identities
+            // or case-sensitive leaves. Legacy pathname claims keep their own
+            // comparison rule and never stand in for a bound destination.
+            foreach (var claim in legacyClaims.Values.Concat(boundClaims.Values))
+                protectedIds.UnionWith(claim.Transfers);
+            // A retained child must keep its exact predecessor/delete records
+            // and allocation-reference owner available for validation/replay.
             bool referencesAdded;
             do
             {
@@ -2389,6 +2399,7 @@ public sealed partial class StagedTransferJournal
                     if (!protectedIds.Contains(entry.Transfer.TransferId)) continue;
                     if (entry.ParentVersionIdentity is { } parent) protectedIds.Add(parent.TransferId);
                     if (entry.DeleteVersionIdentity is { } deleted) protectedIds.Add(deleted.TransferId);
+                    if (entry.AllocationReferenceId is { } allocationOwner) protectedIds.Add(allocationOwner);
                 }
                 referencesAdded = protectedIds.Count != before;
             } while (referencesAdded);
