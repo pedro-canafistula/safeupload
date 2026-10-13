@@ -1,0 +1,6 @@
+{
+  "exitCode": 0,
+  "scope": "Read-only identified-builder packaging headroom; no deletion/configuration changes. Prior failed matrix retained.",
+  "stdoutSha256": "306bc6ca7fa01b63e7039840df8a332d89a894c4b4a7d924193f162e394f4acd",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

@@ -1,0 +1,168 @@
+{
+  "scope": "20 independent Windows PowerShell/.NET Framework child-process trials on the identified builder; WaitForExit(int) waits on the native process object. No pathname deletion, purge, driver call or configuration change. Not a .NET 10 async-wait reproduction or whole-machine-interruption qualification.",
+  "trials": [
+    {
+      "Trial": 0,
+      "ProcessId": 2156,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 2.2266,
+      "Remaining": false
+    },
+    {
+      "Trial": 1,
+      "ProcessId": 6000,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.14700000000000002,
+      "Remaining": false
+    },
+    {
+      "Trial": 2,
+      "ProcessId": 896,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.12610000000000002,
+      "Remaining": false
+    },
+    {
+      "Trial": 3,
+      "ProcessId": 3076,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1115,
+      "Remaining": false
+    },
+    {
+      "Trial": 4,
+      "ProcessId": 1064,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.114,
+      "Remaining": false
+    },
+    {
+      "Trial": 5,
+      "ProcessId": 2236,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1288,
+      "Remaining": false
+    },
+    {
+      "Trial": 6,
+      "ProcessId": 8,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.11570000000000001,
+      "Remaining": false
+    },
+    {
+      "Trial": 7,
+      "ProcessId": 3220,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1336,
+      "Remaining": false
+    },
+    {
+      "Trial": 8,
+      "ProcessId": 32,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.11460000000000001,
+      "Remaining": false
+    },
+    {
+      "Trial": 9,
+      "ProcessId": 1084,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1278,
+      "Remaining": false
+    },
+    {
+      "Trial": 10,
+      "ProcessId": 2356,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1144,
+      "Remaining": false
+    },
+    {
+      "Trial": 11,
+      "ProcessId": 760,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1155,
+      "Remaining": false
+    },
+    {
+      "Trial": 12,
+      "ProcessId": 940,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1155,
+      "Remaining": false
+    },
+    {
+      "Trial": 13,
+      "ProcessId": 5040,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1496,
+      "Remaining": false
+    },
+    {
+      "Trial": 14,
+      "ProcessId": 1952,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1315,
+      "Remaining": false
+    },
+    {
+      "Trial": 15,
+      "ProcessId": 4684,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.11960000000000001,
+      "Remaining": false
+    },
+    {
+      "Trial": 16,
+      "ProcessId": 5272,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1313,
+      "Remaining": false
+    },
+    {
+      "Trial": 17,
+      "ProcessId": 4164,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1252,
+      "Remaining": false
+    },
+    {
+      "Trial": 18,
+      "ProcessId": 4468,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1008,
+      "Remaining": false
+    },
+    {
+      "Trial": 19,
+      "ProcessId": 5520,
+      "ProcessExited": true,
+      "ImmediateExists": false,
+      "AbsentAfterMs": 0.1292,
+      "Remaining": false
+    }
+  ],
+  "rawStdoutSha256": "a3e00f94ee80b039e2f4ed9becf91449923cec02f02ff2a8d8e498f78c6c9cd9",
+  "gate": "PASS",
+  "inference": "The .NET 10 WaitForExitAsync HasExited path can return from an available exit code before the native process object is signaled. The matrix failure is consistent with that early completion; the new control waits for the actual signal using the same ten-second deadline and immediate file-absence postcondition."
+}

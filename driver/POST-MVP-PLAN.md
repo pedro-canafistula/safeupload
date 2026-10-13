@@ -1,6 +1,6 @@
 # SafeUpload MVP status plan
 
-Updated 2026-10-12. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
+Updated 2026-10-13. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
 destination, keeping unapproved bytes private throughout. M2 is the current milestone, not the completion boundary.
 Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](POST-MVP-LOG.md), and the local WIP branch noted below.
 
@@ -9,7 +9,7 @@ Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](PO
 | Order | Scope | Status |
 |---|---|---|
 | M1 | T0–T3: safe to leave loaded | Complete on the recorded M1 pair |
-| **M2** | **T4–T11: everyday file work** | **Active: T4 10,000 cycles first, then T5 deletes** |
+| **M2** | **T4–T11: everyday file work** | **Active; product VM gates stopped at T4's contexts bound** |
 | M3 | T12, T14: release configuration and lifecycle | After M2 |
 | T21 | USB/removable | After M3; own design, owner decisions, Luna design review and destination qualification |
 | T22 | SMB/UNC | After T21; own design, owner decisions, Luna design review and destination qualification |
@@ -141,8 +141,9 @@ M1 passed 69/69 cells on `m1-driver21` (`498f4ed7`) plus agent `4d02039a`, with 
 
 ## M2 — active
 
-**Next delivery checkpoint:** Qualify the owner-approved T4 journal recovery repair, then retry the short/10,000-cycle gates. Complete the
-integrated T5 pair: bound allocation/manifests/seeding, every physical publication/delete through the shared head and permits,
+**Next delivery checkpoint:** T4's revised smoke passed; its 10,000-cycle row failed the loaded-context bound. Further product VM rows
+remain stopped, with no kernel reclamation or threshold change authorized. Continue component implementation/evidence while that
+runtime gate awaits owner direction. Complete the integrated T5 pair: bound allocation/manifests/seeding, every physical publication/delete through the shared head and permits,
 exact close/startup reconciliation, cleanup acknowledgements and teardown. Group implementation and static checks around that
 integration. After the single pre-boot kernel lifetime review, qualify native deletes in both forced orders and real Notepad
 clean/CPF Save As in all three modes, with independent bytes and separate restoration. Component passes do not complete T5.
@@ -509,8 +510,40 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     without changing assertions, policy budgets, timing bounds or filters. Scoped duplicate-output cleanup
     ([initial](evidence/2026-10-13/t9-snapshot-bound1-preflight.host.json), [retry](evidence/2026-10-13/t9-snapshot-bound2-preflight.host.json))
     preserves source/packages/manifests/raw evidence. No product pair was installed or booted; commits remain local pending push approval.
-  - Snapshot storage finding: ordinary-publisher inspection copies use random private `.inspection` names, with no durable
-    snapshot-owner/cleanup obligation in the transfer journal. Process interruption can leave copies, and deletion failure can
+  - Owned-handle snapshot lifecycle (`245da04a`, completion-port correction `fa3019cc`): create the service-only temporary object
+    with delete-on-close and no sharing, copy/hash the measured bytes, then drop its write handle. Publication/hand-back and scanner
+    workers receive read-only duplicates of that held object, without reopening or deleting a pathname. A worker owns its lease
+    until actual completion, including after timeout; the existing worker/deadline and late-result gates remain intact. The new
+    inspection entry point rejects missing, writable, nonseekable or wrong-length leases without falling back to a pathname.
+    The [first matrix](evidence/2026-10-13/t9-snapshot-handles1-retained-failure.json) compiled at 0/0 but failed 87/1,079 normal Debug
+    user cases: duplicated asynchronous handles could not bind the same file object's completion port again. The correction uses
+    synchronous native handles; .NET 10's [FileStream strategy](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Private.CoreLib/src/System/IO/Strategies/OSFileStreamStrategy.cs)
+    and [Windows offset I/O](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Private.CoreLib/src/System/IO/RandomAccess.Windows.cs)
+    retain independent logical read offsets and async call support. Nineteen controls cover all four formats, native read grants,
+    independent concurrent offsets, empty/failing capture, noncooperative parser lifetime and independent Windows process termination.
+    The [corrected-source matrix](evidence/2026-10-13/t9-snapshot-handles2-retained-failure.json) passes both normal profiles at
+    1,105/1,105; feature Debug fails only the immediate process-exit cleanup observation (1/1,450 user cases). An
+    [independent 20-trial native-signal diagnostic](evidence/2026-10-13/t9-snapshot-close-diag1-result.json) finds every file immediately
+    absent after WaitForExit(int), without cleanup polling, path deletion or purge. The failure is consistent with .NET's
+    [early exit-code HasExited path](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/ProcessManager.Windows.cs)
+    allowing WaitForExitAsync to complete before the native process object is signaled. Test correction `e2854de5` waits for that
+    actual signal, retaining the ten-second bound and immediate absence assertion. Full-matrix qualification is pending; both
+    failures remain retained. No product assertion, policy budget, original backing/public-file cleanup or kernel code changed.
+    [Scoped duplicate-output recovery](evidence/2026-10-13/t9-snapshot-handles1-preflight.host.json) preserved source/packages/evidence;
+    subsequent [snapshot](evidence/2026-10-13/t9-snapshot-handles2-preflight.host.json) and
+    [combined-matrix](evidence/2026-10-13/t9-office-stores1-preflight.host.json) headroom checks were read-only, with no further cleanup.
+    Whole-machine interruption/orphan recovery and quotas remain open.
+  - Office stored-payload/relationship safeguards (`0581833c`): custom XML stores, custom document properties and unknown SDK
+    extension parts now use the existing unsupported-content refusal instead of approving only their visible body/cell text.
+    Staged failures remain Blocked with empty findings; legacy failures retain AllowedWithoutInspection. No stored payload is
+    executed, deleted or rewritten. Microsoft's [custom XML overview](https://learn.microsoft.com/en-us/visualstudio/vsto/custom-xml-parts-overview?view=visualstudio)
+    confirms these stores persist data inside Office files. The relationship walk caps its unique visited parts at 16,384, matching
+    the staged text-reader part budget, with explicit inspection_limit. This bounds the walk's own state/work, not SDK/ZIP/XML
+    metadata allocation before enumeration. Ten independent Word/Excel payload cases and a 17,000-header package control cover
+    refusal/classification in both modes and unchanged source bytes. The combined exact matrix is pending; complete format coverage,
+    hostile parser metadata, storage budgets and the protected milestone gate remain open.
+  - Snapshot storage finding: the prior ordinary-publisher inspection lifecycle used random private `.inspection` names, with no durable
+    snapshot-owner/cleanup obligation in the transfer journal. Process interruption could leave copies, and deletion failure could
     mask capture/cleanup errors or surface after an already-completed transfer. Source/inspection/publication authority must remain
     separate from cleanup success. Durable identity-bound cleanup and storage charging remain required; filename matching, an
     unverified pathname or digest alone must not authorize deletion. The exact-length copy safeguard does not solve these findings

@@ -1,0 +1,6 @@
+{
+  "exitCode": 0,
+  "scope": "Read-only identified-builder packaging headroom, no deletion or configuration change. Both failed snapshot matrices retained.",
+  "stdoutSha256": "6f2ad4c02229fa54057a9b21c2b27f5ea88d09859be441a46caae6cd05edab71",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

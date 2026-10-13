@@ -1,0 +1,117 @@
+{
+  "sourceCommit": "245da04aa12fa5268c39ccac775f5f95ec9d70e5",
+  "matrixGate": "FAIL",
+  "failure": "First normal Debug user test gate failed. Duplicated asynchronous file handles share the original file object/completion-port association; constructing another asynchronous FileStream failed to bind that object, making capture fail before inspection/publication. No later profile/package passed or ran. Raw evidence retained. Corrected implementation uses synchronous native handles with .NET offset-based FileStream I/O; existing assertions/budgets/timing limits/filters unchanged.",
+  "profile": "normal-debug-user",
+  "counters": {
+    "total": "1079",
+    "executed": "1079",
+    "passed": "992",
+    "failed": "87",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "rawTrxSha256": "9bb4e3bb431411df7738ce2e5b31ac39b6b80425b854bbdb7b4beb63cab81eda",
+  "cases": [
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.A_timed_out_parser_keeps_its_read_lease_until_it_finishes_without_late_authority",
+      "outcome": "Failed",
+      "executionId": "f3f89af7-0ed2-4be0-b5e4-5dce4048a3ed"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Empty_content_is_measured_on_the_owned_lease_instead_of_trusting_zero_metadata(forgedZero: False)",
+      "outcome": "Failed",
+      "executionId": "afb7ab78-3c9a-46c4-b061-9179fbfdc19e"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Empty_content_is_measured_on_the_owned_lease_instead_of_trusting_zero_metadata(forgedZero: True)",
+      "outcome": "Failed",
+      "executionId": "6c3c7820-2fa4-4984-a4cf-14ec1a89c894"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Failed_or_cancelled_capture_removes_only_its_temporary_object(cancel: False)",
+      "outcome": "Passed",
+      "executionId": "3eeb6e30-82f2-45c8-8d52-5803aea97a0d"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Failed_or_cancelled_capture_removes_only_its_temporary_object(cancel: True)",
+      "outcome": "Passed",
+      "executionId": "cf1ac0eb-ff13-45c2-97da-6d592a804d07"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Held_snapshots_inspect_all_formats_without_reopening_the_exclusive_path(extension: \".docx\", sensitive: False)",
+      "outcome": "Failed",
+      "executionId": "e3c9ed8b-4540-4753-91cd-08648e1a086d"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Held_snapshots_inspect_all_formats_without_reopening_the_exclusive_path(extension: \".docx\", sensitive: True)",
+      "outcome": "Failed",
+      "executionId": "fc7abfea-34aa-4e70-b6f7-17e82e0909c0"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Held_snapshots_inspect_all_formats_without_reopening_the_exclusive_path(extension: \".pdf\", sensitive: False)",
+      "outcome": "Failed",
+      "executionId": "8871afce-709b-463c-a5db-54b7f906aa3d"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Held_snapshots_inspect_all_formats_without_reopening_the_exclusive_path(extension: \".pdf\", sensitive: True)",
+      "outcome": "Failed",
+      "executionId": "473546e0-a59c-4a93-bffd-280169bad161"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Held_snapshots_inspect_all_formats_without_reopening_the_exclusive_path(extension: \".txt\", sensitive: False)",
+      "outcome": "Failed",
+      "executionId": "84b97506-a5ed-427b-8eac-397c6e00f994"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Held_snapshots_inspect_all_formats_without_reopening_the_exclusive_path(extension: \".txt\", sensitive: True)",
+      "outcome": "Failed",
+      "executionId": "3b7e0e0a-6164-43d3-a2b1-5d8b65f78c46"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Held_snapshots_inspect_all_formats_without_reopening_the_exclusive_path(extension: \".xlsx\", sensitive: False)",
+      "outcome": "Failed",
+      "executionId": "dfa6b3d7-c352-4cd4-9550-b3c49cbef5a2"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Held_snapshots_inspect_all_formats_without_reopening_the_exclusive_path(extension: \".xlsx\", sensitive: True)",
+      "outcome": "Failed",
+      "executionId": "68c66a52-2ce3-4980-9688-d56600f96a66"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Invalid_owned_leases_fail_closed_without_opening_a_fallback_path(shape: \"length\")",
+      "outcome": "Passed",
+      "executionId": "3fc7645e-cbe4-4f2f-bc36-4b065c1b463f"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Invalid_owned_leases_fail_closed_without_opening_a_fallback_path(shape: \"missing\")",
+      "outcome": "Passed",
+      "executionId": "c61bd51b-8881-4138-8a30-3a997ab90110"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Invalid_owned_leases_fail_closed_without_opening_a_fallback_path(shape: \"write\")",
+      "outcome": "Passed",
+      "executionId": "2cff0c7f-efc4-462f-9f4b-682068c6c8d8"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Read_lease_has_no_write_or_delete_rights_and_survives_the_owner_until_its_last_close",
+      "outcome": "Failed",
+      "executionId": "a99e9162-25dc-4ef7-93b7-8ddd04630a9c"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Windows_process_termination_closes_delete_on_close_files_without_a_path_sweep",
+      "outcome": "Failed",
+      "executionId": "6fa14db5-6634-41fe-81ec-28bed1fff114"
+    }
+  ]
+}

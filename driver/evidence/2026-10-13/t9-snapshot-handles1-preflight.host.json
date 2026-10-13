@@ -1,0 +1,7 @@
+{
+  "exitCode": 0,
+  "transport": "PowerShell stdin; scoped hash-verified duplicate build outputs only",
+  "payloadSha256": "bd53511f3dc17233393982648bf988b8dafa41276846e0afe6a1a66d1f660027",
+  "stdoutSha256": "c0eb9359e39047249280d5ec8073ae968cbac80b7b9031c85aa9c99081e02627",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
