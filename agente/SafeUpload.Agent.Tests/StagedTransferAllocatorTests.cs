@@ -367,7 +367,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         const long creation = 638953632000000000;
         Guid driverInstanceId = Guid.NewGuid();
         Assert.Equal(StagedDriverEpochReconcileV20.Active,
-            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0x3f, CancellationToken.None));
+            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0xbf, CancellationToken.None));
 
         StagedAllocationReply v1Reply = await allocator.AllocateV19Async(destination,
             DestinationKind.Cloud, "word.exe", processId, sessionId,
@@ -601,7 +601,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         var journal = new StagedTransferJournal(journalRoot);
         var allocator = new StagedTransferAllocator(stageRoot, journal);
         Assert.Equal(StagedDriverEpochReconcileV20.Active,
-            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0x3f, CancellationToken.None));
+            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0xbf, CancellationToken.None));
 
         StagedAllocationReply v1Reply = await allocator.AllocateV19Async(destination,
             DestinationKind.Cloud, "word.exe", processId, sessionId,
@@ -712,7 +712,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         var journal = new StagedTransferJournal(journalRoot);
         if (parentEpochShape == "different-epoch")
             Assert.Equal(StagedDriverEpochReconcileV20.Active,
-                await journal.ReconcileDriverInstanceV20Async(oldDriver, 0x3f, CancellationToken.None));
+                await journal.ReconcileDriverInstanceV20Async(oldDriver, 0xbf, CancellationToken.None));
 
         Guid v1Id = Guid.NewGuid();
         string v1Stage = Path.Combine(stageRoot, v1Id.ToString("N") + ".txt");
@@ -1172,7 +1172,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         ulong firstRequestId)
     {
         Assert.Equal(StagedDriverEpochReconcileV20.Active,
-            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0x3f, CancellationToken.None));
+            await journal.ReconcileDriverInstanceV20Async(driverInstanceId, 0xbf, CancellationToken.None));
         TransferJournalEntry current = await journal.ReadAsync(version.TransferId, CancellationToken.None);
         Assert.Equal(version, new StagedVersionIdentity(current.Transfer.TransferId,
             current.DestinationGeneration, current.StageIdentity!));

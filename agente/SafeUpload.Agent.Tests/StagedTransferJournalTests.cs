@@ -598,11 +598,32 @@ public sealed class StagedTransferJournalTests : IDisposable
         var committed = await Journal().CompleteRenameAsync(source.TransferId, 101, source.ProcessId,
             target.DestinationPath, true, CancellationToken.None);
         Assert.Equal(source.DestinationPath, committed.NamespaceTombstones!.DestinationPath);
-        Assert.True(committed.DestinationGeneration > 1);
+        Assert.Equal(2, committed.DestinationGeneration);
         await Assert.ThrowsAsync<IOException>(() => Journal().TransitionAsync(target.TransferId,
             TransferJournalState.Sealed, TransferJournalState.Inspecting, null, CancellationToken.None));
         Assert.Equal(committed, await Journal().CompleteRenameAsync(source.TransferId, 101,
             source.ProcessId, target.DestinationPath, true, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Replacement_again_uses_generation_three_and_lost_reply_does_not_increment()
+    {
+        var target = Transfer();
+        var journal = Journal();
+        Assert.Equal(1, (await journal.CreateAsync(target, CancellationToken.None)).DestinationGeneration);
+        foreach (var generation in new[] { 2L, 3L })
+        {
+            var source = Transfer() with { DestinationPath = target.DestinationPath + $".tmp-{generation}" };
+            await journal.CreateAsync(source, CancellationToken.None);
+            ulong transaction = checked((ulong)generation);
+            await journal.PrepareRenameAsync(source.TransferId, transaction, source.ProcessId,
+                target.DestinationPath, false, CancellationToken.None);
+            var committed = await journal.CompleteRenameAsync(source.TransferId, transaction, source.ProcessId,
+                target.DestinationPath, true, CancellationToken.None);
+            Assert.Equal(generation, committed.DestinationGeneration);
+            Assert.Equal(committed, await Journal().CompleteRenameAsync(source.TransferId, transaction, source.ProcessId,
+                target.DestinationPath, true, CancellationToken.None));
+        }
     }
 
     [Fact]
@@ -1554,7 +1575,7 @@ public sealed class StagedTransferJournalTests : IDisposable
         StagedStageIdentity parentDirectory = StagedStageFile.ReadDirectoryIdentity(
             Path.GetDirectoryName(transfer.DestinationPath)!);
         Assert.Equal(StagedDriverEpochReconcileV20.Active,
-            await journal.ReconcileDriverInstanceV20Async(activeDriver, 0x3f, CancellationToken.None));
+            await journal.ReconcileDriverInstanceV20Async(activeDriver, 0xbf, CancellationToken.None));
         TransferJournalEntry created = await journal.CreateAsync(transfer, CancellationToken.None,
             allocationDisposition: 5, allocationReferenceId: null, allocationReferenceKind: 0,
             driverInstanceId: activeDriver,

@@ -384,6 +384,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     StagedAllocationReply? typedCreateReply = null;
                     uint? typedStatusReply = null;
                     SafeUploadStageLifecycleV20? typedLifecycleReply = null;
+                    SafeUploadStageRenameReplyV20? typedRenameReply = null;
                     SafeUploadStageReconcileReplyV20? typedReconcileReply = null;
                     SafeUploadStageEpochDrainReplyV20? typedEpochDrainReply = null;
                     bool reconcileDrainReplayOnly = false;
@@ -446,7 +447,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     else if (request.Operation is Operation.StageRename or
                              Operation.StageRenameCommit or Operation.StageRenameAbort)
                     {
-                        verdict = RetargetStage(request);
+                        (verdict, typedRenameReply) = RetargetStage(request);
                     }
                     else if (request.Operation == Operation.StageDiagnostic)
                     {
@@ -527,6 +528,10 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                                 _activeDriverInstanceId = null;
                                 _drainReplayDriverInstanceId = null;
                             }
+                        }
+                        else if (typedRenameReply is { } renameReply)
+                        {
+                            _ = port.ReplyStageRenameCommitV20(messageId, renameReply);
                         }
                         else if (typedLifecycleReply is { } lifecycleReply)
                         {
@@ -661,47 +666,64 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             Interlocked.Read(ref _overBudget));
     }
 
-    private uint RetargetStage(SafeUploadRequest request)
+    private (uint Verdict, SafeUploadStageRenameReplyV20? Reply) RetargetStage(SafeUploadRequest request)
     {
         if (_stageJournal is null || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
-            _activeDriverInstanceId is not { } activeDriver || request.Version != Contract.Version ||
-            request.RequestId == 0 || request.RequestorProcessId == 0 || request.Reserved > 1 ||
-            request.ImageNameLength != 32 * sizeof(char) ||
-            request.TypedFlags.HasFlag(RequestFlags.PathTruncated) ||
-            request.TypedFlags.HasFlag(RequestFlags.PathNotNormalized)) return PortVerdict.Deny;
+            _activeDriverInstanceId is not { } activeDriver || request.RequestId == 0 ||
+            request.RequestorProcessId == 0 ||
+            !request.TryReadStagePayload<SafeUploadStageRenameV20>(request.Operation, out var source) ||
+            source.Operation != request.Operation || source.Result != 0 || source.RequestId != request.RequestId ||
+            source.OwnerProcessId != request.RequestorProcessId || source.ViewGeneration == 0 || source.SealedVersion > 1 ||
+            source.TransferId == Guid.Empty || source.SourceGeneration == 0 ||
+            !source.StageIdentity.HasNonzeroFileId || !source.ParentDirectoryIdentity.HasNonzeroFileId ||
+            source.DriverInstanceId != activeDriver)
+            return (PortVerdict.Deny, null);
         try
         {
-            if (!Guid.TryParseExact(request.GetImageName(), "N", out Guid id)) return PortVerdict.Deny;
             string? destination = NtPathTranslator.ToDosPath(request.GetPath());
-            if (destination is null) return PortVerdict.Deny;
-            var entry = _stageJournal.ReadAsync(id, CancellationToken.None).GetAwaiter().GetResult();
-            if (entry.DriverInstanceId != activeDriver ||
-                entry.Transfer.ProcessId != checked((int)request.RequestorProcessId) ||
-                !IsExactLiveOwner(entry.Transfer))
-                return PortVerdict.Deny;
+            if (destination is null) return (PortVerdict.Deny, null);
+            int owner = checked((int)request.RequestorProcessId);
+            var exact = new StagedRenameRequestV20(request.RequestId,
+                new StagedVersionIdentity(source.TransferId, checked((long)source.SourceGeneration),
+                    FromWireStageIdentity(source.StageIdentity)), source.DriverInstanceId,
+                FromWireStageIdentity(source.ParentDirectoryIdentity), source.ViewGeneration, owner,
+                Path.GetFullPath(destination), source.SealedVersion != 0, request.GetPath());
+            var entry = _stageJournal.ReadAsync(source.TransferId, CancellationToken.None).GetAwaiter().GetResult();
+            if (entry.DriverInstanceId != activeDriver || entry.Transfer.ProcessId != owner ||
+                entry.Transfer.Destination != ClassifyStagedDestination(request.TypedFlags) || !IsExactLiveOwner(entry.Transfer))
+                return (PortVerdict.Deny, null);
             if (request.Operation != Operation.StageRename)
             {
-                _stageJournal.CompleteRenameAsync(id, request.RequestId,
-                    checked((int)request.RequestorProcessId), destination,
-                    request.Operation == Operation.StageRenameCommit, CancellationToken.None)
-                    .GetAwaiter().GetResult();
-                return PortVerdict.Allow;
+                TransferJournalEntry completed = _stageJournal.CompleteRenameAsync(source.TransferId,
+                    request.RequestId, owner, destination, request.Operation == Operation.StageRenameCommit,
+                    CancellationToken.None, exact).GetAwaiter().GetResult();
+                if (request.Operation == Operation.StageRenameAbort) return (PortVerdict.Allow, null);
+                StagedRenameReceiptV20 receipt = completed.LastRenameReceiptV20 ??
+                    throw StagedRequestRefusal.Create("The completed rename has no exact durable receipt.");
+                if (receipt.Source != exact || !receipt.Committed)
+                    throw StagedRequestRefusal.Create("The completed rename receipt has changed authority.");
+                return (PortVerdict.Allow, FilterPort.CreateStageRenameReplyV20(source,
+                    checked((ulong)receipt.DestinationGeneration), receipt.Source.DestinationName,
+                    StageV20Result.RenameCommitted));
             }
             using var policyTiming = StagedRequestTiming.Measure("policy-and-owner");
             var policy = _policyStore.LoadCurrentAsync(CancellationToken.None).GetAwaiter().GetResult();
             var operation = new FileOperation(destination, Path.GetFileName(destination),
                 Path.GetExtension(destination), 0, DateTime.MinValue, entry.Transfer.ProcessName,
                 entry.Transfer.ProcessId, destination, entry.Transfer.Destination);
-            if (!policy.IsMonitoredDestination(operation)) return PortVerdict.Deny;
+            if (!policy.IsMonitoredDestination(operation)) return (PortVerdict.Deny, null);
             policyTiming?.Dispose();
-            _stageJournal.PrepareRenameAsync(id, request.RequestId, checked((int)request.RequestorProcessId),
-                destination, request.Reserved != 0, CancellationToken.None).GetAwaiter().GetResult();
-            return PortVerdict.Allow;
+            _stageJournal.PrepareRenameAsync(source.TransferId, request.RequestId, owner,
+                destination, source.SealedVersion != 0, CancellationToken.None, exact).GetAwaiter().GetResult();
+            return (PortVerdict.Allow, null);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Falha ao renomear transferencia privada {RequestId}.", request.RequestId);
-            return PortVerdict.Deny;
+            if (request.Operation == Operation.StageRenameCommit && !StagedRequestRefusal.IsPermanent(ex))
+                return (PortVerdict.Allow, FilterPort.CreateStageRenameReplyV20(source, 0,
+                    request.GetPath(), StageV20Result.RetryableFailure));
+            return (PortVerdict.Deny, null);
         }
     }
 
@@ -991,7 +1013,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             TransferJournalEntry entry = _stageJournal.ReadAsync(payload.TransferId,
                 CancellationToken.None).GetAwaiter().GetResult();
             if (entry.Transfer.Destination != ClassifyStagedDestination(request.TypedFlags))
-                throw new IOException("The v20 attachment volume flags do not match the exact allocation.");
+                throw StagedRequestRefusal.Create("The v20 attachment volume flags do not match the exact allocation.");
 
             bool ownerIsLive = IsExactLiveOwner(entry.Transfer);
             bool commitPolicyAllowed = false;
@@ -1019,6 +1041,12 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         {
             _logger.LogWarning(ex, "Stage-v20 lifecycle operation {Operation} refused for request {RequestId}.",
                 request.Operation, request.RequestId);
+            if (request.Operation == Operation.StageHandleObserved && !StagedRequestRefusal.IsPermanent(ex))
+            {
+                SafeUploadStageLifecycleV20 retry = payload;
+                retry.Result = StageV20Result.RetryableFailure;
+                return (PortVerdict.Allow, retry);
+            }
             return (PortVerdict.Deny, null);
         }
     }

@@ -128,6 +128,10 @@ typedef struct _STAGE_STREAM {
     BOOLEAN SealRpcInFlight;
     BOOLEAN RenameRpcPending;
     BOOLEAN RenameRpcInFlight;
+    UCHAR RenameWait; /* Persistent obligation cause, including across collection/reply. */
+    UCHAR HandleReceiptWait;
+    ULONGLONG RenameRetryAfter; /* Interrupt-time deadline of the failed attempt's retry arm. */
+    ULONGLONG HandleReceiptRetryAfter;
     BOOLEAN AllocationRpcInFlight;
     UINT32 DiscardRpcKind;
     GUID DeleteReservationId;
@@ -353,6 +357,7 @@ static KTIMER StageRetryTimer;
 static KDPC StageRetryDpc;
 static ULONG StageRetryMs;
 static BOOLEAN StageRetryArmed;
+static ULONGLONG StageRetryDueTime; /* NamespaceResource; scheduling hint only, never arming authority. */
 static volatile LONG StageRetryFired;
 static BOOLEAN StageSweepRequested;          /* StageListLock: service connected; recheck every version */
 static BOOLEAN StageExitOverflow;            /* StageListLock: an exit did not fit the ring */
@@ -4564,10 +4569,22 @@ static NTSTATUS StageQuery(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream, PSTAGE
 
 static NTSTATUS StageExchangeStatus(PSAFEUPLOAD_EXCHANGE Exchange)
 {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    return SafeUploadStageRenameExchangeV19(Exchange);
+#else
     BOOLEAN answered = FALSE;
     UINT32 verdict;
     NTSTATUS status = SafeUploadRequestVerdict(Exchange, &verdict, &answered);
     return SafeUploadStageExchangeResult(status, answered, verdict);
+#endif
+}
+
+static VOID StageSetRenameOperation(PSAFEUPLOAD_EXCHANGE Exchange, UINT32 Operation)
+{
+    Exchange->Request.Operation = Operation;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    ((PSAFEUPLOAD_STAGE_RENAME_V20)Exchange->Request.ImageName)->Operation = Operation;
+#endif
 }
 
 /* For seal and rename, a refusal or absent service waits for the next connection. Anything else (no reply, no memory for the request)
@@ -4575,7 +4592,8 @@ static NTSTATUS StageExchangeStatus(PSAFEUPLOAD_EXCHANGE Exchange)
  * can fail transiently while the connected service is still available. */
 static UCHAR StageWaitFor(NTSTATUS Status)
 {
-    return Status == STATUS_ACCESS_DENIED || Status == STATUS_PORT_DISCONNECTED ? STAGE_WAIT_SERVICE : STAGE_WAIT_EXCHANGE;
+    return Status == STATUS_ACCESS_DENIED || Status == STATUS_PORT_DISCONNECTED ||
+        Status == STATUS_INVALID_BUFFER_SIZE || Status == STATUS_INVALID_PARAMETER ? STAGE_WAIT_SERVICE : STAGE_WAIT_EXCHANGE;
 }
 
 /* Queue the retained exchange. The worker owns the port call after dropping
@@ -4584,9 +4602,11 @@ static VOID StageFinishRename(PSTAGE_STREAM Stream)
 {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (Stream->RenameExchange == NULL) return;
+    if (Stream->RenameWait == STAGE_WAIT_SERVICE) { Stream->Wait = STAGE_WAIT_SERVICE; return; }
+    Stream->Wait = STAGE_WAIT_EXCHANGE;
+    Stream->RenameWait = STAGE_WAIT_EXCHANGE;
     if (Stream->RenameRpcPending || Stream->RenameRpcInFlight) return;
     Stream->RenameRpcPending = TRUE;
-    Stream->Wait = STAGE_WAIT_EXCHANGE;
 #else
     NTSTATUS status;
     KIRQL irql;
@@ -4622,32 +4642,68 @@ static VOID StageApplyRenameReply(PSTAGE_STREAM Stream, PSAFEUPLOAD_EXCHANGE Exc
     NTSTATUS Status)
 {
     KIRQL irql;
+    PSAFEUPLOAD_STAGE_RENAME_V20 source = (PSAFEUPLOAD_STAGE_RENAME_V20)Exchange->Request.ImageName;
     if (Stream->RenameExchange != Exchange) return;
     if (!NT_SUCCESS(Status)) {
-        Stream->Wait = StageWaitFor(Status);
+        Stream->RenameRpcPending = TRUE;
+        Stream->RenameWait = StageWaitFor(Status);
+        Stream->Wait = Stream->RenameWait;
+        return;
+    }
+    /* Out-of-lock transport validation alone cannot authorize a changed local
+     * object/view/epoch. Abort also checks the original tuple and never adopts. */
+    if (!Stream->Listed || Stream->View == NULL || source->RequestId != Exchange->Request.RequestId ||
+        source->Operation != Exchange->Request.Operation || source->OwnerProcessId != Stream->View->OwnerProcessId ||
+        source->ViewGeneration != (UINT64)Stream->View->Generation ||
+        source->SourceGeneration != Stream->DestinationGeneration ||
+        !RtlEqualMemory(&source->TransferId, &Stream->TransferId, sizeof(GUID)) ||
+        !StageV19IdentityEqual(&source->StageIdentity, &Stream->StageIdentity) ||
+        !StageV19IdentityEqual(&source->ParentDirectoryIdentity, &Stream->AllocationParentDirectoryIdentity) ||
+        !RtlEqualMemory(&source->DriverInstanceId, &Stream->DriverInstanceId, sizeof(GUID)) ||
+        !RtlEqualMemory(&Stream->DriverInstanceId, &StageDriverInstanceId, sizeof(GUID)) ||
+        (Exchange->Request.Operation == SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT &&
+            (!Exchange->RenameReceiptValid || Exchange->RenameAck.RequestId != source->RequestId ||
+             Exchange->RenameAck.Operation != SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT ||
+             Exchange->RenameAck.Result != SAFEUPLOAD_STAGE_RESULT_RENAME_COMMITTED ||
+             Exchange->RenameAck.SourceGeneration != source->SourceGeneration ||
+             Exchange->RenameAck.OwnerProcessId != source->OwnerProcessId ||
+             Exchange->RenameAck.ViewGeneration != source->ViewGeneration ||
+             !RtlEqualMemory(&Exchange->RenameAck.TransferId, &source->TransferId, sizeof(GUID)) ||
+             !StageV19IdentityEqual(&Exchange->RenameAck.StageIdentity, &source->StageIdentity) ||
+             !RtlEqualMemory(&Exchange->RenameAck.DriverInstanceId, &source->DriverInstanceId, sizeof(GUID)) ||
+             !StageV19IdentityEqual(&Exchange->RenameAck.ParentDirectoryIdentity, &source->ParentDirectoryIdentity) ||
+             Exchange->RenameDestinationGeneration == 0 || Stream->Name.Length != Exchange->Request.PathLength ||
+             !RtlEqualMemory(Stream->Name.Buffer, Exchange->Request.Path, Stream->Name.Length)))) {
+        Stream->RenameRpcPending = TRUE;
+        Stream->RenameWait = STAGE_WAIT_SERVICE;
+        Stream->Wait = STAGE_WAIT_SERVICE;
         return;
     }
     StageAcquire(&Stream->Resource);
     StageStreamAcquireSpinLock(&StageListLock, &irql);
-    Stream->RenameExchange = NULL;
     if (Exchange->Request.Operation == SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT) {
-        /* The journal moved the version (one more NamespaceTombstone) and,
-         * for a sealed one, inspects it again. */
+        /* Generations are per name: the target can be lower than the source.
+         * Adopt ONLY the exact journal receipt, before releasing the fence. */
+        Stream->DestinationGeneration = Exchange->RenameDestinationGeneration;
         Stream->RenameCommits++;
         Stream->Disposed = FALSE;
         Stream->DisposeDeferred = FALSE;
     } else if (Stream->DisposeDeferred) {
-        /* An abort changes nothing in the journal: deferred disposal holds. */
         Stream->Disposed = TRUE;
         Stream->DisposeOutcome = Stream->DeferredOutcome;
         Stream->DisposeDeferred = FALSE;
     }
+    Stream->RenameExchange = NULL;
+    Stream->RenameWait = STAGE_WAIT_NONE;
+    Stream->RenameRetryAfter = 0;
+    Stream->RenameRpcPending = FALSE;
     StageStreamReleaseSpinLock(&StageListLock, irql);
     StageRelease(&Stream->Resource);
     ExFreePoolWithTag(Exchange, STAGE_TAG);
     Stream->Wait = STAGE_WAIT_NONE;
     StageQueueStream(Stream, &StageCounters.WakeInline);
 }
+
 #endif
 
 /* T5: STATUS_SUCCESS when no public file has Name (the delete of a private-only name, such as the common file dialog's test file or
@@ -4799,7 +4855,9 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     BOOLEAN hidePublic = FALSE;
     PSAFEUPLOAD_EXCHANGE exchange = NULL;
     ULONG length = Data->Iopb->Parameters.SetFileInformation.Length;
+#if !SAFEUPLOAD_STAGING_PROTOTYPE
     ULONG basename;
+#endif
     BOOLEAN extended = Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileRenameInformationEx;
     BOOLEAN replace, posix;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -4911,13 +4969,37 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     exchange->Request.RequestId = (UINT64)InterlockedIncrement64(&SafeUploadData.NextRequestId);
     exchange->Request.Operation = SAFEUPLOAD_OPERATION_STAGE_RENAME;
     exchange->Request.RequestorProcessId = view->OwnerProcessId;
-    exchange->Request.Reserved = Stream->Sealed ? 1 : 0;
     exchange->Request.PathLength = destination->Name.Length;
     RtlCopyMemory(exchange->Request.Path, destination->Name.Buffer, destination->Name.Length);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    {
+        PSAFEUPLOAD_STAGE_RENAME_V20 source = (PSAFEUPLOAD_STAGE_RENAME_V20)exchange->Request.ImageName;
+        exchange->Request.Reserved = SAFEUPLOAD_STAGE_EXTENSION_VERSION;
+        exchange->Request.ImageNameLength = sizeof(*source);
+        if (StageVolumeKind(Stream->OriginalInstance) == SafeUploadVolumeRemovable)
+            exchange->Request.Flags = SAFEUPLOAD_REQUEST_FLAG_STAGE_REMOVABLE;
+        else if (StageVolumeKind(Stream->OriginalInstance) == SafeUploadVolumeNetwork)
+            exchange->Request.Flags = SAFEUPLOAD_REQUEST_FLAG_STAGE_NETWORK;
+        source->Version = SAFEUPLOAD_STAGE_EXTENSION_VERSION;
+        source->StructSize = sizeof(*source);
+        source->Operation = SAFEUPLOAD_OPERATION_STAGE_RENAME;
+        source->RequestId = exchange->Request.RequestId;
+        source->TransferId = Stream->TransferId;
+        source->SourceGeneration = Stream->DestinationGeneration;
+        source->StageIdentity = Stream->StageIdentity;
+        source->DriverInstanceId = Stream->DriverInstanceId;
+        source->ParentDirectoryIdentity = Stream->AllocationParentDirectoryIdentity;
+        source->ViewGeneration = (UINT64)view->Generation;
+        source->OwnerProcessId = view->OwnerProcessId;
+        source->SealedVersion = Stream->Sealed ? 1 : 0;
+    }
+#else
+    exchange->Request.Reserved = Stream->Sealed ? 1 : 0;
     basename = Stream->StageName.Length / sizeof(WCHAR);
     while (basename > 0 && Stream->StageName.Buffer[basename - 1] != L'\\') --basename;
     exchange->Request.ImageNameLength = 32 * sizeof(WCHAR);
     RtlCopyMemory(exchange->Request.ImageName, Stream->StageName.Buffer + basename, 32 * sizeof(WCHAR));
+#endif
     StageAcquire(&Stream->Resource);
     {
         KIRQL irql;
@@ -4954,7 +5036,7 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
         !NT_SUCCESS(SafeUploadStageCheckRenameAccess(Data, Stream->OriginalInstance,
             &destination->Name, replace))) {
         if (Stream->RenameExchange != NULL)
-            Stream->RenameExchange->Request.Operation = SAFEUPLOAD_OPERATION_STAGE_RENAME_ABORT;
+            StageSetRenameOperation(Stream->RenameExchange, SAFEUPLOAD_OPERATION_STAGE_RENAME_ABORT);
         StageFinishRename(Stream);
         StageQueueStream(Stream, &StageCounters.WakeInline);
         status = STATUS_SHARING_VIOLATION;
@@ -4962,7 +5044,7 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     }
 #else
     if (StageExchangeStatus(Stream->RenameExchange) != STATUS_SUCCESS) {
-        Stream->RenameExchange->Request.Operation = SAFEUPLOAD_OPERATION_STAGE_RENAME_ABORT;
+        StageSetRenameOperation(Stream->RenameExchange, SAFEUPLOAD_OPERATION_STAGE_RENAME_ABORT);
         StageQueueStream(Stream, &StageCounters.WakeInline);
         status = STATUS_SHARING_VIOLATION;
         goto Exit;
@@ -4991,7 +5073,7 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     StageDropTombstone(view->Owner, &view->Name); /* the view takes the destination name */
     /* The replaced version is unreachable by name now; it is released once nothing holds it. */
     if (target != NULL) StageQueueStream(target->Current, &StageCounters.WakeInline);
-    Stream->RenameExchange->Request.Operation = SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT;
+    StageSetRenameOperation(Stream->RenameExchange, SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT);
     StageFinishRename(Stream);
     if (Stream->RenameExchange != NULL) KeSetEvent(&StageWorkEvent, IO_NO_INCREMENT, FALSE); /* arm the retry */
     (VOID)FltPurgeFileNameInformationCache(Stream->OriginalInstance, NULL);
@@ -5848,6 +5930,12 @@ static BOOLEAN StageTryRelease(PSTAGE_STREAM Stream, PLIST_ENTRY Released)
 static VOID StageProcessStream(PSTAGE_STREAM Stream, PLIST_ENTRY Released)
 {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (Stream->RenameExchange != NULL) {
+        StageFinishRename(Stream);
+        return; /* rename fence precedes op19, which needs the committed generation */
+    }
+#endif
+#if SAFEUPLOAD_STAGING_PROTOTYPE
     /* Never seal or publish an allocation whose CREATE did not attach its
      * returned file object. The owner's next CREATE drives exact attachment
      * replay on the attach worker; this maintenance worker cannot invent a
@@ -5864,8 +5952,7 @@ static VOID StageProcessStream(PSTAGE_STREAM Stream, PLIST_ENTRY Released)
     if (Stream->AttachAcknowledged && !Stream->AnyHandleCleanupObserved) return;
     if (Stream->HandleReceiptPending || Stream->HandleReceiptInFlight ||
         (Stream->AnyHandleCleanupObserved && !Stream->HandleReceiptAcknowledged)) {
-        Stream->Wait = Stream->HandleReceiptInFlight ? STAGE_WAIT_EXCHANGE :
-            STAGE_WAIT_SERVICE;
+        Stream->Wait = Stream->HandleReceiptWait == STAGE_WAIT_SERVICE ? STAGE_WAIT_SERVICE : STAGE_WAIT_EXCHANGE;
         return;
     }
     if (Stream->AllocationReceiptPending) {
@@ -5942,9 +6029,12 @@ static VOID StageCollectRenameRpcs(PLIST_ENTRY Rpcs)
     for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
         if (!stream->RenameRpcPending || stream->RenameRpcInFlight ||
-            stream->RenameExchange == NULL || stream->View == NULL) continue;
+            stream->RenameExchange == NULL || stream->View == NULL || stream->RenameWait == STAGE_WAIT_SERVICE ||
+            (stream->RenameRetryAfter != 0 && KeQueryInterruptTime() < stream->RenameRetryAfter)) continue;
         stream->RenameRpcPending = FALSE;
         stream->RenameRpcInFlight = TRUE;
+        stream->RenameWait = STAGE_WAIT_EXCHANGE;
+        stream->Wait = STAGE_WAIT_EXCHANGE;
         stream->RpcRenameExchangeSnapshot = stream->RenameExchange;
         stream->RpcProcessIdSnapshot = stream->View->OwnerProcessId;
         stream->RpcViewGenerationSnapshot = stream->View->Generation;
@@ -6114,7 +6204,9 @@ static VOID StageCollectHandleReceiptRpcs(PLIST_ENTRY Rpcs)
     PLIST_ENTRY link;
     for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
-        if (!stream->HandleReceiptPending || stream->HandleReceiptInFlight ||
+        if (stream->HandleReceiptWait == STAGE_WAIT_SERVICE ||
+            (stream->HandleReceiptRetryAfter != 0 && KeQueryInterruptTime() < stream->HandleReceiptRetryAfter) ||
+            !stream->HandleReceiptPending || stream->HandleReceiptInFlight ||
             stream->HandleReceiptAcknowledged || !stream->AnyHandleCleanupObserved ||
             !stream->AttachAcknowledged || stream->AttachCompletionPending ||
             stream->AttachCompletionFence || stream->AttachTerminalPending ||
@@ -6126,6 +6218,8 @@ static VOID StageCollectHandleReceiptRpcs(PLIST_ENTRY Rpcs)
             stream->DestinationGeneration == 0 || stream->View == NULL) continue;
         stream->HandleReceiptPending = FALSE;
         stream->HandleReceiptInFlight = TRUE;
+        stream->HandleReceiptWait = STAGE_WAIT_EXCHANGE;
+        stream->Wait = STAGE_WAIT_EXCHANGE;
         stream->RpcProcessIdSnapshot = stream->View->OwnerProcessId;
         stream->RpcVolumeKindSnapshot = StageVolumeKind(stream->OriginalInstance);
         stream->RpcViewGenerationSnapshot = stream->View->Generation;
@@ -6167,22 +6261,27 @@ static VOID StagePerformHandleReceiptRpcs(PLIST_ENTRY Rpcs)
                 stream->HandleReceiptAcknowledged = TRUE;
                 stream->HandleReceiptPending = FALSE;
                 stream->HandleReceiptRequestValid = stream->HandleReceiptRequest.RequestId != 0;
+                stream->HandleReceiptWait = STAGE_WAIT_NONE;
+                stream->HandleReceiptRetryAfter = 0;
                 stream->Wait = STAGE_WAIT_NONE;
 
                 StageQueueStream(stream, &StageCounters.WakeInline);
             } else {
                 stream->HandleReceiptPending = TRUE;
-                stream->Wait = status == STATUS_PORT_DISCONNECTED ?
-                    STAGE_WAIT_SERVICE : STAGE_WAIT_EXCHANGE;
+                stream->HandleReceiptWait = StageWaitFor(status);
+                stream->Wait = stream->HandleReceiptWait;
                 if (requestMayExist) stream->HandleReceiptRequestValid = TRUE;
             }
         } else {
             stream->HandleReceiptInFlight = FALSE;
             stream->HandleReceiptPending = TRUE;
+            stream->HandleReceiptWait = STAGE_WAIT_SERVICE;
             stream->Wait = STAGE_WAIT_SERVICE;
         }
         InterlockedDecrement(&stream->RpcReferences);
         StageUpdateRetryTimer();
+        if (stream->HandleReceiptPending && stream->HandleReceiptWait == STAGE_WAIT_EXCHANGE)
+            stream->HandleReceiptRetryAfter = StageRetryDueTime;
         StageRelease(&StageNamespaceResource);
     }
 }
@@ -6316,7 +6415,8 @@ static VOID StagePerformRenameRpcs(PLIST_ENTRY Rpcs)
             stream->View->Generation == stream->RpcViewGenerationSnapshot &&
             RtlEqualMemory(&stream->TransferId, &stream->RpcTransferIdSnapshot, sizeof(GUID)) &&
             stream->DestinationGeneration == stream->RpcGenerationSnapshot &&
-            StageV19IdentityEqual(&stream->StageIdentity, &stream->RpcIdentitySnapshot)) {
+            StageV19IdentityEqual(&stream->StageIdentity, &stream->RpcIdentitySnapshot) &&
+            RtlEqualMemory(&stream->DriverInstanceId, &StageDriverInstanceId, sizeof(GUID))) {
             stream->RenameRpcInFlight = FALSE;
             stream->RpcRenameExchangeSnapshot = NULL;
             if (SafeUploadStageMandatoryTeardownActive() && !NT_SUCCESS(status))
@@ -6328,10 +6428,13 @@ static VOID StagePerformRenameRpcs(PLIST_ENTRY Rpcs)
             stream->RenameRpcInFlight = FALSE;
             stream->RpcRenameExchangeSnapshot = NULL;
             stream->RenameRpcPending = TRUE;
+            stream->RenameWait = STAGE_WAIT_SERVICE;
             stream->Wait = STAGE_WAIT_SERVICE;
         }
         InterlockedDecrement(&stream->RpcReferences);
         StageUpdateRetryTimer();
+        if (stream->RenameExchange != NULL && stream->RenameWait == STAGE_WAIT_EXCHANGE)
+            stream->RenameRetryAfter = StageRetryDueTime;
         StageRelease(&StageNamespaceResource);
     }
 }
@@ -6391,7 +6494,11 @@ static VOID StageUpdateRetryTimer(VOID)
     for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
         if (stream->Wait == STAGE_WAIT_DRAIN) { drain = TRUE; ++waiting; }
-        else if (stream->Wait == STAGE_WAIT_EXCHANGE) ++waiting;
+        else if (stream->Wait == STAGE_WAIT_EXCHANGE
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+            || stream->HandleReceiptInFlight || stream->RenameRpcInFlight
+#endif
+            ) ++waiting;
     }
     StageStreamReleaseSpinLock(&StageListLock, irql);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -6404,6 +6511,7 @@ static VOID StageUpdateRetryTimer(VOID)
          * only moves its due time; frequent passes sweep on their own). */
         due.QuadPart = -(LONGLONG)STAGE_RETRY_DRAIN_MAX_MS * 10000LL;
         StageRetryArmed = TRUE;
+        StageRetryDueTime = KeQueryInterruptTime() + (ULONGLONG)(-due.QuadPart);
         (VOID)KeSetTimer(&StageRetryTimer, due, &StageRetryDpc);
         InterlockedIncrement64((volatile LONG64 *)&StageCounters.TimerArms);
         return;
@@ -6412,6 +6520,7 @@ static VOID StageUpdateRetryTimer(VOID)
         if (StageRetryArmed) (VOID)KeCancelTimer(&StageRetryTimer);
         StageRetryArmed = FALSE;
         StageRetryMs = 0;
+        StageRetryDueTime = 0;
         return;
     }
     /* StageRetryArmed means set and not cancelled; the kernel says whether that arm has expired (KeSetTimer resets this
@@ -6424,6 +6533,7 @@ static VOID StageUpdateRetryTimer(VOID)
     if (StageRetryMs > cap) StageRetryMs = cap;
     due.QuadPart = -(LONGLONG)StageRetryMs * 10000LL;
     StageRetryArmed = TRUE;
+    StageRetryDueTime = KeQueryInterruptTime() + (ULONGLONG)(-due.QuadPart);
     (VOID)KeSetTimer(&StageRetryTimer, due, &StageRetryDpc);
     InterlockedIncrement64((volatile LONG64 *)&StageCounters.TimerArms);
 }
@@ -6465,6 +6575,14 @@ static VOID StageWorkerPass(PLIST_ENTRY Released, PLIST_ENTRY Rpcs,
      * a timer fire rechecks the versions it covers. */
     if (sweep || fired) for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (sweep) {
+            stream->HandleReceiptRetryAfter = 0;
+            stream->RenameRetryAfter = 0;
+            if (stream->HandleReceiptWait == STAGE_WAIT_SERVICE) stream->HandleReceiptWait = STAGE_WAIT_EXCHANGE;
+            if (stream->RenameWait == STAGE_WAIT_SERVICE) stream->RenameWait = STAGE_WAIT_EXCHANGE;
+        }
+#endif
         if (sweep || stream->Wait == STAGE_WAIT_DRAIN || stream->Wait == STAGE_WAIT_EXCHANGE) (VOID)StageQueueLocked(stream);
     }
     StageStreamReleaseSpinLock(&StageListLock, irql);

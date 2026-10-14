@@ -14,7 +14,7 @@ namespace SafeUpload.Agent.Service.Interception;
 /// </summary>
 public sealed partial class StagedTransferJournal
 {
-    private const uint RequiredStageV20Capabilities = 0x3f;
+    private const uint RequiredStageV20Capabilities = 0xbf;
     internal static readonly string EmptySha256Hex = Convert.ToHexString(SHA256.HashData(Array.Empty<byte>()));
     private readonly string _directory;
     private readonly StagedJournalGate _gate = new();
@@ -807,7 +807,7 @@ public sealed partial class StagedTransferJournal
         {
             DriverEpochRecord? epoch = await ReadDriverEpochCoreAsync(token).ConfigureAwait(false);
             if (epoch is null || epoch.DriverInstanceId != request.DriverInstanceId || epoch.DrainNonce is not null)
-                throw new IOException("The attachment request does not belong to the active v20 epoch.");
+                throw StagedRequestRefusal.Create("The attachment request does not belong to the active v20 epoch.");
             TransferJournalEntry current = await ReadCoreAsync(request.Version.TransferId, token)
                 .ConfigureAwait(false);
             if (VersionIdentity(current) != request.Version || current.DriverInstanceId != request.DriverInstanceId ||
@@ -817,7 +817,7 @@ public sealed partial class StagedTransferJournal
                 current.PendingRename is not null || current.ParentDirectoryIdentity is null ||
                 StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(destination)!) !=
                     request.ParentDirectoryIdentity)
-                throw new IOException("The v20 attachment tuple does not match the exact allocation manifest.");
+                throw StagedRequestRefusal.Create("The v20 attachment tuple does not match the exact allocation manifest.");
 
             uint? replay = ResolveAttachmentReplay(current, request);
             if (replay.HasValue) return replay.Value;
@@ -834,7 +834,7 @@ public sealed partial class StagedTransferJournal
                 request.RequestId == current.CompletionPermitRequestIdV20 ||
                 request.RequestId == current.RetireRequestIdV20 ||
                 request.RequestId == current.HandleObservedRequestIdV20)
-                throw new IOException("A v20 lifecycle RequestId is already bound to another exact phase.");
+                throw StagedRequestRefusal.Create("A v20 lifecycle RequestId is already bound to another exact phase.");
             if (request.Operation == 14 && current.AttachmentStateV20 is
                     (StagedAttachmentStateV20.Committed or StagedAttachmentStateV20.CompletionPermitted or
                      StagedAttachmentStateV20.HandleObserved or StagedAttachmentStateV20.RetireUnexposedPending or
@@ -858,12 +858,12 @@ public sealed partial class StagedTransferJournal
                        : StagedStageFile.Open(current.Transfer.StagePath, allowWriters: false))
             {
                 StagedStageIdentity stageIdentity = stage?.Identity ?? attachedIdentity
-                    ?? throw new IOException("The v20 attachment stage identity is unavailable.");
+                    ?? throw StagedRequestRefusal.Create("The v20 attachment stage identity is unavailable.");
                 long StageLength() => stage?.Stream.Length ?? attachedLength;
                 if (stageIdentity != request.Version.StageIdentity)
-                    throw new IOException("The v20 attachment stage identity changed.");
+                    throw StagedRequestRefusal.Create("The v20 attachment stage identity changed.");
                 if (current.DeleteVersionIdentity is not null && PathExists(destination))
-                    throw new IOException("The public destination reappeared during private attachment.");
+                    throw StagedRequestRefusal.Create("The public destination reappeared during private attachment.");
 
                 switch (request.Operation)
                 {
@@ -874,7 +874,7 @@ public sealed partial class StagedTransferJournal
                             current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
                             current.SealedOnce || current.SealedLength is not null ||
                             current.DiscardRequestedAtUtc is not null || current.StageCleanupStarted || current.StageDeleted)
-                            throw new IOException("The exact stage is not eligible for attachment prepare.");
+                            throw StagedRequestRefusal.Create("The exact stage is not eligible for attachment prepare.");
                         await ReplaceAsync(ManifestPath(request.Version.TransferId), current with
                         {
                             AttachmentStateV20 = StagedAttachmentStateV20.Prepared,
@@ -893,11 +893,11 @@ public sealed partial class StagedTransferJournal
                                     StagedAttachmentStateV20.RetiredAttachedPrivate =>
                                         current.AttachCommitResultV20 ?? StageV20WireResult.AttachCommitted,
                                 StagedAttachmentStateV20.CommitDenied => StageV20WireResult.AttachCommitDenied,
-                                _ => throw new IOException("The saved commit request has no exact result.")
+                                _ => throw StagedRequestRefusal.Create("The saved commit request has no exact result.")
                             };
                         if (current.AttachmentStateV20 != StagedAttachmentStateV20.Prepared || !ownerIsLive ||
                             current.AttachCommitRequestIdV20 is not null || current.AttachAbortRequestIdV20 is not null)
-                            throw new IOException("The exact stage is not eligible for attachment commit.");
+                            throw StagedRequestRefusal.Create("The exact stage is not eligible for attachment commit.");
                         StagedAttachmentStateV20 committedState = commitPolicyAllowed
                             ? StagedAttachmentStateV20.Committed : StagedAttachmentStateV20.CommitDenied;
                         await ReplaceAsync(ManifestPath(request.Version.TransferId), current with
@@ -920,7 +920,7 @@ public sealed partial class StagedTransferJournal
                             current.CompletionPermitRequestIdV20 is not null ||
                             current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
                             current.DiscardRequestedAtUtc is not null)
-                            throw new IOException("The exact attachment cannot be aborted after commit/expose ambiguity.");
+                            throw StagedRequestRefusal.Create("The exact attachment cannot be aborted after commit/expose ambiguity.");
                         IReadOnlyList<TransferJournalStateChange> abortHistory =
                             AppendState(current, TransferJournalState.DiscardPending);
                         await ReplaceAsync(ManifestPath(request.Version.TransferId), current with
@@ -948,7 +948,7 @@ public sealed partial class StagedTransferJournal
                         if (current.AttachmentStateV20 != StagedAttachmentStateV20.Committed || !ownerIsLive ||
                             current.CompletionPermitRequestIdV20 is not null ||
                             current.DiscardRequestedAtUtc is not null)
-                            throw new IOException("The exact attachment has no completion permission.");
+                            throw StagedRequestRefusal.Create("The exact attachment has no completion permission.");
                         await ReplaceAsync(ManifestPath(request.Version.TransferId), current with
                         {
                             AttachmentStateV20 = StagedAttachmentStateV20.CompletionPermitted,
@@ -969,7 +969,7 @@ public sealed partial class StagedTransferJournal
                             current.CompletionPermitRequestIdV20 is not null || current.RetireRequestIdV20 is not null ||
                             current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
                             current.SealedOnce || current.SealedLength is not null || current.DiscardRequestedAtUtc is not null)
-                            throw new IOException("RetireUnexposed requires committed attachment with no op15 send.");
+                            throw StagedRequestRefusal.Create("RetireUnexposed requires committed attachment with no op15 send.");
                         await BeginAttachmentRetirementCoreAsync(current, request,
                             StagedDiscardKind.RetireUnexposed,
                             StagedAttachmentStateV20.RetireUnexposedPending, token).ConfigureAwait(false);
@@ -988,7 +988,7 @@ public sealed partial class StagedTransferJournal
                             current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
                             current.SealedOnce || current.SealedLength is not null || current.DiscardRequestedAtUtc is not null ||
                             StageLength() != 0)
-                            throw new IOException("RetireAttachedPrivate requires an exact zero-byte attached stage with no use receipt.");
+                            throw StagedRequestRefusal.Create("RetireAttachedPrivate requires an exact zero-byte attached stage with no use receipt.");
                         await BeginAttachmentRetirementCoreAsync(current, request,
                             StagedDiscardKind.RetireAttachedPrivate,
                             StagedAttachmentStateV20.RetireAttachedPrivatePending, token).ConfigureAwait(false);
@@ -1001,7 +1001,7 @@ public sealed partial class StagedTransferJournal
                         if (current.AttachmentStateV20 != StagedAttachmentStateV20.CompletionPermitted ||
                             current.HandleObservedRequestIdV20 is not null || current.DiscardRequestedAtUtc is not null ||
                             current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed))
-                            throw new IOException("The exact attached version cannot accept a late handle receipt.");
+                            throw StagedRequestRefusal.Create("The exact attached version cannot accept a late handle receipt.");
                         await ReplaceAsync(ManifestPath(request.Version.TransferId), current with
                         {
                             AttachmentStateV20 = StagedAttachmentStateV20.HandleObserved,
@@ -1011,7 +1011,7 @@ public sealed partial class StagedTransferJournal
                         return StageV20WireResult.HandleLifetimeObserved;
 
                     default:
-                        throw new IOException("Unknown v20 attachment operation.");
+                        throw StagedRequestRefusal.Create("Unknown v20 attachment operation.");
                 }
             }
         }
@@ -1695,6 +1695,32 @@ public sealed partial class StagedTransferJournal
             if (rename.TransactionId == 0 || rename.SealedVersion != entry.SealedOnce)
                 throw new InvalidDataException("The transfer manifest has an invalid pending rename.");
         }
+        if (entry.PendingRename is { SourceV20: { } pendingSource } pendingExact)
+        {
+            ValidateRenameSourceV20(entry, pendingSource);
+            RequireManifestPath(pendingExact.SourcePath!);
+            if (pendingSource.TransactionId != pendingExact.TransactionId ||
+                pendingSource.DestinationPath != pendingExact.DestinationPath ||
+                pendingSource.SealedVersion != pendingExact.SealedVersion ||
+                pendingSource.Version.DestinationGeneration != entry.DestinationGeneration ||
+                pendingExact.SourcePath != entry.Transfer.DestinationPath)
+                throw new InvalidDataException("The pending rename lost its exact source evidence.");
+        }
+        if (entry.LastRenameReceiptV20 is { } receipt)
+        {
+            ValidateRenameSourceV20(entry, receipt.Source);
+            RequireManifestPath(receipt.SourcePath);
+            RequireManifestPath(receipt.DestinationPath);
+            if (receipt.Source.TransactionId != entry.LastRenameTransactionId ||
+                receipt.Source.DestinationPath != entry.LastRenameDestination ||
+                receipt.Committed != entry.LastRenameCommitted || receipt.DestinationGeneration <= 0 ||
+                receipt.DestinationGeneration != entry.DestinationGeneration ||
+                receipt.DestinationPath != entry.Transfer.DestinationPath ||
+                receipt.DestinationPath != (receipt.Committed ? receipt.Source.DestinationPath : receipt.SourcePath) ||
+                (!receipt.Committed && receipt.DestinationGeneration != receipt.Source.Version.DestinationGeneration) ||
+                (receipt.Committed && !HasRenameSourceBarrier(entry, receipt)))
+                throw new InvalidDataException("The completed rename lost its exact commit receipt.");
+        }
         if (entry.LastRenameDestination is not null) RequireManifestPath(entry.LastRenameDestination);
         if ((entry.LastRenameTransactionId == 0 && (entry.LastRenameDestination is not null || entry.LastRenameCommitted)) ||
             (entry.LastRenameTransactionId != 0 && entry.LastRenameDestination is null))
@@ -1765,6 +1791,29 @@ public sealed partial class StagedTransferJournal
                  entry.HandbackState == StagedHandbackState.Verified && entry.JustificationWindowClosed &&
                  !entry.StageCleanupStarted))))
             throw new InvalidDataException("The transfer manifest has invalid hand-back evidence.");
+    }
+
+    private static void ValidateRenameSourceV20(TransferJournalEntry entry, StagedRenameRequestV20 source)
+    {
+        if (source is null) throw new InvalidDataException("The rename receipt has no source authority.");
+        RequireManifestPath(source.DestinationPath);
+        if (source.TransactionId == 0 || source.Version is null ||
+            source.Version.TransferId != entry.Transfer.TransferId || source.Version.DestinationGeneration <= 0 ||
+            source.Version.StageIdentity != entry.StageIdentity || source.Version.StageIdentity is null ||
+            source.DriverInstanceId == Guid.Empty || source.DriverInstanceId != entry.DriverInstanceId ||
+            source.ParentDirectoryIdentity is null || source.ParentDirectoryIdentity != entry.ParentDirectoryIdentity ||
+            source.ViewGeneration == 0 || source.OwnerProcessId != entry.Transfer.ProcessId ||
+            string.IsNullOrWhiteSpace(source.DestinationName) || source.DestinationName.Length > 511 ||
+            source.DestinationName.Contains('\0'))
+            throw new InvalidDataException("The rename receipt has invalid source authority.");
+    }
+
+    private static bool HasRenameSourceBarrier(TransferJournalEntry entry, StagedRenameReceiptV20 receipt)
+    {
+        for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
+            if (name.DestinationPath == receipt.SourcePath &&
+                name.Generation == checked(receipt.Source.Version.DestinationGeneration + 1)) return true;
+        return false;
     }
 
     private static void ValidateAttachmentEvidence(TransferJournalEntry entry)
@@ -2281,7 +2330,8 @@ public sealed partial class StagedTransferJournal
     }
 
     public async Task<TransferJournalEntry> PrepareRenameAsync(Guid id, ulong transactionId,
-        int ownerProcessId, string destination, bool sealedVersion, CancellationToken token)
+        int ownerProcessId, string destination, bool sealedVersion, CancellationToken token,
+        StagedRenameRequestV20? exactRequest = null)
     {
         if (transactionId == 0) throw new ArgumentOutOfRangeException(nameof(transactionId));
         destination = Path.GetFullPath(destination);
@@ -2290,30 +2340,37 @@ public sealed partial class StagedTransferJournal
         {
             var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
             if (current.Transfer.ProcessId != ownerProcessId)
-                throw new IOException("The staged version belongs to another writer.");
+                throw StagedRequestRefusal.Create("The staged version belongs to another writer.");
             if (current.DriverInstanceId is not null && current.AttachmentStateV20 is not
                     (StagedAttachmentStateV20.CompletionPermitted or StagedAttachmentStateV20.HandleObserved))
-                throw new IOException("A v20 rename requires a completed attachment transaction.");
+                throw StagedRequestRefusal.Create("A v20 rename requires a completed attachment transaction.");
             if (current.StageCleanupStarted || current.StageDeleted)
-                throw new IOException("The staged version is being cleaned up or has already been removed.");
+                throw StagedRequestRefusal.Create("The staged version is being cleaned up or has already been removed.");
             if (current.State == TransferJournalState.SealPending)
-                throw new IOException("A seal classification is pending recovery.");
-            var pending = new StagedRename(transactionId, destination, sealedVersion);
+                throw StagedRequestRefusal.Create("A seal classification is pending recovery.");
+            if (current.DriverInstanceId is not null || exactRequest is not null)
+                await RequireRenameSourceV20Async(current, exactRequest, transactionId,
+                    ownerProcessId, destination, sealedVersion, token).ConfigureAwait(false);
+            var pending = new StagedRename(transactionId, destination, sealedVersion)
+            {
+                SourceV20 = exactRequest,
+                SourcePath = exactRequest is null ? null : current.Transfer.DestinationPath
+            };
             if (current.PendingRename == pending) return current;
             if (current.PendingRename is not null || current.LastRenameTransactionId == transactionId ||
                 current.State is TransferJournalState.Inspecting or
                     TransferJournalState.Approved or TransferJournalState.Publishing ||
                 (current.State == TransferJournalState.Blocked && !current.JustificationWindowClosed))
-                throw new IOException("The staged version is busy.");
+                throw StagedRequestRefusal.Create("The staged version is busy.");
             if (sealedVersion != current.SealedOnce)
-                throw new IOException("The kernel and journal disagree about the version seal.");
+                throw StagedRequestRefusal.Create("The kernel and journal disagree about the version seal.");
             await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
             int moves = 0;
             for (var name = current.NamespaceTombstones; name is not null; name = name.Previous)
-                if (++moves >= 16) throw new IOException("The version's namespace history is full.");
+                if (++moves >= 16) throw StagedRequestRefusal.Create("The version's namespace history is full.");
             var targets = await DestinationVersionsAsync(destination, token).ConfigureAwait(false);
             if (targets.Any(e => e.Entry.Transfer.TransferId != id && e.Reserved))
-                throw new IOException("The rename destination is busy.");
+                throw StagedRequestRefusal.Create("The rename destination is busy.");
             var updated = current with
             {
                 PendingRename = pending,
@@ -2326,7 +2383,8 @@ public sealed partial class StagedTransferJournal
     }
 
     public async Task<TransferJournalEntry> CompleteRenameAsync(Guid id, ulong transactionId,
-        int ownerProcessId, string destination, bool commit, CancellationToken token)
+        int ownerProcessId, string destination, bool commit, CancellationToken token,
+        StagedRenameRequestV20? exactRequest = null)
     {
         if (transactionId == 0) throw new ArgumentOutOfRangeException(nameof(transactionId));
         destination = Path.GetFullPath(destination);
@@ -2335,23 +2393,47 @@ public sealed partial class StagedTransferJournal
         {
             var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
             if (current.Transfer.ProcessId != ownerProcessId)
-                throw new IOException("The namespace transaction belongs to another writer.");
+                throw StagedRequestRefusal.Create("The namespace transaction belongs to another writer.");
             if (current.DriverInstanceId is not null && current.AttachmentStateV20 is not
                     (StagedAttachmentStateV20.CompletionPermitted or StagedAttachmentStateV20.HandleObserved))
-                throw new IOException("A v20 rename requires a completed attachment transaction.");
+                throw StagedRequestRefusal.Create("A v20 rename requires a completed attachment transaction.");
             if (current.LastRenameTransactionId == transactionId &&
                 current.LastRenameDestination == destination && current.LastRenameCommitted == commit)
+            {
+                // Resolve the durable receipt against its ORIGINAL source tuple
+                // before comparing the now-retargeted manifest generation.
+                if (current.DriverInstanceId is not null || exactRequest is not null)
+                {
+                    var receipt = current.LastRenameReceiptV20;
+                    if (receipt is null || receipt.Source != exactRequest || receipt.Committed != commit)
+                        throw StagedRequestRefusal.Create("The rename replay does not match its exact stored receipt.");
+                    await RequireRenameEpochV20Async(receipt.Source.DriverInstanceId, token).ConfigureAwait(false);
+                }
                 return current; // Reply loss must not retarget or inspect twice.
+            }
             var pending = current.PendingRename;
             if (pending is null)
             {
                 // An abort after a prepare was refused is a safe no-op. A
                 // commit never invents a prepare or authorizes a new path.
-                if (!commit && current.LastRenameTransactionId != transactionId) return current;
-                throw new IOException("No matching prepared namespace transaction.");
+                if (!commit && current.LastRenameTransactionId != transactionId)
+                {
+                    if (current.DriverInstanceId is not null || exactRequest is not null)
+                        await RequireRenameSourceV20Async(current, exactRequest, transactionId, ownerProcessId,
+                            destination, current.SealedOnce, token).ConfigureAwait(false);
+                    return current;
+                }
+                throw StagedRequestRefusal.Create("No matching prepared namespace transaction.");
             }
             if (pending.TransactionId != transactionId || pending.DestinationPath != destination)
-                throw new IOException("The namespace transaction identity or destination changed.");
+                throw StagedRequestRefusal.Create("The namespace transaction identity or destination changed.");
+            if (current.DriverInstanceId is not null || exactRequest is not null)
+            {
+                if (pending.SourceV20 != exactRequest || pending.SourcePath != current.Transfer.DestinationPath)
+                    throw StagedRequestRefusal.Create("The prepared rename source tuple changed.");
+                await RequireRenameSourceV20Async(current, exactRequest, transactionId, ownerProcessId,
+                    destination, pending.SealedVersion, token).ConfigureAwait(false);
+            }
             long generation = current.DestinationGeneration;
             var tombstones = current.NamespaceTombstones;
             if (commit)
@@ -2383,6 +2465,8 @@ public sealed partial class StagedTransferJournal
                 LastRenameTransactionId = transactionId,
                 LastRenameDestination = destination,
                 LastRenameCommitted = commit,
+                LastRenameReceiptV20 = exactRequest is null ? null : new StagedRenameReceiptV20(
+                    exactRequest, pending.SourcePath!, commit, commit ? destination : pending.SourcePath!, generation),
                 EmptyHeldNotificationAttemptedAtUtc = emptyHeldPathChanged
                     ? null : current.EmptyHeldNotificationAttemptedAtUtc,
                 EmptyHeldNotificationAttemptedByInstanceId = emptyHeldPathChanged
@@ -2399,6 +2483,26 @@ public sealed partial class StagedTransferJournal
             return updated;
         }
         finally { _gate.Release(); }
+    }
+
+    private async Task RequireRenameEpochV20Async(Guid driver, CancellationToken token)
+    {
+        DriverEpochRecord? epoch = await ReadDriverEpochCoreAsync(token).ConfigureAwait(false);
+        if (epoch is null || epoch.DriverInstanceId != driver || epoch.DrainNonce is not null)
+            throw StagedRequestRefusal.Create("The rename does not belong to the active v20 epoch.");
+    }
+
+    private async Task RequireRenameSourceV20Async(TransferJournalEntry current,
+        StagedRenameRequestV20? source, ulong transactionId, int owner, string destination,
+        bool sealedVersion, CancellationToken token)
+    {
+        if (source is null || source.TransactionId != transactionId || source.Version != VersionIdentity(current) ||
+            source.DriverInstanceId != current.DriverInstanceId || source.DriverInstanceId == Guid.Empty ||
+            source.ParentDirectoryIdentity != current.ParentDirectoryIdentity || source.ViewGeneration == 0 ||
+            source.OwnerProcessId != owner || source.OwnerProcessId != current.Transfer.ProcessId ||
+            source.DestinationPath != destination || source.SealedVersion != sealedVersion)
+            throw StagedRequestRefusal.Create("The rename source does not match the exact version manifest.");
+        await RequireRenameEpochV20Async(source.DriverInstanceId, token).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<TransferJournalEntry>> ReadPendingAsync(
@@ -3233,6 +3337,8 @@ public sealed record TransferJournalEntry(
     public ulong LastRenameTransactionId { get; init; }
     public string? LastRenameDestination { get; init; }
     public bool LastRenameCommitted { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public StagedRenameReceiptV20? LastRenameReceiptV20 { get; init; }
     public int BlockedPolicyVersion { get; init; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? BlockedPolicyFingerprint { get; init; }
@@ -3281,6 +3387,7 @@ public sealed record TransferJournalEntry(
             DestinationGeneration == other.DestinationGeneration && NamespaceTombstones == other.NamespaceTombstones &&
             PendingRename == other.PendingRename && LastRenameTransactionId == other.LastRenameTransactionId &&
             LastRenameDestination == other.LastRenameDestination && LastRenameCommitted == other.LastRenameCommitted &&
+            LastRenameReceiptV20 == other.LastRenameReceiptV20 &&
             BlockedPolicyVersion == other.BlockedPolicyVersion && BlockedPolicyFingerprint == other.BlockedPolicyFingerprint &&
             BlockedInspectionFailure == other.BlockedInspectionFailure &&
             JustificationExpiresAtUtc == other.JustificationExpiresAtUtc &&
@@ -3338,6 +3445,7 @@ public sealed record TransferJournalEntry(
         hash.Add(LastRenameTransactionId);
         hash.Add(LastRenameDestination);
         hash.Add(LastRenameCommitted);
+        hash.Add(LastRenameReceiptV20);
         hash.Add(BlockedPolicyVersion);
         hash.Add(BlockedPolicyFingerprint);
         hash.Add(BlockedInspectionFailure);
@@ -3463,7 +3571,33 @@ public sealed record StagedNameTombstone(string DestinationPath, long Generation
     public StagedAllocationBindingV23? AllocationBindingV23 { get; init; }
 }
 
-public sealed record StagedRename(ulong TransactionId, string DestinationPath, bool SealedVersion);
+public sealed record StagedRename(ulong TransactionId, string DestinationPath, bool SealedVersion)
+{
+    public StagedRenameRequestV20? SourceV20 { get; init; }
+    public string? SourcePath { get; init; }
+}
+
+public sealed record StagedRenameRequestV20(ulong TransactionId, StagedVersionIdentity Version,
+    Guid DriverInstanceId, StagedStageIdentity ParentDirectoryIdentity, ulong ViewGeneration,
+    int OwnerProcessId, string DestinationPath, bool SealedVersion, string DestinationName);
+
+public sealed record StagedRenameReceiptV20(StagedRenameRequestV20 Source, string SourcePath,
+    bool Committed, string DestinationPath, long DestinationGeneration);
+
+/// <summary>Explicit protocol refusals, distinguished from transient storage failures.</summary>
+internal static class StagedRequestRefusal
+{
+    private const string Key = "SafeUpload.ExactProtocolRefusal";
+    internal static IOException Create(string message)
+    {
+        var error = new IOException(message);
+        error.Data[Key] = true;
+        return error;
+    }
+    internal static bool IsPermanent(Exception error) =>
+        error is InvalidDataException || error.Data[Key] is true ||
+        error is not (IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or TimeoutException);
+}
 
 public enum TransferJournalState
 {

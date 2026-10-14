@@ -34,7 +34,7 @@ public sealed partial class StagedPublicationNativeJournalTests : IDisposable
         var binding = new StagedAllocationBindingV23(Guid.NewGuid(), _driver, Guid.Empty, 2, 0, mount,
             StagedStageFile.ReadDirectoryIdentity(root), StagedStageFile.ReadDirectoryIdentity(Parent), false, "document.txt", null);
         var journal = Journal();
-        await journal.ReconcileDriverInstanceV20Async(_driver, 0x3f, default);
+        await journal.ReconcileDriverInstanceV20Async(_driver, 0xbf, default);
         using var identity = WindowsIdentity.GetCurrent(); using var process = Process.GetCurrentProcess();
         var allocated = await new StagedTransferAllocator(Stages, journal).AllocateV23Async(Path.Combine(Parent, "document.txt"),
             DestinationKind.Cloud, process.ProcessName, process.Id, checked((uint)process.SessionId), identity.User!.Value,

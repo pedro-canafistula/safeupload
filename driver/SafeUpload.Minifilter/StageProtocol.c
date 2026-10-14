@@ -721,6 +721,39 @@ LONG SafeUploadStageProtocolChannelGeneration(VOID)
     return InterlockedCompareExchange(&SafeUploadStageV20ChannelGeneration, 0, 0);
 }
 
+/* The sized commit ACK carries the complete destination name. Every echoed
+ * source byte and every unused name byte is checked before caching its result. */
+static NTSTATUS StageProtocolReadRenameReplyV20(_Inout_ PSAFEUPLOAD_EXCHANGE Exchange)
+{
+    PSAFEUPLOAD_STAGE_RENAME_REPLY_V20 outer = Exchange->RenameReply;
+    PSAFEUPLOAD_STAGE_RENAME_COMMIT_V20 reply = &outer->Receipt;
+    SAFEUPLOAD_STAGE_RENAME_V20 expected, source;
+    if (Exchange->ReplyLength != sizeof(*outer) || outer->Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+        outer->StructSize != sizeof(*outer) || outer->RequestId != Exchange->Request.RequestId ||
+        outer->Verdict != SAFEUPLOAD_VERDICT_ALLOW || outer->PayloadLength != sizeof(*reply) ||
+        reply->Source.Version != SAFEUPLOAD_STAGE_EXTENSION_VERSION || reply->Source.StructSize != sizeof(*reply) ||
+        reply->Reserved != 0 || reply->DestinationNameLength != Exchange->Request.PathLength ||
+        reply->DestinationNameLength == 0 || reply->DestinationNameLength > SAFEUPLOAD_MAX_PATH_BYTES ||
+        (reply->DestinationNameLength & 1) != 0 ||
+        !RtlEqualMemory(reply->DestinationName, Exchange->Request.Path, reply->DestinationNameLength) ||
+        !StageProtocolBytesZero((const UCHAR *)reply->DestinationName + reply->DestinationNameLength,
+            sizeof(reply->DestinationName) - reply->DestinationNameLength))
+        return STATUS_INVALID_BUFFER_SIZE;
+    RtlCopyMemory(&expected, Exchange->Request.ImageName, sizeof(expected));
+    source = reply->Source;
+    source.StructSize = sizeof(source);
+    source.Result = 0;
+    if (!RtlEqualMemory(&source, &expected, sizeof(source))) return STATUS_INVALID_BUFFER_SIZE;
+    if (reply->Source.Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE && reply->DestinationGeneration == 0)
+        return STATUS_DEVICE_BUSY;
+    if (reply->Source.Result != SAFEUPLOAD_STAGE_RESULT_RENAME_COMMITTED || reply->DestinationGeneration == 0 ||
+        reply->DestinationGeneration > MAXLONGLONG) return STATUS_INVALID_BUFFER_SIZE;
+    Exchange->RenameAck = reply->Source;
+    Exchange->RenameDestinationGeneration = reply->DestinationGeneration;
+    Exchange->RenameReceiptValid = TRUE;
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS SafeUploadStageRenameExchangeV19(_In_ PSAFEUPLOAD_EXCHANGE Exchange)
 {
     UINT32 verdict = SAFEUPLOAD_VERDICT_DENY;
@@ -729,11 +762,29 @@ NTSTATUS SafeUploadStageRenameExchangeV19(_In_ PSAFEUPLOAD_EXCHANGE Exchange)
     PAGED_CODE();
     if (Exchange == NULL || (Exchange->Request.Operation != SAFEUPLOAD_OPERATION_STAGE_RENAME &&
         Exchange->Request.Operation != SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT &&
-        Exchange->Request.Operation != SAFEUPLOAD_OPERATION_STAGE_RENAME_ABORT))
+        Exchange->Request.Operation != SAFEUPLOAD_OPERATION_STAGE_RENAME_ABORT) ||
+        Exchange->Request.Reserved != SAFEUPLOAD_STAGE_EXTENSION_VERSION ||
+        Exchange->Request.ImageNameLength != sizeof(SAFEUPLOAD_STAGE_RENAME_V20))
         return STATUS_INVALID_PARAMETER;
+    Exchange->RenameReceiptValid = FALSE;
+    if (Exchange->Request.Operation == SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT) {
+        Exchange->RenameReply = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*Exchange->RenameReply), SAFEUPLOAD_POOL_TAG);
+        if (Exchange->RenameReply == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    }
     status = StageSendV19Exchange(Exchange, FALSE, &verdict, &answered);
-    return SafeUploadStageExchangeResult(status, answered, verdict);
+    /* The legacy mapper turns invalid replies into timeouts. Keep confirmed
+     * wire faults distinct on this exact-receipt path so they park. */
+    status = status == STATUS_INVALID_BUFFER_SIZE || status == STATUS_BUFFER_OVERFLOW ?
+        STATUS_INVALID_BUFFER_SIZE : SafeUploadStageExchangeResult(status, answered, verdict);
+    if (NT_SUCCESS(status) && Exchange->Request.Operation == SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT)
+        status = StageProtocolReadRenameReplyV20(Exchange);
+    if (Exchange->RenameReply != NULL) {
+        ExFreePoolWithTag(Exchange->RenameReply, SAFEUPLOAD_POOL_TAG);
+        Exchange->RenameReply = NULL;
+    }
+    return status;
 }
+
 #endif
 
 static NTSTATUS
@@ -1476,7 +1527,8 @@ static BOOLEAN StageProtocolStatusResultValid(_In_ UINT32 Operation, _In_ UINT32
     case SAFEUPLOAD_OPERATION_STAGE_RETIRE_ATTACHED_PRIVATE:
         return Result == SAFEUPLOAD_STAGE_RESULT_ATTACH_RETIRED_PRIVATE;
     case SAFEUPLOAD_OPERATION_STAGE_ATTACH_HANDLE_OBSERVED:
-        return Result == SAFEUPLOAD_STAGE_RESULT_HANDLE_OBSERVED;
+        return Result == SAFEUPLOAD_STAGE_RESULT_HANDLE_OBSERVED ||
+            Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE;
     default:
         return FALSE;
     }
@@ -1614,8 +1666,11 @@ NTSTATUS SafeUploadStageAttachmentExchangeV20(_In_ ULONG ProcessId,
     exchange->Request = *RequestSnapshot;
     status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
     *RequestMayExist = exchange->MayHaveReachedService;
-    status = SafeUploadStageExchangeResult(status, answered, verdict);
+    status = Operation == SAFEUPLOAD_OPERATION_STAGE_ATTACH_HANDLE_OBSERVED &&
+        (status == STATUS_INVALID_BUFFER_SIZE || status == STATUS_BUFFER_OVERFLOW) ?
+        STATUS_INVALID_BUFFER_SIZE : SafeUploadStageExchangeResult(status, answered, verdict);
     if (NT_SUCCESS(status)) status = StageProtocolReadAttachReplyV20(exchange, &expected, Result);
+    if (NT_SUCCESS(status) && *Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE) status = STATUS_DEVICE_BUSY;
     ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);
     return status;
 }

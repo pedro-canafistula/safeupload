@@ -481,6 +481,13 @@ typedef struct _SAFEUPLOAD_EXCHANGE {
     /* A same-channel reconciliation/drain revokes in-flight grants even
      * when the port cookie and connection generation did not change. */
     UINT64 StageAuthorityRevision;
+    /* Commit-only transport buffer is allocated/freed by StageProtocol. Other
+     * requests retain their ordinary response size. ACK facts live until apply. */
+    PSAFEUPLOAD_STAGE_RENAME_REPLY_V20 RenameReply;
+    ULONG ReplyLength;
+    BOOLEAN RenameReceiptValid;
+    SAFEUPLOAD_STAGE_RENAME_V20 RenameAck;
+    UINT64 RenameDestinationGeneration;
 #endif
 
 } SAFEUPLOAD_EXCHANGE, *PSAFEUPLOAD_EXCHANGE;

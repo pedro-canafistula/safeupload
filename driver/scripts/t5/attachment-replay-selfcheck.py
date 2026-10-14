@@ -202,7 +202,8 @@ class AttachmentReplay(unittest.TestCase):
         self.assertIn('return;', block)
         self.assertIn('Stream->AttachCompletionFence || Stream->AttachRetirePending', block)
         self.assertIn('Stream->Wait = STAGE_WAIT_SERVICE;', block)
-        self.assertNotIn('Stream->Wait = STAGE_WAIT_NONE;', text[:text.index('if (Stream->HandleReceiptPending')].split('return;')[0])
+        # Nothing may reset the wait before the attachment gate (the rename fence block above it returns without one).
+        self.assertNotIn('Stream->Wait = STAGE_WAIT_NONE;', text[:text.index('if (Stream->AttachCompletionPending ||')])
         self.assertNotIn('DrainStatus =', text)
         self.assertNotIn('StageSealVersion', block)
         self.assertNotIn('SafeUploadStageAttachmentExchangeV20', text)
@@ -213,7 +214,15 @@ class AttachmentReplay(unittest.TestCase):
         self.assertNotIn('AttachCompletion', timer)
         worker = stream('StageWorkerPass')
         timer_sweep = worker[worker.index('if (sweep || fired)'):worker.index('StageStreamReleaseSpinLock', worker.index('if (sweep || fired)'))]
+        # A reconnect/reconcile sweep (not a timer expiry) may un-park receipts it alone can retry; it never touches the
+        # stream's own wait. A SERVICE-held stream is queued only by that sweep, never by an expiry.
+        reconnect = re.search(r'if \(sweep\) \{[^{}]*\}', timer_sweep)
+        if reconnect:
+            self.assertNotRegex(reconnect.group(0), r'stream->Wait\s*=')
+            self.assertNotIn('Attach', reconnect.group(0))
+            timer_sweep = timer_sweep.replace(reconnect.group(0), '')
         self.assertNotIn('STAGE_WAIT_SERVICE', timer_sweep)
+        self.assertRegex(timer_sweep, r'if \(sweep \|\| stream->Wait == STAGE_WAIT_DRAIN \|\| stream->Wait == STAGE_WAIT_EXCHANGE\)')
 
     def test_unload_vetoes_attachment_before_cleanup_quarantine(self):
         text = stream('SafeUploadStagePrepareUnload')
@@ -378,8 +387,8 @@ MUTATIONS = (
      'Stream->Wait = STAGE_WAIT_SERVICE;\n        return;\n    }\n#endif\n    Stream->Wait = STAGE_WAIT_NONE;',
      'Stream->Wait = STAGE_WAIT_NONE;\n        return;\n    }\n#endif\n    Stream->Wait = STAGE_WAIT_NONE;'),
     ('held_timer_retry', 'StageStream.c',
-     'else if (stream->Wait == STAGE_WAIT_EXCHANGE) ++waiting;',
-     'else if (stream->Wait == STAGE_WAIT_EXCHANGE || stream->Wait == STAGE_WAIT_SERVICE) ++waiting;'),
+     'else if (stream->Wait == STAGE_WAIT_EXCHANGE\n',
+     'else if (stream->Wait == STAGE_WAIT_EXCHANGE || stream->Wait == STAGE_WAIT_SERVICE\n'),
     ('pre_gate_wait_reset', 'StageStream.c',
      'if (Stream->AttachCompletionPending || Stream->AttachCompletionFence || Stream->AttachRetirePending) {',
      'Stream->Wait = STAGE_WAIT_NONE;\n    if (Stream->AttachCompletionPending || Stream->AttachCompletionFence || Stream->AttachRetirePending) {'),

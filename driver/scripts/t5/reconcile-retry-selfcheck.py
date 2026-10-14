@@ -38,12 +38,89 @@ def body(text, name):
     raise AssertionError('Missing production body: ' + name)
 
 
+def exchange_contract(source):
+    def require(condition, message):
+        if not condition: raise AssertionError(message)
+    process = body(source, 'StageProcessStream')
+    collect = body(source, 'StageCollectHandleReceiptRpcs')
+    reply = body(source, 'StagePerformHandleReceiptRpcs')
+    timer = body(source, 'StageUpdateRetryTimer')
+    for condition in ('stream->HandleReceiptInFlight', 'stream->RenameRpcInFlight'):
+        require(condition in timer, 'census must retain in-flight obligations')
+    require('Stream->HandleReceiptWait == STAGE_WAIT_SERVICE ? STAGE_WAIT_SERVICE : STAGE_WAIT_EXCHANGE' in process,
+            'pending attempt must preserve eligible EXCHANGE or permanent SERVICE')
+    require('stream->HandleReceiptWait == STAGE_WAIT_SERVICE' in collect, 'unrelated wake must not resend parked op19')
+    require('stream->Wait = STAGE_WAIT_EXCHANGE;' in collect, 'collection must not temporarily empty the waiting set')
+    require('KeQueryInterruptTime() < stream->HandleReceiptRetryAfter' in collect,
+            'unrelated event must not bypass op19 backoff')
+    require('KeQueryInterruptTime() < stream->RenameRetryAfter' in body(source, 'StageCollectRenameRpcs'),
+            'unrelated event must not bypass rename backoff')
+    require(reply.index('StageUpdateRetryTimer();') < reply.index('stream->HandleReceiptRetryAfter = StageRetryDueTime;'),
+            'failed attempt deadline must use the current timer arm')
+    rename_reply = body(source, 'StagePerformRenameRpcs')
+    require(rename_reply.index('StageUpdateRetryTimer();') < rename_reply.index('stream->RenameRetryAfter = StageRetryDueTime;'),
+            'rename retry deadline must use the current timer arm')
+    require(timer.count('StageRetryDueTime = KeQueryInterruptTime() + (ULONGLONG)(-due.QuadPart);') == 2,
+            'both arm paths must publish monotonic deadlines')
+    require(not re.search(r'if \([^;{}]*StageRetryDueTime', timer), 'deadline must never control timer arming')
+    require('stream->HandleReceiptWait = StageWaitFor(status);' in reply, 'refusal and transient failure differ')
+    require('Stream->RenameWait == STAGE_WAIT_SERVICE' in body(source, 'StageFinishRename'), 'rename refusal must stay parked')
+    require('stream->RenameWait == STAGE_WAIT_SERVICE' in body(source, 'StageCollectRenameRpcs'), 'rename collector must respect parking')
+    wait = body(source, 'StageWaitFor')
+    require('Status == STATUS_ACCESS_DENIED' in wait and 'STAGE_WAIT_SERVICE : STAGE_WAIT_EXCHANGE' in wait,
+            'answered refusal must park')
+    require('STATUS_DEVICE_BUSY' not in wait, 'typed transient service failure remains an exchange')
+    require('StageRetryMs = 0;' in timer[timer.index('if (waiting == 0)'):timer.index('if (StageRetryArmed &&')],
+            'reset only after the obligation ends')
+    require(source.count('StageRetryMs = 0;') == 1, 'attempts must not reset backoff elsewhere')
+
+
 class RetryTimer(unittest.TestCase):
     def setUp(self):
         self.text = code(SOURCE)
         self.timer = body(self.text, 'StageUpdateRetryTimer')
         self.worker = body(self.text, 'StageWorker')
         self.pass_ = body(self.text, 'StageWorkerPass')
+
+    def test_op19_and_rename_keep_exchange_accounting_through_pending_inflight_reply(self):
+        exchange_contract(self.text)
+
+    def test_accounting_and_parking_mutations_are_caught(self):
+        mutations = [
+            ('|| stream->HandleReceiptInFlight || stream->RenameRpcInFlight', '|| FALSE'),
+            ('Stream->HandleReceiptWait == STAGE_WAIT_SERVICE ? STAGE_WAIT_SERVICE : STAGE_WAIT_EXCHANGE',
+             'STAGE_WAIT_SERVICE'),
+            ('if (stream->HandleReceiptWait == STAGE_WAIT_SERVICE ||', 'if (FALSE ||'),
+            ('stream->HandleReceiptWait = StageWaitFor(status);', 'stream->HandleReceiptWait = STAGE_WAIT_EXCHANGE;'),
+            ('Status == STATUS_ACCESS_DENIED', 'Status == STATUS_DEVICE_BUSY'),
+            ('KeQueryInterruptTime() < stream->HandleReceiptRetryAfter', 'FALSE'),
+            ('KeQueryInterruptTime() < stream->RenameRetryAfter', 'FALSE'),
+            ('stream->HandleReceiptPending = FALSE;', 'StageRetryMs = 0; stream->HandleReceiptPending = FALSE;'),
+        ]
+        for old, new in mutations:
+            with self.subTest(mutation=old):
+                self.assertIn(old, self.text)
+                with self.assertRaises(AssertionError): exchange_contract(self.text.replace(old, new))
+
+    def test_exchange_backoff_progression_and_idle_cancellation_derive_from_production(self):
+        first = int(re.search(r'#define STAGE_RETRY_FIRST_MS (\d+)', self.text)[1])
+        maximum = int(re.search(r'#define STAGE_RETRY_EXCHANGE_MAX_MS (\d+)', self.text)[1])
+        self.assertIn('StageRetryMs = StageRetryMs == 0 ? STAGE_RETRY_FIRST_MS : StageRetryMs * 2;', self.timer)
+        self.assertIn('if (StageRetryMs > cap) StageRetryMs = cap;', self.timer)
+        delay = 0
+        observed = []
+        for _ in range(8):
+            delay = min(first if delay == 0 else delay * 2, maximum)
+            observed.append(delay)
+        self.assertEqual(observed, [250, 500, 1000, 2000, 4000, 8000, 8000, 8000])
+        self.assertRegex(self.timer, r'if \(waiting == 0\) \{\s*if \(StageRetryArmed\) \(VOID\)KeCancelTimer')
+
+    def test_only_reconciliation_sweep_reenables_parked_receipts(self):
+        reset = re.search(r'if \(sweep\) \{\s*stream->HandleReceiptRetryAfter = 0;\s*stream->RenameRetryAfter = 0;\s*'
+                          r'if \(stream->HandleReceiptWait == STAGE_WAIT_SERVICE\) stream->HandleReceiptWait = STAGE_WAIT_EXCHANGE;\s*'
+                          r'if \(stream->RenameWait == STAGE_WAIT_SERVICE\) stream->RenameWait = STAGE_WAIT_EXCHANGE;', self.pass_)
+        self.assertIsNotNone(reset)
+        self.assertEqual(self.text.count('if (stream->HandleReceiptWait == STAGE_WAIT_SERVICE) stream->HandleReceiptWait = STAGE_WAIT_EXCHANGE;'), 1)
 
     def test_arming_reads_the_timer_state_not_an_expiry_flag(self):
         self.assertRegex(self.timer, r'if \(StageRetryArmed && !KeReadStateTimer\(&StageRetryTimer\)\) return;')

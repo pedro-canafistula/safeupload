@@ -96,8 +96,15 @@ public sealed partial class StagedPublicationNativeJournalTests
             case "driver": request.DriverInstanceId = Guid.NewGuid(); break;
         }
         if (change == "rename")
+        {
+            string destination = Path.Combine(Parent, "other.txt");
+            var exact = new StagedRenameRequestV20(911, new(request.TransferId,
+                fixture.Entry.DestinationGeneration, fixture.Entry.StageIdentity!), _driver,
+                fixture.Entry.ParentDirectoryIdentity!, 1, fixture.Entry.Transfer.ProcessId,
+                destination, true, destination);
             await Journal().PrepareRenameAsync(request.TransferId, 911, fixture.Entry.Transfer.ProcessId,
-                Path.Combine(Parent, "other.txt"), true, default);
+                destination, true, default, exact);
+        }
         var dispatcher = new StagedPrivateCancellationDispatcher(Journal(),
             (b, _) => new(b.Destination, b.Parent, b.Parent, true, null), () => change != "ready");
         await Assert.ThrowsAsync<IOException>(() => dispatcher.ProcessAsync(request, _driver, default));

@@ -67,6 +67,9 @@ public static class Contract
     public const int StageReconcileReplyV20Size = 48;
     public const int StageEpochDrainReplyV20Size = 48;
     public const int StageLifecycleV20Size = 112;
+    public const int StageRenameV20Size = 128;
+    public const int StageRenameCommitV20Size = 1168;
+    public const int StageRenameReplyV20Size = 1192;
     public const int StageEpochDrainV20Size = 32;
     public const uint StageDiscardKindUnattachedAllocation = 5;
     public const int StageCreateReplyV19NameChars = 48;
@@ -112,6 +115,26 @@ public static class Contract
         Check(nameof(SafeUploadStageReconcileV20), sizeof(SafeUploadStageReconcileV20), StageReconcileV20Size);
         Check(nameof(SafeUploadStageReconcileReplyV20), sizeof(SafeUploadStageReconcileReplyV20), StageReconcileReplyV20Size);
         Check(nameof(SafeUploadStageEpochDrainReplyV20), sizeof(SafeUploadStageEpochDrainReplyV20), StageEpochDrainReplyV20Size);
+        Check(nameof(SafeUploadStageRenameV20), sizeof(SafeUploadStageRenameV20), StageRenameV20Size);
+        Check(nameof(SafeUploadStageRenameCommitV20), sizeof(SafeUploadStageRenameCommitV20), StageRenameCommitV20Size);
+        Check(nameof(SafeUploadStageRenameReplyV20), sizeof(SafeUploadStageRenameReplyV20), StageRenameReplyV20Size);
+        CheckOffset(nameof(SafeUploadStageRenameV20) + ".Operation", (int)Marshal.OffsetOf<SafeUploadStageRenameV20>(nameof(SafeUploadStageRenameV20.Operation)), 8);
+        CheckOffset(nameof(SafeUploadStageRenameV20) + ".Result", (int)Marshal.OffsetOf<SafeUploadStageRenameV20>(nameof(SafeUploadStageRenameV20.Result)), 12);
+        CheckOffset(nameof(SafeUploadStageRenameV20) + ".RequestId", (int)Marshal.OffsetOf<SafeUploadStageRenameV20>(nameof(SafeUploadStageRenameV20.RequestId)), 16);
+        CheckOffset(nameof(SafeUploadStageRenameV20) + ".TransferId", (int)Marshal.OffsetOf<SafeUploadStageRenameV20>(nameof(SafeUploadStageRenameV20.TransferId)), 24);
+        CheckOffset(nameof(SafeUploadStageRenameV20) + ".SourceGeneration", (int)Marshal.OffsetOf<SafeUploadStageRenameV20>(nameof(SafeUploadStageRenameV20.SourceGeneration)), 40);
+        CheckOffset(nameof(SafeUploadStageRenameV20) + ".StageIdentity", (int)Marshal.OffsetOf<SafeUploadStageRenameV20>(nameof(SafeUploadStageRenameV20.StageIdentity)), 48);
+        CheckOffset(nameof(SafeUploadStageRenameV20) + ".DriverInstanceId", (int)Marshal.OffsetOf<SafeUploadStageRenameV20>(nameof(SafeUploadStageRenameV20.DriverInstanceId)), 72);
+        CheckOffset(nameof(SafeUploadStageRenameV20) + ".ParentDirectoryIdentity", (int)Marshal.OffsetOf<SafeUploadStageRenameV20>(nameof(SafeUploadStageRenameV20.ParentDirectoryIdentity)), 88);
+        CheckOffset(nameof(SafeUploadStageRenameV20) + ".ViewGeneration", (int)Marshal.OffsetOf<SafeUploadStageRenameV20>(nameof(SafeUploadStageRenameV20.ViewGeneration)), 112);
+        CheckOffset(nameof(SafeUploadStageRenameV20) + ".OwnerProcessId", (int)Marshal.OffsetOf<SafeUploadStageRenameV20>(nameof(SafeUploadStageRenameV20.OwnerProcessId)), 120);
+        CheckOffset(nameof(SafeUploadStageRenameV20) + ".SealedVersion", (int)Marshal.OffsetOf<SafeUploadStageRenameV20>(nameof(SafeUploadStageRenameV20.SealedVersion)), 124);
+        CheckOffset(nameof(SafeUploadStageRenameCommitV20) + ".Source", (int)Marshal.OffsetOf<SafeUploadStageRenameCommitV20>(nameof(SafeUploadStageRenameCommitV20.Source)), 0);
+        CheckOffset(nameof(SafeUploadStageRenameCommitV20) + ".DestinationGeneration", (int)Marshal.OffsetOf<SafeUploadStageRenameCommitV20>(nameof(SafeUploadStageRenameCommitV20.DestinationGeneration)), 128);
+        CheckOffset(nameof(SafeUploadStageRenameCommitV20) + ".DestinationNameLength", (int)Marshal.OffsetOf<SafeUploadStageRenameCommitV20>(nameof(SafeUploadStageRenameCommitV20.DestinationNameLength)), 136);
+        CheckOffset(nameof(SafeUploadStageRenameCommitV20) + ".Reserved", (int)Marshal.OffsetOf<SafeUploadStageRenameCommitV20>(nameof(SafeUploadStageRenameCommitV20.Reserved)), 140);
+        CheckOffset(nameof(SafeUploadStageRenameCommitV20) + ".DestinationName", (int)Marshal.OffsetOf<SafeUploadStageRenameCommitV20>(nameof(SafeUploadStageRenameCommitV20.DestinationName)), 144);
+        CheckOffset(nameof(SafeUploadStageRenameReplyV20) + ".Receipt", (int)Marshal.OffsetOf<SafeUploadStageRenameReplyV20>(nameof(SafeUploadStageRenameReplyV20.Receipt)), 24);
         Check(nameof(SafeUploadStageLifecycleV20), sizeof(SafeUploadStageLifecycleV20), StageLifecycleV20Size);
         Check(nameof(SafeUploadStageEpochDrainV20), sizeof(SafeUploadStageEpochDrainV20), StageEpochDrainV20Size);
         Check(nameof(SafeUploadStageCreateReplyV19), sizeof(SafeUploadStageCreateReplyV19), ResponseSize);
@@ -333,6 +356,8 @@ public static class StageV20Result
     public const uint AttachRetiredPrivate = 15;
     public const uint CompletionPermitted = 16;
     public const uint HandleLifetimeObserved = 17;
+    public const uint RenameCommitted = 18;
+    public const uint RetryableFailure = 19;
 }
 
 [Flags]
@@ -345,8 +370,9 @@ public enum StageV20Capability : uint
     AttachedPrivateRetire = 0x08,
     HandleLifetimeReceipt = 0x10,
     OrdinaryEmptyContent = 0x20,
+    RenameCommitReceipt = 0x80,
     Required = StageV19Core | AttachTransaction | EpochDrain |
-              AttachedPrivateRetire | HandleLifetimeReceipt | OrdinaryEmptyContent,
+              AttachedPrivateRetire | HandleLifetimeReceipt | OrdinaryEmptyContent | RenameCommitReceipt,
 }
 
 [Flags]
@@ -653,6 +679,9 @@ public unsafe partial struct SafeUploadRequest
     public bool UsesStageV19BinaryPayload => UsesStageBinaryPayload;
 
     private static bool IsStageV20TypedOperation(uint operation) => operation is
+        global::SafeUpload.Agent.Minifilter.Operation.StageRename or
+        global::SafeUpload.Agent.Minifilter.Operation.StageRenameCommit or
+        global::SafeUpload.Agent.Minifilter.Operation.StageRenameAbort or
         global::SafeUpload.Agent.Minifilter.Operation.StageSeal or
         global::SafeUpload.Agent.Minifilter.Operation.StageDiscard or
         global::SafeUpload.Agent.Minifilter.Operation.StageCreateAfterDiscard or
@@ -680,7 +709,10 @@ public unsafe partial struct SafeUploadRequest
             global::SafeUpload.Agent.Minifilter.Operation.StageCompletionPermit or
             global::SafeUpload.Agent.Minifilter.Operation.StageRetireUnexposed or
             global::SafeUpload.Agent.Minifilter.Operation.StageRetireAttachedPrivate or
-            global::SafeUpload.Agent.Minifilter.Operation.StageHandleObserved => stageVolumeFlags,
+            global::SafeUpload.Agent.Minifilter.Operation.StageHandleObserved or
+            global::SafeUpload.Agent.Minifilter.Operation.StageRename or
+            global::SafeUpload.Agent.Minifilter.Operation.StageRenameCommit or
+            global::SafeUpload.Agent.Minifilter.Operation.StageRenameAbort => stageVolumeFlags,
             global::SafeUpload.Agent.Minifilter.Operation.StageEpochDrain => 0,
             global::SafeUpload.Agent.Minifilter.Operation.StageSeal or
                 global::SafeUpload.Agent.Minifilter.Operation.StageDiscard or
@@ -868,6 +900,45 @@ public struct SafeUploadStageLifecycleV20
     public SafeUploadStageIdentityV19 StageIdentity;
     public Guid DriverInstanceId;
     public SafeUploadStageIdentityV19 ParentDirectoryIdentity;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct SafeUploadStageRenameV20
+{
+    public uint Version;
+    public uint StructSize;
+    public uint Operation;
+    public uint Result;
+    public ulong RequestId;
+    public Guid TransferId;
+    public ulong SourceGeneration;
+    public SafeUploadStageIdentityV19 StageIdentity;
+    public Guid DriverInstanceId;
+    public SafeUploadStageIdentityV19 ParentDirectoryIdentity;
+    public ulong ViewGeneration;
+    public uint OwnerProcessId;
+    public uint SealedVersion;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public unsafe struct SafeUploadStageRenameCommitV20
+{
+    public SafeUploadStageRenameV20 Source;
+    public ulong DestinationGeneration;
+    public uint DestinationNameLength;
+    public uint Reserved;
+    public fixed char DestinationName[Contract.MaxPathChars];
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct SafeUploadStageRenameReplyV20
+{
+    public uint Version;
+    public uint StructSize;
+    public ulong RequestId;
+    public uint Verdict;
+    public uint PayloadLength;
+    public SafeUploadStageRenameCommitV20 Receipt;
 }
 
 /// <summary>Typed create reply overlay; byte-for-byte equal to SafeUploadResponse.</summary>

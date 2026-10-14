@@ -1649,6 +1649,8 @@ Return Value:
 {
     LARGE_INTEGER timeout;
     ULONG replyLength;
+    ULONG replyCapacity = sizeof(SAFEUPLOAD_RESPONSE);
+    PSAFEUPLOAD_RESPONSE response;
     NTSTATUS status;
     PVOID pinnedCookie = NULL;
     BOOLEAN portUseAcquired = FALSE;
@@ -1700,7 +1702,17 @@ Return Value:
         goto Exit;
     }
 
-    RtlZeroMemory( &Exchange->Response, sizeof( SAFEUPLOAD_RESPONSE ) );
+    response = &Exchange->Response;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    Exchange->ReplyLength = 0;
+    if (Exchange->RenameReply != NULL &&
+        Exchange->Request.Operation == SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT &&
+        Exchange->Request.Reserved == SAFEUPLOAD_STAGE_EXTENSION_VERSION) {
+        response = (PSAFEUPLOAD_RESPONSE)Exchange->RenameReply;
+        replyCapacity = sizeof(*Exchange->RenameReply);
+    }
+#endif
+    RtlZeroMemory(response, replyCapacity);
 
     //
     //  From the policy, not from a constant: the deadline belongs to the
@@ -1709,7 +1721,7 @@ Return Value:
     //
 
     timeout.QuadPart = SafeUploadPolicyVerdictTimeout();
-    replyLength = sizeof( SAFEUPLOAD_RESPONSE );
+    replyLength = replyCapacity;
 
     //
     //  FltSendMessage returns only after the reply has been copied into
@@ -1735,7 +1747,7 @@ Return Value:
                              &SafeUploadData.ClientPort,
                              &Exchange->Request,
                              sizeof( SAFEUPLOAD_REQUEST ),
-                             &Exchange->Response,
+                             response,
                              &replyLength,
                              &timeout );
 
@@ -1752,10 +1764,16 @@ Return Value:
     //  or mismatched reply is treated as no reply at all.
     //
 
-    if (replyLength < sizeof( SAFEUPLOAD_RESPONSE ) ||
-        Exchange->Response.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
-        Exchange->Response.StructSize != sizeof( SAFEUPLOAD_RESPONSE ) ||
-        Exchange->Response.RequestId != Exchange->Request.RequestId) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    Exchange->ReplyLength = replyLength;
+#endif
+    if (replyLength < sizeof(SAFEUPLOAD_RESPONSE) ||
+        response->Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+        response->RequestId != Exchange->Request.RequestId ||
+        (response->Verdict == SAFEUPLOAD_VERDICT_DENY ?
+            response->StructSize != sizeof(SAFEUPLOAD_RESPONSE) : response->StructSize != replyCapacity) ||
+        (replyCapacity != sizeof(SAFEUPLOAD_RESPONSE) && response->Verdict != SAFEUPLOAD_VERDICT_DENY &&
+            replyLength != replyCapacity)) {
 
         SafeUploadTrace( "malformed reply for request %llu - allowing\n",
                          Exchange->Request.RequestId );
@@ -1775,7 +1793,7 @@ Return Value:
     //  Only an explicit DENY blocks. Any other value is an allow.
     //
 
-    if (Exchange->Response.Verdict == SAFEUPLOAD_VERDICT_DENY) {
+    if (response->Verdict == SAFEUPLOAD_VERDICT_DENY) {
 
         *Verdict = SAFEUPLOAD_VERDICT_DENY;
     }

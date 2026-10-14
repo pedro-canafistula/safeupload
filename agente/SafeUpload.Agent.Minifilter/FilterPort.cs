@@ -323,6 +323,71 @@ public sealed partial class FilterPort : IDisposable
         return ReplyTypedStageBuffer(messageId, buffer, size);
     }
 
+    public static unsafe SafeUploadStageRenameReplyV20 CreateStageRenameReplyV20(
+        in SafeUploadStageRenameV20 source, ulong destinationGeneration, string destinationName, uint result)
+    {
+        if (source.Version != Contract.StageExtensionVersion || source.StructSize != Contract.StageRenameV20Size ||
+            source.Operation != Operation.StageRenameCommit || source.Result != 0 || source.RequestId == 0 ||
+            source.TransferId == Guid.Empty || source.SourceGeneration == 0 || source.SourceGeneration > long.MaxValue ||
+            destinationGeneration > long.MaxValue || !source.StageIdentity.HasNonzeroFileId ||
+            source.DriverInstanceId == Guid.Empty || !source.ParentDirectoryIdentity.HasNonzeroFileId ||
+            source.ViewGeneration == 0 || source.OwnerProcessId == 0 || source.SealedVersion > 1 ||
+            string.IsNullOrEmpty(destinationName) || destinationName.Length >= Contract.MaxPathChars ||
+            destinationName.Contains('\0') ||
+            (result == StageV20Result.RenameCommitted ? destinationGeneration == 0 :
+                result != StageV20Result.RetryableFailure || destinationGeneration != 0))
+            throw new ArgumentException("Invalid v20 rename receipt.", nameof(source));
+        SafeUploadStageRenameReplyV20 reply = new()
+        {
+            Version = Contract.Version,
+            StructSize = Contract.StageRenameReplyV20Size,
+            RequestId = source.RequestId,
+            Verdict = Verdict.Allow,
+            PayloadLength = Contract.StageRenameCommitV20Size,
+            Receipt = new SafeUploadStageRenameCommitV20
+            {
+                Source = source,
+                DestinationGeneration = destinationGeneration,
+                DestinationNameLength = checked((uint)(destinationName.Length * sizeof(char)))
+            }
+        };
+        reply.Receipt.Source.StructSize = Contract.StageRenameCommitV20Size;
+        reply.Receipt.Source.Result = result;
+        char* name = reply.Receipt.DestinationName;
+        destinationName.AsSpan().CopyTo(new Span<char>(name, Contract.MaxPathChars));
+        return reply;
+    }
+
+    internal static unsafe void ValidateStageRenameReplyV20(in SafeUploadStageRenameReplyV20 reply)
+    {
+        // Rebuild/validate at the transport boundary; padding and unused name bytes must be zero.
+        SafeUploadStageRenameReplyV20 supplied = reply;
+        SafeUploadStageRenameV20 source = supplied.Receipt.Source;
+        source.StructSize = Contract.StageRenameV20Size;
+        source.Result = 0;
+        if (supplied.Receipt.DestinationNameLength > (Contract.MaxPathChars - 1) * sizeof(char) ||
+            supplied.Receipt.DestinationNameLength % sizeof(char) != 0)
+            throw new ArgumentException("Invalid v20 rename name length.", nameof(reply));
+        string name = new(supplied.Receipt.DestinationName, 0,
+            checked((int)supplied.Receipt.DestinationNameLength / sizeof(char)));
+        SafeUploadStageRenameReplyV20 expected = CreateStageRenameReplyV20(source,
+            supplied.Receipt.DestinationGeneration, name, supplied.Receipt.Source.Result);
+        if (!new ReadOnlySpan<byte>(&supplied, sizeof(SafeUploadStageRenameReplyV20)).SequenceEqual(
+                new ReadOnlySpan<byte>(&expected, sizeof(SafeUploadStageRenameReplyV20))))
+            throw new ArgumentException("Invalid v20 rename receipt envelope or padding.", nameof(reply));
+    }
+
+    public unsafe bool ReplyStageRenameCommitV20(ulong messageId, in SafeUploadStageRenameReplyV20 reply)
+    {
+        ValidateStageRenameReplyV20(reply);
+        int size = sizeof(FilterReplyHeader) + sizeof(SafeUploadStageRenameReplyV20);
+        byte* buffer = stackalloc byte[size];
+        new Span<byte>(buffer, size).Clear();
+        *(FilterReplyHeader*)buffer = new FilterReplyHeader { Status = StatusSuccess, MessageId = messageId };
+        *(SafeUploadStageRenameReplyV20*)(buffer + sizeof(FilterReplyHeader)) = reply;
+        return ReplyTypedStageBuffer(messageId, buffer, size);
+    }
+
     /// <summary>Replies with the exact v20 capability negotiation result.</summary>
     public unsafe bool ReplyStageReconcileV20(ulong messageId,
         in SafeUploadStageReconcileReplyV20 payload)
@@ -390,7 +455,7 @@ public sealed partial class FilterPort : IDisposable
         Operation.StageCompletionPermit => result == StageV20Result.CompletionPermitted,
         Operation.StageRetireUnexposed => result == StageV20Result.AttachRetiredUnexposed,
         Operation.StageRetireAttachedPrivate => result == StageV20Result.AttachRetiredPrivate,
-        Operation.StageHandleObserved => result == StageV20Result.HandleLifetimeObserved,
+        Operation.StageHandleObserved => result is StageV20Result.HandleLifetimeObserved or StageV20Result.RetryableFailure,
         _ => false
     };
 

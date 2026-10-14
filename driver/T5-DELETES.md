@@ -311,6 +311,66 @@ CREATE_NEW failed. The real existing-name dialog row is required before claiming
 that Notepad actually issues an authorized public delete before saving over an existing name, the prior-bytes CPF rule and that dialog
 sequence conflict; record the trace and return that exact product choice to the owner before implementing that path.
 
+### Exact rename-commit receipt — 2026-10-14 implementation
+
+The boot13 occupied-name failure was a missing commit receipt: the service committed destination generations 2/3 while the
+kernel retained allocation generation 1. Op19 correctly refused the stale tuple. The repair preserves that exact validation;
+rename bookkeeping does not authorize inspection or publication. Fresh names can also have retained generation watermarks.
+
+In the negotiated v20 profile, rename prepare/commit/abort carry the original transfer, stage volume/full file ID, source
+generation, driver epoch, allocation parent identity, owner PID, view generation, seal flag and exact requested destination.
+Prepare captures the journal's source name. CompleteRenameAsync stores the original tuple and resulting name/generation in
+**the same atomic manifest replacement** as the path, source tombstone and target generation. A commit replay first compares
+the original request with this stored receipt, before considering the now-retargeted manifest. It returns the same generation
+without another increment or public mutation. Only the latest completion needs retention: the kernel cannot begin another
+rename while its previous fence is unresolved. An exact abort retains the original name/generation and adds no tombstone;
+an abort after a refused prepare remains an exact validated no-op. A crash with only prepare evidence holds both names until
+the surviving driver supplies an exact commit/abort. Recovery does not infer the result or seal an unresolved version. An old
+v20 completion without the new receipt cannot be upgraded from a path or generation guess; it remains held with diagnostics.
+
+The v18 request envelope is unchanged. Reserved=20 and the 128-byte opaque ImageName source payload identify this rename
+contract. Capability **0x80** is required (v20 Required=**0xBF**); the independently gated V23 bound-head bit **0x40** is unchanged.
+The commit-only reply is **1,192 bytes**: the existing 24-byte envelope prefix, then a **1,168-byte** receipt. Within the receipt:
+
+| Offset | Field |
+| --- | --- |
+| 0 / 4 / 8 / 12 | Version=20, StructSize=1168, Operation=7, Result=18 (commit) or 19 (transient failure) |
+| 16 / 24 / 40 | Transaction ID (RequestId), transfer GUID, source generation |
+| 48 / 72 / 88 | Stage identity (24 bytes), driver GUID, parent identity (24 bytes) |
+| 112 / 120 / 124 | View generation (64 bits), owner PID (32 bits), sealed flag (32 bits) |
+| 128 / 136 / 140 / 144 | Destination generation (64 bits), name byte length, zero reserved word, 512 WCHAR destination slot |
+
+The request source has StructSize=128 and Result=0. Unused destination bytes are zero; full byte length/name and the entire
+source tuple must match. All mirrors assert sizes/offsets. Prepare/abort retain the ordinary reply, and other reply layouts
+are unchanged. The kernel validates the authenticated channel and wire receipt, rechecks the pinned stream/view/object/epoch,
+and adopts the receipt generation **before** clearing RenameExchange. Generations belong to different names, so no local
+increment or new-greater-than-old test is valid. Subsequent op19 and seal use the adopted current generation.
+
+An unfinished eligible rename/op19 remains EXCHANGE through pending, collection, in-flight send and transient reply. Known
+semantic refusals (including exact manifest mismatch), malformed receipts and disconnect park as SERVICE, with no timer resend
+on unrelated wakes; only the service reconnect/reconciliation sweep re-enables them. Storage/journal failures produce the exact
+v20 transient result (19), with no commit/handle success implied; commit failure uses destination generation zero. Their exchange
+backoff is 250/500/1000/2000/4000/8000 ms, capped at 8 s, and resets when the waiting set ends. Collectors enforce a monotonic
+retry deadline from the failed attempt's timer arm, so unrelated work or a stale DPC cannot resend early. The deadline is a
+scheduling hint, never timer arming authority. Existing KeReadStateTimer arming,
+DPC wake-only behavior and idle cancellation remain. The worker resolves a rename fence before attempting op19.
+
+**Scope limitation:** this repairs unbound, same-parent local fixed NTFS renames. Cross-parent moves still retain the allocation
+parent and cannot pass op19's current-directory identity check; seeded/bound moves still lack exact destination/security/seed
+rebinding. They remain private/held with existing failure diagnostics, without a new refusal of the application's rename.
+Neither parent nor immutable seed/allocation evidence is rewritten to manufacture authority. No capability gate for those paths,
+unsupported destinations, public mutations, read/export authority or sticky Unknown is relaxed.
+
+Agent controls cover occupied 1→2→3, op19→seal, clean/BLOCK bytes, higher absent-name watermarks and lower target generations,
+abort, prepared crash hold, lost reply/restart, before/after-replacement faults and each altered source field. Wire controls cover
+version/size/name/padding/result faults. Source controls in [rename-receipt-selfcheck.py](scripts/t5/rename-receipt-selfcheck.py)
+and [reconcile-retry-selfcheck.py](scripts/t5/reconcile-retry-selfcheck.py) include negative mutations for adoption order, removed
+ACK checks, local/abort generation changes, lost in-flight accounting and refusal polling. These are source checks, not build or
+protected-pair qualification. The orchestrator must run the four WDK/PREfast/ApiValidator builds and complete normal/feature ×
+Debug/Release agent matrix and verify the new transport size/layout on Windows. The independent Sol 6.1 xhigh source review
+accepted this coherent receipt/retry change with those build/runtime conditions; this is separate from matched-pair milestone
+qualification and its final adversarial review. This checkout's work remains uncommitted.
+
 ## 6. Durable compatibility
 
 All persisted journal and protocol enum numbers remain stable. The existing EmptyHeld numeric value remains reserved as
