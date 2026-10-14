@@ -1,0 +1,29 @@
+{"I":1,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-1.txt","Ok":true,"Why":null,"AckMs":513,"OutcomeMs":1637.2}
+{"I":2,"Pattern":"new","Sensitive":false,"Target":"C:\\Protected\\t4\\new-2.txt","Ok":true,"Why":null,"AckMs":238.7,"OutcomeMs":901.9}
+{"I":3,"Pattern":"replace","Sensitive":false,"Target":"C:\\Protected\\t4\\rep-3.txt","Ok":true,"Why":null,"AckMs":389.1,"OutcomeMs":932.2}
+{"I":4,"Pattern":"mapped","Sensitive":false,"Target":"C:\\Protected\\t4\\map-4.txt","Ok":true,"Why":null,"AckMs":208.8,"OutcomeMs":515.7}
+{"I":5,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-5.txt","Ok":true,"Why":null,"AckMs":257.5,"OutcomeMs":1727.7}
+{"I":6,"Pattern":"new","Sensitive":false,"Target":"C:\\Protected\\t4\\new-6.txt","Ok":true,"Why":null,"AckMs":284.2,"OutcomeMs":950.1}
+{"I":7,"Pattern":"replace","Sensitive":false,"Target":"C:\\Protected\\t4\\rep-7.txt","Ok":true,"Why":null,"AckMs":309.8,"OutcomeMs":1229.3}
+{"I":8,"Pattern":"mapped","Sensitive":false,"Target":"C:\\Protected\\t4\\map-0.txt","Ok":true,"Why":null,"AckMs":270.7,"OutcomeMs":498.6}
+{"I":9,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-1.txt","Ok":true,"Why":null,"AckMs":240.8,"OutcomeMs":1450.2}
+{"I":10,"Pattern":"new","Sensitive":false,"Target":"C:\\Protected\\t4\\new-10.txt","Ok":true,"Why":null,"AckMs":186.6,"OutcomeMs":1288.2}
+{"I":11,"Pattern":"replace","Sensitive":false,"Target":"C:\\Protected\\t4\\rep-3.txt","Ok":true,"Why":null,"AckMs":276.3,"OutcomeMs":970.7}
+{"I":12,"Pattern":"mapped","Sensitive":false,"Target":"C:\\Protected\\t4\\map-4.txt","Ok":true,"Why":null,"AckMs":265.6,"OutcomeMs":964.7}
+{"I":13,"Pattern":"resave","Sensitive":true,"Target":"C:\\Protected\\t4\\same-5.txt","Ok":true,"Why":null,"AckMs":277.6,"OutcomeMs":1263.3}
+{"I":14,"Pattern":"new","Sensitive":true,"Target":"C:\\Protected\\t4\\new-14.txt","Ok":true,"Why":null,"AckMs":293.7,"OutcomeMs":658.3}
+{"I":15,"Pattern":"replace","Sensitive":true,"Target":"C:\\Protected\\t4\\rep-7.txt","Ok":true,"Why":null,"AckMs":501.2,"OutcomeMs":844.9}
+{"I":16,"Pattern":"mapped","Sensitive":true,"Target":"C:\\Protected\\t4\\map-0.txt","Ok":true,"Why":null,"AckMs":365.4,"OutcomeMs":498.2}
+{"I":17,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-1.txt","Ok":true,"Why":null,"AckMs":320.2,"OutcomeMs":1745.5}
+{"I":18,"Pattern":"new","Sensitive":false,"Target":"C:\\Protected\\t4\\new-18.txt","Ok":true,"Why":null,"AckMs":197.5,"OutcomeMs":841.4}
+{"I":19,"Pattern":"replace","Sensitive":false,"Target":"C:\\Protected\\t4\\rep-3.txt","Ok":true,"Why":null,"AckMs":320,"OutcomeMs":1056.7}
+{"I":20,"Pattern":"mapped","Sensitive":false,"Target":"C:\\Protected\\t4\\map-4.txt","Ok":true,"Why":null,"AckMs":231.4,"OutcomeMs":613.7}
+{"I":21,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-5.txt","Ok":false,"Why":"actor: error Exception calling \"WriteAllBytes\" with \"2\" argument(s): \"Access to the path \u0027C:\\Protected\\t4\\same-5.txt\u0027 is denied.\"","AckMs":243.7,"OutcomeMs":2.5}
+{"I":22,"Pattern":"new","Sensitive":false,"Target":"C:\\Protected\\t4\\new-22.txt","Ok":true,"Why":null,"AckMs":600.7,"OutcomeMs":1188.1}
+{"I":23,"Pattern":"replace","Sensitive":false,"Target":"C:\\Protected\\t4\\rep-7.txt","Ok":true,"Why":null,"AckMs":699.5,"OutcomeMs":616.2}
+{"I":24,"Pattern":"mapped","Sensitive":false,"Target":"C:\\Protected\\t4\\map-0.txt","Ok":false,"Why":"actor: error Exception calling \"Mapped\" with \"2\" argument(s): \"CreateFile Win32=5\"","AckMs":249.9,"OutcomeMs":80.1}
+{"I":25,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-1.txt","Ok":true,"Why":null,"AckMs":310,"OutcomeMs":1657.1}
+{"I":26,"Pattern":"new","Sensitive":false,"Target":"C:\\Protected\\t4\\new-26.txt","Ok":true,"Why":null,"AckMs":381.6,"OutcomeMs":1160.7}
+{"I":27,"Pattern":"replace","Sensitive":false,"Target":"C:\\Protected\\t4\\rep-3.txt","Ok":true,"Why":null,"AckMs":588,"OutcomeMs":1702.9}
+{"I":28,"Pattern":"mapped","Sensitive":false,"Target":"C:\\Protected\\t4\\map-4.txt","Ok":true,"Why":null,"AckMs":393.6,"OutcomeMs":384.7}
+{"I":29,"Pattern":"resave","Sensitive":true,"Target":"C:\\Protected\\t4\\same-5.txt","Ok":false,"Why":"actor: error Exception calling \"WriteAllBytes\" with \"2\" argument(s): \"Access to the path \u0027C:\\Protected\\t4\\same-5.txt\u0027 is denied.\"","AckMs":87.4,"OutcomeMs":2}

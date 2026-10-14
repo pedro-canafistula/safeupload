@@ -1,0 +1,22 @@
+T4GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T4DriverLoaded PASS the filter is still loaded after the cycles
+T4VerifierActive PASS runtime Verifier 0x13B still verifies SafeUpload.sys
+T4CyclesCompleted FAIL 26 of 256 cycles reached their outcome; outcomes {"resave-approve": {"Ok": 5, "Failed": 1}, "new-approve": {"Ok": 6, "Failed": 0}, "replace-approve": {"Ok": 6, "Failed": 0}, "mapped-approve": {"Ok": 5, "Failed": 1}, "resave-block": {"Ok": 1, "Failed": 1}, "new-block": {"Ok": 1, "Failed": 0}, "replace-block": {"Ok": 1, "Failed": 0}, "mapped-block": {"Ok": 1, "Failed": 0}}; error T4 stopped at cycle 29: repeated-identical-failure; actor: error Exception calling "WriteAllBytes" with "2" argument(s): "Access to the path 'C:\Protected\t4\same-5.txt' is denied."; first failures ['21 resave-approve actor: error Exception calling "WriteAllBytes" with "2" argument(s): "Access to the path \'C:\\Protected\\t4\\same-5.txt\' is denied."', '24 mapped-approve actor: error Exception calling "Mapped" with "2" argument(s): "CreateFile Win32=5"', '29 resave-block actor: error Exception calling "WriteAllBytes" with "2" argument(s): "Access to the path \'C:\\Protected\\t4\\same-5.txt\' is denied."']
+T4ActorStopped PASS the actor acknowledged stop
+T4StopReason INFO repeated-identical-failure; attempted 29; failures 3
+T4NoBlockedBytesPublished PASS no blocked version reached its public name
+T4PoolEndpoint FAIL only 0 Verifier pool samples
+T4PoolSlope INFO unavailable B/cycle (smoke row; judged only on the 10,000-cycle row)
+T4RegistryBounded FAIL 1 samples within registry capacity; idle capacity failures None; invalid samples []
+T4Memory INFO start: SUfl live 438, bytes 122408; SwUr bytes 6569760; module bytes 6609472
+T4Memory INFO last-cycle: SUfl live None, bytes None; SwUr bytes None; module bytes None
+T4Memory INFO idle: SUfl live None, bytes None; SwUr bytes None; module bytes None
+T4Memory INFO purged: SUfl live None, bytes None; SwUr bytes None; module bytes None
+T4ContextsReleased INFO check FAIL; SUfl live start 438, purged None; limit start + 2048; released None of idle growth since start None; purge NTSTATUS FAIL []; purged sample missing
+T4VersionsReleased FAIL after settle: live versions None, views None, created None, released None, views released None
+T4TombstonesReleased FAIL after the actor exited: tombstones None
+T4NoCapRefusal FAIL cap refusals None, tombstone refusals None
+T4StageFilesDeleted FAIL stage files after idle None (journal manifests None, hand-backs None); driver deletes None, failures None
+T4WorkerWakes INFO {"wakeCleanup": null, "wakeClose": null, "wakeDispose": null, "wakeConnect": null, "wakeExit": null, "wakeTimer": null, "wakeInline": null, "timerArms": null, "disposeHeld": null, "disposeNotHeld": null, "disposeStale": null, "disposeDeferred": null, "passes": null}
+T4CycleTime INFO median 1316 ms, p95 2066 ms, max 2291 ms over 29 cycles
+T4Duration INFO 262 s (verifier-from-boot, 256 cycles)

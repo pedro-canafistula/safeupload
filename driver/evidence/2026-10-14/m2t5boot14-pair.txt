@@ -1,0 +1,5 @@
+2238f8212aaed7acab4508a0632ed4e92f24bacc1e9e7f38dbbcccd0a49508b8  /mnt/storage/safeupload-archive/pairs/t5-pair12/SafeUpload-stage-prototype.sys
+db8f780a94891cc853d12e7f52f760eca9dd93248c3acafed29e32b1cc9cdde4  /mnt/storage/safeupload-archive/pairs/t5-pair12/feature-release-service-publish.zip
+HarnessCommit=ece69b72e4eb132cde98f7a10f4683b01d3f9b55
+Driver=t5-rename4 (kernel tree of f24c4c2c == HEAD; signed; feature Debug; imports PASS); Agent=t5-rename6 feature Release (agent tree of 1603a35e == HEAD)
+Mode=Verifier boot with the rename-commit receipt fix; T4 smoke 256 verifier-from-boot sample_every=64; win10-debug3; main-disk overlay; no builder jobs

@@ -591,7 +591,12 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       PASS 1,547 / 2,127 (feature Release `DB8F780A…DDE4`). Failed receipts kept: `t5-rename1` (test compile errors),
       `t5-rename2` and `t5-rename3` (wire tests corrupted by marshalling; an owner case cleared one byte), `t5-rename5` (a required
       test had been renamed; restored).
-    - [ ] `m2t5boot14`: t5-rename4 driver with the t5-rename6 agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
+    - [x] `m2t5boot14` (t5-rename4 driver, t5-rename6 agent): Ready at once; **26 of 29 cycles passed, including every replace onto
+      an existing name** (the receipt fix works) and BLOCK cycles. Stopped on repeated identical failures (exit 1; restoration PASS):
+      the owner's next save to a name whose previous version was blocked was refused with STATUS_DELETE_PENDING (cycles 21, 24, 29;
+      the blocked versions' journals show the hand-back done and stage cleanup started but not finished). Also, exact allocation
+      replays for requests whose process had exited were refused and retried many times per second (6,374 timer arms).
+    - [ ] Root cause and fix (analysis running); then rerun the T4 smoke and the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
