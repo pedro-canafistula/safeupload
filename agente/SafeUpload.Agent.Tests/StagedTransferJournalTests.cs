@@ -787,8 +787,14 @@ public sealed class StagedTransferJournalTests : IDisposable
         var transfer = Transfer();
         await Journal().CreateAsync(transfer, CancellationToken.None);
 
-        await Assert.ThrowsAsync<IOException>(() => Journal().CreateAsync(
+        // The manifest commit reports its failure as a persistence exception (an IOException) that records that no
+        // replacement was returned, so the allocation for this request was never committed.
+        var refused = await Assert.ThrowsAsync<StagedJournalPersistenceException>(() => Journal().CreateAsync(
             transfer with { DestinationPath = "E:\\other.txt" }, CancellationToken.None));
+        Assert.IsAssignableFrom<IOException>(refused);
+        Assert.Equal(transfer.TransferId, refused.TransferId);
+        Assert.False(refused.ReplacementReturned);
+        Assert.Contains("step=create-replace;", refused.Message);
         Assert.Equal(transfer.DestinationPath,
             (await Journal().ReadAsync(transfer.TransferId, CancellationToken.None))
             .Transfer.DestinationPath);
