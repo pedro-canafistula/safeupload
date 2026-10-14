@@ -48,13 +48,22 @@ class AttachPin(unittest.TestCase):
         self.assertLess(drain.index('InterlockedDecrement(&Transaction->Stream->RpcReferences)'),
                         drain.index('Transaction->Stream = NULL'))
 
-    def test_every_installed_stream_takes_one_pin(self):
-        for name in ('StageAttachResumeOrRun',):
-            text = body(self.text, name)
-            for match in re.finditer(r'Transaction->Stream\s*=\s*(\w+)\s*;', text):
-                window = text[max(0, match.start() - 200):match.end() + 300]
-                self.assertRegex(window, r'InterlockedIncrement\(&' + match.group(1) + r'->RpcReferences\)')
-            self.assertNotRegex(text, r'InterlockedDecrement\([^)]*RpcReferences\)')
+    def test_every_installed_stream_takes_exactly_one_pin(self):
+        # Both acquisition paths (op16 resume and the ordinary attach binding) live in this function.
+        text = body(self.text, 'StageAttachResumeOrRun')
+        handoffs = list(re.finditer(r'Transaction->Stream\s*=\s*(\w+)\s*;', text))
+        self.assertEqual([m.group(1) for m in handoffs], ['current', 'stream'])
+        for match in handoffs:
+            window = text[max(0, match.start() - 200):match.end() + 300]
+            pins = re.findall(r'InterlockedIncrement\(&' + match.group(1) + r'->RpcReferences\)', window)
+            self.assertEqual(len(pins), 1, 'handoff of ' + match.group(1) + ' must take exactly one pin')
+        self.assertEqual(len(re.findall(r'InterlockedIncrement\(&\w+->RpcReferences\)', text)), 2)
+        self.assertNotRegex(text, r'InterlockedDecrement\([^)]*RpcReferences\)')
+
+    def test_drain_requeues_at_zero_and_forgets_the_stream(self):
+        drain = body(self.text, 'StageAttachDrainTransaction')
+        self.assertRegex(drain, r'if \(InterlockedDecrement\(&Transaction->Stream->RpcReferences\) == 0\)\s*'
+                                r'StageQueueStream\(Transaction->Stream,')
 
     def test_resume_makes_one_op16_attempt(self):
         text = body(self.text, 'StageAttachResumeOrRun')
