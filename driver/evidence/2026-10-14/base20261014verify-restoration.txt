@@ -1,0 +1,5 @@
+RunDiskXmlUnchanged=True
+2026-10-14T20:25:03Z run-disk win10-debug3: deleted /var/lib/libvirt/images/win10-debug3.safeupload-run-base20261014verify.qcow2
+RunDiskOverlayDeleted=True
+RunDiskBaseUntouched=True
+2026-10-14T20:25:03Z run-disk win10-debug3: run base20261014verify ended; the domain is shut off on /var/lib/libvirt/images/win10-debug3.base-20261014.qcow2

@@ -1,0 +1,36 @@
+Owner-approved (2026-10-14 evening) test-base change on win10-debug3: Edge Update disabled in a new base layer.
+
+OldBase=/var/lib/libvirt/images/win10-debug3.base-20261009.qcow2 OldBaseStat=1791569195 466157568
+Vol win10-debug3.base-20261014.qcow2 created from <scratchpad>/newbase.xml
+
+NewBase=/var/lib/libvirt/images/win10-debug3.base-20261014.qcow2 backing=/var/lib/libvirt/images/win10-debug3.base-20261009.qcow2
+EfiReset=True
+--- before
+Service edgeupdate StartMode=Auto State=Stopped
+Service edgeupdatem StartMode=Manual State=Stopped
+Service MicrosoftEdgeElevationService StartMode=Manual State=Stopped
+Task \MicrosoftEdgeUpdateTaskMachineCore State=Ready
+Task \MicrosoftEdgeUpdateTaskMachineUA State=Ready
+Present C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe 154.0.4258.62
+Present C:\Program Files (x86)\Microsoft\EdgeWebView\Application 
+Policy absent
+OS=10.0.19045 UBR=2965
+InstallerWaitSeconds=0
+--- after
+Service edgeupdate StartMode=Disabled State=Stopped
+Service edgeupdatem StartMode=Disabled State=Stopped
+Service MicrosoftEdgeElevationService StartMode=Manual State=Stopped
+Task \MicrosoftEdgeUpdateTaskMachineCore State=Disabled
+Task \MicrosoftEdgeUpdateTaskMachineUA State=Disabled
+Present C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe 154.0.4258.62
+Present C:\Program Files (x86)\Microsoft\EdgeWebView\Application 
+Policy {"UpdateDefault":0,"AutoUpdateCheckPeriodMinutes":0}
+EdgeUpdateDisabled=True
+DomainBase=/var/lib/libvirt/images/win10-debug3.base-20261014.qcow2 OldBaseStatAfter=1791569195 466157568
+BASE_CHANGE_DONE
+EXIT=0
+
+--- first attempt (rolled back: the check read Windows CRLF lines; old base untouched, new layer deleted)
+ROLLBACK: Edge Update not disabled
+domain back on /var/lib/libvirt/images/win10-debug3.base-20261009.qcow2
+deleted win10-debug3.base-20261014.qcow2

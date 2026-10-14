@@ -30,6 +30,15 @@ respective support and qualification gates are met and the owner approves cutove
 - **Edge self-update on the test base: approved to disable** to improve measurements. A new base layer on win10-debug3 disables
   the Edge Update services and scheduled tasks; the previous base stays untouched underneath as its backing file (rollback:
   point the domain back at it). Windows itself and every other component are unchanged.
+  Done: win10-debug3 now boots `win10-debug3.base-20261014.qcow2` over the untouched `win10-debug3.base-20261009.qcow2`
+  (mtime/size unchanged); `edgeupdate`/`edgeupdatem` Disabled, both `MicrosoftEdgeUpdateTask*` tasks Disabled, EdgeUpdate policy
+  `UpdateDefault=0`; Edge stays 154.0.4258.62; Windows 10.0.19045.2965 unchanged; clean shutdown
+  ([receipt](evidence/2026-10-14/win10-debug3-base-20261014-edge-update.txt); a first attempt rolled back safely on a CRLF check).
+  Fresh-run-disk baseline [BaselineClean=True](evidence/2026-10-14/base20261014verify-baseline.txt), independent restoration PASS.
+- Refusal receipts: the owner questioned keeping refusals (especially across reboot) and asked for the most elegant design. Batch 2
+  compares, simplest correct first: no receipts (a late "yes" for a request nobody waits for is already discarded through the
+  existing NO_WAITER path), receipts scoped to the driver instance (deleted when a new instance connects; bounded by in-flight
+  allocations), or the current durable receipts. The independent review decides; the budget question disappears for the first two.
 - Refusal-receipt budgets: the owner asked for a fuller explanation before deciding; until then the proposed 4,096 receipts /
   64 MiB stay evaluation values only and activation stays held.
 
