@@ -54,17 +54,18 @@ public sealed class StagedRenameReceiptWireTests
     [InlineData(40, 0)] // transaction
     [InlineData(64, 0)] // source generation
     [InlineData(136, 0)] // view generation
-    [InlineData(144, 0)] // owner
+    [InlineData(144, 0, 4)] // owner: clear the whole 32-bit PID (zeroing only the low byte of 1234 leaves a valid 1024)
     [InlineData(148, 2)] // sealed flag
     [InlineData(152, 0)] // committed destination generation
     [InlineData(160, 3)] // odd destination byte length
     [InlineData(164, 1)] // reserved
     [InlineData(1191, 1)] // unused name bytes
-    public void Rename_reply_refuses_malformed_envelope_tuple_and_padding(int offset, byte value)
+    public void Rename_reply_refuses_malformed_envelope_tuple_and_padding(int offset, byte value, int width = 1)
     {
         var reply = FilterPort.CreateStageRenameReplyV20(Source(), 1, @"\Device\volume\file.txt",
             StageV20Result.RenameCommitted);
         byte[] changed = Bytes(reply);
+        changed.AsSpan(offset, width).Clear();
         changed[offset] = value;
         var malformed = Read<SafeUploadStageRenameReplyV20>(changed);
         Assert.Throws<ArgumentException>(() => FilterPort.ValidateStageRenameReplyV20(malformed));
