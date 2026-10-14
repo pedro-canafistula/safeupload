@@ -566,8 +566,15 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       [Four WDK builds `t5-diag3`](evidence/2026-10-14/exact-t5-diag3-summary.txt) 0/0, imports PASS, signed `BC03DBC4…0C65`;
       [agent matrix `t5-diag2`](evidence/2026-10-14/exact-agent-matrix-t5-diag2-summary.txt) PASS 1,497 / 2,077 (feature Release
       `9325F657…FD8E`).
-    - [ ] `m2t5boot13`: t5-diag3 driver with the t5-diag2 agent (T4 smoke, boot Verifier); if Unknown recurs, attribute it from
-      the first-origin counters; then the raw cells in all three modes.
+    - [x] `m2t5boot13` (t5-diag3 driver, t5-diag2 agent): **Ready at once** (the reconcile fix holds where boots 10–12 failed);
+      **16 of 19 cycles passed**: resave, new and mapped saves in approve and block modes (published, or handed back with the public
+      name untouched), versions released and stages deleted; no writer Unknown (all first origins zero). Stopped on repeated
+      identical failures (exit 1; restoration PASS): every replace onto an already published name (cycles 11, 15, 19) stayed
+      private. The rename committed with the destination generation advanced (2, 3) and the service refused each cleanup receipt
+      (op19): "the v20 attachment tuple does not match the exact allocation manifest"; renames onto absent names (cycles 3, 7)
+      passed. The refused receipt is retried about four times a second (backoff appears to reset). Root cause and fix: analysis
+      running.
+    - [ ] Fix replace-onto-existing; rerun the T4 smoke; then the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

@@ -1,0 +1,19 @@
+{"I":1,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-1.txt","Ok":true,"Why":null,"AckMs":493.9,"OutcomeMs":1321.8}
+{"I":2,"Pattern":"new","Sensitive":false,"Target":"C:\\Protected\\t4\\new-2.txt","Ok":true,"Why":null,"AckMs":227.5,"OutcomeMs":985.6}
+{"I":3,"Pattern":"replace","Sensitive":false,"Target":"C:\\Protected\\t4\\rep-3.txt","Ok":true,"Why":null,"AckMs":311.6,"OutcomeMs":943.8}
+{"I":4,"Pattern":"mapped","Sensitive":false,"Target":"C:\\Protected\\t4\\map-4.txt","Ok":true,"Why":null,"AckMs":209.2,"OutcomeMs":506.5}
+{"I":5,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-5.txt","Ok":true,"Why":null,"AckMs":205.6,"OutcomeMs":512.7}
+{"I":6,"Pattern":"new","Sensitive":false,"Target":"C:\\Protected\\t4\\new-6.txt","Ok":true,"Why":null,"AckMs":266.6,"OutcomeMs":952}
+{"I":7,"Pattern":"replace","Sensitive":false,"Target":"C:\\Protected\\t4\\rep-7.txt","Ok":true,"Why":null,"AckMs":324.1,"OutcomeMs":1042.1}
+{"I":8,"Pattern":"mapped","Sensitive":false,"Target":"C:\\Protected\\t4\\map-0.txt","Ok":true,"Why":null,"AckMs":278.7,"OutcomeMs":408.7}
+{"I":9,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-1.txt","Ok":true,"Why":null,"AckMs":195.5,"OutcomeMs":531}
+{"I":10,"Pattern":"new","Sensitive":false,"Target":"C:\\Protected\\t4\\new-10.txt","Ok":true,"Why":null,"AckMs":206.4,"OutcomeMs":1029.9}
+{"I":11,"Pattern":"replace","Sensitive":false,"Target":"C:\\Protected\\t4\\rep-3.txt","Ok":false,"Why":"the public file never held the approved bytes","AckMs":287.6,"OutcomeMs":120011.9}
+{"I":12,"Pattern":"mapped","Sensitive":false,"Target":"C:\\Protected\\t4\\map-4.txt","Ok":true,"Why":null,"AckMs":236.6,"OutcomeMs":492.1}
+{"I":13,"Pattern":"resave","Sensitive":true,"Target":"C:\\Protected\\t4\\same-5.txt","Ok":true,"Why":null,"AckMs":198.3,"OutcomeMs":964.9}
+{"I":14,"Pattern":"new","Sensitive":true,"Target":"C:\\Protected\\t4\\new-14.txt","Ok":true,"Why":null,"AckMs":242.4,"OutcomeMs":1016.2}
+{"I":15,"Pattern":"replace","Sensitive":true,"Target":"C:\\Protected\\t4\\rep-7.txt","Ok":false,"Why":"no hand-back of the blocked bytes","AckMs":335.8,"OutcomeMs":120027.9}
+{"I":16,"Pattern":"mapped","Sensitive":true,"Target":"C:\\Protected\\t4\\map-0.txt","Ok":true,"Why":null,"AckMs":249.3,"OutcomeMs":525.6}
+{"I":17,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-1.txt","Ok":true,"Why":null,"AckMs":279.7,"OutcomeMs":1102}
+{"I":18,"Pattern":"new","Sensitive":false,"Target":"C:\\Protected\\t4\\new-18.txt","Ok":true,"Why":null,"AckMs":261.9,"OutcomeMs":1210.3}
+{"I":19,"Pattern":"replace","Sensitive":false,"Target":"C:\\Protected\\t4\\rep-3.txt","Ok":false,"Why":"the public file never held the approved bytes","AckMs":378.3,"OutcomeMs":120014.4}

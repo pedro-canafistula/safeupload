@@ -1,0 +1,5 @@
+bc03dbc4de043cd908e1910541198bd78cf989d2da82fb2f227475c748330c65  /mnt/storage/safeupload-archive/pairs/t5-pair11/SafeUpload-stage-prototype.sys
+9325f65791dbc4d374aabd44c31aeddb4095fe3ea280cbb777c061fe8748fd8e  /mnt/storage/safeupload-archive/pairs/t5-pair11/feature-release-service-publish.zip
+HarnessCommit=0272e6d078feab68564edb7f5a701ac9e1fec63d
+Driver=t5-diag3 (kernel tree of 258a6ea8 == HEAD; signed; feature Debug; imports PASS); Agent=t5-diag2 feature Release (agent tree of 44cfea49 == HEAD)
+Mode=Verifier boot with the startup-reconcile retry fix and writer-Unknown first-origin diagnostics; T4 smoke 256 verifier-from-boot sample_every=64; win10-debug3; main-disk overlay; no builder jobs
