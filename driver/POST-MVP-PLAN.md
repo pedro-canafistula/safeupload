@@ -643,7 +643,14 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       PASS 1,592 / 2,172 (feature Release `D2978B18…8395`). Failed receipts kept: `t5-block1` matrix (`.Count` on the tombstone
       chain), `t5-block2` (exact exception type). Activation hold: refusal receipts (1,192 bytes each) need reserved count/storage
       accounting rebuilt at restart, fail-closed exhaustion and retirement only on durable driver-epoch evidence.
-    - [ ] `m2t5boot15`: t5-block1 driver with the t5-block4 agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
+    - [x] **`m2t5boot15` (t5-block1 driver, t5-block4 agent): T4 smoke PASS** (exit 0; restoration PASS): Ready at once; 256/256
+      cycles (every pattern, approve and block, including saves after a block and replaces onto published names); no blocked bytes
+      published; all versions, views and tombstones released; all stage files deleted (192 driver deletes, 0 failures); idle worker
+      with nothing waiting; pool endpoint, registry bounds and post-idle admission recovery PASS. `T4ContextsReleased` (INFO on short
+      rows) is within the start + 2,048 bound, but the purge released 940 of 1,931 SUfl growth (48.7%), under the 2026-10-12 half
+      criterion for proceeding to a long run: **the 10,000-cycle row stays held** until that measurement is understood
+      (conservative). The raw cells are not a long run and proceed.
+    - [ ] Raw C01–C04/B01/B02/X01 cells in ordinary, runtime-Verifier and boot-Verifier modes with this pair (separate restoration each).
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

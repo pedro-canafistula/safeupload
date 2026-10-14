@@ -1,0 +1,79 @@
+== run disk
+== baseline
+== stage files and install
+PolicyAclApplied=True
+Directory=C:\ProgramData\SafeUpload
+File=C:\ProgramData\SafeUpload\policy.json
+[SC] ChangeServiceConfig SUCCESS
+BootPolicySeededAsSystem=True
+[SC] ChangeServiceConfig SUCCESS
+DriverBootStartConfigured=True
+DriverStartedByInstaller=False
+[SC] CreateService SUCCESS
+ServiceCommandLine="C:\Program Files\SafeUpload\Agent\SafeUpload.Agent.Service.exe" --Interception:Mode=Minifilter --Interception:StagingPrototype=true --CentroAdministracao:BaseUrl=
+[SC] ChangeServiceConfig2 SUCCESS
+ServiceName=SafeUploadAgent
+ServiceSidType=UNRESTRICTED
+ServiceConfigured=True
+ServiceStarted=False
+Protection activates after reboot.
+DriverStart=0
+INSTALL_DONE=True
+VERIFIER_FROM_BOOT_CONFIGURED=True
+== reboot
+VERIFIER_FROM_FIRST_LOAD=True
+READY=True
+LAST_AGENT_FRAME={"type":"status","policyVersion":1,"activeCategories":1,"protectionActive":true,"auditOnly":false,"admissionCoverage":"Ready","admissionCoverageReason":"Ready","nativePolicyGeneration":2147483647}
+READINESS_ELAPSED_MS=290
+DRIVER_LOADED=True
+== actor, Verifier (verifier-from-boot) and the coordinator
+ACTOR_PROFILE=C:\Users\t4actor hr=0x00000000
+VERIFIER_ARMED=True
+COORDINATOR_STARTED=True
+T4DeadlineSeconds=3600
+progress after 60s: RUNNING 42
+progress after 121s: RUNNING 93
+progress after 183s: RUNNING 138
+progress after 244s: RUNNING 182
+progress after 306s: RUNNING 227
+progress after 367s: RUNNING 256
+progress after 428s: RUNNING 256
+progress after 490s: RUNNING 256
+wait ended after 552s: DONE alive=yes reason=coordinator-finished
+T4GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T4DriverLoaded PASS the filter is still loaded after the cycles
+T4VerifierActive PASS runtime Verifier 0x13B still verifies SafeUpload.sys
+T4CyclesCompleted PASS 256 of 256 cycles reached their outcome; outcomes {"resave-approve": {"Ok": 48, "Failed": 0}, "new-approve": {"Ok": 48, "Failed": 0}, "replace-approve": {"Ok": 48, "Failed": 0}, "mapped-approve": {"Ok": 48, "Failed": 0}, "resave-block": {"Ok": 16, "Failed": 0}, "new-block": {"Ok": 16, "Failed": 0}, "replace-block": {"Ok": 16, "Failed": 0}, "mapped-block": {"Ok": 16, "Failed": 0}}; no failures
+T4ActorStopped PASS the actor acknowledged stop
+T4StopReason INFO completed; attempted 256; failures 0
+T4NoBlockedBytesPublished PASS no blocked version reached its public name
+T4PoolEndpoint PASS driver nonpaged bytes (Verifier pool tracking) from cycle 64: 6650624; after idle 6713016; limit 6716160
+T4PoolSlope INFO 383.050 B/cycle (smoke row; judged only on the 10,000-cycle row)
+T4RegistryBounded PASS 9 samples within registry capacity; idle capacity failures 0; invalid samples []
+T4Memory INFO start: SUfl live 451, bytes 125320; SwUr bytes 6591504; module bytes 6631720
+T4Memory INFO last-cycle: SUfl live 1580, bytes 377944; SwUr bytes 6632576; module bytes 6720440
+T4Memory INFO idle: SUfl live 2382, bytes 557784; SwUr bytes 6625328; module bytes 6713016
+T4Memory INFO purged: SUfl live 1442, bytes 347224; SwUr bytes 6615664; module bytes 6680480
+T4ContextsReleased INFO check PASS; SUfl live start 451, purged 1442; limit start + 2048; released 940 of idle growth since start 1931; purge NTSTATUS PASS [{"Operation": "RtlAdjustPrivilege", "Privilege": 13, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "RtlAdjustPrivilege", "Privilege": 5, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 2, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 3, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 4, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}]; purged sample present
+T4VersionsReleased PASS after settle: live versions 0, views 0, created 256, released 256, views released 256
+T4TombstonesReleased PASS after the actor exited: tombstones 0
+T4NoCapRefusal PASS cap refusals 0, tombstone refusals 0
+T4StageFilesDeleted PASS stage files after idle 0 (journal manifests 256, hand-backs 64); driver deletes 192, failures 0
+T4StageWorkerIdle PASS stage worker passes over 60 s with nothing waiting: 0 (timer fires 0; waiting versions 0)
+T4WorkerWakes INFO {"wakeCleanup": 256, "wakeClose": 256, "wakeDispose": 256, "wakeConnect": 1, "wakeExit": 79, "wakeTimer": 236, "wakeInline": 1088, "timerArms": 740, "disposeHeld": 256, "disposeNotHeld": 46, "disposeStale": 0, "disposeDeferred": 0, "passes": 2092}
+T4CycleTime INFO median 1314 ms, p95 1872 ms, max 2679 ms over 256 cycles
+T4Duration INFO 735 s (verifier-from-boot, 256 cycles)
+READY=True
+LAST_AGENT_FRAME={"type":"status","policyVersion":1,"activeCategories":1,"protectionActive":true,"auditOnly":false,"admissionCoverage":"Ready","admissionCoverageReason":"Ready","nativePolicyGeneration":2147483647}
+READINESS_ELAPSED_MS=119
+DRIVER_LOADED=True
+T4AdmissionRecovered PASS current coverage returned to Ready after idle
+T4StopReason=completed;ExitCode=0;Phase=final-readiness;Progress=DONE;ElapsedSeconds=552
+== discard the run disk
+RunDiskXmlUnchanged=True
+2026-10-14T18:18:44Z run-disk win10-debug3: deleted /var/lib/libvirt/images/win10-debug3.safeupload-run-m2t5boot15.qcow2
+RunDiskOverlayDeleted=True
+RunDiskBaseUntouched=True
+2026-10-14T18:18:44Z run-disk win10-debug3: run m2t5boot15 ended; the domain is shut off on /var/lib/libvirt/images/win10-debug3.base-20261009.qcow2
+T4IndependentRestoration=PASS
+LAUNCHER_EXIT=0

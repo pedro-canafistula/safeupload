@@ -1,0 +1,5 @@
+80d6a645b330bb01adfd47a6dbac86bc49608dfa4f876d8fce78085e9e548d9b  /mnt/storage/safeupload-archive/pairs/t5-pair13/SafeUpload-stage-prototype.sys
+d2978b186135fd830b3a9904c166b653b709d5f4fc337527828bf23aea808395  /mnt/storage/safeupload-archive/pairs/t5-pair13/feature-release-service-publish.zip
+HarnessCommit=49d47441eeaaec6c961c42fb5b58cc057e6744b7
+Driver=t5-block1 (kernel tree of cdfdb396 == HEAD; signed; feature Debug; imports PASS); Agent=t5-block4 feature Release (agent tree of 18e07a90 == HEAD)
+Mode=Verifier boot with blocked retirement and exact allocation resolution; T4 smoke 256 verifier-from-boot sample_every=64; win10-debug3; main-disk overlay; no builder jobs
