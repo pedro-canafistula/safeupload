@@ -6618,6 +6618,18 @@ function Restore-Suite([switch]$Rollback) {
     }
     # Each restoration step is independent, but failed steps retain recovery state.
     $steps=@(
+        # The T5 staging driver accepts a voluntary unload only through an exact epoch drain with its connected service; with the
+        # service gone only mandatory teardown (shutdown) removes it (m2t5ro1: fltmc 0x801F0010 after the agent was stopped). Try the
+        # voluntary unload first, while the test agent still runs; a veto here leaves the driver loaded and the 'driver' step below
+        # still requires the unload, so a refusal stays a restoration failure.
+        @{Name='driver-with-service';Action={
+            $loaded=(& fltmc.exe filters 2>&1 | Out-String) -match '(?m)^SafeUpload\s'
+            $service=Get-Service SafeUploadAgent -ErrorAction SilentlyContinue
+            if($loaded -and $null -ne $service -and $service.Status -eq 'Running'){
+                $output=(& fltmc.exe unload SafeUpload 2>&1 | Out-String);$exit=$LASTEXITCODE
+                Write-DurableFile (Join-Path $evidenceDirectory 'driver-unload-with-service.txt') ("Exit=$exit`r`n"+$output)
+            }
+        }},
         @{Name='cached-agent';Action={Restore-CachedAgent}},
         @{Name='activation-test-service';Action={
             if($state.AgentServiceStarted){
