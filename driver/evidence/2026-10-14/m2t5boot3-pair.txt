@@ -1,0 +1,4 @@
+4b4711d88d404e4446c007dacb589d16dea7747b15ab0831a440499001ae29b8  /mnt/storage/safeupload-archive/pairs/t5-fix2/SafeUpload-stage-prototype.sys
+a61493cdebd719b372bc680bcc679b46dd5e797cfba4f5d41a2fd448de4d0e25  /mnt/storage/safeupload-archive/pairs/t5-fix2/feature-release-service-publish.zip
+HarnessCommit=c6607f013ecbf90e53358f7134cedeba3f356eba
+Mode=repro of m2t5boot1/2 with AutoReboot=0 and unreachable capture; same pair; T4 smoke 256 verifier-from-boot; win10-debug3; main-disk overlay

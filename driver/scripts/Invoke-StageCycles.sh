@@ -107,6 +107,28 @@ capture_failure_evidence() {
 echo "== run disk"
 source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"; source "$(dirname "${BASH_SOURCE[0]}")/run-disk.sh"
 run_disk_begin "$dom" "$tag" > "$ev/$tag-checkpoint.txt" 2>&1 || { cat "$ev/$tag-checkpoint.txt"; exit 12; }
+# An unreachable debuggee is usually a bugcheck spinning in kdcom (it looks like a hang). Before the trap discards the run
+# disk, keep a screenshot, two vCPU time samples 10 s apart (spinning versus idle) and, unless T4_CAPTURE_DUMP=no, a full
+# guest memory dump in /var/tmp (libvirt-qemu 0400; read it through a transient libvirt pool, convert with elf2dmp, then
+# delete it as soon as it is analysed). Diagnostic only: it never changes a verdict or exit status.
+unreachable_captured=no
+capture_unreachable() {  # $1 label; at most once per run
+    local label=$1 elf free
+    [ "$unreachable_captured" = no ] || return 0
+    unreachable_captured=yes
+    $V screenshot "$dom" "$ev/$tag-$label.png" >/dev/null 2>&1 && echo "UnreachableScreenshot=$tag-$label.png"
+    { date -u +%FT%TZ; $V domstats "$dom" --vcpu --cpu-total; sleep 10; date -u +%FT%TZ; $V domstats "$dom" --vcpu --cpu-total; } \
+        > "$ev/$tag-$label-vcpu.txt" 2>&1
+    [ "${T4_CAPTURE_DUMP:-yes}" = yes ] || { echo 'UnreachableDump=DISABLED'; return 0; }
+    free=$(df --output=avail -BG /var/tmp | tail -1 | tr -dc '0-9')
+    [ "${free:-0}" -ge 30 ] || { echo "UnreachableDump=SKIPPED_LOW_SPACE free=${free}G"; return 0; }
+    elf="/var/tmp/safeupload-$tag-$label.elf"
+    if timeout 1200 $V qemu-monitor-command "$dom" --hmp "dump-guest-memory $elf" > "$ev/$tag-$label-dump.txt" 2>&1 && [ -e "$elf" ]; then
+        echo "UnreachableDump=$elf"
+    else
+        echo 'UnreachableDump=FAILED'
+    fi
+}
 finish() {
     local test_status=$?
     trap - EXIT TERM INT HUP
@@ -121,6 +143,12 @@ finish() {
             echo 'T4MemoryEvidenceExport=FAILED' >> "$ev/$tag-memory-export.txt"
             test_status=25
         fi
+    fi
+    # A failed run whose guest no longer answers (for example a bugcheck after boot) is captured before the disk is discarded.
+    if [ "$test_status" != 0 ] && [ "$phase" != run-disk ] &&
+        ! ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1; then
+        capture_unreachable "exit-$test_status" >> "$ev/$tag-stop.txt"  # no pipe: the flag stays in this shell
+        grep '^Unreachable' "$ev/$tag-stop.txt"
     fi
     if [ "$phase" = cycles ]; then
         # Preserve partial progress even when the launcher receives a signal.
@@ -250,33 +278,17 @@ Set-T4VerifierFromBoot
 PS
     grep -qx 'VERIFIER_FROM_BOOT_CONFIGURED=True' "$ev/$tag-verifier-from-boot.txt" || { echo 'persistent Verifier configuration failed'; exit 16; }
 fi
-# An unreachable debuggee is usually a bugcheck spinning in kdcom (it looks like a hang). Before the trap discards the run
-# disk, keep a screenshot, two vCPU time samples 10 s apart (spinning versus idle) and, unless T4_CAPTURE_DUMP=no, a full
-# guest memory dump in /var/tmp (libvirt-qemu 0400; read it through a transient libvirt pool, convert with elf2dmp, then
-# delete it as soon as it is analysed). Diagnostic only: it never changes a verdict or exit status.
-capture_unreachable() {  # $1 label
-    local label=$1 elf free
-    $V screenshot "$dom" "$ev/$tag-$label.png" >/dev/null 2>&1 && echo "UnreachableScreenshot=$tag-$label.png"
-    { date -u +%FT%TZ; $V domstats "$dom" --vcpu --cpu-total; sleep 10; date -u +%FT%TZ; $V domstats "$dom" --vcpu --cpu-total; } \
-        > "$ev/$tag-$label-vcpu.txt" 2>&1
-    [ "${T4_CAPTURE_DUMP:-yes}" = yes ] || { echo 'UnreachableDump=DISABLED'; return 0; }
-    free=$(df --output=avail -BG /var/tmp | tail -1 | tr -dc '0-9')
-    [ "${free:-0}" -ge 30 ] || { echo "UnreachableDump=SKIPPED_LOW_SPACE free=${free}G"; return 0; }
-    elf="/var/tmp/safeupload-$tag-$label.elf"
-    if timeout 1200 $V qemu-monitor-command "$dom" --hmp "dump-guest-memory $elf" > "$ev/$tag-$label-dump.txt" 2>&1 && [ -e "$elf" ]; then
-        echo "UnreachableDump=$elf"
-    else
-        echo 'UnreachableDump=FAILED'
-    fi
-}
 # Keep a bugcheck on screen instead of rebooting into WinRE (m2t5boot2): on this disposable run disk only, the stop code then
 # shows in the screenshot and the memory dump holds the crashed system, not the recovery environment.
 remote <<<"Set-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl' -Name AutoReboot -Value 0 -Type DWord; 'CRASH_AUTOREBOOT=' + (Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl').AutoReboot" \
     >> "$ev/$tag-install.txt"
-grep -qx 'CRASH_AUTOREBOOT=0' "$ev/$tag-install.txt" || { echo 'could not keep bugchecks on screen'; exit 25; }
+grep -qx 'CRASH_AUTOREBOOT=0' "$ev/$tag-install.txt" || { echo 'could not keep bugchecks on screen'; exit 27; }
 echo "== reboot"
 remote <<<'& shutdown.exe /r /t 5 /c "T4 install"' >/dev/null; sleep 60
-wait_ssh || { echo 'guest did not return'; capture_unreachable install-unreachable | tee -a "$ev/$tag-install.txt"; exit 17; }
+wait_ssh || {
+    echo 'guest did not return'
+    capture_unreachable install-unreachable >> "$ev/$tag-install.txt"  # no pipe: the flag must reach the trap
+    grep '^Unreachable' "$ev/$tag-install.txt"; exit 17; }
 if [ "$mode" = runtime-verifier ]; then
     remote <<PS | tee "$ev/$tag-preload-verifier.txt"
 \$ErrorActionPreference = 'Stop'
