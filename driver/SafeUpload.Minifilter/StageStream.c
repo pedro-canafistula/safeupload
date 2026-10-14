@@ -2818,10 +2818,13 @@ static NTSTATUS StageAttachCaptureCreateInput(PFLT_CALLBACK_DATA Data, PSAFEUPLO
  * as a boot-start driver, every boot fell into WinRE). The pre-Windows 11 macro
  * released the one token reference SeCreateClientSecurityFromSubjectContext took
  * (PsDereferencePrimaryToken/PsDereferenceImpersonationToken, both
- * ObDereferenceObject). Releasing it directly is also valid at DISPATCH_LEVEL. */
-_IRQL_requires_max_(DISPATCH_LEVEL)
+ * ObDereferenceObject). Token release stays at PASSIVE, as those routines are
+ * annotated; the final transaction release, which can run at DISPATCH_LEVEL,
+ * only asserts that the PASSIVE cleanup already released the subject. */
+_IRQL_requires_(PASSIVE_LEVEL)
 static VOID StageDeleteClientSecurity(_Inout_ PSECURITY_CLIENT_CONTEXT Context)
 {
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     if (Context->ClientToken != NULL) ObDereferenceObject(Context->ClientToken);
     Context->ClientToken = NULL;
 }
@@ -2840,7 +2843,10 @@ static VOID StageAttachTransactionDereference(PSTAGE_ATTACH_TRANSACTION Transact
     if (Transaction->NameInfo != NULL && Transaction->NameInfoIsSynthetic)
         ExFreePoolWithTag(Transaction->NameInfo, STAGE_TAG);
     if (Transaction->RequestorProcess != NULL) ObDereferenceObject(Transaction->RequestorProcess);
-    if (Transaction->OriginalSubjectValid) StageDeleteClientSecurity(&Transaction->OriginalSubject);
+    /* Failure cleanup and worker completion release the subject at PASSIVE in
+     * StageAttachReleaseRelatedObjects before the last reference can drop; a
+     * failed capture leaves it zeroed. Never release a token here (DISPATCH). */
+    NT_ASSERT(!Transaction->OriginalSubjectValid && Transaction->OriginalSubject.ClientToken == NULL);
     StageAttachReleaseCreateInput(&Transaction->CreateInput);
     if (Transaction->ReferencedFileObject != NULL)
         ObDereferenceObject(Transaction->ReferencedFileObject);
