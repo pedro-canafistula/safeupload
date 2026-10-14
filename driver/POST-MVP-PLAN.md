@@ -477,7 +477,14 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       Windows reading crash control: the boot-start minifilter's early load under boot Verifier is the leading suspect. The harness now
       captures screenshot/vCPU/memory of an unreachable guest (`0f52ad58`, `c6607f01`, `9536216f`); WinRE dumps were deleted unread.
       Conservative hold: no other row runs this pair until the stop code is known.
-    - [ ] Runtime-Verifier load (`m2t5rv1`): boot without the driver, then Verifier and `fltmc load`, so a crash stays on screen for capture.
+    - [x] Runtime-Verifier load `m2t5rv1` found the cause: `fltmc load` 0x8007007F (ERROR_PROC_NOT_FOUND). The feature driver imported
+      `ntoskrnl!SeDeleteClientSecurity`, a function in the current WDK for this NTDDI_VERSION (a macro before Windows 11) that Windows 10
+      19041/19045 does not export; as a boot-start driver every boot failed. ApiValidator does not check target availability.
+    - [x] Import gate `b3857680` (every driver import checked against the Windows 10 19045 export tables, exit 5 otherwise). Fix `3b2c95c1`
+      plus review condition `926286ae` (PASSIVE-only token release; the DISPATCH-capable final release only asserts), [focused review](evidence/2026-10-14/t5-fix3-review-sol61.md)
+      ACCEPT WITH CONDITIONS. [Four WDK builds `t5-fix4`](evidence/2026-10-14/exact-t5-fix4-summary.txt) 0/0, [imports PASS](evidence/2026-10-14/exact-t5-fix4-imports.txt),
+      signed feature Debug `EE764659…CC93`; agent package `t4-v18port1` (identical agent tree).
+    - [ ] First boot of the fixed pair (T4 smoke, boot Verifier), then the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
