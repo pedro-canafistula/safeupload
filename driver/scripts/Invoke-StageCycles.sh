@@ -250,8 +250,28 @@ Set-T4VerifierFromBoot
 PS
     grep -qx 'VERIFIER_FROM_BOOT_CONFIGURED=True' "$ev/$tag-verifier-from-boot.txt" || { echo 'persistent Verifier configuration failed'; exit 16; }
 fi
+# An unreachable debuggee is usually a bugcheck spinning in kdcom (it looks like a hang). Before the trap discards the run
+# disk, keep a screenshot, two vCPU time samples 10 s apart (spinning versus idle) and, unless T4_CAPTURE_DUMP=no, a full
+# guest memory dump in /var/tmp (libvirt-qemu 0400; read it through a transient libvirt pool, convert with elf2dmp, then
+# delete it as soon as it is analysed). Diagnostic only: it never changes a verdict or exit status.
+capture_unreachable() {  # $1 label
+    local label=$1 elf free
+    $V screenshot "$dom" "$ev/$tag-$label.png" >/dev/null 2>&1 && echo "UnreachableScreenshot=$tag-$label.png"
+    { date -u +%FT%TZ; $V domstats "$dom" --vcpu --cpu-total; sleep 10; date -u +%FT%TZ; $V domstats "$dom" --vcpu --cpu-total; } \
+        > "$ev/$tag-$label-vcpu.txt" 2>&1
+    [ "${T4_CAPTURE_DUMP:-yes}" = yes ] || { echo 'UnreachableDump=DISABLED'; return 0; }
+    free=$(df --output=avail -BG /var/tmp | tail -1 | tr -dc '0-9')
+    [ "${free:-0}" -ge 30 ] || { echo "UnreachableDump=SKIPPED_LOW_SPACE free=${free}G"; return 0; }
+    elf="/var/tmp/safeupload-$tag-$label.elf"
+    if timeout 1200 $V qemu-monitor-command "$dom" --hmp "dump-guest-memory $elf" > "$ev/$tag-$label-dump.txt" 2>&1 && [ -e "$elf" ]; then
+        echo "UnreachableDump=$elf"
+    else
+        echo 'UnreachableDump=FAILED'
+    fi
+}
 echo "== reboot"
-remote <<<'& shutdown.exe /r /t 5 /c "T4 install"' >/dev/null; sleep 60; wait_ssh || { echo 'guest did not return'; exit 17; }
+remote <<<'& shutdown.exe /r /t 5 /c "T4 install"' >/dev/null; sleep 60
+wait_ssh || { echo 'guest did not return'; capture_unreachable install-unreachable | tee -a "$ev/$tag-install.txt"; exit 17; }
 if [ "$mode" = runtime-verifier ]; then
     remote <<PS | tee "$ev/$tag-preload-verifier.txt"
 \$ErrorActionPreference = 'Stop'

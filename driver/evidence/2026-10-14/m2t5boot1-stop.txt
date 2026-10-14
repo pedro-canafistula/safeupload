@@ -1,0 +1,1 @@
+T4StopReason=setup-or-test-exit;ExitCode=17;Phase=install;Progress=NOT_STARTED;ElapsedSeconds=0
