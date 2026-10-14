@@ -500,7 +500,13 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       ACCEPT WITH CONDITIONS; [four WDK builds `t5-fix5`](evidence/2026-10-14/exact-t5-fix5-summary.txt) 0/0, imports PASS, signed
       `93788401…0064`. Activation holds added: unbounded oplock-acknowledge waits of mutating epoch operations keep the fail-closed
       timeout; NOTIFY-only `FSCTL_DELETE_USN_JOURNAL` follow-up; the bound publication's FSCTL classification needs the same distinction.
-    - [ ] `m2t5boot7`: t5-fix5 driver with the t5-pipe4 agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
+    - [x] `m2t5boot7` (t5-fix5 driver, t5-pipe4 agent): **booted, policy accepted, agent Ready** — both fixes confirmed. Every save was
+      then denied (0/256; stopped on repeated identical failures; restoration PASS): the service refused each v20 attach PREPARE because
+      its data open of the private stage hit ERROR_SHARING_VIOLATION against the driver's writable backing handle, opened with no
+      sharing (unchanged since k11; the protocol-18 agent never ran the v20 attach flow). Fix `a3f46954`: operations 12/13/15/19 read
+      identity and length through a FILE_READ_ATTRIBUTES handle (no-follow, regular-file, single-link, FILE_ID_INFO checks kept); other
+      attach operations keep a data open without write sharing. [Matrix `t5-attach1`](evidence/2026-10-14/exact-agent-matrix-t5-attach1-summary.txt) PASS 1,491 / 2,071.
+    - [ ] Next boot: t5-fix5 driver with the fixed agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
