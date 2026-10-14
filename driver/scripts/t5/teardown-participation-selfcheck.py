@@ -228,23 +228,43 @@ class TeardownParticipation(unittest.TestCase):
         reserve = body('StageNativeRecords.c', 'NativeReserve')
         for locked in re.findall(r'NativeAcquire\(.*?NativeRelease\(', reserve, re.S):
             self.assertNotIn('Binding->', locked)
-        # Every reader caller passes rows from a nonpaged allocation made in the same function.
+        # Every reader caller, in any kernel source, passes rows from a nonpaged
+        # allocation made in the enclosing function itself.
         callers = 0
-        for file in ('StageStream.c', 'StageNativeWire.c', 'StageNativeObservation.c'):
-            text = code(K / file)
-            for match in re.finditer(r'(SafeUploadStageNativeReadPage|SafeUploadStagePublicOpenReadPage)\(([^;]*?)\);', text, re.S):
+        for path in sorted(K.glob('*.c')):
+            text = code(path)
+            for match in re.finditer(r'\b(SafeUploadStageNativeReadPage|SafeUploadStagePublicOpenReadPage|NativeReadPage)\s*\(([^;]*?)\);', text, re.S):
                 args = [a.strip() for a in match.group(2).split(',')]
-                base = re.match(r'&?(\w+)', args[2]).group(1)
-                field = args[2].split('->')[1].strip() if '->' in args[2] else None
-                owner = text[:match.start()]
-                if field == 'RevisionProbe':
-                    allocation = re.findall(r'work->RevisionProbe\s*=\s*ExAllocatePool2\(\s*(POOL_FLAG_\w+)', owner)
+                rows = args[2]
+                if ' ' in rows or rows == 'Rows':
+                    continue  # a definition, or an exported wrapper forwarding its caller's rows
+                opening = text.rfind('\n{', 0, match.start())
+                level, i = 1, opening + 2
+                while level:
+                    level += (text[i] == '{') - (text[i] == '}'); i += 1
+                function = text[opening:i]
+                self.assertLess(match.start(), i, (path.name, rows))
+                if rows.endswith('->RevisionProbe'):
+                    allocations = re.findall(r'work->RevisionProbe\s*=\s*ExAllocatePool2\(\s*(POOL_FLAG_\w+)', function)
                 else:
-                    allocation = re.findall(r'\b' + base + r'\s*=\s*ExAllocatePool2\(\s*(POOL_FLAG_\w+)', owner)
-                self.assertTrue(allocation, (file, args[2]))
-                self.assertEqual('POOL_FLAG_NON_PAGED', allocation[-1], (file, args[2]))
+                    base = re.match(r'&?(\w+)', rows).group(1)
+                    allocations = re.findall(r'\b' + base + r'\s*=\s*ExAllocatePool2\(\s*(POOL_FLAG_\w+)', function)
+                self.assertEqual(['POOL_FLAG_NON_PAGED'], allocations, (path.name, rows))
                 callers += 1
         self.assertEqual(9, callers)
+
+    def test_facts_workers_mark_attempts_only_after_a_successful_first_page(self):
+        # An allocation failure must not record the revision as attempted, or a
+        # later event would skip its facts (second re-review, finding 5).
+        for name in ('StagePublicOpenFlushFacts', 'StageNativeFlushFacts'):
+            worker = body('StageStream.c', name)
+            allocation = worker.index('ExAllocatePool2(POOL_FLAG_NON_PAGED')
+            self.assertEqual(1, worker.count('ExAllocatePool2('), name)
+            self.assertIsNone(re.search(r'attempted\w+\s*=', worker[:allocation]), name)
+            after = worker[allocation:]
+            self.assertTrue(re.match(r'ExAllocatePool2\(POOL_FLAG_NON_PAGED,[^;]*;\s*if \(rows == NULL\) return;', after, re.S), name)
+            loop = after[after.index('do {'):]
+            self.order(loop, 'ReadPage(', 'if (!NT_SUCCESS(status)) break;', 'if (offset == 0)', 'attemptedRevision =')
 
     def test_attach_capture_reserved_before_any_capture(self):
         # Capacity covers captures in progress, not only visible transactions (finding 3).
