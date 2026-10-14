@@ -24,6 +24,7 @@ internal sealed class StagedStageFile : IDisposable
     private const uint GenericRead = 0x80000000;
     private const uint DeleteAccess = 0x00010000;
     private const uint FileReadAttributes = 0x00000080;
+    private const uint Synchronize = 0x00100000;
     private const uint ShareRead = 0x00000001;
     private const uint ShareWrite = 0x00000002;
     private const uint ShareDelete = 0x00000004;
@@ -47,6 +48,52 @@ internal sealed class StagedStageFile : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         path = Path.GetFullPath(path);
         return OperatingSystem.IsWindows() ? OpenWindows(path, allowWriters) : OpenPortable(path, allowWriters);
+    }
+
+    /// <summary>
+    /// Reads the identity and length of a private stage that a kernel writer
+    /// may hold open. The driver keeps a writable stage backing open with no
+    /// sharing while a writer is attached, so any data-access open fails with a
+    /// sharing violation (m2t5boot7: every attach PREPARE refused, every save
+    /// denied). Share modes govern data and delete access only: this handle
+    /// requests FILE_READ_ATTRIBUTES alone, never reads or locks the bytes, and
+    /// keeps the no-follow, regular-file, single-link and FILE_ID_INFO checks.
+    /// </summary>
+    public static (StagedStageIdentity Identity, long Length) ReadAttachedMetadata(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        path = Path.GetFullPath(path);
+        if (!OperatingSystem.IsWindows())
+        {
+            using StagedStageFile portable = OpenPortable(path, allowWriters: true);
+            return (portable.Identity, portable.Stream.Length);
+        }
+        using SafeFileHandle handle = CreateFile(path, FileReadAttributes | Synchronize,
+            ShareRead | ShareWrite | ShareDelete, IntPtr.Zero, OpenExisting, OpenReparsePoint, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            var error = new Win32Exception(Marshal.GetLastWin32Error());
+            throw error.NativeErrorCode switch
+            {
+                2 => new FileNotFoundException("Private stage was not found.", path),
+                3 => new DirectoryNotFoundException("Private stage directory was not found."),
+                5 => new UnauthorizedAccessException("Private stage could not be opened.", error),
+                _ => new IOException("Private stage could not be opened.", error)
+            };
+        }
+        if (!GetFileInformationByHandle(handle, out ByHandleFileInformation basic))
+            throw new IOException("Private stage identity could not be read.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        if ((basic.Attributes & (AttributeDirectory | AttributeReparsePoint)) != 0 || basic.LinkCount != 1)
+            throw new IOException("Private stage must be a single-link regular file without reparse points.");
+        if (!GetFileInformationByHandleEx(handle, FileIdInfoClass, out FileIdInfo fileId,
+                checked((uint)Marshal.SizeOf<FileIdInfo>())))
+            throw new IOException("Private stage FILE_ID_INFO could not be read.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        if (!GetFileSizeEx(handle, out long length))
+            throw new IOException("Private stage length could not be read.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        return (new StagedStageIdentity(fileId.VolumeSerialNumber, fileId.FileId.High, fileId.FileId.Low), length);
     }
 
     /// <summary>Reads a no-follow identity for the existing destination parent directory.</summary>

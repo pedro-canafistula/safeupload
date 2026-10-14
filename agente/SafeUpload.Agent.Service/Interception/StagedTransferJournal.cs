@@ -845,10 +845,22 @@ public sealed partial class StagedTransferJournal
                 // abort receipt, and remains safe if the private stage is gone.
                 return StageV20WireResult.AttachAlreadyCommitted;
 
-            using (StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath,
-                       allowWriters: request.Operation is 12 or 13 or 15 or 19))
+            // PREPARE, COMMIT, COMPLETION and the CLEANUP receipt run while the
+            // driver's writer holds the stage open without sharing: verify them
+            // through a metadata-only handle. The other operations keep a data
+            // open without write sharing, which still fails if a writer remains.
+            bool writerAttached = request.Operation is 12 or 13 or 15 or 19;
+            StagedStageIdentity? attachedIdentity = null;
+            long attachedLength = 0;
+            if (writerAttached)
+                (attachedIdentity, attachedLength) = StagedStageFile.ReadAttachedMetadata(current.Transfer.StagePath);
+            using (StagedStageFile? stage = writerAttached ? null
+                       : StagedStageFile.Open(current.Transfer.StagePath, allowWriters: false))
             {
-                if (stage.Identity != request.Version.StageIdentity)
+                StagedStageIdentity stageIdentity = stage?.Identity ?? attachedIdentity
+                    ?? throw new IOException("The v20 attachment stage identity is unavailable.");
+                long StageLength() => stage?.Stream.Length ?? attachedLength;
+                if (stageIdentity != request.Version.StageIdentity)
                     throw new IOException("The v20 attachment stage identity changed.");
                 if (current.DeleteVersionIdentity is not null && PathExists(destination))
                     throw new IOException("The public destination reappeared during private attachment.");
@@ -975,7 +987,7 @@ public sealed partial class StagedTransferJournal
                             current.HandleObservedRequestIdV20 is not null || current.RetireRequestIdV20 is not null ||
                             current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
                             current.SealedOnce || current.SealedLength is not null || current.DiscardRequestedAtUtc is not null ||
-                            stage.Stream.Length != 0)
+                            StageLength() != 0)
                             throw new IOException("RetireAttachedPrivate requires an exact zero-byte attached stage with no use receipt.");
                         await BeginAttachmentRetirementCoreAsync(current, request,
                             StagedDiscardKind.RetireAttachedPrivate,
