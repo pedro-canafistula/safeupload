@@ -1,0 +1,15 @@
+# T5 focused review of the attachment reservation release (38e188c0) — Sol 6.1 xhigh (2026-10-14)
+
+Reviewer: `gpt-6.1-sol`, `reasoning_effort=xhigh`, read-only (Codex session `01a139a4-a7a0-71f3-b37f-af840da00d3f`). Input: commit `38e188c0`. Verbatim final report; checkout paths shortened.
+
+**ACCEPT WITH CONDITIONS** for the next dormant Verifier boot of `38e188c0`. No new safety or lifetime blocker found. Existing build/import gates and bound-path NotReady holds remain required; finding 4 remains a recovery limitation.
+
+1. **Informational — correct successful-attachment release point.** [StageStream.c:4112](driver/SafeUpload.Minifilter/StageStream.c:4112) converges after final validation, exposure arbitration and CREATE completion. Clearing at `3999` would precede remaining failures. The namespace lock serializes concurrent disposition; `DiscardOnClose`/`Discarded` preserve real discard, and [the helper:1765](driver/SafeUpload.Minifilter/StageStream.c:1765) preserves allocation RPC/receipt and discard RPC holds. Rename exchanges, native/bound records and tombstones retain their separate fences. This is the successful attachment endpoint; exact terminal retirement also clears reservations. **Required change: none.**
+
+2. **Informational — releasing the barrier does not expose private bytes.** [Owner-view lookup:1706](driver/SafeUpload.Minifilter/StageStream.c:1706) remains process-scoped: foreign readers reach ordinary public bytes or absence. Foreign writers still encounter the existing-view conflict in [allocation admission:1791](driver/SafeUpload.Minifilter/StageStream.c:1791). Clearing does not supply inspection, publication or delete authority, alter generations, or supersede a delete. Seal still requires the cleanup receipt at [5774](driver/SafeUpload.Minifilter/StageStream.c:5774). **Required change: none; retain independent byte assertions in the planned run.**
+
+3. **Informational — unconditional queueing is safe.** [StageQueueLocked:5479](driver/SafeUpload.Minifilter/StageStream.c:5479) deduplicates under `StageListLock`. The transaction’s stream pin remains until [4152](driver/SafeUpload.Minifilter/StageStream.c:4152), preventing reclamation across completion and requeue. A stream with live handles simply parks again. **Required change: none.**
+
+4. **Medium, pre-existing — ambiguous attachment replay can remain stranded.** A lost op15 reply returns at [3618](driver/SafeUpload.Minifilter/StageStream.c:3618), retaining `AttachCompletionPending` and the reservation. The worker stops at `5774`; a later owner CREATE is rejected by [2204](driver/SafeUpload.Minifilter/StageStream.c:2204) before reaching `AllowAttachResume`. Thus this fix covers successful V19 allocation followed by V20 attachment, but does not repair interrupted reattachment. Exact op16/kind-5 retirement already clears its holds. **Required change before recovery qualification:** provide exact attachment replay while preserving the cross-owner barrier, and cover lost-reply/cancellation cases. Do not broadly clear reservations on failure.
+
+Read-only source review; no edits, tests, builds or VMs performed.

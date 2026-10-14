@@ -506,7 +506,18 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       sharing (unchanged since k11; the protocol-18 agent never ran the v20 attach flow). Fix `a3f46954`: operations 12/13/15/19 read
       identity and length through a FILE_READ_ATTRIBUTES handle (no-follow, regular-file, single-link, FILE_ID_INFO checks kept); other
       attach operations keep a data open without write sharing. [Matrix `t5-attach1`](evidence/2026-10-14/exact-agent-matrix-t5-attach1-summary.txt) PASS 1,491 / 2,071.
-    - [ ] Next boot: t5-fix5 driver with the fixed agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
+    - [x] `m2t5boot8` (t5-fix5 driver, t5-attach1 agent; Ready): cycle 1's coordinator read of the just re-saved
+      `C:\Protected\t4\same-1.txt` was refused with STATUS_DELETE_PENDING by the driver (deny ring; exit 19; restoration PASS). Cause
+      (Sol RCA, confirmed independently): the successful v20 attachment cleared its receipts and reservation link but never the
+      allocation's `PrivateDeleteReserved`, so every other process's open of the name was refused and the worker parked before seal.
+      Fix `38e188c0` clears it in the final successful attachment block unless the stream is delete-on-close or discarded, and requeues
+      the stream; source control 17 tests, mutation caught. [Focused review](evidence/2026-10-14/t5-fix6-review-sol61.md) ACCEPT WITH
+      CONDITIONS; [four WDK builds `t5-fix6`](evidence/2026-10-14/exact-t5-fix6-summary.txt) 0/0, [imports PASS](evidence/2026-10-14/exact-t5-fix6-imports.txt),
+      signed `02B73B58…7E13`. Recovery-qualification hold: a lost op15 reply leaves `AttachCompletionPending` and the reservation, and
+      a later owner CREATE is refused before `AllowAttachResume`; exact attachment replay (lost-reply/cancellation controls) is required
+      without broadly clearing reservations on failure. Follow-up, not applied: a foreign read during the allocation window still gets
+      a sharing violation.
+    - [ ] `m2t5boot9`: t5-fix6 driver with the t5-attach1 agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
