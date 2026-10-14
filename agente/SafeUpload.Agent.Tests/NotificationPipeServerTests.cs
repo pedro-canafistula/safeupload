@@ -1,5 +1,6 @@
 using System.IO.Pipes;
 using Microsoft.Extensions.Logging.Abstractions;
+using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Service.Notifications;
 
 namespace SafeUpload.Agent.Tests;
@@ -25,6 +26,34 @@ public sealed class NotificationPipeServerTests
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 await client.ConnectAsync(timeout.Token);
                 Assert.True(client.IsConnected, $"client {i} could not connect");
+            }
+        }
+        finally
+        {
+            await server.StopAsync(CancellationToken.None);
+        }
+    }
+
+    // The m2t5boot5 path itself: each client receives the status line, then leaves while the server has
+    // nothing more to write. Only the server's pending read can notice that departure.
+    [Fact]
+    public async Task Clients_that_read_the_status_and_leave_release_their_instances()
+    {
+        string name = "SafeUpload.Agent.Test." + Guid.NewGuid().ToString("N");
+        var hub = NotificationTestHub.Create();
+        hub.Publish(new StatusNotification(1, 1, true, AdmissionCoverage: AdmissionCoverageStatus.Ready));
+        var server = new NotificationPipeServer(hub, NullLogger<NotificationPipeServer>.Instance, name);
+        await server.StartAsync(CancellationToken.None);
+        try
+        {
+            for (int i = 0; i < 40; ++i)
+            {
+                using var client = new NamedPipeClientStream(".", name, PipeDirection.In, PipeOptions.Asynchronous);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await client.ConnectAsync(timeout.Token);
+                using var reader = new StreamReader(client, NotificationProtocol.Encoding);
+                string? line = await reader.ReadLineAsync(timeout.Token);
+                Assert.True(line is not null && line.Contains("\"admissionCoverage\":\"Ready\""), $"client {i}: {line}");
             }
         }
         finally

@@ -58,24 +58,43 @@ public sealed class NotificationPipeServer : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            NamedPipeServerStream? pipe = null;
             try
             {
-                var pipe = CreatePipe(_pipeName);
+                pipe = CreatePipe(_pipeName);
 
-                await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false);
+                try
+                {
+                    await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false);
+                }
+                catch (IOException ex)
+                {
+                    // A client that connected and left before the accept finished.
+                    // Not a server failure: release this instance (it was leaked
+                    // until finalization before) and accept the next client.
+                    _logger.LogDebug(ex, "Cliente saiu antes de a conexao ser aceita");
+                    pipe.Dispose();
+                    pipe = null;
+                    await Task.Delay(TimeSpan.FromMilliseconds(50), stoppingToken).ConfigureAwait(false);
+                    continue;
+                }
 
                 // Cada cliente é atendido em sua própria tarefa. O laço volta
                 // imediatamente a aceitar: se ele esperasse o cliente terminar,
                 // o segundo aplicativo a abrir ficaria sem conexão até o
                 // primeiro fechar.
-                _ = ServeAsync(pipe, stoppingToken);
+                var accepted = pipe;
+                pipe = null; // ServeAsync owns and disposes it
+                _ = ServeAsync(accepted, stoppingToken);
             }
             catch (OperationCanceledException)
             {
+                pipe?.Dispose();
                 break;
             }
             catch (Exception ex)
             {
+                pipe?.Dispose();
                 // O laço de accept nunca pode morrer por causa de uma falha de
                 // um cliente: seria o serviço parar de notificar até ser
                 // reiniciado. Registra, respira e continua aceitando.
