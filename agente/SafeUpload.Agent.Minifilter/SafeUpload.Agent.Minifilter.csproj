@@ -26,7 +26,8 @@
     <DefineConstants>$(DefineConstants);SAFEUPLOAD_ADMISSION_EVIDENCE</DefineConstants>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(SafeUploadAdmissionEvidence)' == 'true'">
+  <!-- Wire-contract tests run in normal and feature profiles alike. -->
+  <ItemGroup>
     <InternalsVisibleTo Include="SafeUpload.Agent.Tests" />
   </ItemGroup>
 

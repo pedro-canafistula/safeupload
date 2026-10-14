@@ -355,6 +355,14 @@ retry deadline from the failed attempt's timer arm, so unrelated work or a stale
 scheduling hint, never timer arming authority. Existing KeReadStateTimer arming,
 DPC wake-only behavior and idle cancellation remain. The worker resolves a rename fence before attempting op19.
 
+The follow-up to the `2e0cd707` integration review tags stage single-link/reparse and parent reparse/type violations as
+permanent refusals at their structural checks; native metadata reads and journal storage failures remain transient. Disconnect
+parks receipt causes and excludes all service exchanges, including late in-flight replies, from the timer census without
+clearing requests, pending/in-flight ownership or exact tuples. Local drain and owner-exit overflow work still runs while
+disconnected. A queued reconnect sweep is retained until reconciliation succeeds, and all five RPC collectors require an
+available, reconciled, ready service. Genuine drain/overflow waits keep their existing timer behavior; receipt-only disconnect
+cancels the timer and resets backoff. Neither an unrelated wake nor a stale DPC unparks a refused receipt.
+
 **Scope limitation:** this repairs unbound, same-parent local fixed NTFS renames. Cross-parent moves still retain the allocation
 parent and cannot pass op19's current-directory identity check; seeded/bound moves still lack exact destination/security/seed
 rebinding. They remain private/held with existing failure diagnostics, without a new refusal of the application's rename.
@@ -365,11 +373,17 @@ Agent controls cover occupied 1→2→3, op19→seal, clean/BLOCK bytes, higher 
 abort, prepared crash hold, lost reply/restart, before/after-replacement faults and each altered source field. Wire controls cover
 version/size/name/padding/result faults. Source controls in [rename-receipt-selfcheck.py](scripts/t5/rename-receipt-selfcheck.py)
 and [reconcile-retry-selfcheck.py](scripts/t5/reconcile-retry-selfcheck.py) include negative mutations for adoption order, removed
-ACK checks, local/abort generation changes, lost in-flight accounting and refusal polling. These are source checks, not build or
+ACK checks, local/abort generation changes, lost in-flight accounting and refusal polling. Handler controls distinguish three
+real structural violations from a missing-stage read and before/after-replacement storage faults, preserving exact op19 replay.
+The clean replacement control uses distinct generation-2/3 bytes and advances its expected public baseline only after publication;
+it still checks that rename alone leaves the current public bytes unchanged. Normal-profile wire tests retain internal validator
+access without enabling feature symbols, and fault-injection constructors supply both required internal-overload arguments.
+These are component/source controls, not build or
 protected-pair qualification. The orchestrator must run the four WDK/PREfast/ApiValidator builds and complete normal/feature ×
-Debug/Release agent matrix and verify the new transport size/layout on Windows. The independent Sol 6.1 xhigh source review
-accepted this coherent receipt/retry change with those build/runtime conditions; this is separate from matched-pair milestone
-qualification and its final adversarial review. This checkout's work remains uncommitted.
+Debug/Release agent matrix and verify the new transport size/layout on Windows. The initial source acceptance did not predict the
+normal-debug test compile failure or close the subsequent independent integration review's three findings. The follow-up fixes
+received Sol 6.1 xhigh source acceptance with those build/runtime conditions and disconnected local-worker controls; they remain
+uncommitted here. This is separate from matched-pair milestone qualification and its final adversarial review.
 
 ## 6. Durable compatibility
 

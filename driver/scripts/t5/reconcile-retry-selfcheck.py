@@ -75,6 +75,53 @@ def exchange_contract(source):
     require(source.count('StageRetryMs = 0;') == 1, 'attempts must not reset backoff elsewhere')
 
 
+def disconnect_contract(source):
+    def require(condition, message):
+        if not condition: raise AssertionError(message)
+    disconnected = body(source, 'SafeUploadStageServiceDisconnected')
+    connected = body(source, 'SafeUploadStageServiceConnected')
+    timer = body(source, 'StageUpdateRetryTimer')
+    worker = body(source, 'StageWorker')
+    pass_ = body(source, 'StageWorkerPass')
+    require(disconnected.index('StageAcquire(&StageNamespaceResource);') <
+            disconnected.index('StageServiceAvailable = FALSE;') <
+            disconnected.index('StageStreamAcquireSpinLock(&StageListLock, &irql);') <
+            disconnected.index('StageStreamReleaseSpinLock(&StageListLock, irql);') <
+            disconnected.index('StageUpdateRetryTimer();') <
+            disconnected.index('StageRelease(&StageNamespaceResource);'), 'park then cancel under the owning locks')
+    for field in ('HandleReceiptWait', 'RenameWait', 'Wait'):
+        require(f'if (stream->{field} == STAGE_WAIT_EXCHANGE) stream->{field} = STAGE_WAIT_SERVICE;' in disconnected,
+                'disconnect parks exchange causes without changing genuine drain waits')
+    writes = re.findall(r'stream->(\w+)\s*=(?!=)', disconnected)
+    require(sorted(writes) == sorted(['HandleReceiptWait', 'RenameWait', 'Wait']),
+            'disconnect must retain pending/in-flight/exact-request bookkeeping')
+    require(re.search(r'if \(stream->Wait == STAGE_WAIT_DRAIN\) \{ drain = TRUE; \+\+waiting; \}\s*'
+                      r'else if \(\s*#if SAFEUPLOAD_STAGING_PROTOTYPE\s*StageServiceAvailable &&\s*#endif\s*'
+                      r'\(stream->Wait == STAGE_WAIT_EXCHANGE\s*#if SAFEUPLOAD_STAGING_PROTOTYPE\s*'
+                      r'\|\| stream->HandleReceiptInFlight \|\| stream->RenameRpcInFlight\s*#endif\s*\)\) \+\+waiting;', timer),
+            'disconnected pending AND late in-flight replies cannot count; drain still counts')
+    require('if (StageServiceAvailable && InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) &&' in timer,
+            'disconnected reconciliation cannot count')
+    require('if (StageServiceAvailable && !SafeUploadStageMandatoryTeardownActive()' in worker,
+            'unrelated drain/overflow/stale-DPC wakes cannot send disconnected reconciliation')
+    require(re.search(r'\(!StageServiceAvailable \|\| !InterlockedCompareExchange\(&StageReconcileNeeded, 0, 0\)\)\) \{\s*'
+                      r'StageWorkerPass\(', worker), 'disconnected wakes must still perform local drain/overflow work')
+    require('if (!StageServiceAvailable || InterlockedCompareExchange(&StageReconcileNeeded, 0, 0)) sweep = FALSE;' in pass_
+            and 'if (sweep) StageSweepRequested = FALSE;' in pass_, 'only a reconciled channel consumes the unpark sweep')
+    require(re.search(r'if \(StageServiceAvailable && !InterlockedCompareExchange\(&StageReconcileNeeded, 0, 0\) &&\s*'
+                      r'SafeUploadStageProtocolIsReady\(\)\) \{\s*StageCollectHandleReceiptRpcs\(HandleRpcs\);\s*'
+                      r'StageCollectRenameRpcs\(RenameRpcs\);\s*StageCollectSealRpcs\(SealRpcs\);\s*'
+                      r'StageCollectDiscardRpcs\(Rpcs\);\s*StageCollectAllocationRecoveryRpcs\(RecoveryRpcs\);\s*\}', pass_),
+            'disconnected local work must not collect any service RPC')
+    require(pass_.rfind('StageUpdateRetryTimer();') > pass_.index('StageProcessStream('),
+            'local drain/overflow work maintains or cancels its timer at the end of the pass')
+    require(connected.index('StageAcquire(&StageNamespaceResource);') <
+            connected.index('StageServiceAvailable = TRUE;') < connected.index('StageReconcileWait = STAGE_WAIT_EXCHANGE;') <
+            connected.index('StageSweepRequested = TRUE;') < connected.index('KeSetEvent('),
+            'connect wakes reconciliation before the unpark sweep')
+    require('StageServiceAvailable = FALSE;' in body(source, 'SafeUploadStageInitialize'), 'start disconnected')
+
+
 class RetryTimer(unittest.TestCase):
     def setUp(self):
         self.text = code(SOURCE)
@@ -170,10 +217,57 @@ class RetryTimer(unittest.TestCase):
         self.assertIn('InterlockedExchange(&StageReconcileNeeded, 0);', accepted)
 
     def test_disconnect_updates_the_timer_under_the_namespace_lock(self):
-        disconnected = body(self.text, 'SafeUploadStageServiceDisconnected')
-        self.assertRegex(disconnected, r'StageReconcileWait = STAGE_WAIT_SERVICE;\s*StageUpdateRetryTimer\(\);\s*'
-                                       r'StageRelease\(&StageNamespaceResource\);')
-        self.assertLess(disconnected.index('StageAcquire(&StageNamespaceResource)'), disconnected.index('StageUpdateRetryTimer()'))
+        disconnect_contract(self.text)
+
+    def test_disconnect_eligibility_and_bookkeeping_mutations_are_caught(self):
+        mutations = [
+            ('StageServiceAvailable &&', 'TRUE &&'),
+            ('StageServiceAvailable = FALSE;', 'StageServiceAvailable = TRUE;'),
+            ('if (stream->HandleReceiptWait == STAGE_WAIT_EXCHANGE)', 'if (FALSE)'),
+            ('if (stream->RenameWait == STAGE_WAIT_EXCHANGE)', 'if (FALSE)'),
+            ('if (stream->Wait == STAGE_WAIT_EXCHANGE) stream->Wait = STAGE_WAIT_SERVICE;',
+             'stream->Wait = STAGE_WAIT_SERVICE;'),
+            ('StageServiceAvailable = FALSE;', 'StageServiceAvailable = FALSE; stream->HandleReceiptPending = FALSE;'),
+            ('StageServiceAvailable = FALSE;', 'StageServiceAvailable = FALSE; stream->RenameRpcInFlight = FALSE;'),
+            ('StageServiceAvailable = FALSE;', 'StageServiceAvailable = FALSE; stream->RenameExchange = NULL;'),
+            ('if (stream->Wait == STAGE_WAIT_DRAIN)', 'if (StageServiceAvailable && stream->Wait == STAGE_WAIT_DRAIN)'),
+            ('if (StageServiceAvailable && !SafeUploadStageMandatoryTeardownActive()',
+             'if (!SafeUploadStageMandatoryTeardownActive()'),
+            ('(!StageServiceAvailable || !InterlockedCompareExchange(&StageReconcileNeeded, 0, 0))',
+             '(!InterlockedCompareExchange(&StageReconcileNeeded, 0, 0))'),
+            ('if (sweep) StageSweepRequested = FALSE;', 'StageSweepRequested = FALSE;'),
+            ('if (!StageServiceAvailable || InterlockedCompareExchange(&StageReconcileNeeded, 0, 0)) sweep = FALSE;', ''),
+            ('if (StageServiceAvailable && !InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) &&',
+             'if (TRUE &&'),
+        ]
+        for old, new in mutations:
+            with self.subTest(mutation=old):
+                self.assertIn(old, self.text)
+                with self.assertRaises((AssertionError, ValueError)): disconnect_contract(self.text.replace(old, new))
+
+    def test_transient_disconnect_idle_late_reply_and_reconnect_census(self):
+        disconnect_contract(self.text)
+        # Evaluate the production feature-profile census expression, not a
+        # second copy of its boolean logic. Lifecycle writes/locks, unpark and
+        # idle cancellation are checked separately above against production.
+        expression = re.search(r'else if \((.*?)\) \+\+waiting;', self.timer, re.S)[1]
+        expression = re.sub(r'^\s*#(?:if|endif)[^\n]*', '', expression, flags=re.M)
+        expression = expression.replace('&&', ' and ').replace('||', ' or ').replace('stream->', '')
+        expression = ' '.join(expression.split())
+        self.assertRegex(expression, r'^[-\w\s()=]+$')
+        def waiting(available, wait, handle=False, rename=False):
+            variables = dict(StageServiceAvailable=available, Wait=wait, STAGE_WAIT_EXCHANGE=2,
+                             HandleReceiptInFlight=handle, RenameRpcInFlight=rename)
+            return int(wait == 1 or eval(expression, {'__builtins__': {}}, variables))
+        self.assertEqual(1, waiting(True, 2))  # typed transient -> EXCHANGE/backoff
+        self.assertEqual(0, waiting(False, 3))  # disconnect -> SERVICE -> idle cancellation
+        self.assertEqual(0, waiting(False, 3, True, True))  # retain in-flight ownership
+        self.assertEqual(0, waiting(False, 2, True, True))  # late transient cannot rearm
+        self.assertEqual(1, waiting(False, 1, True, True))  # genuine drain remains owed
+        self.assertEqual(0, waiting(True, 3))  # connect alone does not unpark an answered refusal
+        self.assertEqual(1, waiting(True, 2))  # reconciliation sweep -> EXCHANGE
+        self.assertEqual(0, waiting(True, 0))  # exact ACK ends the obligation
+        self.assertRegex(self.timer, r'if \(waiting == 0\) \{\s*if \(StageRetryArmed\) \(VOID\)KeCancelTimer')
 
     def test_the_dpc_only_records_the_expiry_and_wakes_the_worker(self):
         dpc = body(self.text, 'StageRetryDpcRoutine')

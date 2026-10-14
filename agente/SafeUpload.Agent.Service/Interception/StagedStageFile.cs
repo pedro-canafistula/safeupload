@@ -85,7 +85,7 @@ internal sealed class StagedStageFile : IDisposable
             throw new IOException("Private stage identity could not be read.",
                 new Win32Exception(Marshal.GetLastWin32Error()));
         if ((basic.Attributes & (AttributeDirectory | AttributeReparsePoint)) != 0 || basic.LinkCount != 1)
-            throw new IOException("Private stage must be a single-link regular file without reparse points.");
+            throw StagedRequestRefusal.Create("Private stage must be a single-link regular file without reparse points.");
         if (!GetFileInformationByHandleEx(handle, FileIdInfoClass, out FileIdInfo fileId,
                 checked((uint)Marshal.SizeOf<FileIdInfo>())))
             throw new IOException("Private stage FILE_ID_INFO could not be read.",
@@ -105,7 +105,7 @@ internal sealed class StagedStageFile : IDisposable
         for (string? current = path; current is not null; current = Path.GetDirectoryName(current))
         {
             if (Directory.Exists(current) && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                throw new IOException("The destination parent contains a reparse point.");
+                throw StagedRequestRefusal.Create("The destination parent contains a reparse point.");
         }
         return OperatingSystem.IsWindows() ? ReadWindowsDirectoryIdentity(path) : ReadPortableDirectoryIdentity(path);
     }
@@ -222,11 +222,13 @@ internal sealed class StagedStageFile : IDisposable
             OpenReparsePoint | BackupSemantics, IntPtr.Zero);
         if (handle.IsInvalid) throw new IOException("The destination parent identity could not be opened.",
             new Win32Exception(Marshal.GetLastWin32Error()));
-        if (!GetFileInformationByHandle(handle, out ByHandleFileInformation basic) ||
-            (basic.Attributes & AttributeDirectory) == 0 ||
-            (basic.Attributes & AttributeReparsePoint) != 0 ||
-            !GetFileInformationByHandleEx(handle, FileIdInfoClass, out FileIdInfo fileId,
-                checked((uint)Marshal.SizeOf<FileIdInfo>())) )
+        if (!GetFileInformationByHandle(handle, out ByHandleFileInformation basic))
+            throw new IOException("The destination parent identity could not be read.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        if ((basic.Attributes & AttributeDirectory) == 0 || (basic.Attributes & AttributeReparsePoint) != 0)
+            throw StagedRequestRefusal.Create("The destination parent must be a directory without reparse points.");
+        if (!GetFileInformationByHandleEx(handle, FileIdInfoClass, out FileIdInfo fileId,
+                checked((uint)Marshal.SizeOf<FileIdInfo>())))
             throw new IOException("The destination parent identity could not be verified.",
                 new Win32Exception(Marshal.GetLastWin32Error()));
         return new StagedStageIdentity(fileId.VolumeSerialNumber, fileId.FileId.High, fileId.FileId.Low);
@@ -288,7 +290,7 @@ internal sealed class StagedStageFile : IDisposable
                 throw new IOException("Private stage identity could not be read.",
                     new Win32Exception(Marshal.GetLastWin32Error()));
             if ((basic.Attributes & (AttributeDirectory | AttributeReparsePoint)) != 0 || basic.LinkCount != 1)
-                throw new IOException("Private stage must be a single-link regular file without reparse points.");
+                throw StagedRequestRefusal.Create("Private stage must be a single-link regular file without reparse points.");
             if (!GetFileInformationByHandleEx(handle, FileIdInfoClass, out FileIdInfo fileId,
                     checked((uint)Marshal.SizeOf<FileIdInfo>())))
                 throw new IOException("Private stage FILE_ID_INFO could not be read.",
@@ -308,7 +310,7 @@ internal sealed class StagedStageFile : IDisposable
     private static StagedStageFile OpenPortable(string path, bool allowWriters)
     {
         if ((File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
-            throw new IOException("Private stage must be a regular file without reparse points.");
+            throw StagedRequestRefusal.Create("Private stage must be a regular file without reparse points.");
         var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.Read | FileShare.Delete | (allowWriters ? FileShare.Write : 0),
             4096, FileOptions.SequentialScan);

@@ -6,6 +6,10 @@ using SafeUpload.Agent.Minifilter;
 using System.Text.Json;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Service.Interception;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Extensions.Logging;
+using PortVerdict = SafeUpload.Agent.Minifilter.Verdict;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -147,7 +151,8 @@ public sealed class StagedAttachmentV20Tests : IDisposable
 
         for (int expected = 2; expected <= 3; ++expected)
         {
-            Fixture source = await CreateFixtureAsync(false, target, $"temporary-{expected}.tmp", content);
+            string replacement = $"{content} Replacement generation {expected}.";
+            Fixture source = await CreateFixtureAsync(false, target, $"temporary-{expected}.tmp", replacement);
             await CompleteAttachmentAsync(source, (ulong)(expected * 1000));
             StagedRenameRequestV20 rename = RenameRequest(source, (ulong)(expected * 1000 + 10),
                 target.Transfer.DestinationPath);
@@ -170,14 +175,15 @@ public sealed class StagedAttachmentV20Tests : IDisposable
                 Version = source.Version with { DestinationGeneration = receipt.DestinationGeneration } };
             await ObserveAndSealAsync(adopted, rename.TransactionId + 1);
             Assert.Equal(outcome, await PublishAsync(adopted));
-            Assert.Equal(outcome == StagedTransferOutcome.Released ? content : previousPublic,
+            if (outcome == StagedTransferOutcome.Released) previousPublic = replacement;
+            Assert.Equal(previousPublic,
                 await File.ReadAllTextAsync(target.Transfer.DestinationPath));
             if (outcome == StagedTransferOutcome.Blocked)
             {
                 var blocked = await source.Journal.ReadAsync(source.Transfer.TransferId, CancellationToken.None);
                 Assert.Equal(TransferJournalState.Blocked, blocked.State);
                 Assert.Equal(StagedHandbackState.Verified, blocked.HandbackState);
-                Assert.Equal(content, await File.ReadAllTextAsync(blocked.HandbackPath!));
+                Assert.Equal(replacement, await File.ReadAllTextAsync(blocked.HandbackPath!));
             }
         }
     }
@@ -324,7 +330,8 @@ public sealed class StagedAttachmentV20Tests : IDisposable
         await CompleteAttachmentAsync(source, 7101);
         var exact = RenameRequest(source, 7110, target.Transfer.DestinationPath);
         bool injected = false;
-        var journal = new StagedTransferJournal(source.JournalDirectory, writeObserver: (point, entry) =>
+        var journal = new StagedTransferJournal(source.JournalDirectory, requireProtectedParent: false,
+            scanCacheCapacity: 4, writeObserver: (point, entry) =>
         {
             if (injected || entry.LastRenameReceiptV20 is null || point !=
                 (afterReplacement ? StagedJournalWritePoint.AfterReplacement : StagedJournalWritePoint.BeforeReplacement)) return;
@@ -349,6 +356,150 @@ public sealed class StagedAttachmentV20Tests : IDisposable
         Assert.Equal(committed, await restarted.CompleteRenameAsync(source.Transfer.TransferId, 7110,
             source.Transfer.ProcessId, exact.DestinationPath, true, CancellationToken.None, exact));
     }
+
+    [Theory]
+    [InlineData("stage-hardlink", true)]
+    [InlineData("stage-reparse", true)]
+    [InlineData("parent-reparse", true)]
+    [InlineData("storage-read", false)]
+    [InlineData("storage-write-before", false)]
+    [InlineData("storage-write-after", false)]
+    public async Task Op19_handler_parks_structural_refusals_but_returns_exact_retry_for_storage_failure(
+        string fault, bool permanent)
+    {
+        Fixture fixture = await CreateFixtureAsync(false);
+        await CompleteAttachmentAsync(fixture, 9101);
+        var before = await fixture.Journal.ReadAsync(fixture.Transfer.TransferId, CancellationToken.None);
+        var payload = new SafeUploadStageLifecycleV20
+        {
+            Version = Contract.StageExtensionVersion, StructSize = Contract.StageLifecycleV20Size,
+            Operation = Operation.StageHandleObserved, RequestId = 9104,
+            TransferId = fixture.Version.TransferId,
+            DestinationGeneration = checked((ulong)fixture.Version.DestinationGeneration),
+            StageIdentity = WireIdentity(fixture.Version.StageIdentity),
+            DriverInstanceId = fixture.DriverInstanceId,
+            ParentDirectoryIdentity = WireIdentity(fixture.ParentDirectoryIdentity)
+        };
+        SafeUploadRequest request = LifecycleRequest(fixture, payload);
+        var logger = new LifecycleErrorLog();
+        var policy = new LocalPolicyStore(_workspace.PolicyFile);
+        bool injected = false;
+        StagedTransferJournal journal = fixture.Journal;
+        if (fault.StartsWith("storage-write", StringComparison.Ordinal))
+        {
+            journal = new StagedTransferJournal(fixture.JournalDirectory, requireProtectedParent: false,
+                scanCacheCapacity: 4, writeObserver: (point, entry) =>
+                {
+                    if (injected || entry.HandleObservedRequestIdV20 != payload.RequestId || point !=
+                        (fault == "storage-write-after" ? StagedJournalWritePoint.AfterReplacement :
+                            StagedJournalWritePoint.BeforeReplacement)) return;
+                    injected = true;
+                    throw new IOException("injected op19 persistence failure");
+                });
+        }
+        string stage = fixture.Transfer.StagePath;
+        string savedStage = stage + ".saved";
+        string parent = Path.GetDirectoryName(fixture.Transfer.DestinationPath)!;
+        string savedParent = parent + ".saved";
+        Action restore = () => { };
+        try
+        {
+            switch (fault)
+            {
+                case "stage-hardlink":
+                    Assert.True(CreateHardLink(savedStage, stage, IntPtr.Zero));
+                    restore = () => File.Delete(savedStage);
+                    break;
+                case "stage-reparse":
+                    File.Move(stage, savedStage);
+                    restore = () => { File.Delete(stage); File.Move(savedStage, stage); };
+                    File.CreateSymbolicLink(stage, savedStage);
+                    break;
+                case "parent-reparse":
+                    Directory.Move(parent, savedParent);
+                    restore = () => { if (Directory.Exists(parent)) Directory.Delete(parent); Directory.Move(savedParent, parent); };
+                    Directory.CreateSymbolicLink(parent, savedParent);
+                    break;
+                case "storage-read":
+                    File.Move(stage, savedStage);
+                    restore = () => File.Move(savedStage, stage);
+                    break;
+            }
+            var response = MinifilterInterceptor.ApplyStageLifecycleV20(request, journal, fixture.DriverInstanceId,
+                policy, logger, _ => true);
+            Exception error = Assert.Single(logger.Errors);
+            Assert.IsAssignableFrom<IOException>(error);
+            Assert.Equal(permanent, StagedRequestRefusal.IsPermanent(error));
+            Assert.Equal(permanent ? PortVerdict.Deny : PortVerdict.Allow, response.Verdict);
+            if (permanent) Assert.Null(response.Reply);
+            else
+            {
+                var expectedRetry = payload;
+                expectedRetry.Result = StageV20Result.RetryableFailure;
+                Assert.Equal(expectedRetry, Assert.IsType<SafeUploadStageLifecycleV20>(response.Reply));
+            }
+            var durable = await fixture.Journal.ReadAsync(fixture.Transfer.TransferId, CancellationToken.None);
+            if (fault == "storage-write-after")
+                Assert.Equal(payload.RequestId, durable.HandleObservedRequestIdV20);
+            else Assert.Equal(before, durable);
+            if (fault.StartsWith("storage-write", StringComparison.Ordinal)) Assert.True(injected);
+            Assert.False(File.Exists(fixture.Transfer.DestinationPath));
+        }
+        finally { restore(); }
+
+        // Reconciliation retries the same tuple. Even a post-replacement lost
+        // reply is replayed without a second journal mutation or public write.
+        var recovered = MinifilterInterceptor.ApplyStageLifecycleV20(request, journal, fixture.DriverInstanceId,
+            policy, logger, _ => true);
+        Assert.Equal(PortVerdict.Allow, recovered.Verdict);
+        var expected = payload;
+        expected.Result = StageV20Result.HandleLifetimeObserved;
+        Assert.Equal(expected, Assert.IsType<SafeUploadStageLifecycleV20>(recovered.Reply));
+        var completed = await journal.ReadAsync(fixture.Transfer.TransferId, CancellationToken.None);
+        Assert.Equal(payload.RequestId, completed.HandleObservedRequestIdV20);
+        Assert.Equal(before.DestinationGeneration, completed.DestinationGeneration);
+        _ = MinifilterInterceptor.ApplyStageLifecycleV20(request, journal, fixture.DriverInstanceId, policy, logger, _ => true);
+        Assert.Equal(completed, await journal.ReadAsync(fixture.Transfer.TransferId, CancellationToken.None));
+        Assert.Single(logger.Errors);
+        Assert.False(File.Exists(fixture.Transfer.DestinationPath));
+    }
+
+    private static SafeUploadStageIdentityV19 WireIdentity(StagedStageIdentity identity) => new()
+    {
+        VolumeSerialNumber = identity.VolumeSerialNumber, FileIdHigh = identity.FileIdHigh, FileIdLow = identity.FileIdLow
+    };
+
+    private static SafeUploadRequest LifecycleRequest(Fixture fixture, SafeUploadStageLifecycleV20 payload)
+    {
+        var request = new SafeUploadRequest
+        {
+            Version = Contract.Version, StructSize = Contract.RequestSize, Operation = payload.Operation,
+            RequestId = payload.RequestId, RequestorProcessId = checked((uint)fixture.Transfer.ProcessId),
+            Reserved = Contract.StageExtensionVersion, ImageNameLength = Contract.StageLifecycleV20Size,
+            PathLength = checked((uint)fixture.Transfer.DestinationPath.Length * sizeof(char))
+        };
+        Span<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref request, 1));
+        Encoding.Unicode.GetBytes(fixture.Transfer.DestinationPath).CopyTo(bytes[40..]);
+        MemoryMarshal.Write(bytes[1064..], in payload);
+        Assert.True(request.TryReadStagePayload<SafeUploadStageLifecycleV20>(payload.Operation, out _));
+        return request;
+    }
+
+    private sealed class LifecycleErrorLog : ILogger<MinifilterInterceptor>
+    {
+        public List<Exception> Errors { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (exception is not null) Errors.Add(exception);
+        }
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateHardLink(string link, string existing, IntPtr reserved);
 
     private static StagedRenameRequestV20 RenameRequest(Fixture source, ulong transaction, string destination) =>
         new(transaction, source.Version, source.DriverInstanceId, source.ParentDirectoryIdentity, 42,

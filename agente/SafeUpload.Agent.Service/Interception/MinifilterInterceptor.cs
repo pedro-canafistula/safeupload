@@ -994,7 +994,19 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         SafeUploadRequest request)
     {
         if (_stageJournal is null || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
-            _activeDriverInstanceId is not { } activeDriver || request.RequestId == 0 ||
+            _activeDriverInstanceId is not { } activeDriver)
+            return (PortVerdict.Deny, null);
+        return ApplyStageLifecycleV20(request, _stageJournal, activeDriver, _policyStore, _logger, IsExactLiveOwner);
+    }
+
+    // The dispatcher readiness gate above remains instance-scoped. Keeping the
+    // actual request/IO/reply handler here lets controls exercise its catch path
+    // with a real journal, including structural refusals and storage faults.
+    internal static (uint Verdict, SafeUploadStageLifecycleV20? Reply) ApplyStageLifecycleV20(
+        SafeUploadRequest request, StagedTransferJournal journal, Guid activeDriver,
+        IPolicyStore policyStore, ILogger<MinifilterInterceptor> logger, Func<StagedTransfer, bool> isExactLiveOwner)
+    {
+        if (request.RequestId == 0 ||
             request.RequestorProcessId == 0 ||
             !request.TryReadStagePayload<SafeUploadStageLifecycleV20>(request.Operation, out var payload) ||
             payload.Operation != request.Operation || payload.Result != 0 || payload.RequestId != request.RequestId ||
@@ -1010,24 +1022,24 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             int processId = checked((int)request.RequestorProcessId);
             StagedVersionIdentity version = new(payload.TransferId,
                 checked((long)payload.DestinationGeneration), FromWireStageIdentity(payload.StageIdentity));
-            TransferJournalEntry entry = _stageJournal.ReadAsync(payload.TransferId,
+            TransferJournalEntry entry = journal.ReadAsync(payload.TransferId,
                 CancellationToken.None).GetAwaiter().GetResult();
             if (entry.Transfer.Destination != ClassifyStagedDestination(request.TypedFlags))
                 throw StagedRequestRefusal.Create("The v20 attachment volume flags do not match the exact allocation.");
 
-            bool ownerIsLive = IsExactLiveOwner(entry.Transfer);
+            bool ownerIsLive = isExactLiveOwner(entry.Transfer);
             bool commitPolicyAllowed = false;
             if (request.Operation == Operation.StageAttachCommit)
             {
                 using var policyTiming = StagedRequestTiming.Measure("policy-and-owner");
-                Policy policy = _policyStore.LoadCurrentAsync(CancellationToken.None).GetAwaiter().GetResult();
+                Policy policy = policyStore.LoadCurrentAsync(CancellationToken.None).GetAwaiter().GetResult();
                 var operation = new FileOperation(destination, Path.GetFileName(destination),
                     Path.GetExtension(destination), 0, DateTime.MinValue, entry.Transfer.ProcessName,
                     entry.Transfer.ProcessId, destination, entry.Transfer.Destination);
                 commitPolicyAllowed = policy.IsMonitoredDestination(operation);
             }
 
-            uint? result = _stageJournal.ApplyAttachmentV20Async(new StagedAttachmentRequestV20(
+            uint? result = journal.ApplyAttachmentV20Async(new StagedAttachmentRequestV20(
                 request.Operation, payload.RequestId, version, payload.DriverInstanceId,
                 FromWireStageIdentity(payload.ParentDirectoryIdentity), destination,
                 processId), ownerIsLive, commitPolicyAllowed, CancellationToken.None)
@@ -1039,7 +1051,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Stage-v20 lifecycle operation {Operation} refused for request {RequestId}.",
+            logger.LogWarning(ex, "Stage-v20 lifecycle operation {Operation} refused for request {RequestId}.",
                 request.Operation, request.RequestId);
             if (request.Operation == Operation.StageHandleObserved && !StagedRequestRefusal.IsPermanent(ex))
             {

@@ -9,6 +9,7 @@ from pathlib import Path
 import importlib.util
 import re
 import unittest
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[3]
 spec = importlib.util.spec_from_file_location('retry_contract', Path(__file__).with_name('reconcile-retry-selfcheck.py'))
@@ -18,6 +19,9 @@ body, code = retry.body, retry.code
 STREAM = ROOT / 'driver/SafeUpload.Minifilter/StageStream.c'
 PROTOCOL = ROOT / 'driver/SafeUpload.Minifilter/StageProtocol.c'
 AGENT = ROOT / 'agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs'
+STAGE_FILE = ROOT / 'agente/SafeUpload.Agent.Service/Interception/StagedStageFile.cs'
+MINIFILTER_PROJECT = ROOT / 'agente/SafeUpload.Agent.Minifilter/SafeUpload.Agent.Minifilter.csproj'
+ATTACHMENT_TESTS = ROOT / 'agente/SafeUpload.Agent.Tests/StagedAttachmentV20Tests.cs'
 
 
 def require(condition, message):
@@ -96,6 +100,46 @@ def wire_contract(source):
             'Exchange->RenameReply = NULL;' in send, 'commit buffer freed on every result')
 
 
+def structural_refusal_contract(source):
+    for name in ('ReadAttachedMetadata', 'OpenWindows'):
+        require(re.search(r'if \(\(basic.Attributes & \(AttributeDirectory \| AttributeReparsePoint\)\) != 0 \|\| basic.LinkCount != 1\)\s*'
+                          r'throw StagedRequestRefusal.Create\(', body(source, name)),
+                name + ' must distinguish structural refusal from native IO failure')
+    require(re.search(r'FileAttributes.ReparsePoint\) != 0\)\s*throw StagedRequestRefusal.Create\(',
+                      body(source, 'ReadDirectoryIdentity')), 'parent reparse must park')
+    require(re.search(r'if \(\(basic.Attributes & AttributeDirectory\) == 0 \|\| \(basic.Attributes & AttributeReparsePoint\) != 0\)\s*'
+                      r'throw StagedRequestRefusal.Create\(', body(source, 'ReadWindowsDirectoryIdentity')),
+            'parent handle structural check must park even after the pathname scan')
+    require(re.search(r'FileAttributes.ReparsePoint\)\) != 0\)\s*throw StagedRequestRefusal.Create\(',
+                      body(source, 'OpenPortable')), 'portable structural refusal must also park')
+    for name in ('ReadAttachedMetadata', 'OpenWindows', 'ReadWindowsDirectoryIdentity'):
+        require(re.search(r'if \(!GetFileInformationByHandle\(handle, out ByHandleFileInformation basic\)\)\s*'
+                          r'throw new IOException\(', body(source, name)), name + ' native read failure remains transient')
+
+
+def profile_compile_contract(project, tests):
+    root = ET.fromstring(project)
+    friends = [(group, friend) for group in root.findall('ItemGroup')
+               for friend in group.findall('InternalsVisibleTo') if friend.get('Include') == 'SafeUpload.Agent.Tests']
+    require(any(not group.get('Condition') and not friend.get('Condition') for group, friend in friends),
+            'normal-profile tests need internal wire validator visibility')
+    for group in root.findall('PropertyGroup'):
+        for define in group.findall('DefineConstants'):
+            if 'SAFEUPLOAD_ADMISSION_EVIDENCE' in (define.text or ''):
+                require(group.get('Condition') == "'$(SafeUploadAdmissionEvidence)' == 'true'",
+                        'friend access must not compile feature APIs into normal builds')
+    # Inspect each actual constructor call, including callbacks with nested
+    # parentheses, so omission of either non-optional internal argument fails.
+    for call in re.finditer(r'new StagedTransferJournal\(', tests):
+        start = call.end(); end = start; depth = 1
+        while depth:
+            depth += {'(': 1, ')': -1}.get(tests[end], 0); end += 1
+        arguments = tests[start:end]
+        if 'writeObserver:' in arguments:
+            require('requireProtectedParent: false,' in arguments and 'scanCacheCapacity: 4,' in arguments,
+                    'fault-injection overload requires both parent protection and cache capacity')
+
+
 class RenameReceipt(unittest.TestCase):
     def setUp(self):
         self.stream, self.protocol = code(STREAM), code(PROTOCOL)
@@ -156,6 +200,26 @@ class RenameReceipt(unittest.TestCase):
             self.assertIn(f'{cs}Size = {size};', managed)
         self.assertIn('SAFEUPLOAD_STAGE_CAPABILITY_REQUIRED ((UINT32) 0x000000BF)', header)
         self.assertIn('RenameCommitReceipt = 0x80', managed)
+
+    def test_structural_refusal_guards_and_native_io_classification(self):
+        source = code(STAGE_FILE)
+        structural_refusal_contract(source)
+        for match in list(re.finditer('throw StagedRequestRefusal.Create', source)):
+            with self.subTest(offset=match.start()):
+                changed = source[:match.start()] + source[match.start():].replace(
+                    'throw StagedRequestRefusal.Create', 'throw new IOException', 1)
+                with self.assertRaises(AssertionError): structural_refusal_contract(changed)
+        with self.assertRaises(AssertionError):
+            structural_refusal_contract(source.replace('throw new IOException', 'throw StagedRequestRefusal.Create'))
+
+    def test_normal_and_feature_test_visibility_and_fault_injection_arguments(self):
+        project, tests = MINIFILTER_PROJECT.read_text(), code(ATTACHMENT_TESTS)
+        profile_compile_contract(project, tests)
+        with self.assertRaises(AssertionError):
+            profile_compile_contract(project.replace('<ItemGroup>', '<ItemGroup Condition="feature-only">'), tests)
+        for argument in ('requireProtectedParent: false,', 'scanCacheCapacity: 4,'):
+            with self.subTest(argument=argument), self.assertRaises(AssertionError):
+                profile_compile_contract(project, tests.replace(argument, ''))
 
 
 if __name__ == '__main__':

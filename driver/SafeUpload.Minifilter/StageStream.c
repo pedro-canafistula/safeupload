@@ -376,6 +376,7 @@ static GUID StageDriverInstanceId;
 static volatile LONG StageReconcileNeeded;
 static volatile LONG StageReconcileInFlight;
 static volatile LONG StageServiceGeneration;
+static BOOLEAN StageServiceAvailable; /* NamespaceResource; receipt eligibility, not receipt ownership. */
 static UCHAR StageReconcileWait;
 static SAFEUPLOAD_REQUEST StageEpochDrainRequest;
 static UINT64 StageEpochDrainNonce;
@@ -6494,15 +6495,19 @@ static VOID StageUpdateRetryTimer(VOID)
     for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
         if (stream->Wait == STAGE_WAIT_DRAIN) { drain = TRUE; ++waiting; }
-        else if (stream->Wait == STAGE_WAIT_EXCHANGE
+        else if (
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+            StageServiceAvailable &&
+#endif
+            (stream->Wait == STAGE_WAIT_EXCHANGE
 #if SAFEUPLOAD_STAGING_PROTOTYPE
             || stream->HandleReceiptInFlight || stream->RenameRpcInFlight
 #endif
-            ) ++waiting;
+            )) ++waiting;
     }
     StageStreamReleaseSpinLock(&StageListLock, irql);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) &&
+    if (StageServiceAvailable && InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) &&
         StageReconcileWait == STAGE_WAIT_EXCHANGE) ++waiting;
 #endif
     StageCounters.WaitingVersions = waiting;
@@ -6565,7 +6570,12 @@ static VOID StageWorkerPass(PLIST_ENTRY Released, PLIST_ENTRY Rpcs,
     if (fired) InterlockedIncrement64((volatile LONG64 *)&StageCounters.WakeTimer);
     StageStreamAcquireSpinLock(&StageListLock, &irql);
     sweep = StageSweepRequested;
-    StageSweepRequested = FALSE;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* A disconnected pass only drains local work. Keep a queued reconnect
+     * sweep until its channel has reconciled; it alone may unpark receipts. */
+    if (!StageServiceAvailable || InterlockedCompareExchange(&StageReconcileNeeded, 0, 0)) sweep = FALSE;
+#endif
+    if (sweep) StageSweepRequested = FALSE;
     overflow = StageExitOverflow;
     StageExitOverflow = FALSE;
     exitCount = StageExitCount;
@@ -6611,7 +6621,8 @@ static VOID StageWorkerPass(PLIST_ENTRY Released, PLIST_ENTRY Rpcs,
         StageProcessStream(stream, Released); /* may release the stream */
     }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (SafeUploadStageProtocolIsReady()) {
+    if (StageServiceAvailable && !InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) &&
+        SafeUploadStageProtocolIsReady()) {
         StageCollectHandleReceiptRpcs(HandleRpcs);
         StageCollectRenameRpcs(RenameRpcs);
         StageCollectSealRpcs(SealRpcs);
@@ -6791,7 +6802,7 @@ static VOID StageWorker(PVOID Context)
         reconcileAgain = FALSE;
 #endif
         StageAcquire(&StageNamespaceResource);
-        if (!SafeUploadStageMandatoryTeardownActive() && (!StageStopping || StageUnloadPrepareWork) &&
+        if (StageServiceAvailable && !SafeUploadStageMandatoryTeardownActive() && (!StageStopping || StageUnloadPrepareWork) &&
             InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) &&
             !InterlockedCompareExchange(&StageReconcileInFlight, 0, 0)) {
             InterlockedExchange(&StageReconcileInFlight, 1);
@@ -6799,7 +6810,10 @@ static VOID StageWorker(PVOID Context)
             reconcileServiceGeneration = InterlockedCompareExchange(&StageServiceGeneration, 0, 0);
             reconcileProtocolGeneration = SafeUploadStageProtocolChannelGeneration();
         } else if (!SafeUploadStageMandatoryTeardownActive() && (!StageStopping || StageUnloadPrepareWork) &&
-            !InterlockedCompareExchange(&StageReconcileNeeded, 0, 0)) {
+            (!StageServiceAvailable || !InterlockedCompareExchange(&StageReconcileNeeded, 0, 0))) {
+            /* Disconnect cannot strand a local drain or exit-overflow sweep.
+             * StageWorkerPass retains the reconnect sweep and collects no RPCs
+             * until the current service channel has reconciled. */
             StageWorkerPass(&released, &rpcs, &sealRpcs, &renameRpcs, &recoveryRpcs,
                 &handleRpcs);
         }
@@ -6901,6 +6915,7 @@ VOID SafeUploadStageServiceConnected(_In_ PVOID ConnectionCookie)
     if (!StageInitialized) return;
     SafeUploadStageProtocolAuthenticationChanged(ConnectionCookie);
     StageAcquire(&StageNamespaceResource);
+    StageServiceAvailable = TRUE;
     InterlockedIncrement(&StageServiceGeneration);
     InterlockedExchange(&StageReconcileNeeded, 1);
     StageReconcileWait = STAGE_WAIT_EXCHANGE;
@@ -6914,14 +6929,27 @@ VOID SafeUploadStageServiceConnected(_In_ PVOID ConnectionCookie)
 
 VOID SafeUploadStageServiceDisconnected(_In_ PVOID ConnectionCookie)
 {
+    PLIST_ENTRY link;
+    KIRQL irql;
     if (!StageInitialized) return;
     SafeUploadStageProtocolConnectionReset(ConnectionCookie);
     StageAcquire(&StageNamespaceResource);
+    StageServiceAvailable = FALSE;
     InterlockedIncrement(&StageServiceGeneration);
     InterlockedExchange(&StageReconcileNeeded, 1);
     StageReconcileWait = STAGE_WAIT_SERVICE;
-    /* A SERVICE wait is retried at reconnect, not by the timer: cancel an exchange retry armed for this channel unless
-     * other drain/exchange/overflow work still waits. */
+    StageStreamAcquireSpinLock(&StageListLock, &irql);
+    for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
+        PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
+        if (stream->HandleReceiptWait == STAGE_WAIT_EXCHANGE) stream->HandleReceiptWait = STAGE_WAIT_SERVICE;
+        if (stream->RenameWait == STAGE_WAIT_EXCHANGE) stream->RenameWait = STAGE_WAIT_SERVICE;
+        if (stream->Wait == STAGE_WAIT_EXCHANGE) stream->Wait = STAGE_WAIT_SERVICE;
+    }
+    StageStreamReleaseSpinLock(&StageListLock, irql);
+    /* Retain pending/in-flight requests and their exact tuples. Reconnect's
+     * reconciled sweep unparks them. The census also excludes a late RPC reply
+     * that restores EXCHANGE while disconnected; genuine drain/overflow waits
+     * remain eligible. No disconnected exchange needs timer polling. */
     StageUpdateRetryTimer();
     StageRelease(&StageNamespaceResource);
 }
@@ -6986,6 +7014,7 @@ NTSTATUS SafeUploadStageInitialize(VOID)
     InterlockedExchange(&StageReconcileNeeded, 1);
     InterlockedExchange(&StageReconcileInFlight, 0);
     InterlockedExchange(&StageServiceGeneration, 0);
+    StageServiceAvailable = FALSE;
     StageReconcileWait = STAGE_WAIT_SERVICE;
     RtlZeroMemory(&StageEpochDrainRequest, sizeof(StageEpochDrainRequest));
     StageEpochDrainNonce = 0;
