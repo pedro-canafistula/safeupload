@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using SafeUpload.Agent.Minifilter;
@@ -20,9 +21,9 @@ public sealed class StagedRenameReceiptWireTests
     public void Rename_layout_and_lower_destination_generation_are_exact()
     {
         Contract.Verify();
-        Assert.Equal(128, Marshal.SizeOf<SafeUploadStageRenameV20>());
-        Assert.Equal(1168, Marshal.SizeOf<SafeUploadStageRenameCommitV20>());
-        Assert.Equal(1192, Marshal.SizeOf<SafeUploadStageRenameReplyV20>());
+        Assert.Equal(128, Unsafe.SizeOf<SafeUploadStageRenameV20>());
+        Assert.Equal(1168, Unsafe.SizeOf<SafeUploadStageRenameCommitV20>());
+        Assert.Equal(1192, Unsafe.SizeOf<SafeUploadStageRenameReplyV20>());
         const string destination = @"\Device\HarddiskVolume1\protected\replacement.txt";
         var source = Source();
         var reply = FilterPort.CreateStageRenameReplyV20(source, 1, destination, StageV20Result.RenameCommitted);
@@ -92,23 +93,14 @@ public sealed class StagedRenameReceiptWireTests
         }
     }
 
-    private static byte[] Bytes<T>(T value) where T : struct
-    {
-        IntPtr pointer = Marshal.AllocHGlobal(Marshal.SizeOf<T>());
-        try
-        {
-            Marshal.StructureToPtr(value, pointer, false);
-            byte[] bytes = new byte[Marshal.SizeOf<T>()];
-            Marshal.Copy(pointer, bytes, 0, bytes.Length);
-            return bytes;
-        }
-        finally { Marshal.FreeHGlobal(pointer); }
-    }
+    // Exact wire bytes. Marshal.StructureToPtr/PtrToStructure marshal char and fixed char buffers instead of copying them
+    // (t5-rename2: only the first destination character survived), so these helpers reinterpret memory like the transport.
+    private static byte[] Bytes<T>(T value) where T : unmanaged =>
+        MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref value, 1)).ToArray();
 
-    private static T Read<T>(byte[] bytes) where T : struct
+    private static T Read<T>(byte[] bytes) where T : unmanaged
     {
-        IntPtr pointer = Marshal.AllocHGlobal(bytes.Length);
-        try { Marshal.Copy(bytes, 0, pointer, bytes.Length); return Marshal.PtrToStructure<T>(pointer); }
-        finally { Marshal.FreeHGlobal(pointer); }
+        Assert.Equal(Unsafe.SizeOf<T>(), bytes.Length);
+        return MemoryMarshal.Read<T>(bytes);
     }
 }
