@@ -56,8 +56,11 @@ public sealed class NotificationPipeServerTests
             {
                 var buffer = new byte[1];
                 using var wait = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
-                await Assert.ThrowsAnyAsync<OperationCanceledException>(
-                    async () => await client.ReadAsync(buffer, wait.Token));
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                {
+                    int read = await client.ReadAsync(buffer, wait.Token);
+                    Assert.Fail($"the server ended a connected client's read ({read} bytes)");
+                });
             }
         }
         finally
