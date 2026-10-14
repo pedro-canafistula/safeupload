@@ -1,0 +1,290 @@
+{
+    "RepeatService":  {
+                          "State":  "Running",
+                          "ProcessId":  3320
+                      },
+    "RepeatPurge":  [
+                        {
+                            "Operation":  "RtlAdjustPrivilege",
+                            "Privilege":  13,
+                            "NTSTATUS":  0,
+                            "StatusHex":  "0x00000000",
+                            "Succeeded":  true
+                        },
+                        {
+                            "Operation":  "RtlAdjustPrivilege",
+                            "Privilege":  5,
+                            "NTSTATUS":  0,
+                            "StatusHex":  "0x00000000",
+                            "Succeeded":  true
+                        },
+                        {
+                            "Operation":  "NtSetSystemInformation",
+                            "Command":  2,
+                            "NTSTATUS":  0,
+                            "StatusHex":  "0x00000000",
+                            "Succeeded":  true
+                        },
+                        {
+                            "Operation":  "NtSetSystemInformation",
+                            "Command":  3,
+                            "NTSTATUS":  0,
+                            "StatusHex":  "0x00000000",
+                            "Succeeded":  true
+                        },
+                        {
+                            "Operation":  "NtSetSystemInformation",
+                            "Command":  4,
+                            "NTSTATUS":  0,
+                            "StatusHex":  "0x00000000",
+                            "Succeeded":  true
+                        }
+                    ],
+    "PurgedRepeat":  {
+                         "Cycle":  256,
+                         "Label":  "purged-repeat",
+                         "Utc":  "2026-10-14T19:13:31.9133320Z",
+                         "Qpc":  6426772177,
+                         "VerifierOutputFile":  "C:\\T4\\verifier-256-purged-repeat.txt",
+                         "Verifier":  {
+                                          "Verified":  true,
+                                          "Flags":  "0x0000013b",
+                                          "PoolFormat":  "NonPaged/Paged pairs",
+                                          "NonPagedBytes":  6659984,
+                                          "NonPagedAllocations":  1059,
+                                          "PagedBytes":  0,
+                                          "PeakNonPagedBytes":  7201328,
+                                          "AllocationFailures":  null
+                                      },
+                         "TagSpUs":  {
+                                         "NonPagedAllocs":  2545,
+                                         "NonPagedFrees":  2545,
+                                         "NonPagedUsed":  0,
+                                         "PagedAllocs":  0,
+                                         "PagedFrees":  0,
+                                         "PagedUsed":  0
+                                     },
+                         "TagSUfl":  {
+                                         "NonPagedAllocs":  118277,
+                                         "NonPagedFrees":  117690,
+                                         "NonPagedUsed":  155704,
+                                         "PagedAllocs":  12118,
+                                         "PagedFrees":  12118,
+                                         "PagedUsed":  0
+                                     },
+                         "TagSwUr":  {
+                                         "NonPagedAllocs":  86223,
+                                         "NonPagedFrees":  85981,
+                                         "NonPagedUsed":  6615664,
+                                         "PagedAllocs":  261185,
+                                         "PagedFrees":  261185,
+                                         "PagedUsed":  0
+                                     },
+                         "TagSUwH":  {
+                                         "NonPagedAllocs":  30393,
+                                         "NonPagedFrees":  30140,
+                                         "NonPagedUsed":  12144,
+                                         "PagedAllocs":  0,
+                                         "PagedFrees":  0,
+                                         "PagedUsed":  0
+                                     },
+                         "PoolNonpagedBytes":  97230848,
+                         "StageWorker":  {
+                                             "liveVersions":  0,
+                                             "liveViews":  0,
+                                             "tombstones":  0,
+                                             "waitingVersions":  0,
+                                             "versionsCreated":  256,
+                                             "versionsReleased":  256,
+                                             "viewsReleased":  256,
+                                             "capRefusals":  0,
+                                             "tombstoneRefusals":  0,
+                                             "passes":  2103,
+                                             "wakeCleanup":  256,
+                                             "wakeClose":  256,
+                                             "wakeDispose":  256,
+                                             "wakeConnect":  1,
+                                             "wakeExit":  86,
+                                             "wakeTimer":  253,
+                                             "wakeInline":  1088,
+                                             "timerArms":  746,
+                                             "disposeHeld":  256,
+                                             "disposeNotHeld":  46,
+                                             "disposeStale":  0,
+                                             "disposeDeferred":  0,
+                                             "stageDeletes":  192,
+                                             "stageDeleteFailures":  0
+                                         },
+                         "ReclaimPasses":  16745,
+                         "RegistryReclaim":  {
+                                                 "passes":  16745,
+                                                 "parkedPasses":  88,
+                                                 "moreWorkRequeues":  5,
+                                                 "wakeupsSkipped":  1050784
+                                             },
+                         "WriterState":  {
+                                             "registryEntries":  240,
+                                             "registryCapacity":  4096,
+                                             "registryReservations":  0,
+                                             "registryOverflow":  0,
+                                             "registryUnknownReasons":  0,
+                                             "registryInstanceUnknown":  0,
+                                             "registryPruned":  16571,
+                                             "registryReclaimPasses":  16745,
+                                             "registryCapacityFailures":  0,
+                                             "registryAllocationFailures":  0,
+                                             "registryIdentityFailures":  10,
+                                             "registryTransactionFailures":  0,
+                                             "registryRenameFailures":  0,
+                                             "registryDroppedAtDismount":  0,
+                                             "registryDroppedWhileMounted":  0,
+                                             "writersDroppedAtTeardown":  0,
+                                             "writersDroppedWhileMounted":  0,
+                                             "cleanupUnmatched":  0,
+                                             "writerGlobalFirstUnknown":  {
+                                                                              "reason":  0,
+                                                                              "site":  0
+                                                                          },
+                                             "writerEntryFirstUnknown":  {
+                                                                             "reason":  0,
+                                                                             "site":  0
+                                                                         },
+                                             "writerSopFirstUnknown":  {
+                                                                           "reason":  0,
+                                                                           "site":  0
+                                                                       },
+                                             "writerSopUnknownCount":  0,
+                                             "registryNameTierEntries":  240,
+                                             "registryCompactTierEntries":  0,
+                                             "sectionInFlightNow":  0,
+                                             "sectionInFlightMaxDepth":  1,
+                                             "sectionInFlightStuck":  0,
+                                             "stageStreams":  0,
+                                             "stageFileObjects":  0,
+                                             "untrackedCreates":  0,
+                                             "txfRefused":  0,
+                                             "instanceTeardownsDismount":  43,
+                                             "instanceTeardownsOther":  0
+                                         },
+                         "StageFiles":  0,
+                         "JournalFiles":  256,
+                         "Handbacks":  64
+                     },
+    "OldProcessId":  3320,
+    "StopReturnValue":  0,
+    "AgentStop":  {
+                      "Reached":  true,
+                      "State":  "Stopped",
+                      "ProcessId":  0,
+                      "OldProcessExited":  true,
+                      "ElapsedMs":  1465,
+                      "Error":  null
+                  },
+    "StoppedPurge":  [
+                         {
+                             "Operation":  "RtlAdjustPrivilege",
+                             "Privilege":  13,
+                             "NTSTATUS":  0,
+                             "StatusHex":  "0x00000000",
+                             "Succeeded":  true
+                         },
+                         {
+                             "Operation":  "RtlAdjustPrivilege",
+                             "Privilege":  5,
+                             "NTSTATUS":  0,
+                             "StatusHex":  "0x00000000",
+                             "Succeeded":  true
+                         },
+                         {
+                             "Operation":  "NtSetSystemInformation",
+                             "Command":  2,
+                             "NTSTATUS":  0,
+                             "StatusHex":  "0x00000000",
+                             "Succeeded":  true
+                         },
+                         {
+                             "Operation":  "NtSetSystemInformation",
+                             "Command":  3,
+                             "NTSTATUS":  0,
+                             "StatusHex":  "0x00000000",
+                             "Succeeded":  true
+                         },
+                         {
+                             "Operation":  "NtSetSystemInformation",
+                             "Command":  4,
+                             "NTSTATUS":  0,
+                             "StatusHex":  "0x00000000",
+                             "Succeeded":  true
+                         }
+                     ],
+    "PurgedAgentStopped":  {
+                               "Cycle":  256,
+                               "Label":  "purged-agent-stopped",
+                               "Utc":  "2026-10-14T19:14:09.2453346Z",
+                               "Qpc":  6800092701,
+                               "VerifierOutputFile":  "C:\\T4\\verifier-256-purged-agent-stopped.txt",
+                               "Verifier":  {
+                                                "Verified":  true,
+                                                "Flags":  "0x0000013b",
+                                                "PoolFormat":  "NonPaged/Paged pairs",
+                                                "NonPagedBytes":  6667024,
+                                                "NonPagedAllocations":  1057,
+                                                "PagedBytes":  0,
+                                                "PeakNonPagedBytes":  7201328,
+                                                "AllocationFailures":  null
+                                            },
+                               "TagSpUs":  {
+                                               "NonPagedAllocs":  2545,
+                                               "NonPagedFrees":  2545,
+                                               "NonPagedUsed":  0,
+                                               "PagedAllocs":  0,
+                                               "PagedFrees":  0,
+                                               "PagedUsed":  0
+                                           },
+                               "TagSUfl":  {
+                                               "NonPagedAllocs":  125775,
+                                               "NonPagedFrees":  125187,
+                                               "NonPagedUsed":  155736,
+                                               "PagedAllocs":  12265,
+                                               "PagedFrees":  12265,
+                                               "PagedUsed":  0
+                                           },
+                               "TagSwUr":  {
+                                               "NonPagedAllocs":  86403,
+                                               "NonPagedFrees":  86158,
+                                               "NonPagedUsed":  6622912,
+                                               "PagedAllocs":  261403,
+                                               "PagedFrees":  261403,
+                                               "PagedUsed":  0
+                                           },
+                               "TagSUwH":  {
+                                               "NonPagedAllocs":  30469,
+                                               "NonPagedFrees":  30220,
+                                               "NonPagedUsed":  11952,
+                                               "PagedAllocs":  0,
+                                               "PagedFrees":  0,
+                                               "PagedUsed":  0
+                                           },
+                               "PoolNonpagedBytes":  96206848,
+                               "CountersError":  "Exception calling \"Connect\" with \"1\" argument(s): \"The operation has timed out.\"",
+                               "StageFiles":  0,
+                               "JournalFiles":  256,
+                               "Handbacks":  64
+                           },
+    "StartReturnValue":  0,
+    "AgentRestart":  {
+                         "Reached":  true,
+                         "State":  "Running",
+                         "ProcessId":  5840,
+                         "OldProcessExited":  true,
+                         "ElapsedMs":  840,
+                         "Error":  null
+                     },
+    "ReadinessOutput":  [
+                            "READY=True",
+                            "LAST_AGENT_FRAME={\"type\":\"status\",\"policyVersion\":1,\"activeCategories\":1,\"protectionActive\":true,\"auditOnly\":false,\"admissionCoverage\":\"Ready\",\"admissionCoverageReason\":\"Ready\",\"nativePolicyGeneration\":2147483648}",
+                            "READINESS_ELAPSED_MS=13211",
+                            "DRIVER_LOADED=True"
+                        ],
+    "AgentReady":  true
+}

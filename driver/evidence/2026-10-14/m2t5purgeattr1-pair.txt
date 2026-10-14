@@ -1,0 +1,5 @@
+80d6a645b330bb01adfd47a6dbac86bc49608dfa4f876d8fce78085e9e548d9b  /mnt/storage/safeupload-archive/pairs/t5-pair13/SafeUpload-stage-prototype.sys
+d2978b186135fd830b3a9904c166b653b709d5f4fc337527828bf23aea808395  /mnt/storage/safeupload-archive/pairs/t5-pair13/feature-release-service-publish.zip
+HarnessCommit=e91472d65ed8f4d6a0ecdbbaa997eb17d325607c
+Driver=t5-block1 (cdfdb396; signed; feature Debug; imports PASS); Agent=t5-block4 feature Release (18e07a90) -- unchanged m2t5boot15 pair
+Mode=T4 smoke 256 verifier-from-boot sample_every=64 with T4_PURGE_ATTRIBUTION=yes (non-qualifying diagnostic); win10-debug3; main-disk overlay; no builder jobs

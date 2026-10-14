@@ -1,0 +1,1210 @@
+[
+    {
+        "Label":  "exit",
+        "TotalEvents":  25368,
+        "EventsById":  {
+                           "28":  519,
+                           "26":  3,
+                           "0":  1,
+                           "27":  34,
+                           "12":  24811
+                       },
+        "TotalCreates":  24811,
+        "DistinctPaths":  4633,
+        "TopProcesses":  [
+                             {
+                                 "ProcessId":  5516,
+                                 "Name":  "setup.exe",
+                                 "CreateCount":  11293
+                             },
+                             {
+                                 "ProcessId":  3320,
+                                 "Name":  "SafeUpload.Agent.Service.exe",
+                                 "CreateCount":  7676
+                             },
+                             {
+                                 "ProcessId":  4,
+                                 "Name":  "System",
+                                 "CreateCount":  5053
+                             },
+                             {
+                                 "ProcessId":  1636,
+                                 "Name":  "svchost.exe",
+                                 "CreateCount":  289
+                             },
+                             {
+                                 "ProcessId":  5292,
+                                 "Name":  "powershell.exe",
+                                 "CreateCount":  97
+                             },
+                             {
+                                 "ProcessId":  6140,
+                                 "Name":  "pid-6140",
+                                 "CreateCount":  65
+                             },
+                             {
+                                 "ProcessId":  5196,
+                                 "Name":  "MicrosoftEdge_X64_155.0.4283.45_154.0.4258.62.exe",
+                                 "CreateCount":  64
+                             },
+                             {
+                                 "ProcessId":  2448,
+                                 "Name":  "svchost.exe",
+                                 "CreateCount":  46
+                             },
+                             {
+                                 "ProcessId":  5464,
+                                 "Name":  "powershell.exe",
+                                 "CreateCount":  40
+                             },
+                             {
+                                 "ProcessId":  484,
+                                 "Name":  "csrss.exe",
+                                 "CreateCount":  38
+                             },
+                             {
+                                 "ProcessId":  2672,
+                                 "Name":  "MicrosoftEdgeUpdate.exe",
+                                 "CreateCount":  38
+                             },
+                             {
+                                 "ProcessId":  5304,
+                                 "Name":  "SearchIndexer.exe",
+                                 "CreateCount":  38
+                             },
+                             {
+                                 "ProcessId":  572,
+                                 "Name":  "LogonUI.exe",
+                                 "CreateCount":  32
+                             },
+                             {
+                                 "ProcessId":  5728,
+                                 "Name":  "pid-5728",
+                                 "CreateCount":  31
+                             },
+                             {
+                                 "ProcessId":  3396,
+                                 "Name":  "svchost.exe",
+                                 "CreateCount":  7
+                             }
+                         ],
+        "TopProcessDirectories":  [
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\staging-journal\\",
+                                          "CreateCount":  2419
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Protected\\",
+                                          "CreateCount":  2418
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeUpdate\\1.3.287.9\\",
+                                          "CreateCount":  1286
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Protected\\t4\\",
+                                          "CreateCount":  1209
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\Locales\\",
+                                          "CreateCount":  843
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\Locales\\",
+                                          "CreateCount":  842
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\",
+                                          "CreateCount":  833
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\",
+                                          "CreateCount":  611
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\Optimized\\",
+                                          "CreateCount":  583
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\Locales\\",
+                                          "CreateCount":  469
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\ResiliencyLinks\\",
+                                          "CreateCount":  441
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\VisualElements\\",
+                                          "CreateCount":  439
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\",
+                                          "CreateCount":  435
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\",
+                                          "CreateCount":  432
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\",
+                                          "CreateCount":  432
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\",
+                                          "CreateCount":  415
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\notifications\\",
+                                          "CreateCount":  351
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62\\Locales\\",
+                                          "CreateCount":  332
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62\\ResiliencyLinks\\Locales\\",
+                                          "CreateCount":  332
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\",
+                                          "CreateCount":  326
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\Optimized\\VisualElements\\",
+                                          "CreateCount":  311
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\VisualElements\\",
+                                          "CreateCount":  307
+                                      },
+                                      {
+                                          "ProcessId":  1636,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Windows\\logs\\waasmedic\\",
+                                          "CreateCount":  289
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\ResiliencyLinks\\VisualElements\\",
+                                          "CreateCount":  270
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\VisualElements\\CopilotAppStable\\",
+                                          "CreateCount":  227
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\VisualElements\\CopilotDev\\",
+                                          "CreateCount":  227
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\VisualElements\\CopilotStable\\",
+                                          "CreateCount":  227
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\VisualElements\\",
+                                          "CreateCount":  215
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\Optimized\\",
+                                          "CreateCount":  209
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\",
+                                          "CreateCount":  205
+                                      }
+                                  ],
+        "TopDirectories":  [
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\Locales\\",
+                                   "DistinctFiles":  336
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Windows\\logs\\waasmedic\\",
+                                   "DistinctFiles":  287
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62\\Locales\\",
+                                   "DistinctFiles":  250
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62\\ResiliencyLinks\\Locales\\",
+                                   "DistinctFiles":  250
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\Locales\\",
+                                   "DistinctFiles":  169
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\Optimized\\Locales\\",
+                                   "DistinctFiles":  169
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\Locales\\",
+                                   "DistinctFiles":  169
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\Locales\\",
+                                   "DistinctFiles":  168
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\",
+                                   "DistinctFiles":  75
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\",
+                                   "DistinctFiles":  75
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\",
+                                   "DistinctFiles":  74
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\Optimized\\",
+                                   "DistinctFiles":  74
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62\\",
+                                   "DistinctFiles":  71
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\",
+                                   "DistinctFiles":  70
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\staging-journal\\",
+                                   "DistinctFiles":  64
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\VisualElements\\CopilotAppStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\VisualElements\\CopilotDev\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\VisualElements\\CopilotStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\VisualElements\\CopilotAppStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\VisualElements\\CopilotDev\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\VisualElements\\CopilotStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\Optimized\\VisualElements\\CopilotAppStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\Optimized\\VisualElements\\CopilotDev\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\Optimized\\VisualElements\\CopilotStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\VisualElements\\CopilotAppStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\VisualElements\\CopilotDev\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\VisualElements\\CopilotStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\VisualElements\\CopilotAppStable\\",
+                                   "DistinctFiles":  45
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\VisualElements\\CopilotDev\\",
+                                   "DistinctFiles":  45
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\VisualElements\\CopilotStable\\",
+                                   "DistinctFiles":  45
+                               }
+                           ],
+        "LostEvents":  null,
+        "LostBuffers":  0,
+        "ProbeCreates":  [
+
+                         ],
+        "Truncated":  false,
+        "MaxEvents":  400000,
+        "EtlBytes":  9437184,
+        "Error":  null
+    },
+    {
+        "Label":  "idle",
+        "TotalEvents":  56251,
+        "EventsById":  {
+                           "28":  383,
+                           "26":  1662,
+                           "0":  1,
+                           "27":  69,
+                           "12":  54136
+                       },
+        "TotalCreates":  54136,
+        "DistinctPaths":  4698,
+        "TopProcesses":  [
+                             {
+                                 "ProcessId":  3320,
+                                 "Name":  "SafeUpload.Agent.Service.exe",
+                                 "CreateCount":  26718
+                             },
+                             {
+                                 "ProcessId":  5516,
+                                 "Name":  "setup.exe",
+                                 "CreateCount":  14340
+                             },
+                             {
+                                 "ProcessId":  4,
+                                 "Name":  "System",
+                                 "CreateCount":  8626
+                             },
+                             {
+                                 "ProcessId":  5196,
+                                 "Name":  "MicrosoftEdge_X64_155.0.4283.45_154.0.4258.62.exe",
+                                 "CreateCount":  1208
+                             },
+                             {
+                                 "ProcessId":  1736,
+                                 "Name":  "svchost.exe",
+                                 "CreateCount":  1187
+                             },
+                             {
+                                 "ProcessId":  5896,
+                                 "Name":  "pid-5896",
+                                 "CreateCount":  728
+                             },
+                             {
+                                 "ProcessId":  3152,
+                                 "Name":  "pid-3152",
+                                 "CreateCount":  256
+                             },
+                             {
+                                 "ProcessId":  5292,
+                                 "Name":  "powershell.exe",
+                                 "CreateCount":  175
+                             },
+                             {
+                                 "ProcessId":  3240,
+                                 "Name":  "pid-3240",
+                                 "CreateCount":  126
+                             },
+                             {
+                                 "ProcessId":  5724,
+                                 "Name":  "pid-5724",
+                                 "CreateCount":  102
+                             },
+                             {
+                                 "ProcessId":  2448,
+                                 "Name":  "svchost.exe",
+                                 "CreateCount":  92
+                             },
+                             {
+                                 "ProcessId":  3176,
+                                 "Name":  "svchost.exe",
+                                 "CreateCount":  86
+                             },
+                             {
+                                 "ProcessId":  3512,
+                                 "Name":  "pid-3512",
+                                 "CreateCount":  74
+                             },
+                             {
+                                 "ProcessId":  4752,
+                                 "Name":  "pid-4752",
+                                 "CreateCount":  67
+                             },
+                             {
+                                 "ProcessId":  5888,
+                                 "Name":  "pid-5888",
+                                 "CreateCount":  65
+                             }
+                         ],
+        "TopProcessDirectories":  [
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\staging-journal\\",
+                                          "CreateCount":  9024
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Protected\\",
+                                          "CreateCount":  9024
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Protected\\t4\\",
+                                          "CreateCount":  4512
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeUpdate\\1.3.287.9\\",
+                                          "CreateCount":  2276
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\",
+                                          "CreateCount":  2200
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\Locales\\",
+                                          "CreateCount":  1685
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\",
+                                          "CreateCount":  1143
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\",
+                                          "CreateCount":  1072
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\",
+                                          "CreateCount":  1072
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\notifications\\",
+                                          "CreateCount":  871
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\Locales\\",
+                                          "CreateCount":  665
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\ResiliencyLinks\\Locales\\",
+                                          "CreateCount":  665
+                                      },
+                                      {
+                                          "ProcessId":  5196,
+                                          "Name":  "MicrosoftEdge_X64_155.0.4283.45_154.0.4258.62.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeUpdate\\Install\\{2ACD3CE2-71BA-4627-82C1-1B9E39D55F36}\\",
+                                          "CreateCount":  602
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\",
+                                          "CreateCount":  591
+                                      },
+                                      {
+                                          "ProcessId":  1736,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\",
+                                          "CreateCount":  509
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\Locales\\",
+                                          "CreateCount":  506
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\Locales\\",
+                                          "CreateCount":  480
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\",
+                                          "CreateCount":  448
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\ResiliencyLinks\\",
+                                          "CreateCount":  443
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\",
+                                          "CreateCount":  438
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\155.0.4283.45\\",
+                                          "CreateCount":  368
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\Optimized\\",
+                                          "CreateCount":  367
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\",
+                                          "CreateCount":  366
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\ResiliencyLinks\\",
+                                          "CreateCount":  366
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\VisualElements\\",
+                                          "CreateCount":  339
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\VisualElements\\",
+                                          "CreateCount":  339
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\ResiliencyLinks\\Locales\\",
+                                          "CreateCount":  337
+                                      },
+                                      {
+                                          "ProcessId":  5516,
+                                          "Name":  "setup.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\VisualElements\\",
+                                          "CreateCount":  313
+                                      },
+                                      {
+                                          "ProcessId":  5196,
+                                          "Name":  "MicrosoftEdge_X64_155.0.4283.45_154.0.4258.62.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeUpdate\\Download\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}\\",
+                                          "CreateCount":  300
+                                      },
+                                      {
+                                          "ProcessId":  5196,
+                                          "Name":  "MicrosoftEdge_X64_155.0.4283.45_154.0.4258.62.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeUpdate\\Install\\",
+                                          "CreateCount":  300
+                                      }
+                                  ],
+        "TopDirectories":  [
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\Locales\\",
+                                   "DistinctFiles":  336
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Windows\\System32\\",
+                                   "DistinctFiles":  311
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Windows\\WinSxS\\",
+                                   "DistinctFiles":  257
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\Locales\\",
+                                   "DistinctFiles":  251
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\ResiliencyLinks\\Locales\\",
+                                   "DistinctFiles":  251
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\Locales\\",
+                                   "DistinctFiles":  169
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\ResiliencyLinks\\Locales\\",
+                                   "DistinctFiles":  169
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\Locales\\",
+                                   "DistinctFiles":  168
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Windows\\system32\\WindowsPowerShell\\v1.0\\Modules\\",
+                                   "DistinctFiles":  83
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\",
+                                   "DistinctFiles":  75
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\",
+                                   "DistinctFiles":  71
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\",
+                                   "DistinctFiles":  70
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\staging-journal\\",
+                                   "DistinctFiles":  64
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSWOW64\\",
+                                   "DistinctFiles":  57
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\VisualElements\\CopilotAppStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\VisualElements\\CopilotDev\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeCore\\154.0.4258.62\\VisualElements\\CopilotStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\ResiliencyLinks\\VisualElements\\CopilotAppStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\ResiliencyLinks\\VisualElements\\CopilotDev\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\ResiliencyLinks\\VisualElements\\CopilotStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\VisualElements\\CopilotAppStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\VisualElements\\CopilotDev\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\154.0.4258.62.deleting\\VisualElements\\CopilotStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\ResiliencyLinks\\VisualElements\\CopilotAppStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\ResiliencyLinks\\VisualElements\\CopilotDev\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\ResiliencyLinks\\VisualElements\\CopilotStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\VisualElements\\CopilotAppStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\VisualElements\\CopilotDev\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\155.0.4283.45\\VisualElements\\CopilotStable\\",
+                                   "DistinctFiles":  46
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\Edge\\Application\\155.0.4283.45\\VisualElements\\CopilotAppStable\\",
+                                   "DistinctFiles":  45
+                               }
+                           ],
+        "LostEvents":  null,
+        "LostBuffers":  0,
+        "ProbeCreates":  [
+
+                         ],
+        "Truncated":  false,
+        "MaxEvents":  400000,
+        "EtlBytes":  18874368,
+        "Error":  null
+    },
+    {
+        "Label":  "purge",
+        "TotalEvents":  26910,
+        "EventsById":  {
+                           "26":  12,
+                           "12":  26847,
+                           "27":  50,
+                           "0":  1
+                       },
+        "TotalCreates":  26847,
+        "DistinctPaths":  3808,
+        "TopProcesses":  [
+                             {
+                                 "ProcessId":  3320,
+                                 "Name":  "SafeUpload.Agent.Service.exe",
+                                 "CreateCount":  17304
+                             },
+                             {
+                                 "ProcessId":  1736,
+                                 "Name":  "svchost.exe",
+                                 "CreateCount":  6619
+                             },
+                             {
+                                 "ProcessId":  4,
+                                 "Name":  "System",
+                                 "CreateCount":  1413
+                             },
+                             {
+                                 "ProcessId":  1524,
+                                 "Name":  "pid-1524",
+                                 "CreateCount":  722
+                             },
+                             {
+                                 "ProcessId":  5292,
+                                 "Name":  "powershell.exe",
+                                 "CreateCount":  160
+                             },
+                             {
+                                 "ProcessId":  2508,
+                                 "Name":  "pid-2508",
+                                 "CreateCount":  128
+                             },
+                             {
+                                 "ProcessId":  5008,
+                                 "Name":  "pid-5008",
+                                 "CreateCount":  103
+                             },
+                             {
+                                 "ProcessId":  1580,
+                                 "Name":  "pid-1580",
+                                 "CreateCount":  74
+                             },
+                             {
+                                 "ProcessId":  3788,
+                                 "Name":  "pid-3788",
+                                 "CreateCount":  67
+                             },
+                             {
+                                 "ProcessId":  3704,
+                                 "Name":  "pid-3704",
+                                 "CreateCount":  65
+                             },
+                             {
+                                 "ProcessId":  2112,
+                                 "Name":  "pid-2112",
+                                 "CreateCount":  42
+                             },
+                             {
+                                 "ProcessId":  572,
+                                 "Name":  "LogonUI.exe",
+                                 "CreateCount":  32
+                             },
+                             {
+                                 "ProcessId":  2012,
+                                 "Name":  "pid-2012",
+                                 "CreateCount":  31
+                             },
+                             {
+                                 "ProcessId":  2684,
+                                 "Name":  "pid-2684",
+                                 "CreateCount":  31
+                             },
+                             {
+                                 "ProcessId":  484,
+                                 "Name":  "csrss.exe",
+                                 "CreateCount":  22
+                             }
+                         ],
+        "TopProcessDirectories":  [
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\staging-journal\\",
+                                          "CreateCount":  5696
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Protected\\",
+                                          "CreateCount":  5696
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Protected\\t4\\",
+                                          "CreateCount":  2848
+                                      },
+                                      {
+                                          "ProcessId":  1736,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\",
+                                          "CreateCount":  2260
+                                      },
+                                      {
+                                          "ProcessId":  1736,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Windows\\WinSxS\\",
+                                          "CreateCount":  1454
+                                      },
+                                      {
+                                          "ProcessId":  1736,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Windows\\",
+                                          "CreateCount":  1179
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\",
+                                          "CreateCount":  814
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\",
+                                          "CreateCount":  800
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\",
+                                          "CreateCount":  800
+                                      },
+                                      {
+                                          "ProcessId":  3320,
+                                          "Name":  "SafeUpload.Agent.Service.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\notifications\\",
+                                          "CreateCount":  650
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\",
+                                          "CreateCount":  288
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Program Files (x86)\\Microsoft\\EdgeUpdate\\1.3.287.9\\",
+                                          "CreateCount":  210
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\notifications\\",
+                                          "CreateCount":  202
+                                      },
+                                      {
+                                          "ProcessId":  1736,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSWOW64\\",
+                                          "CreateCount":  177
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Windows\\WinSxS\\",
+                                          "CreateCount":  175
+                                      },
+                                      {
+                                          "ProcessId":  1736,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\EN-US\\",
+                                          "CreateCount":  164
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\",
+                                          "CreateCount":  145
+                                      },
+                                      {
+                                          "ProcessId":  1736,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\INF\\",
+                                          "CreateCount":  135
+                                      },
+                                      {
+                                          "ProcessId":  1736,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\DRIVERS\\",
+                                          "CreateCount":  92
+                                      },
+                                      {
+                                          "ProcessId":  1524,
+                                          "Name":  "pid-1524",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Windows\\SYSTEM32\\",
+                                          "CreateCount":  88
+                                      },
+                                      {
+                                          "ProcessId":  1524,
+                                          "Name":  "pid-1524",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Windows\\system32\\WindowsPowerShell\\v1.0\\Modules\\",
+                                          "CreateCount":  83
+                                      },
+                                      {
+                                          "ProcessId":  5292,
+                                          "Name":  "powershell.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\T4\\purge-attribution\\",
+                                          "CreateCount":  68
+                                      },
+                                      {
+                                          "ProcessId":  1736,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\WINDOWSPOWERSHELL\\V1.0\\MODULES\\",
+                                          "CreateCount":  65
+                                      },
+                                      {
+                                          "ProcessId":  1736,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\WINDOWSPOWERSHELL\\V1.0\\MODULES\\STORAGE\\",
+                                          "CreateCount":  60
+                                      },
+                                      {
+                                          "ProcessId":  1736,
+                                          "Name":  "svchost.exe",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\WBEM\\",
+                                          "CreateCount":  57
+                                      },
+                                      {
+                                          "ProcessId":  2508,
+                                          "Name":  "pid-2508",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\",
+                                          "CreateCount":  56
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\",
+                                          "CreateCount":  50
+                                      },
+                                      {
+                                          "ProcessId":  4,
+                                          "Name":  "System",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\T4\\purge-attribution\\",
+                                          "CreateCount":  48
+                                      },
+                                      {
+                                          "ProcessId":  5008,
+                                          "Name":  "pid-5008",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Windows\\System32\\",
+                                          "CreateCount":  45
+                                      },
+                                      {
+                                          "ProcessId":  1580,
+                                          "Name":  "pid-1580",
+                                          "Directory":  "\\Device\\HarddiskVolume3\\Windows\\SYSTEM32\\",
+                                          "CreateCount":  43
+                                      }
+                                  ],
+        "TopDirectories":  [
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Windows\\WinSxS\\",
+                                   "DistinctFiles":  1169
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Windows\\system32\\",
+                                   "DistinctFiles":  1014
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\INF\\",
+                                   "DistinctFiles":  135
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\EN-US\\",
+                                   "DistinctFiles":  84
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\WINDOWSPOWERSHELL\\V1.0\\MODULES\\",
+                                   "DistinctFiles":  83
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSWOW64\\",
+                                   "DistinctFiles":  83
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\ProgramData\\SafeUpload\\staging-journal\\",
+                                   "DistinctFiles":  64
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\DRIVERS\\",
+                                   "DistinctFiles":  49
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\PREFETCH\\",
+                                   "DistinctFiles":  43
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files\\WindowsApps\\Microsoft.LanguageExperiencePacken-GB_19041.62.219.0_neutral__8wekyb3d8bbwe\\Windows\\SYSTEM32\\en-GB\\",
+                                   "DistinctFiles":  40
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\",
+                                   "DistinctFiles":  39
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\WINDOWSPOWERSHELL\\V1.0\\MODULES\\STORAGE\\",
+                                   "DistinctFiles":  30
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\PROGRAM FILES\\WINDOWSAPPS\\",
+                                   "DistinctFiles":  29
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Windows\\",
+                                   "DistinctFiles":  28
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\WBEM\\",
+                                   "DistinctFiles":  27
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Windows\\SYSTEM32\\en-GB\\",
+                                   "DistinctFiles":  18
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Protected\\t4\\",
+                                   "DistinctFiles":  16
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEMAPPS\\",
+                                   "DistinctFiles":  16
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\ASSEMBLY\\NATIVEIMAGES_V4.0.30319_64\\",
+                                   "DistinctFiles":  15
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\",
+                                   "DistinctFiles":  14
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\PROGRAMDATA\\MICROSOFT\\WINDOWS\\APPREPOSITORY\\PACKAGES\\",
+                                   "DistinctFiles":  14
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Windows\\System32\\DriverStore\\FileRepository\\",
+                                   "DistinctFiles":  14
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\WINDOWSPOWERSHELL\\V1.0\\",
+                                   "DistinctFiles":  14
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Program Files\\WindowsPowerShell\\Modules\\",
+                                   "DistinctFiles":  13
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\PROGRAMDATA\\MICROSOFT\\WINDOWS\\ONESETTINGS\\",
+                                   "DistinctFiles":  13
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\CURSORS\\",
+                                   "DistinctFiles":  13
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\T4\\purge-attribution\\",
+                                   "DistinctFiles":  12
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\USERS\\VIKA\\",
+                                   "DistinctFiles":  10
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\Windows\\Microsoft.NET\\assembly\\GAC_MSIL\\",
+                                   "DistinctFiles":  10
+                               },
+                               {
+                                   "Directory":  "\\Device\\HarddiskVolume3\\WINDOWS\\SYSTEM32\\OPENSSH\\",
+                                   "DistinctFiles":  10
+                               }
+                           ],
+        "LostEvents":  null,
+        "LostBuffers":  0,
+        "ProbeCreates":  [
+
+                         ],
+        "Truncated":  false,
+        "MaxEvents":  400000,
+        "EtlBytes":  8388608,
+        "Error":  null
+    }
+]

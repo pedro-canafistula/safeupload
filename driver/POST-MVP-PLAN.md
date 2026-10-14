@@ -650,6 +650,19 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       rows) is within the start + 2,048 bound, but the purge released 940 of 1,931 SUfl growth (48.7%), under the 2026-10-12 half
       criterion for proceeding to a long run: **the 10,000-cycle row stays held** until that measurement is understood
       (conservative). The raw cells are not a long run and proceed.
+    - [x] Purge attribution diagnostic (harness `d157b681`, merged `e91472d6`; gates [hg-purgeattr1](evidence/2026-10-14/harness-windows-gate-hg-purgeattr1.txt)
+      failed on a shadowed exit code, receipt kept; [hg-purgeattr2](evidence/2026-10-14/harness-windows-gate-hg-purgeattr2.txt) PASS).
+      Row `m2t5purgeattr1`, same pair, non-qualifying ([verdict](evidence/2026-10-14/m2t5purgeattr1-verdict.txt), restoration PASS):
+      every T4 line PASS; SUfl start 442, idle 1,610, purged 653 — **released 957 of 1,168 (81.9%)**, 211 above start (k11 smoke
+      440). No burst after the actor exits (+12, versus +1,019 in `m2t5boot15`); a repeat purge reached 587 and a purge with the agent
+      stopped 588, so the residue is not agent-held. Kernel-File ETW ([summary](evidence/2026-10-14/m2t5purgeattr1-purge-attribution/purge-attribution/summary.json))
+      shows a Microsoft Edge self-update on the guest base (setup.exe, EdgeUpdate: thousands of creates under Program Files) in the
+      post-workload windows — background maintenance that confounds this measurement — and two agent defects: the agent never goes
+      idle (16 replace-blocked entries reopened about 2.35 times per second each with their journal manifest and parent
+      directories, about 450 creates/s), and after a service restart it retries disposal of all 192 driver-deleted released stages
+      (FileNotFoundException, "retried at the next service start"). Both go into the batched fix. **The 10k row stays held** until
+      the fixed pair's own smoke row passes the half criterion: the busy loop scales with blocked entries and would distort a long
+      row. Disabling Edge updates on the base would be an image change and needs the owner.
     - [ ] Raw C01–C04/B01/B02/X01 cells in ordinary, runtime-Verifier and boot-Verifier modes with this pair (separate restoration each).
       **Stopped after three identical failures** (`m2t5ro1`, `m2t5ob1`, `m2t5oc1`, C01-approve-absent ordinary; receipts kept; host
       restoration discarded each run disk): the case completes, but in-guest restoration's `fltmc unload SafeUpload` returns 0x801F0010.
