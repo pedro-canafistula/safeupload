@@ -120,10 +120,15 @@ PASS. [Verdict](m2t4vol1-verdict.txt), [host log](m2t4vol1-host.txt). Launcher e
   approve) got `CreateFile Win32=5` after 13.6 s. The service answered staged requests 1833 (13.1 s) and 1836 (20.5 s, allocation)
   after the kernel's wait ended (`ERROR_FLT_NO_WAITER_FOR_REPLY`), after a 67 s gap with no service events. The kernel refused the
   create; no blocked bytes were published and every version and stage file was released (all other assertions PASS, including
-  `T4PoolEndpoint`). The builder's kernel build ended about 50 s before the stall. This is the historical allocation-reply delay
-  ([diagnosis](../2026-10-12/t4-allocation-reply-diagnosis.md)); the pair's phase log (`handler=20535.8`) cannot locate the wait.
+  `T4PoolEndpoint`). Request 1836 was a Create (operation 1, policy decision) and 1833 a StageSeal (operation 4), neither an
+  allocation; the timing starts at dequeue in the single-threaded receive loop, and only the `handler` phase was recorded. The service
+  logged nothing at all for 67 s, including its periodic coverage messages, so the stall was process- or system-wide rather than one
+  slow handler. Host-side causes are not excluded: the builder's kernel build ended about 50 s before, and the owner's btrfs snapshot
+  deletion (about 300 GB) 12 minutes before; the host kernel log has no hung-task or btrfs warning. This matches the historical
+  NO_WAITER delay ([diagnosis](../2026-10-12/t4-allocation-reply-diagnosis.md)), whose cause remains open.
 
-Next, without a gate, threshold or assertion change: (1) trace the allocation handler's phases (journal lock wait, backing creation,
-manifest scan, journal write/flush) before another protected T4 row, and keep builder jobs off the host during timing-sensitive rows;
+Next, without a gate, threshold or assertion change: (1) port the reviewed allocation-reply cleanup and timing of `6198eee7` (present
+only on the isolated T4 agent, not the M2 agent) with phases for every operation, not only allocation, plus a service heartbeat to
+separate a stalled process from a slow handler; keep builder jobs and host maintenance off the host during timing-sensitive rows;
 (2) repeat the open/purge comparison on C: with the same population in and out of the actor profile and with/without the service's
 hand-back creation path, to find what makes those streams outlive the purge.
