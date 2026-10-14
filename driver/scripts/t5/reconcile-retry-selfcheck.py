@@ -65,15 +65,32 @@ class RetryTimer(unittest.TestCase):
         self.assertIn('fired = InterlockedExchange(&StageRetryFired, 0) != 0;', self.pass_)
         self.assertRegex(self.pass_, r'if \(sweep \|\| fired\)')
 
-    def test_either_acceptance_wakes_one_pass_but_only_success_sweeps(self):
+    def result_section(self):
         reply = self.worker[self.worker.index('SafeUploadStageReconcileV20('):]
-        accepted = reply[reply.index('InterlockedExchange(&StageReconcileNeeded, 0);'):
-                         reply.index('} else if (!NT_SUCCESS(reconcileStatus))')]
+        return reply[:reply.index('StageUpdateRetryTimer();')]
+
+    def test_every_outcome_is_applied_only_for_the_current_generation(self):
+        result = self.result_section()
+        current = re.search(r'reconcileCurrent = reconcileServiceGeneration ==\s*'
+                            r'InterlockedCompareExchange\(&StageServiceGeneration, 0, 0\);\s*if \(!reconcileCurrent\) \{\s*\}', result)
+        self.assertIsNotNone(current, 'generation must be checked first and a stale reply must change nothing')
+        before = result[:current.start()]
+        self.assertNotRegex(before, r'StageReconcile(Wait|Needed)|reconcileAgain')
+        after = result[current.end():]
+        self.assertTrue(after.lstrip().startswith('else if (NT_SUCCESS(reconcileStatus) ||'))
+        self.assertEqual(len(re.findall(r'StageReconcileWait = ', after)), 2)  # accepted NONE, current failure
+        self.assertRegex(after, r'\} else \{\s*StageReconcileWait = StageWaitFor\(reconcileStatus\);\s*\}\s*$')
+        self.assertNotIn('StageReconcileWait = STAGE_WAIT_EXCHANGE', after)
+
+    def test_either_acceptance_wakes_one_pass_but_only_success_sweeps(self):
+        result = self.result_section()
+        accepted = result[result.index('else if (NT_SUCCESS(reconcileStatus) ||'):result.rindex('} else {')]
         success = accepted[accepted.index('if (NT_SUCCESS(reconcileStatus)) {'):]
         success = success[:success.index('}') + 1]
         self.assertIn('StageSweepRequested = TRUE;', success)
         self.assertNotIn('reconcileAgain = TRUE;', success)
         self.assertIn('reconcileAgain = TRUE;', accepted.replace(success, ''))
+        self.assertIn('InterlockedExchange(&StageReconcileNeeded, 0);', accepted)
 
     def test_disconnect_updates_the_timer_under_the_namespace_lock(self):
         disconnected = body(self.text, 'SafeUploadStageServiceDisconnected')
@@ -86,7 +103,7 @@ class RetryTimer(unittest.TestCase):
         self.assertIn('InterlockedExchange(&StageRetryFired, 1);', dpc)
         self.assertIn('KeSetEvent(&StageWorkEvent, IO_NO_INCREMENT, FALSE);', dpc)
         self.assertNotIn('StageRetryArmed', dpc)
-        self.assertNotIn('KeSetTimer', dpc)
+        self.assertNotRegex(dpc, r'Ke\w*Timer')
 
     def test_each_reconcile_result_updates_the_timer_and_busy_waits_on_exchange(self):
         reply = self.worker[self.worker.index('SafeUploadStageReconcileV20('):]

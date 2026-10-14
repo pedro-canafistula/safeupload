@@ -6562,6 +6562,7 @@ static VOID StageWorker(PVOID Context)
     LONG reconcileServiceGeneration = 0;
     LONG reconcileProtocolGeneration = 0;
     BOOLEAN reconcileAgain = FALSE;
+    BOOLEAN reconcileCurrent = FALSE;
 #endif
     UNREFERENCED_PARAMETER(Context);
     objects[0] = &StageWorkerStop;
@@ -6609,10 +6610,13 @@ static VOID StageWorker(PVOID Context)
                 reconcileProtocolGeneration, drainReplay);
             StageAcquire(&StageNamespaceResource);
             InterlockedExchange(&StageReconcileInFlight, 0);
-            if ((NT_SUCCESS(reconcileStatus) ||
-                 (reconcileStatus == STATUS_DEVICE_BUSY && SafeUploadStageProtocolIsDrainReplayOnly())) &&
-                reconcileServiceGeneration ==
-                InterlockedCompareExchange(&StageServiceGeneration, 0, 0)) {
+            reconcileCurrent = reconcileServiceGeneration ==
+                InterlockedCompareExchange(&StageServiceGeneration, 0, 0);
+            if (!reconcileCurrent) {
+                /* A connect or disconnect after this request owns the reconcile state and its wake (a reconnect signals
+                 * the worker itself): a stale reply must not turn its SERVICE wait into a timed EXCHANGE retry. */
+            } else if (NT_SUCCESS(reconcileStatus) ||
+                (reconcileStatus == STATUS_DEVICE_BUSY && SafeUploadStageProtocolIsDrainReplayOnly())) {
                 InterlockedExchange(&StageReconcileNeeded, 0);
                 StageReconcileWait = STAGE_WAIT_NONE;
                 if (NT_SUCCESS(reconcileStatus)) {
@@ -6623,12 +6627,8 @@ static VOID StageWorker(PVOID Context)
                 /* Either acceptance ends the skipped passes: run one for owed local work (an expiry, the exit ring).
                  * Only success requests the full sweep; drain-only acceptance grants no protocol authority. */
                 reconcileAgain = TRUE;
-            } else if (!NT_SUCCESS(reconcileStatus)) {
-                StageReconcileWait = StageWaitFor(reconcileStatus);
             } else {
-                InterlockedExchange(&StageReconcileNeeded, 1);
-                StageReconcileWait = STAGE_WAIT_EXCHANGE;
-                reconcileAgain = TRUE;
+                StageReconcileWait = StageWaitFor(reconcileStatus);
             }
             StageUpdateRetryTimer();
             StageRelease(&StageNamespaceResource);
