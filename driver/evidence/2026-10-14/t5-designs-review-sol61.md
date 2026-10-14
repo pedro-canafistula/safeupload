@@ -1,0 +1,26 @@
+**T5-RECOVERY-HOLDS.md — REVISE.**  
+**T5-VOLUNTARY-UNLOAD.md — REVISE**, principally for the combined epoch-retirement contract.
+
+Sol 6.1 xhigh review at `7ae16880`; checkout unchanged. No edits, builds, tests or VM actions. The recovery RCAs and excessive empty-history unload predicate are verified in source. The exact veto branch in the failed runs remains inferred.
+
+1. **High — The original seal request must survive `SealPending`.**  
+   [Recovery proposal:90](driver/T5-RECOVERY-HOLDS.md:90) stores it with the completed measurement. Currently, [StagedTransferJournal.cs:2143](agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs:2143) persists `SealPending` without that request, and startup calls `SealAsync` without it at [3116](agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs:3116). A crash between those writes leaves startup unable to construct the exact receipt.  
+   **Required:** persist the immutable request atomically with `SealPending` and resume from it; alternatively, keep the version nonpublishable until the exact request arrives. Cover every seal entry point.
+
+2. **High — `HandleLifecycleRequired` does not define a complete resolving transition.**  
+   [Recovery proposal:148](driver/T5-RECOVERY-HOLDS.md:148) leaves unspecified the agent’s `ExposurePossible` transition and exactly when pending/fence bookkeeping may clear. Maintenance parks those flags, and [StageStream.c:6285](driver/SafeUpload.Minifilter/StageStream.c:6285) prevents op19 while they remain. Moreover, canceled CREATE can reach CLOSE without CLEANUP ([5448](driver/SafeUpload.Minifilter/StageStream.c:5448)), so requiring ordinary CLEANUP/op19 supplies no resolving route for that case.  
+   **Required:** specify success, failure, canceled-before-handle, cleanup/close and coverage-loss transitions, their exact evidence or kernel attestation, and every affected flag, reservation and pin. Provide a proved cancellation-CLOSE route or explicitly retain its named hold. The reply cannot fabricate op19, seal or deletion.
+
+3. **High — Retained-unexposed stages conflict with the unload gate and approved policy.**  
+   [Recovery proposal:143](driver/T5-RECOVERY-HOLDS.md:143) retains private bytes while retiring their kernel shell; [unload proposal:54](driver/T5-VOLUNTARY-UNLOAD.md:54) still requires `EPOCH_DRAINED`. The current agent requires every epoch manifest terminal **and its stage absent** ([StagedTransferJournal.cs:114](agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs:114)). Approved [T5-DELETES.md:473](driver/T5-DELETES.md:473) also vetoes outstanding allocated/unsealed stages.  
+   **Required:** explicitly define whether proved service-owned retained residue qualifies for retirement/unload, with exact custody, accounting, ancestry and nonpublication obligations. **Owner decision needed:** recommend that narrow exception; operators could unload, while retained bytes remain private and consume charged storage. Without approval, preserve the veto. Automatic deletion remains outside scope.
+
+4. **High — Permanent retirement conflicts with existing quarantine retry behavior.**  
+   [Recovery proposal:196](driver/T5-RECOVERY-HOLDS.md:196) permanently fences old senders and permits only the saved retirement request, returning `EpochRetired`. The unload proposal retains `EPOCH_DRAINED` semantics; current post-ACK veto paths reopen callback admission and enable workers ([StageStream.c:7757](driver/SafeUpload.Minifilter/StageStream.c:7757)). Preserving those paths verbatim contradicts the new quiescence proof.  
+   **Required:** one joint op17/unload state machine, including exact reply adoption, all kernel senders and agent continuations. Once retirement begins, permit only immutable retirement-request replay and necessary local draining. Reconnect or a post-epoch veto must not resume allocation, attachment or seal traffic.
+
+5. **Medium — First seal has no existing live-owner check.**  
+   [Recovery proposal:67](driver/T5-RECOVERY-HOLDS.md:67) groups live-owner/current-policy checks with first measurement. Current seal instead validates durable owner/object/version and handle-lifetime evidence ([StagedTransferJournal.cs:2115](agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs:2115)); owner exit queues the version for processing. Requiring a live process could strand an otherwise properly closed save.  
+   **Required:** provide validation rules per operation. Fresh op15 permission needs live original authority; seal may use exact historical owner binding plus genuine op19/drain evidence after exit. Current policy governs inspection/publication. Intentionally withholding those exited-writer saves would need an owner decision.
+
+The stated lock order, nonpaged ownership, timer exclusions, mandatory service-independent teardown and sticky Unknown constraints are sound design requirements; concrete implementation remains subject to review. Receipt-budget defaults and retained-stage behavior remain pending owner choices. These findings are source-derived interleavings, not reproduced runtime failures.

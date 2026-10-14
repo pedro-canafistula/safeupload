@@ -660,6 +660,18 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       That is stricter than the approved [T5-DELETES §7](T5-DELETES.md#7-unload-and-shutdown-rescope) contract (veto only while
       staged work is outstanding); registry entries pin instances, so the fix is a reviewed retirement path, batched with the
       recovery holds. Design in progress; no further raw-cell runs until it lands.
+  - [ ] **Batched recovery holds + voluntary unload** (one implementation, build, matrix, review and boot): designs
+    [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md) (lost seal ACK, op15 owner exit/typed refusal, refusal-receipt storage and epoch
+    retirement) and [T5-VOLUNTARY-UNLOAD.md](T5-VOLUNTARY-UNLOAD.md) (committed local teardown despite ordinary writer history;
+    late-load fail-closed). [Independent review](evidence/2026-10-14/t5-designs-review-sol61.md) **REVISE** for both: exact seal
+    request with `SealPending`, complete exposure-possible transitions, one joint op17/unload state machine, per-operation owner
+    validation; revision in progress.
+    **Pending owner decision (conservative default applied):** a save whose requester exited before its file was ever exposed can
+    leave its private bytes retained by the service. Default: such retained residue keeps vetoing voluntary unload and epoch
+    retirement, so an operator cannot `fltmc unload` until it is resolved; nothing is deleted automatically. Recommended narrow
+    exception (not implemented until approved): proved service-owned residue with exact custody, charged storage, ancestry and
+    nonpublication obligations does not block unload; the bytes stay private. Refusal-receipt budgets (proposed 4,096 slots /
+    64 MiB for evaluation) also need owner approval before activation.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
