@@ -3802,10 +3802,14 @@ static NTSTATUS StageAttachResumeOrRun(_Inout_ PSTAGE_ATTACH_TRANSACTION Transac
     }
     StageRelease(&StageNamespaceResource);
     if (Transaction->Stream != NULL) {
+        /* The pin taken above is the transaction's: StageAttachDrainTransaction
+         * releases it exactly once (and requeues at zero). Releasing it here
+         * as well drove RpcReferences to -1, so the stream could never be
+         * retired and mandatory teardown waited forever. One op16 attempt per
+         * transaction: a failed one stays AttachRetirePending for the next
+         * CREATE, and the drain must not resend op16 for a retired stream. */
         status = StageAttachRetireUnexposed(Transaction, Transaction->Stream);
-        StageAcquire(&StageNamespaceResource);
-        InterlockedDecrement(&Transaction->Stream->RpcReferences);
-        StageRelease(&StageNamespaceResource);
+        Transaction->UnexposedRetirementAllowed = FALSE;
         return NT_SUCCESS(status) ? STATUS_DELETE_PENDING : status;
     }
 
