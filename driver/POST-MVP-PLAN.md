@@ -633,9 +633,17 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       the owner's next save then sends a follow-up allocation that the agent denies for a Blocked predecessor, the driver keeps the
       answered denial as an unresolved receipt that reserves the name (DELETE_PENDING) and pins the predecessor, and its replays loop
       (allocation recovery is forced to EXCHANGE, collected without parking or deadline and requeued inline after each reply).
-    - [ ] Fix (implementation running): blocked cleanup that shares with the driver's read handle and disposes before waiting for
-      absence; the next save after a BLOCK as an ordinary save; an exact terminal no-allocation result; allocation-recovery parking
-      and backoff. Then rerun the T4 smoke and the raw cells in all three modes.
+    - [x] Fix `cdfdb396`…`18e07a90` (merged `de287bcc`): blocked cleanup opens the exact stage sharing READ|DELETE, persists the
+      disposition and wakes retirement before waiting for absence; a save before retirement is told to retry, after it allocates
+      ordinarily from the public file (no blocked-byte seeding); exact "no allocation committed" result (20) serialized with
+      allocation (manifest first, PID plus creation time; requester exit during capture is transient 19); allocation recovery parks
+      refusals and backs off transient failures. [Review](evidence/2026-10-14/t5-block-review-sol61.md) REJECT (exit race), fixed;
+      [re-review](evidence/2026-10-14/t5-block2-review-sol61.md) **ACCEPT WITH CONDITIONS**. [Four WDK builds `t5-block1`](evidence/2026-10-14/exact-t5-block1-summary.txt)
+      0/0, imports PASS, signed `80D6A645…8D9B`; [agent matrix `t5-block4`](evidence/2026-10-14/exact-agent-matrix-t5-block4-summary.txt)
+      PASS 1,592 / 2,172 (feature Release `D2978B18…8395`). Failed receipts kept: `t5-block1` matrix (`.Count` on the tombstone
+      chain), `t5-block2` (exact exception type). Activation hold: refusal receipts (1,192 bytes each) need reserved count/storage
+      accounting rebuilt at restart, fail-closed exhaustion and retirement only on durable driver-epoch evidence.
+    - [ ] `m2t5boot15`: t5-block1 driver with the t5-block4 agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

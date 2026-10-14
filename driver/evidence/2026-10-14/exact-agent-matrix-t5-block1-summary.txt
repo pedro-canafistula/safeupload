@@ -1,0 +1,8 @@
+﻿LABEL=t5-block1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=cdfdb3966c802eb1f025ff490b96be582a42b7a3
+ARCHIVE_SHA256=B53B0180D095E6192A1C215E867F9420916223B75039FB1BAA5CB63176C458C3
+normal-debug: admission_evidence=false
+normal-debug-build: exit=1 warnings=0 errors=4
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-14T17:22:43.2002204Z

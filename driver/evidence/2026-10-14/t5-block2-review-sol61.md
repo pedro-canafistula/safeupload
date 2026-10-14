@@ -1,0 +1,15 @@
+# Re-review through 18e07a90 (ACCEPT WITH CONDITIONS) — Sol 6.1 xhigh (2026-10-14)
+
+Reviewer: `gpt-6.1-sol`, `reasoning_effort=xhigh`, read-only, web search enabled (Codex session `01a13b87-cfc5-7bf2-8d64-0f81fd71ec3c`), launched fresh by Claude. Verbatim final report; checkout paths shortened.
+
+**ACCEPT WITH CONDITIONS** for the next bounded dormant Verifier boot of `18e07a90`. No remaining source blocker found.
+
+1. **P2, resolved — requester-exit race.** [Handler:781](agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs:781): missing/exited/reused PID before allocation resolves to exact result 20 after cleanup and durable refusal persistence. Identity-query failures and raw `Win32Exception` produce transient result 19; [ProcessName:849](agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs:849) now wraps its exit-driven `InvalidOperationException`. `HasExited` uses the [.NET nonthrowing-on-exit path](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/Process.Windows.cs#L186). Post-commit exit produces 19, then exact manifest replay and cleanup—not 20. No remaining exit-driven permanent parking or premature release found. **Required change: none.**
+
+2. **No defect — receipt corrections preserve semantics.** [Rename count:2798](agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs:2798) traverses the same chain as disposal: one link per committed rename, none for replay/abort. [Duplicate-ID assertion:792](agente/SafeUpload.Agent.Tests/StagedTransferJournalTests.cs:792) preserves `IOException` compatibility and additionally checks the exact subtype, transfer ID, `ReplacementReturned=false`, and unchanged destination. **Required change: none.**
+
+3. **P2, activation hold — cumulative refusal storage remains unbounded.** [Receipt persistence:86](agente/SafeUpload.Agent.Service/Interception/StagedAllocationResolution.cs:86). This does **not** block a row capped at **N run-wide fresh refusal IDs** with sufficient storage: **1,192 × N payload bytes**, plus filesystem overhead, live temporary and crash-orphan temporaries. Count background requests and fresh reservations from retries; the live-stream cap does not bound cumulative receipts. **Before activation:** reserve count/storage charges before writing, reconstruct accounting after restart, fail closed on exhaustion, and retire only with durable driver-epoch retirement and quiescence proving no valid replay remains. Service restart, elapsed time, or reply transmission is insufficient.
+
+4. **P2, before-boot verification condition.** The reported `ea376db4` matrix predates the tip’s [new exit control:232](agente/SafeUpload.Agent.Tests/StagedAllocationResolutionTests.cs:232). Require the complete tip agent matrix, expected **1,592 normal / 2,172 feature per profile**, required four-profile kernel/static gates at 0/0, and matched artifact hashes. Kernel terminal-release checks, lifetime exclusions and retry accounting remain sound. Preserve dormant activation holds and separate restoration.
+
+Source-review acceptance only; no edits, builds, tests or VMs were run.

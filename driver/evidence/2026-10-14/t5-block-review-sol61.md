@@ -1,0 +1,13 @@
+# Review of the blocked retirement and allocation resolution cdfdb396 (REJECT) — Sol 6.1 xhigh (2026-10-14)
+
+Reviewer: `gpt-6.1-sol`, `reasoning_effort=xhigh`, read-only, web search enabled (Codex session `01a13b6e-2054-73a1-985e-6648b0538d46`), launched fresh by Claude. Verbatim final report; checkout paths shortened.
+
+**REJECT for the next dormant Verifier boot of `cdfdb396`.** Independent Sol 6.1, xhigh review found one owner-stranding defect.
+
+1. **P2 — requester-exit race leaves the name reserved until reconnect.** [MinifilterInterceptor.cs:788](agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs:788) reads `ProcessName` after checking owner identity. Exit between those reads can throw `InvalidOperationException`, as established by the [.NET implementation](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/Process.Windows.cs#L819) and [metadata fallback](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/Process.cs#L907). [IsPermanent:3658](agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs:3658) converts this into generic Deny/SERVICE. Owner exit cannot clear the outstanding receipt, so automatic resolution stops. **Required before boot:** narrowly classify this metadata race as result 19, then let exact replay establish result 20. Add a forced exit-between-reads handler control; the [new test:54](agente/SafeUpload.Agent.Tests/StagedAllocationResolutionTests.cs:54) substitutes a helper result and misses this boundary.
+
+2. **P2 — refusal receipts accumulate without accounting or retirement.** [StagedAllocationResolution.cs:86](agente/SafeUpload.Agent.Service/Interception/StagedAllocationResolution.cs:86) persists 1,192 bytes for every fresh refused reservation. Driver shells retire, but these files escape the stream bound. **Required before unrestricted activation:** bound/account storage and retire receipts only with epoch evidence excluding valid replay; add repeated-refusal/restart controls. This alone does not block a bounded dormant row.
+
+The remaining deletion, retirement, exact result-20 release, retry/deadline and wire paths look sound in source. No wrong-object deletion, premature release or repeated-publication defect was found.
+
+No edits, builds, tests or VMs were run. Required kernel builds and the complete agent matrix remain outstanding. The cited boot14 RCA file is absent from this checkout.
