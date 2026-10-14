@@ -21,6 +21,9 @@
 # T4_DELETE_ATTRIBUTION=yes adds a 256-file identity-resolved deletion diagnostic after purged. Requires T4_MEMORY_TOOLS,
 # boot Verifier and cycles < 10000. With T4_HANDBACK_DIAGNOSTIC=yes, inventory/delete the block-heavy hand-backs instead,
 # after recording the fresh-purge release proxy. Both paths are non-qualifying; original gates unchanged.
+# T4_VOLUME_DISCRIMINATOR=yes adds a non-qualifying 512-file NTFS VHD open/delete/teardown diagnostic after the existing samples.
+# Requires boot Verifier, cycles < 10000 and explicit win10-debug3; no memory tools needed. Cannot combine with delete attribution;
+# classification is INFO only, and diskpart/fltmc receipts travel with the existing failure-evidence export.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; cycles="${5:-10000}"; mode="${6:-runtime-verifier}"; sample_every="${7:-500}"
@@ -51,6 +54,17 @@ case "$delete_attribution" in
          [ "$dom" = win10-debug3 ] && [ "${SAFEUPLOAD_DEBUGGEE:-}" = win10-debug3 ] || {
             echo 'Delete attribution requires explicit SAFEUPLOAD_DEBUGGEE=win10-debug3 and target win10-debug3'; exit 2; } ;;
     *) echo 'T4_DELETE_ATTRIBUTION must be yes or no'; exit 2 ;;
+esac
+volume_discriminator=${T4_VOLUME_DISCRIMINATOR:-no}
+case "$volume_discriminator" in
+    no) ;;
+    yes) [ "$mode" = verifier-from-boot ] && [ "$cycles" -lt 10000 ] || {
+            echo 'Volume discriminator requires boot Verifier and fewer than 10,000 cycles'; exit 2; }
+         [ "$dom" = win10-debug3 ] && [ "${SAFEUPLOAD_DEBUGGEE:-}" = win10-debug3 ] || {
+            echo 'Volume discriminator requires explicit SAFEUPLOAD_DEBUGGEE=win10-debug3 and target win10-debug3'; exit 2; }
+         [ "$delete_attribution" = no ] || {
+            echo 'Volume discriminator cannot be combined with T4_DELETE_ATTRIBUTION'; exit 2; } ;;
+    *) echo 'T4_VOLUME_DISCRIMINATOR must be yes or no'; exit 2 ;;
 esac
 # verifier-from-boot: the same Verifier flags (0x13B) configured persistently before the install reboot, so pool tracking covers the
 # driver from its first allocation and the agent reaches Ready through the normal boot path (runtime-verifier's fltmc load after
@@ -335,13 +349,14 @@ if ('__MODE__' -in 'runtime-verifier', 'verifier-from-boot') { $coordinatorArgs 
 if ('__MEMORY__' -eq 'yes') { $coordinatorArgs += ' -MemoryDiagnostic' }
 if ('__HANDBACK__' -eq 'yes') { $coordinatorArgs += ' -BlockHeavy -HandbackDiagnostic' }
 if ('__DELETE__' -eq 'yes') { $coordinatorArgs += ' -DeleteAttribution' }
+if ('__VOLUME__' -eq 'yes') { $coordinatorArgs += ' -VolumeDiscriminator' }
 $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $coordinatorArgs
 Register-ScheduledTask -TaskName 't4-coordinator' -Principal $principal -Action $coordinator -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 't4-coordinator'
 'COORDINATOR_STARTED=True'
 PS
 )
-setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}; setup_ps=${setup_ps//__HANDBACK__/$handback_diagnostic}; setup_ps=${setup_ps//__DELETE__/$delete_attribution}
+setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}; setup_ps=${setup_ps//__HANDBACK__/$handback_diagnostic}; setup_ps=${setup_ps//__DELETE__/$delete_attribution}; setup_ps=${setup_ps//__VOLUME__/$volume_discriminator}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 if [ "$mode" != ordinary ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
@@ -350,6 +365,8 @@ if [ "$mode" != ordinary ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.
 # Eighteen extra KD sessions at 180 s + up to 10 s termination each, and three 30 s waits.
 extra_diagnostic_seconds=0
 [ "$delete_attribution" = yes ] && extra_diagnostic_seconds=3510
+# Five settles and bounded diskpart/fltmc commands, including failure cleanup.
+[ "$volume_discriminator" = yes ] && extra_diagnostic_seconds=$(( extra_diagnostic_seconds + 1800 ))
 limit=${T4_DEADLINE_SECONDS:-$(( cycles * 4 + 600 + extra_diagnostic_seconds ))}
 [[ "$limit" =~ ^[0-9]+$ ]] || { echo 'Invalid T4 deadline'; exit 2; }
 [ "$limit" -ge 3600 ] || limit=3600
@@ -413,11 +430,12 @@ else
     : > "$ev/$tag-after.txt"
 fi
 
-python3 - "$ev/$tag-after.txt" "$ev/$tag-samples.jsonl" "$ev/$tag-verdict.txt" "$cycles" "$mode" "$alive" "$(( $(date +%s) - started ))" "$handback_diagnostic" "$delete_attribution" <<'PY'
+python3 - "$ev/$tag-after.txt" "$ev/$tag-samples.jsonl" "$ev/$tag-verdict.txt" "$cycles" "$mode" "$alive" "$(( $(date +%s) - started ))" "$handback_diagnostic" "$delete_attribution" "$volume_discriminator" <<'PY'
 import json, re, sys
 after_path, samples_path, verdict_path, cycles, mode, alive, elapsed = sys.argv[1:8]
 handback_diagnostic = len(sys.argv) > 8 and sys.argv[8] == 'yes'
 delete_attribution = len(sys.argv) > 9 and sys.argv[9] == 'yes'
+volume_discriminator = len(sys.argv) > 10 and sys.argv[10] == 'yes'
 cycles = int(cycles)
 after = open(after_path, encoding='utf-8', errors='replace').read()
 out = []
@@ -427,6 +445,8 @@ if handback_diagnostic:
 if delete_attribution:
     out.append('T4Diagnostic INFO KD delete attribution (owner-authorized 2026-10-13); non-qualifying: '
                'no line in this file passes or fails a T4 gate')
+if volume_discriminator:
+    out.append('T4VolumeDiscriminatorMode INFO volume teardown diagnostic; non-qualifying; classification is informational')
 def verdict(name, ok, reason):
     out.append(f"{name} {'PASS' if ok else 'FAIL'} {reason}")
 m = re.search(r'^RESULT=(.*)$', after, re.M)
@@ -563,6 +583,15 @@ if delete_attribution:
                            f"classification {snapshot.get('Classification')}; errors {json.dumps(snapshot.get('Errors'))}; "
                            f"summary {snapshot.get('SummaryFile')}")
         out.append('T4DeleteAttributionPurge INFO ' + json.dumps(diag.get('Purges')))
+if volume_discriminator:
+    diag = (result or {}).get('VolumeDiscriminator')
+    if not isinstance(diag, dict):
+        out.append('T4VolumeDiscriminator INFO diagnostic result missing')
+    else:
+        out.append(f"T4VolumeDiscriminator INFO classification {diag.get('Classification')}; letter {diag.get('Letter')}; N {diag.get('N')}; "
+                   f"filter attached {json.dumps(diag.get('FilterAttached'))}; SUfl live {json.dumps(diag.get('LiveSUfl'))}; "
+                   f"growth {diag.get('Growth')}; delete release {diag.get('DeleteRelease')}; teardown release {diag.get('TeardownRelease')}; "
+                   f"residual {diag.get('Residual')}; errors {json.dumps(diag.get('Errors'))}")
 verdict('T4VersionsReleased', stage(settled, 'liveVersions') == 0 and stage(settled, 'liveViews') == 0,
         f"after settle: live versions {stage(settled, 'liveVersions')}, views {stage(settled, 'liveViews')}, created {stage(settled, 'versionsCreated')}, "
         f"released {stage(settled, 'versionsReleased')}, views released {stage(settled, 'viewsReleased')}")

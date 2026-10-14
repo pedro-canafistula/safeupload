@@ -22,7 +22,7 @@ if not match:
 source = match.group(1)
 
 
-def replay(after, samples, cycles, handback='no', delete_attribution='no'):
+def replay(after, samples, cycles, handback='no', delete_attribution='no', volume_discriminator='no'):
     with tempfile.TemporaryDirectory(prefix='t4-verdict-control-') as directory:
         root = Path(directory)
         after_path = root / 'control-after.txt'
@@ -31,7 +31,7 @@ def replay(after, samples, cycles, handback='no', delete_attribution='no'):
         after_path.write_text(after)
         samples_path.write_text(''.join(json.dumps(s) + '\n' for s in samples))
         run = subprocess.run([sys.executable, '-', str(after_path), str(samples_path),
-                              str(verdict_path), str(cycles), 'verifier-from-boot', 'yes', '0', handback, delete_attribution],
+                              str(verdict_path), str(cycles), 'verifier-from-boot', 'yes', '0', handback, delete_attribution, volume_discriminator],
                              input=source, text=True, capture_output=True)
         if run.returncode not in (0, 1) or not verdict_path.is_file():
             raise AssertionError(run.stderr or run.stdout)
@@ -205,6 +205,33 @@ for attribution in (None, {'CorpusCount': 256, 'Deleted': 255,
                 require(observed, 'T4NoBlockedBytesPublished', 'FAIL')
                 assert observed_code == 1
 print('T4DeleteAttributionControl=PASS; corpus/combined modes non-qualifying, missing/failed/partially successful KD remains INFO, gate lines and exit unchanged')
+# Every synthetic classification, missing result and diagnostic error must leave all existing lines/exit intact.
+volume_cases = [None] + [
+    dict(NonQualifying=True, Letter='Z', N=512, FilterAttached={'First': True, 'Second': True},
+         LiveSUfl={'vol-s0': 900, 'vol-s1': 1000, 'vol-s2': 1512, 'vol-s3': 1256,
+                   'vol-s4': 1000 + residual}, Growth=512, DeleteRelease=256,
+         TeardownRelease=256 - residual, Residual=residual, Errors=[], Classification=classification)
+    for classification, residual in [('StreamRetention', 64), ('DriverReference', 65), ('Inconclusive', 0)]]
+volume_cases[-1].update(Growth=255, Errors=['synthetic step failure'])
+for volume in volume_cases:
+    for failure in (False, True):
+        diagnostic = copy.deepcopy(healthy)
+        diagnostic.update(Cycles=256, Completed=256, Attempted=256)
+        diagnostic['VolumeDiscriminator'] = volume
+        diagnostic['BlockedBytesPublished'] = failure
+        original, original_code = replay(changed_result(diagnostic), healthy_samples, 256)
+        observed, observed_code = replay(changed_result(diagnostic), healthy_samples, 256, volume_discriminator='yes')
+        require(observed, 'T4VolumeDiscriminatorMode', 'INFO', 'non-qualifying')
+        fragment = 'diagnostic result missing' if volume is None else 'classification ' + volume['Classification']
+        require(observed, 'T4VolumeDiscriminator', 'INFO', fragment)
+        if volume:
+            for fragment in (f"growth {volume['Growth']}", f"residual {volume['Residual']}",
+                             'SUfl live ' + json.dumps(volume['LiveSUfl']), 'errors ' + json.dumps(volume['Errors'])):
+                assert fragment in observed['T4VolumeDiscriminator']
+        assert {k: v for k, v in observed.items() if not k.startswith('T4VolumeDiscriminator')} == original
+        assert observed_code == original_code == int(failure)
+        assert not re.search(r'\b(PASS|FAIL)\b', observed['T4VolumeDiscriminator'])
+print('T4VolumeDiscriminatorControl=PASS; three classifications and missing result remain INFO, all existing lines and exit unchanged')
 # Preflight controls stop before artifact hashing, inventory, SSH or run_disk_begin.
 # Even the valid option combination has deliberately absent product artifacts.
 with tempfile.TemporaryDirectory(prefix='t4-delete-preflight-') as directory:
@@ -212,7 +239,7 @@ with tempfile.TemporaryDirectory(prefix='t4-delete-preflight-') as directory:
     (root / 'debuggers.zip').write_bytes(b'synthetic presence check only')
     (root / 'SafeUpload.pdb').write_bytes(b'synthetic presence check only')
     base = dict(os.environ, T4_MEMORY_TOOLS=directory, T4_DELETE_ATTRIBUTION='yes',
-                T4_HANDBACK_DIAGNOSTIC='no', SAFEUPLOAD_DEBUGGEE='win10-debug3')
+                T4_HANDBACK_DIAGNOSTIC='no', T4_VOLUME_DISCRIMINATOR='no', SAFEUPLOAD_DEBUGGEE='win10-debug3')
     cases = [({}, '256', 'verifier-from-boot', 'needs the signed driver'),
              ({'T4_MEMORY_TOOLS': ''}, '256', 'verifier-from-boot', 'Delete attribution requires'),
              ({'T4_HANDBACK_DIAGNOSTIC': 'yes'}, '256', 'verifier-from-boot', 'needs the signed driver'),
@@ -229,4 +256,28 @@ with tempfile.TemporaryDirectory(prefix='t4-delete-preflight-') as directory:
         assert run.returncode == 2 and message in run.stdout, (overrides, run.stdout, run.stderr)
         assert '== run disk' not in run.stdout
 print('T4DeletePreflightControl=PASS; 9 offline option/dependency controls, no VM contact')
+with tempfile.TemporaryDirectory(prefix='t4-volume-preflight-') as directory:
+    root = Path(directory)
+    base = dict(os.environ, T4_MEMORY_TOOLS='', T4_DELETE_ATTRIBUTION='no',
+                T4_HANDBACK_DIAGNOSTIC='no', T4_VOLUME_DISCRIMINATOR='yes', SAFEUPLOAD_DEBUGGEE='win10-debug3')
+    cases = [({}, 'win10-debug3', '256', 'verifier-from-boot', 'needs the signed driver'),
+             ({'T4_HANDBACK_DIAGNOSTIC': 'yes'}, 'win10-debug3', '256', 'verifier-from-boot', 'needs the signed driver'),
+             ({}, 'win10-debug3', '10000', 'verifier-from-boot', 'Volume discriminator requires boot Verifier'),
+             ({}, 'win10-debug3', '256', 'runtime-verifier', 'Volume discriminator requires boot Verifier'),
+             ({}, 'win10-debug3', '256', 'ordinary', 'Volume discriminator requires boot Verifier'),
+             ({'SAFEUPLOAD_DEBUGGEE': ''}, 'win10-debug3', '256', 'verifier-from-boot', 'requires explicit'),
+             ({'SAFEUPLOAD_DEBUGGEE': 'win10-debug2'}, 'win10-debug3', '256', 'verifier-from-boot', 'requires explicit'),
+             ({}, 'win10-debug2', '256', 'verifier-from-boot', 'requires explicit'),
+             ({'T4_VOLUME_DISCRIMINATOR': 'maybe'}, 'win10-debug3', '256', 'verifier-from-boot', 'must be yes or no'),
+             ({'T4_DELETE_ATTRIBUTION': 'yes', 'T4_MEMORY_TOOLS': directory},
+              'win10-debug3', '256', 'verifier-from-boot', 'cannot be combined')]
+    (root / 'debuggers.zip').write_bytes(b'synthetic presence check only')
+    (root / 'SafeUpload.pdb').write_bytes(b'synthetic presence check only')
+    for overrides, domain, count, mode, message in cases:
+        run = subprocess.run(['bash', str(REPO / 'driver/scripts/Invoke-StageCycles.sh'),
+                              domain, 'offlineVol', str(root / 'absent.sys'), str(root / 'absent.zip'),
+                              count, mode, '64'], env=dict(base, **overrides), capture_output=True, text=True, timeout=10)
+        assert run.returncode == 2 and message in run.stdout, (overrides, run.stdout, run.stderr)
+        assert '== run disk' not in run.stdout
+print('T4VolumePreflightControl=PASS; 10 offline option/dependency controls, no VM contact')
 print('T4VerdictSelfCheck=PASS; retained replay and context/registry refusal controls; Qualification=False')

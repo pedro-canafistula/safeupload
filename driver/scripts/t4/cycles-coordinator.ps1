@@ -12,6 +12,9 @@ before and after a second purge, to tell whether retained contexts follow those 
 -DeleteAttribution adds two-pass KD deletion attribution after purged; all original samples remain.
 Together with -HandbackDiagnostic it inventories/deletes the existing hand-backs (requires -BlockHeavy);
 otherwise it creates the separate 256-file corpus. No diagnostic observation changes a qualification gate.
+-VolumeDiscriminator appends five purge/30 s samples around a 512-file NTFS VHD metadata-open/delete/teardown sequence,
+without changing the original samples or gates. It needs boot Verifier and cycles < 10000, excludes -DeleteAttribution, and needs
+no memory tools; classification is non-qualifying INFO, with diskpart/fltmc scripts and receipts in the failure-evidence export.
 Results: C:\T4\cycles.jsonl (one line per cycle), C:\T4\samples.jsonl, C:\T4\result.json.
 #>
 param(
@@ -24,7 +27,8 @@ param(
     [switch]$MemoryDiagnostic,
     [switch]$BlockHeavy,
     [switch]$HandbackDiagnostic,
-    [switch]$DeleteAttribution
+    [switch]$DeleteAttribution,
+    [switch]$VolumeDiscriminator
 )
 $ErrorActionPreference = 'Stop'
 function Read-T4ControlText([string]$Path) {
@@ -374,6 +378,246 @@ function Invoke-T4DeleteAttribution($StartSample, $PurgedSample) {
     $diagnostic
 }
 
+function Initialize-T4VolumeIdentity {
+    if ('T4VolumeIdentity' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class T4VolumeIdentity {
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, ExactSpelling=true, SetLastError=true)]
+    static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security,
+        uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", ExactSpelling=true, SetLastError=true)]
+    static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int kind, [Out] byte[] data, uint size);
+    public static string Read(string path) {
+        // FILE_READ_ATTRIBUTES only; share READ/WRITE/DELETE; OPEN_EXISTING. No data or enumeration opens.
+        using (SafeFileHandle file = CreateFileW(path, 0x80, 7, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero)) {
+            if (file.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+            byte[] id = new byte[24]; // FILE_ID_INFO: volume serial + full 128-bit FileId
+            if (!GetFileInformationByHandleEx(file, 18, id, 24))
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            return BitConverter.ToString(id).Replace("-", "");
+        }
+    }
+}
+'@
+}
+
+function Invoke-T4VolumeNative($Diagnostic, [string]$Directory, [string]$Label,
+    [string]$File, [string[]]$Arguments, [string[]]$Commands = @()) {
+    $base = Join-Path $Directory $Label
+    $receipt = [ordered]@{ Label=$Label; File=$File; Arguments=$Arguments; Script=$null;
+        Stdout=($base + '.stdout.txt'); Stderr=($base + '.stderr.txt'); ExitCode=$null; Error=$null }
+    $Diagnostic.NativeReceipts += $receipt
+    $process = $null
+    try {
+        if ($Commands.Count) {
+            $receipt.Script = $base + '.diskpart.txt'
+            [IO.File]::WriteAllLines($receipt.Script, $Commands, [Text.Encoding]::ASCII)
+            $Arguments = @('/s', ('"' + $receipt.Script + '"'))
+            $receipt.Arguments = $Arguments
+        }
+        $process = Start-Process -FilePath $File -ArgumentList $Arguments -PassThru -NoNewWindow `
+            -RedirectStandardOutput $receipt.Stdout -RedirectStandardError $receipt.Stderr
+        $null = $process.Handle # retain for PowerShell 5.1 ExitCode after WaitForExit
+        $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 120 * [Diagnostics.Stopwatch]::Frequency
+        while (-not $process.HasExited) {
+            if ([Diagnostics.Stopwatch]::GetTimestamp() -ge $deadline) { throw ($Label + ' exceeded 120 s') }
+            Start-Sleep -Milliseconds 100
+        }
+        $process.WaitForExit()
+        $receipt.ExitCode = $process.ExitCode
+        if ($receipt.ExitCode -ne 0) { throw ($Label + ' exit ' + $receipt.ExitCode) }
+        if ($Commands.Count) {
+            # Diskpart can return zero after a script error; storage postconditions are verified by the caller too.
+            $text = [IO.File]::ReadAllText($receipt.Stdout) + [IO.File]::ReadAllText($receipt.Stderr)
+            if ($text -match '(?im)DiskPart has encountered an error|Virtual Disk Service error|DiskPart failed') {
+                throw ($Label + ': diskpart reported a script error; see full output')
+            }
+        }
+    } catch {
+        $receipt.Error = $_.Exception.Message
+        throw
+    } finally {
+        if ($null -ne $process) {
+            try {
+                if (-not $process.HasExited) {
+                    $process.Kill()
+                    if (-not $process.WaitForExit(10000)) { throw 'Native process still running after kill' }
+                }
+                $receipt.ExitCode = $process.ExitCode
+            } catch { $Diagnostic.Errors += ($Label + ' process cleanup: ' + $_.Exception.Message) }
+            finally { $process.Dispose() }
+        }
+        # Persist even a timeout/launch failure before attempting another command or cleanup.
+        [IO.File]::WriteAllText(($base + '.receipt.json'), ($receipt | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+    }
+    [pscustomobject]$receipt
+}
+
+function Get-T4VolumeObservation($Diagnostic) {
+    $live = [ordered]@{}
+    foreach ($label in 'vol-s0','vol-s1','vol-s2','vol-s3','vol-s4') {
+        $samples = @($Diagnostic.Samples | Where-Object { $_.Label -eq $label })
+        $tag = $null
+        if ($samples.Count -eq 1) { $tag = $samples[0].TagSUfl }
+        $live[$label] = if ($tag -and $null -ne $tag.NonPagedAllocs -and $null -ne $tag.NonPagedFrees) {
+            ([long]$tag.NonPagedAllocs - [long]$tag.NonPagedFrees + 4294967296L) % 4294967296L
+        } else { $null }
+    }
+    $observation = [ordered]@{ LiveSUfl=$live; Growth=$null; DeleteRelease=$null;
+        TeardownRelease=$null; Residual=$null; Classification='Inconclusive' }
+    foreach ($delta in @(@('Growth','vol-s2','vol-s1'), @('DeleteRelease','vol-s2','vol-s3'),
+                         @('TeardownRelease','vol-s3','vol-s4'), @('Residual','vol-s4','vol-s1'))) {
+        if ($null -ne $live[$delta[1]] -and $null -ne $live[$delta[2]]) {
+            $observation[$delta[0]] = $live[$delta[1]] - $live[$delta[2]]
+        }
+    }
+    if (@($live.Keys | Where-Object { $null -eq $live[$_] }).Count -eq 0 -and
+        $Diagnostic.Errors.Count -eq 0 -and $Diagnostic.FilterAttached.First -eq $true -and
+        $Diagnostic.FilterAttached.Second -eq $true -and $observation.Growth -ge $Diagnostic.N / 2) {
+        if ($observation.Residual -le $Diagnostic.N / 8) { $observation.Classification='StreamRetention' }
+        else { $observation.Classification='DriverReference' }
+    }
+    [pscustomobject]$observation
+}
+
+function Invoke-T4VolumeDiscriminator {
+    $diagnostic = [ordered]@{ NonQualifying=$true; Letter=$null; N=512;
+        FilterAttached=[ordered]@{ First=$null; Second=$null }; Samples=@(); Purges=@();
+        NativeReceipts=@(); Errors=@(); Created=0; Opened=0; Deleted=0; AttachedAtEnd=$null;
+        LiveSUfl=$null; Growth=$null; DeleteRelease=$null; TeardownRelease=$null; Residual=$null;
+        Classification='Inconclusive' }
+    $vhd = 'C:\T4\volume-discriminator.vhdx'
+    $directory = Join-Path $out 'failure-evidence\volume-discriminator'
+    $owned = $false
+    $select = 'select vdisk file="' + $vhd + '"'
+    function Invoke-VolumeDiskpart([string]$Label, [string[]]$Commands) {
+        $null = Invoke-T4VolumeNative $diagnostic $directory $Label 'diskpart.exe' @() ($Commands + @('exit'))
+    }
+    function Get-VolumeImage {
+        $image = Get-DiskImage -ImagePath $vhd -ErrorAction Stop
+        if ($null -eq $image.Attached) { throw 'VHD attachment state unavailable' }
+        $diagnostic.AttachedAtEnd = [bool]$image.Attached
+        $image
+    }
+    function Assert-VolumeMounted {
+        $image = Get-VolumeImage
+        if (-not $image.Attached) { throw 'VHD did not attach' }
+        $partition = Get-Partition -DiskNumber $image.Number -PartitionNumber 1 -ErrorAction Stop
+        $volume = $partition | Get-Volume -ErrorAction Stop
+        if ($partition.DriveLetter -ne $diagnostic.Letter -or $volume.FileSystem -ne 'NTFS' -or $volume.FileSystemLabel -ne 'T4DISC') {
+            throw 'VHD letter, NTFS format or label does not match the diagnostic volume'
+        }
+    }
+    function Assert-VolumeFilter([string]$Attach) {
+        $diagnostic.FilterAttached[$Attach] = $false
+        $receipt = Invoke-T4VolumeNative $diagnostic $directory ('fltmc-' + $Attach) 'fltmc.exe' @('instances','-v', ($diagnostic.Letter + ':'))
+        $attached = [IO.File]::ReadAllText($receipt.Stdout) -match '(?im)^\s*SafeUpload\s+'
+        $diagnostic.FilterAttached[$Attach] = $attached
+        if (-not $attached) { throw ('SafeUpload instance absent on ' + $Attach + ' attach') }
+    }
+    function Save-VolumeSample([string]$Label) {
+        $statuses = @(Invoke-T4MemoryPurge)
+        $diagnostic.Purges += [pscustomobject]@{ Before=$Label; Statuses=$statuses }
+        if ($statuses.Count -ne 5 -or @($statuses | Where-Object { -not $_.Succeeded }).Count) {
+            $diagnostic.Errors += ($Label + ': purge incomplete or refused')
+        }
+        $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 30 * [Diagnostics.Stopwatch]::Frequency
+        while ([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline) { Start-Sleep -Milliseconds 100 }
+        $diagnostic.Samples += Get-Sample $Cycles $Label
+    }
+    try {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+        if (-not $RequireVerifierPool -or $Cycles -ge 10000 -or $DeleteAttribution) {
+            throw 'Volume discriminator requires boot Verifier launcher, cycles < 10000, and no DeleteAttribution'
+        }
+        if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18') { throw 'Volume discriminator must run as SYSTEM' }
+        Initialize-T4VolumeIdentity
+        Save-VolumeSample 'vol-s0'
+        if (Test-Path -LiteralPath $vhd) { throw 'Volume discriminator VHDX already exists; never reuse or remove it' }
+        $used = @([IO.Directory]::GetLogicalDrives() | ForEach-Object { $_.Substring(0,1) })
+        $used += @(Get-PSDrive -PSProvider FileSystem | ForEach-Object { $_.Name })
+        $free = @(90..68 | ForEach-Object { [string][char]$_ } | Where-Object { $_ -notin $used })
+        if (-not $free.Count) { throw 'No free drive letter for volume discriminator' }
+        $diagnostic.Letter = $free[0]
+        $owned = $true  # only this invocation may clean up its newly created VHDX
+        Invoke-VolumeDiskpart 'diskpart-create' @(
+            ('create vdisk file="' + $vhd + '" maximum=1024 type=expandable'),
+            'attach vdisk', 'create partition primary', 'format fs=ntfs quick label=T4DISC', ('assign letter=' + $diagnostic.Letter))
+        Assert-VolumeMounted
+        Assert-VolumeFilter 'First'
+        $corpus = $diagnostic.Letter + ':\corpus'
+        [IO.Directory]::CreateDirectory($corpus) | Out-Null
+        for ($i=0; $i -lt $diagnostic.N; $i++) {
+            $path = Join-Path $corpus ('f-{0:D3}.txt' -f $i)
+            $bytes = [Text.Encoding]::ASCII.GetBytes(('T4 volume discriminator {0:D3}' -f $i).PadRight(64, '.'))
+            $stream = [IO.FileStream]::new($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+            try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+            $diagnostic.Created++
+        }
+        Invoke-VolumeDiskpart 'diskpart-detach-baseline' @($select, 'detach vdisk')
+        if ((Get-VolumeImage).Attached) { throw 'Baseline detach did not remove VHD' }
+        Save-VolumeSample 'vol-s1'
+        Invoke-VolumeDiskpart 'diskpart-reattach' @($select, 'attach vdisk')
+        $image = Get-VolumeImage
+        if (-not $image.Attached) { throw 'Second attach did not attach VHD' }
+        $partition = Get-Partition -DiskNumber $image.Number -PartitionNumber 1 -ErrorAction Stop
+        # Mount Manager may restore the same letter automatically. Do not assign an already assigned letter.
+        if ($partition.DriveLetter -ne $diagnostic.Letter) {
+            Invoke-VolumeDiskpart 'diskpart-reassign' @($select, 'select partition 1', ('assign letter=' + $diagnostic.Letter))
+        }
+        Assert-VolumeMounted
+        Assert-VolumeFilter 'Second'
+        $identities = @(for ($i=0; $i -lt $diagnostic.N; $i++) {
+            $path = Join-Path $corpus ('f-{0:D3}.txt' -f $i)
+            $id = [T4VolumeIdentity]::Read($path)
+            $diagnostic.Opened++
+            [pscustomobject]@{ Path=$path; FileIdInfo=$id }
+        })
+        [IO.File]::WriteAllText((Join-Path $directory 'identities.json'), (ConvertTo-Json -InputObject $identities -Depth 3), [Text.UTF8Encoding]::new($false))
+        Save-VolumeSample 'vol-s2'
+        for ($i=0; $i -lt $diagnostic.N / 2; $i++) {
+            [IO.File]::Delete((Join-Path $corpus ('f-{0:D3}.txt' -f $i)))
+            $diagnostic.Deleted++
+        }
+        Save-VolumeSample 'vol-s3'
+        Invoke-VolumeDiskpart 'diskpart-detach-final' @($select, 'detach vdisk')
+        if ((Get-VolumeImage).Attached) { throw 'Final detach did not remove VHD' }
+        Save-VolumeSample 'vol-s4'
+    } catch { $diagnostic.Errors += $_.Exception.ToString() }
+    finally {
+        if ($owned) {
+            try {
+                if (Test-Path -LiteralPath $vhd) {
+                    $image = $null
+                    try { $image = Get-VolumeImage }
+                    catch { $diagnostic.Errors += ('Cleanup attachment query: ' + $_.Exception.Message) }
+                    # An uncertain failed attach still needs a detach attempt. An already detached VHD needs none.
+                    if ($null -eq $image -or $image.Attached) {
+                        try { Invoke-VolumeDiskpart 'diskpart-cleanup-detach' @($select, 'detach vdisk') }
+                        catch { $diagnostic.Errors += ('Cleanup detach: ' + $_.Exception.Message) }
+                    }
+                    if ((Get-VolumeImage).Attached) { throw 'Cleanup failed: VHDX is still attached' }
+                    [IO.File]::Delete($vhd)
+                    if (Test-Path -LiteralPath $vhd) { throw 'Cleanup failed: VHDX still exists' }
+                }
+            } catch { $diagnostic.Errors += ('Volume cleanup: ' + $_.Exception.ToString()) }
+        }
+        $observation = Get-T4VolumeObservation $diagnostic
+        foreach ($property in $observation.PSObject.Properties) { $diagnostic[$property.Name] = $property.Value }
+        try {
+            [IO.File]::WriteAllText((Join-Path $directory 'result.json'), ($diagnostic | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+        } catch {
+            $diagnostic.Errors += ('Volume receipt write: ' + $_.Exception.Message)
+            $diagnostic.Classification = 'Inconclusive'
+        }
+    }
+    $diagnostic
+}
+
 function Read-Public([string]$Path) {
     try {
         $stream = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
@@ -492,6 +736,7 @@ try {
         $result.DeleteAttribution = Invoke-T4DeleteAttribution $startSample $result.Purged
         if ($HandbackDiagnostic) { $result.HandbackDiagnostic = $result.DeleteAttribution.HandbackDiagnostic }
     } elseif ($HandbackDiagnostic) { $result.HandbackDiagnostic = Invoke-T4HandbackDiagnostic }
+    if ($VolumeDiscriminator) { $result.VolumeDiscriminator = Invoke-T4VolumeDiscriminator }
 } catch {
     $result.Error = $_.Exception.Message
     $result.ErrorDetail = $_.Exception.ToString()
