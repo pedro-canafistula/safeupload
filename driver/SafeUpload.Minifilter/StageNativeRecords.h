@@ -48,6 +48,7 @@ typedef struct _SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT {
     BOOLEAN PublicOpenPrepared;
     BOOLEAN PublicOpenConfirmed;
     BOOLEAN PublicCleanupOutstanding;
+    BOOLEAN CombinedBackend;
     UINT64 PublishedGeneration;
     SAFEUPLOAD_STAGE_IDENTITY_V19 PublishedIdentity;
     ACCESS_MASK GrantedAccess; /* explicit requested subset, only after checked native CREATE */
@@ -67,6 +68,16 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeReserve(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject,
     _In_ const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding,
     _Outptr_result_nullonfailure_ PSAFEUPLOAD_STAGE_NATIVE_RECORD *Record);
+/* Binds the already checked writer lease to the app object's ordinary relay.
+ * The map owns a backend reference until local app cleanup/attach unwind. */
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageNativeBindWriter(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT AppObject,
+    _In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Writer);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageNativeCloseWriter(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT AppObject);
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageNativeOwnerNameStatus(_In_ PFLT_INSTANCE Instance,
+    _In_ PUNICODE_STRING Name, _In_ PEPROCESS Owner);
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeMarkForwarded(_In_ PSAFEUPLOAD_STAGE_NATIVE_RECORD Record,
     _In_ UINT64 DurableGeneration, _In_ UINT64 ExpectedRevision, _In_ UINT64 AuthorityRevision,
@@ -105,6 +116,10 @@ BOOLEAN SafeUploadStageNativePostCreate(_In_ PFLT_CALLBACK_DATA Data,
 _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageNativePostCleanup(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects, _In_ FLT_POST_OPERATION_FLAGS Flags);
+/* A namespace/independent-reader event invalidates name observations only.
+ * It never changes original-object cleanup or coverage evidence. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID SafeUploadStageNativeNameChanged(_In_ PFLT_INSTANCE Instance);
 /* The key is removed before CLOSE can permit object-address reuse. A CLOSE
  * proves the special upper-filter cancellation case only with the original
  * cancel flag and no created handle, captured before forwarding CLOSE. */
@@ -154,9 +169,11 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageNativeAcknowledge(_In_ const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding);
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStagePublicOpenConfirm(_In_ const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding,
-    _In_ UINT64 AuthorityRevision);
+    _In_ UINT64 ExpectedRevision, _In_ UINT64 AuthorityRevision);
 _IRQL_requires_(PASSIVE_LEVEL)
 BOOLEAN SafeUploadStageNativeTryCloseAdmission(VOID);
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadStageNativePublicationIdle(_In_ PFLT_INSTANCE Instance);
 VOID SafeUploadStageNativeReopenAdmission(VOID);
 VOID SafeUploadStageNativeCloseAdmission(VOID);
 _IRQL_requires_(PASSIVE_LEVEL)

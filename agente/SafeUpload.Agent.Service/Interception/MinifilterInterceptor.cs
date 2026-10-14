@@ -243,7 +243,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             Task? discardCleanupTask = null;
             Task? startupTask = null;
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
-            _stageBoundHeadReady = false;
+            long boundTicket = _boundReadiness.BeginConnection();
+            _logger.LogWarning("Bound staging readiness: {Reason}", _boundReadiness.Snapshot.Reason);
             using var boundContinuations = new StagedRequestContinuations(publishCancellation.Token);
 #endif
             try
@@ -254,17 +255,29 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     _admissionEvidence.TryBind(evidenceSender, _policyVersion, _acceptedPolicyFingerprint);
                 if (_stagingEnabled && _stageJournal is not null)
                 {
-                    _publicOpenDispatcher = new(_stageJournal, port.ReadPublicOpenReplayV25, port.ObserveNativeName,
+                    if (_stagePublisher is not null)
+                        _stagePublisher.BoundPublication = new(_stageJournal, new StagedBoundPublicationTransport(port, _boundReadiness),
+                            new StagedBoundPublicationNative(), () => _stageBoundHeadReady);
+                    _publicOpenDispatcher = new(_stageJournal, () => ReadBoundPublicReplay(port), port.ObserveNativeName,
                         StagedPublicOpenDispatcher.ResolveLocator, row =>
                         {
                             var live = SessionResolver.GetRequiredProcessIdentity(checked((int)row.CallerProcessId));
                             if (live.CreationTimeFileTime != row.CallerProcessCreationTime)
                                 throw new IOException("The ordinary open creator lifetime changed.");
-                        });
-                    _nativeStartupRecovery = new(_stageJournal, port.ReadNativeRecordReplay,
-                        token => { RecoverStagingSubsystem(token); return Task.CompletedTask; },
+                        }, (head, receipt, advice, reason) => StagedNativeRecoveryNotifications.PublishRelay(
+                            _hub, _logger, head, receipt, advice, reason));
+                    _nativeStartupRecovery = new(_stageJournal, () => ReadBoundNativeReplay(port),
+                        async token =>
+                        {
+                            if (_publicOpenDispatcher is not null)
+                                await _publicOpenDispatcher.ReconcileStartupAsync(token).ConfigureAwait(false);
+                            RecoverStagingSubsystem(token);
+                        },
                         (head, delete) => StagedNativeRecoveryNotifications.Publish(_hub, _logger, head, delete,
-                            StagedRecoveryAdvice.CollectDiagnostics, "NativeRecoveryUnresolved"));
+                            StagedRecoveryAdvice.CollectDiagnostics, "NativeRecoveryUnresolved"), port.ObserveNativeName,
+                        (head, delete, advice, reason) => StagedNativeRecoveryNotifications.Publish(
+                            _hub, _logger, head, delete, advice, reason),
+                        () => _boundReadiness.Invalidate(StagedBoundBlocker.ReplayInvalidated));
                     startupTask = _nativeStartupRecovery.Start(publishCancellation.Token);
                     _ = startupTask.ContinueWith(task => _logger.LogCritical(task.Exception,
                         "Authenticated stage startup recovery failed; requests/publication remain refused."),
@@ -308,6 +321,23 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                        port.TryGetMessage(out SafeUploadRequest request, out ulong messageId, stoppingToken))
                 {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
+                    if (request.Operation == Operation.StageSeal)
+                    {
+                        SafeUploadRequest sealRequest = request;
+                        ulong sealMessage = messageId;
+                        Guid? sealDriver = _activeDriverInstanceId;
+                        boundContinuations.Dispatch(token => ReplySealAsync(port, sealRequest, sealMessage, sealDriver, token));
+                        continue;
+                    }
+                    if (request.Operation == PrivateCancellationV28.Operation || request.Reserved == PrivateCancellationV28.Version)
+                    {
+                        SafeUploadRequest cancellationRequest = request;
+                        ulong cancellationMessage = messageId;
+                        Guid? cancellationDriver = _activeDriverInstanceId;
+                        boundContinuations.Dispatch(token => ReplyPrivateCancellationAsync(port, cancellationRequest,
+                            cancellationMessage, cancellationDriver, token));
+                        continue;
+                    }
                     if (request.Operation == PublicDispositionV25.Operation || request.Reserved == PublicDispositionV25.Version)
                     {
                         SafeUploadRequest publicRequest = request;
@@ -435,7 +465,21 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                                 _stageV20Ready = false;
                                 _stagingRecoveryReady = false;
                             }
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                            if (drainReplayOnly) _boundReadiness.Invalidate(StagedBoundBlocker.UnresolvedPrerequisite);
+#endif
                             bool delivered = port.ReplyStageReconcileV20(messageId, reconcileReply);
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                            if (reconcileReply.Result == StageV20Result.CapabilitiesAccepted)
+                            {
+                                if (_nativeStartupRecovery?.TryGetBoundResult(reconcileReply.DriverInstanceId, out var receipt) == true &&
+                                    receipt is not null)
+                                    _boundReadiness.CompleteRecovery(boundTicket, receipt);
+                                _boundReadiness.CompleteNegotiation(boundTicket, reconcileReply.DriverInstanceId,
+                                    reconcileReply.Version, reconcileReply.AcceptedCapabilityMask, delivered);
+                                _logger.LogWarning("Bound staging readiness: {Reason}", _boundReadiness.Snapshot.Reason);
+                            }
+#endif
                             if (delivered && reconcileReply.Result == StageV20Result.CapabilitiesAccepted)
                             {
                                 _activeDriverInstanceId = reconcileReply.DriverInstanceId;
@@ -489,6 +533,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     }
                     catch (Exception ex)
                     {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                        _boundReadiness.Invalidate(StagedBoundBlocker.ProtocolChanged);
+#endif
                         _logger.LogWarning(ex, "Falha ao responder o veredito {RequestId}.", request.RequestId);
                     }
                 }
@@ -496,6 +543,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             finally
             {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
+                _boundReadiness.Invalidate(StagedBoundBlocker.Disconnected);
                 _nativeStartupRecovery?.Invalidate();
                 if (evidenceBound && evidenceSender is not null)
                 {
@@ -511,12 +559,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 #endif
                 publishCancellation.Cancel();
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
-                _stageBoundHeadReady = false;
                 try { boundContinuations.DrainAsync().GetAwaiter().GetResult(); }
                 catch (Exception error)
                 { _logger.LogError(error, "Bound allocation continuations drained with a failure before FilterPort close."); }
-                _publicOpenDispatcher?.Dispose();
-                _publicOpenDispatcher = null;
 #endif
                 if (startupTask is not null)
                 {
@@ -528,6 +573,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     }
                 }
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
+                _publicOpenDispatcher?.Dispose();
+                _publicOpenDispatcher = null;
                 _nativeStartupRecovery = null;
 #endif
                 if (publishTask is not null)
@@ -788,7 +835,12 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             !request.TryReadStagePayload<SafeUploadStageReconcileV20>(Operation.StageReconcile, out var payload) ||
             payload.DriverInstanceId == Guid.Empty ||
             payload.RequiredCapabilityMask != (uint)StageV20Capability.Required || payload.ReservedZero != 0)
+        {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            _boundReadiness.Invalidate(StagedBoundBlocker.ProtocolChanged);
+#endif
             return (PortVerdict.Deny, null, false);
+        }
 
         try
         {
@@ -850,6 +902,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 request.RequestId, payload.DrainNonce, CancellationToken.None).GetAwaiter().GetResult();
             if (drained)
             {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                _boundReadiness.Invalidate(StagedBoundBlocker.UnresolvedPrerequisite);
+#endif
                 _stageV20Ready = false;
                 _stagingRecoveryReady = false;
                 _drainReplayDriverInstanceId = payload.DriverInstanceId;
@@ -1085,6 +1140,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     }
 
     private (uint Verdict, uint? Result) SealStageV19(SafeUploadRequest request)
+        => SealStageV19Async(request, CancellationToken.None).GetAwaiter().GetResult();
+
+    private async Task<(uint Verdict, uint? Result)> SealStageV19Async(SafeUploadRequest request, CancellationToken token)
     {
         if (_stageJournal is null || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
             _activeDriverInstanceId is not { } activeDriver || request.RequestorProcessId == 0 || request.Flags != 0 ||
@@ -1099,14 +1157,13 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 return (PortVerdict.Deny, null);
             var expected = new StagedVersionIdentity(id, checked((long)payload.DestinationGeneration),
                 FromWireStageIdentity(payload.StageIdentity));
-            TransferJournalEntry before = _stageJournal.ReadAsync(id, CancellationToken.None).GetAwaiter().GetResult();
+            TransferJournalEntry before = await _stageJournal.ReadAsync(id, token).ConfigureAwait(false);
             if (before.DriverInstanceId != activeDriver || before.StageIdentity != expected.StageIdentity ||
                 before.DestinationGeneration != expected.DestinationGeneration ||
                 before.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
                 return (PortVerdict.Deny, null);
-            TransferJournalEntry sealedEntry = _stageJournal.SealAsync(id,
-                checked((int)request.RequestorProcessId), stage, CancellationToken.None, expected)
-                .GetAwaiter().GetResult();
+            TransferJournalEntry sealedEntry = await _stageJournal.SealAsync(id,
+                checked((int)request.RequestorProcessId), stage, token, expected).ConfigureAwait(false);
             if (sealedEntry.State != TransferJournalState.Sealed || sealedEntry.SealedLength is not >= 0)
                 throw new IOException("The ordinary seal has no stable measured length.");
             uint result = StageV19Result.Sealed;
@@ -1118,6 +1175,36 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             return (PortVerdict.Deny, null);
         }
     }
+
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    private async Task ReplySealAsync(FilterPort port, SafeUploadRequest request, ulong messageId,
+        Guid? driver, CancellationToken token)
+    {
+        try
+        {
+            uint verdict = PortVerdict.Deny;
+            uint? result = null;
+            if (!token.IsCancellationRequested && driver == _activeDriverInstanceId &&
+                request.Version == Contract.Version && request.StructSize == Contract.RequestSize && request.HasKnownFlags)
+            {
+                if (request.Reserved == Contract.StageExtensionVersion)
+                    (verdict, result) = await SealStageV19Async(request, token).ConfigureAwait(false);
+                else if (!_stagingEnabled) verdict = SealStage(request);
+            }
+            if (token.IsCancellationRequested || driver != _activeDriverInstanceId) verdict = PortVerdict.Deny;
+            if (verdict == PortVerdict.Allow && result is { } sealedResult)
+                port.ReplyStageStatusV19(messageId, request.RequestId, sealedResult);
+            else port.Reply(messageId, request.RequestId, verdict);
+            Interlocked.Increment(ref _answered);
+        }
+        catch (Exception error)
+        {
+            _logger.LogWarning(error, "Asynchronous seal {RequestId} retains its retry receipt.", request.RequestId);
+            try { port.Reply(messageId, request.RequestId, PortVerdict.Deny); }
+            catch (Exception replyError) { _logger.LogWarning(replyError, "Seal denial was not delivered."); }
+        }
+    }
+#endif
 
     /// <summary>
     /// T5: the owner deleted its private version before it was sealed. The driver has closed its backing; the journal marks the
@@ -1229,6 +1316,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
         while (!cancellationToken.IsCancellationRequested && _stageV20Ready && _stagingRecoveryReady)
         {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            await _stagePublisher.RecoverBoundReceiptsAsync(cancellationToken).ConfigureAwait(false);
+#endif
             await _stagePublisher.RecoverJournalProgressAsync(cancellationToken).ConfigureAwait(false);
             foreach (var entry in await _stageJournal.ReadPendingAsync(cancellationToken)
                          .ConfigureAwait(false))
@@ -1401,7 +1491,13 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             _stagePublisher = new StagedTransferPublisher(
                 _inspection, _hub, _stageJournal, root,
                 new StagedPublicationGate(port), _stagedJustifications, _logger,
-                _policyStore);
+                _policyStore)
+            {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                BoundPublication = new StagedBoundPublicationDispatcher(_stageJournal,
+                    new StagedBoundPublicationTransport(port, _boundReadiness), new StagedBoundPublicationNative(), () => _stageBoundHeadReady)
+#endif
+            };
             // The v20 reconcile request is the first stage mutation-capable
             // message on a new authenticated port. Journal recovery and the
             // publication/discard workers wait until that exact receipt has
@@ -1421,7 +1517,13 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             throw new InvalidOperationException("The staging subsystem is not initialized.");
 
             _stageJournal.RetainInterruptedAsync(stoppingToken).GetAwaiter().GetResult();
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            _stagePublisher.RecoverBoundReceiptsAsync(stoppingToken).GetAwaiter().GetResult();
+            _stageJournal.ReconcilePublishingAsync(stoppingToken, _stagePublisher.RecoverPendingTransferAsync)
+                .GetAwaiter().GetResult();
+#else
             _stageJournal.ReconcilePublishingAsync(stoppingToken).GetAwaiter().GetResult();
+#endif
             foreach (TransferJournalEntry entry in _stageJournal.ReadPendingAsync(stoppingToken)
                          .GetAwaiter().GetResult())
             {
@@ -1466,6 +1568,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         )
     {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
+        _boundReadiness.Invalidate(StagedBoundBlocker.PolicyChanged);
+        _nativeStartupRecovery?.Invalidate();
         // Never let a later failed push reuse fingerprint metadata from an
         // earlier accepted candidate when considering endpoint binding.
         _acceptedPolicyFingerprint = null;
@@ -1591,6 +1695,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 _diagnostics.RecordAdmissionCoverageRetry(retryCounts.RetriesUsed, retryCounts.Exhausted);
             }
 
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            _boundReadiness.ObserveCoverage(decision);
+#endif
             AdmissionCoverageStatus status = decision.Readiness switch
             {
                 AdmissionCoverageReadiness.Ready => AdmissionCoverageStatus.Ready,

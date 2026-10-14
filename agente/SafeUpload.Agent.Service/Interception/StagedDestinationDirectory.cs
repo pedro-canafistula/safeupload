@@ -9,7 +9,7 @@ namespace SafeUpload.Agent.Service.Interception;
 // Reopens only the recorded volume and parent identities. The saved path is
 // never passed to an open. Parent-relative source opens retain the same handle
 // through seeding and compare the complete ID, not the NTFS selector alone.
-internal sealed class StagedDestinationDirectory : IDisposable
+internal sealed partial class StagedDestinationDirectory : IDisposable
 {
     internal SafeFileHandle VolumeRoot { get; }
     internal SafeFileHandle Parent { get; }
@@ -86,10 +86,11 @@ internal sealed class StagedDestinationDirectory : IDisposable
         catch { source.Dispose(); throw; }
     }
 
-    private SafeFileHandle OpenRelative(string leaf, uint access, uint share, uint disposition, uint options)
+    private SafeFileHandle OpenRelative(string leaf, uint access, uint share, uint disposition, uint options,
+        byte[]? security = null, uint fileAttributes = 0)
     {
         byte[] bytes = Encoding.Unicode.GetBytes(leaf);
-        IntPtr name = Marshal.AllocHGlobal(bytes.Length + 2), unicode = IntPtr.Zero;
+        IntPtr name = Marshal.AllocHGlobal(bytes.Length + 2), unicode = IntPtr.Zero, descriptor = IntPtr.Zero;
         bool parentReference = false;
         try
         {
@@ -103,15 +104,21 @@ internal sealed class StagedDestinationDirectory : IDisposable
             };
             unicode = Marshal.AllocHGlobal(Marshal.SizeOf<UnicodeString>());
             Marshal.StructureToPtr(value, unicode, false);
+            if (security is not null)
+            {
+                descriptor = Marshal.AllocHGlobal(security.Length);
+                Marshal.Copy(security, 0, descriptor, security.Length);
+            }
             var attributes = new ObjectAttributes
             {
                 Length = checked((uint)Marshal.SizeOf<ObjectAttributes>()),
                 RootDirectory = Parent.DangerousGetHandle(), ObjectName = unicode,
-                Attributes = Destination.CaseSensitive ? 0u : 0x40u
+                Attributes = Destination.CaseSensitive ? 0u : 0x40u,
+                SecurityDescriptor = descriptor
             };
-            int status = NtCreateFile(out SafeFileHandle handle, access, ref attributes, out _,
-                IntPtr.Zero, 0, share, disposition, options, IntPtr.Zero, 0);
-            if (status >= 0 && !handle.IsInvalid) return handle;
+            int status = NtCreateFile(out SafeFileHandle handle, access, ref attributes, out var io,
+                IntPtr.Zero, fileAttributes, share, disposition, options, IntPtr.Zero, 0);
+            if (status == 0 && !handle.IsInvalid && (disposition != 2 || io.Information.ToUInt64() == 2)) return handle;
             handle.Dispose();
             throw new IOException("The checked parent-relative open failed.",
                 new Win32Exception(checked((int)RtlNtStatusToDosError(status))));
@@ -120,6 +127,7 @@ internal sealed class StagedDestinationDirectory : IDisposable
         {
             if (parentReference) Parent.DangerousRelease();
             if (unicode != IntPtr.Zero) Marshal.FreeHGlobal(unicode);
+            if (descriptor != IntPtr.Zero) Marshal.FreeHGlobal(descriptor);
             Marshal.FreeHGlobal(name);
         }
     }

@@ -118,6 +118,11 @@ NTSTATUS SafeUploadStagePublicCheckWriterSecurity(_In_ PSAFEUPLOAD_STAGE_WRITER_
     _Out_ SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason);
 VOID SafeUploadStagePublicGetWriterBinding(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
     _Out_ PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding);
+/* The writer's existing original-rights FILE_OPEN is also the combined DELETE
+ * backend. No second open or broadened grant. Caller releases this owner. */
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicReferenceWriterDelete(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    _Outptr_result_nullonfailure_ PSAFEUPLOAD_STAGE_PUBLIC_BACKEND *Backend);
 /* Local completion only: immutable allocation metadata is never overwritten.
  * No wire layout changes. Durable service confirmation is a separate gate. */
 typedef struct _SAFEUPLOAD_STAGE_SEED_COMPLETION {
@@ -187,10 +192,16 @@ BOOLEAN SafeUploadStagePublicAcquireOperation(_In_ PSAFEUPLOAD_STAGE_PUBLIC_BACK
     _Out_ PFLT_INSTANCE *Instance, _Out_ PFILE_OBJECT *FileObject);
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStagePublicReleaseOperation(_In_ PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend);
+/* A map/app owner remains until CloseBackend drains Operations. No final free
+ * from a synchronized postoperation, which can still run at APC_LEVEL. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID SafeUploadStagePublicReleaseCallbackOperation(_In_ PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend);
 VOID SafeUploadStagePublicGetBinding(_In_ PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend,
     _Out_ PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding);
 LONG SafeUploadStagePublicBackendCount(VOID);
 BOOLEAN SafeUploadStagePublicTryCloseAdmission(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStagePublicCloseAdmission(VOID);
 VOID SafeUploadStagePublicReopenAdmission(VOID);
 VOID SafeUploadStagePublicInitialize(VOID);
 _IRQL_requires_(PASSIVE_LEVEL)

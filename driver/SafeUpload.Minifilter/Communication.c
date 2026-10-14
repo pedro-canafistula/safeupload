@@ -25,6 +25,7 @@ Environment:
 #include "Stage.h"
 #include "StageNativeRecords.h"
 #include "StageNativeWire.h"
+#include "StageBoundPublicationInternal.h"
 #endif
 
 //
@@ -2031,6 +2032,7 @@ Return Value:
             command == SAFEUPLOAD_CONTROL_STAGE_PUBLICATION ||
             command == SAFEUPLOAD_CONTROL_STAGE_DISPOSE ||
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+            command == SAFEUPLOAD_CONTROL_BOUND_PUBLICATION ||
             command == SAFEUPLOAD_CONTROL_WRITER_METADATA ||
             command == SAFEUPLOAD_CONTROL_NATIVE_RECORD_REPLAY ||
             command == SAFEUPLOAD_CONTROL_NATIVE_NAME_OBSERVATION ||
@@ -2044,6 +2046,12 @@ Return Value:
         }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (command == SAFEUPLOAD_CONTROL_BOUND_PUBLICATION) {
+            status = SafeUploadBoundPublicationControl(PortCookie, InputBuffer, InputBufferLength,
+                OutputBuffer, OutputBufferLength, ReturnOutputBufferLength);
+            leave;
+        }
+
         if (command == SAFEUPLOAD_CONTROL_WRITER_METADATA) {
             status = SafeUploadStageWriterMetadataControl(PortCookie, InputBuffer, InputBufferLength,
                 OutputBuffer, OutputBufferLength, ReturnOutputBufferLength);

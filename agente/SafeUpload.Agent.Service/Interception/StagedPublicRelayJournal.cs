@@ -53,7 +53,8 @@ public sealed partial class StagedTransferJournal
                     throw new IOException("An accepted native reservation belongs to another public object.");
                 var delete = new StagedPublicDeleteRecord(binding, generation,
                     noNameEffect ? StagedPublicDeleteState.Superseded : StagedPublicDeleteState.Intent,
-                    DateTimeOffset.UtcNow, operationId);
+                    DateTimeOffset.UtcNow, operationId, (original.DispositionFlags & 8) != 0
+                        ? StagedPublicDeleteKind.DispositionOnClose : StagedPublicDeleteKind.Ordinary);
                 head = head with { MaxAllocated = generation, Deletes = [.. head.Deletes, delete] };
             }
             var receipt = new StagedPublicRelayReceipt(binding, operationId, original, generation,
@@ -106,9 +107,12 @@ public sealed partial class StagedTransferJournal
                     });
             }
             else if (accepted && !receipt.NoNameEffect)
-                head = head with { Deletes = head.Deletes.Select(d => d.Kind == StagedPublicDeleteKind.Ordinary &&
+                head = head with { Deletes = head.Deletes.Select(d =>
+                    ((original.DispositionFlags & 8) == 0 ? d.Kind == StagedPublicDeleteKind.Ordinary :
+                        d.Kind == StagedPublicDeleteKind.DispositionOnClose && receipts.Any(r => r.Binding == d.Binding &&
+                            r.Original.OpenTransferId == original.OpenTransferId && r.Original.OpenNonce == original.OpenNonce)) &&
                     d.Binding.PublicIdentity == binding.PublicIdentity &&
-                    d.State is (StagedPublicDeleteState.Admitted or StagedPublicDeleteState.Accepted)
+                    d.State == StagedPublicDeleteState.Accepted
                     ? d with { State = StagedPublicDeleteState.Canceled, UpdatedAtUtc = DateTimeOffset.UtcNow } : d).ToArray() };
             receipt = receipt with { NativeStatus = nativeStatus, NotForwarded = notForwarded,
                 State = accepted ? StagedPublicDeleteState.Accepted :
@@ -250,12 +254,60 @@ public sealed partial class StagedTransferJournal
         finally { _gate.Release(); }
     }
 
+    // Only a qualified full Restart can replace a lost old-driver cleanup
+    // lifetime. It cannot reconstruct an unknown disposition result. There is
+    // no native call here and the original-present case retains its barrier.
+    internal async Task ReconcilePublicRelayRestartAsync(DestinationCommitTurn turn, Guid openNonce,
+        Guid currentDriver, StagedNativeRecoverySession.Proof proof,
+        StagedDestinationNameObservation observation, CancellationToken token)
+    {
+        turn.Require(this, StagedDestinationTurnPurpose.Reconciliation);
+        if (observation.Destination != turn.Destination || !observation.CompleteEnumeration ||
+            observation.ParentBefore != turn.Destination.Parent || observation.ParentAfter != turn.Destination.Parent)
+            throw new IOException("Ordinary restart requires exact anchored observation.");
+        uint boot = proof.RequireCurrentBoot(currentDriver);
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var head = await RequireDestinationHeadCoreAsync(turn.Destination, token).ConfigureAwait(false);
+            var receipts = head.PublicRelayReceipts ?? [];
+            var removed = new List<StagedPublicRelayReceipt>();
+            foreach (var receipt in receipts.Where(r => r.Original.OpenNonce == openNonce))
+            {
+                if (receipt.Binding.DriverInstanceId == currentDriver || receipt.Binding.OsBootSequence is not { } oldBoot || boot <= oldBoot)
+                    throw new IOException("Ordinary cleanup requires qualified full-Restart lifetime proof.");
+                proof.RequireExactRecordRemoved(receipt.Binding, receipt.OperationId, receipt.AcknowledgedRevision ?? 0);
+                if (receipt.NativeStatus is null) continue; // unfinished native mutation, not unfinished bookkeeping
+                if (receipt.Generation != 0)
+                {
+                    var delete = RequireExactDelete(head, receipt.Binding);
+                    if (delete.State == StagedPublicDeleteState.Accepted)
+                    {
+                        if (observation.PublicIdentity is null)
+                            head = head with { CommittedDelete = Math.Max(head.CommittedDelete, delete.Generation) };
+                        else if (head.LatestPublished <= delete.Generation || head.PublishedIdentity != observation.PublicIdentity)
+                            continue; // original or unexplained replacement stays held
+                    }
+                    else if (delete.State is not (StagedPublicDeleteState.Complete or StagedPublicDeleteState.Superseded or
+                        StagedPublicDeleteState.Canceled or StagedPublicDeleteState.Failed)) continue;
+                    head = head with { Deletes = head.Deletes.Where(d => d.Binding != receipt.Binding).ToArray() };
+                }
+                removed.Add(receipt);
+            }
+            if (removed.Count != 0)
+                await WriteDestinationHeadCoreAsync(head with { PublicRelayReceipts = receipts.Except(removed).ToArray() }, token)
+                    .ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+    }
+
     private static void ValidateRelayOriginal(StagedPublicRelayIntent original, StagedPublicDeleteBinding binding)
     {
         if (original.OpenTransferId == Guid.Empty || original.OpenNonce == Guid.Empty || original.OpenOperationId == Guid.Empty ||
             original.OpenTransferId == binding.TransferId || original.OpenNonce == binding.RequestNonce || original.Sequence == 0 ||
             original.OpenProcessId <= 0 || original.PublishedGeneration < 0 || ((original.PublishedGeneration == 0) != (original.PublishedIdentity is null)) ||
             original.InformationClass is not (13 or 64) || original.RequestorMode > 1 ||
+            (original.CombinedBackend && (original.DispositionFlags & 8) != 0) ||
             (original.InformationClass == 13 ? original.DispositionFlags > 1 : (original.DispositionFlags & ~0x1fu) != 0) ||
             (original.GrantedAccess & 0x10000) == 0)
             throw new InvalidDataException("Invalid original native disposition evidence.");
@@ -291,7 +343,9 @@ public sealed partial class StagedTransferJournal
                  head.PendingCommit.ExpectedPublicIdentity != receipt.Binding.PublicIdentity))
                 throw new InvalidDataException("Native disposition intent lost its physical barrier.");
             if (deleting && !head.Deletes.Any(d => d.Binding == receipt.Binding &&
-                    d.OperationId == receipt.OperationId && d.Generation == receipt.Generation))
+                    d.OperationId == receipt.OperationId && d.Generation == receipt.Generation &&
+                    d.Kind == ((receipt.Original.DispositionFlags & 8) != 0
+                        ? StagedPublicDeleteKind.DispositionOnClose : StagedPublicDeleteKind.Ordinary)))
                 throw new InvalidDataException("Native delete result lost its exact generation record.");
         }
     }

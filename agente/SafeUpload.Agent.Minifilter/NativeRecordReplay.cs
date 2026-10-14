@@ -80,7 +80,7 @@ internal static class NativeRecordReplayWire
     }
 
     internal static NativeRecordReplayRow DecodeRow(ReadOnlySpan<byte> b, Guid driver, ulong epoch, uint boot,
-        bool ordinary = false)
+        bool ordinary = false, bool combined = false)
     {
         Guid rowDriver = new(b[..16]), transfer = new(b.Slice(16, 16)), nonce = new(b.Slice(32, 16)), operation = new(b.Slice(48, 16));
         Guid mountVolumeId = new(b.Slice(800, 16));
@@ -96,8 +96,9 @@ internal static class NativeRecordReplayWire
             root.VolumeSerialNumber != parent.VolumeSerialNumber || parent.VolumeSerialNumber != file.VolumeSerialNumber ||
             (options >> 24) != 1 || (options & (0x01 | 0x2000 | 0x200000)) != 0 ||
             (ordinary ? (options & 0x1000) != 0 : (options & 0x1000) == 0) ||
-            (desired & (ordinary ? 0x52000056u : 0x52000156u)) != 0 ||
-            (desired & 0x10000) == 0 || (share & ~7u) != 0 ||
+            (combined ? !ordinary :
+                (desired & (ordinary ? 0x52000056u : 0x52000156u)) != 0) ||
+            (desired & (combined ? 0x12010000u : 0x10000u)) == 0 || (share & ~7u) != 0 ||
             pid == 0 || pid > int.MaxValue || sidBytes < 8 || sidBytes > 68 || caseMode > 1 ||
             leafBytes == 0 || leafBytes >= 512 || (leafBytes & 1) != 0 || (facts & ~(NativeRecordFacts)255) != 0 ||
             U32(b, 212) != 0 || U32(b, 796) != 0 ||

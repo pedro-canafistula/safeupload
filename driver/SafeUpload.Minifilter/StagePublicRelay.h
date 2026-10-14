@@ -24,8 +24,29 @@
 #define SAFEUPLOAD_PUBLIC_OPERATION_NOT_FORWARDED ((UINT32)8)
 #define SAFEUPLOAD_PUBLIC_OPERATION_COVERAGE_LOST ((UINT32)16)
 #define SAFEUPLOAD_PUBLIC_CLEANUP_OUTSTANDING ((UINT32)32) /* independent of the current operation slot */
+#define SAFEUPLOAD_PUBLIC_COMBINED_BACKEND ((UINT32)64) /* same checked writer lease; ordinary relay only */
+
+/* Exact sealed-private cancellation; not a public-delete grant or cleanup ACK.
+ * Distinct operation/version; all existing wire sizes and enum values stay. */
+#define SAFEUPLOAD_OPERATION_PRIVATE_CANCEL ((UINT32)22)
+#define SAFEUPLOAD_PRIVATE_CANCEL_VERSION ((UINT32)28)
+#define SAFEUPLOAD_PRIVATE_CANCELED ((UINT32)1)
+#define SAFEUPLOAD_PRIVATE_CANCEL_PUBLIC ((UINT32)2)
 
 #pragma pack(push, 4)
+typedef struct _SAFEUPLOAD_PRIVATE_CANCEL_REQUEST {
+    UINT32 Version, StructSize;
+    GUID OperationId, TransferId, DriverInstanceId;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity;
+    UINT64 Generation;
+    INT64 OwnerCreationTime;
+    UINT32 OwnerProcessId, Reserved;
+} SAFEUPLOAD_PRIVATE_CANCEL_REQUEST, *PSAFEUPLOAD_PRIVATE_CANCEL_REQUEST;
+typedef struct _SAFEUPLOAD_PRIVATE_CANCEL_REPLY {
+    SAFEUPLOAD_PRIVATE_CANCEL_REQUEST Request;
+    UINT64 CancellationGeneration;
+    UINT32 Result, Reserved;
+} SAFEUPLOAD_PRIVATE_CANCEL_REPLY, *PSAFEUPLOAD_PRIVATE_CANCEL_REPLY;
 typedef struct _SAFEUPLOAD_PUBLIC_RELAY_REQUEST {
     UINT32 Version, StructSize, Phase, Reserved;
     GUID OpenNonce, MutationNonce, OperationId;
@@ -67,6 +88,9 @@ typedef struct _SAFEUPLOAD_PUBLIC_OPEN_REPLAY_PAGE {
     SAFEUPLOAD_PUBLIC_OPEN_REPLAY_ROW Rows[SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS];
 } SAFEUPLOAD_PUBLIC_OPEN_REPLAY_PAGE, *PSAFEUPLOAD_PUBLIC_OPEN_REPLAY_PAGE;
 #pragma pack(pop)
+C_ASSERT(sizeof(SAFEUPLOAD_PRIVATE_CANCEL_REQUEST) == 104);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_PRIVATE_CANCEL_REQUEST, Generation) == 80);
+C_ASSERT(sizeof(SAFEUPLOAD_PRIVATE_CANCEL_REPLY) == 120);
 
 C_ASSERT(sizeof(SAFEUPLOAD_PUBLIC_RELAY_REQUEST) == 80);
 C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_PUBLIC_RELAY_REQUEST, NativeMapRevision) == 64);

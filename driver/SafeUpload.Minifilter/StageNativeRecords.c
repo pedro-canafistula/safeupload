@@ -7,6 +7,8 @@
 #include "StageNativeRecords.h"
 #include "StageNativeWire.h"
 #include "Stage.h"
+#include "StageBoundPublicationInternal.h"
+#include "StageSecurity.h"
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #define NATIVE_RECORD_TAG 'nUpS'
@@ -25,6 +27,13 @@ struct _SAFEUPLOAD_STAGE_NATIVE_RECORD {
     BOOLEAN DispositionCallbackOwned;
     BOOLEAN DispositionNoNameEffect;
     PFILE_OBJECT DispositionFileObject; /* callback-owned lifetime, compare only */
+    PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend; /* combined writer owner, closed before lifetime evidence */
+    PFILE_OBJECT BackendAppObject; /* local owner-release key only; never forwarding authority */
+    BOOLEAN BackendOperation; /* operation rundown transferred to original disposition post */
+    PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN DispositionEpoch; /* acquired after queue wait; post releases */
+    ULONG TombstoneCount;
+    struct { ULONG Pid; LONG64 Creation; BOOLEAN Scheduled; } Tombstones[16]; /* bounded before forwarding */
+    WCHAR FoldedLeaf[256]; /* computed at PASSIVE; no Unicode-table access under NativeLock */
     KSEMAPHORE DispositionGate; /* no NativeLock held while waiting */
     UINT64 NextDispositionSequence;
     SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Snapshot;
@@ -38,11 +47,33 @@ static ULONG NativeBootSequence;
 static PKEVENT NativeWakeEvent;
 static volatile LONG NativeInitialized;
 static volatile LONG NativeRecordCount;
+static LONG NativeFactories; /* NativeLock: includes capture before map insertion. */
 static BOOLEAN NativeAccepting;
 static BOOLEAN NativeReplayUsable;
 static UINT64 NativeRevision;
 static KEVENT NativeLocalChanged;
 static BOOLEAN NativeCallsDrained;
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS NativeReserve(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject,
+    _In_ const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding, _In_opt_ PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend,
+    _Outptr_result_nullonfailure_ PSAFEUPLOAD_STAGE_NATIVE_RECORD *Record);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID NativeDispositionFlush(_In_ PSAFEUPLOAD_STAGE_NATIVE_RECORD Record);
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID NativeDestroy(_In_ PSAFEUPLOAD_STAGE_NATIVE_RECORD Record);
+_IRQL_requires_(PASSIVE_LEVEL)
+static FLT_PREOP_CALLBACK_STATUS NativeDispositionPrepare(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PSAFEUPLOAD_STAGE_NATIVE_RECORD Record, _Outptr_result_maybenull_ PVOID *CompletionContext);
+/* Routines that own NativeLock/BpLock across statements stay resident.
+ * Entry remains PASSIVE where required for I/O; no PAGE instruction may
+ * execute after the spin-lock wrapper raises IRQL. */
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, NativeDestroy)
+#pragma alloc_text(PAGE, SafeUploadStageNativeReserve)
+#pragma alloc_text(PAGE, NativeDispositionFlush)
+#endif
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 _IRQL_raises_(DISPATCH_LEVEL)
@@ -78,7 +109,7 @@ static BOOLEAN NativeScheduled(const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding)
 static BOOLEAN NativeOrdinaryIdle(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record)
 {
     return !NativeScheduled(&Record->Snapshot.Binding) && Record->Snapshot.PublicOpenConfirmed &&
-        Record->References == 1 && !Record->CreateCallbackOwned && !Record->CloseCallbackOwned &&
+        Record->References == 1 && Record->Backend == NULL && !Record->CreateCallbackOwned && !Record->CloseCallbackOwned &&
         !Record->DispositionCallbackOwned && !Record->Snapshot.PublicCleanupOutstanding &&
         Record->Snapshot.PublicOperation.Sequence == 0;
 }
@@ -121,10 +152,10 @@ static BOOLEAN NativeBindingValid(const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding
         NativeGuidEqual(&Binding->OperationId, &zero) || Binding->ConnectionEpoch == 0 ||
         Binding->OsBootSequence != NativeBootSequence || (Binding->CreateOptions >> 24) != FILE_OPEN ||
         FlagOn(Binding->CreateOptions, FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID | FILE_OPEN_REPARSE_POINT) ||
-        FlagOn(p->OriginalDesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
-            FILE_DELETE_CHILD | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED) ||
+        (NativeScheduled(Binding) && FlagOn(p->OriginalDesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
+            FILE_DELETE_CHILD | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED)) ||
         (NativeScheduled(Binding) && FlagOn(p->OriginalDesiredAccess, FILE_WRITE_ATTRIBUTES)) ||
-        !FlagOn(p->OriginalDesiredAccess, DELETE) || p->GrantedAccess != 0 ||
+        !FlagOn(p->OriginalDesiredAccess, DELETE | GENERIC_ALL | MAXIMUM_ALLOWED) || p->GrantedAccess != 0 ||
         FlagOn(p->OriginalShareAccess, ~(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)) ||
         p->CallerProcessId == 0 || p->CallerProcessCreationTime <= 0 ||
         p->CallerSidBytes == 0 || p->CallerSidBytes > sizeof(p->CallerSid) ||
@@ -202,14 +233,18 @@ static PSAFEUPLOAD_STAGE_NATIVE_RECORD NativeFindContext(PVOID Context, BOOLEAN 
     return NULL;
 }
 
-_IRQL_requires_(PASSIVE_LEVEL)
+_Use_decl_annotations_
 static VOID NativeDestroy(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record)
 {
+    PAGED_CODE();
     NT_ASSERT(Record->References == 0);
     NT_ASSERT(Record->FileObject == NULL);
+    NT_ASSERT(Record->Backend == NULL && !Record->BackendOperation);
+    NT_ASSERT(Record->DispositionEpoch == NULL);
     FltObjectDereference(Record->Instance);
     ExFreePoolWithTag(Record, NATIVE_RECORD_TAG);
     InterlockedDecrement(&NativeRecordCount);
+    SafeUploadStageWritersOwnerRelease();
 }
 
 _Use_decl_annotations_
@@ -224,6 +259,7 @@ VOID SafeUploadStageNativeInitialize(const GUID *DriverInstanceId, ULONG OsBootS
     NativeBootSequence = OsBootSequence;
     NativeWakeEvent = WakeEvent;
     InterlockedExchange(&NativeRecordCount, 0);
+    NativeFactories = 0;
     NativeRevision = 1;
     NativeReplayUsable = TRUE;
     NativeAccepting = TRUE;
@@ -231,15 +267,31 @@ VOID SafeUploadStageNativeInitialize(const GUID *DriverInstanceId, ULONG OsBootS
 }
 
 _Use_decl_annotations_
-NTSTATUS SafeUploadStageNativeReserve(PFLT_INSTANCE Instance, PFILE_OBJECT FileObject,
-    const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding, PSAFEUPLOAD_STAGE_NATIVE_RECORD *Record)
+__declspec(noinline) static NTSTATUS NativeReserve(PFLT_INSTANCE Instance, PFILE_OBJECT FileObject,
+    const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding, PSAFEUPLOAD_STAGE_PUBLIC_BACKEND Backend,
+    PSAFEUPLOAD_STAGE_NATIVE_RECORD *Record)
 {
     PSAFEUPLOAD_STAGE_NATIVE_RECORD item = NULL;
     PLIST_ENTRY link;
     KIRQL irql;
-    NTSTATUS status;
+    NTSTATUS status = STATUS_DEVICE_NOT_READY;
+    ULONG index = 0;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     *Record = NULL;
     if (!NativeEnter()) return STATUS_DEVICE_NOT_READY;
+    NativeAcquire(&irql);
+    if (!NativeAccepting || SafeUploadStageMandatoryTeardownActive()) {
+        NativeRelease(irql);
+        ExReleaseRundownProtection(&NativeCalls);
+        return STATUS_FLT_DELETING_OBJECT;
+    }
+    if (NativeFactories + InterlockedCompareExchange(&NativeRecordCount, 0, 0) >= NATIVE_RECORD_LIMIT) {
+        NativeRelease(irql);
+        ExReleaseRundownProtection(&NativeCalls);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    ++NativeFactories;
+    NativeRelease(irql);
     if (Instance == NULL || FileObject == NULL || !NativeBindingValid(Binding) ||
         !SafeUploadInstanceAdmissionGateSatisfied(Instance)) { status = STATUS_ACCESS_DENIED; goto Exit; }
     {
@@ -253,6 +305,7 @@ NTSTATUS SafeUploadStageNativeReserve(PFLT_INSTANCE Instance, PFILE_OBJECT FileO
     item = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*item), NATIVE_RECORD_TAG);
     if (item == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
     RtlZeroMemory(item, sizeof(*item));
+    SafeUploadStageWritersOwnerAcquire();
     KeInitializeSemaphore(&item->DispositionGate, 1, 1);
     status = FltObjectReference(Instance);
     if (!NT_SUCCESS(status)) goto Fail;
@@ -260,6 +313,8 @@ NTSTATUS SafeUploadStageNativeReserve(PFLT_INSTANCE Instance, PFILE_OBJECT FileO
     item->FileObject = FileObject;
     item->CreateFileObject = FileObject;
     NativeCopyBinding(&item->Snapshot.Binding, Binding);
+    for (index = 0; index < (ULONG)(Binding->Public.CanonicalLeafBytes / sizeof(WCHAR)); ++index)
+        item->FoldedLeaf[index] = RtlUpcaseUnicodeChar(Binding->Public.CanonicalLeaf[index]);
     item->Snapshot.CreateStatus = STATUS_PENDING;
     item->Snapshot.IdentityStatus = STATUS_PENDING;
     item->References = 2; /* map + producer */
@@ -279,6 +334,12 @@ NTSTATUS SafeUploadStageNativeReserve(PFLT_INSTANCE Instance, PFILE_OBJECT FileO
         }
     }
     InsertTailList(&NativeRecords, &item->Link);
+    if (Backend != NULL) {
+        SafeUploadStagePublicReferenceBackend(Backend);
+        item->Backend = Backend;
+        item->BackendAppObject = FileObject;
+        item->Snapshot.CombinedBackend = TRUE;
+    }
     InterlockedIncrement(&NativeRecordCount);
     NativeChanged();
     NativeRelease(irql);
@@ -291,7 +352,216 @@ UnlockFail:
 Fail:
     if (item->Instance != NULL) FltObjectDereference(item->Instance);
     ExFreePoolWithTag(item, NATIVE_RECORD_TAG);
+    SafeUploadStageWritersOwnerRelease();
 Exit:
+    NativeAcquire(&irql);
+    NT_ASSERT(NativeFactories > 0);
+    --NativeFactories;
+    NativeChanged();
+    NativeRelease(irql);
+    ExReleaseRundownProtection(&NativeCalls);
+    return status;
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageNativeReserve(PFLT_INSTANCE Instance, PFILE_OBJECT FileObject,
+    const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding, PSAFEUPLOAD_STAGE_NATIVE_RECORD *Record)
+{
+    PAGED_CODE();
+    *Record = NULL;
+    if (FlagOn(Binding->Public.OriginalDesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
+        FILE_DELETE_CHILD | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED)) return STATUS_ACCESS_DENIED;
+    return NativeReserve(Instance, FileObject, Binding, NULL, Record);
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageNativeBindWriter(PFLT_INSTANCE Instance, PFILE_OBJECT AppObject,
+    PSAFEUPLOAD_STAGE_WRITER_LEASE Writer)
+{
+    PSAFEUPLOAD_STAGE_NATIVE_BINDING binding = NULL;
+    PSAFEUPLOAD_STAGE_NATIVE_RECORD record = NULL;
+    PSAFEUPLOAD_STAGE_PUBLIC_BACKEND backend = NULL;
+    PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT snapshot = NULL;
+    SAFEUPLOAD_PUBLIC_RELAY_REPLY reply = {0};
+    PFLT_INSTANCE actualInstance = NULL;
+    PFILE_OBJECT object = NULL;
+    PVOID cookie = NULL;
+    LONG64 epoch = 0;
+    ULONG pid = 0;
+    UINT64 revision = 0, authority = 0;
+    NTSTATUS status = STATUS_DEVICE_NOT_READY;
+    KIRQL irql;
+    BOOLEAN operation = FALSE;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    status = SafeUploadStagePublicReferenceWriterDelete(Writer, &backend);
+    if (status != STATUS_SUCCESS) return status;
+    operation = SafeUploadStagePublicAcquireOperation(backend, &actualInstance, &object);
+    if (!operation || actualInstance != Instance || object == NULL || !object->DeleteAccess ||
+        !SafeUploadConnectionGetAuthenticatedIdentity(NULL, &cookie, &epoch, &pid)) {
+        status = STATUS_DEVICE_NOT_READY; goto Exit;
+    }
+    snapshot = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*snapshot), NATIVE_RECORD_TAG);
+    if (snapshot == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    RtlZeroMemory(snapshot, sizeof(*snapshot));
+    binding = &snapshot->Binding;
+    status = SafeUploadStageNativeReadIdentity(&binding->DriverInstanceId, &binding->OsBootSequence);
+    if (status != STATUS_SUCCESS) goto Exit;
+    binding->ConnectionEpoch = (UINT64)epoch;
+    /* This is the actual retained FILE_OPEN, never the mutating app CREATE. */
+    binding->CreateOptions = ((ULONG)FILE_OPEN << 24);
+    SafeUploadStagePublicGetBinding(backend, &binding->Public);
+    binding->Public.GrantedAccess = 0;
+    status = ExUuidCreate(&binding->TransferId); if (!NT_SUCCESS(status)) goto Exit;
+    status = ExUuidCreate(&binding->RequestNonce); if (!NT_SUCCESS(status)) goto Exit;
+    status = ExUuidCreate(&binding->OperationId); if (!NT_SUCCESS(status)) goto Exit;
+    status = NativeReserve(Instance, AppObject, binding, backend, &record);
+    if (status != STATUS_SUCCESS) goto Exit;
+    status = SafeUploadStageNativeSnapshot(record, snapshot, &revision);
+    if (status == STATUS_SUCCESS)
+        status = SafeUploadStagePublicOpenExchange(snapshot, revision, SAFEUPLOAD_PUBLIC_OPEN_PREPARE, &reply, &authority);
+    if (status == STATUS_SUCCESS)
+        status = SafeUploadStageNativeMarkForwarded(record, 0, revision, authority, &reply);
+    NativeAcquire(&irql);
+    /* The factory already observed this exact nonmutating open's successful
+     * grant. Failure of this binding never repeats or changes that open. */
+    record->CreateCallbackOwned = FALSE;
+    record->CreateFileObject = NULL;
+    record->Snapshot.CreateOutcomeKnown = TRUE;
+    record->Snapshot.CreateAccepted = TRUE;
+    record->Snapshot.CreateStatus = STATUS_SUCCESS;
+    record->Snapshot.IdentityStatus = status;
+    record->Snapshot.IdentityAndDeleteGrantChecked = status == STATUS_SUCCESS;
+    if (status == STATUS_SUCCESS) {
+        SafeUploadStagePublicGetBinding(backend, &snapshot->Binding.Public);
+        record->Snapshot.GrantedAccess = snapshot->Binding.Public.GrantedAccess;
+    }
+    NativeChanged();
+    NativeRelease(irql);
+    SafeUploadStageNativeReleaseRecord(record);
+    NativeWake();
+Exit:
+    if (snapshot != NULL) ExFreePoolWithTag(snapshot, NATIVE_RECORD_TAG);
+    if (operation) SafeUploadStagePublicReleaseOperation(backend);
+    if (status != STATUS_SUCCESS && record != NULL) SafeUploadStageNativeCloseWriter(Instance, AppObject);
+    SafeUploadStagePublicDereferenceBackend(backend);
+    return status;
+}
+
+_Use_decl_annotations_
+VOID SafeUploadStageNativeCloseWriter(PFLT_INSTANCE Instance, PFILE_OBJECT AppObject)
+{
+    PSAFEUPLOAD_STAGE_NATIVE_RECORD record = NULL;
+    PSAFEUPLOAD_STAGE_PUBLIC_BACKEND backend = NULL;
+    KIRQL irql;
+    PLIST_ENTRY link;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    if (!NativeEnter()) return;
+    NativeAcquire(&irql);
+    for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
+        PSAFEUPLOAD_STAGE_NATIVE_RECORD candidate = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+        if (candidate->Instance == Instance && candidate->BackendAppObject == AppObject) { record = candidate; break; }
+    }
+    if (record != NULL && record->Backend != NULL) {
+        record->References += 1;
+        backend = record->Backend;
+        record->BackendAppObject = NULL;
+        record->FileObject = NULL; /* remove the app lookup before CLOSE/address reuse */
+        NativeChanged();
+    }
+    NativeRelease(irql);
+    if (backend != NULL) {
+        /* No NativeLock/namespace lock across local I/O rundown or handle close.
+         * Keep Backend installed until post callbacks have released their use. */
+        SafeUploadStagePublicCloseBackend(backend);
+        NativeAcquire(&irql);
+        record->Backend = NULL;
+        record->Snapshot.LastHandleCleanedUp = TRUE;
+        NativeChanged();
+        NativeRelease(irql);
+        SafeUploadStagePublicDereferenceBackend(backend);
+        SafeUploadStageNativeReleaseRecord(record);
+        NativeWake();
+    }
+    ExReleaseRundownProtection(&NativeCalls);
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageNativeOwnerNameStatus(PFLT_INSTANCE Instance, PUNICODE_STRING Name, PEPROCESS Owner)
+{
+    FILE_ID_INFORMATION identity = {0};
+    FILE_ID_INFORMATION parentIdentity = {0};
+    UNICODE_STRING parent = {0}, leaf = {0};
+    struct { WCHAR Exact[256], Folded[256]; } *leafCopy = NULL;
+    PLIST_ENTRY link;
+    KIRQL irql;
+    ULONG index = 0, pid = HandleToULong(PsGetProcessId(Owner));
+    LONG64 creation = PsGetProcessCreateTimeQuadPart(Owner);
+    BOOLEAN candidate = FALSE;
+    NTSTATUS status = STATUS_SUCCESS;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    if (!NativeEnter()) return STATUS_SUCCESS;
+    parent = *Name;
+    for (index = (ULONG)(Name->Length / sizeof(WCHAR)); index != 0; --index)
+        if (Name->Buffer[index - 1] == L'\\') break;
+    if (index == 0 || Name->Length - index * sizeof(WCHAR) >= sizeof(leafCopy->Exact)) goto Exit;
+    leaf.Buffer = Name->Buffer + index;
+    leaf.Length = (USHORT)(Name->Length - index * sizeof(WCHAR));
+    leaf.MaximumLength = leaf.Length;
+    parent.Length = (USHORT)((index - 1) * sizeof(WCHAR));
+    parent.MaximumLength = parent.Length;
+    /* The normalized name can be paged. Capture both case modes before
+     * NativeLock raises IRQL; all three locked passes read only this copy. */
+    leafCopy = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*leafCopy), NATIVE_RECORD_TAG);
+    if (leafCopy == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    RtlZeroMemory(leafCopy, sizeof(*leafCopy));
+    RtlCopyMemory(leafCopy->Exact, leaf.Buffer, leaf.Length);
+    for (index = 0; index < (ULONG)(leaf.Length / sizeof(WCHAR)); ++index)
+        leafCopy->Folded[index] = RtlUpcaseUnicodeChar(leafCopy->Exact[index]);
+    NativeAcquire(&irql);
+    for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
+        PSAFEUPLOAD_STAGE_NATIVE_RECORD r = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+        if (r->Instance != Instance || r->Snapshot.Binding.Public.CanonicalLeafBytes != leaf.Length ||
+            !RtlEqualMemory(r->Snapshot.Binding.Public.ParentCaseSensitive ? r->Snapshot.Binding.Public.CanonicalLeaf : r->FoldedLeaf,
+                r->Snapshot.Binding.Public.ParentCaseSensitive ? leafCopy->Exact : leafCopy->Folded, leaf.Length)) continue;
+        for (index = 0; index < r->TombstoneCount; ++index)
+            if (r->Tombstones[index].Pid == pid && r->Tombstones[index].Creation == creation) candidate = TRUE;
+    }
+    NativeRelease(irql);
+    if (!candidate) goto Exit;
+    status = SafeUploadStageQueryIdentity(Instance, &parent, TRUE, &parentIdentity);
+    if (!NT_SUCCESS(status)) goto Exit;
+    candidate = FALSE;
+    NativeAcquire(&irql);
+    for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
+        PSAFEUPLOAD_STAGE_NATIVE_RECORD r = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+        if (r->Instance != Instance || r->Snapshot.Binding.Public.CanonicalLeafBytes != leaf.Length ||
+            !RtlEqualMemory(&r->Snapshot.Binding.Public.ParentIdentity, &parentIdentity, sizeof(parentIdentity)) ||
+            !RtlEqualMemory(r->Snapshot.Binding.Public.ParentCaseSensitive ? r->Snapshot.Binding.Public.CanonicalLeaf : r->FoldedLeaf,
+                r->Snapshot.Binding.Public.ParentCaseSensitive ? leafCopy->Exact : leafCopy->Folded, leaf.Length)) continue;
+        for (index = 0; index < r->TombstoneCount; ++index)
+            if (r->Tombstones[index].Pid == pid && r->Tombstones[index].Creation == creation) candidate = TRUE;
+    }
+    NativeRelease(irql);
+    if (!candidate) goto Exit;
+    /* A locator only finds the object to compare. It cannot delete anything or
+     * hide a replacement with another full identity. No native lock spans I/O. */
+    status = SafeUploadStageQueryIdentity(Instance, Name, FALSE, &identity);
+    if (!NT_SUCCESS(status)) goto Exit;
+    NativeAcquire(&irql);
+    for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
+        PSAFEUPLOAD_STAGE_NATIVE_RECORD r = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+        if (r->Instance != Instance || r->Snapshot.Binding.Public.CanonicalLeafBytes != leaf.Length ||
+            !RtlEqualMemory(&r->Snapshot.Binding.Public.ParentIdentity, &parentIdentity, sizeof(parentIdentity)) ||
+            !RtlEqualMemory(r->Snapshot.Binding.Public.ParentCaseSensitive ? r->Snapshot.Binding.Public.CanonicalLeaf : r->FoldedLeaf,
+                r->Snapshot.Binding.Public.ParentCaseSensitive ? leafCopy->Exact : leafCopy->Folded, leaf.Length) ||
+            !RtlEqualMemory(&r->Snapshot.Binding.Public.PublicIdentity, &identity, sizeof(identity))) continue;
+        for (index = 0; index < r->TombstoneCount; ++index)
+            if (r->Tombstones[index].Pid == pid && r->Tombstones[index].Creation == creation)
+                status = STATUS_DELETE_PENDING;
+    }
+    NativeRelease(irql);
+Exit:
+    if (leafCopy != NULL) ExFreePoolWithTag(leafCopy, NATIVE_RECORD_TAG);
     ExReleaseRundownProtection(&NativeCalls);
     return status;
 }
@@ -333,7 +603,8 @@ NTSTATUS SafeUploadStageNativeMarkForwarded(PSAFEUPLOAD_STAGE_NATIVE_RECORD Reco
             return STATUS_INVALID_PARAMETER;
     }
     NativeAcquire(&irql);
-    if (ExpectedRevision != 0 && ExpectedRevision != NativeRevision) status = STATUS_RETRY;
+    if (!SafeUploadBoundPublicationNamespaceAvailable(Record->Instance)) status = STATUS_DEVICE_BUSY;
+    else if (ExpectedRevision != 0 && ExpectedRevision != NativeRevision) status = STATUS_RETRY;
     else if (!NativeAccepting || !NativeReplayUsable || ExpectedRevision == 0 ||
         AuthorityRevision == 0 ||
         !SafeUploadStageProtocolNativeForwardAllowed(Record->Snapshot.Binding.ConnectionEpoch, AuthorityRevision) ||
@@ -382,8 +653,11 @@ VOID SafeUploadStageNativeReleaseRecord(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record)
 {
     KIRQL irql;
     NativeAcquire(&irql);
-    NT_ASSERT(Record->References > 1); /* the map is retired only with no other users */
-    NT_ASSERT(!Record->CreateCallbackOwned && !Record->DispositionCallbackOwned);
+    /* A rejected concurrent request can release its short lookup reference
+     * while another original callback is still owned. It cannot consume that
+     * callback's reference (or the map's reference) on its behalf. */
+    NT_ASSERT(Record->References > 1 + (LONG)Record->CreateCallbackOwned +
+        (LONG)Record->DispositionCallbackOwned + (LONG)Record->CloseCallbackOwned);
     Record->References -= 1;
     if (Record->References == 1) NativeChanged(); /* ACK eligibility changed, even without new CREATE facts. */
     NativeRelease(irql);
@@ -477,9 +751,6 @@ NTSTATUS SafeUploadStagePublicDispositionConfirm(const SAFEUPLOAD_STAGE_NATIVE_S
             !FlagOn(operation->Facts, SAFEUPLOAD_PUBLIC_OPERATION_RESULT_KNOWN | SAFEUPLOAD_PUBLIC_OPERATION_NOT_FORWARDED)) {
             status = STATUS_DEVICE_BUSY; break;
         }
-        if (FlagOn(operation->Facts, SAFEUPLOAD_PUBLIC_OPERATION_RESULT_KNOWN) && NT_SUCCESS(operation->Status) &&
-            !record->DispositionNoNameEffect)
-            record->Snapshot.PublicCleanupOutstanding = FlagOn(operation->DispositionFlags, 1) != 0;
         /* The service durably armed the pre-ACK revision. Clearing this exact
          * slot advances replay; accepted cleanup remains independently pinned. */
         RtlZeroMemory(&record->Snapshot.PublicOperation, sizeof(record->Snapshot.PublicOperation));
@@ -492,13 +763,14 @@ NTSTATUS SafeUploadStagePublicDispositionConfirm(const SAFEUPLOAD_STAGE_NATIVE_S
     return status;
 }
 
-_IRQL_requires_(PASSIVE_LEVEL)
+_Use_decl_annotations_
 static VOID NativeDispositionFlush(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record)
 {
     PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT snapshot;
     SAFEUPLOAD_PUBLIC_RELAY_REPLY reply;
     UINT64 revision, authority;
     NTSTATUS status;
+    PAGED_CODE();
     if (SafeUploadStageMandatoryTeardownActive()) return;
     snapshot = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*snapshot), NATIVE_RECORD_TAG);
     if (snapshot == NULL) return; /* local facts remain replayable */
@@ -511,21 +783,33 @@ static VOID NativeDispositionFlush(PSAFEUPLOAD_STAGE_NATIVE_RECORD Record)
     ExFreePoolWithTag(snapshot, NATIVE_RECORD_TAG);
 }
 
-_IRQL_requires_(PASSIVE_LEVEL)
+_Use_decl_annotations_
 static FLT_PREOP_CALLBACK_STATUS NativeDispositionPrepare(PFLT_CALLBACK_DATA Data,
     PSAFEUPLOAD_STAGE_NATIVE_RECORD Record, PVOID *CompletionContext)
 {
     SAFEUPLOAD_STAGE_PUBLIC_MUTATION operation;
     PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT snapshot = NULL;
     SAFEUPLOAD_PUBLIC_RELAY_REPLY reply;
-    UINT64 revision, authority;
+    UINT64 revision = 0, authority = 0;
     KIRQL irql;
-    ULONG actualFlags;
+    ULONG actualFlags = 0;
+    ULONG tombstoneIndex = 0;
     BOOLEAN captured = FALSE;
-    NTSTATUS status;
+    BOOLEAN backendOperation = FALSE;
+    PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN epoch = NULL;
+    PFLT_INSTANCE backendInstance = NULL;
+    PFILE_OBJECT backendObject = NULL;
+    NTSTATUS status = STATUS_DEVICE_NOT_READY;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    *CompletionContext = NULL;
     RtlZeroMemory(&operation, sizeof(operation));
     status = NativeDispositionFlags(Data, &operation.DispositionFlags);
     if (!NT_SUCCESS(status)) goto Exit;
+    /* ON_CLOSE belongs to the actual native app handle. It must never be
+     * emulated or retargeted onto a driver's combined backend handle. */
+    if (Record->Snapshot.CombinedBackend && FlagOn(operation.DispositionFlags, FILE_DISPOSITION_ON_CLOSE)) {
+        status = STATUS_NOT_SUPPORTED; goto Exit;
+    }
     operation.InformationClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
     operation.RequestorMode = Data->RequestorMode;
     operation.Facts = SAFEUPLOAD_PUBLIC_OPERATION_CAPTURED;
@@ -542,11 +826,17 @@ static FLT_PREOP_CALLBACK_STATUS NativeDispositionPrepare(PFLT_CALLBACK_DATA Dat
      * refuses new mutation until its exact result is reconciled, never replayed. */
     (VOID)KeWaitForSingleObject(&Record->DispositionGate, Executive, KernelMode, FALSE, NULL);
     NativeAcquire(&irql);
+    for (tombstoneIndex = 0; tombstoneIndex < Record->TombstoneCount; ++tombstoneIndex)
+        if (Record->Tombstones[tombstoneIndex].Pid == operation.ActorProcessId &&
+            Record->Tombstones[tombstoneIndex].Creation == operation.ActorProcessCreationTime &&
+            Record->Tombstones[tombstoneIndex].Scheduled == BooleanFlagOn(operation.DispositionFlags, FILE_DISPOSITION_ON_CLOSE)) break;
     if (!NativeAccepting || !NativeReplayUsable || Record->Snapshot.CleanupCoverageLost ||
         !Record->Snapshot.IdentityAndDeleteGrantChecked || Record->FileObject != Data->Iopb->TargetFileObject ||
         Record->Snapshot.PublicOperation.Sequence != 0 || SafeUploadStageAttachInstanceRetiring(Record->Instance))
         status = STATUS_DEVICE_NOT_READY;
     else if (Record->NextDispositionSequence == MAXULONGLONG) status = STATUS_INTEGER_OVERFLOW;
+    else if (FlagOn(operation.DispositionFlags, FILE_DISPOSITION_DELETE) &&
+        tombstoneIndex == (ULONG)RTL_NUMBER_OF(Record->Tombstones)) status = STATUS_INSUFFICIENT_RESOURCES;
     else {
         operation.Sequence = ++Record->NextDispositionSequence;
         Record->Snapshot.PublicOperation = operation;
@@ -554,6 +844,16 @@ static FLT_PREOP_CALLBACK_STATUS NativeDispositionPrepare(PFLT_CALLBACK_DATA Dat
     }
     NativeRelease(irql);
     if (!captured) goto ReleaseGate;
+    if (Record->Snapshot.CombinedBackend) {
+        /* Backend cannot be detached until this local gate/use has drained. */
+        NativeAcquire(&irql);
+        if (Record->Backend != NULL)
+            backendOperation = SafeUploadStagePublicAcquireOperation(Record->Backend, &backendInstance, &backendObject);
+        NativeRelease(irql);
+        if (!backendOperation || backendInstance != Record->Instance || backendObject == NULL || !backendObject->DeleteAccess) {
+            status = STATUS_FILE_CLOSED; goto NotForwarded;
+        }
+    }
     NativeWake();
     for (;;) {
         status = SafeUploadStageNativeSnapshot(Record, snapshot, &revision);
@@ -566,10 +866,14 @@ static FLT_PREOP_CALLBACK_STATUS NativeDispositionPrepare(PFLT_CALLBACK_DATA Dat
             (ULONG)Data->Iopb->Parameters.SetFileInformation.FileInformationClass != operation.InformationClass ||
             (ULONG)Data->RequestorMode != operation.RequestorMode) { status = STATUS_INVALID_PARAMETER; break; }
         if (FltIsIoCanceled(Data)) { status = STATUS_CANCELLED; break; }
+        status = SafeUploadPolicyAdmissionAcquire(&epoch);
+        if (!NT_SUCCESS(status)) break;
+        if (SafeUploadPolicyAdmissionMustRetry()) { status = STATUS_RETRY; break; }
         NativeAcquire(&irql);
         if (NativeRevision != revision) status = STATUS_RETRY;
         else if (!NativeAccepting || !NativeReplayUsable || Record->Snapshot.CleanupCoverageLost ||
             SafeUploadStageAttachInstanceRetiring(Record->Instance) ||
+            !SafeUploadBoundPublicationNamespaceAvailable(Record->Instance) ||
             !SafeUploadStageProtocolNativeForwardAllowed(0, authority) || Record->FileObject != Data->Iopb->TargetFileObject ||
             Record->Snapshot.PublicOperation.Facts != SAFEUPLOAD_PUBLIC_OPERATION_CAPTURED)
             status = STATUS_DEVICE_NOT_READY;
@@ -577,19 +881,29 @@ static FLT_PREOP_CALLBACK_STATUS NativeDispositionPrepare(PFLT_CALLBACK_DATA Dat
             Record->Snapshot.PublicOperation.Generation = reply.MutationGeneration;
             Record->Snapshot.PublicOperation.Facts |= SAFEUPLOAD_PUBLIC_OPERATION_FORWARDED;
             Record->DispositionNoNameEffect = reply.Result == SAFEUPLOAD_PUBLIC_RELAY_PREPARED_NO_NAME_EFFECT;
-            Record->DispositionFileObject = Data->Iopb->TargetFileObject;
+            Record->DispositionFileObject = backendOperation ? backendObject : Data->Iopb->TargetFileObject;
             Record->DispositionCallbackOwned = TRUE;
+            Record->BackendOperation = backendOperation;
+            Record->DispositionEpoch = epoch;
             NativeChanged(); status = STATUS_SUCCESS;
         }
         NativeRelease(irql);
-        if (status == STATUS_RETRY) continue; /* only a changed replay revision */
+        if (status == STATUS_RETRY) {
+            SafeUploadPolicyAdmissionRelease(epoch); epoch = NULL;
+            continue; /* only a changed replay revision; no epoch across the next RPC */
+        }
         if (status == STATUS_SUCCESS) {
             ExFreePoolWithTag(snapshot, NATIVE_RECORD_TAG);
             *CompletionContext = Record; /* reference + local gate transfer to post */
+            if (backendOperation) {
+                Data->Iopb->TargetFileObject = backendObject;
+                FltSetCallbackDataDirty(Data);
+            }
             return FLT_PREOP_SYNCHRONIZE; /* unchanged outer operation/thread/mode */
         }
         break;
     }
+NotForwarded:
     if (NT_SUCCESS(status)) status = STATUS_DEVICE_NOT_READY; /* no positive timeout completes as a successful delete */
     NativeAcquire(&irql);
     Record->Snapshot.PublicOperation.Facts |= SAFEUPLOAD_PUBLIC_OPERATION_NOT_FORWARDED;
@@ -598,6 +912,8 @@ static FLT_PREOP_CALLBACK_STATUS NativeDispositionPrepare(PFLT_CALLBACK_DATA Dat
     NativeRelease(irql);
     NativeWake(); NativeDispositionFlush(Record);
 ReleaseGate:
+    SafeUploadPolicyAdmissionRelease(epoch);
+    if (backendOperation) SafeUploadStagePublicReleaseCallbackOperation(Record->Backend);
     KeReleaseSemaphore(&Record->DispositionGate, IO_NO_INCREMENT, 1, FALSE);
 Exit:
     if (snapshot != NULL) ExFreePoolWithTag(snapshot, NATIVE_RECORD_TAG);
@@ -642,6 +958,8 @@ BOOLEAN SafeUploadStagePublicDispositionPost(PFLT_CALLBACK_DATA Data,
     PLIST_ENTRY link;
     PSAFEUPLOAD_STAGE_NATIVE_RECORD record = NULL;
     KIRQL irql;
+    PSAFEUPLOAD_STAGE_PUBLIC_BACKEND backend = NULL;
+    PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN epoch = NULL;
     if (CompletionContext == NULL || !NativeEnter()) return FALSE;
     NativeAcquire(&irql);
     for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
@@ -651,16 +969,65 @@ BOOLEAN SafeUploadStagePublicDispositionPost(PFLT_CALLBACK_DATA Data,
     if (record != NULL) {
         record->DispositionCallbackOwned = FALSE;
         if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) || record->Instance != Objects->Instance ||
-            record->DispositionFileObject != Objects->FileObject || Data->IoStatus.Status == STATUS_PENDING)
+            record->DispositionFileObject != Data->Iopb->TargetFileObject || Data->IoStatus.Status == STATUS_PENDING)
             record->Snapshot.PublicOperation.Facts |= SAFEUPLOAD_PUBLIC_OPERATION_COVERAGE_LOST;
         else {
             record->Snapshot.PublicOperation.Status = Data->IoStatus.Status;
             record->Snapshot.PublicOperation.Facts |= SAFEUPLOAD_PUBLIC_OPERATION_RESULT_KNOWN;
+            if (NT_SUCCESS(Data->IoStatus.Status) && !record->DispositionNoNameEffect) {
+                if (FlagOn(record->Snapshot.PublicOperation.DispositionFlags, FILE_DISPOSITION_DELETE)) {
+                    ULONG index;
+                    for (index = 0; index < record->TombstoneCount; ++index)
+                        if (record->Tombstones[index].Pid == record->Snapshot.PublicOperation.ActorProcessId &&
+                            record->Tombstones[index].Creation == record->Snapshot.PublicOperation.ActorProcessCreationTime &&
+                            record->Tombstones[index].Scheduled ==
+                                BooleanFlagOn(record->Snapshot.PublicOperation.DispositionFlags, FILE_DISPOSITION_ON_CLOSE)) break;
+                    NT_ASSERT(index < (ULONG)RTL_NUMBER_OF(record->Tombstones));
+                    if (index < (ULONG)RTL_NUMBER_OF(record->Tombstones)) {
+                        record->Tombstones[index].Pid = record->Snapshot.PublicOperation.ActorProcessId;
+                        record->Tombstones[index].Creation = record->Snapshot.PublicOperation.ActorProcessCreationTime;
+                        record->Tombstones[index].Scheduled =
+                            BooleanFlagOn(record->Snapshot.PublicOperation.DispositionFlags, FILE_DISPOSITION_ON_CLOSE);
+                        if (index == record->TombstoneCount) record->TombstoneCount++;
+                    }
+                    record->Snapshot.PublicCleanupOutstanding = TRUE;
+                } else {
+                    /* Exact ordinary FALSE is stream-wide across owners. It
+                     * cannot cancel native CREATE's scheduled per-handle state. */
+                    PLIST_ENTRY other;
+                    for (other = NativeRecords.Flink; other != &NativeRecords; other = other->Flink) {
+                        PSAFEUPLOAD_STAGE_NATIVE_RECORD r = CONTAINING_RECORD(other, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+                        if (!NativeScheduled(&r->Snapshot.Binding) && r->Instance == record->Instance &&
+                            RtlEqualMemory(&r->Snapshot.Binding.Public.PublicIdentity,
+                                &record->Snapshot.Binding.Public.PublicIdentity, sizeof(FILE_ID_INFORMATION))) {
+                            ULONG index, retained = 0;
+                            BOOLEAN scheduledClear = BooleanFlagOn(record->Snapshot.PublicOperation.DispositionFlags,
+                                FILE_DISPOSITION_ON_CLOSE);
+                            for (index = 0; index < r->TombstoneCount; ++index) {
+                                BOOLEAN clear = scheduledClear ? r == record && r->Tombstones[index].Scheduled :
+                                    !r->Tombstones[index].Scheduled;
+                                if (!clear) r->Tombstones[retained++] = r->Tombstones[index];
+                            }
+                            r->TombstoneCount = retained;
+                            /* Cleanup obligations remain until their durable
+                             * canceled receipts are reconciled by the service. */
+                        }
+                    }
+                }
+            }
         }
         record->DispositionFileObject = NULL;
+        epoch = record->DispositionEpoch;
+        record->DispositionEpoch = NULL;
+        if (record->BackendOperation) {
+            backend = record->Backend;
+            record->BackendOperation = FALSE;
+        }
         NativeChanged();
     }
     NativeRelease(irql);
+    if (backend != NULL) SafeUploadStagePublicReleaseCallbackOperation(backend);
+    SafeUploadPolicyAdmissionRelease(epoch);
     if (record != NULL) {
         NativeWake();
         if (KeGetCurrentIrql() == PASSIVE_LEVEL) NativeDispositionFlush(record);
@@ -729,6 +1096,12 @@ BOOLEAN SafeUploadStageNativePostCreate(PFLT_CALLBACK_DATA Data,
         record->Snapshot.IdentityAndDeleteGrantChecked = checked;
         record->Snapshot.IdentityStatus = identityStatus;
         if (checked) record->Snapshot.GrantedAccess = granted;
+        if (accepted && NativeScheduled(&record->Snapshot.Binding)) {
+            record->TombstoneCount = 1;
+            record->Tombstones[0].Pid = record->Snapshot.Binding.Public.CallerProcessId;
+            record->Tombstones[0].Creation = record->Snapshot.Binding.Public.CallerProcessCreationTime;
+            record->Tombstones[0].Scheduled = TRUE;
+        }
         if (!accepted) record->FileObject = NULL;
     }
     record->CreateFileObject = NULL;
@@ -741,6 +1114,32 @@ BOOLEAN SafeUploadStageNativePostCreate(PFLT_CALLBACK_DATA Data,
     /* Preserve NTFS's result, including an accepted scheduled delete whose
      * identity query failed. No cancel-open or optional context dependency. */
     return TRUE;
+}
+
+_Use_decl_annotations_
+VOID SafeUploadStageNativeNameChanged(PFLT_INSTANCE Instance)
+{
+    PLIST_ENTRY link = NULL;
+    KIRQL irql = PASSIVE_LEVEL;
+    BOOLEAN changed = FALSE;
+    if (!NativeEnter()) return;
+    NativeAcquire(&irql);
+    for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
+        PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+        /* The original object may already be gone while another reader keeps
+         * its link delete-pending. Retain the same record and re-enumerate on
+         * the next event; neither this event nor absence is a cleanup receipt. */
+        if (record->Instance == Instance && !record->Snapshot.CleanupCoverageLost &&
+            (record->Snapshot.LastHandleCleanedUp || record->Snapshot.CancelledBeforeHandle ||
+             record->Snapshot.CancelledCloseObserved || record->Snapshot.PublicCleanupOutstanding)) {
+            changed = TRUE;
+            break;
+        }
+    }
+    if (changed) NativeChanged();
+    NativeRelease(irql);
+    if (changed) NativeWake();
+    ExReleaseRundownProtection(&NativeCalls);
 }
 
 _Use_decl_annotations_
@@ -930,7 +1329,7 @@ NTSTATUS SafeUploadStageNativeAcknowledge(const SAFEUPLOAD_STAGE_NATIVE_BINDING 
     for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
         PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
         if (!NativeBindingEqual(&record->Snapshot.Binding, Binding)) continue;
-        if (record->References != 1 || record->FileObject != NULL ||
+        if (record->References != 1 || record->FileObject != NULL || record->Backend != NULL ||
             !(record->Snapshot.LastHandleCleanedUp || record->Snapshot.CancelledBeforeHandle ||
               record->Snapshot.CancelledCloseObserved ||
               (record->Snapshot.CreateOutcomeKnown && !record->Snapshot.CreateAccepted))) {
@@ -952,7 +1351,8 @@ NTSTATUS SafeUploadStageNativeAcknowledge(const SAFEUPLOAD_STAGE_NATIVE_BINDING 
 }
 
 _Use_decl_annotations_
-NTSTATUS SafeUploadStagePublicOpenConfirm(const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding, UINT64 AuthorityRevision)
+NTSTATUS SafeUploadStagePublicOpenConfirm(const SAFEUPLOAD_STAGE_NATIVE_BINDING *Binding,
+    UINT64 ExpectedRevision, UINT64 AuthorityRevision)
 {
     PLIST_ENTRY link;
     PSAFEUPLOAD_STAGE_NATIVE_RECORD retired = NULL;
@@ -963,7 +1363,8 @@ NTSTATUS SafeUploadStagePublicOpenConfirm(const SAFEUPLOAD_STAGE_NATIVE_BINDING 
         ExReleaseRundownProtection(&NativeCalls); return STATUS_INVALID_PARAMETER;
     }
     NativeAcquire(&irql);
-    if (AuthorityRevision == 0 || !SafeUploadStageProtocolNativeForwardAllowed(0, AuthorityRevision))
+    if (ExpectedRevision == 0 || ExpectedRevision != NativeRevision) status = STATUS_RETRY;
+    else if (AuthorityRevision == 0 || !SafeUploadStageProtocolNativeForwardAllowed(0, AuthorityRevision))
         status = STATUS_DEVICE_NOT_READY;
     else for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
         PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
@@ -998,30 +1399,15 @@ _Use_decl_annotations_
 BOOLEAN SafeUploadStageNativeTryCloseAdmission(VOID)
 {
     KIRQL irql;
-    BOOLEAN closed = TRUE;
-    LIST_ENTRY idle;
-    PLIST_ENTRY link;
-    InitializeListHead(&idle);
+    BOOLEAN closed;
     NativeAcquire(&irql);
-    for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
-        PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
-        if (!NativeOrdinaryIdle(record)) { closed = FALSE; break; }
-    }
-    if (closed) {
-        NativeAccepting = FALSE;
-        while (!IsListEmpty(&NativeRecords)) {
-            link = RemoveHeadList(&NativeRecords);
-            PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
-            record->FileObject = NULL; record->References = 0;
-            InsertTailList(&idle, link);
-        }
-        NativeChanged();
-    }
+    /* A live ordinary open is still a future disposition capability. Veto
+     * without erasing it; a later failed preflight must preserve its lookup.
+     * A factory has ownership even before its record enters this list. */
+    closed = NativeFactories == 0 && IsListEmpty(&NativeRecords) &&
+        InterlockedCompareExchange(&NativeRecordCount, 0, 0) == 0;
+    if (closed) NativeAccepting = FALSE;
     NativeRelease(irql);
-    while (!IsListEmpty(&idle)) {
-        PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(RemoveHeadList(&idle), SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
-        NativeDestroy(record);
-    }
     return closed;
 }
 
@@ -1059,7 +1445,7 @@ VOID SafeUploadStageNativeDrainLocal(VOID)
             /* Local retirement is not an ACK. The durable intent/result is
              * left for restart reconciliation. Coverage loss alone is never
              * terminal evidence, even after app/service close or a new GUID. */
-            if (record->References != 1 || record->FileObject != NULL ||
+            if (record->References != 1 || record->FileObject != NULL || record->Backend != NULL ||
                 record->CreateCallbackOwned || record->CloseCallbackOwned || record->DispositionCallbackOwned ||
                 !(record->Snapshot.LastHandleCleanedUp || record->Snapshot.CancelledBeforeHandle ||
                   record->Snapshot.CancelledCloseObserved ||
@@ -1068,7 +1454,7 @@ VOID SafeUploadStageNativeDrainLocal(VOID)
             record->References = 0;
             InsertTailList(&retired, link);
         }
-        empty = IsListEmpty(&NativeRecords);
+        empty = IsListEmpty(&NativeRecords) && NativeFactories == 0;
         NativeRelease(irql);
         while (!IsListEmpty(&retired)) {
             PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(RemoveHeadList(&retired), SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
@@ -1096,5 +1482,39 @@ VOID SafeUploadStageNativeUninitialize(VOID)
     InterlockedExchange(&NativeInitialized, 0);
     if (!NativeCallsDrained) ExWaitForRundownProtectionRelease(&NativeCalls);
     NT_ASSERT(IsListEmpty(&NativeRecords));
+}
+/* Called after publication has installed its reservation. MarkForwarded and
+ * disposition consume consult that reservation under NativeLock. A queued
+ * request is harmless; a released callback or unresolved result vetoes.
+ * Idle checked handles remain tied to their original object across rename. */
+_Use_decl_annotations_
+BOOLEAN SafeUploadStageNativePublicationIdle(PFLT_INSTANCE Instance)
+{
+    KIRQL irql;
+    PLIST_ENTRY link;
+    BOOLEAN idle = TRUE;
+    if (!NativeEnter()) return FALSE;
+    NativeAcquire(&irql);
+    for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
+        PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
+        if (record->Instance != Instance) continue;
+        if (!record->Snapshot.Forwarded && !record->Snapshot.CreateOutcomeKnown &&
+            !record->Snapshot.CleanupCoverageLost) continue; /* queued binding, no native operation released */
+        /* A captured request waiting for the service turn has not mutated.
+         * Its final consume rechecks BpLock under NativeLock. Native scheduled
+         * cleanup still acts only on its original NTFS link; a checked live
+         * scheduled open does not serialize every newer save for its lifetime. */
+        if (record->Snapshot.CleanupCoverageLost || record->CreateCallbackOwned || record->CloseCallbackOwned ||
+            !record->Snapshot.CreateOutcomeKnown || !record->Snapshot.IdentityAndDeleteGrantChecked ||
+            record->DispositionCallbackOwned || record->Snapshot.PublicCleanupOutstanding ||
+            (record->Snapshot.PublicOperation.Sequence != 0 &&
+             record->Snapshot.PublicOperation.Facts != SAFEUPLOAD_PUBLIC_OPERATION_CAPTURED) ||
+            (!NativeScheduled(&record->Snapshot.Binding) && !record->Snapshot.PublicOpenConfirmed)) {
+            idle = FALSE; break;
+        }
+    }
+    NativeRelease(irql);
+    ExReleaseRundownProtection(&NativeCalls);
+    return idle;
 }
 #endif

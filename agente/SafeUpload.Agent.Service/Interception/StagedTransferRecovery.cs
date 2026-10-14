@@ -60,6 +60,22 @@ public sealed partial class StagedTransferPublisher
             await RecoverPendingTransferAsync(entry, token).ConfigureAwait(false);
     }
 
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    // Receipts outlive Publishing and even Released-stage disposal. Enumerate
+    // the durable heads, not just the publisher's pending-state projection.
+    internal async Task RecoverBoundReceiptsAsync(CancellationToken token)
+    {
+        var heads = await _journal.ReadDestinationHeadsAsync(token).ConfigureAwait(false);
+        foreach (Guid id in heads.SelectMany(h => h.PublicationAttempts ?? [])
+            .Select(a => StagedTransferJournal.ReadPublicationRequest(a.CreateBase64,
+                SafeUpload.Agent.Minifilter.BoundPublicationPhase.Create).TransferId).Distinct())
+        {
+            var entry = await _journal.ReadAsync(id, token).ConfigureAwait(false);
+            await RecoverPendingTransferAsync(entry, token).ConfigureAwait(false);
+        }
+    }
+#endif
+
     // The live worker and startup both call this. No delay is awaited under
     // the journal gate, and a retry for one transfer does not stall another.
     // This dispatcher never invokes PublishAsync or performs a public rename.
@@ -72,6 +88,22 @@ public sealed partial class StagedTransferPublisher
             if (_recoveryRetries.TryGetValue(id, out var retry) && Stopwatch.GetTimestamp() < retry.RetryAt)
                 return;
             entry = await _journal.ReadAsync(id, token).ConfigureAwait(false);
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            if (entry.BoundAllocation is not null && BoundPublication is not null &&
+                (entry.State == TransferJournalState.Publishing || await BoundPublication.HasAttemptAsync(entry, token).ConfigureAwait(false)))
+            {
+                var bound = await BoundPublication.ReconcileAsync(entry, token).ConfigureAwait(false);
+                bool unfinished = bound.ReceiptPending || entry.State == TransferJournalState.Publishing && !bound.Released;
+                if (bound.Diagnostic is not null) ReportRecoveryHold(entry, bound.Diagnostic, null);
+                if (bound.Diagnostic is not null && unfinished)
+                {
+                    ScheduleRecoveryRetry(id); // bookkeeping only; never forwards a native mutation
+                }
+                else { _recoveryRetries.Remove(id); _recoveryNotified.Remove(id); }
+                if (!unfinished) lock (_confirmedPublications) _pendingJournalProgress.Remove(id);
+                return;
+            }
+#endif
             if (HasConfirmedPublication(id))
                 await FinishConfirmedPublicationAsync(id, token).ConfigureAwait(false);
             else if (entry.State == TransferJournalState.Publishing)

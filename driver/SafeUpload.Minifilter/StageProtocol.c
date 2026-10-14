@@ -1,7 +1,7 @@
 #include "Filter.h"
 #include "Stage.h"
 #include "StageNativeRecords.h"
-#include "StageBoundPublication.h"
+#include "StageBoundPublicationInternal.h"
 #include "StageWriterMetadata.h"
 
 static NTSTATUS StageSendVersionRequest(_In_ UINT32 Operation, _In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName);
@@ -633,6 +633,7 @@ VOID SafeUploadStageProtocolConnectionReset(_In_ PVOID ConnectionCookie)
     InterlockedIncrement(&SafeUploadStageV20ChannelGeneration);
     StageProtocolClearDrainReplayLocked();
     KeReleaseSpinLock(&SafeUploadStageV20StateLock, oldIrql);
+    SafeUploadBoundPublicationRevokeConnection(ConnectionCookie);
 }
 
 VOID SafeUploadStageProtocolAuthenticationChanged(_In_ PVOID ConnectionCookie)
@@ -650,6 +651,7 @@ VOID SafeUploadStageProtocolAuthenticationChanged(_In_ PVOID ConnectionCookie)
     InterlockedIncrement(&SafeUploadStageV20ChannelGeneration);
     ++SafeUploadStageV20AuthorityRevision; /* revokes captured metadata on policy/authentication change */
     KeReleaseSpinLock(&SafeUploadStageV20StateLock, oldIrql);
+    SafeUploadBoundPublicationRevokeConnection(ConnectionCookie);
 }
 
 BOOLEAN SafeUploadStageProtocolIsReady(VOID)
@@ -1090,9 +1092,11 @@ BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(UINT64 ConnectionEpoch, UINT
     return allowed;
 }
 
-/* Deliberately not a negotiated bit alone. Publication, seed completion and
- * recovery have no integrated producer. This is the live CREATE selector;
- * changing metadata transport readiness cannot enable bound allocation. */
+/* Independently fail closed even after agent negotiation/recovery composition:
+ * native_create_security_unproved, seed_coherence_unproved,
+ * seed_export_authority_unproved and version_publication_authority_unproved
+ * still have no qualified producer. Changing transport bits cannot enable
+ * this live CREATE selector. No configuration/diagnostic bypass exists. */
 _Use_decl_annotations_
 BOOLEAN SafeUploadStageProtocolBoundAllocationReady(VOID)
 {
@@ -1189,6 +1193,62 @@ NTSTATUS SafeUploadStageNativeExchange(const SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT *S
     }
     if (!NT_SUCCESS(status)) RtlZeroMemory(Reply, sizeof(*Reply));
     else if (AuthorityRevision != NULL) *AuthorityRevision = exchange->StageAuthorityRevision;
+    ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);
+    return status;
+}
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, SafeUploadStageCancelPrivate)
+#endif
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageCancelPrivate(const SAFEUPLOAD_PRIVATE_CANCEL_REQUEST *Request,
+    PSAFEUPLOAD_PRIVATE_CANCEL_REPLY Reply)
+{
+    PSAFEUPLOAD_EXCHANGE exchange = NULL;
+    UINT32 verdict = SAFEUPLOAD_VERDICT_DENY;
+    BOOLEAN answered = FALSE;
+    NTSTATUS status = STATUS_DEVICE_NOT_READY;
+    PAGED_CODE();
+    RtlZeroMemory(Reply, sizeof(*Reply));
+    if (!SafeUploadStageProtocolNativeForwardAllowed(0, 0) || SafeUploadStageMandatoryTeardownActive())
+        return STATUS_DEVICE_NOT_READY;
+    if (Request->Version != SAFEUPLOAD_PRIVATE_CANCEL_VERSION || Request->StructSize != sizeof(*Request) ||
+        Request->Reserved != 0 || Request->Generation == 0 || Request->Generation > (UINT64)MAXLONGLONG ||
+        Request->OwnerProcessId == 0 || Request->OwnerProcessId > (UINT32)MAXLONG || Request->OwnerCreationTime <= 0 ||
+        !StageProtocolGuidNonzero(&Request->DriverInstanceId) ||
+        !StageProtocolGuidNonzero(&Request->OperationId) || !StageProtocolGuidNonzero(&Request->TransferId))
+        return STATUS_INVALID_PARAMETER;
+    exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG);
+    if (exchange == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    RtlZeroMemory(exchange, sizeof(*exchange));
+    exchange->Request.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    exchange->Request.StructSize = sizeof(SAFEUPLOAD_REQUEST);
+    exchange->Request.RequestId = (UINT64)InterlockedIncrement64(&SafeUploadData.NextRequestId);
+    exchange->Request.Operation = SAFEUPLOAD_OPERATION_PRIVATE_CANCEL;
+    exchange->Request.Flags = SAFEUPLOAD_REQUEST_FLAG_STAGE_V19_REPLY;
+    exchange->Request.RequestorProcessId = Request->OwnerProcessId;
+    exchange->Request.Reserved = SAFEUPLOAD_PRIVATE_CANCEL_VERSION;
+    exchange->Request.ImageNameLength = sizeof(*Request);
+    RtlCopyMemory(exchange->Request.ImageName, Request, sizeof(*Request));
+    status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
+    status = SafeUploadStageExchangeResult(status, answered, verdict);
+    if (status == STATUS_SUCCESS) {
+        if (exchange->Response.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+            exchange->Response.StructSize != sizeof(SAFEUPLOAD_RESPONSE) ||
+            exchange->Response.RequestId != exchange->Request.RequestId || exchange->Response.Verdict != SAFEUPLOAD_VERDICT_ALLOW ||
+            exchange->Response.StageNameLength != sizeof(*Reply) ||
+            !StageProtocolBytesZero((const UCHAR *)exchange->Response.StageName + sizeof(*Reply),
+                sizeof(exchange->Response.StageName) - sizeof(*Reply))) status = STATUS_INVALID_BUFFER_SIZE;
+        else {
+            RtlCopyMemory(Reply, exchange->Response.StageName, sizeof(*Reply));
+            if (!RtlEqualMemory(&Reply->Request, Request, sizeof(*Request)) || Reply->Reserved != 0 ||
+                (Reply->Result == SAFEUPLOAD_PRIVATE_CANCELED ?
+                    Reply->CancellationGeneration <= Request->Generation || Reply->CancellationGeneration > (UINT64)MAXLONGLONG :
+                    Reply->Result != SAFEUPLOAD_PRIVATE_CANCEL_PUBLIC || Reply->CancellationGeneration != 0))
+                status = STATUS_INVALID_BUFFER_SIZE;
+        }
+    }
+    if (status != STATUS_SUCCESS) RtlZeroMemory(Reply, sizeof(*Reply));
     ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);
     return status;
 }

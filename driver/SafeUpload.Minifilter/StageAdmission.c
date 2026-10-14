@@ -827,7 +827,10 @@ Finalize:
         Status->Reason = SAFEUPLOAD_ADMISSION_COVERAGE_REASON_WRITER_UNKNOWN;
         goto Exit;
     }
-    if (Status->WriterEntriesNotReady != 0) {
+    /* Includes increment-2--8 factories/leases and V26/native receipts. Their
+     * interlocked ownership edges participate in Registry/CoverageSequence;
+     * a sampled zero H/W/C/T tuple cannot hide these retained references. */
+    if (Status->WriterEntriesNotReady != 0 || SafeUploadStageWritersOwnerCount() != 0) {
         Status->State = SAFEUPLOAD_ADMISSION_COVERAGE_STATE_PENDING;
         Status->Reason = SAFEUPLOAD_ADMISSION_COVERAGE_REASON_WRITER_PENDING;
         goto Exit;

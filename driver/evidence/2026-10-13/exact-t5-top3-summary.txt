@@ -1,0 +1,13 @@
+﻿LABEL=t5-top3
+ARCHIVE_SHA256=F24D0FE719BB15F70BE660CA5C091B5F59679DEC534D786789E4836A6476F0CF
+SOURCE_COMMIT=03fbe057b9bdc6a31f5479ed4c7db95c5bf4ad67
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-14T02:22:53.4548080Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=1DEE37D9C9A744F8246CED026EF41BB2A4BAF13BA4218F2C59AE56D02B953722
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=AADEEB887802C20462872279715B6330B1B2B69C9E8BAEBD0D5F266E696A6A46
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=BA183997BCDA14BC6F720F5162D47FC0F621EC7AE2674902D48E75DE9BB3BC85
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=70E61EA882AB27D024E77CA6A208F19F9FD12B563C997D8F7D4EF93D7B7AA938
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=500320C8770CA9C825255C1962931C40F9E61A2A9A37BF2AEF713863A235D780
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=3CBE7A3013C17698BB8FD0FFC2917882B404C287E7ECA7C3DBC2F76C07C43F70
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=92CA0D7E6FE6CEFE731ACDDD70B3B7EF62ACBA6773ECF7711E6AE36377823324
+sign : exit=1 unsigned_sha256=AADEEB887802C20462872279715B6330B1B2B69C9E8BAEBD0D5F266E696A6A46 signing_copy_sha256=AADEEB887802C20462872279715B6330B1B2B69C9E8BAEBD0D5F266E696A6A46 unsigned_unchanged=True store=CurrentUser output_sha256=AADEEB887802C20462872279715B6330B1B2B69C9E8BAEBD0D5F266E696A6A46 signed_sha256=NONE signature_valid=False signer=220DD82C37FCF36048D59E4F10113185D81D5DC7

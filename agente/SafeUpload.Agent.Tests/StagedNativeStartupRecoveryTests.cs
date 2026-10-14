@@ -42,6 +42,8 @@ public sealed class StagedNativeStartupRecoveryTests : IDisposable
             _ => Task.CompletedTask);
         await startup.Start(CancellationToken.None);
         Assert.True(startup.TryGetResult(_driver, out var result)); Assert.Equal(StagedDriverEpochReconcileV20.Active, result);
+        Assert.True(startup.TryGetBoundResult(_driver, out var boundReceipt));
+        Assert.True(boundReceipt!.HasUnresolvedPrerequisites);
         var retained = Assert.Single(Assert.Single(await journal.ReadDestinationHeadsAsync(CancellationToken.None)).Deletes);
         Assert.Equal(binding, retained.Binding); Assert.Equal(generation, retained.Generation);
         Assert.Equal(StagedPublicDeleteState.Admitted, retained.State);
@@ -57,12 +59,16 @@ public sealed class StagedNativeStartupRecoveryTests : IDisposable
         { entered.SetResult(); await release.Task.WaitAsync(token); });
         Task run = startup.Start(CancellationToken.None); await entered.Task;
         Assert.False(run.IsCompleted); Assert.False(startup.TryGetResult(_driver, out _));
+        Assert.False(startup.TryGetBoundResult(_driver, out _));
         Assert.False(File.Exists(Path.Combine(JournalPath, "driver-epoch.state")));
         release.SetResult(); await run;
         Assert.Equal(2, reads);
         Assert.True(startup.TryGetResult(_driver, out var result)); Assert.Equal(StagedDriverEpochReconcileV20.Active, result);
         Assert.False(startup.TryGetResult(Guid.NewGuid(), out _));
+        Assert.True(startup.TryGetBoundResult(_driver, out var receipt));
+        Assert.Equal(new StagedBoundRecoveryReceipt(_driver, 11, 42, 17, false), receipt);
         startup.Invalidate(); Assert.False(startup.TryGetResult(_driver, out _));
+        Assert.False(startup.TryGetBoundResult(_driver, out _));
     }
 
     [Theory]
@@ -86,6 +92,7 @@ public sealed class StagedNativeStartupRecoveryTests : IDisposable
         }, _ => Task.CompletedTask);
         await Assert.ThrowsAsync<IOException>(() => startup.Start(CancellationToken.None));
         Assert.False(startup.TryGetResult(_driver, out _));
+        Assert.False(startup.TryGetBoundResult(_driver, out _));
         Assert.False(File.Exists(Path.Combine(JournalPath, "driver-epoch.state")));
     }
 
@@ -96,6 +103,7 @@ public sealed class StagedNativeStartupRecoveryTests : IDisposable
         startup = new(Journal(), () => Replay(), _ => { startup!.Invalidate(); return Task.CompletedTask; });
         await Assert.ThrowsAsync<IOException>(() => startup.Start(CancellationToken.None));
         Assert.False(startup.TryGetResult(_driver, out _));
+        Assert.False(startup.TryGetBoundResult(_driver, out _));
         Assert.False(File.Exists(Path.Combine(JournalPath, "driver-epoch.state")));
     }
 

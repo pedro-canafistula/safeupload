@@ -102,8 +102,8 @@ public sealed record BoundPublicationReplayRow(BoundPublicationFactsRowV26 Facts
                     (f.CreateStatus is unchecked((int)0xc0000034) or unchecked((int)0xc000003a)) && f.CreateInformation == 5) &&
                     !bits.HasFlag(BoundPublicationFacts.TemporaryIdentityKnown);
             return bits.HasFlag(BoundPublicationFacts.LastCleanup) &&
-                (!bits.HasFlag(BoundPublicationFacts.RenameForwarded) || bits.HasFlag(BoundPublicationFacts.RenameResultKnown)) &&
-                (!bits.HasFlag(BoundPublicationFacts.CleanupForwarded) || bits.HasFlag(BoundPublicationFacts.CleanupResultKnown));
+                (!bits.HasFlag(BoundPublicationFacts.RenameForwarded) || bits.HasFlag(BoundPublicationFacts.RenameResultKnown) && f.RenameStatus <= 0) &&
+                (!bits.HasFlag(BoundPublicationFacts.CleanupForwarded) || bits.HasFlag(BoundPublicationFacts.CleanupResultKnown) && f.CleanupStatus <= 0);
         }
     }
 }
@@ -285,7 +285,7 @@ public static unsafe class BoundPublicationV26
     {
         var r = MemoryMarshal.Read<BoundPublicationFactsRowV26>(bytes); var f = r.Flags;
         bool Has(BoundPublicationFacts bit) => (f & bit) == bit;
-        bool NativeSuccess(int status) => status >= 0 && status != 259;
+        bool NativeSuccess(int status) => status == 0;
         bool Outcome(BoundPublicationFacts forward, BoundPublicationFacts noForward, BoundPublicationFacts known,
             BoundPublicationFacts accepted, int status) =>
             !(Has(forward) && Has(noForward)) && (!Has(known) || (Has(forward) || Has(noForward)) && status != 259) &&
@@ -301,7 +301,7 @@ public static unsafe class BoundPublicationV26
             (Has(BoundPublicationFacts.CreateAccepted) && r.CreateInformation != 2) ||
             (Has(BoundPublicationFacts.TemporaryIdentityKnown) ? !Has(BoundPublicationFacts.CreateAccepted) ||
                 !NativeSuccess(r.IdentityStatus) || !OnVolume(r.TemporaryIdentity, r.Create.VolumeRootIdentity.VolumeSerialNumber) :
-                !Absent(r.TemporaryIdentity) || r.IdentityStatus > 0) ||
+                !Absent(r.TemporaryIdentity)) ||
             r.ObservedEof < 0 || (Has(BoundPublicationFacts.DataDrained) && (!Has(BoundPublicationFacts.DataFenced) ||
                 r.InFlightWrites != 0 || r.InFlightMutators != 0)) ||
             (Has(BoundPublicationFacts.FlushResultKnown) ? !Has(BoundPublicationFacts.DataDrained) ||
@@ -325,10 +325,11 @@ public static unsafe class BoundPublicationV26
         if (!Outcome(BoundPublicationFacts.RenameForwarded, BoundPublicationFacts.RenameNotForwarded,
                 BoundPublicationFacts.RenameResultKnown, BoundPublicationFacts.RenameAccepted, r.RenameStatus) ||
             ((Has(BoundPublicationFacts.RenameForwarded) || Has(BoundPublicationFacts.RenameNotForwarded)) && !Has(BoundPublicationFacts.RenameConsumed)) ||
-            (Has(BoundPublicationFacts.TargetObservationKnown) ? !NativeSuccess(r.TargetStatus) ||
+            // Complete anchored enumeration ends with native STATUS_NO_MORE_FILES.
+            (Has(BoundPublicationFacts.TargetObservationKnown) ? (r.TargetStatus != 0 && r.TargetStatus != unchecked((int)0x80000006)) ||
                 (Has(BoundPublicationFacts.TargetAbsent) ? !Absent(r.ObservedPublicIdentity) :
                     !OnVolume(r.ObservedPublicIdentity, r.Create.VolumeRootIdentity.VolumeSerialNumber)) :
-                !Absent(r.ObservedPublicIdentity) || r.TargetStatus > 0 || Has(BoundPublicationFacts.TargetAbsent)) ||
+                !Absent(r.ObservedPublicIdentity) || Has(BoundPublicationFacts.TargetAbsent)) ||
             (Has(BoundPublicationFacts.RenameForwarded) && (!Has(BoundPublicationFacts.DataFenced | BoundPublicationFacts.DataDrained |
                 BoundPublicationFacts.FlushSucceeded | BoundPublicationFacts.TargetObservationKnown) ||
                 !Same(r.ObservedPublicIdentity, r.Rename.ExpectedPublicIdentity))))
@@ -339,7 +340,7 @@ public static unsafe class BoundPublicationV26
             if (r.CleanupOperationId == Guid.Empty || r.CleanupNonce == Guid.Empty || r.CleanupOperationId == r.CleanupNonce ||
                 r.CleanupOperationId == r.Create.OperationId || r.CleanupNonce == r.Create.CreateNonce ||
                 !Has(BoundPublicationFacts.TemporaryIdentityKnown | BoundPublicationFacts.DataFenced | BoundPublicationFacts.DataDrained) ||
-                Has(BoundPublicationFacts.RenameAccepted) || (Has(BoundPublicationFacts.RenameForwarded) && !Has(BoundPublicationFacts.RenameResultKnown)))
+                Has(BoundPublicationFacts.RenameAccepted) || (Has(BoundPublicationFacts.RenameForwarded) && (!Has(BoundPublicationFacts.RenameResultKnown) || r.RenameStatus >= 0)))
                 throw new IOException("Cleanup has no exact proven uncommitted temporary.");
         }
         else if (r.CleanupOperationId != Guid.Empty || r.CleanupNonce != Guid.Empty ||

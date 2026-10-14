@@ -409,6 +409,8 @@ typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
     LIST_ENTRY WriterObjects;
     volatile LONG WritersUntracked;
     PVOID WriterRegistryEntry; /* Identity history is owned by StageWriters; H nodes reference it. */
+    PVOID WriterSopLifetime; /* Owns a small witness, not the stream; WriterLock. */
+    BOOLEAN WriterSopLifetimeInvalid; /* Explicit deletion never proves natural retirement. */
     BOOLEAN WriterRegistryCachePruned; /* Under WriterLock: an exact, empty cache passed the existing prune gate. */
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
 
@@ -727,6 +729,8 @@ typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_TOKEN {
 NTSTATUS SafeUploadPolicyAdmissionAcquire(_Outptr_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN *Token);
 VOID SafeUploadPolicyAdmissionRelease(_In_opt_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN Token);
 BOOLEAN SafeUploadPolicyAdmissionMustRetry(VOID);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN SafeUploadPolicyPublicationQuiescent(VOID);
 NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_STATUS Status);
 VOID SafeUploadPolicyAdmissionForceNextTimeout(VOID);
 VOID SafeUploadStageWritersQueueRecheck(VOID);

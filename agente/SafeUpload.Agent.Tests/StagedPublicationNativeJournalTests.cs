@@ -13,7 +13,7 @@ namespace SafeUpload.Agent.Tests;
 
 // Actual private manifests/head writes with injected native receipts. These
 // do not perform public rename or qualify protected callback/recovery behavior.
-public sealed class StagedPublicationNativeJournalTests : IDisposable
+public sealed partial class StagedPublicationNativeJournalTests : IDisposable
 {
     private readonly TestWorkspace _workspace = new();
     private readonly Guid _driver = Guid.NewGuid();
@@ -25,7 +25,7 @@ public sealed class StagedPublicationNativeJournalTests : IDisposable
     private static SafeUploadStageIdentityV19 Wire(StagedStageIdentity id) => new()
     { VolumeSerialNumber = id.VolumeSerialNumber, FileIdHigh = id.FileIdHigh, FileIdLow = id.FileIdLow };
 
-    private async Task<(StagedAllocationBindingV23 Binding, StagedAllocationReply Allocation, TransferJournalEntry Entry)> Allocate()
+    private async Task<(StagedAllocationBindingV23 Binding, StagedAllocationReply Allocation, TransferJournalEntry Entry)> Allocate(bool approve = true, byte[]? content = null, bool seal = true)
     {
         Directory.CreateDirectory(Parent);
         string root = Path.GetPathRoot(Parent)!; var volume = new StringBuilder(128);
@@ -44,6 +44,7 @@ public sealed class StagedPublicationNativeJournalTests : IDisposable
         Assert.Equal(StagedSeedOrigin.None, pending.SeedProvenance!.Origin);
         Assert.Null(pending.SeedCompletion);
         Assert.Equal(0, new FileInfo(allocated.Transfer.StagePath).Length);
+        if (!seal) return (binding, allocated, pending);
         // Model the future authenticated kernel receipt for an empty initial
         // seed, before application writes. These are journal controls only.
         var completion = new StagedSeedCompletion(version, 0)
@@ -58,10 +59,11 @@ public sealed class StagedPublicationNativeJournalTests : IDisposable
         foreach (var (operation, request) in new[] { (12u, 701ul), (13u, 702ul), (15u, 703ul), (19u, 704ul) })
             await journal.ApplyAttachmentV20Async(new(operation, request, version, _driver, binding.Parent,
                 allocated.Transfer.DestinationPath, process.Id), true, true, default);
-        await File.WriteAllBytesAsync(allocated.Transfer.StagePath, new byte[37]);
+        await File.WriteAllBytesAsync(allocated.Transfer.StagePath, content ?? new byte[37]);
         var entry = await journal.SealAsync(allocated.Transfer.TransferId, process.Id, allocated.Transfer.StagePath, default, version);
         Assert.Equal(completion, entry.SeedCompletion);
-        Assert.Equal(37, entry.SealedLength);
+        Assert.Equal((content ?? new byte[37]).Length, entry.SealedLength);
+        if (!approve) return (binding, allocated, entry);
         using var snapshot = StagedStageFile.Open(allocated.Transfer.StagePath);
         Assert.Equal(entry.StageIdentity, snapshot.Identity);
         Assert.Equal(entry.SealedLength, snapshot.Stream.Length);
@@ -138,14 +140,24 @@ public sealed class StagedPublicationNativeJournalTests : IDisposable
         return new(facts);
     }
 
+    private static BoundPublicationReplayRow CreateOnly(BoundPublicationReplayRow row)
+    {
+        var f = row.Facts;
+        f.Rename = default; f.RenameStatus = 0; f.ObservedEof = 0;
+        f.Flags = BoundPublicationFacts.CreateConsumed | BoundPublicationFacts.CreateForwarded |
+            BoundPublicationFacts.CreateResultKnown | BoundPublicationFacts.CreateAccepted | BoundPublicationFacts.TemporaryIdentityKnown;
+        return new(f);
+    }
+
     private static BoundPublicationReplay Replay(BoundPublicationReplayRow row, ulong revision = 17) =>
         new(row.Facts.Create.DriverInstanceId, 11, revision, 42, [row]);
     private static async Task Begin(StagedTransferJournal journal, StagedTransferJournal.DestinationCommitTurn turn, BoundPublicationReplayRow row)
     {
         var f = row.Facts;
-        await journal.BeginDestinationPublicationAsync(turn, f.Rename.OperationId, f.Create.TransferId,
-            f.Create.DestinationGeneration, null, new(f.TemporaryIdentity.VolumeSerialNumber, f.TemporaryIdentity.FileIdHigh, f.TemporaryIdentity.FileIdLow),
-            f.Create.MeasuredLength, Convert.ToHexString(f.Create.GetDigest()), default);
+        await journal.BeginBoundPublicationCreateAsync(turn.Destination, f.Create, default);
+        var created = CreateOnly(row);
+        await journal.RecordBoundPublicationNativeResultAsync(turn, Replay(created, 16), created);
+        await journal.BeginBoundPublicationRenameAsync(turn, f.Rename, default);
     }
 
     [Theory]
@@ -195,7 +207,8 @@ public sealed class StagedPublicationNativeJournalTests : IDisposable
         if (change == "destination") await Assert.ThrowsAsync<InvalidDataException>(record);
         else await Assert.ThrowsAsync<IOException>(record);
         var head = (await Journal().ReadDestinationHeadAsync(fixture.Binding.Destination, default))!;
-        Assert.Equal(0, head.LatestPublished); Assert.NotNull(head.PendingCommit); Assert.Empty(head.PublicationNativeReceipts ?? []);
+        Assert.Equal(0, head.LatestPublished); Assert.NotNull(head.PendingCommit); Assert.False(BoundPublicationV26.DecodeFactRow(Convert.FromBase64String(Assert.Single(head.PublicationNativeReceipts!).FactsBase64),
+            _driver, 11, 42).Facts.Flags.HasFlag(BoundPublicationFacts.RenameResultKnown));
     }
 
     [Fact]

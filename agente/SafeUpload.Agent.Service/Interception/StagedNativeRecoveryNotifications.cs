@@ -5,10 +5,23 @@ namespace SafeUpload.Agent.Service.Interception;
 
 // Emit only from the live recovery dispatcher after reading the exact durable
 // destination head. This records a diagnosis and guidance, never clears a hold
-// or offers an override. Startup refusal uses this path; live last-close
-// reconciliation remains pending the shared physical commit integration.
+// or offers an override. Startup and live last-close reconciliation share the
+// same owner-scoped guidance; no notification grants publication authority.
 internal static class StagedNativeRecoveryNotifications
 {
+    internal static void PublishRelay(NotificationHub hub, ILogger logger, StagedDestinationHead head,
+        StagedPublicRelayReceipt receipt, StagedRecoveryAdvice advice, string reason)
+    {
+        if (!(head.PublicRelayReceipts ?? []).Contains(receipt) || !Enum.IsDefined(advice) || string.IsNullOrWhiteSpace(reason))
+            throw new InvalidOperationException("Ordinary recovery guidance requires the exact retained receipt.");
+        logger.LogWarning("Native disposition recovery holds {Destination}: transfer {TransferId}, operation {OperationId}, " +
+            "generation {Generation}, native status {NativeStatus}, reason {Reason}, advice {Advice}",
+            head.Locator, receipt.Binding.TransferId, receipt.OperationId, receipt.Generation, receipt.NativeStatus, reason, advice);
+        var notice = new TransferNotification(receipt.Binding.TransferId, head.Locator, TransferPhase.Retained, RecoveryAdvice: advice);
+        if (receipt.Binding.OwnerSessionId == 0) hub.RecordOnly(notice, 0);
+        else hub.Publish(notice, receipt.Binding.OwnerSessionId, receipt.Binding.OwnerSid);
+    }
+
     internal static bool Publish(NotificationHub hub, ILogger logger, StagedDestinationHead head,
         StagedPublicDeleteRecord delete, StagedRecoveryAdvice advice, string diagnosticReason)
     {

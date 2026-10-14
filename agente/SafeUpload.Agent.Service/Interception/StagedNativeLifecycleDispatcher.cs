@@ -44,6 +44,18 @@ internal sealed class StagedNativeLifecycleDispatcher(
             using var turn = await journal.EnterDestinationCommitTurnAsync(destination,
                 StagedDestinationTurnPurpose.Allocation, token).ConfigureAwait(false);
             RequireSameReplay(request, replay);
+            // A publication may have finished while this original CREATE was
+            // queued. Its pre-open identity must still name the exact link;
+            // a stale capture cannot schedule deletion of a replacement.
+            var expected = new NativeNameObservationRequest(replay.DriverInstanceId, replay.ConnectionEpoch,
+                replay.Revision, replay.OsBootSequence, row.MountManagerVolumeId, row.VolumeRootIdentity,
+                row.ParentIdentity, row.ParentCaseSensitive, row.CanonicalLeaf);
+            var name = observeName(expected);
+            if (name.Binding != expected || name.ChildIdentity is not { } child ||
+                child.VolumeSerialNumber != row.PublicIdentity.VolumeSerialNumber ||
+                child.FileIdHigh != row.PublicIdentity.FileIdHigh || child.FileIdLow != row.PublicIdentity.FileIdLow)
+                throw new IOException("Native CREATE's captured public link changed while awaiting its destination turn.");
+            RequireSameReplay(request, replay);
             saved = await journal.BeginNativeDeleteOnCloseCreateAsync(turn, binding, row.OperationId,
                 locator, 0, token, intentFacts).ConfigureAwait(false);
             checkLiveCreator(row);
@@ -207,7 +219,7 @@ public sealed partial class MinifilterInterceptor
                 driver is not { } current || _activeDriverInstanceId != current ||
                 !request.TryReadNativeLifecycleV24(out var payload))
                 throw new IOException("The integrated native publication pipeline is not ready.");
-            var dispatcher = new StagedNativeLifecycleDispatcher(journal, port.ReadNativeRecordReplay,
+            var dispatcher = new StagedNativeLifecycleDispatcher(journal, () => ReadBoundNativeReplay(port),
                 port.ObserveNativeName, row =>
                 {
                     var destination = StagedNativeStartupRecovery.Destination(row);
@@ -232,6 +244,7 @@ public sealed partial class MinifilterInterceptor
         }
         catch (Exception error)
         {
+            _boundReadiness.Invalidate(StagedBoundBlocker.UnresolvedPrerequisite);
             _logger.LogWarning(error, "Native lifecycle request {RequestId} retained its private intent.", request.RequestId);
             try { port.Reply(messageId, request.RequestId, Verdict.Deny); }
             catch (Exception replyError) { _logger.LogWarning(replyError, "Native lifecycle denial was not delivered."); }

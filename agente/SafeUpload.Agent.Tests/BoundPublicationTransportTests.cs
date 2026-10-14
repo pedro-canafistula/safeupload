@@ -57,6 +57,9 @@ public sealed class BoundPublicationTransportTests
     }
 
     [Theory]
+    [InlineData("generation")]
+    [InlineData("driver")]
+    [InlineData("authority")]
     [InlineData("operation")]
     [InlineData("nonce")]
     [InlineData("phase")]
@@ -70,6 +73,9 @@ public sealed class BoundPublicationTransportTests
         var request = Create(); var reply = Reply(request, BoundPublicationResult.Prepared);
         switch (defect)
         {
+            case "generation": reply.DestinationGeneration++; break;
+            case "driver": reply.DriverInstanceId = G(999); break;
+            case "authority": reply.AuthorityRevision = 0; break;
             case "operation": reply.OperationId = G(999); break;
             case "nonce": reply.PermitNonce = G(999); break;
             case "phase": reply.Phase = BoundPublicationPhase.Rename; break;
@@ -226,6 +232,197 @@ public sealed class BoundPublicationTransportTests
         Assert.Throws<IOException>(() => port.AcknowledgeBoundPublication(replay, Assert.Single(replay.Records)));
     }
 
+    [Theory]
+    [InlineData(1L)]
+    [InlineData(99L)]
+    public void Refused_create_preserves_exact_generation_and_never_becomes_a_forwarding_grant(long generation)
+    {
+        var request = Create(); request.DestinationGeneration = request.ExpectedMaxAllocated = generation;
+        var refused = Row(0); refused.Create = request;
+        refused.Flags = BoundPublicationFacts.CreateConsumed | BoundPublicationFacts.CreateNotForwarded |
+            BoundPublicationFacts.DataFenced | BoundPublicationFacts.DataDrained;
+        int createControls = 0;
+        var sender = new Sender(input =>
+        {
+            if (U32(input.Span, 20) == 1)
+            {
+                createControls++;
+                Assert.Equal(BoundPublicationV26.Encode(request), input.ToArray());
+                return Bytes(Reply(request, BoundPublicationResult.NotReady));
+            }
+            return U32(input.Span, 56) == 0 ? PageWith(refused) : Page(1, 0, true);
+        });
+        using var port = Port(sender);
+        Assert.Equal(BoundPublicationResult.NotReady, port.SendBoundPublication(request).Result);
+        Assert.Equal(BoundPublicationResult.NotReady, port.SendBoundPublication(request).Result);
+        var row = Assert.Single(port.ReadBoundPublicationFacts().Records);
+        Assert.Equal(generation, row.Facts.Create.DestinationGeneration);
+        Assert.True(row.HasTerminalLocalProof);
+        Assert.False(row.Facts.Flags.HasFlag(BoundPublicationFacts.CreateResultKnown));
+        Assert.Equal(0ul, row.Facts.CreateInformation); // No invented native failure.
+        Assert.Equal(2, createControls);
+    }
+
+    [Fact]
+    public void Stale_generation_rejection_does_not_rewrite_the_retained_attempt()
+    {
+        var original = Create(); original.DestinationGeneration = original.ExpectedMaxAllocated = 2;
+        var stale = original; stale.DestinationGeneration = 1;
+        var row = Row(0); row.Create = original;
+        row.Flags = BoundPublicationFacts.CreateConsumed | BoundPublicationFacts.CreateNotForwarded |
+            BoundPublicationFacts.DataFenced | BoundPublicationFacts.DataDrained;
+        var sender = new Sender(input =>
+        {
+            if (U32(input.Span, 20) == 1)
+            {
+                var request = MemoryMarshal.Read<BoundPublicationRequestV26>(input.Span);
+                return Bytes(Reply(request, request.DestinationGeneration == 2 ?
+                    BoundPublicationResult.NotReady : BoundPublicationResult.Rejected));
+            }
+            return U32(input.Span, 56) == 0 ? PageWith(row) : Page(1, 0, true);
+        });
+        using var port = Port(sender);
+        Assert.Equal(BoundPublicationResult.NotReady, port.SendBoundPublication(original).Result);
+        Assert.Equal(BoundPublicationResult.Rejected, port.SendBoundPublication(stale).Result);
+        Assert.Equal(2L, Assert.Single(port.ReadBoundPublicationFacts().Records).Facts.Create.DestinationGeneration);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Ack_receipt_and_later_greater_revision_replay_retire_without_repeating_create(bool loseAck)
+    {
+        var refused = Row(0);
+        refused.Flags = BoundPublicationFacts.CreateConsumed | BoundPublicationFacts.CreateNotForwarded |
+            BoundPublicationFacts.DataFenced | BoundPublicationFacts.DataDrained;
+        bool removed = false;
+        int acknowledgements = 0;
+        var sender = new Sender(input =>
+        {
+            uint phase = U32(input.Span, 20);
+            Assert.True(phase is 4 or 5); // No physical mutation or new permit on recovery.
+            if (phase == 5)
+            {
+                acknowledgements++;
+                Assert.Equal(Revision, U64(input.Span, 56));
+                Assert.Equal(refused.Create.CreateNonce, new Guid(input.Span.Slice(40, 16)));
+                removed = true;
+                var reply = Reply(refused.Create, BoundPublicationResult.Acknowledged);
+                reply.Phase = BoundPublicationPhase.CleanupAck;
+                return Bytes(reply);
+            }
+            uint cursor = U32(input.Span, 56);
+            var page = removed ? Page(0, 0, true) : cursor == 0 ? PageWith(refused) : Page(1, 0, true);
+            if (removed) W64(page, 32, Revision + 1);
+            return page;
+        });
+        using var port = Port(sender);
+        var before = port.ReadBoundPublicationFacts();
+        sender.ReturnedAdjustment = loseAck ? -1 : 0;
+        if (loseAck) Assert.Throws<IOException>(() => port.AcknowledgeBoundPublication(before, Assert.Single(before.Records)));
+        else Assert.Equal(BoundPublicationResult.Acknowledged,
+            port.AcknowledgeBoundPublication(before, Assert.Single(before.Records)).Result);
+        sender.ReturnedAdjustment = 0;
+        var after = port.ReadBoundPublicationFacts();
+        Assert.Empty(after.Records); Assert.True(after.Revision > before.Revision);
+        Assert.Equal(1, acknowledgements);
+    }
+
+    [Fact]
+    public void Stale_ack_is_rejected_and_requires_fresh_complete_facts()
+    {
+        var row = Row(0); row.Flags = BoundPublicationFacts.CreateConsumed | BoundPublicationFacts.CreateNotForwarded;
+        var sender = new Sender(input =>
+        {
+            if (U32(input.Span, 20) == 5)
+            {
+                var reply = Reply(row.Create, BoundPublicationResult.Rejected); reply.Phase = BoundPublicationPhase.CleanupAck;
+                return Bytes(reply);
+            }
+            return U32(input.Span, 56) == 0 ? PageWith(row) : Page(1, 0, true);
+        });
+        using var port = Port(sender); var replay = port.ReadBoundPublicationFacts();
+        Assert.Equal(BoundPublicationResult.Rejected,
+            port.AcknowledgeBoundPublication(replay, Assert.Single(replay.Records)).Result);
+    }
+
+    [Theory]
+    [InlineData(0x104)] // STATUS_REPARSE, including an indeterminate native completion.
+    [InlineData(0x102)] // STATUS_TIMEOUT is not an accepted public mutation.
+    public void Indeterminate_rename_result_remains_held_even_after_local_cleanup(int nativeStatus)
+    {
+        var row = Renamed(); row.RenameStatus = nativeStatus;
+        row.Flags &= ~BoundPublicationFacts.RenameAccepted;
+        row.Flags |= BoundPublicationFacts.LastCleanup;
+        var sender = new Sender(input => U32(input.Span, 56) == 0 ? PageWith(row) : Page(1, 0, true));
+        using var port = Port(sender); var replay = port.ReadBoundPublicationFacts();
+        var fact = Assert.Single(replay.Records);
+        Assert.Equal(nativeStatus, fact.Facts.RenameStatus);
+        Assert.False(fact.HasTerminalLocalProof);
+        Assert.Throws<ArgumentException>(() => BoundPublicationV26.AckRequest(replay, fact));
+    }
+
+    [Fact]
+    public void Kernel_capacity_refusal_is_transport_failure_not_a_prepared_reply()
+    {
+        var sender = new Sender(_ => []) { HResult = unchecked((int)0x80070718) };
+        using var port = Port(sender);
+        Assert.Throws<System.ComponentModel.Win32Exception>(() => port.SendBoundPublication(Create()));
+        Assert.Equal(1, sender.Calls);
+    }
+
+    [Fact]
+    public void Complete_target_enumeration_retains_native_no_more_files_status()
+    {
+        var row = Renamed(); row.TargetStatus = unchecked((int)0x80000006);
+        var sender = new Sender(input => U32(input.Span, 56) == 0 ? PageWith(row) : Page(1, 0, true));
+        using var port = Port(sender);
+        var fact = Assert.Single(port.ReadBoundPublicationFacts().Records);
+        Assert.Equal(row.TargetStatus, fact.Facts.TargetStatus);
+        Assert.True(fact.Facts.Flags.HasFlag(BoundPublicationFacts.RenameAccepted));
+        Assert.False(fact.HasTerminalLocalProof);
+    }
+
+    [Theory]
+    [InlineData(0)] // Native query succeeded but validation supplied no identity proof.
+    [InlineData(0x102)] // Preserve an indeterminate native query result, without acceptance.
+    [InlineData(unchecked((int)0xc0000022))]
+    public void Native_query_status_alone_never_proves_temporary_identity(int nativeStatus)
+    {
+        var row = Row(0);
+        row.Flags = BoundPublicationFacts.CreateConsumed | BoundPublicationFacts.CreateForwarded |
+            BoundPublicationFacts.CreateResultKnown | BoundPublicationFacts.CreateAccepted |
+            BoundPublicationFacts.DataFenced | BoundPublicationFacts.DataDrained;
+        row.CreateInformation = 2; row.IdentityStatus = nativeStatus;
+        var sender = new Sender(input => U32(input.Span, 56) == 0 ? PageWith(row) : Page(1, 0, true));
+        using var port = Port(sender);
+        var fact = Assert.Single(port.ReadBoundPublicationFacts().Records);
+        Assert.Equal(nativeStatus, fact.Facts.IdentityStatus);
+        Assert.False(fact.HasTerminalLocalProof);
+        Assert.False(fact.Facts.Flags.HasFlag(BoundPublicationFacts.RenameAccepted));
+    }
+
+    [Theory]
+    [InlineData("overbound")]
+    [InlineData("boot")]
+    [InlineData("epoch")]
+    [InlineData("original-epoch")]
+    public void Kernel_replay_bounds_and_connection_lifetimes_are_not_silently_rebased(string defect)
+    {
+        var sender = new Sender(input =>
+        {
+            uint cursor = U32(input.Span, 56);
+            byte[] page = Page(cursor, cursor == 0 ? 1 : 0, true);
+            if (defect == "overbound") W32(page, 48, 9);
+            if (defect == "boot" && cursor != 0) W32(page, 40, 43);
+            if (defect == "epoch" && cursor != 0) W64(page, 24, Epoch + 1);
+            if (defect == "original-epoch" && cursor == 0) W64(page, 64 + 1936, Epoch + 1);
+            return page;
+        });
+        using var port = Port(sender);
+        Assert.Throws<IOException>(() => port.ReadBoundPublicationFacts());
+    }
+
     private static BoundPublicationFactsRowV26 Row(int n) => new()
     {
         Create = Create(n), OriginalProcessId = 1234, OriginalSessionId = 1, OriginalProcessCreationTime = 123456,
@@ -274,6 +471,19 @@ public sealed class BoundPublicationTransportTests
             Assert.False(handle.IsClosed); Calls++; byte[] b = response(input); b.AsSpan().CopyTo(output.Span);
             returned = checked((uint)(b.Length + ReturnedAdjustment)); return HResult;
         }
+    }
+}
+#else
+using SafeUpload.Agent.Minifilter;
+namespace SafeUpload.Agent.Tests;
+public sealed class BoundPublicationTransportTests
+{
+    [Fact]
+    public void Normal_build_has_no_v26_publication_entry_points()
+    {
+        Assert.Null(typeof(FilterPort).GetMethod("SendBoundPublication"));
+        Assert.Null(typeof(FilterPort).GetMethod("ReadBoundPublicationFacts"));
+        Assert.Null(typeof(FilterPort).GetMethod("AcknowledgeBoundPublication"));
     }
 }
 #endif

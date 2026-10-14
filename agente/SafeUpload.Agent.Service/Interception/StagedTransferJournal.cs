@@ -1912,6 +1912,8 @@ public sealed partial class StagedTransferJournal
             var current = await ReadCoreAsync(transferId, cancellationToken).ConfigureAwait(false);
             if (current.PendingRename is not null)
                 throw new IOException("A pending namespace transaction holds this version locally.");
+            if (current.BoundAllocation is not null && next == TransferJournalState.Released)
+                throw new IOException("Bound Released requires an exact Published head and native receipt.");
             if (current.DriverInstanceId is not null &&
                 next is (TransferJournalState.Inspecting or TransferJournalState.Approved or
                     TransferJournalState.Publishing or TransferJournalState.Released or TransferJournalState.Blocked) &&
@@ -2444,6 +2446,28 @@ public sealed partial class StagedTransferJournal
                   e.JustificationWindowClosed && e.StageDeleted &&
                   e.HandbackState == StagedHandbackState.Verified));
             var finished = entries.Where(Finished).Select(e => e.Transfer.TransferId).ToHashSet();
+            // Retain the exact manifest, metadata and ancestry until V26 ACK
+            // removal or exact private-cancellation cleanup. Normal builds
+            // must also retain cancellation owners from a prior feature run.
+            await foreach (var head in ReadAllDestinationHeadFilesCoreAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (head.PendingCommit is { } pending) finished.Remove(pending.TransferId);
+                foreach (var delete in head.Deletes) finished.Remove(delete.Binding.TransferId);
+                foreach (var relay in head.PublicRelayReceipts ?? [])
+                {
+                    finished.Remove(relay.Binding.TransferId);
+                    finished.Remove(relay.Original.OpenTransferId);
+                }
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                foreach (var attempt in head.PublicationAttempts ?? [])
+                    finished.Remove(ReadPublicationRequest(attempt.CreateBase64,
+                        SafeUpload.Agent.Minifilter.BoundPublicationPhase.Create).TransferId);
+                foreach (var receipt in head.PublicationNativeReceipts ?? [])
+                    finished.Remove(ReadPublicationReceipt(receipt).Facts.Create.TransferId);
+#endif
+                foreach (var cancellation in head.PrivateCancellations ?? [])
+                    finished.Remove(cancellation.Version.TransferId);
+            }
             var protectedIds = FindCompactionProtectedTransfers(entries, finished, cancellationToken);
 
             int removed = 0;
@@ -2858,7 +2882,8 @@ public sealed partial class StagedTransferJournal
     /// receipt, retain Publishing and its destination reservation; the live
     /// recovery dispatcher reports the hold without publishing again.
     /// </summary>
-    public async Task ReconcilePublishingAsync(CancellationToken cancellationToken)
+    public async Task ReconcilePublishingAsync(CancellationToken cancellationToken,
+        Func<TransferJournalEntry, CancellationToken, Task>? reconcileBound = null)
     {
         foreach (var entry in await ReadPendingAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -2867,7 +2892,11 @@ public sealed partial class StagedTransferJournal
                 continue;
             }
             if (entry.BoundAllocation is not null)
-                throw new IOException("Bound publishing recovery requires the anchored head/permit dispatcher.");
+            {
+                if (reconcileBound is null)
+                    throw new IOException("Bound publishing recovery requires the anchored head/permit dispatcher.");
+                await reconcileBound(entry, cancellationToken).ConfigureAwait(false);
+            }
 
         }
     }

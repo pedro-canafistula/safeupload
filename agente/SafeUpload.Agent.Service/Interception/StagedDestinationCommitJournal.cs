@@ -95,7 +95,7 @@ internal enum StagedDestinationTurnPurpose { Allocation, PhysicalCommit, Reconci
 // Persisted values are never renumbered. AcceptedUnresolved is the single
 // exceptional native-CREATE recovery state approved by the owner.
 internal enum StagedPublicDeleteState { Admitted = 1, Intent = 2, Accepted = 3, Canceled = 4, Superseded = 5, Complete = 6, Failed = 7, AcceptedUnresolved = 8 }
-internal enum StagedPublicDeleteKind { Ordinary = 0, NativeOnClose = 1 }
+internal enum StagedPublicDeleteKind { Ordinary = 0, NativeOnClose = 1, DispositionOnClose = 2 }
 internal enum StagedDestinationMutation { Publication = 1, DeleteDisposition = 2, ClearDisposition = 3 }
 
 // Checked authorization is deliberately not represented by an "allowed" bool.
@@ -129,11 +129,19 @@ internal sealed record StagedDestinationMutationResult(StagedDestinationCommitIn
 internal sealed record StagedPublicationNativeReceipt(Guid DriverInstanceId, ulong ConnectionEpoch,
     ulong Revision, uint OsBootSequence, string FactsBase64, ulong? AcknowledgedRevision = null,
     ulong? AcknowledgedConnectionEpoch = null);
+// Written before either original operation is submitted. A persisted intent is
+// never a forwarding grant, including after service restart or a lost reply.
+internal sealed record StagedPublicationAttempt(string CreateBase64, string? RenameBase64 = null,
+    string? Diagnostic = null, Guid? CleanupOperationId = null, Guid? CleanupNonce = null,
+    bool HeadPublished = false);
 // Immutable original-operation facts. These are durable replay evidence;
 // they confer no handle, token, DELETE right or permission to repeat I/O.
 internal sealed record StagedPublicRelayIntent(Guid OpenTransferId, Guid OpenNonce, Guid OpenOperationId,
     ulong Sequence, long PublishedGeneration, StagedStageIdentity? PublishedIdentity,
-    uint InformationClass, uint DispositionFlags, uint RequestorMode, uint GrantedAccess, int OpenProcessId);
+    uint InformationClass, uint DispositionFlags, uint RequestorMode, uint GrantedAccess, int OpenProcessId,
+    bool CombinedBackend = false);
+internal sealed record StagedPrivateCancellation(Guid OperationId, StagedVersionIdentity Version,
+    long Generation, int OwnerProcessId, long OwnerProcessCreationTime);
 internal sealed record StagedPublicRelayReceipt(StagedPublicDeleteBinding Binding, Guid OperationId,
     StagedPublicRelayIntent Original, long Generation, bool NoNameEffect,
     StagedPublicDeleteState State, int? NativeStatus = null, bool NotForwarded = false,
@@ -144,10 +152,13 @@ internal sealed record StagedDestinationHead(StagedDestinationIdentity Destinati
     StagedDestinationCommitIntent? PendingCommit, StagedPublicDeleteRecord[] Deletes,
     StagedDestinationMutationResult? LastMutationResult = null,
     StagedPublicRelayReceipt[]? PublicRelayReceipts = null,
-    StagedPublicationNativeReceipt[]? PublicationNativeReceipts = null);
+    StagedPublicationNativeReceipt[]? PublicationNativeReceipts = null,
+    StagedPublicationAttempt[]? PublicationAttempts = null,
+    StagedPrivateCancellation[]? PrivateCancellations = null);
 
 public sealed partial class StagedTransferJournal
 {
+    internal Action<StagedDestinationHead>? DestinationHeadWritten { get; init; }
     private readonly SortedDictionary<StagedDestinationIdentity, DestinationQueueCell> _destinationQueues =
         new(StagedDestinationIdentity.OrderedComparer);
     internal int DestinationQueueCells { get { lock (_destinationQueues) return _destinationQueues.Count; } }
@@ -304,7 +315,7 @@ public sealed partial class StagedTransferJournal
                 throw new IOException("A delete transfer ID cannot be reused for a save allocation.");
             if (head.CurrentSaveTransferId == transferId)
             {
-                if (retainedManifestHighWater > head.MaxAllocated || head.CurrentSaveGeneration <= head.CommittedDelete)
+                if (retainedManifestHighWater > head.MaxAllocated || head.CurrentSaveGeneration <= PublicationGenerationFloor(head))
                     throw new IOException("The allocation replay conflicts with a later manifest head.");
                 return head.CurrentSaveGeneration;
             }
@@ -690,7 +701,7 @@ public sealed partial class StagedTransferJournal
             if (ntfsCleared)
                 head = head with { Deletes = head.Deletes.Select(d => d.Kind == StagedPublicDeleteKind.Ordinary &&
                     d.Binding.PublicIdentity == exactPublicIdentity &&
-                    d.State is (StagedPublicDeleteState.Admitted or StagedPublicDeleteState.Accepted)
+                    d.State == StagedPublicDeleteState.Accepted
                     ? d with { State = StagedPublicDeleteState.Canceled, UpdatedAtUtc = DateTimeOffset.UtcNow } : d).ToArray() };
             await WriteDestinationHeadCoreAsync(head with { PendingCommit = null,
                 LastMutationResult = new(intent, ntfsCleared) }, CancellationToken.None).ConfigureAwait(false);
@@ -779,6 +790,7 @@ public sealed partial class StagedTransferJournal
         {
             var head = await RequireDestinationHeadCoreAsync(turn.Destination, CancellationToken.None).ConfigureAwait(false);
             if (head.LastMutationResult?.PublicationCreateNonce is not null || (head.PublicationNativeReceipts?.Length ?? 0) != 0 ||
+                (head.PublicationAttempts?.Length ?? 0) != 0 ||
                 File.Exists(ManifestPath(transferId)) &&
                     (await ReadCoreAsync(transferId, CancellationToken.None).ConfigureAwait(false)).BoundAllocation is not null)
                 throw new IOException("Bound publication requires the exact native receipt, not a Boolean result.");
@@ -858,6 +870,8 @@ public sealed partial class StagedTransferJournal
             if (delete.State is not (StagedPublicDeleteState.Complete or StagedPublicDeleteState.Superseded or
                 StagedPublicDeleteState.Failed))
                 throw new IOException("A nonterminal native receipt cannot be retired.");
+            if (acknowledgedMapRevision != (delete.NativeAcknowledgementRevision ?? 0))
+                throw new IOException("Native retirement changed its durable acknowledgement revision.");
             removalProof.RequireExactRecordRemoved(binding, operationId, acknowledgedMapRevision);
             await WriteDestinationHeadCoreAsync(head with { Deletes = head.Deletes.Where(d => d != delete).ToArray() },
                 token).ConfigureAwait(false);
@@ -888,7 +902,8 @@ public sealed partial class StagedTransferJournal
         (delete.Kind == StagedPublicDeleteKind.NativeOnClose && delete.Binding.MountManagerVolumeId is null &&
          delete.State == StagedPublicDeleteState.Admitted);
 
-    private static long PublicationGenerationFloor(StagedDestinationHead head) => Math.Max(head.CommittedDelete,
+    private static long PublicationGenerationFloor(StagedDestinationHead head) => Math.Max(
+        Math.Max(head.CommittedDelete, (head.PrivateCancellations ?? []).Select(c => c.Generation).DefaultIfEmpty(0).Max()),
         head.Deletes.Where(d => d.Kind == StagedPublicDeleteKind.NativeOnClose &&
             d.State is (StagedPublicDeleteState.Admitted or StagedPublicDeleteState.AcceptedUnresolved))
             .Select(d => d.Generation).DefaultIfEmpty(0).Max());
@@ -1009,10 +1024,15 @@ public sealed partial class StagedTransferJournal
         {
             await using var stream = CreatePrivateTemporary(temporary);
             await JsonSerializer.SerializeAsync(stream, head, cancellationToken: token).ConfigureAwait(false);
-            if (stream.Length > StagedJournalFile.MaximumManifestBytes)
+            // Reserve worst-case JSON-escaped wire space for every pre-CREATE
+            // attempt before admitting its native operation. Later facts must
+            // not exhaust the existing head-size limit after public mutation.
+            long publicationReserve = PublicationReceiptReserve(head);
+            if (stream.Length + publicationReserve > StagedJournalFile.MaximumManifestBytes)
                 throw new InvalidDataException("The destination head exceeds its qualified size bound.");
             StagedDestinationFile.Commit(stream, temporary, path);
             SignalDestinationChanged(head.Destination);
+            DestinationHeadWritten?.Invoke(head);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
@@ -1041,7 +1061,7 @@ public sealed partial class StagedTransferJournal
                     StagedPublicDeleteState.Complete or StagedPublicDeleteState.Failed or
                     StagedPublicDeleteState.AcceptedUnresolved) && delete.OperationId is null) ||
                 !Enum.IsDefined(delete.State) || !Enum.IsDefined(delete.Kind) ||
-                (delete.Kind == StagedPublicDeleteKind.Ordinary &&
+                (delete.Kind != StagedPublicDeleteKind.NativeOnClose &&
                     (delete.State == StagedPublicDeleteState.AcceptedUnresolved || delete.NativeCreateAccepted is not null ||
                      delete.NativeIntent is not null || delete.NativeOutcome is not null || delete.NativeAcknowledgementRevision is not null)) ||
                 (delete.Kind == StagedPublicDeleteKind.NativeOnClose &&
@@ -1124,6 +1144,16 @@ public sealed partial class StagedTransferJournal
             }
         }
         ValidatePublicRelayReceipts(head);
+        var cancellations = head.PrivateCancellations ?? [];
+        if (cancellations.Any(c => c is null || c.Version is null || c.Version.StageIdentity is null) ||
+            cancellations.Select(c => c.OperationId).Distinct().Count() != cancellations.Length ||
+            cancellations.Select(c => c.Version).Distinct().Count() != cancellations.Length ||
+            cancellations.Any(c => c.OperationId == Guid.Empty || c.Version.TransferId == Guid.Empty ||
+                c.Version.DestinationGeneration <= 0 || c.Generation <= c.Version.DestinationGeneration || c.Generation > head.MaxAllocated ||
+                c.Generation == head.CurrentSaveGeneration || !generations.Add(c.Generation) ||
+                c.OwnerProcessId <= 0 || c.OwnerProcessCreationTime <= 0))
+            throw new InvalidDataException("Invalid sealed-private cancellation generation.");
+        foreach (var cancellation in cancellations) RequireSameVolumeIdentity(destination, cancellation.Version.StageIdentity);
         ValidatePublicationNativeReceipts(head);
     }
 }

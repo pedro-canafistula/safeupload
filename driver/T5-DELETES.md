@@ -433,3 +433,114 @@ driver/evidence/2026-10-10/luna-t5-empty-probe-product-design-v3-review.md. It i
 not runtime qualification. Its findings on synchronous discard blocking FilterPort, exact cleanup acknowledgements, pinned references,
 and per-name barriers are retained here. The 2026-10-10 implementation review also identified disposition serialization and unload
 veto gaps; those are requirements for implementation and are not waived by this redesign.
+
+## Implementation note — increment 7
+
+2026-10-13, based on `ae62d018`, uncommitted implementation. This connects the dormant ordinary disposition, scheduled native
+CREATE and combined writer+DELETE paths to the existing destination turn and V26 namespace gate. Both bound readiness gates stay
+false. Normal builds expose no new sender or admission. No builds, component executions or VM runs were performed for this change;
+the orchestrator must run the full agent and four WDK/PREfast/ApiValidator matrices. Native semantics and the coherent pre-boot
+Sol 6.1 xhigh lifetime review remain separate outstanding checks.
+
+**Ordering and authority.** `StageDispatchEpoch` routes exact public dispositions before the generic admission epoch; the relay
+acquires its epoch only after its service turn arrives, then transfers it to postoperation. Native CREATE preparation likewise drops
+the queued attach's epoch while waiting and reacquires/revalidates before forwarding. This avoids making a publisher wait for an
+epoch owned by a delete queued behind that publisher. `NativeReserve` can retain an unforwarded record during publication;
+`SafeUploadStageNativePublicationIdle` distinguishes queued capture from released callbacks and unresolved outcomes. Final native
+CREATE/disposition consumption checks the existing namespace reservation under `NativeLock`. The existing conservative instance-wide
+kernel gate is retained; the journal uses the complete mount/root/parent/case/leaf destination identity.
+
+`StagedNativeLifecycleDispatcher` re-observes the exact anchored public link after obtaining its allocation turn. A replacement that
+won while CREATE waited invalidates the stale capture before forwarding. A durable native pre-CREATE intent retains its existing
+uncertainty barrier until the actual outcome is known. Scheduled CREATE keeps its original `FILE_DELETE_ON_CLOSE`; no disposition
+emulation, second application handle, caller-token substitution or service-created DELETE authority is introduced.
+
+`SafeUploadStageNativeBindWriter` binds the already checked retained writer lease to the app object's ordinary-disposition relay.
+The new V25 `CombinedBackend` fact (bit 64 in the unchanged row) explicitly distinguishes that checked writer grant from a non-writing
+native open. Only the original ordinary SetInformation is retargeted, with `FltSetCallbackDataDirty`, to the exact backend; original
+thread, mode, information class, flags and lower status are preserved. Data/cache/sections remain private and T10 security-only
+public routing remains intact. Combined `FILE_DISPOSITION_ON_CLOSE` is refused before forwarding. Missing binding remains an
+unproved-authority refusal. Once NTFS accepts, postoperation records that outcome; lost tracking or persistence retains reconciliation
+obligations without changing the caller's NTSTATUS or reissuing the operation.
+
+**Delete and cancellation semantics.** The older admission-time tombstone wording in section 4.2 is superseded by the reviewed
+ordinary-relay contract: tombstones appear only on actual native acceptance. Kernel tombstones match process ID plus creation time,
+parent/case-aware leaf and full public identity; an already-published replacement is not hidden. Capacity is reserved before forwarding
+(at most 16 owner/scheduled tuples per native record, within the existing bounded record map). Accepted ordinary FALSE clears only
+accepted ordinary state on that same stream, across owners. It cannot cancel a later unforwarded TRUE, completed deletion or scheduled
+CREATE. Native extended ON_CLOSE disposition is distinguished by the appended delete-kind value 2; its FALSE clears only that original
+open's accepted ON_CLOSE receipts. Existing kind/state numbers are preserved. Cleanup obligations survive until durable reconciliation.
+`SafeUploadStagePublicOpenConfirm` requires the exact replay revision, so an older binding/cleanup reply cannot clear a newer
+accepted operation's cleanup hold.
+Allocated, sealed, approved and blocked successors do not suppress a delete; only durable Published evidence does. Physical-delete and
+private-cancellation generation floors prevent older versions from publishing after restart.
+
+Sealed-private cancellation uses feature-only operation 22/version 28, with exact packed request/reply sizes 104/120 and zero tails;
+existing wire layouts are unchanged. `StageCancelSealedPrivate` pins the stream, releases the namespace resource before RPC, and reuses
+the exact operation/transfer/object/generation/owner tuple after a lost response. The bounded receive-loop continuation enters the same
+destination reconciliation turn and writes one durable newer cancellation generation before success. It detaches the matching private
+view, retains its bytes/manifest, and supplies neither public DELETE authority nor a physical cleanup ACK. Compaction retains the exact
+manifest in both builds. Pending private rename/cleanup conflicts refuse cancellation; an in-flight cancellation blocks private rename.
+If publication won, the dispatcher returns `RequiresPublicDelete`: only the already checked public relay may delete it. An
+unbound private handle returns `STATUS_CANNOT_DELETE`; it cannot claim a private discard removed the public file. This is the dormant
+unproved-binding safeguard, not qualification of automatic published-probe rebinding or approval of a narrower product contract.
+
+**Ownership and waits.** The native map owns one backend reference and one instance pin; its app-object keys are non-owning. Binding
+owns a short backend operation while exchanging the V25 receipt. Each combined disposition acquires an operation/rundown reference,
+transfers it and the admission epoch to the original post callback, and releases both on failure or completion. The callback-specific
+release is resident through DISPATCH and releases rundown last. `SafeUploadStageNativeCloseWriter` removes forwarding/app-release
+keys, closes the driver-owned handle outside global locks, then drops the map's backend ownership. Attach rollback and private
+CLEANUP/canceled CREATE CLOSE call it. Coverage loss removes forwarding authority while retaining a release-only app key. Live backend
+owners veto voluntary retirement; mandatory teardown uses the existing close-all-backends-before-dependent-drain path and never treats
+local close as an exact deletion receipt. No service ACK or timeout authorizes local object destruction.
+
+Lock order remains service destination turn → journal gate; kernel namespace → native map where required, native map → attach/Bp
+checks, never the reverse held order. All semaphore waits, handle closes, metadata I/O and RPCs are at PASSIVE outside native/Bp spin
+locks. These relay paths hold no policy epoch across a destination-turn wait. Private cancellation holds only its counted stream reference across RPC, with
+namespace/stream resources released. Resident post callbacks retain the original native record until local release completes.
+
+**Component controls added (not executed).**
+
+| Cases | Controls |
+|---|---|
+| Delete versus allocated/sealed/approved/blocked/published successor; old publication barred after deletion/restart | `StagedBoundPublicationDispatcherTests.Only_a_published_successor_supersedes_an_admitted_delete` |
+| Combined writer+DELETE grant, delete during publication, accepted result and restart at intent/native/result boundaries | `StagedPublicDeleteTurnTests.cs` (partial `PublicOpenBindingTests`) |
+| Scheduled CREATE waiting for publication, unchanged versus replaced original link | `StagedNativeDeleteTurnTests.cs` |
+| Accepted-only owner tombstones, accepted/lost tracking, exact owner/object, ordinary FALSE versus later TRUE/scheduled CREATE | `StagedDeleteIntegrationTests.cs` |
+| Native extended ON_CLOSE survives ordinary FALSE | `PublicOpenBindingTests.Ordinary_false_does_not_clear_an_accepted_native_extended_on_close_request` |
+| Private cancellation, lost reply after durable write, restart, generation floor, publication winning, substituted bindings, disabled/opaque ABI | `StagedPrivateCancellationTests.cs` |
+
+Existing `StagedNativeLifecycleDispatcherTests` still cover native accepted/unresolved, lost preparation/result, last cleanup,
+coverage loss and later-replay ACK retirement with fake native evidence. Pre-forward observations are now checked separately from
+cleanup observations. These controls do not establish actual kernel retarget, sharing, audit, scheduling or NTFS cleanup behavior.
+
+**Increment 8 must wire** authenticated startup/last-close/directory-change dispatch and anchored reconciliation for these retained
+receipts; bound Publishing recovery; V26 ACK persistence and later-replay retirement; owner-view recovery and exact cancellation cleanup;
+and the complete compaction dependency closure. It must never retry an accepted public mutation. The receive loop must remain available
+while recovery waits. Readiness cannot become true until that recovery and the remaining native prerequisites are complete.
+No actual Notepad sequence was observed here. The section 5 owner-decision stop still applies if its authorized delete removes prior
+public bytes before a blocked save; this implementation does not emulate a different sequence to conceal that conflict.
+
+## Implementation note — increment 10
+
+The uncommitted `wt/t5-inc10` change composes the landed local teardown with increments 2–9. The
+[pre-boot review package](T5-PREBOOT-REVIEW-PACKAGE.md) contains the exact source/function inventory, ownership,
+lock/IRQL and failure tables, readiness composition, remaining holds and qualification rows.
+Public factories/readers are fenced explicitly. Published backend handles close before the factory join, followed
+by a final close scan for late publication; SOP anchors close before channel rundown (a worker-taken anchor closes
+at end-visit). V26 source owners drain before stream RPC pins, allocation/publication leases release after local
+callback drain, and native records retire before the final backend/aggregate owner check. No service ACK, durable
+result or private deletion is synthesized. Missing local lifetime evidence remains an unbounded hold.
+
+Voluntary preflight now vetoes native factories and all live native records instead of discarding idle ordinary
+lookups; it also checks unresolved SOP histories/reservations/Unknown markers. Reversible veto preserves those
+records, worker/listener and cleanup progress. The authenticated service retains its existing private bookkeeping
+CREATE path while the voluntary stage gate is closed, with a fresh local-ownership check after the epoch reply.
+Mandatory CREATE fencing has no such exception. Native/V26 routines owning spin locks across statements are now
+resident; PASSIVE entry alone does not make PAGE placement safe while holding those locks.
+
+The agent's bound readiness is a read-only composition of delivered complete negotiation, successful complete
+startup recovery, stable replay/policy and coverage, and named native prerequisites. Current V20 negotiation and
+unproved descriptor/seed/export/version authority still make it **NotReady**. No wire bit, bypass or activation was
+added. Only source checks ran here; builds/agent execution and the single Sol 6.1 xhigh review remain with the
+orchestrator, and no VM boot or commit was performed.

@@ -11,7 +11,8 @@ internal sealed record StagedNativeRecordReplay(StagedPublicDeleteBinding Bindin
 
 // The dispatcher creates this only after the driver/connection handshake and
 // invalidates it on disconnect. A replay must be reconciled against the actual
-// driver map before producing evidence. No live dispatcher uses it yet.
+// driver map before producing evidence. Startup and the lifecycle dispatchers
+// use it only with their complete, authenticated replay.
 internal sealed class StagedNativeRecoverySession
 {
     private readonly object _sync = new();

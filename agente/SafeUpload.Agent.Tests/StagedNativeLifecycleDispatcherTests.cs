@@ -6,7 +6,7 @@ using SafeUpload.Agent.Core.Contracts;
 
 namespace SafeUpload.Agent.Tests;
 
-public sealed class StagedNativeLifecycleDispatcherTests : IDisposable
+public sealed partial class StagedNativeLifecycleDispatcherTests : IDisposable
 {
     private readonly TestWorkspace _workspace = new();
     private readonly Guid _driver = Guid.NewGuid();
@@ -43,6 +43,7 @@ public sealed class StagedNativeLifecycleDispatcherTests : IDisposable
         Assert.Equal(NativeLifecycleV24.Prepared, first.Result);
         Assert.Equal(first.JournalGeneration, (await Send(prepare)).JournalGeneration);
         Assert.Equal(1, (await Head()).MaxAllocated);
+        _observations = 0; // Isolate cleanup observations from pre-forward link validation.
         Advance(Row with { JournalGeneration = first.JournalGeneration,
             Facts = NativeRecordFacts.Forwarded | NativeRecordFacts.CreateOutcomeKnown | NativeRecordFacts.CreateAccepted |
                 (checkedIdentity ? NativeRecordFacts.IdentityChecked : 0),
@@ -80,6 +81,7 @@ public sealed class StagedNativeLifecycleDispatcherTests : IDisposable
     public async Task Unforwarded_negative_receipt_after_lost_prepare_is_terminal_without_name_observation()
     {
         await Send(Request(NativeLifecycleV24.Prepare));
+        _observations = 0;
         Advance(Row with { Facts = NativeRecordFacts.CreateOutcomeKnown,
             CreateStatus = unchecked((int)0xc0000120), IdentityStatus = 259 });
         var result = await Send(Request(NativeLifecycleV24.FactsChanged));
@@ -98,6 +100,7 @@ public sealed class StagedNativeLifecycleDispatcherTests : IDisposable
         bool absent, bool closeObserved)
     {
         var prepared = await Send(Request(NativeLifecycleV24.Prepare));
+        _observations = 0;
         Advance(Row with { JournalGeneration = prepared.JournalGeneration,
             Facts = NativeRecordFacts.Forwarded,
             CreateStatus = unchecked((int)0xc0000120), IdentityStatus = unchecked((int)0xc0000120) });

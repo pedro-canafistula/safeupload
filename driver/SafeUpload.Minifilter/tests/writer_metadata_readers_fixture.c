@@ -44,6 +44,7 @@ typedef struct { pthread_mutex_t Lock; pthread_cond_t Changed; int Signalled; } 
 #define CONTAINING_RECORD(p, t, f) ((t *)((char *)(p) - offsetof(t, f)))
 #define RtlEqualMemory(a, b, n) (memcmp((a), (b), (n)) == 0)
 #define RtlCopyMemory memcpy
+#define RtlZeroMemory(p, n) memset((p), 0, (n))
 #define min(a, b) ((a) < (b) ? (a) : (b))
 /* Model the two probe-exception exits, not Windows SEH itself. */
 static _Thread_local jmp_buf Exception;
@@ -104,7 +105,7 @@ static int KeWaitForSingleObject(KEVENT *event, int reason, int mode, int alerta
     pthread_mutex_unlock(&event->Lock); return 0;
 }
 static void ExWaitForRundownProtectionRelease(int *opens)
-{ assert(opens == &StagePublicOpens); assert(StageWriterMetadataReaders == 0); ++RundownWaits; }
+{ assert(opens == &StagePublicOpens); assert(StageWriterMetadataReaders == 0); assert(Closed == 1); ++RundownWaits; }
 static void ProbeForRead(PVOID input, size_t length, size_t alignment)
 { (void)input; (void)length; (void)alignment; if (Fault == ReadProbe) longjmp(Exception, 1); }
 static void ProbeForWrite(PVOID output, size_t length, size_t alignment)

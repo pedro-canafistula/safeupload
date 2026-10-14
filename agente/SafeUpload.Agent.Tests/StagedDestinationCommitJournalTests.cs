@@ -6,7 +6,7 @@ namespace SafeUpload.Agent.Tests;
 // These exercise the real on-disk journal and queue. Fake bindings/result inputs
 // model the future checked kernel dispatcher; they do not qualify NTFS delete,
 // caller authorization, physical byte privacy or an integrated product path.
-public sealed class StagedDestinationCommitJournalTests : IDisposable
+public sealed partial class StagedDestinationCommitJournalTests : IDisposable
 {
     private readonly TestWorkspace _workspace = new();
     private readonly Guid _driverInstance = Guid.NewGuid();
@@ -263,6 +263,7 @@ public sealed class StagedDestinationCommitJournalTests : IDisposable
         Assert.Equal(native.Generation, retained.CommittedDelete);
         Assert.Equal(complete, Assert.Single(retained.Deletes));
         await Assert.ThrowsAsync<IOException>(() => journal.RetirePublicDeleteReceiptAsync(turn, binding, CancellationToken.None));
+        await journal.ArmNativeAcknowledgementAsync(turn, binding, operation, 17, CancellationToken.None);
         await Assert.ThrowsAsync<IOException>(() => journal.RetireNativeDeleteReceiptAsync(turn, binding, operation,
             cleaned, 17, CancellationToken.None));
         var stale = session.ReconcileReplay(binding.DriverInstanceId, binding.ConnectionEpoch + 1, true, true, [], nativeMapRevision: 17);

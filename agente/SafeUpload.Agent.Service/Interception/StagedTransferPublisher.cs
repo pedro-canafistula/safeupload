@@ -23,6 +23,10 @@ public sealed partial class StagedTransferPublisher
     private readonly IStagedHandbackCopier? _handbackCopier;
     private readonly Func<uint, string?> _sessionUserSidResolver;
     private readonly ILogger? _logger;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    // Rebound only after the preceding connection's workers/continuations drain.
+    internal StagedBoundPublicationDispatcher? BoundPublication { get; set; }
+#endif
     private sealed record JustifiedVersion(string Digest, int PolicyVersion, string PolicyFingerprint);
 
     public StagedTransferPublisher(
@@ -88,7 +92,21 @@ public sealed partial class StagedTransferPublisher
                 return StagedTransferOutcome.Blocked;
         }
         if (journalEntry.BoundAllocation is not null)
+        {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            if (BoundPublication is null)
+                throw new IOException("Bound publication requires the anchored head/permit dispatcher.");
+            if (journalEntry.State is TransferJournalState.Publishing or TransferJournalState.Released ||
+                await BoundPublication.HasAttemptAsync(journalEntry, cancellationToken).ConfigureAwait(false))
+            {
+                var recovered = await BoundPublication.ReconcileAsync(journalEntry, cancellationToken).ConfigureAwait(false);
+                if (!recovered.Released) ReportRecoveryHold(journalEntry, recovered.Diagnostic!, null);
+                return recovered.Released ? StagedTransferOutcome.Released : StagedTransferOutcome.Retained;
+            }
+#else
             throw new IOException("Bound publication requires the anchored head/permit dispatcher.");
+#endif
+        }
         if (journalEntry.State == TransferJournalState.LegacyEmptyHeld)
         {
             journalEntry = await _journal.TryMigrateLegacyEmptyAsync(transfer.TransferId, cancellationToken)
@@ -356,6 +374,35 @@ public sealed partial class StagedTransferPublisher
         TransferJournalEntry publicationIntent = await _journal.TransitionAsync(transfer.TransferId,
             TransferJournalState.Approved, TransferJournalState.Publishing,
             null, cancellationToken).ConfigureAwait(false);
+
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        if (journalEntry.BoundAllocation is not null)
+        {
+            // Everything above is shared: extraction, snapshot/digest, policy,
+            // justification and option-1 export checks. Never enter legacy I/O.
+            var bound = await BoundPublication!.PublishAsync(publicationIntent, inspectedFile,
+                async token => justifiedApproval
+                    ? StagedSeedExport.Failure(await _journal.ReadAsync(transfer.TransferId, token).ConfigureAwait(false)) is null &&
+                        await _inspection.IsCurrentStagedJustificationAllowedAsync(operation, result, token).ConfigureAwait(false)
+                    : await _inspection.IsCurrentStagedApprovalAsync(operation, result, token).ConfigureAwait(false),
+                async () => { lockedFile.Dispose(); await snapshot.DisposeAsync().ConfigureAwait(false); },
+                cancellationToken).ConfigureAwait(false);
+            if (!bound.Released)
+            {
+                QueueJournalProgress(publicationIntent);
+                ReportRecoveryHold(publicationIntent, bound.Diagnostic ?? "publication_outcome_unresolved", null);
+                return StagedTransferOutcome.Retained;
+            }
+            lockedFile.Dispose();
+            await _inspection.RecordTransferOutcomeAsync(operation, result, Verdict.Approved,
+                justifiedApproval ? "justified_version" : null, CancellationToken.None, transfer.TransferId, digest).ConfigureAwait(false);
+            PublishTransferNotification(transfer, new TransferNotification(transfer.TransferId, fileName,
+                TransferPhase.Released, PublishedSha256Hex: digest));
+            if (justifiedApproval) await ProcessBlockedCleanupAsync(publicationIntent, CancellationToken.None).ConfigureAwait(false);
+            else await DisposeReleasedStageAsync(transfer.TransferId, CancellationToken.None).ConfigureAwait(false);
+            return StagedTransferOutcome.Released;
+        }
+#endif
 
         bool committed = false;
         try

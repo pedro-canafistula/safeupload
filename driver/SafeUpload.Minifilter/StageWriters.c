@@ -51,6 +51,7 @@ Environment:
  * without failing stream-context or communication scratch allocations. Poolmon: SUwH. */
 #define SAFEUPLOAD_WRITER_NODE_POOL_TAG 'HwUS'
 #define SAFEUPLOAD_REGISTRY_POOL_TAG 'rUwS'
+#define STAGE_SOP_LIFETIME_TAG 'lUwS'
 #define SAFEUPLOAD_TX_ASSOC_POOL_TAG 'tUwS'
 #define SAFEUPLOAD_REGISTRY_MAX_TX_ASSOCIATIONS SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT
 #define SAFEUPLOAD_REGISTRY_ENTRY_SIGNATURE 'eRwS'
@@ -80,6 +81,16 @@ Environment:
 #define STAGE_SECTION_RELEASE_FIXED_TAG ((ULONG_PTR)0x8)
 
 typedef struct _STAGE_REGISTRY_ENTRY STAGE_REGISTRY_ENTRY, *PSTAGE_REGISTRY_ENTRY;
+
+/* No FILE_OBJECT, context, instance or entry back-reference. The context and
+ * each entry own a reference; natural context cleanup publishes Ended. This
+ * witness cannot itself prolong the stream or retain the registry cache. */
+typedef struct _STAGE_SOP_LIFETIME {
+    volatile LONG References;
+    volatile LONG Ended;
+    volatile LONG Invalid;
+    PVOID Sop; /* immutable comparison token, NEVER dereferenced */
+} STAGE_SOP_LIFETIME, *PSTAGE_SOP_LIFETIME;
 
 __declspec(align(16)) struct _STAGE_MUTATING_IO_MARKER_CONTEXT {
     ULONG Signature;
@@ -137,6 +148,7 @@ __declspec(align(16)) struct _STAGE_REGISTRY_ENTRY {
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
     FILE_ID_128 FileId;
     PVOID volatile SectionObjectPointer; /* atomic pointer comparison only; never dereferenced */
+    PVOID volatile SopLifetime; /* immutable once bound; STAGE_SOP_LIFETIME reference */
     ULONGLONG RenameLossGeneration;
     ULONG FirstSeenGeneration;
     ULONG State;
@@ -267,15 +279,6 @@ typedef struct _STAGE_REGISTRY_SOP_SLOT {
     BOOLEAN Deleted;
 } STAGE_REGISTRY_SOP_SLOT, *PSTAGE_REGISTRY_SOP_SLOT;
 
-typedef struct _STAGE_REGISTRY_SOP_SNAPSHOT {
-    PVOID SectionObjectPointer;
-    ULONGLONG VolumeSerial;
-    ULONGLONG StreamSuffixHash;
-    FILE_ID_128 FileId;
-    ULONG UnknownWriterCount;
-    ULONG SpilledMutatingIoCount;
-} STAGE_REGISTRY_SOP_SNAPSHOT, *PSTAGE_REGISTRY_SOP_SNAPSHOT;
-
 typedef struct _STAGE_SCOPE_PARENT_NAME {
     ULONGLONG ParentFileId;
     USHORT NameChars;
@@ -290,12 +293,11 @@ typedef struct _STAGE_DEFERRED_INSTANCE_UNKNOWN {
 } STAGE_DEFERRED_INSTANCE_UNKNOWN, *PSTAGE_DEFERRED_INSTANCE_UNKNOWN;
 
 _IRQL_requires_max_(APC_LEVEL)
-static BOOLEAN StageRegistryEntryIsBaseStream(_In_ PSTAGE_REGISTRY_ENTRY Entry);
-_IRQL_requires_max_(APC_LEVEL)
 static BOOLEAN StageRegistryEntryHoldsNoWriterState(_In_ PSTAGE_REGISTRY_ENTRY Entry);
 _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
-    _In_ PFLT_VOLUME Volume, _Outptr_result_maybenull_ PSAFEUPLOAD_STREAM_CONTEXT *StreamContext);
+    _In_ PFLT_VOLUME Volume, _Outptr_result_maybenull_ PSAFEUPLOAD_STREAM_CONTEXT *StreamContext,
+    _Out_ PULONGLONG EvidenceSequence);
 _IRQL_requires_max_(APC_LEVEL)
 static VOID StageRegistryPrepareActivation(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Unknown);
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -356,6 +358,10 @@ static BOOLEAN StageRegistryEntryWaiting(_In_ PSTAGE_REGISTRY_ENTRY Entry);
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID StageAnchorReleaseInstance(_In_ PFLT_INSTANCE Instance);
 static KSPIN_LOCK SectionLock;
+/* Conservative aggregate: factories, writer/backend leases, V26 and native
+ * records can retain several streams (including anchors). Do not approximate
+ * their authority using a path/hash or only their destination file ID. */
+static volatile LONG RegistryLifetimeOwners;
 _IRQL_requires_(DISPATCH_LEVEL)
 __declspec(noinline) static PSTAGE_REGISTRY_SOP_SLOT StageRegistryFindSopSlotLocked(
     _In_ PVOID SectionObjectPointer, _Out_ PBOOLEAN Found);
@@ -366,24 +372,12 @@ __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_
 _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageRegistryUnknownWriterEnd(_In_opt_ PFLT_INSTANCE Instance,
     _In_opt_ PVOID SectionObjectPointer);
-_IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static VOID StageRegistryCopyUnknownSopChunk(_In_ PFLT_INSTANCE Instance,
-    _In_ ULONG Base,
-    _Out_writes_to_(SAFEUPLOAD_REGISTRY_SOP_SCAN_CHUNK, *SnapshotCount) PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshots,
-    _Out_ PULONG SnapshotCount);
-_IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static BOOLEAN StageRegistryRetireUnknownSopIfSame(_In_ PFLT_INSTANCE Instance,
-    _In_ PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshot);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 __declspec(noinline) static VOID StageRegistrySnapshotSections(_In_opt_ PVOID SectionObjectPointer,
     _Out_ PUINT32 WritableCount, _Out_ PUINT32 TotalCount);
 _IRQL_requires_(PASSIVE_LEVEL)
-static BOOLEAN StageRegistryUnknownSopMarkersQuiescent(_In_ PFLT_INSTANCE Instance,
-    _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget,
-    _Out_ PBOOLEAN WorkRemaining, _Out_ PULONGLONG Generation);
-_IRQL_requires_(PASSIVE_LEVEL)
-static BOOLEAN StageRegistrySopSnapshotQuiescent(_In_ PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshot,
-    _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume);
+static BOOLEAN StageRegistryUnknownSopMarkersClear(_In_ PFLT_INSTANCE Instance,
+    _Out_ PULONGLONG Generation);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 __declspec(noinline) static PSTAGE_REGISTRY_ENTRY StageRegistryReferenceSop(_In_opt_ PVOID Sop);
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -418,8 +412,7 @@ __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTAN
 #pragma alloc_text(PAGE, StageRegistryEntryIsVolumeRootFile)
 #pragma alloc_text(PAGE, SafeUploadStageWritersClassifyById)
 #pragma alloc_text(PAGE, StageRegistryActivationProcess)
-#pragma alloc_text(PAGE, StageRegistryUnknownSopMarkersQuiescent)
-#pragma alloc_text(PAGE, StageRegistrySopSnapshotQuiescent)
+#pragma alloc_text(PAGE, StageRegistryUnknownSopMarkersClear)
 #pragma alloc_text(PAGE, StageRegistryReclaimWorker)
 #pragma alloc_text(PAGE, StageRegistryRenameWorker)
 #pragma alloc_text(PAGE, StageRegistryUnknownWorker)
@@ -906,10 +899,36 @@ __declspec(noinline) static LONG StageRegistryTransactionAssociationChange(
     return transactions;
 }
 
+/* A receipt remains valid only for the originally observed stream context.
+ * Address equality alone cannot distinguish a recycled SOP. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static PSTAGE_SOP_LIFETIME StageRegistryLifetime(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    return (PSTAGE_SOP_LIFETIME)InterlockedCompareExchangePointer(&Entry->SopLifetime, NULL, NULL);
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static BOOLEAN StageRegistryLifetimeEnded(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    PSTAGE_SOP_LIFETIME lifetime = StageRegistryLifetime(Entry);
+    return lifetime != NULL && lifetime->Sop ==
+        InterlockedCompareExchangePointer(&Entry->SectionObjectPointer, NULL, NULL) &&
+        InterlockedCompareExchange(&lifetime->Invalid, 0, 0) == 0 &&
+        InterlockedCompareExchange(&lifetime->Ended, 0, 0) != 0;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static VOID StageRegistryReleaseLifetime(_In_opt_ PSTAGE_SOP_LIFETIME Lifetime)
+{
+    if (Lifetime != NULL && InterlockedDecrement(&Lifetime->References) == 0)
+        ExFreePoolWithTag(Lifetime, STAGE_SOP_LIFETIME_TAG);
+}
+
 __declspec(noinline) static VOID StageRegistryDereference(_In_opt_ PSTAGE_REGISTRY_ENTRY Entry)
 {
     if (Entry == NULL) return;
     if (InterlockedDecrement(&Entry->References) == 0) {
+        StageRegistryReleaseLifetime(StageRegistryLifetime(Entry));
         if (Entry->Volume != NULL) FltObjectDereference(Entry->Volume);
         if (Entry->Instance != NULL) FltObjectDereference(Entry->Instance);
         if (Entry->StaticPool) StageRegistryCompactPoolPush(Entry);
@@ -1099,7 +1118,8 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryFindByKeyLocked(_In_ PFLT_INSTANCE Ins
      * and its SOP; its base path is joined to scopes during expansion. */
     for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
         PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
-        if (!entry->Retired && entry->Instance == Instance && entry->Volume == Volume &&
+        if (!entry->Retired && !StageRegistryLifetimeEnded(entry) &&
+            entry->Instance == Instance && entry->Volume == Volume &&
             entry->VolumeSerial == VolumeSerial &&
             InterlockedCompareExchangePointer(
                 (PVOID volatile *)&entry->SectionObjectPointer, NULL, NULL) == SectionObjectPointer &&
@@ -2510,6 +2530,73 @@ __declspec(noinline) static VOID StageRegistryApplyCreateAliasProof(_In_ PSTAGE_
     FltReleaseContext(instanceContext);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static BOOLEAN StageRegistryBindLifetime(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ PSAFEUPLOAD_STREAM_CONTEXT Context, _In_ PVOID Sop)
+{
+    PSTAGE_SOP_LIFETIME fresh = NULL, lifetime = NULL, existing = NULL;
+    KIRQL irql = PASSIVE_LEVEL;
+    BOOLEAN valid = FALSE;
+    if (SafeUploadStageMandatoryTeardownActive()) return FALSE;
+    StageAcquireSpinLock(&Context->WriterLock, &irql);
+    valid = Context->WriterSopLifetime != NULL || Context->WriterSopLifetimeInvalid;
+    StageReleaseSpinLock(&Context->WriterLock, irql);
+    if (!valid) {
+        fresh = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*fresh), STAGE_SOP_LIFETIME_TAG);
+        if (fresh != NULL) {
+            InterlockedExchange(&fresh->References, 1);
+            InterlockedExchange(&fresh->Ended, 0);
+            InterlockedExchange(&fresh->Invalid, 0);
+            fresh->Sop = Sop;
+        }
+    }
+    valid = FALSE;
+    StageAcquireSpinLock(&Context->WriterLock, &irql);
+    lifetime = (PSTAGE_SOP_LIFETIME)Context->WriterSopLifetime;
+    if (lifetime == NULL && fresh != NULL && !Context->WriterSopLifetimeInvalid &&
+        !SafeUploadStageMandatoryTeardownActive()) {
+        Context->WriterSopLifetime = fresh;
+        lifetime = fresh;
+        fresh = NULL; /* context owns the allocation reference */
+    }
+    if (!SafeUploadStageMandatoryTeardownActive() &&
+        lifetime != NULL && lifetime->Sop == Sop && !Context->WriterSopLifetimeInvalid &&
+        InterlockedCompareExchange(&lifetime->Invalid, 0, 0) == 0 &&
+        InterlockedCompareExchange(&lifetime->Ended, 0, 0) == 0) {
+        InterlockedIncrement(&lifetime->References);
+        existing = (PSTAGE_SOP_LIFETIME)InterlockedCompareExchangePointer(
+            &Entry->SopLifetime, lifetime, NULL);
+        valid = existing == NULL || existing == lifetime;
+        if (existing != NULL) StageRegistryReleaseLifetime(lifetime);
+        if (valid && InterlockedCompareExchangePointer(&Context->WriterRegistryEntry, NULL, NULL) == NULL) {
+            /* A tracked metadata-only CREATE now also needs a context for
+             * its witness. Bind its H=0 ledger cache rather than making the
+             * pre-existing missing-context census spuriously Unknown. */
+            StageRegistryReference(Entry);
+            InterlockedExchangePointer(&Context->WriterRegistryEntry, Entry);
+            Context->WriterRegistryCachePruned = FALSE;
+        }
+    }
+    StageReleaseSpinLock(&Context->WriterLock, irql);
+    StageRegistryReleaseLifetime(fresh);
+    return valid;
+}
+
+/* Called BEFORE any explicit context removal. A diagnostic deletion is loss,
+ * never the natural end-of-stream witness used by startup/reclaim. */
+_Use_decl_annotations_
+VOID SafeUploadStageWritersInvalidateLifetime(PSAFEUPLOAD_STREAM_CONTEXT Context)
+{
+    PSTAGE_SOP_LIFETIME lifetime = NULL;
+    KIRQL irql = PASSIVE_LEVEL;
+    StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP);
+    StageAcquireSpinLock(&Context->WriterLock, &irql);
+    Context->WriterSopLifetimeInvalid = TRUE;
+    lifetime = (PSTAGE_SOP_LIFETIME)Context->WriterSopLifetime;
+    if (lifetime != NULL) InterlockedExchange(&lifetime->Invalid, 1);
+    StageReleaseSpinLock(&Context->WriterLock, irql);
+}
+
 NTSTATUS SafeUploadStageWritersPostCreate(
     _In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ FLT_POST_OPERATION_FLAGS Flags, _In_opt_ PVOID Context,
@@ -2606,6 +2693,13 @@ NTSTATUS SafeUploadStageWritersPostCreate(
             StageRegistryMarkUnknown(reservation->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
         goto TrackingLost;
     }
+    status = SafeUploadGetOrCreateStreamContext(FltObjects, fileObject, &streamContext);
+    if (!NT_SUCCESS(status) || !StageRegistryBindLifetime(entry, streamContext, fileObject->SectionObjectPointer)) {
+        if (hasWriterHandle) InterlockedIncrement64(&WriterUntrackedCreates);
+        InterlockedIncrement64(&RegistryAllocationFailures);
+        StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);
+        goto TrackingLost;
+    }
     if (!StageRegistryAssociateSectionPointer(reservation, entry, fileObject->SectionObjectPointer)) {
         StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
         (VOID)StageRegistryMarkSopUnknown(reservation->Instance, identity.VolumeSerialNumber,
@@ -2624,13 +2718,6 @@ NTSTATUS SafeUploadStageWritersPostCreate(
     }
 
     if (hasWriterHandle) {
-        status = SafeUploadGetOrCreateStreamContext(FltObjects, fileObject, &streamContext);
-        if (!NT_SUCCESS(status)) {
-            InterlockedIncrement64(&WriterUntrackedCreates);
-            InterlockedIncrement64(&RegistryAllocationFailures);
-            StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);
-            goto TrackingLost;
-        }
         reservation->Node->FileObject = fileObject;
         reservation->Node->Entry = entry; /* The lookup reference transfers to this exact cleanup node. */
         reservation->Node->ProcessId = FltGetRequestorProcessId(Data);
@@ -2648,12 +2735,12 @@ NTSTATUS SafeUploadStageWritersPostCreate(
         reservation->BoundEntry = NULL; /* the exact cleanup node now owns this reference */
         InterlockedIncrement64(&WriterCounted);
         entry = NULL;
-        FltReleaseContext(streamContext);
     } else {
         /* Keep the lookup reference on the reservation until its name-indexed
          * in-flight marker is removed below. */
         entry = NULL;
     }
+    FltReleaseContext(streamContext);
     SafeUploadStageWritersCancelReservation(reservation);
     return STATUS_SUCCESS;
 
@@ -2783,6 +2870,13 @@ VOID SafeUploadStageWritersFreeContext(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Stream
     LONG tokenState = token != NULL ? InterlockedCompareExchange(&token->State, 0, 0) :
         SAFEUPLOAD_INSTANCE_STATE_UNKNOWN;
 
+    PSTAGE_SOP_LIFETIME lifetime = (PSTAGE_SOP_LIFETIME)StreamContext->WriterSopLifetime;
+    BOOLEAN entriesRemain = lifetime != NULL && InterlockedCompareExchange(&lifetime->References, 0, 0) > 1;
+    BOOLEAN naturalEnd = tokenState == SAFEUPLOAD_INSTANCE_STATE_ACTIVE &&
+        !SafeUploadStageMandatoryTeardownActive() && !StreamContext->WriterSopLifetimeInvalid &&
+        IsListEmpty(&StreamContext->WriterObjects) &&
+        InterlockedCompareExchange(&StreamContext->WritersUntracked, 0, 0) == 0;
+
     /* The last context reference is being released, so no operation can still mutate this list. */
     while (!IsListEmpty(&StreamContext->WriterObjects)) {
         PLIST_ENTRY link = RemoveHeadList(&StreamContext->WriterObjects);
@@ -2813,6 +2907,16 @@ VOID SafeUploadStageWritersFreeContext(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Stream
              * is ambiguous when its teardown token was lost. */
             InterlockedIncrement64(&WriterDroppedWhileMounted);
         }
+    }
+    if (lifetime != NULL) {
+        SafeUploadStageAdmissionCoverageBegin();
+        if (!naturalEnd) InterlockedExchange(&lifetime->Invalid, 1);
+        else InterlockedExchange(&lifetime->Ended, 1);
+        InterlockedIncrement64(&RegistryChangeSequence);
+        SafeUploadStageAdmissionCoverageEnd();
+        StageRegistryReleaseLifetime(lifetime);
+        if (naturalEnd && entriesRemain && !SafeUploadStageMandatoryTeardownActive())
+            SafeUploadStageWritersQueueRecheck();
     }
     StageRegistryDereference(registryEntry);
 }
@@ -3522,6 +3626,7 @@ __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTAN
         InterlockedIncrement64(&RegistrySopMapGeneration);
         recorded = TRUE;
     }
+    InterlockedIncrement64(&RegistryChangeSequence);
     StageReleaseSpinLock(&SectionLock, irql);
     if (existing != NULL) {
         StageRegistryMarkEntryUnknown(existing, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
@@ -3644,150 +3749,56 @@ __declspec(noinline) static VOID StageRegistryUnknownWriterEnd(_In_opt_ PFLT_INS
 }
 
 _IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static VOID StageRegistryCopyUnknownSopChunk(_In_ PFLT_INSTANCE Instance,
-    _In_ ULONG Base,
-    _Out_writes_to_(SAFEUPLOAD_REGISTRY_SOP_SCAN_CHUNK, *SnapshotCount) PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshots,
-    _Out_ PULONG SnapshotCount)
+__declspec(noinline) static BOOLEAN StageRegistryUnknownSopChunkPresent(_In_ PFLT_INSTANCE Instance,
+    _In_ ULONG Base)
 {
-    ULONG index;
-    KIRQL irql;
-    *SnapshotCount = 0;
+    KIRQL irql = PASSIVE_LEVEL;
+    ULONG index = 0;
+    BOOLEAN present = FALSE;
     StageAcquireSpinLock(&SectionLock, &irql);
     for (index = Base; index < min(Base + SAFEUPLOAD_REGISTRY_SOP_SCAN_CHUNK,
             (ULONG)RTL_NUMBER_OF(RegistrySopSlots)); ++index) {
-        PSTAGE_REGISTRY_SOP_SLOT slot = &RegistrySopSlots[index];
-        PSTAGE_REGISTRY_SOP_SNAPSHOT snapshot;
-        if (slot->SectionObjectPointer == NULL || !slot->Unknown ||
-            slot->InstanceIdentity != (PVOID)Instance) continue;
-        snapshot = &Snapshots[(*SnapshotCount)++];
-        snapshot->SectionObjectPointer = slot->SectionObjectPointer;
-        snapshot->VolumeSerial = slot->VolumeSerial;
-        snapshot->StreamSuffixHash = slot->StreamSuffixHash;
-        snapshot->FileId = slot->FileId;
-        snapshot->UnknownWriterCount = slot->UnknownWriterCount;
-        snapshot->SpilledMutatingIoCount = slot->SpilledMutatingIoCount;
+        if (RegistrySopSlots[index].Unknown && RegistrySopSlots[index].InstanceIdentity == (PVOID)Instance) {
+            present = TRUE;
+            break;
+        }
     }
     StageReleaseSpinLock(&SectionLock, irql);
+    return present;
 }
 
 _IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static BOOLEAN StageRegistryRetireUnknownSopIfSame(_In_ PFLT_INSTANCE Instance,
-    _In_ PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshot)
+__declspec(noinline) static UINT32 StageRegistryUnknownSopCount(VOID)
 {
-    PSTAGE_REGISTRY_SOP_SLOT slot;
-    BOOLEAN found = FALSE, sameIdentity;
-    KIRQL irql;
-    StageAcquireSpinLock(&SectionLock, &irql);
-    slot = StageRegistryFindSopSlotLocked(Snapshot->SectionObjectPointer, &found);
-    sameIdentity = found && slot != NULL && slot->Unknown &&
-        slot->InstanceIdentity == (PVOID)Instance && slot->UnknownWriterCount == 0 &&
-        slot->SpilledMutatingIoCount == 0 &&
-        slot->VolumeSerial == Snapshot->VolumeSerial &&
-        slot->StreamSuffixHash == Snapshot->StreamSuffixHash &&
-        RtlEqualMemory(&slot->FileId, &Snapshot->FileId, sizeof(slot->FileId));
-    if (sameIdentity) {
-        StageRegistryRemoveSopSlotLocked(slot);
-        InterlockedIncrement64(&RegistryChangeSequence);
-    }
-    StageReleaseSpinLock(&SectionLock, irql);
-    return sameIdentity;
-}
-
-_IRQL_requires_(PASSIVE_LEVEL)
-static BOOLEAN StageRegistrySopSnapshotQuiescent(_In_ PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshot,
-    _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume)
-{
-    STAGE_REGISTRY_ENTRY probe;
-    HANDLE handle = NULL;
-    PFILE_OBJECT object = NULL;
-    PSECTION_OBJECT_POINTERS sop;
-    UINT32 sections, totalSections;
-    NTSTATUS status;
-    BOOLEAN quiescent = FALSE, noNamesProven = FALSE;
-
-    PAGED_CODE();
-    if (Snapshot->UnknownWriterCount != 0 || Snapshot->SpilledMutatingIoCount != 0)
-        return FALSE;
-    RtlZeroMemory(&probe, sizeof(probe));
-    probe.Listed = TRUE;
-    probe.StreamIdentityKnown = TRUE;
-    probe.Compact = TRUE;
-    probe.CompactStream = Snapshot->StreamSuffixHash != 0;
-    probe.StreamSuffixHash = Snapshot->StreamSuffixHash;
-    probe.Instance = Instance;
-    probe.Volume = Volume;
-    probe.VolumeSerial = Snapshot->VolumeSerial;
-    probe.FileId = Snapshot->FileId;
-    probe.SectionObjectPointer = Snapshot->SectionObjectPointer;
-
-    status = StageRegistryOpenIdentity(&probe, Instance, Volume, &handle, &object,
-        NULL, &noNamesProven, FALSE);
-    if (noNamesProven && StageRegistryOpenByIdMeansNoName(status)) {
-        quiescent = TRUE;
-        goto Exit;
-    }
-    if (!NT_SUCCESS(status) || object == NULL || object->SectionObjectPointer == NULL) goto Exit;
-    sop = object->SectionObjectPointer;
-    if (sop != Snapshot->SectionObjectPointer) {
-        quiescent = TRUE; /* The old SCB incarnation is gone; NTFS reused its file ID. */
-        goto Exit;
-    }
-    StageRegistrySnapshotSections(sop, &sections, &totalSections);
-    quiescent = MmDoesFileHaveUserWritableReferences(sop) == FALSE &&
-        (sections & SAFEUPLOAD_SECTIONS_UNTRACKED_BIT) == 0 && sections == 0 && totalSections == 0 &&
-        sop->DataSectionObject == NULL && sop->SharedCacheMap == NULL;
-Exit:
-    if (object != NULL) ObDereferenceObject(object);
-    if (handle != NULL) FltClose(handle);
-    return quiescent;
-}
-
-_IRQL_requires_(PASSIVE_LEVEL)
-static BOOLEAN StageRegistryUnknownSopMarkersQuiescent(_In_ PFLT_INSTANCE Instance,
-    _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget,
-    _Out_ PBOOLEAN WorkRemaining, _Out_ PULONGLONG Generation)
-{
-    PSTAGE_REGISTRY_SOP_SNAPSHOT snapshots;
-    ULONGLONG startingGeneration, expectedGeneration;
-    ULONG base, index, snapshotCount;
-    BOOLEAN liveMarker = FALSE;
-
-    PAGED_CODE();
-    *WorkRemaining = FALSE;
-    *Generation = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);
-    if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL ||
-        Instance == NULL || Volume == NULL) return FALSE;
-    /* Nonpaged: StageRegistryCopyUnknownSopChunk fills it under SectionLock (DISPATCH_LEVEL).
-     * A paged buffer bugchecked 0xD1 under runtime Verifier (sol-lat-cached2, 2026-10-07). */
-    snapshots = ExAllocatePool2(POOL_FLAG_NON_PAGED,
-        SAFEUPLOAD_REGISTRY_SOP_SCAN_CHUNK * sizeof(*snapshots), SAFEUPLOAD_REGISTRY_POOL_TAG);
-    if (snapshots == NULL) return FALSE;
-    startingGeneration = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);
-    expectedGeneration = startingGeneration;
+    UINT32 count = 0;
+    ULONG base = 0, index = 0;
+    KIRQL irql = PASSIVE_LEVEL;
     for (base = 0; base < RTL_NUMBER_OF(RegistrySopSlots); base += SAFEUPLOAD_REGISTRY_SOP_SCAN_CHUNK) {
-        StageRegistryCopyUnknownSopChunk(Instance, base, snapshots, &snapshotCount);
+        StageAcquireSpinLock(&SectionLock, &irql);
+        for (index = base; index < min(base + SAFEUPLOAD_REGISTRY_SOP_SCAN_CHUNK,
+                (ULONG)RTL_NUMBER_OF(RegistrySopSlots)); ++index)
+            if (RegistrySopSlots[index].Unknown) ++count;
+        StageReleaseSpinLock(&SectionLock, irql);
+    }
+    return count;
+}
 
-        for (index = 0; index < snapshotCount; ++index) {
-            PSTAGE_REGISTRY_SOP_SNAPSHOT snapshot = &snapshots[index];
-            if (*WorkBudget == 0) {
-                *WorkRemaining = TRUE;
-                liveMarker = TRUE;
-                continue;
-            }
-            *WorkBudget -= 1;
-            if (StageRegistrySopSnapshotQuiescent(snapshot, Instance, Volume) &&
-                StageRegistryRetireUnknownSopIfSame(Instance, snapshot)) {
-                expectedGeneration += 1;
-            } else {
-                /* Every live or identity-ambiguous marker blocks this instance until proven quiescent. */
-                liveMarker = TRUE;
-            }
-        }
+/* Observation only. An overflow marker lacks an original context witness;
+ * a failed/replaced by-ID reopen, zero counters or a digest cannot retire it. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageRegistryUnknownSopMarkersClear(_In_ PFLT_INSTANCE Instance,
+    _Out_ PULONGLONG Generation)
+{
+    ULONG base = 0;
+    ULONGLONG before = 0;
+    BOOLEAN clear = TRUE;
+    PAGED_CODE();
+    before = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);
+    for (base = 0; base < RTL_NUMBER_OF(RegistrySopSlots); base += SAFEUPLOAD_REGISTRY_SOP_SCAN_CHUNK) {
+        if (StageRegistryUnknownSopChunkPresent(Instance, base)) { clear = FALSE; break; }
     }
     *Generation = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);
-    if (*Generation != expectedGeneration) liveMarker = TRUE; /* concurrent marker insertion, mutation, or retirement */
-    ExFreePoolWithTag(snapshots, SAFEUPLOAD_REGISTRY_POOL_TAG);
-    return !liveMarker;
+    return clear && before == *Generation;
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -3918,132 +3929,143 @@ static VOID StageRegistryBeginInstanceTeardown(_In_ PFLT_INSTANCE Instance,
     FltReleasePushLock(&RegistryLock);
 }
 
-/* Called by pageable post-create; SectionLock protects only nonpaged registry/slot state and stack scratch. */
+/* RegistryLock + SectionLock. Ended is a natural context-lifetime receipt,
+ * not a guess from a failed reopen or a different/recycled SOP. Every lower
+ * callback/ledger reference must also have resolved before removing its map. */
+_IRQL_requires_(DISPATCH_LEVEL)
+static BOOLEAN StageRegistryOldIncarnationResolvedLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    PLIST_ENTRY link = NULL;
+    ULONG index = 0;
+    PVOID sop = InterlockedCompareExchangePointer(&Entry->SectionObjectPointer, NULL, NULL);
+    if (!StageRegistryLifetimeEnded(Entry) || SafeUploadStageWritersOwnerCount() != 0 ||
+        SafeUploadStageWritersGlobalUnknown() != 0 || RegistryDirectoryRenameCount != 0 ||
+        InterlockedCompareExchange(&Entry->H, 0, 0) != 0 ||
+        InterlockedCompareExchange(&Entry->W, 0, 0) != 0 ||
+        InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
+        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
+        InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) != 0 ||
+        InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN)
+        return FALSE;
+    for (link = RegistryReservations.Flink; link != &RegistryReservations; link = link->Flink)
+        if (CONTAINING_RECORD(link, STAGE_WRITER_RESERVATION, Link)->BoundEntry == Entry) return FALSE;
+    for (link = TransactionAssociations.Flink; link != &TransactionAssociations; link = link->Flink)
+        if (CONTAINING_RECORD(link, STAGE_TX_ASSOCIATION, Link)->Entry == Entry) return FALSE;
+    for (index = 0; index < STAGE_SECTION_SLOTS; ++index)
+        if (SectionSlots[index].FileObject != NULL &&
+            (SectionSlots[index].RegistryEntry == Entry || SectionSlots[index].SectionObjectPointer == sop))
+            return FALSE; /* includes read-only acquire/release callbacks */
+    return TRUE;
+}
+
+/* Called by pageable post-create; resident while SectionLock raises IRQL.
+ * Entries never change incarnation. Reused map addresses can yield only after
+ * the OLD entry's natural lifetime and every local obligation have ended. */
 _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PSTAGE_WRITER_RESERVATION Reservation,
     _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_opt_ PVOID SectionObjectPointer)
 {
-    ULONG index;
-    PVOID oldSectionObjectPointer;
-    PSTAGE_REGISTRY_SOP_SLOT oldMap = NULL, map = NULL;
-    BOOLEAN oldFound = FALSE, mapFound = FALSE;
-    /* At most the previous SOP and a reused target pointer lose map references. */
-    PSTAGE_REGISTRY_ENTRY released[2] = { NULL, NULL };
-    ULONG releasedCount = 0;
-    BOOLEAN ok = FALSE;
-    BOOLEAN pointerConflict = FALSE;
-    KIRQL irql;
+    PSTAGE_REGISTRY_SOP_SLOT map = NULL;
+    PSTAGE_REGISTRY_ENTRY released = NULL;
+    BOOLEAN found = FALSE, ok = FALSE;
+    ULONG index = 0;
+    KIRQL irql = PASSIVE_LEVEL;
     if (SectionObjectPointer == NULL) return FALSE;
     FltAcquirePushLockExclusive(&RegistryLock);
     if (!Reservation->Active || Entry->Retired || !Entry->Listed ||
-        InterlockedCompareExchange(&Reservation->TeardownState, 0, 0) != SAFEUPLOAD_INSTANCE_STATE_ACTIVE) {
+        InterlockedCompareExchange(&Reservation->TeardownState, 0, 0) != SAFEUPLOAD_INSTANCE_STATE_ACTIVE ||
+        StageRegistryLifetime(Entry) == NULL || StageRegistryLifetimeEnded(Entry) ||
+        InterlockedCompareExchangePointer(&Entry->SectionObjectPointer, NULL, NULL) != SectionObjectPointer) {
         FltReleasePushLock(&RegistryLock);
         return FALSE;
     }
-    /* NTFS keeps exactly one SCB, hence one section-object pointer, per live stream, and every handle, section or mapped view
-     * keeps that SCB alive. So a different pointer for this file ID, or this pointer still bound to another file ID, proves the
-     * earlier incarnation is gone and no S reference can remain on it: rebind instead of failing. (registry-txf run 6: ordinary
-     * pool reuse after close was read as a capacity failure and made the volume Unknown after 10 entries.) */
-    oldSectionObjectPointer = InterlockedCompareExchangePointer(
-        (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL);
     StageAcquireSpinLock(&SectionLock, &irql);
+    map = StageRegistryFindSopSlotLocked(SectionObjectPointer, &found);
     for (index = 0; index < STAGE_SECTION_SLOTS; ++index) {
-        if (SectionSlots[index].SectionObjectPointer == SectionObjectPointer &&
-            SectionSlots[index].Writable && SectionSlots[index].RegistryEntry != NULL &&
-            SectionSlots[index].RegistryEntry != Entry) {
-            pointerConflict = TRUE;
-            break;
+        if (SectionSlots[index].FileObject != NULL &&
+            SectionSlots[index].SectionObjectPointer == SectionObjectPointer &&
+            SectionSlots[index].RegistryEntry != NULL && SectionSlots[index].RegistryEntry != Entry)
+            goto Exit;
+    }
+    if (found && map != NULL) {
+        /* Unknown is sticky. Neither successful CREATE nor capacity recovery
+         * supplies the missing original lifetime/callback evidence. */
+        if (map->Unknown || map->UnknownReasons != 0 || map->UnknownWriterCount != 0 ||
+            map->SpilledMutatingIoCount != 0) goto Exit;
+        if (map->Entry != Entry) {
+            if (map->Entry == NULL || !StageRegistryOldIncarnationResolvedLocked(map->Entry)) goto Exit;
+            released = map->Entry;
+            map->Entry = NULL;
         }
     }
-    if (pointerConflict) {
-        StageReleaseSpinLock(&SectionLock, irql);
-        FltReleasePushLock(&RegistryLock);
-        return FALSE;
-    }
-    /* The conflict check above stands: a writable section in flight on this pointer bound to another entry is inconsistent. */
-    InterlockedExchangePointer((PVOID volatile *)&Entry->SectionObjectPointer, SectionObjectPointer);
-    if (oldSectionObjectPointer != NULL && oldSectionObjectPointer != SectionObjectPointer) {
-        oldMap = StageRegistryFindSopSlotLocked(oldSectionObjectPointer, &oldFound);
-        if (oldFound && oldMap->Entry == Entry) {
-            released[releasedCount++] = oldMap->Entry;
-            StageRegistryRemoveSopSlotLocked(oldMap);
-        }
-    }
-    map = StageRegistryFindSopSlotLocked(SectionObjectPointer, &mapFound);
-    if (mapFound) {
-        if (map->Unknown) {
-            BOOLEAN sameIdentity = map->VolumeSerial == Entry->VolumeSerial &&
-                RtlEqualMemory(&map->FileId, &Entry->FileId, sizeof(Entry->FileId)) &&
-                map->StreamSuffixHash == Entry->StreamSuffixHash;
-            if (sameIdentity) {
-                LONG stickyReasons = map->UnknownReasons & ~SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY;
-                if (stickyReasons != 0) StageRegistrySetEntryUnknownLocked(Entry, stickyReasons);
-            } else if (map->UnknownWriterCount != 0 || map->SpilledMutatingIoCount != 0) {
-                pointerConflict = TRUE;
-            }
-            if (!pointerConflict) {
-                map->Unknown = FALSE;
-                map->UnknownReasons = 0;
-                map->InstanceIdentity = (PVOID)Reservation->Instance;
-                map->VolumeSerial = Entry->VolumeSerial;
-                map->StreamSuffixHash = Entry->StreamSuffixHash;
-                map->FileId = Entry->FileId;
-                map->Entry = Entry;
-                StageRegistryReference(Entry);
-                InterlockedIncrement64(&RegistrySopMapGeneration);
-            }
-        } else if (map->Entry != Entry && map->Entry != NULL &&
-            (map->UnknownWriterCount != 0 || map->SpilledMutatingIoCount != 0)) {
-            pointerConflict = TRUE;
-        } else if (map->Entry != Entry && map->Entry != NULL) {
-            /* NTFS can reuse an SCB address after the old stream is gone. */
-            (VOID)InterlockedCompareExchangePointer((PVOID volatile *)&map->Entry->SectionObjectPointer,
-                NULL, SectionObjectPointer);
-            released[releasedCount++] = map->Entry;
-            map->Entry = Entry;
-            map->VolumeSerial = Entry->VolumeSerial;
-            map->StreamSuffixHash = Entry->StreamSuffixHash;
-            map->FileId = Entry->FileId;
-            StageRegistryReference(Entry);
-            InterlockedIncrement64(&RegistrySopMapGeneration);
-        }
-        ok = map->Entry == Entry;
-    } else if (map != NULL) {
+    if (map != NULL && map->Entry != Entry) {
         RtlZeroMemory(map, sizeof(*map));
         StageRegistryReference(Entry);
         map->SectionObjectPointer = SectionObjectPointer;
         map->Entry = Entry;
+        map->InstanceIdentity = (PVOID)Reservation->Instance;
         map->VolumeSerial = Entry->VolumeSerial;
         map->StreamSuffixHash = Entry->StreamSuffixHash;
         map->FileId = Entry->FileId;
         InterlockedIncrement64(&RegistrySopMapGeneration);
-        ok = TRUE;
     }
-    if (ok) {
-        ULONG slotIndex;
-        if (map != NULL && map->Entry == Entry)
-            map->InstanceIdentity = (PVOID)Reservation->Instance;
-        for (slotIndex = 0; slotIndex < STAGE_SECTION_SLOTS; ++slotIndex) {
-            STAGE_SECTION_SLOT *slot = &SectionSlots[slotIndex];
-            if (slot->SectionObjectPointer == SectionObjectPointer && slot->RegistryEntry == NULL) {
-                StageRegistryReference(Entry);
-                slot->RegistryEntry = Entry;
-                slot->VolumeSerial = Entry->VolumeSerial;
-                slot->FileId = Entry->FileId;
-            }
+    /* A full fast map still leaves the exact entry in the registry. */
+    ok = TRUE;
+    for (index = 0; index < STAGE_SECTION_SLOTS; ++index) {
+        STAGE_SECTION_SLOT *slot = &SectionSlots[index];
+        if (slot->FileObject != NULL && slot->SectionObjectPointer == SectionObjectPointer &&
+            slot->RegistryEntry == NULL) {
+            StageRegistryReference(Entry);
+            slot->RegistryEntry = Entry;
+            slot->VolumeSerial = Entry->VolumeSerial;
+            slot->FileId = Entry->FileId;
         }
-    } else if (map == NULL && !pointerConflict) {
-        /* The Entry itself retains SOP+file identity when the bounded map is full. */
-        ok = TRUE;
     }
+Exit:
     StageReleaseSpinLock(&SectionLock, irql);
     FltReleasePushLock(&RegistryLock);
-    for (index = 0; index < releasedCount; ++index) StageRegistryDereference(released[index]);
-    if (!ok) {
-        InterlockedIncrement64(&RegistryCapacityFailures);
-        InterlockedIncrement((volatile LONG *)&RegistryOverflow);
-    }
+    StageRegistryDereference(released);
     return ok;
+}
+
+_Use_decl_annotations_
+__declspec(noinline) VOID SafeUploadStageWritersOwnerAcquire(VOID)
+{
+    KIRQL irql = PASSIVE_LEVEL;
+    LONG owners = 0;
+    SafeUploadStageAdmissionCoverageBegin();
+    StageAcquireSpinLock(&SectionLock, &irql);
+    NT_ASSERT(InterlockedCompareExchange(&RegistryLifetimeOwners, 0, 0) < MAXLONG);
+    owners = InterlockedIncrement(&RegistryLifetimeOwners);
+    InterlockedIncrement64(&RegistryChangeSequence);
+    InterlockedIncrement64(&RegistrySopMapGeneration);
+    StageReleaseSpinLock(&SectionLock, irql);
+    if (owners <= 0) StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY);
+    SafeUploadStageAdmissionCoverageEnd();
+}
+
+_Use_decl_annotations_
+__declspec(noinline) VOID SafeUploadStageWritersOwnerRelease(VOID)
+{
+    KIRQL irql = PASSIVE_LEVEL;
+    LONG remaining = 0;
+    SafeUploadStageAdmissionCoverageBegin();
+    StageAcquireSpinLock(&SectionLock, &irql);
+    NT_ASSERT(InterlockedCompareExchange(&RegistryLifetimeOwners, 0, 0) > 0);
+    remaining = InterlockedDecrement(&RegistryLifetimeOwners);
+    InterlockedIncrement64(&RegistryChangeSequence);
+    InterlockedIncrement64(&RegistrySopMapGeneration);
+    StageReleaseSpinLock(&SectionLock, irql);
+    if (remaining < 0) StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP);
+    SafeUploadStageAdmissionCoverageEnd();
+    if (remaining == 0 && !SafeUploadStageMandatoryTeardownActive())
+        SafeUploadStageWritersQueueRecheck();
+}
+
+_Use_decl_annotations_
+LONG SafeUploadStageWritersOwnerCount(VOID)
+{
+    return InterlockedCompareExchange(&RegistryLifetimeOwners, 0, 0);
 }
 
 /* ---- Pruning: the registry holds only files that may still be live -------------------------------------------------
@@ -4065,7 +4087,8 @@ __declspec(noinline) static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PS
  * reference and *MapReference after releasing the lock. */
 /* Called by the pageable reclaim worker; keep its SectionLock operation resident. */
 _IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _Out_ PSTAGE_REGISTRY_ENTRY *MapReference,
+__declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ ULONGLONG EvidenceSequence, _Out_ PSTAGE_REGISTRY_ENTRY *MapReference,
     _Out_ PFLT_INSTANCE *InstanceReference, _Out_ PFLT_VOLUME *VolumeReference)
 {
     PLIST_ENTRY link;
@@ -4074,13 +4097,17 @@ __declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTR
     KIRQL irql;
     BOOLEAN busy = FALSE, mapFound = FALSE;
     PSTAGE_REGISTRY_SOP_SLOT map;
+    PSTAGE_SOP_LIFETIME lifetime = StageRegistryLifetime(Entry);
     *MapReference = NULL;
     *InstanceReference = NULL;
     *VolumeReference = NULL;
     entryName.Buffer = Entry->Name;
     entryName.Length = entryName.MaximumLength = (USHORT)(Entry->NameChars * sizeof(WCHAR));
     if (!Entry->Listed || Entry->Retired ||
-        InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
+        (InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING &&
+            !StageRegistryLifetimeEnded(Entry)) ||
+        InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN ||
+        SafeUploadStageWritersOwnerCount() != 0 ||
         InterlockedCompareExchange(&Entry->H, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->W, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
@@ -4094,14 +4121,23 @@ __declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTR
         if (CONTAINING_RECORD(link, STAGE_TX_ASSOCIATION, Link)->Entry == Entry) return FALSE;
     }
     StageAcquireSpinLock(&SectionLock, &irql);
+    busy = (!StageRegistryLifetimeEnded(Entry) && EvidenceSequence !=
+            (ULONGLONG)InterlockedCompareExchange64(&RegistryChangeSequence, 0, 0)) ||
+        SafeUploadStageWritersOwnerCount() != 0 || lifetime == NULL ||
+        (lifetime != NULL && InterlockedCompareExchange(&lifetime->Invalid, 0, 0) != 0) ||
+        SafeUploadStageWritersGlobalUnknown() != 0 ||
+        (StageRegistryLifetimeEnded(Entry) && !StageRegistryOldIncarnationResolvedLocked(Entry));
     for (index = 0; index < STAGE_SECTION_SLOTS; ++index) {
-        if (SectionSlots[index].RegistryEntry == Entry) { busy = TRUE; break; }
+        if (SectionSlots[index].FileObject != NULL &&
+            (SectionSlots[index].RegistryEntry == Entry || SectionSlots[index].SectionObjectPointer ==
+                InterlockedCompareExchangePointer(&Entry->SectionObjectPointer, NULL, NULL))) { busy = TRUE; break; }
     }
     if (!busy) {
         map = StageRegistryFindSopSlotLocked(InterlockedCompareExchangePointer(
             (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL), &mapFound);
         if (mapFound && map->Entry == Entry) {
-            if (map->UnknownWriterCount != 0 || map->SpilledMutatingIoCount != 0) {
+            if (map->Unknown || map->UnknownReasons != 0 ||
+                map->UnknownWriterCount != 0 || map->SpilledMutatingIoCount != 0) {
                 busy = TRUE;
             } else {
                 *MapReference = map->Entry;
@@ -4109,11 +4145,14 @@ __declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTR
             }
         }
     }
+    if (!busy) {
+        RemoveEntryList(&Entry->Link);
+        Entry->Listed = FALSE;
+        Entry->Retired = TRUE;
+        InterlockedIncrement64(&RegistryChangeSequence);
+    }
     StageReleaseSpinLock(&SectionLock, irql);
     if (busy) return FALSE;
-    RemoveEntryList(&Entry->Link);
-    Entry->Listed = FALSE;
-    Entry->Retired = TRUE;
     /* Like retirement: an unlisted entry is never matched again, so it releases its instance and volume now. A stream
      * context may keep the entry alive, and Filter Manager frees contexts only after waiting out every reference on the
      * instance: keeping them deadlocked unload (registry-txf run 13, rundown count 1 after 2,991 prunes). */
@@ -4131,55 +4170,51 @@ __declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTR
     return TRUE;
 }
 
-/* PASSIVE. Opens the candidate by its 64-bit NTFS file reference (never the 16-byte form, which NTFS reads as an object
- * ID), verifies all 128 ID bits and the volume serial, and reports whether the live stream is quiescent. A file that no
- * longer exists is quiescent too: nothing can write to it. */
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static BOOLEAN StageRegistryOriginalContext(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ PSAFEUPLOAD_STREAM_CONTEXT Context, _In_ PVOID Sop)
+{
+    KIRQL irql = PASSIVE_LEVEL;
+    BOOLEAN valid = FALSE;
+    PSTAGE_SOP_LIFETIME lifetime = StageRegistryLifetime(Entry);
+    StageAcquireSpinLock(&Context->WriterLock, &irql);
+    valid = lifetime != NULL && Context->WriterSopLifetime == lifetime && lifetime->Sop == Sop &&
+        !Context->WriterSopLifetimeInvalid &&
+        InterlockedCompareExchange(&Context->WritersUntracked, 0, 0) == 0 &&
+        InterlockedCompareExchange(&lifetime->Invalid, 0, 0) == 0 &&
+        InterlockedCompareExchange(&lifetime->Ended, 0, 0) == 0 &&
+        InterlockedCompareExchangePointer(&Entry->SectionObjectPointer, NULL, NULL) == Sop;
+    StageReleaseSpinLock(&Context->WriterLock, irql);
+    return valid;
+}
+
+/* Live proof uses the original context AND an owned exact-identity FILE_OBJECT.
+ * Ended proof uses only the original natural-lifetime receipt. No failed reopen
+ * or replacement object's MM predicate says anything about the original SOP. */
 _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
-    _In_ PFLT_VOLUME Volume, _Outptr_result_maybenull_ PSAFEUPLOAD_STREAM_CONTEXT *StreamContext)
+    _In_ PFLT_VOLUME Volume, _Outptr_result_maybenull_ PSAFEUPLOAD_STREAM_CONTEXT *StreamContext,
+    _Out_ PULONGLONG EvidenceSequence)
 {
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
     PSAFEUPLOAD_STREAM_CONTEXT context = NULL;
     BOOLEAN quiescent = FALSE;
-    BOOLEAN noNamesProven = FALSE;
-    NTSTATUS status;
-
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
     PAGED_CODE();
     *StreamContext = NULL;
-    if (InterlockedCompareExchange(&Entry->H, 0, 0) != 0 ||
-        InterlockedCompareExchange(&Entry->W, 0, 0) != 0 ||
-        InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
-        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
-        StageRegistrySnapshotSpilledWriters(Entry) != 0 ||
-        StageRegistrySnapshotSpilledMutatingIo(Entry) != 0 ||
-        StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0) return FALSE;
-    /* A base data stream reopens by file identity so that a replaced incarnation reaches the branch below
-     * (the exact-SOP form rejected it first, leaving such entries resident until capacity ran out). A compact
-     * ADS keeps the exact form: its name-hash resolution could select another stream. */
-    status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
-        NULL, &noNamesProven, StageRegistryEntryIsBaseStream(Entry));
-    if (noNamesProven && StageRegistryOpenByIdMeansNoName(status)) {
-        quiescent = TRUE; /* the recorded file identity no longer exists */
-        goto Exit;
-    }
+    *EvidenceSequence = (ULONGLONG)InterlockedCompareExchange64(&RegistryChangeSequence, 0, 0);
+    if (!StageRegistryEntryHoldsNoWriterState(Entry) ||
+        InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) != 0) return FALSE;
+    if (StageRegistryLifetimeEnded(Entry)) return TRUE; /* rechecked with all obligations at unlink */
+    status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object, NULL, NULL, FALSE);
     if (status != STATUS_SUCCESS || object == NULL || object->SectionObjectPointer == NULL) goto Exit;
-    if (object->SectionObjectPointer != InterlockedCompareExchangePointer(
-            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
-        quiescent = TRUE; /* the original stream incarnation is gone */
-        goto Exit;
-    }
-    /* Use the documented exact-SOP memory-manager predicate, not the opaque
-     * SECTION_OBJECT_POINTERS members as a lifetime signal. With NewFileSize
-     * NULL, MmCanFileBeTruncated refuses quiescence while a mapped view,
-     * outstanding write probe, image section, or user reference to the data
-     * section remains. */
+    status = FltGetStreamContext(Instance, object, (PFLT_CONTEXT *)&context);
+    if (!NT_SUCCESS(status) || !StageRegistryOriginalContext(Entry, context, object->SectionObjectPointer)) goto Exit;
     quiescent = MmCanFileBeTruncated(object->SectionObjectPointer, NULL);
+    if (quiescent) { *StreamContext = context; context = NULL; }
 Exit:
-    /* Pin the live context before closing the identity handle. This adds no allocation, name query or file open. A missing
-     * context, or one now bound to a different entry, leaves pruning unchanged and cannot release the wrong cache. */
-    if (quiescent && object != NULL && NT_SUCCESS(FltGetStreamContext(Instance, object, (PFLT_CONTEXT *)&context)))
-        *StreamContext = context;
+    if (context != NULL) FltReleaseContext(context);
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
     return quiescent;
@@ -5231,6 +5266,7 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
     _In_ ULONG PolicyGeneration, _In_ ULONG PolicyFlags, _In_ ULONG PredicateFlags)
 {
     PSTAGE_REGISTRY_SOP_SLOT map;
+    PSTAGE_SOP_LIFETIME lifetime = StageRegistryLifetime(Entry);
     BOOLEAN mapFound = FALSE, sectionSlotsEmpty = TRUE;
     ULONG index;
     KIRQL irql;
@@ -5245,12 +5281,15 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
             map->SpilledMutatingIoCount == 0;
     for (index = 0; sectionSlotsEmpty && index < STAGE_SECTION_SLOTS; ++index) {
         STAGE_SECTION_SLOT *section = &SectionSlots[index];
-        if (section->Writable && section->SectionObjectPointer == sop)
+        if (section->FileObject != NULL && section->SectionObjectPointer == sop)
             sectionSlotsEmpty = FALSE;
     }
     ULONGLONG markerGeneration = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);
     if (markerGeneration ==
             ExpectedSopMarkerGeneration && sectionSlotsEmpty &&
+        SafeUploadStageWritersOwnerCount() == 0 &&
+        lifetime != NULL && !StageRegistryLifetimeEnded(Entry) &&
+        InterlockedCompareExchange(&lifetime->Invalid, 0, 0) == 0 &&
         InterlockedCompareExchange(&Entry->W, 0, 0) == 0 &&
         InterlockedCompareExchange((volatile LONG *)&Entry->State,
             SAFEUPLOAD_REGISTRY_STATE_PROTECTED,
@@ -5317,13 +5356,11 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
     return promoted;
 }
 
-/* Every other listed entry for this entry's data stream, i.e. its other incarnations keyed by another SOP,
- * holds no writer state and no Unknown reason. A row known to be a different named stream is skipped: its S and
- * cache state belong to its own SOP and its own activation gate keeps it, and coverage, out of Ready until it is
- * Free. A row whose stream identity is unknown is checked. RegistryLock is held by the caller; the snapshots take
- * SectionLock after it. */
+/* Base-stream promotion waits for older incarnation entries to retire with
+ * their own evidence. Other known named streams have their own admission row.
+ * RegistryLock stabilizes membership. Never manufacture Free from H/W/C/T=0. */
 _IRQL_requires_max_(APC_LEVEL)
-static BOOLEAN StageRegistrySiblingsHoldNoWriterStateLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Arm)
+static BOOLEAN StageRegistrySiblingIncarnationsRetiredLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Arm)
 {
     PLIST_ENTRY link;
     for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
@@ -5337,7 +5374,8 @@ static BOOLEAN StageRegistrySiblingsHoldNoWriterStateLocked(_In_ PSTAGE_REGISTRY
             return FALSE;
         /* When arming, before the read: a release after the read finds the request and wakes the worker. */
         if (Arm) StageRegistryArmWriterReleaseWake(sibling);
-        if (!StageRegistryEntryHoldsNoWriterState(sibling)) return FALSE;
+        /* Even H/W/C/T == 0 does not retire the old stream context. */
+        return FALSE;
     }
     return TRUE;
 }
@@ -5354,7 +5392,7 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
     _In_ BOOLEAN SopEmpty,
     _In_ ULONGLONG ExpectedSopMarkerGeneration,
     _In_ ULONG PolicyGeneration, _In_ ULONG PolicyFlags,
-    _In_ BOOLEAN CacheFlushedAndPurged, _In_opt_ PVOID ReplacedLiveSop)
+    _In_ BOOLEAN CacheFlushedAndPurged)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     KIRQL renameLossIrql;
@@ -5364,9 +5402,10 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
     BOOLEAN directoryRenameInFlight;
     BOOLEAN nameOk;
     ULONG failed = 0;
-    /* A replaced incarnation's CAS covers the whole data stream: no other incarnation entry of it, including
-     * one keyed by the live SOP, may hold writer state (S and the cache barrier were evaluated on the live SOP). */
-    BOOLEAN siblingsFree = ReplacedLiveSop == NULL || StageRegistrySiblingsHoldNoWriterStateLocked(Entry, FALSE);
+    /* A base stream's older incarnations must retire on their own evidence.
+     * A live new SOP never stands in for their missing lifetime proof. */
+    BOOLEAN siblingsFree = Entry->CompactStream || Entry->StreamChars != 0 ||
+        StageRegistrySiblingIncarnationsRetiredLocked(Entry, FALSE);
     entryName.Buffer = Entry->Name;
     entryName.Length = entryName.MaximumLength = (USHORT)(Entry->NameChars * sizeof(WCHAR));
     directoryRenameInFlight = StageRegistryDirectoryRenameInFlightLocked(Entry->Instance, &entryName);
@@ -5418,9 +5457,6 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
     if (!SopEmpty) failed |= SAFEUPLOAD_PROMOTE_FAIL_SOP_NOT_EMPTY;
     if (StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_C;
     if (!siblingsFree) failed |= SAFEUPLOAD_PROMOTE_FAIL_SIBLING;
-    if (ReplacedLiveSop != NULL && InterlockedCompareExchangePointer(
-            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL) == ReplacedLiveSop)
-        failed |= SAFEUPLOAD_PROMOTE_FAIL_REBOUND;
     if (failed == 0) {
         /* Serialize the final marker-generation check with marker insertion. A marker
          * discovered after the earlier PASSIVE scan must keep this promotion waiting. */
@@ -5428,8 +5464,7 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
                 PolicyGeneration, PolicyFlags,
                 SAFEUPLOAD_PROMOTION_BASIS_NAME_MATCH | SAFEUPLOAD_PROMOTION_BASIS_SOP_EMPTY |
                 SAFEUPLOAD_PROMOTION_BASIS_NO_USER_WRITABLE |
-                (CacheFlushedAndPurged ? SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH_PURGE : 0) |
-                (ReplacedLiveSop != NULL ? SAFEUPLOAD_PROMOTION_BASIS_INCARNATION_REPLACED : 0)))
+                (CacheFlushedAndPurged ? SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH_PURGE : 0)))
             failed |= SAFEUPLOAD_PROMOTE_FAIL_STATE_RECHECK;
     }
     StageReleaseSpinLock(&Entry->StateLock, irql);
@@ -5439,7 +5474,7 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
      * re-read after arming closes the window since the first read: if it finds them free, a release fell in that
      * window and may have missed the request, so another pass is queued, from the start of the registry because this
      * pass's cursor may move past the entry. RegistryLock is still held. */
-    if (failed == SAFEUPLOAD_PROMOTE_FAIL_SIBLING && StageRegistrySiblingsHoldNoWriterStateLocked(Entry, TRUE))
+    if (failed == SAFEUPLOAD_PROMOTE_FAIL_SIBLING && StageRegistrySiblingIncarnationsRetiredLocked(Entry, TRUE))
         SafeUploadStageWritersQueueRecheck();
     FltReleaseContext(instanceContext);
     return failed;
@@ -5751,24 +5786,13 @@ __declspec(noinline) static VOID StageRegistryClearActivation(_In_ PSTAGE_REGIST
     StageReleaseSpinLock(&Entry->StateLock, irql);
 }
 
-/* A non-compact entry for the file's unnamed data stream: its by-ID reopen names exactly that stream. */
-_IRQL_requires_max_(APC_LEVEL)
-static BOOLEAN StageRegistryEntryIsBaseStream(_In_ PSTAGE_REGISTRY_ENTRY Entry)
-{
-    BOOLEAN baseStream;
-    FltAcquirePushLockShared(&RegistryLock);
-    baseStream = Entry->Listed && !Entry->Retired && Entry->StreamIdentityKnown &&
-        !Entry->CompactStream && Entry->StreamChars == 0;
-    FltReleasePushLock(&RegistryLock);
-    return baseStream;
-}
-
 /* No handle, mutating I/O, transaction, rename, spilled writer, spilled mutating I/O or in-flight writable
  * section is accounted to this entry. Sampled; the promotion CAS rechecks under the state lock. */
 _IRQL_requires_max_(APC_LEVEL)
 static BOOLEAN StageRegistryEntryHoldsNoWriterState(_In_ PSTAGE_REGISTRY_ENTRY Entry)
 {
-    return InterlockedCompareExchange(&Entry->H, 0, 0) == 0 &&
+    return SafeUploadStageWritersOwnerCount() == 0 &&
+        InterlockedCompareExchange(&Entry->H, 0, 0) == 0 &&
         InterlockedCompareExchange(&Entry->W, 0, 0) == 0 &&
         InterlockedCompareExchange(&Entry->T, 0, 0) == 0 &&
         InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
@@ -5780,13 +5804,10 @@ static BOOLEAN StageRegistryEntryHoldsNoWriterState(_In_ PSTAGE_REGISTRY_ENTRY E
 /* Identity anchors.
  *
  * An Activating entry whose writer is still live cannot be promoted. When that writer's last handle closes, the cache
- * owner (the cache manager keeps the first file object of a cached stream) closes later, and that close is the only
- * event that wakes the reclaim pass. Between the two NTFS may tear the stream down, and the pass that finally runs
- * reopens a new incarnation: the promotion then rests on the replaced-incarnation basis instead of the held one, and
- * whether it did came down to how many microseconds the pass needed to start (the old worker requeued itself without
- * pause, so one of its passes always held the stream open). The pass keeps the by-ID identity handle it already opens
- * (attribute access, every share mode, opened below this filter) for as long as the entry waits with a live writer.
- * While it is open the stream cannot be torn down, so the pass that finally promotes does so on the held incarnation.
+ * owner (the cache manager keeps the first file object of a cached stream) closes later.
+ * An existing attribute-only identity anchor keeps the original live incarnation available
+ * for exact validation. If NTFS ends it first, its natural context witness permits retirement;
+ * a replacement SOP is never promoted on behalf of the original entry. No new anchor is added.
  *
  * Ownership: an anchor is in the list, or owned by the one pass that took it for a visit (the reclaim worker is
  * single-threaded). Every path that retires the entry, closes the instance or finishes the visit closes it. */
@@ -5842,7 +5863,8 @@ static BOOLEAN StageAnchorInsert(_In_ PSTAGE_ANCHOR Anchor)
 {
     BOOLEAN inserted = FALSE;
     FltAcquirePushLockExclusive(&StageAnchorLock);
-    if (StageAnchorCount < STAGE_ANCHOR_LIMIT && StageAnchorInstanceActive(Anchor->Instance)) {
+    if (!SafeUploadStageMandatoryTeardownActive() &&
+        StageAnchorCount < STAGE_ANCHOR_LIMIT && StageAnchorInstanceActive(Anchor->Instance)) {
         InsertTailList(&StageAnchorList, &Anchor->Link);
         StageAnchorCount += 1;
         inserted = TRUE;
@@ -5870,7 +5892,7 @@ static VOID StageAnchorEndVisit(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INST
     PSTAGE_ANCHOR anchor = *Taken;
     if (anchor != NULL) {
         /* Borrowed for the visit: Handle and Object are the anchor's own. */
-        if (!StageAnchorWanted(Entry, FALSE) || !StageAnchorInsert(anchor)) StageAnchorDestroy(anchor);
+        if (Replaced || !StageAnchorWanted(Entry, FALSE) || !StageAnchorInsert(anchor)) StageAnchorDestroy(anchor);
         *Taken = NULL; *Handle = NULL; *Object = NULL;
         return;
     }
@@ -5938,6 +5960,44 @@ static VOID StageAnchorReleaseInstance(_In_ PFLT_INSTANCE Instance)
     }
 }
 
+_Use_decl_annotations_
+VOID SafeUploadStageWritersCloseAnchors(VOID)
+{
+    LIST_ENTRY release;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    NT_ASSERT(SafeUploadStageMandatoryTeardownActive());
+    InitializeListHead(&release);
+    FltAcquirePushLockExclusive(&StageAnchorLock);
+    while (!IsListEmpty(&StageAnchorList)) {
+        PLIST_ENTRY link = RemoveHeadList(&StageAnchorList);
+        --StageAnchorCount;
+        InsertTailList(&release, link);
+    }
+    FltReleasePushLock(&StageAnchorLock);
+    while (!IsListEmpty(&release))
+        StageAnchorDestroy(CONTAINING_RECORD(RemoveHeadList(&release), STAGE_ANCHOR, Link));
+    /* A worker-taken anchor is not in this list. Its end-visit observes the
+     * permanent gate and closes it; channel rundown joins the worker. Do not
+     * wait for an Ended witness: mandatory context cleanup invalidates it. */
+}
+
+_Use_decl_annotations_
+BOOLEAN SafeUploadStageWritersUnloadReady(VOID)
+{
+    BOOLEAN ready;
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    /* Conservative voluntary veto for original SOP histories/witnesses and
+     * reservations, including uncertain ones. Only normal exact retirement
+     * can remove them. No forced context deletion or Unknown reset here. The
+     * caller has fenced CREATE and checked preexisting admission epochs. */
+    FltAcquirePushLockShared(&RegistryLock);
+    ready = IsListEmpty(&RegistryEntries) && IsListEmpty(&RegistryReservations) &&
+        IsListEmpty(&TransactionAssociations) && IsListEmpty(&RegistryDirectoryRenames) &&
+        SafeUploadStageWritersOwnerCount() == 0 && SafeUploadStageWritersGlobalUnknown() == 0;
+    FltReleasePushLock(&RegistryLock);
+    return ready && StageRegistryUnknownSopCount() == 0;
+}
+
 /* Silent exits of the activation pass record the source line that left, so a stuck Activating entry names its blocker
  * (diagnostic row, never moves the registry snapshot sequence). */
 #define STAGE_ACT_EXIT() do { \
@@ -5956,30 +6016,30 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     PSTAGE_ANCHOR anchor = NULL;
     PSECTION_OBJECT_POINTERS sop = NULL;
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    PSAFEUPLOAD_STREAM_CONTEXT originalContext = NULL;
     PWCHAR nameSnapshot = NULL;
     UNICODE_STRING entryName = { 0 };
     USHORT nameSnapshotChars = 0;
     ULONG renameVersion = 0;
     ULONG transactionVersion = 0;
-    ULONG markerWorkBudget = SAFEUPLOAD_SCOPE_SCAN_PARENT_BUDGET;
     ULONGLONG sopMarkerGeneration = 0;
+    ULONGLONG originalSopGeneration = 0;
     LONG instanceUnknownReasons = 0;
-    BOOLEAN currentlyScoped, nameStillMatches, sopEmpty, userWritable;
-    BOOLEAN directoryRenameInFlight;
-    BOOLEAN markerWorkRemaining = FALSE;
-    BOOLEAN aliasProbe, transactionActive, noLinkNames = FALSE, unionLinkScoped = FALSE;
+    BOOLEAN currentlyScoped = FALSE, nameStillMatches = FALSE, sopEmpty = FALSE, userWritable = FALSE;
+    BOOLEAN directoryRenameInFlight = FALSE;
+    BOOLEAN aliasProbe = FALSE, transactionActive = FALSE, noLinkNames = FALSE, unionLinkScoped = FALSE;
     BOOLEAN currentLinkScoped = FALSE, aliasActivated = FALSE;
     BOOLEAN cacheFlushedAndPurged = FALSE;
+    BOOLEAN originalValidated = FALSE;
     BOOLEAN noNamesProvenByIdentity = FALSE;
-    BOOLEAN incarnationReplaced = FALSE;
     ULONG promoteFailed = 0;
-    ULONG currentGeneration;
+    ULONG currentGeneration = 0;
     ULONG promotionPolicyGeneration = 0;
     ULONG promotionPolicyFlags = 0;
-    STAGE_SCOPE_CLASSIFICATION_RECEIPT scopeReceipt;
+    STAGE_SCOPE_CLASSIFICATION_RECEIPT scopeReceipt = {0};
     UINT32 openFailureStep = SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OTHER;
-    UINT32 sectionCount;
-    NTSTATUS status;
+    UINT32 sectionCount = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
 
     PAGED_CODE();
     if (WorkBudget == NULL || *WorkBudget == 0) return;
@@ -6033,6 +6093,63 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     entryName.Buffer = nameSnapshot;
     entryName.Length = entryName.MaximumLength = (USHORT)(nameSnapshotChars * sizeof(WCHAR));
 
+    if (StageAnchorTake(Entry, &anchor)) {
+        /* The anchor's file object is the recorded stream as long as the entry still names that SOP. */
+        PFILE_OBJECT anchored = anchor->Object;
+        if (anchored != NULL && anchor->Instance == Instance && anchored->SectionObjectPointer != NULL &&
+            anchored->SectionObjectPointer == InterlockedCompareExchangePointer(
+                (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
+            handle = anchor->Handle;
+            object = anchored;
+            status = STATUS_SUCCESS;
+        } else {
+            StageAnchorDestroy(anchor);
+            anchor = NULL;
+        }
+    }
+    if (anchor == NULL)
+        status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
+            &openFailureStep, &noNamesProvenByIdentity, FALSE);
+    if (status == STATUS_FILE_INVALID || StageRegistryLifetimeEnded(Entry)) {
+        /* Context cleanup can lag the last CLOSE. Wait for that event; the
+         * reclaim worker retires ended history instead of promoting a new SOP
+         * on behalf of the old one. No new Unknown is inferred from that lag. */
+        StageRegistryRecordDeferral(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
+        goto Exit;
+    }
+    if (status == STATUS_RETRY) {
+        /* A rename started or finished during the exact-identity open: churn, not a failed identity. Its probe
+         * is pending; rescan after it (Luna gen3b P2). */
+        StageRegistryRecordDeferral(Entry, status, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
+        StageRegistryParkScopeScan(Entry);
+        goto Exit;
+    }
+    if (!NT_SUCCESS(status)) {
+        if (noNamesProvenByIdentity) {
+            StageRegistryRecordDeferral(Entry, STATUS_PENDING, openFailureStep);
+            goto Exit;
+        }
+        StageRegistryRecordClassificationResult(Entry, status, openFailureStep);
+        StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
+        InterlockedIncrement64(&RegistryChangeSequence);
+        goto Exit;
+    }
+    if (object == NULL || object->SectionObjectPointer == NULL || object->SectionObjectPointer !=
+        InterlockedCompareExchangePointer((PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
+        StageRegistryRecordClassificationResult(Entry, STATUS_FILE_INVALID,
+            SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OPEN_BY_ID);
+        StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
+        goto Exit;
+    }
+    sop = object->SectionObjectPointer;
+    status = FltGetStreamContext(Instance, object, (PFLT_CONTEXT *)&originalContext);
+    if (!NT_SUCCESS(status) || !StageRegistryOriginalContext(Entry, originalContext, sop)) {
+        StageRegistryRecordDeferral(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
+        goto Exit;
+    }
+    originalValidated = TRUE;
+    if (SafeUploadStageWritersOwnerCount() != 0) STAGE_ACT_EXIT();
+
     /* Hard-link names are classified at PASSIVE_LEVEL. New opens and writable
      * section creations already consult this policy union while the scan runs. */
     status = StageRegistryClassifyAllLinkNames(Entry, Instance, Volume, WorkBudget,
@@ -6084,81 +6201,6 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         goto Exit;
     }
 
-    if (StageAnchorTake(Entry, &anchor)) {
-        /* The anchor's file object is the recorded stream as long as the entry still names that SOP. */
-        PFILE_OBJECT anchored = anchor->Object;
-        if (anchored != NULL && anchor->Instance == Instance && anchored->SectionObjectPointer != NULL &&
-            anchored->SectionObjectPointer == InterlockedCompareExchangePointer(
-                (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
-            handle = anchor->Handle;
-            object = anchored;
-            status = STATUS_SUCCESS;
-        } else {
-            StageAnchorDestroy(anchor);
-            anchor = NULL;
-        }
-    }
-    if (anchor == NULL)
-        status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
-            &openFailureStep, &noNamesProvenByIdentity, FALSE);
-    if (status == STATUS_FILE_INVALID && !noNamesProvenByIdentity &&
-        StageRegistryEntryIsBaseStream(Entry) && StageRegistryEntryHoldsNoWriterState(Entry)) {
-        /* The exact-SOP open failed. If the same volume serial and file ID now open with a different
-         * section-object pointer, the recorded stream incarnation is gone: NTFS keeps one SCB per live
-         * stream and every handle, section or view keeps it alive (the rule
-         * StageRegistryAssociateSectionPointer rebinds on). A non-cached publication's SCB can be torn
-         * down before this pass (C01 latency l4c1: Unknown after round 62, later creates refused). Only a
-         * base data stream qualifies: a compact ADS is resolved by name hash and could reopen another stream.
-         * With no writer state left on the entry, nothing pre-scope can reach the stream through the old
-         * incarnation; S and the cache barrier below are evaluated on the live stream. Under RegistryLock
-         * and the state lock the CAS rechecks that the entry is still bound to the gone incarnation and
-         * that no other incarnation entry of this data stream (the live-SOP one included) holds writer state
-         * or an Unknown reason, so promotion means this stream is Free across its incarnations; named streams
-         * of the file are gated by their own rows. A later writable open through
-         * an out-of-scope hard link is refused at pre-create (SafeUploadStageCheckNamedAliases), and one
-         * through the protected name is staged. Reclaim then prunes the entry. Any other failure keeps the
-         * fail-closed path. */
-        status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
-            &openFailureStep, &noNamesProvenByIdentity, TRUE);
-        if (NT_SUCCESS(status) && object->SectionObjectPointer != NULL &&
-            object->SectionObjectPointer != InterlockedCompareExchangePointer(
-                (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
-            incarnationReplaced = TRUE;
-        } else if (NT_SUCCESS(status)) {
-            ObDereferenceObject(object); object = NULL;
-            FltClose(handle); handle = NULL;
-            status = STATUS_FILE_INVALID;
-        }
-    }
-    if (status == STATUS_RETRY) {
-        /* A rename started or finished during the exact-identity open: churn, not a failed identity. Its probe
-         * is pending; rescan after it (Luna gen3b P2). */
-        StageRegistryRecordDeferral(Entry, status, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
-        StageRegistryParkScopeScan(Entry);
-        goto Exit;
-    }
-    if (!NT_SUCCESS(status)) {
-        if (noNamesProvenByIdentity && Entry->Volume == Volume && Entry->VolumeSerial != 0) {
-            StageRegistryRecordClassificationResult(Entry, status,
-                openFailureStep);
-            if (StageRegistrySetLinkScopeClassificationVersioned(Entry, TRUE, FALSE,
-                    transactionVersion, &scopeReceipt))
-                InterlockedIncrement64(&RegistryChangeSequence);
-            STAGE_ACT_EXIT();
-        }
-        StageRegistryRecordClassificationResult(Entry, status, openFailureStep);
-        StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
-        InterlockedIncrement64(&RegistryChangeSequence);
-        goto Exit;
-    }
-    if (object == NULL || object->SectionObjectPointer == NULL || (!incarnationReplaced && object->SectionObjectPointer !=
-        InterlockedCompareExchangePointer((PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL))) {
-        StageRegistryRecordClassificationResult(Entry, STATUS_FILE_INVALID,
-            SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OPEN_BY_ID);
-        StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
-        goto Exit;
-    }
-    sop = object->SectionObjectPointer;
     status = FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&instanceContext);
     if (NT_SUCCESS(status)) {
         instanceUnknownReasons = InterlockedCompareExchange(&instanceContext->RegistryUnknownReasons, 0, 0);
@@ -6177,6 +6219,9 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) == 0 ||
         InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) !=
             SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) STAGE_ACT_EXIT();
+
+    originalSopGeneration = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);
+    if (SafeUploadStageWritersOwnerCount() != 0) STAGE_ACT_EXIT();
 
     /* Free(F) is a single observation behind the published gate. After the
      * last holder leaves, NTFS may retain clean or dirty cache pointers. The
@@ -6197,7 +6242,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
             InterlockedIncrement64(&RegistryChangeSequence);
     }
     sopEmpty = sop->DataSectionObject == NULL && sop->SharedCacheMap == NULL;
-    if (userWritable) STAGE_ACT_EXIT();
+    if (userWritable || !MmCanFileBeTruncated(sop, NULL)) STAGE_ACT_EXIT();
     if (!sopEmpty) {
         /* PASSIVE worker, identity/SOP checked, and no registry/state/section
          * lock held. Issue below this instance using NTFS's supported flush
@@ -6222,14 +6267,8 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
             SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE);
     }
 
-    /* Every live unknown marker holds this instance until exact quiescence and identity-safe retirement. */
-    if (!StageRegistryUnknownSopMarkersQuiescent(Instance, Volume, &markerWorkBudget,
-            &markerWorkRemaining, &sopMarkerGeneration)) {
-        if (markerWorkRemaining) {
-            InterlockedExchange(&RegistryReclaimInterest, 1);
-    InterlockedExchange(&Entry->ScopeScanPending, 1);
-            *MoreWork = TRUE;
-        }
+    /* Unknown markers are sticky; a bounded observation can only report them. */
+    if (!StageRegistryUnknownSopMarkersClear(Instance, &sopMarkerGeneration)) {
         StageRegistryRecordDeferral(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_MARKERS_LIVE);
         goto Exit;
     }
@@ -6247,7 +6286,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
-        userWritable ||
+        userWritable || !MmCanFileBeTruncated(sop, NULL) ||
         StageRegistrySnapshotSpilledWriters(Entry) != 0 ||
         StageRegistrySnapshotSpilledMutatingIo(Entry) != 0 ||
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0 ||
@@ -6262,12 +6301,11 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
          RtlEqualMemory(Entry->Name, nameSnapshot, nameSnapshotChars * sizeof(WCHAR)));
     currentGeneration = (ULONG)SafeUploadCurrentPolicyGeneration();
     sopEmpty = sop->DataSectionObject == NULL && sop->SharedCacheMap == NULL;
-    if ((ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0) ==
-            sopMarkerGeneration)
+    if (originalSopGeneration == sopMarkerGeneration &&
+        (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0) == sopMarkerGeneration)
         promoteFailed = StageRegistryTryPromoteEntry(Entry, nameStillMatches, nameSnapshotChars,
             renameVersion, currentGeneration, sopEmpty, sopMarkerGeneration,
-            promotionPolicyGeneration, promotionPolicyFlags, cacheFlushedAndPurged,
-            incarnationReplaced ? sop : NULL);
+            promotionPolicyGeneration, promotionPolicyFlags, cacheFlushedAndPurged);
     else
         promoteFailed = SAFEUPLOAD_PROMOTE_FAIL_SOP_MAP_MOVED;
     FltReleasePushLock(&RegistryLock);
@@ -6279,7 +6317,8 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
 Exit:
     if (nameSnapshot != NULL) ExFreePoolWithTag(nameSnapshot, SAFEUPLOAD_REGISTRY_POOL_TAG);
     /* Keeps the visit's handle as the entry's anchor while it waits with a live writer; closes it otherwise. */
-    StageAnchorEndVisit(Entry, Instance, &anchor, &handle, &object, incarnationReplaced);
+    StageAnchorEndVisit(Entry, Instance, &anchor, &handle, &object, !originalValidated);
+    if (originalContext != NULL) FltReleaseContext(originalContext);
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
 }
@@ -6416,6 +6455,7 @@ static BOOLEAN StageRegistryQueueEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, 
 static BOOLEAN StageRegistryQueueReclaimWorkItem(VOID)
 {
     PFLT_GENERIC_WORKITEM item;
+    if (SafeUploadStageMandatoryTeardownActive()) return FALSE;
     if (!ExAcquireRundownProtection(&SafeUploadData.ChannelRundown)) return FALSE;
     item = FltAllocateGenericWorkItem();
     if (item == NULL || !NT_SUCCESS(FltQueueGenericWorkItem(item, SafeUploadData.Filter,
@@ -6552,11 +6592,12 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
             PFLT_VOLUME entryVolume = NULL;
             PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
             BOOLEAN pruned = FALSE;
+            ULONGLONG evidenceSequence = 0;
             BOOLEAN activationCandidate = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) ==
                 SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
                 InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0;
             BOOLEAN promotedThisPass = FALSE;
-            if (activationCandidate) {
+            if (activationCandidate && !StageRegistryLifetimeEnded(entry)) {
                 if (workBudget != 0)
                     StageRegistryActivationProcess(entry, instances[index], volumes[index], &workBudget, &moreWork);
                 else {
@@ -6576,17 +6617,18 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
             }
             /* The check runs without the lock; a new writer in between needs a handle, which raises H or binds a
              * reservation, and the locked re-check below refuses the prune. */
-            if (!promotedThisPass && InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) !=
-                SAFEUPLOAD_REGISTRY_STATE_ACTIVATING &&
-                InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) == 0 &&
-                InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) == 0 &&
-                StageRegistryEntryQuiescent(entry, instances[index], volumes[index], &streamContext)) {
+            if (!promotedThisPass && (StageRegistryLifetimeEnded(entry) ||
+                (InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) != SAFEUPLOAD_REGISTRY_STATE_ACTIVATING &&
+                 InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) == 0 &&
+                 InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) == 0)) &&
+                StageRegistryEntryQuiescent(entry, instances[index], volumes[index], &streamContext, &evidenceSequence)) {
                 FltAcquirePushLockExclusive(&RegistryLock);
-                pruned = StageRegistryPruneLocked(entry, &mapReference, &entryInstance, &entryVolume);
+                pruned = StageRegistryPruneLocked(entry, evidenceSequence, &mapReference, &entryInstance, &entryVolume);
                 FltReleasePushLock(&RegistryLock);
             }
             if (pruned) {
                 InterlockedIncrement64(&RegistryPruned);
+                if (StageRegistryTakeWriterReleaseWake(entry)) SafeUploadStageWritersQueueRecheck();
                 if (streamContext != NULL) StageWritersReleasePrunedCache(streamContext, entry);
                 if (entryVolume != NULL) FltObjectDereference(entryVolume);
                 if (entryInstance != NULL) FltObjectDereference(entryInstance);
@@ -6716,6 +6758,7 @@ VOID SafeUploadStageWritersInitialize(VOID)
 {
     ULONG index;
     KeInitializeSpinLock(&SectionLock);
+    InterlockedExchange(&RegistryLifetimeOwners, 0);
     KeInitializeSpinLock(&RegistryCompactPoolLock);
     FltInitializePushLock(&RegistryLock);
     FltInitializePushLock(&StageAnchorLock);
@@ -6856,6 +6899,7 @@ __declspec(noinline) NTSTATUS SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_
         slot->SectionObjectPointer = sop;
         slot->Time = now;
         slot->Sequence = ++SectionSequence;
+        InterlockedIncrement64(&RegistryChangeSequence);
         slot->Writable = writable;
         sopMap = StageRegistryFindSopSlotLocked(sop, &sopMapFound);
         if (sopMapFound && sopMap != NULL && sopMap->Entry != NULL) {
@@ -6873,7 +6917,6 @@ __declspec(noinline) NTSTATUS SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_
             SectionInserted += 1;
             SectionNow += 1;
             if (SectionNow > SectionMaxDepth) SectionMaxDepth = SectionNow;
-            InterlockedIncrement64(&RegistryChangeSequence);
         }
         record = slot;
         break;
@@ -6906,8 +6949,8 @@ static PSTAGE_REGISTRY_ENTRY StageSectionRemoveSlot(_Inout_ STAGE_SECTION_SLOT *
         if (SectionNow != 0) SectionNow -= 1;
         if (Failed) SectionRemovedOnFailure += 1;
         else SectionReleased += 1;
-        InterlockedIncrement64(&RegistryChangeSequence);
     }
+    InterlockedIncrement64(&RegistryChangeSequence);
     RtlZeroMemory(Slot, sizeof(*Slot));
     return entry;
 }
@@ -7135,14 +7178,23 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryReferenceStreamEntry(_In_ PFLT_INSTANC
 {
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
     PSTAGE_REGISTRY_ENTRY entry = StageRegistryReferenceSop(FileObject->SectionObjectPointer);
-    if (entry == NULL && NT_SUCCESS(FltGetStreamContext(Instance, FileObject, (PFLT_CONTEXT *)&streamContext))) {
-        KIRQL irql;
-        StageAcquireSpinLock(&streamContext->WriterLock, &irql);
-        entry = (PSTAGE_REGISTRY_ENTRY)InterlockedCompareExchangePointer(
-            (PVOID volatile *)&streamContext->WriterRegistryEntry, NULL, NULL);
-        if (entry != NULL) StageRegistryReference(entry);
-        StageReleaseSpinLock(&streamContext->WriterLock, irql);
+    if (NT_SUCCESS(FltGetStreamContext(Instance, FileObject, (PFLT_CONTEXT *)&streamContext))) {
+        if (entry == NULL) {
+            KIRQL irql = PASSIVE_LEVEL;
+            StageAcquireSpinLock(&streamContext->WriterLock, &irql);
+            entry = (PSTAGE_REGISTRY_ENTRY)InterlockedCompareExchangePointer(
+                &streamContext->WriterRegistryEntry, NULL, NULL);
+            if (entry != NULL) StageRegistryReference(entry);
+            StageReleaseSpinLock(&streamContext->WriterLock, irql);
+        }
+        if (entry != NULL && !StageRegistryOriginalContext(entry, streamContext, FileObject->SectionObjectPointer)) {
+            StageRegistryDereference(entry);
+            entry = NULL;
+        }
         FltReleaseContext(streamContext);
+    } else {
+        StageRegistryDereference(entry);
+        entry = NULL;
     }
     return entry;
 }
@@ -7241,6 +7293,16 @@ BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
                 SafeUploadPolicyScopeTransitionActive()) &&
             SafeUploadPolicyMayMatchInstanceVolume(Instance);
     }
+
+    streamContext = NULL;
+    if (!NT_SUCCESS(FltGetStreamContext(Instance, FileObject, (PFLT_CONTEXT *)&streamContext)) ||
+        !StageRegistryOriginalContext(entry, streamContext, sectionObjectPointer)) {
+        if (streamContext != NULL) FltReleaseContext(streamContext);
+        StageRegistryDereference(entry);
+        return SafeUploadPolicyMayMatchInstanceVolume(Instance);
+    }
+    FltReleaseContext(streamContext);
+    streamContext = NULL;
 
     /* This path runs in paging and section-synchronization callbacks. Keep its
      * bounded name snapshot off the kernel stack and nonpaged so it remains
@@ -7759,6 +7821,7 @@ NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
     UINT32 entries = 0, notReady = 0, unknownEntries = 0;
     UINT32 globalBefore, globalAfter;
     UINT64 startSequence, endSequence;
+    LONG owners = 0;
     PAGED_CODE();
     if (RegistrySequenceStart == NULL || RegistrySequenceEnd == NULL || WriterEntries == NULL ||
         WriterEntriesNotReady == NULL || WriterEntriesUnknown == NULL || GlobalUnknown == NULL)
@@ -7771,9 +7834,18 @@ NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
         entries += RegistryReservationCount;
         notReady += RegistryReservationCount;
     }
+    unknownEntries = StageRegistryUnknownSopCount();
+    entries += unknownEntries;
+    notReady += unknownEntries;
+    owners = SafeUploadStageWritersOwnerCount();
+    if (owners > 0) {
+        entries += (UINT32)owners;
+        notReady += (UINT32)owners;
+    }
     for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
         PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
         STAGE_ACTIVATING_LOCKED_SNAPSHOT snapshot;
+        PSTAGE_SOP_LIFETIME lifetime = StageRegistryLifetime(entry);
         ULONG unknown, scanPending, aliasPending, renameInFlight;
         if (entry->Retired || !entry->Listed) continue;
         aliasPending = (ULONG)InterlockedCompareExchange(&entry->AliasProbePending, 0, 0);
@@ -7789,7 +7861,9 @@ NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
             ++unknownEntries;
         } else if (aliasPending != 0 || renameInFlight != 0) {
             ++notReady;
-        } else if (snapshot.State != SAFEUPLOAD_REGISTRY_STATE_PROTECTED ||
+        } else if (lifetime == NULL || StageRegistryLifetimeEnded(entry) ||
+            InterlockedCompareExchange(&lifetime->Invalid, 0, 0) != 0 ||
+            snapshot.State != SAFEUPLOAD_REGISTRY_STATE_PROTECTED ||
             snapshot.Generation != PolicyGeneration || scanPending != 0 ||
             aliasPending != 0 || renameInFlight != 0) {
             ++notReady;

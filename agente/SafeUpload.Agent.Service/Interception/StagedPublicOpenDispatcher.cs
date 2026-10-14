@@ -1,5 +1,6 @@
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
 using SafeUpload.Agent.Minifilter;
+using SafeUpload.Agent.Core.Contracts;
 using PortVerdict = SafeUpload.Agent.Minifilter.Verdict;
 
 namespace SafeUpload.Agent.Service.Interception;
@@ -29,12 +30,120 @@ internal sealed class StagedPublicOpenDispatcher : IDisposable
     private readonly Func<NativeNameObservationRequest, NativeNameObservation> _observe;
     private readonly Func<NativeRecordReplayRow, string> _locator;
     private readonly Action<NativeRecordReplayRow> _checkCreator;
+    private readonly Action<StagedDestinationHead, StagedPublicRelayReceipt, StagedRecoveryAdvice, string>? _reportUnresolved;
     private bool _disposed;
 
     internal StagedPublicOpenDispatcher(StagedTransferJournal journal, Func<PublicOpenReplay> read,
         Func<NativeNameObservationRequest, NativeNameObservation> observe,
-        Func<NativeRecordReplayRow, string> locator, Action<NativeRecordReplayRow> checkCreator)
-        => (_journal, _read, _observe, _locator, _checkCreator) = (journal, read, observe, locator, checkCreator);
+        Func<NativeRecordReplayRow, string> locator, Action<NativeRecordReplayRow> checkCreator,
+        Action<StagedDestinationHead, StagedPublicRelayReceipt, StagedRecoveryAdvice, string>? reportUnresolved = null)
+        => (_journal, _read, _observe, _locator, _checkCreator, _reportUnresolved) =
+            (journal, read, observe, locator, checkCreator, reportUnresolved);
+
+    // Startup performs only Facts processing, never a prepare/forward. The
+    // kernel worker delivers the typed ACK after readiness negotiation. Lost
+    // removal replies are recovered from the later complete authenticated map.
+    internal async Task ReconcileStartupAsync(CancellationToken token)
+    {
+        var replay = _read();
+        foreach (var row in replay.Records)
+        {
+            if (row.OperationSequence != 0 && (row.OperationFacts &
+                (PublicOperationFacts.ResultKnown | PublicOperationFacts.NotForwarded)) == 0)
+                continue; // exact intent remains held; no result is manufactured
+            var request = new PublicDispositionRequestV25
+            {
+                Version = 25, StructSize = 80, Phase = row.OperationSequence == 0
+                    ? PublicDispositionV25.OpenFacts : PublicDispositionV25.DispositionFacts,
+                OpenNonce = row.Open.RequestNonce, OperationId = row.OperationSequence == 0
+                    ? row.Open.OperationId : row.MutationOperationId,
+                MutationNonce = row.OperationSequence == 0 ? Guid.Empty : row.MutationNonce,
+                OperationSequence = row.OperationSequence, NativeMapRevision = replay.Revision
+            };
+            await ProcessAsync(request, row.OperationSequence == 0 ? row.Open.CallerProcessId : row.ActorProcessId,
+                replay.DriverInstanceId, token).ConfigureAwait(false);
+        }
+        var heads = await _journal.ReadDestinationHeadsAsync(token).ConfigureAwait(false);
+        foreach (var head in heads)
+        foreach (var group in (head.PublicRelayReceipts ?? []).GroupBy(r => r.Original.OpenNonce))
+        {
+            if (replay.Records.Any(r => r.Open.RequestNonce == group.Key)) continue;
+            var first = group.First();
+            if (first.Binding.DriverInstanceId != replay.DriverInstanceId)
+            {
+                if (group.All(r => r.Binding.OsBootSequence is { } boot && replay.OsBootSequence > boot &&
+                    r.Binding.MountManagerVolumeId == head.Destination.MountManagerVolumeId) &&
+                    head.Destination.MountManagerVolumeId is { } volume)
+                    await ReconcileRestartAsync(head, first, replay, volume, token).ConfigureAwait(false);
+                continue;
+            }
+            if (group.Any(r => r.NativeStatus is null || r.AcknowledgedRevision is null ||
+                    r.CleanupAcknowledgementRevision is null)) continue;
+            var request = new PublicDispositionRequestV25 { Version = 25, StructSize = 80,
+                Phase = PublicDispositionV25.OpenFacts, OpenNonce = group.Key,
+                OperationId = first.Original.OpenOperationId, NativeMapRevision = replay.Revision };
+            await ConfirmRemovedOpenAsync(request, checked((uint)first.Original.OpenProcessId), replay, token).ConfigureAwait(false);
+        }
+        await ReportHoldsAsync(replay, token).ConfigureAwait(false);
+    }
+
+    private async Task ReportHoldsAsync(PublicOpenReplay replay, CancellationToken token)
+    {
+        if (_reportUnresolved is null) return;
+        foreach (var head in await _journal.ReadDestinationHeadsAsync(token).ConfigureAwait(false))
+        foreach (var receipt in head.PublicRelayReceipts ?? [])
+        {
+            if (receipt.NativeStatus is not null && !head.Deletes.Any(d => d.Binding == receipt.Binding &&
+                d.State is StagedPublicDeleteState.Intent or StagedPublicDeleteState.Accepted)) continue;
+            var row = replay.Records.SingleOrDefault(r => r.Open.RequestNonce == receipt.Original.OpenNonce);
+            bool lost = row?.Open.Facts.HasFlag(NativeRecordFacts.CleanupCoverageLost) == true ||
+                row is null && (receipt.Binding.OsBootSequence is not { } boot || replay.OsBootSequence <= boot);
+            var advice = head.Destination.MountManagerVolumeId is null || receipt.Binding.MountManagerVolumeId is null
+                ? StagedRecoveryAdvice.CollectDiagnostics : lost ? StagedRecoveryAdvice.RestartWindows : row is not null &&
+                !row.Open.Facts.HasFlag(NativeRecordFacts.LastHandleCleanedUp)
+                    ? StagedRecoveryAdvice.CloseApplication : StagedRecoveryAdvice.CollectDiagnostics;
+            _reportUnresolved(head, receipt, advice, lost ? "PublicCleanupCoverageLost" :
+                receipt.NativeStatus is null ? "PublicDispositionOutcomeUnresolved" : "PublicOriginalLinkPending");
+        }
+    }
+
+    private async Task ReconcileRestartAsync(StagedDestinationHead head, StagedPublicRelayReceipt receipt,
+        PublicOpenReplay replay, Guid volume, CancellationToken token)
+    {
+        using var turn = await _journal.EnterDestinationCommitTurnAsync(head.Destination,
+            StagedDestinationTurnPurpose.Reconciliation, token).ConfigureAwait(false);
+        var request = new PublicDispositionRequestV25 { Version = 25, StructSize = 80, Phase = PublicDispositionV25.OpenFacts,
+            OpenNonce = receipt.Original.OpenNonce, OperationId = receipt.Original.OpenOperationId, NativeMapRevision = replay.Revision };
+        RequireSameReplay(request, replay);
+        var session = new StagedNativeRecoverySession(replay.DriverInstanceId, replay.ConnectionEpoch, replay.OsBootSequence);
+        try
+        {
+            var proof = session.ReconcileReplay(replay.DriverInstanceId, replay.ConnectionEpoch, true, true,
+                replay.Records.Select(row => new StagedNativeRecordReplay(StagedNativeStartupRecovery.Binding(row.Open),
+                    row.Open.OperationId, row.Open.Facts.HasFlag(NativeRecordFacts.LastHandleCleanedUp),
+                    row.Open.Facts.HasFlag(NativeRecordFacts.CancelledBeforeHandle),
+                    row.Open.Facts.HasFlag(NativeRecordFacts.CancelledCloseObserved))).ToArray(), replay.Revision);
+            var expected = new NativeNameObservationRequest(replay.DriverInstanceId, replay.ConnectionEpoch, replay.Revision,
+                replay.OsBootSequence, volume, Wire(head.Destination.VolumeRoot), Wire(head.Destination.Parent),
+                head.Destination.CaseSensitive, head.Destination.CanonicalLeaf);
+            NativeNameObservation observed;
+            try { observed = _observe(expected); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            {
+                RequireSameReplay(request, replay);
+                _reportUnresolved?.Invoke(head, receipt, StagedRecoveryAdvice.CollectDiagnostics,
+                    "PublicAnchoredReconciliationUnresolved");
+                return;
+            }
+            if (observed.Binding != expected) throw new IOException("Ordinary restart observation changed replay binding.");
+            RequireSameReplay(request, replay);
+            await _journal.ReconcilePublicRelayRestartAsync(turn, receipt.Original.OpenNonce, replay.DriverInstanceId, proof,
+                new(head.Destination, head.Destination.Parent, head.Destination.Parent, true,
+                    observed.ChildIdentity is { } child ? Identity(child) : null), token).ConfigureAwait(false);
+            RequireSameReplay(request, replay);
+        }
+        finally { session.Invalidate(); }
+    }
 
     internal async Task<PublicDispositionReplyV25> ProcessAsync(PublicDispositionRequestV25 request,
         uint pid, Guid driver, CancellationToken token)
@@ -125,7 +234,10 @@ internal sealed class StagedPublicOpenDispatcher : IDisposable
             RequireSameReplay(request, replay);
             cell.Turn?.Dispose(); cell.Turn = null;
             if (!await ReconcileOpenReceiptsAsync(row, replay, destination, token).ConfigureAwait(false))
+            {
+                await ReportHoldsAsync(replay, token).ConfigureAwait(false);
                 return Reply(request, row.PublishedGeneration, row.PublishedIdentity, PublicDispositionV25.Progress);
+            }
             RequireSameReplay(request, replay);
             cell.Terminal = row.Open.Facts.HasFlag(NativeRecordFacts.LastHandleCleanedUp) ||
                 row.Open.Facts.HasFlag(NativeRecordFacts.CancelledBeforeHandle) ||
@@ -163,7 +275,8 @@ internal sealed class StagedPublicOpenDispatcher : IDisposable
         var original = new StagedPublicRelayIntent(row.Open.TransferId, row.Open.RequestNonce, row.Open.OperationId,
             row.OperationSequence, checked((long)row.PublishedGeneration),
             row.PublishedGeneration == 0 ? null : Identity(row.PublishedIdentity),
-            row.InformationClass, row.DispositionFlags, row.RequestorMode, row.GrantedAccess, checked((int)row.Open.CallerProcessId));
+            row.InformationClass, row.DispositionFlags, row.RequestorMode, row.GrantedAccess, checked((int)row.Open.CallerProcessId),
+            row.OperationFacts.HasFlag(PublicOperationFacts.CombinedBackend));
         if (cell.Turn is not null)
         {
             if (cell.Original is not { } opened || !SameOriginal(opened, row.Open) ||
@@ -183,7 +296,8 @@ internal sealed class StagedPublicOpenDispatcher : IDisposable
         RequireSameReplay(request, replay);
         if (request.Phase == PublicDispositionV25.DispositionPrepare)
         {
-            if ((row.OperationFacts & ~PublicOperationFacts.CleanupOutstanding) != PublicOperationFacts.Captured || row.MutationGeneration != 0)
+            if ((row.OperationFacts & ~(PublicOperationFacts.CleanupOutstanding | PublicOperationFacts.CombinedBackend)) !=
+                PublicOperationFacts.Captured || row.MutationGeneration != 0)
                 throw new IOException("Disposition preparation has already left capture.");
             var expected = new NativeNameObservationRequest(replay.DriverInstanceId, replay.ConnectionEpoch,
                 replay.Revision, replay.OsBootSequence, row.Open.MountManagerVolumeId, row.Open.VolumeRootIdentity,
@@ -282,6 +396,10 @@ internal sealed class StagedPublicOpenDispatcher : IDisposable
             .Where(p => p.Receipts.Length != 0).ToArray();
         if (matches.Length != 1) throw new IOException("Absent ordinary open has no exact retained cleanup receipt.");
         var saved = matches[0];
+        if (saved.Receipts.Any(receipt => replay.ConnectionEpoch < receipt.Binding.ConnectionEpoch ||
+                replay.Records.Any(row => row.Open.TransferId == receipt.Original.OpenTransferId ||
+                    row.Open.RequestNonce == receipt.Original.OpenNonce || row.Open.OperationId == receipt.Original.OpenOperationId)))
+            throw new IOException("Ordinary receipt retirement requires exact original-open absence on the current channel.");
         using var turn = await _journal.EnterDestinationCommitTurnAsync(saved.Head.Destination,
             StagedDestinationTurnPurpose.Reconciliation, token).ConfigureAwait(false);
         RequireSameReplay(request, replay);
@@ -365,6 +483,7 @@ public sealed partial class MinifilterInterceptor
         }
         catch (Exception error)
         {
+            _boundReadiness.Invalidate(StagedBoundBlocker.UnresolvedPrerequisite);
             _logger.LogWarning(error, "Ordinary public request {RequestId} could not acquire authority.", request.RequestId);
             try { port.Reply(messageId, request.RequestId, PortVerdict.Deny); }
             catch (Exception replyError) { _logger.LogWarning(replyError, "Ordinary denial delivery failed."); }

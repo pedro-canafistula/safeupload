@@ -1115,3 +1115,92 @@ Verification for this draft is source/diff inspection only. No build, test execu
 The orchestrator still owns four WDK Debug/Release × normal/feature builds with PREfast/ApiValidator at zero warnings/errors and
 the complete agent matrix. Independent integrated kernel lifetime review and the owner's product-run release remain required
 before a revised protected boot; the T4 stop is unchanged.
+
+
+## Implementation note — increment 8
+
+2026-10-13, working tree `wt/t5-inc8`, base `017955abcf110ff1daaa916eb4598c2f24b83b5d`.
+No commit, build, test execution or VM boot was performed. The orchestrator owns the normal/feature × Debug/Release
+WDK builds with PREfast/ApiValidator at 0 warnings/errors and the agent matrix. Source inspection and `git diff --check`
+are the local checks; the tests below are added controls, not execution or protected-pair evidence.
+
+`StagedNativeStartupRecovery.PrepareAsync` now invokes `StagedNativeRecoveryDispatcher` when the authenticated observation
+transport is present. The dispatcher reconciles full CREATE facts against the durable intent, obtains lifetime proof from
+that connection's complete replay, enters the existing reconciliation turn, and requests control-31 observation of the exact
+mount GUID/root/parent/case/leaf. It rechecks the same driver/connection/boot/revision and rows around the observation and pass.
+A changed replay fails the pass. Missing transport retains the prior fail-closed startup guard. A completed pass may leave an
+explicit per-name hold and owner-scoped guidance; accepting an epoch is not permission to publish to that held destination.
+`_stageBoundHeadReady` still has no true assignment. No new persisted state, protocol version or public mutation was added.
+
+The original CLEANUP/cancelled-CLOSE facts remain the only same-driver positive lifetime evidence. The new
+`SafeUploadStageNativeNameChanged` only advances the native-map observation revision and wakes its existing bounded worker
+when the instance has a retained cleanup obligation. Non-draining directory-notify completion, external SET_INFORMATION and
+independent-reader CLEANUP trigger it; the original record's own CLEANUP still uses its existing callback. Successful V26 rename
+also supplies a wake after releasing the publication lock. Service metadata/private I/O is excluded from generic wakes to avoid
+an observer-close/replay feedback loop. Notifications own no FILE_OBJECT, handle, instance pin, timer or extra work item; their
+nonpaged callback has no wait, allocation, namespace lock or RPC. The existing worker obtains fresh complete replay and anchored
+observation through the V24/V25 continuation. A notify completion or unrelated reader close does not change any lifetime fact.
+An original still delete-pending stays scheduled until a subsequent event proves absence or exact newer publication.
+
+`StagedPublicOpenDispatcher.ReconcileStartupAsync` processes retained ordinary disposition results and cleanup receipts without
+prepare/forwarding, including lost slot/removal replies. A qualified full Restart can reconcile an old ordinary record only with
+its durable native result and exact anchored observation; missing disposition outcome remains held. Same-driver absence requires
+the later ACK/cleanup revisions. The scheduled-native startup dispatcher uses the existing greater-boot/different-driver/complete
+replay proof; a new GUID, service restart, Fast Startup, timer, PID or clock alone cannot discharge forced-instance loss. The
+fixed-NTFS observer remains the scope gate. USB/remote recovery is not implemented. Unreadable anchors, unexpected replacements
+and lost evidence remain held with named diagnostics and owner/session/SID-scoped tray guidance; no manual clear is offered.
+
+`RecoverBoundReceiptsAsync` enumerates destination attempts independently of manifest state. Startup and the existing publication
+worker therefore continue V26 bookkeeping for Publishing, Released and Retained, including pre-rename and failed-CREATE attempts.
+`ReconcilePublishingAsync` requires an explicit bound dispatcher for those records; normal services retain the refusal. Exact
+accepted Facts plus anchored temporary-ID observation finish an interrupted PendingCommit; the replay is checked again after
+observation. Already-Published durable heads finish a lost Released write even if the original map is gone, without implying
+cleanup. ACK is armed durably after terminal local facts and result persistence, and storage retires only on later complete,
+greater-revision authenticated absence of the exact attempt. New-driver/unknown cleanup remains retained. Recovery never issues
+CREATE, rename, disposition, orphan-path deletion or a mutation permit. The existing worker's backoff retries bookkeeping only;
+it does not supply lifetime evidence. The V26 transport is rebound per connection after previous work drains.
+
+| Durable evidence | Recovery state / permitted action |
+| --- | --- |
+| AcceptedUnresolved, original lifetime live/unproved | Keep name held; close-app guidance, or full Restart for forced fixed-NTFS coverage loss |
+| Exact original cleanup/cancellation or qualified Restart; anchored original present | Downgrade exceptional native hold to Admitted; keep generation floor and cleanup receipt; never Complete/ACK from presence |
+| Same lifetime proof; anchored absence | Complete scheduled deletion, advance committed-delete floor, arm ACK; retain receipt until later removal proof |
+| Exact newer durable Published identity | Superseded under existing generation/identity rules; pending/blocked successors have no effect |
+| Unknown ordinary disposition result | Keep PendingCommit and named hold, including across a qualified Restart |
+| Bound PendingCommit and exact accepted native rename Facts | Recheck anchored object and replay; persist Facts → Published → Released; never rename again |
+| Already-Published bound head, lost Released write | Finish manifest bookkeeping; retain unresolved cleanup independently |
+| Failed/never-forwarded bound operation with terminal cleanup | Persist Retained and exact ACK fields; never repeat its native mutation |
+| ACK reply lost or driver removal reply lost | Repeat only exact bookkeeping/ACK while record exists; retire after later authenticated absence (native full-Restart exception as above) |
+| Unknown result, changed anchor/replay, unproved cleanup | Retain private bytes/receipt and applicable barrier, with diagnostics; no inferred success |
+
+Feature seal handling now uses the connection-owned `StagedRequestContinuations` rather than blocking the receive loop on journal
+or stage I/O. It validates the captured driver and cancellation before replying. Connection shutdown cancels/joins both startup
+and continuations before disposing the ordinary dispatcher or port. Compaction pins pending commits, native delete bindings,
+ordinary mutation/original-open bindings, V26 attempts/receipts and private cancellations, then applies the existing manifest,
+seed/predecessor and security-reference closure. ACK arming alone never removes those roots; generation floors remain in the head. Native retirement also requires the supplied
+ACK revision to equal its durable value; the existing terminal-unlink test now explicitly arms that receipt before checking
+same-revision rejection and later removal, preserving every assertion.
+
+Added component controls (all unexecuted):
+
+| Required case | Controls |
+| --- | --- |
+| Native startup durable boundaries | `StagedIncrement8RecoveryTests`: result, hold release, Complete, ACK-armed, retired; fresh startup/journal after each injected crash |
+| Live last-close, original delete-pending, directory change, lost removal reply | `Startup_live_original_then_last_close_then_directory_change_keeps_distinct_receipts`; existing V24 lifecycle tests remain |
+| Forced-instance / full Restart / same boot / rollback | `Forced_instance_requires_exact_cleanup_or_qualified_full_restart`; original present and unknown ordinary result in `Ordinary_forced_instance_recovery_requires_known_result_boot_proof_and_anchored_absence` |
+| Stale/unreadable/replaced observation and retired native replay | `Startup_observation_failure_or_changed_revision_never_releases_the_name`; `Retired_native_receipt_cannot_be_recreated_by_old_forwarded_facts`; `Native_retirement_requires_the_persisted_ack_revision_not_a_caller_supplied_floor` |
+| V26 Retained / ACK persistence / removal crashes and lost ACK | `StagedIncrement8PublicationTests`: three durable-boundary cases and Released/failed-CREATE/failed-rename startup-worker cases; unchanged mutation counters |
+| Published before Released with driver loss; revision changes during observation | `Durable_published_head_finishes_released_after_driver_loss_without_retiring_unproved_cleanup`; `Recovery_rechecks_authenticated_facts_after_anchored_observation` |
+| Retired V26 replay / compaction | `Retired_publication_facts_cannot_resurrect_an_attempt_or_mutation`; `Outstanding_ordinary_open_receipt_pins_its_original_manifest_and_security_after_publication_retirement`; existing outstanding-V26/ancestry controls |
+| Ordinary startup/slot/cleanup ACK loss and receive-loop independence | `StagedIncrement8PublicOpenTests`: exact original pending/absent progression and continuation cancellation/join control |
+
+The existing increment-6 13-boundary reply-loss/crash matrix and increment-7 disposition/cancellation controls remain required.
+Synthetic component facts do not prove callback delivery, native security equivalence, actual NTFS pending-link behavior or
+protected lifetime. The orchestrator must retain all matrix/build failures; the coherent Sol 6.1 xhigh lifetime review still
+precedes the first authorized revised VM boot, which remains prohibited in this task.
+
+Increment 9 must prove original SOP lifetime and changed-incarnation retirement in StageWriters/StageAdmission with all
+reference/section/accounting obligations preserved and sticky Unknown unchanged. Increment 10 must finish service-independent
+mandatory fencing/port wake/local drain/join, voluntary veto closure, and readiness composition/invalidation for the complete
+negotiated recovery path. It must preserve named unresolved holds and uncertain publication/private residue. Descriptor/coherent
+seed prerequisites and the protected three-mode/raw-observer/restoration gates remain separate qualification requirements.

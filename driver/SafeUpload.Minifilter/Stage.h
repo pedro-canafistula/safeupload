@@ -5,6 +5,11 @@
 #include "StageBoundAllocation.h"
 #include "StageNativeWire.h"
 #include "StagePublicRelay.h"
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageCancelPrivate(_In_ const SAFEUPLOAD_PRIVATE_CANCEL_REQUEST *Request,
+    _Out_ PSAFEUPLOAD_PRIVATE_CANCEL_REPLY Reply);
+#endif
 
 NTSTATUS SafeUploadStageInitialize(VOID);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -249,6 +254,17 @@ _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStageAdmissionBeginTeardown(VOID);
 
 /* StageWriters.c: bounded writer-history ledger and activation state. */
+/* Count before acquiring references/forwarding; release after final local drain.
+ * These resident hooks serialize with SOP retirement, not with service ACKs. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID SafeUploadStageWritersOwnerAcquire(VOID);
+_IRQL_requires_max_(APC_LEVEL)
+VOID SafeUploadStageWritersOwnerRelease(VOID);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+LONG SafeUploadStageWritersOwnerCount(VOID);
+_IRQL_requires_max_(APC_LEVEL)
+VOID SafeUploadStageWritersInvalidateLifetime(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Context);
+
 #define SAFEUPLOAD_WRITERS_ONLY_CONTEXT ((PVOID)(ULONG_PTR)0x1000)
 BOOLEAN SafeUploadStageWritersWantPostCreate(_In_ PFLT_CALLBACK_DATA Data);
 NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
@@ -349,6 +365,10 @@ BOOLEAN SafeUploadStageWritersAdmissionCoverageCurrent(
 UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject);
 /* C(F): writable CreateSections acquired and not yet released (observe-only). */
 VOID SafeUploadStageWritersInitialize(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageWritersCloseAnchors(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+BOOLEAN SafeUploadStageWritersUnloadReady(VOID);
 _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersUninitialize(VOID);
 _IRQL_requires_max_(APC_LEVEL)

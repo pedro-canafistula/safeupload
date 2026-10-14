@@ -1,0 +1,38 @@
+﻿LABEL=t5-top1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=923dca3ef45f14a9111a7d23c3b97b05aa807326
+ARCHIVE_SHA256=135FFFAEE6B3D1C317F3C1130D1728DC69D20D482F2064CC20C60ED849C8A5C9
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-debug-tests-user: exit=0 warnings=0 errors=0
+normal-debug-tests-system-identity: S-1-5-18
+normal-debug-tests-system: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=1453
+normal-release: admission_evidence=false
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-app-build: exit=0 warnings=0 errors=0
+normal-release-test-build: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-release-tests-user: exit=0 warnings=0 errors=0
+normal-release-tests-system-identity: S-1-5-18
+normal-release-tests-system: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=1453
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_manifest_sha256=E7EDEB64FD3529205993FBCB73A0F8DA6C0622DF6011F30620997F3FCCC05625
+normal-release: package_sha256=DC8044CD978EA1CD09D1845442898F537EAA0BC656F507AA78F2F3780BD8CF5B
+normal-release: exe_sha256=1BC3108B3E1920D86769D8876362556BB9F2412D1A47E0C80D6F67F9850DEAB5
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=1 warnings=0 errors=2
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-14T01:25:21.3179335Z

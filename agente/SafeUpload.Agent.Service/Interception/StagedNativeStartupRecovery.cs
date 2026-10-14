@@ -13,15 +13,27 @@ internal sealed class StagedNativeStartupRecovery
     private readonly Func<NativeRecordReplay> _readAuthenticatedReplay;
     private readonly Func<CancellationToken, Task> _recoverPrivateStages;
     private readonly Action<StagedDestinationHead, StagedPublicDeleteRecord>? _reportUnresolved;
+    private readonly StagedNativeRecoveryDispatcher? _nativeRecovery;
     private bool _active = true;
     private StagedNativeRecoverySession? _session;
+    private StagedBoundRecoveryReceipt? _boundReceipt;
+    private readonly Action? _invalidateReadiness;
     private Task<(Guid Driver, StagedDriverEpochReconcileV20 Result)>? _preparation;
 
     internal StagedNativeStartupRecovery(StagedTransferJournal journal,
         Func<NativeRecordReplay> readAuthenticatedReplay, Func<CancellationToken, Task> recoverPrivateStages,
-        Action<StagedDestinationHead, StagedPublicDeleteRecord>? reportUnresolved = null)
-        => (_journal, _readAuthenticatedReplay, _recoverPrivateStages, _reportUnresolved) =
+        Action<StagedDestinationHead, StagedPublicDeleteRecord>? reportUnresolved = null,
+        Func<NativeNameObservationRequest, NativeNameObservation>? observeName = null,
+        Action<StagedDestinationHead, StagedPublicDeleteRecord, SafeUpload.Agent.Core.Contracts.StagedRecoveryAdvice, string>? reportRecovery = null,
+        Action? invalidateReadiness = null)
+    {
+        (_journal, _readAuthenticatedReplay, _recoverPrivateStages, _reportUnresolved) =
             (journal, readAuthenticatedReplay, recoverPrivateStages, reportUnresolved);
+        _invalidateReadiness = invalidateReadiness;
+        if (observeName is not null)
+            _nativeRecovery = new(journal, readAuthenticatedReplay, observeName,
+                reportRecovery ?? ((head, delete, _, _) => reportUnresolved?.Invoke(head, delete)));
+    }
 
     internal Task Start(CancellationToken token)
     {
@@ -47,7 +59,21 @@ internal sealed class StagedNativeStartupRecovery
 
     internal void Invalidate()
     {
-        lock (_sync) { _active = false; _session?.Invalidate(); }
+        lock (_sync) { _active = false; _boundReceipt = null; _session?.Invalidate(); }
+        _invalidateReadiness?.Invoke();
+    }
+
+    internal bool TryGetBoundResult(Guid driver, out StagedBoundRecoveryReceipt? receipt)
+    {
+        lock (_sync)
+        {
+            receipt = null;
+            if (!_active || _preparation is not { IsCompletedSuccessfully: true } done ||
+                done.Result.Driver != driver || done.Result.Result != StagedDriverEpochReconcileV20.Active)
+                return false;
+            receipt = _boundReceipt;
+            return receipt is not null;
+        }
     }
 
     internal bool HasFailed
@@ -77,19 +103,24 @@ internal sealed class StagedNativeStartupRecovery
             }
             var proof = session.ReconcileReplay(replay.DriverInstanceId, replay.ConnectionEpoch,
                 complete: true, reconciled: true, records, nativeMapRevision: replay.Revision);
+            StagedBoundRecoveryReceipt? completed = null;
             var result = await _journal.ReconcileDriverStartupAsync(replay.DriverInstanceId, 0x3f, proof,
                 async recoveryToken =>
                 {
                     await _recoverPrivateStages(recoveryToken).ConfigureAwait(false);
-                    // Until the anchored live recovery and shared physical
-                    // commit dispatcher are integrated, never let the existing
-                    // publisher bypass a durable exceptional hold.
+                    if (_nativeRecovery is not null && heads.Any(h => h.Deletes.Any(d =>
+                            d.Kind == StagedPublicDeleteKind.NativeOnClose)))
+                        await _nativeRecovery.ReconcileAsync(replay, proof, recoveryToken).ConfigureAwait(false);
+                    // A completed pass can retain explicitly diagnosed per-name
+                    // barriers. The shared head still bars physical publication;
+                    // accepting the epoch permits subsequent exact close events.
+                    // Global bound readiness separately refuses every unresolved prerequisite.
                     var recoveredHeads = await _journal.ReadDestinationHeadsAsync(recoveryToken).ConfigureAwait(false);
                     var held = recoveredHeads.Where(h => h.Deletes.Any(d => d.State == StagedPublicDeleteState.AcceptedUnresolved ||
                         (d.Kind == StagedPublicDeleteKind.NativeOnClose && d.State == StagedPublicDeleteState.Admitted &&
                          (h.Destination.MountManagerVolumeId is null || d.Binding.MountManagerVolumeId is null))))
                         .ToArray();
-                    if (held.Length != 0)
+                    if (held.Length != 0 && _nativeRecovery is null)
                     {
                         // Report exact durable native holds through the live
                         // connection's owner-scoped tray/diagnostic delivery.
@@ -111,7 +142,19 @@ internal sealed class StagedNativeStartupRecovery
                         final.OsBootSequence != replay.OsBootSequence || final.Revision != replay.Revision)
                         throw new IOException("Authenticated native replay changed during private startup recovery.");
                     ReconcileRecords(final, recoveredHeads);
+                    bool unresolved = recoveredHeads.Any(h => h.PendingCommit is not null ||
+                        h.Deletes.Any(d => d.State is StagedPublicDeleteState.Admitted or StagedPublicDeleteState.Intent or
+                            StagedPublicDeleteState.Accepted or StagedPublicDeleteState.AcceptedUnresolved) ||
+                        (h.PublicRelayReceipts?.Length ?? 0) != 0 || (h.PublicationAttempts?.Length ?? 0) != 0 ||
+                        (h.PublicationNativeReceipts?.Length ?? 0) != 0);
+                    completed = new(final.DriverInstanceId, final.ConnectionEpoch, final.OsBootSequence,
+                        final.Revision, unresolved);
                 }, token).ConfigureAwait(false);
+            lock (_sync)
+            {
+                if (!_active) throw new IOException("Startup completion belongs to invalidated replay.");
+                if (result == StagedDriverEpochReconcileV20.Active) _boundReceipt = completed;
+            }
             return (replay.DriverInstanceId, result);
         }
         catch { Invalidate(); throw; }
@@ -120,9 +163,14 @@ internal sealed class StagedNativeStartupRecovery
     internal static StagedNativeRecordReplay[] ReconcileRecords(NativeRecordReplay replay,
         IReadOnlyList<StagedDestinationHead> heads)
     {
+        if (replay.DriverInstanceId == Guid.Empty || replay.ConnectionEpoch == 0 || replay.Revision == 0)
+            throw new IOException("Native startup requires a complete authenticated replay revision.");
         var records = new List<StagedNativeRecordReplay>();
         foreach (NativeRecordReplayRow row in replay.Records)
         {
+            if (row.DriverInstanceId != replay.DriverInstanceId || row.OsBootSequence != replay.OsBootSequence ||
+                row.OriginalConnectionEpoch == 0 || row.OriginalConnectionEpoch > replay.ConnectionEpoch)
+                throw new IOException("Native startup replay changed its original driver/channel/boot.");
             var destination = new StagedDestinationIdentity(Identity(row.VolumeRootIdentity), Identity(row.ParentIdentity),
                 row.ParentCaseSensitive, row.CanonicalLeaf, row.MountManagerVolumeId);
             var binding = new StagedPublicDeleteBinding(row.TransferId, row.RequestNonce, row.DriverInstanceId,

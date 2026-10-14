@@ -337,6 +337,27 @@ BOOLEAN SafeUploadPolicyAdmissionMustRetry(VOID)
         InterlockedCompareExchange(&SafeUploadPolicyFinalizing, 0, 0) != 0;
 }
 
+/* A publication reservation is already installed before this snapshot.
+ * New namespace mutations encounter that reservation; old ones retain an
+ * epoch through their real postoperation, including pended CREATE handoff. */
+_Use_decl_annotations_
+BOOLEAN SafeUploadPolicyPublicationQuiescent(VOID)
+{
+    PLIST_ENTRY link;
+    KIRQL irql;
+    BOOLEAN quiet;
+    SafeUploadAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    quiet = SafeUploadCurrentEpoch != NULL &&
+        InterlockedCompareExchange(&SafeUploadCurrentEpoch->Accepting, 0, 0) != 0 &&
+        InterlockedCompareExchange(&SafeUploadCurrentEpoch->ActiveCallbacks, 0, 0) == 0;
+    for (link = SafeUploadDrainingEpochs.Flink; quiet && link != &SafeUploadDrainingEpochs; link = link->Flink) {
+        PSAFEUPLOAD_ADMISSION_EPOCH epoch = CONTAINING_RECORD(link, SAFEUPLOAD_ADMISSION_EPOCH, DrainLink);
+        if (InterlockedCompareExchange(&epoch->ActiveCallbacks, 0, 0) != 0) quiet = FALSE;
+    }
+    SafeUploadReleaseSpinLock(&SafeUploadEpochLock, irql);
+    return quiet && !SafeUploadPolicyAdmissionMustRetry();
+}
+
 __declspec(noinline) static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadPolicyDetachCurrentEpoch(VOID)
 {
     PSAFEUPLOAD_ADMISSION_EPOCH epoch;

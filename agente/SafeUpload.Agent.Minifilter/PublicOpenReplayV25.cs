@@ -9,7 +9,8 @@ namespace SafeUpload.Agent.Minifilter;
 [Flags]
 public enum PublicOperationFacts : uint
 {
-    Captured = 1, Forwarded = 2, ResultKnown = 4, NotForwarded = 8, CoverageLost = 16, CleanupOutstanding = 32
+    Captured = 1, Forwarded = 2, ResultKnown = 4, NotForwarded = 8, CoverageLost = 16, CleanupOutstanding = 32,
+    CombinedBackend = 64
 }
 
 public sealed record PublicOpenReplayRow(NativeRecordReplayRow Open, ulong PublishedGeneration,
@@ -69,7 +70,8 @@ internal static class PublicOpenReplayWireV25
 
     private static PublicOpenReplayRow DecodeRow(ReadOnlySpan<byte> b, Guid driver, ulong epoch, uint boot)
     {
-        var opened = NativeRecordReplayWire.DecodeRow(b[..816], driver, epoch, boot, ordinary: true);
+        bool combined = ((PublicOperationFacts)U32(b, 920)).HasFlag(PublicOperationFacts.CombinedBackend);
+        var opened = NativeRecordReplayWire.DecodeRow(b[..816], driver, epoch, boot, ordinary: true, combined: combined);
         ulong published = U64(b, 816), sequence = U64(b, 848), generation = U64(b, 928);
         var publishedIdentity = Identity(b, 824);
         Guid transfer = new(b.Slice(856, 16)), nonce = new(b.Slice(872, 16)), operation = new(b.Slice(888, 16));
@@ -79,21 +81,30 @@ internal static class PublicOpenReplayWireV25
         long actorCreation = BinaryPrimitives.ReadInt64LittleEndian(b[936..]);
         uint actor = U32(b, 944), session = U32(b, 948), sidBytes = U32(b, 952);
         uint requested = opened.OriginalDesiredAccess;
-        uint mapped = requested & ~0xa0000000u;
+        uint mapped = requested & ~0xf0000000u;
         if ((requested & 0x80000000) != 0) mapped |= 0x120089;
         if ((requested & 0x20000000) != 0) mapped |= 0x1200a0;
+        if ((requested & 0x40000000) != 0) mapped |= 0x120116;
+        if ((requested & 0x10000000) != 0) mapped |= 0x1f01ff;
+        if (combined) mapped &= ~(0x40000u | 0x80000u | 0x1000000u); // T10 private projection
+        var recordFlags = PublicOperationFacts.CleanupOutstanding | PublicOperationFacts.CombinedBackend;
+        bool grantKnown = opened.Facts.HasFlag(NativeRecordFacts.IdentityChecked);
+        bool grantValid = !grantKnown ? granted == 0 : combined && (requested & 0x02000000) != 0
+            ? (granted & 0x10000) != 0 && (granted & 6) != 0 && (granted & ~0x1301ffu) == 0
+            : granted == mapped;
         if (published > long.MaxValue || generation > long.MaxValue ||
             (published == 0 ? publishedIdentity.HasNonzeroFileId || publishedIdentity.VolumeSerialNumber != 0 :
                 !publishedIdentity.HasNonzeroFileId || publishedIdentity.VolumeSerialNumber != opened.PublicIdentity.VolumeSerialNumber) ||
-            granted != (opened.Facts.HasFlag(NativeRecordFacts.IdentityChecked) ? mapped : 0) ||
-            (facts & ~(PublicOperationFacts)63) != 0 ||
+            !grantValid ||
+            (facts & ~(PublicOperationFacts)127) != 0 ||
             (facts.HasFlag(PublicOperationFacts.CleanupOutstanding) && !opened.Facts.HasFlag(NativeRecordFacts.IdentityChecked)) ||
             (sequence == 0 ? !Zero(b.Slice(856, 48)) || !Zero(b.Slice(908, 12)) || !Zero(b[924..]) ||
-                (facts & ~PublicOperationFacts.CleanupOutstanding) != 0 :
+                (facts & ~recordFlags) != 0 :
                 (transfer == Guid.Empty || nonce == Guid.Empty || operation == Guid.Empty ||
                  transfer == opened.TransferId || nonce == opened.RequestNonce || operation == opened.OperationId ||
                  !facts.HasFlag(PublicOperationFacts.Captured) || !opened.Facts.HasFlag(NativeRecordFacts.IdentityChecked) ||
                  information is not (13 or 64) || (information == 13 ? flags > 1 : (flags & ~0x1fu) != 0) || mode > 1 ||
+                 (combined && (flags & 8) != 0) ||
                  actor == 0 || actor > int.MaxValue || actorCreation <= 0 || sidBytes < 8 || sidBytes > 68 ||
                  !Zero(b.Slice(956 + (int)sidBytes, 68 - (int)sidBytes)) ||
                  (facts.HasFlag(PublicOperationFacts.Forwarded) && facts.HasFlag(PublicOperationFacts.NotForwarded)) ||

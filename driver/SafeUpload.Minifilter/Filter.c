@@ -23,6 +23,7 @@ Environment:
 --*/
 
 #include "Filter.h"
+#include "StageBoundPublicationInternal.h"
 #include "StageNativeRecords.h"
 #include "StagePublic.h"
 
@@ -522,10 +523,14 @@ Return Value:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (FlagOn(Flags, FLTFL_FILTER_UNLOAD_MANDATORY)) {
             closeStatus = SafeUploadCloseCommunicationPortEarly();
+            SafeUploadStageAdmissionBeginTeardown();
+            /* The reclaim worker may own a taken anchor; the permanent gate
+             * prevents reinsertion and ChannelRundown joins that last visit.
+             * Close list-owned anchors before any dependent lifetime wait. */
+            SafeUploadStageWritersCloseAnchors();
             /* Close backend holds before channel/callback drains: their last
              * close may be precisely the event a local user is waiting on. */
             SafeUploadStagePublicCloseAllBackends();
-            SafeUploadStageAdmissionBeginTeardown();
         } else
 #endif
         closeStatus = SafeUploadCloseCommunicationPort();
@@ -754,6 +759,7 @@ static VOID SafeUploadInstanceTeardownStart(_In_ PCFLT_RELATED_OBJECTS FltObject
      * remains unstable until InstanceTeardownComplete after outstanding I/O. */
     SafeUploadStageAttachInstanceTeardownStart(FltObjects->Instance);
     SafeUploadStageNativeInstanceTeardownStart(FltObjects->Instance, Reason);
+    SafeUploadBoundPublicationInstanceTeardown(FltObjects->Instance, Reason);
     SafeUploadStageAdmissionTopologyTeardownBegin();
     SafeUploadStageWritersInstanceTeardownStart(FltObjects, Reason);
 }
@@ -2243,7 +2249,7 @@ Return Value:
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
     NTSTATUS status;
 
-    UNREFERENCED_PARAMETER( CompletionContext = NULL );
+    *CompletionContext = NULL;
 
     PAGED_CODE();
 

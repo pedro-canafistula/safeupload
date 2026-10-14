@@ -91,6 +91,7 @@ public static class Contract
         BoundAllocationV23Contract.Verify();
         NativeLifecycleV24.Verify();
         PublicDispositionV25.Verify();
+        PrivateCancellationV28.Verify();
 #endif
         Check(nameof(SafeUploadRequest), sizeof(SafeUploadRequest), RequestSize);
         Check(nameof(SafeUploadResponse), sizeof(SafeUploadResponse), ResponseSize);
@@ -515,6 +516,14 @@ public unsafe partial struct SafeUploadRequest
         get
         {
             const uint legacyKnown = 0x000001ff;
+            if (Reserved == 28 || Operation == 22)
+            {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                return Reserved == 28 && Operation == 22 && Flags == Contract.StageV19ReplyFlag;
+#else
+                return false;
+#endif
+            }
             if (Reserved == Contract.StagePublicDispositionVersion || Operation == 21)
             {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
@@ -629,7 +638,8 @@ public unsafe partial struct SafeUploadRequest
         return true;
     }
 
-    public bool UsesStageBinaryPayload => Reserved == Contract.StagePublicDispositionVersion || Operation == 21 ||
+    public bool UsesStageBinaryPayload => Reserved == 28 || Operation == 22 ||
+        Reserved == Contract.StagePublicDispositionVersion || Operation == 21 ||
         Reserved == Contract.StageNativeLifecycleVersion || Operation == 20 ||
         Reserved == Contract.StageBoundAllocationVersion ||
         Reserved == Contract.StageExtensionVersion ||

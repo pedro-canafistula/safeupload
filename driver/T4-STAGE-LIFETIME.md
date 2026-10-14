@@ -322,3 +322,109 @@ failures, no remaining stages/versions/views/tombstones, an idle worker and sepa
 pool gate (318.863 B/cycle against 4). The NO_WAITER branch was not triggered; its protected fault-path qualification is not claimed.
 Aggregate growth follows the writer-registry tag while stage-owned allocations return to zero; object/reference attribution remains
 open. Further VM tests stop under the owner's repeated-failure rule. The 10,000-cycle and raw-observer gates remain outstanding.
+
+## Implementation note — increment 9
+
+2026-10-13; `wt/t5-inc9`, based on `77466b8142a6a24b924a1d228494f46a3595373f`. Kernel implementation draft,
+not build/review/qualification evidence. No commit, WDK build or VM action was performed. The orchestrator owns the four
+normal/feature × Debug/Release builds with PREfast and ApiValidator at 0 warnings/errors. The coherent increments 2–10
+lifetime package still needs **Sol 6.1 xhigh** review before its first authorized boot; the T4 product-row stop remains.
+
+This closes the implementation gap identified by [increment 9 and review item 10](evidence/2026-10-13/t5-integration-plan-astra.md).
+It is not a T4 retention repair. The [attribution diagnostic](evidence/2026-10-13/t4-handback-attribution-result.md) does not
+supply original-stream lifetime evidence. No T4 threshold, retry interval, resource cap or accepted native outcome changes.
+
+### Original lifetime and retirement argument
+
+`StageRegistryBindLifetime` attaches a small nonpaged `STAGE_SOP_LIFETIME` witness to the **already attached** original
+stream context during successful physical post-CREATE. Every entry owns one reference to that witness; the context owns
+one. The witness holds only an immutable SOP comparison token and interlocked reference/ended/invalid fields. It holds
+**no** FILE_OBJECT, handle, context, entry, instance or volume reference. Ordinary cache pruning can therefore still free
+the large registry allocation without waiting for a filesystem-retained context. The context's small witness allocation
+(`SwUl` when displayed in pool-tag byte order) lasts until its natural cleanup; its size and the added context fields must
+be included in later memory qualification. Allocation failure keeps the entry Unknown; no lower CREATE is canceled by the ledger.
+
+Filter Manager [deletes contexts when their associated object is deleted, an instance detaches, or the filter unloads](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/managing-contexts).
+The implementation distinguishes those cases: `SafeUploadStageWritersFreeContext` publishes Ended only with an ACTIVE
+instance teardown token, mandatory teardown inactive, no explicit invalidation, an empty original writer list, and no
+`WritersUntracked`. All other cleanup invalidates the witness. Only successfully attached contexts acquire witnesses;
+a losing `FltSetStreamContext(KEEP_IF_EXISTS)` allocation cannot manufacture a receipt. The diagnostic explicit
+`FltDeleteContext` call first invalidates the witness and publishes sticky tracking loss. No forced deletion is added.
+This argument depends on retaining that rule at **every** future explicit deletion/replacement site.
+
+There are two distinct retirement proofs:
+
+| Proof | Required evidence and locked recheck |
+| --- | --- |
+| Original incarnation still live | Identity reopen verifies mounted volume/full file ID/exact SOP; `FltGetStreamContext` must return the original witness, not just the same SOP address. `MmCanFileBeTruncated` checks that owned original FILE_OBJECT's SOP. The context stays referenced through the final prune. An unchanged registry activity sequence and all ordinary ledger/section exclusions are required at unlink. |
+| Original incarnation ended | The original context's natural Ended receipt is valid. Under RegistryLock then SectionLock: no H/W/T, rename, directory-rename uncertainty, bound CREATE reservation, transaction association, section acquire/release slot (including read-only), spilled writer/mutator or new owner remains. Unknown, invalid/missing evidence and global tracking loss veto retirement. No replacement object's MM result is used. |
+
+A missing name, failed identity reopen, different SOP, recycled SOP address, content digest, scan or elapsed time is **not**
+either proof. Entries never change their original SOP/witness binding. SOP map address reuse requires the old entry's Ended
+receipt and resolved obligations before its map reference can move; history retains its own reference until normal prune.
+Unknown overflow markers have no original lifetime witness and stay sticky; the bounded marker walk only observes them.
+It no longer opens files or clears markers. Admission counts these markers even when no complete registry entry exists.
+
+Startup/activation validates the original context **before** a name classification can clear its pending state. An ended
+entry is retired by the existing reclaim worker rather than promoted on a new incarnation's behalf. A current base-stream
+entry waits for other incarnation histories to retire. Live promotion retains the existing scope/generation, H/W/C/T,
+cache-flush and exact-SOP checks, additionally requiring the memory-manager truncation predicate and all section callback
+slots clear. Missing natural cleanup stays pending for its real event. Natural witness completion, final owner release and
+a waited-on sibling's actual prune wake the existing worker; there is no new timer or polling worker. The existing
+identity anchors remain ordinary owned handles; no new FILE_OBJECT pin is introduced to obtain lifetime evidence.
+
+The nested-mutation “known outside” lookup and SOP policy lookup also verify the original context witness before trusting
+cached classification. A recycled address with a different context cannot inherit the old entry's outside-scope authority.
+
+### Owners from increments 2–8
+
+`SafeUploadStageWritersOwnerAcquire/Release` adds an interlocked obligation count serialized with final promotion and prune
+under SectionLock. Its edges advance the registry/coverage sequences and SOP-map generation. Thus an owner entering and
+leaving during a PASSIVE proof invalidates that proof even when the count returns to zero. No ABI layout changes.
+
+| Owner | Count starts | Count ends |
+| --- | --- | --- |
+| Public/writer factory | Before the accepted factory performs capture/open work | After factory cleanup/ownership transfer |
+| Writer lease, DELETE backend, temporary native-name metadata backend | Immediately after allocation, before acquiring instance/object/handle references | Common final destructor, after local operation rundown, all closes, snapshot/input cleanup and instance dereference |
+| V26 record | Before creator/token/source capture or record publication | `BpDestroy`, after callbacks/work uses are gone and source/version/root/parent/writer ownership is released |
+| Native record, including combined backend and retained recovery facts | Before instance/reference acquisition and map insertion | Failed factory unwind, or `NativeDestroy` after terminal record removal and local backend/callback/epoch ownership is gone |
+
+Transfers to attach handles, unresolved allocation replay, publication source pins, metadata readers and native combined
+operations remain covered by their existing owner's count; they do not acquire an uncounted replacement owner. A service
+ACK is not the release hook. Retained uncertainty continues to count until the existing exact terminal/removal rules permit
+the final local destructor. Counter corruption publishes sticky Unknown rather than manufacturing zero.
+
+The count is deliberately **global and conservative**: these owners can retain multiple public/private/ancestor objects,
+and destination ID/path/hash alone cannot enumerate that authority. Any counted owner delays registry promotion/prune
+and aggregate Ready, including unrelated entries. `WriterEntries/WriterEntriesNotReady` include obligation units (not
+unique filenames). This may keep admission Pending while an ordinary native record or durable receipt is retained; it
+is not a claim that final bound readiness or availability is qualified. Existing bound capability gates remain false.
+
+The new lock edges are PublicListLock → SectionLock for factory admission, and RegistryLock → SectionLock for retirement;
+SectionLock never calls back into public/native/publication locks. Witness binding uses WriterLock without taking RegistryLock.
+All allocation, identity/MM/flush work and context acquisition occur outside spin locks; spin sections are resident helpers.
+Owner-release wakeups occur after locks and local references are released. This increment adds no wait, RPC or ACK dependency
+to mandatory teardown. Voluntary preflight additionally checks the aggregate count after closing its producer gates and uses
+the existing reversible veto path.
+
+### Reviewer checklist and increment 10 composition
+
+- [ ] **T11 lifetime:** verify natural cleanup versus diagnostic deletion, detach/dismount, canceled CREATE, shutdown and
+  losing context allocation; all future context replacement/deletion sites must invalidate first. Check missing witness,
+  delayed cleanup, changed/recycled SOP, base/ADS and Unknown-marker cases without dereferencing old SOP tokens.
+- [ ] **T11 obligations:** hold each of H/W/T, read-only/writable section slots, spilled callbacks, rename/reservation,
+  writer factory/lease, metadata reader, V26 work/source and native/combined record while requesting activation/prune.
+  Require refusal until the real release; include a complete acquire/release cycle inside a proof and a sibling retired
+  after the waiting entry's turn. Audit every normal/failure/teardown destructor for exactly one owner release.
+- [ ] **T11 execution:** check SAL/residency, initialized outputs, lock order, no wait/I/O under spin locks, sequence stability,
+  normal-build exclusion and all four WDK/PREfast/ApiValidator results. Run native/Verifier races only after owner authorization.
+  Source-only checks here are diff whitespace, lexical brace balance and review of helper declarations/call sites, not WDK tests.
+- [ ] **T5 increment 10:** compose the existing local teardown pieces with all producers and owners: fence admission, close/wake
+  the channel, join local workers/callbacks, close owned handles before dependent lifetime waits, release allocation/publication
+  leases and V26/native source pins, then drain/unregister/free. **Do not wait for this aggregate counter before destroying
+  the records that own it**, and do not require service availability, RPC, ACK or durable certainty for mandatory local drain.
+  Preserve unresolved durable/native coverage-loss facts and sticky Unknown; local destruction is not a publication/delete receipt.
+- [ ] **T5 increment 10 readiness:** combine current authenticated negotiation, seed/security prerequisites, successful complete
+  startup recovery, per-name uncertainty holds and this stable original-lifetime/owner census. Disconnect/replay invalidation
+  clears readiness. A zero owner count or retired old registry entry alone enables nothing. Complete the single coherent lifetime
+  review before boot and keep component verification separate from protected-pair qualification and T4 retention attribution.

@@ -7,7 +7,7 @@ using SafeUpload.Agent.Service.Interception;
 
 namespace SafeUpload.Agent.Tests;
 
-public sealed class PublicOpenBindingTests : IDisposable
+public sealed partial class PublicOpenBindingTests : IDisposable
 {
     private readonly TestWorkspace _workspace = new();
     private readonly Guid _driver = Guid.NewGuid(), _mount = Guid.NewGuid();
@@ -180,7 +180,8 @@ public sealed class PublicOpenBindingTests : IDisposable
         {
             OperationSequence = ++_sequence, MutationTransferId = Guid.NewGuid(), MutationNonce = Guid.NewGuid(),
             MutationOperationId = Guid.NewGuid(), InformationClass = 13, DispositionFlags = flags, RequestorMode = 1,
-            OperationFacts = PublicOperationFacts.Captured | (row.OperationFacts & PublicOperationFacts.CleanupOutstanding),
+            OperationFacts = PublicOperationFacts.Captured | (row.OperationFacts &
+                (PublicOperationFacts.CleanupOutstanding | PublicOperationFacts.CombinedBackend)),
             OperationStatus = 259, MutationGeneration = 0, ActorProcessCreationTime = 1234567,
             ActorProcessId = actor, ActorSessionId = 1, ActorSid = "S-1-5-18"
         }] };
@@ -192,7 +193,7 @@ public sealed class PublicOpenBindingTests : IDisposable
         {
             OperationFacts = PublicOperationFacts.Captured | (notForwarded ? PublicOperationFacts.NotForwarded :
                 PublicOperationFacts.Forwarded | PublicOperationFacts.ResultKnown) |
-                (row.OperationFacts & PublicOperationFacts.CleanupOutstanding),
+                (row.OperationFacts & (PublicOperationFacts.CleanupOutstanding | PublicOperationFacts.CombinedBackend)),
             OperationStatus = status, MutationGeneration = generation
         }] };
     }
@@ -203,7 +204,8 @@ public sealed class PublicOpenBindingTests : IDisposable
         {
             OperationSequence = 0, MutationTransferId = default, MutationNonce = default, MutationOperationId = default,
             InformationClass = 0, DispositionFlags = 0, RequestorMode = 0,
-            OperationFacts = cleanupOutstanding ? PublicOperationFacts.CleanupOutstanding : 0,
+            OperationFacts = (cleanupOutstanding ? PublicOperationFacts.CleanupOutstanding : 0) |
+                (row.OperationFacts & PublicOperationFacts.CombinedBackend),
             OperationStatus = 0, MutationGeneration = 0, ActorProcessCreationTime = 0, ActorProcessId = 0,
             ActorSessionId = 0, ActorSid = null
         }] };

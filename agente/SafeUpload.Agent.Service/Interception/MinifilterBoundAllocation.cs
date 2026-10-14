@@ -9,10 +9,34 @@ namespace SafeUpload.Agent.Service.Interception;
 
 public sealed partial class MinifilterInterceptor
 {
-    // Remains false until ALL physical mutations and recovery paths share the
-    // bound head/permit pipeline. The reserved capability is not advertised.
-    private volatile bool _stageBoundHeadReady = false;
-    internal static bool BoundAllocationImplemented => false; // Testable prerequisite, independent of negotiation.
+    private readonly StagedBoundReadiness _boundReadiness = new();
+    private bool _stageBoundHeadReady => _stageV20Ready && _stagingRecoveryReady &&
+        _boundReadiness.Snapshot.IsReady;
+    internal static bool BoundAllocationImplemented => StagedBoundReadiness.NativeHolds == StagedBoundBlocker.None;
+
+    private NativeRecordReplay ReadBoundNativeReplay(FilterPort port)
+    {
+        try
+        {
+            var replay = port.ReadNativeRecordReplay();
+            _boundReadiness.ObserveReplay("native", replay.DriverInstanceId, replay.ConnectionEpoch,
+                replay.OsBootSequence, replay.Revision);
+            return replay;
+        }
+        catch { _boundReadiness.Invalidate(StagedBoundBlocker.ReplayInvalidated); throw; }
+    }
+
+    private PublicOpenReplay ReadBoundPublicReplay(FilterPort port)
+    {
+        try
+        {
+            var replay = port.ReadPublicOpenReplayV25();
+            _boundReadiness.ObserveReplay("native", replay.DriverInstanceId, replay.ConnectionEpoch,
+                replay.OsBootSequence, replay.Revision);
+            return replay;
+        }
+        catch { _boundReadiness.Invalidate(StagedBoundBlocker.ReplayInvalidated); throw; }
+    }
 
     private async Task ReplyBoundAllocationAsync(FilterPort port, SafeUploadRequest request,
         ulong messageId, Guid? capturedDriver, CancellationToken token)
@@ -33,6 +57,7 @@ public sealed partial class MinifilterInterceptor
         }
         catch (Exception error)
         {
+            _boundReadiness.Invalidate(StagedBoundBlocker.UnresolvedPrerequisite);
             _logger.LogWarning(error, "Bound allocation/reply failed for request {RequestId}.", request.RequestId);
             try { port.Reply(messageId, request.RequestId, PortVerdict.Deny); }
             catch (Exception replyError)

@@ -424,7 +424,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     in the preceding test commit). Integrated `t5-option1-int2` failed one timing assertion (`Rn012_timeout_libera_a_operacao` 7,549 ms
     vs 7,000; first failure in 307 runs; receipt kept); identical rerun [`t5-option1-int3`](evidence/2026-10-13/exact-agent-matrix-t5-option1-int3-summary.txt)
     PASS at 1,387 normal / 1,769 feature tests per profile, 0/0, that test at ~5.0 s.
-  - [ ] Increments 2–4 (kernel + agent, dormant; Astra workers; side branches `wt/t5-inc2..4`): original-authority writer lease and
+  - [x] Increments 2–4 (kernel + agent, dormant; Astra workers; side branches `wt/t5-inc2..4`): original-authority writer lease and
     capture with nine named refusals; paged writer-metadata carrier (control 34 / extension 27) — [review](evidence/2026-10-13/t5-carrier-review-sol61.md)
     REVISE, [re-review](evidence/2026-10-13/t5-carrier-rereview-sol61.md) ACCEPT WITH CONDITIONS; gated V23 selection and kernel seed copy with
     `seed_coherence_unproved` / `seed_completion_unproved` refusals. Kernel builds `t5-inc2a/b` and `t5-inc3a` failed on PREfast
@@ -432,8 +432,15 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     at 0/0. Increment 3 landed after [four WDK builds `t5-inc3d`](evidence/2026-10-13/exact-t5-inc3d-summary.txt) at 0/0 and
     [matrix `t5-inc3d`](evidence/2026-10-13/exact-agent-matrix-t5-inc3d-summary.txt) PASS. Increment 4 landed after
     [four WDK builds `t5-inc4d`](evidence/2026-10-13/exact-t5-inc4d-summary.txt) at 0/0 and [matrix `t5-inc4c`](evidence/2026-10-13/exact-agent-matrix-t5-inc4c-summary.txt)
-    PASS (identical agent tree). Increments 5–10 are drafted on stacked branches; because each fix had to be carried through every
-    later tree, they are completed and verified together in the top tree and land as one dormant connected-path commit.
+    PASS (identical agent tree). Increments 5–10 were drafted on stacked branches; because each fix had to be carried through every
+    later tree, they were completed and verified together in the top tree and land as one dormant connected-path commit.
+  - [x] Increments 5–10 (kernel + agent, dormant; top tree `wt/t5-inc10` at `03fbe057`): V26 permits, bound inspection/publication,
+    unified deletes, startup/last-close recovery, T11 SOP, teardown completion and `StagedBoundReadiness`. Landed after
+    [four WDK builds `t5-top3`](evidence/2026-10-13/exact-t5-top3-summary.txt) at 0/0 with PREfast/ApiValidator and
+    [matrix `t5-top2`](evidence/2026-10-13/exact-agent-matrix-t5-top2-summary.txt) PASS (1,453 normal / 2,023 feature, identical agent
+    tree). Failed receipts kept: kernel `t5-inc5a`–`t5-inc9a` and `t5-top1/2` (IRQL/paging, stack, buffer, SAL classes; C4013; C28251),
+    matrix `t5-top1` (CS8604). Readiness stays NotReady with four named blockers; no admission, positive selector or boot.
+  - [ ] Single pre-boot Sol 6.1 xhigh lifetime review of the [package](T5-PREBOOT-REVIEW-PACKAGE.md) and kernel delta.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

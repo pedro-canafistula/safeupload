@@ -25,7 +25,9 @@ def function(name):
     while depth:
         depth += (SOURCE[end] == "{") - (SOURCE[end] == "}")
         end += 1
-    return SOURCE[match.start():end] + "\n"
+    # MSVC-only, approved probe annotation has no host-compiler equivalent.
+    body = SOURCE[match.start():end].replace("#pragma warning(suppress: 6001)\n", "")
+    return body + "\n"
 
 
 def main():
@@ -38,6 +40,7 @@ def main():
     bodies = "\n".join(function(name) for name in [
         "StageWriterMetadataBeginRead", "StageWriterMetadataEndRead",
         "SafeUploadStagePublicTryCloseAdmission", "SafeUploadStagePublicReopenAdmission",
+        "SafeUploadStagePublicCloseAdmission",
         "SafeUploadStagePublicCloseAllBackends", "SafeUploadStageWriterMetadataControl"])
     fixture = (HERE / "writer_metadata_readers_fixture.c").read_text()
     fixture = fixture.replace("/* PRODUCTION_WIRE */", constants + wire).replace("/* PRODUCTION_BODIES */", bodies)
