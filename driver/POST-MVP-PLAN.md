@@ -23,6 +23,16 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-14 (evening) — retained residue and the test base.** Owner, in the session:
+- **Retained never-exposed residue: exception accepted.** Proved service-owned residue (exact custody, charged storage, ancestry and
+  nonpublication obligations, as specified in [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md)) does not veto voluntary unload; the
+  bytes stay private and keep their storage charge. Residue without that proof still vetoes. This replaces the conservative default.
+- **Edge self-update on the test base: approved to disable** to improve measurements. A new base layer on win10-debug3 disables
+  the Edge Update services and scheduled tasks; the previous base stays untouched underneath as its backing file (rollback:
+  point the domain back at it). Windows itself and every other component are unchanged.
+- Refusal-receipt budgets: the owner asked for a fuller explanation before deciding; until then the proposed 4,096 receipts /
+  64 MiB stay evaluation values only and activation stays held.
+
 **2026-10-14 — workflow rules.** Scope, gates and the qualification plan are unchanged; these rules shorten defect loops for the rest
 of M2. Classes they target: compile-blind matrix rounds (`t5-rename1`, `t5-block1`, `t5-diag1`), test mistakes found only by the matrix
 (`t5-rename2`, `t5-rename3`, `t5-rename5`, `t5-block2`), kernel–agent contract defects found only by boots (`m2t5boot8`, `9`, `11`/`12`,
@@ -694,12 +704,11 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     - Batch 2: exact seal receipt, op15 typed refusal/exposure evidence/op23, refusal accounting without reclamation, and a
       negotiated per-version driver-delete receipt (a restart cannot finish released-stage bookkeeping today: `Held=0` and a
       missing path are not deletion evidence).
-    **Pending owner decision (conservative default applied):** a save whose requester exited before its file was ever exposed can
-    leave its private bytes retained by the service. Default: such retained residue keeps vetoing voluntary unload and epoch
-    retirement, so an operator cannot `fltmc unload` until it is resolved; nothing is deleted automatically. Recommended narrow
-    exception (not implemented until approved): proved service-owned residue with exact custody, charged storage, ancestry and
-    nonpublication obligations does not block unload; the bytes stay private. Refusal-receipt budgets (proposed 4,096 slots /
-    64 MiB for evaluation) also need owner approval before activation.
+    **Owner decision (2026-10-14 evening, see owner decisions):** a save whose requester exited before its file was ever exposed can
+    leave its private bytes retained by the service. The narrow exception is **accepted**: proved service-owned residue with exact
+    custody, charged storage, ancestry and nonpublication obligations does not block unload; the bytes stay private and nothing is
+    deleted automatically; residue without that proof still vetoes. Batch 2 implements it. Refusal-receipt budgets (proposed
+    4,096 receipts / 64 MiB for evaluation) remain an open owner decision before activation.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
