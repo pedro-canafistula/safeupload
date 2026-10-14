@@ -24,6 +24,8 @@
 # T4_VOLUME_DISCRIMINATOR=yes adds a non-qualifying 512-file NTFS VHD open/delete/teardown diagnostic after the existing samples.
 # Requires boot Verifier, cycles < 10000 and explicit win10-debug3; no memory tools needed. Cannot combine with delete attribution;
 # classification is INFO only, and diskpart/fltmc receipts travel with the existing failure-evidence export.
+# T4_PURGE_ATTRIBUTION=yes records per-window Kernel-File ETW and SUfl/SUwH timelines, then repeat/agent-stop purge controls.
+# Non-qualifying; cycles < 10000; cannot combine with hand-back, delete or volume diagnostics.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; cycles="${5:-10000}"; mode="${6:-runtime-verifier}"; sample_every="${7:-500}"
@@ -31,6 +33,17 @@ dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?
 [[ "$cycles" =~ ^[0-9]{1,6}$ ]] || { echo 'Invalid cycle count'; exit 2; }
 [[ "$sample_every" =~ ^[1-9][0-9]{0,5}$ ]] || { echo 'Invalid sample interval'; exit 2; }
 case "$mode" in ordinary|runtime-verifier|verifier-from-boot) ;; *) echo 'Unknown mode'; exit 2;; esac
+purge_attribution=${T4_PURGE_ATTRIBUTION-no}
+case "$purge_attribution" in
+    no) ;;
+    yes) [ "$cycles" -lt 10000 ] || {
+            echo 'Purge attribution requires fewer than 10,000 cycles'; exit 2; }
+         for forbidden in T4_HANDBACK_DIAGNOSTIC T4_DELETE_ATTRIBUTION T4_VOLUME_DISCRIMINATOR; do
+             [ "${!forbidden:-no}" != yes ] || {
+                 echo "Purge attribution cannot be combined with $forbidden"; exit 2; }
+         done ;;
+    *) echo 'T4_PURGE_ATTRIBUTION must be yes or no'; exit 2 ;;
+esac
 memory_tools=${T4_MEMORY_TOOLS:-}
 memory_enabled=no
 if [ -n "$memory_tools" ]; then
@@ -91,7 +104,20 @@ phase=run-disk
 state=NOT_STARTED
 waited=0
 failure_evidence_exported=no
+purge_evidence_exported=no
+capture_purge_evidence() {
+    [ "$purge_attribution" = yes ] && [ "$purge_evidence_exported" = no ] || return 0
+    mkdir -p "$ev/$tag-purge-attribution"
+    # scp supports binary ETLs; retain the entire folder before the disposable disk goes away.
+    if timeout 90 scp -r "${opts[@]}" "vika@$host:C:/T4/purge-attribution" "$ev/$tag-purge-attribution/" > "$ev/$tag-purge-attribution-copy.txt" 2>&1; then
+        echo 'T4PurgeAttributionExport=CAPTURED' > "$ev/$tag-purge-attribution-export.txt"
+        purge_evidence_exported=yes
+    else
+        echo 'T4PurgeAttributionExport=ABSENT_OR_FAILED' > "$ev/$tag-purge-attribution-export.txt"
+    fi
+}
 capture_failure_evidence() {
+    capture_purge_evidence
     [ "$failure_evidence_exported" = yes ] && return 0
     mkdir -p "$ev/$tag-failure-evidence"
     # The trap calls this too, so interruption cannot silently lose snapshots
@@ -220,6 +246,7 @@ scp "${opts[@]}" "$sys" "vika@$host:$guest/SafeUpload-t4.sys" && scp "${opts[@]}
   && scp "${opts[@]}" driver/scripts/t4/cycles-actor.ps1 "vika@$host:$guest/t4-cycles-actor.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-coordinator.ps1 "vika@$host:$guest/t4-cycles-coordinator.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/failure-evidence.ps1 "vika@$host:$guest/failure-evidence.ps1" \
+  && scp "${opts[@]}" driver/scripts/t4/purge-attribution.ps1 "vika@$host:$guest/purge-attribution.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-progress.ps1 "vika@$host:$guest/t4-cycles-progress.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/agent-readiness.ps1 "vika@$host:$guest/t4-agent-readiness.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/runtime-verifier.ps1 "vika@$host:$guest/t4-runtime-verifier.ps1" || { echo 'copy failed'; exit 14; }
@@ -412,13 +439,14 @@ if ('__MEMORY__' -eq 'yes') { $coordinatorArgs += ' -MemoryDiagnostic' }
 if ('__HANDBACK__' -eq 'yes') { $coordinatorArgs += ' -BlockHeavy -HandbackDiagnostic' }
 if ('__DELETE__' -eq 'yes') { $coordinatorArgs += ' -DeleteAttribution' }
 if ('__VOLUME__' -eq 'yes') { $coordinatorArgs += ' -VolumeDiscriminator' }
+if ('__PURGEATTR__' -eq 'yes') { $coordinatorArgs += ' -PurgeAttribution' }
 $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $coordinatorArgs
 Register-ScheduledTask -TaskName 't4-coordinator' -Principal $principal -Action $coordinator -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 't4-coordinator'
 'COORDINATOR_STARTED=True'
 PS
 )
-setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}; setup_ps=${setup_ps//__HANDBACK__/$handback_diagnostic}; setup_ps=${setup_ps//__DELETE__/$delete_attribution}; setup_ps=${setup_ps//__VOLUME__/$volume_discriminator}
+setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}; setup_ps=${setup_ps//__HANDBACK__/$handback_diagnostic}; setup_ps=${setup_ps//__DELETE__/$delete_attribution}; setup_ps=${setup_ps//__VOLUME__/$volume_discriminator}; setup_ps=${setup_ps//__PURGEATTR__/$purge_attribution}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 if [ "$mode" != ordinary ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
@@ -429,6 +457,8 @@ extra_diagnostic_seconds=0
 [ "$delete_attribution" = yes ] && extra_diagnostic_seconds=3510
 # Five settles and bounded diskpart/fltmc commands, including failure cleanup.
 [ "$volume_discriminator" = yes ] && extra_diagnostic_seconds=$(( extra_diagnostic_seconds + 1800 ))
+# Two extra 30 s waits, SCM stop/start deadlines, existing 600 s readiness helper and ETL parse/export allowance.
+[ "$purge_attribution" = yes ] && extra_diagnostic_seconds=$(( extra_diagnostic_seconds + 1800 ))
 limit=${T4_DEADLINE_SECONDS:-$(( cycles * 4 + 600 + extra_diagnostic_seconds ))}
 [[ "$limit" =~ ^[0-9]+$ ]] || { echo 'Invalid T4 deadline'; exit 2; }
 [ "$limit" -ge 3600 ] || limit=3600
@@ -492,12 +522,13 @@ else
     : > "$ev/$tag-after.txt"
 fi
 
-python3 - "$ev/$tag-after.txt" "$ev/$tag-samples.jsonl" "$ev/$tag-verdict.txt" "$cycles" "$mode" "$alive" "$(( $(date +%s) - started ))" "$handback_diagnostic" "$delete_attribution" "$volume_discriminator" <<'PY'
+python3 - "$ev/$tag-after.txt" "$ev/$tag-samples.jsonl" "$ev/$tag-verdict.txt" "$cycles" "$mode" "$alive" "$(( $(date +%s) - started ))" "$handback_diagnostic" "$delete_attribution" "$volume_discriminator" "$purge_attribution" <<'PY'
 import json, re, sys
 after_path, samples_path, verdict_path, cycles, mode, alive, elapsed = sys.argv[1:8]
 handback_diagnostic = len(sys.argv) > 8 and sys.argv[8] == 'yes'
 delete_attribution = len(sys.argv) > 9 and sys.argv[9] == 'yes'
 volume_discriminator = len(sys.argv) > 10 and sys.argv[10] == 'yes'
+purge_attribution = len(sys.argv) > 11 and sys.argv[11] == 'yes'
 cycles = int(cycles)
 after = open(after_path, encoding='utf-8', errors='replace').read()
 out = []
@@ -509,6 +540,8 @@ if delete_attribution:
                'no line in this file passes or fails a T4 gate')
 if volume_discriminator:
     out.append('T4VolumeDiscriminatorMode INFO volume teardown diagnostic; non-qualifying; classification is informational')
+if purge_attribution:
+    out.append('T4PurgeAttributionMode INFO purge attribution diagnostic; non-qualifying')
 def verdict(name, ok, reason):
     out.append(f"{name} {'PASS' if ok else 'FAIL'} {reason}")
 m = re.search(r'^RESULT=(.*)$', after, re.M)
@@ -521,7 +554,12 @@ try:
     for line in open(samples_path, encoding='utf-8-sig', errors='replace'):
         line = line.strip()
         if line:
-            try: samples.append(json.loads(line))
+            try:
+                sample = json.loads(line)
+                # These new control labels are diagnostic evidence, outside the original workload gates.
+                # In particular the stopped-agent control cannot query the service's writer counters.
+                if sample.get('Label') not in ('purged-repeat', 'purged-agent-stopped'):
+                    samples.append(sample)
             except Exception: pass
 except FileNotFoundError: pass
 verdict('T4GuestAlive', alive == 'yes', 'the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)')
@@ -654,6 +692,25 @@ if volume_discriminator:
                    f"filter attached {json.dumps(diag.get('FilterAttached'))}; SUfl live {json.dumps(diag.get('LiveSUfl'))}; "
                    f"growth {diag.get('Growth')}; delete release {diag.get('DeleteRelease')}; teardown release {diag.get('TeardownRelease')}; "
                    f"residual {diag.get('Residual')}; errors {json.dumps(diag.get('Errors'))}")
+if purge_attribution:
+    diag = (result or {}).get('PurgeAttribution')
+    if not isinstance(diag, dict):
+        out.append('T4PurgeAttribution INFO diagnostic result missing')
+    else:
+        windows = []
+        for window in diag.get('Windows', []) or []:
+            summary = window.get('Summary') or {}
+            top = ', '.join(f"{p.get('Name')}[{p.get('ProcessId')}]={p.get('CreateCount')}"
+                            for p in (summary.get('TopProcesses') or [])[:3])
+            windows.append(f"{window.get('Label')} creates {summary.get('TotalCreates')}, top {top or 'unavailable'}")
+        controls = diag.get('Controls') or {}
+        text = (f"T4PurgeAttribution INFO {'; '.join(windows)}; SUfl live purged {purged_live}, "
+                f"purged-repeat {sufl_live(controls.get('PurgedRepeat'))}, "
+                f"purged-agent-stopped {sufl_live(controls.get('PurgedAgentStopped'))}; "
+                f"agent stopped {(controls.get('AgentStop') or {}).get('Reached')}, "
+                f"restart {(controls.get('AgentRestart') or {}).get('Reached')}, readiness {controls.get('AgentReady')}")
+        # Process names are external input; even a process literally named PASS/FAIL must remain token-free.
+        out.append(re.sub(r'\b(PASS|FAIL)\b', lambda m: m.group(1).lower(), text).replace('\n', ' ').replace('\r', ' '))
 verdict('T4VersionsReleased', stage(settled, 'liveVersions') == 0 and stage(settled, 'liveViews') == 0,
         f"after settle: live versions {stage(settled, 'liveVersions')}, views {stage(settled, 'liveViews')}, created {stage(settled, 'versionsCreated')}, "
         f"released {stage(settled, 'versionsReleased')}, views released {stage(settled, 'viewsReleased')}")

@@ -28,7 +28,8 @@ param(
     [switch]$BlockHeavy,
     [switch]$HandbackDiagnostic,
     [switch]$DeleteAttribution,
-    [switch]$VolumeDiscriminator
+    [switch]$VolumeDiscriminator,
+    [switch]$PurgeAttribution
 )
 $ErrorActionPreference = 'Stop'
 function Read-T4ControlText([string]$Path) {
@@ -54,6 +55,11 @@ function Write-T4ResultLine([string]$Path, [string]$Line) {
     $bytes = [Text.UTF8Encoding]::new($false).GetBytes($Line + "`r`n")
     $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]'ReadWrite, Delete')
     try { $stream.Write($bytes, 0, $bytes.Length); $stream.Flush() } finally { $stream.Dispose() }
+}
+$purgeLoadError = $null
+if ($PurgeAttribution) {
+    try { . (Join-Path $PSScriptRoot 'purge-attribution.ps1') }
+    catch { $purgeLoadError = $_.Exception.Message }
 }
 . (Join-Path $PSScriptRoot 'failure-evidence.ps1')
 if ($MemoryDiagnostic) { . (Join-Path $PSScriptRoot 't4-memory-debugger.ps1') }
@@ -721,6 +727,30 @@ try {
         }
     }
     $result.StopReason = if ($result.FailureCount) { 'completed-with-failures' } else { 'completed' }
+    if ($PurgeAttribution -and -not $purgeLoadError) {
+        $result.PurgeAttribution = New-T4PurgeAttribution
+        $attribution = $result.PurgeAttribution
+        Wait-T4PurgeTimeline $attribution 'settled' 30
+        $result.Settled = Get-Sample $Cycles 'settled'
+        $exitWindow = Invoke-T4PurgeAction $attribution 'exit start' { Start-T4PurgeWindow $attribution 'exit' }
+        $result.ActorStopped = Stop-T4Actor $control
+        Wait-T4PurgeTimeline $attribution 'exit' 15 $exitWindow
+        Invoke-T4PurgeAction $attribution 'exit stop' { Stop-T4PurgeWindow $attribution $exitWindow }
+        $result.AfterActorExit = Get-Sample $Cycles 'actor-exited'
+        $idleWindow = Invoke-T4PurgeAction $attribution 'idle start' { Start-T4PurgeWindow $attribution 'idle' }
+        Wait-T4PurgeTimeline $attribution 'idle' 60 $idleWindow
+        Invoke-T4PurgeAction $attribution 'idle stop' { Stop-T4PurgeWindow $attribution $idleWindow }
+        $result.Idle = Get-Sample $Cycles 'idle'
+        $purgeWindow = Invoke-T4PurgeAction $attribution 'purge start' { Start-T4PurgeWindow $attribution 'purge' }
+        $result.Purge = @(Invoke-T4MemoryPurge)
+        Wait-T4PurgeTimeline $attribution 'purge' 30 $purgeWindow
+        Invoke-T4PurgeAction $attribution 'purge stop' { Stop-T4PurgeWindow $attribution $purgeWindow }
+        $result.Purged = Get-Sample $Cycles 'purged'
+        Invoke-T4PurgeAction $attribution 'parse' { Complete-T4PurgeParse $attribution }
+        Invoke-T4PurgeAction $attribution 'controls' {
+            Invoke-T4PurgeControls $attribution $Cycles (Join-Path $PSScriptRoot 't4-agent-readiness.ps1')
+        }
+    } else {
     # Settle: hand-backs, cleanups and disposals finish; the stage worker releases what nothing holds.
     Start-Sleep -Seconds 30
     $result.Settled = Get-Sample $Cycles 'settled'
@@ -732,6 +762,10 @@ try {
     $result.Purge = @(Invoke-T4MemoryPurge)
     Start-Sleep -Seconds 30   # NTFS delayed close after cache pressure
     $result.Purged = Get-Sample $Cycles 'purged'
+    }
+    if ($PurgeAttribution -and $purgeLoadError) {
+        $result.PurgeAttribution = [ordered]@{ NonQualifying=$true; Windows=@(); Controls=@{}; Errors=@($purgeLoadError) }
+    }
     if ($DeleteAttribution) {
         $result.DeleteAttribution = Invoke-T4DeleteAttribution $startSample $result.Purged
         if ($HandbackDiagnostic) { $result.HandbackDiagnostic = $result.DeleteAttribution.HandbackDiagnostic }
@@ -745,6 +779,13 @@ try {
     if ($actorLaunched -and -not $result.ActorStopped) {
         try { $result.ActorStopped = Stop-T4Actor $control }
         catch { $result.ActorStopError = $_.Exception.ToString() }
+    }
+    if ($PurgeAttribution -and $result.PurgeAttribution -and -not $purgeLoadError) {
+        foreach ($window in $result.PurgeAttribution.Windows) {
+            if (-not $window.Stopped) {
+                Invoke-T4PurgeAction $result.PurgeAttribution 'final session stop' { Stop-T4PurgeWindow $result.PurgeAttribution $window }
+            }
+        }
     }
     $result.Finished = [DateTime]::UtcNow.ToString('o')
     $resultPart = Join-Path $out 'result.part'

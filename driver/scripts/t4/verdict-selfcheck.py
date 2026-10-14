@@ -22,7 +22,7 @@ if not match:
 source = match.group(1)
 
 
-def replay(after, samples, cycles, handback='no', delete_attribution='no', volume_discriminator='no'):
+def replay(after, samples, cycles, handback='no', delete_attribution='no', volume_discriminator='no', purge_attribution='no', full_lines=False):
     with tempfile.TemporaryDirectory(prefix='t4-verdict-control-') as directory:
         root = Path(directory)
         after_path = root / 'control-after.txt'
@@ -31,12 +31,15 @@ def replay(after, samples, cycles, handback='no', delete_attribution='no', volum
         after_path.write_text(after)
         samples_path.write_text(''.join(json.dumps(s) + '\n' for s in samples))
         run = subprocess.run([sys.executable, '-', str(after_path), str(samples_path),
-                              str(verdict_path), str(cycles), 'verifier-from-boot', 'yes', '0', handback, delete_attribution, volume_discriminator],
+                              str(verdict_path), str(cycles), 'verifier-from-boot', 'yes', '0', handback, delete_attribution, volume_discriminator, purge_attribution],
                              input=source, text=True, capture_output=True)
         if run.returncode not in (0, 1) or not verdict_path.is_file():
             raise AssertionError(run.stderr or run.stdout)
         lines = verdict_path.read_text().splitlines()
-        return {line.split()[0]: line for line in lines}, run.returncode
+        parsed = {line.split()[0]: line for line in lines}
+        if full_lines:
+            return parsed, run.returncode, lines
+        return parsed, run.returncode
 
 
 def retained(day, tag):
@@ -232,6 +235,51 @@ for volume in volume_cases:
         assert observed_code == original_code == int(failure)
         assert not re.search(r'\b(PASS|FAIL)\b', observed['T4VolumeDiscriminator'])
 print('T4VolumeDiscriminatorControl=PASS; three classifications and missing result remain INFO, all existing lines and exit unchanged')
+# Purge attribution is informational for present, partial, failed and absent receipts.
+repeat_sample = copy.deepcopy(purged); repeat_sample['Label'] = 'purged-repeat'
+stopped_sample = copy.deepcopy(deleted_sample); stopped_sample['Label'] = 'purged-agent-stopped'
+# The service owns the diagnostics pipe, so a real stopped-agent sample lacks these fields.
+stopped_sample.pop('WriterState', None); stopped_sample.pop('StageWorker', None)
+stopped_sample['CountersError'] = 'Agent service intentionally stopped'
+purge_cases = [None, {}, dict(NonQualifying=True, Windows=[
+    dict(Label=label, Summary=dict(TotalCreates=count, TopProcesses=[
+        dict(ProcessId=42, Name='SafeUpload.Agent.Service.exe', CreateCount=count - 1),
+        dict(ProcessId=4, Name='System', CreateCount=1),
+        dict(ProcessId=90, Name='PASS.exe', CreateCount=0),
+        dict(ProcessId=91, Name='excluded-fourth', CreateCount=0)]))
+    for label, count in [('exit', 8258), ('idle', 17528), ('purge', 100)]],
+    Controls=dict(PurgedRepeat=repeat_sample, PurgedAgentStopped=stopped_sample,
+                  AgentStop=dict(Reached=True), AgentRestart=dict(Reached=True), AgentReady=True), Errors=[]),
+    dict(NonQualifying=True, Windows=[dict(Label='exit', Summary=None)],
+         Controls=dict(AgentRestart=dict(Reached=False), AgentReady=False), Errors=['PASS FAIL parse failure'])]
+for purge_diag in purge_cases:
+    for failure in (False, True):
+        diagnostic = copy.deepcopy(healthy)
+        diagnostic.update(Cycles=256, Completed=256, Attempted=256)
+        diagnostic['PurgeAttribution'] = purge_diag
+        diagnostic['BlockedBytesPublished'] = failure
+        samples = healthy_samples + [repeat_sample, stopped_sample]
+        original, original_code, original_lines = replay(changed_result(diagnostic), samples, 256, full_lines=True)
+        observed, observed_code, observed_lines = replay(changed_result(diagnostic), samples, 256, purge_attribution='yes', full_lines=True)
+        require(observed, 'T4PurgeAttributionMode', 'INFO', 'purge attribution diagnostic; non-qualifying')
+        require(observed, 'T4PurgeAttribution', 'INFO', 'diagnostic result missing' if purge_diag is None else 'SUfl live purged')
+        assert {k: v for k, v in observed.items() if not k.startswith('T4PurgeAttribution')} == original
+        assert observed_code == original_code == int(failure)
+        assert [line for line in observed_lines if not line.startswith('T4PurgeAttribution')] == original_lines
+        _, baseline_code, baseline_lines = replay(changed_result(diagnostic), healthy_samples, 256, full_lines=True)
+        assert original_lines == baseline_lines and original_code == baseline_code, 'New control samples must not enter original workload gates'
+        for name in ('T4PurgeAttributionMode', 'T4PurgeAttribution'):
+            assert not re.search(r'\b(PASS|FAIL)\b', observed[name])
+        if purge_diag and len(purge_diag.get('Windows', [])) == 3:
+            for fragment in ('exit creates 8258', 'idle creates 17528', 'purge creates 100',
+                             'SafeUpload.Agent.Service.exe[42]=8257', 'System[4]=1',
+                             'purged-repeat ', 'purged-agent-stopped ', 'restart True, readiness True'):
+                assert fragment in observed['T4PurgeAttribution'], observed
+            assert 'excluded-fourth' not in observed['T4PurgeAttribution']
+            if not failure:
+                print('purge synthetic replay: ' + observed['T4PurgeAttributionMode'])
+                print('purge synthetic replay: ' + observed['T4PurgeAttribution'])
+print('T4PurgeAttributionControl=PASS; present/partial/error/missing results INFO only, all existing lines and exit unchanged')
 # Preflight controls stop before artifact hashing, inventory, SSH or run_disk_begin.
 # Even the valid option combination has deliberately absent product artifacts.
 with tempfile.TemporaryDirectory(prefix='t4-delete-preflight-') as directory:
@@ -239,7 +287,7 @@ with tempfile.TemporaryDirectory(prefix='t4-delete-preflight-') as directory:
     (root / 'debuggers.zip').write_bytes(b'synthetic presence check only')
     (root / 'SafeUpload.pdb').write_bytes(b'synthetic presence check only')
     base = dict(os.environ, T4_MEMORY_TOOLS=directory, T4_DELETE_ATTRIBUTION='yes',
-                T4_HANDBACK_DIAGNOSTIC='no', T4_VOLUME_DISCRIMINATOR='no', SAFEUPLOAD_DEBUGGEE='win10-debug3')
+                T4_HANDBACK_DIAGNOSTIC='no', T4_VOLUME_DISCRIMINATOR='no', T4_PURGE_ATTRIBUTION='no', SAFEUPLOAD_DEBUGGEE='win10-debug3')
     cases = [({}, '256', 'verifier-from-boot', 'needs the signed driver'),
              ({'T4_MEMORY_TOOLS': ''}, '256', 'verifier-from-boot', 'Delete attribution requires'),
              ({'T4_HANDBACK_DIAGNOSTIC': 'yes'}, '256', 'verifier-from-boot', 'needs the signed driver'),
@@ -259,7 +307,7 @@ print('T4DeletePreflightControl=PASS; 9 offline option/dependency controls, no V
 with tempfile.TemporaryDirectory(prefix='t4-volume-preflight-') as directory:
     root = Path(directory)
     base = dict(os.environ, T4_MEMORY_TOOLS='', T4_DELETE_ATTRIBUTION='no',
-                T4_HANDBACK_DIAGNOSTIC='no', T4_VOLUME_DISCRIMINATOR='yes', SAFEUPLOAD_DEBUGGEE='win10-debug3')
+                T4_HANDBACK_DIAGNOSTIC='no', T4_VOLUME_DISCRIMINATOR='yes', T4_PURGE_ATTRIBUTION='no', SAFEUPLOAD_DEBUGGEE='win10-debug3')
     cases = [({}, 'win10-debug3', '256', 'verifier-from-boot', 'needs the signed driver'),
              ({'T4_HANDBACK_DIAGNOSTIC': 'yes'}, 'win10-debug3', '256', 'verifier-from-boot', 'needs the signed driver'),
              ({}, 'win10-debug3', '10000', 'verifier-from-boot', 'Volume discriminator requires boot Verifier'),
@@ -280,4 +328,26 @@ with tempfile.TemporaryDirectory(prefix='t4-volume-preflight-') as directory:
         assert run.returncode == 2 and message in run.stdout, (overrides, run.stdout, run.stderr)
         assert '== run disk' not in run.stdout
 print('T4VolumePreflightControl=PASS; 10 offline option/dependency controls, no VM contact')
+with tempfile.TemporaryDirectory(prefix='t4-purge-preflight-') as directory:
+    root = Path(directory)
+    base = dict(os.environ, T4_MEMORY_TOOLS='', T4_DELETE_ATTRIBUTION='no',
+                T4_HANDBACK_DIAGNOSTIC='no', T4_VOLUME_DISCRIMINATOR='no', T4_PURGE_ATTRIBUTION='yes',
+                SAFEUPLOAD_DEBUGGEE='win10-debug3')
+    cases = [({}, '256', 'needs the signed driver'),
+             ({'T4_PURGE_ATTRIBUTION': 'no'}, '256', 'needs the signed driver'),
+             ({'T4_PURGE_ATTRIBUTION': 'maybe'}, '256', 'must be yes or no'),
+             ({'T4_PURGE_ATTRIBUTION': ''}, '256', 'must be yes or no'),
+             ({}, '10000', 'Purge attribution requires fewer than 10,000 cycles'),
+             ({}, '10001', 'Purge attribution requires fewer than 10,000 cycles'),
+             ({'T4_HANDBACK_DIAGNOSTIC': 'yes'}, '256', 'cannot be combined with T4_HANDBACK_DIAGNOSTIC'),
+             ({'T4_DELETE_ATTRIBUTION': 'yes'}, '256', 'cannot be combined with T4_DELETE_ATTRIBUTION'),
+             ({'T4_VOLUME_DISCRIMINATOR': 'yes'}, '256', 'cannot be combined with T4_VOLUME_DISCRIMINATOR')]
+    for overrides, count, message in cases:
+        run = subprocess.run(['bash', str(REPO / 'driver/scripts/Invoke-StageCycles.sh'),
+                              'win10-debug3', 'offlinePurge', str(root / 'absent.sys'), str(root / 'absent.zip'),
+                              count, 'verifier-from-boot', '64'], env=dict(base, **overrides),
+                             capture_output=True, text=True, timeout=10)
+        assert run.returncode == 2 and message in run.stdout, (overrides, run.stdout, run.stderr)
+        assert '== run disk' not in run.stdout
+print('T4PurgePreflightControl=PASS; 9 offline option/combination controls, no VM contact')
 print('T4VerdictSelfCheck=PASS; retained replay and context/registry refusal controls; Qualification=False')
