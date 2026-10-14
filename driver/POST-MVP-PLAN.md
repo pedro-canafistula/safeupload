@@ -551,7 +551,23 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       [four WDK builds `t5-pin1`](evidence/2026-10-14/exact-t5-pin1-summary.txt) 0/0, imports PASS, signed `57B9CB09…D996`; merged
       `acf440fe`. The reworked replay (`wt/t5-attach-replay` `7ab5c490`: live validation of cached permits, reversible unload
       veto, held waits) awaits its build and re-review.
-    - [ ] Readiness root cause and fix (read-only analysis running); then the T4 smoke and the raw cells in all three modes.
+    - [x] Readiness root cause ([analysis](evidence/2026-10-14/m2t5boot12-readiness-rca-sol61.md)): (1) proven — the startup
+      reconcile was never retried: the timer's armed flag was cleared only by the worker pass, which is skipped while reconciling,
+      so after the service's EpochBusy reply nothing re-armed it (boots succeeded only when the agent's startup preparation
+      finished before the handshake); (2) writer Unknown confirmed but unattributed (the source lets losses outside C: deny its
+      coverage via global escalation or machine-wide SOP markers).
+    - [x] Fix (1): `bcc209c3` arms from the notification timer's own state (`KeReadStateTimer`), `e80df96e` maintains the timer at
+      disconnect, `f706bbc2` applies a reconcile result only for the current service generation; either acceptance wakes one pass.
+      Reviews: [a211847c](evidence/2026-10-14/t5-recon-review-sol61.md) and [32d8ce34](evidence/2026-10-14/t5-recon2-review-sol61.md)
+      (expiry-flag designs) REJECT, [bcc209c3](evidence/2026-10-14/t5-timer-review-sol61.md) and [e80df96e](evidence/2026-10-14/t5-timer2-review-sol61.md)
+      REJECT, [f706bbc2](evidence/2026-10-14/t5-timer3-review-sol61.md) **ACCEPT**. For (2), diagnostics `fb6bf4c6`+`78af6223`+`258a6ea8`
+      record the first origin (source line, reason) of global, entry and SOP Unknown and print all loss counters
+      ([review](evidence/2026-10-14/t5-diag-review-sol61.md) ACCEPT WITH CONDITIONS; build `t5-diag1` failed C6262, receipts kept).
+      [Four WDK builds `t5-diag3`](evidence/2026-10-14/exact-t5-diag3-summary.txt) 0/0, imports PASS, signed `BC03DBC4…0C65`;
+      [agent matrix `t5-diag2`](evidence/2026-10-14/exact-agent-matrix-t5-diag2-summary.txt) PASS 1,497 / 2,077 (feature Release
+      `9325F657…FD8E`).
+    - [ ] `m2t5boot13`: t5-diag3 driver with the t5-diag2 agent (T4 smoke, boot Verifier); if Unknown recurs, attribute it from
+      the first-origin counters; then the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

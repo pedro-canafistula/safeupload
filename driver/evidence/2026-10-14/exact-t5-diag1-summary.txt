@@ -1,0 +1,13 @@
+﻿LABEL=t5-diag1
+ARCHIVE_SHA256=A18572698D73F9EDF696C11D7F57018D33D676918661804AD7445A3FFB18FE30
+SOURCE_COMMIT=af95f33fe700eae5a6dcc203abf5060812e10a73
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-14T13:27:40.6464701Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=2DA5E4E47E6637A41B5D127C4017E6904915807B1903C3BCD4B4920EA02224DD
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=1 succeeded=False warnings=0 errors=1 apivalidator=True prefast=True artifact_sha256=NONE
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=49DB62B7C4E27788EBCF081A20009A6262F1EA3E8EEF8A92BA515EEB073A9423
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=1 succeeded=False warnings=0 errors=1 apivalidator=True prefast=True artifact_sha256=NONE
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=68FDCEE19620CBFEE90962DFF8E4BD7F397CA43144EC4ECE7CB59B6F125880CA
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=32CBB4C708FAD3DD37B88CB2709B2D795EA2A25D4817C7E5232FCFBB272672CC
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=21F5E9D66CA8BCC830DCEDE77569709F0AFD2E1367FE39C2E6F254335B5E81A6
+sign : SKIPPED (no feature Debug SYS)

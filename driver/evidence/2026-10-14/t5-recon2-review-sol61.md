@@ -1,0 +1,17 @@
+# Review of the reconcile retry fix 32d8ce34 (REJECT) — Sol 6.1 xhigh (2026-10-14)
+
+Reviewer: `gpt-6.1-sol`, `reasoning_effort=xhigh`, read-only, web search enabled (Codex session `01a13a8d-2baf-74b2-b0f4-0133796791c9`). Verbatim final report; checkout paths shortened.
+
+**REJECT `32d8ce34` for the next dormant Verifier boot.** The two reported sequences are corrected, but the broader timer guarantees remain incomplete.
+
+1. **P2 — an old expiry can still disarm a newer timer (inherited path).** A fires after the pass’s initial consumption; zero-wait maintenance clears `StageRetryArmed`; an RPC failure then arms B before the next pass. That pass consumes A’s flag and clears B’s armed flag. If work becomes SERVICE/NONE, cancellation is skipped and B fires idle. The handle-receipt path permits this sequence: [wait transition:5793](driver/SafeUpload.Minifilter/StageStream.c:5793), [RPC timer update:6101](driver/SafeUpload.Minifilter/StageStream.c:6101), [expiry consumption:6365](driver/SafeUpload.Minifilter/StageStream.c:6365), [conditional cancellation:6328](driver/SafeUpload.Minifilter/StageStream.c:6328). Cancellation cannot suppress an already queued expiry. [Microsoft contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-kecanceltimer). **Required:** prevent old expiries from clearing newer arms, cancel the actual timer whenever no eligible wait remains, and cover this cancel/re-arm interleaving.
+
+2. **P2 — disconnect leaves a future idle fire (pre-existing).** With only startup reconciliation waiting, Busy arms A; disconnect changes the wait to SERVICE without timer maintenance or a worker wake. A remains scheduled and later triggers reconciliation despite no timer-eligible wait. [StageStream.c:6731](driver/SafeUpload.Minifilter/StageStream.c:6731). **Required:** maintain/cancel the timer on disconnect under `NamespaceResource`, preserving any legitimate drain/overflow waits.
+
+3. **Informational — the previous exact findings are corrected.** [6602](driver/SafeUpload.Minifilter/StageStream.c:6602) consumes the retained fire once; [6372](driver/SafeUpload.Minifilter/StageStream.c:6372) preserves stream retries without another disarm. [6646](driver/SafeUpload.Minifilter/StageStream.c:6646) wakes maintenance after either acceptance; only success requests the full sweep. **Required change:** none beyond findings 1–2.
+
+4. **Informational — retry and teardown behavior otherwise looks sound.** Busy, timeout and malformed replies retain EXCHANGE retries; stale-channel/disconnect failures use SERVICE, with reconnect waking negotiation. No autonomous busy loop or additional permanent unload-pause stall found. Rollback/veto explicitly wake work. Teardown joins the worker, then unconditionally cancels and flushes at [6964](driver/SafeUpload.Minifilter/StageStream.c:6964), covering queued DPC completion. [Microsoft contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-keflushqueueddpcs). **Required change:** none here.
+
+5. **Informational — agent completion wake is optional.** Preparation returns without waking the driver at [StagedNativeStartupRecovery.cs:158](agente/SafeUpload.Agent.Service/Interception/StagedNativeStartupRecovery.cs:158). Correct timer bookkeeping suffices; **8 seconds caps retry delay, not total startup latency**. **Required agent change:** none.
+
+Read-only source review; no edits, builds, tests or VMs. This is not qualification.
