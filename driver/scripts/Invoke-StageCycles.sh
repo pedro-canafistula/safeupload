@@ -269,6 +269,11 @@ capture_unreachable() {  # $1 label
         echo 'UnreachableDump=FAILED'
     fi
 }
+# Keep a bugcheck on screen instead of rebooting into WinRE (m2t5boot2): on this disposable run disk only, the stop code then
+# shows in the screenshot and the memory dump holds the crashed system, not the recovery environment.
+remote <<<"Set-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl' -Name AutoReboot -Value 0 -Type DWord; 'CRASH_AUTOREBOOT=' + (Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl').AutoReboot" \
+    >> "$ev/$tag-install.txt"
+grep -qx 'CRASH_AUTOREBOOT=0' "$ev/$tag-install.txt" || { echo 'could not keep bugchecks on screen'; exit 25; }
 echo "== reboot"
 remote <<<'& shutdown.exe /r /t 5 /c "T4 install"' >/dev/null; sleep 60
 wait_ssh || { echo 'guest did not return'; capture_unreachable install-unreachable | tee -a "$ev/$tag-install.txt"; exit 17; }
