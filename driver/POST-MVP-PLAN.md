@@ -527,7 +527,16 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       signed `7DB90CFE…1AE7`. New recovery-qualification hold: a lost seal ACK strands the kernel once inspection advances (the
       handler accepts only Sealed). Exact op15 replay is implemented on `wt/t5-attach-replay` (`ee69ed10`; build `t5-replay1`
       0/0), pending its review.
-    - [ ] `m2t5boot10`: t5-fix7 driver with the t5-attach1 agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
+      An [independent root-cause analysis](evidence/2026-10-14/m2t5boot9-rca-sol61.md) reached the same cause and fix.
+    - [x] `m2t5boot10` (t5-fix7 driver, t5-attach1 agent): driver loaded under boot Verifier from first load, but the agent never
+      reported Ready (exit 19; restoration PASS). Coverage went Pending (PolicyOrTopologyChanging) and then stayed Degraded
+      `WriterStateUnknown` from about 47 s after agent start, before any cycle; coverage queries also hit ERROR_RETRY (the census
+      returns STATUS_RETRY when the registry changes mid-scan). First such failure in 17 readiness checks since 2026-10-10 (1 of 4
+      with the T5 writer code); the Listed fix touches only staged-stream receipts. Hypothesis: a boot-time writer-tracking loss
+      (per-entry or SOP Unknown, sticky by design) next to a volume topology change (m2t5boot9 counted 54 dismount teardowns).
+      Readiness diagnostics now also record the writer-state counters, deny ring, SafeUpload instances and System events.
+    - [ ] `m2t5boot11`: same pair (T4 smoke, boot Verifier); stop if Unknown repeats without discriminating evidence; then the
+      raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

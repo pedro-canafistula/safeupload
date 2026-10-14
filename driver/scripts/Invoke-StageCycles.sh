@@ -320,7 +320,8 @@ PS
 if ! grep -qx 'READY=True' "$ev/$tag-ready.txt"; then
     stop_reason=admission-not-ready; echo 'agent never Ready'
     # Diagnostic only (m2t5boot4: the status pipe never accepted a connection): service state, process and the agent's,
-    # crash and SCM events since boot, before the trap discards the disk.
+    # crash and SCM events since boot, before the trap discards the disk. m2t5boot10 (coverage stuck at WriterStateUnknown):
+    # also the driver's writer-state counters and deny ring, as after the cycles.
     remote > "$ev/$tag-readiness-diagnostics.txt" 2>&1 <<'PS'
 sc.exe queryex SafeUploadAgent
 Get-Process -Name 'SafeUpload.Agent.Service' -ErrorAction SilentlyContinue | Format-List Id,StartTime,CPU,WorkingSet64,Responding
@@ -332,6 +333,12 @@ Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=$since} -ErrorA
 Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=$since; ProviderName='Service Control Manager'} -ErrorAction SilentlyContinue |
     Where-Object { $_.Message -like '*SafeUpload*' } | ForEach-Object { '{0:o} SCM {1} {2}' -f $_.TimeCreated, $_.Id, ($_.Message -replace '\s+',' ') }
 fltmc.exe filters
+fltmc.exe instances -f SafeUpload
+# Volume arrivals/removals and other system events since boot, to place a topology change next to the coverage events.
+Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=$since} -ErrorAction SilentlyContinue |
+    Select-Object -First 400 | ForEach-Object { '{0:o} SYS {1} {2} L{3} {4}' -f $_.TimeCreated, $_.ProviderName, $_.Id, $_.Level, (($_.Message -replace '\s+',' ') -replace '^(.{0,240}).*$','$1') }
+try { $c = & 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query counters; 'COUNTERS=' + ($c | ConvertTo-Json -Depth 6 -Compress) } catch { 'COUNTERS_ERROR=' + $_.Exception.Message }
+try { $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query deny-ring); 'RING_TOTAL=' + $ring.Count; foreach ($e in $ring | Select-Object -Last 40) { 'RING=' + ($e | ConvertTo-Json -Compress) } } catch { 'RING_ERROR=' + $_.Exception.Message }
 'READINESS_DIAGNOSTICS_DONE=True'
 PS
     exit 19
