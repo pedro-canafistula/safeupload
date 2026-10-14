@@ -1,0 +1,15 @@
+<h2>Auditoria</h2>
+<button class="btn-secondary" (click)="refresh.next()">Atualizar</button>
+<ng-container *ngIf="state$ | async as state">
+  <p role="status" *ngIf="state.loading">Carregando auditoria…</p>
+  <p role="alert" *ngIf="state.error">{{ state.error }} <a routerLink="/login">Entrar</a></p>
+  <section class="card" *ngIf="state.data as dados">
+    <p *ngIf="dados.endpoint">Auditoria do endpoint {{ dados.endpoint }} · <a routerLink="/auditoria">Limpar filtro</a></p>
+    <div class="resumo">
+      <span>Total {{ dados.resumo.total }}</span><span>Bloqueados {{ dados.resumo.bloqueados }}</span>
+      <span>Aprovados {{ dados.resumo.aprovados }}</span><span>Liberados sem inspeção {{ dados.resumo.liberadosSemInspecao }}</span>
+    </div>
+    <app-event-table [events]="dados.eventos" />
+  </section>
+</ng-container>
+

@@ -1,0 +1,4 @@
+.resumo { display: flex; gap: 18px; margin-bottom: 10px; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 10px; border-bottom: 1px solid #edf2f8; text-align: left; font-size: 14px; }
+

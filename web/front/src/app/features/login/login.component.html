@@ -1,0 +1,22 @@
+<section class="auth-page">
+  <div class="auth-box card">
+    <h1>SafeUpload</h1>
+    <p>Painel de administração</p>
+
+    <div class="msg ok" *ngIf="sucesso">{{ sucesso }}</div>
+    <div class="msg erro" role="alert" *ngIf="erro">{{ erro }}</div>
+
+    <form (ngSubmit)="enviar()">
+      <label for="email">E-mail</label>
+      <input id="email" name="email" [(ngModel)]="email" type="email" autocomplete="username" required />
+
+      <label for="senha">Senha</label>
+      <input id="senha" name="senha" [(ngModel)]="senha" type="password" autocomplete="current-password" required />
+
+      <button class="btn-primary" [disabled]="carregando" type="submit">Entrar</button>
+    </form>
+
+    <a routerLink="/cadastro">Criar cadastro</a>
+  </div>
+</section>
+
