@@ -6618,16 +6618,32 @@ function Restore-Suite([switch]$Rollback) {
     }
     # Each restoration step is independent, but failed steps retain recovery state.
     $steps=@(
-        # The T5 staging driver accepts a voluntary unload only through an exact epoch drain with its connected service; with the
-        # service gone only mandatory teardown (shutdown) removes it (m2t5ro1: fltmc 0x801F0010 after the agent was stopped). Try the
-        # voluntary unload first, while the test agent still runs; a veto here leaves the driver loaded and the 'driver' step below
-        # still requires the unload, so a refusal stays a restoration failure.
+        # The T5 staging driver accepts a voluntary unload only through an exact epoch drain with its connected service
+        # (PrepareUnload vetoes while the stage protocol is not ready); with the service gone only mandatory teardown (shutdown)
+        # removes it (m2t5ro1, m2t5ob1: fltmc 0x801F0010). Each trial stops its own test agent before restoration, so restart the
+        # run's test agent, retry the voluntary unload (a voluntary veto rolls back) until it succeeds or 120 s pass, record every
+        # attempt, then stop the agent and restore its service configuration. A refusal leaves the driver loaded and the 'driver'
+        # step below still requires the unload, so it stays a restoration failure.
         @{Name='driver-with-service';Action={
             $loaded=(& fltmc.exe filters 2>&1 | Out-String) -match '(?m)^SafeUpload\s'
-            $service=Get-Service SafeUploadAgent -ErrorAction SilentlyContinue
-            if($loaded -and $null -ne $service -and $service.Status -eq 'Running'){
-                $output=(& fltmc.exe unload SafeUpload 2>&1 | Out-String);$exit=$LASTEXITCODE
-                Write-DurableFile (Join-Path $evidenceDirectory 'driver-unload-with-service.txt') ("Exit=$exit`r`n"+$output)
+            if(-not $loaded -or -not (Test-Path -LiteralPath (Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe'))){return}
+            $service=Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'" -ErrorAction SilentlyContinue
+            $agent=$null;$attempts=@();$started=[Diagnostics.Stopwatch]::GetTimestamp()
+            try{
+                if($null -eq $service -or $service.State -ne 'Running'){
+                    $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'restoration-agent')
+                }
+                $deadline=$started+[long](120*[Diagnostics.Stopwatch]::Frequency)
+                do{
+                    $output=(& fltmc.exe unload SafeUpload 2>&1 | Out-String);$exit=$LASTEXITCODE
+                    $elapsed=[math]::Round(([Diagnostics.Stopwatch]::GetTimestamp()-$started)/[double][Diagnostics.Stopwatch]::Frequency,1)
+                    $attempts+=('ElapsedSeconds='+$elapsed+';Exit='+$exit+';Output='+($output.Trim() -replace '\s+',' '))
+                    if($exit -eq 0){break}
+                    Start-Sleep -Seconds 1
+                }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+            }finally{
+                Write-DurableFile (Join-Path $evidenceDirectory 'driver-unload-with-service.txt') ((@('AgentRestarted='+($null -ne $agent))+$attempts) -join "`r`n")
+                if($null -ne $agent){Stop-StagedTestAgent $agent}
             }
         }},
         @{Name='cached-agent';Action={Restore-CachedAgent}},
