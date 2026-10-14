@@ -572,9 +572,13 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       identical failures (exit 1; restoration PASS): every replace onto an already published name (cycles 11, 15, 19) stayed
       private. The rename committed with the destination generation advanced (2, 3) and the service refused each cleanup receipt
       (op19): "the v20 attachment tuple does not match the exact allocation manifest"; renames onto absent names (cycles 3, 7)
-      passed. The refused receipt is retried about four times a second (backoff appears to reset). Root cause and fix: analysis
-      running.
-    - [ ] Fix replace-onto-existing; rerun the T4 smoke; then the raw cells in all three modes.
+      passed. The refused receipt is retried about four times a second.
+    - [x] [Root cause](evidence/2026-10-14/m2t5boot13-rca-sol61.md) (the agent's refusal is correct): a committed rename onto an
+      occupied name takes the destination's next generation in the service journal, but `RetargetStage` replies only Allow and the
+      driver never adopts the generation, so op19 carries the stale one. Secondary: the exchange backoff resets during each attempt
+      (in-flight exchanges are not counted) and explicit refusals are retried as exchanges, against the timer rule.
+    - [ ] Fix: a typed rename-commit receipt (agent, protocol, kernel) adopted before the rename fence is released; retry
+      accounting and refusal parking (implementation running); then rerun the T4 smoke and the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
