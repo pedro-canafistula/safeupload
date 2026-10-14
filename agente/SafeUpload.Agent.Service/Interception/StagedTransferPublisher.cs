@@ -730,6 +730,7 @@ public sealed partial class StagedTransferPublisher
 
     private async Task ProcessBlockedCleanupCoreAsync(TransferJournalEntry entry, CancellationToken token)
     {
+        if (StagedTransferJournal.BlockedCleanupComplete(entry)) return;
         entry = await _journal.ReadAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
         if (entry.SealedLength is not >= 0 || entry.StageIdentity is null ||
             entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||

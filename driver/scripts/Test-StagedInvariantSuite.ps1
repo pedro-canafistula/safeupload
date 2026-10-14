@@ -1072,10 +1072,10 @@ function Invoke-ActivationTraceDisable([string]$Prefix) {
         }
     }
 }
-function Invoke-ActivationInspector([string]$Argument,[string]$Prefix,[int]$Timeout=45000) {
+function Invoke-ActivationInspector([string]$Argument,[string]$Prefix,[int]$Timeout=45000,[switch]$Direct) {
     $previous=$env:SAFEUPLOAD_STAGED_PROOF_PROXY
     try {
-        if($state.AgentServiceStarted){$env:SAFEUPLOAD_STAGED_PROOF_PROXY='1'}else{Remove-Item Env:SAFEUPLOAD_STAGED_PROOF_PROXY -ErrorAction SilentlyContinue}
+        if($state.AgentServiceStarted -and -not $Direct){$env:SAFEUPLOAD_STAGED_PROOF_PROXY='1'}else{Remove-Item Env:SAFEUPLOAD_STAGED_PROOF_PROXY -ErrorAction SilentlyContinue}
         # The driver refuses trace disable/clear with ERROR_BUSY (0x800700AA) while a paired observer ticket is outstanding
         # (A05 sb2f1, R02 h3c1). That clears within moments, so retry only that refusal for these two commands, QPC-bounded
         # (10 s), each attempt keeping its own output. Every other failure, and a refusal that persists, is thrown unchanged.
@@ -6628,7 +6628,7 @@ function Restore-Suite([switch]$Rollback) {
             $loaded=(& fltmc.exe filters 2>&1 | Out-String) -match '(?m)^SafeUpload\s'
             if(-not $loaded -or -not (Test-Path -LiteralPath (Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe'))){return}
             $service=Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'" -ErrorAction SilentlyContinue
-            $agent=$null;$attempts=@();$started=[Diagnostics.Stopwatch]::GetTimestamp()
+            $agent=$null;$attempts=@();$unloaded=$false;$started=[Diagnostics.Stopwatch]::GetTimestamp()
             try{
                 if($null -eq $service -or $service.State -ne 'Running'){
                     $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'restoration-agent')
@@ -6638,12 +6638,21 @@ function Restore-Suite([switch]$Rollback) {
                     $output=(& fltmc.exe unload SafeUpload 2>&1 | Out-String);$exit=$LASTEXITCODE
                     $elapsed=[math]::Round(([Diagnostics.Stopwatch]::GetTimestamp()-$started)/[double][Diagnostics.Stopwatch]::Frequency,1)
                     $attempts+=('ElapsedSeconds='+$elapsed+';Exit='+$exit+';Output='+($output.Trim() -replace '\s+',' '))
-                    if($exit -eq 0){break}
+                    if($exit -eq 0){$unloaded=$true;break}
                     Start-Sleep -Seconds 1
                 }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
             }finally{
                 Write-DurableFile (Join-Path $evidenceDirectory 'driver-unload-with-service.txt') ((@('AgentRestarted='+($null -ne $agent))+$attempts) -join "`r`n")
                 if($null -ne $agent){Stop-StagedTestAgent $agent}
+                if(-not $unloaded){
+                    # Diagnostic only: capture the service-connected veto after stopping the
+                    # restarted agent and before a later unload can replace LastUnloadVeto.
+                    $vetoStatus=Join-Path $evidenceDirectory 'driver-unload-veto-status.txt'
+                    try{
+                        $statusText=Invoke-ActivationInspector '--writer-state-status' (Join-Path $evidenceDirectory 'driver-unload-veto-status') 45000 -Direct
+                        Write-DurableFile $vetoStatus $statusText
+                    }catch{Write-DurableFile $vetoStatus ('WriterStateStatusError='+$_.Exception.Message)}
+                }
             }
         }},
         @{Name='cached-agent';Action={Restore-CachedAgent}},

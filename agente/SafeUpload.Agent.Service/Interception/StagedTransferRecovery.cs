@@ -20,6 +20,7 @@ public sealed partial class StagedTransferPublisher
     private readonly SemaphoreSlim _recoveryGate = new(1, 1);
     private readonly Dictionary<Guid, (int Failures, long RetryAt)> _recoveryRetries = new();
     private readonly HashSet<Guid> _recoveryNotified = new();
+    internal Func<long> RecoveryTimestamp { get; set; } = Stopwatch.GetTimestamp;
 
     private async Task FinishConfirmedPublicationAsync(Guid id, CancellationToken token)
     {
@@ -71,7 +72,7 @@ public sealed partial class StagedTransferPublisher
                 SafeUpload.Agent.Minifilter.BoundPublicationPhase.Create).TransferId).Distinct())
         {
             var entry = await _journal.ReadAsync(id, token).ConfigureAwait(false);
-            await RecoverPendingTransferAsync(entry, token).ConfigureAwait(false);
+            await RecoverPendingTransferAsync(entry, token, receiptRecovery: true).ConfigureAwait(false);
         }
     }
 #endif
@@ -79,13 +80,29 @@ public sealed partial class StagedTransferPublisher
     // The live worker and startup both call this. No delay is awaited under
     // the journal gate, and a retry for one transfer does not stall another.
     // This dispatcher never invokes PublishAsync or performs a public rename.
-    internal async Task RecoverPendingTransferAsync(TransferJournalEntry entry, CancellationToken token)
+    internal Task RecoverPendingTransferAsync(TransferJournalEntry entry, CancellationToken token) =>
+        RecoverPendingTransferAsync(entry, token, receiptRecovery: false);
+
+    private async Task RecoverPendingTransferAsync(TransferJournalEntry entry, CancellationToken token,
+        bool receiptRecovery)
     {
+        // A validated scan snapshot already carries the exact completed
+        // receipt. Terminal dispatch must do no per-entry I/O. Any operation
+        // which changes authority continues to reread and validate on disk.
         await _recoveryGate.WaitAsync(token).ConfigureAwait(false);
         Guid id = entry.Transfer.TransferId;
         try
         {
-            if (_recoveryRetries.TryGetValue(id, out var retry) && Stopwatch.GetTimestamp() < retry.RetryAt)
+            // Bound publication receipts are a separate obligation. Their
+            // explicit dispatcher must still reconcile them after cleanup.
+            if (!receiptRecovery && StagedTransferJournal.BlockedCleanupComplete(entry) && !HasConfirmedPublication(id))
+            {
+                lock (_confirmedPublications) _pendingJournalProgress.Remove(id);
+                _recoveryRetries.Remove(id);
+                lock (_recoveryNotified) _recoveryNotified.Remove(id);
+                return;
+            }
+            if (_recoveryRetries.TryGetValue(id, out var retry) && RecoveryTimestamp() < retry.RetryAt)
                 return;
             entry = await _journal.ReadAsync(id, token).ConfigureAwait(false);
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
@@ -111,8 +128,23 @@ public sealed partial class StagedTransferPublisher
                 ReportRecoveryHold(entry, "publication_receipt_unavailable", null);
                 return; // T5 bound records require their existing anchored receipt dispatcher.
             }
-            else if (entry.State == TransferJournalState.Blocked)
-                await RecoverBlockedAsync(entry, token).ConfigureAwait(false);
+            else if (entry.State == TransferJournalState.Blocked ||
+                entry.State == TransferJournalState.Released && entry.HandbackState == StagedHandbackState.Verified)
+            {
+                if (entry.State == TransferJournalState.Blocked &&
+                    entry.HandbackState is StagedHandbackState.NotAttempted or StagedHandbackState.Copying or StagedHandbackState.Failed)
+                    await RecoverBlockedAsync(entry, token).ConfigureAwait(false);
+                else await ProcessBlockedCleanupAsync(entry, token).ConfigureAwait(false);
+                entry = await _journal.ReadAsync(id, token).ConfigureAwait(false);
+                if (entry.State is (TransferJournalState.Blocked or TransferJournalState.Released) &&
+                    !StagedTransferJournal.BlockedCleanupComplete(entry))
+                {
+                    if (entry.StageDeleted && !StagedTransferJournal.MatchesBlockedDeletionReceipt(entry))
+                        ReportRecoveryHold(entry, "blocked_disposition_receipt_unavailable", null);
+                    ScheduleRecoveryRetry(id); // includes pending last close and caught cleanup failures
+                    return;
+                }
+            }
             lock (_confirmedPublications) _pendingJournalProgress.Remove(id);
             _recoveryRetries.Remove(id);
             lock (_recoveryNotified) _recoveryNotified.Remove(id);
@@ -139,7 +171,7 @@ public sealed partial class StagedTransferPublisher
     {
         int failures = _recoveryRetries.TryGetValue(id, out var retry) ? Math.Min(retry.Failures + 1, 6) : 1;
         double seconds = Math.Min(8, .25 * (1 << (failures - 1)));
-        _recoveryRetries[id] = (failures, Stopwatch.GetTimestamp() + (long)(seconds * Stopwatch.Frequency));
+        _recoveryRetries[id] = (failures, RecoveryTimestamp() + (long)(seconds * Stopwatch.Frequency));
     }
 
     private void ReportRecoveryHold(TransferJournalEntry entry, string reason, Exception? error)

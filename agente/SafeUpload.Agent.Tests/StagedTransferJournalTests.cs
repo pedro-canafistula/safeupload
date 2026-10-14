@@ -34,6 +34,21 @@ public sealed class StagedTransferJournalTests : IDisposable
             "explorer.exe", 1234, 1);
     }
 
+    [Theory]
+    [InlineData("~tmp-1.txt", true)]
+    [InlineData("MISSING~1.txt", true)]
+    [InlineData("../~tmp-1.txt", false)]
+    [InlineData("./~tmp-1.txt", false)]
+    [InlineData("sub//~tmp-1.txt", false)]
+    public void Historical_names_are_validated_lexically_even_when_the_leaf_is_absent(string relative, bool accepted)
+    {
+        string root = Path.Combine(_workspace.Root, "historical");
+        string path = root + Path.DirectorySeparatorChar + relative.Replace('/', Path.DirectorySeparatorChar);
+        if (accepted) StagedTransferJournal.RequireHistoricalManifestPath(path);
+        else Assert.Throws<InvalidDataException>(() => StagedTransferJournal.RequireHistoricalManifestPath(path));
+        Assert.False(Directory.Exists(root));
+    }
+
     [Fact]
     public async Task Empty_stage_is_measured_sealed_with_the_empty_digest_and_reserved_state_cannot_be_forged()
     {

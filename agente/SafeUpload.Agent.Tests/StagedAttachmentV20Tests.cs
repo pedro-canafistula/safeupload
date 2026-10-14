@@ -43,6 +43,34 @@ public sealed class StagedAttachmentV20Tests : IDisposable
         Assert.Equal(2u, SafeUpload.Agent.Minifilter.StageV19Result.ReservedEmptyHeld);
     }
 
+    [Fact]
+    public async Task Historical_tilde_rename_receipt_and_tombstone_survive_name_reuse_and_same_epoch_reconnect()
+    {
+        Fixture target = await CreateFixtureAsync(false);
+        Fixture source = await CreateFixtureAsync(false, target, "~tmp-1.txt");
+        await CompleteAttachmentAsync(source, 801);
+        var request = RenameRequest(source, 810, target.Transfer.DestinationPath);
+        await source.Journal.PrepareRenameAsync(source.Transfer.TransferId, request.TransactionId,
+            source.Transfer.ProcessId, request.DestinationPath, false, default, request);
+        var committed = await source.Journal.CompleteRenameAsync(source.Transfer.TransferId, request.TransactionId,
+            source.Transfer.ProcessId, request.DestinationPath, true, default, request);
+        var receipt = committed.LastRenameReceiptV20!;
+        Assert.Equal(source.Transfer.DestinationPath, receipt.SourcePath);
+        Assert.Equal(source.Transfer.DestinationPath, committed.NamespaceTombstones!.DestinationPath);
+        await File.WriteAllTextAsync(source.Transfer.DestinationPath, "unrelated object reuses the old name");
+        var restarted = new StagedTransferJournal(source.JournalDirectory);
+        Assert.Equal(StagedDriverEpochReconcileV20.Active,
+            await restarted.ReconcileDriverInstanceV20Async(source.DriverInstanceId, RequiredCapabilities, default));
+        var replay = await restarted.CompleteRenameAsync(source.Transfer.TransferId, request.TransactionId,
+            source.Transfer.ProcessId, request.DestinationPath, true, default, request);
+        Assert.Equal(receipt, replay.LastRenameReceiptV20);
+        Assert.Equal(committed.NamespaceTombstones, replay.NamespaceTombstones);
+        Assert.Equal("unrelated object reuses the old name", await File.ReadAllTextAsync(source.Transfer.DestinationPath));
+        await Assert.ThrowsAsync<IOException>(() => restarted.CompleteRenameAsync(source.Transfer.TransferId,
+            request.TransactionId, source.Transfer.ProcessId, request.DestinationPath, true, default,
+            request with { Version = request.Version with { DestinationGeneration = request.Version.DestinationGeneration + 1 } }));
+    }
+
     [Theory]
     [InlineData("zero")]
     [InlineData("nonempty")]

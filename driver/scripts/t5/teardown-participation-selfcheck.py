@@ -13,15 +13,17 @@ ROOT = Path(__file__).resolve().parents[3]
 K = ROOT / 'driver/SafeUpload.Minifilter'
 
 
-def code(path):
-    source = path.read_text()
+def strip_code(source):
     # Preserve positions/newlines while removing comments and literals.
     return re.sub(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',
                   lambda m: ''.join('\n' if c == '\n' else ' ' for c in m[0]), source, flags=re.S)
 
 
-def body(file, name):
-    text = code(K / file)
+def code(path):
+    return strip_code(path.read_text())
+
+def body(file, name, sources=None):
+    text = code(K / file) if sources is None else strip_code(sources[file])
     for match in re.finditer(r'\b' + re.escape(name) + r'\s*\(', text):
         i = text.index('(', match.start()); level = 1; i += 1
         while level:
@@ -37,6 +39,115 @@ def body(file, name):
             i += 1
         return text[start:i]
     raise AssertionError(f'Missing production body: {file}:{name}')
+
+
+def batch1_contracts(sources):
+    """Ordering/ownership properties with adversarial production-source mutations.
+
+    Source checks are structural regression controls, not a kernel lifetime proof.
+    """
+    def b(file, name): return body(file, name, sources)
+    def require(value):
+        if not value: raise AssertionError('batch-1 obligation/retirement contract')
+    def order(text, *parts):
+        position = -1
+        for part in parts: position = text.index(part, position + 1)
+    ready = b('StageWriters.c', 'SafeUploadStageWritersUnloadReady')
+    require('return TRUE;' not in ready)
+    for guard in ('SafeUploadStageWritersOwnerCount() == 0', 'IsListEmpty(&RegistryReservations)',
+                  'entry->W', 'entry->RenameInFlight', 'association->References',
+                  'SAFEUPLOAD_TX_ASSOC_PENDING', 'rename->Abandoned', 'SectionSlots[index].AcquirePending',
+                  'SectionSlots[index].ReleasePending',
+                  'SpilledMutatingIoCount'):
+        require(guard in ready)
+    for history in ('IsListEmpty(&RegistryEntries)', 'IsListEmpty(&TransactionAssociations)',
+                    'SafeUploadStageWritersGlobalUnknown', 'StageRegistryUnknownSopCount', 'entry->H', 'UnknownWriterCount'):
+        require(history not in ready)
+    prep = b('StageStream.c', 'SafeUploadStagePrepareUnload')
+    require(prep.count('SafeUploadStageWritersUnloadReady()') == 2)
+    order(prep, 'SafeUploadStageWritersUnloadReady()', 'SafeUploadStageEpochDrainV20',
+          'drainResult != SAFEUPLOAD_STAGE_RESULT_EPOCH_DRAINED', 'SafeUploadStageWritersUnloadReady()',
+          'SafeUploadStageFenceTryCommitUnload()', 'return STATUS_SUCCESS;')
+    require('SafeUploadStageBeginMandatoryTeardown' not in prep)
+    unload = b('Filter.c', 'SafeUploadUnload')
+    voluntary = unload[unload.index('} else {'):]
+    order(voluntary, 'SafeUploadStagePrepareUnload(FALSE)', 'return STATUS_FLT_DO_NOT_DETACH;',
+          'SafeUploadStageBeginMandatoryTeardown()', 'SafeUploadCloseCommunicationPortEarly',
+          'SafeUploadStageWritersCloseAnchors', '&SafeUploadData.ChannelRundown',
+          'SafeUploadStageStopWorker', 'SafeUploadStageDrainMandatoryTeardown',
+          'SafeUploadStageWritersRetireHistory', 'FltUnregisterFilter',
+          'SafeUploadData.Filter = NULL', 'SafeUploadStageWritersFinishTeardown', 'SafeUploadStageFree')
+    committed = voluntary[voluntary.index('SafeUploadStageBeginMandatoryTeardown()'):]
+    committed = re.sub(r'#if !SAFEUPLOAD_STAGING_PROTOTYPE.*?#endif', '', committed, flags=re.S)
+    for forbidden in ('STATUS_FLT_DO_NOT_DETACH', 'StageRollbackUnloadPreparation',
+                      'SafeUploadOpenStageCallbackUnloadAdmission', 'ReopenAdmission'):
+        require(forbidden not in committed)
+    retire = b('StageWriters.c', 'StageRegistryRetireInstance')
+    for pin in ('instance', 'volume'):
+        pointer = pin.capitalize()
+        require(retire.count(f'entry->{pointer} = NULL') == 1)
+        require(retire.count(f'FltObjectDereference({pin}Reference)') == 1)
+        order(retire, f'{pin}Reference = entry->{pointer}', f'entry->{pointer} = NULL',
+              'FltReleasePushLock(&RegistryLock)', f'FltObjectDereference({pin}Reference)',
+              'StageRegistryDereference(entry)')
+    order(retire, 'RemoveEntryList(&association->Link)', 'association->Listed = FALSE',
+          'SAFEUPLOAD_TX_ASSOC_TERMINAL', 'KeSetEvent', 'FltReleasePushLock(&RegistryLock)',
+          'StageRegistryAssociationDereference(association)')
+    require('SafeUploadStageMandatoryTeardownActive' in b('StageWriters.c', 'StageAnchorInsert'))
+    for name in ('StageRegistryGetOrInsert', 'SafeUploadStageWritersReserveCreate',
+                 'SafeUploadStageWritersPrepareRename', 'StageRegistryEnlistTransaction',
+                 'SafeUploadStageSectionAcquired', 'StageRegistryQueueReclaimWorkItem'):
+        require('SafeUploadStageMandatoryTeardownActive' in b('StageWriters.c', name))
+    # Reservations belong exclusively to their own postoperation/cancel path.
+    for name in ('StageRegistryRetireInstance', 'SafeUploadStageWritersRetireHistory',
+                 'SafeUploadStageWritersFinishTeardown'):
+        require('ExFreePoolWithTag(reservation' not in b('StageWriters.c', name))
+        require('SafeUploadStageWritersCancelReservation' not in b('StageWriters.c', name))
+    detach = b('StageWriters.c', 'StageRegistryDetachOneInstanceSectionBinding')
+    require('SectionSlots[' not in detach)
+    require('SpilledMutatingIoCount == 0' in detach and 'UnknownWriterCount == 0' in detach)
+    acquire = b('StageWriters.c', 'SafeUploadStageSectionAcquired')
+    require('slot->AcquirePending = TRUE' in acquire)
+    require('slot->AcquirePending = FALSE' in b('StageWriters.c', 'SafeUploadStageSectionAcquireComplete'))
+    require('SafeUploadStageSectionAcquireComplete(CompletionContext)' in b('StageWriters.c', 'SafeUploadStageSectionAcquireDraining'))
+    require('SafeUploadStageSectionAcquireComplete(CompletionContext)' in b('StageStream.c', 'StagePostOperationCore'))
+    require('slot->ReleasePending = FALSE' in b('StageWriters.c', 'SafeUploadStageSectionReleaseComplete'))
+    failure = b('StageWriters.c', 'SafeUploadStageSectionAcquireFailed')
+    require('if (slot->ReleasePending)' in failure and 'slot->AcquireFailed = TRUE' in failure)
+    release = b('StageWriters.c', 'SafeUploadStageSectionReleaseComplete')
+    require('Succeeded && !Draining && !slot->AcquirePending' in release)
+    require('slot->ReleaseCompleted = TRUE' in release)
+    complete = b('StageWriters.c', 'SafeUploadStageSectionAcquireComplete')
+    require('slot->ReleaseCompleted && !slot->ReleasePending' in complete)
+    require('!Slot->AcquirePending && !Slot->ReleasePending' in b('StageWriters.c', 'StageSectionRemoveSlot'))
+    require('!slot->ReleaseCompleted && !slot->AcquireFailed' in b('StageWriters.c', 'SafeUploadStageSectionReleasePrepare'))
+    finish = b('StageWriters.c', 'SafeUploadStageWritersFinishTeardown')
+    order(finish, 'SafeUploadData.Filter == NULL', 'StageRegistryPurgeAbandonedDirectoryRenamesLocked',
+          'IsListEmpty(&RegistryDirectoryRenames)', 'IsListEmpty(&RegistryReservations)',
+          'SectionSlots[index].RegistryEntry', 'RtlZeroMemory(&SectionSlots[index]',
+          'StageReleaseSpinLock', 'StageRegistryDereference(entry)')
+    cleanup = b('StageWriters.c', 'SafeUploadStageWritersFreeContext')
+    require('!SafeUploadStageMandatoryTeardownActive()' in cleanup)
+    require('if (!naturalEnd) InterlockedExchange(&lifetime->Invalid, 1)' in cleanup)
+    require('else InterlockedExchange(&lifetime->Ended, 1)' in cleanup)
+    for name in ('SafeUploadStageWritersUnloadReady', 'StageRegistryRetireInstance',
+                 'SafeUploadStageWritersRetireHistory', 'SafeUploadStageWritersFinishTeardown'):
+        text = b('StageWriters.c', name)
+        require('->Ended' not in text)
+        require(re.search(r'InterlockedExchange\([^;]*(?:Unknown|Invalid)[^;]*,\s*0\)', text) is None)
+    # New direct spin-lock bodies stay resident, even though orchestration is PASSIVE.
+    for name in ('SafeUploadStageWritersUnloadReady', 'SafeUploadStageWritersFinishTeardown',
+                 'StageRegistryDetachOneInstanceSectionBinding', 'SafeUploadStageSectionAcquireComplete'):
+        require(f'#pragma alloc_text(PAGE, {name})' not in sources['StageWriters.c'])
+        require('PAGED_CODE()' not in b('StageWriters.c', name))
+    stop = b('StageStream.c', 'SafeUploadStageStopWorker')
+    order(stop, 'ZwWaitForSingleObject(StageWorkerHandle', 'KeCancelTimer(&StageRetryTimer)',
+          'KeFlushQueuedDpcs()', 'StageRetryArmed = FALSE', 'SafeUploadStageAdmissionStopWorker')
+    history = b('StageWriters.c', 'SafeUploadStageWritersRetireHistory')
+    order(history, 'StageRegistryPurgeAbandonedDirectoryRenamesLocked', 'IsListEmpty(&RegistryDirectoryRenames)',
+          'FltReleasePushLock(&RegistryLock)', 'KeDelayExecutionThread', 'while (!renamesDrained)',
+          'StageRegistryRetireInstance(NULL, FALSE)')
+    require('NT_ASSERT(allReturned)' in b('StageWriters.c', 'SafeUploadStageWritersUninitialize'))
 
 
 class TeardownParticipation(unittest.TestCase):
@@ -62,8 +173,8 @@ class TeardownParticipation(unittest.TestCase):
                    'SafeUploadStageWritersCloseAnchors', 'SafeUploadStagePublicCloseAllBackends',
                    'SafeUploadWaitForCommunicationDrain', '&SafeUploadData.ChannelRundown',
                    'SafeUploadStageStopWorker', 'SafeUploadStageDrainMandatoryTeardown',
-                   'SafeUploadStageReleaseInstanceReferences', 'FltUnregisterFilter',
-                   '&SafeUploadData.CommunicationCallbackRundown', 'SafeUploadStageFree')
+                   'SafeUploadStageWritersRetireHistory', 'SafeUploadStageReleaseInstanceReferences', 'FltUnregisterFilter',
+                   '&SafeUploadData.CommunicationCallbackRundown', 'SafeUploadStageWritersFinishTeardown', 'SafeUploadStageFree')
 
     def test_writer_leases_metadata_and_backend_destructor(self):
         veto = body('StagePublic.c', 'SafeUploadStagePublicTryCloseAdmission')
@@ -139,8 +250,13 @@ class TeardownParticipation(unittest.TestCase):
         self.assertIn('SafeUploadStageMandatoryTeardownActive', body('StageWriters.c', 'StageRegistryQueueReclaimWorkItem'))
         veto = body('StageWriters.c', 'SafeUploadStageWritersUnloadReady')
         for owner in ('RegistryEntries', 'RegistryReservations', 'TransactionAssociations', 'RegistryDirectoryRenames',
-                      'SafeUploadStageWritersOwnerCount', 'SafeUploadStageWritersGlobalUnknown', 'StageRegistryUnknownSopCount'):
+                      'SafeUploadStageWritersOwnerCount', 'entry->W', 'entry->RenameInFlight',
+                      'association->References', 'SAFEUPLOAD_TX_ASSOC_PENDING', 'rename->Abandoned',
+                      'SpilledMutatingIoCount'):
             self.assertIn(owner, veto)
+        for history in ('IsListEmpty(&RegistryEntries)', 'IsListEmpty(&TransactionAssociations)',
+                        'SafeUploadStageWritersGlobalUnknown', 'StageRegistryUnknownSopCount', 'entry->H', 'UnknownWriterCount'):
+            self.assertNotIn(history, veto)
         cleanup = body('StageWriters.c', 'SafeUploadStageWritersFreeContext')
         self.assertIn('!SafeUploadStageMandatoryTeardownActive()', cleanup)
         self.assertIn('if (!naturalEnd) InterlockedExchange(&lifetime->Invalid, 1)', cleanup)
@@ -189,6 +305,111 @@ class TeardownParticipation(unittest.TestCase):
         release = body('StageStream.c', 'SafeUploadStageReleaseInstanceReferences')
         self.order(release, 'StageMandatoryLocalDrained', 'stream->PagingRundown', 'StageCloseBacking', 'FltObjectDereference')
 
+
+    def test_batch1_obligation_and_retirement_properties(self):
+        sources = {name: (K / name).read_text() for name in ('Filter.c', 'StageStream.c', 'StageWriters.c')}
+        batch1_contracts(sources)
+
+    def test_batch1_mutations_are_rejected(self):
+        sources = {name: (K / name).read_text() for name in ('Filter.c', 'StageStream.c', 'StageWriters.c')}
+        mutations = (
+            ('unconditional-ready', 'StageWriters.c', '    return ready;', '    return TRUE;'),
+            ('owner-guard', 'StageWriters.c', 'SafeUploadStageWritersOwnerCount() == 0 && IsListEmpty(&RegistryReservations)', 'IsListEmpty(&RegistryReservations)'),
+            ('write-callback-guard', 'StageWriters.c', 'InterlockedCompareExchange(&entry->W, 0, 0) != 0 ||', ''),
+            ('reservation-guard', 'StageWriters.c', '&& IsListEmpty(&RegistryReservations)', ''),
+            ('second-snapshot', 'StageStream.c', 'if (!SafeUploadPolicyPublicationQuiescent() || !SafeUploadStageWritersUnloadReady())', 'if (!SafeUploadPolicyPublicationQuiescent())'),
+            ('teardown-before-ACK', 'StageStream.c', 'status = SafeUploadStageEpochDrainV20', 'SafeUploadStageBeginMandatoryTeardown();\n    status = SafeUploadStageEpochDrainV20'),
+            ('post-commit-reopen', 'Filter.c', '    SafeUploadStageWritersRetireHistory();', '    SafeUploadStageWritersRetireHistory();\n    SafeUploadOpenStageCallbackUnloadAdmission();'),
+            ('post-commit-rollback', 'Filter.c', '    SafeUploadStageWritersRetireHistory();', '    SafeUploadStageWritersRetireHistory();\n    StageRollbackUnloadPreparation();'),
+            ('post-commit-veto', 'Filter.c', '    SafeUploadStageWritersRetireHistory();', '    SafeUploadStageWritersRetireHistory();\n    return STATUS_FLT_DO_NOT_DETACH;'),
+            ('missing-pin-release', 'StageWriters.c', 'if (instanceReference != NULL) FltObjectDereference(instanceReference);', ''),
+            ('missing-volume-release', 'StageWriters.c', 'if (volumeReference != NULL) FltObjectDereference(volumeReference);', ''),
+            ('double-instance-release', 'StageWriters.c', 'if (instanceReference != NULL) FltObjectDereference(instanceReference);', 'if (instanceReference != NULL) FltObjectDereference(instanceReference);\n        FltObjectDereference(instanceReference);'),
+            ('double-pin-release', 'StageWriters.c', 'if (volumeReference != NULL) FltObjectDereference(volumeReference);', 'if (volumeReference != NULL) FltObjectDereference(volumeReference);\n        FltObjectDereference(volumeReference);'),
+            ('retained-association', 'StageWriters.c', 'StageRegistryAssociationDereference(association); /* Drop the table reference. */', ''),
+            ('anchor-reinsertion', 'StageWriters.c', 'if (!SafeUploadStageMandatoryTeardownActive() &&\n        StageAnchorCount', 'if (StageAnchorCount'),
+            ('free-active-reservation', 'StageWriters.c', 'StageRegistryRetireInstance(NULL, FALSE);', 'ExFreePoolWithTag(reservation, SAFEUPLOAD_REGISTRY_POOL_TAG);\n    StageRegistryRetireInstance(NULL, FALSE);'),
+            ('free-active-section', 'StageWriters.c', '    *Detached = FALSE;', '    *Detached = FALSE;\n    RtlZeroMemory(&SectionSlots[0], sizeof(SectionSlots[0]));'),
+            ('missing-acquire-owner', 'StageWriters.c', 'SectionSlots[index].AcquirePending || ', ''),
+            ('missing-release-owner', 'StageWriters.c', ' || SectionSlots[index].ReleasePending', ''),
+            ('free-active-acquire-on-release', 'StageWriters.c', 'Succeeded && !Draining && !slot->AcquirePending', 'Succeeded && !Draining'),
+            ('free-active-release-on-acquire-failure', 'StageWriters.c', 'if (slot->ReleasePending)', 'if (FALSE)'),
+            ('forced-Ended', 'StageWriters.c', 'if (!naturalEnd) InterlockedExchange(&lifetime->Invalid, 1)', 'if (!naturalEnd) InterlockedExchange(&lifetime->Ended, 1)'),
+            ('clear-Unknown', 'StageWriters.c', 'StageRegistryRetireInstance(NULL, FALSE);', 'InterlockedExchange(&WriterGlobalUnknown, 0);\n    StageRegistryRetireInstance(NULL, FALSE);'),
+            ('paged-spin-body', 'StageWriters.c', 'BOOLEAN SafeUploadStageWritersUnloadReady(VOID)\n{', 'BOOLEAN SafeUploadStageWritersUnloadReady(VOID)\n{\n    PAGED_CODE();'),
+            ('timer-survives', 'StageStream.c', '(VOID)KeCancelTimer(&StageRetryTimer);', ''),
+            ('directory-completion-survives', 'StageWriters.c', 'renamesDrained = IsListEmpty(&RegistryDirectoryRenames);', 'renamesDrained = TRUE;'),
+            ('worker-survives', 'Filter.c', '    SafeUploadStageStopWorker();', ''),
+        )
+        for label, file, before, after in mutations:
+            with self.subTest(mutation=label):
+                self.assertTrue(before in sources[file], label)
+                changed = dict(sources)
+                # Mutate the production function, never an earlier startup/error
+                # helper containing the same call. A no-op mutation is a failure.
+                target = {'post-commit-reopen': 'SafeUploadUnload',
+                          'post-commit-veto': 'SafeUploadUnload',
+                          'post-commit-rollback': 'SafeUploadUnload',
+                          'timer-survives': 'SafeUploadStageStopWorker',
+                          'worker-survives': 'SafeUploadUnload'}.get(label)
+                if target:
+                    fragment = body(file, target, sources)
+                    start = strip_code(sources[file]).index(fragment)
+                    original = sources[file][start:start + len(fragment)]
+                    self.assertTrue(before in original, label)
+                    changed[file] = sources[file][:start] + original.replace(before, after, 1) + sources[file][start + len(fragment):]
+                else:
+                    changed[file] = sources[file].replace(before, after, 1)
+                with self.assertRaises((AssertionError, ValueError)):
+                    batch1_contracts(changed)
+
+    def test_agent_completed_projection_and_lexical_history_keep_live_authority(self):
+        agent = ROOT / 'agente/SafeUpload.Agent.Service/Interception'
+        journal = str(agent / 'StagedTransferJournal.cs')
+        validate = body(journal, 'ValidateEntry')
+        self.assertIn('RequireManifestPath(transfer.StagePath)', validate)
+        self.assertIn('RequireManifestPath(transfer.DestinationPath)', validate)
+        self.assertIn('ValidateRenameSourceV20(entry, receipt.Source, historical: true)', validate)
+        for path in ('receipt.SourcePath', 'receipt.DestinationPath', 'name.DestinationPath', 'entry.LastRenameDestination'):
+            self.assertIn('RequireHistoricalManifestPath(' + path + ')', validate)
+        lexical = body(journal, 'RequireHistoricalManifestPath')
+        for lookup in ('Path.GetFullPath', 'File.', 'Directory.', 'GetLongPathName', 'StagedStageFile.'):
+            self.assertNotIn(lookup, lexical)
+        source = code(Path(journal))
+        for guard in ('entry.StageDeleted && !entry.StageCleanupStarted', 'entry.PendingRename is null',
+                      'MatchesBlockedDeletionReceipt(entry)', '!BlockedCleanupComplete(entry)',
+                      'pendingProjection && !PendingDispatchRequired(cached.Entry)'):
+            self.assertIn(guard, source)
+        pending = body(journal, 'ReadPendingAsync')
+        self.assertIn('PendingDispatchRequired(entry)', pending)
+        self.assertIn('pendingProjection: true', pending)
+        bound_receipts = body(str(agent / 'StagedTransferRecovery.cs'), 'RecoverBoundReceiptsAsync')
+        self.assertIn('receiptRecovery: true', bound_receipts)
+        recovery = body(str(agent / 'StagedTransferRecovery.cs'), 'RecoverPendingTransferAsync')
+        self.assertIn('!receiptRecovery', recovery)
+        self.order(recovery, 'BlockedCleanupComplete(entry)', 'return;', 'RecoveryTimestamp() < retry.RetryAt',
+                   '_journal.ReadAsync', 'ProcessBlockedCleanupAsync', 'ScheduleRecoveryRetry(id)')
+        core = body(str(agent / 'StagedTransferPublisher.cs'), 'ProcessBlockedCleanupCoreAsync')
+        self.order(core, 'BlockedCleanupComplete(entry)', 'return;', '_journal.ReadAsync', 'StagedStageFile.OpenBlockedDeletion')
+        loop = body(str(agent / 'MinifilterInterceptor.cs'), 'PublishSealedLoopAsync')
+        self.assertIn('RecoverPendingTransferAsync', loop)
+        self.assertNotIn('ProcessBlockedCleanupAsync', loop)
+
+    def test_veto_diagnostic_preserves_restoration_and_direct_inspector_route(self):
+        path = ROOT / 'driver/scripts/Test-StagedInvariantSuite.ps1'
+        raw = path.read_bytes()
+        self.assertFalse(raw.startswith(b'\xef\xbb\xbf'))
+        self.assertTrue(all(c < 128 for c in raw))
+        source = raw.decode('ascii')
+        step = source[source.index("@{Name='driver-with-service'"):source.index("@{Name='cached-agent'")]
+        self.order(step, 'fltmc.exe unload SafeUpload', 'driver-unload-with-service.txt',
+                   'Stop-StagedTestAgent $agent', 'if(-not $unloaded)', 'driver-unload-veto-status.txt',
+                   "Invoke-ActivationInspector '--writer-state-status'", '45000 -Direct', 'Write-DurableFile $vetoStatus')
+        self.assertIn('WriterStateStatusError=', step)
+        self.assertIn("@{Name='driver';Action={Set-DemandStartAndRestoreDriver}}", source)
+        helper = source[source.index('function Invoke-ActivationInspector('):source.index('function Invoke-ActivationTraceControlUntilAcknowledged')]
+        self.assertIn('$state.AgentServiceStarted -and -not $Direct', helper)
+        self.assertIn('Invoke-CapturedProcess $inspectorPath', helper)
 
     def test_initialize_failure_releases_everything_acquired(self):
         # A failed DriverEntry gets no unload callback; StageFree returns early

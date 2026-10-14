@@ -42,6 +42,7 @@ VOID SafeUploadStageReleaseInstanceReferences(VOID);
 BOOLEAN SafeUploadStageUnloadIsQuarantined(VOID);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 BOOLEAN SafeUploadStageMandatoryTeardownActive(VOID);
+/* Historical API names: these gates also cover committed voluntary teardown. */
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStageBeginMandatoryTeardown(VOID);
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -370,6 +371,10 @@ VOID SafeUploadStageWritersInitialize(VOID);
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStageWritersCloseAnchors(VOID);
 _IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageWritersRetireHistory(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageWritersFinishTeardown(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
 BOOLEAN SafeUploadStageWritersUnloadReady(VOID);
 _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersUninitialize(VOID);
@@ -379,6 +384,8 @@ NTSTATUS SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_DATA Data,
     _Outptr_result_maybenull_ PVOID *CompletionContext);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 VOID SafeUploadStageSectionAcquireFailed(_In_ PVOID CompletionContext);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID SafeUploadStageSectionAcquireComplete(_In_ PVOID CompletionContext);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 VOID SafeUploadStageSectionAcquireDraining(_In_opt_ PFLT_INSTANCE Instance,
     _In_opt_ PVOID CompletionContext);

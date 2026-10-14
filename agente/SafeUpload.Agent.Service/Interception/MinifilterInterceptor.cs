@@ -1435,49 +1435,11 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             {
                 if (entry.PendingRename is not null) continue;
                 if (entry.State == TransferJournalState.LegacyEmptyHeld) continue; // guarded startup migration only
-                if (entry.State == TransferJournalState.Publishing ||
-                    entry.State == TransferJournalState.Blocked &&
-                    entry.HandbackState is StagedHandbackState.NotAttempted or StagedHandbackState.Copying)
+                if (entry.State is (TransferJournalState.Publishing or TransferJournalState.Blocked) ||
+                    entry.State == TransferJournalState.Released &&
+                    entry.HandbackState == StagedHandbackState.Verified && entry.JustificationWindowClosed && !entry.StageDeleted)
                 {
                     await _stagePublisher.RecoverPendingTransferAsync(entry, cancellationToken).ConfigureAwait(false);
-                    continue;
-                }
-                if (entry.State == TransferJournalState.Blocked)
-                {
-                    try
-                    {
-                        await _stagePublisher.ProcessBlockedCleanupAsync(entry, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Falha ao limpar estagio bloqueado {TransferId}.",
-                            entry.Transfer.TransferId);
-                    }
-                    continue;
-                }
-                if (entry.State == TransferJournalState.Released &&
-                    entry.HandbackState == StagedHandbackState.Verified &&
-                    entry.JustificationWindowClosed && !entry.StageDeleted)
-                {
-                    try
-                    {
-                        await _stagePublisher.ProcessBlockedCleanupAsync(entry, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Falha ao limpar estagio publicado {TransferId}.",
-                            entry.Transfer.TransferId);
-                    }
                     continue;
                 }
                 if (entry.State != TransferJournalState.Sealed) continue;

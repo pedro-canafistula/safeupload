@@ -490,6 +490,10 @@ Return Value:
              * retains the worker/listener and exact cleanup retry state. */
             return STATUS_FLT_DO_NOT_DETACH;
         }
+        /* PrepareUnload has accepted exact EPOCH_DRAINED, rechecked local
+         * obligations and committed the fence. From here voluntary unload
+         * uses the same permanent, service-independent local teardown. */
+        SafeUploadStageBeginMandatoryTeardown();
     }
 #endif
 
@@ -521,7 +525,7 @@ Return Value:
      * teardown guarantee. */
     for (;;) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        if (FlagOn(Flags, FLTFL_FILTER_UNLOAD_MANDATORY)) {
+        {
             closeStatus = SafeUploadCloseCommunicationPortEarly();
             SafeUploadStageAdmissionBeginTeardown();
             /* The reclaim worker may own a taken anchor; the permanent gate
@@ -531,9 +535,10 @@ Return Value:
             /* Close backend holds before channel/callback drains: their last
              * close may be precisely the event a local user is waiting on. */
             SafeUploadStagePublicCloseAllBackends();
-        } else
-#endif
+        }
+#else
         closeStatus = SafeUploadCloseCommunicationPort();
+#endif
         if (NT_SUCCESS(closeStatus)) break;
         SafeUploadTrace("unload continues after communication close status 0x%08X\n",
             closeStatus);
@@ -541,10 +546,8 @@ Return Value:
     }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (FlagOn(Flags, FLTFL_FILTER_UNLOAD_MANDATORY)) {
-        SafeUploadWaitForCommunicationDrain();
-        SafeUploadStageFenceCommitUnload();
-    }
+    SafeUploadWaitForCommunicationDrain();
+    SafeUploadStageFenceCommitUnload();
 #endif
 
     //
@@ -558,8 +561,8 @@ Return Value:
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageStopWorker();
-    if (FlagOn(Flags, FLTFL_FILTER_UNLOAD_MANDATORY))
-        SafeUploadStageDrainMandatoryTeardown();
+    SafeUploadStageDrainMandatoryTeardown();
+    SafeUploadStageWritersRetireHistory();
     SafeUploadStageReleaseInstanceReferences();
 #endif
 
@@ -583,6 +586,9 @@ Return Value:
     SafeUploadData.Filter = NULL;
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* Tagged section completions kept their slot references through the
+     * callback source barrier. Only now may residual pairing history go. */
+    SafeUploadStageWritersFinishTeardown();
     SafeUploadStageFree();
 #endif
 
