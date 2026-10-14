@@ -19,10 +19,17 @@ public sealed class StagedAttachmentV20Tests : IDisposable
     private const long ProcessCreationTime = 638953632000000000;
     private const uint RequiredCapabilities = 0xbf;
 
-    [Theory]
-    [InlineData(0x1fu)]
-    [InlineData(0x3fu)]
-    public async Task Rename_receipt_profile_rejects_old_capabilities_before_accepting_an_epoch(uint oldCapabilities)
+    // Required by Invoke-ExactAgentMatrixBuild.py under this exact name (the ordinary empty profile's old mask).
+    [Fact]
+    public Task Ordinary_empty_profile_rejects_old_capabilities_before_accepting_an_epoch() =>
+        AssertOldCapabilitiesRejectedBeforeEpochAsync(0x1fu);
+
+    // A driver without the rename-commit receipt capability (0x80) is refused as well.
+    [Fact]
+    public Task Rename_receipt_profile_rejects_old_capabilities_before_accepting_an_epoch() =>
+        AssertOldCapabilitiesRejectedBeforeEpochAsync(0x3fu);
+
+    private async Task AssertOldCapabilitiesRejectedBeforeEpochAsync(uint oldCapabilities)
     {
         string directory = Path.Combine(_workspace.Root, "ordinary-empty-profile");
         var journal = new StagedTransferJournal(directory);
