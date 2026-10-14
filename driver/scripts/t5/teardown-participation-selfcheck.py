@@ -41,6 +41,113 @@ def body(file, name, sources=None):
     raise AssertionError(f'Missing production body: {file}:{name}')
 
 
+def veto_capture_contract(step):
+    """Pin disconnect/timeout boundaries before the single-client direct capture."""
+    def require(value):
+        if not value: raise AssertionError('service-disconnected veto capture contract')
+    def order(*parts):
+        position = -1
+        for part in parts: position = step.index(part, position + 1)
+
+    order('if(-not $unloaded)',
+          "$capturePath=if($null -ne $agent){'AfterRestartedAgentStop'}else{'NoServiceRunning'}",
+          "$running=Get-CimInstance Win32_Service -Filter \"Name='SafeUploadAgent'\"",
+          "if($null -ne $running -and $running.State -ne 'Stopped')",
+          "$capturePath='AfterRunningServiceStop'", '& sc.exe stop SafeUploadAgent',
+          '$stopDeadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](30*[Diagnostics.Stopwatch]::Frequency)',
+          'do{$running=Get-CimInstance',
+          "if($null -eq $running -or ($running.State -eq 'Stopped' -and $running.ProcessId -eq 0)){break}",
+          '}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $stopDeadline)',
+          "if($null -ne $running -and ($running.State -ne 'Stopped' -or $running.ProcessId -ne 0)){throw",
+          "Invoke-ActivationInspector '--writer-state-status'", '45000 -Direct',
+          "Write-DurableFile $vetoStatus ('CapturePath='+$capturePath",
+          "}catch{Write-DurableFile $vetoStatus ('CapturePath='+$capturePath")
+    # The timeout throws inside the same try as capture; its catch records a
+    # diagnostic instead of reaching the inspector. PID zero is required too.
+    require(re.search(r"if\(\$null -ne \$running -and \(\$running.State -ne 'Stopped' -or \$running.ProcessId -ne 0\)\)"
+                      r"\{throw '[^']+';?\}", step) is not None)
+
+
+def create_retirement_contracts(sources):
+    """Source binding for the paused ordinary CREATE / early retirement model.
+
+    Entry references survive retirement; instance/volume pins do not. These
+    properties cover both retirement-before-capture and capture-before-retire,
+    including failed context lookup and retirement before proof consumption.
+    They are regression controls, not Windows callback/IRQL qualification.
+    """
+    def b(name): return body('StageWriters.c', name, sources)
+    def require(value):
+        if not value: raise AssertionError('paused-CREATE retirement contract')
+    def order(text, *parts):
+        position = -1
+        for part in parts: position = text.index(part, position + 1)
+
+    proof = b('StageRegistryApplyCreateAliasProof')
+    acquire = 'FltAcquirePushLockExclusive(&RegistryLock);'
+    unlock = 'FltReleasePushLock(&RegistryLock);'
+    first = proof.index(acquire)
+    captured = proof.index(unlock, first)
+    lookup = proof.index('FltGetInstanceContext(instance,')
+    second = proof.index(acquire, captured)
+    rejected = proof.index(unlock, second)
+    capture = proof[first:captured]
+    require(re.search(r'if \(Entry->Listed && !Entry->Retired && Entry->Instance != NULL &&\s*'
+                     r'NT_SUCCESS\(FltObjectReference\(Entry->Instance\)\)\)\s*'
+                     r'instance = Entry->Instance;', capture) is not None)
+    order(proof[captured:], 'if (instance == NULL) return;', 'FltGetInstanceContext(instance,',
+          'goto Exit;', acquire, 'if (!Entry->Listed || Entry->Retired || Entry->Instance != instance)',
+          unlock, 'goto Exit;', 'SafeUploadPolicyRenameLossGenerationEnter(',
+          'StageAcquireSpinLock(', 'Entry->Listed && !Entry->Retired',
+          'InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_OUTSIDE)',
+          'StageReleaseSpinLock(', 'SafeUploadPolicyRenameLossGenerationLeave(',
+          unlock, 'Exit:', 'if (instanceContext != NULL) FltReleaseContext(instanceContext);',
+          'FltObjectDereference(instance);')
+    require(captured < lookup < second)
+    # Every entry-instance read belongs to one of the two locked regions;
+    # lookup and release use the local pin, even if Entry->Instance became NULL.
+    for read in re.finditer(r'Entry->Instance\b', proof):
+        require(first < read.start() < captured or second < read.start() < rejected)
+    require(proof.count('FltObjectReference(') == 1)
+    require(proof.count('FltObjectDereference(') == 1)
+    require('PAGED_CODE()' not in proof)
+    require('#pragma alloc_text(PAGE, StageRegistryApplyCreateAliasProof)' not in sources['StageWriters.c'])
+
+    # Spin-only SOP readers use the map's stable identity token, never a live
+    # pin cleared under a different lock. None can wait for a filter reference.
+    for name in ('StageRegistryReserveMutatingIoMarker', 'StageRegistryDetachOneInstanceSectionBinding',
+                 'StageRegistryMarkSopUnknownAt'):
+        text = b(name)
+        require('slot->InstanceIdentity == (PVOID)Instance' in text)
+        require(re.search(r'->Entry->(?:Instance|Volume)\b', text) is None)
+        require('FltObjectReference(' not in text and 'FltObjectDereference(' not in text)
+    tracking = b('StageRegistryTrackUnknownWriter')
+    order(tracking, acquire, 'StageAcquireSpinLock(&SectionLock',
+          'Reservation->BoundEntry->Listed && !Reservation->BoundEntry->Retired',
+          'Reservation->BoundEntry->Instance == Reservation->Instance',
+          'StageReleaseSpinLock(&SectionLock', unlock, 'node->FileObject = FileObject')
+    promote = b('StageRegistryTryPromoteEntry')
+    order(promote, 'if (!Entry->Listed || Entry->Retired || Entry->Instance == NULL)',
+          'return SAFEUPLOAD_PROMOTE_FAIL_NOT_LISTED;', 'FltGetInstanceContext(Entry->Instance,')
+    caller = b('StageRegistryActivationProcess')
+    order(caller, acquire, 'StageRegistryTryPromoteEntry(', unlock)
+    classify = b('StageRegistryClassifyAllLinkNames')
+    snapshot = 'volumeMatches = stable && Entry->Volume == Volume && Entry->VolumeSerial != 0;'
+    order(classify, 'FltAcquirePushLockShared(&RegistryLock)', snapshot, unlock,
+          'StageRegistryOpenIdentity(', 'noNamesProvenByIdentity && volumeMatches',
+          'volumeMatches &&', 'PublishResult:', acquire, 'stable = Entry->Listed && !Entry->Retired;', unlock)
+    require(re.search(r'Entry->Volume\b', classify[classify.index('StageRegistryOpenIdentity('):]) is None)
+    for name in ('StageRegistryRecordClassificationResult', 'StageRegistryRecordDeferral'):
+        text = b(name)
+        require('if (Entry->Transient) return;' in text)
+        require(re.search(r'Entry->(?:Instance|Volume)\b', text) is None)
+    require('identityEntry->Transient = TRUE;' in b('SafeUploadStageWritersClassifyById'))
+    awaiter = b('SafeUploadStageWritersAwaitClassification')
+    order(awaiter, 'FltAcquirePushLockShared(&RegistryLock)',
+          'active = entry->Listed && !entry->Retired && entry->Instance == Instance;',
+          unlock, 'if (!active || (!transition && !pending)) break;', 'KeDelayExecutionThread')
+
+
 def batch1_contracts(sources):
     """Ordering/ownership properties with adversarial production-source mutations.
 
@@ -306,6 +413,90 @@ class TeardownParticipation(unittest.TestCase):
         self.order(release, 'StageMandatoryLocalDrained', 'stream->PagingRundown', 'StageCloseBacking', 'FltObjectDereference')
 
 
+    def test_paused_create_teardown_pin_interleavings(self):
+        sources = {'StageWriters.c': (K / 'StageWriters.c').read_text()}
+        create_retirement_contracts(sources)
+        # Abstract the source-checked locked capture, unlocked lookup, locked
+        # retired recheck/application, and unlocked release. Retirement cannot
+        # interleave within either RegistryLock region. Model the entry's pin
+        # independently from its still-owned callback entry reference.
+        for pause in range(5):
+            for lookup_succeeds in (False, True):
+                with self.subTest(retire_at=pause, lookup_succeeds=lookup_succeeds):
+                    state = {'entry_instance': 'instance', 'pins': 1, 'retired': False,
+                             'local': None, 'context': False, 'applied': False}
+
+                    def retire():
+                        state['retired'] = True
+                        state['entry_instance'] = None
+                        state['pins'] -= 1
+
+                    for step in range(5):
+                        if step == pause: retire()
+                        if step == 0:  # capture under RegistryLock
+                            if not state['retired'] and state['entry_instance'] is not None:
+                                state['local'] = state['entry_instance']
+                                state['pins'] += 1
+                        elif step == 1 and state['local'] is not None:  # context lookup
+                            self.assertEqual('instance', state['local'])
+                            self.assertGreater(state['pins'], 0)
+                            state['context'] = lookup_succeeds
+                        elif step == 2:  # validate/apply under RegistryLock
+                            if state['context'] and not state['retired']:
+                                self.assertEqual(state['entry_instance'], state['local'])
+                                state['applied'] = True
+                        elif step == 3 and state['local'] is not None:  # every exit releases
+                            state['context'] = False
+                            state['pins'] -= 1
+                            state['local'] = None
+                        self.assertGreaterEqual(state['pins'], 0)
+                    self.assertEqual(0, state['pins'])
+                    self.assertIsNone(state['local'])
+                    self.assertFalse(state['context'])
+                    self.assertEqual(lookup_succeeds and pause > 2, state['applied'])
+
+    def test_paused_create_teardown_mutations_are_rejected(self):
+        sources = {'StageWriters.c': (K / 'StageWriters.c').read_text()}
+        alias = 'StageRegistryApplyCreateAliasProof'
+        mutations = (
+            ('unlocked-pointer-read', alias, 'FltGetInstanceContext(instance,', 'FltGetInstanceContext(Entry->Instance,'),
+            ('unlocked-capture', alias, '    FltAcquirePushLockExclusive(&RegistryLock);', ''),
+            ('missing-retired-check', alias, 'Entry->Listed && !Entry->Retired && Entry->Instance != NULL',
+             'Entry->Listed && Entry->Instance != NULL'),
+            ('missing-reference', alias, 'NT_SUCCESS(FltObjectReference(Entry->Instance))', 'TRUE'),
+            ('missing-release', alias, '    FltObjectDereference(instance);', ''),
+            ('release-under-lock', alias, '    FltObjectDereference(instance);', ''),
+            ('missing-post-lookup-recheck', alias, '!Entry->Listed || Entry->Retired || Entry->Instance != instance', 'FALSE'),
+            ('missing-failed-lookup-exit', alias, 'FltGetInstanceContext(instance, (PFLT_CONTEXT *)&instanceContext))) goto Exit;',
+             'FltGetInstanceContext(instance, (PFLT_CONTEXT *)&instanceContext))) return;'),
+            ('spin-reader-live-pin', 'StageRegistryReserveMutatingIoMarker', 'slot->InstanceIdentity == (PVOID)Instance',
+             'slot->Entry->Instance == Instance'),
+            ('unknown-writer-unlocked-pin', 'StageRegistryTrackUnknownWriter', '    FltAcquirePushLockExclusive(&RegistryLock);', ''),
+            ('promotion-retired-lookup', 'StageRegistryTryPromoteEntry',
+             'if (!Entry->Listed || Entry->Retired || Entry->Instance == NULL)', 'if (FALSE)'),
+            ('unlocked-volume-match', 'StageRegistryClassifyAllLinkNames', 'noNamesProvenByIdentity && volumeMatches',
+             'noNamesProvenByIdentity && Entry->Volume == Volume'),
+            ('unlocked-waiter-instance', 'SafeUploadStageWritersAwaitClassification',
+             '            FltAcquirePushLockShared(&RegistryLock);', ''),
+        )
+        for label, name, before, after in mutations:
+            with self.subTest(mutation=label):
+                fragment = body('StageWriters.c', name, sources)
+                start = strip_code(sources['StageWriters.c']).index(fragment)
+                original = sources['StageWriters.c'][start:start + len(fragment)]
+                self.assertIn(before, original, label)
+                mutated = original.replace(before, after, 1)
+                if label == 'release-under-lock':
+                    # Move, rather than duplicate, the sole release into the
+                    # capture region: both ownership and lock ordering break.
+                    mutated = mutated.replace('    FltReleasePushLock(&RegistryLock);',
+                                              '    FltObjectDereference(instance);\n    FltReleasePushLock(&RegistryLock);', 1)
+                changed = {'StageWriters.c': sources['StageWriters.c'][:start] + mutated +
+                           sources['StageWriters.c'][start + len(fragment):]}
+                self.assertNotEqual(sources, changed, label)
+                with self.assertRaises((AssertionError, ValueError)):
+                    create_retirement_contracts(changed)
+
     def test_batch1_obligation_and_retirement_properties(self):
         sources = {name: (K / name).read_text() for name in ('Filter.c', 'StageStream.c', 'StageWriters.c')}
         batch1_contracts(sources)
@@ -389,10 +580,23 @@ class TeardownParticipation(unittest.TestCase):
         self.assertIn('!receiptRecovery', recovery)
         self.order(recovery, 'BlockedCleanupComplete(entry)', 'return;', 'RecoveryTimestamp() < retry.RetryAt',
                    '_journal.ReadAsync', 'ProcessBlockedCleanupAsync', 'ScheduleRecoveryRetry(id)')
+        # Verified may reach disk before notification/justification progress.
+        # Full recovery must still rehydrate it; the live cleanup scan keeps
+        # bounded retries without repeating that completed progress.
+        self.assertIn('!cleanupOnly || entry.HandbackState is', recovery)
+        self.order(recovery, 'out interruptedProgress', 'RecoverBlockedAsync(entry, token)',
+                   'ReferenceEquals(pending, interruptedProgress)', '_pendingJournalProgress.Remove(id)')
+        self.assertIn('receiptRecovery || !(entry.State == TransferJournalState.Released &&', recovery)
+        self.assertIn('entry.HandbackState == StagedHandbackState.Verified))', recovery)
+        self.assertIn('RecoveryRetries(receiptRecovery).TryGetValue', recovery)
+        self.assertIn('_boundReceiptRetries.TryGetValue', recovery)
+        self.assertIn('ScheduleRecoveryRetry(id, boundReceipt: true)', recovery)
+        self.assertNotIn('bound.Diagnostic is not null && unfinished', recovery)
         core = body(str(agent / 'StagedTransferPublisher.cs'), 'ProcessBlockedCleanupCoreAsync')
         self.order(core, 'BlockedCleanupComplete(entry)', 'return;', '_journal.ReadAsync', 'StagedStageFile.OpenBlockedDeletion')
         loop = body(str(agent / 'MinifilterInterceptor.cs'), 'PublishSealedLoopAsync')
         self.assertIn('RecoverPendingTransferAsync', loop)
+        self.assertIn('cleanupOnly: entry.HandbackState == StagedHandbackState.Verified', loop)
         self.assertNotIn('ProcessBlockedCleanupAsync', loop)
 
     def test_veto_diagnostic_preserves_restoration_and_direct_inspector_route(self):
@@ -406,6 +610,22 @@ class TeardownParticipation(unittest.TestCase):
                    'Stop-StagedTestAgent $agent', 'if(-not $unloaded)', 'driver-unload-veto-status.txt',
                    "Invoke-ActivationInspector '--writer-state-status'", '45000 -Direct', 'Write-DurableFile $vetoStatus')
         self.assertIn('WriterStateStatusError=', step)
+        veto_capture_contract(step)
+        wait = re.search(r'do\{\$running=Get-CimInstance.*?\}while\(\[Diagnostics.Stopwatch\]::GetTimestamp\(\) -lt \$stopDeadline\)',
+                         step, re.S)
+        self.assertIsNotNone(wait)
+        mutations = (
+            ('removed-disconnect-wait', step.replace(wait[0], '', 1)),
+            ('missing-process-zero-proof', step.replace("$running.State -eq 'Stopped' -and $running.ProcessId -eq 0",
+                                                      "$running.State -eq 'Stopped'", 1)),
+            ('timeout-still-captures', step.replace("{throw 'SafeUploadAgent did not disconnect within 30 s; no direct capture attempted.'}",
+                                                  '{}', 1)),
+        )
+        for label, changed in mutations:
+            with self.subTest(mutation=label):
+                self.assertNotEqual(step, changed)
+                with self.assertRaises((AssertionError, ValueError)):
+                    veto_capture_contract(changed)
         self.assertIn("@{Name='driver';Action={Set-DemandStartAndRestoreDriver}}", source)
         helper = source[source.index('function Invoke-ActivationInspector('):source.index('function Invoke-ActivationTraceControlUntilAcknowledged')]
         self.assertIn('$state.AgentServiceStarted -and -not $Direct', helper)

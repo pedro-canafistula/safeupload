@@ -1439,7 +1439,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     entry.State == TransferJournalState.Released &&
                     entry.HandbackState == StagedHandbackState.Verified && entry.JustificationWindowClosed && !entry.StageDeleted)
                 {
-                    await _stagePublisher.RecoverPendingTransferAsync(entry, cancellationToken).ConfigureAwait(false);
+                    await _stagePublisher.RecoverPendingTransferAsync(entry, cancellationToken,
+                        cleanupOnly: entry.HandbackState == StagedHandbackState.Verified).ConfigureAwait(false);
                     continue;
                 }
                 if (entry.State != TransferJournalState.Sealed) continue;

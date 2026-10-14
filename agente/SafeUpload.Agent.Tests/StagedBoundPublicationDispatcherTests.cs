@@ -25,6 +25,7 @@ public sealed partial class StagedPublicationNativeJournalTests
         internal BoundPublicationFactsRowV26 Facts;
         internal ulong Revision = 1;
         internal bool Exists, Crashed, FailCreate, UnknownRename, FailRename, StaleReply, DenyPermit, NotReady;
+        internal bool LoseAckReply, RetainAckRow;
         internal int Creates, Renames, Deletes, Acks;
         internal StagedStageIdentity? PublicIdentity;
         internal Func<Task>? BeforeWrite;
@@ -133,7 +134,9 @@ public sealed partial class StagedPublicationNativeJournalTests
         }
         public BoundPublicationReplyV26 Acknowledge(BoundPublicationReplay replay, BoundPublicationReplayRow row)
         {
-            Available(); Assert.True(row.HasTerminalLocalProof); Acks++; Exists = false; Revision++; Point("ack");
+            Available(); Assert.True(row.HasTerminalLocalProof); Acks++;
+            if (LoseAckReply) throw new IOException("publication_replay_or_ack_pending");
+            Exists = RetainAckRow; Revision++; Point("ack");
             var reply = Reply(row.Facts.Create, BoundPublicationResult.Acknowledged); reply.Phase = BoundPublicationPhase.CleanupAck;
             return reply;
         }
@@ -201,6 +204,121 @@ public sealed partial class StagedPublicationNativeJournalTests
         head = (await Journal().ReadDestinationHeadAsync(f.Binding.Destination, default))!;
         Assert.Empty(head.PublicationNativeReceipts!); Assert.Empty(head.PublicationAttempts!);
         Assert.Equal(f.Entry.DestinationGeneration, head.LatestPublished); Assert.Equal(1, fake.Creates); Assert.Equal(1, fake.Renames);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Pending_publication_ACK_does_not_suppress_justified_stage_last_close_cleanup(bool loseAckReply)
+    {
+        var f = await Allocate(approve: false, content: Encoding.UTF8.GetBytes("blocked private snapshot"));
+        var journal = Journal(); var transfer = f.Entry.Transfer;
+        string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(await File.ReadAllBytesAsync(transfer.StagePath)));
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Sealed, TransferJournalState.Inspecting, digest, default);
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Inspecting, TransferJournalState.Blocked, digest, default,
+            blockedEvidence: new BlockedTransferEvidence(1, DateTimeOffset.UtcNow.AddMinutes(5), WindowClosed: false));
+        string handback = Path.Combine(_workspace.Root, "handback.txt");
+        await journal.BeginHandbackAttemptAsync(transfer.TransferId, default);
+        File.Copy(transfer.StagePath, handback);
+        await journal.CompleteHandbackAsync(transfer.TransferId, handback, f.Entry.SealedLength, null, default);
+        // Model the existing justified path through its real journal transitions;
+        // publication itself uses the durable head/receipt dispatcher below.
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Blocked, TransferJournalState.Inspecting, digest, default,
+            closeJustificationWindow: true);
+        var approved = await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Inspecting, TransferJournalState.Approved, digest, default);
+        var fake = new PublicationFake(f.Binding, approved) { LoseAckReply = loseAckReply, RetainAckRow = !loseAckReply };
+        Assert.True((await Publish(journal, fake, await Publishing(journal, approved))).Released);
+        var released = await journal.ReadAsync(transfer.TransferId, default);
+        Assert.Equal(TransferJournalState.Released, released.State);
+        Assert.Equal(StagedHandbackState.Verified, released.HandbackState);
+        Assert.True(released.JustificationWindowClosed);
+        var cleanup = new BoundCleanupGate(transfer.TransferId);
+        var copier = new VerifiedCleanupHandback(transfer, handback, digest);
+        var publisher = new StagedTransferPublisher(new InspectionService(new LocalPolicyStore(_workspace.PolicyFile),
+            new LocalQueueAuditSink(_workspace.QueueFile), ExtractorRegistry.CreateDefault(), new VerdictCache()),
+            NotificationTestHub.Create(), journal, Stages, cleanup, handbackCopier: copier,
+            sessionUserSidResolver: _ => transfer.RequestorSid) { BoundPublication = Dispatcher(journal, fake) };
+        long now = 0; publisher.RecoveryTimestamp = () => now;
+        await publisher.RecoverBoundReceiptsAsync(default);
+        // Grow only the receipt retry to eight seconds. A successful ACK reply
+        // with a retained row is unfinished too, even without a diagnostic.
+        foreach (double seconds in new[] { .25, .5, 1, 2, 4 })
+        {
+            int acks = fake.Acks;
+            now += (long)(seconds * System.Diagnostics.Stopwatch.Frequency);
+            await publisher.RecoverBoundReceiptsAsync(default);
+            Assert.Equal(acks + 1, fake.Acks);
+        }
+        long receiptDue = now + 8 * System.Diagnostics.Stopwatch.Frequency;
+        int pendingAcks = fake.Acks;
+        using (var driver = new FileStream(transfer.StagePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+        {
+            await publisher.RecoverPendingTransferAsync(released, default, cleanupOnly: true);
+            var pending = await journal.ReadAsync(transfer.TransferId, default);
+            Assert.True(StagedTransferJournal.MatchesBlockedDeletionReceipt(pending)); // fails before finding-2 fix
+            Assert.False(pending.StageDeleted); Assert.True(pending.StageCleanupStarted);
+            long reads = journal.ManifestReads; int disposals = cleanup.Disposals;
+            now += System.Diagnostics.Stopwatch.Frequency / 4 - 1;
+            for (int pass = 0; pass < 8; pass++)
+                await publisher.RecoverPendingTransferAsync(pending, default, cleanupOnly: true);
+            Assert.Equal(reads, journal.ManifestReads); Assert.Equal(disposals, cleanup.Disposals);
+        }
+        now++;
+        await publisher.RecoverPendingTransferAsync(released, default, cleanupOnly: true);
+        var terminal = await journal.ReadAsync(transfer.TransferId, default);
+        Assert.True(StagedTransferJournal.BlockedCleanupComplete(terminal));
+        Assert.False(File.Exists(transfer.StagePath)); Assert.True(now < receiptDue);
+        var head = (await journal.ReadDestinationHeadAsync(f.Binding.Destination, default))!;
+        Assert.Single(head.PublicationAttempts!); Assert.Single(head.PublicationNativeReceipts!);
+        Assert.Equal(terminal.DestinationGeneration, head.LatestPublished);
+        await publisher.RecoverBoundReceiptsAsync(default);
+        Assert.Equal(pendingAcks, fake.Acks); // cleanup did not clear the receipt deadline
+        long terminalReads = journal.ManifestReads;
+        for (int pass = 0; pass < 8; pass++) await publisher.RecoverPendingTransferAsync(terminal, default);
+        Assert.Equal(terminalReads, journal.ManifestReads);
+        fake.LoseAckReply = false; fake.RetainAckRow = false;
+        now = receiptDue;
+        await publisher.RecoverBoundReceiptsAsync(default); // ACK alone retains durable obligations
+        Assert.Single((await journal.ReadDestinationHeadAsync(f.Binding.Destination, default))!.PublicationAttempts!);
+        now += 8 * System.Diagnostics.Stopwatch.Frequency;
+        await publisher.RecoverBoundReceiptsAsync(default); // later exact replay retires them
+        head = (await journal.ReadDestinationHeadAsync(f.Binding.Destination, default))!;
+        Assert.Empty(head.PublicationAttempts!); Assert.Empty(head.PublicationNativeReceipts!);
+        Assert.Equal(1, fake.Creates); Assert.Equal(1, fake.Renames); Assert.Equal(0, fake.Deletes);
+        Assert.Equal(fake.Identity, fake.PublicIdentity); Assert.True(copier.Reads > 0);
+    }
+
+    private sealed class BoundCleanupGate(Guid id) : IStagedPublicationGate
+    {
+        internal int Disposals;
+        public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest) =>
+            throw new InvalidOperationException("Cleanup repeated publication");
+        public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames)
+        {
+            Assert.Equal(id, transferId); Assert.Equal(StageDisposeOutcome.CleanedUp, outcome); Assert.Equal(0u, committedRenames);
+            Disposals++; return true;
+        }
+    }
+
+    private sealed class VerifiedCleanupHandback(StagedTransfer expected, string path, string digest) : IStagedHandbackCopier
+    {
+        internal int Reads;
+        public Task<string> CopyVerifiedAsync(StagedTransfer transfer, FileStream snapshot, long length, string sha256, CancellationToken token) =>
+            throw new InvalidOperationException("Cleanup recopied the hand-back");
+        public IDisposable OpenVerifiedReadLease(StagedTransfer transfer, string verifiedPath, long length, string sha256)
+        {
+            Assert.Equal(expected, transfer); Assert.Equal(path, verifiedPath); Assert.Equal(digest, sha256);
+            var lease = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            try
+            {
+                Assert.Equal(length, lease.Length);
+                Assert.Equal(digest, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(lease)));
+                Reads++; return lease;
+            }
+            catch { lease.Dispose(); throw; }
+        }
+        public void CleanupUncommittedTemporary(StagedTransfer transfer) =>
+            throw new InvalidOperationException("Cleanup discarded a committed hand-back");
     }
 
     public static IEnumerable<object[]> FailureBoundaries() =>

@@ -6645,13 +6645,26 @@ function Restore-Suite([switch]$Rollback) {
                 Write-DurableFile (Join-Path $evidenceDirectory 'driver-unload-with-service.txt') ((@('AgentRestarted='+($null -ne $agent))+$attempts) -join "`r`n")
                 if($null -ne $agent){Stop-StagedTestAgent $agent}
                 if(-not $unloaded){
-                    # Diagnostic only: capture the service-connected veto after stopping the
-                    # restarted agent and before a later unload can replace LastUnloadVeto.
+                    # Diagnostic only: capture the service-connected veto before a later unload can replace LastUnloadVeto.
+                    # The filter port accepts one client, so the service must be disconnected first: the restarted agent was
+                    # stopped above; a service that was already running is stopped here (the later cached-agent and
+                    # activation-test-service steps stop it anyway) and must reach Stopped with no process before the capture.
                     $vetoStatus=Join-Path $evidenceDirectory 'driver-unload-veto-status.txt'
+                    $capturePath=if($null -ne $agent){'AfterRestartedAgentStop'}else{'NoServiceRunning'}
                     try{
+                        $running=Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'" -ErrorAction SilentlyContinue
+                        if($null -ne $running -and $running.State -ne 'Stopped'){
+                            $capturePath='AfterRunningServiceStop'
+                            & sc.exe stop SafeUploadAgent | Out-Null
+                            $stopDeadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](30*[Diagnostics.Stopwatch]::Frequency)
+                            do{$running=Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'" -ErrorAction SilentlyContinue
+                                if($null -eq $running -or ($running.State -eq 'Stopped' -and $running.ProcessId -eq 0)){break};Start-Sleep -Milliseconds 250
+                            }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $stopDeadline)
+                            if($null -ne $running -and ($running.State -ne 'Stopped' -or $running.ProcessId -ne 0)){throw 'SafeUploadAgent did not disconnect within 30 s; no direct capture attempted.'}
+                        }
                         $statusText=Invoke-ActivationInspector '--writer-state-status' (Join-Path $evidenceDirectory 'driver-unload-veto-status') 45000 -Direct
-                        Write-DurableFile $vetoStatus $statusText
-                    }catch{Write-DurableFile $vetoStatus ('WriterStateStatusError='+$_.Exception.Message)}
+                        Write-DurableFile $vetoStatus ('CapturePath='+$capturePath+"`r`n"+$statusText)
+                    }catch{Write-DurableFile $vetoStatus ('CapturePath='+$capturePath+"`r`nWriterStateStatusError="+$_.Exception.Message)}
                 }
             }
         }},

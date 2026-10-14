@@ -142,8 +142,12 @@ __declspec(align(16)) struct _STAGE_REGISTRY_ENTRY {
     volatile LONG RenameInFlight;
     volatile LONG RenameVersion;
     volatile LONG UnknownReasons;
-    PFLT_INSTANCE Instance;         /* referenced; identity only except in PASSIVE diagnostics */
-    PFLT_VOLUME Volume;             /* referenced mounted-volume identity */
+    /* RegistryLock protects these pins until retirement clears them. An entry
+     * reference alone does not pin either object. Borrow only while locked, or
+     * take a separate FltObjectReference there and release it after unlocking.
+     * Spin-only identity readers use the SOP slot's InstanceIdentity instead. */
+    PFLT_INSTANCE Instance;
+    PFLT_VOLUME Volume;
     ULONGLONG VolumeSerial;
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
     FILE_ID_128 FileId;
@@ -177,7 +181,7 @@ __declspec(align(16)) struct _STAGE_REGISTRY_ENTRY {
     USHORT NameChars;
     BOOLEAN Compact;
     BOOLEAN StaticPool;
-    BOOLEAN Transient;
+    BOOLEAN Transient;              /* immutable function-scoped by-ID classifier, never registry history */
     BOOLEAN CompactStream;
     BOOLEAN Listed;
     BOOLEAN Retired;
@@ -202,6 +206,10 @@ C_ASSERT((FIELD_OFFSET(STAGE_REGISTRY_ENTRY, ActivationGeneration) % sizeof(LONG
 typedef struct _STAGE_WRITER_RESERVATION {
     LIST_ENTRY Link;
     ULONG Signature;
+    /* Immutable through this reservation's sole post-create/cancel owner.
+     * Before transfer these are reservation pins. After transfer Instance is
+     * borrowed from that CREATE callback's FltObjects, not from BoundEntry;
+     * Volume is only an identity token. Retirement never rewrites either. */
     PFLT_INSTANCE Instance;
     PFLT_VOLUME Volume;
     PSTAGE_REGISTRY_ENTRY Shell;
@@ -266,7 +274,7 @@ typedef struct _STAGE_TX_ASSOCIATION {
     KEVENT StateChanged;
     NTSTATUS CompletionStatus;
     PKTRANSACTION Transaction;      /* identity token only; never dereferenced */
-    PFLT_INSTANCE Instance;         /* referenced by Entry */
+    PFLT_INSTANCE Instance;         /* immutable comparison token, never dereferenced; Entry may retire */
     PSTAGE_REGISTRY_ENTRY Entry;     /* referenced until terminal notification */
 } STAGE_TX_ASSOCIATION, *PSTAGE_TX_ASSOCIATION;
 
@@ -980,6 +988,8 @@ __declspec(noinline) static VOID StageRegistryDereference(_In_opt_ PSTAGE_REGIST
 {
     if (Entry == NULL) return;
     if (InterlockedDecrement(&Entry->References) == 0) {
+        /* Sole final owner: listed history/retirement would still hold a
+         * reference, so no concurrent retirement can clear these final pins. */
         StageRegistryReleaseLifetime(StageRegistryLifetime(Entry));
         if (Entry->Volume != NULL) FltObjectDereference(Entry->Volume);
         if (Entry->Instance != NULL) FltObjectDereference(Entry->Instance);
@@ -2558,15 +2568,30 @@ __declspec(noinline) static VOID StageRegistryApplyCreateAliasProof(_In_ PSTAGE_
 {
     const SAFEUPLOAD_CREATE_ALIAS_PROOF *proof = &Reservation->AliasProof;
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    PFLT_INSTANCE instance = NULL;
     KIRQL cacheIrql, irql;
     BOOLEAN stable;
     if (!proof->Valid) return;
     if (proof->Absent ? !CreatedByThisOpen :
         (proof->Identity.VolumeSerialNumber != Identity->VolumeSerialNumber ||
          !RtlEqualMemory(&proof->Identity.FileId, &Identity->FileId, sizeof(Identity->FileId)))) return;
-    if (Entry->Instance == NULL ||
-        !NT_SUCCESS(FltGetInstanceContext(Entry->Instance, (PFLT_CONTEXT *)&instanceContext))) return;
+    /* A pre-gate CREATE can pause here while committed teardown retires its
+     * entry, before unregister joins this ordinary completion. Capture a pin
+     * under RegistryLock: retirement first means no lookup; capture first
+     * keeps the instance alive through lookup and the later retired recheck.
+     * Never reference/dereference filter objects while holding a spin lock. */
     FltAcquirePushLockExclusive(&RegistryLock);
+    if (Entry->Listed && !Entry->Retired && Entry->Instance != NULL &&
+        NT_SUCCESS(FltObjectReference(Entry->Instance)))
+        instance = Entry->Instance;
+    FltReleasePushLock(&RegistryLock);
+    if (instance == NULL) return;
+    if (!NT_SUCCESS(FltGetInstanceContext(instance, (PFLT_CONTEXT *)&instanceContext))) goto Exit;
+    FltAcquirePushLockExclusive(&RegistryLock);
+    if (!Entry->Listed || Entry->Retired || Entry->Instance != instance) {
+        FltReleasePushLock(&RegistryLock);
+        goto Exit;
+    }
     stable = SafeUploadPolicyRenameLossGenerationEnter(
         &instanceContext->RegistryRenameLossGeneration, Entry->RenameLossGeneration, &cacheIrql);
     if (stable) {
@@ -2588,7 +2613,9 @@ __declspec(noinline) static VOID StageRegistryApplyCreateAliasProof(_In_ PSTAGE_
     }
     SafeUploadPolicyRenameLossGenerationLeave(cacheIrql);
     FltReleasePushLock(&RegistryLock);
-    FltReleaseContext(instanceContext);
+Exit:
+    if (instanceContext != NULL) FltReleaseContext(instanceContext);
+    FltObjectDereference(instance);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -3070,9 +3097,8 @@ __declspec(noinline) static BOOLEAN StageRegistryReserveMutatingIoMarker(
     StageAcquireSpinLock(&SectionLock, &irql);
     slot = StageRegistryFindSopSlotLocked(SectionObjectPointer, &found);
     if (found && slot != NULL &&
-        ((slot->Unknown && slot->InstanceIdentity == (PVOID)Instance) ||
-         (slot->Entry != NULL && slot->Entry->Instance == Instance &&
-          slot->InstanceIdentity == (PVOID)Instance)) &&
+        (slot->Unknown || slot->Entry != NULL) &&
+        slot->InstanceIdentity == (PVOID)Instance &&
         slot->SpilledMutatingIoCount != MAXULONG) {
         index = (ULONG)(slot - RegistrySopSlots);
         slot->SpilledMutatingIoCount += 1;
@@ -3615,8 +3641,7 @@ __declspec(noinline) static PSTAGE_REGISTRY_ENTRY StageRegistryDetachOneInstance
             PSTAGE_REGISTRY_SOP_SLOT slot = &RegistrySopSlots[index];
             if (slot->SectionObjectPointer != NULL &&
                 slot->SpilledMutatingIoCount == 0 && slot->UnknownWriterCount == 0 &&
-                (Instance == NULL || (slot->Entry != NULL && slot->Entry->Instance == Instance) ||
-                 (slot->Unknown && slot->InstanceIdentity == (PVOID)Instance))) {
+                (Instance == NULL || slot->InstanceIdentity == (PVOID)Instance)) {
                 entry = slot->Entry;
                 StageRegistryRemoveSopSlotLocked(slot);
                 *Detached = TRUE;
@@ -3650,7 +3675,7 @@ __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknownAt(_In_ PFLT_INST
     StageAcquireSpinLock(&SectionLock, &irql);
     slot = StageRegistryFindSopSlotLocked(SectionObjectPointer, &found);
     if (found && slot->Entry != NULL) {
-        if (slot->Entry->Instance == Instance && slot->Entry->VolumeSerial == VolumeSerial &&
+        if (slot->InstanceIdentity == (PVOID)Instance && slot->Entry->VolumeSerial == VolumeSerial &&
             slot->Entry->StreamSuffixHash == StreamSuffixHash &&
             RtlEqualMemory(&slot->Entry->FileId, FileId, sizeof(*FileId))) {
             recorded = TRUE; /* Exact Entry identity makes a separate capacity bit unnecessary. */
@@ -3720,9 +3745,14 @@ __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_
         StageRegistryMarkUnknown(Reservation->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION, FALSE);
         return;
     }
+    /* BoundEntry's pins may be cleared by early history retirement. Preserve
+     * RegistryLock -> SectionLock while matching it; no object lookup or
+     * reference is attempted under SectionLock. */
+    FltAcquirePushLockExclusive(&RegistryLock);
     StageAcquireSpinLock(&SectionLock, &irql);
     if (SafeUploadStageMandatoryTeardownActive()) {
         StageReleaseSpinLock(&SectionLock, irql);
+        FltReleasePushLock(&RegistryLock);
         FltReleaseContext(streamContext);
         return;
     }
@@ -3738,7 +3768,8 @@ __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_
             InterlockedIncrement64(&RegistrySopMapGeneration);
         }
     } else if (found && slot != NULL && slot->Entry != NULL &&
-        slot->Entry->Instance == Reservation->Instance &&
+        slot->Entry->Listed && !slot->Entry->Retired &&
+        slot->InstanceIdentity == (PVOID)Reservation->Instance &&
         slot->Entry->VolumeSerial == Reservation->VolumeSerial &&
         slot->Entry->StreamSuffixHash == Reservation->StreamSuffixHash &&
         RtlEqualMemory(&slot->Entry->FileId, &Reservation->FileId, sizeof(slot->Entry->FileId))) {
@@ -3746,6 +3777,7 @@ __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_
         entryReferenceFromReservation = entry == Reservation->BoundEntry;
         if (!entryReferenceFromReservation) StageRegistryReference(entry);
     } else if (!found && Reservation->BoundEntry != NULL &&
+        Reservation->BoundEntry->Listed && !Reservation->BoundEntry->Retired &&
         Reservation->BoundEntry->Instance == Reservation->Instance &&
         Reservation->BoundEntry->VolumeSerial == Reservation->VolumeSerial &&
         Reservation->BoundEntry->StreamSuffixHash == Reservation->StreamSuffixHash &&
@@ -3759,6 +3791,7 @@ __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_
         entryReferenceFromReservation = TRUE;
     }
     StageReleaseSpinLock(&SectionLock, irql);
+    FltReleasePushLock(&RegistryLock);
 
     node->FileObject = FileObject;
     node->ProcessId = FltGetRequestorProcessId(Data);
@@ -3935,7 +3968,7 @@ static VOID StageRegistryRetireInstance(_In_opt_ PFLT_INSTANCE Instance, _In_ BO
     if (Instance != NULL && !SafeUploadStageMandatoryTeardownActive())
         StageRegistryClearUnknownSopBindings(Instance);
 
-    /* Retire last (the loops above find this instance's slots through Entry->Instance). Retirement also releases each entry's
+    /* Retire last, after the SOP map walk using its stable InstanceIdentity. Retirement also releases each entry's
      * instance and volume references: stream contexts and writer nodes can still hold entries, and Filter Manager frees those
      * contexts only AFTER FltpFreeInstance has waited out every FltObjectReference on the instance. An entry pinning its
      * instance therefore deadlocked teardown (registry-txf runs 2-6: fltmc unload parked in FltpFreeInstance, rundown count 1).
@@ -4670,7 +4703,7 @@ __declspec(noinline) static VOID StageRegistryRecordClassificationResult(
     KIRQL irql;
     BOOLEAN changed;
     /* Temporary by-ID classifiers have no registry lifetime or diagnostic row. */
-    if (Entry->Instance == NULL) return;
+    if (Entry->Transient) return;
     StageAcquireSpinLock(&Entry->StateLock, &irql);
     changed = InterlockedExchange(&Entry->ClassificationStatus, Status) != Status;
     changed = InterlockedExchange(&Entry->ClassificationStep, (LONG)Step) != (LONG)Step || changed;
@@ -4692,7 +4725,7 @@ __declspec(noinline) static VOID StageRegistryRecordDeferral(
 {
     KIRQL irql;
     LONG current;
-    if (Entry->Instance == NULL) return;
+    if (Entry->Transient) return;
     StageAcquireSpinLock(&Entry->StateLock, &irql);
     current = InterlockedCompareExchange(&Entry->ClassificationStep, 0, 0);
     if (current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NONE ||
@@ -4825,7 +4858,7 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
     ULONG savedUnionScoped = 0, savedCurrentScoped = 0, savedLinkCount = 0;
     ULONG nextLink = 0, cacheCount = 0, cacheIndex;
     BOOLEAN unionScoped = FALSE, currentScoped = FALSE, stable, compactStream = FALSE, renameChurn = FALSE;
-    BOOLEAN versionsCaptured = FALSE;
+    BOOLEAN versionsCaptured = FALSE, volumeMatches = FALSE;
     BOOLEAN partial = FALSE, scanComplete = FALSE, pagingFile = FALSE, noRemainingNames = FALSE;
     BOOLEAN noNamesProvenByIdentity = FALSE;
     UINT32 resultStep = SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OTHER;
@@ -4872,6 +4905,10 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
         Entry->VolumeSerial != 0 &&
         Entry->StreamIdentityKnown &&
         (Entry->CompactStream || Entry->StreamChars <= SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS);
+    /* The caller pins Volume for this pass. Snapshot only the match here;
+     * retirement may clear Entry->Volume while the by-ID I/O runs unlocked.
+     * PublishResult rechecks Listed/Retired before consuming any result. */
+    volumeMatches = stable && Entry->Volume == Volume && Entry->VolumeSerial != 0;
     renameChurn = stable && InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0;
     if (stable && !renameChurn) {
         compactStream = Entry->CompactStream;
@@ -4911,7 +4948,7 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
         /* The entry owns this exact mounted volume and its recorded serial;
          * only an attempted ID open (or an exact, complete compact-stream
          * enumeration) can prove this recorded identity has no current name. */
-        if (noNamesProvenByIdentity && Entry->Volume == Volume && Entry->VolumeSerial != 0) {
+        if (noNamesProvenByIdentity && volumeMatches) {
             reportedStatus = status;
             noRemainingNames = TRUE;
             unionScoped = FALSE;
@@ -4920,7 +4957,7 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
             goto PublishResult;
         }
         if (status == STATUS_SHARING_VIOLATION && !compactStream && streamChars == 0 &&
-            Entry->Volume == Volume && Entry->VolumeSerial != 0 &&
+            volumeMatches &&
             StageRegistryEntryIsVolumeRootFile(Entry, Volume)) {
             reportedStatus = status;
             noRemainingNames = TRUE;
@@ -5286,6 +5323,7 @@ NTSTATUS SafeUploadStageWritersClassifyById(_In_ PFLT_INSTANCE Instance,
     identityEntry = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*identityEntry), SAFEUPLOAD_REGISTRY_POOL_TAG);
     if (identityEntry == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
     RtlZeroMemory(identityEntry, sizeof(*identityEntry));
+    identityEntry->Transient = TRUE;
     identityEntry->Listed = TRUE; /* temporary, function-scoped classifier identity */
     identityEntry->Volume = volume;
     identityEntry->VolumeKind = instanceContext->VolumeKind;
@@ -5473,7 +5511,12 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
     ULONG failed = 0;
     /* A base stream's older incarnations must retire on their own evidence.
      * A live new SOP never stands in for their missing lifetime proof. */
-    BOOLEAN siblingsFree = Entry->CompactStream || Entry->StreamChars != 0 ||
+    BOOLEAN siblingsFree;
+    /* A worker's entry reference can outlive retirement. RegistryLock is
+     * held, but that does not restore a pin already cleared before this call. */
+    if (!Entry->Listed || Entry->Retired || Entry->Instance == NULL)
+        return SAFEUPLOAD_PROMOTE_FAIL_NOT_LISTED;
+    siblingsFree = Entry->CompactStream || Entry->StreamChars != 0 ||
         StageRegistrySiblingIncarnationsRetiredLocked(Entry, FALSE);
     entryName.Buffer = Entry->Name;
     entryName.Length = entryName.MaximumLength = (USHORT)(Entry->NameChars * sizeof(WCHAR));
@@ -7665,17 +7708,18 @@ VOID SafeUploadStageWritersAwaitClassification(_In_ PFLT_INSTANCE Instance, _In_
         InterlockedCompareExchangePointer(&RegistryReclaimIoThread, NULL, NULL) == (PVOID)PsGetCurrentThread()) return;
     entry = StageRegistryReferenceSop(FileObject->SectionObjectPointer);
     if (entry == NULL) return;
-    if (entry->Instance != Instance) {
-        StageRegistryDereference(entry);
-        return;
-    }
     if (InterlockedIncrement(&SectionClassificationWaiters) <= STAGE_SECTION_WAITERS_MAX) {
         interval.QuadPart = -10000LL * STAGE_SECTION_PROBE_POLL_MS;
-        while (waited < STAGE_SECTION_PROBE_WAIT_MS && entry->Listed && !entry->Retired) {
+        while (waited < STAGE_SECTION_PROBE_WAIT_MS) {
+            BOOLEAN active;
             BOOLEAN transition = SafeUploadPolicyScopeTransitionActive();
-            BOOLEAN pending = InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0 &&
+            BOOLEAN pending;
+            FltAcquirePushLockShared(&RegistryLock);
+            active = entry->Listed && !entry->Retired && entry->Instance == Instance;
+            pending = active && InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0 &&
                 InterlockedCompareExchange(&entry->T, 0, 0) == 0;
-            if (!transition && !pending) break;
+            FltReleasePushLock(&RegistryLock);
+            if (!active || (!transition && !pending)) break;
             if (pending && waited % 200 == 0) {
                 /* First request, or a pass that ran out of scan budget before finishing this probe cleared it: ask again. */
                 InterlockedExchange(&entry->PriorityProbe, 1);

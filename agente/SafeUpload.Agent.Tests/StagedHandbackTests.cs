@@ -49,6 +49,9 @@ public sealed class StagedHandbackTests : IDisposable
     [InlineData("mapped", true)]
     public async Task Completed_harness_patterns_leave_dispatch_and_do_no_entry_io(string pattern, bool block)
     {
+        // This control completes service-owned approved-stage disposal. The
+        // default gate simulates a driver-held Released stage instead.
+        _gate.HoldReleasedStages = false;
         var policy = await PolicyAsync(true); var journal = new StagedTransferJournal(_journalRoot);
         string source = Path.Combine(_workspace.Root, "protected", pattern == "replace" ? "~tmp-1.txt" : "document.txt");
         string destination = Path.Combine(_workspace.Root, "protected", "document.txt");
@@ -85,6 +88,7 @@ public sealed class StagedHandbackTests : IDisposable
         }
         var terminal = await journal.ReadAsync(transfer.TransferId, default);
         Assert.True(terminal.StageDeleted);
+        Assert.False(File.Exists(stage));
         if (block) Assert.True(StagedTransferJournal.MatchesBlockedDeletionReceipt(terminal));
         if (pattern == "replace")
         {
@@ -169,22 +173,25 @@ public sealed class StagedHandbackTests : IDisposable
         await publisher.PublishAsync(transfer, default);
         var entry = await journal.ReadAsync(transfer.TransferId, default);
         await journal.CloseJustificationWindowAsync(transfer.TransferId, entry.JustificationExpiresAtUtc!.Value.AddTicks(1), default);
+        using var subscription = _notifications.Subscribe(7, TestRequestorSid);
+        _ = DrainTransfers(subscription).ToArray(); // discard the original publication replay
         using (var driver = new FileStream(transfer.StagePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
         {
             foreach (double seconds in new[] { .25, .5, 1, 2, 4, 8, 8 })
             {
-                await publisher.RecoverPendingTransferAsync(entry, default);
+                await publisher.RecoverPendingTransferAsync(entry, default, cleanupOnly: true);
                 long reads = journal.ManifestReads; int disposals = _gate.Disposals.Count;
                 now += (long)(seconds * System.Diagnostics.Stopwatch.Frequency) - 1;
-                for (int pass = 0; pass < 8; pass++) await publisher.RecoverPendingTransferAsync(entry, default);
+                for (int pass = 0; pass < 8; pass++) await publisher.RecoverPendingTransferAsync(entry, default, cleanupOnly: true);
                 Assert.Equal(reads, journal.ManifestReads); Assert.Equal(disposals, _gate.Disposals.Count);
                 now++;
             }
         }
-        await publisher.RecoverPendingTransferAsync(entry, default);
+        await publisher.RecoverPendingTransferAsync(entry, default, cleanupOnly: true);
         var terminal = await journal.ReadAsync(transfer.TransferId, default);
         Assert.True(terminal.StageDeleted); Assert.Equal(1, copier.CopyCount);
         Assert.Equal(0, _gate.AuthorizeCalls);
+        Assert.DoesNotContain(DrainTransfers(subscription), n => n.Phase == TransferPhase.Blocked);
         Assert.DoesNotContain(await journal.ReadPendingAsync(default), e => e.Transfer.TransferId == transfer.TransferId);
     }
 
@@ -211,8 +218,10 @@ public sealed class StagedHandbackTests : IDisposable
         var reconnected = new StagedTransferJournal(_journalRoot);
         Assert.Empty(await reconnected.ReadPendingAsync(default));
         var allocator = new StagedTransferAllocator(_stagingRoot, reconnected);
+        Assert.False(File.Exists(destination)); // a blocked new save never created this public name
         var resave = await allocator.AllocateAsync(destination, transfer.Destination, transfer.ProcessName,
-            4321, 7, 1, null, default, requestorSid: TestRequestorSid, requestorProcessCreationTime: 654321);
+            4321, 7, 2 /* FILE_CREATE */, null, default, requestorSid: TestRequestorSid, requestorProcessCreationTime: 654321);
+        Assert.False(File.Exists(destination));
         Assert.True((await reconnected.ReadAsync(resave.TransferId, default)).DestinationGeneration > terminal.DestinationGeneration);
         Assert.DoesNotContain(await reconnected.ReadPendingAsync(default), e => e.Transfer.TransferId == transfer.TransferId);
         var restartedPublisher = Publisher(reconnected, policy, new(), copier);
@@ -1354,13 +1363,14 @@ public sealed class StagedHandbackTests : IDisposable
     private sealed class TestPublicationGate : IStagedPublicationGate, IDisposable
     {
         public readonly List<(Guid TransferId, uint Outcome)> Disposals = [];
+        public bool HoldReleasedStages { get; set; } = true;
         public int AuthorizeCalls { get; private set; }
         public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest)
         { AuthorizeCalls++; return this; }
         public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames)
         {
             Disposals.Add((transferId, outcome));
-            return true;
+            return outcome != StageDisposeOutcome.Released || HoldReleasedStages;
         }
         public void Dispose() { }
     }

@@ -138,6 +138,17 @@ The internal timestamp provider permits deterministic component tests; productio
 Stopwatch. Completed receipt adoption racing a stale queued snapshot is safe because an
 idle shortcut grants no mutation authority; any unfinished attempt rereads durable state.
 
+Bound-publication receipts and justified-Released private-stage cleanup own separate
+retry state, with the same bounded monotonic deadlines. Explicit receipt dispatch checks
+exact publication Facts and ACK bookkeeping; a retained attempt arms its receipt retry
+even without a diagnostic. The live Released/Verified cleanup route bypasses receipt
+reconciliation and uses its own deadline. An ACK failure or an eight-second receipt wait
+cannot suppress eligible exact private cleanup; last close can finish cleanup first.
+Cleanup completion clears only its local retry and never retires a publication attempt.
+Receipt retirement still requires the existing later exact replay. Neither retry invokes
+publication. Full interrupted hand-back recovery still restores Verified notification and
+justification progress, while the live cleanup-only route does not repeat that progress.
+
 ## Restoration diagnostic
 
 If no service-connected unload attempt succeeds, `driver-with-service` stops the restarted
