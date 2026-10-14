@@ -456,7 +456,13 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
   - [x] Fixes `c7518c7a` (also the fence-failure unwind and three more paged-row callers): [four WDK builds `t5-fix1`](evidence/2026-10-13/exact-t5-fix1-summary.txt)
     at 0/0 with PREfast/ApiValidator, signed (LocalMachine signer, feature Debug `66E25B04…7E6A`); three new source controls fail on the
     unfixed sources. Agent tree unchanged since matrix `t5-top2`.
-  - [ ] Focused Sol re-review of the fixes, then the first boot of the dormant pair on win10-debug3 (boot Verifier rows).
+  - [x] Focused re-review of `c7518c7a` ([receipt](evidence/2026-10-14/t5-fix1-review-sol61.md)): REJECT — identity outputs written under
+    `NativeLock` into paged replay buffers (reachable while dormant), paged rows read by confirmation/ACK, a stranding allocation
+    failure introduced in `NativeReadPage`, an unlocked two-counter detach sample; the controls checked spelling, not properties.
+  - [x] Second fixes `98e0a6d8`: no caller memory touched under `NativeLock` except nonpaged rows from all nine reader call sites;
+    `NativeReadPage` allocation-free again; locked detach sample; property controls catch 11 mutations.
+    [Four WDK builds `t5-fix2`](evidence/2026-10-14/exact-t5-fix2-summary.txt) 0/0, signed feature Debug `4B4711D8…29B8`.
+  - [ ] Second focused re-review (with a sweep of every spin lock for paged access), then the first boot of the dormant pair.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
