@@ -1,6 +1,6 @@
 # T5 batch 2: recovery holds and released-stage delete receipts
 
-**Proposal against `ae2d0b3c96d01b1f7a1fe70c3b16adedf471b56a`, 2026-10-14.** Read-only source/design review; no edits, builds, tests or VM contact. Checkout clean. This revision has not been independently accepted.
+**Proposal against `d683c59ff1c52a688834b9548c7a2dee442ab4d1`, 2026-10-14.** Read-only source/design review; no edits, builds, tests or VM contact. Checkout clean. This revision has not been independently accepted.
 
 The [2026-10-14 scope decision](POST-MVP-PLAN.md), updated by the evening owner decisions, defines batch 2 as:
 
@@ -12,6 +12,8 @@ The [2026-10-14 scope decision](POST-MVP-PLAN.md), updated by the evening owner 
 The [design re-review](evidence/2026-10-14/t5-designs-rereview-sol61.md) resolved the earlier seal, exposure and historical-owner design findings. Its retirement proposals remain outside this batch. The subsequent independent `t5-batch2-rereview-sol61.md` receipt at `ae2d0b3c` required rename revocation, retirement-before-Release ownership, complete control-35 replies and replay-before-observation ordering; those contracts remain below.
 
 The evening owner decisions recorded in [POST-MVP-PLAN.md](POST-MVP-PLAN.md) accept the retained-residue exception (`c26584d6`) and **drop durable allocation-refusal receipts** (`49df2e00`). These supersede the earlier conservative residue default and refusal-storage item. They are implementation contracts, not claims that inspected source already implements them.
+
+The independent `t5-batch2-rereview2-sol61.md` receipt at `d683c59f` found one remaining gap: rename before Release acceptance. Section 6 adds exact obsolete-intent closure; all other contracts remain unchanged.
 
 The delete receipt addresses [agent-loop RCA defect 2](evidence/2026-10-14/m2t5purgeattr1-agent-loop-rca-sol61.md). The completed-BLOCK idle-loop fix belongs to batch 1.
 
@@ -27,7 +29,7 @@ References use `K/` for `driver/SafeUpload.Minifilter/` and `A/` for `agente/Saf
 
 Two source-verified interleavings qualify the delete contract:
 
-- Committed rename adopts the target generation, increments rename count and clears `Disposed/DisposeDeferred` (`K/StageStream.c:4704–4710`). The journal returns a sealed renamed transfer to `Sealed`, clearing its inspection digest (`A/StagedTransferJournal.cs:2479–2495`). An accepted old Release therefore needs explicit revocation.
+- Committed rename adopts the target generation, increments rename count and clears `Disposed/DisposeDeferred` (`K/StageStream.c:4704–4710`). The journal returns a sealed renamed transfer to `Sealed`, clearing its inspection digest (`A/StagedTransferJournal.cs:2479–2495`). An accepted old Release therefore needs explicit revocation. Rename can also invalidate an intent persisted before driver acceptance; neither refusal nor Query absence closes that intent.
 - Owner exit detaches the view (`K/StageStream.c:6537`); supersession also permits `StageTryRelease` (`:5905–5944`). Teardown deletes only when `Disposed && Released`, then frees the stream (`:5884–5892`). Retirement before disposal can leave backing on disk without an owner for a later Release.
 
 **The allocation decision’s cleanup-only rationale is verified in source.** Failed CREATE enters `StageRetainAllocationReceipt`, retaining the stable request, closing backing and keeping a detached/unattached receipt stream (`K/StageStream.c:1950–2000,2734`). Recovery either resolves exact result 20 or adopts the returned tuple solely to queue kind-5 cleanup (`:6135–6269`). It does not resume CREATE or attach an application object. Kind-5 ACK removes the allocation reservation and releases its predecessor reference (`:6400–6423`).
@@ -46,13 +48,13 @@ Preserve shipped layouts and numeric values. Proposed batch-2 capabilities:
 |---|---:|
 | Exact durable seal request/receipt | `0x200` |
 | Op15 refusal/exposure/op23 recovery, including qualified never-exposed custody | `0x400` |
-| Exact released-stage driver-delete receipt, including pre-delete revocation | `0x800` |
+| Exact released-stage driver-delete receipt, including pre-delete revocation and unaccepted obsolete-intent closure | `0x800` |
 
 Required feature mask becomes **`0xFBF`**, replacing `0x1BF`. Remove the proposed refusal-accounting capability; move the unshipped driver-delete capability to `0x800`. Existing allocation-resolution bit `0x100` retains exact results 19/20; the complete batch-2 contract additionally requires section 5’s stateless refusal, claim neutrality and late-allocation cleanup.
 
 These assignments are unshipped proposals. Negotiation validates the exact required-contract mask and its echo, not merely a subset test that could accept an older proposal’s different bit meanings. Old/incomplete contracts cannot activate batch 2. Normal op11 rejects them or returns EpochBusy with accepted mask zero. Bound-head bit `0x40` remains independently disabled. Normal builds compile staging out.
 
-Reserve extension **29**, operation **23** for attachment recovery, operation **24** for driver-delete resolution receipts, and control **35** for exact released-stage disposal/query. These identifiers are unused in inspected source; assert availability before implementation.
+Reserve extension **29**, operation **23** for attachment recovery, operation **24** for driver-delete resolution receipts, and control **35** for exact released-stage disposal/query/obsolete-intent closure. These identifiers are unused in inspected source; assert availability before implementation.
 
 No fallback to old seal ACK, generic op15 DENY or `Held=0` deletion inference. Existing op17 remains **V20/EPOCH_DRAINED**; it receives no extension-29 payload, new result or reclamation meaning. Ordinary op3 and kind-5 op9 keep their V20 wire layouts, specified in section 5.
 
@@ -92,7 +94,7 @@ Validate every envelope/length/tail/flag, full replay bytes, transfer/full ident
 | First/resumed seal | Historical owner binding, genuine durable op19 and authenticated completed T4 drain/irreversible read-only attestation, exact backing/length/seed evidence. **No live-process requirement.** |
 | Op23 | Exact original allocation/op15 chain and authenticated kernel attestation; no new caller/file object. |
 | Inspection/publication | Exact measured seal receipt, current policy, current destination/generation/delete floors and existing publication authority. |
-| Driver-delete resolution receipt | Exact prior release intent and historical version/object/epoch. Deletion requires actual disposition/lifetime/removal evidence; revocation requires exact committed rename and drained old preparation. Neither grants public mutation authority. |
+| Driver-delete resolution receipt | Exact prior release intent and historical version/object/epoch. Deletion requires actual disposition/lifetime/removal evidence; revocation requires exact committed rename and drained old preparation. Unaccepted obsolete-intent closure requires section 6’s serialized nonacceptance/drain proof and exact historical rename chain; it never asserts deletion. None grants public mutation authority. |
 
 ### Typed replies for operations 4, 15, 23 and 24
 
@@ -388,7 +390,7 @@ This applies to **normally Released**, published versions with `HandbackState=No
 
 Before sending, the agent persists an immutable release intent naming the original version, stage path and checked private-directory binding, driver epoch, committed rename count and unique ReleaseNonce. Reserve its durable receipt/dependency storage first. Do not initiate deletion from a mere missing leaf.
 
-Release intents and their outcomes are indexed by historical tuple and nonce, not solely the transfer’s current head. Rename must preserve the old intent while creating a new current tuple.
+Release intents and their outcomes are indexed by historical tuple and nonce, not solely the transfer’s current head. Rename must preserve the old intent while creating a new current tuple. Persist/adopt intent, binding and rename outcomes under the same journal gate. Before preparing or sending Release, recheck that the original tuple remains eligible and the intent’s send gate is open; never rewrite a delayed request to the current tuple.
 
 Use **128-byte, pack-4** control input:
 
@@ -403,7 +405,7 @@ Use **128-byte, pack-4** control input:
 | 96 | ReleaseNonce, GUID |
 | 112 | ExpectedReceiptId, GUID |
 
-Phase 1=`Release`: ExpectedReceiptId is zero. Phase 2=`Query`: zero discovers the existing binding; nonzero must match it. Outcome must be existing Released value 1. Other fields must be nonzero/valid as applicable.
+Phase 1=`Release`: ExpectedReceiptId is zero. Phase 2=`Query`: zero discovers the existing binding; nonzero must match it. **Phase 3=`CloseObsolete`: ExpectedReceiptId is zero**, for an unbound historical intent after committed rename. It uses every original Release field unchanged except Phase. Outcome must be existing Released value 1. Other fields must be nonzero/valid as applicable. Phase 3 and its result below are part of the unshipped `0x800` contract; sizes, offsets, op24 and required mask `0xFBF` do not change.
 
 Reply is **168 bytes**:
 
@@ -416,33 +418,68 @@ Reply is **168 bytes**:
 
 Kernel validation requires current authenticated service and negotiated compatibility, legal envelope/phase/zeros, original driver epoch, transfer, positive generation, full stage identity, exact rename count, Released outcome and immutable nonce. For lookup, canonicalize only Phase and ExpectedReceiptId to the original Release form; all binding fields remain exact.
 
-**Look up an existing historical record before checking the stream’s current tuple.** Matching old requests must find revoked/completed records after rename or stream release. Only a fresh Release requires the current retained stream tuple and no conflicting accepted release. A changed nonce for the same accepted tuple, changed binding or wrong ExpectedReceiptId refuses without touching the original record.
+**Look up an existing historical record, including acknowledged-but-not-yet-drained ownership, before checking the stream’s current tuple or attempting obsolete closure.** Matching old requests must find revoked/completed records after rename or stream release. Only a fresh Release requires the current retained stream tuple and no conflicting accepted release. A changed nonce for the same accepted tuple, changed binding or wrong ExpectedReceiptId refuses without touching the original record.
 
-For fresh Release, reserve capacity and publish the exact binding before setting/defering disposal or queueing work. Same-request replay never allocates another accepted record or repeats deletion. Query never creates an accepted release, authorizes deletion or supplies completion facts.
+For fresh Release, reserve capacity and publish the exact binding before setting/defering disposal or queueing work. Final acceptance revalidates the listed stream’s complete current tuple under StageListLock, atomically with binding publication and disposal adoption; an earlier out-of-lock tuple snapshot is insufficient. Same-request replay never allocates another accepted record or repeats deletion. Query never creates an accepted release, authorizes deletion or supplies completion facts.
 
 The following values belong to a new control-35 result enum; no shipped enum is renumbered:
 
-| Result | Release / Query | ReceiptId | Kernel action and agent handling |
+| Result | Legal phases | ReceiptId | Kernel action and agent handling |
 |---|---|---|---|
 | 1 — `ReleaseAccepted` | Release only | Nonzero | Binding and record ownership accepted before reply; set matching Released disposal, or suspend/defer it behind an existing rename. Queue worker. Agent persists binding to this historical intent; waits for op24. |
-| 2 — `ReceiptPending` | Both | Nonzero for an accepted record | Keep its reservation/source/work ownership. Replay changes no disposal; Query may wake genuine pending work/delivery. Agent keeps binding and wait; no `StageDeleted`. |
-| 2 — `ReceiptPending` | Both | Zero **only** for a tracked, bounded factory not yet accepted | Keep factory accounting until it drains; no accepted disposal authority. Agent binds nothing and retries/discovers using the same nonce. An accepted record can never regress to zero. |
-| 3 — `ReceiptReady` | Both | Nonzero | Immutable successful-deletion op24 exists; queue/replay it. Keep record until matching op24 ACK and local-use drain. Agent awaits/records op24; this control reply alone cannot complete deletion. |
-| 4 — `ReceiptUnavailable` | Both | Zero | Query found no matching record/factory; Release also lacks an exact retained stream eligible for acceptance. No disposal or free. Agent retains intent as `released_stage_delete_receipt_unavailable`; absence proves neither deletion nor nonacceptance of another in-flight copy. |
-| 5 — `TupleRefused` | Both | Zero | Wrong epoch/tuple/count/nonce/ExpectedReceiptId or incompatible current state; no mutation. Agent keeps historical intent and named mismatch hold; reconcile exact rename/binding evidence, never retarget the request. |
-| 6 — `RetryableFailure` | Both | Zero | No new acceptance in this call; release only drained per-call/factory ownership. Existing accepted records keep their state and return that state when lookup succeeds. Agent preserves exact intent and uses bounded EXCHANGE retry. |
-| 7 — `CapacityUnavailable` | Release only | Zero | Refuse before accepted record/disposal mutation; keep stream/shell. Agent parks SERVICE as `driver_stage_delete_receipt_budget_exhausted`; receipt/connection progress or approved capacity restoration wakes an exact retry. Query uses bounded resident lookup resources and does not consume a new record slot. |
-| 8 — `NotReady` | Both | Zero | Initialization/authentication/compatibility or permitted bookkeeping route unavailable; no new acceptance/mutation. Agent keeps intent and waits for normal authenticated readiness/reconciliation. |
-| 9 — `ReleaseRevoked` | Both | Same nonzero old ID | Old release was revoked before DeleteClaimed. Keep revocation/preparation/delivery ownership; queue terminal revocation op24 after preparation drains. Agent does not mark deleted or reuse this ID for the renamed tuple. |
-| 10 — `Denied` | Both | Zero | Typed denial on an authenticated channel changes no ownership/disposal. Agent parks SERVICE with denial reason; no completion inference. |
+| 2 — `ReceiptPending` | All three | Nonzero for an accepted record | Keep its reservation/source/work ownership. Replay changes no disposal; Query/CloseObsolete may wake genuine pending work/delivery. Agent keeps binding and wait; no `StageDeleted`. |
+| 2 — `ReceiptPending` | Release / Query | Zero **only** for a tracked, bounded factory not yet accepted | Keep factory accounting until it drains; no accepted disposal authority. Agent binds nothing and retries/discovers using the same nonce. An accepted record can never regress to zero. |
+| 2 — `ReceiptPending` | CloseObsolete | Zero | Rename adoption or old controls/factories/preparation have not drained sufficiently for closure. Fence invalidated acceptance when commitment is adopted; keep actual uses counted. Agent retains `release_obsolete_closure_draining` and retries exact closure on genuine progress/bounded drain scheduling; no completion or binding. |
+| 3 — `ReceiptReady` | All three | Nonzero | Immutable successful-deletion op24 exists; queue/replay it. Keep record until matching op24 ACK and local-use drain. Agent awaits/records op24; this control reply alone cannot complete deletion. |
+| 4 — `ReceiptUnavailable` | Release / Query | Zero | Query found no matching record/factory; Release also lacks an exact retained stream eligible for acceptance. No disposal or free. Agent retains intent as `released_stage_delete_receipt_unavailable`; absence proves neither deletion nor nonacceptance of another in-flight copy. |
+| 5 — `TupleRefused` | All three | Zero | Wrong epoch/tuple/count/nonce/ExpectedReceiptId, incompatible state or no proved supersession for CloseObsolete; no mutation. Agent keeps historical intent and named mismatch hold; reconcile exact rename/binding evidence, never retarget the request. |
+| 6 — `RetryableFailure` | All three | Zero | No new acceptance/closure in this call; release only drained per-call/factory ownership. Existing accepted records keep their state and return that state when lookup succeeds. Agent preserves exact intent and uses bounded EXCHANGE retry. |
+| 7 — `CapacityUnavailable` | Release only | Zero | Refuse before accepted record/disposal mutation; keep stream/shell. Agent parks SERVICE as `driver_stage_delete_receipt_budget_exhausted`; receipt/connection progress or approved capacity restoration wakes an exact retry. Query/CloseObsolete use bounded resident lookup resources and do not consume a new record slot. |
+| 8 — `NotReady` | All three | Zero | Initialization/authentication/compatibility or permitted bookkeeping route unavailable; no new acceptance/mutation. Agent keeps intent and waits for normal authenticated readiness/reconciliation. |
+| 9 — `ReleaseRevoked` | All three | Same nonzero old ID | Old release was revoked before DeleteClaimed. Keep revocation/preparation/delivery ownership; queue terminal revocation op24 after preparation drains. Agent does not mark deleted or reuse this ID for the renamed tuple. |
+| 10 — `Denied` | All three | Zero | Typed denial on an authenticated channel changes no ownership/disposal. Agent parks SERVICE with denial reason; no completion inference. |
+| 11 — `ObsoleteIntentClosed` | CloseObsolete only | Zero | Under the arbitration below, no outstanding accepted record or earlier accepting use remains, and the old tuple cannot become acceptable again. No disposition or receipt allocation. Agent validates and durably closes only this unbound historical intent, then drains its local senders. No op24 or `StageDeleted`. |
 
 Invalid phase/result combinations, inconsistent IDs, wrong echoes/connection stamps or nonzero reserved fields are malformed. A native access denial, buffer/validation failure or generic transport error supplies no typed completion authority.
 
-Every control return releases only its actual per-call lookup/scratch pins after the call drains; accepted map/source ownership persists. Reply transmission, including successful transmission, never frees a receipt.
+Every control return releases only its actual per-call lookup/scratch pins after the call drains; accepted map/source ownership persists. CloseObsolete is a pure observer for its own closure drain check, but remains counted in transport/unload rundown until its call actually returns. Reply transmission, including successful transmission, never frees a receipt.
 
-After lost Release, the agent sends exact Query and, if needed, replays the original Release with the same nonce. After lost Query, repeat Query unchanged. Neither loss permits a fresh nonce or an agent filesystem-delete fallback. A delayed reply binds only the historical intent echoed in it, even if rename has advanced the head. Current-channel validation still applies.
+After lost Release, the agent sends exact Query and, if needed, replays the original Release with the same nonce **only while that intent’s send gate remains open**. After committed rename, use CloseObsolete for an unbound intent or the accepted-record revocation path. After lost Query/CloseObsolete, repeat the appropriate exact historical request unchanged. Neither loss permits a fresh nonce or an agent filesystem-delete fallback. A delayed reply binds only the historical intent echoed in it, even if rename has advanced the head. Current-channel validation still applies.
 
 For negotiated Released traffic, old control-29 `Held` replies are not completion authority. Keep that layout for existing uses, including the distinct CleanedUp route.
+
+### Unaccepted Release after rename
+
+An unbound intent follows:
+
+`Prepared/SentUncertain → ObsoleteClosurePending → ObsoleteIntentClosed → LocalSendersDrained`.
+
+The agent’s atomic committed-rename replacement preserves the complete old Release and rename source/receipt chain, marks any unfinished unbound source intent `ObsoleteClosurePending`, and closes its Release send gate. It cancels unsent local work; already-sent controls retain their pins. The native rename completes normally without waiting for this historical bookkeeping. Exact abort leaves the original tuple/send eligibility unchanged. An accepted binding or durable op24 outcome always takes the existing accepted-record path.
+
+**Kernel arbitration and proof.** Use StageListLock for acceptance, rename adoption, historical-record/factory lookup and closure. Every Release/Query registers bounded nonpaged canonical-key call ownership **before** obtaining a stream pointer, caching a tuple or dropping this lock; factories and out-of-lock preparations retain the same indexed ownership until actual drain. Registration failure returns RetryableFailure before mutation. Include acknowledged records with surviving uses in this index until actual free.
+
+Committed rename, under that lock, both advances count and marks obsolete unaccepted factories/preparations `AcceptanceForbidden`; cancel their uncommitted work, then drain references normally. An accepted record instead enters existing revocation. All final acceptance paths recheck the current listed tuple and that fence under the same lock. No allocation/attach/rename callback may resurrect an unlinked sealed transfer or restore an earlier committed count. TransferId is never reused within the loaded driver epoch; committed counts never reset or wrap for that transfer. A fresh save has a new transfer. Count is the supersession fence, since destination generation can decrease.
+
+CloseObsolete performs historical lookup first. Any matching accepted/retiring record returns its nonzero-ID state, even if the head changed; conflicts refuse. No zero-ID closure may bypass it. A pending factory/control is fenced where appropriate and must actually drain. Return zero-ID ReceiptPending until all earlier Release/Query calls, factories and old preparatory/source uses are gone. Other CloseObsolete observers do not wait on each other; their own transport pins still drain. Last-use release and native rename adoption wake the receipt worker.
+
+Only then, in one locked check, establish either:
+
+- the same driver/transfer/full object identity remains listed with committed count strictly greater than the intent’s original count; or
+- exact source ownership has already been irrevocably released, with no retained shell, factory, producer or callback capable of relisting that transfer. The nonresurrection rule and complete ownership index must prove this; a failed lookup, `Held=0` or missing path alone cannot.
+
+A pending native rename is insufficient until its genuine ACK is adopted. An unchanged eligible tuple cannot close; without supersession it returns TupleRefused, or ReceiptPending while genuine rename adoption is unfinished. Wrong original driver epoch/identity cannot qualify.
+
+With these facts and no old accepted/retiring ownership, return **ObsoleteIntentClosed, ReceiptId=0**, echoing all fields and current channel stamps. This linearization proves no outstanding or future acceptance, not deletion. It changes no disposal, stage flags, reservations, current-version pins or filesystem state and allocates no negative receipt/tombstone. A call admitted earlier has drained after losing acceptance eligibility; one arriving later must revalidate the advanced tuple or irrevocable absence and cannot accept. Saturated receipt slots therefore do not prevent closure; bounded call/scratch exhaustion is only RetryableFailure.
+
+**Agent adoption and durability.** Validate full echo, phase/result/zero ID, original driver binding/current channel, complete historical Release and genuine committed rename chain whose source equals its exact generation/identity/count. Under the journal gate, reread binding/outcome before adopting: an accepted binding or saved resolution wins and follows op24; ordinary TupleRefused/ReceiptUnavailable never proves closure.
+
+Atomically persist `ObsoleteIntentClosed` with the entire original Release, private locator/parent binding, exact CloseObsolete request/reply and authenticated origin, original epoch/object/generation/count/nonce, and committed rename dependencies. Record closure kind `UnacceptedObsolete`, explicitly absent DriverReceiptId, and no deletion assertion. Resolve a replacement fault by exact reread. Keep this historical evidence charged/pinned under existing positive recovery accounting. No nonce or tuple is retargeted; no op24 is fabricated.
+
+Only after persistence remove the old intent from pending recovery; drain each local control/sender reference once. Delayed denied/refused replies merely finish their call; they cannot reopen the send gate. A contradictory accepted reply requires exact historical resolution/mismatch handling, never silent deletion or reclassification. The arbitration above excludes a new acceptance after closure. The renamed tuple retains its own inspection/publication/disposal obligations and may receive its later Release/new nonce independently.
+
+**Loss, restart and repeated rename.** A lost Release or Query may conceal acceptance: CloseObsolete finds the record or waits for its factory/control drain, rather than trusting absence. Lost closure reply/crash before durable adoption replays the same phase-3 request; crash after replacement replays the saved historical outcome **before** filesystem/current-head checks and sends no fresh Release. Reconnect uses normal authentication and the original driver epoch. Unsent delayed calls are canceled; a raced old send still fails final acceptance.
+
+Multiple renames retain each intent’s original source and chain; a greater committed count suffices even after later cleanup, with the exact drained-ownership alternative above. Close each obsolete nonce independently; never retarget it to the latest generation. Unfinished closure is `release_obsolete_closure_draining`, an unload obligation with bounded exchange/genuine-drain retry, not a permanent refusal hold. After durable closure and actual local sender drain it is no longer a veto. Existing V20 epoch drain must inventory historical release intents as well as current entries: unresolved closure/binding or persistence ambiguity returns EpochBusy. A saved closure resolves only the old intent, never the underlying stage’s terminal/absence requirement. Mandatory loss of the original loaded epoch before a durable outcome retains the existing cold-driver evidence limitation; no cross-epoch proof is inferred.
 
 ### Ownership before Release
 
@@ -461,7 +498,7 @@ Awaiting disposal is `stage_disposal_unresolved`, vetoes unload, and parks witho
 
 ### Kernel record accounting and state machine
 
-Maintain a separate bounded **nonpaged** receipt map surviving stream release. Reserve factories before allocation and count factories, accepted, suspended, revoking, deleting, replay-pending and in-flight records together. Proposed development ceiling: **1,024 slots**, reused only after acknowledged records actually free; it is not a per-boot counter.
+Maintain a separate bounded **nonpaged** receipt map surviving stream release. Reserve factories before allocation and count factories, accepted, suspended, revoking, deleting, replay-pending and in-flight records together. Separately bound/charge canonical-key call and producer ownership used by obsolete closure; retain indexed retiring records until their last use. Zero-ID closure consumes no receipt slot and cannot release any still-used allocation. Proposed development ceiling: **1,024 slots**, reused only after acknowledged records actually free; it is not a per-boot counter.
 
 A record owns its exact release input, ReceiptId, original boot/driver, stage locator/private-parent binding, source/work ownership, terminal facts, full saved op24 request and state/reference accounting. Include bounded revoking-rename identity/receipt metadata in its original reservation. Bound record payload to 4,096 bytes with compile-time assertions; separately charge bounded RPC scratch and map/factory metadata. No extra slot/allocation is required to revoke an already accepted release.
 
@@ -485,11 +522,11 @@ Preserve supported rename behavior after Release and before DeleteClaimed.
 
 1. An admitted rename exchange suspends deletion of its source tuple. The final DeleteClaimed arbitration must see no pending/in-flight rename or admitted producer, live application handle/object, follow-up seed owner or other conflicting lifetime. It cannot win over an already admitted rename.
 2. Exact abort leaves generation/count unchanged. Restore only the original release’s eligibility/deferred disposal after the abort resolves. Failed, lost or uncertain rename replies keep suspension; they cannot authorize deletion or revocation.
-3. Exact committed rename adoption atomically adopts the journal’s destination generation, increments count and clears `Disposed/DisposeDeferred` as today. In that same arbitration, mark the old release `RevocationDraining`, remove its link as the stream’s active delete intent and retain its immutable old tuple/nonce/ReceiptId. Never rewrite it to the new tuple. Destination generations are per name and can decrease across rename.
+3. Exact committed rename adoption atomically adopts the journal’s destination generation, increments count and clears `Disposed/DisposeDeferred` as today. In that same arbitration, fence/drain unaccepted old factories and controls as above; for an accepted old release, mark it `RevocationDraining`, remove its link as the stream’s active delete intent and retain its immutable old tuple/nonce/ReceiptId. Never rewrite it to the new tuple. Destination generations are per name and can decrease across rename.
 4. Cancel old queued preparation; any out-of-lock worker must revalidate the record before DeleteClaimed and before entering disposition. Drain its preparations/lookups and close only its preparatory DELETE-open handles/references outside callback-needed locks. Release its counted source pin once those uses end. **Do not close the renamed stream’s backing or clear its actual application/cache/share/ancestry ownership.**
 5. Produce `RevocationReady` only with authenticated exact committed-rename evidence, proof that this release never entered disposition, and drained old preparation/source ownership. Keep terminal map/delivery references until ACK. Unproved drain remains `release_revocation_draining`; ready but unacknowledged evidence is `release_revocation_ack_pending`.
 
-The agent’s atomic rename replacement preserves the historical Release intent and exact committed rename chain while returning the current tuple to `Sealed` and clearing prior inspection approval. Revocation closes only old release bookkeeping; it never sets/clears the current tuple’s `StageDeleted`, fabricates op19/seal or changes publication/delete floors.
+The agent’s atomic rename replacement preserves the historical Release intent and exact committed rename chain while returning the current tuple to `Sealed` and clearing prior inspection approval. It marks unbound old intents ObsoleteClosurePending; bound intents use accepted revocation. Revocation closes only old release bookkeeping; it never sets/clears the current tuple’s `StageDeleted`, fabricates op19/seal or changes publication/delete floors.
 
 The renamed tuple follows current-policy inspection/publication. Only its later ordinary Released state creates a **new nonce and receipt binding**, with the newly adopted generation/count and the same exact backing identity where applicable. It may progress while an old revocation awaits ACK; both records remain charged. Old terminal records do not retain the renamed stream merely to wait for delivery.
 
@@ -507,7 +544,7 @@ Old Release/Query replay returns `ReceiptPending` while suspended or `ReleaseRev
 - Confirm removal through complete stable observation under the checked private-parent/volume binding after close. Exact prior disposition plus lifetime evidence qualifies absence; pathname absence alone does not. Pending original link, replacement, changed/reparse parent, access error or incomplete observation remains held.
 - Publish terminal immutable evidence before freeing/unlinking source ownership. Terminal records own no stage FILE_OBJECT/handle that could delay deletion. Release temporary instance/observer pins after their work drains.
 
-Publish map ownership before unlinking a stream, closing the “not listed but teardown unfinished” gap. ACK cannot free a record with factory/work/send/lookup uses; unlink under lock and destroy/release charges outside it after the last use.
+Publish map ownership before unlinking a stream, closing the “not listed but teardown unfinished” gap. ACK cannot free a record with factory/work/send/lookup uses; retain its canonical-key retiring ownership after map removal, then destroy/release charges outside the lock after the last use.
 
 Pre-disposition transient preparation and genuine unsignaled drain waits use existing bounded scheduling. Accepted/uncertain disposition is never repeated. Evidence mismatch parks with named diagnostics. Own close/drain/reference events, rename resolution, normal reconnect and exact Query wake the worker; timers only request fresh qualifying observation.
 
@@ -565,7 +602,7 @@ Every handler, startup and publisher recovery route follows this order:
 3. Only for a first resolution, obtain the preserved historical Release intent/binding and required evidence below. Journal storage reads are evidence lookup, not fresh stage observation.
 4. Atomically persist raw request, release binding and resolution before ACK. A replacement fault is resolved by exact reread through step 2.
 
-For every first resolution validate original driver/boot, transfer, positive generation/full stage identity, committed rename count, ordinary Released/non-hand-back eligibility of the historical intent, ReceiptId binding, requested disposition class/flag and legal terminal form. If Release reply was lost, exact control-35 Query binds the ID first; no inferred ID from path absence.
+For a first op24, a saved UnacceptedObsolete closure for that same key is conflicting evidence, not authority to bind an invented receipt; preserve the outcome and hold the mismatch. For every first resolution validate original driver/boot, transfer, positive generation/full stage identity, committed rename count, ordinary Released/non-hand-back eligibility of the historical intent, ReceiptId binding, requested disposition class/flag and legal terminal form. If Release reply was lost, exact control-35 Query binds the ID first; no inferred ID from path absence.
 
 For **Deleted**, additionally require the intent remains unrevoked, no pending/committed rename invalidates its tuple, strict final statuses and complete `0x1FF`. Replace unconditional leaf `GetAttributes` with lexical containment, checked saved parent/ancestors and absence-capable anchored observation. A replacement, pending original, changed/reparse parent, access ambiguity or incomplete observation refuses. Only this matching complete receipt permits absent-stage completion. Atomically set `StageDeleted=true` for that exact version.
 
@@ -592,11 +629,11 @@ Agent persistence precedes reply. Transmission alone does not release kernel own
 
 Use existing normal SET_POLICY/authentication commit/op11 bootstrap and the new required mask. No retirement-only bootstrap is added. Op24 is receipt bookkeeping, not fresh staging authority; its handler must not require inspection/publication recovery readiness once normal authenticated driver binding/compatibility is established. Startup must not block negotiation or the receive loop waiting for a receipt its kernel sender cannot yet deliver: record the per-version hold, finish normal bootstrap and retry through the connected receipt worker.
 
-Service restart with the same loaded driver preserves AwaitingDisposal shells, accepted/suspended records and terminal deletion/revocation evidence. Resume exact Release/Query intents and unfinished CleanedUp notification. Saved op24 resolutions replay before any fresh stage observation, including after later rename, cleanup or parent changes.
+Service restart with the same loaded driver preserves AwaitingDisposal shells, accepted/suspended records and terminal deletion/revocation evidence. Resume exact Release/Query or CloseObsolete according to each historical intent’s saved state, and unfinished CleanedUp notification. Saved obsolete closures also replay before filesystem/current-head checks; they never restart Release. Saved op24 resolutions replay before any fresh stage observation, including after later rename, cleanup or parent changes.
 
-Voluntary unload is vetoed until shells resolve, terminal records are acknowledged and local uses drain. Mandatory teardown/reboot sends no fresh receipt RPC and fabricates no ACK; after local rundown it may destroy volatile ownership. If no durable agent receipt survived that loss, the entry remains named and held. A different driver/boot cannot recreate it. This batch does not promise cold-driver recovery of unpersisted delete/revocation evidence.
+Voluntary unload is vetoed until shells resolve, terminal records are acknowledged and local uses drain. Mandatory teardown/reboot sends no fresh receipt RPC and fabricates no ACK; after local rundown it may destroy volatile ownership. If no durable agent receipt survived that loss, the entry remains named and held. A different driver/boot cannot recreate it. This batch does not promise cold-driver recovery of unpersisted delete/revocation/obsolete-closure evidence.
 
-Completed cleanup/revocation leaves pending dispatch. Genuine unfinished disposal/recording has bounded backoff; evidence-dependent holds park. Do not reinstate batch 1’s per-entry idle loop.
+Completed cleanup/revocation/obsolete closure leaves pending dispatch. Genuine unfinished disposal/recording has bounded backoff; evidence-dependent holds park. Do not reinstate batch 1’s per-entry idle loop.
 
 ## 7. Unload, locks and scheduling
 
@@ -610,15 +647,15 @@ Use [T5-VOLUNTARY-UNLOAD.md](T5-VOLUNTARY-UNLOAD.md) **as of `7ae16880`**, narro
 
 No R/E retirement-only states, extension-29 op17, new preflight, `EpochRetired`, permanent-refusal mode or changed post-ACK reopen behavior belongs to batch 2.
 
-Batch-2 vetoes are: pending/in-flight seal or missing exact seal evidence; unresolved op15/exposure/fence/op23 and associated pins/reservations; genuine op19/drain/cancellation-CLOSE/coverage obligations; unresolved positive allocation, claim withdrawal, kind-5/NO_WAITER cleanup or custody accounting; unproved retained-unexposed custody/charge/ancestry/nonpublication or unfinished handoff/local drain; AwaitingDisposal shells; driver-delete reserved/waiting/rename-suspended/revoking/deleting/unknown/terminal-unacknowledged records, factories or local uses; and incomplete durable released-stage/revocation/CleanedUp bookkeeping.
+Batch-2 vetoes are: pending/in-flight seal or missing exact seal evidence; unresolved op15/exposure/fence/op23 and associated pins/reservations; genuine op19/drain/cancellation-CLOSE/coverage obligations; unresolved positive allocation, claim withdrawal, kind-5/NO_WAITER cleanup or custody accounting; unproved retained-unexposed custody/charge/ancestry/nonpublication or unfinished handoff/local drain; AwaitingDisposal shells; driver-delete reserved/waiting/rename-suspended/revoking/deleting/unknown/terminal-unacknowledged records, factories or local uses; and incomplete durable released-stage/revocation/obsolete-closure/CleanedUp bookkeeping. Unaccepted obsolete intents veto only until exact durable closure and local sender/control drain; a saved closure alone does not veto.
 
 **Qualified, fully transferred service-owned residue bytes alone do not veto.** There is no allocation-refusal storage/accounting/drain obligation. Ignored obsolete negative metadata alone does not veto.
 
 Keep new ownership nonpaged and capacity-reserved. Preserve namespace → stream Resource/StageListLock and existing native/publication orders. Use StageListLock to arbitrate bounded nonpaged stream/receipt keys and ownership flags; avoid a reverse map-lock → namespace dependency. Control callbacks never acquire namespace resources needed by the RPC worker.
 
-Rename adoption/revocation and final DeleteClaimed arbitration run under namespace serialization with appropriate stream/list guards. Publish suspension/claim flags atomically against producers. Allocate, query, close, wait and RPC outside spin locks and callback-needed resources. Each out-of-lock operation owns a counted pin and revalidates before mutation; revocation drains those operations rather than canceling their lifetime by flag.
+Rename adoption/revocation and final DeleteClaimed arbitration run under namespace serialization with appropriate stream/list guards. Control-35 acceptance/obsolete-closure and rename’s count/factory fence linearize under StageListLock; closure acquires no namespace resource, waits or performs I/O there. Publish suspension/claim flags atomically against producers. Allocate, query, close, wait and RPC outside spin locks and callback-needed resources. Each out-of-lock operation owns a counted pin and revalidates before mutation; revocation drains those operations rather than canceling their lifetime by flag.
 
-Dead-allocation disposition and name-barrier release serialize with original attach/cancel completion; do not clear another lifecycle hold. Keep cleanup identity/parent/RPC ownership separately from logical-name admission. Agent allocation/withdrawal helpers use consistent allocator → journal serialization; physical cleanup and native waits run outside the journal gate/port dispatcher. Include deletion, revocation, dead-allocation cleanup, custody handoff and retained-shell teardown in worker joins. Release slots only after actual destruction.
+Dead-allocation disposition and name-barrier release serialize with original attach/cancel completion; do not clear another lifecycle hold. Keep cleanup identity/parent/RPC ownership separately from logical-name admission. Agent allocation/withdrawal helpers use consistent allocator → journal serialization; physical cleanup and native waits run outside the journal gate/port dispatcher. Include deletion, revocation, obsolete-intent controls/factories/local senders, dead-allocation cleanup, custody handoff and retained-shell teardown in worker joins. Release slots only after actual destruction.
 
 Before committed teardown, normal reconciled reconnect can wake exact recovery. Causes/deadlines survive pending→in-flight→reply; count in-flight obligations. Use existing 250 ms–8 s exchange and genuine drain retry behavior; SERVICE/refusal/capacity/evidence holds do not poll. DPC stays wake-only; timer state governs arming and idle cancellation.
 
@@ -653,15 +690,16 @@ Agent controls use actual handlers/fresh journals and `MemoryMarshal` wire bytes
 | Custody nonpublication | Attempt every transition/startup/migration/inspection/publication/seed/export/hand-back/justification/automatic-cleanup route, including later approval/read-export grants. All reject before side effects. Bytes, restrictions, charge and ancestry survive compaction; no public/export/justified copy or automatic deletion/uncharge. Original app cannot access private custody after unload. |
 | Driver deletion | Driver-held release→local drain→exact disposition/close/removal→service restart→one durable completion; rename count/epoch/generation/full identity mutations; lost Release/Query/op24 replies; before/after completion replacement faults; no second disposition/public mutation. |
 | Rename revocation | Release accepted, then admitted rename before claim; lost/delayed Release reply; rename prepare/abort/commit and lost commit ACK; lower target generation; multiple renames; old replay before/after revocation ACK. Old preparations drain without disposition, normal rename succeeds, new tuple requires approval/new nonce. Old revocation after new deletion cannot change new `StageDeleted`. |
+| Unaccepted Release rename | Intent persisted before first/delayed send; rename wins before acceptance, with controls/factories registered before and after lock drop; acceptance wins instead and uses ordinary revocation. Lost Release/Query/CloseObsolete/rename ACK; crash before/after rename and closure replacements; multiple renames/lower target generation/later cleanup. Query absence/refusal cannot close; delayed old calls cannot accept or reopen disposal. Exact phase-3 zero-ID proof persists without `StageDeleted`, then sender drain removes unload veto. Full receipt map still permits closure; unchanged count, unadopted rename, wrong epoch/identity and accepted/retiring/pinned ownership cannot falsely close. Saved accepted outcome wins the journal race; each obsolete nonce keeps its own chain. Epoch drain sees pending historical intents even after newer cleanup; saved closure cannot waive current-stage obligations. |
 | Claim races | Active rename, app handle, follow-up seed/ancestry or callback prevents delete claim. Mutation after claim cannot retarget the record. Independent new-transfer saves remain normal. No revocation allocation failure or slot leak at capacity. |
 | Pre-Release retention | Owner exit/supersession before inspection, publication or Release; delayed policy result; restart/disconnect; follow-up predecessor pins; old/new disposal in either order. Release finds exact shell without live owner. BLOCK/justified cleanup follows real CleanedUp drain, including lost notification/backing closed before notification. Shells stay counted until actual destruction. |
-| Control 35 | Every result in each legal phase; reject illegal phase/result/ID combinations, wrong ExpectedReceiptId, echo/tail/channel mutations and generic denial. Factory-pending zero versus accepted-pending nonzero; capacity still permits existing Query/replay. Lost Release/Query never creates a new nonce, deletes through fallback or drops ownership. |
+| Control 35 | Every result in each legal phase; reject illegal phase/result/ID combinations, wrong ExpectedReceiptId, echo/tail/channel mutations and generic denial. Factory-pending/closure-draining zero versus accepted-pending nonzero; capacity still permits existing Query/CloseObsolete/replay. Lost Release/Query never creates a new nonce, deletes through fallback or drops ownership. |
 | Replay ordering | Saved deletion/revocation replay with missing/replaced stage, changed parent or throwing observation helpers; no fresh stage/parent observation. Crash after atomic resolution returns saved result. First receipt performs required validation; mismatched saved request fails before observation. |
 | Negative deletion | Absent without receipt, historical receiptless entries, replacement/reparse/changed parent, access errors, pending link, incomplete lifetime, failed/indeterminate disposition and driver loss before persistence remain held. Revocation with missing committed chain/mixed facts/wrong reply kind remains held. |
-| Bounds/unload | Factories/shells/revocations/in-flight records included; reserve before delete; slots return only after actual free. Unresolved positive cleanup, shell, revocation, unacknowledged deletion and unproved residue veto; qualified transferred residue alone does not. Normal reconnect resolves; quarantine/post-ACK behavior preserved; mandatory sends no new RPC. |
-| Idle/compaction | Completed cleanup/revocation does no recurring per-entry work; unfinished work backs off; holds park. Positive allocation/cleanup receipts and claim roles, historical release intents, exact rename dependencies, ancestry/floors survive compaction. Batch-1 BLOCK/history-name fixes remain intact. |
+| Bounds/unload | Factories/shells/revocations/obsolete controls and senders/in-flight records included; reserve before delete; slots return only after actual free. Unresolved positive cleanup, shell, revocation, unacknowledged deletion and unproved residue veto; qualified transferred residue alone does not. Normal reconnect resolves; quarantine/post-ACK behavior preserved; mandatory sends no new RPC. |
+| Idle/compaction | Completed cleanup/revocation/obsolete closure does no recurring per-entry work; unfinished work backs off; holds park. Positive allocation/cleanup receipts and claim roles, historical release intents/obsolete outcomes, exact rename dependencies, ancestry/floors survive compaction. Batch-1 BLOCK/history-name fixes remain intact. |
 
-The lost-refusal/policy-flip, positive-to-no prevention, typed NO_WAITER, generation-neutral cleanup and legacy-file controls must demonstrate the pre-change failures rather than merely mirror the new implementation.
+The lost-refusal/policy-flip, positive-to-no prevention, typed NO_WAITER, generation-neutral cleanup, legacy-file and unaccepted-Release/rename controls must demonstrate the pre-change failures rather than merely mirror the new implementation.
 
 Extend [publisher disposal tests](../agente/SafeUpload.Agent.Tests/StagedTransferPublisherTests.cs), [hand-back recovery tests](../agente/SafeUpload.Agent.Tests/StagedHandbackTests.cs), [journal/scan tests](../agente/SafeUpload.Agent.Tests/StagedTransferJournalTests.cs) and existing allocation/attachment/native controls. No renamed/removed tests, skips or weakened assertions.
 
@@ -680,11 +718,13 @@ Kernel source/property mutations must catch:
 - publication/seed/export/justification guards omitted; generic Retained transition used for custody; startup/compaction/orphan cleanup dropping restrictions, ancestry, bytes or charges;
 - delete without record reservation; map publication after unlink; undisposed owner-exit/superseded stream freed before exact Release/CleanedUp;
 - rename clearing disposal without revocation; old request restoring disposal/retargeting receipt; missing suspension; claim racing admitted rename/seed owner;
+- final Release acceptance from a stale tuple; unregistered control/factory; rename not fencing unaccepted preparation; transfer/count reuse or unlinked-transfer resurrection;
+- obsolete closure while accepted/retiring/factory/control ownership remains or the old tuple can still accept; Query absence/refusal treated as closure; missing durable outcome/rename chain; epoch drain skipping pending historical intents or treating closure as stage absence; delayed sender reopening/retargeting intent or setting StageDeleted;
 - revocation after disposition entry, fabricated drain, closing renamed backing, early source-pin release or revocation ACK interpreted as deletion;
 - wrong tuple/count/nonce; illegal control result/ReceiptId/phase adoption; counters/Held=0 used as completion;
 - fresh observation before saved receipt lookup; current-head checks rejecting exact historical replay;
 - accepting disposition without close/removal; repeating accepted/uncertain disposition; early ACK/free/slot return;
-- uncounted factory/scratch ownership; PAGE/spin/I/O violations; reverse lock order; missing deletion/revocation/dead-allocation/custody/shell join;
+- uncounted factory/scratch ownership; PAGE/spin/I/O violations; reverse lock order; missing deletion/revocation/obsolete-control/sender/dead-allocation/custody/shell join;
 - refusal polling/stale-channel adoption; introduction of deferred retirement/reconnect/permanent-refusal behavior.
 
 Batch contracts, persistence, worker/accounting and positive receipt retention coherently. Run local four-profile compile, required-test preflight/all T5 checks, complete agent matrix and four WDK/PREfast/ApiValidator/import 0/0 gates; obtain fresh independent Sol 6.1 xhigh security/lifetime review before revised boot. Then authorized matched-pair loss/restart/unload/Verifier rows, independent bytes and separate restoration. Source acceptance, component results and protected qualification remain distinct.
