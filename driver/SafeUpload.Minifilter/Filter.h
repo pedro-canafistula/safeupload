@@ -484,6 +484,8 @@ typedef struct _SAFEUPLOAD_EXCHANGE {
     /* Commit-only transport buffer is allocated/freed by StageProtocol. Other
      * requests retain their ordinary response size. ACK facts live until apply. */
     PSAFEUPLOAD_STAGE_RENAME_REPLY_V20 RenameReply;
+    SAFEUPLOAD_STAGE_ALLOCATION_RESOLUTION_REPLY_V20 AllocationResolutionReply;
+    BOOLEAN AllocationNotCommitted; /* Exact current-channel terminal receipt only. */
     ULONG ReplyLength;
     BOOLEAN RenameReceiptValid;
     SAFEUPLOAD_STAGE_RENAME_V20 RenameAck;

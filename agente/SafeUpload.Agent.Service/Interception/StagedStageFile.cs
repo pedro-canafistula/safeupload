@@ -43,6 +43,49 @@ internal sealed class StagedStageFile : IDisposable
     public FileStream Stream { get; }
     public StagedStageIdentity Identity { get; }
 
+    // Blocked cleanup must coexist with the driver's sealed read backing.
+    // This handle denies writers, verifies the full identity, and stays owned
+    // through disposition and the durable receipt (never reopen by path).
+    public static StagedStageFile OpenBlockedDeletion(string path, StagedStageIdentity expected)
+    {
+        path = Path.GetFullPath(path);
+        StagedStageFile stage;
+        if (!OperatingSystem.IsWindows()) stage = OpenPortable(path, allowWriters: false);
+        else
+        {
+            SafeFileHandle handle = CreateFile(path, GenericRead | DeleteAccess,
+                ShareRead | ShareDelete, IntPtr.Zero, OpenExisting,
+                OpenReparsePoint | SequentialScan, IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                int error = Marshal.GetLastWin32Error();
+                handle.Dispose();
+                throw new IOException("The blocked stage could not be opened for exact disposition.",
+                    new Win32Exception(error));
+            }
+            try
+            {
+                if (!TryReadFileIdentity(handle, requireSingleLink: true, out var identity))
+                    throw new IOException("The blocked stage is not a verified single-link regular object.");
+                stage = new StagedStageFile(new FileStream(handle, FileAccess.Read, 4096, false), identity);
+            }
+            catch { handle.Dispose(); throw; }
+        }
+        if (stage.Identity == expected) return stage;
+        stage.Dispose();
+        throw new IOException("The blocked stage identity changed; the replacement was retained.");
+    }
+
+    public void MarkBlockedDeletion(string path)
+    {
+        if (!OperatingSystem.IsWindows()) { File.Delete(path); return; }
+        var disposition = new FileDispositionInformation { DeleteFile = true };
+        if (!SetFileInformationByHandle(Stream.SafeFileHandle, FileDispositionInfoClass,
+                ref disposition, Marshal.SizeOf<FileDispositionInformation>()))
+            throw new IOException("The exact blocked stage disposition was refused.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+    }
+
     public static StagedStageFile Open(string path, bool allowWriters = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);

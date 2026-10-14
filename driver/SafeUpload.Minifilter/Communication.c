@@ -1712,6 +1712,14 @@ Return Value:
         replyCapacity = sizeof(*Exchange->RenameReply);
     }
 #endif
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (Exchange->Request.Operation == SAFEUPLOAD_OPERATION_STAGE_ALLOCATE &&
+        Exchange->Request.Reserved == SAFEUPLOAD_STAGE_EXTENSION_VERSION &&
+        Exchange->Request.ImageNameLength == sizeof(SAFEUPLOAD_STAGE_ALLOCATE_V20)) {
+        response = (PSAFEUPLOAD_RESPONSE)&Exchange->AllocationResolutionReply;
+        replyCapacity = sizeof(Exchange->AllocationResolutionReply);
+    }
+#endif
     RtlZeroMemory(response, replyCapacity);
 
     //
@@ -1770,10 +1778,20 @@ Return Value:
     if (replyLength < sizeof(SAFEUPLOAD_RESPONSE) ||
         response->Version != SAFEUPLOAD_PROTOCOL_VERSION ||
         response->RequestId != Exchange->Request.RequestId ||
-        (response->Verdict == SAFEUPLOAD_VERDICT_DENY ?
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        (replyCapacity == sizeof(Exchange->AllocationResolutionReply) ?
+            !((response->StructSize == sizeof(SAFEUPLOAD_RESPONSE) && replyLength == sizeof(SAFEUPLOAD_RESPONSE)) ||
+              (response->StructSize == replyCapacity && replyLength == replyCapacity &&
+               response->Verdict == SAFEUPLOAD_VERDICT_ALLOW)) :
+#endif
+        ((response->Verdict == SAFEUPLOAD_VERDICT_DENY ?
             response->StructSize != sizeof(SAFEUPLOAD_RESPONSE) : response->StructSize != replyCapacity) ||
         (replyCapacity != sizeof(SAFEUPLOAD_RESPONSE) && response->Verdict != SAFEUPLOAD_VERDICT_DENY &&
-            replyLength != replyCapacity)) {
+            replyLength != replyCapacity))
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        )
+#endif
+        ) {
 
         SafeUploadTrace( "malformed reply for request %llu - allowing\n",
                          Exchange->Request.RequestId );
@@ -1787,6 +1805,10 @@ Return Value:
     //  actually checked by user mode.
     //
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (response == (PSAFEUPLOAD_RESPONSE)&Exchange->AllocationResolutionReply)
+        RtlCopyMemory(&Exchange->Response, response, sizeof(Exchange->Response));
+#endif
     *Answered = TRUE;
 
     //

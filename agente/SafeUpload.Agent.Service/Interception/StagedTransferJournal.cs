@@ -14,7 +14,7 @@ namespace SafeUpload.Agent.Service.Interception;
 /// </summary>
 public sealed partial class StagedTransferJournal
 {
-    private const uint RequiredStageV20Capabilities = 0xbf;
+    private const uint RequiredStageV20Capabilities = 0x1bf;
     internal static readonly string EmptySha256Hex = Convert.ToHexString(SHA256.HashData(Array.Empty<byte>()));
     private readonly string _directory;
     private readonly StagedJournalGate _gate = new();
@@ -22,6 +22,7 @@ public sealed partial class StagedTransferJournal
     private readonly SecurityIdentifier? _owner;
     private readonly string _driverEpochPath;
     private readonly Action<StagedJournalWritePoint, TransferJournalEntry>? _writeObserver;
+    internal Action<StagedJournalWritePoint, TransferJournalEntry>? AllocationCommitObserver { get; set; }
 
     // The publish loop (every 250 ms) and every destination-version scan used to open, ACL-check and JSON-parse EVERY
     // historical manifest, so each stage operation cost O(journal age): latency grew ~3 ms per retained record (C04
@@ -304,7 +305,8 @@ public sealed partial class StagedTransferJournal
                 if (driverInstanceId is { } expectedDriverInstance &&
                     (expectedDriverInstance == Guid.Empty || parent.DriverInstanceId != expectedDriverInstance))
                     throw new IOException("The v20 followup predecessor is not bound to this driver epoch.");
-                if (!parent.SealedOnce || parent.StageIdentity is null || parent.DestinationGeneration <= 0 ||
+                if (!parent.SealedOnce || parent.StageCleanupStarted || parent.StageDeleted ||
+                    parent.StageIdentity is null || parent.DestinationGeneration <= 0 ||
                     parent.State is not (TransferJournalState.Sealed or TransferJournalState.Retained or
                         TransferJournalState.LegacyEmptyHeld))
                     throw new IOException("The followup predecessor has no stable sealed stage identity.");
@@ -374,7 +376,19 @@ public sealed partial class StagedTransferJournal
 
             // A complete, flushed manifest becomes visible all at once. A
             // duplicate ID cannot take over an earlier destination.
-            File.Move(temporary, path);
+            bool allocationCommitted = false;
+            try
+            {
+                AllocationCommitObserver?.Invoke(StagedJournalWritePoint.BeforeReplacement, entry);
+                File.Move(temporary, path);
+                allocationCommitted = true;
+                AllocationCommitObserver?.Invoke(StagedJournalWritePoint.AfterReplacement, entry);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            {
+                throw new StagedJournalPersistenceException(path, temporary, entry, "create-replace",
+                    allocationCommitted, ex);
+            }
             ForgetScanned(transfer.TransferId);
         }
         finally
@@ -1767,6 +1781,12 @@ public sealed partial class StagedTransferJournal
             throw new InvalidDataException("The transfer manifest has invalid state history.");
         }
 
+        if (entry.BlockedDeletionReceipt is not null &&
+            (!MatchesBlockedDeletionReceipt(entry) ||
+             entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
+             entry.HandbackState != StagedHandbackState.Verified || !entry.JustificationWindowClosed))
+            throw new InvalidDataException("The manifest has mismatched blocked-disposition evidence.");
+
         if (!Enum.IsDefined(entry.HandbackState))
             throw new InvalidDataException("The transfer manifest has an invalid hand-back state.");
         if (entry.HandbackPath is not null) RequireManifestPath(entry.HandbackPath);
@@ -2068,6 +2088,7 @@ public sealed partial class StagedTransferJournal
                 HandbackLastAttemptAtUtc = next == TransferJournalState.Blocked
                     ? null : current.HandbackLastAttemptAtUtc,
                 StageDeleted = next == TransferJournalState.Blocked ? false : current.StageDeleted,
+                BlockedDeletionReceipt = next == TransferJournalState.Blocked ? null : current.BlockedDeletionReceipt,
                 StageCleanupStarted = next == TransferJournalState.Blocked ? false : current.StageCleanupStarted
             };
             if (next == TransferJournalState.Blocked && (StagedSeedExport.Failure(updated) ?? StagedSeedExport.Failure(current)) is { } seedFailure)
@@ -2713,7 +2734,8 @@ public sealed partial class StagedTransferJournal
             var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
             if (current.State is not (TransferJournalState.Blocked or TransferJournalState.Released))
                 throw new IOException("The transfer is not eligible for hand-back invalidation.");
-            if (current.HandbackState == StagedHandbackState.Failed) return (current, false);
+            if (current.BlockedDeletionReceipt is not null || current.HandbackState == StagedHandbackState.Failed)
+                return (current, false);
             if (current.HandbackState != StagedHandbackState.Verified)
                 throw new IOException("Only a verified hand-back can be invalidated.");
             var updated = current with
@@ -2772,6 +2794,38 @@ public sealed partial class StagedTransferJournal
         finally { _gate.Release(); }
     }
 
+    internal static bool MatchesBlockedDeletionReceipt(TransferJournalEntry entry) =>
+        entry.BlockedDeletionReceipt is { Version: { StageIdentity: not null } version } receipt &&
+        entry.StageIdentity is not null &&
+        version.TransferId == entry.Transfer.TransferId &&
+        version.DestinationGeneration == entry.DestinationGeneration &&
+        version.StageIdentity == entry.StageIdentity &&
+        receipt.CommittedRenames == entry.NamespaceTombstones.Count &&
+        receipt.Length == entry.SealedLength && receipt.Sha256Hex == entry.Sha256Hex;
+
+    // Called only after successful disposition on the identity-checked owned
+    // handle. A cleanup-start marker alone is never an accepted-delete receipt.
+    internal async Task<TransferJournalEntry> RecordBlockedDeletionAsync(Guid id,
+        StagedBlockedDeletionReceipt receipt, CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            var updated = current with { BlockedDeletionReceipt = receipt };
+            if (!current.StageCleanupStarted || current.StageDeleted || current.PendingRename is not null ||
+                current.HandbackState != StagedHandbackState.Verified || !current.JustificationWindowClosed ||
+                current.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
+                StagedSeedExport.Failure(current) is not null || !MatchesBlockedDeletionReceipt(updated))
+                throw new IOException("The blocked disposition receipt no longer matches its cleanup intent.");
+            if (current.BlockedDeletionReceipt == receipt) return current;
+            updated = updated with { UpdatedAtUtc = DateTimeOffset.UtcNow };
+            await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
+            return updated;
+        }
+        finally { _gate.Release(); }
+    }
+
     public async Task<TransferJournalEntry> CompleteStageCleanupAsync(Guid id,
         CancellationToken token)
     {
@@ -2782,7 +2836,8 @@ public sealed partial class StagedTransferJournal
             if (current.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
                 current.HandbackState != StagedHandbackState.Verified ||
                 StagedSeedExport.Failure(current) is not null ||
-                !current.JustificationWindowClosed || !current.StageCleanupStarted)
+                !current.JustificationWindowClosed || !current.StageCleanupStarted ||
+                !MatchesBlockedDeletionReceipt(current))
                 throw new IOException("Staging cleanup prerequisites are not satisfied.");
             if (!StagedStageFile.TryConfirmAbsent(current.Transfer.StagePath, out Exception? absenceFailure))
                 throw new IOException("Staging cleanup cannot be recorded until the path is confirmed absent.",
@@ -3351,6 +3406,7 @@ public sealed record TransferJournalEntry(
     public string? HandbackFailureReason { get; init; }
     public DateTimeOffset? HandbackLastAttemptAtUtc { get; init; }
     public bool StageCleanupStarted { get; init; }
+    public StagedBlockedDeletionReceipt? BlockedDeletionReceipt { get; init; }
     public bool StageDeleted { get; init; }
 
     public bool Equals(TransferJournalEntry? other)
@@ -3395,6 +3451,7 @@ public sealed record TransferJournalEntry(
             HandbackPath == other.HandbackPath && HandbackLength == other.HandbackLength &&
             HandbackFailureReason == other.HandbackFailureReason &&
             HandbackLastAttemptAtUtc == other.HandbackLastAttemptAtUtc &&
+            BlockedDeletionReceipt == other.BlockedDeletionReceipt &&
             StageCleanupStarted == other.StageCleanupStarted && StageDeleted == other.StageDeleted;
     }
 
@@ -3456,6 +3513,7 @@ public sealed record TransferJournalEntry(
         hash.Add(HandbackLength);
         hash.Add(HandbackFailureReason);
         hash.Add(HandbackLastAttemptAtUtc);
+        hash.Add(BlockedDeletionReceipt);
         hash.Add(StageCleanupStarted);
         hash.Add(StageDeleted);
         return hash.ToHashCode();
@@ -3548,6 +3606,9 @@ public sealed record StagedAllocationIntentV19(Guid ReservationId, Guid ParentTr
 
 public sealed record StagedAllocationReply(StagedTransfer Transfer, long DestinationGeneration,
     StagedStageIdentity StageIdentity, long InitialLength);
+
+public sealed record StagedBlockedDeletionReceipt(StagedVersionIdentity Version,
+    int CommittedRenames, long Length, string Sha256Hex);
 
 public sealed record BlockedTransferEvidence(int PolicyVersion,
     DateTimeOffset? JustificationExpiresAtUtc, bool WindowClosed,

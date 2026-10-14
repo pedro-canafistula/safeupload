@@ -23,6 +23,11 @@ public sealed partial class StagedTransferPublisher
     private readonly IStagedHandbackCopier? _handbackCopier;
     private readonly Func<uint, string?> _sessionUserSidResolver;
     private readonly ILogger? _logger;
+    private readonly SemaphoreSlim _blockedCleanupGate = new(1, 1);
+    // Native acceptance survives a failed journal acknowledgement during this
+    // service run. It authorizes bookkeeping only; losing it in a process crash
+    // before durable acceptance leaves an explicit recovery hold.
+    private readonly Dictionary<Guid, StagedBlockedDeletionReceipt> _blockedDeletionReceipts = new();
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
     // Rebound only after the preceding connection's workers/continuations drain.
     internal StagedBoundPublicationDispatcher? BoundPublication { get; set; }
@@ -576,6 +581,13 @@ public sealed partial class StagedTransferPublisher
             return;
         }
 
+        if (current.StageDeleted) return;
+        if (current.StageCleanupStarted || StagedTransferJournal.MatchesBlockedDeletionReceipt(current))
+        {
+            await ProcessBlockedCleanupAsync(current, token).ConfigureAwait(false);
+            return;
+        }
+
         if (current.BlockedPolicyFingerprint is null)
         {
             // A historical version number alone cannot restore an exception.
@@ -711,6 +723,13 @@ public sealed partial class StagedTransferPublisher
 
     public async Task ProcessBlockedCleanupAsync(TransferJournalEntry entry, CancellationToken token)
     {
+        await _blockedCleanupGate.WaitAsync(token).ConfigureAwait(false);
+        try { await ProcessBlockedCleanupCoreAsync(entry, token).ConfigureAwait(false); }
+        finally { _blockedCleanupGate.Release(); }
+    }
+
+    private async Task ProcessBlockedCleanupCoreAsync(TransferJournalEntry entry, CancellationToken token)
+    {
         entry = await _journal.ReadAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
         if (entry.SealedLength is not >= 0 || entry.StageIdentity is null ||
             entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
@@ -735,63 +754,82 @@ public sealed partial class StagedTransferPublisher
             return;
         StagedStageIdentity expectedStageIdentity = current.StageIdentity ??
             throw new IOException("The verified stage has no exact manifest identity for cleanup.");
-        if (current.StageCleanupStarted &&
-            DateTimeOffset.UtcNow - current.UpdatedAtUtc < TimeSpan.FromSeconds(30))
-            return;
-
         current = await _journal.TryBeginStageCleanupAsync(current.Transfer.TransferId, token)
             .ConfigureAwait(false);
         if (!current.StageCleanupStarted || current.StageDeleted) return;
 
         try
         {
-            long stageLength = current.HandbackLength ?? 0;
-            try
+            // Accepted disposition is durable before disposal. Replays finish
+            // bookkeeping only, without reopening a pending object, copying a
+            // hand-back, inspecting again or repeating publication.
+            if (!StagedTransferJournal.MatchesBlockedDeletionReceipt(current))
             {
-                RequirePrivateStagePath(current.Transfer.StagePath);
-                using StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath);
-                if (stage.Identity != expectedStageIdentity)
-                    throw new IOException("Staging identity changed after hand-back verification; it was retained.");
-                long length = stage.Stream.Length;
-                stageLength = length;
-                string digest = Convert.ToHexString(await SHA256.HashDataAsync(stage.Stream, token)
-                    .ConfigureAwait(false));
-                if (stage.Stream.Length != length || length < 0 ||
-                    !string.Equals(digest, current.Sha256Hex, StringComparison.OrdinalIgnoreCase))
-                    throw new IOException("Staging changed after hand-back verification; it was retained.");
+                if (_blockedDeletionReceipts.TryGetValue(current.Transfer.TransferId, out var accepted))
+                {
+                    current = await _journal.RecordBlockedDeletionAsync(current.Transfer.TransferId,
+                        accepted, CancellationToken.None).ConfigureAwait(false);
+                    _blockedDeletionReceipts.Remove(current.Transfer.TransferId);
+                }
+                else
+                {
+                    RequirePrivateStagePath(current.Transfer.StagePath);
+                    using StagedStageFile stage = StagedStageFile.OpenBlockedDeletion(
+                        current.Transfer.StagePath, expectedStageIdentity);
+                    long length = stage.Stream.Length;
+                    string digest = Convert.ToHexString(await SHA256.HashDataAsync(stage.Stream, token)
+                        .ConfigureAwait(false));
+                    if (stage.Stream.Length != length || length != current.SealedLength ||
+                        !string.Equals(digest, current.Sha256Hex, StringComparison.OrdinalIgnoreCase))
+                        throw new IOException("Staging changed after hand-back verification; it was retained.");
+                    if (_handbackCopier is null || current.HandbackPath is null || current.Sha256Hex is null)
+                        throw new IOException("The verified hand-back cannot be reopened for cleanup.");
+                    IDisposable handbackLease;
+                    try
+                    {
+                        handbackLease = _handbackCopier.OpenVerifiedReadLease(current.Transfer,
+                            current.HandbackPath, current.HandbackLength ?? length, current.Sha256Hex);
+                    }
+                    catch (Exception ex) when (!token.IsCancellationRequested)
+                    {
+                        _logger?.LogWarning(ex, "Hand-back changed before stage cleanup for {TransferId}.",
+                            current.Transfer.TransferId);
+                        await RecordInvalidHandbackAsync(current, "handback_reverification_failed",
+                            CancellationToken.None).ConfigureAwait(false);
+                        return;
+                    }
+                    using (handbackLease)
+                    {
+                        stage.MarkBlockedDeletion(current.Transfer.StagePath);
+                        accepted = new StagedBlockedDeletionReceipt(new StagedVersionIdentity(current.Transfer.TransferId,
+                                current.DestinationGeneration, expectedStageIdentity),
+                                current.NamespaceTombstones.Count, length, current.Sha256Hex);
+                        _blockedDeletionReceipts[current.Transfer.TransferId] = accepted;
+                        current = await _journal.RecordBlockedDeletionAsync(current.Transfer.TransferId, accepted,
+                            CancellationToken.None).ConfigureAwait(false);
+                    }
+                    _blockedDeletionReceipts.Remove(current.Transfer.TransferId);
+                }
             }
-            catch (FileNotFoundException) { /* Exact deletion below confirms absence before recording cleanup. */ }
-            catch (DirectoryNotFoundException) { /* Exact deletion below confirms absence before recording cleanup. */ }
-
-            if (_handbackCopier is null || current.HandbackPath is null || current.Sha256Hex is null)
-                throw new IOException("The verified hand-back cannot be reopened for cleanup.");
-            IDisposable handbackLease;
-            try
-            {
-                handbackLease = _handbackCopier.OpenVerifiedReadLease(current.Transfer,
-                    current.HandbackPath, current.HandbackLength ?? stageLength, current.Sha256Hex);
-            }
-            catch (Exception ex) when (!token.IsCancellationRequested)
-            {
-                _logger?.LogWarning(ex, "Hand-back changed before stage cleanup for {TransferId}.",
-                    current.Transfer.TransferId);
-                await RecordInvalidHandbackAsync(current, "handback_reverification_failed",
-                    CancellationToken.None).ConfigureAwait(false);
-                return;
-            }
-
-            using (handbackLease)
-            {
-                if (!StagedDiscardCleanup.TryDeleteExactAndConfirmAbsent(current.Transfer.StagePath,
-                        expectedStageIdentity, out Exception? deletionFailure))
-                    throw new IOException("The exact verified stage could not be deleted and confirmed absent.",
-                        deletionFailure);
-                await _journal.CompleteStageCleanupAsync(current.Transfer.TransferId, token).ConfigureAwait(false);
-            }
+            else _blockedDeletionReceipts.Remove(current.Transfer.TransferId);
+            // NTFS may still have the driver's read handle open. Wake its
+            // existing exact lifetime retirement BEFORE checking last-close
+            // absence. Pending deletion is not StageDeleted.
             DisposeCleanedUpStage(current);
+            if (StagedStageFile.TryConfirmAbsent(current.Transfer.StagePath, out Exception? absenceFailure))
+                await _journal.CompleteStageCleanupAsync(current.Transfer.TransferId, token).ConfigureAwait(false);
+            else if (absenceFailure is not null)
+                throw new IOException("Blocked stage absence could not be established.", absenceFailure);
         }
         catch (Exception ex) when (!token.IsCancellationRequested)
         {
+            if (ex is StagedJournalPersistenceException)
+                QueueJournalProgress(current);
+            if (!StagedTransferJournal.MatchesBlockedDeletionReceipt(current) &&
+                !_blockedDeletionReceipts.ContainsKey(current.Transfer.TransferId) &&
+                (StagedStageFile.TryConfirmAbsent(current.Transfer.StagePath, out _) ||
+                 ex is IOException { InnerException: System.ComponentModel.Win32Exception { NativeErrorCode: 5 or 303 } }))
+                ReportRecoveryHold(current, "blocked_disposition_receipt_unavailable", ex);
             _logger?.LogWarning(ex, "Could not remove verified blocked stage {TransferId}.",
                 current.Transfer.TransferId);
             var operation = OperationFor(current.Transfer, 0, DateTimeOffset.UtcNow);

@@ -1366,7 +1366,14 @@ public sealed class StagedTransferJournalTests : IDisposable
             CancellationToken.None);
         Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddSeconds(1), CancellationToken.None));
         await journal.TryBeginStageCleanupAsync(other.TransferId, CancellationToken.None);
-        File.Delete(other.StagePath);
+        var cleanup = await journal.ReadAsync(other.TransferId, CancellationToken.None);
+        using (var deletion = StagedStageFile.OpenBlockedDeletion(other.StagePath, cleanup.StageIdentity!))
+        {
+            deletion.MarkBlockedDeletion(other.StagePath);
+            await journal.RecordBlockedDeletionAsync(other.TransferId, new StagedBlockedDeletionReceipt(
+                new StagedVersionIdentity(other.TransferId, cleanup.DestinationGeneration, cleanup.StageIdentity!),
+                cleanup.NamespaceTombstones.Count, cleanup.SealedLength!.Value, cleanup.Sha256Hex!), CancellationToken.None);
+        }
         await File.WriteAllTextAsync(other.StagePath, "replacement remains private");
         await Assert.ThrowsAsync<IOException>(() => journal.CompleteStageCleanupAsync(other.TransferId,
             CancellationToken.None));
@@ -1575,7 +1582,7 @@ public sealed class StagedTransferJournalTests : IDisposable
         StagedStageIdentity parentDirectory = StagedStageFile.ReadDirectoryIdentity(
             Path.GetDirectoryName(transfer.DestinationPath)!);
         Assert.Equal(StagedDriverEpochReconcileV20.Active,
-            await journal.ReconcileDriverInstanceV20Async(activeDriver, 0xbf, CancellationToken.None));
+            await journal.ReconcileDriverInstanceV20Async(activeDriver, 0x1bf, CancellationToken.None));
         TransferJournalEntry created = await journal.CreateAsync(transfer, CancellationToken.None,
             allocationDisposition: 5, allocationReferenceId: null, allocationReferenceKind: 0,
             driverInstanceId: activeDriver,

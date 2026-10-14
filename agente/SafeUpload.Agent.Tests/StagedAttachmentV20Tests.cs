@@ -17,7 +17,7 @@ public sealed class StagedAttachmentV20Tests : IDisposable
 {
     private const string RequestorSid = "S-1-5-21-111-222-333-1000";
     private const long ProcessCreationTime = 638953632000000000;
-    private const uint RequiredCapabilities = 0xbf;
+    private const uint RequiredCapabilities = 0x1bf;
 
     // Required by Invoke-ExactAgentMatrixBuild.py under this exact name (the ordinary empty profile's old mask).
     [Fact]

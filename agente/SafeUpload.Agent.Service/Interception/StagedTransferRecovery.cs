@@ -99,7 +99,7 @@ public sealed partial class StagedTransferPublisher
                 {
                     ScheduleRecoveryRetry(id); // bookkeeping only; never forwards a native mutation
                 }
-                else { _recoveryRetries.Remove(id); _recoveryNotified.Remove(id); }
+                else { _recoveryRetries.Remove(id); lock (_recoveryNotified) _recoveryNotified.Remove(id); }
                 if (!unfinished) lock (_confirmedPublications) _pendingJournalProgress.Remove(id);
                 return;
             }
@@ -115,7 +115,7 @@ public sealed partial class StagedTransferPublisher
                 await RecoverBlockedAsync(entry, token).ConfigureAwait(false);
             lock (_confirmedPublications) _pendingJournalProgress.Remove(id);
             _recoveryRetries.Remove(id);
-            _recoveryNotified.Remove(id);
+            lock (_recoveryNotified) _recoveryNotified.Remove(id);
         }
         catch (StagedJournalPersistenceException error)
         {
@@ -144,7 +144,8 @@ public sealed partial class StagedTransferPublisher
 
     private void ReportRecoveryHold(TransferJournalEntry entry, string reason, Exception? error)
     {
-        bool first = _recoveryNotified.Add(entry.Transfer.TransferId);
+        bool first;
+        lock (_recoveryNotified) first = _recoveryNotified.Add(entry.Transfer.TransferId);
         if (!first && error is null) return;
         _logger?.LogWarning(error, "Staged recovery holds {Destination}: transfer {TransferId}, generation {Generation}, " +
             "state {State}, handback {HandbackState}, reason {Reason}.", entry.Transfer.DestinationPath,
@@ -152,8 +153,12 @@ public sealed partial class StagedTransferPublisher
         if (!first) return;
         PublishTransferNotification(entry.Transfer, new TransferNotification(entry.Transfer.TransferId,
             entry.Transfer.DestinationPath, TransferPhase.Retained,
-            RecoveryAdvice: reason == "publication_receipt_unavailable"
-                ? StagedRecoveryAdvice.PublicationUnresolved : StagedRecoveryAdvice.JournalRecovery));
+            RecoveryAdvice: reason switch
+            {
+                "publication_receipt_unavailable" => StagedRecoveryAdvice.PublicationUnresolved,
+                "blocked_disposition_receipt_unavailable" => StagedRecoveryAdvice.CollectDiagnostics,
+                _ => StagedRecoveryAdvice.JournalRecovery
+            }));
     }
 }
 

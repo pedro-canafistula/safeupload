@@ -89,16 +89,16 @@ def disconnect_contract(source):
             disconnected.index('StageStreamReleaseSpinLock(&StageListLock, irql);') <
             disconnected.index('StageUpdateRetryTimer();') <
             disconnected.index('StageRelease(&StageNamespaceResource);'), 'park then cancel under the owning locks')
-    for field in ('HandleReceiptWait', 'RenameWait', 'Wait'):
+    for field in ('HandleReceiptWait', 'RenameWait', 'AllocationRecoveryWait', 'Wait'):
         require(f'if (stream->{field} == STAGE_WAIT_EXCHANGE) stream->{field} = STAGE_WAIT_SERVICE;' in disconnected,
                 'disconnect parks exchange causes without changing genuine drain waits')
     writes = re.findall(r'stream->(\w+)\s*=(?!=)', disconnected)
-    require(sorted(writes) == sorted(['HandleReceiptWait', 'RenameWait', 'Wait']),
+    require(sorted(writes) == sorted(['HandleReceiptWait', 'RenameWait', 'AllocationRecoveryWait', 'Wait']),
             'disconnect must retain pending/in-flight/exact-request bookkeeping')
     require(re.search(r'if \(stream->Wait == STAGE_WAIT_DRAIN\) \{ drain = TRUE; \+\+waiting; \}\s*'
                       r'else if \(\s*#if SAFEUPLOAD_STAGING_PROTOTYPE\s*StageServiceAvailable &&\s*#endif\s*'
                       r'\(stream->Wait == STAGE_WAIT_EXCHANGE\s*#if SAFEUPLOAD_STAGING_PROTOTYPE\s*'
-                      r'\|\| stream->HandleReceiptInFlight \|\| stream->RenameRpcInFlight\s*#endif\s*\)\) \+\+waiting;', timer),
+                      r'\|\| stream->HandleReceiptInFlight \|\| stream->RenameRpcInFlight \|\| stream->AllocationRecoveryInFlight\s*#endif\s*\)\) \+\+waiting;', timer),
             'disconnected pending AND late in-flight replies cannot count; drain still counts')
     require('if (StageServiceAvailable && InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) &&' in timer,
             'disconnected reconciliation cannot count')
@@ -243,6 +243,7 @@ class RetryTimer(unittest.TestCase):
             ('StageServiceAvailable = FALSE;', 'StageServiceAvailable = TRUE;'),
             ('if (stream->HandleReceiptWait == STAGE_WAIT_EXCHANGE)', 'if (FALSE)'),
             ('if (stream->RenameWait == STAGE_WAIT_EXCHANGE)', 'if (FALSE)'),
+            ('if (stream->AllocationRecoveryWait == STAGE_WAIT_EXCHANGE)', 'if (FALSE)'),
             ('if (stream->Wait == STAGE_WAIT_EXCHANGE) stream->Wait = STAGE_WAIT_SERVICE;',
              'stream->Wait = STAGE_WAIT_SERVICE;'),
             ('StageServiceAvailable = FALSE;', 'StageServiceAvailable = FALSE; stream->HandleReceiptPending = FALSE;'),
@@ -273,15 +274,15 @@ class RetryTimer(unittest.TestCase):
         expression = expression.replace('&&', ' and ').replace('||', ' or ').replace('stream->', '')
         expression = ' '.join(expression.split())
         self.assertRegex(expression, r'^[-\w\s()=]+$')
-        def waiting(available, wait, handle=False, rename=False):
+        def waiting(available, wait, handle=False, rename=False, allocation=False):
             variables = dict(StageServiceAvailable=available, Wait=wait, STAGE_WAIT_EXCHANGE=2,
-                             HandleReceiptInFlight=handle, RenameRpcInFlight=rename)
+                             HandleReceiptInFlight=handle, RenameRpcInFlight=rename, AllocationRecoveryInFlight=allocation)
             return int(wait == 1 or eval(expression, {'__builtins__': {}}, variables))
         self.assertEqual(1, waiting(True, 2))  # typed transient -> EXCHANGE/backoff
         self.assertEqual(0, waiting(False, 3))  # disconnect -> SERVICE -> idle cancellation
-        self.assertEqual(0, waiting(False, 3, True, True))  # retain in-flight ownership
-        self.assertEqual(0, waiting(False, 2, True, True))  # late transient cannot rearm
-        self.assertEqual(1, waiting(False, 1, True, True))  # genuine drain remains owed
+        self.assertEqual(0, waiting(False, 3, True, True, True))  # retain in-flight ownership
+        self.assertEqual(0, waiting(False, 2, True, True, True))  # late transient cannot rearm
+        self.assertEqual(1, waiting(False, 1, True, True, True))  # genuine drain remains owed
         self.assertEqual(0, waiting(True, 3))  # connect alone does not unpark an answered refusal
         self.assertEqual(1, waiting(True, 2))  # reconciliation sweep -> EXCHANGE
         self.assertEqual(0, waiting(True, 0))  # exact ACK ends the obligation

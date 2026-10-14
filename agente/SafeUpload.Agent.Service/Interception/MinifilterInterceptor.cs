@@ -382,6 +382,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     uint verdict;
                     string? stageName = null;
                     StagedAllocationReply? typedCreateReply = null;
+                    uint? allocationResolution = null;
                     uint? typedStatusReply = null;
                     SafeUploadStageLifecycleV20? typedLifecycleReply = null;
                     SafeUploadStageRenameReplyV20? typedRenameReply = null;
@@ -401,7 +402,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         // can be denied without interpreting ImageName as text.
                         if (request.Reserved == Contract.StageExtensionVersion ||
                             (request.Flags & Contract.StageV20ReplyFlag) != 0)
-                            (verdict, typedCreateReply) = AllocateStageV19(request);
+                            (verdict, typedCreateReply, allocationResolution) = AllocateStageV19(request);
                         else if (_stagingEnabled)
                             verdict = PortVerdict.Deny;
                         else
@@ -537,6 +538,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         {
                             _ = port.ReplyStageLifecycleV20(messageId, lifecycleReply);
                         }
+                        else if (allocationResolution is { } resolution)
+                            _ = port.ReplyAllocationResolutionV20(messageId, request, resolution);
                         else if (verdict == PortVerdict.Allow && typedCreateReply is { } typedCreate)
                         {
                             SafeUploadStageIdentityV19 wireIdentity = ToWireStageIdentity(typedCreate.StageIdentity);
@@ -746,126 +749,101 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         return !request.TypedFlags.HasFlag(RequestFlags.StageTombstoneCreate) || request.Reserved == 2;
     }
 
-    private (uint Verdict, StagedAllocationReply? Reply) AllocateStageV19(SafeUploadRequest request)
+    private (uint Verdict, StagedAllocationReply? Reply, uint? Resolution) AllocateStageV19(SafeUploadRequest request)
     {
         using var ownerPolicy = StagedRequestTiming.Measure("policy-and-owner");
         if (_stageAllocator is null || _stageJournal is null || !_stagingEnabled ||
             !_stageV20Ready || !_stagingRecoveryReady ||
-            !request.TryReadStagePayload<SafeUploadStageAllocateV19>(Operation.StageAllocate, out var payload) ||
-            payload.AllocationReservationId == Guid.Empty || payload.DriverInstanceId == Guid.Empty ||
-            payload.Disposition > 5 || payload.ReferenceKind > StageV19AllocationReferenceKind.Tombstone ||
-            (payload.ReferenceKind == StageV19AllocationReferenceKind.None) !=
-                (payload.ParentTransferId == Guid.Empty) || request.RequestorProcessId == 0)
-            return (PortVerdict.Deny, null);
-
+            !request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source) ||
+            source.RequestorCreationTime <= 0 || source.Intent.AllocationReservationId == Guid.Empty ||
+            source.Intent.DriverInstanceId == Guid.Empty || source.Intent.Disposition > 5 ||
+            source.Intent.ReferenceKind > StageV19AllocationReferenceKind.Tombstone ||
+            (source.Intent.ReferenceKind == StageV19AllocationReferenceKind.None) !=
+                (source.Intent.ParentTransferId == Guid.Empty) || request.RequestorProcessId == 0)
+            return (PortVerdict.Deny, null, null);
+        var payload = source.Intent;
         try
         {
             if (_activeDriverInstanceId != payload.DriverInstanceId)
-                throw new IOException("The v19 allocation did not match the registered driver instance.");
+                throw StagedRequestRefusal.Create("The allocation did not match the registered driver instance.");
             string? destination = NtPathTranslator.ToDosPath(request.GetPath());
-            if (destination is null) return (PortVerdict.Deny, null);
+            if (destination is null) return (PortVerdict.Deny, null, null);
             int processId = checked((int)request.RequestorProcessId);
             DestinationKind kind = ClassifyStagedDestination(request.TypedFlags);
             var intent = new StagedAllocationIntentV19(payload.AllocationReservationId,
-                payload.ParentTransferId, payload.Disposition, payload.ReferenceKind,
-                payload.DriverInstanceId);
-
-            // A retry may arrive after the original process exited. Resolve an
-            // already durable reservation first; it is private and immutable,
-            // and the driver's post-RPC owner check will exact-discard it when
-            // the original owner no longer exists.
-            TransferJournalEntry? existing = TryReadStageEntry(_stageJournal,
-                payload.AllocationReservationId);
-            if (existing is not null)
-            {
-                if (!MatchesV19AllocationReplay(existing, destination, kind, processId, payload))
-                    throw new IOException("The v19 reservation is already committed to a different request.");
-                StagedTransfer? savedPrevious = null;
-                Guid? savedTombstoneOwner = null;
-                if (payload.ReferenceKind == StageV19AllocationReferenceKind.Followup)
+                payload.ParentTransferId, payload.Disposition, payload.ReferenceKind, payload.DriverInstanceId);
+            StagedAllocationReply? resolved = _stageAllocator.ResolveAllocationRequestV20Async(
+                request, destination, kind, async () =>
                 {
-                    if (existing.ParentVersionIdentity is not { } parentIdentity ||
-                        parentIdentity.TransferId != payload.ParentTransferId)
-                        throw new IOException("The allocation replay lost its exact predecessor.");
-                    savedPrevious = _stageJournal.ReadAsync(parentIdentity.TransferId,
-                        CancellationToken.None).GetAwaiter().GetResult().Transfer;
-                }
-                else if (payload.ReferenceKind == StageV19AllocationReferenceKind.Tombstone)
-                {
-                    savedTombstoneOwner = payload.ParentTransferId;
-                }
-                StagedTransfer saved = existing.Transfer;
-                ownerPolicy?.Dispose();
-                StagedAllocationReply replay = _stageAllocator.AllocateV19Async(destination, kind,
-                    saved.ProcessName, processId, saved.SessionId ??
-                        throw new IOException("The v19 allocation replay has no saved session."), intent,
-                    savedPrevious, savedTombstoneOwner,
-                    saved.RequestorSid ?? throw new IOException("The v19 allocation replay has no saved SID."),
-                    saved.RequestorProcessCreationTime ??
-                        throw new IOException("The v19 allocation replay has no saved process identity."),
-                    CancellationToken.None).GetAwaiter().GetResult();
-                return (PortVerdict.Allow, replay);
-            }
-
-            SessionResolver.ProcessIdentity requestor = SessionResolver.GetRequiredProcessIdentity(processId);
-            string processName = Process.GetProcessById(processId).ProcessName;
-            Policy policy = _policyStore.LoadCurrentAsync(CancellationToken.None).GetAwaiter().GetResult();
-            var operation = new FileOperation(destination, Path.GetFileName(destination),
-                Path.GetExtension(destination), 0, DateTime.MinValue, processName,
-                processId, destination, kind);
-            if (!policy.IsMonitoredDestination(operation)) return (PortVerdict.Deny, null);
-
-            StagedTransfer? previous = null;
-            Guid? tombstoneOwner = null;
-            if (payload.ReferenceKind == StageV19AllocationReferenceKind.Followup)
-            {
-                TransferJournalEntry prior = _stageJournal.ReadAsync(payload.ParentTransferId,
-                    CancellationToken.None).GetAwaiter().GetResult();
-                if (!prior.SealedOnce || prior.State is not (TransferJournalState.Sealed or
-                        TransferJournalState.Retained or TransferJournalState.LegacyEmptyHeld) ||
-                    prior.DriverInstanceId != payload.DriverInstanceId ||
-                    !string.Equals(prior.Transfer.DestinationPath, destination,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    prior.Transfer.Destination != kind || prior.Transfer.ProcessId != processId ||
-                    prior.Transfer.SessionId != requestor.SessionId ||
-                    !string.Equals(prior.Transfer.RequestorSid, requestor.UserSid.Value,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    prior.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime)
-                    return (PortVerdict.Deny, null);
-                previous = prior.Transfer;
-            }
-            else if (payload.ReferenceKind == StageV19AllocationReferenceKind.Tombstone)
-            {
-                if (payload.Disposition != 2) return (PortVerdict.Deny, null);
-                TransferJournalEntry owner = _stageJournal.ReadAsync(payload.ParentTransferId,
-                    CancellationToken.None).GetAwaiter().GetResult();
-                if (owner.Transfer.ProcessId != processId || owner.Transfer.SessionId != requestor.SessionId ||
-                    !string.Equals(owner.Transfer.RequestorSid, requestor.UserSid.Value,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    owner.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime)
-                    return (PortVerdict.Deny, null);
-                tombstoneOwner = payload.ParentTransferId;
-                processName = owner.Transfer.ProcessName;
-            }
-
-            ownerPolicy?.Dispose();
-            StagedAllocationReply reply = _stageAllocator.AllocateV19Async(destination, kind,
-                processName, processId, requestor.SessionId, intent, previous, tombstoneOwner,
-                requestor.UserSid.Value, requestor.CreationTimeFileTime,
-                CancellationToken.None).GetAwaiter().GetResult();
-
-            SessionResolver.ProcessIdentity after = SessionResolver.GetRequiredProcessIdentity(processId);
-            if (after.SessionId != requestor.SessionId || after.CreationTimeFileTime != requestor.CreationTimeFileTime ||
-                !after.UserSid.Equals(requestor.UserSid))
-                throw new IOException("The allocation owner changed while the v19 request was being handled.");
-            return (PortVerdict.Allow, reply);
+                    // A missing PID is definitive only before allocation. Other
+                    // process/identity failures stay uncertain and generic DENY.
+                    Process process;
+                    try { process = Process.GetProcessById(processId); }
+                    catch (ArgumentException) { return null; }
+                    using (process)
+                    {
+                        if (process.HasExited) return null;
+                        SessionResolver.ProcessIdentity requestor = SessionResolver.GetRequiredProcessIdentity(processId);
+                        if (!StagedTransferAllocator.AllocationOwnerMatches(source.RequestorCreationTime, requestor.CreationTimeFileTime)) return null;
+                        string processName = process.ProcessName;
+                        Policy policy = await _policyStore.LoadCurrentAsync(CancellationToken.None).ConfigureAwait(false);
+                        var operation = new FileOperation(destination, Path.GetFileName(destination),
+                            Path.GetExtension(destination), 0, DateTime.MinValue, processName,
+                            processId, destination, kind);
+                        if (!policy.IsMonitoredDestination(operation)) return null;
+                        StagedTransfer? previous = null;
+                        Guid? tombstoneOwner = null;
+                        if (payload.ReferenceKind == StageV19AllocationReferenceKind.Followup)
+                        {
+                            TransferJournalEntry prior = await _stageJournal.ReadAsync(payload.ParentTransferId,
+                                CancellationToken.None).ConfigureAwait(false);
+                            // BLOCK is a retryable CREATE until its exact retirement,
+                            // then ordinary allocation from public pre-save bytes.
+                            // Never seed another version from blocked bytes.
+                            if (!prior.SealedOnce || prior.StageCleanupStarted || prior.StageDeleted ||
+                                prior.State is not (TransferJournalState.Sealed or TransferJournalState.Retained or
+                                    TransferJournalState.LegacyEmptyHeld) || prior.DriverInstanceId != payload.DriverInstanceId ||
+                                !string.Equals(prior.Transfer.DestinationPath, destination, StringComparison.OrdinalIgnoreCase) ||
+                                prior.Transfer.Destination != kind || prior.Transfer.ProcessId != processId ||
+                                prior.Transfer.SessionId != requestor.SessionId ||
+                                !string.Equals(prior.Transfer.RequestorSid, requestor.UserSid.Value, StringComparison.OrdinalIgnoreCase) ||
+                                prior.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime) return null;
+                            previous = prior.Transfer;
+                        }
+                        else if (payload.ReferenceKind == StageV19AllocationReferenceKind.Tombstone)
+                        {
+                            if (payload.Disposition != 2) return null;
+                            TransferJournalEntry owner = await _stageJournal.ReadAsync(payload.ParentTransferId,
+                                CancellationToken.None).ConfigureAwait(false);
+                            if (owner.Transfer.ProcessId != processId || owner.Transfer.SessionId != requestor.SessionId ||
+                                !string.Equals(owner.Transfer.RequestorSid, requestor.UserSid.Value, StringComparison.OrdinalIgnoreCase) ||
+                                owner.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime) return null;
+                            tombstoneOwner = payload.ParentTransferId;
+                            processName = owner.Transfer.ProcessName;
+                        }
+                        ownerPolicy?.Dispose();
+                        StagedAllocationReply reply = await _stageAllocator.AllocateV19CoreAsync(destination, kind,
+                            processName, processId, requestor.SessionId, intent, previous, tombstoneOwner,
+                            requestor.UserSid.Value, requestor.CreationTimeFileTime, CancellationToken.None).ConfigureAwait(false);
+                        SessionResolver.ProcessIdentity after = SessionResolver.GetRequiredProcessIdentity(processId);
+                        if (after.SessionId != requestor.SessionId || after.CreationTimeFileTime != requestor.CreationTimeFileTime ||
+                            !after.UserSid.Equals(requestor.UserSid))
+                            throw new IOException("The allocation owner changed after commit; exact replay is required.");
+                        return reply;
+                    }
+                }, CancellationToken.None).GetAwaiter().GetResult();
+            return (PortVerdict.Allow, resolved, resolved is null ? StageV20Result.NoAllocationCommitted : null);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Exact v19 allocation refused for request {RequestId}.", request.RequestId);
-            return (PortVerdict.Deny, null);
+            _logger.LogWarning(ex, "Exact allocation unresolved for request {RequestId}.", request.RequestId);
+            uint? resolution = ClassifyAllocationFailure(ex);
+            return (resolution is null ? PortVerdict.Deny : PortVerdict.Allow, null, resolution);
         }
     }
+
+    internal static uint? ClassifyAllocationFailure(Exception error) =>
+        StagedRequestRefusal.IsPermanent(error) ? null : StageV20Result.RetryableFailure;
 
     private static TransferJournalEntry? TryReadStageEntry(StagedTransferJournal journal, Guid transferId)
     {
@@ -874,7 +852,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         catch (DirectoryNotFoundException) { return null; }
     }
 
-    private static bool MatchesV19AllocationReplay(TransferJournalEntry entry, string destination,
+    internal static bool MatchesV19AllocationReplay(TransferJournalEntry entry, string destination,
         DestinationKind kind, int processId, SafeUploadStageAllocateV19 payload) =>
         entry.Transfer.TransferId == payload.AllocationReservationId &&
         string.Equals(entry.Transfer.DestinationPath, Path.GetFullPath(destination),
@@ -886,7 +864,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         entry.DriverInstanceId == payload.DriverInstanceId && entry.StageIdentity is not null &&
         entry.DestinationGeneration > 0 && !entry.SealedOnce && entry.SealedLength is null &&
         entry.State is (TransferJournalState.Allocated or TransferJournalState.Unsealed) &&
-        entry.PendingRename is null;
+        entry.PendingRename is null &&
+        (payload.ReferenceKind != StageV19AllocationReferenceKind.Followup ||
+            entry.ParentVersionIdentity?.TransferId == payload.ParentTransferId);
 
     private (uint Verdict, SafeUploadStageReconcileReplyV20? Reply, bool DrainReplayOnly)
         RegisterDriverInstanceV20(

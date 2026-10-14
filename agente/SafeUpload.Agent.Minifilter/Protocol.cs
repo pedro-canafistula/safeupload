@@ -62,6 +62,8 @@ public static class Contract
     public const int StageVersionV19Size = 64;
     public const int StageSealV19Size = 40;
     public const int StageAllocateV19Size = 64;
+    public const int StageAllocateV20Size = 72;
+    public const int StageAllocationResolutionReplyV20Size = 1216;
     public const int StageReconcileV19Size = 24;
     public const int StageReconcileV20Size = 32;
     public const int StageReconcileReplyV20Size = 48;
@@ -111,6 +113,13 @@ public static class Contract
         Check(nameof(SafeUploadStageVersionV19), sizeof(SafeUploadStageVersionV19), StageVersionV19Size);
         Check(nameof(SafeUploadStageSealV19), sizeof(SafeUploadStageSealV19), StageSealV19Size);
         Check(nameof(SafeUploadStageAllocateV19), sizeof(SafeUploadStageAllocateV19), StageAllocateV19Size);
+        Check(nameof(SafeUploadStageAllocateV20), sizeof(SafeUploadStageAllocateV20), StageAllocateV20Size);
+        Check(nameof(SafeUploadStageAllocationResolutionReplyV20), sizeof(SafeUploadStageAllocationResolutionReplyV20),
+            StageAllocationResolutionReplyV20Size);
+        CheckOffset(nameof(SafeUploadStageAllocateV20) + ".RequestorCreationTime",
+            (int)Marshal.OffsetOf<SafeUploadStageAllocateV20>(nameof(SafeUploadStageAllocateV20.RequestorCreationTime)), 64);
+        CheckOffset(nameof(SafeUploadStageAllocationResolutionReplyV20) + ".OriginalRequest",
+            (int)Marshal.OffsetOf<SafeUploadStageAllocationResolutionReplyV20>(nameof(SafeUploadStageAllocationResolutionReplyV20.OriginalRequest)), 24);
         Check(nameof(SafeUploadStageReconcileV19), sizeof(SafeUploadStageReconcileV19), StageReconcileV19Size);
         Check(nameof(SafeUploadStageReconcileV20), sizeof(SafeUploadStageReconcileV20), StageReconcileV20Size);
         Check(nameof(SafeUploadStageReconcileReplyV20), sizeof(SafeUploadStageReconcileReplyV20), StageReconcileReplyV20Size);
@@ -358,6 +367,7 @@ public static class StageV20Result
     public const uint HandleLifetimeObserved = 17;
     public const uint RenameCommitted = 18;
     public const uint RetryableFailure = 19;
+    public const uint NoAllocationCommitted = 20;
 }
 
 [Flags]
@@ -371,8 +381,9 @@ public enum StageV20Capability : uint
     HandleLifetimeReceipt = 0x10,
     OrdinaryEmptyContent = 0x20,
     RenameCommitReceipt = 0x80,
+    AllocationResolution = 0x100,
     Required = StageV19Core | AttachTransaction | EpochDrain |
-              AttachedPrivateRetire | HandleLifetimeReceipt | OrdinaryEmptyContent | RenameCommitReceipt,
+              AttachedPrivateRetire | HandleLifetimeReceipt | OrdinaryEmptyContent | RenameCommitReceipt | AllocationResolution,
 }
 
 [Flags]
@@ -827,6 +838,25 @@ public struct SafeUploadStageAllocateV19
     public uint Disposition;
     public uint ReferenceKind;
     public Guid DriverInstanceId;
+}
+
+// Negotiated extension; the legacy 64-byte intent remains unchanged.
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct SafeUploadStageAllocateV20
+{
+    public SafeUploadStageAllocateV19 Intent;
+    public long RequestorCreationTime;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct SafeUploadStageAllocationResolutionReplyV20
+{
+    public uint Version;
+    public uint StructSize;
+    public ulong RequestId;
+    public uint Verdict;
+    public uint Result;
+    public SafeUploadRequest OriginalRequest;
 }
 
 /// <summary>Driver instance epoch used to reconcile old Allocated intents after a real driver reload.</summary>

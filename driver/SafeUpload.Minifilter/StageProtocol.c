@@ -497,6 +497,7 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
     PVOID channelCookie;
     KIRQL stateIrql;
     if (Exchange == NULL || Verdict == NULL || Answered == NULL) return STATUS_INVALID_PARAMETER;
+    Exchange->AllocationNotCommitted = FALSE;
     if (SafeUploadStageMandatoryTeardownActive()) {
         *Verdict = SAFEUPLOAD_VERDICT_DENY;
         *Answered = FALSE;
@@ -608,6 +609,27 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
         *Verdict = SAFEUPLOAD_VERDICT_DENY;
         *Answered = FALSE;
         status = STATUS_PORT_DISCONNECTED;
+    }
+    if (channelCurrent && status == STATUS_SUCCESS && *Answered && *Verdict == SAFEUPLOAD_VERDICT_ALLOW &&
+        Exchange->Request.Operation == SAFEUPLOAD_OPERATION_STAGE_ALLOCATE &&
+        Exchange->Request.Reserved == SAFEUPLOAD_STAGE_EXTENSION_VERSION &&
+        Exchange->Request.ImageNameLength == sizeof(SAFEUPLOAD_STAGE_ALLOCATE_V20) &&
+        Exchange->ReplyLength == sizeof(Exchange->AllocationResolutionReply)) {
+        PSAFEUPLOAD_STAGE_ALLOCATION_RESOLUTION_REPLY_V20 reply = &Exchange->AllocationResolutionReply;
+        if (reply->Version == SAFEUPLOAD_PROTOCOL_VERSION && reply->StructSize == sizeof(*reply) &&
+            reply->RequestId == Exchange->Request.RequestId && reply->Verdict == SAFEUPLOAD_VERDICT_ALLOW &&
+            (reply->Result == SAFEUPLOAD_STAGE_RESULT_NO_ALLOCATION_COMMITTED ||
+             reply->Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE) &&
+            RtlEqualMemory(&reply->OriginalRequest, &Exchange->Request, sizeof(Exchange->Request))) {
+            if (reply->Result == SAFEUPLOAD_STAGE_RESULT_NO_ALLOCATION_COMMITTED)
+                Exchange->AllocationNotCommitted = TRUE;
+            else status = STATUS_DEVICE_BUSY; /* exact uncertain/transient reply; never release authority */
+        }
+        else {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            *Answered = FALSE;
+            *Verdict = SAFEUPLOAD_VERDICT_DENY;
+        }
     }
     NT_ASSERT(!channelUsePinned);
     if (serializeTransition) ExReleaseFastMutex(&SafeUploadStageV19ExchangeMutex);
@@ -899,8 +921,20 @@ StageAllocateInternal (
                 SAFEUPLOAD_STAGE_ALLOC_REFERENCE_FOLLOWUP : SAFEUPLOAD_STAGE_ALLOC_REFERENCE_TOMBSTONE;
         }
         exchange->Request.Reserved = SAFEUPLOAD_STAGE_EXTENSION_VERSION;
-        exchange->Request.ImageNameLength = sizeof(intent);
-        RtlCopyMemory(exchange->Request.ImageName, &intent, sizeof(intent));
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        {
+            SAFEUPLOAD_STAGE_ALLOCATE_V20 source;
+            PEPROCESS requestor = FltGetRequestorProcess(Data);
+            RtlZeroMemory(&source, sizeof(source));
+            source.Intent = intent;
+            source.Intent.StructSize = sizeof(source);
+            if (requestor == NULL) { status = STATUS_ACCESS_DENIED; goto Exit; }
+            source.RequestorCreationTime = PsGetProcessCreateTimeQuadPart(requestor);
+            if (source.RequestorCreationTime <= 0) { status = STATUS_ACCESS_DENIED; goto Exit; }
+            exchange->Request.ImageNameLength = sizeof(source);
+            RtlCopyMemory(exchange->Request.ImageName, &source, sizeof(source));
+        }
+#endif
     } else if (referenceName != NULL) {
         USHORT basename = 0;
         for (i = 0; i < referenceName->Length / sizeof( WCHAR ); ++i) {
@@ -932,6 +966,18 @@ StageAllocateInternal (
         SafeUploadRequestVerdict(exchange, &verdict, &answered);
     if (Version19 && AllocationMayExist != NULL)
         *AllocationMayExist = exchange->MayHaveReachedService;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (Version19 && status == STATUS_DEVICE_BUSY) goto Exit;
+    if (Version19 && (status == STATUS_INVALID_BUFFER_SIZE || status == STATUS_BUFFER_OVERFLOW)) {
+        status = STATUS_INVALID_BUFFER_SIZE; /* malformed receipt parks, preserving allocation uncertainty */
+        goto Exit;
+    }
+    if (Version19 && status == STATUS_SUCCESS && answered && exchange->AllocationNotCommitted) {
+        *AllocationMayExist = FALSE; /* generic DENY never clears this uncertainty */
+        status = STATUS_SHARING_VIOLATION; /* caller retries after blocked retirement */
+        goto Exit;
+    }
+#endif
     if (!answered || verdict != SAFEUPLOAD_VERDICT_ALLOW) {
         status = !answered ? STATUS_IO_TIMEOUT : STATUS_ACCESS_DENIED;
         goto Exit;
@@ -1447,10 +1493,12 @@ NTSTATUS SafeUploadStageReplayAllocationBoundV23(PSAFEUPLOAD_STAGE_WRITER_LEASE 
 
 NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *AllocationRequest,
     _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
-    _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity)
+    _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity,
+    _Out_ PBOOLEAN NoAllocationCommitted)
 {
     PSAFEUPLOAD_EXCHANGE exchange;
     SAFEUPLOAD_STAGE_ALLOCATE_V19 intent;
+    SAFEUPLOAD_STAGE_ALLOCATE_V20 source;
     SAFEUPLOAD_STAGE_ALLOCATE_V23 bound;
     GUID reservation;
     UINT32 verdict = SAFEUPLOAD_VERDICT_DENY;
@@ -1460,6 +1508,7 @@ NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *Alloc
     RtlZeroMemory(StageName, SAFEUPLOAD_MAX_STAGE_NAME_CHARS * sizeof(WCHAR));
     *StageNameLength = 0;
     *DestinationGeneration = 0;
+    *NoAllocationCommitted = FALSE;
     RtlZeroMemory(StageIdentity, sizeof(*StageIdentity));
     if (AllocationRequest == NULL || AllocationRequest->Version != SAFEUPLOAD_PROTOCOL_VERSION ||
         AllocationRequest->StructSize != sizeof(SAFEUPLOAD_REQUEST) ||
@@ -1490,9 +1539,11 @@ NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *Alloc
         SafeUploadStagePublicRecordWriterRefusal(StageWriterMetadataReplayUnbound);
         return STATUS_NOT_SUPPORTED;
     } else {
-        if (AllocationRequest->ImageNameLength != sizeof(intent)) return STATUS_INVALID_PARAMETER;
-        RtlCopyMemory(&intent, AllocationRequest->ImageName, sizeof(intent));
-        if (intent.Version != SAFEUPLOAD_STAGE_EXTENSION_VERSION || intent.StructSize != sizeof(intent) ||
+        if (AllocationRequest->ImageNameLength != sizeof(source)) return STATUS_INVALID_PARAMETER;
+        RtlCopyMemory(&source, AllocationRequest->ImageName, sizeof(source));
+        intent = source.Intent;
+        if (source.RequestorCreationTime <= 0 || intent.Disposition > FILE_OVERWRITE_IF ||
+            intent.Version != SAFEUPLOAD_STAGE_EXTENSION_VERSION || intent.StructSize != sizeof(source) ||
             !StageProtocolGuidNonzero(&intent.AllocationReservationId) ||
             !StageProtocolGuidNonzero(&intent.DriverInstanceId) ||
             intent.ReferenceKind > SAFEUPLOAD_STAGE_ALLOC_REFERENCE_TOMBSTONE ||
@@ -1505,8 +1556,11 @@ NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *Alloc
     RtlZeroMemory(exchange, sizeof(*exchange));
     exchange->Request = *AllocationRequest;
     status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
-    status = SafeUploadStageExchangeResult(status, answered, verdict);
-    if (NT_SUCCESS(status))
+    if (status != STATUS_DEVICE_BUSY)
+        status = status == STATUS_INVALID_BUFFER_SIZE || status == STATUS_BUFFER_OVERFLOW ?
+            STATUS_INVALID_BUFFER_SIZE : SafeUploadStageExchangeResult(status, answered, verdict);
+    if (NT_SUCCESS(status) && exchange->AllocationNotCommitted) *NoAllocationCommitted = TRUE;
+    else if (NT_SUCCESS(status))
         status = StageProtocolReadCreateReply(exchange, &reservation,
             StageName, StageNameLength, DestinationGeneration, StageIdentity);
     ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);

@@ -1,4 +1,6 @@
 using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Minifilter;
+using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
 
@@ -187,6 +189,14 @@ public sealed partial class StagedTransferAllocator
         {
             throw new InvalidOperationException("The earlier stage does not belong to this writer and destination.");
         }
+        if (previous is not null)
+        {
+            var predecessor = await _journal.ReadAsync(previous.TransferId, cancellationToken).ConfigureAwait(false);
+            if (!predecessor.SealedOnce || predecessor.StageCleanupStarted || predecessor.StageDeleted ||
+                predecessor.State is not (TransferJournalState.Sealed or TransferJournalState.Retained or
+                    TransferJournalState.LegacyEmptyHeld))
+                throw new IOException("The predecessor is blocked or retiring; retry ordinary allocation after retirement.");
+        }
 
         // FILE_OPEN and FILE_OPEN_IF must see the previous bytes. Truncating
         // dispositions need a real empty backing before upper-stream admission.
@@ -262,6 +272,11 @@ public sealed partial class StagedTransferAllocator
         }
         catch (Exception allocationFailure)
         {
+            // Atomic replacement can commit before reporting an error. Never
+            // remove its backing as an unjournaled orphan in that case.
+            TransferJournalEntry? committed = await ReadAllocationManifestAsync(id, CancellationToken.None)
+                .ConfigureAwait(false);
+            if (committed is not null) throw;
             if (!StagedStageFile.TryDeleteUnjournaled(transfer.StagePath, out Exception? cleanupFailure))
                 throw new IOException("The unjournaled allocation stage could not be safely removed.",
                     new AggregateException(allocationFailure, cleanupFailure ??
@@ -314,6 +329,24 @@ public sealed partial class StagedTransferAllocator
         Guid? tombstoneOwner, string requestorSid, long requestorProcessCreationTime,
         CancellationToken cancellationToken)
     {
+        await _v19AllocationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (File.Exists(RejectionPath(intent.ReservationId)))
+                throw new IOException("This allocation reservation was definitively rejected.");
+            return await AllocateV19CoreAsync(destinationPath, destination, processName, processId,
+                sessionId, intent, previous, tombstoneOwner, requestorSid, requestorProcessCreationTime,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally { _v19AllocationGate.Release(); }
+    }
+
+    internal async Task<StagedAllocationReply> AllocateV19CoreAsync(
+        string destinationPath, DestinationKind destination, string processName, int processId,
+        uint sessionId, StagedAllocationIntentV19 intent, StagedTransfer? previous,
+        Guid? tombstoneOwner, string requestorSid, long requestorProcessCreationTime,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(intent);
         if (intent.ReservationId == Guid.Empty || intent.DriverInstanceId == Guid.Empty ||
             intent.Disposition > 5 || intent.ReferenceKind > 2 ||
@@ -326,10 +359,6 @@ public sealed partial class StagedTransferAllocator
             (previous is not null && previous.TransferId != intent.ParentTransferId) ||
             (tombstoneOwner is not null && tombstoneOwner != intent.ParentTransferId))
             throw new ArgumentException("The v19 allocation reference does not match its exact parent.", nameof(intent));
-
-        await _v19AllocationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
 
         string fullDestination = Path.GetFullPath(destinationPath);
         string extension = Path.GetExtension(fullDestination);
@@ -346,23 +375,16 @@ public sealed partial class StagedTransferAllocator
             RequestorProcessCreationTime = requestorProcessCreationTime
         };
 
-        TransferJournalEntry existing;
-        try
+        TransferJournalEntry? existing = await ReadAllocationManifestAsync(intent.ReservationId, cancellationToken)
+            .ConfigureAwait(false);
+        if (existing is not null)
         {
-            existing = await _journal.ResolveAllocationV19Async(transfer, intent, cancellationToken)
-                .ConfigureAwait(false);
+            existing = await _journal.ResolveAllocationV19Async(transfer, intent, cancellationToken).ConfigureAwait(false);
             using StagedStageFile stage = StagedStageFile.Open(transfer.StagePath);
-            return new StagedAllocationReply(transfer, existing.DestinationGeneration,
+            if (stage.Identity != existing.StageIdentity)
+                throw new IOException("The replay stage identity changed.");
+            return new StagedAllocationReply(existing.Transfer, existing.DestinationGeneration,
                 existing.StageIdentity!, stage.Stream.Length);
-        }
-        catch (FileNotFoundException)
-        {
-            // This reservation has no durable manifest. Any stage object at
-            // its deterministic path was never returned to the driver.
-        }
-        catch (DirectoryNotFoundException)
-        {
-            // Same case: no reservation-derived manifest can be resolved.
         }
 
         if (!StagedStageFile.TryDeleteUnjournaled(transfer.StagePath, out Exception? cleanupFailure))
@@ -387,11 +409,6 @@ public sealed partial class StagedTransferAllocator
             throw new IOException("The v19 allocation stage changed before reply.");
         return new StagedAllocationReply(created, entry.DestinationGeneration,
             entry.StageIdentity, createdStage.Stream.Length);
-        }
-        finally
-        {
-            _v19AllocationGate.Release();
-        }
     }
 
     /// <summary>

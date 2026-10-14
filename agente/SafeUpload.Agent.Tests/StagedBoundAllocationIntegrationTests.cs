@@ -67,7 +67,7 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         var binding = Binding("empty-seal.txt", 2, false);
         var journal = new StagedTransferJournal(Journal);
         Assert.Equal(StagedDriverEpochReconcileV20.Active,
-            await journal.ReconcileDriverInstanceV20Async(_driver, 0xbf, CancellationToken.None));
+            await journal.ReconcileDriverInstanceV20Async(_driver, 0x1bf, CancellationToken.None));
         var reply = await Allocate(new(Stages, journal), binding);
         var pending = await journal.ReadAsync(binding.ReservationId, CancellationToken.None);
         var version = StagedTransferJournal.VersionIdentity(pending);
