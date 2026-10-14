@@ -13,7 +13,7 @@ The [design re-review](evidence/2026-10-14/t5-designs-rereview-sol61.md) resolve
 
 The evening owner decisions recorded in [POST-MVP-PLAN.md](POST-MVP-PLAN.md) accept the retained-residue exception (`c26584d6`) and **drop durable allocation-refusal receipts** (`49df2e00`). These supersede the earlier conservative residue default and refusal-storage item. They are implementation contracts, not claims that inspected source already implements them.
 
-The independent `t5-batch2-rereview2-sol61.md` receipt at `d683c59f` found one remaining gap: rename before Release acceptance. Section 6 adds exact obsolete-intent closure; all other contracts remain unchanged.
+The independent [t5-batch2-review3-sol61.md](evidence/2026-10-14/t5-batch2-review3-sol61.md) receipt at `d683c59f` found one remaining gap: rename before Release acceptance. Section 6 adds exact obsolete-intent closure; all other contracts remain unchanged.
 
 The delete receipt addresses [agent-loop RCA defect 2](evidence/2026-10-14/m2t5purgeattr1-agent-loop-rca-sol61.md). The completed-BLOCK idle-loop fix belongs to batch 1.
 

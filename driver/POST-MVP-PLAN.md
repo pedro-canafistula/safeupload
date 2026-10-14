@@ -714,9 +714,12 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       `--writer-state-status` (LastUnloadVeto) after a refused unload. The late-load hardening is deferred: runtime-Verifier rows load
       with `fltmc load` and rely on the demand-start trust path, so changing it changes the qualification method and needs its own
       decision.
-    - Batch 2: exact seal receipt, op15 typed refusal/exposure evidence/op23, refusal accounting without reclamation, and a
-      negotiated per-version driver-delete receipt (a restart cannot finish released-stage bookkeeping today: `Held=0` and a
-      missing path are not deletion evidence).
+    - Batch 2: exact seal receipt, op15 typed refusal/exposure evidence/op23, stateless refusals (owner decision; no refusal
+      receipts or budget), and a negotiated per-version driver-delete receipt (a restart cannot finish released-stage bookkeeping
+      today: `Held=0` and a missing path are not deletion evidence). Design [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md) after
+      reviews [batch2-rereview](evidence/2026-10-14/t5-batch2-rereview-sol61.md) and [review3](evidence/2026-10-14/t5-batch2-review3-sol61.md)
+      (REVISE) is **accepted with conditions** ([review4](evidence/2026-10-14/t5-batch2-review4-sol61.md): only a provenance link,
+      fixed); implementation starts from the reviewed batch-1 tip.
     **Owner decision (2026-10-14 evening, see owner decisions):** a save whose requester exited before its file was ever exposed can
     leave its private bytes retained by the service. The narrow exception is **accepted**: proved service-owned residue with exact
     custody, charged storage, ancestry and nonpublication obligations does not block unload; the bytes stay private and nothing is
