@@ -2711,10 +2711,13 @@ Return Value:
 
         if (command == SAFEUPLOAD_CONTROL_WRITER_STATE_STATUS) {
             SAFEUPLOAD_CONTROL writerControl;
-            SAFEUPLOAD_WRITER_STATE_STATUS writerStatus;
+            /* Built in the pool scratch buffer, like the deny-ring reply: with the appended first-origin
+             * diagnostics a local copy pushed this routine over the stack limit (C6262, t5-diag1). */
+            PSAFEUPLOAD_WRITER_STATE_STATUS writerStatus = (PSAFEUPLOAD_WRITER_STATE_STATUS)policy;
+            C_ASSERT( sizeof( SAFEUPLOAD_WRITER_STATE_STATUS ) <= sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );
 
             if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL ) ||
-                OutputBuffer == NULL || OutputBufferLength != sizeof( writerStatus )) {
+                OutputBuffer == NULL || OutputBufferLength != sizeof( *writerStatus )) {
                 status = STATUS_INVALID_BUFFER_SIZE;
                 leave;
             }
@@ -2727,10 +2730,10 @@ Return Value:
                 leave;
             }
 #pragma warning( suppress: 6001 )
-            ProbeForWrite( OutputBuffer, sizeof( writerStatus ), __alignof( SAFEUPLOAD_WRITER_STATE_STATUS ) );
-            SafeUploadStageWritersGetStatus( &writerStatus );
-            RtlCopyMemory( OutputBuffer, &writerStatus, sizeof( writerStatus ) );
-            *ReturnOutputBufferLength = sizeof( writerStatus );
+            ProbeForWrite( OutputBuffer, sizeof( *writerStatus ), __alignof( SAFEUPLOAD_WRITER_STATE_STATUS ) );
+            SafeUploadStageWritersGetStatus( writerStatus );
+            RtlCopyMemory( OutputBuffer, writerStatus, sizeof( *writerStatus ) );
+            *ReturnOutputBufferLength = sizeof( *writerStatus );
             leave;
         }
 
