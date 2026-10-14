@@ -84,10 +84,46 @@ public sealed record StagedSeedProvenance(
     }
 }
 
-// Completion is separate from the immutable provenance and security snapshot.
-// This is the service copier's observed EOF/flush/revalidation receipt, not a
-// claim that the pending native coherent-copy mechanism has been qualified.
-public sealed record StagedSeedCompletion(StagedVersionIdentity Allocation, long Length);
+// Immutable local journal receipt, separate from allocation authority. Format 1
+// receipts from the former service copier remain readable historical evidence;
+// they cannot authorize bound exposure/seal. A live authenticated kernel receipt
+// transport is still required; no V19 ACK or V27 metadata page is that transport.
+public sealed record StagedSeedCompletion(StagedVersionIdentity Allocation, long Length)
+{
+    public int FormatVersion { get; init; } = 1;
+    public Guid ReceiptId { get; init; }
+    public Guid DriverInstanceId { get; init; }
+    public StagedAllocationSecurityReference? Metadata { get; init; }
+    public StagedAllocationBindingV23? Binding { get; init; }
+    public StagedSeedOrigin Origin { get; init; }
+    public StagedVersionIdentity? Predecessor { get; init; }
+    public bool EofSet { get; init; }
+    public bool Flushed { get; init; }
+    public bool Revalidated { get; init; }
+
+    internal static void Require(TransferJournalEntry entry)
+    {
+        if (entry.BoundAllocation is null) return;
+        var receipt = entry.SeedCompletion;
+        var provenance = entry.SeedProvenance;
+        if (receipt is null || provenance is null || receipt.FormatVersion != 2 || receipt.ReceiptId == Guid.Empty ||
+            receipt.Allocation != provenance.Allocation || receipt.Allocation != StagedTransferJournal.VersionIdentity(entry) ||
+            receipt.DriverInstanceId != entry.DriverInstanceId || receipt.Binding != entry.BoundAllocation ||
+            receipt.Metadata is null || receipt.Metadata != entry.AllocationSecurity ||
+            receipt.Origin != provenance.Origin || receipt.Predecessor != provenance.Predecessor ||
+            !Enum.IsDefined(receipt.Origin) || receipt.Length < 0 ||
+            !receipt.EofSet || !receipt.Flushed || !receipt.Revalidated)
+            throw new IOException("seed_completion_unproved");
+        // No qualified public-source interval producer exists. This also refuses
+        // a claimed zero-byte public copy: a concurrent writer can grow it.
+        if (receipt.Origin == StagedSeedOrigin.ExistingPublic)
+            throw new IOException("seed_coherence_unproved");
+        if (receipt.Origin == StagedSeedOrigin.None && receipt.Length != 0)
+            throw new IOException("seed_completion_unproved");
+        if (receipt.Origin == StagedSeedOrigin.PrivatePredecessor)
+            throw new IOException("seed_coherence_unproved"); // Exact private interval integration is pending too.
+    }
+}
 
 internal static class StagedSeedExport
 {
@@ -101,7 +137,8 @@ internal static class StagedSeedExport
         var seed = entry.SeedProvenance;
         if (seed is null) return entry.BoundAllocation is not null ? Unproven :
             IsFailure(entry.HandbackFailureReason) ? entry.HandbackFailureReason : null;
-        if (entry.BoundAllocation is not null && entry.SeedCompletion is null) return Unproven;
+        try { StagedSeedCompletion.Require(entry); }
+        catch (IOException) { return Unproven; }
         // This guard also serves callers holding an in-memory entry. Never let
         // a contradictory/missing bound intent reach the no-prior-bytes fast path.
         if (entry.BoundAllocation is not null)

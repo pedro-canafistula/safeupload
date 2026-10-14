@@ -430,7 +430,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     `seed_coherence_unproved` / `seed_completion_unproved` refusals. Kernel builds `t5-inc2a/b` and `t5-inc3a` failed on PREfast
     C6001/SAL classes (receipts kept, fixed). Increment 2 landed after [four WDK builds `t5-inc2c`](evidence/2026-10-13/exact-t5-inc2c-summary.txt)
     at 0/0. Increment 3 landed after [four WDK builds `t5-inc3d`](evidence/2026-10-13/exact-t5-inc3d-summary.txt) at 0/0 and
-    [matrix `t5-inc3d`](evidence/2026-10-13/exact-agent-matrix-t5-inc3d-summary.txt) PASS; increments 4–8 drafted and in verification.
+    [matrix `t5-inc3d`](evidence/2026-10-13/exact-agent-matrix-t5-inc3d-summary.txt) PASS. Increment 4 landed after
+    [four WDK builds `t5-inc4d`](evidence/2026-10-13/exact-t5-inc4d-summary.txt) at 0/0 and [matrix `t5-inc4c`](evidence/2026-10-13/exact-agent-matrix-t5-inc4c-summary.txt)
+    PASS (identical agent tree). Increments 5–10 are drafted on stacked branches; because each fix had to be carried through every
+    later tree, they are completed and verified together in the top tree and land as one dormant connected-path commit.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

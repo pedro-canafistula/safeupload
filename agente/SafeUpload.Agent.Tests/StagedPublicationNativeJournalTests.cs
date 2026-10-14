@@ -39,12 +39,29 @@ public sealed class StagedPublicationNativeJournalTests : IDisposable
         var allocated = await new StagedTransferAllocator(Stages, journal).AllocateV23Async(Path.Combine(Parent, "document.txt"),
             DestinationKind.Cloud, process.ProcessName, process.Id, checked((uint)process.SessionId), identity.User!.Value,
             process.StartTime.ToFileTimeUtc(), binding, default, WriterMetadataFixture.Current(binding));
-        await File.WriteAllBytesAsync(allocated.Transfer.StagePath, new byte[37]);
         var version = new StagedVersionIdentity(allocated.Transfer.TransferId, allocated.DestinationGeneration, allocated.StageIdentity);
+        var pending = await journal.ReadAsync(allocated.Transfer.TransferId, default);
+        Assert.Equal(StagedSeedOrigin.None, pending.SeedProvenance!.Origin);
+        Assert.Null(pending.SeedCompletion);
+        Assert.Equal(0, new FileInfo(allocated.Transfer.StagePath).Length);
+        // Model the future authenticated kernel receipt for an empty initial
+        // seed, before application writes. These are journal controls only.
+        var completion = new StagedSeedCompletion(version, 0)
+        {
+            FormatVersion = 2, ReceiptId = Guid.NewGuid(), DriverInstanceId = pending.DriverInstanceId!.Value,
+            Binding = pending.BoundAllocation, Metadata = pending.AllocationSecurity,
+            Origin = pending.SeedProvenance.Origin, Predecessor = pending.SeedProvenance.Predecessor,
+            EofSet = true, Flushed = true, Revalidated = true
+        };
+        var completed = await journal.CompleteBoundSeedAsync(version, completion, default);
+        Assert.Equal(completion, completed.SeedCompletion);
         foreach (var (operation, request) in new[] { (12u, 701ul), (13u, 702ul), (15u, 703ul), (19u, 704ul) })
             await journal.ApplyAttachmentV20Async(new(operation, request, version, _driver, binding.Parent,
                 allocated.Transfer.DestinationPath, process.Id), true, true, default);
+        await File.WriteAllBytesAsync(allocated.Transfer.StagePath, new byte[37]);
         var entry = await journal.SealAsync(allocated.Transfer.TransferId, process.Id, allocated.Transfer.StagePath, default, version);
+        Assert.Equal(completion, entry.SeedCompletion);
+        Assert.Equal(37, entry.SealedLength);
         using var snapshot = StagedStageFile.Open(allocated.Transfer.StagePath);
         Assert.Equal(entry.StageIdentity, snapshot.Identity);
         Assert.Equal(entry.SealedLength, snapshot.Stream.Length);
@@ -53,6 +70,42 @@ public sealed class StagedPublicationNativeJournalTests : IDisposable
         await journal.TransitionAsync(entry.Transfer.TransferId, TransferJournalState.Sealed, TransferJournalState.Inspecting, digest, default);
         entry = await journal.TransitionAsync(entry.Transfer.TransferId, TransferJournalState.Inspecting, TransferJournalState.Approved, digest, default);
         return (binding, allocated, entry);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("binding")]
+    [InlineData("metadata")]
+    public async Task Missing_or_mismatched_seed_completion_refuses_exposure_replay_seal_and_publication(string change)
+    {
+        var fixture = await Allocate();
+        var completion = fixture.Entry.SeedCompletion!;
+        StagedSeedCompletion? changed = change switch
+        {
+            "missing" => null,
+            "binding" => completion with { Binding = completion.Binding! with { CanonicalLeaf = "other.txt" } },
+            "metadata" => completion with { Metadata = completion.Metadata! with { SnapshotId = Guid.NewGuid() } },
+            _ => throw new ArgumentException(change)
+        };
+        await SeedProvenanceFixture.WriteAsync(JournalPath, fixture.Entry with { SeedCompletion = changed });
+        var journal = Journal();
+        var version = StagedTransferJournal.VersionIdentity(fixture.Entry);
+        Assert.Equal("seed_completion_unproved", (await Assert.ThrowsAsync<IOException>(() => journal.ApplyAttachmentV20Async(
+            new(15, 703, version, _driver, fixture.Binding.Parent, fixture.Entry.Transfer.DestinationPath,
+                fixture.Entry.Transfer.ProcessId), true, true, default))).Message);
+        Assert.Equal("seed_completion_unproved", (await Assert.ThrowsAsync<IOException>(() => journal.SealAsync(
+            version.TransferId, fixture.Entry.Transfer.ProcessId, fixture.Entry.Transfer.StagePath, default, version))).Message);
+        Assert.Equal("seed_completion_unproved", (await Assert.ThrowsAsync<IOException>(() => journal.TransitionAsync(
+            version.TransferId, TransferJournalState.Approved, TransferJournalState.Publishing, fixture.Entry.Sha256Hex, default))).Message);
+        var retained = await Journal().ReadAsync(version.TransferId, default);
+        Assert.Equal(TransferJournalState.Approved, retained.State);
+        Assert.Equal(changed, retained.SeedCompletion);
+        Assert.Equal(new byte[37], await File.ReadAllBytesAsync(retained.Transfer.StagePath));
+        var head = (await Journal().ReadDestinationHeadAsync(fixture.Binding.Destination, default))!;
+        Assert.Equal(0, head.LatestPublished);
+        Assert.Null(head.PendingCommit);
+        Assert.Empty(head.PublicationNativeReceipts ?? []);
+        Assert.False(File.Exists(retained.Transfer.DestinationPath));
     }
 
     private static BoundPublicationReplayRow Native(StagedAllocationBindingV23 binding, TransferJournalEntry entry, bool? accepted)

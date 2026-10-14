@@ -23,6 +23,8 @@ BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(_In_ UINT64 ConnectionEpoch,
 _IRQL_requires_max_(DISPATCH_LEVEL)
 UINT64 SafeUploadStageProtocolNativeAuthority(VOID);
 _IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN SafeUploadStageProtocolBoundAllocationReady(VOID);
+_IRQL_requires_max_(DISPATCH_LEVEL)
 BOOLEAN SafeUploadStageProtocolMetadataIdentity(_In_opt_ PVOID ExpectedCookie,
     _Out_ PVOID *Cookie, _Out_ PUINT64 Epoch, _Out_ PUINT64 Revision);
 #endif
@@ -122,6 +124,11 @@ NTSTATUS SafeUploadStageAllocateBoundV23(_Inout_ PFLT_CALLBACK_DATA Data,
     _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity,
     _Out_ PSAFEUPLOAD_STAGE_ALLOCATE_V19 RetainedIntent,
     _Out_ PSAFEUPLOAD_REQUEST AllocationRequest, _Out_ PBOOLEAN AllocationMayExist);
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageReplayAllocationBoundV23(_In_ struct _SAFEUPLOAD_STAGE_WRITER_LEASE *WriterLease,
+    _In_ const SAFEUPLOAD_REQUEST *AllocationRequest,
+    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
+    _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity);
 NTSTATUS SafeUploadStageReconcileV20(_In_ const GUID *DriverInstanceId,
     _In_ LONG ExpectedChannelGeneration, _In_opt_ const SAFEUPLOAD_REQUEST *DrainReplayRequest);
 NTSTATUS SafeUploadStageAttachmentExchangeV20(_In_ ULONG ProcessId,

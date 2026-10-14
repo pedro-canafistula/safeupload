@@ -502,7 +502,8 @@ public sealed partial class StagedTransferJournal
         finally { _gate.Release(); }
     }
 
-    /// <summary>Final identity/head check immediately before a v19 create reply.</summary>
+    /// <summary>Identity/head check before the allocation reply. For V23 this
+    /// transfers an empty private candidate to the kernel, not app exposure.</summary>
     public async Task<TransferJournalEntry> ValidateAllocationReplyAsync(
         StagedVersionIdentity expectedVersion, Guid reservationId, CancellationToken cancellationToken,
         bool requireCurrentDestination = true)
@@ -518,12 +519,12 @@ public sealed partial class StagedTransferJournal
                 current.SealedLength is not null || current.CreateReservationId != reservationId ||
                 VersionIdentity(current) != expectedVersion || current.PendingRename is not null)
                 throw new IOException("The allocation reply no longer matches its durable exact tuple.");
-            if (current.BoundAllocation is not null && current.SeedCompletion is null)
-                throw new IOException("The bound seed has no durable completion receipt.");
             using (StagedStageFile stage = StagedStageFile.Open(current.Transfer.StagePath))
             {
                 if (stage.Identity != expectedVersion.StageIdentity || stage.Stream.Length < 0)
                     throw new IOException("The allocation stage changed before its reply.");
+                if (current.BoundAllocation is not null && current.SeedCompletion is null && stage.Stream.Length != 0)
+                    throw new IOException("seed_completion_unproved");
             }
             if (requireCurrentDestination && current.BoundAllocation is null &&
                 current.ParentDirectoryIdentity is { } expectedDirectory &&
@@ -920,6 +921,7 @@ public sealed partial class StagedTransferJournal
                         return StageV20WireResult.AttachAborted;
 
                     case 15: // CompletionPermitted; never means app handle delivery
+                        StagedSeedCompletion.Require(current);
                         if (current.CompletionPermitRequestIdV20 == request.RequestId &&
                             current.AttachmentStateV20 is (StagedAttachmentStateV20.CompletionPermitted or
                                 StagedAttachmentStateV20.HandleObserved or
@@ -1028,7 +1030,10 @@ public sealed partial class StagedTransferJournal
         if (request.Operation == 14 && entry.AttachAbortRequestIdV20 == request.RequestId)
             return StageV20WireResult.AttachAborted;
         if (request.Operation == 15 && entry.CompletionPermitRequestIdV20 == request.RequestId)
+        {
+            StagedSeedCompletion.Require(entry);
             return StageV20WireResult.CompletionPermitted;
+        }
         if (request.Operation == 16 && entry.RetireRequestIdV20 == request.RequestId &&
             entry.AttachmentStateV20 == StagedAttachmentStateV20.RetiredUnexposed &&
             entry.DiscardAcknowledgedAtUtc is not null)
@@ -1912,6 +1917,9 @@ public sealed partial class StagedTransferJournal
                     TransferJournalState.Publishing or TransferJournalState.Released or TransferJournalState.Blocked) &&
                 current.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
                 throw new IOException("A v20 stage cannot enter inspection or publication before its exact handle-lifetime receipt.");
+            if (next is TransferJournalState.SealPending or TransferJournalState.Inspecting or
+                TransferJournalState.Approved or TransferJournalState.Publishing)
+                StagedSeedCompletion.Require(current);
             if (next is TransferJournalState.Inspecting or TransferJournalState.Approved or TransferJournalState.Publishing)
                 await RequireCurrentDestinationAsync(current, cancellationToken).ConfigureAwait(false);
             if (expectedTransfer is not null && current.Transfer != expectedTransfer)
@@ -2018,8 +2026,7 @@ public sealed partial class StagedTransferJournal
                 !string.Equals(current.Transfer.StagePath, Path.GetFullPath(stagePath),
                     StringComparison.OrdinalIgnoreCase) || current.PendingRename is not null)
                 throw new IOException("The seal does not identify an available version owned by this writer.");
-            if (current.BoundAllocation is not null && current.SeedCompletion is null)
-                throw new IOException("An incomplete bound seed cannot be sealed.");
+            StagedSeedCompletion.Require(current);
             if (expectedVersion is not null && VersionIdentity(current) != expectedVersion)
                 throw new IOException("The exact v19 seal generation or stage identity changed.");
             if (current.DriverInstanceId is not null &&
@@ -2142,6 +2149,7 @@ public sealed partial class StagedTransferJournal
         {
             TransferJournalEntry current = await ReadCoreAsync(id, token).ConfigureAwait(false);
             if (current.State != TransferJournalState.LegacyEmptyHeld) return current;
+            StagedSeedCompletion.Require(current);
             if (!current.SealedOnce || current.StageIdentity is null || current.PendingRename is not null ||
                 current.DiscardReservationId is not null || current.DiscardKind is not null ||
                 current.DiscardRequestedAtUtc is not null || current.DiscardAcknowledgedAtUtc is not null ||

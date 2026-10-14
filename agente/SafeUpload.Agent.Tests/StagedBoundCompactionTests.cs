@@ -30,11 +30,14 @@ public sealed class StagedBoundCompactionTests : IDisposable
         {
             RequestorSid = "S-1-5-21-100-200-300-1001", RequestorProcessCreationTime = 123456
         };
-        if (replay is null) File.WriteAllText(transfer.StagePath, "private version");
+        if (replay is null) File.WriteAllBytes(transfer.StagePath, []);
         using var turn = await journal.EnterDestinationCommitTurnAsync(binding.Destination,
             StagedDestinationTurnPurpose.Allocation, CancellationToken.None);
-        return await journal.CommitBoundAllocationAsync(turn, transfer, binding, CancellationToken.None, security ?? WriterMetadataFixture.Security(binding,
+        var entry = await journal.CommitBoundAllocationAsync(turn, transfer, binding, CancellationToken.None, security ?? WriterMetadataFixture.Security(binding,
                 transfer.ProcessId, transfer.SessionId!.Value, transfer.RequestorProcessCreationTime!.Value, transfer.RequestorSid!));
+        // Model retained private bytes for compaction; this is not live exposure.
+        if (replay is null) File.WriteAllText(transfer.StagePath, "private version");
+        return entry;
     }
 
     [Fact]
@@ -49,6 +52,12 @@ public sealed class StagedBoundCompactionTests : IDisposable
             StagedDestinationTurnPurpose.Allocation, CancellationToken.None);
         await Assert.ThrowsAsync<InvalidDataException>(() => journal.CommitBoundAllocationAsync(
             turn, transfer, binding, CancellationToken.None));
+        var metadata = WriterMetadataFixture.Security(binding, transfer.ProcessId, transfer.SessionId!.Value,
+            transfer.RequestorProcessCreationTime!.Value, transfer.RequestorSid!);
+        Assert.Equal("seed_completion_unproved", (await Assert.ThrowsAsync<InvalidDataException>(() => journal.CommitBoundAllocationAsync(
+            turn, transfer, binding, CancellationToken.None, metadata, seedPending: false))).Message);
+        Assert.Equal("seed_completion_unproved", (await Assert.ThrowsAsync<IOException>(() => journal.CommitBoundAllocationAsync(
+            turn, transfer, binding, CancellationToken.None, metadata))).Message);
         Assert.Null(await journal.FindBoundAllocationAsync(binding.ReservationId, CancellationToken.None));
         Assert.Equal("private bytes", File.ReadAllText(path));
     }

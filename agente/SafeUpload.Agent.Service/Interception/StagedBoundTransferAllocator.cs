@@ -52,15 +52,10 @@ public sealed partial class StagedTransferAllocator
 
         using var directory = StagedDestinationDirectory.Open(binding);
         directory.RequirePublicTarget(binding.PublicTarget, token);
-        TransferJournalEntry? parent = await _journal.ReadBoundAllocationParentAsync(transfer, binding, token)
-            .ConfigureAwait(false);
-        using StagedStageFile? predecessor = parent is null ? null : StagedStageFile.Open(parent.Transfer.StagePath);
-        if (parent is not null && (predecessor!.Identity != parent.StageIdentity ||
-            predecessor.Stream.Length != parent.SealedLength))
-            throw new IOException("The held private seed changed identity or measured length.");
-        bool copy = binding.Disposition is 1 or 3 && (parent is not null || binding.PublicTarget is not null);
-        using FileStream? publicSource = copy && parent is null
-            ? directory.OpenPublicSource(binding.PublicTarget!, token) : null;
+        await _journal.ReadBoundAllocationParentAsync(transfer, binding, token).ConfigureAwait(false);
+        // The kernel owns the checked source and the entire seed interval. Opening
+        // a second public data reader here changes the caller's sharing contract.
+        // An allocation reply identifies an empty candidate, never a completed seed.
         // Only an object whose journal is absent is eligible for orphan cleanup.
         // Failure after manifest commit must retain that exact candidate.
         if (!StagedStageFile.TryDeleteUnjournaled(transfer.StagePath, out Exception? orphanFailure))
@@ -75,20 +70,7 @@ public sealed partial class StagedTransferAllocator
                 createdIdentity = created.Identity;
             directory.RequirePublicTarget(binding.PublicTarget, token);
             TransferJournalEntry entry = await _journal.CommitBoundAllocationAsync(turn, transfer, binding, token, security,
-                seedPending: copy).ConfigureAwait(false);
-            if (copy)
-            {
-                FileStream source = (predecessor?.Stream ?? publicSource)!;
-                long length = source.Length;
-                source.Position = 0;
-                await StagedBackingFile.CreateFromHeldSourceAsync(source, transfer.StagePath,
-                    MaximumSeedBytes, token, createdIdentity).ConfigureAwait(false);
-                if (source.Length != length)
-                    throw new IOException("The seed source changed length during copying.");
-                directory.RequirePublicTarget(binding.PublicTarget, token);
-                entry = await _journal.CompleteBoundSeedAsync(StagedTransferJournal.VersionIdentity(entry),
-                    length, token).ConfigureAwait(false);
-            }
+                seedPending: true).ConfigureAwait(false);
             return BoundAllocationReply(entry);
         }
         catch (Exception allocationFailure)
@@ -116,8 +98,8 @@ public sealed partial class StagedTransferAllocator
     {
         using StagedStageFile stage = StagedStageFile.Open(entry.Transfer.StagePath);
         if (entry.StageIdentity != stage.Identity || entry.BoundAllocation is null ||
-            entry.DestinationGeneration <= 0 || entry.SealedOnce || entry.SeedCompletion is null ||
-            entry.SeedCompletion.Length != stage.Stream.Length ||
+            entry.DestinationGeneration <= 0 || entry.SealedOnce ||
+            (entry.SeedCompletion is null ? stage.Stream.Length != 0 : entry.SeedCompletion.Length != stage.Stream.Length) ||
             entry.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed))
             throw new IOException("The bound allocation changed before its typed reply.");
         return new(entry.Transfer, entry.DestinationGeneration, stage.Identity, stage.Stream.Length);

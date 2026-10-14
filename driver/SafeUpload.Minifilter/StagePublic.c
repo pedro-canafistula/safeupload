@@ -128,7 +128,8 @@ static const PCSTR StageWriterReasonNames[StageWriterRefusalCount] = {
     "publication_security_not_equivalent", "writer_creator_grant_unproved",
     "writer_create_semantics_unproved", "writer_lookup_unproved",
     "writer_metadata_unproved", "writer_snapshot_changed", "writer_capture_limit",
-    "writer_metadata_binding_mismatch", "writer_metadata_stale", "writer_metadata_resource_limit", "writer_metadata_replay_unbound"
+    "writer_metadata_binding_mismatch", "writer_metadata_stale", "writer_metadata_resource_limit", "writer_metadata_replay_unbound",
+    "seed_coherence_unproved", "seed_completion_unproved", "seed_io_failed"
 };
 
 _Use_decl_annotations_
@@ -2046,6 +2047,224 @@ Exit:
     if (publishing) InterlockedExchange(&Lease->MetadataPreparing, 0);
     SafeUploadStagePublicReleaseOperation(&Lease->Lifetime);
 Refused:
+    if (status != STATUS_SUCCESS) SafeUploadStagePublicRecordWriterRefusal(*Reason);
+    return status;
+}
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, SafeUploadStagePublicWriterMetadataCurrent)
+#pragma alloc_text(PAGE, SafeUploadStagePublicSeedWriter)
+#endif
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicWriterMetadataCurrent(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason)
+{
+    PFLT_INSTANCE instance = NULL;
+    PFILE_OBJECT object = NULL;
+    PVOID cookie = NULL;
+    UINT64 epoch = 0, revision = 0;
+    NTSTATUS status = STATUS_DEVICE_NOT_READY;
+    PAGED_CODE();
+    *Reason = StageWriterMetadataStale;
+    if (!SafeUploadStagePublicAcquireOperation(&Lease->Lifetime, &instance, &object))
+        return STATUS_FLT_DELETING_OBJECT;
+    if (Lease->MetadataPublished && Lease->Metadata != NULL &&
+        SafeUploadStageProtocolMetadataIdentity(Lease->MetadataCookie, &cookie, &epoch, &revision) &&
+        epoch == Lease->MetadataHeader.ConnectionEpoch && revision == Lease->MetadataHeader.AuthorityRevision &&
+        StageWriterProcessRunning(Lease->ProcessHandle)) {
+        *Reason = StageWriterMetadataUnproved;
+        if (Lease->MetadataHeader.Flags == (SAFEUPLOAD_WRITER_METADATA_CONSTRUCTION |
+            SAFEUPLOAD_WRITER_METADATA_STORED | SAFEUPLOAD_WRITER_METADATA_ANCESTORS |
+            SAFEUPLOAD_WRITER_METADATA_IDENTITY | SAFEUPLOAD_WRITER_METADATA_ASSIGNED)) {
+            status = STATUS_SUCCESS;
+            *Reason = StageWriterNoRefusal;
+        }
+    }
+    SafeUploadStagePublicReleaseOperation(&Lease->Lifetime);
+    if (status != STATUS_SUCCESS) SafeUploadStagePublicRecordWriterRefusal(*Reason);
+    return status;
+}
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, SafeUploadStagePublicWriterReplayIdentity)
+#endif
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicWriterReplayIdentity(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    const SAFEUPLOAD_REQUEST *Request, PVOID *Cookie, PUINT64 Revision)
+{
+    PFLT_INSTANCE instance = NULL;
+    PFILE_OBJECT object = NULL;
+    PSAFEUPLOAD_WRITER_METADATA_FACTS facts;
+    SAFEUPLOAD_STAGE_WRITER_REFUSAL reason;
+    NTSTATUS status;
+    PAGED_CODE();
+    *Cookie = NULL; *Revision = 0;
+    status = SafeUploadStagePublicWriterMetadataCurrent(Lease, &reason);
+    if (status != STATUS_SUCCESS) return status;
+    if (!SafeUploadStagePublicAcquireOperation(&Lease->Lifetime, &instance, &object))
+        return STATUS_FLT_DELETING_OBJECT;
+    facts = (PSAFEUPLOAD_WRITER_METADATA_FACTS)Lease->Metadata;
+    status = STATUS_INVALID_PARAMETER;
+    if (facts != NULL && Request->RequestId == Lease->MetadataHeader.RequestId &&
+        Request->RequestorProcessId == Lease->Lifetime.Binding.CallerProcessId &&
+        Request->ImageNameLength == sizeof(facts->Binding) &&
+        RtlEqualMemory(Request->ImageName, &facts->Binding, sizeof(facts->Binding)) &&
+        Request->PathLength == Lease->Snapshot->Name.Length &&
+        RtlEqualMemory(Request->Path, Lease->Snapshot->Name.Buffer, Request->PathLength)) {
+        *Cookie = Lease->MetadataCookie;
+        *Revision = Lease->MetadataHeader.AuthorityRevision;
+        status = STATUS_SUCCESS;
+    }
+    SafeUploadStagePublicReleaseOperation(&Lease->Lifetime);
+    if (status != STATUS_SUCCESS) SafeUploadStagePublicRecordWriterRefusal(StageWriterMetadataReplayUnbound);
+    return status;
+}
+
+/* No mechanism currently owns a whole-copy interval on the original public
+ * FILE_OBJECT or a private predecessor. Do not replace this refusal with ID,
+ * EOF/digest comparisons, per-chunk range locks or a caller-supplied boolean. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWriterSeedInterval(_In_ ULONG Origin, _Out_ PLARGE_INTEGER Length);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageWriterSeedInterval)
+#endif
+_Use_decl_annotations_
+static NTSTATUS StageWriterSeedInterval(ULONG Origin, PLARGE_INTEGER Length)
+{
+    PAGED_CODE();
+    Length->QuadPart = 0;
+    return Origin == 0 ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStagePublicSeedWriter(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    PFLT_INSTANCE BackingInstance, PFILE_OBJECT BackingObject, ULONG BackingSectorSize,
+    const SAFEUPLOAD_STAGE_IDENTITY_V19 *Identity, UINT64 Generation, PFLT_CALLBACK_DATA Data,
+    PSAFEUPLOAD_STAGE_SEED_COMPLETION Completion, SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason)
+{
+    PFLT_INSTANCE instance = NULL;
+    PFILE_OBJECT source = NULL;
+    PFLT_VOLUME volume = NULL;
+    PVOID input = NULL, output = NULL;
+    SAFEUPLOAD_STAGE_SEED_COMPLETION receipt = {0};
+    FILE_ID_INFORMATION actual;
+    FILE_STANDARD_INFORMATION standard;
+    FILE_END_OF_FILE_INFORMATION eof;
+    FLT_VOLUME_PROPERTIES properties;
+    LARGE_INTEGER length = {0}, offset = {0};
+    ULONG returned = 0, sector, wanted, aligned, read, written;
+    PSAFEUPLOAD_WRITER_METADATA_FACTS facts;
+    NTSTATUS status;
+    PAGED_CODE();
+    RtlZeroMemory(Completion, sizeof(*Completion));
+    *Reason = StageWriterSeedCompletionUnproved;
+    if (Generation == 0 || BackingSectorSize < 512 || BackingSectorSize > 65536 ||
+        (BackingSectorSize & (BackingSectorSize - 1)) != 0) return STATUS_INVALID_PARAMETER;
+    status = SafeUploadStagePublicWriterMetadataCurrent(Lease, Reason);
+    if (status != STATUS_SUCCESS) return status;
+    status = SafeUploadStagePublicRevalidateWriter(Lease, Reason);
+    if (status != STATUS_SUCCESS) return status;
+    if (!SafeUploadStagePublicAcquireOperation(&Lease->Lifetime, &instance, &source))
+        return STATUS_FLT_DELETING_OBJECT;
+    facts = (PSAFEUPLOAD_WRITER_METADATA_FACTS)Lease->Metadata;
+    if (facts == NULL) { status = STATUS_INVALID_DEVICE_STATE; goto Exit; }
+    *Reason = StageWriterSeedCoherenceUnproved;
+    status = StageWriterSeedInterval(facts->SeedOrigin, &length);
+    if (status != STATUS_SUCCESS) goto Exit; /* Before any source read or app binding. */
+    *Reason = StageWriterSeedIoFailed;
+    if (length.QuadPart < 0 || length.QuadPart > 16 * 1024 * 1024) {
+        status = STATUS_FILE_TOO_LARGE; goto Exit;
+    }
+    status = StageWriterFullId(BackingInstance, BackingObject, &actual);
+    if (status != STATUS_SUCCESS) goto Exit;
+    if (actual.VolumeSerialNumber != Identity->VolumeSerialNumber ||
+        !RtlEqualMemory(&actual.FileId, &Identity->FileId, sizeof(FILE_ID_128))) {
+        status = STATUS_FILE_INVALID; goto Exit;
+    }
+    status = FltQueryInformationFile(BackingInstance, BackingObject, &standard,
+        sizeof(standard), FileStandardInformation, &returned);
+    if (status != STATUS_SUCCESS) goto Exit;
+    if (returned != sizeof(standard) || standard.Directory || standard.DeletePending ||
+        standard.EndOfFile.QuadPart != 0) { status = STATUS_FILE_INVALID; goto Exit; }
+    /* Two bounded aligned buffers satisfy each stack independently, including
+     * different physical alignment requirements. Never use paging I/O to read
+     * through a lock or change the source's synchronous current position. */
+    status = FltGetVolumeFromInstance(instance, &volume);
+    if (status != STATUS_SUCCESS) goto Exit;
+    status = FltGetVolumeProperties(volume, &properties, sizeof(properties), &returned);
+    if (status != STATUS_BUFFER_OVERFLOW && status != STATUS_SUCCESS) goto Exit;
+    sector = properties.SectorSize;
+    if (sector < 512 || sector > 65536 || (sector & (sector - 1)) != 0) {
+        status = STATUS_NOT_SUPPORTED; goto Exit;
+    }
+    sector = max(sector, BackingSectorSize);
+    if (length.QuadPart != 0) {
+        input = FltAllocatePoolAlignedWithTag(instance, NonPagedPoolNx, 65536, STAGE_PUBLIC_TAG);
+        output = FltAllocatePoolAlignedWithTag(BackingInstance, NonPagedPoolNx, 65536, STAGE_PUBLIC_TAG);
+        if (input == NULL || output == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    }
+    while (offset.QuadPart < length.QuadPart) {
+        if (SafeUploadStageMandatoryTeardownActive() || FltIsIoCanceled(Data)) {
+            status = STATUS_CANCELLED; goto Exit;
+        }
+        wanted = (ULONG)min(65536LL, length.QuadPart - offset.QuadPart);
+        aligned = (wanted + sector - 1) & ~(sector - 1);
+        read = 0;
+        status = FltReadFile(instance, source, &offset, aligned, input,
+            FLTFL_IO_OPERATION_NON_CACHED | FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET,
+            &read, NULL, NULL);
+        if (status != STATUS_SUCCESS) goto Exit;
+        if (read != wanted) { status = STATUS_DATA_ERROR; goto Exit; }
+        RtlZeroMemory(output, aligned); /* No stale final-sector padding. */
+        RtlCopyMemory(output, input, wanted);
+        written = 0;
+        status = FltWriteFile(BackingInstance, BackingObject, &offset, aligned, output,
+            FLTFL_IO_OPERATION_NON_CACHED | FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET,
+            &written, NULL, NULL);
+        if (status != STATUS_SUCCESS) goto Exit;
+        if (written != aligned) { status = STATUS_DATA_ERROR; goto Exit; }
+        offset.QuadPart += wanted; /* Bounded by the checked 16-MiB product limit. */
+    }
+    eof.EndOfFile = length;
+    status = FltSetInformationFile(BackingInstance, BackingObject, &eof, sizeof(eof), FileEndOfFileInformation);
+    if (status != STATUS_SUCCESS) goto Exit;
+    status = FltFlushBuffers(BackingInstance, BackingObject);
+    if (status != STATUS_SUCCESS) goto Exit;
+    status = FltQueryInformationFile(BackingInstance, BackingObject, &standard,
+        sizeof(standard), FileStandardInformation, &returned);
+    if (status != STATUS_SUCCESS) goto Exit;
+    if (returned != sizeof(standard) || standard.EndOfFile.QuadPart != length.QuadPart || standard.DeletePending) {
+        status = STATUS_FILE_INVALID; goto Exit;
+    }
+    status = SafeUploadStagePublicRevalidateWriter(Lease, Reason);
+    if (status != STATUS_SUCCESS) goto Exit;
+    status = SafeUploadStagePublicWriterMetadataCurrent(Lease, Reason);
+    if (status != STATUS_SUCCESS) goto Exit;
+    if (SafeUploadStageMandatoryTeardownActive() || FltIsIoCanceled(Data)) {
+        status = STATUS_CANCELLED; goto Exit;
+    }
+    status = ExUuidCreate(&receipt.ReceiptId);
+    if (!NT_SUCCESS(status)) goto Exit;
+    receipt.DriverInstanceId = Lease->MetadataHeader.DriverInstanceId;
+    receipt.TransferId = Lease->MetadataHeader.ReservationId;
+    receipt.SnapshotId = Lease->MetadataHeader.SnapshotId;
+    receipt.ParentTransferId = facts->Binding.ParentTransferId;
+    receipt.StageIdentity = *Identity; receipt.Generation = Generation;
+    receipt.RequestId = Lease->MetadataHeader.RequestId;
+    receipt.ConnectionEpoch = Lease->MetadataHeader.ConnectionEpoch;
+    receipt.AuthorityRevision = Lease->MetadataHeader.AuthorityRevision;
+    RtlCopyMemory(receipt.MetadataDigest, Lease->MetadataHeader.Digest, sizeof(receipt.MetadataDigest));
+    receipt.Length = length.QuadPart; receipt.Origin = facts->SeedOrigin;
+    receipt.Complete = TRUE;
+    *Completion = receipt;
+    *Reason = StageWriterNoRefusal;
+    status = STATUS_SUCCESS;
+Exit:
+    if (input != NULL) FltFreePoolAlignedWithTag(instance, input, STAGE_PUBLIC_TAG);
+    if (output != NULL) FltFreePoolAlignedWithTag(BackingInstance, output, STAGE_PUBLIC_TAG);
+    if (volume != NULL) FltObjectDereference(volume);
+    SafeUploadStagePublicReleaseOperation(&Lease->Lifetime);
     if (status != STATUS_SUCCESS) SafeUploadStagePublicRecordWriterRefusal(*Reason);
     return status;
 }

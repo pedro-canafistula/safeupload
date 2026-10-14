@@ -61,6 +61,75 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         Assert.Empty(Directory.EnumerateFiles(Stages));
     }
 
+    [Fact]
+    public async Task Empty_kernel_completion_precedes_exposure_and_ordinary_seal_and_replay_cannot_bypass_it()
+    {
+        var binding = Binding("empty-seal.txt", 2, false);
+        var journal = new StagedTransferJournal(Journal);
+        Assert.Equal(StagedDriverEpochReconcileV20.Active,
+            await journal.ReconcileDriverInstanceV20Async(_driver, 0x3f, CancellationToken.None));
+        var reply = await Allocate(new(Stages, journal), binding);
+        var pending = await journal.ReadAsync(binding.ReservationId, CancellationToken.None);
+        var version = StagedTransferJournal.VersionIdentity(pending);
+        Task<uint?> Apply(uint operation, ulong request) => journal.ApplyAttachmentV20Async(
+            new(operation, request, version, _driver, binding.Parent, reply.Transfer.DestinationPath, reply.Transfer.ProcessId),
+            ownerIsLive: true, commitPolicyAllowed: true, CancellationToken.None);
+        Assert.Equal(StageV20WireResult.AttachPrepared, await Apply(12, 101));
+        Assert.Equal(StageV20WireResult.AttachCommitted, await Apply(13, 102));
+        Assert.Equal("seed_completion_unproved", (await Assert.ThrowsAsync<IOException>(() => Apply(15, 103))).Message);
+        var completion = KernelCompletionFixture(pending);
+        await journal.CompleteBoundSeedAsync(version, completion, CancellationToken.None);
+        Assert.Equal(StageV20WireResult.CompletionPermitted, await Apply(15, 103));
+        var permitted = await journal.ReadAsync(binding.ReservationId, CancellationToken.None);
+        await SeedProvenanceFixture.WriteAsync(Journal, permitted with { SeedCompletion = null });
+        Assert.Equal("seed_completion_unproved", (await Assert.ThrowsAsync<IOException>(() => Apply(15, 103))).Message);
+        await SeedProvenanceFixture.WriteAsync(Journal, permitted);
+        Assert.Equal(StageV20WireResult.HandleLifetimeObserved, await Apply(19, 104));
+        var sealedEntry = await journal.SealAsync(binding.ReservationId, reply.Transfer.ProcessId,
+            reply.Transfer.StagePath, CancellationToken.None, version);
+        Assert.Equal(TransferJournalState.Sealed, sealedEntry.State);
+        Assert.Equal(0, sealedEntry.SealedLength);
+        Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Array.Empty<byte>())), sealedEntry.Sha256Hex);
+        Assert.False(File.Exists(reply.Transfer.DestinationPath)); // Publication remains a separate gate.
+    }
+
+    [Fact]
+    public async Task Bound_allocation_does_not_open_a_second_public_data_reader()
+    {
+        Directory.CreateDirectory(Parent);
+        string path = Path.Combine(Parent, "exclusive.txt");
+        File.WriteAllText(path, "old public bytes");
+        var binding = Binding("exclusive.txt", 1, true);
+        using var writer = CreateFileW(path, 2, 0, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
+        Assert.False(writer.IsInvalid);
+        var journal = new StagedTransferJournal(Journal);
+        var reply = await Allocate(new(Stages, journal), binding);
+        Assert.Empty(File.ReadAllBytes(reply.Transfer.StagePath));
+        var entry = await journal.ReadAsync(binding.ReservationId, CancellationToken.None);
+        Assert.Null(entry.SeedCompletion);
+        Assert.Equal(binding.PublicTarget, entry.SeedProvenance!.PublicSource);
+        Assert.Equal("seed_coherence_unproved", (await Assert.ThrowsAsync<IOException>(() => journal.CompleteBoundSeedAsync(
+            StagedTransferJournal.VersionIdentity(entry), KernelCompletionFixture(entry), CancellationToken.None))).Message);
+        writer.Dispose();
+        Assert.Equal("old public bytes", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public async Task Partial_kernel_seed_is_retained_and_never_replayed_as_an_empty_allocation()
+    {
+        var binding = Binding("partial.txt", 2, false);
+        var journal = new StagedTransferJournal(Journal);
+        var reply = await Allocate(new(Stages, journal), binding);
+        File.WriteAllText(reply.Transfer.StagePath, "partial private seed");
+        await Assert.ThrowsAsync<IOException>(() => Allocate(new(Stages, new StagedTransferJournal(Journal)), binding));
+        Assert.Equal("partial private seed", File.ReadAllText(reply.Transfer.StagePath));
+        var entry = await journal.ReadAsync(binding.ReservationId, CancellationToken.None);
+        Assert.Null(entry.SeedCompletion);
+        Assert.Equal("seed_completion_unproved", (await Assert.ThrowsAsync<IOException>(() => journal.SealAsync(
+            binding.ReservationId, entry.Transfer.ProcessId, entry.Transfer.StagePath, CancellationToken.None))).Message);
+        Assert.False(File.Exists(reply.Transfer.DestinationPath));
+    }
+
     [Theory]
     [InlineData(48)] // original allocation RequestId
     [InlineData(56)] // connection epoch
@@ -102,35 +171,47 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
     [InlineData(true)]
     public async Task Seed_completion_persistence_fault_retains_exact_private_object_without_recopy(bool afterReplacement)
     {
-        Directory.CreateDirectory(Parent); File.WriteAllText(Path.Combine(Parent, "completion.txt"), "private seeded bytes");
-        var binding = Binding("completion.txt", 1, true); bool injected = false;
+        var binding = Binding("completion.txt", 2, false); bool injected = false;
         var journal = new StagedTransferJournal(Journal, false, 100, (point, entry) =>
         {
             if (!injected && entry.SeedCompletion is not null &&
                 point == (afterReplacement ? StagedJournalWritePoint.AfterReplacement : StagedJournalWritePoint.BeforeReplacement))
             { injected = true; throw new IOException("Interrupted seed completion persistence"); }
         });
-        await Assert.ThrowsAsync<StagedJournalPersistenceException>(() => Allocate(new(Stages, journal), binding));
+        var reply = await Allocate(new(Stages, journal), binding);
+        var pending = await journal.ReadAsync(binding.ReservationId, CancellationToken.None);
+        var completion = KernelCompletionFixture(pending);
+        await Assert.ThrowsAsync<StagedJournalPersistenceException>(() => journal.CompleteBoundSeedAsync(
+            StagedTransferJournal.VersionIdentity(pending), completion, CancellationToken.None));
         Assert.True(injected);
         var reopened = new StagedTransferJournal(Journal);
         var entry = await reopened.ReadAsync(binding.ReservationId, CancellationToken.None);
         Assert.Equal(afterReplacement, entry.SeedCompletion is not null);
-        Assert.Equal("private seeded bytes", File.ReadAllText(entry.Transfer.StagePath));
-        Assert.Equal("seed_export_unproven", StagedSeedExport.Failure(entry));
-        if (afterReplacement)
-        {
-            var replay = await Allocate(new(Stages, reopened), binding);
-            Assert.Equal(entry.StageIdentity, replay.StageIdentity);
-        }
-        else
-        {
-            await Assert.ThrowsAsync<IOException>(() => Allocate(new(Stages, reopened), binding));
-            await Assert.ThrowsAsync<IOException>(() => reopened.ValidateAllocationReplyAsync(
-                StagedTransferJournal.VersionIdentity(entry), binding.ReservationId, CancellationToken.None));
-        }
-        Assert.True(File.Exists(entry.Transfer.StagePath));
-        Assert.Equal("private seeded bytes", File.ReadAllText(entry.Transfer.DestinationPath));
+        Assert.Empty(File.ReadAllBytes(entry.Transfer.StagePath));
+        Assert.Equal(afterReplacement ? null : "seed_export_unproven", StagedSeedExport.Failure(entry));
+        var replay = await Allocate(new(Stages, reopened), binding);
+        Assert.Equal(reply.StageIdentity, replay.StageIdentity);
+        if (!afterReplacement)
+            Assert.Equal("seed_completion_unproved", (await Assert.ThrowsAsync<IOException>(() => reopened.SealAsync(
+                binding.ReservationId, entry.Transfer.ProcessId, entry.Transfer.StagePath, CancellationToken.None))).Message);
+        await reopened.CompleteBoundSeedAsync(StagedTransferJournal.VersionIdentity(entry), completion, CancellationToken.None);
+        var completed = await reopened.ReadAsync(binding.ReservationId, CancellationToken.None);
+        Assert.Equal(completion, completed.SeedCompletion);
+        await Assert.ThrowsAsync<IOException>(() => reopened.CompleteBoundSeedAsync(
+            StagedTransferJournal.VersionIdentity(entry), completion with { ReceiptId = Guid.NewGuid() }, CancellationToken.None));
+        Assert.False(File.Exists(entry.Transfer.DestinationPath));
     }
+
+    // Models the future authenticated kernel receipt for storage controls only.
+    // No native source read, coherence or loaded-driver claim is made here.
+    private static StagedSeedCompletion KernelCompletionFixture(TransferJournalEntry entry) =>
+        new(StagedTransferJournal.VersionIdentity(entry), 0)
+        {
+            FormatVersion = 2, ReceiptId = Guid.NewGuid(), DriverInstanceId = entry.DriverInstanceId!.Value,
+            Binding = entry.BoundAllocation, Metadata = entry.AllocationSecurity,
+            Origin = entry.SeedProvenance!.Origin, Predecessor = entry.SeedProvenance.Predecessor,
+            EofSet = true, Flushed = true, Revalidated = true
+        };
 
     [Theory]
     [InlineData(0u)]
@@ -145,8 +226,15 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         var entry = await journal.ReadAsync(reply.Transfer.TransferId, CancellationToken.None);
         Assert.Equal(StagedSeedOrigin.None, entry.SeedProvenance!.Origin);
         Assert.False(entry.SeedProvenance.ContainsPriorBytes);
+        Assert.Null(entry.SeedCompletion);
+        Assert.Equal("seed_export_unproven", StagedSeedExport.Failure(entry));
+        Assert.Equal("seed_completion_unproved", (await Assert.ThrowsAsync<IOException>(() => journal.SealAsync(
+            binding.ReservationId, entry.Transfer.ProcessId, entry.Transfer.StagePath, CancellationToken.None))).Message);
+        entry = await journal.CompleteBoundSeedAsync(StagedTransferJournal.VersionIdentity(entry),
+            KernelCompletionFixture(entry), CancellationToken.None);
         Assert.Null(StagedSeedExport.Failure(entry));
         Assert.Equal(0, entry.SeedCompletion!.Length);
+        Assert.Equal(TransferJournalState.Allocated, entry.State); // Ordinary seal still required, including empty.
         Assert.False(File.Exists(reply.Transfer.DestinationPath));
     }
 
@@ -161,7 +249,10 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         var binding = Binding("chain.txt", publicSeed ? 1u : 2u, publicSeed);
         var journal = new StagedTransferJournal(Journal); var allocator = new StagedTransferAllocator(Stages, journal);
         var first = await Allocate(allocator, binding);
-        if (!publicSeed) File.WriteAllText(first.Transfer.StagePath, "new writer bytes");
+        Assert.Empty(File.ReadAllBytes(first.Transfer.StagePath));
+        // Model a retained historical predecessor explicitly: V23 allocation
+        // now returns an empty candidate and does not copy the public source.
+        File.WriteAllText(first.Transfer.StagePath, publicSeed ? "prior public bytes" : "new writer bytes");
         var parent = await journal.ReadAsync(first.Transfer.TransferId, CancellationToken.None);
         if (missing) parent = parent with { SeedProvenance = null, SeedCompletion = null };
         await SaveMeasuredFixture(parent);
@@ -186,8 +277,12 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
             Assert.Equal(StagedSeedOrigin.PrivatePredecessor, child.SeedProvenance!.Origin);
             Assert.Equal(StagedTransferJournal.VersionIdentity(parent), child.SeedProvenance.Predecessor);
             Assert.Equal(publicSeed, child.SeedProvenance.ContainsPriorBytes);
-            Assert.Equal(publicSeed ? "seed_export_unproven" : null, StagedSeedExport.Failure(child));
-            Assert.Equal(File.ReadAllBytes(parent.Transfer.StagePath), File.ReadAllBytes(child.Transfer.StagePath));
+            Assert.Equal("seed_export_unproven", child.SeedProvenance.InheritedRestriction);
+            Assert.Equal("seed_export_unproven", StagedSeedExport.Failure(child));
+            Assert.Null(child.SeedCompletion);
+            Assert.Empty(File.ReadAllBytes(child.Transfer.StagePath));
+            Assert.Equal("seed_coherence_unproved", (await Assert.ThrowsAsync<IOException>(() => journal.CompleteBoundSeedAsync(
+                StagedTransferJournal.VersionIdentity(child), KernelCompletionFixture(child), CancellationToken.None))).Message);
             if (!missing && publicSeed) Assert.Equal(first.Transfer.TransferId, child.SeedProvenance.SourceBinding!.ReservationId);
             await SaveMeasuredFixture(child); parent = child;
         }
@@ -197,7 +292,7 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
             BlockedPolicyVersion = 1 };
         await SeedProvenanceFixture.WriteAsync(Journal, blocked);
         var checkedEntry = await new StagedTransferJournal(Journal).EnforceSeedExportAsync(parent.Transfer.TransferId, CancellationToken.None);
-        Assert.Equal(publicSeed ? StagedHandbackState.Failed : StagedHandbackState.NotAttempted, checkedEntry.HandbackState);
+        Assert.Equal(StagedHandbackState.Failed, checkedEntry.HandbackState); // Incomplete seeds never export, even without prior bytes.
         Assert.True(File.Exists(parent.Transfer.StagePath));
     }
 
@@ -219,7 +314,11 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         Assert.Null(intent.SeedCompletion); Assert.Equal(0, new FileInfo(intent.Transfer.StagePath).Length);
         Assert.Equal("seed_export_unproven", StagedSeedExport.Failure(intent));
         Directory.Delete(head);
-        await Assert.ThrowsAsync<IOException>(() => Allocate(new(Stages, new StagedTransferJournal(Journal)), binding));
+        var replay = await Allocate(new(Stages, new StagedTransferJournal(Journal)), binding);
+        Assert.Equal(intent.StageIdentity, replay.StageIdentity);
+        Assert.Equal("seed_completion_unproved", (await Assert.ThrowsAsync<IOException>(() => journal.SealAsync(
+            binding.ReservationId, intent.Transfer.ProcessId, intent.Transfer.StagePath, CancellationToken.None))).Message);
+        Assert.Empty(File.ReadAllBytes(intent.Transfer.StagePath));
         Assert.True(File.Exists(intent.Transfer.StagePath));
         Assert.Equal("old source bytes", File.ReadAllText(intent.Transfer.DestinationPath));
     }
@@ -307,7 +406,7 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
     [InlineData(0u, false)]
     [InlineData(4u, false)]
     [InlineData(5u, false)]
-    public async Task Existing_target_dispositions_seed_only_the_exact_held_source_and_replay_after_reopen(
+    public async Task Existing_target_dispositions_persist_seed_intent_and_return_only_an_empty_candidate(
         uint disposition, bool copied)
     {
         Directory.CreateDirectory(Parent);
@@ -316,7 +415,8 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         var binding = Binding("save.txt", disposition, true);
         var journal = new StagedTransferJournal(Journal);
         var first = await Allocate(new(Stages, journal), binding);
-        Assert.Equal(copied ? original : [], File.ReadAllBytes(first.Transfer.StagePath));
+        Assert.Empty(File.ReadAllBytes(first.Transfer.StagePath));
+        Assert.Equal(original, File.ReadAllBytes(first.Transfer.DestinationPath));
         var manifest = await journal.ReadAsync(first.Transfer.TransferId, CancellationToken.None);
         Assert.Equal(binding, manifest.BoundAllocation);
         Assert.Equal(copied ? StagedSeedOrigin.ExistingPublic : StagedSeedOrigin.None, manifest.SeedProvenance!.Origin);
@@ -328,9 +428,11 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
             Assert.Equal(StagedSeedAuthority.Unproven, manifest.SeedProvenance.ExportEvidence.RecipientAuthority);
         }
         else Assert.Null(manifest.SeedProvenance.ExportEvidence);
-        Assert.Equal(first.StageIdentity, manifest.SeedCompletion!.Allocation.StageIdentity);
-        Assert.Equal(copied ? original.Length : 0, manifest.SeedCompletion.Length);
-        Assert.Equal(copied ? "seed_export_unproven" : null, StagedSeedExport.Failure(manifest));
+        Assert.Null(manifest.SeedCompletion);
+        Assert.Equal("seed_export_unproven", StagedSeedExport.Failure(manifest));
+        if (copied)
+            Assert.Equal("seed_coherence_unproved", (await Assert.ThrowsAsync<IOException>(() => journal.CompleteBoundSeedAsync(
+                StagedTransferJournal.VersionIdentity(manifest), KernelCompletionFixture(manifest), CancellationToken.None))).Message);
         Assert.Equal(23u, manifest.AllocationExtensionVersion);
         Assert.Equal(first.StageIdentity, manifest.StageIdentity);
         var head = await journal.ReadDestinationHeadAsync(binding.Destination, CancellationToken.None);
@@ -407,7 +509,11 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         var result = await Allocate(new(Stages, journal), binding);
         await journal.ValidateAllocationReplyAsync(new(result.Transfer.TransferId, result.DestinationGeneration,
             result.StageIdentity), binding.ReservationId, CancellationToken.None);
-        Assert.Equal("original approved source", File.ReadAllText(result.Transfer.StagePath));
+        Assert.Empty(File.ReadAllBytes(result.Transfer.StagePath));
+        var entry = await journal.ReadAsync(binding.ReservationId, CancellationToken.None);
+        Assert.Equal(binding, entry.SeedProvenance!.SourceBinding);
+        Assert.Null(entry.SeedCompletion);
+        Assert.Equal("original approved source", File.ReadAllText(Path.Combine(_workspace.Root, "renamed-original", "save.txt")));
         Assert.Equal("replacement locator bytes", File.ReadAllText(Path.Combine(Parent, "save.txt")));
     }
 

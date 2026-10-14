@@ -104,6 +104,10 @@ typedef struct _STAGE_STREAM {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     /* Stage v19 exact-object lifetime. All namespace fields below are
      * serialized by StageNamespaceResource; RpcReferences is interlocked. */
+    BOOLEAN BoundAllocation;
+    PSAFEUPLOAD_STAGE_WRITER_LEASE AllocationWriterLease; /* Only an unresolved V23 reply owns this reference. */
+    BOOLEAN BoundSeedDurable; /* No authenticated completion producer yet; never inferred from an ACK. */
+    SAFEUPLOAD_STAGE_SEED_COMPLETION SeedCompletion;
     SAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity;
     GUID DriverInstanceId;
     BOOLEAN StageIdentityValid;
@@ -209,9 +213,10 @@ typedef struct _STAGE_ATTACH_TRANSACTION {
     SECURITY_CLIENT_CONTEXT OriginalSubject;
     BOOLEAN OriginalSubjectValid;
     SAFEUPLOAD_STAGE_CREATE_INPUT CreateInput;
-    /* Increment 4 may transfer a prepared per-CREATE lease here. Increment 2
-     * never invokes the factory from live CREATE and never selects V23. */
+    /* Per-original-CREATE lease, prepared only behind the NotReady bound gate.
+     * The attach worker owns it until binding transfers it to one STAGE_HANDLE. */
     PSAFEUPLOAD_STAGE_WRITER_LEASE WriterLease;
+    ACCESS_MASK WriterGrantedAccess;
     PSAFEUPLOAD_STAGE_NATIVE_RECORD NativeRecord;
     SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT NativeSnapshot;
     UINT64 NativeGeneration;
@@ -272,6 +277,9 @@ typedef struct _STAGE_HANDLE {
     ACCESS_MASK GrantedAccess;
     BOOLEAN Cleaned;
     BOOLEAN DeleteOnClose;      /* T5: this handle's FILE_DELETE_ON_CLOSE / FILE_DISPOSITION_ON_CLOSE request */
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    PSAFEUPLOAD_STAGE_WRITER_LEASE WriterLease; /* Independent CREATE; duplicates share until CLEANUP. */
+#endif
     ULONG LockOwnerCount;
     PEPROCESS LockOwners[16]; /* Duplicate handles can issue locks in other processes. */
 } STAGE_HANDLE, *PSTAGE_HANDLE;
@@ -1454,6 +1462,9 @@ static NTSTATUS StageFlush(PSTAGE_STREAM Stream)
 
 static VOID StageFreeStream(PSTAGE_STREAM Stream)
 {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    NT_ASSERT(Stream->AllocationWriterLease == NULL); /* Drained at PASSIVE outside namespace locks. */
+#endif
     if (Stream->ReservationLinked) {
         RemoveEntryList(&Stream->ReservationLink);
         Stream->ReservationLinked = FALSE;
@@ -2034,12 +2045,82 @@ static VOID StageFreeView(PSTAGE_VIEW View)
     ExFreePoolWithTag(View, STAGE_TAG);
 }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* Pure local tuple check; callers own the stream/namespace lifetime. */
+static BOOLEAN StageBoundSeedReady(_In_ PSTAGE_STREAM Stream)
+{
+    const SAFEUPLOAD_STAGE_SEED_COMPLETION *seed = &Stream->SeedCompletion;
+    return !Stream->BoundAllocation || (Stream->BoundSeedDurable && seed->Complete &&
+        seed->Generation == Stream->DestinationGeneration &&
+        RtlEqualMemory(&seed->TransferId, &Stream->TransferId, sizeof(GUID)) &&
+        RtlEqualMemory(&seed->DriverInstanceId, &StageDriverInstanceId, sizeof(GUID)) &&
+        StageV19IdentityEqual(&seed->StageIdentity, &Stream->StageIdentity));
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageAllocateBound(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction,
+    _In_opt_ PSTAGE_STREAM Previous, _In_opt_ PCUNICODE_STRING Tombstone,
+    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH Basename, _Out_ PUSHORT BasenameLength,
+    _Out_ PUINT64 Generation, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 Identity,
+    _Out_ PSAFEUPLOAD_STAGE_ALLOCATE_V19 Intent, _Out_ PSAFEUPLOAD_REQUEST Request,
+    _Out_ PBOOLEAN MayExist);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageAllocateBound)
+#endif
+_Use_decl_annotations_
+static NTSTATUS StageAllocateBound(PSTAGE_ATTACH_TRANSACTION Transaction,
+    PSTAGE_STREAM Previous, PCUNICODE_STRING Tombstone, PWCH Basename, PUSHORT BasenameLength,
+    PUINT64 Generation, PSAFEUPLOAD_STAGE_IDENTITY_V19 Identity,
+    PSAFEUPLOAD_STAGE_ALLOCATE_V19 Intent, PSAFEUPLOAD_REQUEST Request, PBOOLEAN MayExist)
+{
+    SAFEUPLOAD_STAGE_PUBLIC_BINDING captured;
+    SAFEUPLOAD_STAGE_ALLOCATE_V23 binding = {0};
+    NTSTATUS status;
+    PAGED_CODE();
+    RtlZeroMemory(Basename, SAFEUPLOAD_MAX_STAGE_NAME_CHARS * sizeof(WCHAR));
+    *BasenameLength = 0; *Generation = 0; *MayExist = FALSE;
+    RtlZeroMemory(Identity, sizeof(*Identity)); RtlZeroMemory(Intent, sizeof(*Intent));
+    RtlZeroMemory(Request, sizeof(*Request));
+    if (!SafeUploadStageProtocolBoundAllocationReady() || Transaction->WriterLease == NULL)
+        return STATUS_DEVICE_NOT_READY;
+    SafeUploadStagePublicGetWriterBinding(Transaction->WriterLease, &captured);
+    binding.Version = SAFEUPLOAD_STAGE_BOUND_ALLOCATION_VERSION;
+    binding.StructSize = sizeof(binding);
+    status = ExUuidCreate(&binding.AllocationReservationId);
+    if (!NT_SUCCESS(status)) return status;
+    binding.Disposition = Transaction->CreateInput.Options >> 24;
+    if (Previous != NULL) {
+        /* A legacy predecessor has no immutable source lineage/metadata. */
+        if (!Previous->BoundAllocation || !StageBoundSeedReady(Previous)) return STATUS_DEVICE_NOT_READY;
+        binding.ReferenceKind = SAFEUPLOAD_STAGE_ALLOC_REFERENCE_FOLLOWUP;
+        binding.ParentTransferId = Previous->TransferId;
+    } else if (Tombstone != NULL) {
+        binding.ReferenceKind = SAFEUPLOAD_STAGE_ALLOC_REFERENCE_TOMBSTONE;
+        if (!StageParseTransferId(Tombstone->Buffer, Tombstone->Length / sizeof(WCHAR), &binding.ParentTransferId))
+            return STATUS_INVALID_PARAMETER;
+    }
+    binding.PublicTargetId = captured.PublicIdentity.FileId;
+    binding.MountManagerVolumeId = captured.MountManagerVolumeId;
+    binding.VolumeRootId = captured.VolumeRootIdentity.FileId;
+    binding.ParentIdentity.VolumeSerialNumber = captured.ParentIdentity.VolumeSerialNumber;
+    binding.ParentIdentity.FileId = captured.ParentIdentity.FileId;
+    binding.ParentCaseSensitive = captured.ParentCaseSensitive ? 1 : 0;
+    binding.CanonicalLeafBytes = captured.CanonicalLeafBytes;
+    /* V23 itself requires complete, current increment-3 metadata and the
+     * increment-2 security check before sending. A refused bound request never
+     * falls back to V19. V18/V23/V26/V27 layouts and interfaces stay unchanged. */
+    return SafeUploadStageAllocateBoundV23(Transaction->CallbackData, Transaction->WriterLease,
+        &Transaction->NameInfo->Name, &binding, &StageDriverInstanceId, Basename, BasenameLength,
+        Generation, Identity, Intent, Request, MayExist);
+}
+#endif
+
 /* NamespaceResource serializes CREATE, rotation, retarget and retirement.
  * An upper FILE_OBJECT references a version, never a mutable current pointer. */
 static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
     PFLT_FILE_NAME_INFORMATION Name, SAFEUPLOAD_VOLUME_KIND Kind, BOOLEAN Writer,
     LONG64 ExpectedGeneration, BOOLEAN ById, BOOLEAN PrivateNamespace,
-    BOOLEAN AllowAttachResume, PBOOLEAN Handled)
+    BOOLEAN AllowAttachResume, PVOID AttachContext, PBOOLEAN Handled)
 {
     PSTAGE_VIEW view = NULL;
     PSTAGE_TOMBSTONE hidden = NULL;
@@ -2057,6 +2138,9 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     PEPROCESS owner = FltGetRequestorProcess(Data);
     BOOLEAN newView = FALSE, newStream = FALSE, exists = FALSE;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    PSTAGE_ATTACH_TRANSACTION transaction = (PSTAGE_ATTACH_TRANSACTION)AttachContext;
+    SAFEUPLOAD_STAGE_WRITER_REFUSAL writerReason = StageWriterNoRefusal;
+    BOOLEAN bound = transaction != NULL && transaction->WriterLease != NULL;
     BOOLEAN reservedForCreate = FALSE;
     BOOLEAN reservedStreamSlot = FALSE;
     BOOLEAN allocationMayExist = FALSE;
@@ -2068,7 +2152,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     UINT64 allocatedGeneration = 0;
     SAFEUPLOAD_STAGE_IDENTITY_V19 allocatedIdentity;
     SAFEUPLOAD_STAGE_ALLOCATE_V19 allocationIntent;
-    SAFEUPLOAD_STAGE_IDENTITY_V19 previousIdentity;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 previousIdentity = {0};
     UINT64 previousGeneration = 0;
     GUID previousTransferId;
     LONG64 allocationViewGeneration = 0;
@@ -2085,6 +2169,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     *Handled = TRUE;
 #if !SAFEUPLOAD_STAGING_PROTOTYPE
     UNREFERENCED_PARAMETER(AllowAttachResume);
+    UNREFERENCED_PARAMETER(AttachContext);
 #endif
     if (owner == NULL) return STATUS_ACCESS_DENIED;
     StageAcquire(&StageNamespaceResource);
@@ -2278,7 +2363,13 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         RtlZeroMemory(allocationRequest, sizeof(*allocationRequest));
         allocationServiceGeneration = InterlockedCompareExchange(&StageServiceGeneration, 0, 0);
         StageRelease(&StageNamespaceResource);
-        status = SafeUploadStageAllocateV19(Data, &Name->Name, Kind,
+        stream->BoundAllocation = bound;
+        if (bound)
+            status = StageAllocateBound(transaction, previous,
+                tombstoneSnapshotValid ? &tombstoneTransferName : NULL,
+                basename, &basenameLength, &allocatedGeneration, &allocatedIdentity,
+                &allocationIntent, allocationRequest, &allocationMayExist);
+        else status = SafeUploadStageAllocateV19(Data, &Name->Name, Kind,
             previous != NULL ? &previous->StageName : NULL,
             tombstoneSnapshotValid ? &tombstoneTransferName : NULL,
             basename, &basenameLength, &StageDriverInstanceId,
@@ -2310,9 +2401,30 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
                 stream->AllocationTupleKnown = TRUE;
             } else status = nameStatus;
         }
+        if (bound && NT_SUCCESS(status)) {
+            /* The new stream is still exclusively attach-owned and reserved.
+             * Disk/query waits occur outside namespace/stream/spin locks. */
+            status = SafeUploadStagePublicRevalidateWriter(transaction->WriterLease, &writerReason);
+            if (status == STATUS_SUCCESS)
+                status = SafeUploadStagePublicWriterMetadataCurrent(transaction->WriterLease, &writerReason);
+            if (status == STATUS_SUCCESS) status = StageOpenBacking(stream, FALSE);
+            if (status == STATUS_SUCCESS)
+                status = SafeUploadStagePublicSeedWriter(transaction->WriterLease,
+                    stream->BackingInstance, stream->BackingObject, stream->SectorSize,
+                    &stream->StageIdentity, stream->DestinationGeneration, Data,
+                    &stream->SeedCompletion, &writerReason);
+            if (status == STATUS_SUCCESS) {
+                if (previous != NULL) {
+                    stream->SeedCompletion.PredecessorIdentity = previousIdentity;
+                    stream->SeedCompletion.PredecessorGeneration = previousGeneration;
+                }
+                stream->Header.FileSize.QuadPart = stream->SeedCompletion.Length;
+                stream->Header.ValidDataLength = stream->Header.FileSize;
+            }
+        }
         StageAcquire(&StageNamespaceResource);
         stream->AllocationRpcInFlight = FALSE;
-        if (previousPinned) {
+        if (previousPinned && !bound) {
             InterlockedDecrement(&previous->RpcReferences);
             previousPinned = FALSE;
         }
@@ -2347,7 +2459,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
             status = StageSetIdentity(view, basename);
             if (!NT_SUCCESS(status)) goto Exit;
         }
-        status = StageOpenBacking(stream, FALSE);
+        if (!bound) status = StageOpenBacking(stream, FALSE);
         if (!NT_SUCCESS(status)) goto Exit;
 #else
         stream = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*stream), STAGE_TAG);
@@ -2398,6 +2510,17 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         if (!NT_SUCCESS(status)) goto Exit;
 #endif
     }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (stream->BoundAllocation && (!bound || !StageBoundSeedReady(stream))) {
+        /* A local EOF/flush receipt alone is not durable service confirmation.
+         * Missing transport remains a named gate, including for empty stages. */
+        SafeUploadStagePublicRecordWriterRefusal(StageWriterSeedCompletionUnproved);
+        status = STATUS_DEVICE_NOT_READY;
+        goto Exit;
+    }
+    if (bound && !stream->BoundAllocation) { status = STATUS_DEVICE_NOT_READY; goto Exit; }
+    if (bound) granted = transaction->WriterGrantedAccess;
+#endif
     if (newStream && NT_SUCCESS(status)) {
         /* The file object may be bound locally, but the upper create stays
          * pending until the exact v20 attach transaction permits completion. */
@@ -2435,6 +2558,12 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     if (NT_SUCCESS(status)) {
         IoUpdateShareAccess(file, &stream->ShareAccess);
         handle->Stream = stream; handle->GrantedAccess = granted;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (bound) {
+            handle->WriterLease = transaction->WriterLease;
+            transaction->WriterLease = NULL;
+        }
+#endif
         /* T5: delete-on-close of the owner's private version discards it at the last cleanup (driver/T5-DELETES.md R3). */
         handle->DeleteOnClose = BooleanFlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE);
         if (handle->DeleteOnClose) {
@@ -2491,7 +2620,15 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
 Exit:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (allocationRequest != NULL) ExFreePoolWithTag(allocationRequest, STAGE_TAG);
-    /* The RPC completion path drops this pin and clears the flag before it
+    if (!NT_SUCCESS(status) && newStream && stream != NULL && stream->BoundAllocation &&
+        stream->BackingObject != NULL) {
+        /* Still attach-owned, with the predecessor pin retained through this
+         * local close. No new I/O wait under the namespace resource. */
+        StageRelease(&StageNamespaceResource);
+        StageCloseBacking(stream);
+        StageAcquire(&StageNamespaceResource);
+    }
+    /* The legacy RPC completion path drops this pin and clears the flag before it
      * reaches Exit. Any earlier failure (including name-reservation or
      * request-scratch allocation failure) still owns it; release it here
      * while NamespaceResource keeps the predecessor stable, then wake the
@@ -2506,6 +2643,10 @@ Exit:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (reservedForCreate && stream != NULL) StageClearPrivateDelete(stream);
         if (newStream && stream != NULL && stream->AllocationReceiptPending) {
+            if (bound && !stream->AllocationTupleKnown) {
+                stream->AllocationWriterLease = transaction->WriterLease;
+                transaction->WriterLease = NULL;
+            }
             StageRetainAllocationReceipt(stream, view, newView, reservedStreamSlot,
                 previous, status);
             reservedStreamSlot = FALSE;
@@ -3424,6 +3565,8 @@ static VOID StageAttachRollbackBinding(_Inout_ PSTAGE_ATTACH_TRANSACTION Transac
     }
     StageStreamReleaseSpinLock(&StageListLock, irql);
     StageRelease(&StageNamespaceResource);
+    SafeUploadStagePublicReleaseWriter(handle->WriterLease);
+    handle->WriterLease = NULL;
     ExFreePoolWithTag(handle, STAGE_TAG);
     Transaction->BindingInstalled = FALSE;
     if (last) StageQueueStream(Stream, &StageCounters.WakeClose);
@@ -3550,10 +3693,23 @@ static NTSTATUS StageAttachResumeOrRun(_Inout_ PSTAGE_ATTACH_TRANSACTION Transac
         return NT_SUCCESS(status) ? STATUS_DELETE_PENDING : status;
     }
 
+    if (SafeUploadStageProtocolBoundAllocationReady()) {
+        SAFEUPLOAD_STAGE_WRITER_REFUSAL reason;
+        SAFEUPLOAD_STAGE_PUBLIC_BINDING binding;
+        if (!Transaction->OriginalSubjectValid || Transaction->VolumeKind != SafeUploadVolumeFixed)
+            return STATUS_DEVICE_NOT_READY;
+        status = SafeUploadStagePublicOpenWriter(Transaction->RelatedObjects.Instance,
+            &Transaction->CreateInput, &Transaction->OriginalSubject, Transaction->RequestorProcess,
+            &Transaction->WriterLease, &reason);
+        if (status != STATUS_SUCCESS) return status;
+        SafeUploadStagePublicGetWriterBinding(Transaction->WriterLease, &binding);
+        Transaction->WriterGrantedAccess = binding.GrantedAccess;
+    }
+
     status = StageCreate(Transaction->CallbackData, &Transaction->RelatedObjects,
         Transaction->NameInfo, Transaction->VolumeKind, TRUE,
         Transaction->ExpectedGeneration, Transaction->ById,
-        Transaction->PrivateNamespace, TRUE, &handled);
+        Transaction->PrivateNamespace, TRUE, Transaction, &handled);
     if (!handled && NT_SUCCESS(status)) return STATUS_ACCESS_DENIED;
     if (status == STAGE_STATUS_READMIT) return STATUS_SHARING_VIOLATION;
     if (!NT_SUCCESS(status)) return status;
@@ -3786,6 +3942,26 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
             FltCompletePendedPreOperation(Transaction->CallbackData, FLT_PREOP_COMPLETE, NULL);
         }
         goto CompletionFinished;
+    }
+    if (NT_SUCCESS(Status) && stream != NULL && stream->BoundAllocation) {
+        PSTAGE_HANDLE handle = Transaction->RelatedObjects.FileObject->FsContext2;
+        SAFEUPLOAD_STAGE_WRITER_REFUSAL reason;
+        if (handle == NULL || handle->WriterLease == NULL || !StageBoundSeedReady(stream))
+            Status = STATUS_DEVICE_NOT_READY;
+        else {
+            Status = SafeUploadStagePublicRevalidateWriter(handle->WriterLease, &reason);
+            if (Status == STATUS_SUCCESS)
+                Status = SafeUploadStagePublicWriterMetadataCurrent(handle->WriterLease, &reason);
+        }
+        StageAcquire(&StageNamespaceResource);
+        if (NT_SUCCESS(Status) && (stream->View == NULL || stream->View->Current != stream ||
+            stream->View->Detached || stream->View->Generation != Transaction->ExpectedGeneration ||
+            StageStopping || FltIsIoCanceled(Transaction->CallbackData) ||
+            InterlockedCompareExchange(&Transaction->CancelRequested, 0, 0) != 0 ||
+            InterlockedCompareExchange(&Transaction->TeardownRequested, 0, 0) != 0 ||
+            stream->SeedCompletion.AuthorityRevision != SafeUploadStageProtocolNativeAuthority()))
+            Status = STATUS_CANCELLED;
+        StageRelease(&StageNamespaceResource);
     }
     if (NT_SUCCESS(Status)) {
         KIRQL irql;
@@ -4814,6 +4990,7 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperationCore(PFLT_CALLBACK_DATA Data,
             ULONG index;
             BOOLEAN lastHandle;
             BOOLEAN queueReceipt;
+            PSAFEUPLOAD_STAGE_WRITER_LEASE writerLease;
             StageAcquire(&StageNamespaceResource);
             StageAcquire(&stream->Resource);
             /* Monotonic evidence: once any user file object observes CLEANUP,
@@ -4832,6 +5009,8 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperationCore(PFLT_CALLBACK_DATA Data,
             stream->DiscardOnClose = stream->DiscardDisposition || stream->DeleteOnCloseCount != 0;
             IoRemoveShareAccess(file, &stream->ShareAccess);
             handle->Cleaned = TRUE;
+            writerLease = handle->WriterLease;
+            handle->WriterLease = NULL;
             /* Cleanup can run in a different process from a lock issued via
              * a duplicate. Retain and unlock every participating process. */
             for (index = 0; index < handle->LockOwnerCount; ++index)
@@ -4850,6 +5029,12 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperationCore(PFLT_CALLBACK_DATA Data,
             queueReceipt = queueReceipt || stream->HandleReceiptPending;
             StageRelease(&stream->Resource);
             StageRelease(&StageNamespaceResource);
+            if (writerLease != NULL) {
+                /* CLEANUP is a PASSIVE callback; this branch documents the
+                 * local-I/O contract without touching legacy null owners. */
+                NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+                SafeUploadStagePublicReleaseWriter(writerLease);
+            }
             /* T4: the last handle is gone; this file object keeps the stream allocated while it is queued. */
             if (lastHandle || queueReceipt) StageQueueStream(stream, &StageCounters.WakeCleanup);
         }
@@ -4862,6 +5047,12 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperationCore(PFLT_CALLBACK_DATA Data,
             BOOLEAN last;
             for (index = 0; index < handle->LockOwnerCount; ++index)
                 ObDereferenceObject(handle->LockOwners[index]);
+            /* Canceled original CREATE may reach CLOSE without CLEANUP. */
+            if (handle->WriterLease != NULL) {
+                NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+                SafeUploadStagePublicReleaseWriter(handle->WriterLease);
+                handle->WriterLease = NULL;
+            }
             ExFreePoolWithTag(handle, STAGE_TAG);
             file->FsContext2 = NULL;
             InterlockedDecrement(&StageFileObjects);
@@ -5116,6 +5307,12 @@ static VOID StageDiscardVersion(PSTAGE_STREAM Stream)
 static VOID StageSealVersion(PSTAGE_STREAM Stream)
 {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (!StageBoundSeedReady(Stream)) {
+        Stream->DrainStatus = STATUS_DEVICE_NOT_READY;
+        Stream->Wait = STAGE_WAIT_SERVICE;
+        SafeUploadStagePublicRecordWriterRefusal(StageWriterSeedCompletionUnproved);
+        return;
+    }
     if (Stream->AttachCompletionPending || Stream->HandleReceiptPending ||
         Stream->HandleReceiptInFlight ||
         (Stream->AnyHandleCleanupObserved && !Stream->HandleReceiptAcknowledged)) {
@@ -5455,7 +5652,7 @@ static VOID StageCollectSealRpcs(PLIST_ENTRY Rpcs)
     PLIST_ENTRY link;
     for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
-        if (!stream->SealRpcPending || stream->SealRpcInFlight || stream->View == NULL ||
+        if (!StageBoundSeedReady(stream) || !stream->SealRpcPending || stream->SealRpcInFlight || stream->View == NULL ||
             stream->RenameExchange != NULL || stream->DiscardRpcInFlight ||
             stream->PrivateDeleteReserved ||
             !stream->StageIdentityValid || !stream->HasTransferId ||
@@ -5543,11 +5740,17 @@ static VOID StagePerformAllocationRecoveryRpcs(PLIST_ENTRY Rpcs)
         SAFEUPLOAD_STAGE_IDENTITY_V19 identity;
         GUID expectedId = stream->TransferId;
         UINT64 requestId = stream->AllocationRequest.RequestId;
+        PSAFEUPLOAD_STAGE_WRITER_LEASE releaseLease = NULL;
         NTSTATUS status;
         InitializeListHead(&stream->RecoveryLink);
         RtlZeroMemory(&identity, sizeof(identity));
-        status = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED :
-            SafeUploadStageReplayAllocationV19(&stream->AllocationRequest,
+        if (SafeUploadStageMandatoryTeardownActive()) status = STATUS_PORT_DISCONNECTED;
+        else if (stream->BoundAllocation && stream->AllocationWriterLease == NULL)
+            status = STATUS_INVALID_DEVICE_STATE; /* a bound replay needs its retained original lease; keep the receipt */
+        else if (stream->BoundAllocation)
+            status = SafeUploadStageReplayAllocationBoundV23(stream->AllocationWriterLease, &stream->AllocationRequest,
+                basename, &basenameLength, &generation, &identity);
+        else status = SafeUploadStageReplayAllocationV19(&stream->AllocationRequest,
                 basename, &basenameLength, &generation, &identity);
 
         StageAcquire(&StageNamespaceResource);
@@ -5566,6 +5769,8 @@ static VOID StagePerformAllocationRecoveryRpcs(PLIST_ENTRY Rpcs)
                 stream->ExpectedStageIdentityValid = TRUE;
                 stream->AllocationTupleKnown = TRUE;
                 stream->AllocationRecoveryPending = FALSE;
+                releaseLease = stream->AllocationWriterLease;
+                stream->AllocationWriterLease = NULL;
                 stream->DiscardRpcKind = SAFEUPLOAD_STAGE_DISCARD_KIND_UNATTACHED_ALLOCATION;
                 stream->DiscardRpcPending = TRUE;
                 stream->Wait = STAGE_WAIT_EXCHANGE;
@@ -5582,6 +5787,7 @@ static VOID StagePerformAllocationRecoveryRpcs(PLIST_ENTRY Rpcs)
         InterlockedDecrement(&stream->RpcReferences);
         StageUpdateRetryTimer();
         StageRelease(&StageNamespaceResource);
+        SafeUploadStagePublicReleaseWriter(releaseLease);
     }
 }
 
@@ -6609,6 +6815,12 @@ VOID SafeUploadStageDrainMandatoryTeardown(VOID)
         }
     }
     ExWaitForRundownProtectionRelease(&StageOwnedCallbackBodies);
+    for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
+        PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
+        PSAFEUPLOAD_STAGE_WRITER_LEASE lease = stream->AllocationWriterLease;
+        stream->AllocationWriterLease = NULL;
+        SafeUploadStagePublicReleaseWriter(lease); /* Local close, never allocation replay/ACK. */
+    }
     SafeUploadStagePublicDrainBackends();
     SafeUploadStageNativeDrainLocal();
     StageMandatoryLocalDrained = TRUE;
@@ -7211,7 +7423,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
             }
 #endif
             status = StageCreate(Data, Objects, privateName, kind, writer, expectedGeneration,
-                TRUE, TRUE, FALSE, &handled);
+                TRUE, TRUE, FALSE, NULL, &handled);
             goto Complete;
         }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -7410,7 +7622,7 @@ Readmit:
     }
 #endif
     status = StageCreate(Data, Objects, name, kind, writer, expectedGeneration,
-        FALSE, privateNamespace, FALSE, &handled);
+        FALSE, privateNamespace, FALSE, NULL, &handled);
     if (status == STAGE_STATUS_READMIT) {
         /* The owner's private namespace changed after the gates above read it (T4: a version leaves it once the service
          * disposed of it and nothing holds it). Run them again on the current state; a namespace that keeps changing under

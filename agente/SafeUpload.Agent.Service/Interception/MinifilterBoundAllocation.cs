@@ -12,6 +12,7 @@ public sealed partial class MinifilterInterceptor
     // Remains false until ALL physical mutations and recovery paths share the
     // bound head/permit pipeline. The reserved capability is not advertised.
     private volatile bool _stageBoundHeadReady = false;
+    internal static bool BoundAllocationImplemented => false; // Testable prerequisite, independent of negotiation.
 
     private async Task ReplyBoundAllocationAsync(FilterPort port, SafeUploadRequest request,
         ulong messageId, Guid? capturedDriver, CancellationToken token)
@@ -20,7 +21,7 @@ public sealed partial class MinifilterInterceptor
         {
             StagedAllocationReply? reply = await AllocateStageV23Async(port, request, capturedDriver, token)
                 .ConfigureAwait(false);
-            if (reply is not null && !token.IsCancellationRequested && _stageBoundHeadReady &&
+            if (reply is not null && !token.IsCancellationRequested && BoundAllocationImplemented && _stageBoundHeadReady &&
                 _stageV20Ready && _stagingRecoveryReady && _activeDriverInstanceId == capturedDriver)
             {
                 var identity = ToWireStageIdentity(reply.StageIdentity);
@@ -42,7 +43,7 @@ public sealed partial class MinifilterInterceptor
     private async Task<StagedAllocationReply?> AllocateStageV23Async(FilterPort port, SafeUploadRequest request,
         Guid? capturedDriver, CancellationToken token)
     {
-        if (!_stageBoundHeadReady || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
+        if (!BoundAllocationImplemented || !_stageBoundHeadReady || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
             capturedDriver is not { } driver || _activeDriverInstanceId != driver ||
             _stageAllocator is not { } allocator || _stageJournal is not { } journal ||
             !request.TryReadBoundAllocationV23(out var payload, out string leaf) ||

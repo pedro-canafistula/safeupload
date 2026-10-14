@@ -1012,3 +1012,106 @@ Existing source-only fixtures now supply synthetic complete metadata explicitly;
 constructor. No compiler, agent test runner, WDK build, VM or commit was run here. The orchestrator still owns all four WDK/PREfast/
 ApiValidator builds and the full normal/feature Debug/Release agent matrix. Source inspection is not independent review acceptance;
 full integrated lifetime/lock-order/retirement review before boot and runtime qualification remain outstanding.
+
+### Implementation note — increment 4
+
+This is a **gated implementation draft**, not bound admission or qualification. `StageCreate` now has a prepared V23 branch;
+`SafeUploadStageProtocolBoundAllocationReady()` still returns FALSE, and the service's testable `BoundAllocationImplemented`
+prerequisite is FALSE in addition to `_stageBoundHeadReady`. Ordinary live allocation therefore still selects V19. Within the
+prepared branch, a failed original-subject writer factory, incomplete assigned security, incomplete metadata flags or stale
+connection refuses the request; it never retries that bound request as V19. Increment-3 request/reply/blob layouts and its existing
+function signatures are unchanged, as are V18/V23/V26 layouts. Normal WDK configurations still exclude the staging sources.
+
+A lost V23 reply transfers the original lease from the transaction to the unresolved stream receipt. The maintenance worker uses
+`SafeUploadStageReplayAllocationBoundV23` with that same request, binding, canonical name and original cookie/revision, without
+preparing or refreshing metadata. Success recovers only the exact candidate tuple for existing kind-5 retirement, then releases
+the lease outside namespace locks. A stale/reconnected channel or missing owner stays held. Mandatory teardown, after worker and
+callback drains, locally detaches/releases unresolved allocation leases before waiting for the backend count; it neither replays
+allocation nor waits for cleanup ACK. The request-only V19 replay entry continues to refuse V23.
+
+The attach worker captures a separate increment-2 lease for each original CREATE before the bound allocation attempt. The
+allocation keeps the existing name reservation, predecessor pin and exact allocation/retirement receipt. After the RPC, outside
+namespace/stream/spin locks, it directly revalidates the writer object and complete snapshot, checks the metadata connection,
+opens the exact exclusive backing and invokes `SafeUploadStagePublicSeedWriter`. Before binding it checks the reserved view,
+predecessor tuple, service generation, cancellation and teardown under the namespace resource. Completion after attachment RPCs
+also revalidates the lease/metadata outside locks and then checks the view, cancellation and authority revision. Bound admission
+cannot borrow a legacy stream/predecessor or an incomplete capture. Independent bound reopens remain refused until their current
+lease can also be bound to immutable version authority; there is no old-lease reuse shortcut.
+
+The kernel copy mechanics use the retained writer FILE_OBJECT, explicit 64-bit offsets, nonpaging noncached reads that preserve
+the synchronous file position, and at most two 64-KiB buffers, each aligned by its own instance. Sector sizes must be bounded powers
+of two; final write padding is zero, short/unexpected reads or writes fail, the existing 16-MiB product limit stays, and exact EOF,
+completed flush, backing remeasurement, source/snapshot/channel revalidation and cancellation checks precede a local completion
+record. No target data handle is reopened and no source grant/share fields are changed. The completion is zero on failure and
+partial private output is never exposed. New/absent and truncating stages start at zero and require ordinary completion and seal.
+
+**No coherent whole-copy interval is proved.** `StageWriterSeedInterval` refuses every preserving public or private-predecessor
+seed with `seed_coherence_unproved`, including an apparently empty source. The loop is prepared mechanics behind that refusal,
+not a claim that any preserving seed currently executes. It must not be enabled using identity, stable EOF, matching digests or
+per-chunk locks. A private predecessor needs its own exact held immutable interval, not the public writer lease substituted as its
+source. The local receipt records driver, reservation, metadata request/epoch/revision/snapshot/digest, private full identity and
+generation, source origin, predecessor transfer/full identity/generation, length and completion. It is separate from immutable
+allocation metadata and grants no read/export authority.
+
+The service V23 allocator now creates and journals only an **empty private candidate** with seed intent and inherited option-1
+provenance. It does not call `OpenPublicSource`, open a predecessor data reader or copy seed bytes. Allocation reply/replay is a
+candidate handoff to the kernel, not app exposure. A nonempty incomplete candidate cannot be replied/reseeded; exact identity and
+private bytes remain held. Initial direct journal commit also requires an empty object. Legacy allocators are unchanged.
+
+`StagedSeedCompletion` format 2 adds a separate immutable receipt bound to exact version, allocation binding, driver, metadata,
+origin and predecessor plus EOF/flush/revalidation facts. Historical two-field format-1 receipts remain readable evidence but cannot
+satisfy bound exposure/seal. `CompleteBoundSeedAsync` validates and durably persists the exact receipt, refuses altered retry, and
+never performs another copy. There is **no live authenticated completion transport yet**: the V27 read-only carrier and V19/V20
+ACKs cannot stand in for one. `BoundSeedDurable` therefore has no success setter. This explicit `seed_completion_unproved` gate
+prevents even an empty local completion from exposing an app object until that integration exists; it does not revive EmptyHeld.
+The journal enforces the same prerequisite on CompletionPermitted, including the early replay path, on seal/reseal, migration and
+inspection/publication transitions. A successful component fixture still takes the ordinary empty SealPending → Sealed path.
+Public and private preserving receipts are rejected as coherence-unproved even if they claim successful I/O.
+
+| Owned resource | Acquisition/transfer | Local release and teardown |
+| --- | --- | --- |
+| Original subject, request inputs, process/root/instance/callback references | Existing attach transaction; original callback capture precedes worker use | Existing PASSIVE attach release; final cancellation dereference remains nonpageable and empty |
+| Writer lease, source handle/object, snapshots and metadata | `StageAttachResumeOrRun` → transaction; successful binding transfers one owner to one `STAGE_HANDLE`; duplicated/inherited handles share that object | Failed attach releases transaction owner; rollback or last-handle CLEANUP releases handle owner outside namespace/stream locks; canceled CLOSE has the same fallback |
+| Lost-reply metadata/lease owner | Transaction transfers its original lease to `AllocationWriterLease` only while the exact allocation tuple is unknown; recovery RPC reference pins the stream | Successful same-channel tuple recovery detaches the lease and releases it outside namespace locks; mandatory teardown releases it locally after joins and before backend-owner drain |
+| Writer operation rundown | Metadata-current check and seed helper; retained across any seed I/O | Released on every helper exit; common backend close waits only for local operations, then closes handles |
+| Candidate backing and local completion | New attach-owned stream plus existing name reservation and allocation receipt; source predecessor remains pinned through out-of-lock failure close | Failed bound candidate closes backing outside namespace locks before existing exact retirement; incomplete/unknown allocation receipts stay held; mandatory teardown does not send a fresh RPC |
+| Two aligned copy buffers / source volume reference | Seed helper only, after interval prerequisite | Freed/dereferenced on every exit, before operation rundown release; no global buffer owner |
+| Security, provenance and durable completion | Service-private security record/manifest; predecessor lineage preserved unchanged by intent allocation | Existing exact cleanup and compaction rules; option-1 blocked descendants retain required ancestry/security and cannot export without affirmative recipient authority |
+
+The existing backend/factory counts include these leases in voluntary veto. Attach/stream/RPC counts cover candidates and seed work.
+Mandatory admission fencing, port wakeup, `SafeUploadStagePublicCloseAllBackends`, local operation rundown and attach/worker drains
+remain the teardown path; no new service ACK wait, worker or mandatory RPC is added. Close-before-dependent-wait remains required.
+The new pageable helpers declare PASSIVE SAL contracts and PAGE allocation, initialize output storage before refusal and publish a
+completion only after success. No wait or I/O is added under a spin lock.
+
+Named seed refusals are `seed_coherence_unproved`, `seed_completion_unproved` and kernel `seed_io_failed`; existing capture,
+security, snapshot-change and metadata-stale diagnostics remain. Export uses the existing option-1 `seed_export_denied`,
+`seed_export_unproven` and `seed_export_recipient_unproven` policy. Export denial is not used to reject an otherwise proven clean
+write-only edit. Missing completion independently prevents export; apparent empty/final rewritten content does not erase lineage.
+
+Added/updated component controls cover empty candidate intent for each disposition, no second public reader under native share 0,
+partial-copy replay retention, missing/substituted/legacy receipts, public/private coherence refusals, inherited provenance,
+completion persistence faults before/after replacement, immutable retry, completion-permit replay and ordinary empty seal.
+`StagedSeedCompletionTests` is compiled in normal and feature configurations; filesystem/carrier integration controls retain their
+feature guard. Synthetic receipts/fixtures prove only component prerequisites, not a native copy or kernel authorization.
+
+Required native controls remain report groups 1/2 (original grants/share and post-RPC ancestor/object/absence races), 5 (actual
+READ/WRITE/APPEND objects, share 0/7, sync/async/no-buffering, 0/1/sector/chunk/multichunk lengths, deterministic first/middle/final
+barriers against cached/noncached writes, append/truncate/regrow, mappings, hard links, keyed locks, cancellation and oplocks),
+6 (independent read/export authority and effective recipient through preserving descendants), and 7 (cancellation at every owner,
+duplicate/inherited versus independent objects, process/instance teardown and unload). Test transport beyond 16 MiB separately
+without changing the product limit. Exact EOF/flush/receipt and independent byte observations are required; builder controls are
+not protected-target qualification.
+
+Increment 5 must implement the reviewed V26 bounded permit/Facts lifecycle, actual original service CREATE/security comparison,
+one-way I/O fence, checked rename/name reservation, native outcomes and exact retirement/ACK handling. Its authority owner must
+retain the exact version's security/seed evidence after per-app public leases close, and it must refuse absent/incomplete seed
+completion. Before any bound activation, the integrated path also needs an authenticated, replay-bound durable seed-completion
+handoff (without repurposing the read-only V27 carrier), qualified coherent source ownership, descriptor construction/round-trip,
+independent export/recipient proof and complete publication/recovery/head integration. These are explicit remaining conditions,
+not permission to enable the path by changing the two readiness guards.
+
+Verification for this draft is source/diff inspection only. No build, test execution, commit, push or VM boot was performed.
+The orchestrator still owns four WDK Debug/Release × normal/feature builds with PREfast/ApiValidator at zero warnings/errors and
+the complete agent matrix. Independent integrated kernel lifetime review and the owner's product-run release remain required
+before a revised protected boot; the T4 stop is unchanged.

@@ -47,6 +47,7 @@ static BOOLEAN StageProtocolValidDrainReplayRequest(_In_ const SAFEUPLOAD_REQUES
 #pragma alloc_text(PAGE, SafeUploadStagePublicOpenExchange)
 #pragma alloc_text(PAGE, SafeUploadStageRenameExchangeV19)
 #pragma alloc_text(PAGE, SafeUploadStageReplayAllocationV19)
+#pragma alloc_text(PAGE, SafeUploadStageReplayAllocationBoundV23)
 #pragma alloc_text(PAGE, SafeUploadStageReconcileV20)
 #pragma alloc_text(PAGE, SafeUploadStageAttachmentExchangeV20)
 #pragma alloc_text(PAGE, SafeUploadStageAttachmentRequestV20Matches)
@@ -1056,6 +1057,10 @@ NTSTATUS SafeUploadStageAllocateBoundV23(PFLT_CALLBACK_DATA Data,
     if (status == STATUS_SUCCESS)
         status = SafeUploadStagePublicCheckWriterSecurity(WriterLease, &reason);
     if (status == STATUS_SUCCESS)
+        status = SafeUploadStagePublicWriterMetadataCurrent(WriterLease, &reason);
+    if (status == STATUS_SUCCESS && !SafeUploadStageProtocolBoundAllocationReady())
+        status = STATUS_DEVICE_NOT_READY;
+    if (status == STATUS_SUCCESS)
         status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
     *AllocationMayExist = exchange->MayHaveReachedService;
     status = SafeUploadStageExchangeResult(status, answered, verdict);
@@ -1083,6 +1088,15 @@ BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(UINT64 ConnectionEpoch, UINT
         (ConnectionEpoch == 0 || ConnectionEpoch == (UINT64)epoch);
     KeReleaseSpinLock(&SafeUploadStageV20StateLock, irql);
     return allowed;
+}
+
+/* Deliberately not a negotiated bit alone. Publication, seed completion and
+ * recovery have no integrated producer. This is the live CREATE selector;
+ * changing metadata transport readiness cannot enable bound allocation. */
+_Use_decl_annotations_
+BOOLEAN SafeUploadStageProtocolBoundAllocationReady(VOID)
+{
+    return FALSE;
 }
 
 /* Transport identity only: never establishes head/seed/publication readiness. */
@@ -1263,6 +1277,50 @@ NTSTATUS SafeUploadStagePublicOpenExchange(const SAFEUPLOAD_STAGE_NATIVE_SNAPSHO
     return status;
 }
 
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageReplayAllocationBoundV23(PSAFEUPLOAD_STAGE_WRITER_LEASE WriterLease,
+    const SAFEUPLOAD_REQUEST *AllocationRequest, PWCH StageName, PUSHORT StageNameLength,
+    PUINT64 DestinationGeneration, PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity)
+{
+    PSAFEUPLOAD_EXCHANGE exchange;
+    SAFEUPLOAD_STAGE_ALLOCATE_V23 binding;
+    UINT32 verdict = SAFEUPLOAD_VERDICT_DENY;
+    BOOLEAN answered = FALSE;
+    NTSTATUS status;
+    PAGED_CODE();
+    RtlZeroMemory(StageName, SAFEUPLOAD_MAX_STAGE_NAME_CHARS * sizeof(WCHAR));
+    *StageNameLength = 0; *DestinationGeneration = 0;
+    RtlZeroMemory(StageIdentity, sizeof(*StageIdentity));
+    if (WriterLease == NULL || AllocationRequest->Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+        AllocationRequest->StructSize != sizeof(*AllocationRequest) ||
+        AllocationRequest->Operation != SAFEUPLOAD_OPERATION_STAGE_ALLOCATE ||
+        AllocationRequest->Reserved != SAFEUPLOAD_STAGE_BOUND_ALLOCATION_VERSION ||
+        AllocationRequest->Flags != SAFEUPLOAD_REQUEST_FLAG_STAGE_V19_REPLY ||
+        AllocationRequest->ImageNameLength != sizeof(binding) || AllocationRequest->RequestId == 0 ||
+        AllocationRequest->PathLength == 0 || AllocationRequest->PathLength > SAFEUPLOAD_MAX_PATH_BYTES ||
+        (AllocationRequest->PathLength & 1) != 0 ||
+        !StageProtocolBytesZero((const UCHAR *)AllocationRequest->ImageName + sizeof(binding),
+            sizeof(AllocationRequest->ImageName) - sizeof(binding)) ||
+        !StageProtocolBytesZero((const UCHAR *)AllocationRequest->Path + AllocationRequest->PathLength,
+            sizeof(AllocationRequest->Path) - AllocationRequest->PathLength)) return STATUS_INVALID_PARAMETER;
+    RtlCopyMemory(&binding, AllocationRequest->ImageName, sizeof(binding));
+    if (!StageProtocolValidBoundAllocation(&binding, AllocationRequest->Path, (USHORT)AllocationRequest->PathLength))
+        return STATUS_INVALID_PARAMETER;
+    exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG);
+    if (exchange == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    exchange->Request = *AllocationRequest;
+    status = SafeUploadStagePublicWriterReplayIdentity(WriterLease, AllocationRequest,
+        &exchange->ChannelCookie, &exchange->StageAuthorityRevision);
+    if (status == STATUS_SUCCESS)
+        status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
+    status = SafeUploadStageExchangeResult(status, answered, verdict);
+    if (NT_SUCCESS(status))
+        status = StageProtocolReadCreateReply(exchange, &binding.AllocationReservationId,
+            StageName, StageNameLength, DestinationGeneration, StageIdentity);
+    ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG);
+    return status;
+}
+
 NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *AllocationRequest,
     _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
     _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity)
@@ -1302,9 +1360,9 @@ NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *Alloc
         RtlCopyMemory(&bound, AllocationRequest->ImageName, sizeof(bound));
         if (!StageProtocolValidBoundAllocation(&bound, AllocationRequest->Path, (USHORT)AllocationRequest->PathLength))
             return STATUS_INVALID_PARAMETER;
-        /* Increment 4 must carry the original lease/channel receipt into this
-         * replay owner. A saved V18 request alone has neither authority value;
-         * never refresh them from the current connection after reply loss. */
+        /* Bound recovery uses SafeUploadStageReplayAllocationBoundV23 with
+         * its retained lease. This request-only legacy entry has no authority
+         * to recover or refresh the original channel after reply loss. */
         SafeUploadStagePublicRecordWriterRefusal(StageWriterMetadataReplayUnbound);
         return STATUS_NOT_SUPPORTED;
     } else {

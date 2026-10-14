@@ -23,6 +23,9 @@ typedef enum _SAFEUPLOAD_STAGE_WRITER_REFUSAL {
     StageWriterMetadataStale,
     StageWriterMetadataResourceLimit,
     StageWriterMetadataReplayUnbound,
+    StageWriterSeedCoherenceUnproved,
+    StageWriterSeedCompletionUnproved,
+    StageWriterSeedIoFailed,
     StageWriterRefusalCount
 } SAFEUPLOAD_STAGE_WRITER_REFUSAL;
 #define SAFEUPLOAD_STAGE_CREATE_EA_LIMIT 65536UL
@@ -115,6 +118,34 @@ NTSTATUS SafeUploadStagePublicCheckWriterSecurity(_In_ PSAFEUPLOAD_STAGE_WRITER_
     _Out_ SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason);
 VOID SafeUploadStagePublicGetWriterBinding(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
     _Out_ PSAFEUPLOAD_STAGE_PUBLIC_BINDING Binding);
+/* Local completion only: immutable allocation metadata is never overwritten.
+ * No wire layout changes. Durable service confirmation is a separate gate. */
+typedef struct _SAFEUPLOAD_STAGE_SEED_COMPLETION {
+    GUID ReceiptId, DriverInstanceId, TransferId, SnapshotId, ParentTransferId;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity, PredecessorIdentity;
+    UINT64 PredecessorGeneration;
+    UINT64 Generation, RequestId, ConnectionEpoch, AuthorityRevision;
+    UCHAR MetadataDigest[32];
+    LONGLONG Length;
+    ULONG Origin;
+    BOOLEAN Complete;
+} SAFEUPLOAD_STAGE_SEED_COMPLETION, *PSAFEUPLOAD_STAGE_SEED_COMPLETION;
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicWriterMetadataCurrent(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    _Out_ SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason);
+/* Reuses only the original metadata owner/request/channel for lost replies. */
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicWriterReplayIdentity(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    _In_ const SAFEUPLOAD_REQUEST *Request, _Out_ PVOID *Cookie, _Out_ PUINT64 Revision);
+/* Caller owns the exclusive checked backing and attach transaction. No locks
+ * across this call. Failure zeroes Completion; partial output stays private. */
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStagePublicSeedWriter(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    _In_ PFLT_INSTANCE BackingInstance, _In_ PFILE_OBJECT BackingObject,
+    _In_ ULONG BackingSectorSize, _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *Identity,
+    _In_ UINT64 Generation, _In_ PFLT_CALLBACK_DATA Data,
+    _Out_ PSAFEUPLOAD_STAGE_SEED_COMPLETION Completion,
+    _Out_ SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason);
 VOID SafeUploadStagePublicRecordWriterRefusal(_In_ SAFEUPLOAD_STAGE_WRITER_REFUSAL Reason);
 LONG64 SafeUploadStagePublicWriterRefusalCount(_In_ SAFEUPLOAD_STAGE_WRITER_REFUSAL Reason);
 PCSTR SafeUploadStagePublicWriterRefusalName(_In_ SAFEUPLOAD_STAGE_WRITER_REFUSAL Reason);
