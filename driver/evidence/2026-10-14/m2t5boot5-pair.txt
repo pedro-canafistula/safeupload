@@ -1,0 +1,4 @@
+ee7646594b60025b3748f4bca72f4520ee528b6b5e07de15a7cb1b21d720cc93  /mnt/storage/safeupload-archive/pairs/t5-fix4/SafeUpload-stage-prototype.sys
+a73024c6f3f5e7cd1bf679651c6cdb8f76f37f3521e50bee8fdd7a40580ffd1d  /mnt/storage/safeupload-archive/pairs/t5-fix4/feature-release-service-publish.zip
+HarnessCommit=9aaf5af416f09bcaf9a749f8bc43553ad163a2d4
+Mode=repro of m2t5boot4 (agent never Ready) with readiness diagnostics; same fixed pair; T4 smoke 256 verifier-from-boot; win10-debug3

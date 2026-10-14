@@ -1,0 +1,10 @@
+﻿LABEL=t5-pipe1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=cc0510515842685fcb77e655b2e9442ad2411b6b
+ARCHIVE_SHA256=6B2A75637D66D120807E03F0AC0DD0E1EBA2576F9441254B2C2BED68B14B777F
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=1 warnings=0 errors=2
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-14T07:23:55.7905983Z

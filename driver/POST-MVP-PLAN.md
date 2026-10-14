@@ -484,7 +484,15 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       plus review condition `926286ae` (PASSIVE-only token release; the DISPATCH-capable final release only asserts), [focused review](evidence/2026-10-14/t5-fix3-review-sol61.md)
       ACCEPT WITH CONDITIONS. [Four WDK builds `t5-fix4`](evidence/2026-10-14/exact-t5-fix4-summary.txt) 0/0, [imports PASS](evidence/2026-10-14/exact-t5-fix4-imports.txt),
       signed feature Debug `EE764659…CC93`; agent package `t4-v18port1` (identical agent tree).
-    - [ ] First boot of the fixed pair (T4 smoke, boot Verifier), then the raw cells in all three modes.
+    - [x] `m2t5boot4`/`5`: **the fixed pair boots** — driver loaded under boot Verifier from first load — but the agent never reported
+      Ready (exit 19; restoration PASS). Readiness diagnostics (`9aaf5af4`) showed the service running while `NotificationPipeServer`
+      logged "All pipe instances are busy" every second: a departed client was noticed only by a failed write, and with T18's quiet
+      status every status probe kept one of the 16 instances. Fixes `cc051051` (one pending read per client ends the connection) and
+      `d07925ef` (the accept loop disposes a pipe whose client left before accept; it leaked until finalization), three pipe tests.
+      [Matrix `t5-pipe4`](evidence/2026-10-14/exact-agent-matrix-t5-pipe4-summary.txt) PASS 1,489 / 2,069 per profile. Failed receipts
+      kept: `t5-pipe1` (CA2022 in a test), `t5-pipe2` (leak test, 25 s), `t5-pipe3` (`Rn012_timeout` 7,519 ms, not overlapping the
+      pipe tests; the identical rerun `t5-pipe4` passed).
+    - [ ] Rerun the first boot with the fixed agent (T4 smoke, boot Verifier), then the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
