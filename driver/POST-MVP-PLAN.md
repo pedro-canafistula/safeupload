@@ -714,6 +714,17 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       `--writer-state-status` (LastUnloadVeto) after a refused unload. The late-load hardening is deferred: runtime-Verifier rows load
       with `fltmc load` and rely on the demand-start trust path, so changing it changes the qualification method and needs its own
       decision.
+      **Batch 1 done, merged `679f0b12`** (`b75625eb` + fixes `b97d263e`; Sol 6.1 xhigh workers). First round: gate
+      [hg-batch1a](evidence/2026-10-14/harness-windows-gate-hg-batch1a.txt) PASS, kernel [t5-batch1a](evidence/2026-10-14/exact-t5-batch1a-summary.txt)
+      0/0, matrix [t5-batch1a](evidence/2026-10-14/exact-agent-matrix-t5-batch1a-summary.txt) **FAIL** (7 of 1,590 normal Debug:
+      a real hand-back recovery regression plus two new-test setup errors; receipts kept) and [pre-boot review](evidence/2026-10-14/t5-batch1-review-sol61.md)
+      REVISE (kernel alias-proof instance race with early retirement; bound-publication recovery suppressing justified cleanup;
+      veto capture with an already-running service). All fixed in one change; gate [hg-batch1b](evidence/2026-10-14/harness-windows-gate-hg-batch1b.txt)
+      PASS, [four WDK builds t5-batch1b](evidence/2026-10-14/exact-t5-batch1b-summary.txt) 0/0 with PREfast/ApiValidator,
+      [imports PASS](evidence/2026-10-14/exact-t5-batch1b-imports.txt), [matrix t5-batch1b](evidence/2026-10-14/exact-agent-matrix-t5-batch1b-summary.txt)
+      PASS at exactly 1,615 normal / 2,197 feature per profile (user + SYSTEM), no skips; [re-review](evidence/2026-10-14/t5-batch1-review2-sol61.md)
+      **ACCEPT WITH CONDITIONS** for the first Verifier boot (conditions: those gates). Builder space: 96 old build folders with host
+      receipts reclaimed first (2.9 → 12.9 GB free). Next: T4 smoke on the new win10-debug3 base, then the raw cells.
     - Batch 2: exact seal receipt, op15 typed refusal/exposure evidence/op23, stateless refusals (owner decision; no refusal
       receipts or budget), and a negotiated per-version driver-delete receipt (a restart cannot finish released-stage bookkeeping
       today: `Held=0` and a missing path are not deletion evidence). Design [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md) after
