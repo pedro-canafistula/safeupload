@@ -116,6 +116,8 @@ changes; the owner's direction below accepts the review with specific changes.
   rows) on win10-debug3 only, under the existing lab rules: serial runs, unchanged-pair hash checks, separate restoration, stop on
   repeated identical failures. No gate, threshold or assertion change is implied. AGENTS.md records the same authorization.
 - **Workers.** Claude may delegate to Codex `gpt-6-astra`, `gpt-6.1-sol` and `gpt-6-luna` at any effort up to max, with the fast tier.
+  **Superseded 2026-10-14 (owner):** use Astra only when necessary; use Sol (`gpt-6.1-sol`, any effort, fast tier) for everything
+  else. Required reviews stay Sol 6.1 xhigh.
   Reviews required by the review policy remain Sol 6.1 xhigh.
 - **Later the same day — design work in parallel.** While M2 jobs run, start the design notes for the improved lab/development workflow
   (Ansible, Packer and related tooling), T21 USB/removable and T22 SMB/UNC. Designs only: no implementation, no host-wide or
