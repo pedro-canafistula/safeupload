@@ -732,6 +732,17 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
         and no Edge update. The half criterion passes for this pair, so the 10k row is no longer held by it (it still follows the
         raw cells and runs on the final pair).
       - [ ] Raw C01–C04/B01/B02/X01 cells in ordinary, runtime-Verifier and boot-Verifier modes with this pair.
+        **Stopped: C01-approve-absent ordinary failed twice** (`m2t5od1`, diagnostic rerun `m2t5oe1` with the new failure capture
+        `a2900ee5`; receipts kept). After the after-boot phase's restoration retried the voluntary unload, the guest stayed alive
+        and idle at the lock screen ([screenshot](evidence/2026-10-14/batch-m2t5oe1-failure-screen.png)) but every SSH connection
+        was reset and the case's own output file could not be opened. [RCA](evidence/2026-10-14/m2t5od1-wedge-rca-sol61.md):
+        `StageUnloadAdmissionClosed` refuses every CREATE on the volume, unprotected opens included (`StageStream.c:9391`); a
+        refused epoch drain enters quarantine with that gate still closed and `fltmc` returns, so the whole guest stops opening
+        files. With batch 1 the unload now reaches the epoch drain, which the agent refuses because approved saves leave Released
+        entries with `StageDeleted=false` (the driver deleted the stage without a per-version receipt — batch 2's op24). A
+        second defect: the agent clears the driver IDs after an epoch ACK that a same-connection replay needs. Both fixes
+        (scope the unload admission gate to protected/staged opens; keep same-connection replay after the ACK) join batch 2;
+        the raw cells wait for batch 2.
     - Batch 2: exact seal receipt, op15 typed refusal/exposure evidence/op23, stateless refusals (owner decision; no refusal
       receipts or budget), and a negotiated per-version driver-delete receipt (a restart cannot finish released-stage bookkeeping
       today: `Held=0` and a missing path are not deletion evidence). Design [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md) after

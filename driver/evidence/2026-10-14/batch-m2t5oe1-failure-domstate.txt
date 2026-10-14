@@ -1,0 +1,18 @@
+running (booted)
+
+Id:             65
+Name:           win10-debug3
+UUID:           ffcb9530-146b-43b1-8af7-2b5cc8ede2e3
+OS Type:        hvm
+State:          running
+CPU(s):         4
+CPU time:       253.8s
+Max memory:     4194304 KiB
+Used memory:    4194304 KiB
+Persistent:     yes
+Autostart:      disable
+Autostart Once: disable
+Managed save:   no
+Security model: none
+Security DOI:   0
+
