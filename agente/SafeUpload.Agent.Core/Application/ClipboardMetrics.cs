@@ -1,6 +1,6 @@
 using SafeUpload.Agent.Core.Domain;
 
-namespace SafeUpload.Agent.Service.Clipboard;
+namespace SafeUpload.Agent.Core.Application;
 
 /// <summary>Os contadores num instante, para log e para teste.</summary>
 /// <param name="Copies">Cópias classificadas com o canal ligado.</param>

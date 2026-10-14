@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Service.Notifications;
 
@@ -8,7 +9,8 @@ namespace SafeUpload.Agent.Service.Clipboard;
 
 /// <summary>
 /// O pipe do canal de clipboard: recebe o pedido do aplicativo, entrega à
-/// <see cref="ClipboardService"/> e devolve a resposta.
+/// <see cref="ClipboardInspectionService"/>, devolve a resposta e registra o que
+/// o motor observou (<see cref="ClipboardLog"/>).
 ///
 /// <para>Uma conexão, um pedido, uma resposta, e a conexão fecha. O aplicativo
 /// pergunta numa cadência humana (uma cópia, uma troca de foco), então abrir
@@ -40,23 +42,23 @@ public sealed class ClipboardPipeServer : BackgroundService
     /// </summary>
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
 
-    private readonly ClipboardService _service;
+    private readonly ClipboardInspectionService _inspection;
     private readonly ILogger<ClipboardPipeServer> _logger;
     private readonly string _pipeName;
     private readonly TimeSpan _initialRetryDelay;
 
     /// <summary>Compõe o servidor.</summary>
-    /// <param name="service">Quem decide.</param>
+    /// <param name="inspection">Quem decide (o motor do canal, no Core).</param>
     /// <param name="logger">Log.</param>
     /// <param name="pipeName">Nome do pipe; só os testes usam outro que não o do protocolo.</param>
     /// <param name="retryDelay">Espera inicial ao falhar; só os testes usam outra que não a padrão.</param>
     public ClipboardPipeServer(
-        ClipboardService service,
+        ClipboardInspectionService inspection,
         ILogger<ClipboardPipeServer> logger,
         string? pipeName = null,
         TimeSpan? retryDelay = null)
     {
-        _service = service ?? throw new ArgumentNullException(nameof(service));
+        _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipeName = pipeName ?? ClipboardProtocol.PipeName;
         _initialRetryDelay = retryDelay ?? DefaultRetryDelay;
@@ -169,9 +171,12 @@ public sealed class ClipboardPipeServer : BackgroundService
                 return;
             }
 
-            ClipboardResponse response = await _service
+            ClipboardOutcome outcome = await _inspection
                 .HandleAsync(request, sessionId, timeout.Token)
                 .ConfigureAwait(false);
+
+            ClipboardLog.Write(_logger, outcome.Observation);
+            ClipboardResponse response = outcome.Response;
 
             // O escritor tem escopo próprio: descartá-lo só no fim do método
             // tentaria um último Flush depois de o cliente já ter fechado, e

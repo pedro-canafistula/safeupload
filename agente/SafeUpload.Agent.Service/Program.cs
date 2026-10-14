@@ -117,7 +117,16 @@ public static class Program
 #endif
         builder.Services.AddSingleton<ClipboardCopyStore>();
         builder.Services.AddSingleton<ClipboardMetrics>();
-        builder.Services.AddSingleton<ClipboardService>();
+
+        // O canal de clipboard le a politica atras de um cache: com a politica
+        // vindo do painel, cada carga e uma chamada HTTP, e com o painel fora
+        // do ar ela espera o prazo do cliente; a colagem decide em 500 ms.
+        builder.Services.AddSingleton(provider => new ClipboardInspectionService(
+            new CachedPolicyStore(
+                provider.GetRequiredService<IPolicyStore>(),
+                ClipboardInspectionService.PolicyLifetime),
+            provider.GetRequiredService<ClipboardCopyStore>(),
+            provider.GetRequiredService<ClipboardMetrics>()));
 
         // De onde vem a politica, e para onde vai a trilha (HU-10).
         //
