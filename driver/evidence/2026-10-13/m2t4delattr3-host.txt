@@ -1,0 +1,3 @@
+== run disk
+2026-10-14T01:13:00Z run-disk /var/lib/libvirt/images has 14 GB free, need 15
+LAUNCHER_EXIT=12

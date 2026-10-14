@@ -1,0 +1,7 @@
+ebdfce549ea1dc271498a5f6a38d151ac952ade9105d476b073a313eb271c851  /tmp/safeupload-t4-memory-tools/SafeUpload-stage-prototype.sys
+21f725dd4995603979cf173c43499477b45e2cc5085404afc594c5b04cd5293f  /tmp/safeupload-t4-memory-tools/feature-release-service-publish.zip
+40e184808b62d46b6ed2750b053bda271e92726da10ec46ed68fcfb287146acc  /tmp/safeupload-t4-memory-tools/SafeUpload.pdb
+715ca3ea664112470432337dbfdcd733472aa70e8a846dfc081e3a9b562eeb96  /tmp/safeupload-t4-memory-tools/debuggers.zip
+HarnessCommit=38e42a098854a2bebc68e2a27f4c6e225d2ff60a
+Mode=T4_MEMORY_TOOLS T4_DELETE_ATTRIBUTION=yes T4_HANDBACK_DIAGNOSTIC=yes cycles=256 verifier-from-boot sample_every=64 target=win10-debug3 (owner-authorized; KD row 3)
+RunDiskDir=/mnt/storage/libvirt/images (cold-storage pool; main disk had 14 GB < 15 GB minimum; m2t4delattr3 stopped at that preflight, receipt kept)

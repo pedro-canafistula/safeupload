@@ -295,7 +295,13 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
       already torn down. KD identity data was lost to a harness syntax error (MASM `&&`); voluntary unload was refused at teardown.
     - [x] Harness fix `a22a604a`; row `m2t4delattr2` (restoration PASS): activation anchors ruled out (0); contexts are live FltMgr
       stream contexts (logical = pool); deleting files with attached contexts releases them. Identity walk blocked by `!poolfind` syntax.
-    - [ ] Row 3: hand-back deletion (the growth case) with KD identity walk.
+    - [x] Harness `38e42a09`; row `m2t4delattr3b` ([result](evidence/2026-10-13/t4-delete-kd-attribution-result.md#row-3--m2t4delattr3b-harness-38e42a09),
+      restoration PASS): growth follows any open of an already-released file (metadata-only opens +451, deletes −158), not deletes;
+      leading hypothesis NTFS stream retention below the filter. `!poolfind` under local KD cannot read segment-heap pages: no
+      further KD pool-walk rows. Run on a Storage-HDD overlay (main disk 14 GB < 15): 8 allocation replies hit NO_WAITER, one
+      cycle failed closed (`T4CyclesCompleted` 255/256) and `T4PoolEndpoint` exceeded by 32,976 B; first failure preserved.
+    - [ ] Volume-teardown discriminator (non-qualifying): repeat the open/delete sequence on a guest VHD NTFS volume and detach it;
+      released contexts mean stream retention, surviving ones a driver reference. Run overlays stay on the main disk.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
 - [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):
