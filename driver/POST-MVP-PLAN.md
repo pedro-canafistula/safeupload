@@ -35,12 +35,14 @@ respective support and qualification gates are met and the owner approves cutove
   `UpdateDefault=0`; Edge stays 154.0.4258.62; Windows 10.0.19045.2965 unchanged; clean shutdown
   ([receipt](evidence/2026-10-14/win10-debug3-base-20261014-edge-update.txt); a first attempt rolled back safely on a CRLF check).
   Fresh-run-disk baseline [BaselineClean=True](evidence/2026-10-14/base20261014verify-baseline.txt), independent restoration PASS.
-- Refusal receipts: the owner questioned keeping refusals (especially across reboot) and asked for the most elegant design. Batch 2
-  compares, simplest correct first: no receipts (a late "yes" for a request nobody waits for is already discarded through the
-  existing NO_WAITER path), receipts scoped to the driver instance (deleted when a new instance connects; bounded by in-flight
-  allocations), or the current durable receipts. The independent review decides; the budget question disappears for the first two.
-- Refusal-receipt budgets: the owner asked for a fuller explanation before deciding; until then the proposed 4,096 receipts /
-  64 MiB stay evaluation values only and activation stays held.
+- **Refusal receipts: no durable receipts (owner agreed).** A repeated allocation request only happens after the application's
+  CREATE already failed (`StageStream.c` `StageRetainAllocationReceipt`: the worker replays the request to learn whether a private
+  allocation exists, then issues exact kind-5 cleanup), so the repeat asks "is there a leftover private file to delete?", never
+  "may this save proceed?". A refusal creates nothing and is answered statelessly under the current policy; a later "yes" for that
+  dead request is deleted by the existing exact cleanup; only answers that create something are durable. This removes the refusal
+  files, the budget decision and the reboot/retirement question. Condition for the independent review: a "yes" for a dead request
+  must claim nothing that outlives its cleanup (for example a destination generation that would reorder later saves); if it does,
+  that claim gets the exact cleanup, not a receipt.
 
 **2026-10-14 — workflow rules.** Scope, gates and the qualification plan are unchanged; these rules shorten defect loops for the rest
 of M2. Classes they target: compile-blind matrix rounds (`t5-rename1`, `t5-block1`, `t5-diag1`), test mistakes found only by the matrix
@@ -716,8 +718,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     **Owner decision (2026-10-14 evening, see owner decisions):** a save whose requester exited before its file was ever exposed can
     leave its private bytes retained by the service. The narrow exception is **accepted**: proved service-owned residue with exact
     custody, charged storage, ancestry and nonpublication obligations does not block unload; the bytes stay private and nothing is
-    deleted automatically; residue without that proof still vetoes. Batch 2 implements it. Refusal-receipt budgets (proposed
-    4,096 receipts / 64 MiB for evaluation) remain an open owner decision before activation.
+    deleted automatically; residue without that proof still vetoes. Batch 2 implements it. Refusal receipts are dropped (owner
+    decision, 2026-10-14 evening), so there is no refusal budget to decide.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
