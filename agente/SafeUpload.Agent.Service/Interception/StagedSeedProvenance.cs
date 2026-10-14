@@ -12,7 +12,11 @@ public sealed record StagedSeedExportEvidence(
     StagedStageIdentity PublicSource, StagedAllocationSecurityReference Security,
     Guid EffectiveSubjectId, string EffectiveSubjectSid,
     int ProcessId, long ProcessCreationTime, string RecipientSid, uint RecipientSessionId,
-    StagedSeedAuthority ReadAuthority, StagedSeedAuthority RecipientAuthority);
+    StagedSeedAuthority ReadAuthority, StagedSeedAuthority RecipientAuthority)
+{
+    public int? ReadStatus { get; init; }
+    public int? RecipientStatus { get; init; }
+}
 
 public sealed record StagedSeedProvenance(
     int FormatVersion, StagedVersionIdentity Allocation, StagedAllocationBindingV23? AllocationBinding,
@@ -45,6 +49,10 @@ public sealed record StagedSeedProvenance(
 
     internal void Validate(TransferJournalEntry entry)
     {
+        // Bound allocations cannot opt out of the captured intent by erasing
+        // the optional JSON fields. Legacy (unbound) evidence remains readable.
+        if (entry.BoundAllocation is not null && (AllocationBinding is null || entry.AllocationSecurity is null))
+            throw new InvalidDataException("writer_metadata_seed_provenance_missing");
         if (FormatVersion != 1 || Allocation is null || (Allocation.TransferId != entry.Transfer.TransferId || Allocation.StageIdentity != entry.StageIdentity ||
                 Allocation.DestinationGeneration <= 0 || Allocation.DestinationGeneration > entry.DestinationGeneration) ||
             !Enum.IsDefined(Origin) ||
@@ -94,6 +102,13 @@ internal static class StagedSeedExport
         if (seed is null) return entry.BoundAllocation is not null ? Unproven :
             IsFailure(entry.HandbackFailureReason) ? entry.HandbackFailureReason : null;
         if (entry.BoundAllocation is not null && entry.SeedCompletion is null) return Unproven;
+        // This guard also serves callers holding an in-memory entry. Never let
+        // a contradictory/missing bound intent reach the no-prior-bytes fast path.
+        if (entry.BoundAllocation is not null)
+        {
+            try { seed.Validate(entry); }
+            catch (InvalidDataException) { return Unproven; }
+        }
         if (seed.InheritedRestriction is { } restriction) return restriction;
         if (!seed.ContainsPriorBytes) return null;
         if (seed.Allocation != StagedTransferJournal.VersionIdentity(entry)) return Unproven;

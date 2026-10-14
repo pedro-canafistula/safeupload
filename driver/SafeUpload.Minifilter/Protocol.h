@@ -446,6 +446,7 @@ typedef struct _SAFEUPLOAD_STAGE_CREATE_REPLY_V19 {
 #define SAFEUPLOAD_STAGE_DISPOSE_CLEANED_UP ((UINT32) 2)  /* blocked or justified; the stage file is deleted */
 
 #if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+#define SAFEUPLOAD_CONTROL_WRITER_METADATA ((UINT32) 34) /* read-only feature extension 27 */
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE       ((UINT32) 5)
 /*
  *  ENABLE carries its options in SAFEUPLOAD_CONTROL.Reserved. Section

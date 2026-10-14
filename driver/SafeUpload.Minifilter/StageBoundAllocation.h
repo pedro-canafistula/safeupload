@@ -4,7 +4,8 @@
 
 #if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
 /* Reserved for the integrated identity-keyed pipeline. Defining its wire
- * contract does not advertise this capability or enable a CREATE producer. */
+ * contract does not advertise this capability or enable a CREATE producer.
+ * Writer metadata is carried separately by control 34; never grow this payload. */
 #define SAFEUPLOAD_STAGE_BOUND_ALLOCATION_VERSION ((UINT32) 23)
 #define SAFEUPLOAD_STAGE_CAPABILITY_BOUND_DESTINATION_HEAD ((UINT32) 0x00000040)
 

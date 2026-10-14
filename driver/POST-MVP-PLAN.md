@@ -429,7 +429,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     REVISE, [re-review](evidence/2026-10-13/t5-carrier-rereview-sol61.md) ACCEPT WITH CONDITIONS; gated V23 selection and kernel seed copy with
     `seed_coherence_unproved` / `seed_completion_unproved` refusals. Kernel builds `t5-inc2a/b` and `t5-inc3a` failed on PREfast
     C6001/SAL classes (receipts kept, fixed). Increment 2 landed after [four WDK builds `t5-inc2c`](evidence/2026-10-13/exact-t5-inc2c-summary.txt)
-    at 0/0; increments 3–4 await their gates and matrices.
+    at 0/0. Increment 3 landed after [four WDK builds `t5-inc3d`](evidence/2026-10-13/exact-t5-inc3d-summary.txt) at 0/0 and
+    [matrix `t5-inc3d`](evidence/2026-10-13/exact-agent-matrix-t5-inc3d-summary.txt) PASS; increments 4–8 drafted and in verification.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

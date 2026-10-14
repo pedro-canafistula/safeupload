@@ -878,3 +878,137 @@ all physical commits and startup/last-close recovery are connected. Kernel lifet
 the first revised boot. Required controls include lost prepare/result/ACK, canceled before forwarding, native identity mismatch,
 service reconnect, stale map revision, original ShareAccess=0, duplicate handles, last cleanup, unchanged accepted results and both
 deterministic delete orders, followed by the real three-mode Notepad/raw-observer/restoration gate.
+
+### Writer metadata carrier — increment 3 design
+
+This is a **read-only prerequisite**, not admission or a publication permit. Control 34, extension 27, is added only in feature
+builds; V18 (1192 bytes), V23 (124 bytes), V26 and all existing enum values remain unchanged. Live CREATE still selects V19 and
+bound readiness stays NotReady. Increment 4 must supply the live reservation/lease integration, post-RPC recapture and coherent
+kernel seed completion. Construction assignment and read/export checks still have no qualified producer.
+
+All integers are little endian, GUIDs use the existing Windows byte layout, packing is 4. A 136-byte request contains core Control
+(16), extension/phase (8), driver GUID (16), reservation GUID (16), original allocation RequestId (8), connection epoch (8), authority
+revision (8), snapshot GUID (16), byte offset/reserved-zero (8), SHA-256 (32). Phases: Discover=1, Read=2, Confirm=3. Discover requires
+nonzero driver/reservation/request and zero epoch/revision/snapshot/offset/digest. It returns only the snapshot header. Read and
+Confirm pin every returned value; Read starts at zero and advances by exactly 4096 bytes except the last page; Confirm uses the exact
+total length and returns no bytes. No new journal state or mutating control is added.
+
+The fixed 4232-byte reply is a 136-byte header plus 4096 bytes: extension/size/phase/result (16), driver/reservation (32), request/
+epoch/revision (24), snapshot (16), offset/total/count/flags (16), SHA-256 (32). Result Captured=1 describes bytes, not authority;
+Unavailable=2, Stale=3 and NotReady=4 are defined refusals; native transport failures return no usable page and are also refusals. Unused payload bytes and all reserved fields are zero. Captured flags are
+ConstructionPresent=1, StoredPresent=2, AncestorsComplete=4, IdentityComplete=8, AssignmentProven=16. A fully fetched snapshot without
+all five flags cannot enter allocation. The increment-2 producer supplies only captured facts, including an empty construction slot
+and assignment revision zero; this intentionally fails the service's complete-authority prerequisite.
+
+The immutable blob has a 1024-byte format-1 header, then separate original binary construction and stored descriptors, each bounded
+at 131228 bytes (total <=263480, <=65 pages). Header offsets are: format/header size 0/4; exact V23 binding 8; canonical leaf (512
+zero-tailed UTF-16 bytes) 132; process/session/creation time 644/648/652; process SID length/data (68 bytes) 660/664; effective subject
+SID length/data 732/736; twelve uint32 original CREATE facts at 804 (desired/original/remaining/pregranted/native/staged grants,
+options, attributes, sharing, operation flags, requestor mode, prospective Information); allocation size 852; ancestor count 860;
+ancestor SHA-256 864; assignment revision/security-information 896/900; construction/stored lengths 904/908; seed origin 912
+(None=0, ExistingPublic=1, PrivatePredecessor=2); read/export outcomes 916/920 (Unproven=0 only in this increment); independent native
+status slots 924/928 (STATUS_NOT_SUPPORTED); effective-subject snapshot GUID 932; reserved zeros 948..1023. No token, pointer or
+handle is exported. Process identity is not substituted for the effective subject or an eventual recipient.
+
+The ancestor commitment hashes an explicit, padding-free ordered encoding of the captured mount GUID, uint32 anchor count, normalized name uint16 length/bytes,
+original lookup uint16 length/bytes and every anchor: full volume/128-bit ID, attributes/reparse tag, four timestamps/attributes, allocation
+size/EOF/link count/delete-pending/directory/case, component offset/length, security length and exact complete descriptor. Integers
+are encoded in little endian at their declared widths; directory/delete-pending/case are uint32, offsets/lengths uint16, all other
+scalar widths follow their Windows declarations. Complete objects remain lease-owned. Hashes commit to captured facts; neither
+hash equality nor the immutable snapshot replaces post-RPC recapture or caller lifetime checks.
+
+One immutable blob belongs to one referenced writer lease and one allocation request. No global metadata map, worker or independent
+lease reference is created. The existing 128 writer factory/backend bound bounds simultaneous blobs at <33 MiB, in addition to
+increment-2 capture bounds. Preparation holds backend operation rundown from before serialization through publication, serializes per lease, validates the entire binding against captured identities and stores
+exact cookie/epoch/revision/request. Recheck Closing and the channel tuple before publishing; a second preparation refuses before
+allocating another blob, so transient preparation is included in the bound. A global four-reader kernel limit applies to every
+authenticated control caller, independently of the managed client's limit. Under the existing list lock, reserve a reader slot
+before lease lookup/reference, operation rundown or page allocation. Saturation returns STATUS_INSUFFICIENT_RESOURCES with
+`writer_metadata_resource_limit` and zero returned bytes. Closed/mandatory teardown admission returns STATUS_FLT_DELETING_OBJECT
+with `writer_metadata_stale`. Page lookup then pins the lease under that lock and acquires operation rundown outside it;
+allocation/hash/copy/waits run at PASSIVE outside that lock. Close revokes lookups, drains local operations, and frees the blob while
+closing the lease's handles. The single control exit frees the page, releases operation and lookup references, then returns the slot
+on success and every failure/exception path after reservation. Four pages total at most 16928 bytes, with at most four reader operation
+pins. A notification event, cleared on the first reservation and set on the last release under the list lock, tracks local drain.
+Readers participate in voluntary veto alongside backends/factories; mandatory close closes admission under that same lock, waits
+outside it for readers to drain, then performs the existing factory/backend rundown. It requires no service ACK and cannot admit new
+readers during that wait. The count/event are kernel-local ownership additions; no wire field, exported API or service receipt changes.
+Disconnect/revision change revokes reads; a new connection cannot adopt or refresh an old snapshot. Candidate retirement remains the
+existing allocation owner's obligation, even if metadata was fetched or a reply lost.
+
+Communication requires the current port process, agent-service SID and authenticated connection. A StageProtocol helper samples
+cookie/epoch/revision under the existing state lock; every page rechecks that tuple before and after copying. Preparation and the
+V23 helper pin that same tuple for sending. Discovery does not negotiate permission: recognizing this extension only establishes
+transport compatibility, and allocation additionally requires complete metadata and all existing head/recovery capabilities.
+
+The client holds one send lease for discovery, ordered bounded reads and the final unchanged Confirm. It rejects wrong request,
+reservation, driver, epoch, revision, snapshot, phase, offset/count/total, digest, flags, nonzero tails and incomplete replay before
+returning an immutable value. A duplicate/out-of-order page is invalid; a whole exact replay is permitted only for the same immutable
+durable reservation. Reusing that reservation with changed metadata, request or connection is refused, including after service restart.
+At most four client fetches are admitted; excess callers fail closed before allocating snapshot storage.
+
+The service checks exact V23/caller/descriptor/provenance binding at dispatcher, allocator and journal boundaries. The existing
+`.security` file gains storage format 2: its original 112-byte header and canonical separate descriptors are retained, offset 72
+records the appended metadata envelope length, offset 76 remains zero. The envelope contains the captured reply header and complete
+original blob, preserving its digest and noncanonical original descriptor bytes independently of canonical storage. Format 1 remains
+decodable for historical evidence, but cannot satisfy a bound allocation or its authoritative durable read. The bounded record is <=526184 bytes.
+Require envelope/header/blob/canonical-record equality on snapshot, driver, reservation, request, connection, assignment/query
+provenance and seed intent. Canonical descriptors must equal canonicalization of their corresponding original blob descriptor;
+complete flags cannot coexist with empty construction, zero assignment revision or an incomplete all-parts query mask.
+Flush this immutable binary record before committing its reference in the existing manifest. Missing/tampered/truncated dependencies
+retain the private stage and fail replay; recovery never refreshes authority from SYSTEM. Seed origin comes from disposition and
+exact predecessor/public source; captured effective-subject/read/export slots feed option-1 evidence as **Unproven**, never Allowed.
+A seed completion receipt remains separate and does not rewrite allocation authority. A pre-provenance bound manifest with the entire
+security/provenance/completion tuple absent remains readable for conservative recovery: it is Unproven, cannot be recopied/exported
+or registered for justification, and retains its backing. This compatibility does not admit a refreshed allocation replay or a new
+bound allocation using that legacy predecessor. Once any member of that tuple exists, every bound manifest read requires the security
+record and provenance with its allocation binding; partial erasure remains invalid. Captured origin is compared even when JSON source fields have been erased. A public
+seed must equal the provenance derived from its original captured binding/security/evidence. A preserving descendant must name the
+captured predecessor ID and the predecessor's exact generation/stage identity, driver and destination, and retain precisely its source
+fields, evidence, prior-byte flag and export restriction. The journal validates the complete predecessor chain iteratively; strictly
+decreasing allocation generations exclude cycles with constant ancestry memory. Missing ancestors become an invalid committed
+dependency, never an absent allocation eligible for orphan deletion. A changed predecessor version is held, not refreshed. Bound scan
+entries bypass the manifest-only cache because a child's own timestamp cannot validate its ancestors. Original allocation generations
+survive rename only with the retained matching namespace tombstone. Erasure/contradiction refuses replay, export and cleanup while
+retaining backing; the in-memory export guard also treats missing/contradictory bound intent as Unproven before its empty-source path.
+Named refusals include `writer_metadata_seed_provenance_missing`, `writer_metadata_seed_intent_mismatch`,
+`writer_metadata_seed_lineage_mismatch` and `writer_metadata_seed_predecessor_missing`.
+Required controls cover packing, all page
+bindings/bounds, cancellation/disconnect, exact replay, restart, missing/tampered storage and unproved export behavior. Static builds,
+independent design review and the later integrated pre-boot lifetime review are distinct gates; no VM run is authorized here.
+
+
+Review status: the owner's independent **Sol 6.1 xhigh** review at `e7981708` returned **REVISE** for provenance erasure and unbounded
+kernel readers. The earlier implementation/design self-review is not independent acceptance. The revisions above address those two
+findings in source; compiler matrices, execution of the new controls and integrated pre-boot review remain outstanding.
+CNG hashing uses the documented PASSIVE kernel API and feature-only Cng.lib dependency
+([Microsoft API contract](https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptopenalgorithmprovider)).
+
+Implementation boundary: `SafeUploadStageAllocateBoundV23` now requires a writer lease, prepares its exact request carrier and
+checks the still-unproved construction gate before any send. It remains uncalled from live CREATE. Same-connection policy/authentication
+changes increment authority revision and revoke old carrier reads. The ancestor digest includes the anchor count and explicit uint16
+name lengths. Primary-process SID/session are captured as a recipient candidate separately from the retained effective subject;
+read/export outcomes and their independent status slots remain Unproven/STATUS_NOT_SUPPORTED. Format-2 journal reads also compare
+source provenance with those captured slots, preventing an edited JSON outcome from promoting it to Allowed.
+
+The retained-request-only `SafeUploadStageReplayAllocationV19` entry point explicitly refuses V23 with
+`writer_metadata_replay_unbound`: that V18-sized saved request cannot retain the original cookie/revision/lease. Increment 4 must
+carry the original owner receipt into same-channel replay and exact candidate retirement, never substitute a fresh connection tuple.
+V19 replay is unchanged. The service already supports exact immutable metadata replay and rejects refreshed request/connection values.
+Recovery validates inherited source evidence using its captured original author; a descendant's changed recipient remains subject to
+the option-1 export guard. A namespace rename can retain the original security record through its exact recorded original binding and
+namespace tombstone; reading that history grants no publication authority at the new binding, whose permit remains unimplemented.
+
+Static handoff checks in this checkout: `git diff --check` and independent Windows pack-4 size/offset arithmetic passed (136-byte
+request/header, 4232-byte page, 1024-byte facts, 65-page maximum, 526184-byte storage ceiling). Added component controls cover the
+client transport, page tuple/order/tails/bounds/cancellation, contradictory facts and descriptor storage, allocator/journal missing
+metadata, exact replay/restart, changed connection/request/snapshot, missing/tampered dependencies, original-versus-descendant author
+and retained rename authority. Revision regressions additionally cover erasure in public roots and preserving children/grandchildren,
+forged/missing predecessors, read/replay/export/cleanup refusal with retained bytes/security, and the common normal/feature export
+guard. `driver/SafeUpload.Minifilter/tests/test_writer_metadata_readers.py` compiles extracted production control/admission/close
+bodies against portable OS stubs; its controls exercise four simultaneous native readers, excess refusal, fault cleanup, voluntary
+veto, mandatory drain and close retry. This runner is an unexecuted mocked component control, not WDK/SEH/runtime qualification.
+Existing source-only fixtures now supply synthetic complete metadata explicitly; they are not a native
+constructor. No compiler, agent test runner, WDK build, VM or commit was run here. The orchestrator still owns all four WDK/PREfast/
+ApiValidator builds and the full normal/feature Debug/Release agent matrix. Source inspection is not independent review acceptance;
+full integrated lifetime/lock-order/retirement review before boot and runtime qualification remain outstanding.

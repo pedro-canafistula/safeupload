@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
+using SafeUpload.Agent.Minifilter;
 
 namespace SafeUpload.Agent.Service.Interception;
 
@@ -8,13 +9,15 @@ namespace SafeUpload.Agent.Service.Interception;
 // The checked driver producer must establish native assignment and completeness.
 // Construction and expected stored form are separate: never infer one by masking
 // flags from the other, or by reparsing through SDDL.
-public sealed record StagedAllocationSecuritySnapshot(
+public sealed partial record StagedAllocationSecuritySnapshot(
     Guid SnapshotId, Guid DriverInstanceId, Guid ReservationId,
     uint AssignmentRevision, uint SecurityInformation,
     string BindingSha256Hex, string ConstructionHex, string ExpectedStoredHex)
 {
     internal const int HeaderBytes = 112;
-    internal const int MaximumBytes = HeaderBytes + 2 * StagedSecurityDescriptor.MaximumBytes;
+    internal const int MaximumBytes = HeaderBytes + 2 * StagedSecurityDescriptor.MaximumBytes + WriterMetadataV27.MaximumEnvelopeBytes;
+    // Null only on historical format-1 storage. New bound allocations require format 2.
+    public string? WriterMetadataEnvelopeHex { get; init; }
 
     internal void RequireBinding(StagedAllocationBindingV23 binding)
     {
@@ -33,6 +36,7 @@ public sealed record StagedAllocationSecuritySnapshot(
             throw new InvalidDataException("The security snapshot has incomplete identity or provenance.");
         _ = ReadCanonical(ConstructionHex);
         _ = ReadCanonical(ExpectedStoredHex);
+        if (WriterMetadataEnvelopeHex is not null) ValidateWriterMetadata();
     }
 
     internal static StagedAllocationSecuritySnapshot Create(Guid snapshot, StagedAllocationBindingV23 binding,
@@ -46,8 +50,9 @@ public sealed record StagedAllocationSecuritySnapshot(
     {
         Validate();
         byte[] construction = ReadCanonical(ConstructionHex), stored = ReadCanonical(ExpectedStoredHex);
-        byte[] bytes = new byte[checked(HeaderBytes + construction.Length + stored.Length)];
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 1); // storage format, not a wire revision
+        byte[] metadata = WriterMetadataEnvelopeHex is null ? [] : Convert.FromHexString(WriterMetadataEnvelopeHex);
+        byte[] bytes = new byte[checked(HeaderBytes + construction.Length + stored.Length + metadata.Length)];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, metadata.Length == 0 ? 1u : 2u); // storage format, not a wire revision
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), HeaderBytes);
         SnapshotId.TryWriteBytes(bytes.AsSpan(8, 16));
         DriverInstanceId.TryWriteBytes(bytes.AsSpan(24, 16));
@@ -56,25 +61,32 @@ public sealed record StagedAllocationSecuritySnapshot(
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(60), SecurityInformation);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(64), checked((uint)construction.Length));
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(68), checked((uint)stored.Length));
-        // 72..79 are reserved zero. There is no variable or untrusted filename.
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(72), (uint)metadata.Length);
+        // 76..79 remain reserved zero. There is no variable or untrusted filename.
         Convert.FromHexString(BindingSha256Hex).CopyTo(bytes, 80);
         construction.CopyTo(bytes, HeaderBytes);
         stored.CopyTo(bytes, HeaderBytes + construction.Length);
+        metadata.CopyTo(bytes, HeaderBytes + construction.Length + stored.Length);
         return bytes;
     }
 
     internal static StagedAllocationSecuritySnapshot Decode(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length < HeaderBytes || bytes.Length > MaximumBytes ||
-            BinaryPrimitives.ReadUInt32LittleEndian(bytes) != 1 ||
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes) is not (1 or 2) ||
             BinaryPrimitives.ReadUInt32LittleEndian(bytes[4..]) != HeaderBytes ||
-            BinaryPrimitives.ReadUInt64LittleEndian(bytes[72..]) != 0)
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes[76..]) != 0)
             throw new InvalidDataException("Invalid security snapshot framing.");
+        uint format = BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+        uint metadata = BinaryPrimitives.ReadUInt32LittleEndian(bytes[72..]);
+        if ((format == 1 && metadata != 0) || (format == 2 && metadata < WriterMetadataV27.HeaderBytes + WriterMetadataV27.FactsBytes) ||
+            metadata > WriterMetadataV27.MaximumEnvelopeBytes)
+            throw new InvalidDataException("Invalid writer metadata storage framing.");
         uint construction = BinaryPrimitives.ReadUInt32LittleEndian(bytes[64..]);
         uint stored = BinaryPrimitives.ReadUInt32LittleEndian(bytes[68..]);
         if (construction < 20 || stored < 20 || construction > StagedSecurityDescriptor.MaximumBytes ||
             stored > StagedSecurityDescriptor.MaximumBytes ||
-            (ulong)HeaderBytes + construction + stored != (ulong)bytes.Length)
+            (ulong)HeaderBytes + construction + stored + metadata != (ulong)bytes.Length)
             throw new InvalidDataException("Invalid security snapshot lengths or trailing data.");
         var snapshot = new StagedAllocationSecuritySnapshot(new(bytes.Slice(8, 16)),
             new(bytes.Slice(24, 16)), new(bytes.Slice(40, 16)),
@@ -82,7 +94,9 @@ public sealed record StagedAllocationSecuritySnapshot(
             BinaryPrimitives.ReadUInt32LittleEndian(bytes[60..]),
             Convert.ToHexString(bytes.Slice(80, 32)),
             Convert.ToHexString(bytes.Slice(HeaderBytes, (int)construction)),
-            Convert.ToHexString(bytes.Slice(HeaderBytes + (int)construction, (int)stored)));
+            Convert.ToHexString(bytes.Slice(HeaderBytes + (int)construction, (int)stored)))
+        { WriterMetadataEnvelopeHex = metadata == 0 ? null : Convert.ToHexString(bytes.Slice(
+            HeaderBytes + (int)construction + (int)stored, (int)metadata)) };
         snapshot.Validate();
         return snapshot;
     }

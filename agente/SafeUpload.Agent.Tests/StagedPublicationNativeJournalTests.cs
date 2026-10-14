@@ -38,7 +38,7 @@ public sealed class StagedPublicationNativeJournalTests : IDisposable
         using var identity = WindowsIdentity.GetCurrent(); using var process = Process.GetCurrentProcess();
         var allocated = await new StagedTransferAllocator(Stages, journal).AllocateV23Async(Path.Combine(Parent, "document.txt"),
             DestinationKind.Cloud, process.ProcessName, process.Id, checked((uint)process.SessionId), identity.User!.Value,
-            process.StartTime.ToFileTimeUtc(), binding, default);
+            process.StartTime.ToFileTimeUtc(), binding, default, WriterMetadataFixture.Current(binding));
         await File.WriteAllBytesAsync(allocated.Transfer.StagePath, new byte[37]);
         var version = new StagedVersionIdentity(allocated.Transfer.TransferId, allocated.DestinationGeneration, allocated.StageIdentity);
         foreach (var (operation, request) in new[] { (12u, 701ul), (13u, 702ul), (15u, 703ul), (19u, 704ul) })

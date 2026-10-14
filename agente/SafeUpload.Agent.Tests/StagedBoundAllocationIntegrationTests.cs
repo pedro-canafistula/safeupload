@@ -38,13 +38,63 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
     }
 
     private Task<StagedAllocationReply> Allocate(StagedTransferAllocator allocator,
-        StagedAllocationBindingV23 binding, string? locator = null, StagedAllocationSecuritySnapshot? security = null)
+        StagedAllocationBindingV23 binding, string? locator = null, StagedAllocationSecuritySnapshot? security = null, bool metadataMissing = false)
     {
         using var identity = WindowsIdentity.GetCurrent();
         using var process = Process.GetCurrentProcess();
         return allocator.AllocateV23Async(locator ?? Path.Combine(Parent, binding.CanonicalLeaf), DestinationKind.Cloud,
             process.ProcessName, process.Id, checked((uint)process.SessionId), identity.User!.Value,
-            process.StartTime.ToFileTimeUtc(), binding, CancellationToken.None, security);
+            process.StartTime.ToFileTimeUtc(), binding, CancellationToken.None, metadataMissing ? null : security ?? WriterMetadataFixture.Current(binding));
+    }
+
+    [Fact]
+    public async Task Missing_carrier_is_refused_before_backing_or_durable_claim()
+    {
+        var binding = Binding("missing.txt", 2, false);
+        var journal = new StagedTransferJournal(Journal);
+        await Assert.ThrowsAsync<InvalidDataException>(() => Allocate(new(Stages, journal), binding, metadataMissing: true));
+        Assert.Null(await journal.FindBoundAllocationAsync(binding.ReservationId, CancellationToken.None));
+        Assert.Empty(Directory.EnumerateFiles(Stages));
+        var historical = StagedAllocationSecuritySnapshot.Create(Guid.NewGuid(), binding, 1, 0x10000,
+            SecuritySnapshotFixture.Descriptor(), SecuritySnapshotFixture.Descriptor());
+        await Assert.ThrowsAsync<InvalidDataException>(() => Allocate(new(Stages, journal), binding, security: historical));
+        Assert.Empty(Directory.EnumerateFiles(Stages));
+    }
+
+    [Theory]
+    [InlineData(48)] // original allocation RequestId
+    [InlineData(56)] // connection epoch
+    [InlineData(64)] // authority revision
+    [InlineData(72)] // snapshot
+    public async Task Restart_cannot_refresh_immutable_carrier_for_a_committed_reservation(int changedField)
+    {
+        var binding = Binding("restart.txt", 2, false);
+        var security = WriterMetadataFixture.Current(binding);
+        var journal = new StagedTransferJournal(Journal);
+        var first = await Allocate(new(Stages, journal), binding, security: security);
+        byte[] envelope = Convert.FromHexString(security.WriterMetadataEnvelopeHex!); envelope[changedField] ^= 1;
+        var changed = StagedAllocationSecuritySnapshot.FromWriterMetadata(
+            SafeUpload.Agent.Minifilter.WriterMetadataV27.DecodeEnvelope(envelope));
+        var reopened = new StagedTransferJournal(Journal);
+        await Assert.ThrowsAsync<IOException>(() => Allocate(new(Stages, reopened), binding, security: changed));
+        Assert.Equal(security, await reopened.ReadBoundAllocationSecurityAsync(binding.ReservationId, CancellationToken.None));
+        Assert.True(File.Exists(first.Transfer.StagePath));
+    }
+
+    [Fact]
+    public async Task Durable_captured_unproven_authority_cannot_be_rewritten_to_allow_export()
+    {
+        Directory.CreateDirectory(Parent); File.WriteAllText(Path.Combine(Parent, "authority.txt"), "old bytes");
+        var binding = Binding("authority.txt", 1, true); var journal = new StagedTransferJournal(Journal);
+        var reply = await Allocate(new(Stages, journal), binding);
+        var entry = await journal.ReadAsync(binding.ReservationId, CancellationToken.None);
+        var seed = entry.SeedProvenance!;
+        var proof = seed.ExportEvidence!;
+        await SeedProvenanceFixture.WriteAsync(Journal, entry with { SeedProvenance = seed with
+        { ExportEvidence = proof with { ReadAuthority = StagedSeedAuthority.Allowed, RecipientAuthority = StagedSeedAuthority.Allowed } } });
+        await Assert.ThrowsAsync<InvalidDataException>(() => new StagedTransferJournal(Journal).ReadAsync(
+            binding.ReservationId, CancellationToken.None));
+        Assert.True(File.Exists(reply.Transfer.StagePath));
     }
 
     [Theory]
@@ -115,6 +165,18 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         var parent = await journal.ReadAsync(first.Transfer.TransferId, CancellationToken.None);
         if (missing) parent = parent with { SeedProvenance = null, SeedCompletion = null };
         await SaveMeasuredFixture(parent);
+        if (missing)
+        {
+            // A captured bound seed whose provenance disappeared is corrupt,
+            // not a new inheritable allocation with synthesized restrictions.
+            var preserving = binding with { ReservationId = Guid.NewGuid(), ParentTransferId = parent.Transfer.TransferId,
+                ReferenceKind = 1, Disposition = 1 };
+            await Assert.ThrowsAsync<InvalidDataException>(() => new StagedTransferJournal(Journal)
+                .ReadAsync(parent.Transfer.TransferId, CancellationToken.None));
+            await Assert.ThrowsAsync<InvalidDataException>(() => Allocate(allocator, preserving));
+            Assert.Equal("prior public bytes", File.ReadAllText(parent.Transfer.StagePath));
+            return;
+        }
         for (int i = 0; i < 2; i++)
         {
             binding = binding with { ReservationId = Guid.NewGuid(), ParentTransferId = parent.Transfer.TransferId,
@@ -168,7 +230,7 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         var binding = Binding("save.txt", 2, false);
         byte[] construction = SecuritySnapshotFixture.Descriptor(), stored = construction.ToArray();
         stored[2] &= 0xf7;
-        var snapshot = StagedAllocationSecuritySnapshot.Create(Guid.NewGuid(), binding, 1, 0x7f, construction, stored);
+        var snapshot = WriterMetadataFixture.Current(binding, construction, stored);
         var journal = new StagedTransferJournal(Journal);
         var first = await Allocate(new(Stages, journal), binding, security: snapshot);
         var entry = await journal.ReadAsync(binding.ReservationId, CancellationToken.None);
@@ -176,8 +238,8 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         var reopened = new StagedTransferJournal(Journal);
         Assert.Equal(snapshot, await reopened.ReadBoundAllocationSecurityAsync(binding.ReservationId, CancellationToken.None));
         Assert.Equal(first, await Allocate(new(Stages, reopened), binding, security: snapshot));
-        await Assert.ThrowsAsync<IOException>(() => Allocate(new(Stages, reopened), binding));
-        await Assert.ThrowsAsync<IOException>(() => Allocate(new(Stages, reopened), binding,
+        await Assert.ThrowsAsync<InvalidDataException>(() => Allocate(new(Stages, reopened), binding, metadataMissing: true));
+        await Assert.ThrowsAsync<InvalidDataException>(() => Allocate(new(Stages, reopened), binding,
             security: snapshot with { AssignmentRevision = 2 }));
         Assert.Equal(entry, await reopened.ReadAsync(binding.ReservationId, CancellationToken.None));
     }
@@ -187,7 +249,7 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
     {
         var binding = Binding("large.txt", 2, false);
         byte[] descriptor = SecuritySnapshotFixture.Descriptor(duplicateAces: 3150);
-        var snapshot = StagedAllocationSecuritySnapshot.Create(Guid.NewGuid(), binding, 1, 0x7f, descriptor, descriptor);
+        var snapshot = WriterMetadataFixture.Current(binding, descriptor, descriptor);
         Assert.True(snapshot.Encode().Length > 128 * 1024);
         var journal = new StagedTransferJournal(Journal);
         await Allocate(new(Stages, journal), binding, security: snapshot);
@@ -203,7 +265,7 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
     {
         var binding = Binding("orphan.txt", 2, false);
         byte[] descriptor = SecuritySnapshotFixture.Descriptor();
-        var snapshot = StagedAllocationSecuritySnapshot.Create(Guid.NewGuid(), binding, 1, 0x7f, descriptor, descriptor);
+        var snapshot = WriterMetadataFixture.Current(binding, descriptor, descriptor);
         var journal = new StagedTransferJournal(Journal);
         string path = Path.Combine(Journal, snapshot.SnapshotId.ToString("N") + ".security");
         File.WriteAllBytes(path, snapshot.Encode()); // Simulate flush followed by a crash before manifest commit.
@@ -222,7 +284,7 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
     {
         var binding = Binding("save.txt", 2, false);
         byte[] descriptor = SecuritySnapshotFixture.Descriptor();
-        var snapshot = StagedAllocationSecuritySnapshot.Create(Guid.NewGuid(), binding, 1, 0x7f, descriptor, descriptor);
+        var snapshot = WriterMetadataFixture.Current(binding, descriptor, descriptor);
         var journal = new StagedTransferJournal(Journal);
         var reply = await Allocate(new(Stages, journal), binding, security: snapshot);
         string path = Path.Combine(Journal, snapshot.SnapshotId.ToString("N") + ".security");
@@ -260,7 +322,12 @@ public sealed class StagedBoundAllocationIntegrationTests : IDisposable
         Assert.Equal(copied ? StagedSeedOrigin.ExistingPublic : StagedSeedOrigin.None, manifest.SeedProvenance!.Origin);
         Assert.Equal(copied, manifest.SeedProvenance.ContainsPriorBytes);
         Assert.Equal(copied ? binding.PublicTarget : null, manifest.SeedProvenance.PublicSource);
-        Assert.Null(manifest.SeedProvenance.ExportEvidence);
+        if (copied)
+        {
+            Assert.Equal(StagedSeedAuthority.Unproven, manifest.SeedProvenance.ExportEvidence!.ReadAuthority);
+            Assert.Equal(StagedSeedAuthority.Unproven, manifest.SeedProvenance.ExportEvidence.RecipientAuthority);
+        }
+        else Assert.Null(manifest.SeedProvenance.ExportEvidence);
         Assert.Equal(first.StageIdentity, manifest.SeedCompletion!.Allocation.StageIdentity);
         Assert.Equal(copied ? original.Length : 0, manifest.SeedCompletion.Length);
         Assert.Equal(copied ? "seed_export_unproven" : null, StagedSeedExport.Failure(manifest));

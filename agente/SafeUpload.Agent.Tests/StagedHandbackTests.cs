@@ -55,6 +55,21 @@ public sealed class StagedHandbackTests : IDisposable
             JustificationExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(1) };
         await SeedProvenanceFixture.WriteAsync(_journalRoot, legacy);
         var restarted = new StagedTransferJournal(_journalRoot); var broker = new StagedJustifications();
+        // All recovery readers must preserve the restricted legacy entry and
+        // continue enumerating unrelated work, including on a second scan.
+        var unrelated = CreateBlockedCandidate(restarted, "unrelated private bytes", 7, processCreationTime: 123456);
+        Assert.Equal(legacy, await restarted.ReadAsync(transfer.TransferId, CancellationToken.None));
+        Assert.Equal(legacy, await restarted.FindBoundAllocationAsync(transfer.TransferId, CancellationToken.None));
+        Assert.Null(await restarted.ReadBoundAllocationSecurityAsync(transfer.TransferId, CancellationToken.None));
+        Assert.Equal("seed_export_unproven", StagedSeedExport.Failure(legacy));
+        for (int i = 0; i < 2; ++i)
+        {
+            var pending = await restarted.ReadPendingAsync(CancellationToken.None);
+            Assert.Contains(pending, candidate => candidate.Transfer.TransferId == transfer.TransferId);
+            Assert.Contains(pending, candidate => candidate.Transfer.TransferId == unrelated.TransferId);
+            Assert.Empty(await restarted.ReadDiscardPendingAsync(CancellationToken.None));
+        }
+        await restarted.RetainInterruptedAsync(CancellationToken.None);
         var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
         await Publisher(restarted, policy, broker, copier).RecoverBlockedAsync(legacy, CancellationToken.None);
         var blocked = await restarted.ReadAsync(transfer.TransferId, CancellationToken.None);
@@ -63,6 +78,12 @@ public sealed class StagedHandbackTests : IDisposable
         Assert.Equal(0, copier.CopyCount); Assert.Null(blocked.HandbackPath); Assert.Null(blocked.HandbackLength);
         Assert.False(broker.TryConsume(transfer.TransferId.ToString(), 7, TestRequestorSid, out _));
         Assert.True(File.Exists(transfer.StagePath)); Assert.False(Directory.Exists(Path.Combine(_workspace.Root, "profile")));
+        Assert.Null(blocked.SeedProvenance); Assert.Null(blocked.AllocationSecurity); Assert.Null(blocked.SeedCompletion);
+        Assert.False((await restarted.TryBeginStageCleanupAsync(transfer.TransferId, CancellationToken.None)).StageCleanupStarted);
+        Assert.Equal(0, await restarted.CompactAsync(DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+        Assert.Equal("CPF: 529.982.247-25", File.ReadAllText(transfer.StagePath));
+        Assert.Equal("unrelated private bytes", File.ReadAllText(unrelated.StagePath));
+        Assert.Equal(blocked, await new StagedTransferJournal(_journalRoot).ReadAsync(transfer.TransferId, CancellationToken.None));
     }
 #endif
 

@@ -65,6 +65,36 @@ public sealed class StagedAllocationSecuritySnapshotTests
         Assert.Null(StagedSeedExport.Failure(entry with { BoundAllocation = null }));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Erased_bound_intent_never_takes_the_no_prior_bytes_export_path(bool eraseEntireProvenance)
+    {
+        var binding = SecuritySnapshotFixture.Binding() with { Disposition = 1, PublicTarget = new(7, 81, 82) };
+        var transfer = new StagedTransfer(binding.ReservationId, @"C:\private\stage", @"C:\public\save.txt",
+            SafeUpload.Agent.Core.Domain.DestinationKind.Cloud, "writer.exe", 42, 7)
+            { RequestorSid = "S-1-5-21-111-222-333-1000", RequestorProcessCreationTime = 123456 };
+        var security = WriterMetadataFixture.Security(binding, transfer.ProcessId, transfer.SessionId!.Value,
+            transfer.RequestorProcessCreationTime!.Value, transfer.RequestorSid!);
+        var entry = new TransferJournalEntry(transfer, TransferJournalState.Allocated, null, DateTimeOffset.UtcNow)
+        {
+            BoundAllocation = binding, DriverInstanceId = binding.DriverInstanceId,
+            AllocationSecurity = security.Reference(), DestinationGeneration = 1, StageIdentity = new(7, 21, 22)
+        };
+        entry = entry with { SeedProvenance = StagedSeedProvenance.ForBound(entry, null, security.CapturedSeedEvidence()),
+            SeedCompletion = new(StagedTransferJournal.VersionIdentity(entry), 0) };
+        security.RequireCapturedSeedProvenance(entry);
+        var erased = entry with { SeedProvenance = eraseEntireProvenance ? null : entry.SeedProvenance! with
+        {
+            Origin = StagedSeedOrigin.None, ContainsPriorBytes = false, AllocationBinding = null,
+            SourceBinding = null, PublicSource = null, SourceSecurity = null, ExportEvidence = null
+        } };
+        Assert.Equal("seed_export_unproven", StagedSeedExport.Failure(erased));
+        Assert.Throws<InvalidDataException>(() => security.RequireCapturedSeedProvenance(erased));
+        Assert.Equal(entry.AllocationSecurity, erased.AllocationSecurity);
+        Assert.Equal(entry.SeedCompletion, erased.SeedCompletion);
+    }
+
     [Fact]
     public void Offset_padding_and_shared_sid_storage_do_not_change_the_security_components()
     {

@@ -4,6 +4,11 @@
  * See T5-DELETES.md sections 4.1/4.2. */
 #include "StagePublic.h"
 #include "Stage.h"
+#include "StageWriterMetadata.h"
+#include "StageNativeRecords.h"
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+#include <bcrypt.h>
+#endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #define STAGE_PUBLIC_TAG 'pUpS'
@@ -31,6 +36,7 @@ struct _SAFEUPLOAD_STAGE_PUBLIC_BACKEND {
  * limit hit is a named refusal; no prefix of an ancestor vector is usable. */
 #define STAGE_WRITER_MAX_ANCHORS 128UL
 #define STAGE_WRITER_MAX_LEASES 128L
+#define STAGE_WRITER_MAX_METADATA_READERS 4L
 #define STAGE_WRITER_SECURITY_BUDGET (2UL * 1024 * 1024)
 #define STAGE_WRITER_STORED_SECURITY_LIMIT 65536UL
 /* Documented all-parts query (includes labels, resource attributes and CAP).
@@ -78,6 +84,13 @@ struct _SAFEUPLOAD_STAGE_WRITER_LEASE {
     ULONG ExpectedStoredSecurityBytes;
     ULONG OriginalInformation;
     ACCESS_MASK NativeGrantedAccess; /* actual retained handle; Binding projects T10 exclusions */
+    /* Immutable once MetadataPublished is set under StagePublicListLock.
+     * Reader operations protect the paged blob against local close/free. */
+    volatile LONG MetadataPreparing;
+    BOOLEAN MetadataPublished;
+    PVOID MetadataCookie;
+    SAFEUPLOAD_WRITER_METADATA_HEADER MetadataHeader;
+    PUCHAR Metadata;
     volatile LONG Revalidating; /* at most one additional bounded snapshot per lease */
 };
 C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_STAGE_WRITER_LEASE, Lifetime) == 0);
@@ -104,13 +117,18 @@ static KEVENT StagePublicDrained;
 static BOOLEAN StagePublicOpensDrained;
 static BOOLEAN StagePublicAdmissionClosed;
 static LONG StagePublicFactories;
+/* Protected by StagePublicListLock. A slot precedes every reader reference,
+ * operation rundown and page allocation, including native control callers. */
+static LONG StageWriterMetadataReaders;
+static KEVENT StageWriterMetadataReadersDrained;
 static DECLSPEC_ALIGN(8) volatile LONG64 StageWriterRefusals[StageWriterRefusalCount];
 
 static const PCSTR StageWriterReasonNames[StageWriterRefusalCount] = {
     "none", "writer_subject_unrepresentable", "native_create_security_unproved",
     "publication_security_not_equivalent", "writer_creator_grant_unproved",
     "writer_create_semantics_unproved", "writer_lookup_unproved",
-    "writer_metadata_unproved", "writer_snapshot_changed", "writer_capture_limit"
+    "writer_metadata_unproved", "writer_snapshot_changed", "writer_capture_limit",
+    "writer_metadata_binding_mismatch", "writer_metadata_stale", "writer_metadata_resource_limit", "writer_metadata_replay_unbound"
 };
 
 _Use_decl_annotations_
@@ -140,7 +158,8 @@ BOOLEAN SafeUploadStagePublicTryCloseAdmission(VOID)
 {
     BOOLEAN allowed;
     FltAcquirePushLockExclusive(&StagePublicListLock);
-    allowed = StagePublicFactories == 0 && InterlockedCompareExchange(&StagePublicBackendCount, 0, 0) == 0;
+    allowed = StagePublicFactories == 0 && StageWriterMetadataReaders == 0 &&
+        InterlockedCompareExchange(&StagePublicBackendCount, 0, 0) == 0;
     if (allowed) StagePublicAdmissionClosed = TRUE;
     FltReleasePushLock(&StagePublicListLock);
     return allowed;
@@ -183,6 +202,8 @@ VOID SafeUploadStagePublicInitialize(VOID)
     StagePublicOpensDrained = FALSE;
     StagePublicAdmissionClosed = FALSE;
     StagePublicFactories = 0;
+    StageWriterMetadataReaders = 0;
+    KeInitializeEvent(&StageWriterMetadataReadersDrained, NotificationEvent, TRUE);
     for (index = 0; index < StageWriterRefusalCount; ++index)
         InterlockedExchange64(&StageWriterRefusals[index], 0);
     KeInitializeEvent(&StagePublicDrained, NotificationEvent, TRUE);
@@ -192,6 +213,12 @@ _Use_decl_annotations_
 VOID SafeUploadStagePublicCloseAllBackends(VOID)
 {
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    /* Close reader admission under the same lock as slot reservation, then
+     * drain locally. No page/operation can survive this wait; no service ACK. */
+    FltAcquirePushLockExclusive(&StagePublicListLock);
+    StagePublicAdmissionClosed = TRUE;
+    FltReleasePushLock(&StagePublicListLock);
+    (VOID)KeWaitForSingleObject(&StageWriterMetadataReadersDrained, Executive, KernelMode, FALSE, NULL);
     /* The unload thread is the sole closer; a close retry must not start a
      * second EX rundown wait on an already completed rundown object. */
     if (!StagePublicOpensDrained) {
@@ -1079,6 +1106,10 @@ static VOID StageWriterCloseHandles(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease)
     PAGED_CODE();
     /* Operation rundown completed; no reader can still dereference these
      * metadata objects. Keep immutable evidence until the last lease owner. */
+    if (Lease->Metadata != NULL) {
+        ExFreePoolWithTag(Lease->Metadata, STAGE_PUBLIC_TAG);
+        Lease->Metadata = NULL;
+    }
     if (Lease->Snapshot != NULL) {
         for (index = 0; index < Lease->Snapshot->Count; ++index) {
             PSTAGE_WRITER_ANCHOR anchor = &Lease->Snapshot->Anchors[index];
@@ -1797,5 +1828,365 @@ NTSTATUS SafeUploadStagePublicCheckWriterSecurity(PSAFEUPLOAD_STAGE_WRITER_LEASE
         *Reason = StageWriterPublicationSecurityNotEquivalent;
     SafeUploadStagePublicRecordWriterRefusal(*Reason);
     return STATUS_NOT_SUPPORTED;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWriterHashAncestors(_In_ PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    _Out_writes_bytes_(32) PUCHAR Digest);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageWriterHashAncestors)
+#pragma alloc_text(PAGE, SafeUploadStageWriterMetadataPrepare)
+#pragma alloc_text(PAGE, SafeUploadStageWriterMetadataControl)
+#endif
+
+/* Hash fields individually: no structure padding, addresses or handle values. */
+_Use_decl_annotations_
+static NTSTATUS StageWriterHashAncestors(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease, PUCHAR Digest)
+{
+    BCRYPT_ALG_HANDLE algorithm = NULL;
+    BCRYPT_HASH_HANDLE hash = NULL;
+    NTSTATUS status;
+    ULONG index, value;
+    PSTAGE_WRITER_SNAPSHOT snapshot = Lease->Snapshot;
+    PAGED_CODE();
+    RtlZeroMemory(Digest, 32);
+    status = BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, NULL, 0);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = BCryptCreateHash(algorithm, &hash, NULL, 0, NULL, 0, 0);
+    if (!NT_SUCCESS(status)) goto Exit;
+#define HASH_BYTES(p, n) do { status = BCryptHashData(hash, (PUCHAR)(p), (ULONG)(n), 0); if (!NT_SUCCESS(status)) goto Exit; } while (0)
+#define HASH_FIELD(f) HASH_BYTES(&(f), sizeof(f))
+    HASH_FIELD(snapshot->MountId);
+    HASH_FIELD(snapshot->Count);
+    HASH_FIELD(snapshot->Name.Length);
+    HASH_BYTES(snapshot->Name.Buffer, snapshot->Name.Length);
+    HASH_FIELD(Lease->Input.LookupName.Length);
+    HASH_BYTES(Lease->Input.LookupName.Buffer, Lease->Input.LookupName.Length);
+    for (index = 0; index < snapshot->Count; ++index) {
+        PSTAGE_WRITER_ANCHOR a = &snapshot->Anchors[index];
+        HASH_FIELD(a->Identity.VolumeSerialNumber); HASH_FIELD(a->Identity.FileId);
+        HASH_FIELD(a->Attributes.FileAttributes); HASH_FIELD(a->Attributes.ReparseTag);
+        HASH_FIELD(a->Basic.CreationTime); HASH_FIELD(a->Basic.LastAccessTime);
+        HASH_FIELD(a->Basic.LastWriteTime); HASH_FIELD(a->Basic.ChangeTime); HASH_FIELD(a->Basic.FileAttributes);
+        HASH_FIELD(a->Standard.AllocationSize); HASH_FIELD(a->Standard.EndOfFile); HASH_FIELD(a->Standard.NumberOfLinks);
+        value = a->Standard.DeletePending ? 1UL : 0UL; HASH_FIELD(value);
+        value = a->Standard.Directory ? 1UL : 0UL; HASH_FIELD(value);
+        value = a->CaseSensitive ? 1UL : 0UL; HASH_FIELD(value);
+        HASH_FIELD(a->ComponentOffset); HASH_FIELD(a->ComponentBytes); HASH_FIELD(a->SecurityBytes);
+        HASH_BYTES(a->Security, a->SecurityBytes);
+    }
+    status = BCryptFinishHash(hash, Digest, 32, 0);
+#undef HASH_FIELD
+#undef HASH_BYTES
+Exit:
+    if (hash != NULL) (VOID)BCryptDestroyHash(hash);
+    if (algorithm != NULL) (VOID)BCryptCloseAlgorithmProvider(algorithm, 0);
+    return status;
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageWriterMetadataPrepare(PSAFEUPLOAD_STAGE_WRITER_LEASE Lease,
+    const SAFEUPLOAD_STAGE_ALLOCATE_V23 *Binding, const GUID *DriverInstanceId, UINT64 RequestId,
+    PVOID *Cookie, PUINT64 Revision, SAFEUPLOAD_STAGE_WRITER_REFUSAL *Reason)
+{
+    static const GUID zero = {0};
+    const SAFEUPLOAD_STAGE_PUBLIC_BINDING *b = &Lease->Lifetime.Binding;
+    SAFEUPLOAD_WRITER_METADATA_HEADER header = {0};
+    PSAFEUPLOAD_WRITER_METADATA_FACTS facts = NULL;
+    PFLT_INSTANCE instance = NULL;
+    PFILE_OBJECT object = NULL;
+    PACCESS_TOKEN primary = NULL;
+    PTOKEN_USER user = NULL;
+    PULONG session = NULL;
+    GUID driver;
+    ULONG boot, bytes;
+    PVOID cookie = NULL, checkedCookie = NULL;
+    UINT64 epoch = 0, revision = 0, checkedEpoch = 0, checkedRevision = 0;
+    BCRYPT_ALG_HANDLE algorithm = NULL;
+    BCRYPT_HASH_HANDLE hash = NULL;
+    NTSTATUS status = STATUS_INVALID_PARAMETER;
+    BOOLEAN publishing = FALSE;
+    PAGED_CODE();
+    *Cookie = NULL; *Revision = 0; *Reason = StageWriterMetadataBindingMismatch;
+    if (RequestId == 0 || Binding->Version != SAFEUPLOAD_STAGE_BOUND_ALLOCATION_VERSION ||
+        Binding->StructSize != sizeof(*Binding) || RtlEqualMemory(&Binding->AllocationReservationId, &zero, sizeof(zero)) ||
+        Binding->Disposition != (Lease->Input.Options >> 24) || Binding->ReferenceKind > 2 ||
+        ((Binding->ReferenceKind == 0) != RtlEqualMemory(&Binding->ParentTransferId, &zero, sizeof(zero))) ||
+        !RtlEqualMemory(&Binding->MountManagerVolumeId, &b->MountManagerVolumeId, sizeof(GUID)) ||
+        !RtlEqualMemory(&Binding->VolumeRootId, &b->VolumeRootIdentity.FileId, sizeof(FILE_ID_128)) ||
+        Binding->ParentIdentity.VolumeSerialNumber != b->ParentIdentity.VolumeSerialNumber ||
+        !RtlEqualMemory(&Binding->ParentIdentity.FileId, &b->ParentIdentity.FileId, sizeof(FILE_ID_128)) ||
+        !RtlEqualMemory(&Binding->PublicTargetId, &b->PublicIdentity.FileId, sizeof(FILE_ID_128)) ||
+        Binding->ParentCaseSensitive != (b->ParentCaseSensitive ? 1 : 0) ||
+        Binding->CanonicalLeafBytes != b->CanonicalLeafBytes) goto Refused;
+    status = SafeUploadStageNativeReadIdentity(&driver, &boot);
+    if (!NT_SUCCESS(status) || !RtlEqualMemory(&driver, DriverInstanceId, sizeof(GUID))) {
+        status = STATUS_REVISION_MISMATCH; goto Refused;
+    }
+    *Reason = StageWriterMetadataStale;
+    if (!SafeUploadStagePublicAcquireOperation(&Lease->Lifetime, &instance, &object)) {
+        status = STATUS_FLT_DELETING_OBJECT; goto Refused;
+    }
+    if (InterlockedCompareExchange(&Lease->MetadataPreparing, 1, 0) != 0) {
+        status = STATUS_DEVICE_BUSY; goto Exit;
+    }
+    publishing = TRUE;
+    if (Lease->MetadataPublished || !StageWriterProcessRunning(Lease->ProcessHandle) ||
+        !SafeUploadStageProtocolMetadataIdentity(NULL, &cookie, &epoch, &revision)) {
+        status = STATUS_INVALID_DEVICE_STATE; goto Exit;
+    }
+    *Reason = StageWriterMetadataResourceLimit;
+    if (Lease->ConstructionSecurityBytes > SAFEUPLOAD_STAGE_CREATE_SECURITY_LIMIT ||
+        Lease->ExpectedStoredSecurityBytes > SAFEUPLOAD_STAGE_CREATE_SECURITY_LIMIT ||
+        Lease->Snapshot == NULL || Lease->Snapshot->Count < 2 || Lease->Snapshot->Count > STAGE_WRITER_MAX_ANCHORS) {
+        status = STATUS_QUOTA_EXCEEDED; goto Exit;
+    }
+    bytes = (ULONG)sizeof(*facts) + Lease->ConstructionSecurityBytes + Lease->ExpectedStoredSecurityBytes;
+    facts = ExAllocatePool2(POOL_FLAG_PAGED, bytes, STAGE_PUBLIC_TAG);
+    if (facts == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    *Reason = StageWriterMetadataUnproved;
+    facts->Format = 1; facts->HeaderBytes = sizeof(*facts); facts->Binding = *Binding;
+    RtlCopyMemory(facts->CanonicalLeaf, b->CanonicalLeaf, b->CanonicalLeafBytes);
+    facts->ProcessId = b->CallerProcessId; facts->ProcessCreationTime = b->CallerProcessCreationTime;
+    /* Recipient candidate is process-primary; effective subject stays separate.
+     * Neither field is affirmative export authority. */
+    primary = PsReferencePrimaryToken(Lease->Process);
+    status = SeQueryInformationToken(primary, TokenUser, (PVOID *)&user);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (user == NULL || !RtlValidSid(user->User.Sid) || RtlLengthSid(user->User.Sid) > sizeof(facts->ProcessSid)) {
+        status = STATUS_INVALID_SID; goto Exit;
+    }
+    facts->ProcessSidBytes = RtlLengthSid(user->User.Sid);
+    status = RtlCopySid(sizeof(facts->ProcessSid), facts->ProcessSid, user->User.Sid);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = SeQueryInformationToken(primary, TokenSessionId, (PVOID *)&session);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (session == NULL) { status = STATUS_INVALID_BUFFER_SIZE; goto Exit; }
+    facts->SessionId = *session;
+    facts->SubjectSidBytes = b->CallerSidBytes;
+    RtlCopyMemory(facts->SubjectSid, b->CallerSid, b->CallerSidBytes);
+    facts->DesiredAccess = Lease->Input.DesiredAccess;
+    facts->OriginalDesiredAccess = Lease->Input.OriginalDesiredAccess;
+    facts->RemainingDesiredAccess = Lease->Input.RemainingDesiredAccess;
+    facts->PreviouslyGrantedAccess = Lease->Input.PreviouslyGrantedAccess;
+    facts->NativeGrantedAccess = Lease->NativeGrantedAccess; facts->StagedGrantedAccess = b->GrantedAccess;
+    facts->Options = Lease->Input.Options; facts->Attributes = Lease->Input.FileAttributes;
+    facts->ShareAccess = Lease->Input.ShareAccess; facts->OperationFlags = Lease->Input.OperationFlags;
+    facts->RequestorMode = Lease->Input.RequestorMode; facts->OriginalInformation = Lease->OriginalInformation;
+    facts->AllocationSize = Lease->Input.AllocationSize.QuadPart;
+    facts->AncestorCount = Lease->Snapshot->Count;
+    status = StageWriterHashAncestors(Lease, facts->AncestorDigest);
+    if (!NT_SUCCESS(status)) goto Exit;
+    facts->SecurityInformation = STAGE_WRITER_SECURITY_INFORMATION;
+    facts->ConstructionBytes = Lease->ConstructionSecurityBytes;
+    facts->StoredBytes = Lease->ExpectedStoredSecurityBytes;
+    facts->SeedOrigin = Binding->Disposition == FILE_OPEN || Binding->Disposition == FILE_OPEN_IF ?
+        (Binding->ReferenceKind == SAFEUPLOAD_STAGE_ALLOC_REFERENCE_FOLLOWUP ? 2UL : 1UL) : 0UL;
+    facts->ReadStatus = STATUS_NOT_SUPPORTED; facts->ExportStatus = STATUS_NOT_SUPPORTED;
+    status = ExUuidCreate(&facts->EffectiveSubjectId);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (facts->ConstructionBytes != 0)
+        RtlCopyMemory((PUCHAR)facts + sizeof(*facts), Lease->ConstructionSecurity, facts->ConstructionBytes);
+    if (facts->StoredBytes != 0)
+        RtlCopyMemory((PUCHAR)facts + sizeof(*facts) + facts->ConstructionBytes,
+            Lease->ExpectedStoredSecurity, facts->StoredBytes);
+    header.ExtensionVersion = SAFEUPLOAD_WRITER_METADATA_VERSION; header.StructSize = sizeof(SAFEUPLOAD_WRITER_METADATA_PAGE);
+    header.Phase = SAFEUPLOAD_WRITER_METADATA_DISCOVER; header.Result = SAFEUPLOAD_WRITER_METADATA_CAPTURED;
+    header.DriverInstanceId = driver; header.ReservationId = Binding->AllocationReservationId;
+    header.RequestId = RequestId; header.ConnectionEpoch = epoch; header.AuthorityRevision = revision;
+    status = ExUuidCreate(&header.SnapshotId);
+    if (!NT_SUCCESS(status)) goto Exit;
+    header.TotalBytes = bytes;
+    header.Flags = SAFEUPLOAD_WRITER_METADATA_ANCESTORS | SAFEUPLOAD_WRITER_METADATA_IDENTITY |
+        (facts->ConstructionBytes != 0 ? SAFEUPLOAD_WRITER_METADATA_CONSTRUCTION : 0) |
+        (facts->StoredBytes != 0 ? SAFEUPLOAD_WRITER_METADATA_STORED : 0);
+    /* No assignment-proven flag/revision: increment 2 has no constructor. */
+    status = BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, NULL, 0);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = BCryptCreateHash(algorithm, &hash, NULL, 0, NULL, 0, 0);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = BCryptHashData(hash, (PUCHAR)facts, bytes, 0);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = BCryptFinishHash(hash, header.Digest, sizeof(header.Digest), 0);
+    if (!NT_SUCCESS(status)) goto Exit;
+    *Reason = StageWriterMetadataStale;
+    if (!SafeUploadStageProtocolMetadataIdentity(cookie, &checkedCookie, &checkedEpoch, &checkedRevision) ||
+        checkedEpoch != epoch || checkedRevision != revision || !StageWriterProcessRunning(Lease->ProcessHandle)) {
+        status = STATUS_PORT_DISCONNECTED; goto Exit;
+    }
+    FltAcquirePushLockExclusive(&StagePublicListLock);
+    if (StagePublicAdmissionClosed || SafeUploadStageMandatoryTeardownActive() || Lease->Lifetime.Closing) {
+        status = STATUS_FLT_DELETING_OBJECT;
+    } else {
+        PLIST_ENTRY link;
+        status = STATUS_SUCCESS;
+        for (link = StagePublicBackends.Flink; link != &StagePublicBackends; link = link->Flink) {
+            PSAFEUPLOAD_STAGE_PUBLIC_BACKEND backend = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_PUBLIC_BACKEND, Link);
+            if (backend->WriterLease) {
+                PSAFEUPLOAD_STAGE_WRITER_LEASE other = (PSAFEUPLOAD_STAGE_WRITER_LEASE)backend;
+                if (other->MetadataPublished && RtlEqualMemory(&other->MetadataHeader.ReservationId,
+                    &Binding->AllocationReservationId, sizeof(GUID))) { status = STATUS_OBJECT_NAME_COLLISION; break; }
+            }
+        }
+        if (status == STATUS_SUCCESS) {
+            Lease->Metadata = (PUCHAR)facts; facts = NULL;
+            Lease->MetadataCookie = cookie; Lease->MetadataHeader = header;
+            Lease->MetadataPublished = TRUE;
+            *Cookie = cookie; *Revision = revision; *Reason = StageWriterNoRefusal;
+        }
+    }
+    FltReleasePushLock(&StagePublicListLock);
+Exit:
+    if (hash != NULL) (VOID)BCryptDestroyHash(hash);
+    if (algorithm != NULL) (VOID)BCryptCloseAlgorithmProvider(algorithm, 0);
+    if (user != NULL) ExFreePool(user);
+    if (session != NULL) ExFreePool(session);
+    if (primary != NULL) PsDereferencePrimaryToken(primary);
+    if (facts != NULL) ExFreePoolWithTag(facts, STAGE_PUBLIC_TAG);
+    if (publishing) InterlockedExchange(&Lease->MetadataPreparing, 0);
+    SafeUploadStagePublicReleaseOperation(&Lease->Lifetime);
+Refused:
+    if (status != STATUS_SUCCESS) SafeUploadStagePublicRecordWriterRefusal(*Reason);
+    return status;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWriterMetadataBeginRead(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageWriterMetadataEndRead(VOID);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageWriterMetadataBeginRead)
+#pragma alloc_text(PAGE, StageWriterMetadataEndRead)
+#endif
+
+_Use_decl_annotations_
+static NTSTATUS StageWriterMetadataBeginRead(VOID)
+{
+    NTSTATUS status;
+    PAGED_CODE();
+    FltAcquirePushLockExclusive(&StagePublicListLock);
+    if (StagePublicAdmissionClosed || SafeUploadStageMandatoryTeardownActive())
+        status = STATUS_FLT_DELETING_OBJECT;
+    else if (StageWriterMetadataReaders >= STAGE_WRITER_MAX_METADATA_READERS)
+        status = STATUS_INSUFFICIENT_RESOURCES;
+    else {
+        if (StageWriterMetadataReaders++ == 0) KeClearEvent(&StageWriterMetadataReadersDrained);
+        status = STATUS_SUCCESS;
+    }
+    FltReleasePushLock(&StagePublicListLock);
+    return status;
+}
+
+_Use_decl_annotations_
+static VOID StageWriterMetadataEndRead(VOID)
+{
+    PAGED_CODE();
+    FltAcquirePushLockExclusive(&StagePublicListLock);
+    NT_ASSERT(StageWriterMetadataReaders > 0);
+    if (--StageWriterMetadataReaders == 0)
+        KeSetEvent(&StageWriterMetadataReadersDrained, IO_NO_INCREMENT, FALSE);
+    FltReleasePushLock(&StagePublicListLock);
+}
+
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageWriterMetadataControl(PVOID PortCookie, PVOID Input, ULONG InputLength,
+    PVOID Output, ULONG OutputLength, PULONG Returned)
+{
+    static const GUID zero = {0};
+    static const UCHAR zeroDigest[32] = {0};
+    SAFEUPLOAD_WRITER_METADATA_REQUEST request;
+    PSAFEUPLOAD_WRITER_METADATA_PAGE page = NULL;
+    PSAFEUPLOAD_STAGE_WRITER_LEASE lease = NULL;
+    PFLT_INSTANCE instance = NULL;
+    PFILE_OBJECT object = NULL;
+    PVOID cookie = NULL, afterCookie = NULL;
+    UINT64 epoch = 0, revision = 0, afterEpoch = 0, afterRevision = 0;
+    PLIST_ENTRY link;
+    NTSTATUS status;
+    BOOLEAN operation = FALSE, reader = FALSE;
+    PAGED_CODE();
+    *Returned = 0;
+    if (InputLength != sizeof(request) || Output == NULL || OutputLength != sizeof(*page))
+        return STATUS_INVALID_BUFFER_SIZE;
+    try {
+        ProbeForRead(Input, sizeof(request), __alignof(SAFEUPLOAD_WRITER_METADATA_REQUEST));
+        RtlCopyMemory(&request, Input, sizeof(request));
+    } except (EXCEPTION_EXECUTE_HANDLER) { return GetExceptionCode(); }
+    if (request.Control.Version != SAFEUPLOAD_PROTOCOL_VERSION || request.Control.StructSize != sizeof(request) ||
+        request.Control.Command != SAFEUPLOAD_CONTROL_WRITER_METADATA || request.Control.Reserved != 0 ||
+        request.ExtensionVersion != SAFEUPLOAD_WRITER_METADATA_VERSION || request.Reserved != 0 ||
+        request.Phase < SAFEUPLOAD_WRITER_METADATA_DISCOVER || request.Phase > SAFEUPLOAD_WRITER_METADATA_CONFIRM ||
+        request.RequestId == 0 || RtlEqualMemory(&request.DriverInstanceId, &zero, sizeof(zero)) ||
+        RtlEqualMemory(&request.ReservationId, &zero, sizeof(zero)) ||
+        (request.Phase == SAFEUPLOAD_WRITER_METADATA_DISCOVER && (request.Offset != 0 || request.ConnectionEpoch != 0 ||
+            request.AuthorityRevision != 0 || !RtlEqualMemory(&request.SnapshotId, &zero, sizeof(zero)) ||
+            !RtlEqualMemory(request.Digest, zeroDigest, sizeof(zeroDigest)))) ||
+        (request.Phase != SAFEUPLOAD_WRITER_METADATA_DISCOVER && (request.ConnectionEpoch == 0 ||
+            request.AuthorityRevision == 0 || RtlEqualMemory(&request.SnapshotId, &zero, sizeof(zero)))))
+        return STATUS_INVALID_PARAMETER;
+    if (!SafeUploadStageProtocolMetadataIdentity(PortCookie, &cookie, &epoch, &revision)) return STATUS_ACCESS_DENIED;
+    status = StageWriterMetadataBeginRead();
+    if (status != STATUS_SUCCESS) goto Exit;
+    reader = TRUE;
+    FltAcquirePushLockShared(&StagePublicListLock);
+    for (link = StagePublicBackends.Flink; link != &StagePublicBackends; link = link->Flink) {
+        PSAFEUPLOAD_STAGE_PUBLIC_BACKEND backend = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_PUBLIC_BACKEND, Link);
+        if (backend->WriterLease && !backend->Closing) {
+            PSAFEUPLOAD_STAGE_WRITER_LEASE candidate = (PSAFEUPLOAD_STAGE_WRITER_LEASE)backend;
+            if (candidate->MetadataPublished && candidate->MetadataCookie == cookie &&
+                candidate->MetadataHeader.RequestId == request.RequestId &&
+                RtlEqualMemory(&candidate->MetadataHeader.ReservationId, &request.ReservationId, sizeof(GUID)) &&
+                RtlEqualMemory(&candidate->MetadataHeader.DriverInstanceId, &request.DriverInstanceId, sizeof(GUID))) {
+                SafeUploadStagePublicReferenceBackend(backend); lease = candidate; break;
+            }
+        }
+    }
+    FltReleasePushLock(&StagePublicListLock);
+    status = STATUS_NOT_FOUND;
+    if (lease == NULL) goto Exit;
+    operation = SafeUploadStagePublicAcquireOperation(&lease->Lifetime, &instance, &object);
+    status = STATUS_FLT_DELETING_OBJECT;
+    if (!operation) goto Exit;
+    status = STATUS_REVISION_MISMATCH;
+    if (lease->Metadata == NULL || lease->MetadataHeader.ConnectionEpoch != epoch ||
+        lease->MetadataHeader.AuthorityRevision != revision || !StageWriterProcessRunning(lease->ProcessHandle)) goto Exit;
+    if (request.Phase != SAFEUPLOAD_WRITER_METADATA_DISCOVER &&
+        (request.ConnectionEpoch != epoch || request.AuthorityRevision != revision ||
+        !RtlEqualMemory(&request.SnapshotId, &lease->MetadataHeader.SnapshotId, sizeof(GUID)) ||
+        !RtlEqualMemory(request.Digest, lease->MetadataHeader.Digest, sizeof(request.Digest)))) goto Exit;
+    status = STATUS_INVALID_PARAMETER;
+    if ((request.Phase == SAFEUPLOAD_WRITER_METADATA_READ &&
+            (request.Offset >= lease->MetadataHeader.TotalBytes || request.Offset % SAFEUPLOAD_WRITER_METADATA_PAGE_BYTES != 0)) ||
+        (request.Phase == SAFEUPLOAD_WRITER_METADATA_CONFIRM && request.Offset != lease->MetadataHeader.TotalBytes)) goto Exit;
+    page = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*page), STAGE_PUBLIC_TAG);
+    status = STATUS_INSUFFICIENT_RESOURCES;
+    if (page == NULL) goto Exit;
+    /* The whole page is copied to the caller: never let a short or non-read
+     * page carry pool bytes, whatever the allocator's default fill. */
+    RtlZeroMemory(page, sizeof(*page));
+    page->Header = lease->MetadataHeader; page->Header.Phase = request.Phase; page->Header.Offset = request.Offset;
+    if (request.Phase == SAFEUPLOAD_WRITER_METADATA_READ) {
+        page->Header.Count = min(SAFEUPLOAD_WRITER_METADATA_PAGE_BYTES, page->Header.TotalBytes - request.Offset);
+        RtlCopyMemory(page->Bytes, lease->Metadata + request.Offset, page->Header.Count);
+    }
+    status = STATUS_ACCESS_DENIED;
+    if (!SafeUploadStageProtocolMetadataIdentity(cookie, &afterCookie, &afterEpoch, &afterRevision) ||
+        afterEpoch != epoch || afterRevision != revision || lease->Lifetime.Closing) goto Exit;
+    try {
+        /* ProbeForWrite's annotation reads the probed buffer; same reviewed C6001
+         * suppression as the other user-output controls (StageNativeObservation.c). */
+#pragma warning(suppress: 6001)
+        ProbeForWrite(Output, sizeof(*page), __alignof(SAFEUPLOAD_WRITER_METADATA_PAGE));
+        RtlCopyMemory(Output, page, sizeof(*page));
+        *Returned = sizeof(*page); status = STATUS_SUCCESS;
+    } except (EXCEPTION_EXECUTE_HANDLER) { status = GetExceptionCode(); }
+Exit:
+    if (page != NULL) ExFreePoolWithTag(page, STAGE_PUBLIC_TAG);
+    if (operation) SafeUploadStagePublicReleaseOperation(&lease->Lifetime);
+    if (lease != NULL) SafeUploadStagePublicReleaseWriter(lease);
+    if (status != STATUS_SUCCESS) SafeUploadStagePublicRecordWriterRefusal(
+        status == STATUS_INSUFFICIENT_RESOURCES ? StageWriterMetadataResourceLimit : StageWriterMetadataStale);
+    if (reader) StageWriterMetadataEndRead();
+    return status;
 }
 #endif

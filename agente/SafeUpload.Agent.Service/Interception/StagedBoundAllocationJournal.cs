@@ -35,7 +35,12 @@ public sealed partial class StagedTransferJournal
     {
         turn.Require(this, StagedDestinationTurnPurpose.Allocation);
         binding.Validate();
-        security?.RequireBinding(binding);
+        if (security is null) throw new InvalidDataException("writer_metadata_incomplete");
+        security.RequireWriterMetadata(binding, transfer);
+        var capturedExport = security.CapturedSeedEvidence(binding, transfer);
+        if (exportEvidence is not null && exportEvidence != capturedExport)
+            throw new InvalidDataException("writer_metadata_export_mismatch");
+        exportEvidence = capturedExport;
         if (exportEvidence is not null && (binding.Disposition is not (1 or 3) ||
             binding.ReferenceKind == 1 || binding.PublicTarget is null))
             throw new InvalidDataException("Export evidence cannot replace inherited or absent seed provenance.");
@@ -55,7 +60,7 @@ public sealed partial class StagedTransferJournal
             if (existing is not null)
             {
                 if (existing.Transfer != transfer || existing.BoundAllocation != binding ||
-                    existing.AllocationSecurity != security?.Reference() ||
+                    existing.AllocationSecurity != security.Reference() ||
                     (binding.ReferenceKind != 1 && existing.SeedProvenance?.ExportEvidence != exportEvidence) ||
                     existing.AllocationExtensionVersion != 23 || existing.StageIdentity != stage.Identity ||
                     existing.SealedOnce || existing.PendingRename is not null ||
@@ -87,7 +92,7 @@ public sealed partial class StagedTransferJournal
                 AllocationReferenceId = binding.ParentTransferId == Guid.Empty ? null : binding.ParentTransferId,
                 DriverInstanceId = binding.DriverInstanceId, ParentDirectoryIdentity = binding.Parent,
                 AllocationExtensionVersion = 23, BoundAllocation = binding,
-                AllocationSecurity = security?.Reference()
+                AllocationSecurity = security.Reference()
             };
             TransferJournalEntry? seedParent = parentIdentity is null ? null :
                 await ReadCoreAsync(parentIdentity.TransferId, token).ConfigureAwait(false);
@@ -95,7 +100,7 @@ public sealed partial class StagedTransferJournal
             if (!seedPending)
                 entry = entry with { SeedCompletion = new(VersionIdentity(entry), stage.Stream.Length) };
             ValidateEntry(entry, transfer.TransferId);
-            if (security is not null) await PersistAllocationSecurityCoreAsync(security, token).ConfigureAwait(false);
+            await PersistAllocationSecurityCoreAsync(security, token).ConfigureAwait(false);
             string path = ManifestPath(transfer.TransferId);
             string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
@@ -198,6 +203,10 @@ public sealed partial class StagedTransferJournal
         if (!SameWriter(parent.Transfer, transfer) || parent.Transfer.Destination != transfer.Destination ||
             parent.DriverInstanceId != binding.DriverInstanceId || parent.BoundAllocation is null)
             throw new IOException("The bound reference does not belong to the original writer and driver.");
+        // Recovery may read a pre-provenance bound entry as Unproven. That
+        // compatibility must not admit it as a source for a new allocation.
+        if (parent.AllocationSecurity is null || parent.SeedProvenance is null)
+            throw new InvalidDataException("writer_metadata_incomplete");
         if (binding.ReferenceKind == 1)
         {
             if (parent.BoundAllocation.Destination != binding.Destination || !HasMeasuredSeal(parent) ||

@@ -2,6 +2,7 @@
 #include "Stage.h"
 #include "StageNativeRecords.h"
 #include "StageBoundPublication.h"
+#include "StageWriterMetadata.h"
 
 static NTSTATUS StageSendVersionRequest(_In_ UINT32 Operation, _In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName);
 static NTSTATUS StageAllocateInternal(
@@ -516,6 +517,10 @@ static NTSTATUS StageSendV19Exchange(_In_ PSAFEUPLOAD_EXCHANGE Exchange,
     channelReady = StageProtocolReadyForGenerationLocked(channelGeneration);
     if (!channelActive || channelCookie == NULL ||
         InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) == 0 ||
+        (Exchange->Request.Reserved == SAFEUPLOAD_STAGE_BOUND_ALLOCATION_VERSION &&
+            Exchange->Request.Operation == SAFEUPLOAD_OPERATION_STAGE_ALLOCATE &&
+            (Exchange->ChannelCookie != channelCookie || Exchange->StageAuthorityRevision == 0 ||
+             Exchange->StageAuthorityRevision != SafeUploadStageV20AuthorityRevision)) ||
         (IsReconcile && (expectedGeneration == 0 || expectedGeneration != channelGeneration ||
             Exchange->ChannelCookie != channelCookie || Exchange->StageAuthorityRevision == 0 ||
             Exchange->StageAuthorityRevision != SafeUploadStageV20AuthorityRevision))) {
@@ -642,6 +647,7 @@ VOID SafeUploadStageProtocolAuthenticationChanged(_In_ PVOID ConnectionCookie)
     }
     InterlockedExchange(&SafeUploadStageV19ReadyGeneration, 0);
     InterlockedIncrement(&SafeUploadStageV20ChannelGeneration);
+    ++SafeUploadStageV20AuthorityRevision; /* revokes captured metadata on policy/authentication change */
     KeReleaseSpinLock(&SafeUploadStageV20StateLock, oldIrql);
 }
 
@@ -987,7 +993,8 @@ static BOOLEAN StageProtocolValidBoundAllocation(_In_ const SAFEUPLOAD_STAGE_ALL
 }
 
 _Use_decl_annotations_
-NTSTATUS SafeUploadStageAllocateBoundV23(PFLT_CALLBACK_DATA Data, PUNICODE_STRING CanonicalName,
+NTSTATUS SafeUploadStageAllocateBoundV23(PFLT_CALLBACK_DATA Data,
+    PSAFEUPLOAD_STAGE_WRITER_LEASE WriterLease, PUNICODE_STRING CanonicalName,
     const SAFEUPLOAD_STAGE_ALLOCATE_V23 *Binding, const GUID *DriverInstanceId,
     PWCH StageName, PUSHORT StageNameLength, PUINT64 DestinationGeneration,
     PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity, PSAFEUPLOAD_STAGE_ALLOCATE_V19 RetainedIntent,
@@ -997,7 +1004,10 @@ NTSTATUS SafeUploadStageAllocateBoundV23(PFLT_CALLBACK_DATA Data, PUNICODE_STRIN
     UINT32 verdict = SAFEUPLOAD_VERDICT_DENY;
     BOOLEAN answered = FALSE;
     NTSTATUS status;
+    SAFEUPLOAD_STAGE_WRITER_REFUSAL reason;
+    SAFEUPLOAD_STAGE_PUBLIC_BINDING writerBinding;
     PAGED_CODE();
+    RtlZeroMemory(StageName, SAFEUPLOAD_MAX_STAGE_NAME_CHARS * sizeof(WCHAR));
     *StageNameLength = 0;
     *DestinationGeneration = 0;
     *AllocationMayExist = FALSE;
@@ -1011,6 +1021,12 @@ NTSTATUS SafeUploadStageAllocateBoundV23(PFLT_CALLBACK_DATA Data, PUNICODE_STRIN
         !StageProtocolValidBoundAllocation(Binding, CanonicalName->Buffer, CanonicalName->Length) ||
         Binding->Disposition != ((Data->Iopb->Parameters.Create.Options >> 24) & 0xff))
         return STATUS_INVALID_PARAMETER;
+    if (WriterLease == NULL) return STATUS_INVALID_PARAMETER;
+    SafeUploadStagePublicGetWriterBinding(WriterLease, &writerBinding);
+    if (writerBinding.CallerProcessId != FltGetRequestorProcessId(Data) ||
+        writerBinding.CanonicalLeafBytes != Binding->CanonicalLeafBytes ||
+        !RtlEqualMemory((PUCHAR)CanonicalName->Buffer + CanonicalName->Length - Binding->CanonicalLeafBytes,
+            writerBinding.CanonicalLeaf, Binding->CanonicalLeafBytes)) return STATUS_INVALID_PARAMETER;
     exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG);
     if (exchange == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     RtlZeroMemory(exchange, sizeof(*exchange));
@@ -1035,7 +1051,12 @@ NTSTATUS SafeUploadStageAllocateBoundV23(PFLT_CALLBACK_DATA Data, PUNICODE_STRIN
     RetainedIntent->Disposition = Binding->Disposition;
     RetainedIntent->ReferenceKind = Binding->ReferenceKind;
     *AllocationRequest = exchange->Request;
-    status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
+    status = SafeUploadStageWriterMetadataPrepare(WriterLease, Binding, DriverInstanceId,
+        exchange->Request.RequestId, &exchange->ChannelCookie, &exchange->StageAuthorityRevision, &reason);
+    if (status == STATUS_SUCCESS)
+        status = SafeUploadStagePublicCheckWriterSecurity(WriterLease, &reason);
+    if (status == STATUS_SUCCESS)
+        status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
     *AllocationMayExist = exchange->MayHaveReachedService;
     status = SafeUploadStageExchangeResult(status, answered, verdict);
     if (NT_SUCCESS(status))
@@ -1062,6 +1083,27 @@ BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(UINT64 ConnectionEpoch, UINT
         (ConnectionEpoch == 0 || ConnectionEpoch == (UINT64)epoch);
     KeReleaseSpinLock(&SafeUploadStageV20StateLock, irql);
     return allowed;
+}
+
+/* Transport identity only: never establishes head/seed/publication readiness. */
+_Use_decl_annotations_
+BOOLEAN SafeUploadStageProtocolMetadataIdentity(PVOID ExpectedCookie, PVOID *Cookie,
+    PUINT64 Epoch, PUINT64 Revision)
+{
+    KIRQL irql;
+    LONG64 epoch = 0;
+    ULONG processId = 0;
+    BOOLEAN valid;
+    *Cookie = NULL; *Epoch = 0; *Revision = 0;
+    KeAcquireSpinLock(&SafeUploadStageV20StateLock, &irql);
+    valid = !SafeUploadStageMandatoryTeardownActive() &&
+        SafeUploadStageV20AuthorityRevision != 0 &&
+        SafeUploadConnectionGetAuthenticatedIdentity(ExpectedCookie, Cookie, &epoch, &processId) &&
+        *Cookie == InterlockedCompareExchangePointer(&SafeUploadStageV20ConnectionCookie, NULL, NULL);
+    if (valid) { *Epoch = (UINT64)epoch; *Revision = SafeUploadStageV20AuthorityRevision; }
+    else *Cookie = NULL;
+    KeReleaseSpinLock(&SafeUploadStageV20StateLock, irql);
+    return valid;
 }
 
 _Use_decl_annotations_
@@ -1233,6 +1275,7 @@ NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *Alloc
     BOOLEAN answered = FALSE;
     NTSTATUS status;
     PAGED_CODE();
+    RtlZeroMemory(StageName, SAFEUPLOAD_MAX_STAGE_NAME_CHARS * sizeof(WCHAR));
     *StageNameLength = 0;
     *DestinationGeneration = 0;
     RtlZeroMemory(StageIdentity, sizeof(*StageIdentity));
@@ -1259,7 +1302,11 @@ NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *Alloc
         RtlCopyMemory(&bound, AllocationRequest->ImageName, sizeof(bound));
         if (!StageProtocolValidBoundAllocation(&bound, AllocationRequest->Path, (USHORT)AllocationRequest->PathLength))
             return STATUS_INVALID_PARAMETER;
-        reservation = bound.AllocationReservationId;
+        /* Increment 4 must carry the original lease/channel receipt into this
+         * replay owner. A saved V18 request alone has neither authority value;
+         * never refresh them from the current connection after reply loss. */
+        SafeUploadStagePublicRecordWriterRefusal(StageWriterMetadataReplayUnbound);
+        return STATUS_NOT_SUPPORTED;
     } else {
         if (AllocationRequest->ImageNameLength != sizeof(intent)) return STATUS_INVALID_PARAMETER;
         RtlCopyMemory(&intent, AllocationRequest->ImageName, sizeof(intent));

@@ -18,7 +18,7 @@ public sealed partial class MinifilterInterceptor
     {
         try
         {
-            StagedAllocationReply? reply = await AllocateStageV23Async(request, capturedDriver, token)
+            StagedAllocationReply? reply = await AllocateStageV23Async(port, request, capturedDriver, token)
                 .ConfigureAwait(false);
             if (reply is not null && !token.IsCancellationRequested && _stageBoundHeadReady &&
                 _stageV20Ready && _stagingRecoveryReady && _activeDriverInstanceId == capturedDriver)
@@ -39,7 +39,7 @@ public sealed partial class MinifilterInterceptor
         }
     }
 
-    private async Task<StagedAllocationReply?> AllocateStageV23Async(SafeUploadRequest request,
+    private async Task<StagedAllocationReply?> AllocateStageV23Async(FilterPort port, SafeUploadRequest request,
         Guid? capturedDriver, CancellationToken token)
     {
         if (!_stageBoundHeadReady || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
@@ -61,6 +61,9 @@ public sealed partial class MinifilterInterceptor
                 new(parent.VolumeSerialNumber, payload.VolumeRootIdHigh, payload.VolumeRootIdLow), parent,
                 payload.ParentCaseSensitive == 1, leaf, payload.PublicTargetPresent
                     ? new(parent.VolumeSerialNumber, payload.PublicTargetIdHigh, payload.PublicTargetIdLow) : null);
+            var metadata = port.ReadWriterMetadata(driver, binding.ReservationId, request.RequestId, token);
+            var security = StagedAllocationSecuritySnapshot.FromWriterMetadata(metadata);
+            security.RequireBinding(binding);
             DestinationKind kind = ClassifyStagedDestination(request.TypedFlags);
             var requestor = SessionResolver.GetRequiredProcessIdentity(processId);
             TransferJournalEntry? saved = await journal.FindBoundAllocationAsync(binding.ReservationId, token)
@@ -77,7 +80,7 @@ public sealed partial class MinifilterInterceptor
                     writer.SessionId ?? throw new IOException("The saved bound writer has no session."),
                     writer.RequestorSid ?? throw new IOException("The saved bound writer has no SID."),
                     writer.RequestorProcessCreationTime ?? throw new IOException("The saved writer has no process lifetime."),
-                    binding, token).ConfigureAwait(false);
+                    binding, token, security).ConfigureAwait(false);
                 RequireBoundWriterIdentity(writer, processId);
                 return replay;
             }
@@ -87,7 +90,7 @@ public sealed partial class MinifilterInterceptor
                 0, DateTime.MinValue, processName, processId, destination, kind);
             if (!policy.IsMonitoredDestination(operation)) return null;
             var reply = await allocator.AllocateV23Async(destination, kind, processName, processId,
-                requestor.SessionId, requestor.UserSid.Value, requestor.CreationTimeFileTime, binding, token)
+                requestor.SessionId, requestor.UserSid.Value, requestor.CreationTimeFileTime, binding, token, security)
                 .ConfigureAwait(false);
             var after = SessionResolver.GetRequiredProcessIdentity(processId);
             if (after.SessionId != requestor.SessionId || after.CreationTimeFileTime != requestor.CreationTimeFileTime ||

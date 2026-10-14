@@ -61,6 +61,9 @@
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib</AdditionalDependencies>
     </Link>
+    <Link Condition="'$(SafeUploadStagingPrototype)'=='true'">
+      <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\cng.lib</AdditionalDependencies>
+    </Link>
     <DriverSign>
       <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
     </DriverSign>
@@ -100,6 +103,7 @@
     <ClInclude Include="Stage.h" />
     <ClInclude Include="StageSecurity.h" />
     <ClInclude Include="StagePublic.h" />
+    <ClInclude Include="StageWriterMetadata.h" />
     <ClInclude Include="StageNativeRecords.h" />
     <ClInclude Include="StageNativeWire.h" />
     <ClInclude Include="StagePublicRelay.h" />

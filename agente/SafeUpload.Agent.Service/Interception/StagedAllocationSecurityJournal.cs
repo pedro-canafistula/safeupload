@@ -48,7 +48,7 @@ public sealed partial class StagedTransferJournal
     }
 
     private async Task<StagedAllocationSecuritySnapshot> ReadAllocationSecurityCoreAsync(
-        TransferJournalEntry entry, CancellationToken token)
+        TransferJournalEntry entry, CancellationToken token, StagedAllocationBindingV23? sourceBinding = null)
     {
         var reference = entry.AllocationSecurity!;
         reference.Validate();
@@ -62,10 +62,24 @@ public sealed partial class StagedTransferJournal
             throw new InvalidDataException("The committed allocation security snapshot is missing.", error);
         }
         var snapshot = StagedAllocationSecuritySnapshot.Decode(bytes);
-        snapshot.RequireBinding(entry.BoundAllocation!);
+        snapshot.RequireBinding(sourceBinding ?? OriginalAllocationSecurityBinding(entry));
         if (snapshot.Reference() != reference)
             throw new InvalidDataException("The allocation security snapshot lost its committed length or digest.");
         return snapshot;
+    }
+
+    // Allocation authority is immutable across a namespace rename. Reading a
+    // retained original snapshot is not authority to publish at the new name.
+    private static StagedAllocationBindingV23 OriginalAllocationSecurityBinding(TransferJournalEntry entry)
+    {
+        var current = entry.BoundAllocation ?? throw new InvalidDataException("Missing bound allocation.");
+        var seed = entry.SeedProvenance ?? throw new InvalidDataException("writer_metadata_seed_provenance_missing");
+        var original = seed.AllocationBinding ?? throw new InvalidDataException("writer_metadata_seed_provenance_missing");
+        if (original == current && seed.Allocation == VersionIdentity(entry)) return original;
+        for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
+            if (name.AllocationBindingV23 == original && name.Generation == seed.Allocation.DestinationGeneration)
+                return original;
+        throw new InvalidDataException("The original security binding has no retained namespace lineage.");
     }
 
     private async Task<byte[]> ReadAllocationSecurityBytesCoreAsync(Guid snapshot, CancellationToken token)

@@ -15,7 +15,8 @@ public sealed partial class StagedTransferAllocator
         CancellationToken token, StagedAllocationSecuritySnapshot? security = null)
     {
         binding.Validate();
-        security?.RequireBinding(binding);
+        if (security is null) throw new InvalidDataException("writer_metadata_incomplete");
+        security.RequireBinding(binding);
         string locator = Path.GetFullPath(destinationPath);
         string extension = Path.GetExtension(binding.CanonicalLeaf);
         if (!binding.Destination.LeafEquals(Path.GetFileName(locator)) ||
@@ -29,6 +30,8 @@ public sealed partial class StagedTransferAllocator
         {
             RequestorSid = requestorSid, RequestorProcessCreationTime = requestorProcessCreationTime
         };
+
+        security.RequireWriterMetadata(binding, transfer);
 
         using var reservation = await EnterBoundReservationAsync(binding.ReservationId, token).ConfigureAwait(false);
         using var turn = await _journal.EnterDestinationCommitTurnAsync(binding.Destination,

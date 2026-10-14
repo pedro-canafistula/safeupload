@@ -20,6 +20,7 @@ Environment:
 --*/
 
 #include "Filter.h"
+#include "StageWriterMetadata.h"
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #include "Stage.h"
 #include "StageNativeRecords.h"
@@ -2030,6 +2031,7 @@ Return Value:
             command == SAFEUPLOAD_CONTROL_STAGE_PUBLICATION ||
             command == SAFEUPLOAD_CONTROL_STAGE_DISPOSE ||
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+            command == SAFEUPLOAD_CONTROL_WRITER_METADATA ||
             command == SAFEUPLOAD_CONTROL_NATIVE_RECORD_REPLAY ||
             command == SAFEUPLOAD_CONTROL_NATIVE_NAME_OBSERVATION ||
             command == SAFEUPLOAD_CONTROL_PUBLIC_OPEN_REPLAY ||
@@ -2042,6 +2044,12 @@ Return Value:
         }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (command == SAFEUPLOAD_CONTROL_WRITER_METADATA) {
+            status = SafeUploadStageWriterMetadataControl(PortCookie, InputBuffer, InputBufferLength,
+                OutputBuffer, OutputBufferLength, ReturnOutputBufferLength);
+            leave;
+        }
+
         if (command == SAFEUPLOAD_CONTROL_NATIVE_RECORD_REPLAY) {
             status = SafeUploadStageNativeReplayControl(PortCookie, InputBuffer, InputBufferLength,
                 OutputBuffer, OutputBufferLength, ReturnOutputBufferLength);

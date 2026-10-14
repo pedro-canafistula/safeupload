@@ -1387,6 +1387,40 @@ public sealed partial class StagedTransferJournal
     private async Task<TransferJournalEntry> ReadCoreAsync(
         Guid transferId, CancellationToken cancellationToken)
     {
+        var entry = await ReadManifestCoreAsync(transferId, cancellationToken).ConfigureAwait(false);
+        var child = entry;
+        // Keep only one edge in memory. Strictly decreasing captured generations
+        // exclude cycles without recursive calls or an unbounded ancestry cache.
+        while (child.BoundAllocation is not null &&
+            child.SeedProvenance is { Origin: StagedSeedOrigin.PrivatePredecessor } seed)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            TransferJournalEntry parent;
+            try { parent = await ReadManifestCoreAsync(seed.Predecessor!.TransferId, cancellationToken).ConfigureAwait(false); }
+            catch (IOException error) when (error is FileNotFoundException or DirectoryNotFoundException)
+            {
+                // A missing committed ancestor must not look like a missing
+                // allocation to the orphan-backing deletion path.
+                throw new InvalidDataException("writer_metadata_seed_predecessor_missing", error);
+            }
+            if (parent.BoundAllocation is null || parent.SeedProvenance is null ||
+                VersionIdentity(parent) != seed.Predecessor ||
+                parent.DriverInstanceId != child.DriverInstanceId ||
+                parent.BoundAllocation.Destination != seed.AllocationBinding!.Destination ||
+                seed != StagedSeedProvenance.Inherit(child with
+                {
+                    BoundAllocation = seed.AllocationBinding,
+                    DestinationGeneration = seed.Allocation.DestinationGeneration
+                }, parent))
+                throw new InvalidDataException("writer_metadata_seed_lineage_mismatch");
+            child = parent;
+        }
+        return entry;
+    }
+
+    private async Task<TransferJournalEntry> ReadManifestCoreAsync(
+        Guid transferId, CancellationToken cancellationToken)
+    {
         string path = ManifestPath(transferId);
         await using var stream = StagedJournalFile.Open(path);
         if (_owner is not null)
@@ -1405,11 +1439,20 @@ public sealed partial class StagedTransferJournal
         catch (JsonException error) { throw new InvalidDataException("The transfer manifest is invalid JSON.", error); }
         ValidateEntry(entry, transferId);
         if (entry!.AllocationSecurity is not null)
-            _ = await ReadAllocationSecurityCoreAsync(entry, cancellationToken).ConfigureAwait(false);
+        {
+            var security = await ReadAllocationSecurityCoreAsync(entry, cancellationToken).ConfigureAwait(false);
+            security.RequireWriterMetadata(OriginalAllocationSecurityBinding(entry), entry.Transfer);
+            security.RequireCapturedSeedProvenance(entry);
+        }
         if (entry!.SeedProvenance is { SourceSecurity: not null, SourceBinding: not null } seed)
-            _ = await ReadAllocationSecurityCoreAsync(entry with
-                { AllocationSecurity = seed.SourceSecurity, BoundAllocation = seed.SourceBinding }, cancellationToken)
+        {
+            var sourceSecurity = await ReadAllocationSecurityCoreAsync(entry with
+                { AllocationSecurity = seed.SourceSecurity, BoundAllocation = seed.SourceBinding }, cancellationToken, seed.SourceBinding)
                 .ConfigureAwait(false);
+            if (sourceSecurity.WriterMetadataEnvelopeHex is not null && seed.ExportEvidence !=
+                sourceSecurity.CapturedSeedEvidence())
+                throw new InvalidDataException("writer_metadata_export_mismatch");
+        }
         return entry!;
     }
 
@@ -1426,7 +1469,9 @@ public sealed partial class StagedTransferJournal
         {
             lock (_scanCache)
             {
-                if (_scanCache.TryGetValue(id, out var cached) && cached.Stamp == stamp)
+                // A bound child's own stamp says nothing about its committed
+                // ancestors. Revalidate that chain on every scan as on direct reads.
+                if (_scanCache.TryGetValue(id, out var cached) && cached.Stamp == stamp && cached.Entry.BoundAllocation is null)
                 {
                     _scanUses.Remove(cached.Use);
                     _scanUses.AddLast(cached.Use);
@@ -1486,6 +1531,13 @@ public sealed partial class StagedTransferJournal
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
             if (entry.AllocationExtensionVersion != 23 || entry.BoundAllocation is not { } bound)
                 throw new InvalidDataException("The bound allocation marker and descriptor must agree.");
+            // Pre-provenance bound manifests have none of these three fields.
+            // Read them for restricted recovery; StagedSeedExport keeps them
+            // Unproven. Once any seed/security evidence exists, absent required
+            // fields are corruption, never a downgrade to that legacy case.
+            if ((entry.AllocationSecurity is not null || entry.SeedProvenance is not null || entry.SeedCompletion is not null) &&
+                (entry.AllocationSecurity is null || entry.SeedProvenance is null))
+                throw new InvalidDataException("writer_metadata_seed_provenance_missing");
             bound.Validate();
             entry.AllocationSecurity?.Validate();
             if (bound.ReservationId != id || entry.CreateReservationId != id ||

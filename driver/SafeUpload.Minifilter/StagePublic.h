@@ -19,6 +19,10 @@ typedef enum _SAFEUPLOAD_STAGE_WRITER_REFUSAL {
     StageWriterMetadataUnproved,
     StageWriterSnapshotChanged,
     StageWriterCaptureLimit,
+    StageWriterMetadataBindingMismatch,
+    StageWriterMetadataStale,
+    StageWriterMetadataResourceLimit,
+    StageWriterMetadataReplayUnbound,
     StageWriterRefusalCount
 } SAFEUPLOAD_STAGE_WRITER_REFUSAL;
 #define SAFEUPLOAD_STAGE_CREATE_EA_LIMIT 65536UL
