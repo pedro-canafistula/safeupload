@@ -145,6 +145,31 @@ class AttachmentReplay(unittest.TestCase):
         self.assertEqual(1, source.count('AttachLifecycleInFlight = TRUE;'))
         self.assertEqual(1, source.count('AttachLifecycleInFlight = FALSE;'))
 
+    def test_initial_validation_precedes_cached_permission_and_all_sends(self):
+        text = stream('StageAttachRunLifecycle')
+        self.assertEqual(1, text.count('if (completionKnown)'))
+        self.order(text, 'if (terminalPending) return STATUS_DELETE_PENDING;',
+                   'status = StageAttachValidateCurrent(Transaction, Stream);',
+                   'if (!NT_SUCCESS(status))', 'return status;',
+                   'if (completionKnown)', 'Transaction->CompletionKnown = TRUE;',
+                   'return STATUS_SUCCESS;', 'if (!Stream->AttachPrepareKnown)')
+        cached = text[text.index('if (completionKnown)'):text.index('if (!Stream->AttachPrepareKnown)')]
+        self.assertNotIn('StageAttachExchangeRetry', cached)
+        validate = stream('StageAttachValidateCurrent')
+        self.order(validate, 'view->Generation != Transaction->ExpectedGeneration',
+                   'StageQueryNoReparseIdentity(Stream->OriginalInstance, &parent, TRUE, &currentParent)',
+                   '!StageV19IdentityEqual(&currentParent, &Stream->AllocationParentDirectoryIdentity)',
+                   'return STATUS_OBJECT_NAME_COLLISION;', 'return STATUS_SUCCESS;')
+
+    def test_binding_handoff_and_pin_precede_lifecycle(self):
+        text = stream('StageAttachResumeOrRun')
+        self.order(text, 'stream = StageStreamForObject(file);', 'if (stream == NULL)',
+                   'return STATUS_INVALID_DEVICE_STATE;', 'Transaction->Stream = stream;',
+                   'Transaction->BindingInstalled = TRUE;', 'InterlockedIncrement(&stream->RpcReferences)',
+                   'if (stream->AttachAcknowledged && !stream->AttachCompletionPending)',
+                   'Transaction->NeedsAttachCommit = TRUE;', '*NewBinding = TRUE;',
+                   'StageRelease(&StageNamespaceResource);', 'return StageAttachRunLifecycle(Transaction, stream);')
+
     def test_cancelled_replay_is_held_and_diagnosed(self):
         exchange = stream('StageAttachExchangeRetry')
         self.order(exchange, 'SafeUploadStageMandatoryTeardownActive()',
@@ -175,9 +200,62 @@ class AttachmentReplay(unittest.TestCase):
         start = text.index('if (Stream->AttachCompletionPending ||')
         block = text[start:text.index('if (Stream->HandleReceiptPending', start)]
         self.assertIn('return;', block)
+        self.assertIn('Stream->AttachCompletionFence || Stream->AttachRetirePending', block)
+        self.assertIn('Stream->Wait = STAGE_WAIT_SERVICE;', block)
+        self.assertNotIn('Stream->Wait = STAGE_WAIT_NONE;', text[:text.index('if (Stream->HandleReceiptPending')].split('return;')[0])
+        self.assertNotIn('DrainStatus =', text)
         self.assertNotIn('StageSealVersion', block)
         self.assertNotIn('SafeUploadStageAttachmentExchangeV20', text)
         self.assertIn('Stream->AttachCompletionPending ||', stream('StageSealVersion'))
+        timer = stream('StageUpdateRetryTimer')
+        waiting = timer[timer.index('for (link = StageStreams.Flink'):timer.index('StageCounters.WaitingVersions')]
+        self.assertNotIn('STAGE_WAIT_SERVICE', waiting)
+        self.assertNotIn('AttachCompletion', timer)
+        worker = stream('StageWorkerPass')
+        timer_sweep = worker[worker.index('if (sweep || fired)'):worker.index('StageStreamReleaseSpinLock', worker.index('if (sweep || fired)'))]
+        self.assertNotIn('STAGE_WAIT_SERVICE', timer_sweep)
+
+    def test_unload_vetoes_attachment_before_cleanup_quarantine(self):
+        text = stream('SafeUploadStagePrepareUnload')
+        start = text.index('if (stream->AttachCompletionPending ||')
+        gate = text[start:text.index('for (link = StageStreams.Flink', start)]
+        for state in ('stream->AttachCompletionFence', 'stream->AttachRetirePending',
+                      'stream->AttachLifecycleInFlight', 'stream->AllocationReceiptPending &&',
+                      'stream->AttachCompletionMayExist || stream->AttachCompletionKnown'):
+            self.assertIn(state, gate)
+        self.order(gate, 'objectPending = TRUE;', 'status = STATUS_DEVICE_BUSY;', 'goto Veto;')
+        self.order(text, 'StageSetUnloadAdmissionClosed(TRUE)',
+                   'InterlockedCompareExchange(&StageAttachCaptureCount, 0, 0) != 0',
+                   'if (stream->AttachCompletionPending ||', 'cleanupRequired = TRUE;',
+                   'InterlockedExchange(&StageUnloadQuarantined, 1)')
+        self.assertNotIn('StageQueueStream', gate)
+        self.assertNotIn('quarantined =', gate)
+        self.assertNotIn('StageUnloadQuarantined', gate)
+        veto = text[text.index('Veto:'):]
+        self.order(veto, 'StageRelease(&StageNamespaceResource);',
+                   'if (!Mandatory && !quarantined)', 'StageRollbackUnloadPreparation();',
+                   'SafeUploadOpenStageCallbackUnloadAdmission();')
+        rollback = stream('StageRollbackUnloadPreparation')
+        for reopen in ('SafeUploadStageFenceCancelUnload()', 'StageStopping = FALSE;',
+                       'StageSetUnloadAdmissionClosed(FALSE)', 'SafeUploadStageNativeReopenAdmission()',
+                       'SafeUploadBoundPublicationReopenAdmission()', 'SafeUploadStagePublicReopenAdmission()'):
+            self.assertIn(reopen, rollback)
+
+    def test_kind5_never_resolves_op15_ambiguity(self):
+        queue = stream('StageAttachQueueUnattachedAllocation')
+        self.order(queue, 'Stream->AttachCompletionMayExist || Stream->AttachCompletionKnown',
+                   'StageRelease(&StageNamespaceResource);', 'return;', 'Stream->AttachCompletionPending = FALSE;')
+        process = stream('StageProcessStream')
+        self.order(process, 'if (Stream->AllocationReceiptPending)',
+                   'if (Stream->AttachCompletionMayExist || Stream->AttachCompletionKnown)',
+                   'Stream->Wait = STAGE_WAIT_SERVICE;', 'return;', 'StageCloseBacking(Stream)',
+                   'Stream->DiscardRpcKind = SAFEUPLOAD_STAGE_DISCARD_KIND_UNATTACHED_ALLOCATION;')
+        collect = stream('StageCollectDiscardRpcs')
+        self.order(collect, 'if (stream->DiscardRpcKind == SAFEUPLOAD_STAGE_DISCARD_KIND_UNATTACHED_ALLOCATION)',
+                   'stream->AttachCompletionPending || stream->AttachCompletionMayExist ||',
+                   'stream->AttachCompletionKnown || stream->AttachCompletionFence ||',
+                   'stream->AttachRetirePending || stream->AttachLifecycleInFlight) continue;',
+                   'StageAcquire(&stream->Resource);', 'stream->DiscardRpcInFlight = TRUE;')
 
     def test_existing_exact_retirement_branches_remain(self):
         lifecycle = stream('StageAttachRunLifecycle')
@@ -267,10 +345,48 @@ MUTATIONS = (
     ('missing_claim', 'StageStream.c', 'if (stream->AttachCompletionPending) stream->AttachLifecycleInFlight = TRUE;', ''),
     ('early_release', 'StageStream.c', 'Stream->DrainStatus = status;\n            Stream->Wait = STAGE_WAIT_SERVICE;',
      'Stream->DrainStatus = status;\n            StageClearPrivateDelete(Stream);\n            Stream->Wait = STAGE_WAIT_SERVICE;'),
-    ('early_seal', 'StageStream.c', 'Stream->Wait = STAGE_WAIT_NONE;\n        return;\n    }\n    if (Stream->HandleReceiptPending',
-     'Stream->Wait = STAGE_WAIT_NONE;\n        StageSealVersion(Stream);\n    }\n    if (Stream->HandleReceiptPending'),
+    ('early_seal', 'StageStream.c', 'Stream->Wait = STAGE_WAIT_SERVICE;\n        return;\n    }\n#endif\n    Stream->Wait = STAGE_WAIT_NONE;',
+     'Stream->Wait = STAGE_WAIT_SERVICE;\n        StageSealVersion(Stream);\n    }\n#endif\n    Stream->Wait = STAGE_WAIT_NONE;'),
     ('synthetic_op15_result', 'StageProtocol.c', 'return Result == SAFEUPLOAD_STAGE_RESULT_COMPLETION_PERMITTED;', 'return TRUE;'),
     ('changed_replay_bytes', 'StageProtocol.c', 'status = RtlEqualMemory(Request, expected, sizeof(*expected)) ? STATUS_SUCCESS :', 'status = TRUE ? STATUS_SUCCESS :'),
+    ('missing_handoff', 'StageStream.c', 'Transaction->Stream = stream;', ''),
+    ('missing_attach_pin', 'StageStream.c', 'Transaction->BindingInstalled = TRUE;\n    InterlockedIncrement(&stream->RpcReferences);',
+     'Transaction->BindingInstalled = TRUE;'),
+    ('missing_initial_validation', 'StageStream.c',
+     'status = StageAttachValidateCurrent(Transaction, Stream);\n    if (!NT_SUCCESS(status)) {',
+     'status = STATUS_SUCCESS;\n    if (!NT_SUCCESS(status)) {'),
+    ('cached_permit_before_validation', 'StageStream.c',
+     'if (terminalPending) return STATUS_DELETE_PENDING;',
+     'if (terminalPending) return STATUS_DELETE_PENDING;\n    if (completionKnown) return STATUS_SUCCESS;'),
+    ('lost_current_parent_query', 'StageStream.c',
+     'status = StageQueryNoReparseIdentity(Stream->OriginalInstance, &parent, TRUE, &currentParent);',
+     'status = STATUS_SUCCESS;'),
+    ('unload_attachment_cleanup', 'StageStream.c',
+     'objectPending = TRUE;\n            status = STATUS_DEVICE_BUSY;\n            goto Veto;\n        }\n    }\n#endif\n    for (link = StageStreams.Flink;',
+     'cleanupRequired = TRUE;\n        }\n    }\n#endif\n    for (link = StageStreams.Flink;'),
+    ('unload_irreversible_veto', 'StageStream.c',
+     'objectPending = TRUE;\n            status = STATUS_DEVICE_BUSY;\n            goto Veto;\n        }\n    }\n#endif\n    for (link = StageStreams.Flink;',
+     'quarantined = TRUE;\n            objectPending = TRUE;\n            status = STATUS_DEVICE_BUSY;\n            goto Veto;\n        }\n    }\n#endif\n    for (link = StageStreams.Flink;'),
+    ('kind5_queue_after_op15', 'StageStream.c',
+     'Stream->DestinationGeneration == 0 ||\n        Stream->AttachCompletionMayExist || Stream->AttachCompletionKnown)',
+     'Stream->DestinationGeneration == 0)'),
+    ('kind5_maintenance_after_op15', 'StageStream.c',
+     'if (Stream->AttachCompletionMayExist || Stream->AttachCompletionKnown) {\n            Stream->Wait = STAGE_WAIT_SERVICE;\n            return;\n        }', ''),
+    ('kind5_collect_after_op15', 'StageStream.c',
+     'if (stream->AttachCompletionPending || stream->AttachCompletionMayExist ||\n                stream->AttachCompletionKnown || stream->AttachCompletionFence ||\n                stream->AttachRetirePending || stream->AttachLifecycleInFlight) continue;', ''),
+    ('lost_held_wait', 'StageStream.c',
+     'Stream->Wait = STAGE_WAIT_SERVICE;\n        return;\n    }\n#endif\n    Stream->Wait = STAGE_WAIT_NONE;',
+     'Stream->Wait = STAGE_WAIT_NONE;\n        return;\n    }\n#endif\n    Stream->Wait = STAGE_WAIT_NONE;'),
+    ('held_timer_retry', 'StageStream.c',
+     'else if (stream->Wait == STAGE_WAIT_EXCHANGE) ++waiting;',
+     'else if (stream->Wait == STAGE_WAIT_EXCHANGE || stream->Wait == STAGE_WAIT_SERVICE) ++waiting;'),
+    ('pre_gate_wait_reset', 'StageStream.c',
+     'if (Stream->AttachCompletionPending || Stream->AttachCompletionFence || Stream->AttachRetirePending) {',
+     'Stream->Wait = STAGE_WAIT_NONE;\n    if (Stream->AttachCompletionPending || Stream->AttachCompletionFence || Stream->AttachRetirePending) {'),
+    ('maintenance_lost_diagnostic', 'StageStream.c',
+     'Stream->Wait = STAGE_WAIT_SERVICE;\n        return;\n    }\n#endif\n    Stream->Wait = STAGE_WAIT_NONE;',
+     'Stream->DrainStatus = STATUS_SUCCESS;\n        Stream->Wait = STAGE_WAIT_SERVICE;\n        return;\n    }\n#endif\n    Stream->Wait = STAGE_WAIT_NONE;'),
+    ('unload_keeps_create_closed', 'StageStream.c', 'StageSetUnloadAdmissionClosed(FALSE);', ''),
 )
 
 

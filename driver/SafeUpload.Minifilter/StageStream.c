@@ -3507,10 +3507,8 @@ static NTSTATUS StageAttachRunLifecycle(_Inout_ PSTAGE_ATTACH_TRANSACTION Transa
     completionKnown = Stream->AttachCompletionKnown;
     StageRelease(&StageNamespaceResource);
     if (terminalPending) return STATUS_DELETE_PENDING;
-    if (completionKnown) {
-        Transaction->CompletionKnown = TRUE;
-        return STATUS_SUCCESS;
-    }
+    /* A durable permit does not prove that this new CREATE still binds the
+     * same live view/parent. Validate before accepting a cached op15 too. */
     status = StageAttachValidateCurrent(Transaction, Stream);
     if (!NT_SUCCESS(status)) {
         /* A previously prepared intent is still safe to abort if the public
@@ -3546,6 +3544,10 @@ static NTSTATUS StageAttachRunLifecycle(_Inout_ PSTAGE_ATTACH_TRANSACTION Transa
             }
         }
         return status;
+    }
+    if (completionKnown) {
+        Transaction->CompletionKnown = TRUE;
+        return STATUS_SUCCESS;
     }
 
     if (!Stream->AttachPrepareKnown) {
@@ -3755,7 +3757,8 @@ static VOID StageAttachQueueUnattachedAllocation(_Inout_ PSTAGE_STREAM Stream)
     if (Stream == NULL) return;
     StageAcquire(&StageNamespaceResource);
     if (!Stream->HasTransferId || !Stream->StageIdentityValid ||
-        Stream->DestinationGeneration == 0) {
+        Stream->DestinationGeneration == 0 ||
+        Stream->AttachCompletionMayExist || Stream->AttachCompletionKnown) {
         StageRelease(&StageNamespaceResource);
         return;
     }
@@ -5844,17 +5847,21 @@ static BOOLEAN StageTryRelease(PSTAGE_STREAM Stream, PLIST_ENTRY Released)
 /* Caller owns NamespaceResource. */
 static VOID StageProcessStream(PSTAGE_STREAM Stream, PLIST_ENTRY Released)
 {
-    Stream->Wait = STAGE_WAIT_NONE;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     /* Never seal or publish an allocation whose CREATE did not attach its
      * returned file object. The owner's next CREATE drives exact attachment
      * replay on the attach worker; this maintenance worker cannot invent a
      * caller/file object. Exact terminal tuples use the service cleanup queue. */
-    if (Stream->AttachCompletionPending ||
-        (Stream->AttachAcknowledged && !Stream->AnyHandleCleanupObserved)) {
-        Stream->Wait = STAGE_WAIT_NONE;
+    if (Stream->AttachCompletionPending || Stream->AttachCompletionFence || Stream->AttachRetirePending) {
+        /* Keep the drain's held diagnostic. SERVICE does not arm the retry
+         * timer; only a live owner CREATE can replay this attachment. */
+        Stream->Wait = STAGE_WAIT_SERVICE;
         return;
     }
+#endif
+    Stream->Wait = STAGE_WAIT_NONE;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (Stream->AttachAcknowledged && !Stream->AnyHandleCleanupObserved) return;
     if (Stream->HandleReceiptPending || Stream->HandleReceiptInFlight ||
         (Stream->AnyHandleCleanupObserved && !Stream->HandleReceiptAcknowledged)) {
         Stream->Wait = Stream->HandleReceiptInFlight ? STAGE_WAIT_EXCHANGE :
@@ -5862,6 +5869,11 @@ static VOID StageProcessStream(PSTAGE_STREAM Stream, PLIST_ENTRY Released)
         return;
     }
     if (Stream->AllocationReceiptPending) {
+        /* Kind-5 is never authority to resolve a possibly permitted op15. */
+        if (Stream->AttachCompletionMayExist || Stream->AttachCompletionKnown) {
+            Stream->Wait = STAGE_WAIT_SERVICE;
+            return;
+        }
         if (Stream->AllocationRecoveryPending || Stream->AllocationRecoveryInFlight) {
             Stream->Wait = STAGE_WAIT_EXCHANGE;
             return;
@@ -5976,6 +5988,11 @@ static VOID StageCollectDiscardRpcs(PLIST_ENTRY Rpcs)
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
         BOOLEAN unattachedReady = TRUE;
         if (stream->DiscardRpcKind == SAFEUPLOAD_STAGE_DISCARD_KIND_UNATTACHED_ALLOCATION) {
+            /* Also gate collection: a retained pending cleanup flag cannot
+             * turn ambiguous attachment permission into a kind-5 send. */
+            if (stream->AttachCompletionPending || stream->AttachCompletionMayExist ||
+                stream->AttachCompletionKnown || stream->AttachCompletionFence ||
+                stream->AttachRetirePending || stream->AttachLifecycleInFlight) continue;
             StageAcquire(&stream->Resource);
             unattachedReady = InterlockedCompareExchange(&stream->FileObjects, 0, 0) == 0 &&
                 stream->ShareAccess.OpenCount == 0 && stream->Sections.SharedCacheMap == NULL &&
@@ -7318,6 +7335,24 @@ NTSTATUS SafeUploadStagePrepareUnload(_In_ BOOLEAN Mandatory)
         status = STATUS_DEVICE_BUSY;
         goto Veto;
     }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* Scan every attachment before classifying allocation receipts as cleanup.
+     * An op15 ambiguity (or late completion fence/op16 retry) needs its owner
+     * CREATE route. Veto while preparation is reversible, before quarantine
+     * or any unload-specific cleanup is queued. NamespaceResource serializes
+     * this scan with attachment state; admission and active captures are shut. */
+    for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
+        PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
+        if (stream->AttachCompletionPending || stream->AttachCompletionFence ||
+            stream->AttachRetirePending || stream->AttachLifecycleInFlight ||
+            (stream->AllocationReceiptPending &&
+             (stream->AttachCompletionMayExist || stream->AttachCompletionKnown))) {
+            objectPending = TRUE;
+            status = STATUS_DEVICE_BUSY;
+            goto Veto;
+        }
+    }
+#endif
     for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
         if (stream->RenameExchange != NULL || stream->RenameRpcPending || stream->RenameRpcInFlight) {
