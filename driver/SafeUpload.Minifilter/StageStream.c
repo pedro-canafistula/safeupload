@@ -4112,7 +4112,14 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
     if (NT_SUCCESS(Status) && Transaction->NeedsAttachCommit && stream != NULL) {
         StageAcquire(&StageNamespaceResource);
         stream->AttachCompletionFence = FALSE;
-        if (stream->HandleReceiptPending) StageQueueStream(stream, &StageCounters.WakeInline);
+        /* The allocation-only name reservation (StageReserveAllocationName)
+         * ends once the exact allocation is attached. Left set, it answered
+         * every other process's open of the name with DELETE_PENDING and
+         * parked the worker before seal (m2t5boot8). A real delete-on-close
+         * or discard keeps its reservation; failed or ambiguous attachments
+         * never reach this block. Requeue so a parked worker resumes. */
+        if (!stream->DiscardOnClose && !stream->Discarded) StageClearPrivateDelete(stream);
+        StageQueueStream(stream, &StageCounters.WakeInline);
         StageRelease(&StageNamespaceResource);
     }
 CompletionFinished:

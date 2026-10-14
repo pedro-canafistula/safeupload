@@ -318,5 +318,19 @@ class TeardownParticipation(unittest.TestCase):
             self.assertNotIn(mutating, excluded)
         self.assertIn('case IRP_MJ_SET_SECURITY:\n        return TRUE;', epoch)
 
+    def test_successful_v20_attachment_releases_the_allocation_name_reservation(self):
+        # m2t5boot8: the reservation survived attachment, refused other processes' reads
+        # with DELETE_PENDING and parked the worker before seal.
+        text = code(K / 'StageStream.c')
+        start = text.index('stream->AttachCompletionFence = FALSE;', text.index('FltCompletePendedPreOperation(Transaction->CallbackData'))
+        block = text[text.rindex('StageAcquire(&StageNamespaceResource)', 0, start):]
+        block = block[:block.index('StageRelease(&StageNamespaceResource);')]
+        self.order(block, 'StageAcquire(&StageNamespaceResource)', 'AttachCompletionFence = FALSE',
+                   '!stream->DiscardOnClose && !stream->Discarded', 'StageClearPrivateDelete(stream)',
+                   'StageQueueStream(stream')
+        clear = body('StageStream.c', 'StageClearPrivateDelete')
+        for held in ('AllocationRpcInFlight', 'AllocationReceiptPending', 'DiscardRpcInFlight'):
+            self.assertIn(held, clear)
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
