@@ -2606,6 +2606,11 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     if (newStream) {
         StageStreamAcquireSpinLock(&StageListLock, &irql);
         InsertTailList(&StageStreams, &stream->Link);
+        /* Listed means "on StageStreams" for every version. Exact-reply
+         * revalidation (op19 receipt, allocation recovery) requires it; left
+         * clear, each attached version discarded its HANDLE_OBSERVED ACK and
+         * parked for a service reconnect before seal (m2t5boot9). */
+        stream->Listed = TRUE;
         StageStreamReleaseSpinLock(&StageListLock, irql);
         StageStreamCount++;
         if (reservedStreamSlot) {
