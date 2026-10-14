@@ -1,0 +1,15 @@
+# Review of the rename-commit receipt through f24c4c2c (ACCEPT WITH CONDITIONS) — Sol 6.1 xhigh (2026-10-14)
+
+Reviewer: `gpt-6.1-sol`, `reasoning_effort=xhigh`, read-only, web search enabled (Codex session `01a13b06-b58d-7090-9ed5-43d041bceabe`). Verbatim final report; checkout paths shortened.
+
+**ACCEPT WITH CONDITIONS** for the next dormant Verifier boot at `f24c4c2c`. No remaining blocking source finding.
+
+1. **Informational — availability ordering is corrected.** The [check under NamespaceResource](driver/SafeUpload.Minifilter/StageStream.c:6920) rejects reset-before-check; reset-after-check must subsequently clear availability under that same resource. [Retirement completes notification before allowing replacement](driver/SafeUpload.Minifilter/Communication.c:1193), and replacement drains old callbacks/uses. [Cookies are checked serial tokens](driver/SafeUpload.Minifilter/Communication.c:1493), not recycled allocation addresses. No usable ABA appears in this lifetime. A current first-authentication notification remains eligible; [later authentication/policy acceptance](driver/SafeUpload.Minifilter/Communication.c:2977) cannot consume or suppress it. No new never-Ready path found. **Required change:** none.
+
+2. **Informational — lock order and IRQL are sound.** NamespaceResource → [protocol state spin lock](driver/SafeUpload.Minifilter/StageProtocol.c:659) agrees with existing paths. The helper is resident, performs scalar work at DISPATCH_LEVEL, and restores the caller’s IRQL. Reset/authentication release that spin lock before revocation or namespace acquisition; existing protocol-state → connection-state nesting has no inverse held order. **Required change:** none.
+
+3. **Informational — `8cfccde9` restores meaningful, strict wire tests.** [MemoryMarshal helpers](agente/SafeUpload.Agent.Tests/StagedRenameReceiptWireTests.cs:96) preserve fixed UTF-16 buffers exactly and require exact input size. Positive controls check complete destination bytes and zero tails; malformed reply cases retain their exceptions. [Request controls](agente/SafeUpload.Agent.Tests/StagedRenameReceiptWireTests.cs:77) now establish a valid baseline before rejecting length/version/unused-byte mutations. **Required change:** none.
+
+4. **Low — verification conditions remain.** The [new regression control](driver/scripts/t5/reconcile-retry-selfcheck.py:219) checks source ordering, not actual scheduling. **Required:** retain a deterministic paused-authentication → disconnect → resume → reconnect control proving local progress, idle cancellation and replay. Before boot, obtain fresh four-profile WDK/PREfast/ApiValidator results at 0 warnings/errors, target-import checks, the complete agent matrix without skips, and Windows verification of the 1,192-byte transport. Across the full change set, [exact durable replay](agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs:2400) and [generation adoption before fence release](driver/SafeUpload.Minifilter/StageStream.c:4688) remain coherent. Existing activation holds stay in force.
+
+Read-only static review; no edits, tests, builds or VMs performed.

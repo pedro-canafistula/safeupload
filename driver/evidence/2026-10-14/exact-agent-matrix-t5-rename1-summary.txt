@@ -1,0 +1,10 @@
+﻿LABEL=t5-rename1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=2e0cd7074a2557ed1b8eeefc9a1bed5fec6fac9b
+ARCHIVE_SHA256=C7D71F2A25FC0BA1181FB12986F51A09863E1FF42CED9F4C61CA8511E0D1CD4F
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=1 warnings=0 errors=8
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-14T14:56:41.7901945Z

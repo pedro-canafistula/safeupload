@@ -579,8 +579,19 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       occupied name takes the destination's next generation in the service journal, but `RetargetStage` replies only Allow and the
       driver never adopts the generation, so op19 carries the stale one. Secondary: the exchange backoff resets during each attempt
       (in-flight exchanges are not counted) and explicit refusals are retried as exchanges, against the timer rule.
-    - [ ] Fix: a typed rename-commit receipt (agent, protocol, kernel) adopted before the rename fence is released; retry
-      accounting and refusal parking (implementation running); then rerun the T4 smoke and the raw cells in all three modes.
+    - [x] Fix `2e0cd707`…`1603a35e`: the service persists an exact rename-commit receipt atomically with the journal update and
+      returns it (typed 1,168-byte v20 receipt, capability 0x80); the driver validates it and adopts the committed generation before
+      releasing the rename fence; replays return the same receipt, abort keeps the tuple. An exchange stays counted while in flight
+      (backoff no longer resets); structural refusals park until reconnect, transient failures back off to 8 s; disconnected
+      exchanges leave the timer; availability is published only for the current channel. Reviews:
+      [2e0cd707](evidence/2026-10-14/t5-rename-review-sol61.md) REJECT, [9abdff29](evidence/2026-10-14/t5-rename2-review-sol61.md)
+      REJECT, [through f24c4c2c](evidence/2026-10-14/t5-rename3-review-sol61.md) **ACCEPT WITH CONDITIONS** (runtime control of a
+      paused authentication racing a disconnect is a qualification item). [Four WDK builds `t5-rename4`](evidence/2026-10-14/exact-t5-rename4-summary.txt)
+      0/0, imports PASS, signed `2238F821…08B8`; [agent matrix `t5-rename6`](evidence/2026-10-14/exact-agent-matrix-t5-rename6-summary.txt)
+      PASS 1,547 / 2,127 (feature Release `DB8F780A…DDE4`). Failed receipts kept: `t5-rename1` (test compile errors),
+      `t5-rename2` and `t5-rename3` (wire tests corrupted by marshalling; an owner case cleared one byte), `t5-rename5` (a required
+      test had been renamed; restored).
+    - [ ] `m2t5boot14`: t5-rename4 driver with the t5-rename6 agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

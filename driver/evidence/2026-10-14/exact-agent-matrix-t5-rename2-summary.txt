@@ -1,0 +1,14 @@
+﻿LABEL=t5-rename2
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=9abdff292f0448c8ebe2c763fc9fbe4b569b3509
+ARCHIVE_SHA256=82A1920FF211890579C12FCFBDCC64F679BE49AF5F6F0ADB0966D241B5397258
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-debug-tests-user: exit=1 warnings=0 errors=0
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-14T15:23:15.5867223Z
