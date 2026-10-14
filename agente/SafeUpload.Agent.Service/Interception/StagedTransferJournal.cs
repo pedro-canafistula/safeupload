@@ -37,6 +37,8 @@ public sealed partial class StagedTransferJournal
     private const int MaximumScanCacheEntries = 50_000;
     private readonly int _scanCacheCapacity;
     private long _scanManifestReads;
+    private long _manifestReads;
+    internal long ManifestReads => Interlocked.Read(ref _manifestReads);
     private long _scanCacheEvictions;
     /// <summary>Manifests a scan had to read, ACL-check and parse (cache misses); test observability.</summary>
     internal long ScanManifestReads => Interlocked.Read(ref _scanManifestReads);
@@ -1459,6 +1461,7 @@ public sealed partial class StagedTransferJournal
         Guid transferId, CancellationToken cancellationToken)
     {
         string path = ManifestPath(transferId);
+        Interlocked.Increment(ref _manifestReads);
         await using var stream = StagedJournalFile.Open(path);
         if (_owner is not null)
         {
@@ -1499,7 +1502,7 @@ public sealed partial class StagedTransferJournal
     // Caller holds _gate. The stamp is taken from the enumeration BEFORE the read: if the manifest changes in between,
     // the cached stamp is older than the content and the next scan simply reads again.
     private async Task<TransferJournalEntry> ReadScannedAsync(
-        FileInfo file, Guid id, CancellationToken token)
+        FileInfo file, Guid id, CancellationToken token, bool pendingProjection = false)
     {
         using var phaseTiming = StagedRequestTiming.Measure("journal-scan");
         ManifestStamp stamp = StampOf(file);
@@ -1508,8 +1511,10 @@ public sealed partial class StagedTransferJournal
             lock (_scanCache)
             {
                 // A bound child's own stamp says nothing about its committed
-                // ancestors. Revalidate that chain on every scan as on direct reads.
-                if (_scanCache.TryGetValue(id, out var cached) && cached.Stamp == stamp && cached.Entry.BoundAllocation is null)
+                // ancestors. Revalidate it for authority and unfinished work.
+                // A terminal pending-projection hit only omits dispatch.
+                if (_scanCache.TryGetValue(id, out var cached) && cached.Stamp == stamp &&
+                    (cached.Entry.BoundAllocation is null || pendingProjection && !PendingDispatchRequired(cached.Entry)))
                 {
                     _scanUses.Remove(cached.Use);
                     _scanUses.AddLast(cached.Use);
@@ -1722,9 +1727,9 @@ public sealed partial class StagedTransferJournal
         }
         if (entry.LastRenameReceiptV20 is { } receipt)
         {
-            ValidateRenameSourceV20(entry, receipt.Source);
-            RequireManifestPath(receipt.SourcePath);
-            RequireManifestPath(receipt.DestinationPath);
+            ValidateRenameSourceV20(entry, receipt.Source, historical: true);
+            RequireHistoricalManifestPath(receipt.SourcePath);
+            RequireHistoricalManifestPath(receipt.DestinationPath);
             if (receipt.Source.TransactionId != entry.LastRenameTransactionId ||
                 receipt.Source.DestinationPath != entry.LastRenameDestination ||
                 receipt.Committed != entry.LastRenameCommitted || receipt.DestinationGeneration <= 0 ||
@@ -1735,14 +1740,14 @@ public sealed partial class StagedTransferJournal
                 (receipt.Committed && !HasRenameSourceBarrier(entry, receipt)))
                 throw new InvalidDataException("The completed rename lost its exact commit receipt.");
         }
-        if (entry.LastRenameDestination is not null) RequireManifestPath(entry.LastRenameDestination);
+        if (entry.LastRenameDestination is not null) RequireHistoricalManifestPath(entry.LastRenameDestination);
         if ((entry.LastRenameTransactionId == 0 && (entry.LastRenameDestination is not null || entry.LastRenameCommitted)) ||
             (entry.LastRenameTransactionId != 0 && entry.LastRenameDestination is null))
             throw new InvalidDataException("The transfer manifest has invalid completed rename evidence.");
         int count = 0;
         for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
         {
-            RequireManifestPath(name.DestinationPath);
+            RequireHistoricalManifestPath(name.DestinationPath);
             if (name.AllocationBindingV23 is { } tombstoneBinding)
             {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
@@ -1813,10 +1818,12 @@ public sealed partial class StagedTransferJournal
             throw new InvalidDataException("The transfer manifest has invalid hand-back evidence.");
     }
 
-    private static void ValidateRenameSourceV20(TransferJournalEntry entry, StagedRenameRequestV20 source)
+    private static void ValidateRenameSourceV20(TransferJournalEntry entry, StagedRenameRequestV20 source,
+        bool historical = false)
     {
         if (source is null) throw new InvalidDataException("The rename receipt has no source authority.");
-        RequireManifestPath(source.DestinationPath);
+        if (historical) RequireHistoricalManifestPath(source.DestinationPath);
+        else RequireManifestPath(source.DestinationPath);
         if (source.TransactionId == 0 || source.Version is null ||
             source.Version.TransferId != entry.Transfer.TransferId || source.Version.DestinationGeneration <= 0 ||
             source.Version.StageIdentity != entry.StageIdentity || source.Version.StageIdentity is null ||
@@ -1941,6 +1948,22 @@ public sealed partial class StagedTransferJournal
                 throw new InvalidDataException("The transfer manifest path is not normalized.");
         }
         catch (ArgumentException error) { throw new InvalidDataException("The transfer manifest has an invalid path.", error); }
+    }
+
+    // Historical names are namespace barriers, not live object locators. On
+    // Windows GetFullPath expands '~' through GetLongPathNameW, probing old or
+    // reused names. Validate their canonical spelling without that lookup;
+    // authorization/mutation still perform their existing exact object opens.
+    internal static void RequireHistoricalManifestPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.Length > 511 || path.Contains('\0') ||
+            !Path.IsPathFullyQualified(path) || string.IsNullOrEmpty(Path.GetFileName(path)) ||
+            (OperatingSystem.IsWindows() && path.Contains('/')))
+            throw new InvalidDataException("The historical manifest path is invalid.");
+        string root = Path.GetPathRoot(path)!;
+        foreach (string component in path[root.Length..].Split(Path.DirectorySeparatorChar))
+            if (component.Length == 0 || component is "." or "..")
+                throw new InvalidDataException("The historical manifest path is not normalized.");
     }
 
     internal static void RequireNoUntrustedWriters(FileSystemSecurity security, SecurityIdentifier owner)
@@ -2540,13 +2563,12 @@ public sealed partial class StagedTransferJournal
 
             TransferJournalEntry entry;
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try { entry = await ReadScannedAsync(file, id, cancellationToken).ConfigureAwait(false); }
+            // Terminal snapshots only answer whether to dispatch work. Every
+            // live authority/destination scan and direct read retains fresh
+            // bound-ancestry validation, even for a completed transfer.
+            try { entry = await ReadScannedAsync(file, id, cancellationToken, pendingProjection: true).ConfigureAwait(false); }
             finally { _gate.Release(); }
-            bool releaseCleanupPending = entry.State == TransferJournalState.Released &&
-                entry.HandbackState == StagedHandbackState.Verified &&
-                entry.JustificationWindowClosed && !entry.StageDeleted;
-            if (entry.PendingRename is not null ||
-                entry.State is not (TransferJournalState.Released or TransferJournalState.Discarded) || releaseCleanupPending)
+            if (PendingDispatchRequired(entry))
             {
                 entries.Add(entry);
             }
@@ -2554,6 +2576,12 @@ public sealed partial class StagedTransferJournal
 
         return entries;
     }
+
+    internal static bool PendingDispatchRequired(TransferJournalEntry entry) =>
+        entry.PendingRename is not null ||
+        !BlockedCleanupComplete(entry) && entry.State is not (TransferJournalState.Released or TransferJournalState.Discarded) ||
+        entry.State == TransferJournalState.Released && entry.HandbackState == StagedHandbackState.Verified &&
+        entry.JustificationWindowClosed && !entry.StageDeleted;
 
     /// <summary>
     /// T11 journal compaction: removes manifests whose transfer is finished and cleaned up and last changed before
@@ -2810,6 +2838,12 @@ public sealed partial class StagedTransferJournal
         version.StageIdentity == entry.StageIdentity &&
         receipt.CommittedRenames == CommittedRenameCount(entry.NamespaceTombstones) &&
         receipt.Length == entry.SealedLength && receipt.Sha256Hex == entry.Sha256Hex;
+
+    internal static bool BlockedCleanupComplete(TransferJournalEntry entry) =>
+        entry.State is (TransferJournalState.Blocked or TransferJournalState.Released) &&
+        entry.PendingRename is null && entry.StageDeleted && !entry.StageCleanupStarted &&
+        entry.HandbackState == StagedHandbackState.Verified && entry.JustificationWindowClosed &&
+        MatchesBlockedDeletionReceipt(entry);
 
     // Called only after successful disposition on the identity-checked owned
     // handle. A cleanup-start marker alone is never an accepted-delete receipt.

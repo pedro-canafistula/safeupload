@@ -7311,6 +7311,8 @@ BOOLEAN SafeUploadStageUnloadIsQuarantined(VOID)
 _Use_decl_annotations_
 BOOLEAN SafeUploadStageMandatoryTeardownActive(VOID)
 {
+    /* Permanent local teardown, irrespective of the unload caller. The
+     * voluntary caller sets it only AFTER PrepareUnload commits P/Q. */
     return InterlockedCompareExchange(&StageMandatoryTeardown, 0, 0) != 0;
 }
 
@@ -9438,6 +9440,8 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
         } else if (!NT_SUCCESS(Data->IoStatus.Status)) {
             /* The acquire failed below us: no release follows, so drop the in-flight entry here. */
             SafeUploadStageSectionAcquireFailed(CompletionContext);
+        } else {
+            SafeUploadStageSectionAcquireComplete(CompletionContext);
         }
         return FLT_POSTOP_FINISHED_PROCESSING;
     }

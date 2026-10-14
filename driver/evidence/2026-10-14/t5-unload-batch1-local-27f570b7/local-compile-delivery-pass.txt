@@ -1,0 +1,14 @@
+LocalAgentCompile root=/home/victor/Work/safeupload-t5unload sdk=10.0.400 work=/tmp/safeupload-t5-batch1-tmp/safeupload-agent-compile.a0yQAz (diagnostic only; the matrix is the gate)
+LocalCompile normal-debug Service PASS
+LocalCompile normal-debug App PASS
+LocalCompile normal-debug Tests PASS
+LocalCompile normal-release Service PASS
+LocalCompile normal-release App PASS
+LocalCompile normal-release Tests PASS
+LocalCompile feature-debug Service PASS
+LocalCompile feature-debug App PASS
+LocalCompile feature-debug Tests PASS
+LocalCompile feature-release Service PASS
+LocalCompile feature-release App PASS
+LocalCompile feature-release Tests PASS
+LocalAgentCompile=PASS

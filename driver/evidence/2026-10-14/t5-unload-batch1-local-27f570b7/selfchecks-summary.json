@@ -1,0 +1,47 @@
+[
+  {
+    "script": "driver/scripts/t5/allocation-retry-selfcheck.py",
+    "exit": 0,
+    "summary": "Ran 7 tests in 0.667s; OK"
+  },
+  {
+    "script": "driver/scripts/t5/attach-pin-selfcheck.py",
+    "exit": 0,
+    "summary": "Ran 9 tests in 1.304s; OK"
+  },
+  {
+    "script": "driver/scripts/t5/attachment-replay-selfcheck.py",
+    "exit": 0,
+    "summary": "Ran 16 tests in 15.955s; OK"
+  },
+  {
+    "script": "driver/scripts/t5/notepad-verdict.SelfCheck.py",
+    "exit": 0,
+    "summary": "T5HostVerdictSelfCheck=PASS;Assertions=14;ProductQualified=False"
+  },
+  {
+    "script": "driver/scripts/t5/reconcile-retry-selfcheck.py",
+    "exit": 0,
+    "summary": "Ran 15 tests in 1.100s; OK"
+  },
+  {
+    "script": "driver/scripts/t5/rename-receipt-selfcheck.py",
+    "exit": 0,
+    "summary": "Ran 8 tests in 0.140s; OK"
+  },
+  {
+    "script": "driver/scripts/t5/stream-listing-selfcheck.py",
+    "exit": 0,
+    "summary": "Ran 3 tests in 0.020s; OK"
+  },
+  {
+    "script": "driver/scripts/t5/teardown-participation-selfcheck.py",
+    "exit": 0,
+    "summary": "Ran 21 tests in 2.555s; OK"
+  },
+  {
+    "script": "driver/scripts/t5/unknown-origin-selfcheck.py",
+    "exit": 0,
+    "summary": "Ran 7 tests in 3.153s; OK"
+  }
+]
