@@ -549,8 +549,10 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       (`RpcReferences` −1: never retired, mandatory teardown waits forever), and the drain resent op16 for a retired stream. Fix
       `034a906f` + control `44dc68d3`, [focused review](evidence/2026-10-14/t5-pin-review-sol61.md) ACCEPT WITH CONDITIONS,
       [four WDK builds `t5-pin1`](evidence/2026-10-14/exact-t5-pin1-summary.txt) 0/0, imports PASS, signed `57B9CB09…D996`; merged
-      `acf440fe`. The reworked replay (`wt/t5-attach-replay` `7ab5c490`: live validation of cached permits, reversible unload
-      veto, held waits) awaits its build and re-review.
+      `acf440fe`. Exact attachment replay (`84ded060`, `bdab1f51`: owner-only exact op15 replay, live validation of cached permits,
+      reversible unload veto, held waits) [re-review](evidence/2026-10-14/t5-replay2-review-sol61.md) ACCEPT WITH CONDITIONS,
+      [four WDK builds `t5-replay2`](evidence/2026-10-14/exact-t5-replay2-summary.txt) 0/0; merged. Recovery holds remain: owner
+      exit/never retries, no typed op15 refusal in v20, lost seal ACK.
     - [x] Readiness root cause ([analysis](evidence/2026-10-14/m2t5boot12-readiness-rca-sol61.md)): (1) proven — the startup
       reconcile was never retried: the timer's armed flag was cleared only by the worker pass, which is skipped while reconciling,
       so after the service's EpochBusy reply nothing re-armed it (boots succeeded only when the agent's startup preparation
