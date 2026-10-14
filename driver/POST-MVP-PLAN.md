@@ -544,6 +544,13 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       access history of every registry hive at boot, including the BCD hive on the FAT EFI partition. Hypothesis: time-triggered
       boot maintenance on this base now produces writer-tracking losses outside the protected scope that still deny C: coverage,
       and pins the reconcile. **Stopped product rows** (three readiness failures) pending root cause.
+    - [x] Pre-existing op16 resume defect found by the [replay review](evidence/2026-10-14/t5-replay-review-sol61.md) (REJECT of
+      the replay change): `StageAttachResumeOrRun` released the transaction's stream pin and the drain released it again
+      (`RpcReferences` −1: never retired, mandatory teardown waits forever), and the drain resent op16 for a retired stream. Fix
+      `034a906f` + control `44dc68d3`, [focused review](evidence/2026-10-14/t5-pin-review-sol61.md) ACCEPT WITH CONDITIONS,
+      [four WDK builds `t5-pin1`](evidence/2026-10-14/exact-t5-pin1-summary.txt) 0/0, imports PASS, signed `57B9CB09…D996`; merged
+      `acf440fe`. The reworked replay (`wt/t5-attach-replay` `7ab5c490`: live validation of cached permits, reversible unload
+      veto, held waits) awaits its build and re-review.
     - [ ] Readiness root cause and fix (read-only analysis running); then the T4 smoke and the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
