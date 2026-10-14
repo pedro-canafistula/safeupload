@@ -303,9 +303,12 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
     - [x] Volume-teardown discriminator `m2t4vol1` (harness `4b7e5d82`, [result](evidence/2026-10-13/t4-delete-kd-attribution-result.md#row-4--volume-teardown-discriminator-m2t4vol1-harness-4b7e5d82)):
       Inconclusive — 512 opens of released files on a plain VHD NTFS volume retained 30 contexts, so the C: growth depends on those
       files. One allocation reply hit NO_WAITER after a 67 s service stall (cycle failed closed, 255/256); first failure preserved.
-    - [ ] Port `6198eee7`'s reviewed exact NO_WAITER allocation cleanup and request timing to the M2 agent (it exists only on the
-      isolated T4 agent), with phases for every operation and a service heartbeat; then compare C: populations in/out of the actor
-      profile and with/without the hand-back creation path. No builder jobs or host maintenance during timing-sensitive rows.
+    - [x] Ported `6198eee7`'s reviewed exact NO_WAITER allocation cleanup and request timing to the M2 agent (Astra worker,
+      integrated here): phases for every operation plus a 60 s receive-loop heartbeat; bound V23/V26 lost-reply handling unchanged.
+      [Matrix `t4-v18port1`](evidence/2026-10-14/exact-agent-matrix-t4-v18port1-summary.txt) PASS: 1,486 normal / 2,066 feature per
+      profile, 44 new tests, no skips, 0/0.
+    - [ ] Compare C: populations in/out of the actor profile and with/without the hand-back creation path, on the new agent.
+      No builder jobs or host maintenance during timing-sensitive rows.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
 - [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):
