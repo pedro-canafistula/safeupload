@@ -1,0 +1,4 @@
+ebdfce549ea1dc271498a5f6a38d151ac952ade9105d476b073a313eb271c851  /tmp/safeupload-t4-memory-tools/SafeUpload-stage-prototype.sys
+21f725dd4995603979cf173c43499477b45e2cc5085404afc594c5b04cd5293f  /tmp/safeupload-t4-memory-tools/feature-release-service-publish.zip
+HarnessCommit=4b7e5d82a09a23570131f3c547d3a1a3a7dc2db2
+Mode=T4_VOLUME_DISCRIMINATOR=yes cycles=256 verifier-from-boot sample_every=64 target=win10-debug3 (owner-authorized rows; non-qualifying); run overlay next to the base on the main disk

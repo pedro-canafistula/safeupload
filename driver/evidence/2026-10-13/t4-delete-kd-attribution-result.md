@@ -97,3 +97,33 @@ Next, without any gate, threshold or assertion change: keep T4 run overlays on t
 separate stream lifetime from a driver reference with a volume-teardown discriminator instead of KD pool walks — run the
 hand-back open/delete sequence on a VHD-backed NTFS volume inside the guest, then detach it. Contexts released by the
 dismount point at NTFS stream retention; contexts that survive it point at a driver reference.
+
+## Row 4 — volume-teardown discriminator `m2t4vol1` (harness `4b7e5d82`)
+
+Unchanged pair ([pair](m2t4vol1-pair.txt)), win10-debug3, boot Verifier, 256 cycles, run overlay on the main disk; restoration
+PASS. [Verdict](m2t4vol1-verdict.txt), [host log](m2t4vol1-host.txt). Launcher exit 1 (one required assertion failed, below).
+
+| Sample | Live SUfl | Step |
+|---|---:|---|
+| vol-s0 | 462 | after the existing purged sample |
+| vol-s1 | 521 | 512 files written on a fresh 1 GB VHD NTFS volume (filter attached), VHD detached |
+| vol-s2 | 551 | VHD reattached (filter attached), metadata-only open of all 512 files |
+| vol-s3 | 546 | first 256 deleted |
+| vol-s4 | 546 | VHD detached |
+
+- **Classification `Inconclusive`: the growth did not reproduce on a plain NTFS volume.** 512 metadata-only opens of files whose
+  streams the detach had torn down retained only 30 contexts (row 3 on C:: 451 for 192 hand-backs). Retention is therefore not a
+  property of every open of a released stream; it depends on the C: files involved (location under the actor's profile, how the
+  service created them, extra streams, or other openers there). The 59 contexts between s0 and s1 belong to C: activity while the
+  VHD was absent, not to the volume.
+- **`T4CyclesCompleted` 255/256 again, on the main disk.** Cycle 187 (replace) reached its outcome after 73 s; cycle 188 (mapped,
+  approve) got `CreateFile Win32=5` after 13.6 s. The service answered staged requests 1833 (13.1 s) and 1836 (20.5 s, allocation)
+  after the kernel's wait ended (`ERROR_FLT_NO_WAITER_FOR_REPLY`), after a 67 s gap with no service events. The kernel refused the
+  create; no blocked bytes were published and every version and stage file was released (all other assertions PASS, including
+  `T4PoolEndpoint`). The builder's kernel build ended about 50 s before the stall. This is the historical allocation-reply delay
+  ([diagnosis](../2026-10-12/t4-allocation-reply-diagnosis.md)); the pair's phase log (`handler=20535.8`) cannot locate the wait.
+
+Next, without a gate, threshold or assertion change: (1) trace the allocation handler's phases (journal lock wait, backing creation,
+manifest scan, journal write/flush) before another protected T4 row, and keep builder jobs off the host during timing-sensitive rows;
+(2) repeat the open/purge comparison on C: with the same population in and out of the actor profile and with/without the service's
+hand-back creation path, to find what makes those streams outlive the purge.

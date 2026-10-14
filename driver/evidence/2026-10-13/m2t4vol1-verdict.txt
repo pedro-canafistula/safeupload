@@ -1,0 +1,25 @@
+T4VolumeDiscriminatorMode INFO volume teardown diagnostic; non-qualifying; classification is informational
+T4GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T4DriverLoaded PASS the filter is still loaded after the cycles
+T4VerifierActive PASS runtime Verifier 0x13B still verifies SafeUpload.sys
+T4CyclesCompleted FAIL 255 of 256 cycles reached their outcome; outcomes {"resave-approve": {"Ok": 48, "Failed": 0}, "new-approve": {"Ok": 48, "Failed": 0}, "replace-approve": {"Ok": 48, "Failed": 0}, "mapped-approve": {"Ok": 47, "Failed": 1}, "resave-block": {"Ok": 16, "Failed": 0}, "new-block": {"Ok": 16, "Failed": 0}, "replace-block": {"Ok": 16, "Failed": 0}, "mapped-block": {"Ok": 16, "Failed": 0}}; first failures ['188 mapped-approve actor: error Exception calling "Mapped" with "2" argument(s): "CreateFile Win32=5"']
+T4ActorStopped PASS the actor acknowledged stop
+T4StopReason INFO completed-with-failures; attempted 256; failures 1
+T4NoBlockedBytesPublished PASS no blocked version reached its public name
+T4PoolEndpoint PASS driver nonpaged bytes (Verifier pool tracking) from cycle 64: 6359400; after idle 6375496; limit 6424936
+T4PoolSlope INFO 249.988 B/cycle (smoke row; judged only on the 10,000-cycle row)
+T4RegistryBounded PASS 14 samples within registry capacity; idle capacity failures 0; invalid samples []
+T4Memory INFO start: SUfl live 342, bytes 100808; SwUr bytes 6325664; module bytes 6355528
+T4Memory INFO last-cycle: SUfl live 1980, bytes 467448; SwUr bytes 6376064; module bytes 6410840
+T4Memory INFO idle: SUfl live 1640, bytes 391480; SwUr bytes 6344864; module bytes 6375496
+T4Memory INFO purged: SUfl live 462, bytes 127608; SwUr bytes 6344864; module bytes 6375496
+T4ContextsReleased INFO check PASS; SUfl live start 342, purged 462; limit start + 2048; released 1178 of idle growth since start 1298; purge NTSTATUS PASS [{"Operation": "RtlAdjustPrivilege", "Privilege": 13, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "RtlAdjustPrivilege", "Privilege": 5, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 2, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 3, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 4, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}]; purged sample present
+T4VolumeDiscriminator INFO classification Inconclusive; letter Z; N 512; filter attached {"First": true, "Second": true}; SUfl live {"vol-s0": 462, "vol-s1": 521, "vol-s2": 551, "vol-s3": 546, "vol-s4": 546}; growth 30; delete release 5; teardown release 0; residual 25; errors []
+T4VersionsReleased PASS after settle: live versions 0, views 0, created 255, released 255, views released 255
+T4TombstonesReleased PASS after the actor exited: tombstones 0
+T4NoCapRefusal PASS cap refusals 0, tombstone refusals 0
+T4StageFilesDeleted PASS stage files after idle 0 (journal manifests 255, hand-backs 64); driver deletes 191, failures 0
+T4StageWorkerIdle PASS stage worker passes over 60 s with nothing waiting: 0 (timer fires 0; waiting versions 0)
+T4WorkerWakes INFO {"wakeCleanup": 255, "wakeClose": 255, "wakeDispose": 255, "wakeConnect": 1, "wakeExit": 92, "wakeTimer": 331, "wakeInline": 0, "timerArms": 504, "disposeHeld": 255, "disposeNotHeld": 0, "disposeStale": 0, "disposeDeferred": 0, "passes": 1180}
+T4CycleTime INFO median 1202 ms, p95 2047 ms, max 73745 ms over 256 cycles
+T4Duration INFO 977 s (verifier-from-boot, 256 cycles)
