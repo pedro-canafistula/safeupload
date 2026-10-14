@@ -596,7 +596,14 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       the owner's next save to a name whose previous version was blocked was refused with STATUS_DELETE_PENDING (cycles 21, 24, 29;
       the blocked versions' journals show the hand-back done and stage cleanup started but not finished). Also, exact allocation
       replays for requests whose process had exited were refused and retried many times per second (6,374 timer arms).
-    - [ ] Root cause and fix (analysis running); then rerun the T4 smoke and the raw cells in all three modes.
+    - [x] [Root cause](evidence/2026-10-14/m2t5boot14-rca-sol61.md): the agent deletes a blocked stage through an exclusive open
+      while the driver keeps its read-only backing open (error 32), so disposal never arrives and the blocked version never retires;
+      the owner's next save then sends a follow-up allocation that the agent denies for a Blocked predecessor, the driver keeps the
+      answered denial as an unresolved receipt that reserves the name (DELETE_PENDING) and pins the predecessor, and its replays loop
+      (allocation recovery is forced to EXCHANGE, collected without parking or deadline and requeued inline after each reply).
+    - [ ] Fix (implementation running): blocked cleanup that shares with the driver's read handle and disposes before waiting for
+      absence; the next save after a BLOCK as an ordinary save; an exact terminal no-allocation result; allocation-recovery parking
+      and backoff. Then rerun the T4 smoke and the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
