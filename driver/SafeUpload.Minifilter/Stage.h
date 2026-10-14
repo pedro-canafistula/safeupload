@@ -70,6 +70,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStageProtocolPublishClientPort(_In_ PVOID ConnectionCookie);
 VOID SafeUploadStageProtocolConnectionReset(_In_ PVOID ConnectionCookie);
 VOID SafeUploadStageProtocolAuthenticationChanged(_In_ PVOID ConnectionCookie);
+BOOLEAN SafeUploadStageProtocolConnectionCurrent(_In_ PVOID ConnectionCookie);
 VOID SafeUploadStageServiceDisconnected(_In_ PVOID ConnectionCookie);
 BOOLEAN SafeUploadStageProtocolIsReady(VOID);
 /* Short capability-handoff snapshot. The caller releases its process/channel

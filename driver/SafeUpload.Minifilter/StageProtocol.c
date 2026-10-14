@@ -654,6 +654,19 @@ VOID SafeUploadStageProtocolAuthenticationChanged(_In_ PVOID ConnectionCookie)
     SafeUploadBoundPublicationRevokeConnection(ConnectionCookie);
 }
 
+/* TRUE while ConnectionCookie is still the published v20 channel. Callers may hold NamespaceResource: it precedes this
+ * short state spin lock (as for SafeUploadStageProtocolIsReady from StageCreate). */
+BOOLEAN SafeUploadStageProtocolConnectionCurrent(_In_ PVOID ConnectionCookie)
+{
+    KIRQL oldIrql;
+    BOOLEAN current;
+    if (ConnectionCookie == NULL) return FALSE;
+    KeAcquireSpinLock(&SafeUploadStageV20StateLock, &oldIrql);
+    current = InterlockedCompareExchangePointer(&SafeUploadStageV20ConnectionCookie, NULL, NULL) == ConnectionCookie;
+    KeReleaseSpinLock(&SafeUploadStageV20StateLock, oldIrql);
+    return current;
+}
+
 BOOLEAN SafeUploadStageProtocolIsReady(VOID)
 {
     KIRQL oldIrql;

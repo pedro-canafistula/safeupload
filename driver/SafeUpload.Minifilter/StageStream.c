@@ -6915,6 +6915,12 @@ VOID SafeUploadStageServiceConnected(_In_ PVOID ConnectionCookie)
     if (!StageInitialized) return;
     SafeUploadStageProtocolAuthenticationChanged(ConnectionCookie);
     StageAcquire(&StageNamespaceResource);
+    /* Disconnect resets the channel cookie before taking this lock to clear availability. A notification for a connection
+     * already reset must not publish availability, a generation or a reconcile after it. */
+    if (!SafeUploadStageProtocolConnectionCurrent(ConnectionCookie)) {
+        StageRelease(&StageNamespaceResource);
+        return;
+    }
     StageServiceAvailable = TRUE;
     InterlockedIncrement(&StageServiceGeneration);
     InterlockedExchange(&StageReconcileNeeded, 1);

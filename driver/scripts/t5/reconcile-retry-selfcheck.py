@@ -216,6 +216,24 @@ class RetryTimer(unittest.TestCase):
         self.assertIn('reconcileAgain = TRUE;', accepted.replace(success, ''))
         self.assertIn('InterlockedExchange(&StageReconcileNeeded, 0);', accepted)
 
+    def test_a_stale_connect_cannot_publish_availability_after_disconnect(self):
+        # t5-rename2 review: a late authentication callback for a connection already reset set StageServiceAvailable again.
+        connected = body(self.text, 'SafeUploadStageServiceConnected')
+        acquire = connected.index('StageAcquire(&StageNamespaceResource)')
+        check = connected.index('if (!SafeUploadStageProtocolConnectionCurrent(ConnectionCookie)) {')
+        publish = connected.index('StageServiceAvailable = TRUE;')
+        self.assertLess(acquire, check)
+        self.assertLess(check, publish)
+        self.assertRegex(connected[check:publish], r'StageRelease\(&StageNamespaceResource\);\s*return;')
+        self.assertLess(publish, connected.index('InterlockedIncrement(&StageServiceGeneration);'))
+        protocol = code(ROOT / 'driver/SafeUpload.Minifilter/StageProtocol.c')
+        current = body(protocol, 'SafeUploadStageProtocolConnectionCurrent')
+        self.assertRegex(current, r'KeAcquireSpinLock\(&SafeUploadStageV20StateLock, &oldIrql\);\s*current = '
+                                  r'InterlockedCompareExchangePointer\(&SafeUploadStageV20ConnectionCookie, NULL, NULL\) == ConnectionCookie;')
+        disconnected = body(self.text, 'SafeUploadStageServiceDisconnected')
+        self.assertLess(disconnected.index('SafeUploadStageProtocolConnectionReset(ConnectionCookie);'),
+                        disconnected.index('StageServiceAvailable = FALSE;'))
+
     def test_disconnect_updates_the_timer_under_the_namespace_lock(self):
         disconnect_contract(self.text)
 
