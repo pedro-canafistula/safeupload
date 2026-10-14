@@ -227,4 +227,20 @@ public sealed class StagedAllocationResolutionTests : IDisposable
         FilterPort.ValidateAllocationResolutionReplyV20(retry, request);
         Assert.NotEqual(StageV20Result.NoAllocationCommitted, retry.Result);
     }
+
+    [Fact]
+    public void Requester_exit_during_metadata_read_is_transient_not_a_refusal()
+    {
+        // A real process that exited after its identity could have been checked: reading its image name now throws.
+        var start = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c exit 0") { UseShellExecute = false, CreateNoWindow = true };
+        using var child = System.Diagnostics.Process.Start(start)!;
+        Assert.True(child.WaitForExit(30_000));
+        var error = Assert.Throws<IOException>(() => MinifilterInterceptor.ReadRequesterProcessName(child));
+        Assert.IsType<InvalidOperationException>(error.InnerException);
+        Assert.False(StagedRequestRefusal.IsPermanent(error));
+        Assert.Equal(StageV20Result.RetryableFailure, MinifilterInterceptor.ClassifyAllocationFailure(error));
+        Assert.Null(MinifilterInterceptor.ClassifyAllocationFailure(new InvalidOperationException("Unwrapped race.")));
+        using var self = System.Diagnostics.Process.GetCurrentProcess();
+        Assert.Equal(self.ProcessName, MinifilterInterceptor.ReadRequesterProcessName(self));
+    }
 }

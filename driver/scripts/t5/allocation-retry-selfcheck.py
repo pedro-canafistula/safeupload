@@ -176,5 +176,17 @@ class AllocationRecovery(unittest.TestCase):
                       body(self.stream, 'StageCreate'))
 
 
+    def test_requester_exit_during_metadata_read_stays_transient(self):
+        # t5-block review: ProcessName after the owner check threw InvalidOperationException on exit, which the classifier
+        # treated as a permanent refusal and parked; the name stayed reserved for the owner.
+        source = (ROOT / 'agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs').read_text()
+        self.assertIn('string processName = ReadRequesterProcessName(process);', source)
+        self.assertEqual(source.count('process.ProcessName'), 1)
+        helper = source[source.index('internal static string ReadRequesterProcessName(Process process)'):]
+        helper = helper[:helper.index('\n    }\n') + 6]
+        self.assertIn('try { return process.ProcessName; }', helper)
+        self.assertRegex(helper, r'catch \(InvalidOperationException error\)\s*\{\s*throw new IOException\(')
+        self.assertNotIn('StagedRequestRefusal.Create', helper)
+
 if __name__ == '__main__':
     unittest.main()

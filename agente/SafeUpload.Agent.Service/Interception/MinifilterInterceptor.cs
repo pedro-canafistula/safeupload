@@ -785,7 +785,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         if (process.HasExited) return null;
                         SessionResolver.ProcessIdentity requestor = SessionResolver.GetRequiredProcessIdentity(processId);
                         if (!StagedTransferAllocator.AllocationOwnerMatches(source.RequestorCreationTime, requestor.CreationTimeFileTime)) return null;
-                        string processName = process.ProcessName;
+                        string processName = ReadRequesterProcessName(process);
                         Policy policy = await _policyStore.LoadCurrentAsync(CancellationToken.None).ConfigureAwait(false);
                         var operation = new FileOperation(destination, Path.GetFileName(destination),
                             Path.GetExtension(destination), 0, DateTime.MinValue, processName,
@@ -839,6 +839,19 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             _logger.LogWarning(ex, "Exact allocation unresolved for request {RequestId}.", request.RequestId);
             uint? resolution = ClassifyAllocationFailure(ex);
             return (resolution is null ? PortVerdict.Deny : PortVerdict.Allow, null, resolution);
+        }
+    }
+
+    // The requester can exit between the owner-identity check and this image-name read; Process then throws
+    // InvalidOperationException, which the classifier treats as a permanent refusal parked until reconnect, so the
+    // owner's name stayed reserved. Nothing is allocated yet: report a transient failure, and the exact replay finds
+    // the PID gone before allocation and answers "no allocation committed".
+    internal static string ReadRequesterProcessName(Process process)
+    {
+        try { return process.ProcessName; }
+        catch (InvalidOperationException error)
+        {
+            throw new IOException("The allocation requester exited while its metadata was read.", error);
         }
     }
 
