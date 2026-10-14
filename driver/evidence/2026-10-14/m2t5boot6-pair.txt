@@ -1,0 +1,5 @@
+ee7646594b60025b3748f4bca72f4520ee528b6b5e07de15a7cb1b21d720cc93  /mnt/storage/safeupload-archive/pairs/t5-pair5/SafeUpload-stage-prototype.sys
+669903eb854401a65bc9164f2fae9777fbe3a7687808fc6666978a2c96b9aba3  /mnt/storage/safeupload-archive/pairs/t5-pair5/feature-release-service-publish.zip
+HarnessCommit=95bf74062a4d874a5d88b2021242e0454755f16b
+Driver=t5-fix4 (kernel tree of 926286ae == HEAD; signed LocalMachine; feature Debug; imports PASS); Agent=t5-pipe4 feature Release (agent tree of d07925ef == HEAD)
+Mode=first Verifier boot of the dormant T5 pair with the pipe fix; T4 smoke 256 verifier-from-boot sample_every=64; win10-debug3; main-disk overlay; no builder jobs

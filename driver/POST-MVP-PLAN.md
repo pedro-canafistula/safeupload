@@ -492,7 +492,15 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       [Matrix `t5-pipe4`](evidence/2026-10-14/exact-agent-matrix-t5-pipe4-summary.txt) PASS 1,489 / 2,069 per profile. Failed receipts
       kept: `t5-pipe1` (CA2022 in a test), `t5-pipe2` (leak test, 25 s), `t5-pipe3` (`Rn012_timeout` 7,519 ms, not overlapping the
       pipe tests; the identical rerun `t5-pipe4` passed).
-    - [ ] Rerun the first boot with the fixed agent (T4 smoke, boot Verifier), then the raw cells in all three modes.
+    - [x] `m2t5boot6` (fixed driver and agent): the pipe works, but the agent's first SetPolicy failed with STATUS_IO_TIMEOUT after
+      the 30 s epoch drain and the driver failed closed (exit 19; restoration PASS). `a27defd8` had made every FSCTL and SET_SECURITY
+      an epoch operation held through lower completion (k11 had neither); pending oplock requests and waiting USN reads pin the boot
+      epoch. Fix `e854544d` excludes only the non-mutating oplock request/acknowledge family, `FSCTL_READ_USN_JOURNAL` and
+      `FSCTL_WAIT_FOR_REPAIR` (a partial restoration of k11 behavior). [Focused review](evidence/2026-10-14/t5-fix5-review-sol61.md)
+      ACCEPT WITH CONDITIONS; [four WDK builds `t5-fix5`](evidence/2026-10-14/exact-t5-fix5-summary.txt) 0/0, imports PASS, signed
+      `93788401…0064`. Activation holds added: unbounded oplock-acknowledge waits of mutating epoch operations keep the fail-closed
+      timeout; NOTIFY-only `FSCTL_DELETE_USN_JOURNAL` follow-up; the bound publication's FSCTL classification needs the same distinction.
+    - [ ] `m2t5boot7`: t5-fix5 driver with the t5-pipe4 agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

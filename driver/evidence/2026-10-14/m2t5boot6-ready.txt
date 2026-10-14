@@ -1,0 +1,4 @@
+READY=False
+LAST_AGENT_FRAME={"type":"status","policyVersion":0,"activeCategories":0,"protectionActive":false,"auditOnly":false,"admissionCoverage":"NotAvailable","admissionCoverageReason":null,"nativePolicyGeneration":null}
+READINESS_ELAPSED_MS=603407
+DRIVER_LOADED=True
