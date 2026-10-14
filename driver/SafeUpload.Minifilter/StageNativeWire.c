@@ -137,7 +137,8 @@ NTSTATUS SafeUploadStageNativeReplayControl(PVOID PortCookie, PVOID Input, ULONG
             status = STATUS_ACCESS_DENIED;
             leave;
         }
-        work = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*work), NATIVE_WIRE_TAG);
+        /* NativeReadPage fills work->Snapshots under NativeLock: nonpaged. */
+        work = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*work), NATIVE_WIRE_TAG);
         if (work == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; leave; }
         status = SafeUploadStageNativeReadIdentity(&work->Page.DriverInstanceId, &bootSequence);
         if (!NT_SUCCESS(status)) leave;
@@ -218,7 +219,8 @@ NTSTATUS SafeUploadStagePublicOpenReplayControl(PVOID PortCookie, PVOID Input, U
             status = STATUS_ACCESS_DENIED;
             leave;
         }
-        work = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*work), NATIVE_WIRE_TAG);
+        /* SafeUploadStagePublicOpenReadPage fills work->Snapshots under NativeLock: nonpaged. */
+        work = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*work), NATIVE_WIRE_TAG);
         if (work == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; leave; }
         status = SafeUploadStageNativeReadIdentity(&work->Page.DriverInstanceId, &bootSequence);
         if (!NT_SUCCESS(status)) leave;

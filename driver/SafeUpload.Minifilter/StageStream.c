@@ -6393,7 +6393,9 @@ static VOID StagePublicOpenFlushFacts(VOID)
     NTSTATUS status;
     if (SafeUploadStageMandatoryTeardownActive() ||
         !SafeUploadStageProtocolNativeForwardAllowed(0, authority)) return;
-    rows = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*rows) * SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS, STAGE_TAG);
+    /* NativeLock readers and confirmations touch these rows: nonpaged. A failed
+     * allocation returns before the attempt marker, so the next event retries. */
+    rows = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*rows) * SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS, STAGE_TAG);
     if (rows == NULL) return;
     do {
         UINT64 current;
@@ -6461,7 +6463,9 @@ static VOID StageNativeFlushFacts(VOID)
     NTSTATUS status;
     if (SafeUploadStageMandatoryTeardownActive() ||
         !SafeUploadStageProtocolNativeForwardAllowed(0, authority)) return;
-    rows = ExAllocatePool2(POOL_FLAG_PAGED,
+    /* NativeLock readers and acknowledgment touch these rows: nonpaged. A failed
+     * allocation returns before the attempt marker, so the next event retries. */
+    rows = ExAllocatePool2(POOL_FLAG_NON_PAGED,
         sizeof(*rows) * SAFEUPLOAD_NATIVE_REPLAY_PAGE_ROWS, STAGE_TAG);
     if (rows == NULL) return;
     do {
@@ -6907,11 +6911,18 @@ VOID SafeUploadStageStopWorker(VOID)
 
 BOOLEAN SafeUploadStageCanDetach(VOID)
 {
-    return StageStreamCount == 0 && StageReservedStreamCount == 0
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        && StageAttachActiveCount == 0 && StageAttachCaptureCount == 0
+    KIRQL irql;
+    BOOLEAN attachIdle;
+    /* One lock hold: a capture converting to an active transaction is never
+     * observed as neither. */
+    StageStreamAcquireSpinLock(&StageAttachLock, &irql);
+    attachIdle = StageAttachActiveCount == 0 && StageAttachCaptureCount == 0;
+    StageStreamReleaseSpinLock(&StageAttachLock, irql);
+    return StageStreamCount == 0 && StageReservedStreamCount == 0 && attachIdle;
+#else
+    return StageStreamCount == 0 && StageReservedStreamCount == 0;
 #endif
-        ;
 }
 
 VOID SafeUploadStageRecordUnloadVeto(_In_ UINT32 Reason, _In_ NTSTATUS Status)

@@ -192,22 +192,59 @@ class TeardownParticipation(unittest.TestCase):
 
     def test_initialize_failure_releases_everything_acquired(self):
         # A failed DriverEntry gets no unload callback; StageFree returns early
-        # while StageInitialized is FALSE (pre-boot review finding 1).
+        # while StageInitialized is FALSE (pre-boot review finding 1). Each
+        # failure releases exactly what was acquired before it, in reverse order.
         init = body('StageStream.c', 'SafeUploadStageInitialize')
         tail = init[init.index('SafeUploadStageWritersInitialize()'):init.index('StageInitialized = TRUE')]
-        failures = tail.split('return status;')[:-1]
-        self.assertGreaterEqual(len(failures), 2)
-        for failure in failures:
-            block = failure[failure.rindex('if (!NT_SUCCESS(status))'):]
-            self.order(block, 'SafeUploadStageWritersUninitialize()', 'ExDeleteResourceLite(&StageNamespaceResource)')
+        failures = [f[f.rindex('if (!NT_SUCCESS(status))'):] for f in tail.split('return status;')[:-1]]
+        self.assertEqual(2, len(failures))
+        releases = ('SafeUploadStageNativeUninitialize()', 'SafeUploadStageFenceFree()',
+                    'SafeUploadStageWritersUninitialize()', 'ExDeleteResourceLite(&StageNamespaceResource)')
+        fence, publication = failures
+        self.assertLess(tail.index('SafeUploadStageFenceInitialize()'), tail.index(fence))
+        self.order(fence, *releases[2:])
+        for absent in releases[:2]:
+            self.assertNotIn(absent, fence)
+        self.assertLess(tail.index('SafeUploadBoundPublicationInitialize('), tail.index(publication))
+        self.order(publication, *releases)
+        for release in releases:
+            self.assertEqual(1, publication.count(release), release)
+        for release in releases[2:]:
+            self.assertEqual(1, fence.count(release), release)
 
-    def test_native_page_reader_fills_nonpaged_page_under_lock(self):
-        # Callers pass paged rows; nothing pageable is written under NativeLock (finding 2).
+    def test_native_lock_touches_only_resident_caller_memory(self):
+        # Pageable memory must not be touched under NativeLock (findings 2 and re-review 1/2).
         reader = body('StageNativeRecords.c', 'NativeReadPage')
-        self.order(reader, 'POOL_FLAG_NON_PAGED', 'NativeAcquire(', 'NativeRelease(', 'RtlCopyMemory(Rows')
+        self.assertNotIn('ExAllocatePool2', reader)  # no new failure inside a multi-page pass
         locked = reader[reader.index('NativeAcquire('):reader.index('NativeRelease(')]
-        self.assertNotIn('Rows[', locked)
-        self.assertNotIn('Rows,', locked)
+        for output in ('*Count', '*Revision', '*Complete'):
+            self.assertNotIn(output, locked, output)
+        identity = body('StageNativeRecords.c', 'SafeUploadStageNativeReadIdentity')
+        locked = identity[identity.index('NativeAcquire('):identity.index('NativeRelease(')]
+        self.assertNotIn('*DriverInstanceId', locked); self.assertNotIn('*OsBootSequence', locked)
+        forwarded = body('StageNativeRecords.c', 'SafeUploadStageNativeMarkForwarded')
+        locked = forwarded[forwarded.index('NativeAcquire('):forwarded.index('NativeRelease(')]
+        self.assertNotIn('PublicOpenReceipt->', locked)
+        reserve = body('StageNativeRecords.c', 'NativeReserve')
+        for locked in re.findall(r'NativeAcquire\(.*?NativeRelease\(', reserve, re.S):
+            self.assertNotIn('Binding->', locked)
+        # Every reader caller passes rows from a nonpaged allocation made in the same function.
+        callers = 0
+        for file in ('StageStream.c', 'StageNativeWire.c', 'StageNativeObservation.c'):
+            text = code(K / file)
+            for match in re.finditer(r'(SafeUploadStageNativeReadPage|SafeUploadStagePublicOpenReadPage)\(([^;]*?)\);', text, re.S):
+                args = [a.strip() for a in match.group(2).split(',')]
+                base = re.match(r'&?(\w+)', args[2]).group(1)
+                field = args[2].split('->')[1].strip() if '->' in args[2] else None
+                owner = text[:match.start()]
+                if field == 'RevisionProbe':
+                    allocation = re.findall(r'work->RevisionProbe\s*=\s*ExAllocatePool2\(\s*(POOL_FLAG_\w+)', owner)
+                else:
+                    allocation = re.findall(r'\b' + base + r'\s*=\s*ExAllocatePool2\(\s*(POOL_FLAG_\w+)', owner)
+                self.assertTrue(allocation, (file, args[2]))
+                self.assertEqual('POOL_FLAG_NON_PAGED', allocation[-1], (file, args[2]))
+                callers += 1
+        self.assertEqual(9, callers)
 
     def test_attach_capture_reserved_before_any_capture(self):
         # Capacity covers captures in progress, not only visible transactions (finding 3).
@@ -220,11 +257,26 @@ class TeardownParticipation(unittest.TestCase):
         self.order(create[create.index('Fail:'):], 'StageAttachTransactionDereference(transaction)',
                    'StageAttachReturnCapture(captureSlot)')
         convert = create[create.index('InsertTailList(&StageAttachLookup'):]
-        self.order(convert, 'StageAttachCaptures[captureSlot] = NULL', 'captureReserved = FALSE',
-                   'InterlockedIncrement(&StageAttachActiveCount)', 'StageStreamReleaseSpinLock(&StageAttachLock')
-        for file, name in (('StageStream.c', 'StageAttachReleaseActive'), ('StageStream.c', 'SafeUploadStageCanDetach'),
-                           ('StageStream.c', 'SafeUploadStagePrepareUnload'), ('StageStream.c', 'StageAttachReturnCapture')):
-            self.assertIn('StageAttachCaptureCount', body(file, name), name)
+        self.order(convert, 'StageAttachCaptures[captureSlot] = NULL', '--StageAttachCaptureCount',
+                   'captureReserved = FALSE', 'InterlockedIncrement(&StageAttachActiveCount)',
+                   'StageStreamReleaseSpinLock(&StageAttachLock')
+        reserving = body('StageStream.c', 'StageAttachReserveCapture')
+        self.assertIn('StageAttachActiveCount + StageAttachCaptureCount >= STAGE_ATTACH_LIMIT_GLOBAL', reserving)
+        self.assertIn('instanceCount >= STAGE_ATTACH_LIMIT_PER_INSTANCE', reserving)
+        self.order(reserving, 'StageStreamAcquireSpinLock(&StageAttachLock', 'StageAttachCaptures[freeSlot] = Instance',
+                   '++StageAttachCaptureCount', 'StageStreamReleaseSpinLock(&StageAttachLock')
+        returning = body('StageStream.c', 'StageAttachReturnCapture')
+        self.order(returning, 'StageStreamAcquireSpinLock(&StageAttachLock', 'StageAttachCaptures[Slot] = NULL',
+                   '--StageAttachCaptureCount', 'KeSetEvent(&StageAttachDrained', 'StageStreamReleaseSpinLock(&StageAttachLock')
+        self.assertIn('StageAttachActiveCount) == 0 && StageAttachCaptureCount == 0',
+                      body('StageStream.c', 'StageAttachReleaseActive'))
+        self.assertIn('StageAttachActiveCount == 0 && StageAttachCaptureCount == 0',
+                      body('StageStream.c', 'SafeUploadStageStopWorker'))
+        detach = body('StageStream.c', 'SafeUploadStageCanDetach')
+        self.order(detach, 'StageStreamAcquireSpinLock(&StageAttachLock', 'StageAttachCaptureCount',
+                   'StageStreamReleaseSpinLock(&StageAttachLock')
+        self.assertIn('InterlockedCompareExchange(&StageAttachCaptureCount, 0, 0) != 0',
+                      body('StageStream.c', 'SafeUploadStagePrepareUnload'))
         self.assertIn('StageAttachCaptures[index] == Instance', body('StageStream.c', 'StageAttachHasInstance'))
 
 if __name__ == '__main__':

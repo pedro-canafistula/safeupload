@@ -327,9 +327,9 @@ __declspec(noinline) static NTSTATUS NativeReserve(PFLT_INSTANCE Instance, PFILE
     for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
         PSAFEUPLOAD_STAGE_NATIVE_RECORD current = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
         const SAFEUPLOAD_STAGE_NATIVE_BINDING *existing = &current->Snapshot.Binding;
-        if (current->FileObject == FileObject || NativeGuidEqual(&existing->OperationId, &Binding->OperationId) ||
-            NativeGuidEqual(&existing->TransferId, &Binding->TransferId) ||
-            NativeGuidEqual(&existing->RequestNonce, &Binding->RequestNonce)) {
+        if (current->FileObject == FileObject || NativeGuidEqual(&existing->OperationId, &item->Snapshot.Binding.OperationId) ||
+            NativeGuidEqual(&existing->TransferId, &item->Snapshot.Binding.TransferId) ||
+            NativeGuidEqual(&existing->RequestNonce, &item->Snapshot.Binding.RequestNonce)) {
             status = STATUS_OBJECT_NAME_COLLISION; goto UnlockFail;
         }
     }
@@ -587,8 +587,11 @@ NTSTATUS SafeUploadStageNativeMarkForwarded(PSAFEUPLOAD_STAGE_NATIVE_RECORD Reco
     const SAFEUPLOAD_PUBLIC_RELAY_REPLY *PublicOpenReceipt)
 {
     static const FILE_ID_128 zero = {0};
+    SAFEUPLOAD_STAGE_IDENTITY_V19 publishedIdentity;
+    UINT64 publishedGeneration = 0;
     KIRQL irql;
     NTSTATUS status = STATUS_SUCCESS;
+    RtlZeroMemory(&publishedIdentity, sizeof(publishedIdentity));
     if (!NativeScheduled(&Record->Snapshot.Binding)) {
         if (PublicOpenReceipt == NULL || PublicOpenReceipt->Request.Phase != SAFEUPLOAD_PUBLIC_OPEN_PREPARE ||
             PublicOpenReceipt->Request.NativeMapRevision != ExpectedRevision ||
@@ -601,6 +604,11 @@ NTSTATUS SafeUploadStageNativeMarkForwarded(PSAFEUPLOAD_STAGE_NATIVE_RECORD Reco
                 (PublicOpenReceipt->PublishedIdentity.VolumeSerialNumber != Record->Snapshot.Binding.Public.PublicIdentity.VolumeSerialNumber ||
                  RtlEqualMemory(&PublicOpenReceipt->PublishedIdentity.FileId, &zero, sizeof(zero)))))
             return STATUS_INVALID_PARAMETER;
+    }
+    /* The receipt may be caller memory; nothing of it is read under NativeLock. */
+    if (PublicOpenReceipt != NULL) {
+        publishedGeneration = PublicOpenReceipt->PublishedGeneration;
+        publishedIdentity = PublicOpenReceipt->PublishedIdentity;
     }
     NativeAcquire(&irql);
     if (!SafeUploadBoundPublicationNamespaceAvailable(Record->Instance)) status = STATUS_DEVICE_BUSY;
@@ -616,8 +624,8 @@ NTSTATUS SafeUploadStageNativeMarkForwarded(PSAFEUPLOAD_STAGE_NATIVE_RECORD Reco
         Record->Snapshot.JournalGeneration = DurableGeneration;
         if (PublicOpenReceipt != NULL) {
             Record->Snapshot.PublicOpenPrepared = TRUE;
-            Record->Snapshot.PublishedGeneration = PublicOpenReceipt->PublishedGeneration;
-            Record->Snapshot.PublishedIdentity = PublicOpenReceipt->PublishedIdentity;
+            Record->Snapshot.PublishedGeneration = publishedGeneration;
+            Record->Snapshot.PublishedIdentity = publishedIdentity;
         }
         Record->Snapshot.Forwarded = TRUE;
         Record->CreateCallbackOwned = TRUE; /* producer reference transfers to post-CREATE */
@@ -1246,15 +1254,20 @@ VOID SafeUploadStageNativeInstanceTeardownStart(PFLT_INSTANCE Instance, FLT_INST
 _Use_decl_annotations_
 NTSTATUS SafeUploadStageNativeReadIdentity(GUID *DriverInstanceId, PULONG OsBootSequence)
 {
+    GUID driver;
+    ULONG boot;
     KIRQL irql;
     RtlZeroMemory(DriverInstanceId, sizeof(*DriverInstanceId));
     *OsBootSequence = 0;
     if (!NativeEnter()) return STATUS_DEVICE_NOT_READY;
+    /* Outputs may be paged: read into resident locals under the lock. */
     NativeAcquire(&irql);
-    *DriverInstanceId = NativeDriverInstance;
-    *OsBootSequence = NativeBootSequence;
+    driver = NativeDriverInstance;
+    boot = NativeBootSequence;
     NativeRelease(irql);
     ExReleaseRundownProtection(&NativeCalls);
+    *DriverInstanceId = driver;
+    *OsBootSequence = boot;
     return STATUS_SUCCESS;
 }
 
@@ -1273,12 +1286,13 @@ NTSTATUS SafeUploadStageNativeReadRevision(PUINT64 Revision)
     return status;
 }
 
+/* Rows are written under NativeLock: every caller passes nonpaged rows. The
+ * scalar outputs are written only after the lock is released. */
 static NTSTATUS NativeReadPage(UINT64 ExpectedRevision, ULONG Offset,
     PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT Rows, ULONG Capacity, PULONG Count, PUINT64 Revision, PBOOLEAN Complete,
     BOOLEAN Ordinary)
 {
     PLIST_ENTRY link;
-    PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT page;
     ULONG index = 0, count = 0;
     UINT64 revision = 0;
     BOOLEAN complete = FALSE;
@@ -1287,11 +1301,7 @@ static NTSTATUS NativeReadPage(UINT64 ExpectedRevision, ULONG Offset,
     *Count = 0; *Revision = 0; *Complete = FALSE;
     if (Capacity == 0 || Capacity > NATIVE_PAGE_LIMIT || (ExpectedRevision == 0 && Offset != 0))
         return STATUS_INVALID_PARAMETER;
-    /* Callers' rows may be paged. Fill one bounded nonpaged page under
-     * NativeLock and copy it to the caller only after the lock is released. */
-    page = ExAllocatePool2(POOL_FLAG_NON_PAGED, (SIZE_T)Capacity * sizeof(*page), NATIVE_RECORD_TAG);
-    if (page == NULL) return STATUS_INSUFFICIENT_RESOURCES;
-    if (!NativeEnter()) { ExFreePoolWithTag(page, NATIVE_RECORD_TAG); return STATUS_DEVICE_NOT_READY; }
+    if (!NativeEnter()) return STATUS_DEVICE_NOT_READY;
     NativeAcquire(&irql);
     revision = NativeRevision;
     if (!NativeReplayUsable) { status = STATUS_INTEGER_OVERFLOW; goto Exit; }
@@ -1301,16 +1311,14 @@ static NTSTATUS NativeReadPage(UINT64 ExpectedRevision, ULONG Offset,
         if (NativeScheduled(&record->Snapshot.Binding) == Ordinary) continue;
         if (index++ < Offset) continue;
         if (count == Capacity) break;
-        page[count++] = record->Snapshot;
+        Rows[count++] = record->Snapshot;
     }
     if (index < Offset) status = STATUS_INVALID_PARAMETER;
     else complete = link == &NativeRecords;
 Exit:
     NativeRelease(irql);
     ExReleaseRundownProtection(&NativeCalls);
-    if (count != 0) RtlCopyMemory(Rows, page, (SIZE_T)count * sizeof(*page));
     *Count = count; *Revision = revision; *Complete = complete;
-    ExFreePoolWithTag(page, NATIVE_RECORD_TAG);
     return status;
 }
 

@@ -12,7 +12,7 @@
 
 typedef struct _NATIVE_OBSERVATION_WORK {
     SAFEUPLOAD_NATIVE_NAME_REPLY Reply;
-    SAFEUPLOAD_STAGE_NATIVE_SNAPSHOT RevisionProbe;
+    PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT RevisionProbe; /* nonpaged: written under NativeLock */
     PFLT_INSTANCE Instances[NATIVE_OBSERVATION_INSTANCES];
     PFLT_INSTANCE Instance; /* borrowed from Instances, not another reference */
     HANDLE RootHandle, ParentHandle;
@@ -260,12 +260,15 @@ NTSTATUS SafeUploadStageNativeNameControl(PVOID PortCookie, PVOID Input, ULONG I
         }
         work = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*work), NATIVE_OBSERVATION_TAG);
         if (work == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; leave; }
+        /* ExAllocatePool2 zero-fills: RevisionProbe is NULL until allocated. */
+        work->RevisionProbe = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*work->RevisionProbe), NATIVE_OBSERVATION_TAG);
+        if (work->RevisionProbe == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; leave; }
         status = SafeUploadStageNativeReadIdentity(&driver, &boot);
         if (!NT_SUCCESS(status)) leave;
         if (boot != request.OsBootSequence || !RtlEqualMemory(&driver, &request.ExpectedDriverInstanceId, sizeof(GUID))) {
             status = STATUS_REVISION_MISMATCH; leave;
         }
-        status = SafeUploadStageNativeReadPage(request.ExpectedRevision, 0, &work->RevisionProbe, 1,
+        status = SafeUploadStageNativeReadPage(request.ExpectedRevision, 0, work->RevisionProbe, 1,
             &count, &revision, &complete);
         if (!NT_SUCCESS(status)) leave;
         if (!SafeUploadStageAdmissionReadTopology(&work->Topology, &work->Coverage)) { status = STATUS_RETRY; leave; }
@@ -298,7 +301,7 @@ NTSTATUS SafeUploadStageNativeNameControl(PVOID PortCookie, PVOID Input, ULONG I
         status = SafeUploadStagePublicReadMountGuid(work->Instance, &mount);
         if (!NT_SUCCESS(status)) leave;
         if (!RtlEqualMemory(&mount, &request.MountManagerVolumeId, sizeof(GUID))) { status = STATUS_FILE_INVALID; leave; }
-        status = SafeUploadStageNativeReadPage(request.ExpectedRevision, 0, &work->RevisionProbe, 1, &count, &revision, &complete);
+        status = SafeUploadStageNativeReadPage(request.ExpectedRevision, 0, work->RevisionProbe, 1, &count, &revision, &complete);
         if (!NT_SUCCESS(status)) leave;
         if (!NativeObservationStable(work) || !SafeUploadConnectionIsAuthenticatedIdentity(cookie, epoch)) {
             status = STATUS_RETRY; leave;
@@ -332,7 +335,7 @@ NTSTATUS SafeUploadStageNativeNameControl(PVOID PortCookie, PVOID Input, ULONG I
                 work->Instances[index] = NULL;
             }
         }
-        status = SafeUploadStageNativeReadPage(request.ExpectedRevision, 0, &work->RevisionProbe, 1, &count, &revision, &complete);
+        status = SafeUploadStageNativeReadPage(request.ExpectedRevision, 0, work->RevisionProbe, 1, &count, &revision, &complete);
         if (!NT_SUCCESS(status)) leave;
         if (!NativeObservationStable(work) || !SafeUploadConnectionIsAuthenticatedIdentity(cookie, epoch)) {
             status = STATUS_RETRY; leave;
@@ -349,6 +352,7 @@ NTSTATUS SafeUploadStageNativeNameControl(PVOID PortCookie, PVOID Input, ULONG I
             NativeObservationCloseDirectories(work);
             for (index = 0; index < NATIVE_OBSERVATION_INSTANCES; ++index)
                 if (work->Instances[index] != NULL) FltObjectDereference(work->Instances[index]);
+            if (work->RevisionProbe != NULL) ExFreePoolWithTag(work->RevisionProbe, NATIVE_OBSERVATION_TAG);
             ExFreePoolWithTag(work, NATIVE_OBSERVATION_TAG);
         }
         SafeUploadConnectionReleaseAuthenticatedProcess(cookie, process);
