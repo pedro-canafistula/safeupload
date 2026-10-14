@@ -6715,6 +6715,9 @@ VOID SafeUploadStageServiceDisconnected(_In_ PVOID ConnectionCookie)
     InterlockedIncrement(&StageServiceGeneration);
     InterlockedExchange(&StageReconcileNeeded, 1);
     StageReconcileWait = STAGE_WAIT_SERVICE;
+    /* A SERVICE wait is retried at reconnect, not by the timer: cancel an exchange retry armed for this channel unless
+     * other drain/exchange/overflow work still waits. */
+    StageUpdateRetryTimer();
     StageRelease(&StageNamespaceResource);
 }
 

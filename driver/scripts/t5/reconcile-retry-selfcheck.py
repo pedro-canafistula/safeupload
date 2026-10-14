@@ -75,6 +75,19 @@ class RetryTimer(unittest.TestCase):
         self.assertNotIn('reconcileAgain = TRUE;', success)
         self.assertIn('reconcileAgain = TRUE;', accepted.replace(success, ''))
 
+    def test_disconnect_updates_the_timer_under_the_namespace_lock(self):
+        disconnected = body(self.text, 'SafeUploadStageServiceDisconnected')
+        self.assertRegex(disconnected, r'StageReconcileWait = STAGE_WAIT_SERVICE;\s*StageUpdateRetryTimer\(\);\s*'
+                                       r'StageRelease\(&StageNamespaceResource\);')
+        self.assertLess(disconnected.index('StageAcquire(&StageNamespaceResource)'), disconnected.index('StageUpdateRetryTimer()'))
+
+    def test_the_dpc_only_records_the_expiry_and_wakes_the_worker(self):
+        dpc = body(self.text, 'StageRetryDpcRoutine')
+        self.assertIn('InterlockedExchange(&StageRetryFired, 1);', dpc)
+        self.assertIn('KeSetEvent(&StageWorkEvent, IO_NO_INCREMENT, FALSE);', dpc)
+        self.assertNotIn('StageRetryArmed', dpc)
+        self.assertNotIn('KeSetTimer', dpc)
+
     def test_each_reconcile_result_updates_the_timer_and_busy_waits_on_exchange(self):
         reply = self.worker[self.worker.index('SafeUploadStageReconcileV20('):]
         self.assertLess(reply.index('StageReconcileWait = StageWaitFor(reconcileStatus)'),
