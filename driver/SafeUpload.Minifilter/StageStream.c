@@ -8472,8 +8472,32 @@ static BOOLEAN StageEpochOperation(_In_ PFLT_CALLBACK_DATA Data)
         return Data->Iopb->Parameters.SetFileInformation.FileInformationClass !=
             FilePositionInformation;
     case IRP_MJ_SET_SECURITY:
+        return TRUE; /* Publication must drain ancestor ACL changes too. */
     case IRP_MJ_FILE_SYSTEM_CONTROL:
-        return TRUE; /* Publication must drain ancestor ACL/case/reparse changes too. */
+        /* Publication must drain case/reparse/data FSCTLs too. Oplock requests
+         * and waiting reads never mutate, yet stay pending in lower layers until
+         * an unrelated break, record or repair: an epoch token held through their
+         * completion pinned the epoch, so the first policy swap after boot timed
+         * out and failed closed (m2t5boot6, SetPolicy STATUS_IO_TIMEOUT). Only a
+         * user/kernel FS request carries an FsControlCode; others stay epochs. */
+        if (Data->Iopb->MinorFunction != IRP_MN_USER_FS_REQUEST &&
+            Data->Iopb->MinorFunction != IRP_MN_KERNEL_CALL) return TRUE;
+        switch (Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode) {
+        case FSCTL_REQUEST_OPLOCK_LEVEL_1:
+        case FSCTL_REQUEST_OPLOCK_LEVEL_2:
+        case FSCTL_REQUEST_BATCH_OPLOCK:
+        case FSCTL_REQUEST_FILTER_OPLOCK:
+        case FSCTL_REQUEST_OPLOCK:
+        case FSCTL_OPLOCK_BREAK_ACKNOWLEDGE:
+        case FSCTL_OPBATCH_ACK_CLOSE_PENDING:
+        case FSCTL_OPLOCK_BREAK_NOTIFY:
+        case FSCTL_OPLOCK_BREAK_ACK_NO_2:
+        case FSCTL_READ_USN_JOURNAL:
+        case FSCTL_WAIT_FOR_REPAIR:
+            return FALSE;
+        default:
+            return TRUE;
+        }
     default:
         return FALSE;
     }

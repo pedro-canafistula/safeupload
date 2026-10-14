@@ -299,5 +299,24 @@ class TeardownParticipation(unittest.TestCase):
                       body('StageStream.c', 'SafeUploadStagePrepareUnload'))
         self.assertIn('StageAttachCaptures[index] == Instance', body('StageStream.c', 'StageAttachHasInstance'))
 
+    def test_epoch_operations_exclude_only_nonmutating_pending_fsctls(self):
+        # m2t5boot6: every FSCTL held an epoch token through lower completion, so
+        # pending oplock requests pinned the boot epoch and the first SetPolicy
+        # drain timed out. Mutating FSCTLs still drain with the policy snapshot.
+        epoch = body('StageStream.c', 'StageEpochOperation')
+        fsctl = epoch[epoch.index('case IRP_MJ_FILE_SYSTEM_CONTROL:'):]
+        fsctl = fsctl[:fsctl.index('    default:\n        return FALSE;')]
+        self.order(fsctl, 'IRP_MN_USER_FS_REQUEST', 'IRP_MN_KERNEL_CALL', 'return TRUE;',
+                   'FsControlCode', 'return FALSE;', 'default:', 'return TRUE;')
+        excluded = set(re.findall(r'case (FSCTL_\w+):', fsctl))
+        self.assertEqual({'FSCTL_REQUEST_OPLOCK_LEVEL_1', 'FSCTL_REQUEST_OPLOCK_LEVEL_2', 'FSCTL_REQUEST_BATCH_OPLOCK',
+                          'FSCTL_REQUEST_FILTER_OPLOCK', 'FSCTL_REQUEST_OPLOCK', 'FSCTL_OPLOCK_BREAK_ACKNOWLEDGE',
+                          'FSCTL_OPBATCH_ACK_CLOSE_PENDING', 'FSCTL_OPLOCK_BREAK_NOTIFY', 'FSCTL_OPLOCK_BREAK_ACK_NO_2',
+                          'FSCTL_READ_USN_JOURNAL', 'FSCTL_WAIT_FOR_REPAIR'}, excluded)
+        for mutating in ('FSCTL_SET_REPARSE_POINT', 'FSCTL_DELETE_REPARSE_POINT', 'FSCTL_SET_ZERO_DATA',
+                         'FSCTL_DUPLICATE_EXTENTS_TO_FILE', 'FSCTL_SET_SPARSE'):
+            self.assertNotIn(mutating, excluded)
+        self.assertIn('case IRP_MJ_SET_SECURITY:\n        return TRUE;', epoch)
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
