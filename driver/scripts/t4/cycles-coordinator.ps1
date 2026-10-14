@@ -9,7 +9,9 @@ After the last cycle it waits for the stage worker to settle, stops the actor, a
 -BlockHeavy blocks three cycles in four instead of one. -HandbackDiagnostic (owner-authorized, non-qualifying, 2026-10-13) runs
 after the purged sample: it records which processes hold the kept files open, deletes only the hand-backs, and samples again
 before and after a second purge, to tell whether retained contexts follow those files' Windows lifetime or a driver reference.
--DeleteAttribution adds the owner-authorized two-pass KD corpus deletion row after purged; all original samples remain.
+-DeleteAttribution adds two-pass KD deletion attribution after purged; all original samples remain.
+Together with -HandbackDiagnostic it inventories/deletes the existing hand-backs (requires -BlockHeavy);
+otherwise it creates the separate 256-file corpus. No diagnostic observation changes a qualification gate.
 Results: C:\T4\cycles.jsonl (one line per cycle), C:\T4\samples.jsonl, C:\T4\result.json.
 #>
 param(
@@ -256,42 +258,106 @@ function Invoke-T4HandbackDiagnostic {
     $diagnostic
 }
 
-function Invoke-T4DeleteAttribution {
-    $diagnostic = [ordered]@{ NonQualifying=$true; CorpusCount=0; Deleted=0; DeleteErrors=@();
-        Errors=@(); Snapshots=@(); Samples=@(); Purges=@(); CorpusIdentities=$null }
+function Get-T4DeleteReleaseObservation($Start, $Purged, $Baseline, [int]$Count, [object[]]$Statuses) {
+    $live = @{}
+    foreach ($pair in @(@('Start',$Start),@('Purged',$Purged),@('Baseline',$Baseline))) {
+        $tag = $pair[1].TagSUfl
+        $live[$pair[0]] = if ($tag -and $null -ne $tag.NonPagedAllocs -and $null -ne $tag.NonPagedFrees) {
+            ([long]$tag.NonPagedAllocs - [long]$tag.NonPagedFrees + 4294967296L) % 4294967296L
+        } else { $null }
+    }
+    $delta = $null; $near = $null
+    # Diagnostic comparison only: tolerate at most one quarter of the hand-back population
+    # above start. m2t4hbdiag1 had +234 for 1500 hand-backs. Never certifies individual release.
+    $band = [int][math]::Floor($Count / 4.0)
+    if ($null -ne $live.Start -and $null -ne $live.Baseline -and $Count -gt 0) {
+        $delta = $live.Baseline - $live.Start; $near = $delta -le $band
+    }
+    $purgedOk = $Statuses.Count -eq 5 -and @($Statuses | Where-Object { -not $_.Succeeded }).Count -eq 0
+    [pscustomobject]@{ StartSUfl=$live.Start; PurgedSUfl=$live.Purged; BaselineSUfl=$live.Baseline;
+        Handbacks=$Count; ResidualAboveStart=$delta; NearStartBand=$band; NearStart=$near;
+        FreshPurgeSucceeded=$purgedOk; ReleaseProxyObserved=($purgedOk -and $near -eq $true);
+        IndividualContextReleaseConfirmed=$false;
+        Interpretation='Global SUfl proxy only; no per-file release proof. Missing/high counts mean the intended precondition is unconfirmed; KD identity deltas remain diagnostic.' }
+}
+
+function Invoke-T4DeleteAttribution($StartSample, $PurgedSample) {
+    $diagnostic = [ordered]@{ NonQualifying=$true; Mode=$(if ($HandbackDiagnostic) { 'Handbacks' } else { 'Corpus' });
+        CorpusCount=0; Deleted=0; DeleteErrors=@(); Errors=@(); Snapshots=@(); Samples=@(); Purges=@();
+        CorpusIdentities=$null; ReleasePrecondition=$null; HandbackDiagnostic=$null }
     $corpus = @(); $baseline = $null
     try {
-        if (-not $MemoryDiagnostic -or -not $RequireVerifierPool -or $Cycles -ge 10000 -or $HandbackDiagnostic) {
-            throw 'Delete attribution requires memory tools, boot Verifier launcher, cycles < 10000, and no hand-back diagnostic.'
+        if (-not $MemoryDiagnostic -or -not $RequireVerifierPool -or $Cycles -ge 10000 -or ($HandbackDiagnostic -and -not $BlockHeavy)) {
+            throw 'Delete attribution requires memory tools, boot Verifier launcher, cycles < 10000, and BlockHeavy for hand-backs.'
         }
-        $directory = Join-Path $script:T4MemoryRoot 'delete-corpus'
-        # Stream partial corpus receipts to the result even if a later member cannot be verified. No deletion then.
-        New-T4DeleteCorpus $directory | ForEach-Object { $corpus += $_ }
+        if ($HandbackDiagnostic) {
+            # Metadata-only opens, all closed before the fresh purge/baseline. Do not create a new corpus.
+            Get-T4HandbackIdentities $handback | ForEach-Object { $corpus += $_ }
+            if (-not $corpus.Count) { throw 'No hand-backs available for delete attribution.' }
+            $identities = Join-Path $script:T4MemoryRoot 'output\handback-identities.json'
+            $sets = [ordered]@{
+                Handbacks = @($corpus | ForEach-Object { $_.Path })
+                Journals = @(Get-ChildItem -LiteralPath $journalDir -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+                Public = @(Get-ChildItem -LiteralPath $root -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+            }
+            $diagnostic.HandbackDiagnostic = [ordered]@{ Holders=@(); HandbacksDeleted=0; HandbackDeleteFailures=0;
+                HandbackDeleteErrors=@(); HandbacksLeft=$corpus.Count; AfterDelete=$null; AfterDeletePurged=$null; Purge=@() }
+            $diagnostic.HandbackDiagnostic.Holders = @(foreach ($category in $sets.Keys) {
+                try { Get-T4FileHolders $category $sets[$category] }
+                catch { [pscustomobject]@{ Category=$category; Files=$sets[$category].Count; Holders=@(); Error=$_.Exception.Message } }
+            })
+        } else {
+            $directory = Join-Path $script:T4MemoryRoot 'delete-corpus'
+            # Keep partial receipts on failure, but never delete an incompletely verified inventory.
+            New-T4DeleteCorpus $directory | ForEach-Object { $corpus += $_ }
+            if ($corpus.Count -ne 256) { throw 'Incomplete delete corpus.' }
+            $identities = Join-Path $script:T4MemoryRoot 'output\delete-corpus-identities.json'
+            try { $diagnostic.Holders=Get-T4FileHolders 'DeleteCorpus' @($corpus | ForEach-Object { $_.Path }) }
+            catch { $diagnostic.Errors += ('Holder query: ' + $_.Exception.Message) }
+        }
         $diagnostic.CorpusCount=$corpus.Count
-        if ($corpus.Count -ne 256) { throw 'Incomplete delete corpus.' }
-        $identities = Join-Path $script:T4MemoryRoot 'output\delete-corpus-identities.json'
-        Write-T4DeleteEvidence $identities ($corpus | ConvertTo-Json -Depth 4)
+        Write-T4DeleteEvidence $identities (ConvertTo-Json -InputObject @($corpus) -Depth 4)
         $diagnostic.CorpusIdentities=$identities
-        try { $diagnostic.Holders=Get-T4FileHolders 'DeleteCorpus' @($corpus | ForEach-Object { $_.Path }) }
-        catch { $diagnostic.Errors += ('Holder query: ' + $_.Exception.Message) }
         foreach ($label in 'del-baseline','del-after','del-after-purge') {
+            $statuses = @()
             if ($label -eq 'del-after') {
+                # Delete only the fixed, recorded inventory; no re-open between baseline and deletion.
                 foreach ($item in $corpus) {
                     try { [IO.File]::Delete($item.Path); $diagnostic.Deleted++ }
                     catch { $diagnostic.DeleteErrors += [pscustomobject]@{ Path=$item.Path; Error=$_.Exception.Message } }
                 }
+                if ($HandbackDiagnostic) {
+                    $hb = $diagnostic.HandbackDiagnostic
+                    $hb.HandbacksDeleted=$diagnostic.Deleted; $hb.HandbackDeleteFailures=$diagnostic.DeleteErrors.Count
+                    $hb.HandbackDeleteErrors=@($diagnostic.DeleteErrors)
+                    $hb.HandbacksLeft=@(Get-ChildItem -LiteralPath $handback -File -Force -ErrorAction SilentlyContinue).Count
+                }
             } else {
-                try { $diagnostic.Purges += [pscustomobject]@{ Before=$label; Statuses=@(Invoke-T4MemoryPurge) } }
+                try { $statuses=@(Invoke-T4MemoryPurge) }
                 catch { $diagnostic.Errors += ($label + ' purge: ' + $_.Exception.Message) }
+                $diagnostic.Purges += [pscustomobject]@{ Before=$label; Statuses=$statuses }
+                if ($HandbackDiagnostic -and $label -eq 'del-after-purge') { $diagnostic.HandbackDiagnostic.Purge=$statuses }
             }
             Start-Sleep -Seconds 30
-            # Sample immediately before KD, after all creation/identity/holder probes and the baseline purge.
-            try { $diagnostic.Samples += Get-Sample $Cycles $label }
+            # Preserve both original hand-back samples and the del-* samples before their KD sessions.
+            if ($HandbackDiagnostic -and $label -ne 'del-baseline') {
+                try {
+                    if ($label -eq 'del-after') { $diagnostic.HandbackDiagnostic.AfterDelete=Get-Sample $Cycles 'handbacks-deleted' }
+                    else { $diagnostic.HandbackDiagnostic.AfterDeletePurged=Get-Sample $Cycles 'handbacks-deleted-purged' }
+                } catch { $diagnostic.Errors += ('Hand-back sample: ' + $_.Exception.Message) }
+            }
+            $sample = $null
+            try { $sample=Get-Sample $Cycles $label; $diagnostic.Samples += $sample }
             catch { $diagnostic.Errors += ($label + ' sample: ' + $_.Exception.Message) }
+            if ($HandbackDiagnostic -and $label -eq 'del-baseline') {
+                $diagnostic.ReleasePrecondition=Get-T4DeleteReleaseObservation $StartSample $PurgedSample $sample $corpus.Count $statuses
+                if (-not $diagnostic.ReleasePrecondition.ReleaseProxyObserved) {
+                    $diagnostic.Errors += 'Hand-back release precondition unconfirmed; this row cannot establish reproduction of m2t4hbdiag1.'
+                }
+            }
             try {
                 $snapshot = Save-T4DeleteSnapshot $label $corpus $baseline
                 if ($label -eq 'del-baseline') { $baseline=$snapshot.Census }
-                # Full contexts, blocks and raw pass receipts live in the exported memory output.
                 $diagnostic.Snapshots += [pscustomobject]@{ Label=$label; Counts=$snapshot.Counts;
                     Classification=$snapshot.Classification; Errors=$snapshot.Errors;
                     SummaryFile=(Join-Path $script:T4MemoryRoot ('output\' + $label + '.summary.json')) }
@@ -300,7 +366,6 @@ function Invoke-T4DeleteAttribution {
     } catch { $diagnostic.Errors += $_.Exception.ToString() }
     finally {
         $diagnostic.CorpusCount=$corpus.Count
-        # Preserve partial identities and errors too; never overwrite a previous run's evidence.
         try {
             $partial = Join-Path $script:T4MemoryRoot 'output\delete-attribution.json'
             Write-T4DeleteEvidence $partial (@{ Result=$diagnostic; Corpus=$corpus } | ConvertTo-Json -Depth 12)
@@ -423,8 +488,10 @@ try {
     $result.Purge = @(Invoke-T4MemoryPurge)
     Start-Sleep -Seconds 30   # NTFS delayed close after cache pressure
     $result.Purged = Get-Sample $Cycles 'purged'
-    if ($HandbackDiagnostic) { $result.HandbackDiagnostic = Invoke-T4HandbackDiagnostic }
-    if ($DeleteAttribution) { $result.DeleteAttribution = Invoke-T4DeleteAttribution }
+    if ($DeleteAttribution) {
+        $result.DeleteAttribution = Invoke-T4DeleteAttribution $startSample $result.Purged
+        if ($HandbackDiagnostic) { $result.HandbackDiagnostic = $result.DeleteAttribution.HandbackDiagnostic }
+    } elseif ($HandbackDiagnostic) { $result.HandbackDiagnostic = Invoke-T4HandbackDiagnostic }
 } catch {
     $result.Error = $_.Exception.Message
     $result.ErrorDetail = $_.Exception.ToString()

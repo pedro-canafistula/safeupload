@@ -19,7 +19,8 @@
 # the purged sample records which processes hold the kept files, deletes only the hand-backs and samples again before and after a
 # second purge. It requires boot Verifier and fewer than 10,000 cycles; its verdict is labelled non-qualifying and passes no T4 gate.
 # T4_DELETE_ATTRIBUTION=yes adds a 256-file identity-resolved deletion diagnostic after purged. Requires T4_MEMORY_TOOLS,
-# boot Verifier and cycles < 10000; mutually exclusive with T4_HANDBACK_DIAGNOSTIC. Non-qualifying; original gates unchanged.
+# boot Verifier and cycles < 10000. With T4_HANDBACK_DIAGNOSTIC=yes, inventory/delete the block-heavy hand-backs instead,
+# after recording the fresh-purge release proxy. Both paths are non-qualifying; original gates unchanged.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; cycles="${5:-10000}"; mode="${6:-runtime-verifier}"; sample_every="${7:-500}"
@@ -45,8 +46,8 @@ esac
 delete_attribution=${T4_DELETE_ATTRIBUTION:-no}
 case "$delete_attribution" in
     no) ;;
-    yes) [ "$memory_enabled" = yes ] && [ "$mode" = verifier-from-boot ] && [ "$cycles" -lt 10000 ] && [ "$handback_diagnostic" = no ] || {
-            echo 'Delete attribution requires T4_MEMORY_TOOLS, boot Verifier, fewer than 10,000 cycles and no hand-back diagnostic'; exit 2; }
+    yes) [ "$memory_enabled" = yes ] && [ "$mode" = verifier-from-boot ] && [ "$cycles" -lt 10000 ] || {
+            echo 'Delete attribution requires T4_MEMORY_TOOLS, boot Verifier, fewer than 10,000 cycles'; exit 2; }
          [ "$dom" = win10-debug3 ] && [ "${SAFEUPLOAD_DEBUGGEE:-}" = win10-debug3 ] || {
             echo 'Delete attribution requires explicit SAFEUPLOAD_DEBUGGEE=win10-debug3 and target win10-debug3'; exit 2; } ;;
     *) echo 'T4_DELETE_ATTRIBUTION must be yes or no'; exit 2 ;;
@@ -548,9 +549,11 @@ if delete_attribution:
     if not isinstance(diag, dict):
         out.append('T4DeleteAttribution INFO diagnostic result missing')
     else:
-        out.append(f"T4DeleteAttribution INFO corpus {diag.get('CorpusCount')}; deleted {diag.get('Deleted')}; "
+        out.append(f"T4DeleteAttribution INFO mode {diag.get('Mode', 'Corpus')}; corpus {diag.get('CorpusCount')}; deleted {diag.get('Deleted')}; "
                    f"delete errors {json.dumps(diag.get('DeleteErrors'))}; errors {json.dumps(diag.get('Errors'))}; "
                    f"identities {diag.get('CorpusIdentities')}")
+        if diag.get('Mode') == 'Handbacks':
+            out.append('T4DeleteAttributionRelease INFO ' + json.dumps(diag.get('ReleasePrecondition')))
         for sample in diag.get('Samples') or []:
             if isinstance(sample, dict):
                 out.append(f"T4DeleteAttributionSample INFO {sample.get('Label')}: SUfl live {sufl_live(sample)}")

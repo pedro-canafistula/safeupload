@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <# No kernel or VM needed. Extract the actual functions, never dot-source the coordinator.
-   Samples marked SYNTHETIC use invented addresses/IDs/counts. Retained m2t4delattr1 fragments
+   Samples marked SYNTHETIC use invented addresses/IDs/counts. Retained m2t4delattr1/2 fragments
    are identified separately with source line ranges. Pool rows follow:
    https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/-poolfind
    https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/-pool
@@ -18,7 +18,7 @@ $ast=[Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]
 if ($errors.Count) { throw ('Debugger helper parse errors: ' + ($errors | Out-String)) }
 $names=@('Initialize-T4DeleteIdentity','ConvertTo-T4KdAddress','Get-T4KdSection','Get-T4KdErrors',
     'ConvertFrom-T4KdTelemetry','ConvertFrom-T4UnloadVeto','Save-T4UnloadVeto','Get-T4DeleteSessionCommands',
-    'ConvertFrom-T4DeletePass1','Get-T4DeleteNewBlocks','ConvertFrom-T4DeleteIdentity','ConvertFrom-T4DeletePass2',
+    'Get-T4HandbackIdentities','ConvertFrom-T4PoolRow','ConvertFrom-T4DeletePass1','Get-T4DeleteNewBlocks','ConvertFrom-T4DeleteIdentity','ConvertFrom-T4DeletePass2',
     'Get-T4MemoryCommands','Get-T4DeleteIdentityCommands','Get-T4DeleteFileCommands',
     'Write-T4DeleteEvidence','Get-T4DeleteSopCommands','Get-T4DeletePass1Commands','Get-T4DeletePass2Commands','Invoke-T4DeleteKdSession','Save-T4DeleteSnapshot')
 foreach ($name in $names) {
@@ -36,6 +36,7 @@ function Assert-T4Delete([bool]$Condition,[string]$Message) {
 Initialize-T4DeleteIdentity
 Assert-T4Delete ($null -ne ('T4DeleteIdentity' -as [type])) 'Identity declaration did not compile.'
 $flags=[Reflection.BindingFlags]'NonPublic,Static'
+Assert-T4Delete ([T4DeleteIdentity].GetMethod('CreateFileW',$flags).ReturnType -eq [Microsoft.Win32.SafeHandles.SafeFileHandle]) 'Metadata-only open uses an owning safe handle.'
 Assert-T4Delete ([T4DeleteIdentity].GetMethod('FindFirstStreamW',$flags).ReturnType -eq [IntPtr]) 'Stream enumeration signature.'
 Assert-T4Delete ([T4DeleteIdentity].GetMethod('GetFileInformationByHandleEx',$flags).GetParameters()[0].ParameterType -eq [Microsoft.Win32.SafeHandles.SafeFileHandle]) 'Identity safe-handle signature.'
 
@@ -204,6 +205,124 @@ Assert-T4Delete ($null -eq (ConvertFrom-T4KdTelemetry ($realTelemetry.Replace('S
 # Actual evaluator-error prefix from line 1697 (the rest is the aborted command program).
 Assert-T4Delete (@(Get-T4KdErrors "Numeric expression missing from '& @@c++(@`$t11->AllocationType) == 1)'").Count -eq 1) 'Record the actual evaluator error.'
 
+# ACTUAL row 2: m2t4delattr2-memory/output/del-baseline-poolfind.stdout.txt, lines 54-103.
+$realPoolUsage2=@'
+T4_POOL_BEGIN
+Usage: !poolfind [-tag] <tag> [options] [-x "cmd"]
+
+  tag:       A string or a hex value specifying the tag to search for,
+             may include * and ? wildcards. If the tag contains spaces,
+             use -tag switch and put the tag in quotes.
+
+  cmd:       Command to execute for each found allocation. The @$extret register
+             contains the address of the allocation.
+
+Search options:
+
+  -nonpaged  Search non-paged pool.
+  -paged     Search paged pool.
+
+  -global    Search global (non-session) pool.
+  -session   Search session pool.
+
+  -regular   Search regular (non-special) pool.
+  -special   Search special pool.
+
+  -small     Include small (sub-page) allocations.
+  -large     Include large (page-aligned) allocations.
+
+  -busy      Include busy allocations.
+  -free      Include free allocations.
+
+             The options above are additive. For example, specifying -global
+             and -session will search both global and session pools.
+             If no options are specified, a global non-paged search is
+             performed. Both small and large allocations are included, as well
+             regular and special pool. Free allocations are not included.
+
+  -process   Interpret tag value as a process pointer and search for
+             quota allocations charged to that process.
+
+Notes:
+
+  Allocation sizes reported by this command do not include the size of the
+  pool header (if one is present). Similarly, allocation addresses represent
+  the start of the user accessible portion of the allocation.
+
+Examples:
+
+  !poolfind Mm*               - Find all Mm allocations in nonpaged pool.
+  !poolfind MmSt -paged       - Find MmSt allocations in paged pool.
+  !poolfind Gla1 -session     - Find Gla1 allocations in session pool.
+  !poolfind -tag "AB C"       - Find pool tag which contains a space.
+  !poolfind -x "dt nt!_MDL @$extret" Mdl  - Find and print MDL allocations.
+T4_POOL_END
+'@
+
+# ACTUAL row 2: m2t4delattr2-memory/output/del-after-logical.stdout.txt, lines 54-78.
+$realLogical2=@'
+T4_LOGICAL_BEGIN
+   +0x000 ListHead         : _SLIST_HEADER
+   +0x000 SingleListHead   : _SINGLE_LIST_ENTRY
+   +0x010 Depth            : 4
+   +0x012 MaximumDepth     : 0x100
+   +0x014 TotalAllocates   : 0x19af
+   +0x018 AllocateMisses   : 0xeee
+   +0x018 AllocateHits     : 0xeee
+   +0x01c TotalFrees       : 0x1794
+   +0x020 FreeMisses       : 0xcd1
+   +0x020 FreeHits         : 0xcd1
+   +0x024 Type             : 200 ( NonPagedPoolNx )
+   +0x028 Tag              : 0x6c665553
+   +0x02c Size             : 0xc8
+   +0x030 AllocateEx       : 0xfffff805`4a5b8010     void*  nt!ExAllocatePoolWithTag+0
+   +0x030 Allocate         : 0xfffff805`4a5b8010     void*  nt!ExAllocatePoolWithTag+0
+   +0x038 FreeEx           : 0xfffff805`4a5b80b0     void  nt!ExFreePool+0
+   +0x038 Free             : 0xfffff805`4a5b80b0     void  nt!ExFreePool+0
+   +0x040 ListEntry        : _LIST_ENTRY [ 0xffffaf0f`559d4310 - 0xffffaf0f`559d4090 ]
+   +0x050 LastTotalAllocates : 0x19a9
+   +0x054 LastAllocateMisses : 0xeea
+   +0x054 LastAllocateHits : 0xeea
+   +0x058 Future           : [2] 0
+T4_LOGICAL 19af 1794 eee cd1
+T4_LOGICAL_END
+'@
+
+# ACTUAL row 2: m2t4delattr2-memory/output/del-after-anchors.stdout.txt, lines 54-58.
+$realAnchors2=@'
+T4_ANCHOR_COUNT_BEGIN
+fffff805`4bbad504  00000000
+T4_ANCHOR_COUNT_END
+Cannot find specified field members.
+T4_ANCHOR_WALK_END fffff8054bbad510 fffff8054bbad510
+'@
+$row2=ConvertFrom-T4DeletePass1 ($realLayout+"`n"+$realLogical2+"`n"+$realAnchors2+"`n"+$realPoolUsage2)
+Assert-T4Delete (-not $row2.PoolComplete -and $row2.Blocks.Count -eq 0 -and ($row2.Errors -join ';') -match 'Usage: !poolfind') 'Row 2 usage must be an error, never a successful zero census.'
+Assert-T4Delete ($row2.Anchors -eq 0 -and $row2.AnchorWalkComplete -and $row2.Logical.Outstanding -eq 539 -and $row2.Logical.PoolStorage -eq 541) 'Actual row 2 independent counts survive the pool failure.'
+
+# SYNTHETIC modern rows: NO successful !poolfind rows exist in row 2. These match the
+# formatter strings in the delivered Microsoft 10.0.28000 x64/winxp/kdexts.dll; see parser SHA256.
+# Its actual help above defines the user-allocation address/size contract. Legacy rows below
+# separately cover Microsoft Learn's documented pool-header format.
+$modernPool=@'
+T4_POOL_BEGIN
+Searching Nonpaged pool (ffff800011110000 : ffff800022220000) for tag 0x6c665553 (SUfl)
+ffff800011110010 : tag SUfl, size      0xc8, Nonpaged pool
+ffff800011111010 : (Allocated) tag SUfl, size      0xc8, Nonpaged special pool
+ffff800011112010 : (Free )     tag SUfl, size      0xc8, Nonpaged pool
+Scanning large pool allocation table for tag 0x6c665553 (SUfl) (ffff800088880000 : ffff800088889000)
+T4_POOL_END
+'@
+$modern=ConvertFrom-T4DeletePass1 $modernPool
+Assert-T4Delete ($modern.PoolComplete -and $modern.Blocks.Count -eq 2 -and $modern.Blocks[0].Size -eq 200 -and $modern.Blocks[0].AddressKind -eq 'Allocation') 'Modern rows exclude pool headers from both address and size.'
+Assert-T4Delete ($modern.Blocks[1].Special) 'Special pool must participate in the default nonpaged census.'
+Assert-T4Delete (-not (ConvertFrom-T4DeletePass1 ($modernPool.Replace('0xc8','garbled'))).PoolComplete) 'Malformed modern rows invalidate the census.'
+Assert-T4Delete (-not (ConvertFrom-T4DeletePass1 ($modernPool.Replace('Nonpaged pool','Paged pool'))).PoolComplete) 'Unexpected paged rows are not a nonpaged census.'
+Assert-T4Delete (-not (ConvertFrom-T4DeletePass1 ($modernPool.Replace('tag SUfl','tag sufl'))).PoolComplete) 'Pool tags are case sensitive.'
+$emptyModern=ConvertFrom-T4DeletePass1 ([regex]::Replace($modernPool,'(?m)^ffff[^\r\n]*\r?\n',''))
+Assert-T4Delete ($emptyModern.PoolComplete -and $emptyModern.Blocks.Count -eq 0) 'Completed modern empty scans differ from usage/errors.'
+Assert-T4Delete (-not (ConvertFrom-T4DeletePass1 ($modernPool.Replace('T4_POOL_END',"Unable to read heap`nT4_POOL_END"))).PoolComplete) 'Read failures must invalidate a partly enumerated scan.'
+
 # SYNTHETIC parser controls below.
 $pass1=@'
 Windows 10 Kernel Version 19041 MP (4 procs) Free x64
@@ -312,15 +431,35 @@ Assert-T4Delete ($c.MatchingAnchors -eq 0) 'Anchor/context instance must match a
 $c=(ConvertFrom-T4DeletePass2 $pass2 $corpus ($anchor.Replace('ffffffff80000100','0000000000000000'))).Contexts[0]
 Assert-T4Delete ($c.MatchingAnchors -eq 0) 'A null anchor handle is not an observed owning pair.'
 
+# Modern !poolfind address, then legacy !pool output at allocation-0x10. The node is
+# the allocation itself (200 bytes = 96-byte CONTEXT_NODE + 104-byte SafeUpload payload).
+$modernPass2=$pass2.Replace('T4_BLOCK_BEGIN ffff800011111000',"T4_BLOCK_BEGIN ffff800011111010`nT4_BLOCK_INFO Allocation c8")
+$c=(ConvertFrom-T4DeletePass2 $modernPass2 $corpus '').Contexts
+Assert-T4Delete ($c.Count -eq 1 -and $c[0].Node -eq 'ffff800011111010' -and $c[0].CorpusPath) 'Modern allocation address must not gain a second pool header.'
+$modernPass2=$modernPass2.Replace('*ffff8000`11111000 size: e0 previous size: e0 (Allocated) *SUfl','ffff800011111010 : tag SUfl, size      0xc8, Nonpaged pool')
+Assert-T4Delete ((ConvertFrom-T4DeletePass2 $modernPass2 $corpus '').Contexts.Count -eq 1) 'Fresh modern allocation row is also supported.'
+$specialPass2=$modernPass2.Replace('ffff800011111010 : tag SUfl, size      0xc8, Nonpaged pool','*ffff800011110000 size: c8 data: ffff800011111010 (Allocated) *SUfl')
+Assert-T4Delete ((ConvertFrom-T4DeletePass2 $specialPass2 $corpus '').Contexts.Count -eq 1) 'Special-pool data address is not header+0x10.'
+foreach ($mutated in @($modernPass2.Replace('size      0xc8','size      0x30'),$modernPass2.Replace('Allocation c8','PoolHeader c8'),$modernPass2.Replace('tag SUfl','(Free) tag SUfl'))) {
+    Assert-T4Delete ((ConvertFrom-T4DeletePass2 $mutated $corpus '').Contexts.Count -eq 0) 'Modern wrong-size, wrong-base or freed allocations cannot certify a context.'
+}
+$ownerPass2=$modernPass2.Replace('T4_SAFEUPLOAD_STREAM',"T4_SAFEUPLOAD_STREAM`nT4_SOP ffff800012340010`nT4_SHARED_CACHE_MAP ffff800023450010`nT4_SCB ffff800034560010`nT4_CONTROL_AREA ffff800045670010`nT4_FILE_OBJECT ffff800056780010")
+$c=(ConvertFrom-T4DeletePass2 $ownerPass2 $corpus '').Contexts[0]
+Assert-T4Delete ($c.SectionObjectPointers.Count -eq 1 -and $c.SharedCacheMaps.Count -eq 1 -and $c.ScbCandidates.Count -eq 1 -and $c.ControlAreas.Count -eq 1 -and $c.FileObjects.Count -eq 1) 'Owner-walk pointers must survive parsing; they are candidates, not ownership proof.'
+$modernCommands=Get-T4DeletePass2Commands $modern.Blocks $before.Layout
+Assert-T4Delete ($modernCommands.Contains('!fltkd.ctx 0xffff800011111010 1') -and $modernCommands.Contains('!fltkd.ctx 0xffff800011111070 1') -and -not $modernCommands.Contains('!fltkd.ctx 0xffff800011111020')) 'Modern generation uses allocation and payload, not a double header.'
+Assert-T4Delete ($modernCommands.Contains('SharedCacheMap)->FileObject') -and $modernCommands.Contains('T4_SCB') -and $modernCommands.Contains('ImageSectionObject')) 'Bounded read-only cache/SCB/control-area owner walks.'
+
 $bodies=@{}
 foreach ($block in 'layout','telemetry','logical','anchors','poolfind') {
     $bodies[$block]=(Get-T4DeletePass1Commands $block) -join "`r`n"
 }
 $one=@($bodies.Values) -join "`r`n"
 $two=Get-T4DeletePass2Commands (@($new[0])*70) $before.Layout
-foreach ($command in '!poolfind SUfl 0','dd SafeUpload!StageAnchorCount L1','!fltkd.filter @$t0 0x1f 1','!fltkd.help') {
+foreach ($command in '!poolfind SUfl','dd SafeUpload!StageAnchorCount L1','!fltkd.filter @$t0 0x1f 1','!fltkd.help') {
     Assert-T4Delete ($one.Contains($command)) ('Missing census command: '+$command)
 }
+Assert-T4Delete ($bodies.poolfind -match '(?m)^!poolfind SUfl\r?$' -and $one -notmatch '!poolfind SUfl 0') 'Default nonpaged command accepts no positional pool type on 10.0.28000.'
 Assert-T4Delete ([regex]::Matches($two,'(?m)^\.echo T4_BLOCK_BEGIN ').Count -eq 64) 'Second pass must be bounded to 64 blocks.'
 Assert-T4Delete ($two.Contains('!pool 0xffff800011111000 2') -and $two.Contains('!fltkd.ctx 0xffff800011111010 1') -and $two.Contains('!fltkd.ctx 0xffff800011111070 1')) 'Symbol-sized header/payload probes.'
 Assert-T4Delete (-not (($one+$two) -match '(?im)^\s*(eb|ew|ed|eq|ea|eu|bp|bu|ba|\.call|\.reboot)\b')) 'No target writes or breakpoints.'
@@ -348,7 +487,7 @@ function Remove-T4CppExpressions([string]$Commands) {
     }
     $rest
 }
-$audit=Remove-T4CppExpressions ($one+"`n"+$two)
+$audit=Remove-T4CppExpressions ($one+"`n"+$two+"`n"+$modernCommands)
 Assert-T4Delete (-not ($audit -match '&&|\|\||->|\bsizeof\s*\(|\bpoi\s*\(')) 'C++ operator escaped into MASM.'
 Assert-T4Delete (-not ($audit -match '\.if\s*\((?!\s*CPP_VALUE\))|\.for\s*\(\s*;(?!\s*CPP_VALUE;)')) 'Whole .if/.for condition must be explicitly C++.'
 Assert-T4Delete (-not ($audit -match '\br\s+(?!\$t\d+\s*=)')) 'Only debugger pseudo-registers may be assigned.'
@@ -381,11 +520,23 @@ try {
         $member=Join-Path $script:T4MemoryRoot 'native.txt'
         $native=[T4DeleteIdentity]::Create($member)
         Assert-T4Delete ($native[0].Length -eq 16 -and $native[1].Length -eq 32) 'Native full FILE_ID_INFO receipt.'
+        $read=[T4DeleteIdentity]::Read($member)
+        Assert-T4Delete (($read -join ':') -ceq ($native -join ':')) 'Metadata-only existing-file identity equals creation receipt.'
+        Assert-T4Delete ([IO.File]::ReadAllText($member) -ceq "T4 ordinary delete attribution`r`n") 'Identity inventory must not modify file bytes.'
         $exclusive=[IO.File]::Open($member,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
         $exclusive.Dispose()
         Assert-T4Delete ($true) 'Corpus helper leaves no file/stream-enumeration handle open.'
         $refused=$false; try { $null=[T4DeleteIdentity]::Create($member) } catch { $refused=$true }
         Assert-T4Delete $refused 'CreateNew must refuse an existing corpus name.'
+        $inventory=@(Get-T4HandbackIdentities $script:T4MemoryRoot)
+        Assert-T4Delete ($inventory.Count -eq 1 -and $inventory[0].FileId -ceq $native[1] -and $inventory[0].HandlesClosed) 'Existing hand-back inventory retains native identity.'
+        # Windows PowerShell 5.1 (.NET Framework) rejects 'file:stream' paths; use the provider's -Stream.
+        Set-Content -LiteralPath $member -Stream 'extra' -Value 'synthetic named-stream control'
+        $refused=$false; try { $null=[T4DeleteIdentity]::Read($member) } catch { $refused=$true }
+        Assert-T4Delete $refused 'A hand-back with a named data stream must be refused.'
+        $exclusive=[IO.File]::Open($member,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+        $exclusive.Dispose()
+        Assert-T4Delete ($true) 'Failed existing-file inventory also closes all handles.'
     }
     $snapshot=Save-T4DeleteSnapshot 'del-baseline' $corpus $null
     Assert-T4Delete ($snapshot.Errors.Count -gt 0 -and $null -eq $snapshot.Counts.NewBlocks) 'KD startup failure must retain unknown counts.'
@@ -434,4 +585,101 @@ try {
 } finally {
     if (Test-Path -LiteralPath $script:T4MemoryRoot) { Remove-Item -LiteralPath $script:T4MemoryRoot -Recurse -Force }
 }
-'T4DeleteAttributionSelfCheck=PASS;Controls='+$script:checks+';SyntheticKd=True;RetainedKd=m2t4delattr1;Qualification=False'
+# Extract only the coordinator functions under test. Its actor, kernel and purge top level never runs.
+$coordPath=Join-Path $PSScriptRoot 't4\cycles-coordinator.ps1'
+$coordAst=[Management.Automation.Language.Parser]::ParseFile($coordPath,[ref]$tokens,[ref]$errors)
+Assert-T4Delete ($errors.Count -eq 0) 'Coordinator parser errors.'
+foreach ($name in 'Get-T4DeleteReleaseObservation','Invoke-T4DeleteAttribution') {
+    $functions=@($coordAst.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name },$false))
+    Assert-T4Delete ($functions.Count -eq 1) ('Actual coordinator helper unavailable: '+$name)
+    Invoke-Expression $functions[0].Extent.Text
+}
+$coordSource=[IO.File]::ReadAllText($coordPath)
+Assert-T4Delete ($coordSource.Contains('} elseif ($HandbackDiagnostic) { $result.HandbackDiagnostic = Invoke-T4HandbackDiagnostic }')) 'Combined mode must not delete hand-backs twice.'
+Assert-T4Delete ($coordSource.Contains('if ($BlockHeavy) { $sensitive = ([math]::Floor(($i - 1) / 4) % 4) -ne 0 }')) 'Keep the actual block-heavy pattern.'
+$blockCount=@(1..256 | Where-Object { ([math]::Floor(($_ - 1) / 4) % 4) -ne 0 }).Count
+Assert-T4Delete ($blockCount -eq 192) '256 block-heavy cycles must request 192 hand-backs.'
+# Local stand-ins model native observations; deletion runs against disposable files only.
+& {
+    $temp=Join-Path ([IO.Path]::GetTempPath()) ('T4DeleteFlow-'+[guid]::NewGuid().ToString('N'))
+    $savedMemoryRoot=$script:T4MemoryRoot
+    try {
+        [void](New-Item -ItemType Directory -Path $temp)
+        $script:T4MemoryRoot=$temp
+        $handback=Join-Path $temp 'handbacks'; $journalDir=Join-Path $temp 'journals'; $root=Join-Path $temp 'public'
+        [void](New-Item -ItemType Directory -Path $handback,$journalDir,$root)
+        [IO.File]::WriteAllText((Join-Path $journalDir 'keep.json'),'journal')
+        [IO.File]::WriteAllText((Join-Path $root 'keep.txt'),'public')
+        $files=@(1..192 | ForEach-Object {
+            $path=Join-Path $handback ($_.ToString()+'.txt'); [IO.File]::WriteAllText($path,'hand-back')
+            [pscustomobject]@{ Path=$path; VolumeSerial='1234567890123456'; FileId=$_.ToString('x32'); HandlesClosed=$true; Streams=@('::$DATA') }
+        })
+        $events=New-Object 'Collections.Generic.List[string]'
+        $MemoryDiagnostic=$true; $RequireVerifierPool=$true; $Cycles=256; $BlockHeavy=$true; $HandbackDiagnostic=$true
+        function Get-T4HandbackIdentities($Directory) {
+            $events.Add('identities'); $files
+        }
+        function New-T4DeleteCorpus($Directory) { throw 'Combined mode must never create a corpus.' }
+        function Get-T4FileHolders($Category,$Paths) { $events.Add('holders-'+$Category); [pscustomobject]@{ Category=$Category; Files=$Paths.Count; Holders=@(); Error=$null } }
+        function Invoke-T4MemoryPurge { $events.Add('purge'); @(1..5 | ForEach-Object { [pscustomobject]@{ Succeeded=$true } }) }
+        function Start-Sleep([int]$Seconds) { $events.Add('sleep-'+$Seconds) }
+        function Get-Sample($Cycle,$Label) {
+            $events.Add('sample-'+$Label)
+            if ($Label -eq 'del-baseline') { Assert-T4Delete (@($files | Where-Object { Test-Path -LiteralPath $_.Path }).Count -eq 192) 'No deletion before baseline.' }
+            else { Assert-T4Delete (@($files | Where-Object { Test-Path -LiteralPath $_.Path }).Count -eq 0) 'Deletion must precede every post-delete sample.' }
+            @{ Label=$Label; TagSUfl=@{ NonPagedAllocs=430; NonPagedFrees=100 } }
+        }
+        function Save-T4DeleteSnapshot($Label,$Corpus,$Baseline) {
+            $events.Add('kd-'+$Label)
+            Assert-T4Delete ($Corpus.Count -eq 192) 'KD must receive the original hand-back identities.'
+            Assert-T4Delete (($Label -eq 'del-baseline') -eq ($null -eq $Baseline)) 'Post-delete census must diff the fresh baseline.'
+            [pscustomobject]@{ Census=@{ PoolComplete=$true; Blocks=@() }; Counts=@{}; Classification='Synthetic'; Errors=@() }
+        }
+        function Write-T4DeleteEvidence($Path,$Text) { $events.Add('write-'+(Split-Path $Path -Leaf)); [IO.File]::WriteAllText($Path,$Text) }
+        [void](New-Item -ItemType Directory -Path (Join-Path $temp 'output'))
+        $start=@{ TagSUfl=@{ NonPagedAllocs=400; NonPagedFrees=100 } }
+        $originalPurged=@{ TagSUfl=@{ NonPagedAllocs=450; NonPagedFrees=100 } }
+        $diag=Invoke-T4DeleteAttribution $start $originalPurged
+        Assert-T4Delete ($diag.Errors.Count -eq 0 -and $diag.Mode -eq 'Handbacks' -and $diag.Deleted -eq 192 -and $diag.DeleteErrors.Count -eq 0) 'Combined flow must delete exactly its verified hand-backs.'
+        Assert-T4Delete ($diag.ReleasePrecondition.ReleaseProxyObserved -and $diag.ReleasePrecondition.ResidualAboveStart -eq 30 -and -not $diag.ReleasePrecondition.IndividualContextReleaseConfirmed) 'Record a near-start aggregate without inventing per-file proof.'
+        Assert-T4Delete ($diag.HandbackDiagnostic.HandbacksDeleted -eq 192 -and $diag.HandbackDiagnostic.HandbacksLeft -eq 0 -and $diag.HandbackDiagnostic.Holders.Count -eq 3) 'Preserve hand-back diagnostic receipts.'
+        Assert-T4Delete ([IO.File]::ReadAllText((Join-Path $root 'keep.txt')) -ceq 'public' -and [IO.File]::ReadAllText((Join-Path $journalDir 'keep.json')) -ceq 'journal') 'Public files and journals must survive.'
+        $expected=@('identities','holders-Handbacks','holders-Journals','holders-Public','write-handback-identities.json',
+            'purge','sleep-30','sample-del-baseline','kd-del-baseline','sleep-30','sample-handbacks-deleted','sample-del-after','kd-del-after',
+            'purge','sleep-30','sample-handbacks-deleted-purged','sample-del-after-purge','kd-del-after-purge','write-delete-attribution.json')
+        Assert-T4Delete (($events -join '|') -ceq ($expected -join '|')) ('Wrong diagnostic order: '+($events -join '|'))
+        $stored=[IO.File]::ReadAllText((Join-Path $temp 'output/handback-identities.json')) | ConvertFrom-Json
+        Assert-T4Delete ($stored.Count -eq 192 -and $stored[0].FileId.Length -eq 32) 'Full pre-deletion identity inventory must be saved.'
+        $statuses=@(1..5 | ForEach-Object { [pscustomobject]@{ Succeeded=$true } })
+        $obs=Get-T4DeleteReleaseObservation $start $originalPurged @{ TagSUfl=@{ NonPagedAllocs=700; NonPagedFrees=100 } } 192 $statuses
+        Assert-T4Delete (-not $obs.ReleaseProxyObserved -and $obs.NearStart -eq $false) 'High baseline is explicitly an unconfirmed release precondition.'
+        $obs=Get-T4DeleteReleaseObservation $start $originalPurged $null 192 $statuses
+        Assert-T4Delete (-not $obs.ReleaseProxyObserved -and $null -eq $obs.NearStart) 'Missing baseline cannot imply release.'
+        $statuses[0].Succeeded=$false
+        $obs=Get-T4DeleteReleaseObservation $start $originalPurged $start 192 $statuses
+        Assert-T4Delete (-not $obs.ReleaseProxyObserved) 'Refused purge cannot certify the precondition.'
+
+        # Incomplete identity inventory must retain receipts and perform no purge/KD/deletion.
+        $kept=Join-Path $handback 'incomplete.txt'; [IO.File]::WriteAllText($kept,'keep')
+        $events.Clear()
+        function Get-T4HandbackIdentities($Directory) { [pscustomobject]@{ Path=$kept }; throw 'Synthetic identity failure' }
+        $diag=Invoke-T4DeleteAttribution $start $originalPurged
+        Assert-T4Delete ($diag.Errors.Count -gt 0 -and $diag.Deleted -eq 0 -and $diag.CorpusCount -eq 1 -and (Test-Path -LiteralPath $kept) -and ($events -join '|') -ceq 'write-delete-attribution.json') 'Failed identity collection must preserve partial evidence without deleting.'
+
+        # Separate corpus mode remains available and never queries the hand-back inventory.
+        $HandbackDiagnostic=$false; $events.Clear()
+        function New-T4DeleteCorpus($Directory) {
+            $events.Add('new-corpus'); [void](New-Item -ItemType Directory -Path $Directory)
+            1..256 | ForEach-Object { $path=Join-Path $Directory ($_.ToString()+'.txt'); [IO.File]::WriteAllText($path,'corpus'); [pscustomobject]@{ Path=$path } }
+        }
+        function Get-Sample($Cycle,$Label) { @{ Label=$Label } }
+        function Save-T4DeleteSnapshot($Label,$Corpus,$Baseline) { [pscustomobject]@{ Census=@{ PoolComplete=$true }; Counts=@{}; Errors=@() } }
+        $diag=Invoke-T4DeleteAttribution $start $originalPurged
+        Assert-T4Delete ($diag.Errors.Count -eq 0 -and $diag.Mode -eq 'Corpus' -and $diag.Deleted -eq 256 -and $null -eq $diag.ReleasePrecondition -and $null -eq $diag.HandbackDiagnostic -and (Test-Path -LiteralPath $kept)) 'Separate 256-file corpus mode must remain independent.'
+    } finally {
+        $script:T4MemoryRoot=$savedMemoryRoot
+        if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force }
+    }
+}
+
+'T4DeleteAttributionSelfCheck=PASS;Controls='+$script:checks+';SyntheticKd=True;RetainedKd=m2t4delattr1,m2t4delattr2;Qualification=False'

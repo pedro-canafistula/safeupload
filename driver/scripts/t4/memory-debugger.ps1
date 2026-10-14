@@ -202,23 +202,25 @@ public static class T4DeleteIdentity {
     static extern bool FindNextStreamW(IntPtr find, out StreamData data);
     [DllImport("kernel32.dll", SetLastError=true)]
     static extern bool FindClose(IntPtr find);
-    public static string[] Create(string path) {
-        byte[] id = new byte[24], attributes = new byte[8];
-        using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None)) {
-            byte[] bytes = System.Text.Encoding.ASCII.GetBytes("T4 ordinary delete attribution\r\n");
-            file.Write(bytes, 0, bytes.Length); // exactly one write; no subsequent observing file opens
-            if (!GetFileInformationByHandleEx(file.SafeFileHandle, 18, id, 24) ||
-                !GetFileInformationByHandleEx(file.SafeFileHandle, 9, attributes, 8))
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-            if ((BitConverter.ToUInt32(attributes, 0) & 0x410) != 0)
-                throw new IOException("Corpus member is a directory or reparse point.");
-        }
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security,
+        uint disposition, uint flags, IntPtr template);
+    static byte[] Identity(SafeFileHandle file, out byte[] attributes) {
+        byte[] id = new byte[24]; attributes = new byte[8];
+        if (!GetFileInformationByHandleEx(file, 18, id, 24) ||
+            !GetFileInformationByHandleEx(file, 9, attributes, 8))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        if ((BitConverter.ToUInt32(attributes, 0) & 0x410) != 0)
+            throw new IOException("Delete member is a directory or reparse point.");
+        return id;
+    }
+    static string[] Receipt(string path, byte[] id, byte[] attributes) {
         StreamData data;
         IntPtr find = FindFirstStreamW(path, 0, out data, 0);
         if (find == new IntPtr(-1)) throw new Win32Exception(Marshal.GetLastWin32Error());
         try {
-            if (data.Name != "::$DATA") throw new IOException("Corpus member lacks one ordinary unnamed stream.");
-            if (FindNextStreamW(find, out data)) throw new IOException("Corpus member has more than one stream.");
+            if (data.Name != "::$DATA") throw new IOException("Delete member lacks one ordinary unnamed stream.");
+            if (FindNextStreamW(find, out data)) throw new IOException("Delete member has more than one stream.");
             int error = Marshal.GetLastWin32Error();
             if (error != 38) throw new Win32Exception(error); // ERROR_HANDLE_EOF
         } finally {
@@ -227,6 +229,25 @@ public static class T4DeleteIdentity {
         return new string[] { BitConverter.ToUInt64(id, 0).ToString("x16"),
             BitConverter.ToString(id, 8, 16).Replace("-", "").ToLowerInvariant(),
             BitConverter.ToUInt32(attributes, 0).ToString("x8") };
+    }
+    public static string[] Read(string path) {
+        byte[] id, attributes;
+        // Metadata-only OPEN_EXISTING, no data/write/DELETE grant. Do not follow a reparse member.
+        // Close this handle AND stream enumeration before the fresh baseline purge, never reopen after KD baseline.
+        using (SafeFileHandle file = CreateFileW(path, 0x80, 7, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero)) {
+            if (file.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+            id = Identity(file, out attributes);
+        }
+        return Receipt(path, id, attributes);
+    }
+    public static string[] Create(string path) {
+        byte[] id, attributes;
+        using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None)) {
+            byte[] bytes = System.Text.Encoding.ASCII.GetBytes("T4 ordinary delete attribution\r\n");
+            file.Write(bytes, 0, bytes.Length); // exactly one write; no subsequent observing data opens
+            id = Identity(file.SafeFileHandle, out attributes);
+        }
+        return Receipt(path, id, attributes);
     }
 }
 '@
@@ -247,6 +268,21 @@ function New-T4DeleteCorpus([string]$Directory) {
     }
 }
 
+function Get-T4HandbackIdentities([string]$Directory) {
+    Initialize-T4DeleteIdentity
+    if (-not $Directory -or -not [IO.Directory]::Exists($Directory)) { throw 'Hand-back directory unavailable.' }
+    for ($parent = [IO.DirectoryInfo]::new($Directory); $null -ne $parent; $parent = $parent.Parent) {
+        if (($parent.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Reparse hand-back directory/parent.' }
+    }
+    # Snapshot one flat set in the resolved actor hand-back directory; never recurse or create files.
+    foreach ($file in @(Get-ChildItem -LiteralPath $Directory -File -Force -ErrorAction Stop | Sort-Object Name)) {
+        if ($file.Extension -ine '.txt') { throw ('Unexpected hand-back member: ' + $file.FullName) }
+        $id = [T4DeleteIdentity]::Read($file.FullName)
+        [pscustomobject]@{ Path=$file.FullName; VolumeSerial=$id[0]; FileId=$id[1]; Attributes=$id[2];
+            Streams=@('::$DATA'); HandlesClosed=$true; IdentityAccess='FILE_READ_ATTRIBUTES; OPEN_EXISTING; OPEN_REPARSE_POINT' }
+    }
+}
+
 function ConvertTo-T4KdAddress([string]$Value) {
     $hex = ($Value -replace '^0x','') -replace '`',''
     if ($hex -notmatch '^[0-9a-fA-F]{1,16}$') { return $null }
@@ -263,7 +299,7 @@ function Get-T4KdErrors([string]$Text) {
     # Retain the raw output too: this recognizes common KD failures, not every possible extension message.
     @($Text -split '\r?\n' | Where-Object {
         $_ -notmatch '^\s*Pool Allocations Failed\s+0x[0-9a-f]+\s*$' -and
-        $_ -match '(?i)numeric expression missing|error reading|could not|couldn.t|unable to|cannot|can.t|read error|memory access error|syntax error|invalid (address|parameter)|type information missing|no export|not found|not supported|failed|terminating - searched|\?{8}'
+        $_ -match '(?i)^\s*Usage: !poolfind|numeric expression missing|error reading|corrupt|skipping.*page|failed to read critical heap|could not|couldn.t|unable to|cannot|can.t|read error|memory access error|syntax error|invalid (address|parameter)|type information missing|no export|not found|not supported|failed|terminating - searched|\?{8}'
     })
 }
 
@@ -364,18 +400,47 @@ function ConvertFrom-T4KdTelemetry([string]$Text) {
         UnparsedRows=$unparsed; NonAtomic=$true }
 }
 
+function ConvertFrom-T4PoolRow([string]$Line) {
+    # Two address contracts, never silently interchangeable:
+    # Microsoft Learn's older format reports POOL_HEADER + rounded block size.
+    # 10.0.28000 help (row 2) reports user allocation address/size, including special pool.
+    # Modern formatter verified in the delivered Microsoft kdexts.dll (SHA256
+    # 052171129a924bc301121486af052769f0d9b2532c4f492244f53c7229d9a881):
+    # "%p :", " %-11s", " tag %c%c%c%c%s", ", size %#9I64x, ", "Nonpaged", " special", " pool".
+    $m = [regex]::Match($Line, '^\s*([0-9a-fA-F`]{8,17})\s*:\s*(?:\((Allocated|Free\s*)\)\s*)?tag (?-i:SUfl)(?:\s*\(Protected\))?, size\s+(?:0x\s*)?([0-9a-fA-F]+),\s+(Nonpaged|Paged)( special)? pool(?:, quota process [0-9a-fA-F`]+)?\s*$', 'IgnoreCase')
+    if ($m.Success) {
+        return [pscustomobject]@{ Address=ConvertTo-T4KdAddress $m.Groups[1].Value; Size=[Convert]::ToInt64($m.Groups[3].Value,16);
+            AddressKind='Allocation'; Allocated=($m.Groups[2].Value.Trim() -ne 'Free'); NonPaged=($m.Groups[4].Value -eq 'Nonpaged');
+            Special=[bool]$m.Groups[5].Success; Format='Modern'; Raw=$Line }
+    }
+    $m = [regex]::Match($Line, '^\s*\*?([0-9a-fA-F`]{8,17})\s+size:\s*([0-9a-fA-F]+)\s+previous size:\s*[0-9a-fA-F]+\s+\((Allocated|Free)\)\s+\*?SUfl\b')
+    if ($m.Success) {
+        return [pscustomobject]@{ Address=ConvertTo-T4KdAddress $m.Groups[1].Value; Size=[Convert]::ToInt64($m.Groups[2].Value,16);
+            AddressKind='PoolHeader'; Allocated=($m.Groups[3].Value -eq 'Allocated'); NonPaged=$true; Special=$false; Format='Legacy'; Raw=$Line }
+    }
+    # !pool's special-pool header has a separate data address; it need not be header+0x10.
+    $m = [regex]::Match($Line, '^\s*\*?([0-9a-fA-F`]{8,17})\s+size:\s*([0-9a-fA-F]+)\s+data:\s*([0-9a-fA-F`]{8,17})\s+\((Allocated|Free)[^)]*\)\s+\*?SUfl\b')
+    if ($m.Success) {
+        return [pscustomobject]@{ Address=ConvertTo-T4KdAddress $m.Groups[3].Value; Size=[Convert]::ToInt64($m.Groups[2].Value,16);
+            AddressKind='Allocation'; Allocated=($m.Groups[4].Value -eq 'Allocated'); NonPaged=$true; Special=$true; Format='SpecialData'; Raw=$Line }
+    }
+    return $null
+}
+
 function ConvertFrom-T4DeletePass1([string]$Text) {
     $pool = Get-T4KdSection $Text 'POOL'
     $blocks = @{}; $unparsed = @()
     foreach ($line in ($pool -split '\r?\n')) {
         if ($line -notmatch '\bSUfl\b') { continue }
-        $m = [regex]::Match($line, '^\s*\*?([0-9a-fA-F`]{8,17})\s+size:\s*([0-9a-fA-F]+)\s+previous size:\s*[0-9a-fA-F]+\s+\((Allocated|Free)\)\s+\*?SUfl\b')
-        if ($m.Success) {
-            if ($m.Groups[3].Value -eq 'Allocated') {
-                $address = ConvertTo-T4KdAddress $m.Groups[1].Value
-                $blocks[$address] = [pscustomobject]@{ Address=$address; Size=[Convert]::ToInt32($m.Groups[2].Value,16) }
+        $row = ConvertFrom-T4PoolRow $line
+        if ($row) {
+            if (-not $row.NonPaged) { $unparsed += $line; continue }
+            if ($row.Allocated) {
+                if ($blocks.ContainsKey($row.Address) -and ($blocks[$row.Address].Size -ne $row.Size -or $blocks[$row.Address].AddressKind -ne $row.AddressKind)) {
+                    $unparsed += $line # allocation changed during a non-atomic scan
+                } else { $blocks[$row.Address] = $row }
             }
-        } elseif ($line -notmatch 'Scanning|Searching|Tag:|!poolfind') { $unparsed += $line }
+        } elseif ($line -notmatch '^\s*(Scanning|Searching).*pool|^\s*(?:lkd>|kd>|[0-9]+:\s*kd>)?\s*!poolfind\b') { $unparsed += $line }
     }
     $layout = $null
     $m = [regex]::Match($Text, '(?m)^T4_LAYOUT ([0-9a-f]+) ([0-9a-f]+) ([0-9a-f]+)\s*$')
@@ -410,7 +475,7 @@ function ConvertFrom-T4DeletePass1([string]$Text) {
     if ($unparsed.Count) { $errors += 'Unrecognized SUfl pool rows; census incomplete.' }
     [pscustomobject]@{ Blocks=@($blocks.Values | Sort-Object Address); Layout=$layout; Anchors=$anchors; Logical=$logical; AnchorWalkComplete=$anchorWalkComplete;
         Telemetry=ConvertFrom-T4KdTelemetry $Text;
-        PoolComplete=([bool]$pool -and $pool -match '(?i)(Searching NonPaged pool|Scanning.*pool.*Tag: SUfl)' -and $unparsed.Count -eq 0 -and @(Get-T4KdErrors $pool).Count -eq 0);
+        PoolComplete=([bool]$pool -and ($pool -match '(?i)(Searching NonPaged pool|Scanning.*pool.*(?:Tag: SUfl|tag 0x6c665553 \(SUfl\)))' -or $blocks.Count -gt 0) -and $unparsed.Count -eq 0 -and @(Get-T4KdErrors $pool).Count -eq 0);
         UnparsedPoolRows=$unparsed; Errors=$errors }
 }
 
@@ -438,8 +503,8 @@ function Get-T4DeleteFileCommands {
 .catch { !object @$t6 1 }
 .catch { dt nt!_FILE_OBJECT @$t6 }
 .catch { dt nt!_FSRTL_ADVANCED_FCB_HEADER @@c++(((nt!_FILE_OBJECT*)@$t6)->FsContext) }
-.catch { dt ntfs!_SCB @@c++(((nt!_FILE_OBJECT*)@$t6)->FsContext) }
-.catch { r? $t7 = ((nt!_FILE_OBJECT*)@$t6)->SectionObjectPointer; .if (@@c++(@$t7 != 0)) { dt nt!_SECTION_OBJECT_POINTERS @$t7; .if (@@c++(@$t7->DataSectionObject != 0)) { !ca @@c++(@$t7->DataSectionObject) }; .if (@@c++(@$t7->SharedCacheMap != 0)) { dt nt!_SHARED_CACHE_MAP @@c++(@$t7->SharedCacheMap) } } }
+.catch { .printf "T4_SCB %p\n", @@c++(((nt!_FILE_OBJECT*)@$t6)->FsContext); dt ntfs!_SCB @@c++(((nt!_FILE_OBJECT*)@$t6)->FsContext) }
+.catch { r? $t7 = ((nt!_FILE_OBJECT*)@$t6)->SectionObjectPointer; .if (@@c++(@$t7 != 0)) { .printf "T4_SOP %p\n", @$t7; dt nt!_SECTION_OBJECT_POINTERS @$t7; .if (@@c++(@$t7->DataSectionObject != 0)) { .printf "T4_CONTROL_AREA %p\n", @@c++(@$t7->DataSectionObject); !ca @@c++(@$t7->DataSectionObject) }; .if (@@c++(@$t7->SharedCacheMap != 0)) { .printf "T4_SHARED_CACHE_MAP %p\n", @@c++(@$t7->SharedCacheMap); dt nt!_SHARED_CACHE_MAP @@c++(@$t7->SharedCacheMap) } } }
 .catch { !fltkd.streamlist @$t6 0x3f 1 }
 '@
 }
@@ -448,9 +513,12 @@ function Get-T4DeleteSopCommands {
     # $t7 is a symbol-resolved SOP candidate; none of these pointers confers ownership.
     $file = (Get-T4DeleteFileCommands) -replace '\r?\n', '; '
     $commands = @'
-.catch { dt nt!_SECTION_OBJECT_POINTERS @$t7 }
-.catch { .if (@@c++(@$t7->SharedCacheMap != 0)) { dt nt!_SHARED_CACHE_MAP @@c++(@$t7->SharedCacheMap) } }
+r? $t12 = @$t7
+.catch { .printf "T4_SOP %p\n", @$t7; dt nt!_SECTION_OBJECT_POINTERS @$t7 }
+.catch { .if (@@c++(@$t7->SharedCacheMap != 0)) { .printf "T4_SHARED_CACHE_MAP %p\n", @@c++(@$t7->SharedCacheMap); dt nt!_SHARED_CACHE_MAP @@c++(@$t7->SharedCacheMap) } }
 .catch { .if (@@c++(@$t7->DataSectionObject != 0)) { .printf "T4_CONTROL_AREA %p\n", @@c++(@$t7->DataSectionObject); !ca @@c++(@$t7->DataSectionObject); r? $t6 = (nt!_FILE_OBJECT*)(((nt!_CONTROL_AREA*)@$t7->DataSectionObject)->FilePointer.Value & ~(unsigned __int64)0xf); .if (@@c++(@$t6 != 0)) { __FILE__ } } }
+.catch { .if (@@c++(@$t12->ImageSectionObject != 0)) { .printf "T4_CONTROL_AREA %p\n", @@c++(@$t12->ImageSectionObject); !ca @@c++(@$t12->ImageSectionObject) } }
+.catch { .if (@@c++(@$t12->SharedCacheMap != 0)) { r? $t6 = ((nt!_SHARED_CACHE_MAP*)@$t12->SharedCacheMap)->FileObject; .if (@@c++(@$t6 != 0)) { __FILE__ } } }
 '@
     $commands.Replace('__FILE__',$file)
 }
@@ -463,7 +531,7 @@ function Get-T4DeleteSopCommands {
 # /-printf: arguments use MASM unless explicitly wrapped; %p has no modifiers, %I64x preserves IDs.
 # /-catch: a read/type error skips that block, then resumes outside it; not a target exception handler.
 # /-----------------------a---run-script-file-: $$>< condenses lines to one command program.
-# /-poolfind (0=nonpaged), /-pool (2=one block's header), /-poolused (2=sort nonpaged), /-verifier (3=read lists).
+# /-poolfind (default=nonpaged; 10.0.28000 rejects positional 0), /-pool (2=one block's header), /-poolused (2=sort nonpaged), /-verifier (3=read lists).
 # /dt--display-type-, /d--da--db--dc--dd--dd--df--dp--dq--du--dw--dw--dyb--dyd--display-memor:
 # dt accepts type/address, dd/dq L1 reads one item; /-fileobj, /-object, /-ca only display objects.
 # FltMgr flags/detail verified against THIS build's !fltkd.help in m2t4delattr1 pass1 lines 1262-1380.
@@ -517,7 +585,7 @@ r? $t11 = (fltmgr!_ALLOCATE_CONTEXT_LOOKASIDE*)((fltmgr!_FLT_FILTER*)@$t0)->Supp
 .echo T4_ANCHOR_COUNT_BEGIN
 dd SafeUpload!StageAnchorCount L1
 .echo T4_ANCHOR_COUNT_END
-dt nt!_LIST_ENTRY SafeUpload!StageAnchorList
+dt nt!_LIST_ENTRY @@c++(&SafeUpload!StageAnchorList)
 r? $t1 = ((nt!_LIST_ENTRY*)&SafeUpload!StageAnchorList)->Flink
 r $t2 = 0
 .for (; @@c++(@$t1 != &SafeUpload!StageAnchorList && @$t1 != 0 && @$t2 < 64); r $t2 = @$t2 + 1) { .echo T4_ANCHOR_BEGIN; r? $t3 = (SafeUpload!_STAGE_ANCHOR*)((char*)@$t1 - (unsigned __int64)&((SafeUpload!_STAGE_ANCHOR*)0)->Link); dt SafeUpload!_STAGE_ANCHOR @$t3; .printf "T4_ANCHOR_OWNER %p %p\n", @@c++(@$t3->Handle), @@c++(@$t3->Object); r? $t4 = @$t3->Entry; .if (@@c++(@$t4 != 0)) { __IDENTITY__ }; r? $t6 = @$t3->Object; .if (@@c++(@$t6 != 0)) { __FILE__ }; .echo T4_ANCHOR_END; r? $t1 = @$t1->Flink }
@@ -528,7 +596,7 @@ r $t2 = 0
         }
         'poolfind' { @'
 .echo T4_POOL_BEGIN
-!poolfind SUfl 0
+!poolfind SUfl
 .echo T4_POOL_END
 '@ }
     }
@@ -544,12 +612,14 @@ function Get-T4DeletePass2Commands([object[]]$Blocks, $Layout) {
         if ($address -notmatch '^[0-9a-f]{16}$') { throw 'Unvalidated pool address.' }
         $commands += '.echo T4_BLOCK_BEGIN ' + $address
         $commands += '.catch { !pool 0x' + $address + ' 2 }'
-        # Probe the pool header, allocation start and derived payload. Only a validated node yields typed data.
-        $candidates = @($address)
+        $kind = if ($block.AddressKind) { $block.AddressKind } else { 'PoolHeader' } # older retained receipts
+        $commands += '.echo T4_BLOCK_INFO ' + $kind + ' ' + ([long]$block.Size).ToString('x')
+        $candidates = @($address); $nodeAddress = $null
         if ($Layout) {
             $value = [Convert]::ToUInt64($address,16)
-            $candidates += ($value + [uint64]$Layout.PoolHeader).ToString('x16')
-            $candidates += ($value + [uint64]($Layout.PoolHeader+$Layout.ContextNode)).ToString('x16')
+            $node = if ($kind -eq 'Allocation') { $value } else { $value + [uint64]$Layout.PoolHeader }
+            $nodeAddress = $node.ToString('x16')
+            $candidates = @($address,$nodeAddress,($node + [uint64]$Layout.ContextNode).ToString('x16') | Select-Object -Unique)
         }
         foreach ($candidate in $candidates) {
             $commands += '.echo T4_CTX_BEGIN ' + $candidate
@@ -557,7 +627,7 @@ function Get-T4DeletePass2Commands([object[]]$Blocks, $Layout) {
             $commands += '.catch { !fltkd.ctx 0x' + $candidate + ' 1 }'
             $commands += '.catch { dt fltmgr!_CONTEXT_NODE 0x' + $candidate + ' }'
             # Only the symbol-derived node gets typed dereferences; other addresses are extension probes.
-            if ($Layout -and $candidate -eq $candidates[1]) {
+            if ($Layout -and $candidate -eq $nodeAddress) {
                 $body = @'
 r? $t3 = (fltmgr!_CONTEXT_NODE*)0x__NODE__
 .if (@@c++(@$t3->RegInfo != 0 && @$t3->RegInfo->ContextType == 8 && @$t3->RegInfo->ContextCleanupCallback == &SafeUpload!SafeUploadStreamContextCleanup)) { .echo T4_SAFEUPLOAD_STREAM; r? $t5 = (SafeUpload!_SAFEUPLOAD_STREAM_CONTEXT*)((char*)@$t3 + sizeof(fltmgr!_CONTEXT_NODE)); dt SafeUpload!_SAFEUPLOAD_STREAM_CONTEXT @$t5; .printf "T4_PAYLOAD %p %x\n", @$t5, @@c++(sizeof(SafeUpload!_SAFEUPLOAD_STREAM_CONTEXT)); .printf "T4_WRITERS %p %p %p\n", @@c++(&@$t5->WriterObjects), @@c++(@$t5->WriterObjects.Flink), @@c++(@$t5->WriterObjects.Blink); r? $t4 = (SafeUpload!_STAGE_REGISTRY_ENTRY*)@$t5->WriterRegistryEntry; .printf "T4_REGISTRY %p\n", @$t4; .if (@@c++(@$t4 != 0)) { __IDENTITY__; r? $t7 = (nt!_SECTION_OBJECT_POINTERS*)@$t4->SectionObjectPointer; .if (@@c++(@$t7 != 0)) { __SOP__ } }; r? $t8 = @$t5->WriterObjects.Flink; r $t9 = 0; .for (; @@c++(@$t8 != &@$t5->WriterObjects && @$t8 != 0 && @$t9 < 8); r $t9 = @$t9 + 1) { r? $t10 = (SafeUpload!_STAGE_WRITER_NODE*)((char*)@$t8 - (unsigned __int64)&((SafeUpload!_STAGE_WRITER_NODE*)0)->Link); dt SafeUpload!_STAGE_WRITER_NODE @$t10; r? $t6 = @$t10->FileObject; .if (@@c++(@$t6 != 0)) { __FILE__ }; r? $t8 = @$t8->Flink }; .echo T4_STREAM_LINK_BEGIN; dt fltmgr!_STREAM_LIST_CTRL @@c++(*(void**)&@$t3->AttachedObject); !fltkd.streamlist @@c++(*(void**)&@$t3->AttachedObject) 0x3f 1; .echo T4_STREAM_LINK_END }
@@ -597,28 +667,43 @@ function ConvertFrom-T4DeletePass2([string]$Text, [object[]]$Corpus, [string]$An
     foreach ($b in [regex]::Matches($Text, '(?ms)^T4_BLOCK_BEGIN ([0-9a-f]{16})\r?\n(.*?)^T4_BLOCK_END\s*$')) {
         $block = $b.Groups[1].Value; $blockText = $b.Groups[2].Value
         # The pool may have been freed/reused between sessions. Demand a fresh allocated SUfl row.
-        $poolRow = [regex]::Match($blockText, '(?m)^\s*\*?' + $block.Substring(0,8) + '`?' + $block.Substring(8) + '\s+size:\s*([0-9a-fA-F]+)\s+previous size:\s*[0-9a-fA-F]+\s+\(Allocated\)\s+\*?SUfl\b')
+        $info = [regex]::Match($blockText, '(?m)^T4_BLOCK_INFO (Allocation|PoolHeader) ([0-9a-f]+)\s*$')
+        $kind = if ($info.Success) { $info.Groups[1].Value } else { 'PoolHeader' }
+        $blockValue = [Convert]::ToUInt64($block,16)
+        $poolRows = @(foreach ($line in (($blockText -split '(?m)^T4_CTX_BEGIN ')[0] -split '\r?\n')) {
+            $row = ConvertFrom-T4PoolRow $line
+            if ($row -and $row.Allocated -and $row.NonPaged) { $row }
+        })
+        $fresh = @($poolRows | Where-Object {
+            $value = [Convert]::ToUInt64($_.Address,16)
+            if ($kind -eq 'Allocation') {
+                ($_.AddressKind -eq 'Allocation' -and $value -eq $blockValue -and $_.Size -ge 200 -and $_.Size -le 208) -or
+                    ($_.AddressKind -eq 'PoolHeader' -and $value+16 -eq $blockValue -and $_.Size -eq 224)
+            } else { $_.AddressKind -eq 'PoolHeader' -and $value -eq $blockValue -and $_.Size -eq 224 }
+        })
         foreach ($c in [regex]::Matches($blockText, '(?ms)^T4_CTX_BEGIN ([0-9a-f]{16})\r?\n(.*?)^T4_CTX_END\s*$')) {
             $candidate = $c.Groups[1].Value; $body = $c.Groups[2].Value
             $node = [regex]::Match($body, '(?m)^\s*CONTEXT_NODE:\s*([0-9a-fA-F`]+)\s+\[0008\]\s+StreamContext\b')
             $user = [regex]::Match($body, '(?m)^\s*UserData\s*:\s*([0-9a-fA-F`]+)\s*$')
             $size = [regex]::Match($body, '(?m)^\s*UserDataSize\s*:\s*(0x[0-9a-fA-F]+|\d+)\s*$')
             $payload = [regex]::Match($body, '(?m)^T4_PAYLOAD ([0-9a-fA-F`]+) ([0-9a-f]+)\s*$')
-            $parsed = $poolRow.Success -and $node.Success -and $user.Success -and $size.Success -and $payload.Success -and
+            $parsed = $fresh.Count -eq 1 -and $node.Success -and $user.Success -and $size.Success -and $payload.Success -and
                 $body -match '(?m)^T4_SAFEUPLOAD_STREAM\s*$' -and
                 (ConvertTo-T4KdAddress $node.Groups[1].Value) -eq $candidate -and
                 (ConvertTo-T4KdAddress $user.Groups[1].Value) -eq (ConvertTo-T4KdAddress $payload.Groups[1].Value)
             if ($parsed) {
                 $userSize = if ($size.Groups[1].Value.StartsWith('0x')) { [Convert]::ToInt32($size.Groups[1].Value.Substring(2),16) } else { [int]$size.Groups[1].Value }
                 $parsed = $userSize -eq [Convert]::ToInt32($payload.Groups[2].Value,16) -and $userSize -gt 0 -and
-                    [Convert]::ToInt32($poolRow.Groups[1].Value,16) -eq 224
+                    $userSize -eq 104
             }
             $use = [regex]::Match($body, '(?m)^\s*UseCount\s*:\s*(0x[0-9a-fA-F]+|\d+)\s*$')
             $references = $null; if ($use.Success) { $references = if ($use.Groups[1].Value.StartsWith('0x')) { [Convert]::ToInt64($use.Groups[1].Value.Substring(2),16) } else { [int64]$use.Groups[1].Value } }
             if ($parsed) {
                 $blockValue = [Convert]::ToUInt64($block,16)
                 $userValue = [Convert]::ToUInt64((ConvertTo-T4KdAddress $user.Groups[1].Value),16)
-                $parsed = $references -gt 0 -and $userValue -gt $blockValue -and ($userValue+$userSize) -le ($blockValue+224)
+                $expectedNode = if ($kind -eq 'Allocation') { $blockValue } else { $blockValue+16 }
+                $parsed = $references -gt 0 -and [Convert]::ToUInt64($candidate,16) -eq $expectedNode -and $userValue -eq ($expectedNode+96) -and
+                    ($userValue+$userSize) -le ([Convert]::ToUInt64($fresh[0].Address,16)+$fresh[0].Size)
             }
             # A plausible dt dump or zero-ref cached node is never enough to count a live context.
             $attempts += [pscustomobject]@{ Block=$block; Candidate=$candidate; Parsed=[bool]$parsed; Errors=@(Get-T4KdErrors $body) }
@@ -655,6 +740,9 @@ function ConvertFrom-T4DeletePass2([string]$Text, [object[]]$Corpus, [string]$An
                 MatchingAnchors=$matchingAnchors.Count; Classification=$classification;
                 FileObjects=@([regex]::Matches($body,'(?m)^T4_FILE_OBJECT ([0-9a-fA-F`]+)\s*$') | ForEach-Object { ConvertTo-T4KdAddress $_.Groups[1].Value } | Select-Object -Unique);
                 ControlAreas=@([regex]::Matches($body,'(?m)^T4_CONTROL_AREA ([0-9a-fA-F`]+)\s*$') | ForEach-Object { ConvertTo-T4KdAddress $_.Groups[1].Value } | Select-Object -Unique);
+                SectionObjectPointers=@([regex]::Matches($body,'(?m)^T4_SOP ([0-9a-fA-F`]+)\s*$') | ForEach-Object { ConvertTo-T4KdAddress $_.Groups[1].Value } | Select-Object -Unique);
+                SharedCacheMaps=@([regex]::Matches($body,'(?m)^T4_SHARED_CACHE_MAP ([0-9a-fA-F`]+)\s*$') | ForEach-Object { ConvertTo-T4KdAddress $_.Groups[1].Value } | Select-Object -Unique);
+                ScbCandidates=@([regex]::Matches($body,'(?m)^T4_SCB ([0-9a-fA-F`]+)\s*$') | ForEach-Object { ConvertTo-T4KdAddress $_.Groups[1].Value } | Select-Object -Unique);
                 Errors=@(Get-T4KdErrors $body) }
         }
     }

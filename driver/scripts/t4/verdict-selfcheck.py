@@ -181,18 +181,30 @@ for attribution in (None, {'CorpusCount': 256, 'Deleted': 255,
                                         'Errors': ['logical session failed; other sessions retained']}]}):
     diagnostic = copy.deepcopy(healthy)
     diagnostic['DeleteAttribution'] = attribution
-    for failure in (False, True):
-        diagnostic['BlockedBytesPublished'] = failure
-        observed, observed_code = replay(changed_result(diagnostic), healthy_samples, 256, delete_attribution='yes')
-        original, original_code = replay(changed_result(diagnostic), healthy_samples, 256)
-        require(observed, 'T4Diagnostic', 'INFO', 'non-qualifying')
-        require(observed, 'T4DeleteAttribution', 'INFO', 'diagnostic result missing' if attribution is None else f"deleted {attribution['Deleted']}")
-        assert {k: v for k, v in observed.items() if not k.startswith(('T4Diagnostic', 'T4DeleteAttribution'))} == original
-        assert observed_code == original_code
-        if failure:
-            require(observed, 'T4NoBlockedBytesPublished', 'FAIL')
-            assert observed_code == 1
-print('T4DeleteAttributionControl=PASS; non-qualifying, missing/failed/partially successful KD remains INFO, gate lines and exit unchanged')
+    for handbacks in ('no', 'yes'):
+        for failure in (False, True):
+            diagnostic['BlockedBytesPublished'] = failure
+            if attribution is not None:
+                diagnostic['DeleteAttribution']['Mode'] = 'Handbacks' if handbacks == 'yes' else 'Corpus'
+                diagnostic['DeleteAttribution']['ReleasePrecondition'] = {
+                    'NearStart': not failure, 'ReleaseProxyObserved': not failure,
+                    'IndividualContextReleaseConfirmed': False,
+                    'StartSUfl': 300, 'BaselineSUfl': 330 if not failure else 600}
+            observed, observed_code = replay(changed_result(diagnostic), healthy_samples, 256,
+                                             handback=handbacks, delete_attribution='yes')
+            original, original_code = replay(changed_result(diagnostic), healthy_samples, 256, handback=handbacks)
+            require(observed, 'T4Diagnostic', 'INFO', 'non-qualifying')
+            require(observed, 'T4DeleteAttribution', 'INFO', 'diagnostic result missing' if attribution is None else f"deleted {attribution['Deleted']}")
+            if attribution is not None and handbacks == 'yes':
+                require(observed, 'T4DeleteAttributionRelease', 'INFO', '"IndividualContextReleaseConfirmed": false')
+            ignored = ('T4Diagnostic', 'T4DeleteAttribution')
+            assert {k: v for k, v in observed.items() if not k.startswith(ignored)} == \
+                {k: v for k, v in original.items() if not k.startswith(ignored)}
+            assert observed_code == original_code
+            if failure:
+                require(observed, 'T4NoBlockedBytesPublished', 'FAIL')
+                assert observed_code == 1
+print('T4DeleteAttributionControl=PASS; corpus/combined modes non-qualifying, missing/failed/partially successful KD remains INFO, gate lines and exit unchanged')
 # Preflight controls stop before artifact hashing, inventory, SSH or run_disk_begin.
 # Even the valid option combination has deliberately absent product artifacts.
 with tempfile.TemporaryDirectory(prefix='t4-delete-preflight-') as directory:
@@ -203,11 +215,12 @@ with tempfile.TemporaryDirectory(prefix='t4-delete-preflight-') as directory:
                 T4_HANDBACK_DIAGNOSTIC='no', SAFEUPLOAD_DEBUGGEE='win10-debug3')
     cases = [({}, '256', 'verifier-from-boot', 'needs the signed driver'),
              ({'T4_MEMORY_TOOLS': ''}, '256', 'verifier-from-boot', 'Delete attribution requires'),
-             ({'T4_HANDBACK_DIAGNOSTIC': 'yes'}, '256', 'verifier-from-boot', 'Delete attribution requires'),
+             ({'T4_HANDBACK_DIAGNOSTIC': 'yes'}, '256', 'verifier-from-boot', 'needs the signed driver'),
              ({}, '10000', 'verifier-from-boot', 'Delete attribution requires'),
              ({}, '256', 'runtime-verifier', 'Memory attribution requires'),
              ({}, '256', 'ordinary', 'Memory attribution requires'),
              ({'SAFEUPLOAD_DEBUGGEE': ''}, '256', 'verifier-from-boot', 'requires explicit'),
+             ({'T4_HANDBACK_DIAGNOSTIC': 'yes', 'T4_MEMORY_TOOLS': ''}, '256', 'verifier-from-boot', 'Delete attribution requires'),
              ({'T4_DELETE_ATTRIBUTION': 'maybe'}, '256', 'verifier-from-boot', 'must be yes or no')]
     for overrides, count, mode, message in cases:
         run = subprocess.run(['bash', str(REPO / 'driver/scripts/Invoke-StageCycles.sh'),
@@ -215,5 +228,5 @@ with tempfile.TemporaryDirectory(prefix='t4-delete-preflight-') as directory:
                               count, mode, '64'], env=dict(base, **overrides), capture_output=True, text=True, timeout=10)
         assert run.returncode == 2 and message in run.stdout, (overrides, run.stdout, run.stderr)
         assert '== run disk' not in run.stdout
-print('T4DeletePreflightControl=PASS; 8 offline option/dependency controls, no VM contact')
+print('T4DeletePreflightControl=PASS; 9 offline option/dependency controls, no VM contact')
 print('T4VerdictSelfCheck=PASS; retained replay and context/registry refusal controls; Qualification=False')
