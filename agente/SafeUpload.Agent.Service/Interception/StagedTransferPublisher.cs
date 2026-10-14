@@ -803,7 +803,7 @@ public sealed partial class StagedTransferPublisher
                         stage.MarkBlockedDeletion(current.Transfer.StagePath);
                         accepted = new StagedBlockedDeletionReceipt(new StagedVersionIdentity(current.Transfer.TransferId,
                                 current.DestinationGeneration, expectedStageIdentity),
-                                current.NamespaceTombstones.Count, length, current.Sha256Hex);
+                                StagedTransferJournal.CommittedRenameCount(current.NamespaceTombstones), length, current.Sha256Hex);
                         _blockedDeletionReceipts[current.Transfer.TransferId] = accepted;
                         current = await _journal.RecordBlockedDeletionAsync(current.Transfer.TransferId, accepted,
                             CancellationToken.None).ConfigureAwait(false);

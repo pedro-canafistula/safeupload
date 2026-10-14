@@ -2794,13 +2794,21 @@ public sealed partial class StagedTransferJournal
         finally { _gate.Release(); }
     }
 
+    // NamespaceTombstones is a chain (newest first), one link per committed rename of this version.
+    internal static int CommittedRenameCount(StagedNameTombstone? head)
+    {
+        int count = 0;
+        for (var name = head; name is not null; name = name.Previous) count++;
+        return count;
+    }
+
     internal static bool MatchesBlockedDeletionReceipt(TransferJournalEntry entry) =>
         entry.BlockedDeletionReceipt is { Version: { StageIdentity: not null } version } receipt &&
         entry.StageIdentity is not null &&
         version.TransferId == entry.Transfer.TransferId &&
         version.DestinationGeneration == entry.DestinationGeneration &&
         version.StageIdentity == entry.StageIdentity &&
-        receipt.CommittedRenames == entry.NamespaceTombstones.Count &&
+        receipt.CommittedRenames == CommittedRenameCount(entry.NamespaceTombstones) &&
         receipt.Length == entry.SealedLength && receipt.Sha256Hex == entry.Sha256Hex;
 
     // Called only after successful disposition on the identity-checked owned

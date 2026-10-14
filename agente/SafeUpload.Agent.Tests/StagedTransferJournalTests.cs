@@ -1372,7 +1372,7 @@ public sealed class StagedTransferJournalTests : IDisposable
             deletion.MarkBlockedDeletion(other.StagePath);
             await journal.RecordBlockedDeletionAsync(other.TransferId, new StagedBlockedDeletionReceipt(
                 new StagedVersionIdentity(other.TransferId, cleanup.DestinationGeneration, cleanup.StageIdentity!),
-                cleanup.NamespaceTombstones.Count, cleanup.SealedLength!.Value, cleanup.Sha256Hex!), CancellationToken.None);
+                StagedTransferJournal.CommittedRenameCount(cleanup.NamespaceTombstones), cleanup.SealedLength!.Value, cleanup.Sha256Hex!), CancellationToken.None);
         }
         await File.WriteAllTextAsync(other.StagePath, "replacement remains private");
         await Assert.ThrowsAsync<IOException>(() => journal.CompleteStageCleanupAsync(other.TransferId,
