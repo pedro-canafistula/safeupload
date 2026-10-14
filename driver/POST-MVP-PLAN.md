@@ -678,7 +678,22 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     retirement) and [T5-VOLUNTARY-UNLOAD.md](T5-VOLUNTARY-UNLOAD.md) (committed local teardown despite ordinary writer history;
     late-load fail-closed). [Independent review](evidence/2026-10-14/t5-designs-review-sol61.md) **REVISE** for both: exact seal
     request with `SealPending`, complete exposure-possible transitions, one joint op17/unload state machine, per-operation owner
-    validation; revision in progress.
+    validation. Revision `bbd806c5` resolved four of five; [re-review](evidence/2026-10-14/t5-designs-rereview-sol61.md) **REVISE**
+    again, all three new findings in the added durable epoch retirement (retirement storage CREATE closed too early, no bootstrap
+    contract for a retirement-only reconnect, a permanent-refusal mode needing an owner rescope).
+    **Scope decision (conservative, 2026-10-14):** epoch retirement and refusal-receipt reclamation are deferred; receipts stay
+    charged until a later reviewed retirement design (hold 3 only forbids retiring without durable evidence; budget exhaustion fails
+    closed). Two batches:
+    - Batch 1 (unblocks the VM): voluntary unload as reversible preparation → the existing quarantine/`EPOCH_DRAINED` exchange →
+      committed local teardown that retires ordinary writer history, with no retirement mode and no change to post-ACK veto
+      behavior; the agent busy-loop fix ([RCA](evidence/2026-10-14/m2t5purgeattr1-agent-loop-rca-sol61.md): completed BLOCK
+      records stay in pending dispatch, and `~` historical names trigger short-name probes); restoration records
+      `--writer-state-status` (LastUnloadVeto) after a refused unload. The late-load hardening is deferred: runtime-Verifier rows load
+      with `fltmc load` and rely on the demand-start trust path, so changing it changes the qualification method and needs its own
+      decision.
+    - Batch 2: exact seal receipt, op15 typed refusal/exposure evidence/op23, refusal accounting without reclamation, and a
+      negotiated per-version driver-delete receipt (a restart cannot finish released-stage bookkeeping today: `Held=0` and a
+      missing path are not deletion evidence).
     **Pending owner decision (conservative default applied):** a save whose requester exited before its file was ever exposed can
     leave its private bytes retained by the service. Default: such retained residue keeps vetoing voluntary unload and epoch
     retirement, so an operator cannot `fltmc unload` until it is resolved; nothing is deleted automatically. Recommended narrow
