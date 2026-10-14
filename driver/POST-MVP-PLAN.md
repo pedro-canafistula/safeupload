@@ -23,6 +23,34 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-14 — workflow rules.** Scope, gates and the qualification plan are unchanged; these rules shorten defect loops for the rest
+of M2. Classes they target: compile-blind matrix rounds (`t5-rename1`, `t5-block1`, `t5-diag1`), test mistakes found only by the matrix
+(`t5-rename2`, `t5-rename3`, `t5-rename5`, `t5-block2`), kernel–agent contract defects found only by boots (`m2t5boot8`, `9`, `11`/`12`,
+`13`, `14`), and process slips (three timer rejections without a design note, worker self-reviews reported as independent, a worker
+editing this plan, a Codex resume switching Sol to Astra).
+
+1. **Local compile before any builder run.** A user-local .NET SDK matching the builder's `dotnet-info` under
+   `~/Work/safeupload-tools/dotnet` (no sudo, system packages or shell-profile edits), an offline NuGet cache, and a script compiling the
+   product and test projects for normal/feature × Debug/Release with the builder's warnings-as-errors settings. Run after every worker
+   hand-off; workers run it too (offline, in the Codex workspace-write sandbox). Diagnostic only; the matrix stays the gate.
+2. **Required-test preflight** before queuing a matrix: every test named in `Invoke-ExactAgentMatrixBuild.py`'s required list exists as
+   a method in source, and discovered test methods are diffed against the last passing matrix. A removed or renamed test is a stop.
+3. **Contract first** for any change to the kernel–agent conversation: write down, per operation, the exact fields the driver sends and
+   adopts (name, generation, identity, view, owner, epoch) and the agent's validation of each; add an agent test driving the harness
+   pattern involved (resave/new/replace/mapped × approve/block, name reuse, rename onto occupied names, BLOCK then resave, requester
+   exit, disconnect/reconnect, lost reply). For every new reply path, including denials, answer "what does the driver do with this?".
+4. **Design note first** for timer, retry, lifetime or lock-order changes: states, who arms/clears, which waits are timer-eligible and
+   the interleavings considered, sent with the code so one review round suffices.
+5. **Batch.** Fix all defects an RCA finds in one change, then one build + matrix + review + boot. Re-reviews cover only the delta and
+   the previous findings, never unchanged code.
+6. **Overlap waiting.** While a matrix, build or boot runs, do the next independent item (RCA, next brief, local compile). Never two
+   builder jobs or two VM jobs at once.
+7. **Worker briefs** always require: the local compile and every `driver/scripts/t5` check; no renamed or removed tests; wire tests with
+   `MemoryMarshal`, never `Marshal` round-trips; `InternalsVisibleTo`, constructor signatures and profile symbols checked in every
+   touched test; no edits to status plans; no self-run review claimed as independent; expected test counts per profile. Codex resume
+   pins the model and effort explicitly.
+8. **Independent reviews** come only from a fresh Sol 6.1 xhigh session launched by Claude; a worker's internal review is advisory.
+
 **2026-10-13 — review model.** Use **Sol 6.1 at xhigh** (`gpt-6.1-sol`) instead of Luna for future reviews. This supersedes the
 reviewer-model choice in earlier decisions, without changing their scope or gates. Historical Luna reports remain valid records of
 who reviewed that work. The review cadence remains product-security designs, one pre-boot review of kernel lifetime/lock-order/retirement
