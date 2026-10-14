@@ -1107,6 +1107,12 @@ typedef struct _SAFEUPLOAD_WRITER_STATE_STATUS {
     UINT64 RegistryReclaimPasses;         // reclaim worker passes (queued at 3/4 of a limit or on a capacity failure)
     UINT32 RegistryNameTierEntries;       // live entries retaining full names
     UINT32 RegistryCompactTierEntries;    // live fixed-pool entries retaining identity without a path
+    /* First successful CAS per driver boot load: reason low 16, source line high 16; zero = not recorded.
+     * Use the delivered source; concurrent events have no total chronological order. Diagnostics only. */
+    UINT32 WriterGlobalFirstUnknown;
+    UINT32 WriterEntryFirstUnknown;       // first Unknown entry included by admission's census predicate
+    UINT32 WriterSopFirstUnknown;
+    UINT32 WriterSopUnknownCount;         // current all-instance SOP marker count, same scan as admission
 #endif
 } SAFEUPLOAD_WRITER_STATE_STATUS, *PSAFEUPLOAD_WRITER_STATE_STATUS;
 
@@ -1916,7 +1922,12 @@ C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, TxfRefused ) == 1
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, RegistryPruned ) == 264 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, RegistryNameTierEntries ) == 280 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, RegistryCompactTierEntries ) == 284 );
-C_ASSERT( sizeof( SAFEUPLOAD_WRITER_STATE_STATUS ) == 288 );
+C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, Reserved2 ) == 260 );
+C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, WriterGlobalFirstUnknown ) == 288 );
+C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, WriterEntryFirstUnknown ) == 292 );
+C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, WriterSopFirstUnknown ) == 296 );
+C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, WriterSopUnknownCount ) == 300 );
+C_ASSERT( sizeof( SAFEUPLOAD_WRITER_STATE_STATUS ) == 304 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_REGISTRY_ENTRY_STATUS, VolumeSerialNumber ) == 40 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_REGISTRY_ENTRY_STATUS, FileId ) == 48 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_REGISTRY_ENTRY_STATUS, NameMatches ) == 100 );

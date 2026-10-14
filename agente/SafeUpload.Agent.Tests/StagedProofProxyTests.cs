@@ -37,6 +37,7 @@ public sealed class StagedProofProxyTests
     {
         foreach (var (command, reserved, length, output) in new (uint, uint, int, int)[] {
             (20, 1, 16, 32), (20, 0, 17, 32), (20, 0, 16, 33),
+            (12, 0, 16, 288), (12, 0, 16, 303), (12, 0, 16, 305),
             (5, 4, 16, 0), (6, 1, 16, 0), (8, 0, 16, 1960),
             (22, 1, 32, 672), (19, 1, 16, 36136), (25, 20481, 16, 36392) })
             Assert.Throws<InvalidDataException>(() => StagedProofProxyWire.Validate(Control(command, reserved, length), output));
@@ -151,7 +152,7 @@ public sealed class StagedProofProxyTests
 
     [Theory]
     [InlineData(2,184)] [InlineData(5,0)] [InlineData(6,0)] [InlineData(7,0)]
-    [InlineData(8,1960)] [InlineData(12,288)] [InlineData(17,104)]
+    [InlineData(8,1960)] [InlineData(12,304)] [InlineData(17,104)]
     [InlineData(19,36136)] [InlineData(20,32)] [InlineData(22,672)]
     [InlineData(23,6672)] [InlineData(24,54664)] [InlineData(25,36392)]
     public async Task EveryAllowedControlUsesExactBoundedServiceFrame(uint command, int outputBytes)

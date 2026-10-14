@@ -191,7 +191,12 @@ __declspec(align(16)) struct _STAGE_REGISTRY_ENTRY {
     BOOLEAN StreamIdentityKnown;
     PWCH StreamName;
     PSTAGE_REGISTRY_ENTRY PoolNext;
+    volatile LONG FirstUnknown;      /* diagnostic only; consumes existing 16-byte alignment tail padding */
 };
+/* Preserve the allocation size before adding FirstUnknown after PoolNext. */
+C_ASSERT(sizeof(STAGE_REGISTRY_ENTRY) ==
+    ((FIELD_OFFSET(STAGE_REGISTRY_ENTRY, PoolNext) + sizeof(PSTAGE_REGISTRY_ENTRY) + 15) & ~(SIZE_T)15));
+C_ASSERT((FIELD_OFFSET(STAGE_REGISTRY_ENTRY, FirstUnknown) % sizeof(LONG)) == 0);
 C_ASSERT((FIELD_OFFSET(STAGE_REGISTRY_ENTRY, ActivationGeneration) % sizeof(LONG)) == 0);
 
 typedef struct _STAGE_WRITER_RESERVATION {
@@ -347,6 +352,12 @@ static BOOLEAN StageRegistryQueueEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, 
     _In_ ULONG OriginSite);
 static VOID StageRegistryMarkUnknownAt(_In_opt_ PFLT_INSTANCE Instance,
     _In_ LONG Reason, _In_ BOOLEAN MachineWide, _In_ ULONG OriginSite);
+static VOID StageRegistrySetEntryUnknownLockedAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ LONG Reason, _In_ ULONG OriginSite);
+#define StageRegistrySetEntryUnknownLocked(Entry, Reason) \
+    StageRegistrySetEntryUnknownLockedAt((Entry), (Reason), (ULONG)__LINE__)
+#define StageRegistryPublishGlobalUnknown(Reason) \
+    StageRegistryPublishGlobalUnknownAt((Reason), (ULONG)__LINE__)
 static VOID StageRegistryMarkEntryUnknownAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ LONG Reason, _In_ ULONG OriginSite);
 #define StageRegistryMarkUnknown(Instance, Reason, MachineWide) \
@@ -392,9 +403,12 @@ _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageRegistryEntryIsVolumeRootFile(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_VOLUME Volume);
 _IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTANCE Instance,
+__declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknownAt(_In_ PFLT_INSTANCE Instance,
     _In_ ULONGLONG VolumeSerial, _In_ const FILE_ID_128 *FileId,
-    _In_ ULONGLONG StreamSuffixHash, _In_opt_ PVOID SectionObjectPointer);
+    _In_ ULONGLONG StreamSuffixHash, _In_opt_ PVOID SectionObjectPointer, _In_ ULONG OriginSite);
+#define StageRegistryMarkSopUnknown(Instance, VolumeSerial, FileId, StreamSuffixHash, SectionObjectPointer) \
+    StageRegistryMarkSopUnknownAt((Instance), (VolumeSerial), (FileId), (StreamSuffixHash), \
+        (SectionObjectPointer), (ULONG)__LINE__)
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageWritersApplyPendingScope)
@@ -605,6 +619,11 @@ static volatile LONG64 WriterDroppedWhileMounted;
 static volatile LONG64 InstanceTeardownsDismount;
 static volatile LONG64 InstanceTeardownsOther;
 static volatile LONG WriterGlobalUnknown;
+/* First successful diagnostic publication during this driver load (boot pair).
+ * Never reset by teardown/reconcile; no diagnostic value is admission authority. */
+static volatile LONG WriterGlobalFirstUnknown;
+static volatile LONG WriterEntryFirstUnknown;
+static volatile LONG WriterSopFirstUnknown;
 
 /* All resident spin-lock primitives stay in these annotated, non-inlined helpers. */
 _IRQL_requires_max_(DISPATCH_LEVEL)
@@ -845,18 +864,51 @@ static BOOLEAN StageRegistryDirectoryRenameInFlightLocked(_In_ PFLT_INSTANCE Ins
     return FALSE;
 }
 
+/* Resident, non-owning diagnostics: callers include DISPATCH_LEVEL callbacks.
+ * Low 16 bits are the reason mask; high 16 bits are the exact source line.
+ * First means the first successful CAS, not a total order of concurrent events. */
+static VOID StageRegistryRecordOrigin(_Inout_ volatile LONG *FirstUnknown,
+    _In_ LONG Reason, _In_ ULONG OriginSite)
+{
+    LONG packed = (LONG)(((OriginSite & 0xFFFFUL) << 16) | ((ULONG)Reason & 0xFFFFUL));
+    (VOID)InterlockedCompareExchange(FirstUnknown, packed, 0);
+}
+
+/* Also called by the census: an entry may acquire Unknown before it is listed
+ * or scope-enforced. Preserve that original event, not the later census line. */
+static VOID StageRegistryRecordCountedEntryOrigin(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    LONG packed = InterlockedCompareExchange(&Entry->FirstUnknown, 0, 0);
+    (VOID)InterlockedCompareExchange(&WriterEntryFirstUnknown, packed, 0);
+}
+
+/* Observe the census predicate at an Unknown mutation without adding a lock.
+ * The census itself has already selected the entry and publishes directly, so
+ * a pending flag changing after its selection cannot lose that observation. */
+static VOID StageRegistryRecordEligibleEntryOrigin(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    if (Entry->Retired || !Entry->Listed) return;
+    if (InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0) return;
+    StageRegistryRecordCountedEntryOrigin(Entry);
+}
+
 /* Caller holds RegistryLock. Unlike StageRegistryMarkEntryUnknown, this keeps
  * a directory-path overflow on the affected file only; the orchestrator's
  * directory-rename decision keeps retained-name overflow entry-local. Missing
  * names or inability to retain the bounded completion record use the existing
  * tracking-loss fallback; neither path vetoes the rename I/O. */
-static VOID StageRegistrySetEntryUnknownLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason)
+static VOID StageRegistrySetEntryUnknownLockedAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ LONG Reason, _In_ ULONG OriginSite)
 {
     SafeUploadStageAdmissionCoverageBegin();
+    StageRegistryRecordOrigin(&Entry->FirstUnknown, Reason, OriginSite);
     InterlockedOr(&Entry->UnknownReasons, Reason);
     if ((Reason & (SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME | SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY)) != 0)
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
     InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
+    StageRegistryRecordEligibleEntryOrigin(Entry);
     InterlockedIncrement64(&RegistryChangeSequence);
     SafeUploadStageAdmissionCoverageEnd();
 }
@@ -948,10 +1000,11 @@ static VOID StageRegistryRecordFirstUnknown(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT
 /* Publish a loss that cannot be scoped to one live instance. Admission's
  * receipt brackets this update and rechecks RegistryChangeSequence after its
  * writer census, so it cannot report a stale Ready snapshot. */
-static VOID StageRegistryPublishGlobalUnknown(_In_ LONG Reason)
+static VOID StageRegistryPublishGlobalUnknownAt(_In_ LONG Reason, _In_ ULONG OriginSite)
 {
     SafeUploadStageAdmissionCoverageBegin();
     InterlockedOr((volatile LONG *)&RegistryUnknownReasons, Reason);
+    StageRegistryRecordOrigin(&WriterGlobalFirstUnknown, Reason, OriginSite);
     InterlockedExchange(&WriterGlobalUnknown, 1);
     InterlockedIncrement64(&RegistryChangeSequence);
     SafeUploadStageAdmissionCoverageEnd();
@@ -999,6 +1052,7 @@ static VOID StageRegistryMarkUnknownAt(_In_opt_ PFLT_INSTANCE Instance,
         ((Reason & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0 && !renameGenerationAdvanced)) {
         /* P0-5: if the per-instance generation cannot be advanced, prevent
          * promotion globally; scope admission still filters by volume. */
+        StageRegistryRecordOrigin(&WriterGlobalFirstUnknown, Reason, OriginSite);
         InterlockedExchange(&WriterGlobalUnknown, 1);
     }
     InterlockedIncrement64(&RegistryChangeSequence);
@@ -1009,10 +1063,12 @@ static VOID StageRegistryMarkEntryUnknownAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ LONG Reason, _In_ ULONG OriginSite)
 {
     SafeUploadStageAdmissionCoverageBegin();
+    StageRegistryRecordOrigin(&Entry->FirstUnknown, Reason, OriginSite);
     InterlockedOr(&Entry->UnknownReasons, Reason);
     if ((Reason & (SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME | SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY)) != 0)
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
     InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
+    StageRegistryRecordEligibleEntryOrigin(Entry);
     InterlockedIncrement64(&RegistryChangeSequence);
     /* Narrowest scope: a loss about this file (identity, transaction, section binding) stays on its entry, which is keyed by
      * file ID and can never be Free. A file rename whose final name is lost widens because scope classification is name
@@ -1037,7 +1093,7 @@ static VOID StageRegistryMarkEntryUnknownAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
          * immediately and defer instance lookup to PASSIVE_LEVEL; the worker reads Entry->Instance
          * under RegistryLock, serialized with the teardown unlink that clears it. */
         if (!StageRegistryQueueEntryUnknown(Entry, Reason, OriginSite)) {
-            StageRegistryPublishGlobalUnknown(Reason);
+            StageRegistryPublishGlobalUnknownAt(Reason, OriginSite);
         }
     }
     SafeUploadStageAdmissionCoverageEnd();
@@ -1609,6 +1665,8 @@ PrepareReservation:
         reservation->Shell->StreamSuffixHash = reservation->StreamSuffixHash;
         if (!streamIdentityKnown) {
             /* No suffix identity means a later candidate cannot be promoted. */
+            StageRegistryRecordOrigin(&reservation->Shell->FirstUnknown,
+                SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, (ULONG)__LINE__);
             reservation->Shell->UnknownReasons = SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY;
             reservation->Shell->State = SAFEUPLOAD_REGISTRY_STATE_UNKNOWN;
         }
@@ -3579,9 +3637,9 @@ __declspec(noinline) static PSTAGE_REGISTRY_ENTRY StageRegistryDetachOneInstance
 /* D2 overflow markers retain only SOP+file identity and a non-owning instance
  * token. They affect later classification only; ledger loss never denies I/O. */
 _IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTANCE Instance,
+__declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknownAt(_In_ PFLT_INSTANCE Instance,
     _In_ ULONGLONG VolumeSerial, _In_ const FILE_ID_128 *FileId,
-    _In_ ULONGLONG StreamSuffixHash, _In_opt_ PVOID SectionObjectPointer)
+    _In_ ULONGLONG StreamSuffixHash, _In_opt_ PVOID SectionObjectPointer, _In_ ULONG OriginSite)
 {
     PSTAGE_REGISTRY_ENTRY existing = NULL;
     PSTAGE_REGISTRY_SOP_SLOT slot;
@@ -3604,10 +3662,12 @@ __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTAN
         if (slot->InstanceIdentity != (PVOID)Instance || slot->VolumeSerial != VolumeSerial ||
             slot->StreamSuffixHash != StreamSuffixHash ||
             !RtlEqualMemory(&slot->FileId, FileId, sizeof(*FileId))) {
+            StageRegistryRecordOrigin(&WriterSopFirstUnknown, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, OriginSite);
             slot->UnknownReasons |= SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY;
             identityMismatch = TRUE;
             InterlockedIncrement64(&RegistrySopMapGeneration);
         } else {
+            StageRegistryRecordOrigin(&WriterSopFirstUnknown, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, OriginSite);
             slot->UnknownReasons |= SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY;
             recorded = TRUE;
             InterlockedIncrement64(&RegistrySopMapGeneration);
@@ -3617,6 +3677,7 @@ __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTAN
             RtlZeroMemory(slot, sizeof(*slot));
             slot->SectionObjectPointer = SectionObjectPointer;
         }
+        StageRegistryRecordOrigin(&WriterSopFirstUnknown, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, OriginSite);
         slot->Unknown = TRUE;
         slot->InstanceIdentity = Instance;
         slot->VolumeSerial = VolumeSerial;
@@ -3629,11 +3690,11 @@ __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTAN
     InterlockedIncrement64(&RegistryChangeSequence);
     StageReleaseSpinLock(&SectionLock, irql);
     if (existing != NULL) {
-        StageRegistryMarkEntryUnknown(existing, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
+        StageRegistryMarkEntryUnknownAt(existing, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, OriginSite);
         StageRegistryDereference(existing);
     }
     if (identityMismatch)
-        StageRegistryMarkUnknown(Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, FALSE);
+        StageRegistryMarkUnknownAt(Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, FALSE, OriginSite);
     return recorded;
 }
 
@@ -5595,8 +5656,10 @@ __declspec(noinline) static VOID StageRegistryResolveAliasProbeVersioned(
             InterlockedExchange(&Entry->LastSState, SAFEUPLOAD_REGISTRY_S_UNKNOWN);
         } else if (!ClassificationSucceeded) {
             InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+            StageRegistryRecordOrigin(&Entry->FirstUnknown, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, (ULONG)__LINE__);
             InterlockedOr(&Entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
             InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
+            StageRegistryRecordEligibleEntryOrigin(Entry);
             InterlockedExchange(&Entry->ActivationEnforced, 1);
         } else if (UnionScoped) {
             InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_SCOPED);
@@ -5607,6 +5670,7 @@ __declspec(noinline) static VOID StageRegistryResolveAliasProbeVersioned(
                 *Activated = TRUE;
             } else {
                 InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
+                StageRegistryRecordEligibleEntryOrigin(Entry);
             }
         } else {
             InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_OUTSIDE);
@@ -5696,7 +5760,9 @@ __declspec(noinline) static BOOLEAN StageRegistryResolveAliasProbeForGeneration(
         /* The prior rename loss already advanced the instance generation. Keep
          * this entry's name unresolved without publishing a second loss. */
         SafeUploadStageAdmissionCoverageBegin();
+        StageRegistryRecordOrigin(&Entry->FirstUnknown, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME, (ULONG)__LINE__);
         InterlockedOr(&Entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
+        StageRegistryRecordEligibleEntryOrigin(Entry);
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
         InterlockedIncrement64(&RegistryChangeSequence);
         SafeUploadStageAdmissionCoverageEnd();
@@ -6372,7 +6438,7 @@ static VOID StageRegistryUnknownWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
         } else {
             /* The queued target disappeared or its context could not be read;
              * retain a machine-wide fail-closed signal after the pending ticket. */
-            StageRegistryPublishGlobalUnknown(deferred->Reason);
+            StageRegistryPublishGlobalUnknownAt(deferred->Reason, deferred->OriginSite);
         }
         /* Queueing holds this ticket until the sticky unknown state is visible.
          * Thus a census cannot cross a deferred loss and still return Ready. */
@@ -7859,6 +7925,7 @@ NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
         if (snapshot.State == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN || unknown != 0) {
             ++notReady;
             ++unknownEntries;
+            StageRegistryRecordCountedEntryOrigin(entry);
         } else if (aliasPending != 0 || renameInFlight != 0) {
             ++notReady;
         } else if (lifetime == NULL || StageRegistryLifetimeEnded(entry) ||
@@ -7902,6 +7969,10 @@ __declspec(noinline) VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRIT
     KIRQL irql;
 
     snapshot.StructSize = sizeof(snapshot);
+    snapshot.WriterGlobalFirstUnknown = (UINT32)InterlockedCompareExchange(&WriterGlobalFirstUnknown, 0, 0);
+    snapshot.WriterEntryFirstUnknown = (UINT32)InterlockedCompareExchange(&WriterEntryFirstUnknown, 0, 0);
+    snapshot.WriterSopFirstUnknown = (UINT32)InterlockedCompareExchange(&WriterSopFirstUnknown, 0, 0);
+    snapshot.WriterSopUnknownCount = StageRegistryUnknownSopCount();
     snapshot.PostCreateRuns = (UINT64)InterlockedCompareExchange64(&WriterPostCreateRuns, 0, 0);
     snapshot.WriteObjectsCounted = (UINT64)InterlockedCompareExchange64(&WriterCounted, 0, 0);
     snapshot.WriteObjectsReleased = (UINT64)InterlockedCompareExchange64(&WriterReleased, 0, 0);

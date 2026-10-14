@@ -22,7 +22,7 @@ public static class DiagnosticsContract
     public const int DenyRingBatchSize = 32 + DenyRingBatchEntries * DenyRecordSize;
     public const int DiagCountersSize = 296;
     public const int StageLifetimeCountersSize = 176;
-    public const int WriterStateStatusSize = 288;
+    public const int WriterStateStatusSize = 304;
 
     // Deny record flags (SAFEUPLOAD_DENY_FLAG_*).
     public const uint FlagTopLevelIrp = 0x001;
@@ -49,7 +49,16 @@ public static class DiagnosticsContract
         Check(sizeof(SafeUploadDiagCounters), DiagCountersSize, nameof(SafeUploadDiagCounters));
         Check(sizeof(SafeUploadStageLifetimeCounters), StageLifetimeCountersSize, nameof(SafeUploadStageLifetimeCounters));
         Check(sizeof(SafeUploadWriterStateStatus), WriterStateStatusSize, nameof(SafeUploadWriterStateStatus));
+        CheckWriterOffset(nameof(SafeUploadWriterStateStatus.Reserved2), 260);
+        CheckWriterOffset(nameof(SafeUploadWriterStateStatus.WriterGlobalFirstUnknown), 288);
+        CheckWriterOffset(nameof(SafeUploadWriterStateStatus.WriterEntryFirstUnknown), 292);
+        CheckWriterOffset(nameof(SafeUploadWriterStateStatus.WriterSopFirstUnknown), 296);
+        CheckWriterOffset(nameof(SafeUploadWriterStateStatus.WriterSopUnknownCount), 300);
     }
+
+    private static void CheckWriterOffset(string field, int expected) =>
+        Check(Marshal.OffsetOf<SafeUploadWriterStateStatus>(field).ToInt32(), expected,
+            $"{nameof(SafeUploadWriterStateStatus)}.{field} offset");
 
     private static void Check(int actual, int expected, string name)
     {
@@ -157,7 +166,7 @@ public struct SafeUploadStageLifetimeCounters
     public ulong StageDeleteFailures;
 }
 
-/// <summary>SAFEUPLOAD_WRITER_STATE_STATUS of the staging build (288 bytes).</summary>
+/// <summary>SAFEUPLOAD_WRITER_STATE_STATUS of the staging build (304 bytes).</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct SafeUploadWriterStateStatus
 {
@@ -206,6 +215,11 @@ public struct SafeUploadWriterStateStatus
     public ulong RegistryReclaimPasses;
     public uint RegistryNameTierEntries;
     public uint RegistryCompactTierEntries;
+    // Diagnostic first CAS: reason low 16, delivered-source line high 16; zero = not recorded.
+    public uint WriterGlobalFirstUnknown;
+    public uint WriterEntryFirstUnknown;
+    public uint WriterSopFirstUnknown;
+    public uint WriterSopUnknownCount;
 }
 
 /// <summary>One refusal recorded by the driver's choke point.</summary>

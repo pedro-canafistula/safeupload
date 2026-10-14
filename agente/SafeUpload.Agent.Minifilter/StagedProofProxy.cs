@@ -23,7 +23,7 @@ public static class StagedProofProxyWire
         uint reserved = BinaryPrimitives.ReadUInt32LittleEndian(input[12..]);
         int expected = command switch
         {
-            2 => 184, 5 or 6 or 7 => 0, 8 => 1960, 12 => 288, 17 => 104,
+            2 => 184, 5 or 6 or 7 => 0, 8 => 1960, 12 => DiagnosticsContract.WriterStateStatusSize, 17 => 104,
             19 => 36136, 20 => 32, 22 => 672, 23 => 6672,
             24 => Contract.AdmissionCoverageStatusSize, 25 => 36392, 26 => 1168,
             _ => throw new InvalidDataException("Prototype proof control is not allowed."),

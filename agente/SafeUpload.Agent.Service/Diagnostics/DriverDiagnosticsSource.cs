@@ -113,32 +113,53 @@ public sealed class DriverDiagnosticsSource
                     ["stageDeleteFailures"] = diag.Stage.StageDeleteFailures,
                 },
                 ["imageBase"] = Hex(diag.ImageBase),
-                ["writerState"] = new JsonObject
-                {
-                    ["registryEntries"] = writer.RegistryEntries,
-                    ["registryCapacity"] = writer.RegistryCapacity,
-                    ["registryReservations"] = writer.RegistryReservations,
-                    ["registryOverflow"] = writer.RegistryOverflow,
-                    ["registryUnknownReasons"] = writer.RegistryUnknownReasons,
-                    ["registryInstanceUnknown"] = writer.RegistryInstanceUnknown,
-                    ["registryPruned"] = writer.RegistryPruned,
-                    ["registryReclaimPasses"] = writer.RegistryReclaimPasses,
-                    ["registryCapacityFailures"] = writer.RegistryCapacityFailures,
-                    ["registryNameTierEntries"] = writer.RegistryNameTierEntries,
-                    ["registryCompactTierEntries"] = writer.RegistryCompactTierEntries,
-                    ["sectionInFlightNow"] = writer.SectionInFlightNow,
-                    ["sectionInFlightMaxDepth"] = writer.SectionInFlightMaxDepth,
-                    ["sectionInFlightStuck"] = writer.SectionInFlightStuck,
-                    ["stageStreams"] = writer.StageStreams,
-                    ["stageFileObjects"] = writer.StageFileObjects,
-                    ["untrackedCreates"] = writer.UntrackedCreates,
-                    ["txfRefused"] = writer.TxfRefused,
-                    ["instanceTeardownsDismount"] = writer.InstanceTeardownsDismount,
-                    ["instanceTeardownsOther"] = writer.InstanceTeardownsOther,
-                },
+                ["writerState"] = WriterStateJson(writer),
             };
         });
     }
+
+    internal static JsonObject UnknownOrigin(uint packed) => new()
+    {
+        ["reason"] = packed & 0xFFFFu,
+        ["site"] = packed >> 16,
+    };
+
+    internal static JsonObject WriterStateJson(SafeUploadWriterStateStatus writer) => new JsonObject
+    {
+        ["registryEntries"] = writer.RegistryEntries,
+        ["registryCapacity"] = writer.RegistryCapacity,
+        ["registryReservations"] = writer.RegistryReservations,
+        ["registryOverflow"] = writer.RegistryOverflow,
+        ["registryUnknownReasons"] = writer.RegistryUnknownReasons,
+        ["registryInstanceUnknown"] = writer.RegistryInstanceUnknown,
+        ["registryPruned"] = writer.RegistryPruned,
+        ["registryReclaimPasses"] = writer.RegistryReclaimPasses,
+        ["registryCapacityFailures"] = writer.RegistryCapacityFailures,
+        ["registryAllocationFailures"] = writer.RegistryAllocationFailures,
+        ["registryIdentityFailures"] = writer.RegistryIdentityFailures,
+        ["registryTransactionFailures"] = writer.RegistryTransactionFailures,
+        ["registryRenameFailures"] = writer.RegistryRenameFailures,
+        ["registryDroppedAtDismount"] = writer.RegistryDroppedAtDismount,
+        ["registryDroppedWhileMounted"] = writer.RegistryDroppedWhileMounted,
+        ["writersDroppedAtTeardown"] = writer.WritersDroppedAtTeardown,
+        ["writersDroppedWhileMounted"] = writer.WritersDroppedWhileMounted,
+        ["cleanupUnmatched"] = writer.CleanupUnmatched,
+        ["writerGlobalFirstUnknown"] = UnknownOrigin(writer.WriterGlobalFirstUnknown),
+        ["writerEntryFirstUnknown"] = UnknownOrigin(writer.WriterEntryFirstUnknown),
+        ["writerSopFirstUnknown"] = UnknownOrigin(writer.WriterSopFirstUnknown),
+        ["writerSopUnknownCount"] = writer.WriterSopUnknownCount,
+        ["registryNameTierEntries"] = writer.RegistryNameTierEntries,
+        ["registryCompactTierEntries"] = writer.RegistryCompactTierEntries,
+        ["sectionInFlightNow"] = writer.SectionInFlightNow,
+        ["sectionInFlightMaxDepth"] = writer.SectionInFlightMaxDepth,
+        ["sectionInFlightStuck"] = writer.SectionInFlightStuck,
+        ["stageStreams"] = writer.StageStreams,
+        ["stageFileObjects"] = writer.StageFileObjects,
+        ["untrackedCreates"] = writer.UntrackedCreates,
+        ["txfRefused"] = writer.TxfRefused,
+        ["instanceTeardownsDismount"] = writer.InstanceTeardownsDismount,
+        ["instanceTeardownsOther"] = writer.InstanceTeardownsOther,
+    };
 
     /// <summary>One page of the deny ring. The caller repeats with <c>nextSequence</c> until it equals its cursor.</summary>
     public JsonObject ReadDenyRing(ulong afterSequence)

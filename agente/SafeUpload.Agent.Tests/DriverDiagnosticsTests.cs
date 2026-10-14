@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,6 +18,120 @@ public sealed class DriverDiagnosticsTests
     public void Wire_layouts_match_the_protocol_header()
     {
         DiagnosticsContract.Verify();
+    }
+
+    [Fact]
+    public void Writer_state_wire_size_and_every_offset_are_exact()
+    {
+        Assert.Equal(304, Marshal.SizeOf<SafeUploadWriterStateStatus>());
+        Assert.Equal(304, DiagnosticsContract.WriterStateStatusSize);
+        (string Field, int Offset)[] expected =
+        {
+            (nameof(SafeUploadWriterStateStatus.StructSize), 0),
+            (nameof(SafeUploadWriterStateStatus.SectionInFlightNow), 4),
+            (nameof(SafeUploadWriterStateStatus.PostCreateRuns), 8),
+            (nameof(SafeUploadWriterStateStatus.WriteObjectsCounted), 16),
+            (nameof(SafeUploadWriterStateStatus.WriteObjectsReleased), 24),
+            (nameof(SafeUploadWriterStateStatus.UntrackedCreates), 32),
+            (nameof(SafeUploadWriterStateStatus.CleanupUnmatched), 40),
+            (nameof(SafeUploadWriterStateStatus.DirectoryCreatesSkipped), 48),
+            (nameof(SafeUploadWriterStateStatus.SectionInFlightInserted), 56),
+            (nameof(SafeUploadWriterStateStatus.SectionInFlightReleased), 64),
+            (nameof(SafeUploadWriterStateStatus.RetiredSectionOverflow), 72),
+            (nameof(SafeUploadWriterStateStatus.SectionInFlightStuck), 80),
+            (nameof(SafeUploadWriterStateStatus.SectionInFlightRemovedOnFailure), 88),
+            (nameof(SafeUploadWriterStateStatus.SectionInFlightMaxDepth), 96),
+            (nameof(SafeUploadWriterStateStatus.CleanupDirectoriesSkipped), 100),
+            (nameof(SafeUploadWriterStateStatus.PagingCreatesSkipped), 104),
+            (nameof(SafeUploadWriterStateStatus.VolumeCreatesSkipped), 112),
+            (nameof(SafeUploadWriterStateStatus.StageStreams), 120),
+            (nameof(SafeUploadWriterStateStatus.StageFileObjects), 124),
+            (nameof(SafeUploadWriterStateStatus.LastUnloadVeto), 128),
+            (nameof(SafeUploadWriterStateStatus.LastUnloadStatus), 132),
+            (nameof(SafeUploadWriterStateStatus.WritersDroppedAtTeardown), 136),
+            (nameof(SafeUploadWriterStateStatus.WritersDroppedWhileMounted), 144),
+            (nameof(SafeUploadWriterStateStatus.InstanceTeardownsDismount), 152),
+            (nameof(SafeUploadWriterStateStatus.InstanceTeardownsOther), 160),
+            (nameof(SafeUploadWriterStateStatus.TxfRefused), 168),
+            (nameof(SafeUploadWriterStateStatus.RegistryCapacityFailures), 176),
+            (nameof(SafeUploadWriterStateStatus.RegistryAllocationFailures), 184),
+            (nameof(SafeUploadWriterStateStatus.RegistryIdentityFailures), 192),
+            (nameof(SafeUploadWriterStateStatus.RegistryTransactionFailures), 200),
+            (nameof(SafeUploadWriterStateStatus.RegistryRenameFailures), 208),
+            (nameof(SafeUploadWriterStateStatus.RegistryDroppedAtDismount), 216),
+            (nameof(SafeUploadWriterStateStatus.RegistryDroppedWhileMounted), 224),
+            (nameof(SafeUploadWriterStateStatus.RegistryEntries), 232),
+            (nameof(SafeUploadWriterStateStatus.RegistryReservations), 236),
+            (nameof(SafeUploadWriterStateStatus.RegistryOverflow), 240),
+            (nameof(SafeUploadWriterStateStatus.RegistryUnknownReasons), 244),
+            (nameof(SafeUploadWriterStateStatus.RegistryInstanceUnknown), 248),
+            (nameof(SafeUploadWriterStateStatus.RegistryCapacity), 252),
+            (nameof(SafeUploadWriterStateStatus.TransactionAssociations), 256),
+            (nameof(SafeUploadWriterStateStatus.Reserved2), 260),
+            (nameof(SafeUploadWriterStateStatus.RegistryPruned), 264),
+            (nameof(SafeUploadWriterStateStatus.RegistryReclaimPasses), 272),
+            (nameof(SafeUploadWriterStateStatus.RegistryNameTierEntries), 280),
+            (nameof(SafeUploadWriterStateStatus.RegistryCompactTierEntries), 284),
+            (nameof(SafeUploadWriterStateStatus.WriterGlobalFirstUnknown), 288),
+            (nameof(SafeUploadWriterStateStatus.WriterEntryFirstUnknown), 292),
+            (nameof(SafeUploadWriterStateStatus.WriterSopFirstUnknown), 296),
+            (nameof(SafeUploadWriterStateStatus.WriterSopUnknownCount), 300),
+        };
+        foreach (var (field, offset) in expected)
+            Assert.Equal(offset, Marshal.OffsetOf<SafeUploadWriterStateStatus>(field).ToInt32());
+        Assert.Equal(expected.Length, typeof(SafeUploadWriterStateStatus).GetFields().Length);
+    }
+
+    [Theory]
+    [InlineData(0u, 0u, 0u)]
+    [InlineData(0x12340046u, 0x46u, 0x1234u)]
+    [InlineData(0xFEDC8002u, 0x8002u, 0xFEDCu)]
+    [InlineData(uint.MaxValue, 0xFFFFu, 0xFFFFu)]
+    public void Unknown_origin_json_decodes_both_unsigned_halves(uint packed, uint reason, uint site)
+    {
+        JsonObject origin = DriverDiagnosticsSource.UnknownOrigin(packed);
+        Assert.Equal(2, origin.Count);
+        Assert.Equal(reason, origin["reason"]!.GetValue<uint>());
+        Assert.Equal(site, origin["site"]!.GetValue<uint>());
+    }
+
+    [Fact]
+    public void Writer_state_json_reports_loss_counters_and_each_origin()
+    {
+        var writer = new SafeUploadWriterStateStatus
+        {
+            RegistryAllocationFailures = 0x100000001UL,
+            RegistryIdentityFailures = 0x100000002UL,
+            RegistryTransactionFailures = 0x100000003UL,
+            RegistryRenameFailures = 0x100000004UL,
+            RegistryDroppedAtDismount = 0x100000005UL,
+            RegistryDroppedWhileMounted = 0x100000006UL,
+            WritersDroppedAtTeardown = 0x100000007UL,
+            WritersDroppedWhileMounted = 0x100000008UL,
+            CleanupUnmatched = 0x100000009UL,
+            WriterGlobalFirstUnknown = 0x12340002u,
+            WriterEntryFirstUnknown = 0x23450004u,
+            WriterSopFirstUnknown = 0x34560001u,
+            WriterSopUnknownCount = 7,
+        };
+        // Serialize and parse the same writerState projection used by ReadCounters.
+        JsonObject json = JsonNode.Parse(DriverDiagnosticsSource.WriterStateJson(writer).ToJsonString())!.AsObject();
+        string[] counters =
+        {
+            "registryAllocationFailures", "registryIdentityFailures", "registryTransactionFailures",
+            "registryRenameFailures", "registryDroppedAtDismount", "registryDroppedWhileMounted",
+            "writersDroppedAtTeardown", "writersDroppedWhileMounted", "cleanupUnmatched",
+        };
+        for (int index = 0; index < counters.Length; ++index)
+            Assert.Equal(0x100000001UL + (ulong)index, json[counters[index]]!.GetValue<ulong>());
+        Assert.Equal(7u, json["writerSopUnknownCount"]!.GetValue<uint>());
+        Assert.Equal(2u, json["writerGlobalFirstUnknown"]!["reason"]!.GetValue<uint>());
+        Assert.Equal(0x1234u, json["writerGlobalFirstUnknown"]!["site"]!.GetValue<uint>());
+        Assert.Equal(4u, json["writerEntryFirstUnknown"]!["reason"]!.GetValue<uint>());
+        Assert.Equal(0x2345u, json["writerEntryFirstUnknown"]!["site"]!.GetValue<uint>());
+        Assert.Equal(1u, json["writerSopFirstUnknown"]!["reason"]!.GetValue<uint>());
+        Assert.Equal(0x3456u, json["writerSopFirstUnknown"]!["site"]!.GetValue<uint>());
+        Assert.DoesNotContain("reserved2", json.Select(pair => pair.Key));
     }
 
     [Fact]
