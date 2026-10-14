@@ -1,0 +1,38 @@
+== run disk
+== baseline
+== stage files and install
+PolicyAclApplied=True
+Directory=C:\ProgramData\SafeUpload
+File=C:\ProgramData\SafeUpload\policy.json
+[SC] ChangeServiceConfig SUCCESS
+BootPolicySeededAsSystem=True
+[SC] ChangeServiceConfig SUCCESS
+DriverBootStartConfigured=True
+DriverStartedByInstaller=False
+[SC] CreateService SUCCESS
+ServiceCommandLine="C:\Program Files\SafeUpload\Agent\SafeUpload.Agent.Service.exe" --Interception:Mode=Minifilter --Interception:StagingPrototype=true --CentroAdministracao:BaseUrl=
+[SC] ChangeServiceConfig2 SUCCESS
+ServiceName=SafeUploadAgent
+ServiceSidType=UNRESTRICTED
+ServiceConfigured=True
+ServiceStarted=False
+Protection activates after reboot.
+DriverStart=0
+INSTALL_DONE=True
+VERIFIER_FROM_BOOT_CONFIGURED=True
+== reboot
+VERIFIER_FROM_FIRST_LOAD=True
+READY=False
+LAST_AGENT_FRAME={"type":"status","policyVersion":1,"activeCategories":1,"protectionActive":true,"auditOnly":false,"admissionCoverage":"Degraded","admissionCoverageReason":"WriterStateUnknown","nativePolicyGeneration":2147483647}
+READINESS_ELAPSED_MS=603005
+DRIVER_LOADED=True
+agent never Ready
+T4StopReason=admission-not-ready;ExitCode=19;Phase=readiness;Progress=NOT_STARTED;ElapsedSeconds=0
+== discard the run disk
+RunDiskXmlUnchanged=True
+2026-10-14T12:50:54Z run-disk win10-debug3: deleted /var/lib/libvirt/images/win10-debug3.safeupload-run-m2t5boot12.qcow2
+RunDiskOverlayDeleted=True
+RunDiskBaseUntouched=True
+2026-10-14T12:50:54Z run-disk win10-debug3: run m2t5boot12 ended; the domain is shut off on /var/lib/libvirt/images/win10-debug3.base-20261009.qcow2
+T4IndependentRestoration=PASS
+LAUNCHER_EXIT=19

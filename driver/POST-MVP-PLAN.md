@@ -535,8 +535,16 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       with the T5 writer code); the Listed fix touches only staged-stream receipts. Hypothesis: a boot-time writer-tracking loss
       (per-entry or SOP Unknown, sticky by design) next to a volume topology change (m2t5boot9 counted 54 dismount teardowns).
       Readiness diagnostics now also record the writer-state counters, deny ring, SafeUpload instances and System events.
-    - [ ] `m2t5boot11`: same pair (T4 smoke, boot Verifier); stop if Unknown repeats without discriminating evidence; then the
-      raw cells in all three modes.
+    - [x] `m2t5boot11` (same pair): not Ready again (exit 19; restoration PASS), now StageStartupPending: the driver's startup
+      reconcile stayed pending (`waitingVersions` 1 with no versions), so the agent's recovery gate never opened.
+    - [x] `m2t5boot12` (A/B: m2t5boot9's t5-fix6 driver, Ready at 09:10 UTC): not Ready (exit 19; restoration PASS), Degraded
+      `WriterStateUnknown` like m2t5boot10, with `registryUnknownReasons` 0x46 (allocation, identity, cleanup),
+      `registryInstanceUnknown` 1, about 50 dismount instance teardowns and the same pending reconcile. **The Listed fix is not the
+      cause**; the same pair turned from Ready to failing between 09:10 and 09:37 UTC. Boots 11 and 12 show Windows clearing the
+      access history of every registry hive at boot, including the BCD hive on the FAT EFI partition. Hypothesis: time-triggered
+      boot maintenance on this base now produces writer-tracking losses outside the protected scope that still deny C: coverage,
+      and pins the reconcile. **Stopped product rows** (three readiness failures) pending root cause.
+    - [ ] Readiness root cause and fix (read-only analysis running); then the T4 smoke and the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

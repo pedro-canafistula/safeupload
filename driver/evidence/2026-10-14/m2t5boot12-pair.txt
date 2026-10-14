@@ -1,0 +1,5 @@
+02b73b58b4fec0e567e97e9e01e8b3859bd62d77a1194a02579a6aac87187e13  /mnt/storage/safeupload-archive/pairs/t5-pair9/SafeUpload-stage-prototype.sys
+6b599cef0f59927e70e18ade391bd129b858f9b4537e5845e2d0ac7909ce261c  /mnt/storage/safeupload-archive/pairs/t5-pair9/feature-release-service-publish.zip
+HarnessCommit=8c4d237c006d6d607fe3adc1c152b2e63e27a7ca
+Driver=t5-fix6 (kernel tree of 38e188c0, the parent of 426c7dcd; signed; feature Debug; imports PASS); Agent=t5-attach1 feature Release (agent tree of a3f46954 == HEAD)
+Mode=A/B diagnostic: m2t5boot9's pair (Ready then) after two t5-fix7 readiness failures (m2t5boot10 WriterStateUnknown, m2t5boot11 StageStartupPending with reconcile pending); writer-state readiness diagnostics; T4 smoke 256 verifier-from-boot sample_every=64; win10-debug3; main-disk overlay; no builder jobs
