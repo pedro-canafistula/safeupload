@@ -724,7 +724,14 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       [imports PASS](evidence/2026-10-14/exact-t5-batch1b-imports.txt), [matrix t5-batch1b](evidence/2026-10-14/exact-agent-matrix-t5-batch1b-summary.txt)
       PASS at exactly 1,615 normal / 2,197 feature per profile (user + SYSTEM), no skips; [re-review](evidence/2026-10-14/t5-batch1-review2-sol61.md)
       **ACCEPT WITH CONDITIONS** for the first Verifier boot (conditions: those gates). Builder space: 96 old build folders with host
-      receipts reclaimed first (2.9 → 12.9 GB free). Next: T4 smoke on the new win10-debug3 base, then the raw cells.
+      receipts reclaimed first (2.9 → 12.9 GB free).
+      - [x] **`m2t5boot16` (t5-batch1b pair `t5-pair14`: driver `16BBF79B…97CD`, agent `B5574331…7030`; new base): T4 smoke PASS**
+        ([verdict](evidence/2026-10-14/m2t5boot16-verdict.txt), [pair](evidence/2026-10-14/m2t5boot16-pair.txt), independent
+        restoration PASS): Ready at once under boot Verifier; 256/256 cycles; every T4 line PASS. SUfl start 443, idle 952, purged
+        565 — **released 387 of 509 idle growth (76%)**, 122 above start; idle growth fell from 1,168–1,931 to 509 with the idle agent
+        and no Edge update. The half criterion passes for this pair, so the 10k row is no longer held by it (it still follows the
+        raw cells and runs on the final pair).
+      - [ ] Raw C01–C04/B01/B02/X01 cells in ordinary, runtime-Verifier and boot-Verifier modes with this pair.
     - Batch 2: exact seal receipt, op15 typed refusal/exposure evidence/op23, stateless refusals (owner decision; no refusal
       receipts or budget), and a negotiated per-version driver-delete receipt (a restart cannot finish released-stage bookkeeping
       today: `Held=0` and a missing path are not deletion evidence). Design [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md) after
