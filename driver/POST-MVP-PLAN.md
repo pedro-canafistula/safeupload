@@ -51,6 +51,10 @@ editing this plan, a Codex resume switching Sol to Astra).
    pins the model and effort explicitly.
 8. **Independent reviews** come only from a fresh Sol 6.1 xhigh session launched by Claude; a worker's internal review is advisory.
 
+Tools: [Invoke-LocalAgentCompile.sh](scripts/Invoke-LocalAgentCompile.sh) (rule 1; SDK 10.0.400/runtime 10.0.11 user-local, offline cache,
+works in the Codex sandbox) and [agent-test-preflight.py](scripts/agent-test-preflight.py) (rule 2). Kernel PREfast (e.g. C6262) still
+needs the builder's WDK gate. The Codex launcher pins model and effort on resume and stops a session whose header differs.
+
 **2026-10-13 — review model.** Use **Sol 6.1 at xhigh** (`gpt-6.1-sol`) instead of Luna for future reviews. This supersedes the
 reviewer-model choice in earlier decisions, without changing their scope or gates. Historical Luna reports remain valid records of
 who reviewed that work. The review cadence remains product-security designs, one pre-boot review of kernel lifetime/lock-order/retirement
