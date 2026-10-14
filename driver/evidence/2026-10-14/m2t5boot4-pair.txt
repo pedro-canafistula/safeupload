@@ -1,0 +1,5 @@
+ee7646594b60025b3748f4bca72f4520ee528b6b5e07de15a7cb1b21d720cc93  /mnt/storage/safeupload-archive/pairs/t5-fix4/SafeUpload-stage-prototype.sys
+a73024c6f3f5e7cd1bf679651c6cdb8f76f37f3521e50bee8fdd7a40580ffd1d  /mnt/storage/safeupload-archive/pairs/t5-fix4/feature-release-service-publish.zip
+HarnessCommit=f824a86df9ffb273207e8cba4b4e13015d307030
+Driver=t5-fix4 (926286ae kernel tree; signed LocalMachine A6D6CE1A...; feature Debug; imports PASS); Agent=t4-v18port1 feature Release (agent tree identical to 926286ae)
+Mode=first Verifier boot of the fixed dormant T5 pair; T4 smoke 256 verifier-from-boot sample_every=64; win10-debug3; main-disk overlay; no builder jobs

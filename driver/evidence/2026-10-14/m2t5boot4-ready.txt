@@ -1,0 +1,5 @@
+READY=False
+LAST_AGENT_FRAME=ERR Exception calling "Connect" with "1" argument(s): "The semaphore timeout period has expired.
+"
+READINESS_ELAPSED_MS=601831
+DRIVER_LOADED=True

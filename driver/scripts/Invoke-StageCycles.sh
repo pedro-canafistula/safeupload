@@ -317,7 +317,25 @@ phase=readiness
 remote <<'PS' | tee "$ev/$tag-ready.txt"
 & 'C:\Users\vika\Documents\t4-agent-readiness.ps1'
 PS
-grep -qx 'READY=True' "$ev/$tag-ready.txt" || { stop_reason=admission-not-ready; echo 'agent never Ready'; exit 19; }
+if ! grep -qx 'READY=True' "$ev/$tag-ready.txt"; then
+    stop_reason=admission-not-ready; echo 'agent never Ready'
+    # Diagnostic only (m2t5boot4: the status pipe never accepted a connection): service state, process and the agent's,
+    # crash and SCM events since boot, before the trap discards the disk.
+    remote > "$ev/$tag-readiness-diagnostics.txt" 2>&1 <<'PS'
+sc.exe queryex SafeUploadAgent
+Get-Process -Name 'SafeUpload.Agent.Service' -ErrorAction SilentlyContinue | Format-List Id,StartTime,CPU,WorkingSet64,Responding
+$since = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+'BootTime=' + $since.ToString('o')
+Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=$since} -ErrorAction SilentlyContinue |
+    Where-Object { $_.ProviderName -in 'SafeUpload.Agent.Service','Application Error','.NET Runtime','Windows Error Reporting' } |
+    Select-Object -First 300 | ForEach-Object { '{0:o} {1} {2} L{3} {4}' -f $_.TimeCreated, $_.ProviderName, $_.Id, $_.Level, ($_.Message -replace '\s+',' ') }
+Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=$since; ProviderName='Service Control Manager'} -ErrorAction SilentlyContinue |
+    Where-Object { $_.Message -like '*SafeUpload*' } | ForEach-Object { '{0:o} SCM {1} {2}' -f $_.TimeCreated, $_.Id, ($_.Message -replace '\s+',' ') }
+fltmc.exe filters
+'READINESS_DIAGNOSTICS_DONE=True'
+PS
+    exit 19
+fi
 if [ "$memory_enabled" = yes ]; then
     phase=memory-controls
     remote <<'PS' | tee "$ev/$tag-memory-controls.txt"
