@@ -35,24 +35,32 @@ public sealed class NotificationPipeServer : BackgroundService
 
     private readonly NotificationHub _hub;
     private readonly ILogger<NotificationPipeServer> _logger;
+    private readonly string _pipeName;
 
     /// <summary>Compõe o servidor.</summary>
     public NotificationPipeServer(NotificationHub hub, ILogger<NotificationPipeServer> logger)
+        : this(hub, logger, NotificationProtocol.PipeName)
+    {
+    }
+
+    /// <summary>Tests use a private pipe name; production uses <see cref="NotificationProtocol.PipeName"/>.</summary>
+    internal NotificationPipeServer(NotificationHub hub, ILogger<NotificationPipeServer> logger, string pipeName)
     {
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _pipeName = string.IsNullOrEmpty(pipeName) ? throw new ArgumentException("Pipe name required.", nameof(pipeName)) : pipeName;
     }
 
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Canal de notificacao em \\\\.\\pipe\\{Pipe}", NotificationProtocol.PipeName);
+        _logger.LogInformation("Canal de notificacao em \\\\.\\pipe\\{Pipe}", _pipeName);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var pipe = CreatePipe();
+                var pipe = CreatePipe(_pipeName);
 
                 await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false);
 
@@ -108,7 +116,7 @@ public sealed class NotificationPipeServer : BackgroundService
     /// que cobre tanto LocalSystem em produção quanto o usuário interativo
     /// durante a depuração em console.
     /// </summary>
-    private static NamedPipeServerStream CreatePipe()
+    private static NamedPipeServerStream CreatePipe(string pipeName)
     {
         var security = new PipeSecurity();
 
@@ -132,9 +140,12 @@ public sealed class NotificationPipeServer : BackgroundService
                 AccessControlType.Allow));
         }
 
+        // Duplex only so the server can hold one pending read per client and
+        // learn of its disconnection at once (see ServeAsync); clients still
+        // open the pipe for reading and never write.
         return NamedPipeServerStreamAcl.Create(
-            NotificationProtocol.PipeName,
-            PipeDirection.Out,
+            pipeName,
+            PipeDirection.InOut,
             MaxServerInstances,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.WriteThrough,
@@ -155,6 +166,14 @@ public sealed class NotificationPipeServer : BackgroundService
 
         using var subscription = _hub.Subscribe(sessionId, client?.UserSid.Value);
 
+        // A client that disconnects is otherwise noticed only by the next failed
+        // write. With a quiet status no write comes, and departed clients kept
+        // all 16 instances: new clients, including the tray, could never connect
+        // (m2t5boot5: "All pipe instances are busy" every second). Clients never
+        // write, so one pending read ends this connection when it completes.
+        using var connection = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        Task watcher = WatchClientAsync(pipe, connection);
+
         try
         {
             await using (pipe)
@@ -172,14 +191,14 @@ public sealed class NotificationPipeServer : BackgroundService
                 // aplicativo recém-aberto não teria como preencher os cartões,
                 // porque quem carrega política agora é o serviço.
                 if (_hub.GetRecordedStatus() is { } status
-                    && !await TryWriteAsync(writer, status, stoppingToken).ConfigureAwait(false))
+                    && !await TryWriteAsync(writer, status, connection.Token).ConfigureAwait(false))
                 {
                     return;
                 }
 
-                await foreach (var notification in subscription.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
+                await foreach (var notification in subscription.Reader.ReadAllAsync(connection.Token).ConfigureAwait(false))
                 {
-                    if (!await TryWriteAsync(writer, notification, stoppingToken).ConfigureAwait(false))
+                    if (!await TryWriteAsync(writer, notification, connection.Token).ConfigureAwait(false))
                     {
                         return;
                     }
@@ -188,7 +207,7 @@ public sealed class NotificationPipeServer : BackgroundService
         }
         catch (OperationCanceledException)
         {
-            // Serviço parando.
+            // Serviço parando, ou o cliente desconectou.
         }
         catch (Exception ex)
         {
@@ -196,7 +215,32 @@ public sealed class NotificationPipeServer : BackgroundService
         }
         finally
         {
+            connection.Cancel();
+            try { await watcher.ConfigureAwait(false); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Monitor de desconexao encerrado"); }
             _logger.LogInformation("Aplicativo desconectado do canal de notificacao");
+        }
+    }
+
+    /// <summary>
+    /// Ends the connection when the client disconnects, breaks the pipe or writes
+    /// anything: every completion of the single pending read cancels it.
+    /// </summary>
+    private static async Task WatchClientAsync(PipeStream pipe, CancellationTokenSource connection)
+    {
+        var buffer = new byte[1];
+        try
+        {
+            _ = await pipe.ReadAsync(buffer, connection.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or OperationCanceledException)
+        {
+            // Broken pipe, disposal or shutdown: the connection ends either way.
+        }
+        finally
+        {
+            try { connection.Cancel(); }
+            catch (ObjectDisposedException) { }
         }
     }
 
