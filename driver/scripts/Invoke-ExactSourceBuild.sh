@@ -6,6 +6,7 @@
 # an archive hash checks delivery. Build-ExactSource.ps1 builds, signs and summarizes in a fresh child directory.
 # Evidence: driver/evidence/<today>/exact-<label>-*.txt. Artifacts: /tmp/claude-1000/exact-<label>/.
 # The process exit code is NOT the verdict: read the summary lines (exit=, errors=, warnings=, artifact hashes).
+# Every driver must also import only routines Windows 10 19045 exports (exact-<label>-imports.txt; exit 5 otherwise).
 # --worktree captures current tracked project bytes and freezes build tools without committing.
 # --prepare-only stops before any network operation; use a fresh label for the later build.
 # SAFEUPLOAD_SIGNING_THUMBPRINT and SAFEUPLOAD_SIGNING_STORE_LOCATION select
@@ -130,6 +131,11 @@ if [[ "$build_exit" != 0 || ! -s "$work/summary.txt" ]]; then
     echo 'Exact build incomplete; retained raw stdout/stderr and artifacts are diagnostic only.'
     exit 4
 fi
+# Target availability: ApiValidator does not prove that each import exists on Windows 10 19045, and a boot-start driver
+# with a missing import cannot boot (m2t5rv1). Every driver artifact imports only exports of the qualified family.
+python3 driver/scripts/Test-DriverImports.py "$work/SafeUpload-stage-prototype.sys" "$work/owned-feature.sys" "$work/normal.sys" \
+    "$work/owned-feature-release.sys" "$work/normal-release.sys" | tee "$ev/exact-$label-imports.txt"
+grep -qx 'DriverImportAvailability=PASS' "$ev/exact-$label-imports.txt" || { echo 'Import availability gate failed'; exit 5; }
 python3 - "$work/summary.txt" "$thumb" "$store" "$owner_fsp" <<'PYGATE'
 from pathlib import Path
 import sys

@@ -1,0 +1,28 @@
+PRELOAD_FILTER_UNLOADED=True
+PRELOAD_BOTH_SERVICES_STOPPED=True
+PRELOAD_DRIVER_SHA256=4B4711D88D404E4446C007DACB589D16DEA7747B15AB0831A440499001AE29B8
+VERIFIER_BEFORE_FIRST_LOAD=True
+ERROR: fltmc.exe failed (1): 
+
+ERROR: Load failed with error: 0x8007007f
+
+ERROR: The specified procedure could not be found.
+
+ERROR: At C:\Users\vika\Documents\t4-runtime-verifier.ps1:7 char:32
+
+ERROR: + ... ($LASTEXITCODE -ne 0) { throw "$File failed ($LASTEXITCODE): $text" }
+
+ERROR: +                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ERROR:     + CategoryInfo          : OperationStopped: (fltmc.exe faile...not be found.
+
+ERROR: :String) [], RuntimeException
+
+ERROR:     + FullyQualifiedErrorId : fltmc.exe failed (1): 
+
+ERROR: Load failed with error: 0x8007007f
+
+ERROR: The specified procedure could not be found.
+
+ERROR:  
+
