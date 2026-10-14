@@ -2812,6 +2812,20 @@ static NTSTATUS StageAttachCaptureCreateInput(PFLT_CALLBACK_DATA Data, PSAFEUPLO
     return status;
 }
 
+/* Windows 10 19041/19045 does not export SeDeleteClientSecurity: the current
+ * WDK declares it as a function for this project's NTDDI_VERSION, so a driver
+ * importing it cannot load on the qualified target (m2t5rv1: fltmc 0x8007007F;
+ * as a boot-start driver, every boot fell into WinRE). The pre-Windows 11 macro
+ * released the one token reference SeCreateClientSecurityFromSubjectContext took
+ * (PsDereferencePrimaryToken/PsDereferenceImpersonationToken, both
+ * ObDereferenceObject). Releasing it directly is also valid at DISPATCH_LEVEL. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static VOID StageDeleteClientSecurity(_Inout_ PSECURITY_CLIENT_CONTEXT Context)
+{
+    if (Context->ClientToken != NULL) ObDereferenceObject(Context->ClientToken);
+    Context->ClientToken = NULL;
+}
+
 static VOID StageAttachTransactionDereference(PSTAGE_ATTACH_TRANSACTION Transaction)
 {
     if (Transaction == NULL || InterlockedDecrement(&Transaction->References) != 0) return;
@@ -2826,7 +2840,7 @@ static VOID StageAttachTransactionDereference(PSTAGE_ATTACH_TRANSACTION Transact
     if (Transaction->NameInfo != NULL && Transaction->NameInfoIsSynthetic)
         ExFreePoolWithTag(Transaction->NameInfo, STAGE_TAG);
     if (Transaction->RequestorProcess != NULL) ObDereferenceObject(Transaction->RequestorProcess);
-    if (Transaction->OriginalSubjectValid) SeDeleteClientSecurity(&Transaction->OriginalSubject);
+    if (Transaction->OriginalSubjectValid) StageDeleteClientSecurity(&Transaction->OriginalSubject);
     StageAttachReleaseCreateInput(&Transaction->CreateInput);
     if (Transaction->ReferencedFileObject != NULL)
         ObDereferenceObject(Transaction->ReferencedFileObject);
@@ -2851,7 +2865,7 @@ static VOID StageAttachReleaseRelatedObjects(PSTAGE_ATTACH_TRANSACTION Transacti
     Transaction->WriterLease = NULL;
     SafeUploadStagePublicCloseCreateLookup(&Transaction->CreateInput);
     if (Transaction->OriginalSubjectValid) {
-        SeDeleteClientSecurity(&Transaction->OriginalSubject);
+        StageDeleteClientSecurity(&Transaction->OriginalSubject);
         Transaction->OriginalSubjectValid = FALSE;
     }
     StageAttachReleaseCreateInput(&Transaction->CreateInput);
