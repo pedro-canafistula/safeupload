@@ -204,6 +204,7 @@ public sealed partial class StagedTransferJournal
     internal async Task<DestinationCommitTurn> EnterDestinationCommitTurnAsync(
         StagedDestinationIdentity destination, StagedDestinationTurnPurpose purpose, CancellationToken token)
     {
+        using var phaseTiming = StagedRequestTiming.Measure("destination-wait");
         ArgumentNullException.ThrowIfNull(destination);
         if (!Enum.IsDefined(purpose)) throw new ArgumentOutOfRangeException(nameof(purpose));
         DestinationQueueCell cell;
@@ -994,6 +995,7 @@ public sealed partial class StagedTransferJournal
     private async Task<StagedDestinationHead?> ReadDestinationHeadFileCoreAsync(string path,
         StagedDestinationIdentity? expectedDestination, CancellationToken token)
     {
+        using var phaseTiming = StagedRequestTiming.Measure("journal-scan");
         FileStream stream;
         try { stream = StagedJournalFile.Open(path); }
         catch (FileNotFoundException) { return null; }
@@ -1017,6 +1019,7 @@ public sealed partial class StagedTransferJournal
 
     private async Task WriteDestinationHeadCoreAsync(StagedDestinationHead head, CancellationToken token)
     {
+        using var phaseTiming = StagedRequestTiming.Measure("journal-write");
         ValidateDestinationHead(head, head.Destination);
         string path = DestinationHeadPath(head.Destination);
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";

@@ -199,8 +199,25 @@ public sealed partial class FilterPort : IDisposable
         return true;
     }
 
-    public unsafe void Reply(ulong messageId, ulong requestId, uint verdict,
-        string? stageName = null)
+    public void Reply(ulong messageId, ulong requestId, uint verdict, string? stageName = null)
+    {
+        int hr = ReplyCore(messageId, requestId, verdict, stageName);
+        // Preserve the existing ordinary/bound reply exception behavior.
+        if (hr != 0 && hr != unchecked((int)0x8007010B))
+            throw new Win32Exception(hr, $"FilterReplyMessage falhou: 0x{hr:X8}");
+    }
+
+    public FilterReplyResult ReplyAllocation(ulong messageId, ulong requestId, uint verdict, string stageName)
+        => DecodeReplyResult(ReplyCore(messageId, requestId, verdict, stageName));
+
+    internal static FilterReplyResult DecodeReplyResult(int hr)
+    {
+        if (hr == unchecked((int)0x801F0020)) return FilterReplyResult.NoWaiter;
+        if (hr != 0) throw new Win32Exception(hr, $"FilterReplyMessage falhou: 0x{hr:X8}");
+        return FilterReplyResult.Delivered;
+    }
+
+    private unsafe int ReplyCore(ulong messageId, ulong requestId, uint verdict, string? stageName)
     {
         if (stageName is { Length: >= Contract.MaxStageNameChars } ||
             (stageName is not null &&
@@ -236,15 +253,15 @@ public sealed partial class FilterPort : IDisposable
             }
         }
 
-        int hr = FilterReplyMessage(Handle, (IntPtr) buffer, (uint) size);
+        return SendObservedReply((IntPtr)buffer, (uint)size);
+    }
 
-        // A reply that misses its window is not fatal: the driver has
-        // already timed out and allowed the operation. Worth counting,
-        // not worth throwing over.
-        if (hr != 0 && hr != unchecked((int) 0x8007010B))
-        {
-            throw new Win32Exception(hr, $"FilterReplyMessage falhou: 0x{hr:X8}");
-        }
+    private int SendObservedReply(IntPtr buffer, uint size)
+    {
+        using var observation = FilterReplyObservation.Begin();
+        int hr = FilterReplyMessage(Handle, buffer, size);
+        observation?.Complete(hr);
+        return hr;
     }
 
     /// <summary>
@@ -431,7 +448,7 @@ public sealed partial class FilterPort : IDisposable
 
     private unsafe bool ReplyTypedStageBuffer(ulong messageId, byte* buffer, int size)
     {
-        int hr = FilterReplyMessage(Handle, (IntPtr)buffer, (uint)size);
+        int hr = SendObservedReply((IntPtr)buffer, (uint)size);
         if (hr == unchecked((int)0x8007010B))
         {
             return false;

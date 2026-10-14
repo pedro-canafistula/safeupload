@@ -127,7 +127,20 @@ public sealed partial class StagedTransferAllocator
         Guid? allocationReferenceId = null,
         uint? allocationReferenceKind = null,
         Guid? driverInstanceId = null)
+        => (await AllocateForReplyAsync(destinationPath, destination, processName, processId,
+            sessionId, disposition, previous, cancellationToken, tombstoneOwner, requestorSid,
+            requestorProcessCreationTime, allocationReservationId, allocationReferenceId,
+            allocationReferenceKind, driverInstanceId).ConfigureAwait(false)).Entry.Transfer;
+
+    internal async Task<StagedAllocation> AllocateForReplyAsync(
+        string destinationPath, DestinationKind destination, string processName, int processId,
+        uint? sessionId, uint disposition, StagedTransfer? previous, CancellationToken cancellationToken,
+        Guid? tombstoneOwner = null, string? requestorSid = null,
+        long? requestorProcessCreationTime = null, Guid? allocationReservationId = null,
+        Guid? allocationReferenceId = null, uint? allocationReferenceKind = null,
+        Guid? driverInstanceId = null)
     {
+        using var preparation = StagedRequestTiming.Measure("prepare");
         string fullDestination = Path.GetFullPath(destinationPath);
         if (string.IsNullOrEmpty(Path.GetFileName(fullDestination)) ||
             fullDestination.StartsWith(_root + Path.DirectorySeparatorChar,
@@ -190,11 +203,14 @@ public sealed partial class StagedTransferAllocator
         }
 
         bool copyExisting = disposition is 1 or 3 && sourceExists;
+        StagedStageIdentity? identity = null;
+        preparation?.Dispose();
         try
         {
+            using var backingTiming = StagedRequestTiming.Measure("backing");
             if (OperatingSystem.IsWindows())
             {
-                await StagedBackingFile.CreateAsync(copyExisting ? source ?? fullDestination : null,
+                identity = await StagedBackingFile.CreateAsync(copyExisting ? source ?? fullDestination : null,
                     transfer.StagePath, MaximumSeedBytes, cancellationToken).ConfigureAwait(false);
             }
             else if (copyExisting)
@@ -233,14 +249,16 @@ public sealed partial class StagedTransferAllocator
             if (_fileSecurity is not null)
                 new FileInfo(transfer.StagePath).SetAccessControl(_fileSecurity);
 
+            backingTiming?.Dispose();
+
         // CreateAsync flushes the manifest to disk and atomically makes it
         // visible. Nothing is returned to the driver before this succeeds.
             StagedStageIdentity? parentDirectoryIdentity = allocationReservationId is null
                 ? null : StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(fullDestination)!);
-            await _journal.CreateAsync(transfer, cancellationToken, tombstoneOwner,
+            TransferJournalEntry entry = await _journal.CreateAsync(transfer, cancellationToken, tombstoneOwner,
                 previous?.TransferId, disposition, allocationReferenceId,
                 allocationReferenceKind, driverInstanceId, parentDirectoryIdentity).ConfigureAwait(false);
-            return transfer;
+            return new StagedAllocation(entry, identity);
         }
         catch (Exception allocationFailure)
         {

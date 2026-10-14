@@ -231,6 +231,7 @@ public sealed partial class MinifilterInterceptor
                     return parent.ReadLocator();
                 }, row =>
                 {
+                    using var ownerTiming = StagedRequestTiming.Measure("policy-and-owner");
                     var process = SessionResolver.GetRequiredProcessIdentity(checked((int)row.CallerProcessId));
                     if (process.CreationTimeFileTime != row.CallerProcessCreationTime)
                         throw new IOException("The native CREATE caller lifetime changed.");

@@ -17,7 +17,7 @@ public sealed partial class StagedTransferJournal
     private const uint RequiredStageV20Capabilities = 0x3f;
     internal static readonly string EmptySha256Hex = Convert.ToHexString(SHA256.HashData(Array.Empty<byte>()));
     private readonly string _directory;
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly StagedJournalGate _gate = new();
     private readonly FileSecurity? _fileSecurity;
     private readonly SecurityIdentifier? _owner;
     private readonly string _driverEpochPath;
@@ -125,6 +125,7 @@ public sealed partial class StagedTransferJournal
 
     private async Task<DriverEpochRecord?> ReadDriverEpochCoreAsync(CancellationToken token)
     {
+        using var phaseTiming = StagedRequestTiming.Measure("journal-scan");
         if (!File.Exists(_driverEpochPath)) return null;
         await using FileStream stream = StagedJournalFile.Open(_driverEpochPath,
             maximumBytes: 4096);
@@ -153,6 +154,7 @@ public sealed partial class StagedTransferJournal
 
     private async Task WriteDriverEpochCoreAsync(DriverEpochRecord record, CancellationToken token)
     {
+        using var phaseTiming = StagedRequestTiming.Measure("journal-write");
         string temporary = _driverEpochPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
@@ -291,6 +293,7 @@ public sealed partial class StagedTransferJournal
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            using var scanTiming = StagedRequestTiming.Measure("journal-scan");
             StagedVersionIdentity? parentIdentity = null;
             TransferJournalEntry? seedParent = null;
             if (parentTransferId is { } priorId)
@@ -358,6 +361,8 @@ public sealed partial class StagedTransferJournal
                  StagedSeedExport.IsFailure(seedParent.HandbackFailureReason)))
                 entry = entry with { SeedProvenance = StagedSeedProvenance.Inherit(entry, seedParent) };
             ValidateEntry(entry, transfer.TransferId);
+            scanTiming?.Dispose();
+            using var writeTiming = StagedRequestTiming.Measure("journal-write");
             await using (var stream = CreatePrivateTemporary(temporary))
             {
                 await JsonSerializer.SerializeAsync(stream, entry, cancellationToken: cancellationToken)
@@ -1392,6 +1397,7 @@ public sealed partial class StagedTransferJournal
     private async Task<TransferJournalEntry> ReadCoreAsync(
         Guid transferId, CancellationToken cancellationToken)
     {
+        using var phaseTiming = StagedRequestTiming.Measure("journal-scan");
         var entry = await ReadManifestCoreAsync(transferId, cancellationToken).ConfigureAwait(false);
         var child = entry;
         // Keep only one edge in memory. Strictly decreasing captured generations
@@ -1469,6 +1475,7 @@ public sealed partial class StagedTransferJournal
     private async Task<TransferJournalEntry> ReadScannedAsync(
         FileInfo file, Guid id, CancellationToken token)
     {
+        using var phaseTiming = StagedRequestTiming.Measure("journal-scan");
         ManifestStamp stamp = StampOf(file);
         if ((stamp.Attributes & FileAttributes.ReparsePoint) == 0)
         {
@@ -2734,6 +2741,7 @@ public sealed partial class StagedTransferJournal
 
     private async Task<List<DestinationClaim>> DestinationVersionsAsync(string destination, CancellationToken token)
     {
+        using var phaseTiming = StagedRequestTiming.Measure("journal-scan");
         var versions = new List<DestinationClaim>();
         foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
         {
@@ -2973,6 +2981,7 @@ public sealed partial class StagedTransferJournal
         TransferJournalEntry entry,
         CancellationToken cancellationToken)
     {
+        using var phaseTiming = StagedRequestTiming.Measure("journal-write");
         ValidateEntry(entry, entry.Transfer.TransferId);
         string temporary = manifestPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         string step = "create-temporary";

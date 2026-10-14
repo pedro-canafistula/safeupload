@@ -61,8 +61,9 @@ public sealed class InspectionService
     }
 
     /// <summary>Julga uma operação de arquivo.</summary>
-    public async Task<InspectionResult> InspectAsync(FileOperation operation, CancellationToken cancellationToken)
-        => await InspectCoreAsync(operation, staged: false, cancellationToken).ConfigureAwait(false);
+    public async Task<InspectionResult> InspectAsync(FileOperation operation, CancellationToken cancellationToken,
+        Func<string, IDisposable?>? phaseTiming = null)
+        => await InspectCoreAsync(operation, staged: false, cancellationToken, phaseTiming: phaseTiming).ConfigureAwait(false);
 
     /// <summary>
     /// Classifies a sealed staging file. Its verdict is not an operation
@@ -134,13 +135,18 @@ public sealed class InspectionService
             cancellationToken, eventId, publishedSha256Hex);
 
     private async Task<InspectionResult> InspectCoreAsync(
-        FileOperation operation, bool staged, CancellationToken cancellationToken, Func<Stream>? openSnapshot = null)
+        FileOperation operation, bool staged, CancellationToken cancellationToken, Func<Stream>? openSnapshot = null,
+        Func<string, IDisposable?>? phaseTiming = null)
     {
         ArgumentNullException.ThrowIfNull(operation);
 
         var stopwatch = Stopwatch.StartNew();
-        var policy = await (staged ? _policyStore.LoadCurrentAsync(cancellationToken)
-            : _policyStore.LoadAsync(cancellationToken)).ConfigureAwait(false);
+        Policy policy;
+        using (phaseTiming?.Invoke("policy-and-owner"))
+        {
+            policy = await (staged ? _policyStore.LoadCurrentAsync(cancellationToken)
+                : _policyStore.LoadAsync(cancellationToken)).ConfigureAwait(false);
+        }
         bool auditAndCache = !staged;
         var inspectionFailure = staged ? Verdict.Blocked : Verdict.AllowedWithoutInspection;
 

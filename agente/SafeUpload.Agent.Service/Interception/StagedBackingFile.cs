@@ -9,20 +9,26 @@ namespace SafeUpload.Agent.Service.Interception;
 // do not invalidate. Use aligned, noncached writes from the first byte onward.
 internal static class StagedBackingFile
 {
-    public static async Task CreateAsync(string? source, string destination, long maximumBytes, CancellationToken token)
+    public static async Task<StagedStageIdentity> CreateAsync(string? source, string destination, long maximumBytes, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         await using var input = source is null ? null : new FileStream(source,
             FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await CreateFromHeldSourceAsync(input, destination, maximumBytes, token).ConfigureAwait(false);
+        return (await CreateCoreAsync(input, destination, maximumBytes, token, null, captureIdentity: true)
+            .ConfigureAwait(false))!;
     }
 
     // The bound allocator supplies the already checked source FILE_OBJECT.
     // Borrow it through the durable allocation claim; never reopen its locator.
-    internal static async Task CreateFromHeldSourceAsync(FileStream? input, string destination,
+    internal static Task CreateFromHeldSourceAsync(FileStream? input, string destination,
         long maximumBytes, CancellationToken token, StagedStageIdentity? existingPrivateObject = null)
+        => CreateCoreAsync(input, destination, maximumBytes, token, existingPrivateObject, captureIdentity: false);
+
+    private static async Task<StagedStageIdentity?> CreateCoreAsync(FileStream? input, string destination,
+        long maximumBytes, CancellationToken token, StagedStageIdentity? existingPrivateObject, bool captureIdentity)
     {
+        using var backingTiming = StagedRequestTiming.Measure("backing");
         token.ThrowIfCancellationRequested();
         // Check on the held source handle before creating or writing output.
         // A streamed bound below also prevents growth from consuming more disk.
@@ -62,6 +68,7 @@ internal static class StagedBackingFile
                 throw new IOException("Could not durably finish private backing.", new Win32Exception());
         }
         finally { Marshal.FreeHGlobal(allocation); }
+        return captureIdentity ? StagedDestinationFile.ReadIdentity(output) : null;
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

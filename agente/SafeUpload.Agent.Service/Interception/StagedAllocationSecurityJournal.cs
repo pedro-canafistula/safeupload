@@ -25,6 +25,7 @@ public sealed partial class StagedTransferJournal
     private async Task PersistAllocationSecurityCoreAsync(StagedAllocationSecuritySnapshot snapshot,
         CancellationToken token)
     {
+        using var phaseTiming = StagedRequestTiming.Measure("journal-write");
         byte[] bytes = snapshot.Encode();
         string path = AllocationSecurityPath(snapshot.SnapshotId);
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -84,6 +85,7 @@ public sealed partial class StagedTransferJournal
 
     private async Task<byte[]> ReadAllocationSecurityBytesCoreAsync(Guid snapshot, CancellationToken token)
     {
+        using var phaseTiming = StagedRequestTiming.Measure("journal-scan");
         await using var stream = StagedJournalFile.Open(AllocationSecurityPath(snapshot),
             maximumBytes: StagedAllocationSecuritySnapshot.MaximumBytes);
         return await ReadAllocationSecurityBytesHeldAsync(stream, token).ConfigureAwait(false);

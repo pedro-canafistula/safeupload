@@ -68,6 +68,7 @@ public sealed partial class MinifilterInterceptor
     private async Task<StagedAllocationReply?> AllocateStageV23Async(FilterPort port, SafeUploadRequest request,
         Guid? capturedDriver, CancellationToken token)
     {
+        using var ownerPolicy = StagedRequestTiming.Measure("policy-and-owner");
         if (!BoundAllocationImplemented || !_stageBoundHeadReady || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
             capturedDriver is not { } driver || _activeDriverInstanceId != driver ||
             _stageAllocator is not { } allocator || _stageJournal is not { } journal ||
@@ -102,6 +103,7 @@ public sealed partial class MinifilterInterceptor
                     throw new IOException("The bound reservation belongs to a different request.");
                 var writer = saved.Transfer;
                 RequireBoundWriterIdentity(writer, processId);
+                ownerPolicy?.Dispose();
                 var replay = await allocator.AllocateV23Async(destination, kind, writer.ProcessName, processId,
                     writer.SessionId ?? throw new IOException("The saved bound writer has no session."),
                     writer.RequestorSid ?? throw new IOException("The saved bound writer has no SID."),
@@ -115,6 +117,7 @@ public sealed partial class MinifilterInterceptor
             var operation = new FileOperation(destination, Path.GetFileName(destination), Path.GetExtension(destination),
                 0, DateTime.MinValue, processName, processId, destination, kind);
             if (!policy.IsMonitoredDestination(operation)) return null;
+            ownerPolicy?.Dispose();
             var reply = await allocator.AllocateV23Async(destination, kind, processName, processId,
                 requestor.SessionId, requestor.UserSid.Value, requestor.CreationTimeFileTime, binding, token, security)
                 .ConfigureAwait(false);
@@ -134,6 +137,7 @@ public sealed partial class MinifilterInterceptor
 
     internal static void RequireBoundWriterIdentity(StagedTransfer writer, int processId)
     {
+        using var ownerTiming = StagedRequestTiming.Measure("policy-and-owner");
         var current = SessionResolver.GetRequiredProcessIdentity(processId);
         if (writer.ProcessId != processId || writer.SessionId != current.SessionId ||
             writer.RequestorProcessCreationTime != current.CreationTimeFileTime ||

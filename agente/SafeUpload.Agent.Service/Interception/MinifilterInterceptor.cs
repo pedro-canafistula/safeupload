@@ -58,6 +58,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     private StagedTransferAllocator? _stageAllocator;
     private StagedTransferJournal? _stageJournal;
     private StagedTransferPublisher? _stagePublisher;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, StagedRejectedAllocation>
+        _rejectedAllocations = new();
     // Readiness is scoped to this authenticated FilterPort connection. The
     // exact driver epoch is installed only after a v20 capability receipt is
     // successfully delivered, and staging recovery completes before the
@@ -242,6 +244,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             Task? coverageTask = null;
             Task? discardCleanupTask = null;
             Task? startupTask = null;
+            Task? heartbeatTask = null;
+            var receiveHeartbeat = new StagedReceiveHeartbeat();
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
             long boundTicket = _boundReadiness.BeginConnection();
             _logger.LogWarning("Bound staging readiness: {Reason}", _boundReadiness.Snapshot.Reason);
@@ -261,6 +265,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     _publicOpenDispatcher = new(_stageJournal, () => ReadBoundPublicReplay(port), port.ObserveNativeName,
                         StagedPublicOpenDispatcher.ResolveLocator, row =>
                         {
+                            using var ownerTiming = StagedRequestTiming.Measure("policy-and-owner");
                             var live = SessionResolver.GetRequiredProcessIdentity(checked((int)row.CallerProcessId));
                             if (live.CreationTimeFileTime != row.CallerProcessCreationTime)
                                 throw new IOException("The ordinary open creator lifetime changed.");
@@ -317,16 +322,21 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     ReadySignal.Announce(ReadySignal.ServiceEvent);
                 }
 
-                while (!stoppingToken.IsCancellationRequested &&
-                       port.TryGetMessage(out SafeUploadRequest request, out ulong messageId, stoppingToken))
+                receiveHeartbeat.Start();
+                heartbeatTask = Task.Run(() => ReceiveHeartbeatAsync(receiveHeartbeat, publishCancellation.Token),
+                    publishCancellation.Token);
+                while (!stoppingToken.IsCancellationRequested)
                 {
+                    receiveHeartbeat.Waiting();
+                    if (!port.TryGetMessage(out SafeUploadRequest request, out ulong messageId, stoppingToken)) break;
+                    using var trace = new StagedRequestTrace(request, messageId, _logger, receiveHeartbeat);
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
                     if (request.Operation == Operation.StageSeal)
                     {
                         SafeUploadRequest sealRequest = request;
                         ulong sealMessage = messageId;
                         Guid? sealDriver = _activeDriverInstanceId;
-                        boundContinuations.Dispatch(token => ReplySealAsync(port, sealRequest, sealMessage, sealDriver, token));
+                        boundContinuations.Dispatch(trace.Defer(token => ReplySealAsync(port, sealRequest, sealMessage, sealDriver, token)));
                         continue;
                     }
                     if (request.Operation == PrivateCancellationV28.Operation || request.Reserved == PrivateCancellationV28.Version)
@@ -334,8 +344,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         SafeUploadRequest cancellationRequest = request;
                         ulong cancellationMessage = messageId;
                         Guid? cancellationDriver = _activeDriverInstanceId;
-                        boundContinuations.Dispatch(token => ReplyPrivateCancellationAsync(port, cancellationRequest,
-                            cancellationMessage, cancellationDriver, token));
+                        boundContinuations.Dispatch(trace.Defer(token => ReplyPrivateCancellationAsync(port, cancellationRequest,
+                            cancellationMessage, cancellationDriver, token)));
                         continue;
                     }
                     if (request.Operation == PublicDispositionV25.Operation || request.Reserved == PublicDispositionV25.Version)
@@ -343,8 +353,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         SafeUploadRequest publicRequest = request;
                         ulong publicMessageId = messageId;
                         Guid? publicDriver = _activeDriverInstanceId;
-                        boundContinuations.Dispatch(token =>
-                            ReplyPublicOpenAsync(port, publicRequest, publicMessageId, publicDriver, token));
+                        boundContinuations.Dispatch(trace.Defer(token =>
+                            ReplyPublicOpenAsync(port, publicRequest, publicMessageId, publicDriver, token)));
                         continue;
                     }
                     if (request.Operation == NativeLifecycleV24.Operation || request.Reserved == NativeLifecycleV24.Version)
@@ -352,8 +362,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         SafeUploadRequest nativeRequest = request;
                         ulong nativeMessageId = messageId;
                         Guid? nativeDriver = _activeDriverInstanceId;
-                        boundContinuations.Dispatch(token =>
-                            ReplyNativeLifecycleAsync(port, nativeRequest, nativeMessageId, nativeDriver, token));
+                        boundContinuations.Dispatch(trace.Defer(token =>
+                            ReplyNativeLifecycleAsync(port, nativeRequest, nativeMessageId, nativeDriver, token)));
                         continue;
                     }
                     if (request.Reserved == Contract.StageBoundAllocationVersion &&
@@ -364,8 +374,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         // Copy them inside this iteration before queueing work.
                         SafeUploadRequest capturedRequest = request;
                         ulong capturedMessageId = messageId;
-                        boundContinuations.Dispatch(token =>
-                            ReplyBoundAllocationAsync(port, capturedRequest, capturedMessageId, capturedDriver, token));
+                        boundContinuations.Dispatch(trace.Defer(token =>
+                            ReplyBoundAllocationAsync(port, capturedRequest, capturedMessageId, capturedDriver, token)));
                         continue;
                     }
 #endif
@@ -394,7 +404,10 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         else if (_stagingEnabled)
                             verdict = PortVerdict.Deny;
                         else
-                            (verdict, stageName) = AllocateStage(request, out typedCreateReply);
+                        {
+                            (verdict, stageName) = AllocateStage(request, out typedCreateReply, out var allocation);
+                            trace.Allocation = allocation;
+                        }
                     }
                     else if (request.Operation == Operation.StageSeal)
                     {
@@ -528,6 +541,22 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         }
                         else if (verdict == PortVerdict.Allow && typedStatusReply is { } typedStatus)
                             port.ReplyStageStatusV19(messageId, request.RequestId, typedStatus);
+                        else if (trace.Allocation is { } allocation && stageName is not null)
+                        {
+                            // The sole legacy basename reply is the only source
+                            // of this volatile authority. Typed/bound replies never enter here.
+                            FilterReplyResult reply = port.ReplyAllocation(messageId, request.RequestId, verdict, stageName);
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                            // This failure used to reach the exception path below.
+                            // Keep its readiness effect while retaining the exact result.
+                            if (reply == FilterReplyResult.NoWaiter)
+                                _boundReadiness.Invalidate(StagedBoundBlocker.ProtocolChanged);
+#endif
+                            StagedRejectedAllocation? rejected = StagedRejectedAllocation.FromReply(
+                                messageId, request.RequestId, allocation, reply);
+                            if (rejected is not null)
+                                _rejectedAllocations.TryAdd(allocation.Entry.Transfer.TransferId, rejected);
+                        }
                         else
                             port.Reply(messageId, request.RequestId, verdict, stageName);
                     }
@@ -542,6 +571,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             }
             finally
             {
+                receiveHeartbeat.Stop();
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
                 _boundReadiness.Invalidate(StagedBoundBlocker.Disconnected);
                 _nativeStartupRecovery?.Invalidate();
@@ -558,6 +588,12 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 }
 #endif
                 publishCancellation.Cancel();
+                if (heartbeatTask is not null)
+                {
+                    try { heartbeatTask.GetAwaiter().GetResult(); }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex) { _logger.LogWarning(ex, "Receive heartbeat stopped before FilterPort close."); }
+                }
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
                 try { boundContinuations.DrainAsync().GetAwaiter().GetResult(); }
                 catch (Exception error)
@@ -651,11 +687,13 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     .GetAwaiter().GetResult();
                 return PortVerdict.Allow;
             }
+            using var policyTiming = StagedRequestTiming.Measure("policy-and-owner");
             var policy = _policyStore.LoadCurrentAsync(CancellationToken.None).GetAwaiter().GetResult();
             var operation = new FileOperation(destination, Path.GetFileName(destination),
                 Path.GetExtension(destination), 0, DateTime.MinValue, entry.Transfer.ProcessName,
                 entry.Transfer.ProcessId, destination, entry.Transfer.Destination);
             if (!policy.IsMonitoredDestination(operation)) return PortVerdict.Deny;
+            policyTiming?.Dispose();
             _stageJournal.PrepareRenameAsync(id, request.RequestId, checked((int)request.RequestorProcessId),
                 destination, request.Reserved != 0, CancellationToken.None).GetAwaiter().GetResult();
             return PortVerdict.Allow;
@@ -688,6 +726,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
     private (uint Verdict, StagedAllocationReply? Reply) AllocateStageV19(SafeUploadRequest request)
     {
+        using var ownerPolicy = StagedRequestTiming.Measure("policy-and-owner");
         if (_stageAllocator is null || _stageJournal is null || !_stagingEnabled ||
             !_stageV20Ready || !_stagingRecoveryReady ||
             !request.TryReadStagePayload<SafeUploadStageAllocateV19>(Operation.StageAllocate, out var payload) ||
@@ -734,6 +773,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     savedTombstoneOwner = payload.ParentTransferId;
                 }
                 StagedTransfer saved = existing.Transfer;
+                ownerPolicy?.Dispose();
                 StagedAllocationReply replay = _stageAllocator.AllocateV19Async(destination, kind,
                     saved.ProcessName, processId, saved.SessionId ??
                         throw new IOException("The v19 allocation replay has no saved session."), intent,
@@ -786,6 +826,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 processName = owner.Transfer.ProcessName;
             }
 
+            ownerPolicy?.Dispose();
             StagedAllocationReply reply = _stageAllocator.AllocateV19Async(destination, kind,
                 processName, processId, requestor.SessionId, intent, previous, tombstoneOwner,
                 requestor.UserSid.Value, requestor.CreationTimeFileTime,
@@ -956,6 +997,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             bool commitPolicyAllowed = false;
             if (request.Operation == Operation.StageAttachCommit)
             {
+                using var policyTiming = StagedRequestTiming.Measure("policy-and-owner");
                 Policy policy = _policyStore.LoadCurrentAsync(CancellationToken.None).GetAwaiter().GetResult();
                 var operation = new FileOperation(destination, Path.GetFileName(destination),
                     Path.GetExtension(destination), 0, DateTime.MinValue, entry.Transfer.ProcessName,
@@ -983,6 +1025,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
     private static bool IsExactLiveOwner(StagedTransfer transfer)
     {
+        using var ownerTiming = StagedRequestTiming.Measure("policy-and-owner");
         if (transfer.RequestorSid is null || transfer.RequestorProcessCreationTime is not { } creationTime ||
             creationTime <= 0 || transfer.ProcessId <= 0)
             return false;
@@ -1000,8 +1043,10 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     }
 
     private (uint Verdict, string? StageName) AllocateStage(SafeUploadRequest request,
-        out StagedAllocationReply? typedReply)
+        out StagedAllocationReply? typedReply, out StagedAllocation? allocation)
     {
+        using var ownerPolicy = StagedRequestTiming.Measure("policy-and-owner");
+        allocation = null;
         typedReply = null;
         if (_stageAllocator is null || request.Version != Contract.Version ||
             !request.HasKnownFlags || !HasValidStageAllocateFlags(request) ||
@@ -1076,20 +1121,22 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             }
             if (request.TypedFlags.HasFlag(RequestFlags.StageV19Reply))
             {
+                ownerPolicy?.Dispose();
                 typedReply = _stageAllocator.AllocateV19Async(destination, kind, processName,
                     requestorProcessId, requestor.SessionId, request.Reserved, previous,
                     CancellationToken.None, tombstoneOwner, requestor.UserSid.Value,
                     requestor.CreationTimeFileTime).GetAwaiter().GetResult();
                 return (PortVerdict.Allow, null);
             }
-            var transfer = _stageAllocator.AllocateAsync(
+            ownerPolicy?.Dispose();
+            allocation = _stageAllocator.AllocateForReplyAsync(
                 destination, kind, processName,
                 requestorProcessId,
                 requestor.SessionId,
                 request.Reserved, previous,
                 CancellationToken.None, tombstoneOwner, requestor.UserSid.Value,
                 requestor.CreationTimeFileTime).GetAwaiter().GetResult();
-            return (PortVerdict.Allow, Path.GetFileName(transfer.StagePath));
+            return (PortVerdict.Allow, Path.GetFileName(allocation.Entry.Transfer.StagePath));
         }
         catch (Exception ex)
         {
@@ -1101,6 +1148,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
     private uint SealStage(SafeUploadRequest request)
     {
+        using var inspectionTiming = StagedRequestTiming.Measure("inspection-seal");
         if (_stageJournal is null || request.Version != Contract.Version ||
             request.TypedFlags.HasFlag(RequestFlags.PathTruncated) ||
             request.TypedFlags.HasFlag(RequestFlags.PathNotNormalized))
@@ -1144,6 +1192,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
     private async Task<(uint Verdict, uint? Result)> SealStageV19Async(SafeUploadRequest request, CancellationToken token)
     {
+        using var inspectionTiming = StagedRequestTiming.Measure("inspection-seal");
         if (_stageJournal is null || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
             _activeDriverInstanceId is not { } activeDriver || request.RequestorProcessId == 0 || request.Flags != 0 ||
             !request.TryReadStagePayload<SafeUploadStageSealV19>(Operation.StageSeal, out var payload))
@@ -1308,6 +1357,33 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             Path.Combine(AgentPaths.RootDirectory, "staging"), StringComparison.OrdinalIgnoreCase) &&
         Path.GetFileName(path).Length >= 32;
 
+    private async Task RecoverRejectedAllocationsAsync(CancellationToken token)
+    {
+        if (_stageJournal is null) return;
+        foreach (var pair in _rejectedAllocations)
+        {
+            StagedRejectedAllocation rejected = pair.Value;
+            if (Stopwatch.GetTimestamp() < rejected.RetryAt) continue;
+            try
+            {
+                await _stageJournal.RetireRejectedAllocationAsync(rejected, token).ConfigureAwait(false);
+                _rejectedAllocations.TryRemove(pair.Key, out _);
+                _logger.LogInformation("Reclaimed unaccepted allocation {TransferId}, generation {Generation}, " +
+                    "request {RequestId}, message {MessageId}, file {FileIdentity} after exact NO_WAITER reply.",
+                    pair.Key, rejected.Allocation.Entry.DestinationGeneration, rejected.RequestId,
+                    rejected.MessageId, rejected.Allocation.Identity);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            {
+                rejected.Backoff();
+                _logger.LogWarning(error, "Rejected allocation cleanup remains private: transfer {TransferId}, " +
+                    "request {RequestId}, message {MessageId}, file {FileIdentity}.", pair.Key,
+                    rejected.RequestId, rejected.MessageId, rejected.Allocation.Identity);
+            }
+        }
+    }
+
     private async Task PublishSealedLoopAsync(CancellationToken cancellationToken)
     {
         if (_stageJournal is null || _stagePublisher is null) return;
@@ -1316,6 +1392,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
         while (!cancellationToken.IsCancellationRequested && _stageV20Ready && _stagingRecoveryReady)
         {
+            await RecoverRejectedAllocationsAsync(cancellationToken).ConfigureAwait(false);
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
             await _stagePublisher.RecoverBoundReceiptsAsync(cancellationToken).ConfigureAwait(false);
 #endif
@@ -1779,6 +1856,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     /// </summary>
     private uint Judge(SafeUploadRequest request)
     {
+        using var preparation = StagedRequestTiming.Measure("prepare");
         Interlocked.Increment(ref _answered);
 
         if (request.Version != Contract.Version)
@@ -1809,11 +1887,14 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             // GetAwaiter().GetResult() e não .Result: preserva a exceção
             // original em vez de embrulhá-la em AggregateException. O laço é
             // síncrono por natureza — o kernel está bloqueado esperando.
+            preparation?.Dispose();
+            using var inspectionTiming = StagedRequestTiming.Measure("inspection");
             InspectionResult result = _inspection
-                .InspectAsync(operation, budget.Token)
+                .InspectAsync(operation, budget.Token, StagedRequestTiming.Measure)
                 .GetAwaiter()
                 .GetResult();
 
+            inspectionTiming?.Dispose();
             Announce(operation, result);
 
             if (result.IsBlocked)
@@ -1909,6 +1990,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
             if (auditEvent is not null)
             {
+                using var ownerTiming = StagedRequestTiming.Measure("policy-and-owner");
                 uint? sessionId = SessionResolver.TryGetSessionId(operation.ProcessId);
 
                 // Um bloqueio fica elegivel a justificativa, e so ele. Isto e

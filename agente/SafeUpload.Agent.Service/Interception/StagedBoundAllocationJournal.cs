@@ -105,6 +105,7 @@ public sealed partial class StagedTransferJournal
             string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
+                using var writeTiming = StagedRequestTiming.Measure("journal-write");
                 await using (FileStream output = CreatePrivateTemporary(temporary))
                 {
                     await JsonSerializer.SerializeAsync(output, entry, cancellationToken: token).ConfigureAwait(false);
