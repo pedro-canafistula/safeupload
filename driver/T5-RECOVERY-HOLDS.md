@@ -1,45 +1,56 @@
-# T5 recovery and activation holds
+# T5 batch 2: recovery holds and released-stage delete receipts
 
-**Revised proposal against `7ae168804698ebd01ada4570694abfa88efb985f`, 2026-10-14.** Incorporates findings 1–5 of the independent Sol 6.1 xhigh receipt `t5-designs-review-sol61.md`, which returned REVISE for both designs. This revision has not been independently accepted. Read-only inspection; no edits, builds, tests or VM contact. Checkout clean.
+**Proposal against `27f570b78df33e01bc00d45225a40f6a5c6f5c00`, 2026-10-14.** Read-only source/design review; no edits, builds, tests or VM contact. Checkout clean. This revision has not been independently accepted.
 
-The kernel and agent interception source is unchanged from `1db2d9fe`. This batches [fix7 finding 2](evidence/2026-10-14/t5-fix7-review-sol61.md), [replay2 findings 5–6](evidence/2026-10-14/t5-replay2-review-sol61.md) and [block2 finding 3](evidence/2026-10-14/t5-block2-review-sol61.md), under workflow rules 3–5 and the integrated checkpoint in [POST-MVP-PLAN.md](POST-MVP-PLAN.md). The joint unload contract is also specified in [T5-VOLUNTARY-UNLOAD.md](T5-VOLUNTARY-UNLOAD.md).
+The [2026-10-14 scope decision](POST-MVP-PLAN.md) under “Batched recovery holds + voluntary unload” defines batch 2 as:
 
-References use `K/` for `driver/SafeUpload.Minifilter/` and `A/` for `agente/SafeUpload.Agent.Service/Interception/`. Verified statements describe inspected source; proposed transitions and attestations require implementation, review and qualification.
+1. Exact seal request/receipt recovery.
+2. Typed op15 refusal, exposure evidence and op23 recovery.
+3. Refusal accounting **without reclamation**.
+4. Negotiated per-version driver-delete receipts for normally released stages.
 
-## 1. Current states and stranding sequences
+The [re-review](evidence/2026-10-14/t5-designs-rereview-sol61.md) resolved the earlier seal, exposure and historical-owner design findings. Its three new retirement findings are deferred as specified in section 8. The delete receipt addresses [agent-loop RCA defect 2](evidence/2026-10-14/m2t5purgeattr1-agent-loop-rca-sol61.md). The completed-BLOCK idle-loop fix belongs to batch 1.
 
-| Hold | Verified mechanism |
+References use `K/` for `driver/SafeUpload.Minifilter/` and `A/` for `agente/SafeUpload.Agent.Service/Interception/`. Verified statements describe source; new contracts, attestations and controls are proposals.
+
+## 1. Verified defects
+
+| Hold | Current mechanism |
 |---|---|
-| Lost seal ACK | Drain closes writable backing and irreversibly selects read-only backing; seal collection pins owner/view/transfer/generation/full identity (`K/StageStream.c:5706`, `:5741`, `:6070`). Transport currently assigns a fresh RequestId per attempt (`K/StageProtocol.c:2145`). The journal writes `SealPending` without the original request, then measured `Sealed` (`A/StagedTransferJournal.cs:2143–2182`); startup calls `SealAsync` without that request (`:3116–3121`). A lost reply followed by inspection, publication or cleanup strands replay: `SealAsync` rejects cleanup and rechecks current backing/head (`:2126–2137`), while the handler accepts only exactly `Sealed` (`A/MinifilterInterceptor.cs:1249`). |
-| Lost op15 / late fence | Agent attachment is `None → Prepared → Committed → CompletionPermitted`; permission is not handle delivery (`A/StagedTransferJournal.cs:882–972`). Failed CREATE rolls back its binding; only an exact original-owner retry resumes op15 (`K/StageStream.c:1746–1778`, `:3690–3774`). Maintenance parks completion/fence/retirement flags (`:5960`); op19 collection excludes them (`:6285–6288`). V20 has no typed op15 refusal (`K/StageProtocol.c:1590`). Late validation can fail after preliminary attachment bookkeeping but before successful completion; fence clearing is success-only (`K/StageStream.c:4080–4105`, `:4163–4219`). Canceled CREATE can reach CLOSE without CLEANUP (`:5448`), which does not supply op19 evidence. |
-| Refusal storage | Under `_v19AllocationGate`, committed manifests resolve before live-owner lookup. Definitive refusal removes unjournaled backing, then flushes and renames the complete 1,192-byte request into `GUID.allocation-refused` (`A/StagedAllocationResolution.cs:28–103`). There is no cumulative budget or retirement path. Epoch drain scans `*.json`, not refusal files, and requires matching manifests terminal and stages absent (`A/StagedTransferJournal.cs:93–124`). Epoch replacement overwrites the single epoch record (`:69`, `A/StagedDriverEpochStartup.cs:75`). |
+| Lost seal ACK | The kernel drains and selects read-only backing, but assigns a fresh RequestId per seal attempt (`K/StageStream.c:5706,5741,6070`; `K/StageProtocol.c:2145`). Journal `SealPending` omits the request; startup resumes without it (`A/StagedTransferJournal.cs:2143–2182,3116–3121`). Replay rejects cleanup/current-object changes, and the handler requires exactly `Sealed` despite possible inspection/publication progress (`:2126–2137`; `A/MinifilterInterceptor.cs:1249`). |
+| Lost op15 / late fence | Op15 records permission, not delivery (`A/StagedTransferJournal.cs:882–972`). Failed CREATE rolls back; only exact owner retry resumes. Maintenance parks completion/fence flags, which also exclude op19 collection (`K/StageStream.c:1746–1778,3690–3774,5960,6285–6288`). Late validation can fail after preliminary attachment bookkeeping. Canceled CREATE can reach CLOSE without CLEANUP (`:4080–4219,5448`). |
+| Refusal storage | Serialized allocation resolution writes exact 1,192-byte negative receipts after unjournaled-backing cleanup, but has no cumulative budget (`A/StagedAllocationResolution.cs:28–103`). Existing epoch drain scans manifests, not refusal files (`A/StagedTransferJournal.cs:93–124`). |
+| Released-stage cleanup after restart | Publisher returns for driver-held disposal, leaving `StageDeleted=false`; startup later retries. The driver verifies identity, applies disposition, closes backing and frees the stream, retaining only counters (`A/StagedTransferPublisher.cs:502`; `K/StageStream.c:5818–5892,1496`). Startup’s leaf `GetAttributes` fails before absence-capable bookkeeping (`A/MinifilterInterceptor.cs:1652`; Publisher `:1007–1011`). `Held=0` merely means no listed stream (`K/StageStream.c:6958`); its eight-byte reply proves no deletion. |
 
-The stranding interleavings and cumulative-storage inference are source-derived, not new runtime reproductions.
+These are verified source mechanisms and source-derived interleavings, not new runtime reproductions. Historical counters, missing paths and digests cannot reconstruct a per-version delete receipt.
 
-## 2. Wire, validation and durable identity
+## 2. Negotiation, common wire and validation
 
-Preserve existing layouts and enum values. Proposed feature capabilities:
+Preserve existing layouts and numeric values. Proposed batch-2 capabilities:
 
 | Capability | Bit |
 |---|---:|
-| Durable exact seal request/receipt | `0x200` |
-| Exact op15 refusal and attachment recovery | `0x400` |
-| Charged refusal storage and durable epoch retirement | `0x800` |
+| Exact durable seal request/receipt | `0x200` |
+| Op15 refusal/exposure/op23 recovery | `0x400` |
+| Refusal accounting, without reclamation | `0x800` |
+| Exact released-stage driver-delete receipt | `0x1000` |
 
-Required mask becomes **`0xFBF`**, replacing `0x1BF`; bound-head bit `0x40` remains independently disabled. Normal builds compile staging out.
+Required feature mask becomes **`0x1FBF`**, replacing `0x1BF`. There is **no durable-retirement capability**. These new bits are unshipped proposals; `0x800` denotes accounting only. Bound-head bit `0x40` remains independently disabled. Normal builds compile staging out.
 
-Reserve extension **29** and operation **23** for attachment recovery; verify availability before implementation. Operations 4, 15 and 17 receive separate extension-29 parsers. An old/incomplete mask cannot activate this family. Reconciliation refuses or returns EpochBusy with accepted mask zero; no legacy acknowledgement fallback. Old-format unresolved requests remain held, never converted into fresh authority.
+Reserve extension **29**, operation **23** for attachment recovery, operation **24** for driver-delete receipts, and control **35** for exact released-stage disposal/query. These identifiers are unused in inspected source; assert availability before implementation.
 
-### Version request: operations 4, 15 and 23
+Old/incomplete masks cannot activate batch 2. Normal op11 negotiation rejects them or returns EpochBusy with accepted mask zero. No fallback to old seal ACK, generic op15 DENY, or `Held=0` deletion inference. Existing op17 remains **V20/EPOCH_DRAINED**; it receives no extension-29 payload, new result or reclamation meaning.
 
-The unchanged 1,192-byte outer request carries this **124-byte, pack-4** payload:
+### Operations 4, 15 and 23
+
+Use the unchanged 1,192-byte outer request with this **124-byte, pack-4** payload:
 
 | Offset | Field |
 |---:|---|
 | 0 / 4 | ExtensionVersion / StructSize, uint32 |
 | 8 | TransferId, GUID |
 | 24 | DestinationGeneration, uint64 |
-| 32 | StageIdentity: volume serial + full FILE_ID_128, 24 bytes |
+| 32 | StageIdentity: volume serial + FILE_ID_128, 24 bytes |
 | 56 | DriverInstanceId, GUID |
 | 72 | ParentDirectoryIdentity, 24 bytes |
 | 96 | Original owner creation time, int64 |
@@ -47,28 +58,24 @@ The unchanged 1,192-byte outer request carries this **124-byte, pack-4** payload
 | 112 | ReferenceRequestId, uint64 |
 | 120 | ProofKind, uint32 |
 
-Outer fields are core version/size, nonzero RequestId, operation, original owner PID, permitted volume flags, extension marker, image/path lengths and path bytes. All unused bytes are zero.
+Outer fields supply version/size, nonzero RequestId, operation, original owner PID, permitted flags, extension marker, lengths and path. Unused bytes are zero.
 
-- Op4: original private stage path; reference is genuine durable op19; ProofKind=0.
-- Op15: exact destination name; reference is committed op13; ProofKind=0.
-- Op23: original op15 destination/authority tuple; reference is original op15. ProofKind is the kernel attestation in section 4. A newer fact uses a new immutable op23 request, never changes an in-flight request.
+- Op4: original private stage path; genuine durable op19 reference; ProofKind=0.
+- Op15: exact destination; committed op13 reference; ProofKind=0.
+- Op23: original op15 destination/authority tuple and RequestId; proof from section 4. A newer attestation gets a new immutable request, never modifies an in-flight one.
 
-Validate envelope, sizes/tails/flags, complete raw replay bytes, transfer/full stage identity/generation, original driver epoch, original PID/creation time, parent identity, view and phase reference. Bind view generation on first op15 and preserve its exact rename history. Bound entries additionally require original mount/root/parent/case/leaf, security, ancestry and seed dependencies. Paths/digests cannot reconstruct missing authority.
+Validate every envelope/length/tail/flag, full replay bytes, transfer/full identity/generation, original epoch, historical PID/creation, parent/view and phase reference. Bind view on first op15 and preserve exact rename history. Bound entries additionally require their original mount/root/parent/case/leaf, security, ancestry and seed dependencies.
 
-Validation differs by operation:
-
-| Operation | Required authority |
+| Operation | Authority requirement |
 |---|---|
-| Fresh op15 permission | Live original owner and effective caller authority, current admission, exact committed allocation/parent/view, native grant/share/security and seed prerequisites. PID identity alone is insufficient. |
-| Op15 outcome replay | Exact saved request/outcome; no fresh grant and no requirement that an exited process become live again. Permission/refusal cannot change. |
-| First/resumed seal | Exact historical owner binding, genuine durable op19 and the authenticated driver’s completed T4 drain/irreversible read-only attestation for this object/version; exact backing/length/seed dependencies. **No live-process requirement.** |
-| Op23 recovery | Exact original allocation/op15 chain and authenticated immutable kernel attestation; no new caller/file object or filesystem authority. |
-| Inspection/publication | Measured exact seal receipt, current policy, current destination/generation/delete floors and existing publication/native authority. Seal acknowledgement is not approval. |
-| Op17 | Joint state machine, exact request and kernel/agent quiescence; default terminal-and-absent residue policy. |
+| Fresh op15 permission | Live original owner/effective authority, current admission, exact allocation/commit/view/parent, native grant/share/security and seed prerequisites. PID identity alone is insufficient. |
+| Op15 replay | Exact immutable saved outcome; no new grant or live-process refresh. |
+| First/resumed seal | Historical owner binding, genuine durable op19 and authenticated completed T4 drain/irreversible read-only attestation, exact backing/length/seed evidence. **No live-process requirement.** |
+| Op23 | Exact original allocation/op15 chain and authenticated kernel attestation; no new caller/file object. |
+| Inspection/publication | Exact measured seal receipt, current policy, current destination/generation/delete floors and existing publication authority. |
+| Driver-delete receipt | Exact prior release intent, historical version/object/epoch and actual disposition/lifetime/removal evidence; no new public mutation authority. |
 
-The op4 contract attests successful drain before sending; save that attestation with the request. A mere startup scan, owner exit or zero counter does not recreate it.
-
-### Typed reply
+### Typed replies for operations 4, 15, 23 and 24
 
 Use a separate **1,296-byte, pack-4** buffer:
 
@@ -83,236 +90,317 @@ Use a separate **1,296-byte, pack-4** buffer:
 | 1256 / 1260 | Recorded op15 outcome / reason code, uint32 |
 | 1264 | Reserved zero, 32 bytes |
 
-Define results in this family without renumbering old results. Nonapplicable fields are zero. Durable results require ReceiptId; `EpochReady`, transient and held replies provide no retirement authority. Rebind transport header fields on reconnect without changing immutable receipt facts.
+Define operation-specific results without renumbering old enums. Nonapplicable fields are zero. Durable results require ReceiptId; transient/held replies carry no completion authority. Op24’s ReceiptId must equal the driver’s receipt ID.
 
-Driver adoption requires exact echo/result/size/zeros, actual successful transport and current authenticated connection/authority, followed by pinned tuple and local-state revalidation. Generic verdicts, timeout, pending/reparse status and malformed replies cannot be typed success.
+Adoption requires actual successful transport, complete echo, legal result, exact sizes/zeros, current authenticated connection/authority and pinned local-state revalidation. Timeout, pending/reparse status, malformed reply or generic verdict cannot be typed success. Reconnect changes transport headers, never immutable evidence.
 
-## 3. Seal request survives every entry point
+## 3. Exact seal recovery
 
-Before the first send, the kernel retains one immutable request/RequestId. Retries use identical bytes.
+Retain one kernel request/RequestId before sending; retry identical bytes.
 
-The agent atomically persists **`SealIntent` and `SealPending` together, before measurement**. Intent contains the entire request, ReceiptId, original driver/boot and historical owner binding, destination identity, exact object/generation, genuine op19 reference and drain attestation. Reserve its storage before replacement. `SealPending` without intent cannot be newly emitted.
+Atomically persist **`SealIntent` together with `SealPending`, before measurement**. Include complete request, ReceiptId, original driver/boot and historical owner binding, destination identity, exact object/generation, genuine op19 reference and drain attestation. Reserve storage before replacement. New `SealPending` without intent is invalid.
 
-Measurement resumes only from that persisted intent. Successful classification atomically adds measured length and `SealReceipt` while preserving the intent. Inspection cannot consume the version before this replacement. Zero length follows the ordinary path.
+Measurement resumes only from that intent. Atomically add measured length and `SealReceipt` on classification, preserving intent. Inspection cannot consume the version before this replacement. Zero length follows the ordinary path.
 
-All entry points use one helper:
+All entry points use the same helper:
 
-- synchronous/async interceptor seal handlers;
-- direct `SealAsync`;
+- synchronous/async interceptor handlers and direct `SealAsync`;
 - `TransitionAsync(..., Sealed)` (`A/StagedTransferJournal.cs:1977–1986`);
 - startup `RetainInterruptedAsync` (`:3116–3121`);
-- legacy-empty migration and its publisher/startup callers (`:2236`, `A/StagedTransferPublisher.cs:117`).
+- legacy-empty migration and publisher/startup callers (`:2236`; `A/StagedTransferPublisher.cs:117`).
 
-An entry point supplies the authenticated exact request or resumes the identical stored intent. It cannot generate a new request from manifest fields. Missing/mismatched intent leaves the version nonpublishable with `seal_request_unavailable`/`seal_request_mismatch`; historical state/length/digest does not waive this rule. Already-completed publication may finish exact result bookkeeping, never repeat publication.
+Supply an authenticated exact request or resume the identical stored intent. Do not construct one from manifest fields. Missing/mismatched intent stays nonpublishable with `seal_request_unavailable`/`seal_request_mismatch`. Historical state/length/digest does not waive this requirement. Exact bookkeeping of an already-completed publication may finish; publication is never repeated.
 
-Startup with intent but no measurement retries only measurement after validating original evidence, exact frozen backing and applicable epoch state. Retirement-only epochs prohibit this continuation. Missing backing, changed identity, coverage/lifetime uncertainty or an unproved drain remains held.
+Startup retries unfinished measurement only with validated original evidence and exact frozen backing. Missing backing, changed identity, missing drain/seed or lifetime uncertainty stays held.
 
-Completed receipt lookup precedes current-head/backing/cleanup checks. Exact replay acknowledges the historical measurement in progressed states and after cleanup without reopening the deleted stage, remeasuring, inspecting or publishing.
+Completed receipt lookup precedes current-head/backing/cleanup checks. Exact replay in progressed states or after cleanup acknowledges historical measurement without reopening, remeasuring, inspecting or publishing.
 
 | Reply | Driver action |
 |---|---|
-| `SealRecorded` | Clear matching seal pending/in-flight state; set ordinary local `Sealed`; save receipt and wake disposal/retirement. Release attempt pin once. Keep independent object/section/cleanup/publication obligations. |
-| `RetryableFailure` | Keep exact request and obligation; release attempt pin only; bounded EXCHANGE retry of unfinished measurement/bookkeeping. |
-| Held/DENY/malformed | Preserve request/lifetimes, park SERVICE with named reason; no refusal polling. |
-| Disconnect/stale | Preserve request; retry only after permitted current-channel reconciliation. No replay after retirement begins. |
+| `SealRecorded` | Clear matching seal pending/in-flight, set ordinary local `Sealed`, save receipt and wake disposal/retirement. Release attempt pin once; keep independent lifetime/cleanup/publication obligations. |
+| Retryable | Keep exact request; release attempt pin only; bounded EXCHANGE retry of unfinished work. |
+| Held/DENY/malformed | Keep request/lifetimes; park SERVICE with named reason, without refusal polling. |
+| Disconnect/lost/stale | Keep request; normal authenticated reconciliation/reconnect retries it. Old-channel ACK cannot apply. |
 
-Compaction pins intent, receipt and dependency closure while valid replay remains. Cleanup/publication cannot erase them. Charge retained journal storage cumulatively.
+Compaction retains intent, receipt and dependencies while replay remains possible. Charge storage cumulatively. This batch introduces no epoch-based receipt reclamation.
 
-## 4. Op15 and complete exposure recovery
+## 4. Op15 and exposure recovery
 
 ### Durable outcome
 
-Serialize permission, refusal and recovery closure under the same journal gate. Persist complete original op15 and immutable outcome before reply. Existing exact outcome wins before live-owner checks. Definitive refusal requires proving no permission was committed; uncertainty/invalid authority gives no terminal refusal.
+Serialize permission/refusal/recovery closure under the journal gate. Persist complete original op15 and immutable outcome before reply. Existing exact outcome wins before live-owner checks. Definitive refusal requires proving no permission committed; uncertain storage/query or invalid authority gives no definitive negative.
 
-| Op15 reply | Driver action |
+| Reply | Driver action |
 |---|---|
-| `CompletionPermitted` | Mark permission known/may-exist; continue original CREATE validation/cancellation. Reply alone clears no reservation or lifetime obligation. |
-| `CompletionRefused` | Prohibit exposure and queue op23 after actual rollback/completion drains. Keep receipt/reservation/predecessor meanwhile; a sent op15 cannot enter op16/kind-5. |
-| Retryable | Preserve ambiguity; complete/roll back original CREATE once; queue evidence recovery, not another CREATE. |
+| `CompletionPermitted` | Record known/may-exist permission; continue original validation/cancellation. Reply alone releases no reservation. |
+| `CompletionRefused` | Prohibit exposure; queue op23 after actual rollback/completion drains. Keep receipt/reservation/predecessor meanwhile. Sent op15 cannot enter op16/kind-5. |
+| Retryable | Preserve ambiguity; complete/roll back original CREATE once; recover evidence, not another CREATE. |
 | Held/DENY/malformed/disconnect | Preserve ambiguity and named hold. |
 
-### Kernel attestation and agent transitions
+### Monotonic evidence and op23
 
-Retain allocation-level monotonic evidence after transaction destruction: exposure claim, original completion classification/return, rollback completion, real per-object CLEANUP/CLOSE, callback/lookup ownership and actual cache/paging rundown. Keep raw status/information locally; success attestation requires a final valid successful staged completion, not `NT_SUCCESS(STATUS_PENDING)`.
+Retain allocation-level exposure claim, completion classification/return, rollback, real per-object CLEANUP/CLOSE, lookup/callback ownership and cache/paging evidence after transaction destruction. Keep raw status/information locally. Latch `ExposurePossible` under final `StageAttachLock` arbitration **before** successful completion; it means possible exposure, not delivered handle, and never resets.
 
-Latch `ExposurePossible` under final `StageAttachLock` arbitration **before** successful completion. It means possible exposure, not delivered handle. Never reset it.
-
-Op23 ProofKind values are:
-
-| Value | Kernel attestation and agent action |
+| ProofKind | Kernel attestation / agent transition |
 |---:|---|
-| 1 — `NeverExposed` | All relevant CREATEs returned failure, no exposure claim ever occurred, rollback and complete local drain proved. Agent persists retained-unexposed custody, closing absent op15 outcome with refusal first. |
-| 2 — `ExposurePossible` | Claim occurred, completion outcome/return unresolved. Agent records `AttachmentRecoveryState=ExposurePossible`; returns `HandleLifecycleRequired`, but authorizes no pending/fence clear. |
-| 3 — `CompletionSuccessReturned` | Claim plus exact original successful completion returned; attach/cancel producer arbitration finished. Agent requires existing exact permitted op15, records this immutable completion attestation, retains `CompletionPermitted`, returns `HandleLifecycleRequired`. |
-| 4 — `RealCleanupAfterExposure` | Cumulative success-return attestation plus actual owned-object CLEANUP. Agent records both facts and returns `HandleLifecycleRequired`; **does not write op19**. |
-| 5 — `CloseWithoutCleanupUnproved` | Exact owned CLOSE occurred without real CLEANUP after possible exposure/cancellation. Agent retains `attach_canceled_close_lifetime_unproved`; no ordinary-lifetime conversion. |
-| 6 — `CoverageLost` | Callback coverage or required tracking lost. Agent retains `attach_lifetime_unproved`; stronger-looking counters/older replies cannot clear it. |
-| 7 — `CompletionFailureAfterExposure` | Completion returned failure after a possible exposure claim, or claimed cancellation lacks a proved no-handle route. Agent records failure but retains `attach_exposure_unproved`; it cannot convert this into NeverExposed. |
+| 1 — `NeverExposed` | All relevant CREATEs returned failure, no claim ever occurred, rollback/full local drain proved. Persist retained-unexposed custody; close absent op15 outcome with refusal first. |
+| 2 — `ExposurePossible` | Claim occurred, completion/return unresolved. Persist `AttachmentRecoveryState=ExposurePossible`; `HandleLifecycleRequired` authorizes no pending/fence clear. |
+| 3 — `CompletionSuccessReturned` | Exact successful original completion returned and attach/cancel arbitration finished. Require durable permitted op15; persist immutable completion attestation, retain `CompletionPermitted`; return `HandleLifecycleRequired`. |
+| 4 — `RealCleanupAfterExposure` | Cumulative success-return plus actual owned CLEANUP. Persist both facts; return `HandleLifecycleRequired`, **without writing op19**. |
+| 5 — `CloseWithoutCleanupUnproved` | Exact owned CLOSE without real CLEANUP after possible exposure/cancellation. Retain `attach_canceled_close_lifetime_unproved`. |
+| 6 — `CoverageLost` | Required callback/tracking evidence lost. Retain `attach_lifetime_unproved`. |
+| 7 — `CompletionFailureAfterExposure` | Failure after claim or unproved canceled-before-handle route. Record failure and retain `attach_exposure_unproved`; never convert to NeverExposed. |
 
-Reject impossible combinations, altered references and conflict with retained-unexposed or refused op15 evidence. Exposure attestations without an exact durable permission remain `attach_outcome_unproved`; recovery cannot create permission.
+Reject impossible combinations, altered references and conflicts with refused op15/retained-unexposed evidence. Exposure without exact durable permission remains `attach_outcome_unproved`; recovery cannot mint permission.
 
-Source observations determine transitions:
-
-| Event | Resolving transition |
+| Event | Resolution |
 |---|---|
-| Failure/cancellation before exposure claim | After actual rollback/completion and full drain, ProofKind 1. No fabricated CLEANUP, op19 or seal. |
-| Successful completion returned | ProofKind 3. After exact durable reply and local revalidation, finish attachment bookkeeping below. Ordinary and recovery paths use the same completion-attestation transition. CREATE is already completed once; no second completion is issued. |
-| Real CLEANUP before success bookkeeping finishes | Record genuine cleanup immediately and defer op19 collection. ProofKind 4 permits the same bookkeeping finish; then queue the **real** pending op19. |
-| Normal CLOSE after CLEANUP | Release only actual handle/object/lease ownership; preserve sticky cleanup evidence and op19 obligation. CLOSE does not acknowledge op19 or prove deletion. |
-| Canceled CREATE reaching CLOSE without CLEANUP | ProofKind 5. The inspected source supplies no proved cancellation-CLOSE no-handle lifetime construction. **Keep the named hold.** Do not mark `AnyHandleCleanupObserved`, manufacture op19, seal or delete. A future resolving route needs its own exact cancellation/object/source-barrier proof and review. |
-| Failure after claim, unknown completion or coverage loss | ProofKind 2/6/7 and named hold. Real release callbacks may drain references, but cannot erase the missing evidence. |
-| Owner exit | Scheduling event only. Preserve historical owner binding; do not clear an unresolved allocation-owned reservation. |
+| Failure/cancellation before claim | ProofKind 1 only after actual rollback/completion and full drain; no synthetic CLEANUP/op19/seal. |
+| Success returned | ProofKind 3 and exact durable reply finish bookkeeping below. Normal and recovery paths share this transition; original CREATE completes only once. |
+| CLEANUP before success bookkeeping | Record genuine cleanup immediately, defer op19; ProofKind 4 finishes bookkeeping then queues real op19. |
+| CLOSE after CLEANUP | Release actual object/lease ownership; retain cleanup/op19 obligation. CLOSE does not prove deletion. |
+| Canceled CREATE reaches CLOSE without CLEANUP | The inspected source provides no proved cancellation-CLOSE no-handle construction. **Keep the named hold**, with no fabricated op19, seal or deletion. A resolving route requires separate exact proof/review. |
+| Unknown completion/failure after claim/coverage loss | Retain the applicable named hold despite actual reference releases. |
+| Owner exit | Scheduling only; preserve historical binding and unresolved allocation-owned reservation. |
 
 ### Flags, reservations and pins
 
-Recovery and owner-resume claim serialize under `StageNamespaceResource`; rename/other terminal work cannot alter the tuple during recovery. Each RPC owns one stream pin; callback/transaction/lookup owners drain independently.
+Recovery versus owner resume serializes under `StageNamespaceResource`; competing rename/terminal work cannot change the tuple. Each RPC has one stream pin; transaction/callback/lookup owners drain separately.
 
-For a validated ProofKind 3/4 `HandleLifecycleRequired` reply:
+A validated ProofKind 3/4 reply requires exact permitted op15, completion-return evidence, no active producer/conflicting terminal claim/coverage hold. Then, for this original completed CREATE only:
 
-- require exact permitted op15 and original completion-return evidence, no active attachment producer, conflicting terminal claim or coverage-loss hold;
-- set `AttachCompletionKnown/MayExist` and `AttachAcknowledged`; clear `AttachCompletionPending/Fence` **only for this completed original CREATE**;
-- clear its allocation receipt/recovery pending and tuple bookkeeping only after all allocation attempts drain; unlink only its reservation;
-- release its one `AllocationReceiptParent` reference and wake that predecessor;
-- clear allocation-only `PrivateDeleteReserved` only absent actual discard/delete-on-close; preserve actual delete state;
-- preserve `AnyHandleCleanupObserved`; if genuinely set and op19 unacknowledged, set/retain `HandleReceiptPending` and wake collection. Op19’s existing gate becomes reachable because completion flags are now resolved;
-- retain handle/object/share/cache/paging/instance/writer-lease ownership until its real release. Do not set `HandleReceiptAcknowledged`, `Sealed`, `Retired` or deletion flags.
+- set `AttachCompletionKnown/MayExist`, `AttachAcknowledged`; clear `AttachCompletionPending/Fence`;
+- clear allocation receipt/recovery/tuple bookkeeping only after its attempts drain; unlink only its reservation;
+- release its single predecessor receipt reference and wake that predecessor;
+- clear allocation-only `PrivateDeleteReserved` only absent actual discard/delete-on-close;
+- preserve genuine `AnyHandleCleanupObserved`; if set and op19 unacknowledged, retain/set `HandleReceiptPending` and wake collection;
+- retain actual handle/object/share/cache/paging/instance/lease ownership until release. Do not set op19 ACK, seal, retirement or deletion flags.
 
-ProofKind 2 never performs those clears. ProofKind 5/6/7 keeps unresolved flags and reservations; actual CLOSE may release its own counted object/lease, but is not permission to bulk-clear sharing/cache/lifetime obligations. A late weaker reply cannot clear a newer hold.
+ProofKind 2 performs none of those clears. ProofKind 5/6/7 retains unresolved flags/reservations; CLOSE releases only actual ownership. Weaker/stale replies cannot clear stronger holds.
 
-Genuine op19 remains `CompletionPermitted → HandleObserved` through its exact durable reply (`A/StagedTransferJournal.cs:1011–1025`; `K/StageStream.c:6309–6359`). Only then may normal T4 drain/read-only seal proceed, including after owner exit. Actual discard retains its separate exact cleanup path. Op16/op18/kind-5 remain unavailable for op15 ambiguity.
+Genuine op19 remains `CompletionPermitted → HandleObserved` through exact durable reply (`A/StagedTransferJournal.cs:1011–1025`; `K/StageStream.c:6309–6359`). Only then may T4 drain/read-only seal proceed, including after owner exit. Discard remains separate; op16/op18/kind-5 cannot resolve op15 ambiguity.
 
-For ProofKind 1, require no file objects, shares, cache/sections/paging users, attach producers/lookups or competing RPC/rename/cancellation owner, and close driver-owned holds outside callback-needed locks. Zero samples alone are insufficient.
+For NeverExposed, prove no app objects/shares/cache/sections/paging users, attach producers/lookups or competing RPC/rename/cancellation; close driver holds outside callback-needed locks. Zero samples alone are insufficient.
 
-Agent persistence is `AttachmentRecovery=RetainedUnexposed` plus exact custody receipt, bytes/object/version/ancestry/security/provenance/accounting. If original op15 outcome is absent, persist refusal first against delayed permission. Reply `RetainedUnexposed` permits matching view detachment, pending/fence/allocation reservation release and the single predecessor-pin release. Retire drained kernel stream memory through a separate predicate, never synthetic seal/discard/deletion. Retain the unload obligation described next.
+Persist `RetainedUnexposed` custody with exact request/object/version, bytes, ancestry/security/provenance/accounting. Its reply permits matching view detachment, pending/fence/allocation reservation and one predecessor-pin release. Free drained shell memory through a distinct predicate, never synthetic seal/discard/deletion.
 
-All other replies retain the exact claim; retryable persistence backs off, explicit refusal parks, and disconnect preserves state.
+**Conservative default applied:** retain a bounded charged residue ticket/custody inventory; retained bytes still veto voluntary unload and existing epoch drain. Missing custody is `retained_unexposed_custody_unproved`; confirmed residue is `retained_unexposed_blocks_unload`. Restart/counters/name release do not clear it. Nothing is automatically deleted, seeded, exported or published.
 
-### Retained residue: conservative default and pending option
+The recommended custody exception remains **unapproved and unimplemented**: only exact fully drained never-exposed service-private custody, reconstructed charges, retained ancestry/security/provenance/floors, no public/cleanup/uncertain obligation and permanent nonpublication/nonseeding could qualify. It would permit unload while bytes remain charged/private. Automatic deletion and exposure/coverage exceptions remain excluded.
 
-**Owner-recorded conservative default:** retained never-exposed bytes remain an outstanding private allocated/unsealed obligation and **veto voluntary unload and epoch retirement**. Preserve the existing terminal-and-absent agent predicate. Releasing drained stream memory or the abandoned app name does not satisfy it.
+## 5. Refusal accounting without reclamation
 
-Before freeing the shell, retain a bounded, charged epoch residue ticket naming custody ReceiptId, transfer/generation/full identity and durable dependencies. Reconstruct tickets from validated service custody inventory on restart/reconnect before unload preflight. No ticket may disappear because counters reach zero. Missing inventory/custody evidence vetoes with `retained_unexposed_custody_unproved`; confirmed residue vetoes with `retained_unexposed_blocks_unload`. It is not automatically deleted, sealed, exported, seeded or published.
+Keep operation 3’s 72-byte V20 request and full validation: intent version/size, reservation/predecessor, disposition/reference kind, driver and original creation time; outer RequestId/PID/flags/destination.
 
-Users can retry the failed save after exact name release, but operators still cannot voluntarily unload while this residue remains. Full Restart can establish ended Windows lifetimes; **it does not make retained bytes terminal-and-absent or retire their receipts/charges**. Existing new-boot admission/recovery is a separate decision from old-epoch receipt retirement.
+Reserve a potential refusal slot and worst-case storage **before fresh backing or receipt creation** under allocator/accounting serialization. Exact replay consumes no new slot. Verified positive allocation may release the unused potential-refusal reservation; uncertain commit remains charged.
 
-**Recommended narrow exception — NOT implemented or enabled until owner approval:** only proved never-exposed, fully drained residue could qualify as service-owned custody rather than an unload obligation, provided:
+Charge committed file allocation, temporary overlap/crash orphans, bounded accounting metadata and filesystem overhead allowance; also check volume headroom. A live-stream bound or 1,192-byte payload alone is insufficient.
 
-- exact object/version/original driver/owner/boot and immutable custody receipt survive startup verification;
-- complete bytes and metadata are under validated service-private ownership, with no app/native producer, lookup, lease, mapping or callback that can change them;
-- storage and all dependency/receipt charges are durable and reconstructed; custody acceptance reserves capacity before kernel ownership is released;
-- service compaction retains ancestry/security/provenance and destination generation floors; kernel predecessor release transfers dependency responsibility without erasing it;
-- no pending public intent, accepted mutation, uncertain outcome or cleanup obligation is hidden;
-- custody is permanently nonpublishable/nonseedable and cannot acquire justification/export authority from unload; only a separately authorized exact cleanup/retention policy can remove it;
-- op17 explicitly audits and includes these custody receipts in its durable retirement record; epoch retirement removes replay authority, not custody/accounting.
+Keep the 1,216-byte complete-request-echo reply; accounting capability `0x800` adds result 21:
 
-Users would gain idle voluntary unload while private residue remains charged on disk. Automatic deletion and broader exposure/coverage exceptions are excluded.
-
-## 5. Accounting and the joint op17/unload contract
-
-### Allocation operation 3
-
-Keep the existing 72-byte V20 request: intent version/size, reservation/predecessor GUIDs, disposition/reference kind, driver GUID and original creation time; outer RequestId/PID/flags/destination. Preserve exact validation and committed-manifest/refusal replay.
-
-Reserve a potential refusal slot and worst-case storage **before fresh backing or receipt creation** under allocator/accounting serialization. Replay needs no new slot. Release potential-refusal charge only after verified positive manifest commit; uncertainty stays charged. Include committed allocation units, temporary overlap, crash orphans, bounded metadata and filesystem overhead allowance; also check volume headroom.
-
-The unchanged 1,216-byte full-request-echo reply retains 19/20; capability `0x800` adds 21:
-
-| Reply | Driver action before retirement |
+| Reply | Driver action |
 |---|---|
 | Exact allocation tuple | Existing adoption/attachment/cleanup route. |
 | 20 — no allocation committed | Exact shell reservation and one predecessor-pin release; no predecessor-state change. |
-| 19 — transient | Preserve request/reservation/pin; bounded EXCHANGE retry. |
-| 21 — capacity unavailable | No backing/generation/refusal committed; preserve request/reservation/pin and park SERVICE as `allocation_refusal_budget_exhausted`. Reconciled reconnect after capacity restoration wakes it; no polling. |
-| DENY/malformed/disconnect | Hold; no terminal release. |
+| 19 — transient | Keep exact request/reservation/pin; bounded EXCHANGE retry. |
+| 21 — capacity unavailable | No backing/generation/refusal committed. Keep exact request/reservation/pin; park SERVICE as `allocation_refusal_budget_exhausted`. Retry after reconciled reconnect following approved capacity restoration; no polling. |
+| DENY/malformed/lost/disconnect | Preserve hold; no terminal release. |
 
-Startup validates refusals/temporaries/orphans/retirement records and reconstructs charges, including legacy 1,192-byte receipts. Never reset usage on restart. Invalid/conflicting/unreadable evidence is conservatively charged and blocks fresh admission with `allocation_refusal_accounting_unproved`. Orphan cleanup requires validated ownership and retirement, not age/name.
+Startup validates and reconstructs committed refusal, temporary/orphan and uncertain charges, including legacy receipts. Invalid/conflicting/unreadable evidence stays conservatively charged and blocks fresh admission with `allocation_refusal_accounting_unproved`.
 
-### Op17 request and reply adoption
+**No committed allocation-refusal receipt is retired, compacted, deleted or uncharged in batch 2.** Service restart, Windows Restart, existing `EPOCH_DRAINED`, reply delivery, elapsed time and apparent absence authorize no reclamation. Failed uncommitted work releases reservations only after actual operation drain and verified absence of its storage; that is not committed-receipt reclamation.
 
-Extension 29 uses an **80-byte, pack-4** payload:
+Valid durable refusal files alone need not veto unload once their kernel requests/reservations/pins have resolved and accounting is consistent. They remain charged on disk after unload/restart. Unresolved requests, dirty/uncertain accounting or outstanding storage operations still veto. Increasing an approved budget may restore capacity; restart cannot reset it.
+
+## 6. Exact released-stage driver-delete receipt
+
+This applies to **normally Released**, published versions with `HandbackState=NotAttempted`. Justified/blocked hand-back cleanup retains its separate exact receipt path. No public file is deleted by this protocol.
+
+### Exact release intent: control 35
+
+Before sending, the agent persists an immutable release intent naming the original version, stage path and checked private-directory binding, driver epoch, committed rename count and unique ReleaseNonce. Do not initiate deletion from a mere missing leaf.
+
+Use **128-byte, pack-4** control input:
 
 | Offset | Field |
 |---:|---|
-| 0 / 4 / 8 | Version / StructSize / DriverInstanceId |
-| 24 | DrainNonce, uint64 |
-| 32 / 36 | Original OS boot sequence / proof flags, uint32 |
-| 40 / 48 | Private-state revision / last pre-retirement RequestId, uint64 |
-| 56 | QuiescenceNonce, GUID |
-| 72 | Reserved zero, uint64 |
+| 0 | Existing core Control, 16 bytes: Version=18, StructSize=128, Command=35, Reserved=0 |
+| 16 / 20 | ExtensionVersion=29 / Phase, uint32 |
+| 24 / 40 | DriverInstanceId / TransferId, GUID |
+| 56 | DestinationGeneration, uint64 |
+| 64 | StageIdentity, 24 bytes |
+| 88 / 92 | CommittedRenames / Outcome, uint32 |
+| 96 | ReleaseNonce, GUID |
+| 112 | ExpectedReceiptId, GUID |
 
-Outer PID/flags/path are zero. ProofFlags=0 is a **nonterminal preflight audit**, permitted only before retirement, returning `EpochReady` or a named blocker. It does not retire or authorize reclamation. Final ProofFlags=`0xF` attests permanently closed admission, drained producers, drained prior request uses and ended relevant local lifetimes. Private revision changes with relevant state/ownership; it is not lifetime proof.
+Phase 1=`Release`: ExpectedReceiptId is zero. Phase 2=`Query`: zero discovers the existing binding; nonzero must match it. Outcome must be existing Released value 1. Other fields must be nonzero/valid as applicable.
 
-Preflight includes durable retained-residue inventory under the default above. Recheck all operational/durable obligations before entering retirement; no cleanup requiring future service traffic may remain.
+Reply is **168 bytes**:
 
-Final request is constructed and frozen before entering R below. Persist agent `Retiring` with the exact request before waiting for continuation drain; uncertain persistence never permits reactivation. Persist `EpochRetired` only after complete audit/quiescence. Preserve this record until reclamation finishes, rather than overwrite the sole epoch file.
+| Offset | Field |
+|---:|---|
+| 0 | Entire 128-byte input echo |
+| 128 | ReceiptId, GUID |
+| 144 / 148 | Result / Reserved=0, uint32 |
+| 152 / 160 | Current connection epoch / authority revision, uint64 |
 
-Driver accepts only the legal reply for the saved request, correct complete echo/nonce/driver/boot/revision, zero fields, required receipt and current authenticated transport. Old `EPOCH_DRAINED` is not the extension-29 retirement result.
+Results distinguish `ReleaseAccepted`, `ReceiptPending`, `ReceiptReady`, `ReceiptUnavailable`, `TupleRefused`, `RetryableFailure`, `CapacityUnavailable` and `NotReady`. Query never authorizes deletion or supplies the completion facts by itself.
 
-### One state machine, shared with the unload note
+Kernel validation requires current authenticated service, negotiated mask, exact original driver/transfer/generation/full identity/rename count, Released outcome and immutable nonce. Same-nonce replay is idempotent; changed nonce/tuple refuses. Read mutable state through its proper locks/nonpaged snapshots; no namespace acquisition from a callback needed by a worker RPC.
 
-| State | Allowed work and transition |
+For Release, reserve record capacity and publish the exact binding **before** setting disposal/queueing work. Capacity/allocation failure changes no disposal state. A replay returns the same ReceiptId without another reservation or delete. Query reads existing stream/receipt ownership and may wake pending delivery; absence from both is `ReceiptUnavailable`, never successful deletion.
+
+The agent checks every echo/header/result and current connection. It durably binds returned ReceiptId to its existing ReleaseNonce. If the initial reply was lost, Query recovers that binding. For negotiated Released traffic, old control-29 `Held` replies are not completion authority; retain old layouts for their existing uses, including the separate CleanedUp path.
+
+### Kernel evidence, lifetime and accounting
+
+Maintain a separate bounded **nonpaged** receipt map, surviving stream release. Reserve factories before allocation and count reserved, waiting, deleting, replay-pending and in-flight records together. Proposed development ceiling: **1,024 slots**, reused only after acknowledged records actually free; it is not a per-boot counter.
+
+A record owns its exact release input, ReceiptId, original boot/driver, stage locator and private-parent anchor, immutable completed facts, full saved operation-24 request, state and reference/work accounting. Bound record payload to 4,096 bytes with compile-time assertions; separately charge bounded RPC scratch and map/factory metadata. All temporarily retained stream/instance/handle owners remain in existing bounded accounting; do not return a stream slot while its memory is retained.
+
+State progression:
+
+`Reserved → WaitingLocalLifetime → DeleteClaimed → DispositionAccepted → LocalLifetimeComplete → CompletionReady → AgentAcknowledged`.
+
+- Claim deletion under namespace serialization against attach/rename/follow-up/discard. Require ordinary seal/op19, Released disposal and exact rename count. Detach only the already-disposed private view.
+- Keep stream ownership/count until actual destruction. Perform context/paging drain, identity/security/type checks, opens, disposition and closes outside namespace/spin locks.
+- Verify the original backing and DELETE-open object both match recorded volume/FILE_ID_128; require regular, non-reparse, single-link private backing and checked parent.
+- Record actual final disposition status immediately. Once accepted, never issue disposition again. Lost replies/storage failures retry evidence delivery/bookkeeping only. Indeterminate outcome stays `driver_stage_delete_outcome_unproved`.
+- Close every driver-owned stage handle and release stage-object references after real upper-object/share/cache/section/paging/callback/RPC drain. Preserve actual ordering; counters alone do not attest it.
+- Confirm removal through complete stable observation under the checked private-parent/volume binding after close. Exact prior disposition plus lifetime evidence qualifies absence; pathname absence alone does not. Pending original link, replacement, changed/reparse parent, access error or incomplete observation remains held.
+- Publish terminal immutable evidence before freeing the stream. No retained terminal record owns a stage FILE_OBJECT or handle that could delay deletion. Release temporary instance/observer pins after their work drains.
+
+Reserve before mutation, so no allocation is needed after disposition to save its result. Publish map ownership before unlinking the stream, closing the current “not listed but teardown unfinished” gap. ACK cannot free a record with factory/work/send/lookup uses; unlink under lock and destroy/release charges outside it after the last use.
+
+Pre-disposition transient preparation and genuine unsignaled drain waits use existing bounded scheduling. Accepted/uncertain disposition is never repeated. Explicit evidence mismatch parks with named diagnostics. Own close/drain/reference events, normal reconnect and exact Query wake the worker; timers merely request fresh qualifying observation.
+
+### Operation 24: retained evidence replay
+
+Send only `CompletionReady` evidence using extension 29 and this **124-byte, pack-4** payload:
+
+| Offset | Field |
+|---:|---|
+| 0 / 4 | ExtensionVersion=29 / StructSize=124, uint32 |
+| 8 | ReceiptId, GUID |
+| 24 / 40 | Original DriverInstanceId / TransferId, GUID |
+| 56 | DestinationGeneration, uint64 |
+| 64 | StageIdentity, 24 bytes |
+| 88 / 92 | CommittedRenames / DisposeOutcome=Released(1), uint32 |
+| 96 / 100 | DispositionClass=`FileDispositionInformation` / DeleteFile=1, uint32 |
+| 104 / 108 | Actual final DispositionStatus / DrainStatus, int32 |
+| 112 / 116 | CompletionFacts / OriginalBootSequence, uint32 |
+| 120 | Reserved=0, uint32 |
+
+Outer request: core version/size, retained nonzero RequestId, Operation=24, RequestorProcessId=0, Flags=`StageV19ReplyFlag` only, Reserved=29, ImageNameLength=124, original private-stage NT locator in Path and zero tails. No token, pointer or handle is exported.
+
+CompletionFacts bits are:
+
+| Bit | Attested fact |
+|---:|---|
+| `0x001` | Exact Released disposal intent bound |
+| `0x002` | Exact object/type/single-link/parent verified |
+| `0x004` | Genuine T4 drain complete |
+| `0x008` | Upper application-object/share lifetime ended |
+| `0x010` | Cache/section/paging/callback/RPC users drained |
+| `0x020` | Original exact disposition accepted |
+| `0x040` | All driver-owned stage handles closed |
+| `0x080` | Driver-owned stage-object references released |
+| `0x100` | Exact qualified removal confirmed |
+
+Terminal replay requires **`0x1FF`**, no higher bits, and strict successful final disposition/drain statuses. Positive-indeterminate status, local close alone or forced coverage loss cannot produce CompletionReady.
+
+Retain identical request bytes/RequestId through every retry. Copy/pin under the receipt-map lock, send at PASSIVE outside locks, then revalidate the record and current channel before adoption.
+
+### Agent validation and absence-tolerant completion
+
+Validate:
+
+- complete envelope, exact payload/flags/PID/path/tails;
+- driver/boot against authenticated origin binding and original manifest epoch;
+- transfer, positive generation and full stage identity against the exact Released manifest;
+- rename count against the same committed chain used by disposal;
+- Released outcome, ordinary non-hand-back eligibility, no pending rename/conflicting cleanup;
+- ReceiptId against saved release intent, or exact control-35 Query binding after lost initial reply;
+- disposition class/flag, actual strict final statuses and complete `0x1FF` facts;
+- lexical owned stage locator and saved private-parent identity; fresh anchored observation must not show a replacement, pending original, reparse/access ambiguity or incomplete result.
+
+Do not require a live original owner or current public-name generation: this completes historical private cleanup, not publication. It must not change published/delete floors or remove a newer version.
+
+Replace unconditional leaf `GetAttributes` with lexical containment plus checked parent/ancestor validation and absence-capable observation. **Only a matching complete receipt** permits absent-stage completion. Persist the raw request/receipt, exact release-intent binding and `StageDeleted=true` in one atomic manifest replacement before ACK. Fault after replacement is recovered by exact reread, not a second delete.
+
+A same receipt replays this durable completion. Changed receipt/tuple or conflicting evidence stays `released_stage_delete_receipt_mismatch`/`released_stage_delete_observation_unproved`. Historical driver-owned entries without receipt stay **`released_stage_delete_receipt_unavailable`**; aggregate counters, `Held=0`, missing path, digest or reboot cannot certify them. No agent-only missing-file catch changes this.
+
+| Agent reply | What the driver does |
 |---|---|
-| **P — Reversible preparation** | Close unload-owned admission, drain control bodies and inspect operational/durable obligations; op17 preflight is nonterminal. Veto may restore only unload-owned gates and exact prior work. No Unknown clear. If cleanup may commit, enter Q. If every prerequisite is proved, freeze final op17 and enter R. |
-| **Q — Cleanup quarantine** | App admission stays closed. Complete only already-identified exact cleanup/bookkeeping, required service-private bookkeeping CREATE and current-channel reconciliation needed for it. Recheck all obligations, including retained residue. No epoch retirement yet. Then enter R; no rollback to P. |
-| **R — Retirement-only** | Permanently fence every ordinary sender/authority path and drain previously admitted uses. Only the saved final op17 request/replay and necessary local draining are allowed. Agent closes epoch admission, drains prior continuations and audits terminal/absent obligations. No return to P/Q. |
-| **E — Epoch retired, local commit pending** | Exact `EpochRetired` adopted. Keep all fences. Final operational recheck/fence commit may veto, but leaves E and local-drain-only progress; no ordinary RPC/reconciliation or service bookkeeping CREATE resumes. Once checks pass, enter T without a new epoch request. |
-| **T — Committed local teardown** | Common permanent teardown: close ports/owned holds, join workers, drain actual users, release instance pins, unregister and free after source barriers. No veto/rollback/reopen; genuine lifetime waits may be unbounded. |
+| `DriverDeleteRecorded` | Require exact full echo, matching ReceiptId, zero nonapplicable fields and current authenticated channel. Mark acknowledged, remove only this record’s map ownership, then free after all local uses drain. No stage/public mutation or successor-state change. |
+| `RetryableFailure` | Keep immutable terminal evidence and accounting; release attempt pin only; bounded EXCHANGE retry of recording/delivery, never disposition. |
+| Typed Held or generic DENY | Keep record and unload obligation; park SERVICE with named reason. Query/reconciled reconnect can retry; no refusal polling. |
+| Malformed/wrong receipt/stale reply | Keep record; release attempt pin once; no ACK adoption. |
+| Lost reply/disconnect | Keep record/request; normal authenticated reconnect replays it. Agent returns saved completion if replacement had committed. |
 
-In R, `Held`/EpochBusy, retryable failure, DENY, malformed or lost reply **all retain R**. Retry only immutable final op17 when applicable; an unexpected unresolved obligation remains named and fail-closed. Local events/operator retry may recheck; timers provide no evidence.
+The agent persists completion before replying; reply transmission alone does not release kernel ownership. Durable receipt/dependency storage remains charged and pinned in this batch; kernel ACK-based memory release is not allocation-refusal reclamation.
 
-Reconnect in R/E authenticates a **retirement-only transport** without op11, ordinary capability activation, startup recovery or a full stream sweep. It can deliver only the saved final op17/reply; the new peer must support the required family. E may re-fetch that same receipt if needed, never re-create authority.
+### Restart and delivery limitations
 
-Replace current post-ACK and shared veto behavior at `K/StageStream.c:7757–7773`, `:7793–7801`: `StageUnloadPrepareWork=TRUE` and general callback reopen must not restore collectors or bookkeeping CREATE in R/E. A narrow local-release gate admits CLEANUP/CLOSE/completion/rundown only. Only P may call reversible rollback; Q’s exact cleanup eligibility is not R/E eligibility.
+Use existing normal SET_POLICY/authentication commit/op11 bootstrap and the new required mask. No retirement-only bootstrap is added. Op24 is receipt bookkeeping, not fresh staging authority; its handler must not require inspection/publication recovery readiness once normal authenticated driver binding/compatibility is established. Startup must not block negotiation or the receive loop waiting for a receipt its kernel sender cannot yet deliver: record the per-version hold, finish normal bootstrap and retry through the connected receipt worker.
 
-### Every sender and continuation
+Service restart with the same loaded driver replays retained nonpaged evidence. If the agent already persisted the receipt, startup finishes/replays bookkeeping without new deletion.
 
-Enforce the phase gate at collection **and the common transport/control entry**, including already-collected batches.
+Voluntary unload is vetoed until ACK and local record-use drain. Mandatory teardown/reboot sends no fresh receipt RPC and fabricates no ACK; after local rundown it may destroy volatile memory. If no durable agent receipt survived that loss, the entry remains named and held. A different driver/boot cannot recreate it. This batch does not promise cold-driver recovery of unpersisted delete evidence.
 
-Before R, finish/quiesce: allocation/follow-up/create-after and recovery; attach 12–16/18 and op19; seal; rename prepare/commit/abort; discard; op23; private cancellation; native/public-open/disposition preparation and facts; publication/metadata/observation/Facts/ACK controls; epoch reconciliation; legacy/advisory sends and canary/fence/activation/reclaim work that can send, create ownership or touch filesystem state. R/E permit none of these new exchanges. Only exact final op17 can obtain a retirement send pin. Local release work remains resident and counted.
+Completed cleanup leaves pending dispatch; genuine unfinished disposal/recording has bounded backoff, while evidence-dependent holds park. Do not reinstate batch 1’s per-entry idle loop.
 
-The agent epoch gate covers receive-loop inline handlers, deferred allocation/seal/op23/rename/native/public continuations, startup/private/native recovery, inspection/publication and its native controls, discard/BLOCK/released-stage cleanup, hand-back/justification work that can authorize or mutate, and their queued/destination-turn waiters. Quiesce them **before R**; at retirement entry drain pre-admitted bodies/I/O and unfinished recording without repeating mutations. No new epoch continuation starts. The op17 coordinator must not wait on itself, hold journal/namespace locks, or occupy the receive loop.
+## 7. Unload, locks and scheduling
 
-Canceling a task is not proof it drained. An accepted mutation with unresolved recording blocks retirement; later reply transmission is not retirement evidence. Status/notification delivery grants no work authority.
+Use [T5-VOLUNTARY-UNLOAD.md](T5-VOLUNTARY-UNLOAD.md) **as of `7ae16880`**, narrowed by the current scope decision:
 
-Qualified full Restart still requires greater trusted boot, different driver, complete authenticated replay and successful private recovery. Retained residue still blocks retirement under the conservative default. Preserve old active/blocked retirement evidence before recording a new epoch; new-boot admission does not falsely retire old residue or reclaim its charges. GUID change, service restart, Fast Startup, native-map absence and counter rollback/wrap are insufficient.
+| Phase | Contract |
+|---|---|
+| Reversible preparation | Close unload-owned admission, drain/check obligations; veto restores the existing permitted listener/worker/recovery routes. |
+| Existing quarantine / epoch exchange | Preserve exact cleanup and existing V20 op17 RequestId/nonce replay, service bookkeeping CREATE exception, normal authentication/reconciliation and **EPOCH_DRAINED** semantics. Post-ACK veto keeps existing quarantine/progress behavior. |
+| Committed local teardown | Only after exact EPOCH_DRAINED, final operational recheck and fence commit: close ports/owned holds, join workers, drain actual users, unregister/free. No rollback thereafter. Mandatory entry remains service-independent. |
 
-Reclamation requires durable retirement plus quiescence. Persist reclamation intent, remove only exact validated receipts, confirm removal, then release charges; failures remain charged. Bound/charge retirement metadata and reserve separate recovery headroom. Keep generation/published/delete floors and all custody dependencies.
+No R/E retirement-only states, extension-29 op17, new preflight, `EpochRetired`, permanent-refusal mode or changed post-ACK reopen behavior belongs to batch 2.
 
-## 6. Locks, scheduling and mandatory teardown
+Batch-2 vetoes are: pending/in-flight seal or missing exact seal evidence; unresolved op15/exposure/fence/op23 and associated pins/reservations; genuine op19/drain/cancellation-CLOSE/coverage obligations; unresolved allocation/accounting work; retained-unexposed residue/custody ticket; driver-delete reserved/waiting/deleting/unknown/completion-ready/unacknowledged records, factories or local uses; and incomplete durable released-stage completion. Resolved charged refusal files alone are not a new unload veto or reclaimable storage.
 
-- New snapshots, attestations, claims and residue tickets are capacity-reserved **nonpaged** ownership. Spin-lock/DPC/elevated-IRQL release bodies remain resident.
-- Preserve namespace → stream Resource/StageListLock, exposure arbitration under StageAttachLock and existing native/publication orders. No reverse acquisition.
-- Pin exact stream/request at PASSIVE, release resources for RPC/I/O, then revalidate before adoption. One release per attempt; no I/O, allocation, close or wait under spin locks or callback-needed resources.
-- Close backing/backend holds outside locks before dependent waits. Completion/rollback, genuine CLEANUP/CLOSE and last reference release wake local/recovery work; owner exit only schedules evaluation.
-- Before R, persistent causes/deadlines survive pending→in-flight→reply. Count eligible in-flight obligations; use existing 250 ms–8 s exchange backoff and genuine drain/unmap behavior. SERVICE/refusal/capacity holds do not poll. DPC is wake-only; arm from `KeReadStateTimer`, cancel/reset when no eligible work remains.
-- R/E timers/wakes cannot run ordinary collectors, op11 or startup seal. They pace only eligible immutable retirement replay/local checks. Disconnect/reconnect never lowers phase.
-- Recovery runs off the receive loop; ordinary startup permits exact pending recovery without fresh admission only in P/Q-compatible active epochs. Durable Retiring/Retired is checked before dispatch.
-- Mandatory teardown bypasses voluntary preflight/op17 and uses service-independent permanent local drain. It synthesizes no receipt, seal, deletion or epoch retirement. Sticky Unknown/coverage-loss constraints remain.
+Keep new ownership nonpaged and capacity-reserved. Preserve namespace → stream Resource/StageListLock and existing native/publication orders. Receipt-map operations use bounded nonpaged copies; allocate, query, close, wait and RPC outside spin locks and callback-needed resources. Pin every object used after a lock drop, release once, and include the new deletion/delivery batches in teardown joins.
 
-## 7. Controls, delivery and decisions
+Before committed teardown, normal reconciled reconnect can wake exact recovery. Causes/deadlines survive pending→in-flight→reply; count in-flight obligations. Use existing 250 ms–8 s exchange and genuine drain retry behavior; SERVICE/refusal/capacity/evidence holds do not poll. DPC stays wake-only; timer state governs arming and idle cancellation.
 
-Agent tests use actual handlers, fresh journals and `MemoryMarshal` wire bytes:
+Mandatory teardown performs local drains only; no seal/op23/op24/cleanup ACK is synthesized. Sticky Unknown, taint, feature gates and unsupported destinations remain unchanged. Late-load hardening is deferred by the scope decision, not silently implemented here.
+
+## 8. Deferred work and owner choices
+
+The [re-review findings 1–3](evidence/2026-10-14/t5-designs-rereview-sol61.md) require a later coherent design:
+
+- **Durable epoch retirement/reclamation:** needs an exact bounded storage route that remains usable for durable writes/audit. Closing service bookkeeping CREATE first strands it.
+- **Retirement-only reconnect:** needs complete authentication/bootstrap, cookie/epoch/revision/capability and reply-adoption contracts; existing policy/authentication/op11 cannot simply be forbidden.
+- **Permanent refusal after failed retirement:** changes the approved usable-veto recovery policy and requires an explicit owner failure-policy decision and remedy.
+
+None is implemented or advertised by batch 2. Existing EPOCH_DRAINED does not authorize refusal reclamation.
+
+Budget defaults remain pending owner approval: evaluate 4,096 refusal slots/64 MiB charged storage with temporary overlap and separately reserved recovery headroom. Kernel delete-record limits and durable recovery storage also require measured accounting before activation.
+
+The retained-residue custody exception remains an unapproved option; conservative unload veto applies. No automatic deletion, manual unlock, expiry, SYSTEM-created caller authority or broader restart inference is proposed.
+
+## 9. Required controls and delivery
+
+Agent controls use actual handlers/fresh journals and `MemoryMarshal` wire bytes:
 
 | Group | Required cases |
 |---|---|
-| Harness patterns | Resave/new/replace/mapped × approve/BLOCK; empty; name reuse; occupied-name generation adoption; BLOCK then resave before/after retirement; independent public bytes. |
-| Seal | Crashes before/after atomic intent+SealPending and measurement, startup/direct/Transition/migration entry points, missing/tampered intent, exited owner, progressed states and cleanup. Lost replies at inspection/approval/BLOCK/publication/disposal/cleanup boundaries never increase mutation counters. |
-| Attachment | Every prepare/commit/op15/op23 reply loss; exit/never retry/PID reuse; owner retry versus recovery; refusal versus permission/delayed op15; success return and cleanup in either order; late failure and coverage loss. |
-| Canceled lifetime | Before-claim rollback resolves only with full proof; claim followed by CLOSE without CLEANUP preserves the named hold, flags/reservation and no op19/seal/delete. Duplicate/inherited handles, independent objects, mappings/cache/paging and upper cancellation remain distinct. |
-| Custody/accounting | Default residue veto after shell release/restart; unapproved exception cannot activate; custody/dependency corruption; count/byte limits, temporary/orphan overlap, disk full and exact replay during exhaustion. |
-| Epoch/unload | P rollback; Q cleanup; R lost request/reply; E post-ACK policy/fence veto; reconnect in each phase; pre-admitted agent continuation; no forbidden send/control/mutation after R; restart versus old-residue retirement; reclamation crashes. |
-| Wire/compaction | Every envelope/tuple/owner/view/reference/proof/result/connection/tail mutation; stronger hold cannot be cleared by stale reply; retain receipt/ancestry/floors until exact retirement. |
+| Harness patterns | Resave/new/replace/mapped × approve/BLOCK; empty; occupied targets; name reuse; rename generation/count adoption; BLOCK→resave before/after cleanup; independent public bytes. |
+| Seal | Before/after atomic intent+SealPending and measurement; every entry point/startup/migration; missing/tampered intent; exited owner; progressed/cleaned states; every lost reply/crash boundary; no repeated publication. |
+| Exposure | Every prepare/commit/op15/op23 loss; exit/never retry/PID reuse; permission/refusal/delayed request races; success/CLEANUP ordering; late failure/coverage loss; cancellation-CLOSE keeps its named hold with no synthetic op19/seal/delete. |
+| Refusal accounting | Count/byte limits, concurrent writers, temporary/orphan overlap, disk full, before/after commit faults, startup reconstruction, invalid evidence and result 21. No receipt deletion/uncharge after restart/EPOCH_DRAINED/time. Exact replay continues at capacity. |
+| Driver deletion | Driver-held release→local drain→exact disposition/close/removal→service restart→one durable completion; rename count/epoch/generation/full identity mutations; lost release/query/op24 replies; before/after completion replacement faults; no second disposition/public mutation. |
+| Negative deletion | Absent without receipt, historical receiptless entries, replacement/reparse/changed parent, access errors, pending link, incomplete lifetime, failed/indeterminate disposition and driver loss before persistence remain held. |
+| Bounds/unload | Reserve before delete; factories and in-flight records included; capacity refuses before mutation; stream/record slots return only after actual free; unacknowledged record and retained residue veto; normal reconnect resolves; existing quarantine/post-ACK behavior preserved; mandatory sends no new RPC. |
+| Idle/compaction | Completed cleanup performs no recurring per-entry work; unfinished work backs off; holds park; receipts/ancestry/floors survive compaction. Batch-1 BLOCK/history-name fixes remain intact. |
 
-Extend existing allocation, attachment/journal and publication controls without removing/renaming tests or weakening assertions. Kernel properties/mutations must catch: missing atomic intent, alternate seal entry bypass, live-process seal requirement, fabricated cleanup/op19, early fence/reservation clear, exposure reset, concurrent recovery/resume, wrong tuple adoption, missing/double pins, spin/PAGE violations, in-flight census loss/refusal polling, premature accounting/reclamation, residue ticket loss, and **every R/E reopen/send path**, including current post-ACK veto branches.
+Extend [publisher disposal tests](../agente/SafeUpload.Agent.Tests/StagedTransferPublisherTests.cs), [hand-back recovery tests](../agente/SafeUpload.Agent.Tests/StagedHandbackTests.cs), [journal/scan tests](../agente/SafeUpload.Agent.Tests/StagedTransferJournalTests.cs) and existing allocation/attachment/native controls. No renamed/removed tests, skips or weakened assertions.
 
-Batch coherent contracts/persistence/worker/accounting/compaction/unload integration. Then local four-profile compile and test preflight/all T5 controls; complete agent matrix and four WDK/PREfast/ApiValidator/import gates; fresh independent Sol 6.1 xhigh combined review; authorized matched-pair fault/Verifier/raw-byte/restoration rows. Source acceptance, component results and qualification are separate.
+Kernel source/property mutations must catch: seal intent omission/alternate entry bypass/live-owner seal requirement; exposure reset/fabricated cleanup/early flag clear/double pins; refusal budget bypass/reset/reclamation; delete without record reservation; map publication after unlink; wrong tuple/count/nonce; counters or Held=0 used as completion; accepting disposition without close/removal; repeated accepted/uncertain disposition; early ACK/free/slot return; uncounted factory/scratch ownership; PAGE/spin/I/O violations; missing delete-batch join; refusal polling/stale-channel adoption; and introduction of deferred retirement/reconnect/permanent-refusal behavior.
 
-Pending choices:
-
-| Decision | Recommendation and user effect |
-|---|---|
-| Receipt budgets | Evaluate 4,096 refusal slots and 64 MiB charged refusal storage plus reserved recovery headroom; measured defaults require approval. Exhaustion stops fresh protected allocation with a named explanation while permitted exact replay continues. Charge seal/attachment retention too. |
-| Retained residue exception | Recommend only the custody conditions in section 4. **Default veto remains implemented until owner approval.** Exception would permit unload while bytes remain private/charged; automatic deletion remains excluded. |
-| Missing evidence | Keep named holds and existing applicable remedies; no expiry, manual unlock, SYSTEM authority or broader restart inference. |
-
-Unreadable-seed option 1, metadata/security, generation/delete invariants, bound-readiness blockers and unsupported destinations remain unchanged. The cancellation-CLOSE hold is explicit; this note does not claim complete recovery qualification.
+Batch contracts, persistence, worker/accounting and receipt retention coherently. Run local four-profile compile, required-test preflight/all T5 checks, complete agent matrix and four WDK/PREfast/ApiValidator/import 0/0 gates; obtain fresh independent Sol 6.1 xhigh security/lifetime review before revised boot. Then authorized matched-pair loss/restart/unload/Verifier rows, independent bytes and separate restoration. Source acceptance, component results and protected qualification remain distinct.
