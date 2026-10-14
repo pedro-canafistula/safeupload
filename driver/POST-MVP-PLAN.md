@@ -446,7 +446,14 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     [matrix `t5-top2`](evidence/2026-10-13/exact-agent-matrix-t5-top2-summary.txt) PASS (1,453 normal / 2,023 feature, identical agent
     tree). Failed receipts kept: kernel `t5-inc5a`–`t5-inc9a` and `t5-top1/2` (IRQL/paging, stack, buffer, SAL classes; C4013; C28251),
     matrix `t5-top1` (CS8604). Readiness stays NotReady with four named blockers; no admission, positive selector or boot.
-  - [ ] Single pre-boot Sol 6.1 xhigh lifetime review of the [package](T5-PREBOOT-REVIEW-PACKAGE.md) and kernel delta.
+  - [x] Single pre-boot Sol 6.1 xhigh lifetime review of the [package](T5-PREBOOT-REVIEW-PACKAGE.md) and kernel delta
+    ([receipt](evidence/2026-10-13/t5-preboot-review-sol61.md)): REJECT for the first boot — DriverEntry failure unwind leaked the
+    writer registry, native replay rows were written to paged memory under `NativeLock`, attach captures preceded capacity admission.
+    Teardown, lock order, dormant gates and fail-closed paths found sound; the four NotReady holds accepted for a dormant boot.
+  - [x] Fixes `c7518c7a` (also the fence-failure unwind and three more paged-row callers): [four WDK builds `t5-fix1`](evidence/2026-10-13/exact-t5-fix1-summary.txt)
+    at 0/0 with PREfast/ApiValidator, signed (LocalMachine signer, feature Debug `66E25B04…7E6A`); three new source controls fail on the
+    unfixed sources. Agent tree unchanged since matrix `t5-top2`.
+  - [ ] Focused Sol re-review of the fixes, then the first boot of the dormant pair on win10-debug3 (boot Verifier rows).
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.

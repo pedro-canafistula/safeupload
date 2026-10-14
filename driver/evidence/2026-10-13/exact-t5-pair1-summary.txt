@@ -1,0 +1,13 @@
+﻿LABEL=t5-pair1
+ARCHIVE_SHA256=28F65192A01BE01FC960D9C72A49D117E77CA047D94BAD7A36252F85C35C6CC7
+SOURCE_COMMIT=a27defd879020994591093a6caf7ce4920c80f92
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-14T02:49:35.7918358Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=DCE422E76FB277195B41A15232E370B8956454C5CFAF103D8DB59DD0965BD2B5
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=5D1B2DE12E85E2944B47BAF5105C969BE233A57DED644646F4FDA05313CB91F2
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=FC0675D486B05461D4B01D1C18F66AC7BD084A3BCB50666F1FF872FAF95B998A
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=0D6BCAEC35D92E13BE84AFB724F60103BAA71B5AF8C9B60C7AB843F49DE50080
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=108F4CE78399DD2B48F7C57FA51BE011DA10B73088BB9BFE7383C5BA8CC72DED
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=F99159DB3981AFE3FCE025F6D6544A1EB730B0397D31435160065510397D365D
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=5370DEF25D8CCD5D9DCF2AEA90DFD8C6B913BA939241E05C0385C34C51DFEEA4
+sign : exit=0 unsigned_sha256=5D1B2DE12E85E2944B47BAF5105C969BE233A57DED644646F4FDA05313CB91F2 signing_copy_sha256=5D1B2DE12E85E2944B47BAF5105C969BE233A57DED644646F4FDA05313CB91F2 unsigned_unchanged=True store=LocalMachine output_sha256=705CF0BDA67A073456852F92EF06BB5284D7A270CDF6C4EDF39DB68D1166541B signed_sha256=705CF0BDA67A073456852F92EF06BB5284D7A270CDF6C4EDF39DB68D1166541B signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38
