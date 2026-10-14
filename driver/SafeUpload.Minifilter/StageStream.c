@@ -6327,7 +6327,11 @@ static VOID StageUpdateRetryTimer(VOID)
         StageRetryMs = 0;
         return;
     }
-    if (StageRetryArmed) return;
+    /* StageRetryArmed means set and not cancelled; the kernel says whether that arm has expired (KeSetTimer resets this
+     * notification timer to not-signaled). An expiry flag cannot be attributed to an arm: the worker skips its pass while
+     * reconciling, and a delayed DPC can follow a later arm, so deriving the armed state from it left the reconcile
+     * unretried (m2t5boot11/12) or a later arm unknown and uncancelled. */
+    if (StageRetryArmed && !KeReadStateTimer(&StageRetryTimer)) return;
     cap = drain ? STAGE_RETRY_DRAIN_MAX_MS : STAGE_RETRY_EXCHANGE_MAX_MS;
     StageRetryMs = StageRetryMs == 0 ? STAGE_RETRY_FIRST_MS : StageRetryMs * 2;
     if (StageRetryMs > cap) StageRetryMs = cap;
@@ -6359,11 +6363,9 @@ static VOID StageWorkerPass(PLIST_ENTRY Released, PLIST_ENTRY Rpcs,
     PLIST_ENTRY link;
     KIRQL irql;
     InterlockedIncrement64((volatile LONG64 *)&StageCounters.WorkerPasses);
+    /* The expiry only asks for stream retries; StageUpdateRetryTimer reads the timer's own state for arming. */
     fired = InterlockedExchange(&StageRetryFired, 0) != 0;
-    if (fired) {
-        StageRetryArmed = FALSE;
-        InterlockedIncrement64((volatile LONG64 *)&StageCounters.WakeTimer);
-    }
+    if (fired) InterlockedIncrement64((volatile LONG64 *)&StageCounters.WakeTimer);
     StageStreamAcquireSpinLock(&StageListLock, &irql);
     sweep = StageSweepRequested;
     StageSweepRequested = FALSE;
@@ -6617,8 +6619,10 @@ static VOID StageWorker(PVOID Context)
                     StageStreamAcquireSpinLock(&StageListLock, &irql);
                     StageSweepRequested = TRUE;
                     StageStreamReleaseSpinLock(&StageListLock, irql);
-                    reconcileAgain = TRUE; /* wake the queued seal/discard/receipt sweep */
                 }
+                /* Either acceptance ends the skipped passes: run one for owed local work (an expiry, the exit ring).
+                 * Only success requests the full sweep; drain-only acceptance grants no protocol authority. */
+                reconcileAgain = TRUE;
             } else if (!NT_SUCCESS(reconcileStatus)) {
                 StageReconcileWait = StageWaitFor(reconcileStatus);
             } else {
