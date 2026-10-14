@@ -89,21 +89,33 @@ def checked_gate(content, prefix, analysis=False):
     return row
 
 
-def exact_sources(work, summary, commit, subtrees):
-    for leaf, key in [('src.zip', 'ARCHIVE_SHA256'), ('src.manifest', 'MANIFEST_SHA256')]:
-        require(sha(work / leaf) == unique_hash(summary, key), 'Source artifact summary mismatch: ' + leaf)
-    rows = (work / 'src.manifest').read_text('utf-8-sig').splitlines()
-    records = [line.split('  ', 1) for line in rows]
-    paths = [path for _, path in records]
+def exact_sources(work, summary, commit, subtrees, source_zip=None):
+    # Builds since 2026-10-11 archive a Git commit (git archive, commit ID as the ZIP comment) and record SOURCE_COMMIT/SourceCommit
+    # instead of a per-file manifest; older builds keep their manifest check. Either way every archived file must equal the commit's.
+    source_zip = source_zip or work / 'src.zip'
+    require(sha(source_zip) == unique_hash(summary, 'ARCHIVE_SHA256'), 'Source artifact summary mismatch: src.zip')
     expected = git('ls-tree', '-r', '--name-only', commit, '--', *subtrees).decode().splitlines()
-    require(set(paths) == set(expected) and len(paths) == len(expected), 'Incomplete/duplicate exact source manifest')
-    with zipfile.ZipFile(work / 'src.zip') as archive:
-        archive_paths = [item.filename for item in archive.infolist() if not item.is_dir()]
-        require(set(archive_paths) == set(paths) and len(archive_paths) == len(paths), 'Source ZIP path inventory mismatch')
-        for digest, path in records:
+    if re.search(r'^MANIFEST_SHA256=', summary, re.M):
+        require(sha(work / 'src.manifest') == unique_hash(summary, 'MANIFEST_SHA256'), 'Source artifact summary mismatch: src.manifest')
+        rows = (work / 'src.manifest').read_text('utf-8-sig').splitlines()
+        records = [line.split('  ', 1) for line in rows]
+        for digest, _ in records:
             require(re.fullmatch(r'[0-9A-Fa-f]{64}', digest) is not None, 'Malformed manifest digest')
+        require(sorted(path for _, path in records) == sorted(expected) and len(records) == len(set(expected)),
+                'Incomplete/duplicate exact source manifest')
+    else:
+        recorded = re.findall(r'^(?:SOURCE_COMMIT|SourceCommit)=([0-9a-f]{40})$', summary, re.M)
+        require(len(recorded) == 1 and recorded[0] == commit, 'Build summary does not name exactly the source commit')
+        records = [(None, path) for path in expected]
+    with zipfile.ZipFile(source_zip) as archive:
+        if not re.search(r'^MANIFEST_SHA256=', summary, re.M):
+            require(archive.comment == commit.encode(), 'Source ZIP was not archived from the source commit')
+        archive_paths = [item.filename for item in archive.infolist() if not item.is_dir()]
+        require(sorted(archive_paths) == sorted(expected) and len(set(archive_paths)) == len(archive_paths),
+                'Source ZIP path inventory mismatch')
+        for digest, path in records:
             original = git('show', commit + ':' + path)
-            require(hashlib.sha256(original).hexdigest().upper() == digest.upper() and archive.read(path) == original,
+            require((digest is None or hashlib.sha256(original).hexdigest().upper() == digest.upper()) and archive.read(path) == original,
                     'Exact source mismatch: ' + path)
     # Covers HEAD and tracked dirty working-tree source; no test of stale code.
     require(subprocess.call(['git', 'diff', '--quiet', commit, '--', *subtrees], cwd=ROOT) == 0, 'Build source differs from working tree')
@@ -139,9 +151,18 @@ def build_inputs(args, commit, agent_commit, head):
     require(signed.get('exit') == '0' and re.fullmatch(r'[A-F0-9]{40}', signer) and signed.get('signed_sha256') == sha(feature)
             and signed.get('unsigned_sha256') == sha(work / 'owned-feature.sys'), 'Signed/unsigned driver/signer gate')
     require(unique_row(summary, 'inspector-feature-release').get('artifact_sha256') == sha(inspector), 'Inspector artifact mismatch')
-    agent_work = Path('/tmp/claude-1000/exact-agent-' + args.agent_label)
+    # A single exact agent build, or the feature Release view of an agent matrix build (its source archive is the matrix's).
+    candidates = [Path('/tmp/claude-1000/exact-agent-' + args.agent_label),
+                  ROOT / 'output/exact-agent-matrix' / args.agent_label / 'feature-release-view']
+    present = [path for path in candidates if (path / 'summary.txt').exists()]
+    require(len(present) == 1, 'Agent build label must name exactly one exact agent build or matrix view')
+    agent_work = present[0]
     agent_summary = (agent_work / 'summary.txt').read_text('utf-8-sig')
-    exact_sources(agent_work, agent_summary, agent_commit, ['agente'])
+    matrix_view = agent_work == candidates[1]
+    require(not matrix_view or re.search(r'^ArtifactView=exact-agent-compatible-feature-release$', agent_summary, re.M),
+            'Matrix agent view summary is not the feature Release compatibility view')
+    agent_source = agent_work.parent / 'src.zip' if matrix_view else agent_work / 'src.zip'
+    exact_sources(agent_work, agent_summary, agent_commit, ['agente'], agent_source)
     for gate in ('tests', 'publish'):
         matches = re.findall(r'^' + gate + r': exit=0 warnings=0$', agent_summary, re.M)
         require(len(matches) == 1, 'Agent tests/publish gate absent/ambiguous: ' + gate)
@@ -171,7 +192,8 @@ def build_inputs(args, commit, agent_commit, head):
     provenance = {'SourceCommit': commit, 'AgentSourceCommit': agent_commit, 'HarnessBaseCommit': head,
                   'HarnessSourceMode': 'sha256-pinned-working-tree', 'SignedSha256': sha(feature),
                   'UnsignedSha256': sha(work / 'owned-feature.sys'), 'Signer': signer,
-                  'SourceManifests': {str(work): sha(work / 'src.manifest'), str(agent_work): sha(agent_work / 'src.manifest')},
+                  'SourceArchives': {str(work / 'src.zip'): sha(work / 'src.zip'), str(agent_source): sha(agent_source)},
+                  'SourceManifests': {str(path): sha(path / 'src.manifest') for path in (work, agent_work) if (path / 'src.manifest').exists()},
                   'ServiceTreeSha256': tree_hash, 'BuildSummarySha256': sha(work / 'summary.txt'),
                   'AgentSummarySha256': sha(agent_work / 'summary.txt'), 'WriterFixtureSha256': sha(work / 'writer-fixture.exe')}
     pins = {}
