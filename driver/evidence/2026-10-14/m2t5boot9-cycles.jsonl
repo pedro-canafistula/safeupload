@@ -1,0 +1,5 @@
+{"I":1,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-1.txt","Ok":false,"Why":"the public file never held the approved bytes","AckMs":435,"OutcomeMs":120012}
+{"I":2,"Pattern":"new","Sensitive":false,"Target":"C:\\Protected\\t4\\new-2.txt","Ok":false,"Why":"the public file never held the approved bytes","AckMs":179.1,"OutcomeMs":120006.7}
+{"I":3,"Pattern":"replace","Sensitive":false,"Target":"C:\\Protected\\t4\\rep-3.txt","Ok":false,"Why":"the public file never held the approved bytes","AckMs":440.2,"OutcomeMs":120018.1}
+{"I":4,"Pattern":"mapped","Sensitive":false,"Target":"C:\\Protected\\t4\\map-4.txt","Ok":false,"Why":"the public file never held the approved bytes","AckMs":219.3,"OutcomeMs":120026}
+{"I":5,"Pattern":"resave","Sensitive":false,"Target":"C:\\Protected\\t4\\same-5.txt","Ok":false,"Why":"the public file never held the approved bytes","AckMs":186.2,"OutcomeMs":120027.2}

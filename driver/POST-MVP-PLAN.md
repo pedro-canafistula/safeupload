@@ -517,7 +517,17 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       a later owner CREATE is refused before `AllowAttachResume`; exact attachment replay (lost-reply/cancellation controls) is required
       without broadly clearing reservations on failure. Follow-up, not applied: a foreign read during the allocation window still gets
       a sharing violation.
-    - [ ] `m2t5boot9`: t5-fix6 driver with the t5-attach1 agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
+    - [x] `m2t5boot9` (t5-fix6 driver, t5-attach1 agent; Ready): no more refusals, but cycles 1–5 never published (0/5; stopped on
+      repeated identical failures; restoration PASS). Each journal reached v20 HandleObserved (op19) with State 0, never sealed.
+      Cause: `Listed` was set only for receipt-retained allocations, never at the ordinary CREATE insertion, so op19 revalidation
+      discarded every HANDLE_OBSERVED ACK and parked the stream in `STAGE_WAIT_SERVICE` (no timer). Fix `426c7dcd` sets it under
+      `StageListLock` at that insertion; control `stream-listing-selfcheck.py`, mutation caught. [Focused review](evidence/2026-10-14/t5-fix7-review-sol61.md)
+      ACCEPT WITH CONDITIONS (observe seal progression next; an unlinked stream briefly keeps a stale `Listed`, which nothing
+      consults); [four WDK builds `t5-fix7`](evidence/2026-10-14/exact-t5-fix7-summary.txt) 0/0, [imports PASS](evidence/2026-10-14/exact-t5-fix7-imports.txt),
+      signed `7DB90CFE…1AE7`. New recovery-qualification hold: a lost seal ACK strands the kernel once inspection advances (the
+      handler accepts only Sealed). Exact op15 replay is implemented on `wt/t5-attach-replay` (`ee69ed10`; build `t5-replay1`
+      0/0), pending its review.
+    - [ ] `m2t5boot10`: t5-fix7 driver with the t5-attach1 agent (T4 smoke, boot Verifier); then the raw cells in all three modes.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
