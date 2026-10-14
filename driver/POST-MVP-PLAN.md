@@ -651,6 +651,15 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
       criterion for proceeding to a long run: **the 10,000-cycle row stays held** until that measurement is understood
       (conservative). The raw cells are not a long run and proceed.
     - [ ] Raw C01–C04/B01/B02/X01 cells in ordinary, runtime-Verifier and boot-Verifier modes with this pair (separate restoration each).
+      **Stopped after three identical failures** (`m2t5ro1`, `m2t5ob1`, `m2t5oc1`, C01-approve-absent ordinary; receipts kept; host
+      restoration discarded each run disk): the case completes, but in-guest restoration's `fltmc unload SafeUpload` returns 0x801F0010.
+      Harness `549fa0b1` (unload while the service runs) never applied because each trial stops its own agent first; `1db2d9fe`
+      restarts the test agent and retries for 120 s ([attempts](evidence/2026-10-14/boot-start-invariant-C01-approve-absent-ordinary-m2t5oc1-artifacts/driver-unload-with-service.txt)):
+      every attempt vetoed. Cause (source): `a27defd8` added `SafeUploadStageWritersUnloadReady`, which vetoes a voluntary unload
+      unless the volume-wide writer registry is empty — never true on a running system (230–250 entries from boot in `m2t5boot15`).
+      That is stricter than the approved [T5-DELETES §7](T5-DELETES.md#7-unload-and-shutdown-rescope) contract (veto only while
+      staged work is outstanding); registry entries pin instances, so the fix is a reviewed retirement path, batched with the
+      recovery holds. Design in progress; no further raw-cell runs until it lands.
   - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
     fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
     channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
