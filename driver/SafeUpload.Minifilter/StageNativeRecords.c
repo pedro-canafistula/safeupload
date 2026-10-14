@@ -1278,30 +1278,39 @@ static NTSTATUS NativeReadPage(UINT64 ExpectedRevision, ULONG Offset,
     BOOLEAN Ordinary)
 {
     PLIST_ENTRY link;
-    ULONG index = 0;
+    PSAFEUPLOAD_STAGE_NATIVE_SNAPSHOT page;
+    ULONG index = 0, count = 0;
+    UINT64 revision = 0;
+    BOOLEAN complete = FALSE;
     KIRQL irql;
     NTSTATUS status = STATUS_SUCCESS;
     *Count = 0; *Revision = 0; *Complete = FALSE;
     if (Capacity == 0 || Capacity > NATIVE_PAGE_LIMIT || (ExpectedRevision == 0 && Offset != 0))
         return STATUS_INVALID_PARAMETER;
-    if (!NativeEnter()) return STATUS_DEVICE_NOT_READY;
+    /* Callers' rows may be paged. Fill one bounded nonpaged page under
+     * NativeLock and copy it to the caller only after the lock is released. */
+    page = ExAllocatePool2(POOL_FLAG_NON_PAGED, (SIZE_T)Capacity * sizeof(*page), NATIVE_RECORD_TAG);
+    if (page == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    if (!NativeEnter()) { ExFreePoolWithTag(page, NATIVE_RECORD_TAG); return STATUS_DEVICE_NOT_READY; }
     NativeAcquire(&irql);
-    *Revision = NativeRevision;
+    revision = NativeRevision;
     if (!NativeReplayUsable) { status = STATUS_INTEGER_OVERFLOW; goto Exit; }
     if (ExpectedRevision != 0 && ExpectedRevision != NativeRevision) { status = STATUS_RETRY; goto Exit; }
     for (link = NativeRecords.Flink; link != &NativeRecords; link = link->Flink) {
         PSAFEUPLOAD_STAGE_NATIVE_RECORD record = CONTAINING_RECORD(link, SAFEUPLOAD_STAGE_NATIVE_RECORD, Link);
         if (NativeScheduled(&record->Snapshot.Binding) == Ordinary) continue;
         if (index++ < Offset) continue;
-        if (*Count == Capacity) break;
-        Rows[*Count] = record->Snapshot;
-        *Count += 1;
+        if (count == Capacity) break;
+        page[count++] = record->Snapshot;
     }
     if (index < Offset) status = STATUS_INVALID_PARAMETER;
-    else *Complete = link == &NativeRecords;
+    else complete = link == &NativeRecords;
 Exit:
     NativeRelease(irql);
     ExReleaseRundownProtection(&NativeCalls);
+    if (count != 0) RtlCopyMemory(Rows, page, (SIZE_T)count * sizeof(*page));
+    *Count = count; *Revision = revision; *Complete = complete;
+    ExFreePoolWithTag(page, NATIVE_RECORD_TAG);
     return status;
 }
 

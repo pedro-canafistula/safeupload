@@ -335,6 +335,12 @@ static KEVENT StageAttachQueueEvent;
 static KEVENT StageAttachThreadStop;
 static HANDLE StageAttachThreadHandle;
 static volatile LONG StageAttachActiveCount;
+/* CREATE captures in progress: reserved under StageAttachLock before the
+ * first allocation or reference, converted to an active count when the
+ * transaction becomes visible, or returned after its captured resources are
+ * freed. Active + capturing never exceeds the global/per-instance limits. */
+static PFLT_INSTANCE StageAttachCaptures[STAGE_ATTACH_LIMIT_GLOBAL];
+static volatile LONG StageAttachCaptureCount;
 static volatile LONG StageAttachStopping;
 static BOOLEAN StageAttachAccepting;
 static BOOLEAN StageAttachThreadRunning;
@@ -2900,7 +2906,7 @@ static VOID StageAttachReleaseActive(VOID)
 {
     KIRQL irql;
     StageStreamAcquireSpinLock(&StageAttachLock, &irql);
-    if (InterlockedDecrement(&StageAttachActiveCount) == 0)
+    if (InterlockedDecrement(&StageAttachActiveCount) == 0 && StageAttachCaptureCount == 0)
         KeSetEvent(&StageAttachDrained, IO_NO_INCREMENT, FALSE);
     StageStreamReleaseSpinLock(&StageAttachLock, irql);
     KeSetEvent(&StageAttachChanged, IO_NO_INCREMENT, FALSE);
@@ -2938,6 +2944,65 @@ static VOID StageAttachCancelCallback(PFLT_CALLBACK_DATA Data)
     }
 }
 
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageAttachReserveCapture(_In_ PFLT_INSTANCE Instance, _Out_ PULONG Slot)
+{
+    PLIST_ENTRY link;
+    ULONG index, instanceCount = 0, freeSlot = STAGE_ATTACH_LIMIT_GLOBAL;
+    KIRQL irql;
+    NTSTATUS status = STATUS_SUCCESS;
+    *Slot = STAGE_ATTACH_LIMIT_GLOBAL;
+    StageStreamAcquireSpinLock(&StageAttachLock, &irql);
+    if (!StageAttachAccepting || StageAttachStopping || !StageAttachThreadRunning ||
+        InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 ||
+        StageAttachActiveCount + StageAttachCaptureCount >= STAGE_ATTACH_LIMIT_GLOBAL) {
+        status = STATUS_DEVICE_BUSY;
+        goto Exit;
+    }
+    for (link = StageAttachTearingDownInstances.Flink;
+         link != &StageAttachTearingDownInstances; link = link->Flink) {
+        if (CONTAINING_RECORD(link, STAGE_ATTACH_INSTANCE_TOMBSTONE, Link)->Instance == Instance) {
+            status = STATUS_VOLUME_DISMOUNTED;
+            goto Exit;
+        }
+    }
+    for (link = StageAttachLookup.Flink; link != &StageAttachLookup; link = link->Flink)
+        if (CONTAINING_RECORD(link, STAGE_ATTACH_TRANSACTION, LookupLink)->InstanceIdentity == Instance) ++instanceCount;
+    for (index = 0; index < STAGE_ATTACH_LIMIT_GLOBAL; ++index) {
+        if (StageAttachCaptures[index] == Instance) ++instanceCount;
+        else if (StageAttachCaptures[index] == NULL && freeSlot == STAGE_ATTACH_LIMIT_GLOBAL) freeSlot = index;
+    }
+    if (instanceCount >= STAGE_ATTACH_LIMIT_PER_INSTANCE || freeSlot == STAGE_ATTACH_LIMIT_GLOBAL) {
+        status = STATUS_DEVICE_BUSY;
+        goto Exit;
+    }
+    if (StageAttachActiveCount + StageAttachCaptureCount == 0) KeClearEvent(&StageAttachDrained);
+    StageAttachCaptures[freeSlot] = Instance;
+    ++StageAttachCaptureCount;
+    *Slot = freeSlot;
+Exit:
+    StageStreamReleaseSpinLock(&StageAttachLock, irql);
+    return status;
+}
+
+/* Returns a reservation that never became an active transaction, after every
+ * resource captured under it has been released. Exactly once per reservation. */
+_IRQL_requires_max_(APC_LEVEL)
+static VOID StageAttachReturnCapture(_In_ ULONG Slot)
+{
+    KIRQL irql;
+    NT_ASSERT(Slot < STAGE_ATTACH_LIMIT_GLOBAL);
+    if (Slot >= STAGE_ATTACH_LIMIT_GLOBAL) return;
+    StageStreamAcquireSpinLock(&StageAttachLock, &irql);
+    NT_ASSERT(StageAttachCaptures[Slot] != NULL && StageAttachCaptureCount > 0);
+    StageAttachCaptures[Slot] = NULL;
+    --StageAttachCaptureCount;
+    if (StageAttachActiveCount + StageAttachCaptureCount == 0)
+        KeSetEvent(&StageAttachDrained, IO_NO_INCREMENT, FALSE);
+    StageStreamReleaseSpinLock(&StageAttachLock, irql);
+    KeSetEvent(&StageAttachChanged, IO_NO_INCREMENT, FALSE);
+}
+
 static NTSTATUS StageAttachQueueCreate(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PFLT_FILE_NAME_INFORMATION Name,
     SAFEUPLOAD_VOLUME_KIND VolumeKind, LONG64 ExpectedGeneration,
@@ -2952,6 +3017,8 @@ static NTSTATUS StageAttachQueueCreate(PFLT_CALLBACK_DATA Data,
     NTSTATUS status;
     BOOLEAN lookupLinked = FALSE;
     BOOLEAN lookupRemoved = FALSE;
+    BOOLEAN captureReserved = FALSE;
+    ULONG captureSlot = STAGE_ATTACH_LIMIT_GLOBAL;
     if (Data == NULL || Objects == NULL || Name == NULL || AdmissionSlot == NULL ||
         AdmissionSlot->Token == NULL || AdmissionSlot->Owner != StageAdmissionTokenDispatch ||
         Data->Iopb->MajorFunction != IRP_MJ_CREATE || !FLT_IS_IRP_OPERATION(Data) ||
@@ -2959,11 +3026,17 @@ static NTSTATUS StageAttachQueueCreate(PFLT_CALLBACK_DATA Data,
         FLT_IS_FASTIO_OPERATION(Data) || FltIsIoCanceled(Data))
         return STATUS_DEVICE_NOT_READY;
 
-    status = StageAttachSnapshotName(Name, &nameSnapshot);
+    /* Capacity covers the capture itself: names, transaction, references,
+     * subject, EA and security copies are all acquired under a reservation. */
+    status = StageAttachReserveCapture(Objects->Instance, &captureSlot);
     if (!NT_SUCCESS(status)) return status;
+    captureReserved = TRUE;
+    status = StageAttachSnapshotName(Name, &nameSnapshot);
+    if (!NT_SUCCESS(status)) { StageAttachReturnCapture(captureSlot); return status; }
     transaction = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*transaction), STAGE_TAG);
     if (transaction == NULL) {
         ExFreePoolWithTag(nameSnapshot, STAGE_TAG);
+        StageAttachReturnCapture(captureSlot);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
     RtlZeroMemory(transaction, sizeof(*transaction));
@@ -3055,6 +3128,10 @@ static NTSTATUS StageAttachQueueCreate(PFLT_CALLBACK_DATA Data,
     StageAttachReference(transaction); /* lookup reference */
     InsertTailList(&StageAttachLookup, &transaction->LookupLink);
     transaction->LookupLinked = TRUE;
+    /* The capture reservation becomes this active count in one lock hold. */
+    StageAttachCaptures[captureSlot] = NULL;
+    --StageAttachCaptureCount;
+    captureReserved = FALSE;
     InterlockedIncrement(&StageAttachActiveCount);
     lookupLinked = TRUE;
     StageStreamReleaseSpinLock(&StageAttachLock, irql);
@@ -3090,6 +3167,7 @@ Fail:
     if (lookupLinked) lookupRemoved = StageAttachRemoveLookup(transaction);
     StageAttachTransactionDereference(transaction);
     if (lookupRemoved) StageAttachReleaseActive();
+    if (captureReserved) StageAttachReturnCapture(captureSlot);
     return status;
 }
 
@@ -3106,12 +3184,15 @@ static BOOLEAN StageAttachHasInstance(_In_ PFLT_INSTANCE Instance)
     PLIST_ENTRY link;
     KIRQL irql;
     BOOLEAN found = FALSE;
+    ULONG index;
     StageStreamAcquireSpinLock(&StageAttachLock, &irql);
     for (link = StageAttachLookup.Flink; link != &StageAttachLookup; link = link->Flink) {
         PSTAGE_ATTACH_TRANSACTION tx = CONTAINING_RECORD(link,
             STAGE_ATTACH_TRANSACTION, LookupLink);
         if (tx->InstanceIdentity == Instance) { found = TRUE; break; }
     }
+    for (index = 0; !found && index < STAGE_ATTACH_LIMIT_GLOBAL; ++index)
+        if (StageAttachCaptures[index] == Instance) found = TRUE;
     StageStreamReleaseSpinLock(&StageAttachLock, irql);
     return found;
 }
@@ -6677,6 +6758,8 @@ NTSTATUS SafeUploadStageInitialize(VOID)
     KeInitializeEvent(&StageAttachQueueEvent, SynchronizationEvent, FALSE);
     KeInitializeEvent(&StageAttachThreadStop, NotificationEvent, FALSE);
     StageAttachActiveCount = 0;
+    RtlZeroMemory((PVOID)StageAttachCaptures, sizeof(StageAttachCaptures));
+    StageAttachCaptureCount = 0;
     StageAttachStopping = FALSE;
     StageAttachAccepting = TRUE;
     StageAttachThreadRunning = FALSE;
@@ -6688,14 +6771,22 @@ NTSTATUS SafeUploadStageInitialize(VOID)
     status = ExInitializeResourceLite(&StageNamespaceResource);
     if (NT_SUCCESS(status)) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* A failed DriverEntry gets no unload callback and StageFree returns
+         * early while StageInitialized is FALSE: each failure here releases,
+         * in reverse order, everything this function already acquired. */
         SafeUploadStageWritersInitialize();
         status = SafeUploadStageFenceInitialize();
-        if (!NT_SUCCESS(status)) return status;
+        if (!NT_SUCCESS(status)) {
+            SafeUploadStageWritersUninitialize();
+            ExDeleteResourceLite(&StageNamespaceResource);
+            return status;
+        }
         SafeUploadStageNativeInitialize(&StageDriverInstanceId, SharedUserData->BootId, &StageWorkEvent);
         status = SafeUploadBoundPublicationInitialize(&StageDriverInstanceId, SharedUserData->BootId);
         if (!NT_SUCCESS(status)) {
             SafeUploadStageNativeUninitialize();
             SafeUploadStageFenceFree();
+            SafeUploadStageWritersUninitialize();
             ExDeleteResourceLite(&StageNamespaceResource);
             return status;
         }
@@ -6783,7 +6874,7 @@ VOID SafeUploadStageStopWorker(VOID)
     for (;;) {
         BOOLEAN drained;
         StageStreamAcquireSpinLock(&StageAttachLock, &irql);
-        drained = StageAttachActiveCount == 0;
+        drained = StageAttachActiveCount == 0 && StageAttachCaptureCount == 0;
         if (!drained) KeClearEvent(&StageAttachDrained);
         StageStreamReleaseSpinLock(&StageAttachLock, irql);
         if (drained) break;
@@ -6818,7 +6909,7 @@ BOOLEAN SafeUploadStageCanDetach(VOID)
 {
     return StageStreamCount == 0 && StageReservedStreamCount == 0
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        && StageAttachActiveCount == 0
+        && StageAttachActiveCount == 0 && StageAttachCaptureCount == 0
 #endif
         ;
 }
@@ -7083,7 +7174,8 @@ NTSTATUS SafeUploadStagePrepareUnload(_In_ BOOLEAN Mandatory)
         goto Veto;
     }
     if (!SafeUploadPolicyPublicationQuiescent() || !SafeUploadStageWritersUnloadReady() ||
-        InterlockedCompareExchange(&StageAttachActiveCount, 0, 0) != 0) {
+        InterlockedCompareExchange(&StageAttachActiveCount, 0, 0) != 0 ||
+        InterlockedCompareExchange(&StageAttachCaptureCount, 0, 0) != 0) {
         objectPending = TRUE;
         status = STATUS_DEVICE_BUSY;
         goto Veto;

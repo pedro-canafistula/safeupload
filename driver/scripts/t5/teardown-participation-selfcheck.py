@@ -190,5 +190,42 @@ class TeardownParticipation(unittest.TestCase):
         self.order(release, 'StageMandatoryLocalDrained', 'stream->PagingRundown', 'StageCloseBacking', 'FltObjectDereference')
 
 
+    def test_initialize_failure_releases_everything_acquired(self):
+        # A failed DriverEntry gets no unload callback; StageFree returns early
+        # while StageInitialized is FALSE (pre-boot review finding 1).
+        init = body('StageStream.c', 'SafeUploadStageInitialize')
+        tail = init[init.index('SafeUploadStageWritersInitialize()'):init.index('StageInitialized = TRUE')]
+        failures = tail.split('return status;')[:-1]
+        self.assertGreaterEqual(len(failures), 2)
+        for failure in failures:
+            block = failure[failure.rindex('if (!NT_SUCCESS(status))'):]
+            self.order(block, 'SafeUploadStageWritersUninitialize()', 'ExDeleteResourceLite(&StageNamespaceResource)')
+
+    def test_native_page_reader_fills_nonpaged_page_under_lock(self):
+        # Callers pass paged rows; nothing pageable is written under NativeLock (finding 2).
+        reader = body('StageNativeRecords.c', 'NativeReadPage')
+        self.order(reader, 'POOL_FLAG_NON_PAGED', 'NativeAcquire(', 'NativeRelease(', 'RtlCopyMemory(Rows')
+        locked = reader[reader.index('NativeAcquire('):reader.index('NativeRelease(')]
+        self.assertNotIn('Rows[', locked)
+        self.assertNotIn('Rows,', locked)
+
+    def test_attach_capture_reserved_before_any_capture(self):
+        # Capacity covers captures in progress, not only visible transactions (finding 3).
+        create = body('StageStream.c', 'StageAttachQueueCreate')
+        reserve = create.index('StageAttachReserveCapture(')
+        for first in ('StageAttachSnapshotName(', 'ExAllocatePool2(', 'FltObjectReference(', 'ObReferenceObject(',
+                      'SafeUploadStagePublicCaptureCreateSubject(', 'StageAttachCaptureCreateInput('):
+            self.assertLess(reserve, create.index(first), first)
+        self.assertEqual(3, create.count('StageAttachReturnCapture(captureSlot)'))
+        self.order(create[create.index('Fail:'):], 'StageAttachTransactionDereference(transaction)',
+                   'StageAttachReturnCapture(captureSlot)')
+        convert = create[create.index('InsertTailList(&StageAttachLookup'):]
+        self.order(convert, 'StageAttachCaptures[captureSlot] = NULL', 'captureReserved = FALSE',
+                   'InterlockedIncrement(&StageAttachActiveCount)', 'StageStreamReleaseSpinLock(&StageAttachLock')
+        for file, name in (('StageStream.c', 'StageAttachReleaseActive'), ('StageStream.c', 'SafeUploadStageCanDetach'),
+                           ('StageStream.c', 'SafeUploadStagePrepareUnload'), ('StageStream.c', 'StageAttachReturnCapture')):
+            self.assertIn('StageAttachCaptureCount', body(file, name), name)
+        self.assertIn('StageAttachCaptures[index] == Instance', body('StageStream.c', 'StageAttachHasInstance'))
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
