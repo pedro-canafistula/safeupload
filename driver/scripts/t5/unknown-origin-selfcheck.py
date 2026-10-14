@@ -164,6 +164,15 @@ def validate_origins(source):
             'SOP identity collision entry origin')
     require('StageRegistryMarkUnknownAt(Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, FALSE, OriginSite);' in sop,
             'SOP identity collision instance origin')
+    # PrepareActivation(..., TRUE) publishes an Unknown activation state without recording an origin itself; each call
+    # relies on the instrumented entry setter immediately before it (t5-diag review finding 2).
+    activations = list(re.finditer(r'StageRegistryPrepareActivation\((\w+), TRUE\);', text))
+    require(len(activations) >= 5, 'PrepareActivation(TRUE) inventory')
+    for activation in activations:
+        before = text[:activation.start()].rstrip()
+        require(re.search(r'StageRegistrySetEntryUnknownLocked\(' + activation.group(1) +
+                          r', SAFEUPLOAD_REGISTRY_UNKNOWN_\w+\);$', before),
+                'PrepareActivation(TRUE) without an instrumented Unknown setter before it')
     status = body(text, 'SafeUploadStageWritersGetStatus')
     for name, _, _ in EXPECTED[-4:-1]:
         require(f'snapshot.{name} = (UINT32)InterlockedCompareExchange(&{name}, 0, 0);' in status, 'snapshot ' + name)
@@ -236,6 +245,18 @@ class UnknownOrigins(unittest.TestCase):
                 self.assertIn(old, self.source)
                 with self.assertRaises(AssertionError):
                     validate_origins(self.source.replace(old, new, 1))
+
+    def test_activation_without_instrumented_setter_is_detected(self):
+        setters = list(re.finditer(r'StageRegistrySetEntryUnknownLocked\((\w+), SAFEUPLOAD_REGISTRY_UNKNOWN_\w+\);'
+                                   r'(\s*)StageRegistryPrepareActivation\(\1, TRUE\);', self.source))
+        self.assertGreaterEqual(len(setters), 5)
+        for setter in setters:
+            with self.subTest(site=self.source[:setter.start()].count('\n') + 1):
+                head = self.source[setter.start():setter.end()]
+                kept = head[head.index('StageRegistryPrepareActivation'):]
+                mutated = self.source[:setter.start()] + kept + self.source[setter.end():]
+                with self.assertRaises(AssertionError):
+                    validate_origins(mutated)
 
     def test_new_uninstrumented_loss_paths_are_detected(self):
         for statement in (
