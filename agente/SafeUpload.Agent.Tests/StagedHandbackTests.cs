@@ -38,6 +38,183 @@ public sealed class StagedHandbackTests : IDisposable
 
     private readonly TestPublicationGate _gate = new();
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Blocked_same_name_resave_after_retirement_is_ordinary_and_inspected(bool blockAgain)
+    {
+        var policy = await PolicyAsync(true); var journal = new StagedTransferJournal(_journalRoot);
+        var first = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7, processCreationTime: 123456);
+        Directory.CreateDirectory(Path.GetDirectoryName(first.DestinationPath)!);
+        await File.WriteAllTextAsync(first.DestinationPath, "public pre-save bytes");
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        var publisher = Publisher(journal, policy, new(), copier);
+        Assert.Equal(StagedTransferOutcome.Blocked, await publisher.PublishAsync(first, default));
+        var allocator = new StagedTransferAllocator(_stagingRoot, journal);
+        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateAsync(first.DestinationPath, first.Destination,
+            first.ProcessName, first.ProcessId, first.SessionId, 1, first, default,
+            requestorSid: first.RequestorSid, requestorProcessCreationTime: 123456));
+        Assert.Equal("public pre-save bytes", await File.ReadAllTextAsync(first.DestinationPath));
+        var blocked = await journal.ReadAsync(first.TransferId, default);
+        await journal.CloseJustificationWindowAsync(first.TransferId,
+            blocked.JustificationExpiresAtUtc!.Value.AddTicks(1), default);
+        await publisher.ProcessBlockedCleanupAsync(blocked, default);
+        Assert.True((await journal.ReadAsync(first.TransferId, default)).StageDeleted);
+        var second = await allocator.AllocateAsync(first.DestinationPath, first.Destination, first.ProcessName,
+            first.ProcessId, first.SessionId, 1, null, default, requestorSid: first.RequestorSid,
+            requestorProcessCreationTime: 123456);
+        var allocated = await journal.ReadAsync(second.TransferId, default);
+        Assert.Null(allocated.ParentVersionIdentity); Assert.True(allocated.DestinationGeneration > blocked.DestinationGeneration);
+        Assert.Equal("public pre-save bytes", await File.ReadAllTextAsync(second.StagePath));
+        string contents = blockAgain ? "CPF: 529.982.247-25 second save" : "clean second save";
+        await File.WriteAllTextAsync(second.StagePath, contents);
+        await journal.SealAsync(second.TransferId, second.ProcessId, second.StagePath, default);
+        Assert.Equal(blockAgain ? StagedTransferOutcome.Blocked : StagedTransferOutcome.Released,
+            await publisher.PublishAsync(second, default));
+        Assert.Equal(blockAgain ? "public pre-save bytes" : contents, await File.ReadAllTextAsync(first.DestinationPath));
+        Assert.Equal(blockAgain ? 2 : 1, copier.CopyCount);
+    }
+
+    [Fact]
+    public async Task Blocked_disposition_shares_driver_read_handle_and_wakes_retirement_before_absence()
+    {
+        var policy = await PolicyAsync(true); var journal = new StagedTransferJournal(_journalRoot);
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7);
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        var publisher = Publisher(journal, policy, new(), copier);
+        await publisher.PublishAsync(transfer, default);
+        var blocked = await journal.ReadAsync(transfer.TransferId, default);
+        await journal.CloseJustificationWindowAsync(transfer.TransferId, blocked.JustificationExpiresAtUtc!.Value.AddTicks(1), default);
+        using (var driver = new FileStream(transfer.StagePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+        {
+            await publisher.ProcessBlockedCleanupAsync(blocked, default);
+            var pending = await journal.ReadAsync(transfer.TransferId, default);
+            Assert.NotNull(pending.BlockedDeletionReceipt); Assert.True(pending.StageCleanupStarted);
+            Assert.False(pending.StageDeleted); Assert.True(File.Exists(transfer.StagePath));
+            Assert.Equal(new[] { (transfer.TransferId, StageDisposeOutcome.CleanedUp) }, _gate.Disposals);
+            await Assert.ThrowsAsync<IOException>(() => journal.CompleteStageCleanupAsync(transfer.TransferId, default));
+        }
+        var restarted = new StagedTransferJournal(_journalRoot);
+        var nextCopier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        await Publisher(restarted, policy, new(), nextCopier).RecoverBlockedAsync(blocked, default);
+        Assert.True((await restarted.ReadAsync(transfer.TransferId, default)).StageDeleted);
+        Assert.False(File.Exists(transfer.StagePath)); Assert.Equal(0, nextCopier.CopyCount);
+        Assert.Equal(0, _gate.AuthorizeCalls);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task Blocked_cleanup_refuses_every_changed_volume_or_file_identity(int component)
+    {
+        var policy = await PolicyAsync(true); var journal = new StagedTransferJournal(_journalRoot);
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7);
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        var publisher = Publisher(journal, policy, new(), copier); await publisher.PublishAsync(transfer, default);
+        var blocked = await journal.ReadAsync(transfer.TransferId, default); var id = blocked.StageIdentity!;
+        var wrong = component switch { 0 => id with { VolumeSerialNumber = id.VolumeSerialNumber ^ 1 },
+            1 => id with { FileIdHigh = id.FileIdHigh ^ 1 }, _ => id with { FileIdLow = id.FileIdLow ^ 1 } };
+        Assert.Throws<IOException>(() => StagedStageFile.OpenBlockedDeletion(transfer.StagePath, wrong));
+        Assert.True(File.Exists(transfer.StagePath)); Assert.Null(blocked.BlockedDeletionReceipt);
+    }
+
+    [Fact]
+    public async Task Blocked_cleanup_never_deletes_a_replacement_after_verified_handback()
+    {
+        var policy = await PolicyAsync(true); var journal = new StagedTransferJournal(_journalRoot);
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7);
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        var publisher = Publisher(journal, policy, new(), copier); await publisher.PublishAsync(transfer, default);
+        var blocked = await journal.ReadAsync(transfer.TransferId, default);
+        await journal.CloseJustificationWindowAsync(transfer.TransferId, blocked.JustificationExpiresAtUtc!.Value.AddTicks(1), default);
+        File.Move(transfer.StagePath, transfer.StagePath + ".original");
+        await File.WriteAllTextAsync(transfer.StagePath, "replacement");
+        await publisher.ProcessBlockedCleanupAsync(blocked, default);
+        var held = await journal.ReadAsync(transfer.TransferId, default);
+        Assert.False(held.StageDeleted); Assert.Null(held.BlockedDeletionReceipt); Assert.Empty(_gate.Disposals);
+        Assert.Equal("replacement", await File.ReadAllTextAsync(transfer.StagePath)); Assert.Equal(1, copier.CopyCount);
+    }
+
+    [Fact]
+    public async Task Cleanup_started_without_disposition_receipt_cannot_certify_missing_stage()
+    {
+        var policy = await PolicyAsync(true); var journal = new StagedTransferJournal(_journalRoot);
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7);
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        var publisher = Publisher(journal, policy, new(), copier); await publisher.PublishAsync(transfer, default);
+        var blocked = await journal.ReadAsync(transfer.TransferId, default);
+        await journal.CloseJustificationWindowAsync(transfer.TransferId, blocked.JustificationExpiresAtUtc!.Value.AddTicks(1), default);
+        await journal.TryBeginStageCleanupAsync(transfer.TransferId, default); File.Delete(transfer.StagePath);
+        await Assert.ThrowsAsync<IOException>(() => journal.CompleteStageCleanupAsync(transfer.TransferId, default));
+        await publisher.ProcessBlockedCleanupAsync(blocked, default);
+        Assert.False((await journal.ReadAsync(transfer.TransferId, default)).StageDeleted);
+        Assert.Empty(_gate.Disposals); Assert.Equal(1, copier.CopyCount);
+    }
+
+    [Fact]
+    public async Task Actual_crash_before_durable_disposition_receipt_keeps_named_recovery_hold()
+    {
+        var policy = await PolicyAsync(true); var journal = new StagedTransferJournal(_journalRoot);
+        var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7);
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        await Publisher(journal, policy, new(), copier).PublishAsync(transfer, default);
+        var blocked = await journal.ReadAsync(transfer.TransferId, default);
+        await journal.CloseJustificationWindowAsync(transfer.TransferId, blocked.JustificationExpiresAtUtc!.Value.AddTicks(1), default);
+        await journal.TryBeginStageCleanupAsync(transfer.TransferId, default);
+        // Model the process dying after native acceptance, before a receipt
+        // reached disk. A new publisher cannot recreate operation evidence.
+        using (var deletion = StagedStageFile.OpenBlockedDeletion(transfer.StagePath, blocked.StageIdentity!))
+            deletion.MarkBlockedDeletion(transfer.StagePath);
+        var restarted = new StagedTransferJournal(_journalRoot);
+        var recoveryCopier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        using var subscription = _notifications.Subscribe(7, TestRequestorSid);
+        await Publisher(restarted, policy, new(), recoveryCopier).RecoverBlockedAsync(blocked, default);
+        var held = await restarted.ReadAsync(transfer.TransferId, default);
+        Assert.True(held.StageCleanupStarted); Assert.False(held.StageDeleted); Assert.Null(held.BlockedDeletionReceipt);
+        Assert.Equal(0, recoveryCopier.CopyCount); Assert.Empty(_gate.Disposals); Assert.Equal(0, _gate.AuthorizeCalls);
+        Assert.Contains(DrainTransfers(subscription), notice => notice.Phase == TransferPhase.Retained &&
+            notice.FileName == transfer.DestinationPath && notice.RecoveryAdvice == StagedRecoveryAdvice.CollectDiagnostics);
+    }
+
+    [Theory]
+    [InlineData("disposition-before")]
+    [InlineData("disposition-receipt")]
+    [InlineData("completion-before")]
+    [InlineData("completion-after")]
+    public async Task Blocked_cleanup_crash_retry_finishes_bookkeeping_without_handback_or_publication(string boundary)
+    {
+        bool injected = false;
+        var journal = new StagedTransferJournal(_journalRoot, false, 50_000, (point, entry) =>
+        {
+            if (injected || entry.BlockedDeletionReceipt is null) return;
+            bool fault = boundary.StartsWith("disposition", StringComparison.Ordinal) ? !entry.StageDeleted &&
+                point == (boundary == "disposition-before" ? StagedJournalWritePoint.BeforeReplacement : StagedJournalWritePoint.AfterReplacement) :
+                entry.StageDeleted && point == (boundary == "completion-before" ? StagedJournalWritePoint.BeforeReplacement :
+                    StagedJournalWritePoint.AfterReplacement);
+            if (fault) { injected = true; throw new System.ComponentModel.Win32Exception(5); }
+        });
+        var policy = await PolicyAsync(true); var transfer = CreateBlockedCandidate(journal, "CPF: 529.982.247-25", 7);
+        var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        var publisher = Publisher(journal, policy, new(), copier); await publisher.PublishAsync(transfer, default);
+        var blocked = await journal.ReadAsync(transfer.TransferId, default);
+        await journal.CloseJustificationWindowAsync(transfer.TransferId, blocked.JustificationExpiresAtUtc!.Value.AddTicks(1), default);
+        await publisher.ProcessBlockedCleanupAsync(blocked, default); Assert.True(injected);
+        if (boundary == "disposition-before")
+        {
+            Assert.Null((await journal.ReadAsync(transfer.TransferId, default)).BlockedDeletionReceipt);
+            // Still-live native acceptance finishes only its journal write;
+            // reopening the now-pending/gone path cannot supply this authority.
+            await publisher.ProcessBlockedCleanupAsync(blocked, default);
+        }
+        var restarted = new StagedTransferJournal(_journalRoot); var replayCopier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
+        var recovery = Publisher(restarted, policy, new(), replayCopier);
+        await recovery.RecoverBlockedAsync(blocked, default); await recovery.ProcessBlockedCleanupAsync(blocked, default);
+        Assert.True((await restarted.ReadAsync(transfer.TransferId, default)).StageDeleted);
+        Assert.Equal(0, replayCopier.CopyCount); Assert.Equal(1, copier.CopyCount); Assert.Equal(0, _gate.AuthorizeCalls);
+        Assert.False(File.Exists(transfer.StagePath));
+    }
+
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
     [Fact]
     public async Task Recovery_of_legacy_bound_manifest_without_provenance_never_recopies_or_registers()

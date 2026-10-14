@@ -104,7 +104,7 @@ internal sealed class StagedNativeStartupRecovery
             var proof = session.ReconcileReplay(replay.DriverInstanceId, replay.ConnectionEpoch,
                 complete: true, reconciled: true, records, nativeMapRevision: replay.Revision);
             StagedBoundRecoveryReceipt? completed = null;
-            var result = await _journal.ReconcileDriverStartupAsync(replay.DriverInstanceId, 0xbf, proof,
+            var result = await _journal.ReconcileDriverStartupAsync(replay.DriverInstanceId, 0x1bf, proof,
                 async recoveryToken =>
                 {
                     await _recoverPrivateStages(recoveryToken).ConfigureAwait(false);

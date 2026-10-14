@@ -256,6 +256,41 @@ public sealed partial class FilterPort : IDisposable
         return SendObservedReply((IntPtr)buffer, (uint)size);
     }
 
+    public static SafeUploadStageAllocationResolutionReplyV20 CreateAllocationResolutionReplyV20(SafeUploadRequest request, uint result = StageV20Result.NoAllocationCommitted)
+    {
+        if (!request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source) ||
+            source.RequestorCreationTime <= 0 || source.Intent.AllocationReservationId == Guid.Empty ||
+            source.Intent.DriverInstanceId == Guid.Empty || request.RequestId == 0 || request.RequestorProcessId == 0 ||
+            result is not (StageV20Result.NoAllocationCommitted or StageV20Result.RetryableFailure))
+            throw new ArgumentException("Invalid exact allocation resolution source.", nameof(request));
+        return new SafeUploadStageAllocationResolutionReplyV20
+        {
+            Version = Contract.Version, StructSize = Contract.StageAllocationResolutionReplyV20Size,
+            RequestId = request.RequestId, Verdict = Verdict.Allow,
+            Result = result, OriginalRequest = request
+        };
+    }
+
+    public unsafe bool ReplyAllocationResolutionV20(ulong messageId, SafeUploadRequest request, uint result)
+    {
+        var reply = CreateAllocationResolutionReplyV20(request, result);
+        int size = sizeof(FilterReplyHeader) + sizeof(SafeUploadStageAllocationResolutionReplyV20);
+        byte* buffer = stackalloc byte[size];
+        new Span<byte>(buffer, size).Clear();
+        *(FilterReplyHeader*)buffer = new FilterReplyHeader { Status = StatusSuccess, MessageId = messageId };
+        *(SafeUploadStageAllocationResolutionReplyV20*)(buffer + sizeof(FilterReplyHeader)) = reply;
+        return ReplyTypedStageBuffer(messageId, buffer, size);
+    }
+
+    internal static void ValidateAllocationResolutionReplyV20(SafeUploadStageAllocationResolutionReplyV20 reply,
+        SafeUploadRequest request)
+    {
+        var expected = CreateAllocationResolutionReplyV20(request, reply.Result);
+        if (!MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref reply, 1)).SequenceEqual(
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref expected, 1))))
+            throw new ArgumentException("The terminal receipt does not match the original allocation bytes.", nameof(reply));
+    }
+
     private int SendObservedReply(IntPtr buffer, uint size)
     {
         using var observation = FilterReplyObservation.Begin();

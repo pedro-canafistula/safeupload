@@ -77,7 +77,8 @@ waiting for inspection or inside a block's hand-back window.
 
 The service tells the driver when it no longer needs a version:
 - after an ordinary approval reaches `Released`, with outcome `Released`;
-- after a blocked or justified stage's cleanup has deleted the stage file, with outcome `CleanedUp`.
+- after blocked or justified cleanup has marked the exact object delete-pending and durably recorded acceptance,
+  with outcome `CleanedUp`. Notify before waiting for absence: the driver's read backing can be the last remaining handle.
 
 Body: `SAFEUPLOAD_CONTROL` header, `TransferId` (GUID), `Outcome` (1 or 2), `CommittedRenames`. Reply: `Held` (0 or 1). The message is
 accepted only from the agent service (the `STAGE_PUBLICATION` SID check).
@@ -99,8 +100,9 @@ sets `Disposed` and the outcome, queues the stream, signals the worker and repli
 
 The worker detaches the view of a disposed current version only once that version has `FileObjects == 0`. While handles exist, the
 version stays exactly as today. A program that keeps the file open (Word) renames through its handle (`StageRename` needs an attached
-view and `view->Current == stream`). A later write open of the name seeds the new version from the stage file (`STAGE_FOLLOWUP`). Both
-need the version until the last handle closes. After the detach, the owner's next open resolves to the public name:
+view and `view->Current == stream`). A later write open of an eligible sealed version can seed from its stage (`STAGE_FOLLOWUP`).
+A blocked predecessor instead returns a retryable conflict until retirement; it never seeds another version from blocked bytes.
+After the detach, the owner's next open resolves to the public name:
 - after an approval, that holds the published bytes (or a later publication by someone else, which every other process already sees);
 - after a block, it holds the pre-save content, as today after retirement.
 
@@ -108,7 +110,9 @@ Stage file of an approved version: only the driver knows when its handle closes.
 release. It opens the stage by name with `DELETE`, `FILE_OPEN_REPARSE_POINT` and `FILE_NON_DIRECTORY_FILE`, requires the file ID to equal
 the backing's, sets the disposition and closes. With `Held = 0` the service deletes it itself. When the service starts, it resends DISPOSE
 for every `Released` entry whose stage file still exists (DISPOSE is idempotent) and deletes the file when the reply is not held. A
-`CleanedUp` stage is already delete-pending; closing the backing at release lets NTFS remove it.
+`CleanedUp` stage is already delete-pending; closing the backing at release lets NTFS remove it. The service records
+`StageDeleted` only after confirmed absence against its exact accepted-disposition receipt. A cleanup-start marker alone
+cannot recreate that receipt after a crash. See [boot14 allocation and cleanup](T5-DELETES.md#boot14-blocked-retirement-and-allocation-resolution--2026-10-14).
 
 `Retained` and other non-final states are never disposed: the owner keeps its private version (bounded by the cap and by owner exit).
 

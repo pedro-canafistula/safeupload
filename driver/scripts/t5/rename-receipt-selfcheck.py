@@ -198,7 +198,7 @@ class RenameReceipt(unittest.TestCase):
                                 ('RENAME_REPLY_V20', 'StageRenameReplyV20', 1192)]:
             self.assertIn(f'C_ASSERT( sizeof( SAFEUPLOAD_STAGE_{native} ) == {size} );', header)
             self.assertIn(f'{cs}Size = {size};', managed)
-        self.assertIn('SAFEUPLOAD_STAGE_CAPABILITY_REQUIRED ((UINT32) 0x000000BF)', header)
+        self.assertIn('SAFEUPLOAD_STAGE_CAPABILITY_REQUIRED ((UINT32) 0x000001BF)', header)
         self.assertIn('RenameCommitReceipt = 0x80', managed)
 
     def test_structural_refusal_guards_and_native_io_classification(self):

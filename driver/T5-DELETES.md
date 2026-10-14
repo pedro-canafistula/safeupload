@@ -385,6 +385,63 @@ normal-debug test compile failure or close the subsequent independent integratio
 received Sol 6.1 xhigh source acceptance with those build/runtime conditions and disconnected local-worker controls; they remain
 uncommitted here. This is separate from matched-pair milestone qualification and its final adversarial review.
 
+### Boot14 blocked retirement and allocation resolution — 2026-10-14
+
+Implementation draft on `wt/t5-block-retire`, based on `9d51fa51`; uncommitted, no SDK/WDK build or product VM run here.
+Boot14's exclusive blocked deletion conflicted with the driver's READ|DELETE sealed backing; absence-before-DISPOSE then
+prevented retirement. A refused FOLLOWUP retained an unresolved receipt/predecessor pin, and allocation replay bypassed
+parking/deadlines and requeued each refusal. The fix keeps the existing local lifetime exclusions and public-delete ordering.
+
+Blocked cleanup opens no-follow with READ|DELETE sharing (no WRITE), verifies the full volume/file identity and sealed
+length/digest on that same DELETE-capable handle, re-verifies the existing hand-back lease, and marks that exact object.
+It records `BlockedDeletionReceipt` (transfer/generation/full identity, committed rename count, length/digest), sends
+CleanedUp disposal, then checks absence. `StageCleanupStarted` is only intent; `StageDeleted` requires the exact receipt
+and confirmed absence. A live accepted-operation receipt retries a failed journal write without reopening a pending object,
+recopying hand-back or publishing. Durable acceptance resumes the same bookkeeping after restart. An actual crash after
+native acceptance but before durable acceptance loses that receipt: missing/pending bytes stay explicitly held with
+`blocked_disposition_receipt_unavailable` and CollectDiagnostics advice, never certified from path absence. Driver reconnect
+and inline retirement still require its owned object's real DeletePending and the original handle/object/section/rundown checks.
+
+**CREATE choice:** retry until the BLOCK predecessor retires, then ordinary allocation/inspection from the public destination.
+This is T4 section 3.1's pre-save public-content behavior and introduces no authority to seed/export blocked bytes. A blocked
+follow-up receives an exact no-allocation receipt and retryable sharing result; a delete-pending sealed backing likewise refuses
+with a retryable sharing result. Neither creates a permanent ban. Pending or blocked saves still cannot cancel an earlier delete.
+
+Allocation resolution shares the allocator gate with backing creation and manifest commit. Existing manifests resolve their
+exact tuple before any live PID lookup and go through existing unattached cleanup. A missing/reused requester or definitive
+pre-allocation refusal can be terminal only after an unjournaled reservation backing is safely removed and absent. The service
+flushes an exact negative request receipt under the private stage root (`GUID.allocation-refused`); replay cannot revive that
+reservation after policy or owner changes. A failed write or post-commit failure gives no terminal release authority; committed
+backing is retained. Structural mismatch gives generic Deny (SERVICE); uncertain storage/owner failures give typed transient
+result 19 (EXCHANGE). Generic Deny never releases a receipt or predecessor pin.
+
+The inherited 64-byte allocation intent and v18 request (1,192 bytes) are unchanged. Negotiated capability **0x100** requires
+mask **0x1BF**; the independent bound-head bit 0x40 remains gated. New `ALLOCATE_V20` is **72 bytes**: the existing intent
+at offset 0 with Version=20/StructSize=72, followed by the original requester's signed 64-bit creation time at offset 64.
+The outer ImageNameLength is 72 and its unused bytes are zero. This binds an exited/reused PID without trusting a later process.
+
+Allocation resolution reply is **1,216 bytes**: Version=18 at 0, StructSize=1216 at 4, RequestId at 8, Verdict=Allow at 16,
+Result at 20 (20=no allocation committed, 19=transient/uncertain), and the original **entire 1,192-byte request** at 24.
+The driver validates the exact current authenticated channel, envelope, result and every echoed request byte. Ordinary tuple
+and generic Deny replies remain 152 bytes. All mirrors assert sizes/offsets; wire tests use MemoryMarshal bytes. Only exact
+terminal result 20 clears initial allocation uncertainty or removes the matching shell reservation and its one predecessor pin.
+It never clears the predecessor's own deletion or namespace state. Bound V23 recovery retains its original lease/authority path.
+
+Allocation SERVICE/EXCHANGE cause and deadline survive pending→in-flight→reply. Collection respects parking and interrupt-time
+deadlines; the census counts in-flight obligations. Both the initial failed allocation and failed replay wait at least their
+current 250 ms–8 s backoff from that attempt, even if an unrelated timer arm is almost expired. Only a reconciled reconnect
+sweep unparks refusals. Successful resolution alone queues immediate cleanup/release. KeReadStateTimer arming, idle cancellation,
+disconnect availability and real local drain/overflow waits are unchanged; a deadline is no retirement or arming authority.
+
+New agent cases cover resave approve/BLOCK, simulated read backing, pending versus absent, all identity fields/replacement,
+live/restart bookkeeping faults and the actual pre-durable crash hold; allocation exited/reused PID, manifest replay, definitive
+refusal, orphan cleanup, serialization, uncertain post-commit failure, exact wire mutations and old capability refusal.
+Source controls add negative mutations for allocation parking/deadlines/in-flight accounting, early/unconditional queueing,
+current-channel/terminal tuple validation and exact reservation/pin release. Expected matrix discovery adds **44 cases** to
+the paired `t5-rename6` baseline: **1,591 normal** and **2,171 feature**, in each Debug/Release profile. Existing required test
+names remain unchanged. Offline controls, independent source review, four WDK/PREfast/ApiValidator builds, complete Windows
+agent discovery/execution and matched-pair Verifier/raw-byte/restoration qualification are distinct results.
+
 ## 6. Durable compatibility
 
 All persisted journal and protocol enum numbers remain stable. The existing EmptyHeld numeric value remains reserved as

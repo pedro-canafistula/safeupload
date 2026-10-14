@@ -23,7 +23,7 @@ public sealed class StagedDriverEpochStartupTests : IDisposable
     private static Task NoRecovery(CancellationToken _) => Task.CompletedTask;
     private static Task<StagedDriverEpochReconcileV20> Reconcile(StagedTransferJournal journal, Guid driver,
         StagedNativeRecoverySession.Proof proof, Func<CancellationToken, Task>? recover = null,
-        CancellationToken token = default) => journal.ReconcileDriverStartupAsync(driver, 0xbf,
+        CancellationToken token = default) => journal.ReconcileDriverStartupAsync(driver, 0x1bf,
             proof, recover ?? NoRecovery, token);
 
     private async Task Seed(uint boot = 42)
@@ -45,7 +45,7 @@ public sealed class StagedDriverEpochStartupTests : IDisposable
         Assert.False(pending.IsCompleted);
         Assert.Equal(original, await File.ReadAllTextAsync(EpochPath));
         Assert.Equal(StagedDriverEpochReconcileV20.Rejected,
-            await recovered.ReconcileDriverInstanceV20Async(next, 0xbf, CancellationToken.None));
+            await recovered.ReconcileDriverInstanceV20Async(next, 0x1bf, CancellationToken.None));
         release.SetResult();
         Assert.Equal(StagedDriverEpochReconcileV20.Active, await pending);
         var epoch = JsonNode.Parse(await File.ReadAllTextAsync(EpochPath))!;
@@ -111,7 +111,7 @@ public sealed class StagedDriverEpochStartupTests : IDisposable
     public async Task Legacy_missing_boot_can_only_be_captured_from_the_same_original_driver()
     {
         Assert.Equal(StagedDriverEpochReconcileV20.Active,
-            await Journal().ReconcileDriverInstanceV20Async(_oldDriver, 0xbf, CancellationToken.None));
+            await Journal().ReconcileDriverInstanceV20Async(_oldDriver, 0x1bf, CancellationToken.None));
         string original = await File.ReadAllTextAsync(EpochPath); Guid next = Guid.NewGuid();
         Assert.Equal(StagedDriverEpochReconcileV20.Rejected,
             await Reconcile(Journal(), next, Evidence(next, 43).Proof));

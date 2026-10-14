@@ -130,8 +130,10 @@ typedef struct _STAGE_STREAM {
     BOOLEAN RenameRpcInFlight;
     UCHAR RenameWait; /* Persistent obligation cause, including across collection/reply. */
     UCHAR HandleReceiptWait;
+    UCHAR AllocationRecoveryWait;
     ULONGLONG RenameRetryAfter; /* Interrupt-time deadline of the failed attempt's retry arm. */
     ULONGLONG HandleReceiptRetryAfter;
+    ULONGLONG AllocationRecoveryRetryAfter;
     BOOLEAN AllocationRpcInFlight;
     UINT32 DiscardRpcKind;
     GUID DeleteReservationId;
@@ -1935,6 +1937,15 @@ static NTSTATUS StageSetStreamStageName(PSTAGE_STREAM Stream,
     return STATUS_SUCCESS;
 }
 
+/* Scheduling hint only. An unrelated arm may be about to expire; each failed
+ * allocation still owes its own complete backoff interval from this attempt. */
+static ULONGLONG StageAllocationRetryDeadline(VOID)
+{
+    ULONG delay = StageRetryMs < STAGE_RETRY_FIRST_MS ? STAGE_RETRY_FIRST_MS : StageRetryMs;
+    ULONGLONG deadline = KeQueryInterruptTime() + (ULONGLONG)delay * 10000ULL;
+    return StageRetryDueTime > deadline ? StageRetryDueTime : deadline;
+}
+
 /* Caller owns NamespaceResource. An allocation that may have reached the
  * service but did not attach to an upper file object remains a listed exact
  * receipt. The worker replays the stable request when its tuple is unknown,
@@ -1954,6 +1965,8 @@ static VOID StageRetainAllocationReceipt(PSTAGE_STREAM Stream, PSTAGE_VIEW View,
     Stream->DiscardRpcKind = SAFEUPLOAD_STAGE_DISCARD_KIND_UNATTACHED_ALLOCATION;
     Stream->DiscardRpcPending = Stream->AllocationTupleKnown;
     Stream->Wait = StageWaitFor(LastStatus);
+    Stream->AllocationRecoveryWait = Stream->Wait;
+    Stream->AllocationRecoveryRetryAfter = 0;
     StageCloseBacking(Stream); /* the service must be able to delete this exact private file */
     Stream->View = View;
     if (Parent != NULL && Stream->AllocationReceiptParent == NULL) {
@@ -1980,7 +1993,10 @@ static VOID StageRetainAllocationReceipt(PSTAGE_STREAM Stream, PSTAGE_VIEW View,
         ++StageViewCount;
     }
     if (ReservedSlot && StageReservedStreamCount != 0) --StageReservedStreamCount;
-    StageQueueStream(Stream, &StageCounters.WakeInline);
+    StageUpdateRetryTimer();
+    if (Stream->AllocationRecoveryPending && Stream->AllocationRecoveryWait == STAGE_WAIT_EXCHANGE)
+        Stream->AllocationRecoveryRetryAfter = StageAllocationRetryDeadline();
+    if (Stream->AllocationTupleKnown) StageQueueStream(Stream, &StageCounters.WakeInline);
 }
 #endif
 
@@ -2377,7 +2393,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
             status = FltQueryInformationFile(stream->BackingInstance, stream->BackingObject,
                 &pending, sizeof(pending), FileStandardInformation, NULL);
             if (!NT_SUCCESS(status)) goto Exit;
-            if (pending.DeletePending) { status = STATUS_DELETE_PENDING; goto Exit; }
+            if (pending.DeletePending) { status = STATUS_SHARING_VIOLATION; goto Exit; }
         }
     }
     if (stream == NULL || (Writer && stream->Sealed)) {
@@ -5963,7 +5979,7 @@ static VOID StageProcessStream(PSTAGE_STREAM Stream, PLIST_ENTRY Released)
             return;
         }
         if (Stream->AllocationRecoveryPending || Stream->AllocationRecoveryInFlight) {
-            Stream->Wait = STAGE_WAIT_EXCHANGE;
+            Stream->Wait = Stream->AllocationRecoveryWait == STAGE_WAIT_SERVICE ? STAGE_WAIT_SERVICE : STAGE_WAIT_EXCHANGE;
             return;
         }
         /* A kind-5 receipt may be issued only after the failed synthetic
@@ -6128,12 +6144,46 @@ static VOID StageCollectAllocationRecoveryRpcs(PLIST_ENTRY Rpcs)
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
         if (!stream->AllocationReceiptPending || !stream->AllocationRecoveryPending ||
             stream->AllocationRecoveryInFlight || stream->View == NULL ||
+            stream->AllocationRecoveryWait == STAGE_WAIT_SERVICE ||
+            (stream->AllocationRecoveryRetryAfter != 0 && KeQueryInterruptTime() < stream->AllocationRecoveryRetryAfter) ||
             stream->AllocationRequest.RequestId == 0 || !stream->HasTransferId) continue;
         stream->AllocationRecoveryPending = FALSE;
         stream->AllocationRecoveryInFlight = TRUE;
+        stream->AllocationRecoveryWait = STAGE_WAIT_EXCHANGE;
+        stream->Wait = STAGE_WAIT_EXCHANGE;
         InterlockedIncrement(&stream->RpcReferences);
         InsertTailList(Rpcs, &stream->RecoveryLink);
     }
+}
+
+/* NamespaceResource held; invoked only for the validated byte-exact terminal
+ * receipt and its still-current shell. No generic refusal can enter here. */
+static VOID StageResolveUncommittedAllocation(PSTAGE_STREAM Stream)
+{
+    PSTAGE_STREAM parent = Stream->AllocationReceiptParent;
+    Stream->AllocationReceiptPending = FALSE;
+    Stream->AllocationRecoveryPending = FALSE;
+    Stream->AllocationRecoveryInFlight = FALSE;
+    Stream->AllocationRecoveryWait = STAGE_WAIT_NONE;
+    Stream->AllocationRecoveryRetryAfter = 0;
+    Stream->DiscardRpcPending = FALSE;
+    Stream->AllocationTupleKnown = FALSE;
+    Stream->Discarded = TRUE;
+    Stream->Sealed = TRUE;
+    Stream->Retired = TRUE; /* receipt shell; no committed stage object exists */
+    Stream->Wait = STAGE_WAIT_NONE;
+    if (Stream->ReservationLinked) StageRemoveAllocationNameReservation(Stream);
+    StageClearPrivateDelete(Stream);
+    RtlZeroMemory(&Stream->AllocationIntent, sizeof(Stream->AllocationIntent));
+    RtlZeroMemory(&Stream->AllocationRequest, sizeof(Stream->AllocationRequest));
+    if (parent != NULL) {
+        NT_ASSERT(parent->AllocationReceiptReferences > 0);
+        --parent->AllocationReceiptReferences;
+        Stream->AllocationReceiptParent = NULL;
+        StageQueueStream(parent, &StageCounters.WakeInline);
+    }
+    if (Stream->View != NULL && Stream->View->Current == Stream) Stream->View->Detached = TRUE;
+    StageQueueStream(Stream, &StageCounters.WakeInline);
 }
 
 static VOID StagePerformAllocationRecoveryRpcs(PLIST_ENTRY Rpcs)
@@ -6146,52 +6196,76 @@ static VOID StagePerformAllocationRecoveryRpcs(PLIST_ENTRY Rpcs)
         SAFEUPLOAD_STAGE_IDENTITY_V19 identity;
         GUID expectedId = stream->TransferId;
         UINT64 requestId = stream->AllocationRequest.RequestId;
+        LONG serviceGeneration = InterlockedCompareExchange(&StageServiceGeneration, 0, 0);
+        BOOLEAN noAllocationCommitted = FALSE;
         PSAFEUPLOAD_STAGE_WRITER_LEASE releaseLease = NULL;
         NTSTATUS status;
         InitializeListHead(&stream->RecoveryLink);
         RtlZeroMemory(&identity, sizeof(identity));
         if (SafeUploadStageMandatoryTeardownActive()) status = STATUS_PORT_DISCONNECTED;
         else if (stream->BoundAllocation && stream->AllocationWriterLease == NULL)
-            status = STATUS_INVALID_DEVICE_STATE; /* a bound replay needs its retained original lease; keep the receipt */
+            status = STATUS_INVALID_DEVICE_STATE; /* retained lease required; park this exact receipt */
         else if (stream->BoundAllocation)
             status = SafeUploadStageReplayAllocationBoundV23(stream->AllocationWriterLease, &stream->AllocationRequest,
                 basename, &basenameLength, &generation, &identity);
         else status = SafeUploadStageReplayAllocationV19(&stream->AllocationRequest,
-                basename, &basenameLength, &generation, &identity);
+                basename, &basenameLength, &generation, &identity, &noAllocationCommitted);
 
         StageAcquire(&StageNamespaceResource);
-        if (stream->Listed && stream->AllocationReceiptPending &&
-            stream->AllocationRecoveryInFlight &&
+        if (stream->Listed && stream->AllocationReceiptPending && stream->AllocationRecoveryInFlight &&
+            StageServiceAvailable && serviceGeneration == InterlockedCompareExchange(&StageServiceGeneration, 0, 0) &&
+            !InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) && SafeUploadStageProtocolIsReady() &&
             stream->AllocationRequest.RequestId == requestId &&
-            RtlEqualMemory(&stream->TransferId, &expectedId, sizeof(GUID))) {
+            RtlEqualMemory(&stream->TransferId, &expectedId, sizeof(GUID)) &&
+            RtlEqualMemory(&stream->AllocationIntent.AllocationReservationId, &expectedId, sizeof(GUID))) {
             stream->AllocationRecoveryInFlight = FALSE;
-            if (NT_SUCCESS(status)) status = StageSetStreamStageName(stream, basename, basenameLength);
-            if (NT_SUCCESS(status) && generation != 0 &&
-                RtlEqualMemory(&stream->TransferId, &expectedId, sizeof(GUID))) {
-                stream->DestinationGeneration = generation;
-                stream->StageIdentity = identity;
-                stream->StageIdentityValid = TRUE;
-                stream->ExpectedStageIdentity = identity;
-                stream->ExpectedStageIdentityValid = TRUE;
-                stream->AllocationTupleKnown = TRUE;
-                stream->AllocationRecoveryPending = FALSE;
-                releaseLease = stream->AllocationWriterLease;
-                stream->AllocationWriterLease = NULL;
-                stream->DiscardRpcKind = SAFEUPLOAD_STAGE_DISCARD_KIND_UNATTACHED_ALLOCATION;
-                stream->DiscardRpcPending = TRUE;
-                stream->Wait = STAGE_WAIT_EXCHANGE;
-            } else {
+            if (NT_SUCCESS(status) && noAllocationCommitted && !stream->BoundAllocation &&
+                !stream->AllocationTupleKnown && !stream->AttachCompletionMayExist && !stream->AttachCompletionKnown &&
+                !stream->AttachLifecycleInFlight && !stream->DiscardRpcInFlight && stream->BackingObject == NULL &&
+                InterlockedCompareExchange(&stream->FileObjects, 0, 0) == 0 && stream->ShareAccess.OpenCount == 0 &&
+                stream->Sections.SharedCacheMap == NULL && stream->Sections.DataSectionObject == NULL &&
+                stream->Sections.ImageSectionObject == NULL) {
+                StageResolveUncommittedAllocation(stream);
+            } else if (noAllocationCommitted) {
                 stream->AllocationRecoveryPending = TRUE;
-                stream->Wait = StageWaitFor(status);
+                stream->AllocationRecoveryWait = STAGE_WAIT_SERVICE;
+                stream->Wait = STAGE_WAIT_SERVICE;
+            } else {
+                if (NT_SUCCESS(status)) status = StageSetStreamStageName(stream, basename, basenameLength);
+                if (NT_SUCCESS(status) && generation != 0 &&
+                    RtlEqualMemory(&stream->TransferId, &expectedId, sizeof(GUID))) {
+                    stream->DestinationGeneration = generation;
+                    stream->StageIdentity = identity;
+                    stream->StageIdentityValid = TRUE;
+                    stream->ExpectedStageIdentity = identity;
+                    stream->ExpectedStageIdentityValid = TRUE;
+                    stream->AllocationTupleKnown = TRUE;
+                    stream->AllocationRecoveryPending = FALSE;
+                    stream->AllocationRecoveryWait = STAGE_WAIT_NONE;
+                    stream->AllocationRecoveryRetryAfter = 0;
+                    releaseLease = stream->AllocationWriterLease;
+                    stream->AllocationWriterLease = NULL;
+                    stream->DiscardRpcKind = SAFEUPLOAD_STAGE_DISCARD_KIND_UNATTACHED_ALLOCATION;
+                    stream->DiscardRpcPending = TRUE;
+                    stream->Wait = STAGE_WAIT_EXCHANGE;
+                    StageQueueStream(stream, &StageCounters.WakeInline); /* resolved tuple enables exact cleanup */
+                } else {
+                    stream->AllocationRecoveryPending = TRUE;
+                    stream->AllocationRecoveryWait = status == STATUS_INVALID_DEVICE_STATE ?
+                        STAGE_WAIT_SERVICE : StageWaitFor(status);
+                    stream->Wait = stream->AllocationRecoveryWait;
+                }
             }
-            StageQueueStream(stream, &StageCounters.WakeInline);
         } else {
             stream->AllocationRecoveryInFlight = FALSE;
             stream->AllocationRecoveryPending = TRUE;
+            stream->AllocationRecoveryWait = STAGE_WAIT_SERVICE;
             stream->Wait = STAGE_WAIT_SERVICE;
         }
         InterlockedDecrement(&stream->RpcReferences);
         StageUpdateRetryTimer();
+        if (stream->AllocationRecoveryPending && stream->AllocationRecoveryWait == STAGE_WAIT_EXCHANGE)
+            stream->AllocationRecoveryRetryAfter = StageAllocationRetryDeadline();
         StageRelease(&StageNamespaceResource);
         SafeUploadStagePublicReleaseWriter(releaseLease);
     }
@@ -6501,7 +6575,7 @@ static VOID StageUpdateRetryTimer(VOID)
 #endif
             (stream->Wait == STAGE_WAIT_EXCHANGE
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-            || stream->HandleReceiptInFlight || stream->RenameRpcInFlight
+            || stream->HandleReceiptInFlight || stream->RenameRpcInFlight || stream->AllocationRecoveryInFlight
 #endif
             )) ++waiting;
     }
@@ -6591,6 +6665,8 @@ static VOID StageWorkerPass(PLIST_ENTRY Released, PLIST_ENTRY Rpcs,
             stream->RenameRetryAfter = 0;
             if (stream->HandleReceiptWait == STAGE_WAIT_SERVICE) stream->HandleReceiptWait = STAGE_WAIT_EXCHANGE;
             if (stream->RenameWait == STAGE_WAIT_SERVICE) stream->RenameWait = STAGE_WAIT_EXCHANGE;
+            stream->AllocationRecoveryRetryAfter = 0;
+            if (stream->AllocationRecoveryWait == STAGE_WAIT_SERVICE) stream->AllocationRecoveryWait = STAGE_WAIT_EXCHANGE;
         }
 #endif
         if (sweep || stream->Wait == STAGE_WAIT_DRAIN || stream->Wait == STAGE_WAIT_EXCHANGE) (VOID)StageQueueLocked(stream);
@@ -6949,6 +7025,7 @@ VOID SafeUploadStageServiceDisconnected(_In_ PVOID ConnectionCookie)
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
         if (stream->HandleReceiptWait == STAGE_WAIT_EXCHANGE) stream->HandleReceiptWait = STAGE_WAIT_SERVICE;
         if (stream->RenameWait == STAGE_WAIT_EXCHANGE) stream->RenameWait = STAGE_WAIT_SERVICE;
+        if (stream->AllocationRecoveryWait == STAGE_WAIT_EXCHANGE) stream->AllocationRecoveryWait = STAGE_WAIT_SERVICE;
         if (stream->Wait == STAGE_WAIT_EXCHANGE) stream->Wait = STAGE_WAIT_SERVICE;
     }
     StageStreamReleaseSpinLock(&StageListLock, irql);

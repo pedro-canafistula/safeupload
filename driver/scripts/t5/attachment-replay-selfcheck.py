@@ -287,12 +287,21 @@ class AttachmentReplay(unittest.TestCase):
 
     def test_no_new_reservation_release_sites(self):
         # Pre-existing non-attachment disposition/cleanup/owner-exit behavior
-        # is preserved. No new direct clear or helper call is allowed anywhere.
+        # is preserved. The new exact no-allocation terminal helper is checked
+        # separately; no other direct clear or helper call is allowed.
         expected = {'StageRetainAllocationReceipt': 1, 'StageCreate': 1,
                     'StageAttachRetireUnexposed': 1, 'StageAttachComplete': 1,
                     'StageSetDisposition': 1, 'StagePerformDiscardRpcs': 1, 'StageOwnersExited': 1}
         source = code('StageStream.c')
-        self.assertEqual(8, len(re.findall(r'\bStageClearPrivateDelete\s*\(', source)))
+        terminal = stream('StageResolveUncommittedAllocation')
+        self.assertEqual(1, terminal.count('StageClearPrivateDelete('))
+        source_without_terminal = source.replace(terminal, '{}')
+        self.assertEqual(8, len(re.findall(r'\bStageClearPrivateDelete\s*\(', source_without_terminal)))
+        self.order(terminal, 'Stream->AllocationReceiptPending = FALSE;', 'StageClearPrivateDelete(Stream);')
+        proof = stream('StagePerformAllocationRecoveryRpcs')
+        self.assertEqual(1, proof.count('StageResolveUncommittedAllocation(stream);'))
+        self.order(proof, 'if (NT_SUCCESS(status) && noAllocationCommitted && !stream->BoundAllocation',
+                   'StageResolveUncommittedAllocation(stream);', '} else if (noAllocationCommitted)')
         for name, count in expected.items():
             self.assertEqual(count, stream(name).count('StageClearPrivateDelete('), name)
         self.assertEqual(2, len(re.findall(r'PrivateDeleteReserved\s*=\s*FALSE\s*;', source)))

@@ -119,7 +119,8 @@ NTSTATUS SafeUploadStageAllocateV19(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PUNICO
     _Out_ PSAFEUPLOAD_REQUEST AllocationRequest, _Out_ PBOOLEAN AllocationMayExist);
 NTSTATUS SafeUploadStageReplayAllocationV19(_In_ const SAFEUPLOAD_REQUEST *AllocationRequest,
     _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength,
-    _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity);
+    _Out_ PUINT64 DestinationGeneration, _Out_ PSAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity,
+    _Out_ PBOOLEAN NoAllocationCommitted);
 struct _SAFEUPLOAD_STAGE_WRITER_LEASE;
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageAllocateBoundV23(_Inout_ PFLT_CALLBACK_DATA Data,
