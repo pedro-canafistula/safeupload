@@ -466,6 +466,13 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     `SE_DACL_AUTO_INHERIT_REQ` to candidate CREATE inputs; both constructions retain the same five matches/two inherited-control
     failures. The exact expected descriptor is unchanged, so this candidate is rejected. PowerShell 5.1 and strict independent
     fixture/task/worker restoration pass; publication remains NotReady, with no kernel/agent change or product boot.
+    **Owner decision pending (2026-10-15):** [decision memo](evidence/2026-10-15/t5-descriptor-decision-sol61.md). Ordinary new
+    files inherit their folder's permissions, so the inherited-creation shape is the everyday case and NotReady blocks routine
+    saves. Options: keep exact equality (publication stays unavailable), accept a narrow exception for only the DACL
+    auto-inherited marker (`0x0400`) with every other byte equal, or redesign publication around preserving the existing object.
+    Recommendation: the narrow exception, preferring an exact native-inheritance CREATE where it is proved, after finite builder
+    controls (NULL-input inheritance; parent-ACE change, tree reset, icacls and backup round trips). Until the owner decides,
+    exact equality and NotReady stay in force.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)
@@ -748,6 +755,9 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
         allocation, so Verifier counts it (34.5 B/cycle ≈ 24 B × 1.44 per cycle); all references are balanced and the purge frees it,
         so it scales with cached files; the capture step is exactly 10,131 witnesses. Fix (kernel lifetime change, design and review
         first, joins batch 3): detach the context's witness once no non-retired registry entry needs it. The gate is unchanged.
+        Design `driver/T5-SOP-WITNESS-DETACH.md` on `wt/t5-batch2` (`c001e83a`); [independent review](evidence/2026-10-15/t5-witness-detach-review-sol61.md)
+        **REVISE**: predicate, references, lock order and End/Unknown semantics sound, but the full registry walk under the WriterLock
+        spin lock (up to 20,480 entries) has no hold-time bound; revision to an O(1) live-binding count is in progress.
       - [ ] Raw C01–C04/B01/B02/X01 cells in ordinary, runtime-Verifier and boot-Verifier modes with this pair.
         **Stopped: C01-approve-absent ordinary failed twice** (`m2t5od1`, diagnostic rerun `m2t5oe1` with the new failure capture
         `a2900ee5`; receipts kept). After the after-boot phase's restoration retried the voluntary unload, the guest stayed alive
@@ -766,7 +776,17 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     accepted custody exception, the two wedge fixes, exact `0xFBF` negotiation. [Pre-boot review](evidence/2026-10-14/t5-batch2-codereview-sol61.md)
     REVISE (disposal proofs dropped on disconnect, circular failed-attachment cleanup, unbounded positive history), all fixed;
     [re-review](evidence/2026-10-14/t5-batch2-rereview-code-sol61.md) **ACCEPT WITH CONDITIONS** (WDK, matrix, harness gates).
-    Expected 2,260 normal / 2,842 feature tests per profile. Builder round `t5-batch2b` queued behind the 10k row.
+    Expected 2,260 normal / 2,842 feature tests per profile.
+    **Builds (2026-10-15, boot branch `wt/t5-batch2-boot`, all failed receipts kept):** WDK `t5-batch2b`/`c`/`d` failed the feature
+    profiles (C4013 `RtlValidAcl`, C4389, C4701, then PREfast C28125: release-control probes had no `__except`); fixed in
+    `6f1e914c`, `ee2c3574`, `7a6393a3` (probes now follow the dispose control). [`t5-batch2e`](evidence/2026-10-15/exact-t5-batch2e-summary.txt):
+    four WDK builds 0/0, PREfast, ApiValidator and import gate PASS. Matrix [`t5-batch2b`](evidence/2026-10-15/exact-agent-matrix-t5-batch2b-summary.txt)
+    failed 7/2,235 (normal Debug); `740d094e` restores the IOException refusal contract and fixes a test setup. Matrix
+    [`t5-batch2f`](evidence/2026-10-15/exact-agent-matrix-t5-batch2f-summary.txt): 2,238/2,240, the two remaining failures are the
+    existing `Direct_emptyheld_parent_cleanup_…_survives_restart_compaction` cases (expect 2 manifests compacted after a successor;
+    batch 2 keeps 1 or 0 because its accepted design retains receipts while replay is possible). **Decision (conservative):** the
+    tests stay unchanged, so batch 2 cannot pass the matrix, produces no packages and is not booted on its own; its fixes join
+    batch 3, whose receipt closure must make these two tests pass unchanged. The bounded batch-2 rows move to the batch-3 pair.
     **Activation hold found in review:** with epoch retirement deferred, positive, completion, exposure, seal and release receipts
     all accumulate with cumulative 1,024-record limits and per-save full-manifest scans, so about 1,024 protected saves in a
     machine's lifetime would exhaust capacity ([positive addendum review](evidence/2026-10-14/t5-posdesign-review-sol61.md),

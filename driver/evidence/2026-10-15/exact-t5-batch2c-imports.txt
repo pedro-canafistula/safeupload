@@ -1,0 +1,6 @@
+DriverImports SafeUpload-stage-prototype.sys FAIL unreadable: [Errno 2] No such file or directory: '/tmp/claude-1000/exact-t5-batch2c/SafeUpload-stage-prototype.sys'
+DriverImports owned-feature.sys FAIL unreadable: [Errno 2] No such file or directory: '/tmp/claude-1000/exact-t5-batch2c/owned-feature.sys'
+DriverImports normal.sys PASS 83 imports all exported by the reference
+DriverImports owned-feature-release.sys FAIL unreadable: [Errno 2] No such file or directory: '/tmp/claude-1000/exact-t5-batch2c/owned-feature-release.sys'
+DriverImports normal-release.sys PASS 83 imports all exported by the reference
+DriverImportAvailability=FAIL
