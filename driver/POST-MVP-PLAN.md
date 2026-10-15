@@ -23,6 +23,13 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-15 — kernel builds on both builders; no queueing behind a busy builder.** Owner, in the session:
+- Option B: the existing test-signing certificate (`A6D6…`) is installed on builder2 too. The owner ran the installation
+  (`install-signer-builder2.sh`, outside the repository); builder2 reported HasPrivateKey=True and a Valid test signature, and the
+  temporary copies were removed. builder2 now has the kernel-sign role as well as matrix and gate.
+- "Never again queue something behind a busy builder when the other one is available": every builder job goes through
+  `builder-run.sh` (one lock per builder; the first free builder with the role takes the job).
+
 **2026-10-15 — staging is the product; the staging-out profile is retired.** Owner, in the session: the staging-free "normal"
 build (`SAFEUPLOAD_STAGING_PROTOTYPE` / `SafeUploadAdmissionEvidence` off) is no longer a shipping target or delivery gate: without
 taint it enforces almost nothing, and nothing ships before cutover. AGENTS.md now reads: "Staging is the product path. Runtime
