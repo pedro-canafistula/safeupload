@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using SafeUpload.Agent.Core.Domain;
 
 namespace SafeUpload.Agent.Core.Application;
 
@@ -12,7 +13,8 @@ namespace SafeUpload.Agent.Core.Application;
 /// <param name="CopyId">Identificador devolvido ao aplicativo na classificação.</param>
 /// <param name="Dirty">O clipboard ficou sujo.</param>
 /// <param name="SourceProcess">Quem copiou, se conhecido.</param>
-public sealed record ClipboardCopy(string CopyId, bool Dirty, string? SourceProcess);
+public sealed record ClipboardCopy(string CopyId, bool Dirty, string? SourceProcess,
+    IReadOnlyList<Category>? Categories = null, long SizeBytes = 0, int PolicyVersion = 1);
 
 /// <summary>
 /// Guarda a última cópia de cada sessão do Windows.
@@ -33,9 +35,11 @@ public sealed class ClipboardCopyStore
     private readonly ConcurrentDictionary<uint, ClipboardCopy> _latest = new();
 
     /// <summary>Registra a cópia nova da sessão e devolve o que ficou guardado.</summary>
-    public ClipboardCopy Register(uint? sessionId, bool dirty, string? sourceProcess)
+    public ClipboardCopy Register(uint? sessionId, bool dirty, string? sourceProcess,
+        IReadOnlyList<Category>? categories = null, long sizeBytes = 0, int policyVersion = 1)
     {
-        var copy = new ClipboardCopy(Guid.NewGuid().ToString("N"), dirty, sourceProcess);
+        var copy = new ClipboardCopy(Guid.NewGuid().ToString("N"), dirty, sourceProcess,
+            categories?.ToArray(), sizeBytes, policyVersion);
         _latest[sessionId ?? UnknownSession] = copy;
         return copy;
     }

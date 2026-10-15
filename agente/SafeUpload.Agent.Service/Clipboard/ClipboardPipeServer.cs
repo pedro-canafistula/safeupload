@@ -43,6 +43,7 @@ public sealed class ClipboardPipeServer : BackgroundService
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
 
     private readonly ClipboardInspectionService _inspection;
+    private readonly IAuditSink _auditSink;
     private readonly ILogger<ClipboardPipeServer> _logger;
     private readonly string _pipeName;
     private readonly TimeSpan _initialRetryDelay;
@@ -55,10 +56,12 @@ public sealed class ClipboardPipeServer : BackgroundService
     public ClipboardPipeServer(
         ClipboardInspectionService inspection,
         ILogger<ClipboardPipeServer> logger,
+        IAuditSink auditSink,
         string? pipeName = null,
         TimeSpan? retryDelay = null)
     {
         _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
+        _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipeName = pipeName ?? ClipboardProtocol.PipeName;
         _initialRetryDelay = retryDelay ?? DefaultRetryDelay;
@@ -171,12 +174,23 @@ public sealed class ClipboardPipeServer : BackgroundService
                 return;
             }
 
+            string? userName = null;
+            try
+            {
+                userName = pipe.GetImpersonationUserName();
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                _logger.LogWarning("Usuario do clipboard indisponivel ({Tipo}).", exception.GetType().Name);
+            }
+
             ClipboardOutcome outcome = await _inspection
                 .HandleAsync(request, sessionId, timeout.Token)
                 .ConfigureAwait(false);
 
             ClipboardLog.Write(_logger, outcome.Observation);
-            ClipboardResponse response = outcome.Response;
+            ClipboardResponse response = await ClipboardAudit.WriteAsync(
+                outcome, _auditSink, _logger, userName, timeout.Token).ConfigureAwait(false);
 
             // O escritor tem escopo próprio: descartá-lo só no fim do método
             // tentaria um último Flush depois de o cliente já ter fechado, e

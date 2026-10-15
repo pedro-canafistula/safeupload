@@ -74,7 +74,8 @@ public class AdminService {
     private Summary summary(List<AuditEvent> events) {
         Map<Verdict, Long> counts = events.stream().collect(Collectors.groupingBy(AuditEvent::verdict, Collectors.counting()));
         return new Summary(events.size(), counts.getOrDefault(Verdict.Blocked, 0L),
-                counts.getOrDefault(Verdict.Approved, 0L), counts.getOrDefault(Verdict.AllowedWithoutInspection, 0L));
+                counts.getOrDefault(Verdict.Approved, 0L), counts.getOrDefault(Verdict.AllowedWithoutInspection, 0L),
+                counts.getOrDefault(Verdict.Retained, 0L));
     }
 
     private String osKind(String os) {

@@ -8,7 +8,7 @@ import java.util.List;
 public final class AdminViews {
     private AdminViews() {}
 
-    public record Summary(long total, long bloqueados, long aprovados, long liberadosSemInspecao) {}
+    public record Summary(long total, long bloqueados, long aprovados, long liberadosSemInspecao, long retidos) {}
     public record Day(LocalDate data, long quantidade) {}
     public record CategoryCount(Category codigo, String nome, long quantidade) {}
     public record Dashboard(String periodo, Summary resumo, List<Day> tendencia,

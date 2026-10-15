@@ -44,7 +44,9 @@ public sealed record ClipboardObservation(
     ClipboardCopyReason? Reason = null,
     IReadOnlyList<Category>? Categories = null,
     ClipboardPasteVerdict? Verdict = null,
-    string? FailureType = null);
+    string? FailureType = null,
+    long SizeBytes = 0,
+    int PolicyVersion = 1);
 
 /// <summary>A resposta a devolver pelo pipe e, se houver, o fato a registrar.</summary>
 /// <param name="Response">O que volta para o aplicativo.</param>

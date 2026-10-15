@@ -46,7 +46,7 @@ test('heartbeat e três eventos reais aparecem no painel, endpoints e auditoria'
   await page.getByRole('button', { name: /entrar/i }).click();
   const inspections = page.locator('.metrics section').filter({ has: page.getByRole('heading', { name: 'Inspeções', exact: true }) });
   await expect(inspections.locator('strong')).toHaveText('3');
-  await page.getByRole('link', { name: 'Endpoints', exact: true }).click();
+  await page.getByRole('link', { name: 'Endpoints e agentes', exact: true }).click();
   await expect(page.getByRole('cell', { name: 'Online', exact: true })).toBeVisible();
   await page.getByLabel('Buscar máquina').fill('INEXISTENTE');
   await page.getByRole('button', { name: 'Aplicar', exact: true }).click();
@@ -82,4 +82,34 @@ test('erros de API não são confundidos com estado vazio; atualização recuper
   await expect(page).toHaveURL(/login/);
   await page.goto('/auditoria');
   await expect(page).toHaveURL(/login/);
+});
+
+test('clipboard recebido pelo Java aparece no navegador sem duplicar no reenvio', async ({ page, request }) => {
+  const clipboard = {
+    eventId: crypto.randomUUID(), occurredAtUtc: new Date().toISOString(), endpointId,
+    userName: 'teste', fileName: '', extension: '', sizeBytes: 14, verdict: 'Blocked', channel: 'Clipboard',
+    categories: ['Cpf'], maskedSnippets: ['TRECHO_CLIPBOARD_NAO_EXIBIR'], processName: 'EXCEL.EXE',
+    processId: 42, destinationPath: 'chrome.exe', notInspectedReason: null, policyVersion: 1,
+    elapsedMs: 3, dispatched: false
+  };
+  for (const tentativa of [1, 2]) {
+    const response = await request.post('http://127.0.0.1:8080/agent/events', { data: { events: [clipboard] } });
+    expect(response.ok(), `Envio ${tentativa}`).toBeTruthy();
+    expect((await response.json()).acceptedEvents).toBe(1);
+  }
+  await page.goto('/login');
+  await page.getByLabel('E-mail').fill(email);
+  await page.getByLabel('Senha', { exact: true }).fill(password);
+  await page.getByRole('button', { name: /entrar/i }).click();
+  await expect(page.getByRole('cell', { name: 'Área de transferência', exact: true })).toHaveCount(1);
+  await page.goto('/auditoria?endpoint=' + endpointId);
+  await expect(page.getByText('Total 4', { exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Área de transferência', exact: true })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Detalhes de Colagem', exact: true }).click();
+  const detalhes = page.getByRole('region', { name: 'Detalhes de Colagem', exact: true });
+  await expect(detalhes).toContainText(clipboard.eventId);
+  await expect(detalhes).toContainText('EXCEL.EXE');
+  await expect(detalhes).toContainText('chrome.exe');
+  await expect(detalhes.getByText('Extensão', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('TRECHO_CLIPBOARD_NAO_EXIBIR')).toHaveCount(0);
 });

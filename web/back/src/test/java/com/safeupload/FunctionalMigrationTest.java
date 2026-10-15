@@ -101,7 +101,56 @@ class FunctionalMigrationTest {
                 .andExpect(jsonPath("$.monitoredScopes.extensions.length()").value(5))
                 .andExpect(jsonPath("$.monitoredScopes.destinationPaths[0]").value("C:\\SafeUpload\\Escopo Monitorado"))
                 .andExpect(jsonPath("$.maxFileSizeMb").value(20)).andExpect(jsonPath("$.inspectionTimeoutSeconds").value(5))
-                .andExpect(jsonPath("$.failOpen").value(true)).andExpect(jsonPath("$.overrideAllowed").value(false));
+                .andExpect(jsonPath("$.failOpen").value(true)).andExpect(jsonPath("$.overrideAllowed").value(false))
+                .andExpect(jsonPath("$.clipboard.mode").value("Off"))
+                .andExpect(jsonPath("$.clipboard.maxTextLength").value(100000))
+                .andExpect(jsonPath("$.clipboard.oversizedTextIsDirty").value(true))
+                .andExpect(jsonPath("$.clipboard.egressDestinations").value(org.hamcrest.Matchers.hasItem("chrome")))
+                .andExpect(jsonPath("$.clipboard.excludedSources").value(
+                        org.hamcrest.Matchers.containsInAnyOrder("KeePass", "KeePassXC", "1Password", "Bitwarden")));
+    }
+
+    @Test
+   void auditChannelSupportsFilesClipboardAndLegacyEvents() throws Exception {
+    ObjectNode file = event("PC-01", "Approved", now);
+    file.put("channel", "File");
+
+    ObjectNode clipboard = event("PC-01", "Blocked", now.minusSeconds(1), "Cpf");
+    clipboard.put("channel", "Clipboard");
+    clipboard.put("fileName", "");
+    clipboard.put("extension", "");
+    clipboard.put("sizeBytes", 42);
+    clipboard.put("processName", "excel.exe");
+    clipboard.put("destinationPath", "chrome.exe");
+
+    // Simula evento produzido por uma versão anterior do agente.
+    ObjectNode legacy = event("PC-01", "Approved", now.minusSeconds(2));
+    legacy.remove("channel");
+
+    postJson("/agent/events", Map.of("events", List.of(file, clipboard, legacy)))
+            .andExpect(status().isOk());
+
+    mvc.perform(get("/api/auditoria").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventos.length()").value(3))
+            .andExpect(jsonPath("$.eventos[?(@.channel == 'Clipboard')]").isNotEmpty());
+
+    assertThat(agents.auditEvents())
+            .extracting(event -> event.channel().name())
+            .containsExactlyInAnyOrder("File", "Clipboard", "File");
+}
+
+    @Test
+    void invalidChannelOrEmptyFileNameRejectsWholeBatch() throws Exception {
+        for (String channel : List.of("File", "Unknown")) {
+            ObjectNode valid = event("PC-01", "Approved", now);
+            ObjectNode invalid = event("PC-01", "Blocked", now, "Cpf");
+            invalid.put("channel", channel);
+            invalid.put("fileName", "");
+            postJson("/agent/events", Map.of("events", List.of(valid, invalid)))
+                    .andExpect(status().isUnprocessableEntity());
+            assertThat(events.count()).isZero();
+        }
     }
 
     @Test
@@ -114,6 +163,34 @@ class FunctionalMigrationTest {
         when(clock.instant()).thenReturn(now.plusSeconds(91));
         mvc.perform(get("/api/endpoints").session(session)).andExpect(jsonPath("$.resumo.offline").value(1))
                 .andExpect(jsonPath("$.itens[0].status").value("offline"));
+    }
+
+    @Test
+    void currentAgentSupportsWebRetainedAndPublicationHash() throws Exception {
+        ObjectNode retained = event("PC-01", "Retained", now);
+        retained.put("notInspectedReason", "publication_failed");
+        ObjectNode web = event("PC-01", "Blocked", now, "Cpf");
+        web.put("channel", "Web");
+        web.put("fileName", "");
+        web.put("extension", "");
+        ObjectNode published = event("PC-01", "Approved", now);
+        published.put("publishedSha256Hex", "a".repeat(64));
+        var batch = Map.of("events", List.of(retained, web, published));
+        postJson("/agent/events", batch).andExpect(status().isOk());
+        postJson("/agent/events", batch).andExpect(status().isOk());
+        assertThat(events.count()).isEqualTo(3);
+        mvc.perform(get("/api/painel").session(session))
+                .andExpect(jsonPath("$.resumo.total").value(3))
+                .andExpect(jsonPath("$.resumo.retidos").value(1))
+                .andExpect(jsonPath("$.resumo.bloqueados").value(1))
+                .andExpect(jsonPath("$.resumo.aprovados").value(1))
+                .andExpect(jsonPath("$.resumo.liberadosSemInspecao").value(0));
+        assertThat(agents.auditEvents()).anySatisfy(item ->
+                assertThat(item.publishedSha256Hex()).isEqualTo("a".repeat(64)));
+        published.put("eventId", UUID.randomUUID().toString());
+        published.put("publishedSha256Hex", "invalid");
+        postJson("/agent/events", Map.of("events", List.of(published)))
+                .andExpect(status().isUnprocessableEntity());
     }
 
     @Test
