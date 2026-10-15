@@ -161,6 +161,15 @@ public static class WriterPermissionNativeControl {
   if(CheckAccess(0x100002,1)!=0x100002 || CheckAccess(0x100002,3)!=0x100002 ||
      CheckAccess(0x100002,4)!=0x100112 || CheckAccess(0x100002,5)!=0x100112 || CheckAccess(0x100002,0)!=0x110112)
    throw new InvalidOperationException("Implicit-access matrix is malformed.");
+  // SelfCheckOnly must remain managed-only. The native projection assertions
+  // run separately on the Windows measurement path.
+  var map=typeof(WriterPermissionNativeControl).GetMethod("MapGenericMask",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
+  var args=map.GetParameters();
+  if(map.ReturnType!=typeof(void) || args.Length!=2 || args[0].ParameterType!=typeof(uint).MakeByRefType() ||
+     args[1].ParameterType!=typeof(GenericMapping).MakeByRefType() || Marshal.SizeOf(typeof(GenericMapping))!=16)
+   throw new InvalidOperationException("Native generic-mapping signature is malformed.");
+ }
+ public static void NativeProjectionSelfCheck() {
   if(ProjectGrant(0x40000000,0x1F01FF)!=0x120116 || ProjectGrant(0x100002,0x110112)!=0x100002)
    throw new InvalidOperationException("App-grant projection is malformed.");
  }
@@ -178,6 +187,7 @@ public static class WriterPermissionNativeControl {
 [WriterPermissionNativeControl]::SelfCheck()
 Write-Output 'NativePackingAndImplicitAccessSelfCheck=PASS'
 if ($SelfCheckOnly) { return }
+[WriterPermissionNativeControl]::NativeProjectionSelfCheck()
 
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
 $root = Join-Path ([IO.Path]::GetTempPath()) ('safeupload-writer-permissions-' + [Guid]::NewGuid().ToString('N'))

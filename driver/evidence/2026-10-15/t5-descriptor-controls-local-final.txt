@@ -1,0 +1,19 @@
+T5 descriptor controls: final local verification summary
+BaseCommit=f82471cd36a1391ae3b8cd83c3f494e5ee1aabf0
+Source=uncommitted; branch wt/t5-descriptor-controls; no commit/push
+Local PowerShell 7.4.2: all 13 T5 scripts parsed with zero errors.
+Portable self-check PASS: 17 native import signatures/packing, backup decoder, all 64 descriptor-byte mutations, all 16 switch combinations.
+Latest portable self-check after private backup handle error-reporting adjustment: PASS, no native calls.
+Bash syntax PASS; git diff --check PASS.
+Earlier attempts and platform limitation retained in t5-descriptor-controls-local-summary1.txt.
+Windows PowerShell 5.1 gate and native measurements NOT RUN. Candidate 1 NOT RUN.
+No product or qualification result. Measurement result summaries retain both raw and historical compact mismatch counts.
+
+SHA256 (final delivered harness files):
+2229103b47bd470eb345774cd01fca5a77dcbb8ffede5560547b281363c87143  driver/scripts/Invoke-HarnessWindowsGate.sh
+b7b3d1aac6aa9fd9312ecc1f4ef9f30b998953e29d2a22d67e5bf9789b43cb79  driver/scripts/t5/Invoke-SecurityRoundTripNativeControl.ps1
+e10282987575b84481e2dc5a85686da22ef248da0ce7230f486a2c09c9fe1a25  driver/scripts/t5/security-roundtrip-native-control.ps1
+fbd427d901781d9e969835a7ff6ef5657db81f5d8561baebb1669154562dbd9d  driver/scripts/t5/writer-permission-native-control.ps1
+129370805f2f5f703e37acfa8a22fb1de3d8407c0ef280ab0ad8c2186e4c972b  driver/scripts/t5/security-descriptor-native-control.ps1
+89ec52e175aabd79983f89a8aae9a4f948550a5d918937614fd79250f7a26429  driver/scripts/t5/security-roundtrip-native-control.SelfCheck.ps1
+92fe0babc6a2cb1febffbd78b5c7e4b11da96ae0afe603318f5e55bac1406573  driver/scripts/t5/security-roundtrip-native-control.md

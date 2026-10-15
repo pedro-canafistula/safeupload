@@ -10,6 +10,7 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 src="$(cd "$tree" && pwd)/driver/scripts"
 files=(Test-StagedInvariantSuite.ps1 StagedInvariantObserver.psm1 StagedInvariantCases.psd1 Build-ExactAgent.ps1 t4/cycles-actor.ps1 t4/cycles-coordinator.ps1 t4/failure-evidence.ps1 t4/cycles-progress.ps1 t4/agent-readiness.ps1 t4/runtime-verifier.ps1 t4/memory-debugger.ps1 t4/purge-attribution.ps1 t6/moves-actor.ps1 t6/moves-coordinator.ps1 t10/permissions-actor.ps1 t10/permissions-coordinator.ps1 t5/notepad-actor.ps1 t5/notepad-coordinator.ps1 t5/writer-permission-native-control.ps1 t5/bound-publication-native-control.ps1 t5/security-roundtrip-native-control.ps1 t5/Invoke-SecurityRoundTripNativeControl.ps1)
 checks=()
+files+=(t5/security-descriptor-native-control.ps1 t5/security-roundtrip-native-control.SelfCheck.ps1)
 for f in "$src"/*.SelfCheck.ps1; do [[ "$(basename "$f")" == StagedInvariant*.SelfCheck.ps1 ]] && checks+=("$(basename "$f")"); done
 host=192.168.122.210; dest="C:/Users/vika/Documents/harness-gate-$label"
 ev="$repo/driver/evidence/$(date +%F)/harness-windows-gate-$label.txt"; mkdir -p "$(dirname "$ev")"
