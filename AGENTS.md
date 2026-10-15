@@ -47,8 +47,8 @@ Use committed source and fresh labels with the existing runners. Record the Git 
 | Work | Verification |
 |---|---|
 | Documentation only | Check diffs, links and consistency with current evidence; no product VM boot required |
-| Agent component | Focused relevant controls for feedback; complete normal/feature × Debug/Release matrix for the delivery checkpoint |
-| Kernel | Four normal/feature × Debug/Release WDK builds, PREfast and ApiValidator, all at 0 warnings / 0 errors; required Verifier rows |
+| Agent component | Focused relevant controls for feedback; feature Debug/Release matrix with user + SYSTEM legs (4 legs) for the delivery checkpoint |
+| Kernel | Two feature Debug/Release WDK builds, PREfast and ApiValidator, all at 0 warnings / 0 errors, with import availability PASS over both; required Verifier rows |
 | Harness | Windows PowerShell **5.1** parse/native signature checks, relevant self-checks, then an authorized real run |
 | Milestone | Matched driver/agent artifacts, all required ordinary/runtime-Verifier/boot-Verifier rows, independent byte observations, separate restoration and final adversarial review |
 

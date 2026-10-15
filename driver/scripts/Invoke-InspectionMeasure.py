@@ -9,6 +9,7 @@ import datetime
 import hashlib
 import importlib.util
 import json
+from approved_builders import select, receipt, identity_ps, remote_args
 from pathlib import Path
 import re
 import shutil
@@ -137,6 +138,9 @@ def main():
     for label in [args.label, args.corpus_from]:
         if label is not None and not re.fullmatch('[A-Za-z0-9._-]{3,60}', label):
             parser.error('Invalid label')
+    builder = select('matrix', args.label)
+    remote_cli = remote_args(builder, 'matrix', args.label)
+    remote_dest = builder['ssh_user'] + '@' + builder['host'] + ':C:/Users/' + builder['ssh_user'] + '/Documents/'
     commit = subprocess.check_output(['git', 'rev-parse', '--verify', args.commit + '^{commit}'], cwd=REPO, text=True).strip()
     work = REPO / 'output/inspection-measure' / args.label
     work.mkdir(parents=True, exist_ok=False)
@@ -146,56 +150,51 @@ def main():
     evidence = REPO/'driver/evidence'/datetime.date.today().isoformat()
     evidence.mkdir(parents=True, exist_ok=True)
     prefix = 'inspection-measure-'+args.label
-    provenance = dict(sourceCommit=commit, sourceSha256=matrix.sha(work/'source.zip').upper(),
+    provenance = dict(Label=args.label, BuilderIdentity=receipt(builder), sourceCommit=commit, sourceSha256=matrix.sha(work/'source.zip').upper(),
                       corpusSha256=matrix.sha(work/'corpus.zip').upper(), corpusFrom=args.corpus_from, cases=cases)
     (evidence/(prefix+'-source.json')).write_text(json.dumps(provenance, indent=2)+'\n')
     print('SOURCE_COMMIT='+commit+'; prepared 14 retained fixtures', flush=True)
     if args.prepare_only:
         return
     remote_root = 'C:\\Users\\vika\\Documents\\'+prefix
-    preflight = """$ErrorActionPreference='Stop'
-if($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or
- (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69' -or
- -not @(Get-NetAdapter|Where-Object {$_.MacAddress -eq '52-54-00-63-87-7A'}).Count){throw 'Wrong builder.'}
-if((Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'").FreeSpace -lt 300000000){throw 'Insufficient measurement headroom.'}
+    preflight = identity_ps(builder) + """if((Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'").FreeSpace -lt 300000000){throw 'Insufficient measurement headroom.'}
 """
     for leaf in [remote_root, remote_root+'-source.zip', remote_root+'-corpus.zip']:
         preflight += "if(Test-Path -LiteralPath '"+leaf+"'){throw 'Measurement destination already exists.'}\n"
-    check = subprocess.run(['python3', str(REPO/'driver/scripts/remote_ps.py'), matrix.HOST],
+    check = subprocess.run(['python3', str(REPO/'driver/scripts/remote_ps.py'), *remote_cli],
                            input=preflight.encode(), capture_output=True)
     (evidence/(prefix+'-preflight.stdout.txt')).write_bytes(check.stdout)
     (evidence/(prefix+'-preflight.stderr.txt')).write_bytes(check.stderr)
     if check.returncode:
         raise RuntimeError('Builder preflight failed before delivery')
     for name in ['source.zip', 'corpus.zip']:
-        subprocess.run(['scp', *matrix.SSH, str(work/name), matrix.REMOTE+prefix+'-'+name], check=True)
+        subprocess.run(['scp', *matrix.SSH, str(work/name), remote_dest+prefix+'-'+name], check=True)
     script = build_script(remote_root, provenance)
     (evidence/(prefix+'-build.ps1')).write_text(script, encoding='utf-8-sig')
-    result = subprocess.run(['python3', str(REPO/'driver/scripts/remote_ps.py'), matrix.HOST],
+    result = subprocess.run(['python3', str(REPO/'driver/scripts/remote_ps.py'), *remote_cli],
                             input=script.encode(), capture_output=True)
     (evidence/(prefix+'-build.stdout.txt')).write_bytes(result.stdout)
     (evidence/(prefix+'-build.stderr.txt')).write_bytes(result.stderr)
     results = work/'results'
-    subprocess.run(['scp', *matrix.SSH, '-r', matrix.REMOTE+prefix+'/results', str(results)], check=True)
+    subprocess.run(['scp', *matrix.SSH, '-r', remote_dest+prefix+'/results', str(results)], check=True)
     for path in results.iterdir():
         if path.is_file():
             (evidence/(prefix+'-'+path.name)).write_bytes(path.read_bytes())
     if result.returncode:
         raise RuntimeError('Measurement/build failed; raw receipts retained, no later case inferred passed')
     verify(results, provenance)
-    print('InspectionMeasureGate=PASS', flush=True)
+    print('ParityCheck=True; not a gate' if builder['parity_check'] else 'InspectionMeasureGate=PASS', flush=True)
 
 
 def build_script(root, source):
+    builder = select('matrix', source.get('Label', root.rsplit('inspection-measure-', 1)[-1]))
     script = r'''$ErrorActionPreference='Stop'
 [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
 $OutputEncoding=New-Object Text.UTF8Encoding($false)
 $env:DOTNET_CLI_UI_LANGUAGE='en-US'
 $root='@@ROOT@@'
 if(Test-Path -LiteralPath $root){throw 'Root already exists.'}
-if($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or
- (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69' -or
- -not @(Get-NetAdapter|Where-Object {$_.MacAddress -eq '52-54-00-63-87-7A'}).Count){throw 'Wrong builder.'}
+@@IDENTITY@@
 if((Get-FileHash -LiteralPath ($root+'-source.zip') -Algorithm SHA256).Hash -ne '@@SOURCE_SHA@@' -or
  (Get-FileHash -LiteralPath ($root+'-corpus.zip') -Algorithm SHA256).Hash -ne '@@CORPUS_SHA@@'){throw 'Delivery hash mismatch.'}
 if($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1){throw 'PowerShell 5.1 required.'}
@@ -227,11 +226,12 @@ foreach($case in $cases){
  if($LASTEXITCODE -ne 0){throw ('Measurement failed: '+$case.name)}
  if((Get-FileHash -LiteralPath $input -Algorithm SHA256).Hash -ne $case.sha256){throw 'Corpus changed after measurement.'}
 }
-$receipt=@{SourceCommit='@@COMMIT@@';SourceSha256='@@SOURCE_SHA@@';CorpusSha256='@@CORPUS_SHA@@';CoreSha256=(Get-FileHash -LiteralPath $core -Algorithm SHA256).Hash;ProbeSha256=(Get-FileHash -LiteralPath (Join-Path $publish 'InspectionMeasure.dll') -Algorithm SHA256).Hash;Gate='PASS';Cases=14;PolicyDefaultsChanged=$false;FilesystemCacheControlled=$false;ProtectedQualification=$false}
+$receipt=@{Builder='@@BUILDER@@';BuilderHost='@@HOST@@';BuilderComputerName='@@COMPUTER@@';ParityCheck=@@PARITY@@;SourceCommit='@@COMMIT@@';SourceSha256='@@SOURCE_SHA@@';CorpusSha256='@@CORPUS_SHA@@';CoreSha256=(Get-FileHash -LiteralPath $core -Algorithm SHA256).Hash;ProbeSha256=(Get-FileHash -LiteralPath (Join-Path $publish 'InspectionMeasure.dll') -Algorithm SHA256).Hash;Gate='@@GATE@@';Notice='@@NOTICE@@';Cases=14;PolicyDefaultsChanged=$false;FilesystemCacheControlled=$false;ProtectedQualification=$false}
 $receipt|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $results 'receipt.json') -Encoding UTF8
-Write-Output 'INSPECTION_MEASURE=PASS cases=14 fresh_process_and_repeat no_policy_edit_no_purge_no_publication'
+Write-Output '@@COMPLETION@@'
 '''
-    return script.replace('@@ROOT@@', root).replace('@@COMMIT@@', source['sourceCommit']).replace(
+    script = script.replace('@@GATE@@', 'PARITY_ONLY' if builder['parity_check'] else 'PASS').replace('@@NOTICE@@', 'ParityCheck: not a gate' if builder['parity_check'] else 'measurement only').replace('@@COMPLETION@@', 'ParityCheck=True; not a gate' if builder['parity_check'] else 'INSPECTION_MEASURE=PASS cases=14 fresh_process_and_repeat no_policy_edit_no_purge_no_publication')
+    return script.replace('@@IDENTITY@@', identity_ps(builder)).replace('@@ROOT@@', root).replace('@@BUILDER@@', builder['name']).replace('@@HOST@@', builder['host']).replace('@@COMPUTER@@', builder['computer_name']).replace('@@PARITY@@', '$true' if builder['parity_check'] else '$false').replace('@@COMMIT@@', source['sourceCommit']).replace(
         '@@SOURCE_SHA@@', source['sourceSha256']).replace('@@CORPUS_SHA@@', source['corpusSha256'])
 
 
@@ -240,7 +240,11 @@ def verify(results, source):
     for key, field in [('SourceCommit', 'sourceCommit'), ('SourceSha256', 'sourceSha256'), ('CorpusSha256', 'corpusSha256')]:
         if receipt[key] != source[field]:
             raise RuntimeError('Measurement provenance mismatch: '+key)
-    if receipt['Gate'] != 'PASS' or receipt['Cases'] != 14 or receipt['PolicyDefaultsChanged'] or receipt['FilesystemCacheControlled'] or receipt['ProtectedQualification']:
+    expected_gate = 'PARITY_ONLY' if source['BuilderIdentity']['ParityCheck'] else 'PASS'
+    for key, value in source['BuilderIdentity'].items():
+        if receipt.get(key) != value:
+            raise RuntimeError('Measurement builder identity mismatch: ' + key)
+    if receipt['Gate'] != expected_gate or receipt['Cases'] != 14 or receipt['PolicyDefaultsChanged'] or receipt['FilesystemCacheControlled'] or receipt['ProtectedQualification']:
         raise RuntimeError('Invalid measurement scope/completion receipt')
     for key, name in [('CoreSha256', 'SafeUpload.Agent.Core.dll'), ('ProbeSha256', 'InspectionMeasure.dll')]:
         if matrix.sha(results/name).upper() != receipt[key]:

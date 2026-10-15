@@ -4,6 +4,10 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]{3,60}$')][string] $Label,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string] $ArchiveSha256,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string] $SourceCommit,
+    [string] $BuilderName = $env:SAFEUPLOAD_BUILDER,
+    [string] $BuilderSupportPath = (Join-Path $PSScriptRoot 'ApprovedBuilders.ps1'),
+    [string] $BuilderConfigPath = (Join-Path $PSScriptRoot 'approved-builders.json'),
+    [switch] $DiagnosticContinue,
     [switch] $DiagnosticCompileOnly,
     [switch] $CleanupSelfTestOnly
 )
@@ -14,9 +18,107 @@ $ProgressPreference = 'SilentlyContinue'
 $script:Utf8ConsoleEncoding = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $script:Utf8ConsoleEncoding
 $OutputEncoding = $script:Utf8ConsoleEncoding
-if ($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or
-    (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69') {
-    throw 'Wrong builder.'
+. $BuilderSupportPath
+$builder = Get-ApprovedBuilder -Role 'matrix' -Label $Label -BuilderName $BuilderName -ConfigPath $BuilderConfigPath
+Assert-ApprovedBuilderIdentity $builder
+if ($DiagnosticContinue -and $DiagnosticCompileOnly) { throw 'Choose only one diagnostic mode.' }
+function Get-MatrixProfiles {
+    foreach ($mode in @('feature')) {
+        foreach ($configuration in @('Debug', 'Release')) {
+            [pscustomobject]@{ Mode = $mode; Configuration = $configuration }
+        }
+    }
+}
+function Get-MatrixCompletionRows {
+    param([bool] $Passed, [bool] $ContinueMode, [bool] $CompileOnly, [bool] $Parity)
+    if ($CompileOnly) { "DiagnosticCompileGate=$Passed"; 'TestsExecuted=False' }
+    if ($ContinueMode) { 'DiagnosticContinue=True'; 'DiagnosticContinue: not a gate' }
+    if ($Parity) { 'ParityCheck: not a gate' }
+    if ($ContinueMode -or $CompileOnly -or $Parity) { 'AgentMatrixGate=False' }
+    else { "AgentMatrixGate=$Passed" }
+}
+function Invoke-MatrixDiagnosticStep {
+    param([string] $StepName, [scriptblock] $Action)
+    try { & $Action }
+    catch {
+        # Never proceed into another SYSTEM job without its lifetime proof.
+        if ($_.Exception.Message -like 'SYSTEM task cleanup could not be confirmed:*') { throw }
+        $script:diagnosticFailed = $true
+        $script:summary += ($StepName + ': DiagnosticFailure=' + $_.Exception.Message.Replace("`r", ' ').Replace("`n", ' '))
+    }
+}
+function Get-MatrixUserIdentity { return [Security.Principal.WindowsIdentity]::GetCurrent() }
+function Invoke-DiagnosticProfile {
+    param([string] $Name, [string] $Configuration, [string[]] $Common,
+        [string] $ServiceProject, [string] $AppProject, [string] $TestProject, [string] $ProfileSource)
+    # Each independent action is attempted even after another action fails. A
+    # missing assembly is recorded separately for BOTH user and SYSTEM legs.
+    Invoke-MatrixDiagnosticStep ($Name + '-build') { Invoke-DotnetGate ($Name + '-build') (@('build', $ServiceProject) + $Common) }
+    Invoke-MatrixDiagnosticStep ($Name + '-app-build') { Invoke-DotnetGate ($Name + '-app-build') (@('build', $AppProject) + $Common) }
+    Invoke-MatrixDiagnosticStep ($Name + '-test-build') { Invoke-DotnetGate ($Name + '-test-build') (@('build', $TestProject) + $Common) }
+    $results = Join-Path $out ($Name + '-results')
+    [void][IO.Directory]::CreateDirectory($results)
+    $testDlls = @(Get-ChildItem (Join-Path $ProfileSource ('agente/SafeUpload.Agent.Tests/bin/' + $Configuration)) `
+        -Recurse -Filter 'SafeUpload.Agent.Tests.dll' -ErrorAction SilentlyContinue)
+    $testDll = if ($testDlls.Count -eq 1) { $testDlls[0] } else { $null }
+    $discoveryFqns = Join-Path $results 'agent-tests-discovered-fq.txt'
+    $discoverySettings = Join-Path $results 'discovery.runsettings'
+    [IO.File]::WriteAllText($discoverySettings,
+        '<RunSettings><RunConfiguration><BatchSize>100000</BatchSize></RunConfiguration></RunSettings>', $script:Utf8ConsoleEncoding)
+    $oldMachineSetting = $env:SAFEUPLOAD_MACHINE_TESTS
+    try {
+        $env:SAFEUPLOAD_MACHINE_TESTS = '1'
+        Invoke-MatrixDiagnosticStep ($Name + '-tests-discovery-list') {
+            if ($null -eq $testDll) { throw 'Expected exactly one built test assembly.' }
+            Invoke-DotnetGate ($Name + '-tests-discovery-list') @('vstest', $testDll.FullName, '/ListTests', ("/Settings:$discoverySettings"))
+        }
+        Invoke-MatrixDiagnosticStep ($Name + '-tests-discovery-fqns') {
+            if ($null -eq $testDll) { throw 'Expected exactly one built test assembly.' }
+            Invoke-DotnetGate ($Name + '-tests-discovery-fqns') @('vstest', $testDll.FullName, '/ListFullyQualifiedTests',
+                ("/Settings:$discoverySettings"), ("/ListTestsTargetPath:$discoveryFqns"))
+        }
+        ++$script:diagnosticTestLegsAttempted
+        Invoke-MatrixDiagnosticStep ($Name + '-tests-user') {
+            if ($null -eq $testDll) { throw 'Expected exactly one built test assembly.' }
+            $identity = Get-MatrixUserIdentity
+            if ($identity.User.Value -eq 'S-1-5-18' -or $identity.Name -notmatch ('(?i)\\' + [regex]::Escape($builder.ssh_user) + '$')) {
+                throw 'Unprivileged test leg has the wrong identity.'
+            }
+            $script:summary += "${Name}-tests-user-identity: name=$($identity.Name) sid=$($identity.User.Value)"
+            Remove-Item Env:SAFEUPLOAD_MACHINE_TESTS -ErrorAction SilentlyContinue
+            Invoke-DotnetGate ($Name + '-tests-user') @('vstest', $testDll.FullName,
+                '/TestCaseFilter:FullyQualifiedName!~CertificateAuthorityTests&FullyQualifiedName!~TlsInspectionProxyTests&FullyQualifiedName!~TrafficDiversionTests',
+                '/Logger:trx;LogFileName=agent-tests-user.trx', ("/ResultsDirectory:$results"))
+            [void](Assert-TrxLeg (Join-Path $results 'agent-tests-user.trx') ($Name + '/user'))
+        }
+        ++$script:diagnosticTestLegsAttempted
+        Invoke-MatrixDiagnosticStep ($Name + '-tests-system') {
+            if ($null -eq $testDll) { throw 'Expected exactly one built test assembly.' }
+            $systemLog = Join-Path $out ($Name + '-tests-system.txt')
+            $code = Invoke-SystemProcess -FilePath $script:dotnetExe `
+                -ArgumentLine ('vstest "' + $testDll.FullName + '" /TestCaseFilter:"FullyQualifiedName~CertificateAuthorityTests|FullyQualifiedName~TlsInspectionProxyTests|FullyQualifiedName~TrafficDiversionTests" /Logger:"trx;LogFileName=agent-tests-system.trx" /ResultsDirectory:"' + $results + '"') `
+                -WorkingDirectory $testDll.DirectoryName -StdoutPath $systemLog -Environment @{ SAFEUPLOAD_MACHINE_TESTS = '1' }
+            $text = [IO.File]::ReadAllText($systemLog)
+            $warnings = [regex]::Matches($text, '(?im)\bwarning\s+[A-Z]+\d+\b').Count
+            $errors = [regex]::Matches($text, '(?im)\berror\s+[A-Z]+\d+\b').Count
+            $script:summary += "${Name}-tests-system: exit=$code warnings=$warnings errors=$errors"
+            if ([regex]::Matches($text, '(?m)^SYSTEM_TEST_TASK_SID=S-1-5-18\r?$').Count -ne 1) { throw 'SYSTEM identity evidence missing or duplicated.' }
+            $script:summary += "${Name}-tests-system-identity: S-1-5-18"
+            if ($code -ne 0 -or $warnings -ne 0 -or $errors -ne 0) { throw 'SYSTEM tests failed.' }
+            [void](Assert-TrxLeg (Join-Path $results 'agent-tests-system.trx') ($Name + '/SYSTEM'))
+        }
+    } finally {
+        if ($null -eq $oldMachineSetting) { Remove-Item Env:SAFEUPLOAD_MACHINE_TESTS -ErrorAction SilentlyContinue }
+        else { $env:SAFEUPLOAD_MACHINE_TESTS = $oldMachineSetting }
+    }
+    if ($Configuration -eq 'Release') {
+        Invoke-MatrixDiagnosticStep ($Name + '-publish') {
+            $publish = Join-Path $out ($Name + '-publish')
+            Invoke-DotnetGate ($Name + '-publish') (@('publish', $ServiceProject,
+                '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=true',
+                '-p:IncludeNativeLibrariesForSelfExtract=true', '-o', $publish) + $Common)
+        }
+    }
 }
 $nativeJobSource = @'
 using System;
@@ -428,7 +530,7 @@ function Remove-CompletedProfileOutputs {
     $profilePath = [IO.Path]::GetFullPath($ProfileSource).TrimEnd('\')
     $evidencePath = [IO.Path]::GetFullPath($EvidenceDirectory).TrimEnd('\')
     if ([IO.Path]::GetDirectoryName($profilePath) -ne $evidencePath -or
-        [IO.Path]::GetFileName($profilePath) -notmatch '^profile-src-(normal|feature)-(debug|release)$') {
+        [IO.Path]::GetFileName($profilePath) -notmatch '^profile-src-feature-(debug|release)$') {
         throw 'Generated-output cleanup is outside a completed matrix profile.'
     }
     $agentPath = Join-Path $profilePath 'agente'
@@ -530,7 +632,7 @@ function Invoke-CleanupSelfTest {
         # simultaneous bin/obj trees. Check the deletion boundary independently
         # of the native-process job controls above.
         $fakeOut = Join-Path $testRoot 'out'
-        $fakeProfile = Join-Path $fakeOut 'profile-src-normal-debug'
+        $fakeProfile = Join-Path $fakeOut 'profile-src-feature-debug'
         $fakeProject = Join-Path $fakeProfile 'agente\Project'
         [void][IO.Directory]::CreateDirectory((Join-Path $fakeProject 'bin'))
         [void][IO.Directory]::CreateDirectory((Join-Path $fakeProject 'obj'))
@@ -758,9 +860,13 @@ foreach ($file in $seenFiles) {
     $expected.Add($relative, (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash)
 }
 $summary = @("LABEL=$Label", "BUILDER=$env:COMPUTERNAME", "SourceCommit=$($SourceCommit.ToLowerInvariant())",
-    "ARCHIVE_SHA256=$($ArchiveSha256.ToUpperInvariant())")
+    "ARCHIVE_SHA256=$($ArchiveSha256.ToUpperInvariant())",
+    'AgentMatrixProfiles=feature-debug,feature-release', 'AgentMatrixTestLegs=4') + @(Get-BuilderReceipt $builder)
+if ($DiagnosticContinue) { $summary += @('LabelKind=diagnostic') }
 $gatePassed = $false
 $diagnosticFailed = $false
+$script:diagnosticProfilesCompleted = 0
+$script:diagnosticTestLegsAttempted = 0
 $dotnetCommand = Get-Command dotnet.exe -ErrorAction Stop
 $trustedDotnet = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)) 'dotnet\dotnet.exe'
 if ([IO.Path]::GetFullPath($dotnetCommand.Source) -ine [IO.Path]::GetFullPath($trustedDotnet) -or
@@ -792,14 +898,15 @@ Push-Location $src
 try {
     & $script:dotnetExe --info > (Join-Path $out 'dotnet-info.txt') 2>&1
     if ($LASTEXITCODE -ne 0) { throw 'SDK identity query failed.' }
-    foreach ($mode in @('normal', 'feature')) {
-        $feature = if ($mode -eq 'feature') { 'true' } else { 'false' }
-        foreach ($configuration in @('Debug', 'Release')) {
+    foreach ($profile in @(Get-MatrixProfiles)) {
+        $mode = $profile.Mode
+        $configuration = $profile.Configuration
+        $feature = 'true'
             $name = $mode + '-' + $configuration.ToLowerInvariant()
             $summary += "$name`: admission_evidence=$feature"
             # Existing source-contract tests locate agente/scripts by walking
             # upward from their assembly. Keep that layout in a fresh verified
-            # full source copy per profile, never mixing feature/normal outputs.
+            # full source copy per profile, never mixing Debug/Release outputs.
             $profileSource = Join-Path $out ('profile-src-' + $name)
             if (Test-Path -LiteralPath $profileSource) { throw 'Profile source already exists.' }
             [void][IO.Directory]::CreateDirectory($profileSource)
@@ -814,6 +921,19 @@ try {
             $serviceProject = Join-Path $profileSource 'agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj'
             $appProject = Join-Path $profileSource 'agente\SafeUpload.Agent.App\SafeUpload.Agent.App.csproj'
             $testProject = Join-Path $profileSource 'agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj'
+            if ($DiagnosticContinue) {
+                Invoke-DiagnosticProfile $name $configuration $common $serviceProject $appProject $testProject $profileSource
+                foreach ($relative in $expected.Keys) {
+                    if ((Get-FileHash -LiteralPath (Join-Path $profileSource $relative) -Algorithm SHA256).Hash -ne $expected[$relative]) {
+                        throw 'Diagnostic profile source changed during execution.'
+                    }
+                }
+                ++$script:diagnosticProfilesCompleted
+                # Retain failed-profile outputs for diagnosis. Successful ones
+                # can be reclaimed with the existing guarded cleanup.
+                if (-not $diagnosticFailed) { Remove-CompletedProfileOutputs $profileSource $out $expected }
+                continue
+            }
             Invoke-DotnetGate ($name + '-build') (@('build', $serviceProject) + $common)
             Invoke-DotnetGate ($name + '-app-build') (@('build', $appProject) + $common)
             if ($DiagnosticCompileOnly) {
@@ -933,7 +1053,6 @@ try {
             # All test processes have ended, Release packages are retained and
             # source inputs are rechecked. Bound disk use to the current profile.
             Remove-CompletedProfileOutputs $profileSource $out $expected
-        }
     }
     # The build outputs live outside src; recheck all captured inputs after execution.
     foreach ($file in $seenFiles) {
@@ -945,11 +1064,11 @@ try {
     $gatePassed = -not $diagnosticFailed
 } finally {
     Pop-Location
-    if ($DiagnosticCompileOnly) {
-        $summary += "DiagnosticCompileGate=$gatePassed"
-        $summary += 'TestsExecuted=False'
-        $summary += 'AgentMatrixGate=False'
-    } else { $summary += "AgentMatrixGate=$gatePassed" }
+    if ($DiagnosticContinue) {
+        $summary += "DiagnosticProfilesCompleted=$script:diagnosticProfilesCompleted"
+        $summary += "DiagnosticTestLegsAttempted=$script:diagnosticTestLegsAttempted"
+    }
+    $summary += @(Get-MatrixCompletionRows $gatePassed $DiagnosticContinue.IsPresent $DiagnosticCompileOnly.IsPresent $builder.ParityCheck)
     $summary += 'BUILD_END_UTC=' + [DateTime]::UtcNow.ToString('o')
     $summary | Set-Content (Join-Path $out 'summary.txt') -Encoding UTF8
     $summary | Write-Output

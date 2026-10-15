@@ -4,14 +4,17 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]{3,60}$')][string] $Label,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string] $ArchiveSha256,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string] $SourceCommit,
-    [switch] $AdmissionEvidence
+    [switch] $AdmissionEvidence,
+    [string] $BuilderName = $env:SAFEUPLOAD_BUILDER,
+    [string] $BuilderSupportPath = (Join-Path $PSScriptRoot 'ApprovedBuilders.ps1'),
+    [string] $BuilderConfigPath = (Join-Path $PSScriptRoot 'approved-builders.json')
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-if ($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or
-    (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69') {
-    throw 'Wrong builder.'
-}
+. $BuilderSupportPath
+$builder = Get-ApprovedBuilder -Role 'matrix' -Label $Label -BuilderName $BuilderName -ConfigPath $BuilderConfigPath
+Assert-ApprovedBuilderIdentity $builder
+
 # Two groups of agent unit tests need different accounts. The certificate-authority and TLS-inspection tests create
 # current-user CNG keys, which fails with "Access denied" in the builder's SSH logon (an S4U logon has no DPAPI user
 # secret) and works as SYSTEM. The hand-back tests model an unprivileged host and the product refuses to route a
@@ -106,6 +109,7 @@ $src = Join-Path $run 'src'
 Expand-Archive -LiteralPath $archive -DestinationPath $src
 $summary = @("LABEL=$Label", "BUILDER=$env:COMPUTERNAME",
     "ARCHIVE_SHA256=$($ArchiveSha256.ToUpperInvariant())", "SourceCommit=$($SourceCommit.ToLowerInvariant())")
+$summary += @(Get-BuilderReceipt $builder)
 Push-Location $src
 try {
     & dotnet.exe --info > (Join-Path $out 'dotnet-info.txt') 2>&1

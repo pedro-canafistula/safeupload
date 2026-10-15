@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local, offline compile of the agent for normal/feature x Debug/Release (workflow rule 1, 2026-10-14). DIAGNOSTIC ONLY: it catches
+# Local, offline compile of the agent for feature Debug/Release. DIAGNOSTIC ONLY: it catches
 # compile errors before a builder run; the Windows agent matrix (Invoke-ExactAgentMatrixBuild.py) remains the gate (tests, discovery,
 # packages). Mirrors Build-ExactAgentMatrix.ps1 per profile: a fresh copy of agente/, then
 #   dotnet build <Service|App|Tests>.csproj -c <Debug|Release> -warnaserror -p:SafeUploadAdmissionEvidence=<false|true>
@@ -10,6 +10,7 @@
 # workspace-write sandbox, which has no network and blocks MSBuild worker nodes and the compiler server: hence -m:1,
 # --disable-build-servers and UseSharedCompilation=false).
 # Usage: Invoke-LocalAgentCompile.sh [--root <checkout>] [profile ...]   profiles: normal-debug normal-release feature-debug feature-release
+# Default: feature-debug feature-release. Normal profiles are explicit diagnostics only.
 set -uo pipefail
 TOOLS=${SAFEUPLOAD_TOOLS:-/home/victor/Work/safeupload-tools}
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -21,7 +22,7 @@ while [ $# -gt 0 ]; do
         *) echo "unknown argument: $1"; exit 2 ;;
     esac
 done
-[ ${#profiles[@]} -gt 0 ] || profiles=(normal-debug normal-release feature-debug feature-release)
+[ ${#profiles[@]} -gt 0 ] || profiles=(feature-debug feature-release)
 dotnet_dir="$TOOLS/dotnet"; cache="$TOOLS/nuget-cache"
 [ -x "$dotnet_dir/dotnet" ] || { echo "LocalAgentCompile=ERROR missing SDK at $dotnet_dir"; exit 2; }
 [ -d "$cache" ] || { echo "LocalAgentCompile=ERROR missing NuGet cache at $cache"; exit 2; }
@@ -31,7 +32,7 @@ export DOTNET_ROOT="$dotnet_dir" PATH="$dotnet_dir:$PATH" DOTNET_CLI_HOME="$work
     DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 DOTNET_GENERATE_ASPNET_CERTIFICATE=false \
     NUGET_PACKAGES="$work/nuget-packages" NUGET_HTTP_CACHE_PATH="$work/nuget-http" MSBUILDDISABLENODEREUSE=1
 mkdir -p "$DOTNET_CLI_HOME" "$NUGET_PACKAGES" "$work/empty-feed"
-echo "LocalAgentCompile root=$root sdk=$("$dotnet_dir/dotnet" --version) work=$work (diagnostic only; the matrix is the gate)"
+echo "LocalAgentCompile root=$root profiles=${profiles[*]} sdk=$("$dotnet_dir/dotnet" --version) work=$work (diagnostic only; the matrix is the gate)"
 failed=0
 for profile in "${profiles[@]}"; do
     case "$profile" in

@@ -3,10 +3,15 @@ param([Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]{3,60}$')][string]$
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ArchiveHash,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ManifestHash,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$CertificateThumbprint,
-    [ValidateSet('CurrentUser','LocalMachine')][string]$CertificateStoreLocation='CurrentUser')
+    [ValidateSet('CurrentUser','LocalMachine')][string]$CertificateStoreLocation='CurrentUser',
+    [string]$BuilderName=$env:SAFEUPLOAD_BUILDER,
+    [string]$BuilderSupportPath=(Join-Path $PSScriptRoot 'ApprovedBuilders.ps1'),
+    [string]$BuilderConfigPath=(Join-Path $PSScriptRoot 'approved-builders.json'))
 $ErrorActionPreference='Stop'
-$uuid=(Get-CimInstance Win32_ComputerSystemProduct -ErrorAction Stop).UUID
-if($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or $uuid -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69'){throw 'Builder identity mismatch'}
+. $BuilderSupportPath
+$builder=Get-ApprovedBuilder -Role 'kernel-sign' -Label $Label -BuilderName $BuilderName -ConfigPath $BuilderConfigPath
+Assert-ApprovedBuilderIdentity $builder
+$uuid=$builder.uuid
 $d='C:\Users\vika\Documents';$run=Join-Path $d ('exact-section-fault-'+$Label)
 if(Test-Path $run){throw 'Existing companion build directory'}
 $zip=Join-Path $d ('exact-section-fault-'+$Label+'.zip');$manifest=Join-Path $d ('exact-section-fault-'+$Label+'.manifest')
@@ -20,6 +25,7 @@ $msbuild='C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\
 $rules='C:\Program Files (x86)\Windows Kits\10\CodeAnalysis\DriverRecommendedRules.ruleset'
 $sign='C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe'
 $summary=@(('SOURCE_MANIFEST_VERIFIED='+$seen),('BUILDER='+$env:COMPUTERNAME),('BUILDER_UUID='+$uuid),('ARCHIVE_SHA256='+$ArchiveHash),('MANIFEST_SHA256='+$ManifestHash))
+$summary += @(Get-BuilderReceipt $builder)
 function Invoke-NativeToLog([string] $Executable, [string[]] $Arguments, [string] $Log) {
     if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { throw 'Native build tool missing.' }
     $previousErrorPreference = $ErrorActionPreference
@@ -73,7 +79,8 @@ if (Test-Path -LiteralPath $unsigned) {
             if ($signatureValid) { $signedHash = $outputHash }
         } catch { $signatureStatus = 'VerificationFailed' }
     }
-    @{ UTC = [DateTime]::UtcNow.ToString('o'); SignExit = $signExit;
+    @{ Builder = $builder.name; BuilderHost = $builder.host; BuilderComputerName = $builder.computer_name;
+        ParityCheck = $builder.ParityCheck; UTC = [DateTime]::UtcNow.ToString('o'); SignExit = $signExit;
         SignatureStatus = $signatureStatus; ExpectedSigner = $CertificateThumbprint;
         CertificateStoreLocation = $CertificateStoreLocation;
         ActualSigner = $actualSigner; SignatureValid = $signatureValid;
