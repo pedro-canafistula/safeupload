@@ -1,0 +1,19 @@
+**REVISE.**
+
+The release bases are sufficient **if their stated fences are enforced**: successful op13 after irreversible op3 disablement; terminal tuple-bound withdrawal; or authenticated instance replacement under the stated owner premise. Raw NO_WAITER remains insufficient. Persist-before-release, exact reread, user drain and restart reconstruction are appropriate. Preserving immutable history also preserves replay, generation high-water and the independent seal/exposure/custody/delete contracts.
+
+1. **High — retained history loses its storage bound.**  
+   **Verified:** the existing positive reservation covers the whole manifest and replacement overlap ([accounting](agente/SafeUpload.Agent.Service/Interception/StagedPositiveRecoveryAccountingV29.cs:8)). The addendum releases that budget while retaining history ([design](driver/T5-RECOVERY-HOLDS.md:775)). Repeated op14/kind-5 closures can leave records without any seal, completion, custody or release charge. **Inferred consequence:** retained metadata can grow without a defined total bound.  
+   **Required change:** separate live-op3 reservations from retained physical-storage charges. Before releasing the former, retain reconstructible charges for history, dependencies, witnesses and replacement overlap under a bounded byte budget.
+
+2. **High — the proposed 10,000-save result exceeds this change’s scope.**  
+   **Verified:** independent cumulative 1,024-record limits and full-manifest scans remain in [completion](agente/SafeUpload.Agent.Service/Interception/StagedCompletionV29.cs:75), [exposure](agente/SafeUpload.Agent.Service/Interception/StagedExposureV29.cs:72), [seal](agente/SafeUpload.Agent.Service/Interception/StagedSealRecoveryV29.cs:138) and [release accounting](agente/SafeUpload.Agent.Service/Interception/StagedDriverDeleteV29.cs:52). Compaction preserves their manifests. **Inferred consequence:** ordinary completed saves still exhaust capacity; overall save processing still scales with history.  
+   **Required change:** narrowly label the 10,000-operation control and performance claim as **op3 accounting**, and record the remaining lifecycle blockers. Claiming 10,000 complete protected saves requires a separately coherent correction of those budgets/scans; op3 closure cannot release their evidence.
+
+3. **Medium — A=128 remains an unproved ownership bound.**  
+   The earlier contract explicitly permits a late positive after result20 resolved the kernel receipt ([design](driver/T5-RECOVERY-HOLDS.md:365)); [terminal result20 handling](driver/SafeUpload.Minifilter/StageStream.c:6726) clears its recovery ownership. That late positive may therefore remain charged without a corresponding kernel ticket. This is a **design-derived gap**, not a reproduced runtime failure.  
+   **Required change:** specify who owns/counts queued requests, factories and replies across ticket return—either prove they drain first or provide bounded agent ownership. Specify how the agent obtains the terminal NO_WAITER fence; without observable proof, retain the charge until tuple-bound terminal evidence or instance replacement.
+
+The minimum correction is to retain the proposed release rules, add physical-history accounting, make A’s ownership explicit, and narrow the qualification claims. Proof-based op3 closure itself needs no new product choice. **Owner approval remains necessary for resource defaults:** recommend separate live-request and retained-byte budgets, with named fail-closed capacity holds and existing exact recovery available.
+
+Read-only source/design review; no builds, tests or VM actions.

@@ -743,6 +743,21 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
         second defect: the agent clears the driver IDs after an epoch ACK that a same-connection replay needs. Both fixes
         (scope the unload admission gate to protected/staged opens; keep same-connection replay after the ACK) join batch 2;
         the raw cells wait for batch 2.
+  - [ ] **Batch 2 implementation** (`wt/t5-batch2`, Sol 6.1 xhigh, staged local checkpoints `d7d050f6`…`92f2b159`; fixes
+    `a086b3dd`): V29 transport, op24/control 35 delete receipts (Released `StageDeleted` from an exact receipt, so a disposed
+    approved stage no longer refuses EPOCH_DRAINED), exact seal receipts, typed op15/exposure/op23, cancellation-CLOSE, the
+    accepted custody exception, the two wedge fixes, exact `0xFBF` negotiation. [Pre-boot review](evidence/2026-10-14/t5-batch2-codereview-sol61.md)
+    REVISE (disposal proofs dropped on disconnect, circular failed-attachment cleanup, unbounded positive history), all fixed;
+    [re-review](evidence/2026-10-14/t5-batch2-rereview-code-sol61.md) **ACCEPT WITH CONDITIONS** (WDK, matrix, harness gates).
+    Expected 2,260 normal / 2,842 feature tests per profile. Builder round `t5-batch2b` queued behind the 10k row.
+    **Activation hold found in review:** with epoch retirement deferred, positive, completion, exposure, seal and release receipts
+    all accumulate with cumulative 1,024-record limits and per-save full-manifest scans, so about 1,024 protected saves in a
+    machine's lifetime would exhaust capacity ([positive addendum review](evidence/2026-10-14/t5-posdesign-review-sol61.md),
+    REVISE). Batch 2 is used only for bounded rows on fresh disks (T4 smoke, raw cells); no 10k row and no activation on it.
+    The 1,024 / 448 MiB evaluation defaults are **not** proposed for approval. Batch 3 (design in progress,
+    `T5-RECEIPT-LIFETIMES.md`): each receipt is released on exact per-request closure or authenticated driver-instance
+    replacement, closed history is compacted to what must survive (e.g. per-destination generation high-water), counters are
+    incremental, and the only limit is a genuine in-flight bound.
     - Batch 2: exact seal receipt, op15 typed refusal/exposure evidence/op23, stateless refusals (owner decision; no refusal
       receipts or budget), and a negotiated per-version driver-delete receipt (a restart cannot finish released-stage bookkeeping
       today: `Held=0` and a missing path are not deletion evidence). Design [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md) after
