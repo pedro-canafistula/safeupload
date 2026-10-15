@@ -470,9 +470,12 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     files inherit their folder's permissions, so the inherited-creation shape is the everyday case and NotReady blocks routine
     saves. Options: keep exact equality (publication stays unavailable), accept a narrow exception for only the DACL
     auto-inherited marker (`0x0400`) with every other byte equal, or redesign publication around preserving the existing object.
-    Recommendation: the narrow exception, preferring an exact native-inheritance CREATE where it is proved, after finite builder
-    controls (NULL-input inheritance; parent-ACE change, tree reset, icacls and backup round trips). Until the owner decides,
-    exact equality and NotReady stay in force.
+    [Builder controls](T5-NATIVE-PUBLIC-OPENS.md#descriptor-candidate-controls-2026-10-15) (`a85e8dbb`): a NULL-input CREATE in the
+    destination parent reproduces the everyday inherited shape **exactly**; stored replay stays exact for the protected/explicit
+    shapes; conversion is rejected. Only a file moved from another folder and saved in place still differs, by the marker alone,
+    with equal access, and any later inheritance operation re-marks it. Recommendation: construct with native inheritance or stored
+    replay whichever is exact, and accept the marker-only difference for the moved shape (else that shape stays refused). Until the
+    owner decides, exact equality and NotReady stay in force.
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)

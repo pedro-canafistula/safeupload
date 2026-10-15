@@ -739,6 +739,24 @@ The [PowerShell 5.1 gate](evidence/2026-10-13/harness-windows-gate-t5-security-a
 [strict independent restoration](evidence/2026-10-13/t5-security-auto-request1-independent-restoration2.txt) confirms zero fixture
 directories/tasks, an absent exact worker and worker script, and no loaded SafeUpload driver. No product VM was booted.
 
+#### Descriptor candidate controls, 2026-10-15
+
+Three further SYSTEM measurements on builder 19045.6466 test the finite candidates of the
+[decision memo](evidence/2026-10-15/t5-descriptor-decision-sol61.md) (controls `a85e8dbb`; [PowerShell 5.1 gate](evidence/2026-10-15/harness-windows-gate-hg-t5desc2.txt)
+PASS; the first gate attempt `hg-t5desc1` failed because the main checkout's runner lacked the new files, receipt kept). Each run
+passed independent restoration (zero fixtures/tasks, no worker, no loaded driver).
+
+| Candidate | Result |
+|---|---|
+| 2 — NULL-input CREATE in the destination parent ([run](evidence/2026-10-15/t5-descriptor-t5-inherit-new1.txt)) | **Inherited NULL-input creation: EXACT.** The everyday shape (a new file inheriting its folder's permissions) round-trips byte for byte. The moved-from-another-parent file differs in ACE masks (its old parent's grants), as required; protected/explicit shapes differ, and stored replay remains exact for them. |
+| 5 — auto-inherit conversion before CREATE ([run](evidence/2026-10-15/t5-descriptor-t5-convert-new1.txt)) | **Rejected.** Both counterexamples still lose only `0x0400`; two other shapes stop matching. |
+| 6 — marker behavior ([summary](evidence/2026-10-15/t5-descriptor-t5-marker-new1-summary.json)) | All 30 rows have identical access matrices. Adding, changing or removing an inheritable parent ACE, both tree resets and an icacls restore make the marker-clear candidate byte-identical to the reference (Windows re-marks it). A backup/restore round trip preserves the difference faithfully. |
+
+So an exact construction exists for every measured shape except a file moved from another folder and then saved in place, which
+differs only by `SE_DACL_AUTO_INHERITED`, with equal access and self-healing on the next inheritance operation. These are
+mechanism measurements: non-SYSTEM subjects, kernel assignment, Explorer display and target 19045.2965 remain open, and the
+exact contract and NotReady gate are unchanged until the owner decides.
+
 ### Implementation note — increment 2
 
 `StagePublic` now has a distinct opaque writer lease and `SafeUploadStagePublicOpenWriter`; the DELETE factory still requires

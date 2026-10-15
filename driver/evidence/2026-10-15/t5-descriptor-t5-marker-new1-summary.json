@@ -1,0 +1,330 @@
+{
+ "Source": "driver/evidence/2026-10-15/t5-descriptor-t5-marker-new1.txt",
+ "SourceSHA256": "F8995141FA13E7C7C0E5AD226505E796E35C6C68559EDAE1D86C339EA3DC3672",
+ "Rows": 30,
+ "Note": "Reference = native descriptor with SE_DACL_AUTO_INHERITED (0x0400); candidate = same bytes produced by the stored-replay publication CREATE (0x0400 clear). SYSTEM subject, builder 19045.6466, measurement only; Explorer out of scope; non-SYSTEM subjects not covered.",
+ "Results": [
+  {
+   "Case": "inherited-null-input",
+   "Operation": "parent-ace-baseline",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "parent-ace-add",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "parent-ace-change",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "parent-ace-remove",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "tree-keep-explicit-baseline",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "tree-keep-explicit",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "tree-remove-explicit-baseline",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "tree-remove-explicit",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "icacls-baseline",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "icacls-save",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "icacls-pre-restore",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "icacls-restore",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "backup-baseline",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "backup-sources-after",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "inherited-null-input",
+   "Operation": "backup-restored",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "parent-ace-baseline",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "parent-ace-add",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "parent-ace-change",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "parent-ace-remove",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "tree-keep-explicit-baseline",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "tree-keep-explicit",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "tree-remove-explicit-baseline",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "tree-remove-explicit",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "icacls-baseline",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "icacls-save",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "icacls-pre-restore",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "icacls-restore",
+   "Result": "EQUIVALENT",
+   "AccessMatrixEqual": true,
+   "Differences": []
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "backup-baseline",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "backup-sources-after",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  },
+  {
+   "Case": "moved-inherited-target",
+   "Operation": "backup-restored",
+   "Result": "DIFFERENT",
+   "AccessMatrixEqual": true,
+   "Differences": [
+    {
+     "Offset": 3,
+     "Field": "Control",
+     "Reference": "8C",
+     "Candidate": "88"
+    }
+   ]
+  }
+ ]
+}
