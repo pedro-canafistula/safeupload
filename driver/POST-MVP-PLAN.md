@@ -82,6 +82,11 @@ respective support and qualification gates are met and the owner approves cutove
   flushes per save, so flush counts and foreground and lifecycle save latency must be measured before M2 acceptance, with
   record-level logging or group commit required only if the latency misses the M2 criterion (none is set yet; to propose with
   the measurement). Implementation joins batch 3.
+  Test contract (2026-10-15): existing tests that assert the replaced per-slot layout (18 directories, 3,877 files, full-image
+  checkpoint I/O) are updated as a deliberate contract replacement under design section 8 and the owner-approved store, not as a
+  weakening: each such assertion becomes an equally exact one on the new store (file count, names, sizes, WAL/checkpoint bytes and
+  flushes, fault targets); authority/lifetime/closure assertions, test names, workloads and both compaction tests stay unchanged;
+  every changed assertion is listed old → new in the batch-3 progress record and reviewed before it is taken.
 
 **2026-10-14 (evening) — retained residue and the test base.** Owner, in the session:
 - **Retained never-exposed residue: exception accepted.** Proved service-owned residue (exact custody, charged storage, ancestry and
