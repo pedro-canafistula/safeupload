@@ -23,6 +23,24 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-15 — staging is the product; the staging-out profile is retired.** Owner, in the session: the staging-free "normal"
+build (`SAFEUPLOAD_STAGING_PROTOTYPE` / `SafeUploadAdmissionEvidence` off) is no longer a shipping target or delivery gate: without
+taint it enforces almost nothing, and nothing ships before cutover. AGENTS.md now reads: "Staging is the product path. Runtime
+activation/readiness gates (V30 enablement, NotReady holds, capability gates) stay until qualification and owner cutover
+approval; compile-time staging-out builds are retired." This approves no activation or cutover of unqualified staging.
+1. Inventory first and report before changing anything (staging-out-only driver/agent paths, normal-only tests per profile,
+   normal kernel builds, matrix legs, required lists, scripts, installer/packaging T12/T14, docs; feature test-only hooks a product
+   build must not ship, for T12; any dependency of the M1 baseline, a recorded gate or an approved decision on the normal profile,
+   which stops the change until the owner decides).
+2. Phase 1 now (gates/process only, no source refactor under the batch-3 worker): agent matrix = feature Debug/Release (4 legs);
+   kernel = the two feature WDK builds with PREfast/ApiValidator and the import gate; update the AGENTS.md verification table, matrix
+   runner, required lists and expected counts with offline self-checks; harness rules apply; no feature-profile test, gate,
+   threshold or assertion changes.
+3. Phase 2 after batch 3 lands (own branch, one change): staging always compiled in, staging-out paths and normal-only tests
+   removed (each listed for the preflight), product-vs-test-hook split folded into T12 with a short design note; lifetime/lock-order/
+   teardown kernel deltas join the next pre-boot Sol 6.1 xhigh review.
+4. Report as a checkbox tree with commits, evidence paths and the matrix/build time saved.
+
 **2026-10-15 — remove process-taint enforcement.** Owner, in the session: remove process-taint enforcement from the product; it
 is superseded by staging, and keeping it in code, tests and harness rows wastes development and builder time. The AGENTS.md
 invariant "Keep taint enforcement and staging feature gates" becomes "Keep the staging feature gates". Inventory first and report
