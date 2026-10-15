@@ -757,7 +757,11 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
         first, joins batch 3): detach the context's witness once no non-retired registry entry needs it. The gate is unchanged.
         Design `driver/T5-SOP-WITNESS-DETACH.md` on `wt/t5-batch2` (`c001e83a`); [independent review](evidence/2026-10-15/t5-witness-detach-review-sol61.md)
         **REVISE**: predicate, references, lock order and End/Unknown semantics sound, but the full registry walk under the WriterLock
-        spin lock (up to 20,480 entries) has no hold-time bound; revision to an O(1) live-binding count is in progress.
+        spin lock (up to 20,480 entries) has no hold-time bound. Revision 2 (`77fc029f`): the witness counts its non-retired bound
+        entries (+1 on the winning bind, −1 at the only two retirement writes, under `RegistryLock`), so detach is O(1);
+        [delta re-review](evidence/2026-10-15/t5-witness-detach-rereview-sol61.md) **ACCEPT WITH CONDITIONS** (implement the
+        exactly-once rules and fail-closed violation handling, qualify hold time under CREATE/reclaim pressure, sample `SwUl`
+        directly; the RCA link resolves on merge). Implementation joins batch 3; T4PoolFlat stays unchanged.
       - [ ] Raw C01–C04/B01/B02/X01 cells in ordinary, runtime-Verifier and boot-Verifier modes with this pair.
         **Stopped: C01-approve-absent ordinary failed twice** (`m2t5od1`, diagnostic rerun `m2t5oe1` with the new failure capture
         `a2900ee5`; receipts kept). After the after-boot phase's restoration retried the voluntary unload, the guest stayed alive
