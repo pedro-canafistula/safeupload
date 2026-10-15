@@ -8,7 +8,8 @@ $fixtureDirectory = Join-Path ([IO.Path]::GetTempPath()) ('builders-selfcheck-' 
 [void][IO.Directory]::CreateDirectory($fixtureDirectory)
 $script:builderConfig = Join-Path $fixtureDirectory 'approved-builders.json'
 $config = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'approved-builders.json') -Raw | ConvertFrom-Json
-foreach ($row in $config.builders) { if ($row.name -ceq 'builder2') { $row.gate_approved = $false } }
+# Keep a builder without the signing role for the role guard after builder2 received it (owner, 2026-10-15).
+foreach ($row in $config.builders) { if ($row.name -ceq 'builder2') { $row.gate_approved = $false; $row.roles = @('matrix', 'gate') } }
 $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $script:builderConfig -Encoding UTF8
 function Assert-Control([bool] $Condition, [string] $Message) { if (-not $Condition) { throw $Message } }
 function Assert-Refuses([scriptblock] $Action, [string] $Expected) {

@@ -457,6 +457,7 @@ class RunnerModeControls(unittest.TestCase):
         for row in config['builders']:
             if row['name'] == 'builder2':
                 row['gate_approved'] = False
+                row['roles'] = ['matrix', 'gate']  # role guard keeps a non-signing builder (owner gave builder2 kernel-sign 2026-10-15)
         fixture = Path(temporary.name) / 'approved-builders.json'
         fixture.write_text(json.dumps(config))
         patch = mock.patch.object(approved, 'CONFIG', fixture)
