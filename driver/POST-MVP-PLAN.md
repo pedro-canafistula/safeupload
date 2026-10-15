@@ -47,7 +47,14 @@ respective support and qualification gates are met and the owner approves cutove
   FIFO wait then `STATUS_DEVICE_BUSY` and a tray notice. [Independent review](evidence/2026-10-15/t5-sizing-review-sol61.md) **REVISE**:
   per-transaction full-image store writes (136.8 GB per 10,000 saves; the batch-3 metadata checkpoint has the same flaw) must become
   WAL or copy-on-write writes proportional to the change; cancellation handoff, concrete admission bundles and PASSIVE-validation
-  lifetime protection must be specified. Revision in progress.
+  lifetime protection must be specified. Revision 2 (`16ee6635`): a bounded redo WAL for both stores (about 0.8 MB per approved and
+  1.1 MB per blocked save, upper bound for the planning traces), stable cancellation owners, per-origin admission bundles and
+  critical-region rundown; nonpaged ~540 KB at the floor, ~904 KB at the 256 ceiling; receipt file 34 MiB.
+  [Delta re-review](evidence/2026-10-15/t5-sizing-rereview-sol61.md) **ACCEPT WITH CONDITIONS**: implement the cancellation state
+  machine, allocation-free admitted paths at H=32/256 and the race controls; the design implies about 72 (approve) / 96 (BLOCK)
+  flushes per save, so flush counts and foreground and lifecycle save latency must be measured before M2 acceptance, with
+  record-level logging or group commit required only if the latency misses the M2 criterion (none is set yet; to propose with
+  the measurement). Implementation joins batch 3.
 
 **2026-10-14 (evening) — retained residue and the test base.** Owner, in the session:
 - **Retained never-exposed residue: exception accepted.** Proved service-owned residue (exact custody, charged storage, ancestry and
