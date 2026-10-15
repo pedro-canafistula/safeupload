@@ -802,6 +802,15 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     `T5-RECEIPT-LIFETIMES.md`): each receipt is released on exact per-request closure or authenticated driver-instance
     replacement, closed history is compacted to what must survive (e.g. per-destination generation high-water), counters are
     incremental, and the only limit is a genuine in-flight bound.
+    **Batch 3 progress (2026-10-15, local `wt/t5-batch2`, Sol 6.1 xhigh worker):** design accepted; staged checkpoints through
+    `043d2f1a` (V30 transport, RequestId issuance, journal-replace fix for the 10k row, banks/bootstrap, durable receipt domain,
+    counted factories, the accepted SOP witness detach, batch-2 fixes). Feedback builds kept: WDK `t5-batch3a`/`b`/`c`/`e` failed
+    on PREfast/declaration errors, each fixed; [`t5-batch3f`](evidence/2026-10-15/exact-t5-batch3f-summary.txt) passes four builds 0/0
+    with PREfast, ApiValidator and imports. Matrix `t5-batch3d`: 2,392/2,394 (the two known compaction cases). Closure,
+    compaction, cap removal and activation remain; V30 stays disabled. **Resource defaults for the owner (not tuned, not
+    approved):** 4,702,608 bytes of fixed nonpaged receipt banks (13 × 128-slot banks of 156,744 B, op23 1,096,776 B, op24
+    1,253,448 B, control35 313,416 B, op17 1,296 B) and an eager per-machine receipt layout of 3,877 files in 19 directories
+    (~0.65 MB logical; NTFS allocation unmeasured), created only once V30 is enabled.
     - Batch 2: exact seal receipt, op15 typed refusal/exposure evidence/op23, stateless refusals (owner decision; no refusal
       receipts or budget), and a negotiated per-version driver-delete receipt (a restart cannot finish released-stage bookkeeping
       today: `Held=0` and a missing path are not deletion evidence). Design [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md) after
