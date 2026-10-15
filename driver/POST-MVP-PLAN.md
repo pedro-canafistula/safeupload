@@ -23,6 +23,12 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-15 — Defender exclusions on the builders.** Builders were slow because Defender real-time scanning (`MsMpEng`) used about
+1.6–1.9 of 4 cores on each builder while the test host used about 0.1 (no exclusions). Owner approved exclusions on both builders
+only: folders `C:\Users\vika\Documents`, `C:\Users\vika\AppData\Local\Temp`, `C:\Users\vika\.nuget`, `C:\Windows\SystemTemp`,
+`C:\Windows\Temp`; processes testhost(.x86), dotnet, MSBuild, VBCSCompiler. Real-time protection stays on; the qualified target
+(win10-debug3) keeps Defender unchanged. Afterwards `MsMpEng` used 0–1.3 CPU-seconds per 10 s instead of 16–19.
+
 **2026-10-15 — incremental store validation.** The semantic-store cutover showed every metadata update re-reading and checksumming
 the whole store (about 4.1 MB read per update in the 10,000-update test; writes about 28 KB and 3 flushes), a per-save cost that
 grows with store size. Owner approved replacing it: each operation verifies only the pages and log records it reads (per-page
