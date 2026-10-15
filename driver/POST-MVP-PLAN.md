@@ -43,6 +43,11 @@ respective support and qualification gates are met and the owner approves cutove
   - one preallocated, checksummed store file per receipt domain instead of one file per slot, sized when the feature is enabled.
   Exact floor, wait and record sizes come from the design note and measurements; it needs a design note and Sol 6.1 xhigh review
   before implementation in batch 3. The physical byte budget for retained private copies is still to be proposed.
+  Design `T5-RECEIPT-SIZING.md` (`ed72734c` on `wt/t5-batch2`): ~343 KB nonpaged at the floor, ~708 KB at the ceiling; 2,000 ms
+  FIFO wait then `STATUS_DEVICE_BUSY` and a tray notice. [Independent review](evidence/2026-10-15/t5-sizing-review-sol61.md) **REVISE**:
+  per-transaction full-image store writes (136.8 GB per 10,000 saves; the batch-3 metadata checkpoint has the same flaw) must become
+  WAL or copy-on-write writes proportional to the change; cancellation handoff, concrete admission bundles and PASSIVE-validation
+  lifetime protection must be specified. Revision in progress.
 
 **2026-10-14 (evening) — retained residue and the test base.** Owner, in the session:
 - **Retained never-exposed residue: exception accepted.** Proved service-owned residue (exact custody, charged storage, ancestry and
