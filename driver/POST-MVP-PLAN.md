@@ -731,6 +731,19 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
         565 — **released 387 of 509 idle growth (76%)**, 122 above start; idle growth fell from 1,168–1,931 to 509 with the idle agent
         and no Edge update. The half criterion passes for this pair, so the 10k row is no longer held by it (it still follows the
         raw cells and runs on the final pair).
+      - [x] **`m2t5boot10k1` (same pair, 10,000 boot-Verifier cycles): FAIL, restoration PASS** ([verdict](evidence/2026-10-14/m2t5boot10k1-verdict.txt)).
+        **`T4ContextsReleased` PASS** — the gate k11 failed: SUfl start 446, purged 2,371 (limit 2,494); the purge released 22,794 of
+        24,719. Failed: `T4CyclesCompleted` 9,998/10,000, `T4VersionsReleased`/`T4StageFilesDeleted` (one version and stage left),
+        `T4StageWorkerIdle` (24 passes in 60 s), `T4PoolFlat` (75.9 B/cycle, limit 4). Cause of the two failed cycles (5002 new,
+        5129 resave; agent events): the journal's atomic manifest replace failed with Win32 5 (Access denied — rename over a target
+        that another opener holds), and on the op13/op15 paths that transient persistence failure became a refusal, so the driver
+        refused the application's CREATE; cycle 5002's half-attached allocation (`AttachmentStateV20=1`) then kept its stage and
+        the worker awake. Four more such failures hit inspection and recovered on retry. Fix (in the batch-2/3 tree): retry or
+        POSIX-semantics replace for this transient, readers that share delete, and op13/op15 answering retry rather than refused on
+        a persistence failure. `T4PoolFlat`: a step of ~10,800 contexts at cycles 5000–5500 is the two failure-evidence captures
+        copying ~5,000 manifests each; outside it, driver bytes still grow ~34 B/cycle (k11: 1.5), and the purge returns them
+        (7.27 → 6.75 MB, start 6.62 MB; allocations 25,592 → 2,868), so it looks like T5 memory tied to cached files' stream
+        contexts rather than a leak — RCA in progress; the gate is unchanged.
       - [ ] Raw C01–C04/B01/B02/X01 cells in ordinary, runtime-Verifier and boot-Verifier modes with this pair.
         **Stopped: C01-approve-absent ordinary failed twice** (`m2t5od1`, diagnostic rerun `m2t5oe1` with the new failure capture
         `a2900ee5`; receipts kept). After the after-boot phase's restoration retried the voluntary unload, the guest stayed alive
