@@ -32,9 +32,17 @@ respective support and qualification gates are met and the owner approves cutove
   equivalent. No other difference is accepted; no repair, privileged post-set or AccessState injection. Evidence:
   [controls](T5-NATIVE-PUBLIC-OPENS.md#descriptor-candidate-controls-2026-10-15) (equal access in all 30 rows; Windows re-marks it on
   the next inheritance operation). Note: the moved file's entries keep their old-folder `INHERITED_ACE` marks in both versions.
-- **Receipt slots: owner proposes 256 per in-flight family** (2026-10-15) and asked what a robust commercial DLP would choose; the
-  allocation strategy (fixed reservation versus floor plus on-demand growth to that ceiling) is pending the owner's answer. No
-  default is approved yet; activation stays held.
+- **Receipt slots: commercial pattern approved, ceiling 256.** Owner proposed 256 per in-flight family, asked what a robust
+  commercial DLP would choose, and on the answer: "The behaviour of this commercial pattern sound perfect". The pattern:
+  - a guaranteed floor (proposed 32 slots per family, about 1.2 MB) reserved at load so recovery and cleanup always progress;
+  - further slots allocated on demand at admission up to the 256 ceiling and reused; once admitted, an operation never needs new
+    memory to finish;
+  - at the ceiling, a save waits briefly (about two seconds, set by measurement) for a free slot, then fails closed with a notice;
+  - an administrator-configurable ceiling, high-water telemetry and a warning near the limit;
+  - only small state resident in nonpaged memory; bulky request records pageable or on disk;
+  - one preallocated, checksummed store file per receipt domain instead of one file per slot, sized when the feature is enabled.
+  Exact floor, wait and record sizes come from the design note and measurements; it needs a design note and Sol 6.1 xhigh review
+  before implementation in batch 3. The physical byte budget for retained private copies is still to be proposed.
 
 **2026-10-14 (evening) — retained residue and the test base.** Owner, in the session:
 - **Retained never-exposed residue: exception accepted.** Proved service-owned residue (exact custody, charged storage, ancestry and
