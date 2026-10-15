@@ -4,6 +4,9 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 label="${1:?label}"; commit="${2:-HEAD}"
 [[ "$label" =~ ^[A-Za-z0-9._-]{3,60}$ ]] || exit 2
+selection="$(python3 driver/scripts/approved_builders.py --role matrix --label "$label" --format fields)" || exit 2
+read -r builder_name host builder_computer builder_user parity_check <<< "$selection"
+remote_args=("$host" --role matrix --label "$label")
 feature_arg=""
 if [[ "${SAFEUPLOAD_ADMISSION_EVIDENCE_BUILD:-false}" == true ]]; then feature_arg="-AdmissionEvidence"; fi
 full="$(git rev-parse --verify "$commit^{commit}")" || exit 2
@@ -14,12 +17,17 @@ ev="driver/evidence/$(date +%F)"; mkdir -p "$ev"
 git archive --format=zip -o "$work/src.zip" "$full" agente || exit 2
 zip_sha="$(sha256sum "$work/src.zip" | cut -d' ' -f1)"
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=yes)
-d='vika@192.168.122.210:C:/Users/vika/Documents'
+d="$builder_user@$host:C:/Users/$builder_user/Documents"
+python3 driver/scripts/remote_ps.py "${remote_args[@]}" <<<"[void](New-Item -ItemType Directory -Path 'C:/Users/$builder_user/Documents/exact-agent-$label-tools')" || exit 3
+for helper in ApprovedBuilders.ps1 approved-builders.json; do
+    scp "${opts[@]}" "driver/scripts/$helper" "$d/exact-agent-$label-tools/$helper" || exit 3
+done
 scp "${opts[@]}" "$work/src.zip" "$d/exact-agent-$label.zip" || exit 3
 scp "${opts[@]}" driver/scripts/Build-ExactAgent.ps1 "$d/Build-ExactAgent-$label.ps1" || exit 3
 printf 'SourceCommit=%s\nArchiveSHA256=%s\n' "$full" "$zip_sha" > "$ev/exact-agent-$label-source.txt"
-python3 driver/scripts/remote_ps.py 192.168.122.210 <<PS > "$ev/exact-agent-$label-build.txt" 2>&1
-& 'C:\Users\vika\Documents\Build-ExactAgent-$label.ps1' -Label '$label' -ArchiveSha256 '$zip_sha' -SourceCommit '$full' $feature_arg
+python3 driver/scripts/approved_builders.py --role matrix --label "$label" --format receipt >> "$ev/exact-agent-$label-source.txt" || exit 2
+python3 driver/scripts/remote_ps.py "${remote_args[@]}" <<PS > "$ev/exact-agent-$label-build.txt" 2>&1
+& 'C:\Users\vika\Documents\Build-ExactAgent-$label.ps1' -Label '$label' -ArchiveSha256 '$zip_sha' -SourceCommit '$full' $feature_arg -BuilderName '$builder_name' -BuilderSupportPath 'C:/Users/$builder_user/Documents/exact-agent-$label-tools/ApprovedBuilders.ps1' -BuilderConfigPath 'C:/Users/$builder_user/Documents/exact-agent-$label-tools/approved-builders.json'
 PS
 for f in summary.txt tests.txt agent-tests.trx publish.txt package-manifest.txt dotnet-info.txt stage-service-publish.zip; do
     scp "${opts[@]}" "$d/exact-agent-$label/out/$f" "$work/$f" 2>/dev/null || echo "not fetched: $f"
@@ -28,7 +36,7 @@ for f in summary.txt tests.txt agent-tests.trx publish.txt package-manifest.txt 
     fi
 done
 cat "$work/summary.txt"
-python3 - "$work" <<'PY'
+python3 - "$work" "$parity_check" <<'PY'
 from pathlib import Path
 import hashlib, sys, xml.etree.ElementTree as E
 work = Path(sys.argv[1])
@@ -40,5 +48,8 @@ assert int(counters['total']) > 0 and counters['passed'] == counters['total'] ==
 assert all(counters.get(k, '0') == '0' for k in ['failed', 'error', 'timeout', 'aborted', 'notExecuted'])
 package = work / 'stage-service-publish.zip'
 assert 'package_sha256=' + hashlib.sha256(package.read_bytes()).hexdigest().upper() in summary
-print('ExactAgentGate=PASS;tests=' + counters['passed'])
+if sys.argv[2] == 'True':
+    print('ParityCheck=True; not a gate')
+else:
+    print('ExactAgentGate=PASS;tests=' + counters['passed'])
 PY

@@ -10,9 +10,14 @@ log_name="${1:?log name}"; leaf="${2:-admission-diagnostic-milestone}"; thumb="$
 sign_arg=""; [ -n "$thumb" ] && sign_arg="-CertificateThumbprint '$thumb'"
 day="$(date +%F)"; log="driver/evidence/$day/$log_name.txt"
 mkdir -p "driver/evidence/$day"
-host=192.168.122.210
+selection="$(python3 driver/scripts/approved_builders.py --role kernel-sign --label "$log_name" --format fields)" || exit 2
+read -r builder_name host builder_computer builder_user parity_check <<< "$selection"
+remote_args=("$host" --role kernel-sign --label "$log_name")
 mirror='C:/Users/vika/Documents/safeupload-staging-test'
-scp_opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
+scp_opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=yes)
+
+python3 driver/scripts/remote_ps.py "${remote_args[@]}" <<<'Write-Output "BUILDER_PREFLIGHT_MATCH"' || exit 3
+python3 driver/scripts/approved_builders.py --role kernel-sign --label "$log_name" --format receipt > "$log.builder.txt" || exit 3
 
 # SYNC_FROM_REF=<git ref> builds the sources of that ref instead of the working tree (same file list: those that
 # differ from HEAD), for an A/B comparison against an older driver. Resync the working tree afterwards by building
@@ -29,13 +34,13 @@ for f in "${files[@]}"; do
         git show "$SYNC_FROM_REF:$f" > "$sync_tmp/$f" 2>/dev/null || { echo "$f not in $SYNC_FROM_REF"; exit 5; }
         src="$sync_tmp/$f"
     fi
-    scp "${scp_opts[@]}" "$src" "vika@$host:$mirror/$f" || { echo "scp failed: $f"; exit 3; }
+    scp "${scp_opts[@]}" "$src" "$builder_user@$host:$mirror/$f" || { echo "scp failed: $f"; exit 3; }
     echo "$f $(sha256sum "$src" | cut -c1-12)" >> "$log.hashes"
 done
 rm -rf "$sync_tmp"
 # Verify every copied file by hash on the builder (names passed via a here-string).
 list="$(printf "'%s'," "${files[@]//\//\\}")"; list="${list%,}"
-remote_hashes="$(python3 driver/scripts/remote_ps.py "$host" <<PS 2>&1 | sed 's/<Objs.*//' | tr -d '\r' | grep -v -e '^$' -e CLIXML
+remote_hashes="$(python3 driver/scripts/remote_ps.py "${remote_args[@]}" <<PS 2>&1 | sed 's/<Objs.*//' | tr -d '\r' | grep -v -e '^$' -e CLIXML
 Set-Location C:\\Users\\vika\\Documents\\safeupload-staging-test
 foreach (\$f in @($list)) { \$f.Replace('\\','/') + ' ' + (Get-FileHash \$f -Algorithm SHA256).Hash.Substring(0,12).ToLower() }
 PS
@@ -45,7 +50,7 @@ if [ "$remote_hashes" != "$(cat "$log.hashes")" ]; then
 fi
 echo "synced and verified ${#files[@]} files"; cat "$log.hashes"
 
-python3 driver/scripts/remote_ps.py "$host" <<PS 2>&1 | sed 's/<Objs.*//' | grep -v '^$' > "$log"
+python3 driver/scripts/remote_ps.py "${remote_args[@]}" <<PS 2>&1 | sed 's/<Objs.*//' | grep -v '^$' > "$log"
 \$ErrorActionPreference = 'Continue'
 'BUILD_START_UTC=' + [DateTime]::UtcNow.ToString('o')
 Set-Location C:\\Users\\vika\\Documents\\safeupload-staging-test

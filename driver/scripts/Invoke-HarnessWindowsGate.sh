@@ -12,17 +12,26 @@ files=(Test-StagedInvariantSuite.ps1 StagedInvariantObserver.psm1 StagedInvarian
 checks=()
 files+=(t5/security-descriptor-native-control.ps1 t5/security-roundtrip-native-control.SelfCheck.ps1)
 for f in "$src"/*.SelfCheck.ps1; do [[ "$(basename "$f")" == StagedInvariant*.SelfCheck.ps1 ]] && checks+=("$(basename "$f")"); done
-host=192.168.122.210; dest="C:/Users/vika/Documents/harness-gate-$label"
+selection="$(python3 "$repo/driver/scripts/approved_builders.py" --role gate --label "$label" --format fields)" || exit 2
+read -r builder_name host builder_computer builder_user parity_check <<< "$selection"
+remote_args=("$host" --role gate --label "$label")
+dest="C:/Users/$builder_user/Documents/harness-gate-$label"
+files+=(Build-ExactAgentMatrix.ps1 Build-ExactSource.ps1 Build-ExactSectionFault.ps1 ApprovedBuilders.ps1 approved-builders.json)
+checks+=(Build-ExactAgentMatrix.SelfCheck.ps1 ApprovedBuilders.SelfCheck.ps1 Build-ExactSource.SelfCheck.ps1 Build-ExactAgent.SelfCheck.ps1)
 ev="$repo/driver/evidence/$(date +%F)/harness-windows-gate-$label.txt"; mkdir -p "$(dirname "$ev")"
+[[ ! -e "$ev" ]] || { echo 'Existing gate evidence; use a fresh label'; exit 2; }
+python3 "$repo/driver/scripts/approved_builders.py" --role gate --label "$label" --format receipt > "$ev" || exit 2
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=yes)
-python3 "$repo/driver/scripts/remote_ps.py" "$host" <<<"if(Test-Path -LiteralPath '$dest'){throw 'gate directory exists'}; [void](New-Item -ItemType Directory -Path '$dest/t4'); [void](New-Item -ItemType Directory -Path '$dest/t6'); [void](New-Item -ItemType Directory -Path '$dest/t10'); [void](New-Item -ItemType Directory -Path '$dest/t5')" || exit 3
-for f in "${files[@]}" "${checks[@]}"; do scp "${opts[@]}" "$src/$f" "vika@$host:$dest/$f" || exit 3; done
+python3 "$repo/driver/scripts/remote_ps.py" "${remote_args[@]}" <<<"if(Test-Path -LiteralPath '$dest'){throw 'gate directory exists'}; [void](New-Item -ItemType Directory -Path '$dest/t4'); [void](New-Item -ItemType Directory -Path '$dest/t6'); [void](New-Item -ItemType Directory -Path '$dest/t10'); [void](New-Item -ItemType Directory -Path '$dest/t5')" || exit 3
+for f in "${files[@]}" "${checks[@]}"; do scp "${opts[@]}" "$src/$f" "$builder_user@$host:$dest/$f" || exit 3; done
 list="$(printf "'%s'," "${files[@]}" "${checks[@]}")"; checklist="$(printf "'%s'," "${checks[@]}")"
-python3 "$repo/driver/scripts/remote_ps.py" "$host" > "$ev" 2>&1 <<PS
+python3 "$repo/driver/scripts/remote_ps.py" "${remote_args[@]}" >> "$ev" 2>&1 <<PS
+\$ErrorActionPreference='Stop'
+if(\$PSVersionTable.PSVersion.Major -ne 5 -or \$PSVersionTable.PSVersion.Minor -ne 1){throw 'Harness requires Windows PowerShell 5.1.'}
 \$ok=\$true
 foreach(\$f in @(${list%,})){
   \$p=Join-Path '$dest' \$f; \$t=\$null; \$e=\$null
-  [void][Management.Automation.Language.Parser]::ParseFile(\$p,[ref]\$t,[ref]\$e)
+  if(\$f -like '*.json'){\$e=@()}else{[void][Management.Automation.Language.Parser]::ParseFile(\$p,[ref]\$t,[ref]\$e)}
   \$h=(Get-FileHash -Algorithm SHA256 -LiteralPath \$p).Hash
   "\${f}:ParseErrors=\$(\$e.Count);SHA256=\$h"; if(\$e.Count -ne 0){\$ok=\$false; \$e | ForEach-Object { '  '+\$_.Extent.StartLineNumber+': '+\$_.Message }}
 }
@@ -32,8 +41,14 @@ foreach(\$c in @(${checklist%,})){
   "\${c}:Exit=\$code"; if(\$code -ne 0){\$ok=\$false}
 }
 'PSVersion='+\$PSVersionTable.PSVersion
-if(\$ok){'HarnessWindowsGate=PASS'}else{'HarnessWindowsGate=FAIL'}
+if('$parity_check' -eq 'True'){
+  'ParityCheck=True'; 'ParityCheck: not a gate'; 'HarnessWindowsGate=False'; "ParityChecksSucceeded=\$ok"
+}elseif(\$ok){'HarnessWindowsGate=PASS'}else{'HarnessWindowsGate=FAIL'}
 Remove-Item -LiteralPath '$dest' -Recurse -Force
 PS
 grep -E 'ParseErrors=|:Exit=|HarnessWindowsGate=' "$ev"; echo "evidence: $ev"
-grep -q '^HarnessWindowsGate=PASS' "$ev"
+if [[ "$parity_check" == True ]]; then
+    grep -qx 'ParityChecksSucceeded=True' "$ev"
+else
+    grep -qx 'HarnessWindowsGate=PASS' "$ev"
+fi

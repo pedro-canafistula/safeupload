@@ -16,7 +16,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 label="${1:?label}"; commit="${2:-HEAD}"; mode="${3:-}"
 [[ "$label" =~ ^[A-Za-z0-9._-]{3,60}$ ]] || { echo 'Invalid build label'; exit 2; }
 [[ "$mode" == '' || "$mode" == '--prepare-only' ]] || { echo 'Invalid mode'; exit 2; }
-host=192.168.122.210
+selection="$(python3 driver/scripts/approved_builders.py --role kernel-sign --label "$label" --format fields)" || exit 2
+read -r builder_name host builder_computer builder_user parity_check <<< "$selection"
+remote_args=("$host" --role kernel-sign --label "$label")
 thumb="${SAFEUPLOAD_SIGNING_THUMBPRINT:-220DD82C37FCF36048D59E4F10113185D81D5DC7}"
 store="${SAFEUPLOAD_SIGNING_STORE_LOCATION:-CurrentUser}"
 owner_fsp="${SAFEUPLOAD_OWNER_WINFSP_PROTOTYPE:-false}"
@@ -37,11 +39,13 @@ work="/tmp/claude-1000/exact-$label"
 scp_opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=yes)
 build_script=driver/scripts/Build-ExactSource.ps1
 remote_helper=driver/scripts/remote_ps.py
+support_dir=driver/scripts
 if [[ "$commit" == '--worktree' ]]; then
     snapshot_json="$(python3 driver/scripts/Prepare-ExactWorktreeSource.py --output "$work" "${snapshot_args[@]}")" || exit 2
     printf '%s\n' "$snapshot_json"
     build_script="$work/tools/Build-ExactSource.ps1"
     remote_helper="$work/tools/remote_ps.py"
+    support_dir="$work/tools"
     verify_snapshot() {
         python3 "$work/tools/Prepare-ExactWorktreeSource.py" --output "$work" --verify --provenance-json "$snapshot_json"
     }
@@ -60,6 +64,7 @@ echo "SOURCE_COMMIT=$full"
 zip_sha="$(sha256sum "$work/src.zip" | cut -d' ' -f1)"
 build_sha="$(sha256sum "$build_script" | cut -d' ' -f1)"
 fi
+python3 driver/scripts/approved_builders.py --role kernel-sign --label "$label" --format receipt > "$ev/exact-$label-builder.txt" || exit 2
 echo "archive=$zip_sha"
 if [[ "$commit" == '--worktree' ]]; then
     cp "$work/src.manifest" "$ev/exact-$label-source-manifest.txt" || exit 2
@@ -71,20 +76,14 @@ fi
 
 # Revalidate the recorded local builder immediately before private source delivery.
 # Strict SSH host-key checks protect this read-only preflight as well as SCP.
-python3 "$remote_helper" "$host" <<'PS' 2>&1 | tee "$ev/exact-$label-builder-preflight.txt"
-$ErrorActionPreference='Stop'
-if($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or
-   (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69' -or
-   -not @(Get-NetAdapter | Where-Object {$_.MacAddress -eq '52-54-00-63-87-7A'}).Count){throw 'Wrong builder; source delivery refused.'}
-Write-Output ('BUILDER_PREFLIGHT_MATCH UTC='+[DateTime]::UtcNow.ToString('o'))
-PS
+python3 "$remote_helper" "${remote_args[@]}" <<<'Write-Output "BUILDER_PREFLIGHT_MATCH"' 2>&1 | tee "$ev/exact-$label-builder-preflight.txt"
 preflight_status=("${PIPESTATUS[@]}")
 [[ "${preflight_status[0]}" == 0 && "${preflight_status[1]}" == 0 ]] || exit 3
 # Reject every upload destination before SCP; a retained remote label cannot
 # be overwritten even if its host-side work directory was moved elsewhere.
-python3 "$remote_helper" "$host" <<PS > "$ev/exact-$label-destination-preflight.stdout.txt" 2> "$ev/exact-$label-destination-preflight.stderr.txt"
+python3 "$remote_helper" "${remote_args[@]}" <<PS > "$ev/exact-$label-destination-preflight.stdout.txt" 2> "$ev/exact-$label-destination-preflight.stderr.txt"
 \$ErrorActionPreference='Stop'
-foreach(\$leaf in @('exact-$label', 'exact-$label.zip', 'exact-$label.manifest', 'Build-ExactSource-$label.ps1')) {
+foreach(\$leaf in @('exact-$label', 'exact-$label.zip', 'exact-$label.manifest', 'Build-ExactSource-$label.ps1', 'exact-$label-tools')) {
     if(Test-Path -LiteralPath (Join-Path 'C:\Users\vika\Documents' \$leaf)){throw 'Remote build destination already exists.'}
 }
 Write-Output ('FRESH_BUILD_DESTINATIONS=True UTC='+[DateTime]::UtcNow.ToString('o'))
@@ -95,7 +94,7 @@ if [[ "$commit" == '--worktree' ]]; then
     [[ "$(verify_snapshot)" == "$pins" ]] || exit 3
 fi
 
-d='vika@'"$host"':C:/Users/vika/Documents'
+d="$builder_user@$host:C:/Users/$builder_user/Documents"
 scp "${scp_opts[@]}" "$work/src.zip" "$d/exact-$label.zip" || exit 3
 if [[ "$commit" == '--worktree' ]]; then
     scp "${scp_opts[@]}" "$work/src.manifest" "$d/exact-$label.manifest" || exit 3
@@ -104,12 +103,19 @@ else
     source_arg="-SourceCommit '$full'"
 fi
 scp "${scp_opts[@]}" "$build_script" "$d/Build-ExactSource-$label.ps1" || exit 3
+python3 "$remote_helper" "${remote_args[@]}" <<<"[void](New-Item -ItemType Directory -Path 'C:/Users/$builder_user/Documents/exact-$label-tools')" || exit 3
+for helper in ApprovedBuilders.ps1 approved-builders.json; do
+    scp "${scp_opts[@]}" "$support_dir/$helper" "$d/exact-$label-tools/$helper" || exit 3
+done
+support_sha="$(sha256sum "$support_dir/ApprovedBuilders.ps1" | cut -d' ' -f1)"
+config_sha="$(sha256sum "$support_dir/approved-builders.json" | cut -d' ' -f1)"
 
 log="$ev/exact-$label-build.txt"
-python3 "$remote_helper" "$host" <<PS > >(tee "$log") 2> >(tee "$ev/exact-$label-build.stderr.txt" >&2)
+python3 "$remote_helper" "${remote_args[@]}" <<PS > >(tee "$log") 2> >(tee "$ev/exact-$label-build.stderr.txt" >&2)
 \$ErrorActionPreference='Stop'
+if((Get-FileHash -LiteralPath 'C:/Users/$builder_user/Documents/exact-$label-tools/ApprovedBuilders.ps1' -Algorithm SHA256).Hash -ne '$support_sha' -or (Get-FileHash -LiteralPath 'C:/Users/$builder_user/Documents/exact-$label-tools/approved-builders.json' -Algorithm SHA256).Hash -ne '$config_sha'){throw 'Uploaded builder support hash mismatch.'}
 if((Get-FileHash -LiteralPath 'C:\Users\vika\Documents\Build-ExactSource-$label.ps1' -Algorithm SHA256).Hash -ne '$build_sha'){throw 'Uploaded build-tool hash mismatch.'}
-& 'C:\Users\vika\Documents\Build-ExactSource-$label.ps1' -Label '$label' -ArchiveSha256 '$zip_sha' $source_arg -CertificateThumbprint '$thumb' -CertificateStoreLocation '$store' -OwnerWinFspPrototype '$owner_fsp'
+& 'C:\Users\vika\Documents\Build-ExactSource-$label.ps1' -Label '$label' -ArchiveSha256 '$zip_sha' $source_arg -CertificateThumbprint '$thumb' -CertificateStoreLocation '$store' -OwnerWinFspPrototype '$owner_fsp' -BuilderName '$builder_name' -BuilderSupportPath 'C:/Users/$builder_user/Documents/exact-$label-tools/ApprovedBuilders.ps1' -BuilderConfigPath 'C:/Users/$builder_user/Documents/exact-$label-tools/approved-builders.json'
 PS
 build_exit=$?
 
@@ -136,10 +142,13 @@ fi
 python3 driver/scripts/Test-DriverImports.py "$work/SafeUpload-stage-prototype.sys" "$work/owned-feature.sys" "$work/normal.sys" \
     "$work/owned-feature-release.sys" "$work/normal-release.sys" | tee "$ev/exact-$label-imports.txt"
 grep -qx 'DriverImportAvailability=PASS' "$ev/exact-$label-imports.txt" || { echo 'Import availability gate failed'; exit 5; }
-python3 - "$work/summary.txt" "$thumb" "$store" "$owner_fsp" <<'PYGATE'
+python3 - "$work/summary.txt" "$thumb" "$store" "$owner_fsp" "$builder_name" "$host" "$builder_computer" <<'PYGATE'
 from pathlib import Path
 import sys
 lines = Path(sys.argv[1]).read_text(encoding='utf-8-sig').splitlines()
+for key, value in zip(('Builder', 'BuilderHost', 'BuilderComputerName'), sys.argv[5:8]):
+    if lines.count(key + '=' + value) != 1:
+        raise SystemExit('Builder receipt mismatch: ' + key)
 for name in ('driver:normal', 'driver:owned-feature', 'driver:normal-release',
              'driver:owned-feature-release', 'inspector-normal-release',
              'inspector-feature-release', 'writer-fixture'):

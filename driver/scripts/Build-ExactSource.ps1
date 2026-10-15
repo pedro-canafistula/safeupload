@@ -14,14 +14,17 @@ param(
     [Parameter(Mandatory, ParameterSetName = 'Worktree')] [ValidatePattern('^[0-9a-fA-F]{64}$')] [string] $ManifestSha256,
     [Parameter(Mandatory)] [ValidatePattern('^[0-9A-Fa-f]{40}$')] [string] $CertificateThumbprint,
     [ValidateSet('CurrentUser', 'LocalMachine')] [string] $CertificateStoreLocation = 'CurrentUser',
-    [ValidateSet('false', 'true')] [string] $OwnerWinFspPrototype = 'false'
+    [ValidateSet('false', 'true')] [string] $OwnerWinFspPrototype = 'false',
+    [string] $BuilderName = $env:SAFEUPLOAD_BUILDER,
+    [string] $BuilderSupportPath = (Join-Path $PSScriptRoot 'ApprovedBuilders.ps1'),
+    [string] $BuilderConfigPath = (Join-Path $PSScriptRoot 'approved-builders.json')
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-if ($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or
-    (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69') {
-    throw 'Wrong builder.'
-}
+. $BuilderSupportPath
+$builder = Get-ApprovedBuilder -Role 'kernel-sign' -Label $Label -BuilderName $BuilderName -ConfigPath $BuilderConfigPath
+Assert-ApprovedBuilderIdentity $builder
+
 $documents = 'C:\Users\vika\Documents'
 $run = Join-Path $documents ('exact-' + $Label)
 $archive = Join-Path $documents ('exact-' + $Label + '.zip')
@@ -62,6 +65,7 @@ if ($seen -ne $expected.Count) { throw "Manifest lists $($expected.Count) files 
 }
 
 $summary = New-Object System.Collections.ArrayList
+foreach ($row in @(Get-BuilderReceipt $builder)) { [void]$summary.Add($row) }
 function Invoke-NativeToLog([string] $Executable, [string[]] $Arguments, [string] $Log) {
     if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { throw 'Native build tool missing.' }
     $previousErrorPreference = $ErrorActionPreference
@@ -162,7 +166,8 @@ if (Test-Path -LiteralPath $unsigned) {
             if ($signatureValid) { $signedHash = $outputHash }
         } catch { $signatureStatus = 'VerificationFailed' }
     }
-    @{ UTC = [DateTime]::UtcNow.ToString('o'); SignExit = $signExit;
+    @{ Builder = $builder.name; BuilderHost = $builder.host; BuilderComputerName = $builder.computer_name;
+        ParityCheck = $builder.ParityCheck; UTC = [DateTime]::UtcNow.ToString('o'); SignExit = $signExit;
         SignatureStatus = $signatureStatus; ExpectedSigner = $CertificateThumbprint;
         CertificateStoreLocation = $CertificateStoreLocation;
         ActualSigner = $actualSigner; SignatureValid = $signatureValid;

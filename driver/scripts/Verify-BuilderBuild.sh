@@ -5,17 +5,22 @@
 # Usage: driver/scripts/Verify-BuilderBuild.sh <run-label>   (evidence: driver/evidence/<today>/<label>-*.txt)
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-label="${1:?run label}"; day="$(date +%F)"; ev="driver/evidence/$day"; host=192.168.122.210
+label="${1:?run label}"; day="$(date +%F)"; ev="driver/evidence/$day"
+selection="$(python3 driver/scripts/approved_builders.py --role kernel-sign --label "$label" --format fields)" || exit 2
+read -r builder_name host builder_computer builder_user parity_check <<< "$selection"
+remote_args=("$host" --role kernel-sign --label "$label")
 mkdir -p "$ev"
-scp_opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR)
+scp_opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=yes)
+python3 driver/scripts/remote_ps.py "${remote_args[@]}" <<<'Write-Output "BUILDER_PREFLIGHT_MATCH"' || exit 3
+python3 driver/scripts/approved_builders.py --role kernel-sign --label "$label" --format receipt > "$ev/$label-builder.txt" || exit 3
 mkdir -p /tmp/claude-1000/artifacts /tmp/claude-1000/headcheck
 git archive HEAD driver/SafeUpload.Minifilter -o /tmp/claude-1000/headcheck/head-minifilter.tar
-scp "${scp_opts[@]}" /tmp/claude-1000/headcheck/head-minifilter.tar "vika@$host:C:/Users/vika/Documents/head-minifilter.tar" || exit 2
-scp "${scp_opts[@]}" driver/scripts/Test-NormalBuildIdentity.ps1 "vika@$host:C:/Users/vika/Documents/Test-NormalBuildIdentity.ps1" || exit 2
+scp "${scp_opts[@]}" /tmp/claude-1000/headcheck/head-minifilter.tar "$builder_user@$host:C:/Users/vika/Documents/head-minifilter.tar" || exit 2
+scp "${scp_opts[@]}" driver/scripts/Test-NormalBuildIdentity.ps1 "$builder_user@$host:C:/Users/vika/Documents/Test-NormalBuildIdentity.ps1" || exit 2
 for n in normal-wdk owned-feature-wdk normal-release-wdk owned-feature-release-wdk agent-tests service-build; do
-  scp "${scp_opts[@]}" "vika@$host:C:/Users/vika/Documents/admission-diagnostic-milestone/$n.txt" "$ev/$label-$n.txt" || echo "scp fail $n"
+  scp "${scp_opts[@]}" "$builder_user@$host:C:/Users/vika/Documents/admission-diagnostic-milestone/$n.txt" "$ev/$label-$n.txt" || echo "scp fail $n"
 done
-python3 driver/scripts/remote_ps.py "$host" <<'PS' 2>&1 | sed 's/<Objs.*//' | tr -d '\r' | grep -v -e '^$' -e CLIXML | tee "$ev/$label-builder-verification.txt"
+python3 driver/scripts/remote_ps.py "${remote_args[@]}" <<'PS' 2>&1 | sed 's/<Objs.*//' | tr -d '\r' | grep -v -e '^$' -e CLIXML | tee "$ev/$label-builder-verification.txt"
 $d = 'C:\Users\vika\Documents\admission-diagnostic-milestone'
 'UTC=' + [DateTime]::UtcNow.ToString('o')
 foreach ($n in 'normal-wdk','owned-feature-wdk','normal-release-wdk','owned-feature-release-wdk') {
@@ -39,6 +44,6 @@ foreach ($cfg in 'Debug','Release') { foreach ($feat in 'false','true') {
 } }
 try { & 'C:\Users\vika\Documents\Test-NormalBuildIdentity.ps1' -HeadTar 'C:\Users\vika\Documents\head-minifilter.tar' -MilestoneDirectory $d | Select-String 'NormalBuildIdentity|FAIL' } catch { 'IDENTITY_SCRIPT_THREW: ' + $_.Exception.Message }
 PS
-scp "${scp_opts[@]}" "vika@$host:C:/Users/vika/Documents/admission-diagnostic-milestone/SafeUpload-stage-prototype.sys" /tmp/claude-1000/artifacts/SafeUpload-stage-prototype.sys
-scp "${scp_opts[@]}" "vika@$host:C:/Users/vika/Documents/admission-diagnostic-milestone/inspector-true-Release.exe" /tmp/claude-1000/artifacts/SafeUpload.Inspector.exe
+scp "${scp_opts[@]}" "$builder_user@$host:C:/Users/vika/Documents/admission-diagnostic-milestone/SafeUpload-stage-prototype.sys" /tmp/claude-1000/artifacts/SafeUpload-stage-prototype.sys
+scp "${scp_opts[@]}" "$builder_user@$host:C:/Users/vika/Documents/admission-diagnostic-milestone/inspector-true-Release.exe" /tmp/claude-1000/artifacts/SafeUpload.Inspector.exe
 sha256sum /tmp/claude-1000/artifacts/* | tee "$ev/$label-artifact-hashes.txt"

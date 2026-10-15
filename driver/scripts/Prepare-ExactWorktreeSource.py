@@ -21,7 +21,9 @@ ROOTS = ('driver/SafeUpload.Minifilter', 'driver/SafeUpload.Inspector',
          'driver/SafeUpload.WriterFixture')
 TOOLS = ('driver/scripts/Build-ExactSource.ps1', 'driver/scripts/remote_ps.py',
          'driver/scripts/Invoke-ExactSourceBuild.sh',
-         'driver/scripts/Prepare-ExactWorktreeSource.py')
+         'driver/scripts/Prepare-ExactWorktreeSource.py',
+         'driver/scripts/approved_builders.py', 'driver/scripts/approved-builders.json',
+         'driver/scripts/ApprovedBuilders.ps1')
 
 
 def digest(data):

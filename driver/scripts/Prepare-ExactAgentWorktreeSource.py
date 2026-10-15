@@ -19,7 +19,9 @@ TOOLS = ('driver/scripts/Build-ExactAgentMatrix.ps1',
          'driver/scripts/remote_ps.py',
          'driver/scripts/Prepare-ExactWorktreeSource.py',
          'driver/scripts/Prepare-ExactAgentWorktreeSource.py',
-         'driver/scripts/Invoke-ExactAgentMatrixBuild.py')
+         'driver/scripts/Invoke-ExactAgentMatrixBuild.py',
+         'driver/scripts/approved_builders.py', 'driver/scripts/approved-builders.json',
+         'driver/scripts/ApprovedBuilders.ps1', 'driver/scripts/matrix-durations.py')
 
 
 def unique_object(pairs):
