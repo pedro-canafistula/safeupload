@@ -29,6 +29,11 @@ grows with store size. Owner approved replacing it: each operation verifies only
 checksums, failing closed on mismatch), and the whole store is validated at service start, after any I/O error or hold, and
 periodically when idle. This changes an integrity rule of the accepted sizing design, so it gets a design delta and a Sol 6.1
 xhigh delta review before the batch-3 implementation.
+  Delta `T5-INCREMENTAL-VALIDATION.md` (`e9952b33` on `wt/t5-batch2`; planned test reads about 78 KB instead of 4.1 MB per update);
+  [independent review](evidence/2026-10-15/t5-incremental-validation-review-sol61.md) **ACCEPT WITH CONDITIONS**: absence answers only
+  from membership metadata of a fully validated recovery or a frontier-durable transaction; idle-sweep snapshots bound to the
+  canonical control page plus owner mutation/lifecycle/hold state, with paused-sweep controls for checkpoint reset, failed apply,
+  a latched hold and teardown; arithmetic assumptions labelled. The cold coherent-rollback limit stays documented. Joins batch 3.
 
 **2026-10-15 — kernel builds on both builders; no queueing behind a busy builder.** Owner, in the session:
 - Option B: the existing test-signing certificate (`A6D6…`) is installed on builder2 too. The owner ran the installation
