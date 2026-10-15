@@ -34,6 +34,16 @@ threshold or assertion changes. Kernel: four WDK/PREfast/ApiValidator builds 0/0
 teardown deltas join the next pre-boot Sol 6.1 xhigh review. Agent: local compile, T5 checks, preflight, matrix. Harness: PS 5.1
 gate and self-checks. If the normal build then enforces nothing until staging cutover, that is accepted: nothing ships before
 cutover.
+- **Inventory and follow-up (2026-10-15).** Taint lives in `Taint.c`, `Filter.c` (table, read marking, tainted CREATE/rename/link
+  refusals, pre-taint handle check), `Filter.h`, `Policy.c` (test-disable switch), `Protocol.h` (policy bit `0x20`, coverage bit `0x40`,
+  taint counters, promotion-trace field), small staging references, agent `Protocol.cs`/`PolicyBuilder.cs`/`MinifilterPolicyFactory.cs`
+  (`ClassifyAllSources` exists only to feed taint)/`AdmissionCoverage.cs`/probe, two agent tests per profile, and the staged harness
+  (all 34 cases require the disable flag; `Test-InvariantLiveTaintWindow`; LiveTaint self-check; gate scripts). Without taint the
+  normal build no longer stops new sensitive content being copied into monitored destinations; it still refuses write-opens of
+  existing sensitive destination files and protected-scope creates while the service is disconnected. No functional dependency in
+  staging, T7 or the recorded M1 evidence. Owner: "If there's no taint mechanism, there's no need for a taint absent condition" —
+  the cases' taint precondition and live-taint checks are deleted without replacement. Former counter/flag positions stay as
+  unused zero slots only to keep the wire layout; nothing asserts them.
 
 **2026-10-15 — second builder and parallel builder jobs.** Owner, in the session:
 - **A. Second builder: approved, including the host/libvirt changes needed to create it.** Clone the current builder
