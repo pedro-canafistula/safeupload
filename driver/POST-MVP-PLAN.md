@@ -743,7 +743,11 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
         a persistence failure. `T4PoolFlat`: a step of ~10,800 contexts at cycles 5000–5500 is the two failure-evidence captures
         copying ~5,000 manifests each; outside it, driver bytes still grow ~34 B/cycle (k11: 1.5), and the purge returns them
         (7.27 → 6.75 MB, start 6.62 MB; allocations 25,592 → 2,868), so it looks like T5 memory tied to cached files' stream
-        contexts rather than a leak — RCA in progress; the gate is unchanged.
+        contexts rather than a leak. [RCA](evidence/2026-10-14/m2t5boot10k1-pool-slope-rca-sol61.md): the 24-byte `SwUl`
+        SOP-lifetime witness batch 1 attaches to every tracked stream context (also for metadata-mutation opens) is a direct driver
+        allocation, so Verifier counts it (34.5 B/cycle ≈ 24 B × 1.44 per cycle); all references are balanced and the purge frees it,
+        so it scales with cached files; the capture step is exactly 10,131 witnesses. Fix (kernel lifetime change, design and review
+        first, joins batch 3): detach the context's witness once no non-retired registry entry needs it. The gate is unchanged.
       - [ ] Raw C01–C04/B01/B02/X01 cells in ordinary, runtime-Verifier and boot-Verifier modes with this pair.
         **Stopped: C01-approve-absent ordinary failed twice** (`m2t5od1`, diagnostic rerun `m2t5oe1` with the new failure capture
         `a2900ee5`; receipts kept). After the after-boot phase's restoration retried the voluntary unload, the guest stayed alive
