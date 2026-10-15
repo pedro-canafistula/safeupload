@@ -48,7 +48,7 @@ Remove-Item -LiteralPath '$dest' -Recurse -Force
 PS
 grep -E 'ParseErrors=|:Exit=|HarnessWindowsGate=' "$ev"; echo "evidence: $ev"
 if [[ "$parity_check" == True ]]; then
-    grep -qx 'ParityChecksSucceeded=True' "$ev"
+    tr -d '\r' < "$ev" | grep -qx 'ParityChecksSucceeded=True'   # Windows evidence lines end in CRLF
 else
-    grep -qx 'HarnessWindowsGate=PASS' "$ev"
+    tr -d '\r' < "$ev" | grep -qx 'HarnessWindowsGate=PASS'
 fi
