@@ -23,6 +23,18 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-15 — remove process-taint enforcement.** Owner, in the session: remove process-taint enforcement from the product; it
+is superseded by staging, and keeping it in code, tests and harness rows wastes development and builder time. The AGENTS.md
+invariant "Keep taint enforcement and staging feature gates" becomes "Keep the staging feature gates". Inventory first and report
+it before deleting anything (driver, agent, tests per profile, harness/self-checks, VM rows/cases, scripts; what the normal build
+will enforce afterwards; any dependency from staging, T7 reads or the qualified M1 baseline, which stops the removal until the
+owner decides). Then remove it in one coherent change on its own branch, not under the running batch-3 worker, integrating after
+its stage boundary. Removing taint tests is authorized and listed explicitly for the preflight; no non-taint test, gate,
+threshold or assertion changes. Kernel: four WDK/PREfast/ApiValidator builds 0/0 and the import gate; lifetime, lock-order or
+teardown deltas join the next pre-boot Sol 6.1 xhigh review. Agent: local compile, T5 checks, preflight, matrix. Harness: PS 5.1
+gate and self-checks. If the normal build then enforces nothing until staging cutover, that is accepted: nothing ships before
+cutover.
+
 **2026-10-15 — second builder and parallel builder jobs.** Owner, in the session:
 - **A. Second builder: approved, including the host/libvirt changes needed to create it.** Clone the current builder
   (192.168.122.210, DESKTOP-O1LP5DG) into a smaller VM holding only what an extra builder needs: the OS and the exact toolchain
