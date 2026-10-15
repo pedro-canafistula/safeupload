@@ -23,6 +23,33 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-15 — second builder and parallel builder jobs.** Owner, in the session:
+- **A. Second builder: approved, including the host/libvirt changes needed to create it.** Clone the current builder
+  (192.168.122.210, DESKTOP-O1LP5DG) into a smaller VM holding only what an extra builder needs: the OS and the exact toolchain
+  (WDK/EWDK, .NET SDK 10.0.400 / runtime 10.0.11, Windows PowerShell 5.1, the warmed NuGet cache, build/matrix prerequisites).
+  Remove old `exact-*`/`exact-agent-*`/`harness-gate-*` folders, outputs and evidence copies, zero free space and produce a sparse
+  qcow2. Copy only while the builder is idle (no queued/running builder job, no timing-sensitive T4 row); never modify the original
+  builder disk or use it as a backing file. Own libvirt domain, MAC, IP and computer name; before both run together, verify no other
+  domain shares its guest address; add its SSH host key to known_hosts with StrictHostKeyChecking=yes. Use it first for agent
+  matrices and harness gates; signed kernel builds stay on the current builder unless a concrete reason to install the existing
+  test-signing certificate is shown to the owner, and the private key is not copied otherwise. Parameterize builder identity/host
+  checks (`Invoke-ExactAgentMatrixBuild.py`, `Build-ExactAgentMatrix.ps1`, `Invoke-HarnessWindowsGate.sh`, `remote_ps.py` users)
+  to an approved builder list, record the builder identity in every receipt, keep defaults unchanged (harness rules apply). Prove
+  parity first: toolchain inventory on both, then the same commit's matrix on both labelled as a parity check, comparing discovery
+  counts and outcomes; no gate use until parity passes. Watch host disk with space-guard; keep the clone off the HDD path.
+- **B. Workflow rule 6 revised:** "one job per builder" replaces "never two builder jobs at once". Two different builders may run
+  jobs in parallel; never two jobs on the same builder or VM target, and no builder jobs on either builder during timing-sensitive
+  T4 rows. AGENTS.md lab boundaries updated.
+- **Speed-ups started now:** (1) batch 3's single-store/WAL removes the per-test 3,877-file domain bootstrap; after every matrix,
+  report the first-leg duration and every test over 60 s, never weakening, skipping or shrinking assertions. (2) An explicit opt-in
+  diagnostic "continue past failure" matrix mode that runs all eight legs, prints `AgentMatrixGate=False` plus a
+  `DiagnosticContinue` marker, never counts as a gate or qualification, leaves the default exactly unchanged, with offline
+  self-checks for both modes. (3) No idle gaps: every launched/resumed worker and builder/VM job gets an immediate background wait;
+  a watchdog lists running workers/jobs and flags finished-but-unhandled workers.
+- **Optional, propose first:** split a full gate matrix across the two builders (normal on one, feature on the other) only if the
+  combined result stays equivalent to today's gate (same commit, identical toolchain inventory, complete discovery/execution
+  coverage, no skips), with offline controls proving it.
+
 **2026-10-15 — publication descriptor and receipt sizing.** Owner, in the session:
 - **Descriptor: marker-only difference accepted for the moved shape.** "I accept decision 1, it's even better that that flag isn't
   set because it follows the permissions of its previous parent, so it would be a lie." Publication constructs security with
@@ -97,8 +124,10 @@ editing this plan, a Codex resume switching Sol to Astra).
    the interleavings considered, sent with the code so one review round suffices.
 5. **Batch.** Fix all defects an RCA finds in one change, then one build + matrix + review + boot. Re-reviews cover only the delta and
    the previous findings, never unchanged code.
-6. **Overlap waiting.** While a matrix, build or boot runs, do the next independent item (RCA, next brief, local compile). Never two
-   builder jobs or two VM jobs at once.
+6. **Overlap waiting.** While a matrix, build or boot runs, do the next independent item (RCA, next brief, local compile). One job
+   per builder (revised 2026-10-15): two different approved builders may run jobs in parallel; never two jobs on the same builder or
+   the same VM target, and no builder job on either builder during a timing-sensitive T4 row. Every launched worker or job gets an
+   immediate background wait.
 7. **Worker briefs** always require: the local compile and every `driver/scripts/t5` check; no renamed or removed tests; wire tests with
    `MemoryMarshal`, never `Marshal` round-trips; `InternalsVisibleTo`, constructor signatures and profile symbols checked in every
    touched test; no edits to status plans; no self-run review claimed as independent; expected test counts per profile. Codex resume
