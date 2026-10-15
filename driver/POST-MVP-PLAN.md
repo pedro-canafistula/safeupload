@@ -943,6 +943,11 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     approved):** 4,702,608 bytes of fixed nonpaged receipt banks (13 × 128-slot banks of 156,744 B, op23 1,096,776 B, op24
     1,253,448 B, control35 313,416 B, op17 1,296 B) and an eager per-machine receipt layout of 3,877 files in 19 directories
     (~0.65 MB logical; NTFS allocation unmeasured), created only once V30 is enabled.
+    **Feature-profile gap found (2026-10-15):** every batch-2/3 matrix stopped after the normal Debug leg, so the feature legs never
+    ran until `integ-m1` (taint-removal branch, 4 feature legs): 3,398/3,528 with 130 failures. [RCA](evidence/2026-10-15/t5-feature-failures-rca-sol61.md):
+    128 are stale feature fixtures after batch 2 activated exact seal receipts (`92f2b159`; product refusals correct), plus the two
+    known compaction cases; one seed-corruption test conflicts with the accepted replay-first rule and is split, listed old to new.
+    Fixture fix running on `wt/t5-feature-fixtures`; from now on feedback matrices run all legs (diagnostic continue).
     - Batch 2: exact seal receipt, op15 typed refusal/exposure evidence/op23, stateless refusals (owner decision; no refusal
       receipts or budget), and a negotiated per-version driver-delete receipt (a restart cannot finish released-stage bookkeeping
       today: `Held=0` and a missing path are not deletion evidence). Design [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md) after
