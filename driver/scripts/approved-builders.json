@@ -23,7 +23,7 @@
         "matrix",
         "gate"
       ],
-      "gate_approved": false,
+      "gate_approved": true,
       "uuid": "9A20C45F-7C79-4742-887F-5B279309FAB9",
       "mac": "52-54-00-63-87-7B"
     }
