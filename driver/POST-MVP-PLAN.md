@@ -23,6 +23,13 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-15 — incremental store validation.** The semantic-store cutover showed every metadata update re-reading and checksumming
+the whole store (about 4.1 MB read per update in the 10,000-update test; writes about 28 KB and 3 flushes), a per-save cost that
+grows with store size. Owner approved replacing it: each operation verifies only the pages and log records it reads (per-page
+checksums, failing closed on mismatch), and the whole store is validated at service start, after any I/O error or hold, and
+periodically when idle. This changes an integrity rule of the accepted sizing design, so it gets a design delta and a Sol 6.1
+xhigh delta review before the batch-3 implementation.
+
 **2026-10-15 — kernel builds on both builders; no queueing behind a busy builder.** Owner, in the session:
 - Option B: the existing test-signing certificate (`A6D6…`) is installed on builder2 too. The owner ran the installation
   (`install-signer-builder2.sh`, outside the repository); builder2 reported HasPrivateKey=True and a Valid test signature, and the
