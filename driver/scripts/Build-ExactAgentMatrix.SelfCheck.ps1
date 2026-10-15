@@ -42,7 +42,8 @@ function Test-MatrixControls {
     $script:summary = @(); $script:diagnosticFailed = $false
     $script:diagnosticTestLegsAttempted = 0
     $profiles = @(Get-MatrixProfiles)
-    Assert-Control ($profiles.Count -eq 4) 'Missing build profiles.'
+    Assert-Control ($profiles.Count -eq 2) 'Missing build profiles.'
+    Assert-Control (($profiles | ForEach-Object { $_.Mode + '-' + $_.Configuration.ToLowerInvariant() }) -join ',' -ceq 'feature-debug,feature-release') 'Wrong profile set.'
     foreach ($profile in $profiles) {
         $name = $profile.Mode + '-' + $profile.Configuration.ToLowerInvariant()
         # No assembly: every build fails and BOTH test legs must record a
@@ -50,14 +51,14 @@ function Test-MatrixControls {
         Invoke-DiagnosticProfile $name $profile.Configuration @('-warnaserror') service app tests (Join-Path $work 'missing-source')
     }
     Assert-Control $script:diagnosticFailed 'Diagnostic failures disappeared.'
-    foreach ($name in @('normal-debug', 'normal-release', 'feature-debug', 'feature-release')) {
+    foreach ($name in @('feature-debug', 'feature-release')) {
         $actions = @('build', 'app-build', 'test-build', 'tests-discovery-list', 'tests-discovery-fqns', 'tests-user', 'tests-system')
         if ($name.EndsWith('-release')) { $actions += 'publish' }
         foreach ($action in $actions) {
             Assert-Control (@($script:summary | Where-Object { $_ -like ($name + '-' + $action + ': DiagnosticFailure=*') }).Count -eq 1) ('Missing continued action: ' + $name + '/' + $action)
         }
     }
-    Assert-Control ($script:diagnosticTestLegsAttempted -eq 8) 'Not all eight legs were attempted.'
+    Assert-Control ($script:diagnosticTestLegsAttempted -eq 4) 'Not all four legs were attempted.'
     # With an assembly available, execute both mocked accounts even when user
     # tests fail; then prove the all-pass diagnostic still cannot be a gate.
     foreach ($nativeExit in @(1, 0)) {
@@ -72,8 +73,8 @@ function Test-MatrixControls {
             [IO.File]::WriteAllText((Join-Path $bin 'SafeUpload.Agent.Tests.dll'), 'nonexecutable fixture')
             Invoke-DiagnosticProfile $name $profile.Configuration @('-warnaserror') service app tests $profileSource
         }
-        Assert-Control ($script:systemCalls -eq 4) 'A user failure prevented a SYSTEM leg.'
-        foreach ($name in @('normal-debug', 'normal-release', 'feature-debug', 'feature-release')) {
+        Assert-Control ($script:systemCalls -eq 2) 'A user failure prevented a SYSTEM leg.'
+        foreach ($name in @('feature-debug', 'feature-release')) {
             Assert-Control (@($script:summary | Where-Object { $_ -like ($name + '-tests-user: exit=*') }).Count -eq 1) 'User tests did not execute.'
         }
         Assert-Control ($script:diagnosticFailed -eq ($nativeExit -ne 0)) 'Diagnostic failure state is wrong.'
@@ -97,7 +98,9 @@ try {
     $mutations = @(
         @('($Name + ''-publish'')', '($Name + ''-omitted-publish'')'),
         @('param([string] $StepName, [scriptblock] $Action)', 'param([string] $Name, [scriptblock] $Action)'),
-        @("@('normal', 'feature')", "@('normal')"),
+        @("@('feature')", "@('normal')"),
+        @("@('Debug', 'Release')", "@('Debug')"),
+        @("@('Debug', 'Release')", "@('Release')"),
         @('try { & $Action }', '& $Action; try { }'),
         @('else { throw (''Build gate failed: '' + $Name) }', 'else { $script:diagnosticFailed = $true }'),
         @('if ($ContinueMode -or $CompileOnly -or $Parity)', 'if ($CompileOnly -or $Parity)'),
@@ -118,4 +121,4 @@ try {
         . ([scriptblock]::Create($source))
     }
 } finally { Remove-Item -LiteralPath $work -Recurse -Force }
-'BuildExactAgentMatrixSelfCheck=PASS; controls=fail-fast,all-eight-legs,non-gates,lifetime-stop; mutations=12'
+'BuildExactAgentMatrixSelfCheck=PASS; controls=fail-fast,all-four-feature-legs,non-gates,lifetime-stop; mutations=14'

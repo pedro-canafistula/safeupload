@@ -23,7 +23,7 @@ $builder = Get-ApprovedBuilder -Role 'matrix' -Label $Label -BuilderName $Builde
 Assert-ApprovedBuilderIdentity $builder
 if ($DiagnosticContinue -and $DiagnosticCompileOnly) { throw 'Choose only one diagnostic mode.' }
 function Get-MatrixProfiles {
-    foreach ($mode in @('normal', 'feature')) {
+    foreach ($mode in @('feature')) {
         foreach ($configuration in @('Debug', 'Release')) {
             [pscustomobject]@{ Mode = $mode; Configuration = $configuration }
         }
@@ -530,7 +530,7 @@ function Remove-CompletedProfileOutputs {
     $profilePath = [IO.Path]::GetFullPath($ProfileSource).TrimEnd('\')
     $evidencePath = [IO.Path]::GetFullPath($EvidenceDirectory).TrimEnd('\')
     if ([IO.Path]::GetDirectoryName($profilePath) -ne $evidencePath -or
-        [IO.Path]::GetFileName($profilePath) -notmatch '^profile-src-(normal|feature)-(debug|release)$') {
+        [IO.Path]::GetFileName($profilePath) -notmatch '^profile-src-feature-(debug|release)$') {
         throw 'Generated-output cleanup is outside a completed matrix profile.'
     }
     $agentPath = Join-Path $profilePath 'agente'
@@ -632,7 +632,7 @@ function Invoke-CleanupSelfTest {
         # simultaneous bin/obj trees. Check the deletion boundary independently
         # of the native-process job controls above.
         $fakeOut = Join-Path $testRoot 'out'
-        $fakeProfile = Join-Path $fakeOut 'profile-src-normal-debug'
+        $fakeProfile = Join-Path $fakeOut 'profile-src-feature-debug'
         $fakeProject = Join-Path $fakeProfile 'agente\Project'
         [void][IO.Directory]::CreateDirectory((Join-Path $fakeProject 'bin'))
         [void][IO.Directory]::CreateDirectory((Join-Path $fakeProject 'obj'))
@@ -860,7 +860,8 @@ foreach ($file in $seenFiles) {
     $expected.Add($relative, (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash)
 }
 $summary = @("LABEL=$Label", "BUILDER=$env:COMPUTERNAME", "SourceCommit=$($SourceCommit.ToLowerInvariant())",
-    "ARCHIVE_SHA256=$($ArchiveSha256.ToUpperInvariant())") + @(Get-BuilderReceipt $builder)
+    "ARCHIVE_SHA256=$($ArchiveSha256.ToUpperInvariant())",
+    'AgentMatrixProfiles=feature-debug,feature-release', 'AgentMatrixTestLegs=4') + @(Get-BuilderReceipt $builder)
 if ($DiagnosticContinue) { $summary += @('LabelKind=diagnostic') }
 $gatePassed = $false
 $diagnosticFailed = $false
@@ -900,12 +901,12 @@ try {
     foreach ($profile in @(Get-MatrixProfiles)) {
         $mode = $profile.Mode
         $configuration = $profile.Configuration
-        $feature = if ($mode -eq 'feature') { 'true' } else { 'false' }
+        $feature = 'true'
             $name = $mode + '-' + $configuration.ToLowerInvariant()
             $summary += "$name`: admission_evidence=$feature"
             # Existing source-contract tests locate agente/scripts by walking
             # upward from their assembly. Keep that layout in a fresh verified
-            # full source copy per profile, never mixing feature/normal outputs.
+            # full source copy per profile, never mixing Debug/Release outputs.
             $profileSource = Join-Path $out ('profile-src-' + $name)
             if (Test-Path -LiteralPath $profileSource) { throw 'Profile source already exists.' }
             [void][IO.Directory]::CreateDirectory($profileSource)

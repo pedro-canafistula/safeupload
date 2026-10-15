@@ -28,6 +28,8 @@ FAILED_COUNTERS = ('failed', 'error', 'timeout', 'aborted', 'inconclusive',
 SYSTEM_FILTER_MARKERS = ('CertificateAuthorityTests', 'TlsInspectionProxyTests', 'TrafficDiversionTests')
 MACHINE_FACT_CLASSES = ('MachineCertificateAuthorityTests', 'TrafficDiversionTests')
 VSTEST_DISCOVERY_HEADER = 'The following Tests are available:'
+MATRIX_MODES = ('feature',)
+MATRIX_PROFILE_ROW = 'AgentMatrixProfiles=feature-debug,feature-release'
 STAGED_V20_REQUIRED_TESTS = {
     ('SafeUpload.Agent.Tests.StagedAttachmentV20Tests', method)
     for method in (
@@ -352,12 +354,7 @@ def validate_package(out, mode, summary):
             'members': len(manifest_hashes)}
 
 
-def verify_matrix_outputs(out, summary):
-    """Prove that each profile executed its complete discovered inventory exactly once."""
-    tests = {}
-    packages = {}
-    required_normal = {('SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests',
-                        'EvidenceTypesExistOnlyInFeatureBuilds')} | STAGED_V20_REQUIRED_TESTS
+def required_feature_tests():
     required_feature = {('SafeUpload.Agent.Tests.AdmissionEvidenceWireTests', method)
                         for method in (
                             'Managed_status_mirrors_match_driver_sizes_and_offsets',
@@ -380,12 +377,19 @@ def verify_matrix_outputs(out, summary):
                              'NonzeroReservedFlagsInNonTargetActivatingEntryPreserveRawPageAndInvalidateCapture',
                              'BackpressureDeadlineCancelsCaptureAndTerminalizesReservedHook')}
     required_feature |= STAGED_V20_REQUIRED_TESTS
-    for mode in ('normal', 'feature'):
+    return required_feature
+
+
+def verify_matrix_outputs(out, summary):
+    """Prove that both feature profiles executed every discovered case exactly once."""
+    tests = {}
+    packages = {}
+    read_gate(summary, MATRIX_PROFILE_ROW)
+    read_gate(summary, 'AgentMatrixTestLegs=4')
+    for mode in MATRIX_MODES:
         for configuration in ('debug', 'release'):
             name = mode + '-' + configuration
-            expected_admission = (required_feature if mode == 'feature' else required_normal)
-            expected_switch = 'true' if mode == 'feature' else 'false'
-            read_gate(summary, name + ': admission_evidence=' + expected_switch)
+            read_gate(summary, name + ': admission_evidence=true')
             for action in ('build', 'app-build', 'test-build', 'tests-discovery-list',
                            'tests-discovery-fqns', 'tests-user', 'tests-system', 'tests'):
                 read_gate(summary, name + '-' + action + ': exit=0 warnings=0 errors=0')
@@ -457,7 +461,7 @@ def verify_matrix_outputs(out, summary):
                 raise RuntimeError('MachineFact test ran in the unprivileged account: ' + name)
 
             required_result_ids = {}
-            for class_name, method_name in sorted(expected_admission):
+            for class_name, method_name in sorted(required_feature_tests()):
                 fqn = class_name + '.' + method_name
                 required_result_ids[fqn] = require_required_passed_result_ids(
                     discovered_cases, merged['cases'], merged['results_by_fqn'], fqn, name)
@@ -508,6 +512,8 @@ def create_feature_release_view(work, out, provenance, tests, package_info):
     test_count = tests['feature-release']['total']
     summary = '\n'.join((
         'ArtifactView=exact-agent-compatible-feature-release',
+        MATRIX_PROFILE_ROW,
+        'AgentMatrixTestLegs=4',
         *[key + '=' + str(value) for key, value in provenance['BuilderIdentity'].items()],
         'SourceKind=GitCommit',
         'SourceCommit=' + provenance['SourceCommit'],
@@ -525,7 +531,7 @@ def create_feature_release_view(work, out, provenance, tests, package_info):
 
 def matrix_fetch_names(diagnostic_continue):
     names = ['summary.txt', 'dotnet-info.txt']
-    for mode in ('normal', 'feature'):
+    for mode in MATRIX_MODES:
         for configuration in ('debug', 'release'):
             name = mode + '-' + configuration
             names += [name + '-build.txt', name + '-app-build.txt', name + '-tests.txt',
@@ -551,8 +557,9 @@ def diagnostic_completion(out, builder, provenance, result, fetched):
     try:
         summary = (out / 'summary.txt').read_text(encoding='utf-8-sig')
         for row in receipt_lines(builder) + ['AgentMatrixGate=False', 'DiagnosticContinue=True',
-                                           'LabelKind=diagnostic', 'DiagnosticProfilesCompleted=4',
-                                           'DiagnosticTestLegsAttempted=8',
+                                           MATRIX_PROFILE_ROW, 'AgentMatrixTestLegs=4',
+                                           'LabelKind=diagnostic', 'DiagnosticProfilesCompleted=2',
+                                           'DiagnosticTestLegsAttempted=4',
                                            'SourceCommit=' + provenance['SourceCommit'],
                                            'ARCHIVE_SHA256=' + provenance['ArchiveSHA256'].upper()]:
             read_gate(summary, row)
@@ -573,7 +580,7 @@ def main():
     parser.add_argument('--commit', default='HEAD')
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('--diagnostic-continue', action='store_true',
-                        help='Attempt all eight test legs; never a gate and never fetch packages')
+                        help='Attempt all four feature test legs; never a gate and never fetch packages')
     args = parser.parse_args()
     if not re.fullmatch('[A-Za-z0-9._-]{3,60}', args.label):
         parser.error('invalid label')
@@ -588,6 +595,7 @@ def main():
                     commit, 'agente'], cwd=REPO, check=True)
     provenance = {'SourceCommit': commit, 'ArchiveSHA256': sha(work / 'src.zip'),
                   'BuilderIdentity': receipt(builder), 'Label': args.label,
+                  'Profiles': ['feature-debug', 'feature-release'], 'TestLegs': 4,
                   'LabelKind': 'diagnostic' if args.diagnostic_continue else ('parity' if builder['parity_check'] else 'gate'),
                   'DiagnosticContinue': args.diagnostic_continue,
                   'Notice': ('DiagnosticContinue: not a gate' if args.diagnostic_continue else
@@ -606,6 +614,7 @@ def main():
     retain('source.txt', ('SourceCommit=' + commit + '\nArchiveSHA256=' + provenance['ArchiveSHA256']
                           + '\n' + '\n'.join(receipt_lines(builder)) + '\nLabel=' + args.label
                           + '\nLabelKind=' + provenance['LabelKind']
+                          + '\n' + MATRIX_PROFILE_ROW + '\nAgentMatrixTestLegs=4'
                           + '\nDiagnosticContinue=' + str(args.diagnostic_continue)
                           + '\nNotice=' + provenance['Notice'] + '\n').encode())
     print('SOURCE_COMMIT=' + commit + '; archive=' + str(work / 'src.zip'), flush=True)

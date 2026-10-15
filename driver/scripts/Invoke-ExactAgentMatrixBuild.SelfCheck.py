@@ -79,7 +79,7 @@ SYSTEM = {
     'SafeUpload.Agent.Tests.' + family + '.SyntheticSystemCase'
     for family in ('MachineCertificateAuthorityTests', 'TlsInspectionProxyTests', 'TrafficDiversionTests')
 }
-PROFILES = ('normal-debug', 'normal-release', 'feature-debug', 'feature-release')
+PROFILES = ('feature-debug', 'feature-release')
 NS = 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'
 EPOCH_THEORY = ('SafeUpload.Agent.Tests.StagedTransferAllocatorTests.'
                 'V20_create_after_rejects_identityless_or_different_epoch_v1_before_child_intent')
@@ -132,10 +132,10 @@ def write_trx(path, profile, cases, skipped=None):
 def make_matrix(out, omitted=None, skip_profile=None, omitted_case=None, replaced_case=None,
                 omitted_required_case=None, replaced_required_case=None,
                 duplicated_required_case=None):
-    rows = []
+    rows = ['AgentMatrixProfiles=feature-debug,feature-release', 'AgentMatrixTestLegs=4']
     for profile in PROFILES:
         mode = profile.split('-')[0]
-        methods = STAGED | SYSTEM | (FEATURE if mode == 'feature' else {ENDPOINT + 'EvidenceTypesExistOnlyInFeatureBuilds'})
+        methods = STAGED | SYSTEM | FEATURE
         if omitted and omitted[0] == profile:
             methods = methods - {omitted[1]}
         cases = []
@@ -189,7 +189,7 @@ def make_matrix(out, omitted=None, skip_profile=None, omitted_case=None, replace
             rows.append(profile + '-' + action + ': exit=0 warnings=0 errors=0')
         rows.extend((profile + '-tests-user-identity: name=BUILDER\\vika sid=S-1-5-21-1-2-3-1001',
                      profile + '-tests-system-identity: S-1-5-18'))
-    for mode in ('normal', 'feature'):
+    for mode in ('feature',):
         name = mode + '-release'
         package = out / (name + '-service-publish.zip')
         payload = b'SYNTHETIC NONEXECUTABLE PACKAGE FIXTURE'
@@ -209,6 +209,7 @@ class RequiredV20MatrixControls(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='matrix-v20-positive-') as temporary:
             out = Path(temporary)
             tests, _ = gate.verify_matrix_outputs(out, make_matrix(out))
+            self.assertEqual(set(PROFILES), set(tests))
             gate_staged = {class_name + '.' + method_name
                            for class_name, method_name in gate.STAGED_V20_REQUIRED_TESTS}
             self.assertEqual(STAGED, gate_staged)
@@ -293,6 +294,74 @@ class RequiredV20MatrixControls(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'skipped, warning, or failed TRX leg'):
                     gate.verify_matrix_outputs(out, make_matrix(out, skip_profile=profile))
 
+    def test_every_feature_requirement_survives(self):
+        for profile in PROFILES:
+            for fqn in FEATURE:
+                with self.subTest(profile=profile, fqn=fqn), tempfile.TemporaryDirectory() as temporary:
+                    out = Path(temporary)
+                    with self.assertRaises(RuntimeError):
+                        gate.verify_matrix_outputs(out, make_matrix(out, omitted=(profile, fqn)))
+
+    def feature_contract(self, module):
+        with tempfile.TemporaryDirectory() as temporary:
+            out = Path(temporary)
+            summary = make_matrix(out)
+            tests, packages = module.verify_matrix_outputs(out, summary)
+            self.assertEqual(set(PROFILES), set(tests))
+            self.assertEqual({'feature'}, set(packages))
+            for profile in PROFILES:
+                # Normal rows cannot replace a missing feature profile or account leg.
+                for row in (profile + ': admission_evidence=true',
+                            profile + '-tests-system: exit=0 warnings=0 errors=0',
+                            profile + '-tests-user: exit=0 warnings=0 errors=0'):
+                    changed = summary.replace(row, row.replace('feature-', 'normal-'))
+                    with self.assertRaises(RuntimeError):
+                        module.verify_matrix_outputs(out, changed)
+                for account in ('user', 'system'):
+                    path = out / (profile + '-results') / ('agent-tests-' + account + '.trx')
+                    data = path.read_bytes()
+                    path.unlink()
+                    with self.assertRaises(OSError):
+                        module.verify_matrix_outputs(out, summary)
+                    path.write_bytes(data)
+            for row in ('AgentMatrixProfiles=feature-debug,feature-release', 'AgentMatrixTestLegs=4'):
+                with self.assertRaises(RuntimeError):
+                    module.verify_matrix_outputs(out, summary.replace(row, ''))
+        for profile in PROFILES:
+            with tempfile.TemporaryDirectory() as temporary:
+                out = Path(temporary)
+                fqn = ENDPOINT + 'EvidenceTypesExistOnlyInFeatureBuilds'
+                with self.assertRaises(RuntimeError):
+                    module.verify_matrix_outputs(out, make_matrix(out, omitted=(profile, fqn)))
+        names = module.matrix_fetch_names(False)
+        self.assertFalse(any('normal-' in name for name in names))
+        for profile in PROFILES:
+            for account in ('user', 'system'):
+                self.assertIn(profile + '-results/agent-tests-' + account + '.trx', names)
+        self.assertIn('feature-release-service-publish.zip', names)
+
+    def test_feature_guards_and_mutations(self):
+        self.feature_contract(gate)
+        source = SCRIPT.read_text()
+        mutations = [
+            ("MATRIX_MODES = ('feature',)", "MATRIX_MODES = ('normal', 'feature')"),
+            ("for configuration in ('debug', 'release'):", "for configuration in ('debug',):"),
+            ("for configuration in ('debug', 'release'):", "for configuration in ('release',):"),
+            ("sorted(required_feature_tests())", "sorted(())"),
+            ("'tests-user', 'tests-system', 'tests')", "'tests-user', 'tests')"),
+            ("'tests-user', 'tests-system', 'tests')", "'tests-system', 'tests')"),
+            ('read_gate(summary, MATRIX_PROFILE_ROW)', 'pass'),
+            ("read_gate(summary, 'AgentMatrixTestLegs=4')", 'pass'),
+        ]
+        for old, new in mutations:
+            with self.subTest(mutation=old):
+                self.assertIn(old, source)
+                mutant = types.ModuleType('feature_matrix_mutant')
+                mutant.__file__ = str(SCRIPT)
+                exec(compile(source.replace(old, new), str(SCRIPT), 'exec'), mutant.__dict__)
+                with self.assertRaises((AssertionError, RuntimeError, OSError)):
+                    self.feature_contract(mutant)
+
 
 # New runner controls use fake transports only; they never contact a builder.
 import base64
@@ -330,7 +399,7 @@ def wrapper_fixture(source=None, builder_name='builder1', diagnostic=False, buil
         summary += '\nARCHIVE_SHA256=' + hashlib.sha256(b'archive').hexdigest().upper()
         summary += '\nAgentMatrixGate=' + ('False' if diagnostic or builder_name == 'builder2' else 'True')
         if diagnostic:
-            summary += '\nDiagnosticContinue=True\nLabelKind=diagnostic\nDiagnosticProfilesCompleted=4\nDiagnosticTestLegsAttempted=8'
+            summary += '\nDiagnosticContinue=True\nLabelKind=diagnostic\nDiagnosticProfilesCompleted=2\nDiagnosticTestLegsAttempted=4'
         (remote / 'summary.txt').write_text(summary + '\n')
         (remote / 'dotnet-info.txt').write_text('fixture')
         # Populate captured logs independently of the production fetch selector.
@@ -469,7 +538,12 @@ class RunnerModeControls(unittest.TestCase):
         self.assertEqual(1, len(roots))
         root = roots[0]
         self.assertEqual(builder, root['Builder'])
+        self.assertEqual(list(PROFILES), root['Provenance']['Profiles'])
+        self.assertEqual(4, root['Provenance']['TestLegs'])
+        self.assertIn('AgentMatrixProfiles=feature-debug,feature-release', sources[0])
+        self.assertFalse(any(c[0] == 'scp' and ':C:/' in c[-2] and 'normal-' in c[-2] for c in calls))
         if diagnostic:
+            self.assertTrue(root['DiagnosticCompleted'])
             self.assertIn('DiagnosticContinue: not a gate', output)
             self.assertIn('DiagnosticContinue=True', output)
             self.assertIn('AgentMatrixGate=False', output)
@@ -601,7 +675,7 @@ class RunnerModeControls(unittest.TestCase):
             cli = subprocess.run([sys.executable, str(SCRIPT.with_name('matrix-durations.py')), str(out)], capture_output=True, text=True)
             self.assertEqual(0, cli.returncode)
             self.assertEqual(output + '\n', cli.stdout)
-            self.assertEqual(8, len([line for line in output.splitlines() if line.startswith(PROFILES) and ': 181.500 s' in line]))
+            self.assertEqual(4, len([line for line in output.splitlines() if line.startswith(PROFILES) and ': 181.500 s' in line]))
             self.assertIn('First leg:', output)
             self.assertNotIn('boundary', output)
             self.assertIn('| Failed | slow', output)

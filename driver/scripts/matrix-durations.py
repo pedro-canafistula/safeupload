@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read matrix TRX Times and report eight leg wall times and tests over 60 s.
+"""Read matrix TRX Times and report four feature leg wall times and tests over 60 s.
 
 Offline and read-only. Missing/malformed legs are reported with a nonzero exit;
 failed tests remain in the duration report. Merged TRX files are not counted twice.
@@ -11,7 +11,7 @@ import re
 import xml.etree.ElementTree as ET
 
 NS = {'t': 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'}
-PROFILES = ('normal-debug', 'normal-release', 'feature-debug', 'feature-release')
+PROFILES = ('feature-debug', 'feature-release')
 
 
 def timestamp(value):

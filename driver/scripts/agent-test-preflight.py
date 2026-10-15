@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Offline agent test preflight before queuing a matrix (workflow rule 2, 2026-10-14). No build, network or VM.
 
-1. Every test the matrix runner requires by name (STAGED_V20_REQUIRED_TESTS / _CASES in Invoke-ExactAgentMatrixBuild.py) exists as a
+1. Every feature test the matrix runner requires by name exists as a
    test method of its class in the source, and every required theory case has its argument in the method's InlineData.
 2. No test method discovered by the last passing matrix has disappeared from the source (a removed or renamed test is a stop).
 
 This is a diagnostic: the matrix remains the gate (it cannot run theories or evaluate profile symbols here).
-Usage: agent-test-preflight.py [--root <checkout>] --baseline <matrix-label>
+Usage: agent-test-preflight.py [--root <checkout>] --baseline <matrix-label> [--profile <profile> ...]
+Defaults to feature-debug and feature-release; normal profiles are explicit diagnostics only.
 """
 from pathlib import Path
 import argparse
@@ -22,7 +23,7 @@ def runner_requirements():
     spec = importlib.util.spec_from_file_location('matrix_runner', SCRIPTS / 'Invoke-ExactAgentMatrixBuild.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # top level only defines constants and functions
-    return module.STAGED_V20_REQUIRED_TESTS, module.STAGED_V20_REQUIRED_CASES
+    return module.required_feature_tests(), module.STAGED_V20_REQUIRED_CASES
 
 
 def strip_comments(source):
@@ -83,10 +84,10 @@ def test_methods(root):
     return found
 
 
-def baseline_methods(evidence, label):
-    files = sorted(evidence.glob(f'*/exact-agent-matrix-{label}-feature-debug-results-agent-tests-discovered-fq.txt'))
+def baseline_methods(evidence, label, profile):
+    files = sorted(evidence.glob(f'*/exact-agent-matrix-{label}-{profile}-results-agent-tests-discovered-fq.txt'))
     if not files:
-        print(f'STOP baseline {label}: no feature-debug discovered-tests list under {evidence}')
+        print(f'STOP baseline {label}: no {profile} discovered-tests list under {evidence}')
         raise SystemExit(2)
     names = set()
     for line in files[-1].read_text(encoding='utf-8-sig', errors='replace').splitlines():
@@ -100,10 +101,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--root', type=Path, default=SCRIPTS.parents[1])
     parser.add_argument('--baseline', required=True, help='label of the last passing agent matrix, e.g. t5-block3')
+    parser.add_argument('--profile', action='append',
+                        choices=('feature-debug', 'feature-release', 'normal-debug', 'normal-release'),
+                        help='baseline profile (repeatable); normal is diagnostic only')
     parser.add_argument('--evidence', type=Path, default=SCRIPTS.parent / 'evidence',
                         help='evidence directory holding matrix receipts (default: this checkout\'s driver/evidence)')
     args = parser.parse_args()
     root = args.root.resolve()
+    profiles = args.profile or ['feature-debug', 'feature-release']
     required_tests, required_cases = runner_requirements()
     methods = test_methods(root)
     problems = []
@@ -118,12 +123,16 @@ def main():
             value = re.search(r'"([^"]*)"', case)
             if value and f'"{value.group(1)}"' not in blocks:
                 problems.append(f'required case missing from InlineData: {fqn} {case}')
-    baseline, path = baseline_methods(args.evidence.resolve(), args.baseline)
+    baseline = set()
+    for profile in profiles:
+        names, path = baseline_methods(args.evidence.resolve(), args.baseline, profile)
+        baseline |= names
+        print(f'BaselineProfile={profile} path={path}')
     removed = sorted(baseline - set(methods))
     for name in removed:
         problems.append(f'test removed or renamed since {args.baseline}: {name}')
     added = sorted(set(methods) - baseline)
-    print(f'AgentTestPreflight root={root} baseline={args.baseline} ({path.name}) required={len(required_tests)} '
+    print(f'AgentTestPreflight root={root} profiles={",".join(profiles)} baseline={args.baseline} required={len(required_tests)} '
           f'source_methods={len(methods)} baseline_methods={len(baseline)} added={len(added)} removed={len(removed)}')
     for name in added:
         print('  added', name)

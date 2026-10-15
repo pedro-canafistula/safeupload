@@ -119,19 +119,19 @@ if((Get-FileHash -LiteralPath 'C:\Users\vika\Documents\Build-ExactSource-$label.
 PS
 build_exit=$?
 
-for f in summary.txt owned-feature-wdk.txt normal-wdk.txt owned-feature-release-wdk.txt normal-release-wdk.txt sign.txt \
-         SafeUpload-stage-prototype.sys owned-feature.sys normal.sys owned-feature-release.sys normal-release.sys \
-         inspector-feature-release.exe inspector-normal-release.exe inspector-feature-release.txt inspector-normal-release.txt \
+for f in summary.txt owned-feature-wdk.txt owned-feature-release-wdk.txt sign.txt \
+         SafeUpload-stage-prototype.sys owned-feature.sys owned-feature-release.sys \
+         inspector-feature-release.exe inspector-feature-release.txt \
          writer-fixture.exe writer-fixture.txt signature-verification.json; do
     scp "${scp_opts[@]}" "$d/exact-$label/out/$f" "$work/$f" 2>/dev/null || echo "not fetched: $f"
 done
 cp "$work/summary.txt" "$ev/exact-$label-summary.txt" 2>/dev/null
-for f in owned-feature-wdk normal-wdk owned-feature-release-wdk normal-release-wdk; do cp "$work/$f.txt" "$ev/exact-$label-$f.txt" 2>/dev/null; done
-for f in inspector-feature-release inspector-normal-release writer-fixture sign; do cp "$work/$f.txt" "$ev/exact-$label-$f.txt" 2>/dev/null; done
+for f in owned-feature-wdk owned-feature-release-wdk; do cp "$work/$f.txt" "$ev/exact-$label-$f.txt" 2>/dev/null; done
+for f in inspector-feature-release writer-fixture sign; do cp "$work/$f.txt" "$ev/exact-$label-$f.txt" 2>/dev/null; done
 cp "$work/signature-verification.json" "$ev/exact-$label-signature-verification.json" 2>/dev/null
 echo "== fetched artifact hashes (compare with summary.txt)"
-( cd "$work" && sha256sum SafeUpload-stage-prototype.sys owned-feature.sys normal.sys owned-feature-release.sys normal-release.sys \
-    inspector-feature-release.exe inspector-normal-release.exe writer-fixture.exe 2>/dev/null ) | tee "$ev/exact-$label-artifact-hashes.txt"
+( cd "$work" && sha256sum SafeUpload-stage-prototype.sys owned-feature.sys owned-feature-release.sys \
+    inspector-feature-release.exe writer-fixture.exe 2>/dev/null ) | tee "$ev/exact-$label-artifact-hashes.txt"
 
 if [[ "$build_exit" != 0 || ! -s "$work/summary.txt" ]]; then
     echo 'Exact build incomplete; retained raw stdout/stderr and artifacts are diagnostic only.'
@@ -139,28 +139,32 @@ if [[ "$build_exit" != 0 || ! -s "$work/summary.txt" ]]; then
 fi
 # Target availability: ApiValidator does not prove that each import exists on Windows 10 19045, and a boot-start driver
 # with a missing import cannot boot (m2t5rv1). Every driver artifact imports only exports of the qualified family.
-python3 driver/scripts/Test-DriverImports.py "$work/SafeUpload-stage-prototype.sys" "$work/owned-feature.sys" "$work/normal.sys" \
-    "$work/owned-feature-release.sys" "$work/normal-release.sys" | tee "$ev/exact-$label-imports.txt"
+if ! python3 driver/scripts/Test-DriverImports.py "$work/SafeUpload-stage-prototype.sys" "$work/owned-feature.sys" \
+    "$work/owned-feature-release.sys" | tee "$ev/exact-$label-imports.txt"; then
+    echo 'Import availability gate failed'; exit 5
+fi
 grep -qx 'DriverImportAvailability=PASS' "$ev/exact-$label-imports.txt" || { echo 'Import availability gate failed'; exit 5; }
-python3 - "$work/summary.txt" "$thumb" "$store" "$owner_fsp" "$builder_name" "$host" "$builder_computer" <<'PYGATE'
+python3 - "$work/summary.txt" "$thumb" "$store" "$owner_fsp" "$builder_name" "$host" "$builder_computer" "$ev/exact-$label-imports.txt" <<'PYGATE'
 from pathlib import Path
 import sys
 lines = Path(sys.argv[1]).read_text(encoding='utf-8-sig').splitlines()
 for key, value in zip(('Builder', 'BuilderHost', 'BuilderComputerName'), sys.argv[5:8]):
     if lines.count(key + '=' + value) != 1:
         raise SystemExit('Builder receipt mismatch: ' + key)
-for name in ('driver:normal', 'driver:owned-feature', 'driver:normal-release',
-             'driver:owned-feature-release', 'inspector-normal-release',
+if lines.count('KernelBuildProfiles=owned-feature,owned-feature-release') != 1:
+    raise SystemExit('Kernel profile set missing or ambiguous')
+for name in ('driver:owned-feature', 'driver:owned-feature-release',
              'inspector-feature-release', 'writer-fixture'):
     rows = [line for line in lines if line.startswith(name + ' :')]
     if len(rows) != 1 or not all(token in rows[0].split() for token in
             ('exit=0', 'succeeded=True', 'warnings=0', 'errors=0')):
         raise SystemExit('Build gate failed: ' + name)
     if name.startswith('driver:') and not all(token in rows[0].split() for token in
-            ('apivalidator=True', 'prefast=True')):
+            ('apivalidator=True', 'prefast=True', 'feature=true',
+             'configuration=' + ('Release' if name.endswith('-release') else 'Debug'))):
         raise SystemExit('Analysis gate missing: ' + name)
     if name.startswith('driver:') or name.startswith('inspector-'):
-        expected_owner = sys.argv[4] if name.startswith('driver:owned-feature') or name == 'inspector-feature-release' else 'false'
+        expected_owner = sys.argv[4]
         if 'owner_fsp=' + expected_owner not in rows[0].split():
             raise SystemExit('Owner prototype profile mismatch: ' + name)
 rows = [line for line in lines if line.startswith('sign :')]
@@ -168,5 +172,14 @@ if len(rows) != 1 or not all(token in rows[0].split() for token in
         ('exit=0', 'signature_valid=True', 'unsigned_unchanged=True',
          'signer=' + sys.argv[2], 'store=' + sys.argv[3])) or 'signed_sha256=NONE' in rows[0].split():
     raise SystemExit('Signing gate failed; copied output is not a verified signed artifact.')
+imports = Path(sys.argv[8]).read_text(encoding='utf-8-sig').splitlines()
+if imports.count('DriverImportAvailability=PASS') != 1 or any(
+        line.startswith('DriverImportAvailability=') and line != 'DriverImportAvailability=PASS'
+        for line in imports):
+    raise SystemExit('Import availability gate missing or failed')
+for artifact in ('SafeUpload-stage-prototype.sys', 'owned-feature.sys', 'owned-feature-release.sys'):
+    rows = [line for line in imports if line.startswith('DriverImports ' + artifact + ' ')]
+    if len(rows) != 1 or rows[0].split()[2] != 'PASS':
+        raise SystemExit('Import result missing or failed: ' + artifact)
 print('ExactSourceBuildSummaryGate=PASS')
 PYGATE
