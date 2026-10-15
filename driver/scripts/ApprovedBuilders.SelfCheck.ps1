@@ -36,8 +36,10 @@ function Test-BuilderControls {
     Assert-Refuses { Get-ApprovedBuilder -ConfigPath $script:builderConfig -Role kernel-sign -Label parity-kernel -BuilderName builder2 } '*lacks role*'
     Assert-Refuses { Get-ApprovedBuilder -ConfigPath $script:builderConfig -Role matrix -Label control-gate -BuilderName builder2 } '*only parity-*'
     $two = Get-ApprovedBuilder -ConfigPath $script:builderConfig -Role matrix -Label parity-control -BuilderName builder2
-    Assert-Refuses { Assert-ApprovedBuilderIdentity $two -ComputerName DESKTOP-O1LP5DG } '*Wrong builder*'
+    $script:fixtureUuid = $two.uuid; $script:fixtureMac = $two.mac   # builder2's own pinned identity (27c8807f)
+    Assert-Refuses { Assert-ApprovedBuilderIdentity $two -ComputerName DESKTOP-O1LP5DG } 'Wrong builder.'   # name alone differs
     Assert-ApprovedBuilderIdentity $two -ComputerName SU-BUILDER2
+    $script:fixtureUuid = $one.uuid; $script:fixtureMac = $one.mac
     $rows = @(Get-BuilderReceipt $two)
     foreach ($row in @('Builder=builder2', 'BuilderHost=192.168.122.211', 'BuilderComputerName=SU-BUILDER2', 'ParityCheck=True', 'ParityCheck: not a gate')) {
         Assert-Control ($rows -ccontains $row) ('Missing receipt: ' + $row)
