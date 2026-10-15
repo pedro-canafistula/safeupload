@@ -65,6 +65,17 @@ approval; compile-time staging-out builds are retired." This approves no activat
    removed (each listed for the preflight), product-vs-test-hook split folded into T12 with a short design note; lifetime/lock-order/
    teardown kernel deltas join the next pre-boot Sol 6.1 xhigh review.
 4. Report as a checkbox tree with commits, evidence paths and the matrix/build time saved.
+   - **Phase 1 done (2026-10-15)**, merged into feat/driver-m2 with the approved-builder list and diagnostic continue mode
+     (`wt/runner-builders`: `6d6b34c5` gates, `be3db991`/`65b34458` builder2 approval and signing, `bef3c269` self-check fix).
+     Verified: PS 5.1 gate [hg-integ2](evidence/2026-10-15/harness-windows-gate-hg-integ2.txt) and
+     [hg-merge1](evidence/2026-10-15/harness-windows-gate-hg-merge1.txt); two-profile signed kernel builds on both builders
+     ([integ-k1](evidence/2026-10-15/exact-integ-k1-summary.txt) on builder2, [t5-merge1-k](evidence/2026-10-15/exact-t5-merge1-k-summary.txt)
+     on builder1, about 2 min each); 4-leg matrix [integ-m1](evidence/2026-10-15/exact-agent-matrix-integ-m1-summary.txt); continue mode
+     [t5-batch3q-diag](evidence/2026-10-15/exact-agent-matrix-t5-batch3q-diag-summary.txt) ran all 4 legs after failures with
+     `DiagnosticContinue=True`/`AgentMatrixGate=False`. **Time saved:** 4 of 8 matrix legs and 2 of 4 kernel builds per delivery
+     round; with the Defender exclusions a feature user leg fell from 3,426 s to 1,158 s (Debug) / 931 s (Release), SYSTEM legs ~7 s
+     ([durations](evidence/2026-10-15/matrix-durations-t5-batch3q-diag.txt)); the remaining long test (10,000-update checkpoint,
+     990 s) goes with the default incremental-validation cutover, so neither splitting test classes nor 6 cores is needed now.
 
 **2026-10-15 — remove process-taint enforcement.** Owner, in the session: remove process-taint enforcement from the product; it
 is superseded by staging, and keeping it in code, tests and harness rows wastes development and builder time. The AGENTS.md

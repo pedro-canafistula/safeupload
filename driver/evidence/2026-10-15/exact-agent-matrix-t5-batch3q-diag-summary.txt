@@ -1,0 +1,40 @@
+﻿LABEL=t5-batch3q-diag
+BUILDER=SU-BUILDER2
+SourceCommit=bf892c07e84ba9830e27b1ed761fec53d6a743e1
+ARCHIVE_SHA256=FD79792C88CEA747F6EF117E51F3EAFFE66386A401D3027AF1F426A6D78E311A
+AgentMatrixProfiles=feature-debug,feature-release
+AgentMatrixTestLegs=4
+Builder=builder2
+BuilderHost=192.168.122.211
+BuilderComputerName=SU-BUILDER2
+ParityCheck=False
+LabelKind=diagnostic
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=SU-BUILDER2\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=1 warnings=0 errors=0
+feature-debug-tests-user: DiagnosticFailure=Build gate failed: feature-debug-tests-user
+feature-debug-tests-system: exit=0 warnings=0 errors=0
+feature-debug-tests-system-identity: S-1-5-18
+feature-release: admission_evidence=true
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-app-build: exit=0 warnings=0 errors=0
+feature-release-test-build: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-release-tests-user-identity: name=SU-BUILDER2\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-release-tests-user: exit=1 warnings=0 errors=0
+feature-release-tests-user: DiagnosticFailure=Build gate failed: feature-release-tests-user
+feature-release-tests-system: exit=0 warnings=0 errors=0
+feature-release-tests-system-identity: S-1-5-18
+feature-release-publish: exit=0 warnings=0 errors=0
+DiagnosticProfilesCompleted=2
+DiagnosticTestLegsAttempted=4
+DiagnosticContinue=True
+DiagnosticContinue: not a gate
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-15T16:31:33.4843217Z

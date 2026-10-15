@@ -1,0 +1,36 @@
+TRX leg wall times (Times start/finish):
+feature-debug/user: 3425.927 s
+First leg: feature-debug/user: 3425.927 s
+Tests over 60 s (descending duration):
+451.559 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedStorageV30Tests.Ten_thousand_workspace_cycles_plateau_and_do_not_rescan_history_or_release_physical_bytes
+203.757 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptClosureV30Tests.Same_instance_restart_repairs_only_committed_closure_and_keeps_ACK_and_storage_held(crash: "before-slot")
+198.830 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedOwnedVolumeV30Tests.Full_profile_inventory_joins_all_fixed_banks_and_the_journal_without_reopening_leases(fault: "issuer")
+194.642 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedCheckpointV30Tests.Ten_thousand_checkpoint_updates_have_fixed_files_bounded_actual_IO_and_one_reconstruction
+174.088 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptAtomicV30Tests.Restart_repairs_only_the_exact_atomic_Open_projection_after_either_slot_crash_window(point: "after-slot")
+173.596 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptClosureV30Tests.Same_instance_restart_repairs_only_committed_closure_and_keeps_ACK_and_storage_held(crash: "after-slot")
+172.454 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedOwnedVolumeV30Tests.Full_profile_inventory_joins_all_fixed_banks_and_the_journal_without_reopening_leases(fault: "complete")
+169.186 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptAtomicV30Tests.Restart_repairs_only_the_exact_atomic_Open_projection_after_either_slot_crash_window(point: "before-slot")
+156.908 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedOwnedVolumeV30Tests.Full_profile_inventory_joins_all_fixed_banks_and_the_journal_without_reopening_leases(fault: "domain")
+139.228 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptClosureV30Tests.A_closed_bank_projection_without_its_durable_cleanup_commit_holds_restart
+138.844 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptClosureV30Tests.Channel_loss_after_commit_keeps_the_transaction_and_does_not_return_success
+135.020 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedAllocationRoutingV30Tests.Same_instance_startup_repairs_only_the_exact_positive_Open_projection_once_without_closure
+122.930 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Changed_catalog_after_storage_reconstruction_publishes_no_plan_and_poisoned_owner_stays_held(fault: "revision")
+116.962 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Changed_catalog_after_storage_reconstruction_publishes_no_plan_and_poisoned_owner_stays_held(fault: "channel")
+111.126 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Crash_during_creation_preserves_partial_files_and_never_recreates_under_the_same_claim(point: "after-root", complete: True)
+104.120 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Different_authenticated_instance_waits_for_semantic_transfer_and_leaves_old_state_intact
+102.662 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Crash_during_creation_preserves_partial_files_and_never_recreates_under_the_same_claim(point: "before-root", complete: False)
+101.764 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptClosureV30Tests.Domain_cleanup_overload_stays_Pending_then_progresses_on_real_capacity_return
+97.645 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Same_instance_restart_preserves_exact_live_outcome_and_agent_issuer_without_closing_anything
+95.477 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedOwnedVolumeV30Tests.Full_profile_inventory_joins_all_fixed_banks_and_the_journal_without_reopening_leases(fault: "slot")
+92.866 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Missing_or_orphan_catalog_storage_holds_instead_of_resetting(fault: "root-orphan")
+91.926 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptClosureV30Tests.Domain_commit_uses_authenticated_Closing_and_never_emits_Closed_or_ACKs_reuse
+91.228 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Exclusive_domain_owner_blocks_second_reconstruction_until_disposed
+87.706 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Missing_or_orphan_catalog_storage_holds_instead_of_resetting(fault: "slot")
+85.737 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Missing_or_orphan_catalog_storage_holds_instead_of_resetting(fault: "container-orphan")
+80.136 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Missing_or_orphan_catalog_storage_holds_instead_of_resetting(fault: "bank")
+71.307 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Complete_creation_root_is_last_and_same_instance_reconnect_uses_cached_slot_state
+66.855 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedOwnedVolumeV30Tests.Full_profile_inventory_joins_all_fixed_banks_and_the_journal_without_reopening_leases(fault: "orphan")
+66.299 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedReceiptDomainV30Tests.Changed_catalog_after_storage_reconstruction_publishes_no_plan_and_poisoned_owner_stays_held(fault: "authority")
+ERROR feature-debug/system: [Errno 2] No such file or directory: '/home/victor/Work/safeupload-integ/output/exact-agent-matrix/integ-m1/out/feature-debug-results/agent-tests-system.trx'
+ERROR feature-release/user: [Errno 2] No such file or directory: '/home/victor/Work/safeupload-integ/output/exact-agent-matrix/integ-m1/out/feature-release-results/agent-tests-user.trx'
+ERROR feature-release/system: [Errno 2] No such file or directory: '/home/victor/Work/safeupload-integ/output/exact-agent-matrix/integ-m1/out/feature-release-results/agent-tests-system.trx'
