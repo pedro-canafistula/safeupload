@@ -23,6 +23,19 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-15 — publication descriptor and receipt sizing.** Owner, in the session:
+- **Descriptor: marker-only difference accepted for the moved shape.** "I accept decision 1, it's even better that that flag isn't
+  set because it follows the permissions of its previous parent, so it would be a lie." Publication constructs security with
+  native inheritance (NULL input in the destination parent) or stored replay, whichever reproduces the expected descriptor exactly.
+  Only when neither does, and the sole difference is expected `SE_DACL_AUTO_INHERITED` (`0x0400`) set / stored clear with every
+  other byte equal (owner, group, ACL bytes, ACE flags/order, label, SACL `0x0800`, protection and request bits), is the result
+  equivalent. No other difference is accepted; no repair, privileged post-set or AccessState injection. Evidence:
+  [controls](T5-NATIVE-PUBLIC-OPENS.md#descriptor-candidate-controls-2026-10-15) (equal access in all 30 rows; Windows re-marks it on
+  the next inheritance operation). Note: the moved file's entries keep their old-folder `INHERITED_ACE` marks in both versions.
+- **Receipt slots: owner proposes 256 per in-flight family** (2026-10-15) and asked what a robust commercial DLP would choose; the
+  allocation strategy (fixed reservation versus floor plus on-demand growth to that ceiling) is pending the owner's answer. No
+  default is approved yet; activation stays held.
+
 **2026-10-14 (evening) — retained residue and the test base.** Owner, in the session:
 - **Retained never-exposed residue: exception accepted.** Proved service-owned residue (exact custody, charged storage, ancestry and
   nonpublication obligations, as specified in [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md)) does not veto voluntary unload; the
@@ -267,7 +280,7 @@ latest inspector matrix. The remaining delivery requirements and their current p
 | Item | Required proof still outstanding | Current authoritative state |
 |---|---|---|
 | T4 | Passing loaded-context 10k gate, allocation-reply fault row, raw C01–C04/B01/B02/X01 and final pair | [10k contexts FAIL](evidence/2026-10-12/m2t4purge10ka1-verdict.txt). Planned rows authorized (owner, 2026-10-13). [KD rows 1–3](evidence/2026-10-13/t4-delete-kd-attribution-result.md): growth follows opens of released files; driver reference versus stream retention still undecided (volume-teardown discriminator next). |
-| T5 | Checked writer/seed/security authority, shared physical commit/recovery pipeline, final WDK/agent gates and three-mode native/Notepad rows | Option 1 and the dormant connected path landed (`a27defd8`; four WDK builds and matrix PASS). Pre-boot Sol 6.1 xhigh lifetime review: [REJECT](evidence/2026-10-13/t5-preboot-review-sol61.md), [REJECT](evidence/2026-10-14/t5-fix1-review-sol61.md), then [ACCEPT for the first Verifier boot](evidence/2026-10-14/t5-fix2-review-sol61.md) of `98e0a6d8`; boots, batch 1 (merged) and batch 3 (receipt lifetimes, in progress) follow. Readiness stays NotReady on four named blockers; [native descriptor construction](T5-NATIVE-PUBLIC-OPENS.md#descriptor-candidate-controls-2026-10-15) is exact for every measured shape except a moved-then-saved file (owner decision pending). |
+| T5 | Checked writer/seed/security authority, shared physical commit/recovery pipeline, final WDK/agent gates and three-mode native/Notepad rows | Option 1 and the dormant connected path landed (`a27defd8`; four WDK builds and matrix PASS). Pre-boot Sol 6.1 xhigh lifetime review: [REJECT](evidence/2026-10-13/t5-preboot-review-sol61.md), [REJECT](evidence/2026-10-14/t5-fix1-review-sol61.md), then [ACCEPT for the first Verifier boot](evidence/2026-10-14/t5-fix2-review-sol61.md) of `98e0a6d8`; boots, batch 1 (merged) and batch 3 (receipt lifetimes, in progress) follow. Readiness stays NotReady on four named blockers; [native descriptor construction](T5-NATIVE-PUBLIC-OPENS.md#descriptor-candidate-controls-2026-10-15) is exact for every measured shape; the moved-then-saved marker-only difference is owner-accepted (2026-10-15). |
 | T6 | Directory moves, empty/Explorer moves and final-pair three-mode byte observation | Only the earlier 28/28 copy-fallback component pair is qualified; directory creation/moves remain unresolved. |
 | T7 | Final-pair authorized/denied read rows | Earlier component B02 passes do not cover the revised pair. |
 | T8 | Nine real application workflows in all three modes; agreed owner/DACL/timestamps/attributes/ADS/EAs/labels | Final application/metadata rows and metadata decisions remain missing. |
@@ -466,7 +479,8 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     `SE_DACL_AUTO_INHERIT_REQ` to candidate CREATE inputs; both constructions retain the same five matches/two inherited-control
     failures. The exact expected descriptor is unchanged, so this candidate is rejected. PowerShell 5.1 and strict independent
     fixture/task/worker restoration pass; publication remains NotReady, with no kernel/agent change or product boot.
-    **Owner decision pending (2026-10-15):** [decision memo](evidence/2026-10-15/t5-descriptor-decision-sol61.md). Ordinary new
+    **Owner decision 2026-10-15: marker-only difference accepted for the moved shape** (see owner decisions); the exact-equality
+    check must implement exactly that rule before NotReady can lift. [Decision memo](evidence/2026-10-15/t5-descriptor-decision-sol61.md). Ordinary new
     files inherit their folder's permissions, so the inherited-creation shape is the everyday case and NotReady blocks routine
     saves. Options: keep exact equality (publication stays unavailable), accept a narrow exception for only the DACL
     auto-inherited marker (`0x0400`) with every other byte equal, or redesign publication around preserving the existing object.
@@ -474,8 +488,7 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     destination parent reproduces the everyday inherited shape **exactly**; stored replay stays exact for the protected/explicit
     shapes; conversion is rejected. Only a file moved from another folder and saved in place still differs, by the marker alone,
     with equal access, and any later inheritance operation re-marks it. Recommendation: construct with native inheritance or stored
-    replay whichever is exact, and accept the marker-only difference for the moved shape (else that shape stays refused). Until the
-    owner decides, exact equality and NotReady stay in force.
+    replay whichever is exact, and accept the marker-only difference for the moved shape (accepted by the owner 2026-10-15).
   - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
     sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
     [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)

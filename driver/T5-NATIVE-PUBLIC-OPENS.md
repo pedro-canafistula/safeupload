@@ -754,8 +754,13 @@ passed independent restoration (zero fixtures/tasks, no worker, no loaded driver
 
 So an exact construction exists for every measured shape except a file moved from another folder and then saved in place, which
 differs only by `SE_DACL_AUTO_INHERITED`, with equal access and self-healing on the next inheritance operation. These are
-mechanism measurements: non-SYSTEM subjects, kernel assignment, Explorer display and target 19045.2965 remain open, and the
-exact contract and NotReady gate are unchanged until the owner decides.
+mechanism measurements: non-SYSTEM subjects, kernel assignment, Explorer display and target 19045.2965 remain open.
+
+**Owner decision (2026-10-15):** the marker-only difference is accepted for this shape. The revised contract: construct with native
+inheritance or stored replay, whichever is exact; otherwise accept only expected `0x0400` set / stored clear with every other byte
+equal (SACL `0x0800`, protection and request bits stay exact). `SafeUploadStagePublicCheckWriterSecurity` must implement exactly
+this rule, with negative controls for every other difference, before the descriptor blocker can lift; the other NotReady holds
+are unchanged.
 
 ### Implementation note — increment 2
 
