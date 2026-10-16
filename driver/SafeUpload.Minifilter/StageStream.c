@@ -2317,7 +2317,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         sharingGate = 1;
         status = STATUS_SHARING_VIOLATION; goto Exit;
     }
-    namespaceSequence = StageDirectorySequence;
+    namespaceSequence = InterlockedCompareExchange64(&StageDirectorySequence, 0, 0);
 #endif
     if (StageStopping
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -2638,7 +2638,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
             StageRemoveAllocationNameReservation(stream);
         }
         if (NT_SUCCESS(status) && (InterlockedCompareExchange(&StageDirectoryMutationActive, 0, 0) != 0 ||
-            namespaceSequence != StageDirectorySequence)) { sharingGate = 9; status = STATUS_SHARING_VIOLATION; }
+            namespaceSequence != InterlockedCompareExchange64(&StageDirectorySequence, 0, 0))) { sharingGate = 9; status = STATUS_SHARING_VIOLATION; }
         if (NT_SUCCESS(status) && (StageStopping || SafeUploadStageMandatoryTeardownActive()))
             status = STATUS_DEVICE_NOT_READY;
         if (NT_SUCCESS(status) && allocationServiceGeneration !=
@@ -5043,7 +5043,6 @@ static NTSTATUS StageCancelSealedPrivate(_In_ PSTAGE_STREAM Stream, _In_ BOOLEAN
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, StageCancelSealedPrivate)
 #endif
-_IRQL_requires_(PASSIVE_LEVEL)
 _Use_decl_annotations_
 static NTSTATUS StageCancelSealedPrivate(PSTAGE_STREAM Stream, BOOLEAN NativeNamespace)
 {
