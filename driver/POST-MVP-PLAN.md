@@ -38,6 +38,14 @@ builder-free windows. Then M3 and the USB/SMB designs.
   fresh boot; Word direct save is refused (FileBasicInformation/compression/object-ID/temp-file operations unsupported; T8); an
   installer pushed the driver into its fail-closed state until reboot. Kernel attach-key race ([RCA](evidence/2026-10-16/demo1/copy-rca-sol61.md))
   fixed in `6bda78ef`: review ACCEPT WITH CONDITIONS, WDK `mvp-k4` PASS. Next: MVP VM rows after the owner's demo.
+  Demo build (owner-approved, local branch `demo/apps`, not reviewed; [evidence](evidence/2026-10-16/demo1/)): `dabb5478` waits
+  (bounded 10 s, no lock held) for the op19 handle receipt before a private delete/rename; with it Notepad Save As (create, close,
+  DeleteFile probe), Explorer copy/move/new file and Word direct save pass as a standard user (`demo-k1`, imports PASS). T5 input:
+  a rename within ~0.1 s of create publishes under the old name; a public rename keeps the old name too; a public delete reports
+  success but the file stays. T8 input: Word's default theme/font table PANOSE codes (20 hex digits) give PaymentCard false
+  positives on every new `.docx` (demo VM policy v2 disables cards; product fix needs an owner decision on skipping exact PANOSE
+  values). Agent: `Restart-Service` alone fails transfer-journal init (access denied; reboot works); a corrupt notification record
+  (`tail differs from durable head`) suppressed all notifications until reset. Tray app installed from source for the demo.
 
 **2026-10-16 — moves into protection get cross-drive metadata.** Owner, in the session (recommended option): a file or folder moved
 into protection, which SafeUpload turns into a cross-drive-style copy, ends with what Windows gives a move to another drive: the

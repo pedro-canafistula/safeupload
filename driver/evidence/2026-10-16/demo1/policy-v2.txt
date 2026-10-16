@@ -1,0 +1,6 @@
+B before { "failOpen": false, "version": 1, "overrideEnabled": false, "monitoredScopes": { "extensions": [ ".txt", ".docx", ".xlsx", ".pdf" ], "networkPaths": false, "removableDrives": false, "destinationPaths": [ "C:\\Protected" ] }, "activeCategories": [ "Cpf", "Cnpj", "PaymentCard" ], "auditOnly"
+E Category: SafeUpload.Agent.Service.Interception.MinifilterInterceptor EventId: 0 Falha ao inicializar o diario de transferencias. Exception: System.UnauthorizedAccessException: Attempted to perform an
+E Category: SafeUpload.Agent.Service.Notifications.NotificationHub EventId: 0 Notification recording failed; EventNotification was not delivered Exception: System.IO.IOException: Notification record una
+E Category: SafeUpload.Agent.Service.Notifications.NotificationHub EventId: 0 Notification recording failed; EventNotification was not delivered Exception: System.IO.IOException: Notification record una
+A after { "failOpen": false, "version": 2, "overrideEnabled": false, "monitoredScopes": { "extensions": [ ".txt", ".docx", ".xlsx", ".pdf" ], "networkPaths": false, "removableDrives": false, "destinationPaths": [ "C:\\Protected" ] }, "activeCategories": [ "Cpf", "Cnpj" ], "auditOnly": false } 
+P rebooting

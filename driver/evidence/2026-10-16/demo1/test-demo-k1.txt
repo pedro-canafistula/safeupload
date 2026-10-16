@@ -1,0 +1,14 @@
+DRV 4F2E212A09DB svc Running boot 15:05:06 loaded SafeUpload                              4       321410         0
+T saveas-probe create+close+delete OK 135ms exists=False
+T saveas-probe then real save OK 113ms 
+T new file + immediate rename OK 432ms 
+T word-like temp write + rename OK 225ms 
+T explorer copy clean OK 1011ms 
+T explorer copy cpf OK 49ms 
+T explorer move clean OK 143ms 
+T explorer move cpf OK 88ms 
+T word direct SaveAs2 clean OK 4003ms saved
+T word direct SaveAs2 cpf OK 1008ms saved
+T listing copia-limpa2.txt,copy-2.txt,lat-2.txt,mover-limpo2.txt,nota2.txt,post-copy-2.txt,relatorio2.txt,renomeado2.txt
+T sources-left 
+T bloqueados d86c4840c96511f1a0a6b5cc4992963d.docx,d86c4866c96511f1a0a6b5cc4992963d.txt,f8eedb93c97211f1a0a9adde74f687df.txt,f8eedb96c97211f1a0a9adde74f687df.txt,f8eedba1c97211f1a0a9adde74f687df.docx,f8eedba5c97211f1a0a9adde74f687df.docx

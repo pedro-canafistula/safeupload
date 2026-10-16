@@ -1,0 +1,4 @@
+T word direct SaveAs2 clean OK saved
+T word direct SaveAs2 cpf OK saved
+T listing post-copy-6.txt,word-limpo6.docx
+Q SUCCESS: Attempted to run the scheduled task "demo-notify".

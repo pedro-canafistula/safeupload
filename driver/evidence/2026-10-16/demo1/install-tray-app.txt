@@ -1,0 +1,9 @@
+S app files 484 exe True
+S run key set
+S service Running
+Q SUCCESS: Attempted to run the scheduled task "demo-start-app".
+P EV Error Category: SafeUpload.Agent.Service.Notifications.NotificationHub EventId: 0 Notification recording failed; EventNotification was not delivered Exception: System.IO.IOException: Notification record una
+P EV Error Category: SafeUpload.Agent.Service.Notifications.NotificationHub EventId: 0 Notification recording failed; EventNotification was not delivered Exception: System.IO.IOException: Notification record una
+P EV Error Category: SafeUpload.Agent.Service.Notifications.NotificationHub EventId: 0 Notification recording failed; EventNotification was not delivered Exception: System.IO.IOException: Notification record una
+P EV Error Category: SafeUpload.Agent.Service.Notifications.NotificationHub EventId: 0 Notification recording failed; EventNotification was not delivered Exception: System.IO.IOException: Notification record una
+P EV Error Category: SafeUpload.Agent.Service.Notifications.NotificationHub EventId: 0 Notification recording failed; EventNotification was not delivered Exception: System.IO.IOException: Notification record una

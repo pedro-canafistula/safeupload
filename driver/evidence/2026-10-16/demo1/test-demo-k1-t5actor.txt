@@ -1,0 +1,16 @@
+S  USERNAME              SESSIONNAME        ID  STATE   IDLE TIME  LOGON TIME |  t5actor               console             1  Active      none   16/10/2026 16:06
+Q SUCCESS: The scheduled task "demo-std-test" has successfully been created.
+Q SUCCESS: Attempted to run the scheduled task "demo-std-test".
+T user WIN10-DEBUGGED\t5actor admin=False
+T saveas-probe create+close+delete OK 47ms exists=False
+T saveas-probe then real save OK 147ms 
+T cpf direct save OK 64ms 
+T new file + immediate rename OK 139ms 
+T word-like temp swap OK 124ms 
+T explorer copy clean OK 83ms 
+T explorer copy cpf OK 39ms 
+T explorer move clean OK 51ms 
+T explorer move cpf OK 39ms 
+T listing lat-3.txt,New Text Document s3.txt,post-copy-3.txt,scopia3.txt,smover3.txt,snota3.txt,srel3.txt
+T sources-left 
+T DONE
