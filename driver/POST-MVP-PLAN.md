@@ -1087,7 +1087,10 @@ the publishing application can reopen the file and agreed metadata is preserved.
 - [ ] Trace/replay real save sequences, including temporary/backup deletes under T5; respect staged rename limits.
 - [ ] PowerPoint and archive inspection (owner 2026-10-16): PowerPoint `1d485942` merged, matrix
   [`t9-pptx1`](evidence/2026-10-16/exact-agent-matrix-t9-pptx1-summary.txt) ExactAgentMatrixGate=PASS (2,263 user + 25 SYSTEM per feature configuration);
-  archives and the default monitored extensions (agent and backend) in progress.
+  ZIP inspection and the default monitored extensions (agent and backend) `5c9bb10b`/`9561825a` merged, matrix
+  [`t9-archives2`](evidence/2026-10-16/exact-agent-matrix-t9-archives2-summary.txt) ExactAgentMatrixGate=PASS (2,360 user + 25 SYSTEM; `t9-archives1`
+  failed on an obsolete `.zip` test example, receipt kept). `.7z` is refused (`archive_7z_unavailable`): SharpCompress was rejected
+  for unbounded header/dictionary allocation ([assessment](../agente/docs/T9-ARCHIVE-INSPECTION.md)); owner choice pending.
 - [ ] Implement and test the metadata contract decided 2026-10-16 (native owner/DACL/SACL/label, timestamps, attributes; Zone.Identifier
   carried with its file; other ADS, EAs, EFS, offline, reparse points and hard links refused).
 - [ ] Qualify application rows under the matched pair with independent byte observation and restoration.

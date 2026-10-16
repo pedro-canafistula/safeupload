@@ -1,0 +1,40 @@
+﻿LABEL=t9-archives2
+BUILDER=SU-BUILDER2
+SourceCommit=9561825a8aec42df1054e26a148f98d1f649e327
+ARCHIVE_SHA256=A4016313A2844BB365693AB6BD2C62D5BA74C0EED5B038F67E58B40BDB63288E
+AgentMatrixProfiles=feature-debug,feature-release
+AgentMatrixTestLegs=4
+Builder=builder2
+BuilderHost=192.168.122.211
+BuilderComputerName=SU-BUILDER2
+ParityCheck=False
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=SU-BUILDER2\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=0 warnings=0 errors=0
+feature-debug-tests-system-identity: S-1-5-18
+feature-debug-tests-system: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=2385
+feature-release: admission_evidence=true
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-app-build: exit=0 warnings=0 errors=0
+feature-release-test-build: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-release-tests-user-identity: name=SU-BUILDER2\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-release-tests-user: exit=0 warnings=0 errors=0
+feature-release-tests-system-identity: S-1-5-18
+feature-release-tests-system: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=2385
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_manifest_sha256=430654A8FB325F5E83A07D839A97E30F3D6B4198EADE0A385D4C5A933107CF37
+feature-release: package_sha256=7CEA2FB61E85D0322028FF6B56ED5B41C09B7A6E34C7CA6386FA43BB93784E23
+feature-release: exe_sha256=7EB95CD339EB2E6788EA4EA579B73115F34E4EC20C198E487CF26156BE42568E
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-16T04:29:58.1284989Z
