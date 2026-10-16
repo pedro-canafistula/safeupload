@@ -199,6 +199,8 @@ typedef struct _STAGE_ADMISSION_TOKEN_SLOT {
     PVOID Token;
     PVOID Transaction;
     STAGE_ADMISSION_TOKEN_OWNER Owner;
+    LONG64 DirectorySequence;
+    BOOLEAN DirectoryMutation;
 } STAGE_ADMISSION_TOKEN_SLOT, *PSTAGE_ADMISSION_TOKEN_SLOT;
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -241,6 +243,7 @@ typedef struct _STAGE_ATTACH_TRANSACTION {
     ULONG RequestorProcessId;
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
     LONG64 ExpectedGeneration;
+    LONG64 DirectorySequence; /* Captured before the original name lookup. */
     BOOLEAN PrivateNamespace;
     BOOLEAN ById;
     BOOLEAN OwnNameInfo;
@@ -304,6 +307,14 @@ static volatile ULONG StageStreamCount;
 static volatile ULONG StageReservedStreamCount;
 static volatile LONG64 StageLastUnloadVeto;
 static LONG64 StageNamespaceSequence;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* NamespaceResource admits one native directory mutation at a time. Lower
+ * completion releases this atomic fence without taking a pageable resource.
+ * New private creates/retargets refuse while it is owned; sequence changes
+ * reject queued CREATEs whose name was captured before/during the mutation. */
+static volatile LONG StageDirectoryMutationActive;
+static volatile LONG64 StageDirectorySequence;
+#endif
 static volatile LONG StageFileObjects;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 /* False until FltStartFiltering returns success. The early CREATE gate makes
@@ -2255,6 +2266,12 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
 #endif
         ) { status = STATUS_DEVICE_NOT_READY; goto Exit; }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (InterlockedCompareExchange(&StageDirectoryMutationActive, 0, 0) != 0 ||
+        (transaction != NULL && transaction->DirectorySequence !=
+            InterlockedCompareExchange64(&StageDirectorySequence, 0, 0))) {
+        status = STATUS_SHARING_VIOLATION;
+        goto Exit;
+    }
     if (InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) ||
         !SafeUploadStageProtocolIsReady()) {
         status = STATUS_DEVICE_NOT_READY;
@@ -3173,6 +3190,7 @@ static NTSTATUS StageAttachQueueCreate(PFLT_CALLBACK_DATA Data,
     if (!NT_SUCCESS(status)) goto Fail;
     transaction->VolumeKind = VolumeKind;
     transaction->ExpectedGeneration = ExpectedGeneration;
+    transaction->DirectorySequence = AdmissionSlot->DirectorySequence;
     transaction->PrivateNamespace = PrivateNamespace;
     transaction->ById = ById;
     transaction->DriverInstanceId = StageDriverInstanceId;
@@ -4963,6 +4981,11 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     StageWaitHandleReceiptSettled(Stream);
 #endif
     StageAcquire(&StageNamespaceResource);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (InterlockedCompareExchange(&StageDirectoryMutationActive, 0, 0) != 0) {
+        status = STATUS_SHARING_VIOLATION; goto Exit;
+    }
+#endif
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (Stream->PrivateCancellationBusy || Stream->PrivateCancellationAccepted) {
         status = STATUS_DELETE_PENDING;
@@ -7964,27 +7987,136 @@ static SAFEUPLOAD_VOLUME_KIND StageVolumeKind(PFLT_INSTANCE Instance)
 }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-/* A directory opened with FILE_DELETE_ON_CLOSE is deleted at cleanup without any SET_INFORMATION. Refuse it when the
- * directory is, or lies above, a protected prefix; a name that cannot be resolved is refused too (the case is rare). */
-static FLT_PREOP_CALLBACK_STATUS StageDirectoryDeleteOnClose(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects)
-{
-    PFLT_FILE_NAME_INFORMATION name = NULL;
-    SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
-    BOOLEAN deny, unresolved;
-    NTSTATUS status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageDirectoryContains(_In_ PCUNICODE_STRING Directory, _In_ PCUNICODE_STRING Name);
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageDirectoryStreamPending(_In_ PSTAGE_STREAM Stream, _In_ PCUNICODE_STRING Directory);
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageDirectoryPendingLocked(_In_ PCUNICODE_STRING Directory);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageDirectoryBeginMutation(_In_ PCUNICODE_STRING Source,
+    _In_opt_ PCUNICODE_STRING Destination, _Inout_ PSTAGE_ADMISSION_TOKEN_SLOT Slot);
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageDirectoryPlainPath(_In_ PCUNICODE_STRING Opened);
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageDirectoryPlainName(_In_ PFLT_FILE_NAME_INFORMATION Name, _In_ PFILE_OBJECT Object);
+_IRQL_requires_(PASSIVE_LEVEL)
+static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
+    _Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects);
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageExistingDirectory(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _In_ PFLT_FILE_NAME_INFORMATION Name);
+_IRQL_requires_(PASSIVE_LEVEL)
+static FLT_PREOP_CALLBACK_STATUS StageNativeDirectoryInformation(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _Inout_ PSTAGE_ADMISSION_TOKEN_SLOT Slot, _Out_ PBOOLEAN Handled);
 
-    unresolved = !NT_SUCCESS(status);
-    if (NT_SUCCESS(status)) {
-        status = name != NULL ? FltParseFileNameInformation(name) : STATUS_INVALID_PARAMETER;
-        unresolved = !NT_SUCCESS(status);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageDirectoryContains)
+#pragma alloc_text(PAGE, StageDirectoryStreamPending)
+#pragma alloc_text(PAGE, StageDirectoryPendingLocked)
+#pragma alloc_text(PAGE, StageDirectoryBeginMutation)
+#pragma alloc_text(PAGE, StageDirectoryPlainPath)
+#pragma alloc_text(PAGE, StageDirectoryPlainName)
+#pragma alloc_text(PAGE, StageAdmitDirectoryMutation)
+#pragma alloc_text(PAGE, StageExistingDirectory)
+#pragma alloc_text(PAGE, StageNativeDirectoryInformation)
+#endif
+
+/* A bounded walk of the existing private namespace, under NamespaceResource.
+ * Include superseded/sealed versions until retirement: a seal is not a public
+ * mutation receipt, and detached versions can still own cleanup/recovery. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageDirectoryContains(_In_ PCUNICODE_STRING Directory, _In_ PCUNICODE_STRING Name)
+{
+    USHORT chars = Directory->Length / sizeof(WCHAR);
+    PAGED_CODE();
+    return chars != 0 && RtlPrefixUnicodeString(Directory, Name, TRUE) &&
+        (Directory->Length == Name->Length || Directory->Buffer[chars - 1] == L'\\' || Name->Buffer[chars] == L'\\');
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageDirectoryStreamPending(_In_ PSTAGE_STREAM Stream, _In_ PCUNICODE_STRING Directory)
+{
+    UNICODE_STRING target;
+    PAGED_CODE();
+    if (StageDirectoryContains(Directory, &Stream->Name) ||
+        (Stream->View != NULL && StageDirectoryContains(Directory, &Stream->View->Name))) return TRUE;
+    if (Stream->RenameExchange == NULL) return FALSE;
+    target.Buffer = Stream->RenameExchange->Request.Path;
+    target.Length = target.MaximumLength = (USHORT)Stream->RenameExchange->Request.PathLength;
+    return StageDirectoryContains(Directory, &target);
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageDirectoryPendingLocked(_In_ PCUNICODE_STRING Directory)
+{
+    PLIST_ENTRY link;
+    PAGED_CODE();
+    for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink)
+        if (StageDirectoryStreamPending(CONTAINING_RECORD(link, STAGE_STREAM, Link), Directory)) return TRUE;
+    for (link = StageAllocationReservations.Flink; link != &StageAllocationReservations; link = link->Flink)
+        if (StageDirectoryStreamPending(CONTAINING_RECORD(link, STAGE_STREAM, ReservationLink), Directory)) return TRUE;
+    return FALSE;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageDirectoryBeginMutation(_In_ PCUNICODE_STRING Source,
+    _In_opt_ PCUNICODE_STRING Destination, _Inout_ PSTAGE_ADMISSION_TOKEN_SLOT Slot)
+{
+    NTSTATUS status = STATUS_SHARING_VIOLATION;
+    PAGED_CODE();
+    if (Slot->Token == NULL) return STATUS_DEVICE_NOT_READY;
+    StageAcquire(&StageNamespaceResource);
+    if (!StageStopping && InterlockedCompareExchange(&StageDirectoryMutationActive, 0, 0) == 0 &&
+        Slot->DirectorySequence == InterlockedCompareExchange64(&StageDirectorySequence, 0, 0) &&
+        !StageDirectoryPendingLocked(Source) &&
+        (Destination == NULL || !StageDirectoryPendingLocked(Destination))) {
+        InterlockedExchange(&StageDirectoryMutationActive, 1);
+        InterlockedIncrement64(&StageDirectorySequence);
+        Slot->DirectoryMutation = TRUE;
+        status = STATUS_SUCCESS;
     }
-    deny = unresolved || SafeUploadStageTouchesProtectedNamespace(name, kind);
-    if (name != NULL) FltReleaseFileNameInformation(name);
-    if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) deny = FALSE;
-    if (!deny) return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    Data->IoStatus.Status = STATUS_ACCESS_DENIED;
-    Data->IoStatus.Information = 0;
-    return FLT_PREOP_COMPLETE;
+    StageRelease(&StageNamespaceResource);
+    return status;
+}
+
+/* Resident: ordinary and draining postoperation can run at DISPATCH_LEVEL.
+ * No resource, name query, wait, allocation or stored FILE_OBJECT reference. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static VOID StageDirectoryEndMutation(_In_ BOOLEAN CoverageLost)
+{
+    InterlockedIncrement64(&StageDirectorySequence);
+    /* An unknown lower outcome must not reopen name-based admission. Keep
+     * this fence latched until reboot, like existing writer coverage loss. */
+    if (!CoverageLost) InterlockedExchange(&StageDirectoryMutationActive, 0);
+}
+
+/* Directory selectors can name NTFS index/data attributes, even with the
+ * directory type flag on Windows 10. Reject them before native forwarding.
+ * The only colons permitted in an opened spelling are drive designators. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageDirectoryPlainPath(_In_ PCUNICODE_STRING Opened)
+{
+    USHORT i, chars = Opened->Length / sizeof(WCHAR);
+    PAGED_CODE();
+    if ((Opened->Length & 1) || (Opened->Length != 0 && Opened->Buffer == NULL)) return FALSE;
+    for (i = 0; i < chars; ++i) {
+        if (Opened->Buffer[i] != L':') continue;
+        if (i + 1 < chars && Opened->Buffer[i + 1] == L'\\' &&
+            (i == 1 || (i == 5 && Opened->Buffer[0] == L'\\' &&
+            Opened->Buffer[1] == L'?' && Opened->Buffer[2] == L'?' && Opened->Buffer[3] == L'\\')) &&
+            ((Opened->Buffer[i - 1] >= L'A' && Opened->Buffer[i - 1] <= L'Z') ||
+             (Opened->Buffer[i - 1] >= L'a' && Opened->Buffer[i - 1] <= L'z'))) continue;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageDirectoryPlainName(_In_ PFLT_FILE_NAME_INFORMATION Name, _In_ PFILE_OBJECT Object)
+{
+    PAGED_CODE();
+    return Name->Stream.Length == 0 && StageDirectoryPlainPath(&Object->FileName);
 }
 
 static BOOLEAN StageDirectoryCreateCanMutate(_In_ PFLT_CALLBACK_DATA Data)
@@ -7992,6 +8124,7 @@ static BOOLEAN StageDirectoryCreateCanMutate(_In_ PFLT_CALLBACK_DATA Data)
     PIO_SECURITY_CONTEXT security = Data->Iopb->Parameters.Create.SecurityContext;
     ULONG disposition = Data->Iopb->Parameters.Create.Options >> 24;
     ULONG options = Data->Iopb->Parameters.Create.Options & 0x00ffffff;
+    if (Data->Iopb->Parameters.Create.EaLength != 0 || Data->Iopb->Parameters.Create.EaBuffer != NULL) return TRUE;
     if ((options & FILE_DELETE_ON_CLOSE) != 0 || disposition == FILE_CREATE ||
         disposition == FILE_OPEN_IF || disposition == FILE_SUPERSEDE ||
         disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF) return TRUE;
@@ -8013,16 +8146,21 @@ static BOOLEAN StageNameLookupProvesAbsent(_In_ NTSTATUS Status)
     return SafeUploadNameLookupProvesAbsent(Status);
 }
 
-/* Directory creates and metadata opens can change namespace state without a later SET_INFORMATION.
- * Resolve the target at PASSIVE_LEVEL; an unresolved name on a scoped volume is an admission refusal. */
+/* Empty directories carry no content. Forward the original CREATE; NTFS
+ * decides the caller's grants, sharing, collisions and inherited security.
+ * The ordinary file path still stages every descendant content create. */
+_IRQL_requires_(PASSIVE_LEVEL)
 static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
     _Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
+    FLT_FILESYSTEM_TYPE fs;
+    ULONG disposition = Data->Iopb->Parameters.Create.Options >> 24;
     NTSTATUS status, lookup = STATUS_SUCCESS;
-    BOOLEAN deny;
-    UINT32 reason = SAFEUPLOAD_DENY_REASON_NONE;
+    BOOLEAN deny = FALSE;
+    UINT32 reason = SAFEUPLOAD_DENY_REASON_PROTECTED_NAMESPACE;
+    PAGED_CODE();
     if (!StageDirectoryCreateCanMutate(Data)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     status = FltGetFileNameInformation(Data,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
@@ -8031,12 +8169,15 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
         deny = !StageNameLookupProvesAbsent(status) && SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
         reason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
         lookup = status;
-    } else if (SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, TRUE)) {
-        deny = TRUE;
-        reason = SAFEUPLOAD_DENY_REASON_POLICY_SCOPE;
-    } else {
-        deny = SafeUploadStageTouchesProtectedNamespace(name, kind);
-        reason = SAFEUPLOAD_DENY_REASON_PROTECTED_NAMESPACE;
+    } else if (SafeUploadStageTouchesProtectedNamespace(name, kind)) {
+        deny = kind != SafeUploadVolumeFixed ||
+            !NT_SUCCESS(FltGetFileSystemType(Objects->Instance, &fs)) || fs != FLT_FSTYPE_NTFS ||
+            !StageDirectoryPlainName(name, Objects->FileObject) ||
+            Data->Iopb->Parameters.Create.EaLength != 0 || Data->Iopb->Parameters.Create.EaBuffer != NULL ||
+            FlagOn(Data->Iopb->Parameters.Create.FileAttributes,
+                FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_ENCRYPTED | FILE_ATTRIBUTE_OFFLINE) ||
+            FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID | FILE_DELETE_ON_CLOSE) ||
+            (disposition != FILE_CREATE && disposition != FILE_OPEN_IF && disposition != FILE_OPEN);
     }
     if (deny) SafeUploadDenyDetail(Data, reason, lookup, name != NULL ? &name->Name : NULL);
     if (name != NULL) FltReleaseFileNameInformation(name);
@@ -8045,6 +8186,106 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
     Data->IoStatus.Information = 0;
     return FLT_PREOP_COMPLETE;
 }
+
+/* CreateFile's BACKUP_SEMANTICS opens often omit both type flags. Probe only
+ * an existing directory, with metadata access/share-all and no create effects.
+ * Force DIRECTORY on the original request after proof, so a file substituted
+ * between probe and forwarding cannot receive unstaged data access. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageExistingDirectory(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _In_ PFLT_FILE_NAME_INFORMATION Name)
+{
+    HANDLE handle = NULL;
+    PFILE_OBJECT object = NULL;
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK io = {0};
+    FILE_STANDARD_INFORMATION standard;
+    NTSTATUS status;
+    BOOLEAN directory = FALSE;
+    PAGED_CODE();
+    if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE | FILE_NON_DIRECTORY_FILE |
+        FILE_OPEN_BY_FILE_ID) || !StageDirectoryPlainName(Name, Objects->FileObject)) return FALSE;
+    InitializeObjectAttributes(&attributes, &Name->Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    status = FltCreateFileEx(SafeUploadData.Filter, Objects->Instance, &handle, &object,
+        FILE_READ_ATTRIBUTES | SYNCHRONIZE, &attributes, &io, NULL, 0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
+        FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT | FILE_COMPLETE_IF_OPLOCKED,
+        NULL, 0, 0);
+    if (status == STATUS_SUCCESS) {
+        status = FltQueryInformationFile(Objects->Instance, object, &standard, sizeof(standard),
+            FileStandardInformation, NULL);
+        directory = status == STATUS_SUCCESS && standard.Directory;
+    }
+    if (object != NULL) ObDereferenceObject(object);
+    if (handle != NULL) FltClose(handle);
+    if (directory) {
+        Data->Iopb->Parameters.Create.Options |= FILE_DIRECTORY_FILE;
+        FltSetCallbackDataDirty(Data);
+    }
+    return directory;
+}
+
+/* Only ordinary directory disposition and basic metadata use this native
+ * route. Content, EA, reparse, index and file mutation gates are unchanged. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static FLT_PREOP_CALLBACK_STATUS StageNativeDirectoryInformation(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _Inout_ PSTAGE_ADMISSION_TOKEN_SLOT Slot, _Out_ PBOOLEAN Handled)
+{
+    PFLT_FILE_NAME_INFORMATION name = NULL;
+    FILE_INFORMATION_CLASS cls = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
+    SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
+    FLT_FILESYSTEM_TYPE fs;
+    BOOLEAN directory = FALSE;
+    NTSTATUS status = STATUS_ACCESS_DENIED;
+    PAGED_CODE();
+    *Handled = FALSE;
+    if (cls != FileDispositionInformation && cls != FileDispositionInformationEx && cls != FileBasicInformation)
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    if (!SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL ||
+        !NT_SUCCESS(FltIsDirectory(Objects->FileObject, Objects->Instance, &directory)) || !directory)
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    *Handled = TRUE;
+    if (!NT_SUCCESS(FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name)) ||
+        !NT_SUCCESS(FltParseFileNameInformation(name))) goto Exit;
+    if (!SafeUploadStageTouchesProtectedNamespace(name, kind)) {
+        *Handled = FALSE;
+        status = STATUS_SUCCESS;
+        goto Exit;
+    }
+    if (kind != SafeUploadVolumeFixed ||
+        !NT_SUCCESS(FltGetFileSystemType(Objects->Instance, &fs)) || fs != FLT_FSTYPE_NTFS) goto Exit;
+    if (!StageDirectoryPlainName(name, Objects->FileObject)) goto Exit;
+    if (cls == FileBasicInformation) {
+        status = STATUS_SUCCESS;
+    } else if (Data->Iopb->Parameters.SetFileInformation.InfoBuffer == NULL ||
+        Data->Iopb->Parameters.SetFileInformation.Length <
+            (cls == FileDispositionInformation ? sizeof(FILE_DISPOSITION_INFORMATION) : sizeof(ULONG))) {
+        status = STATUS_INVALID_PARAMETER;
+    } else if ((cls == FileDispositionInformation &&
+        !((PFILE_DISPOSITION_INFORMATION)Data->Iopb->Parameters.SetFileInformation.InfoBuffer)->DeleteFile) ||
+        (cls == FileDispositionInformationEx &&
+         !FlagOn(*(PULONG)Data->Iopb->Parameters.SetFileInformation.InfoBuffer, FILE_DISPOSITION_DELETE))) {
+        status = STATUS_SUCCESS; /* Clearing disposition adds no pending delete. */
+    } else if (SafeUploadPolicyDirectoryIsScopeAnchor(&name->Name)) {
+        status = STATUS_ACCESS_DENIED;
+    } else if (cls == FileDispositionInformationEx &&
+        (Data->Iopb->Parameters.SetFileInformation.InfoBuffer == NULL ||
+         Data->Iopb->Parameters.SetFileInformation.Length < sizeof(ULONG) ||
+         FlagOn(*(PULONG)Data->Iopb->Parameters.SetFileInformation.InfoBuffer, FILE_DISPOSITION_ON_CLOSE))) {
+        status = STATUS_NOT_SUPPORTED;
+    } else if (SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
+        status = StageDirectoryBeginMutation(&name->Name, NULL, Slot);
+    } else status = STATUS_SUCCESS;
+Exit:
+    if (name != NULL) FltReleaseFileNameInformation(name);
+    if (status == STATUS_SUCCESS) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    Data->IoStatus.Status = status;
+    Data->IoStatus.Information = 0;
+    return FLT_PREOP_COMPLETE;
+}
+
+
 #endif
 
 static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
@@ -8096,10 +8337,13 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF;
     if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE)) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
+            Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+            Data->IoStatus.Information = 0;
+            return FLT_PREOP_COMPLETE;
+        }
         FLT_PREOP_CALLBACK_STATUS directoryResult = StageAdmitDirectoryMutation(Data, Objects);
         if (directoryResult != FLT_PREOP_SUCCESS_NO_CALLBACK) return directoryResult;
-        if (!service && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE))
-            return StageDirectoryDeleteOnClose(Data, Objects);
 #endif
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
@@ -8219,6 +8463,13 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         goto Complete;
     }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (writer && KeGetCurrentIrql() == PASSIVE_LEVEL && IoGetTopLevelIrp() == NULL &&
+        kind == SafeUploadVolumeFixed && SafeUploadStageTouchesProtectedNamespace(name, kind) &&
+        StageExistingDirectory(Data, Objects, name)) {
+        FLT_PREOP_CALLBACK_STATUS directoryResult = StageAdmitDirectoryMutation(Data, Objects);
+        FltReleaseFileNameInformation(name);
+        return directoryResult;
+    }
     /* A volume no current, pending or boot scope can match has nothing to protect. Without this a name the classifier
      * cannot place on a volume (the redirector's own device, \;LanmanRedirector) read as "protected" and was refused. */
     if (!SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
@@ -8484,7 +8735,7 @@ Complete:
 
 static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, _In_ BOOLEAN TrackedWriter,
-    _Out_opt_ PVOID *RegistryRenameContext)
+    _Out_opt_ PVOID *RegistryRenameContext, _Inout_ PSTAGE_ADMISSION_TOKEN_SLOT AdmissionSlot)
 {
     FILE_INFORMATION_CLASS cls = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
     PFILE_RENAME_INFORMATION rename = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
@@ -8498,6 +8749,7 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     BOOLEAN publication = FALSE;
     BOOLEAN linkOperation = cls == FileLinkInformation || cls == FileLinkInformationEx;
     NTSTATUS status;
+    NTSTATUS directoryStatus = STATUS_SUCCESS;
     if (RegistryRenameContext != NULL) *RegistryRenameContext = NULL;
     ULONG length = Data->Iopb->Parameters.SetFileInformation.Length;
     if (cls != FileRenameInformation && cls != FileRenameInformationEx && cls != FileLinkInformation && cls != FileLinkInformationEx)
@@ -8520,6 +8772,37 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
         SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &source->Name, TRUE);
     destinationProtected = SafeUploadStageTouchesProtectedNamespace(destination, kind) ||
         SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &destination->Name, TRUE);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (!linkOperation) {
+        BOOLEAN directory = FALSE;
+        FLT_FILESYSTEM_TYPE fs;
+        UNICODE_STRING openedDestination;
+        status = FltIsDirectory(Objects->FileObject, Objects->Instance, &directory);
+        if (NT_SUCCESS(status) && directory && (sourceProtected || destinationProtected)) {
+            openedDestination.Buffer = rename->FileName;
+            openedDestination.Length = openedDestination.MaximumLength =
+                (USHORT)min(rename->FileNameLength, MAXUSHORT);
+            /* Incoming trees must never arrive by one native rename. Let the
+             * caller's cross-drive fallback copy each file through staging. */
+            if (!sourceProtected && destinationProtected) {
+                directoryStatus = STATUS_NOT_SAME_DEVICE;
+            } else if (kind != SafeUploadVolumeFixed ||
+                !NT_SUCCESS(FltGetFileSystemType(Objects->Instance, &fs)) || fs != FLT_FSTYPE_NTFS ||
+                !StageDirectoryPlainName(source, Objects->FileObject) || destination->Stream.Length != 0 ||
+                rename->FileNameLength > MAXUSHORT || !StageDirectoryPlainPath(&openedDestination) ||
+                SafeUploadPolicyDirectoryIsScopeAnchor(&source->Name) ||
+                SafeUploadPolicyDirectoryIsScopeAnchor(&destination->Name)) {
+                directoryStatus = STATUS_ACCESS_DENIED;
+            } else directoryStatus = StageDirectoryBeginMutation(&source->Name, &destination->Name, AdmissionSlot);
+            if (directoryStatus != STATUS_SUCCESS) goto Complete;
+            allow = TRUE;
+            unresolved = FALSE;
+            goto PrepareRename;
+        }
+    }
+#else
+    UNREFERENCED_PARAMETER(AdmissionSlot);
+#endif
     allow = TrackedWriter || (!sourceProtected && !destinationProtected);
     /* A pre-existing tracked handle does not authorize adding a fresh name
      * under a current or pending protected destination. Refuse before the
@@ -8549,12 +8832,20 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
             &quarantineRefused);
     }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+PrepareRename:
     if (allow && RegistryRenameContext != NULL) {
         (VOID)SafeUploadStageWritersPrepareRename(Data, Objects, &source->Name, &destination->Name,
             linkOperation, RegistryRenameContext);
     }
 #endif
 Complete:
+    if (directoryStatus != STATUS_SUCCESS) {
+        if (source != NULL) FltReleaseFileNameInformation(source);
+        if (destination != NULL) FltReleaseFileNameInformation(destination);
+        Data->IoStatus.Status = directoryStatus;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
     if (TrackedWriter && !allow && !destinationProtected) {
         /* Keep the existing handle live. If the rename target cannot be classified, retain Unknown
          * so the identity cannot be promoted using its stale name. A rename or
@@ -9221,7 +9512,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
         if (cls != FilePositionInformation)
             (VOID)SafeUploadStageWritersBeginMutatingIo(Data, Objects->Instance, Objects->FileObject,
                 &mutatingIoContext, &trackedWriter);
-        result = StageExternalRename(Data, Objects, trackedWriter, &registryRenameContext);
+        result = StageExternalRename(Data, Objects, trackedWriter, &registryRenameContext, AdmissionSlot);
         if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
             SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
             return result;
@@ -9230,6 +9521,12 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             /* Publication rename is checked/consumed by StageExternalRename. */
             if (cls != FileRenameInformation && cls != FileRenameInformationEx &&
                 cls != FileLinkInformation && cls != FileLinkInformationEx) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+                BOOLEAN directoryHandled = FALSE;
+                if (KeGetCurrentIrql() == PASSIVE_LEVEL)
+                    result = StageNativeDirectoryInformation(Data, Objects, AdmissionSlot, &directoryHandled);
+                if (!directoryHandled)
+#endif
                 /* Only a delete can remove a directory above a protected scope from under it (renames and links went
                  * through StageExternalRename above). Attribute, time and size changes of an ancestor leave the scope's
                  * bytes alone, and refusing them broke every caller that touches the volume root: the Profile Service
@@ -9370,6 +9667,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchEpoch(PFLT_CALLBACK_DATA Data,
     PVOID innerContext = NULL;
     FLT_PREOP_CALLBACK_STATUS result;
     NTSTATUS status;
+    slot.DirectorySequence = InterlockedCompareExchange64(&StageDirectorySequence, 0, 0);
     /* Exact native/combined disposition owns its epoch only after its shared
      * turn arrives. Generic policy quiescence must not count a queued delete
      * against the publication which that very delete is waiting for. */
@@ -9444,10 +9742,12 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchEpoch(PFLT_CALLBACK_DATA Data,
         token = (PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)slot.Token;
         token->InnerCompletionContext = innerContext;
         token->OperationKind = Data->Iopb->MajorFunction;
+        token->DirectoryMutation = slot.DirectoryMutation;
         *CompletionContext = (PVOID)((ULONG_PTR)token | 1);
         /* Even an otherwise no-callback pass-through holds its epoch through lower completion. */
         return result == FLT_PREOP_SYNCHRONIZE ? FLT_PREOP_SYNCHRONIZE : FLT_PREOP_SUCCESS_WITH_CALLBACK;
     }
+    if (slot.DirectoryMutation) StageDirectoryEndMutation(FALSE);
     SafeUploadPolicyAdmissionRelease((PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)slot.Token);
     slot.Token = NULL;
     *CompletionContext = NULL;
@@ -9613,6 +9913,8 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,
                 SafeUploadStageWritersMutationDraining(Objects->Instance,
                     Objects->FileObject != NULL ? Objects->FileObject->SectionObjectPointer : NULL);
             result = StagePostOperationCore(Data, Objects, token->InnerCompletionContext, Flags);
+            if (token->DirectoryMutation)
+                StageDirectoryEndMutation(FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING));
             SafeUploadPolicyAdmissionRelease(token);
             return result;
         }
