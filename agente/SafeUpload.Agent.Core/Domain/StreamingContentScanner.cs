@@ -15,13 +15,20 @@ public static class StreamingContentScanner
     private readonly record struct Secret(long Start, long End, string Kind);
 
     /// <summary>The factory rewinds the same immutable source. Readers are disposed after every pass.</summary>
-    public static async Task<IReadOnlyList<Finding>> ScanAsync(Func<Task<TextReader>> openReader,
+    public static Task<IReadOnlyList<Finding>> ScanAsync(Func<Task<TextReader>> openReader,
         IReadOnlySet<Category> active, CancellationToken token)
+        => ScanAsync(openReader, active, token, MaximumCandidates);
+
+    // Archives share the existing candidate ceiling across all names/members.
+    // All other callers keep the same public limit and detector behavior.
+    internal static async Task<IReadOnlyList<Finding>> ScanAsync(Func<Task<TextReader>> openReader,
+        IReadOnlySet<Category> active, CancellationToken token, int maximumCandidates)
     {
         ArgumentNullException.ThrowIfNull(openReader);
         ArgumentNullException.ThrowIfNull(active);
         token.ThrowIfCancellationRequested();
-        var state = new ScanState();
+        if (maximumCandidates < 0 || maximumCandidates > MaximumCandidates) throw new ArgumentOutOfRangeException(nameof(maximumCandidates));
+        var state = new ScanState(maximumCandidates);
         bool read = false;
         foreach (var (category, count) in new[] { (Category.PaymentCard, 16), (Category.Cnpj, 14), (Category.Cpf, 11) })
             if (active.Contains(category))
@@ -81,7 +88,7 @@ public static class StreamingContentScanner
         pass.Finish(position);
     }
 
-    private sealed class ScanState
+    private sealed class ScanState(int maximumCandidates)
     {
         private readonly List<Range> _consumed = [];
         public List<Located> Found { get; } = [];
@@ -104,7 +111,7 @@ public static class StreamingContentScanner
         }
         public void Add(long start, long end, Finding finding)
         {
-            if (Found.Count == MaximumCandidates) throw new InspectionLimitException();
+            if (Found.Count == maximumCandidates) throw new InspectionLimitException();
             long findingStart = start;
             int first = Insertion(start);
             if (first > 0 && _consumed[first - 1].End >= start) first--;
@@ -122,7 +129,7 @@ public static class StreamingContentScanner
         public void AddSecret(long start, long end, string kind)
         {
             if (Overlaps(start, end)) return;
-            if (Secrets.Count == MaximumCandidates) throw new InspectionLimitException();
+            if (Secrets.Count == maximumCandidates) throw new InspectionLimitException();
             Secrets.Add(new(start, end, kind));
         }
     }

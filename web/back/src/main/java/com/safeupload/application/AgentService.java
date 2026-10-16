@@ -36,7 +36,7 @@ public class AgentService {
 
     public Policy policy() {
         return new Policy(1, List.of(Category.values()),
-                new MonitoredScopes(List.of(".txt", ".csv", ".docx", ".xlsx", ".pdf"),
+                new MonitoredScopes(List.of(".txt", ".csv", ".docx", ".xlsx", ".pdf", ".pptx", ".pptm", ".potx", ".ppsx", ".zip", ".7z"),
                         List.of("C:\\SafeUpload\\Escopo Monitorado"), List.of(), true, true),
                 20, 5, false, false, true, List.of("System", "SafeUpload.Agent.App"));
     }

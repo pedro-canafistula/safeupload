@@ -59,6 +59,7 @@ public sealed record InspectionResult(
     {
         "file_too_large" => InspectionFailureKind.TooLarge,
         "unsupported_format" => InspectionFailureKind.UnsupportedFormat,
+        "archive_encrypted" or "archive_unsupported_member" or "archive_unsupported_structure" or "archive_7z_unavailable" => InspectionFailureKind.UnsupportedFormat,
         "inspection_timeout" => InspectionFailureKind.Timeout,
         "inspection_limit" => InspectionFailureKind.Limit,
         { } reason when reason.StartsWith("parse_error:", StringComparison.Ordinal) => InspectionFailureKind.ReadOrParse,

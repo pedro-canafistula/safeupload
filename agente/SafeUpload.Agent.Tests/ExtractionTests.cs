@@ -56,7 +56,7 @@ public class ExtractionTests : IDisposable
     /// O .pdf saiu desta lista quando ganhou extrator.
     /// </summary>
     [Theory]
-    [InlineData(".zip")]
+    [InlineData(".rar")]
     [InlineData(".exe")]
     [InlineData("")]
     [InlineData(null)]

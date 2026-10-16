@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import java.time.*;
 import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -98,7 +99,15 @@ class FunctionalMigrationTest {
     void policyMatchesAgentContract() throws Exception {
         mvc.perform(get("/agent/policy").param("endpointId", "PC-01")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(1)).andExpect(jsonPath("$.activeCategories[4]").value("Secret"))
-                .andExpect(jsonPath("$.monitoredScopes.extensions.length()").value(5))
+                .andExpect(jsonPath("$.monitoredScopes.extensions.length()").value(11))
+                .andExpect(jsonPath("$.monitoredScopes.extensions").value(contains(
+                        ".txt", ".csv", ".docx", ".xlsx", ".pdf", ".pptx", ".pptm", ".potx", ".ppsx", ".zip", ".7z")))
+                .andExpect(jsonPath("$.monitoredScopes.extensions[5]").value(".pptx"))
+                .andExpect(jsonPath("$.monitoredScopes.extensions[6]").value(".pptm"))
+                .andExpect(jsonPath("$.monitoredScopes.extensions[7]").value(".potx"))
+                .andExpect(jsonPath("$.monitoredScopes.extensions[8]").value(".ppsx"))
+                .andExpect(jsonPath("$.monitoredScopes.extensions[9]").value(".zip"))
+                .andExpect(jsonPath("$.monitoredScopes.extensions[10]").value(".7z"))
                 .andExpect(jsonPath("$.monitoredScopes.destinationPaths[0]").value("C:\\SafeUpload\\Escopo Monitorado"))
                 .andExpect(jsonPath("$.maxFileSizeMb").value(20)).andExpect(jsonPath("$.inspectionTimeoutSeconds").value(5))
                 .andExpect(jsonPath("$.failOpen").value(true)).andExpect(jsonPath("$.overrideAllowed").value(false));

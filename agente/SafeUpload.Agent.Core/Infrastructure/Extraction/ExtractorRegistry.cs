@@ -44,7 +44,7 @@ public sealed class ExtractorRegistry
     public IReadOnlySet<string> SupportedExtensions { get; }
 
     /// <summary>
-    /// Composição padrão: texto puro, Word, Excel, PowerPoint e PDF.
+    /// Composição padrão: texto puro, Word, Excel, PowerPoint, PDF e ZIP; 7z tem recusa explícita.
     /// </summary>
     public static ExtractorRegistry CreateDefault() => new(
     [
@@ -52,7 +52,9 @@ public sealed class ExtractorRegistry
         new OpenXmlWordExtractor(),
         new OpenXmlSheetExtractor(),
         new OpenXmlPowerPointExtractor(),
-        new PdfExtractor()
+        new PdfExtractor(),
+        new ZipArchiveExtractor(),
+        new SevenZipRefusingExtractor()
     ]);
 
     /// <summary>

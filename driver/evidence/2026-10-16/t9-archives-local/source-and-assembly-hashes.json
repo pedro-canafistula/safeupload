@@ -1,0 +1,36 @@
+{
+  "worktree_base": "1d485942f35ab449ef8a4b752cdc9003446e6ab7",
+  "latest_feat_baseline": "2261eeba47d34fba362e65464b1737a361e1583e",
+  "source_sha256": {
+    "agente/README.md": "2cd54af7e836f4d901c351fa76620c3dfd9c37dc45aca29a1d888fb4e78d4eca",
+    "agente/SafeUpload.Agent.Core/Application/InspectionService.cs": "25212cc70b3c41e91a24d5bc5f03a98dd70ee9baf48bdfc8cc6337de3ac172a8",
+    "agente/SafeUpload.Agent.Core/Domain/Finding.cs": "9b1cc68afa80671890339e0fe09b338f5fa53e19a6ffc506c09aa49c1c8359bf",
+    "agente/SafeUpload.Agent.Core/Domain/InspectionResult.cs": "a588604b318e3ee6095171b0e92125f899f79b1c7b7e9d72940b47fd39aa0f88",
+    "agente/SafeUpload.Agent.Core/Domain/StreamingContentScanner.cs": "3ab35633b3cd8233f113718a6883bf422bbc6b13e47aa7898dafa24650e39b6e",
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ArchiveInspectionBudget.cs": "3853166ff6530dcb712acb42b0b7bd762b5b6b24273931886bc07353d5e18bc1",
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ExtractorRegistry.cs": "ec3ec83dd56c5cc9dfec569d2a2189689005d2b779f308fbae830698b09a9018",
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ZipArchiveExtractor.cs": "43dbdeaf6aa63e55a4664f3d421d91603fe613dafbeb70943d248de21c114b58",
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ZipInspectionGuard.cs": "aa0a69bd3630166a72b8ab1afb4dedb660cd501916130d3f06b2aba52b937c43",
+    "agente/SafeUpload.Agent.Core/Infrastructure/PolicyDocument.cs": "df63745278597ea8af47358d60119a029700d9c4f01c40b92b827e036ab2a0e4",
+    "agente/SafeUpload.Agent.Tests/ArchiveFixture.cs": "0c8c7cce6f5efb573fd49eed12d962d74ae5e8c06a7db242751a00c7ab6a7382",
+    "agente/SafeUpload.Agent.Tests/ArchiveInspectionTests.cs": "ab0491b445c17e62c3592cddd92e90f7dc3317e7355185f5b4b3f123e25d3352",
+    "agente/SafeUpload.Agent.Tests/ArchiveIntegrityTests.cs": "84e6998b60cb170133b60cbe5437af97aacfd3bd2808e6cd1c40a66caf57b5ec",
+    "agente/SafeUpload.Agent.Tests/PolicyTests.cs": "41398b0fbcc0731739b425ea4fd4c19fc0f7b4c5df7c4c04f757fbab828c6ff6",
+    "agente/docs/INSPECTION-COVERAGE.md": "07e2321edbf08c571b0be3eff3c400fffa73f6445a88e1022a63cc31168c6031",
+    "agente/docs/T9-ARCHIVE-INSPECTION.md": "a0d55e6e410d82896d4aba489e1657453be0f42bac26d44f9360e8059b223930",
+    "web/back/src/main/java/com/safeupload/application/AgentService.java": "2045e0075db37334633ac6f43a7e705152f289106405c6d018daa556eb8da83d",
+    "web/back/src/test/java/com/safeupload/FunctionalMigrationTest.java": "ee8e3057d4cec74a2a5c52b435107cee2a15639b5d4dcd02fe0e8c0c45d6d1de"
+  },
+  "assembly_sha256": {
+    "Debug/SafeUpload.Agent.Core.dll": "58e6852f77f7c63a21510731220cac95f05c51d7b6e11660da3716e15635901c",
+    "Debug/SafeUpload.Agent.Minifilter.dll": "6891ece658d8ce9e1b46699313da680f2092d7d8a6405b2f090ca880ce1d7942",
+    "Debug/SafeUpload.Agent.Network.dll": "d0238ea6c71184e3df2dd36ee8f239a393c769c34d5acbbb427d08b91f1d9a3d",
+    "Debug/SafeUpload.Agent.Service.dll": "597d4560a23aa21f5107c02e13a4d3bd1b9237425123185db12acd247d253db5",
+    "Debug/SafeUpload.Agent.Tests.dll": "a0a00d8f083982246e1c868e5bac191389d27d3b0c35e9be81d7fd028ae4ed89",
+    "Release/SafeUpload.Agent.Core.dll": "65a935abfffe80698c0c3ae6148f41d9c33debf19de7d60414f461247dac8bd1",
+    "Release/SafeUpload.Agent.Minifilter.dll": "9bce13e4a12c876c4ac81312c91f530acc60f0dc34f77e7289eb33d3b794402a",
+    "Release/SafeUpload.Agent.Network.dll": "761757680707dcf6dcba80c44f067af11cb7363fd1bcb3f5c6d0b47dbf50e7d4",
+    "Release/SafeUpload.Agent.Service.dll": "a824522bf5e11404a00948cc2f6b75b73dac1485afab588eefc951046c4aa8bf",
+    "Release/SafeUpload.Agent.Tests.dll": "a0c02df512e25a02804bd363a3bb8ce0c5cb22baaaa8d02d1b347499c23864ba"
+  }
+}
