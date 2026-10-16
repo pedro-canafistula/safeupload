@@ -933,14 +933,20 @@ public sealed partial class StagedTransferJournal
                         return commitPolicyAllowed ? StageV20WireResult.AttachCommitted :
                             StageV20WireResult.AttachCommitDenied;
 
-                    case 14: // Abort prepared, unexposed attachment
+                    case 14: // Abort unexposed attachment, including a lost Prepare
                         if (current.AttachAbortRequestIdV20 == request.RequestId &&
                             current.AttachmentStateV20 == StagedAttachmentStateV20.Aborted)
                             return StageV20WireResult.AttachAborted;
-                        if (current.AttachmentStateV20 is not (StagedAttachmentStateV20.Prepared or
+                        // The driver may have timed out before Prepare was
+                        // processed. Persist the abort under the same gate so
+                        // a late Prepare can never revive this allocation.
+                        if (current.AttachmentStateV20 is not (StagedAttachmentStateV20.None or
+                                StagedAttachmentStateV20.Prepared or
                                 StagedAttachmentStateV20.CommitDenied) || current.AttachAbortRequestIdV20 is not null ||
                             current.CompletionPermitRequestIdV20 is not null ||
                             current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) ||
+                            current.SealedOnce || current.SealedLength is not null ||
+                            current.StageCleanupStarted || current.StageDeleted ||
                             current.DiscardRequestedAtUtc is not null)
                             throw StagedRequestRefusal.Create("The exact attachment cannot be aborted after commit/expose ambiguity.");
                         IReadOnlyList<TransferJournalStateChange> abortHistory =
@@ -1884,7 +1890,8 @@ public sealed partial class StagedTransferJournal
         if (entry.DriverInstanceId is null || entry.CreateReservationId != entry.Transfer.TransferId ||
             entry.DestinationGeneration <= 0 || entry.StageIdentity is null || entry.ParentDirectoryIdentity is null ||
             entry.ParentDirectoryIdentity.FileIdHigh == 0 && entry.ParentDirectoryIdentity.FileIdLow == 0 ||
-            entry.AttachPrepareRequestIdV20 is not > 0)
+            (entry.AttachPrepareRequestIdV20 is not > 0 &&
+                entry.AttachmentStateV20 != StagedAttachmentStateV20.Aborted))
             throw new InvalidDataException("The v20 attachment receipt has no exact allocation identity.");
 
         bool hasCommit = entry.AttachCommitRequestIdV20 is > 0;
@@ -1909,6 +1916,7 @@ public sealed partial class StagedTransferJournal
             case StagedAttachmentStateV20.Aborted:
                 if (hasPermit || hasRetire || hasHandle || !hasAbort ||
                     (hasCommit && !commitDenied) ||
+                    (hasCommit && entry.AttachPrepareRequestIdV20 is null) ||
                     entry.State != TransferJournalState.DiscardPending ||
                     entry.DiscardKind != StagedDiscardKind.UnattachedAllocation ||
                     entry.DiscardReservationId != entry.Transfer.TransferId)
