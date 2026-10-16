@@ -23,6 +23,20 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-16 — T8 metadata contract, Mark of the Web, PowerPoint/archives in M2, images after M2.** Owner, in the session, chose
+the recommended option of each question ([T8 memo](evidence/2026-10-16/t8-metadata-contract-sol61.md), [T9 gap plan](evidence/2026-10-16/t9-gap-plan-sol61.md)):
+1. **Metadata:** a published file carries what Windows gives the same caller's operation without SafeUpload: owner/group, DACL
+   (only the accepted moved-file `0x0400` marker differs), SACL, integrity label, creation/last-write/last-access times and
+   attributes, revalidated at commit (no stale replay over a later authorized change; the `m2t10rv6` lost admin ACE is a defect).
+   `ChangeTime` is the publication time. M2 refuses, with a clear reason, EFS-encrypted, offline, extended-attribute, reparse-point
+   and hard-linked saves into protection; sparse/compressed keep semantic state with complete logical inspection or are held.
+2. **Mark of the Web:** `Zone.Identifier` is inspected like content and published together with its file, never visible without
+   it; every other alternate data stream stays refused. Browser downloads and copies of downloaded files keep Protected View.
+3. **PowerPoint and archives in M2:** `.pptx` slide/notes/comment/chart text inspected like Word/Excel; `.zip`/`.7z` members inspected
+   with the existing inspectors, an encrypted archive or an unsupported member blocks the whole archive with a reason.
+4. **Images after M2:** images stay refused (blocked with an "images are not inspected yet" reason, handed back). **The Paint row
+   leaves M2**: T8 qualifies eight workflows; Paint moves to a later OCR item (Windows built-in OCR, pt-BR language feature).
+
 **2026-10-16 — folders follow the copy rule; idle folder renames; all-zero numbers are not cards.** Owner, in the session, chose the
 recommended option of each question:
 1. **All-zero card (T9):** `0000000000000000` no longer counts as a payment card (it passes Luhn; CPF/CNPJ already ignore repeated
@@ -1054,11 +1068,13 @@ and never publish uninspected bytes; C05 reflects inspection rather than blanket
 ### T8. Office/common apps and metadata
 
 **Problem:** real application save/replace/delete sequences and publication metadata need qualification.
-**Done when:** Word, Excel, PowerPoint, Paint, WordPad, Explorer replace, browser download, robocopy and 7-Zip rows pass all three modes;
+**Done when:** Word, Excel, PowerPoint, WordPad, Explorer replace, browser download, robocopy and 7-Zip rows pass all three modes (Paint moved
+after M2 with image OCR, owner 2026-10-16);
 the publishing application can reopen the file and agreed metadata is preserved.
 
 - [ ] Trace/replay real save sequences, including temporary/backup deletes under T5; respect staged rename limits.
-- [ ] Decide and test owner, DACL inheritance, timestamps, attributes, ADS including Zone.Identifier, EAs and kernel labels.
+- [ ] Implement and test the metadata contract decided 2026-10-16 (native owner/DACL/SACL/label, timestamps, attributes; Zone.Identifier
+  carried with its file; other ADS, EAs, EFS, offline, reparse points and hard links refused).
 - [ ] Qualify application rows under the matched pair with independent byte observation and restoration.
 
 ### T9. Large files and complete inspection
