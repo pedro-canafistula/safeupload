@@ -37,7 +37,8 @@ internal static class ReliabilityDemo
                 "dados-sinteticos.txt", ".txt", 32, Verdict.Blocked, [Category.Cpf], [], "demo", 1,
                 @"E:\demonstracao", null, policy.Version, 1, false);
             await sink.WriteAsync(audit, token);
-            await sink.RecordOverrideAsync(audit.EventId.ToString(), "Transferência sintética autorizada para o vídeo", token);
+            await sink.RecordOverrideAsync(new AuditOverride(audit.EventId,
+                "Transferência sintética autorizada para o vídeo", DateTimeOffset.UtcNow, "demo", endpoint), token);
             Console.WriteLine("AUDITORIA | 1 evento + 1 justificativa gravados em disco.");
         }
         else if (phase == "offline")

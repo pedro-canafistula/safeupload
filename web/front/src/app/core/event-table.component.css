@@ -5,6 +5,7 @@
 .event-details dt { font-weight: 600; }
 .event-details dd { margin: 4px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .privacy-note { color: #42566b; }
+.override-text { white-space: pre-wrap; }
 button:focus-visible { outline: 3px solid #0c2d59; outline-offset: 3px; }
 @media (max-width: 600px) {
   .event-details dl { grid-template-columns: minmax(0, 1fr); }

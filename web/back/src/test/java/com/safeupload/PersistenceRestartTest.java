@@ -34,6 +34,9 @@ class PersistenceRestartTest {
             assertThat(service.endpoints()).hasSize(1);
             assertThat(service.auditEvents()).hasSize(1);
             assertThat(service.auditEvents().getFirst().eventId()).isEqualTo(eventId);
+            assertThat(service.overrideEvents()).hasSize(1);
+            assertThat(service.overrideEvents().getFirst().eventId()).isEqualTo(eventId);
+            assertThat(service.overrideEvents().getFirst().justification()).isEqualTo("Revisão");
             assertThat(context.getBean(ReceivedEventRepository.class).count()).isEqualTo(2);
         }
     }

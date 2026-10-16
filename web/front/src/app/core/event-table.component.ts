@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, Input } from '@angular/core';
-import { AuditEvent, categoryLabels, verdictLabels } from './models';
+import { AuditEvent, AuditOverride, categoryLabels, verdictLabels } from './models';
 
 @Component({
   selector: 'app-event-table',
@@ -54,14 +54,27 @@ import { AuditEvent, categoryLabels, verdictLabels } from './models';
                 <div *ngIf="event.verdict === 'AllowedWithoutInspection' || event.verdict === 'Retained'"><dt>{{ event.verdict === 'Retained' ? 'Motivo da retenção' : 'Motivo da não inspeção' }}</dt>
                   <dd>{{ event.notInspectedReason || 'Não informado pelo agente' }}</dd></div>
               </dl>
-              <p class="privacy-note">Esta consulta mostra somente metadados. {{ event.channel === 'Clipboard' ? 'Texto copiado' : 'Conteúdo do arquivo' }} e trechos detectados não são exibidos.</p>
+              <section *ngIf="overridesFor(event.eventId).length" aria-label="Justificativas do evento">
+                <h5>Justificativas registradas</h5>
+                <p>A justificativa registra a solicitação de exceção; não confirma que a transferência foi concluída.</p>
+                <div *ngFor="let record of overridesFor(event.eventId)">
+                  <p class="override-text">{{ record.justification }}</p>
+                  <p>{{ record.userName }} · {{ record.occurredAtUtc | date:'dd/MM/yyyy HH:mm:ss Z' }}</p>
+                </div>
+              </section>
+              <p class="privacy-note">Esta consulta mostra somente metadados e justificativas registradas. {{ event.channel === 'Clipboard' ? 'Texto copiado' : 'Conteúdo do arquivo' }} e trechos detectados não são exibidos.</p>
             </section>`
 })
 export class EventTableComponent {
   @Input() events: AuditEvent[] = [];
+  @Input() overrides: AuditOverride[] = [];
   readonly verdicts = verdictLabels;
   readonly categories = categoryLabels;
   expandedEventId: string | null = null;
+
+  overridesFor(eventId: string): AuditOverride[] {
+    return this.overrides.filter(record => record.eventId === eventId);
+  }
 
   eventLabel(event: AuditEvent): string {
     return this.isObservation(event) ? 'Observação de clipboard' : event.channel === 'Clipboard' ? 'Colagem' : event.fileName || (event.channel === 'Web' ? 'Envio web' : '');

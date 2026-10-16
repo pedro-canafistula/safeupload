@@ -44,7 +44,10 @@ public class AdminService {
         String filter = endpoint == null ? "" : endpoint.trim();
         List<AuditEvent> events = agents.auditEvents().stream()
                 .filter(event -> filter.isEmpty() || event.endpointId().equals(filter)).toList();
-        return new Audit(summary(events), events, filter);
+        Set<UUID> selectedIds = events.stream().map(AuditEvent::eventId).collect(Collectors.toSet());
+        List<OverrideEvent> overrides = agents.overrideEvents().stream()
+                .filter(event -> selectedIds.contains(event.eventId())).toList();
+        return new Audit(summary(events), events, filter, overrides);
     }
 
     public Endpoints endpoints(String status, String os, String query) {

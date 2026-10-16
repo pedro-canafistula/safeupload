@@ -84,6 +84,36 @@ test('erros de API não são confundidos com estado vazio; atualização recuper
   await expect(page).toHaveURL(/login/);
 });
 
+test('justificativa recebida pelo Java aparece nos detalhes e não duplica no reenvio', async ({ page, request }) => {
+  const event = {
+    eventId: crypto.randomUUID(), occurredAtUtc: new Date().toISOString(), endpointId: 'E2E-JUSTIFICATIVA',
+    userName: 'teste', fileName: 'justificado.txt', extension: '.txt', sizeBytes: 12, verdict: 'Blocked',
+    categories: ['Cpf'], maskedSnippets: [], processName: 'editor.exe', processId: 42,
+    destinationPath: 'C:\\SafeUpload', policyVersion: 1, elapsedMs: 5, dispatched: false
+  };
+  const override = { eventId: event.eventId, justification: 'Solicitação autorizada <b>texto literal</b>',
+    occurredAtUtc: new Date().toISOString(), userName: 'S-1-5-21-1001', endpointId: event.endpointId };
+  for (const attempt of [1, 2]) {
+    const response = await request.post('http://127.0.0.1:8080/agent/events', {
+      data: { events: [event], overrides: [override] }
+    });
+    expect(response.ok(), `Envio ${attempt}`).toBeTruthy();
+    expect((await response.json()).acceptedOverrides).toBe(1);
+  }
+  await page.goto('/login');
+  await page.getByLabel('E-mail').fill(email);
+  await page.getByLabel('Senha', { exact: true }).fill(password);
+  await page.getByRole('button', { name: /entrar/i }).click();
+  await expect(page).toHaveURL(/\/painel$/);
+  await page.goto('/auditoria?endpoint=' + event.endpointId);
+  await expect(page.getByText('Total 1', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Detalhes de justificado.txt', exact: true }).click();
+  const details = page.getByRole('region', { name: 'Justificativas do evento', exact: true });
+  await expect(details.getByText(override.justification, { exact: true })).toHaveCount(1);
+  await expect(details).toContainText(override.userName);
+  await expect(details.locator('b')).toHaveCount(0);
+});
+
 test('clipboard recebido pelo Java aparece no navegador sem duplicar no reenvio', async ({ page, request }) => {
   const clipboard = {
     eventId: crypto.randomUUID(), occurredAtUtc: new Date().toISOString(), endpointId,

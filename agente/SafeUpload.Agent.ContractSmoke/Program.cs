@@ -6,6 +6,7 @@ using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Service.Dispatch;
 using SafeUpload.Agent.Service.Clipboard;
+using SafeUpload.Agent.Service.Policies;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 
@@ -42,8 +43,17 @@ if (clipboardPolicy.Mode != ClipboardMode.Off
 var temporaryRoot = Path.GetFullPath(Path.GetTempPath());
 var workspace = Path.GetFullPath(Path.Combine(temporaryRoot, "safeupload-contract-" + Guid.NewGuid().ToString("N")));
 Directory.CreateDirectory(workspace);
+var durablePolicies = new DurableHttpPolicyStore(agentClient, endpointId,
+    Path.Combine(workspace, "server-policy-cache.json"), enforceProtectedAcl: false);
+using var servicePolicies = new RefreshingPolicyStore(durablePolicies, TimeSpan.FromSeconds(30),
+    NullLogger<RefreshingPolicyStore>.Instance);
 try
 {
+    await servicePolicies.StartAsync(cancellationToken);
+    while (durablePolicies.LastSource != "remote")
+        await Task.Delay(25, cancellationToken);
+    if ((await servicePolicies.LoadAsync(cancellationToken)).Version != policy.Version)
+        throw new InvalidOperationException("O snapshot do serviço não recebeu a política Java.");
     var sink = new LocalQueueAuditSink(Path.Combine(workspace, "queue.jsonl"));
     var events = new List<AuditEvent>();
     foreach (var verdict in new[] { Verdict.Blocked, Verdict.Approved, Verdict.AllowedWithoutInspection, Verdict.Retained })
@@ -78,7 +88,8 @@ try
         "https://example.test/upload", null, policy.Version, 2, false, Channel: AuditChannel.Web);
     events.Add(webEvent);
     await sink.WriteAsync(webEvent, cancellationToken);
-    await sink.RecordOverrideAsync(webEvent.EventId.ToString(), "Justificativa sintética do contrato", cancellationToken);
+    await sink.RecordOverrideAsync(new AuditOverride(webEvent.EventId, "Justificativa sintética do contrato",
+        DateTimeOffset.UtcNow, "teste-contrato", endpointId), cancellationToken);
     var queueText = await File.ReadAllTextAsync(sink.QueueFilePath, cancellationToken);
     if (queueText.Contains("529.982.247-25") || queueText.Contains("52998224725"))
         throw new InvalidOperationException("A fila de clipboard contém texto não mascarado.");
@@ -86,7 +97,7 @@ try
     if (!(await recovered.ReadPendingAsync(100, cancellationToken)).Any(item => item.EventId == clipboardEvent.EventId))
         throw new InvalidOperationException("A observação não sobreviveu à reabertura da fila.");
 
-    using var dispatcher = new HttpAgentDispatcher(sink, policyStore, agentClient, endpointId,
+    using var dispatcher = new HttpAgentDispatcher(sink, servicePolicies, agentClient, endpointId,
         TimeSpan.FromMilliseconds(100), NullLogger<HttpAgentDispatcher>.Instance);
     await dispatcher.StartAsync(cancellationToken);
     try
@@ -131,6 +142,11 @@ try
     auditResponse.EnsureSuccessStatusCode();
     var audit = await auditResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
     var persistedEvents = audit.GetProperty("eventos").EnumerateArray().ToList();
+    var persistedOverrides = audit.GetProperty("justificativas").EnumerateArray().ToList();
+    if (persistedOverrides.Count != 1 || persistedOverrides[0].GetProperty("eventId").GetGuid() != webEvent.EventId ||
+        persistedOverrides[0].GetProperty("justification").GetString() != "Justificativa sintética do contrato" ||
+        persistedOverrides[0].GetProperty("userName").GetString() != "teste-contrato")
+        throw new InvalidOperationException("A justificativa enviada pelo agente não foi preservada na consulta administrativa.");
     if (persistedEvents.Count != events.Count
         || persistedEvents.Count(item => item.GetProperty("channel").GetString() == "File") != 4
         || persistedEvents.Count(item => item.GetProperty("channel").GetString() == "Web") != 1
@@ -160,11 +176,12 @@ try
     if (endpoint.GetProperty("inspecoes7d").GetInt32() != 6 || endpoint.GetProperty("status").GetString() != "online")
         throw new InvalidOperationException("Heartbeat ou contagem do endpoint não corresponde ao despacho.");
 
-    Console.WriteLine("Contrato C# → Java aprovado: 4 File, 1 Clipboard, 1 Web, Retained, hash publicado, heartbeat, fila e reenvio idempotente.");
+    Console.WriteLine("Contrato C# → Java aprovado: 4 File, 1 Clipboard, 1 Web, Retained, hash publicado, heartbeat, fila, justificativa consultável e reenvio idempotente.");
 }
 
 finally
 {
+    await servicePolicies.StopAsync(CancellationToken.None);
     if (!workspace.StartsWith(temporaryRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
             StringComparison.OrdinalIgnoreCase))
         throw new InvalidOperationException("Pasta temporária fora do diretório permitido.");

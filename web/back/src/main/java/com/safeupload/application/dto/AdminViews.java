@@ -13,7 +13,7 @@ public final class AdminViews {
     public record CategoryCount(Category codigo, String nome, long quantidade) {}
     public record Dashboard(String periodo, Summary resumo, List<Day> tendencia,
             List<CategoryCount> categoriasBloqueadas, List<AuditEvent> recentes, List<Category> categoriasAtivas) {}
-    public record Audit(Summary resumo, List<AuditEvent> eventos, String endpoint) {}
+    public record Audit(Summary resumo, List<AuditEvent> eventos, String endpoint, List<OverrideEvent> justificativas) {}
     public record EndpointSummary(long total, long online, long offline) {}
     public record EndpointRow(String endpointId, String hostname, String os, String agentVersion,
             int policyVersion, Instant lastSeenUtc, String status, long inspecoes7d) {}

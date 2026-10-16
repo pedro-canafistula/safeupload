@@ -91,6 +91,17 @@ public class AgentService {
     }
 
     @Transactional(readOnly = true)
+    public List<OverrideEvent> overrideEvents() {
+        return events.findByKindOrderByOccurredAtUtcDescEventKeyAsc("override").stream().map(stored -> {
+            try {
+                return mapper.readValue(stored.getPayload(), OverrideEvent.class);
+            } catch (JsonProcessingException exception) {
+                throw new IllegalStateException("Justificativa armazenada inválida", exception);
+            }
+        }).toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<Endpoint> endpoints() {
         return endpoints.findAllByOrderByLastSeenUtcDesc();
     }

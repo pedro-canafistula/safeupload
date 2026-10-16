@@ -41,7 +41,14 @@ export interface Dashboard {
   recentes: AuditEvent[];
   categoriasAtivas: Category[];
 }
-export interface Audit { resumo: Summary; eventos: AuditEvent[]; endpoint: string; }
+export interface AuditOverride {
+  eventId: string;
+  justification: string;
+  occurredAtUtc: string;
+  userName: string;
+  endpointId: string;
+}
+export interface Audit { resumo: Summary; eventos: AuditEvent[]; endpoint: string; justificativas?: AuditOverride[]; }
 export interface EndpointRow {
   endpointId: string;
   hostname: string;

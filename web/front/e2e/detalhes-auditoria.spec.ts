@@ -126,6 +126,24 @@ test('metadados ausentes não viram valores inventados', async ({ page }) => {
   await expect(detalhes.locator('div').filter({ has: page.getByText('Duração da inspeção', { exact: true }) }).locator('dd')).toHaveText('Não informada');
 });
 
+test('justificativa aparece somente no evento correspondente e é texto, sem executar HTML', async ({ page }) => {
+  const justification = '<script>window.justificationExecuted=true</script> Transferência autorizada';
+  await page.route('**/api/auditoria**', route => route.fulfill({ json: {
+    resumo, eventos, endpoint: '', justificativas: [{ eventId: eventos[0].eventId, justification,
+      occurredAtUtc: '2026-10-04T12:01:00Z', userName: 'S-1-5-21-1001', endpointId: 'ESTACAO-TESTE' }]
+  } }));
+  await page.goto('/auditoria');
+  await page.getByRole('button', { name: 'Detalhes de arquivo-0.txt', exact: true }).click();
+  const region = page.getByRole('region', { name: 'Justificativas do evento', exact: true });
+  await expect(region).toContainText(justification);
+  await expect(region).toContainText('S-1-5-21-1001');
+  await expect(region).toContainText('não confirma que a transferência foi concluída');
+  await expect(region.locator('script')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).justificationExecuted)).toBeUndefined();
+  await page.getByRole('button', { name: 'Detalhes de arquivo-1.txt', exact: true }).click();
+  await expect(region).toHaveCount(0);
+});
+
 test('observação de foco não é apresentada como colagem ou bloqueio confirmado', async ({ page }) => {
   await page.route('**/api/auditoria**', route => route.fulfill({ json: {
     resumo: { total: 1, bloqueados: 0, aprovados: 0, liberadosSemInspecao: 1 }, endpoint: '',
