@@ -1002,6 +1002,14 @@ no empty probe is left behind; no uninspected nonempty byte reaches the public n
     approved):** 4,702,608 bytes of fixed nonpaged receipt banks (13 × 128-slot banks of 156,744 B, op23 1,096,776 B, op24
     1,253,448 B, control35 313,416 B, op17 1,296 B) and an eager per-machine receipt layout of 3,877 files in 19 directories
     (~0.65 MB logical; NTFS allocation unmeasured), created only once V30 is enabled.
+    **Batch 3 progress (2026-10-16, `wt/t5-batch2`):** receipt closure (`7685e4d7`; the three compaction tests pass unchanged on
+    Windows), FIFO admission over cancel-safe queues (`3af022b0`, after WDK `t5-batch3y-k` failed on routines absent from 19045 —
+    a local kernel API audit now checks every call against the 19045 exports), production owner/queue lifetimes (`96238321`),
+    resource configuration (`29c950e8`), origin binding (`dafb57c1`) and publisher phase timing (`40bd5713`). WDK builds
+    `t5-batch3z-k`, `-ab-k`, `-ad-k` PASS. Matrix `t5-batch3ag-diag` (`40bd5713`): 3,813/3,813 + 25/25 in both feature configurations.
+    Open: a rare 5–15 s stall in the blocked/hand-back publish path (normal 67–206 ms) failed one publisher test in four earlier
+    diagnostic matrices; the recorder stays in to capture it. Execution providers, remaining receipt families, compaction/
+    migration, cap removal, endurance and the activation path remain; V30 stays disabled.
     **Feature-profile gap found (2026-10-15):** every batch-2/3 matrix stopped after the normal Debug leg, so the feature legs never
     ran until `integ-m1` (taint-removal branch, 4 feature legs): 3,398/3,528 with 130 failures. [RCA](evidence/2026-10-15/t5-feature-failures-rca-sol61.md):
     128 are stale feature fixtures after batch 2 activated exact seal receipts (`92f2b159`; product refusals correct), plus the two
