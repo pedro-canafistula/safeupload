@@ -1,0 +1,222 @@
+{
+  "base": "d89f9f7c4a6713cac936c02f8976610d8e270c7b",
+  "scope": "Linux diagnostic only; no Windows matrix rerun or VM action",
+  "original_matrix": {
+    "source": ".scratch/st-m1-diag/agent-tests-user.trx",
+    "sha256": "546f266dfa7c31133e3a0f8d7a6ff2c0475e3ff3511940bfad24baeb9b411c81",
+    "failures": [
+      {
+        "test": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent(childCleanupKind: OwnerExitEmpty)",
+        "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+        "stack": "   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.CompleteV20AttachmentAsync(StagedTransferJournal journal, StagedTransfer transfer, StagedVersionIdentity version, Guid driverInstanceId, UInt64 firstRequestId) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1174\r\n   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent(StagedDiscardKind childCleanupKind) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 953\r\n--- End of stack trace from previous location ---"
+      },
+      {
+        "test": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch(mutation: \"process-creation\")",
+        "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+        "stack": "   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.CompleteV20AttachmentAsync(StagedTransferJournal journal, StagedTransfer transfer, StagedVersionIdentity version, Guid driverInstanceId, UInt64 firstRequestId) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1174\r\n   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch(String mutation) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1030\r\n--- End of stack trace from previous location ---"
+      },
+      {
+        "test": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch(mutation: \"driver-epoch\")",
+        "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+        "stack": "   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.CompleteV20AttachmentAsync(StagedTransferJournal journal, StagedTransfer transfer, StagedVersionIdentity version, Guid driverInstanceId, UInt64 firstRequestId) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1174\r\n   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch(String mutation) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1030\r\n--- End of stack trace from previous location ---"
+      },
+      {
+        "test": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction(childDisposition: UnattachedAllocation)",
+        "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+        "stack": "   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.CompleteV20AttachmentAsync(StagedTransferJournal journal, StagedTransfer transfer, StagedVersionIdentity version, Guid driverInstanceId, UInt64 firstRequestId) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1174\r\n   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction(StagedDiscardKind childDisposition) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 845\r\n--- End of stack trace from previous location ---"
+      },
+      {
+        "test": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_requires_gate_confirmed_disposal_before_parent_ack",
+        "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+        "stack": "   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.CompleteV20AttachmentAsync(StagedTransferJournal journal, StagedTransfer transfer, StagedVersionIdentity version, Guid driverInstanceId, UInt64 firstRequestId) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1174\r\n   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_requires_gate_confirmed_disposal_before_parent_ack() in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1097\r\n--- End of stack trace from previous location ---"
+      },
+      {
+        "test": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_replacement_blocks_parent_cleanup_without_deleting_replacement",
+        "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+        "stack": "   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.CompleteV20AttachmentAsync(StagedTransferJournal journal, StagedTransfer transfer, StagedVersionIdentity version, Guid driverInstanceId, UInt64 firstRequestId) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1174\r\n   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_replacement_blocks_parent_cleanup_without_deleting_replacement() in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1226\r\n--- End of stack trace from previous location ---"
+      },
+      {
+        "test": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent(childCleanupKind: DriverUnloadEmpty)",
+        "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+        "stack": "   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.CompleteV20AttachmentAsync(StagedTransferJournal journal, StagedTransfer transfer, StagedVersionIdentity version, Guid driverInstanceId, UInt64 firstRequestId) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1174\r\n   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent(StagedDiscardKind childCleanupKind) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 953\r\n--- End of stack trace from previous location ---"
+      },
+      {
+        "test": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch(mutation: \"sid\")",
+        "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+        "stack": "   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.CompleteV20AttachmentAsync(StagedTransferJournal journal, StagedTransfer transfer, StagedVersionIdentity version, Guid driverInstanceId, UInt64 firstRequestId) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1174\r\n   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch(String mutation) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1030\r\n--- End of stack trace from previous location ---"
+      },
+      {
+        "test": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction(childDisposition: PrivateVersion)",
+        "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+        "stack": "   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.CompleteV20AttachmentAsync(StagedTransferJournal journal, StagedTransfer transfer, StagedVersionIdentity version, Guid driverInstanceId, UInt64 firstRequestId) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 1174\r\n   at SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction(StagedDiscardKind childDisposition) in C:\\Users\\vika\\Documents\\exact-agent-matrix-st-m1-diag\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferAllocatorTests.cs:line 845\r\n--- End of stack trace from previous location ---"
+      }
+    ]
+  },
+  "profiles": {
+    "Debug": {
+      "focused_passed": 88,
+      "focused_failed": 5,
+      "same_comparator_failures_as_base": true,
+      "journal_contracts": [
+        {
+          "shape": "legacy-owner",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "legacy-unload",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "mismatch-sid",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "mismatch-creation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "mismatch-driver",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "compaction-private",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "compaction-unattached",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "released-held",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "released-replacement",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "modern-ack-pinned",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "legacy-linkage-generation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "legacy-linkage-reference",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "legacy-linkage-reservation",
+          "passed": true,
+          "error": null
+        }
+      ],
+      "source_matches_current": true
+    },
+    "Release": {
+      "focused_passed": 88,
+      "focused_failed": 5,
+      "same_comparator_failures_as_base": true,
+      "journal_contracts": [
+        {
+          "shape": "legacy-owner",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "legacy-unload",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "mismatch-sid",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "mismatch-creation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "mismatch-driver",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "compaction-private",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "compaction-unattached",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "released-held",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "released-replacement",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "modern-ack-pinned",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "legacy-linkage-generation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "legacy-linkage-reference",
+          "passed": true,
+          "error": null
+        },
+        {
+          "shape": "legacy-linkage-reservation",
+          "passed": true,
+          "error": null
+        }
+      ],
+      "source_matches_current": true
+    }
+  },
+  "tests_byte_identical_to_base": true,
+  "local_receipt_sha256": {
+    ".scratch/t11b/verification/baseline-build.log": "37f606450a509f6990eb26c418a2cabe905112917c56cc08fd2ced071f2a9ac3",
+    ".scratch/t11b/verification/baseline-nine.log": "dc50dabba47801120948f34e77f9d4c6ceb7fb2c53c2308c47c70ff613bed72c",
+    ".scratch/t11b/verification/final-App-Debug.log": "71c9c55d573ccfda414b9445c665325eb36d0a62a44fa0775f7507eacc223183",
+    ".scratch/t11b/verification/final-App-Release.log": "a4f6b38e437d741186f8cb767e383dc6fbbefdb52d2d31cd7378cf9de7cd6279",
+    ".scratch/t11b/verification/final-build-Debug.log": "22fcb8ea3172aa9f7e8485fd11e3a40e1c325db9162000edc40bf1ea53301d6e",
+    ".scratch/t11b/verification/final-build-Release.log": "cf0121f57dc2a6b86a1458972f6049cdae82d374700300f641daf68acd1c7206",
+    ".scratch/t11b/verification/final-focused-Debug.log": "fb10773e75eb0535a59ee6982af8a9618da7c57b945cdf6c41574e9d6e0390e9",
+    ".scratch/t11b/verification/final-focused-Release.log": "f7946dd48ed71e492b8ba3980087608e0931aba7bcb3ca3e969cb811b0d6fedf",
+    ".scratch/t11b/verification/final-contracts-Debug.log": "55b350c0f470aef24b6e3a7a4e6c5d831ca8a4938548139e2a0f3a0ec560161b",
+    ".scratch/t11b/verification/final-contracts-Release.log": "55b350c0f470aef24b6e3a7a4e6c5d831ca8a4938548139e2a0f3a0ec560161b",
+    ".scratch/t11b/verification/matrix-runner-selfcheck.log": "2088deaee3f3bbad156f9a8cfe498e0ee7a6a6e9cf80c9b31bfe87865136456c"
+  },
+  "scratch_diagnostic_sha256": {
+    ".scratch/t11b/Program.cs": "f3d5accc51627fde99f744cb1bfcd3bd990e6f002ebf1810315316ddf4ef8f38",
+    ".scratch/t11b/JournalContracts.cs": "545f4f8b58191d2e05a5a6a51e2089f5813527cd43e35b2127dd3d628da5ec33",
+    ".scratch/t11b/run-final.sh": "d734d33bbadae358206bd5cdf16182e31d4f128073a7ebc063aabfccf0671604"
+  }
+}

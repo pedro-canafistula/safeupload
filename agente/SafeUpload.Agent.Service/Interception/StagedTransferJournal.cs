@@ -100,6 +100,20 @@ public sealed partial class StagedTransferJournal
         return false;
     }
 
+    // Ordinary allocation can precede the first attachment handshake. Persist
+    // its epoch before the first positive manifest, so later reconciliation can
+    // distinguish that valid order from loss of an existing epoch record. This
+    // records no attachment permission and never replaces an accepted epoch.
+    // Caller holds _gate across the epoch write and manifest publication.
+    private async Task PreserveInitialAllocationEpochCoreAsync(Guid driverInstanceId, CancellationToken token)
+    {
+        if (await ReadDriverEpochCoreAsync(token).ConfigureAwait(false) is not null) return;
+        if (await HasRetainedDriverReceiptsCoreAsync(token).ConfigureAwait(false))
+            throw new IOException("The allocation cannot reconstruct missing driver-epoch evidence.");
+        await WriteDriverEpochCoreAsync(new DriverEpochRecord(driverInstanceId, null,
+            null, DateTimeOffset.UtcNow, null), token).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Records epoch drain only after every exact stage owned by that epoch is
     /// terminal and absent/disposed. An active or unknown attachment keeps the
@@ -416,6 +430,8 @@ public sealed partial class StagedTransferJournal
                  StagedSeedExport.IsFailure(seedParent.HandbackFailureReason)))
                 entry = entry with { SeedProvenance = StagedSeedProvenance.Inherit(entry, seedParent) };
             ValidateEntry(entry, transfer.TransferId);
+            if (driverInstanceId is { } allocationDriver)
+                await PreserveInitialAllocationEpochCoreAsync(allocationDriver, cancellationToken).ConfigureAwait(false);
             scanTiming?.Dispose();
             using var writeTiming = StagedRequestTiming.Measure("journal-write");
             await using (var stream = CreatePrivateTemporary(temporary))
@@ -2721,11 +2737,42 @@ public sealed partial class StagedTransferJournal
             foreach (Guid id in _archived.Keys)
                 entries.Add(await ReadArchivedCoreAsync(id, cancellationToken).ConfigureAwait(false));
             DriverEpochRecord? activeEpoch = await ReadDriverEpochCoreAsync(cancellationToken).ConfigureAwait(false);
+            var byId = entries.ToDictionary(e => e.Transfer.TransferId);
+            // Compatibility cleanup of a historical EmptyHeld chain already
+            // proved exact parent/child retirement. Do not generalize that
+            // contract to modern discard ACKs: their reply may still be lost.
+            bool TerminalLegacyCleanup(TransferJournalEntry e) =>
+                e.BoundAllocation is null && !_archived.ContainsKey(e.Transfer.TransferId) &&
+                e.State == TransferJournalState.LegacyEmptyHeld && e.SealedOnce && e.SealedLength == 0 &&
+                e.DiscardKind is (StagedDiscardKind.EmptyHeldPredecessor or StagedDiscardKind.OwnerExitEmpty or
+                    StagedDiscardKind.DriverUnloadEmpty) && e.DiscardAcknowledgedAtUtc is not null &&
+                e.PendingRename is null && !e.StageCleanupStarted && e.UpdatedAtUtc < cutoffUtc &&
+                !PathExists(e.Transfer.StagePath);
+            bool LegacyCleanupCanRetire(TransferJournalEntry e)
+            {
+                if (TerminalLegacyCleanup(e)) return true;
+                if (e.BoundAllocation is not null || _archived.ContainsKey(e.Transfer.TransferId) ||
+                    e.State != TransferJournalState.DiscardPending || e.DiscardAcknowledgedAtUtc is null ||
+                    e.DiscardKind is not (StagedDiscardKind.PrivateVersion or StagedDiscardKind.UnattachedAllocation) ||
+                    e.ParentVersionIdentity is not { } parent || !byId.TryGetValue(parent.TransferId, out var predecessor) ||
+                    !TerminalLegacyCleanup(predecessor) || predecessor.DiscardKind != StagedDiscardKind.EmptyHeldPredecessor ||
+                    predecessor.DiscardReservationId != e.Transfer.TransferId) return false;
+                try
+                {
+                    RequireDirectEmptyHeldChildTerminal(predecessor, e, requireReleasedStageDeleted: true);
+                    return true;
+                }
+                catch (IOException) { return false; } // Lost exact linkage/absence retains the live replay owner.
+            }
             bool Finished(TransferJournalEntry e) =>
                 // Hot receipts carry the same live-driver replay obligations as
                 // archived receipts. Age/absence cannot replace an exact drain.
                 !((e.BoundAllocation is null || _archived.ContainsKey(e.Transfer.TransferId)) && e.DriverInstanceId is { } driver &&
-                  (activeEpoch is null || activeEpoch is { DrainNonce: null } && activeEpoch.DriverInstanceId == driver)) &&
+                  (activeEpoch is null || activeEpoch is { DrainNonce: null } && activeEpoch.DriverInstanceId == driver &&
+                   !LegacyCleanupCanRetire(e))) &&
+                // The legacy exception still passes maximum-generation and
+                // reference closure below. Missing epoch evidence, archived
+                // receipts and modern live-epoch replay owners remain pinned.
                 !e.StageCleanupStarted &&
                 (e.DiscardRequestedAtUtc is null || e.DiscardAcknowledgedAtUtc is not null) &&
                 // Preserve legacy journal-only release semantics. A V20 unbound
