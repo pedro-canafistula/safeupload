@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Security.AccessControl;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure;
 
@@ -67,6 +68,59 @@ public sealed class DurableHttpPolicyStoreTests : IDisposable
     private TestStore Store(HttpStatusCode status, string json) =>
         new(new HttpClient(new ResponseHandler(status, json))
             { BaseAddress = new Uri("http://127.0.0.1:18080/agent/") }, Cache);
+
+    [Theory]
+    [InlineData("{\"version\":0,\"activeCategories\":[\"Cpf\"]}")]
+    [InlineData("{\"version\":99,\"activeCategories\":[\"999\"]}")]
+    [InlineData("{\"version\":99,\"activeCategories\":[\"0\"]}")]
+    public async Task Versao_ou_categorias_invalidas_nao_substituem_cache(string invalidJson)
+    {
+        using (var online = Store(HttpStatusCode.OK, """{"version":73,"activeCategories":["Secret"]}"""))
+            await online.LoadAsync(CancellationToken.None);
+        using var invalid = Store(HttpStatusCode.OK, invalidJson);
+        var policy = await invalid.LoadAsync(CancellationToken.None);
+        Assert.Equal(73, policy.Version);
+        Assert.Equal([Category.Secret], policy.ActiveCategories.ToArray());
+    }
+
+    [Fact]
+    public async Task Inicializacao_offline_le_cache_sem_sequer_iniciar_HTTP()
+    {
+        using (var online = Store(HttpStatusCode.OK, """{"version":73,"activeCategories":["Secret"]}"""))
+            await online.LoadAsync(CancellationToken.None);
+        var handler = new NoNetworkHandler();
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/agent/") };
+        var store = new DurableHttpPolicyStore(client, "PC-TESTE", Cache, false);
+        Assert.Equal(73, (await store.LoadCachedOrDefaultAsync(CancellationToken.None)).Version);
+        Assert.Equal("disk", store.LastSource);
+        Assert.Equal(0, handler.Calls);
+    }
+
+    private sealed class NoNetworkHandler : HttpMessageHandler
+    {
+        public int Calls;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Calls++;
+            throw new InvalidOperationException("HTTP não deve ser chamado na inicialização pelo disco.");
+        }
+    }
+
+    [Fact]
+    public async Task Construtor_de_producao_recusa_cache_sem_ACL_protegida_sem_reparar_ou_carregar()
+    {
+        Directory.CreateDirectory(_root);
+        const string untrusted = """{"version":73,"activeCategories":["Cpf"],"overrideAllowed":true}""";
+        await File.WriteAllTextAsync(Cache, untrusted);
+        var before = new DirectoryInfo(_root).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All);
+        using var client = new HttpClient(new NoNetworkHandler()) { BaseAddress = new Uri("http://localhost/agent/") };
+        var store = new DurableHttpPolicyStore(client, "PC-TESTE", Cache);
+        var recovered = await store.LoadCachedOrDefaultAsync(CancellationToken.None);
+        Assert.Equal("default", store.LastSource);
+        Assert.False(recovered.OverrideAllowed);
+        Assert.Equal(untrusted, await File.ReadAllTextAsync(Cache));
+        Assert.Equal(before, new DirectoryInfo(_root).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
+    }
 
     [Fact]
     public async Task Falha_de_disco_preserva_politica_em_memoria_e_cancelamento_nao_vira_fallback()

@@ -94,41 +94,54 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
                     ex.GetType().Name);
             }
 
-            // Durante a execução, a última política conhecida tem precedência.
-            if (_lastGood is not null)
-            {
-                LastSource = "memory";
-                return _lastGood;
-            }
-
-            // Após reiniciar o serviço offline, recupera a última versão persistida.
-            try
-            {
-                var cached = await ReadCacheAsync(cancellationToken).ConfigureAwait(false);
-                _lastGood = cached;
-                LastSource = "disk";
-                return cached;
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Trace.TraceWarning("SafeUpload: cache remoto indisponível/inválido: {0}",
-                    ex.GetType().Name);
-            }
-
-            // Somente no primeiro uso sem política remota recuperável.
-            var fallback = LocalPolicyStore.CreateDefault();
-            fallback.EnsureValid();
-            LastSource = "default";
-            return fallback;
+            return await RestoreUnsynchronizedAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>Inicializa a proteção pelo disco ou padrão existente, sem esperar uma conexão HTTP.</summary>
+    public async Task<Policy> LoadCachedOrDefaultAsync(CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { return await RestoreUnsynchronizedAsync(cancellationToken).ConfigureAwait(false); }
+        finally { _gate.Release(); }
+    }
+
+    private async Task<Policy> RestoreUnsynchronizedAsync(CancellationToken cancellationToken)
+    {
+        // Durante a execução, a última política conhecida tem precedência.
+        if (_lastGood is not null)
+        {
+            LastSource = "memory";
+            return _lastGood;
+        }
+
+        // Após reiniciar o serviço offline, recupera a última versão persistida.
+        try
+        {
+            var cached = await ReadCacheAsync(cancellationToken).ConfigureAwait(false);
+            _lastGood = cached;
+            LastSource = "disk";
+            return cached;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceWarning("SafeUpload: cache remoto indisponível/inválido: {0}",
+                ex.GetType().Name);
+        }
+
+        // Somente no primeiro uso sem política remota recuperável.
+        var fallback = LocalPolicyStore.CreateDefault();
+        fallback.EnsureValid();
+        LastSource = "default";
+        return fallback;
     }
 
     private async Task<Policy> ReadCacheAsync(CancellationToken cancellationToken)

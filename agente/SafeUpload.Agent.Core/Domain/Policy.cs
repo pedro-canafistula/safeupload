@@ -96,6 +96,16 @@ public sealed record Policy(
     /// <exception cref="InvalidPolicyException">Se a política não puder ser aplicada.</exception>
     public void EnsureValid()
     {
+        if (Version <= 0)
+        {
+            throw new InvalidPolicyException("version precisa ser maior que zero.");
+        }
+
+        if (ActiveCategories.Any(category => !Enum.IsDefined(category)))
+        {
+            throw new InvalidPolicyException("A política contém uma categoria não reconhecida.");
+        }
+
         if (ActiveCategories.Count == 0)
         {
             throw new InvalidPolicyException(
