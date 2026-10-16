@@ -689,6 +689,16 @@ class RunnerModeControls(unittest.TestCase):
             for value in ['-00:01:00', '00:99:00', 'bad']:
                 with self.assertRaises(ValueError):
                     duration.seconds(value)
+            self.assertNotIn('CLOCK JUMP', output)
+            jumped = out / 'feature-release-results' / 'agent-tests-user.trx'
+            root = ET.Element('{' + NS + '}TestRun')
+            ET.SubElement(root, '{' + NS + '}Times', start='2026-10-15T22:10:54+01:00', finish='2026-10-16T02:19:16+01:00')
+            results = ET.SubElement(root, '{' + NS + '}Results')
+            ET.SubElement(results, '{' + NS + '}UnitTestResult', testName='short', duration='00:05:00', outcome='Passed')
+            ET.ElementTree(root).write(jumped, encoding='utf-8', xml_declaration=True)
+            output, _ = duration.report(out)
+            self.assertIn('feature-release/user: 14902.000 s (CLOCK JUMP SUSPECTED: summed test time 300.000 s; use host elapsed)', output)
+            self.assertEqual(1, output.count('CLOCK JUMP'))
 
 
 if __name__ == '__main__':

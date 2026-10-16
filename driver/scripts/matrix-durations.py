@@ -3,6 +3,8 @@
 
 Offline and read-only. Missing/malformed legs are reported with a nonzero exit;
 failed tests remain in the duration report. Merged TRX files are not counted twice.
+TRX Times come from the guest wall clock, which can jump (~4 h after boot): a leg whose wall time exceeds
+its summed test time by more than JUMP_SLACK is flagged; use the host-side elapsed time for that leg.
 """
 import argparse
 import datetime as dt
@@ -12,6 +14,7 @@ import xml.etree.ElementTree as ET
 
 NS = {'t': 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'}
 PROFILES = ('feature-debug', 'feature-release')
+JUMP_SLACK = 600.0
 
 
 def timestamp(value):
@@ -47,16 +50,19 @@ def report(out):
                 elapsed = (finish - start).total_seconds()
                 if elapsed < 0:
                     raise ValueError('TRX finish precedes start')
-                legs.append((leg, elapsed, start))
+                summed = 0.0
                 for row in root.findall('t:Results/t:UnitTestResult', NS):
                     duration = seconds(row.attrib['duration'])
+                    summed += duration
                     if duration > 60:
                         slow.append((duration, leg, row.attrib['testName'], row.attrib.get('outcome', '?')))
+                legs.append((leg, elapsed, start, summed))
             except (OSError, ET.ParseError, ValueError, KeyError) as exc:
                 errors.append((leg, str(exc)))
     lines = ['TRX leg wall times (Times start/finish):']
-    for leg, elapsed, _ in legs:
-        lines.append(f'{leg}: {elapsed:.3f} s')
+    for leg, elapsed, _, summed in legs:
+        jump = f' (CLOCK JUMP SUSPECTED: summed test time {summed:.3f} s; use host elapsed)' if elapsed > summed + JUMP_SLACK else ''
+        lines.append(f'{leg}: {elapsed:.3f} s{jump}')
     if legs:
         first = min(legs, key=lambda row: row[2])
         lines.append(f'First leg: {first[0]}: {first[1]:.3f} s')

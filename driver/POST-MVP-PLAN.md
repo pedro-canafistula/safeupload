@@ -84,10 +84,16 @@ approval; compile-time staging-out builds are retired." This approves no activat
      round; with the Defender exclusions a feature user leg fell from 3,426 s to 1,158 s (Debug) / 931 s (Release), SYSTEM legs ~7 s
      ([durations](evidence/2026-10-15/matrix-durations-t5-batch3q-diag.txt)); the remaining long test (10,000-update checkpoint,
      990 s) goes with the default incremental-validation cutover, so neither splitting test classes nor 6 cores is needed now.
-     **Re-measured the same evening:** after the cutover three 10,000-iteration tests ran concurrently and dominated the leg
-     (Debug user 1,418 s, [durations](evidence/2026-10-15/matrix-durations-t5-batch3s-diag.txt)), so both builders went to 6 vCPUs
-     (owner's conditional OK); class splitting was not done (the cost is in single tests). `t5-batch3t-diag` (`e83849a8`): Debug user
-     726 s, Release user 581 s, about half ([durations](evidence/2026-10-15/matrix-durations-t5-batch3t-diag.txt)).
+     **Re-measured the same evening (corrected):** after the cutover three 10,000-iteration tests dominated the leg (Debug user
+     1,418 s, [durations](evidence/2026-10-15/matrix-durations-t5-batch3s-diag.txt)); both builders were set to 6 vCPUs (owner's
+     conditional OK) and `t5-batch3t-diag` ran 726 s / 581 s ([durations](evidence/2026-10-15/matrix-durations-t5-batch3t-diag.txt)).
+     That halving was **not** the vCPUs: without a libvirt CPU topology QEMU presents one socket per vCPU and Windows 10 client uses
+     at most 2 sockets, so both builders ran on 2 logical CPUs at 4 and at 6 vCPUs (test counters `cpuCount=2`). The slow run
+     overlapped another flush-heavy matrix on the same host disk while the host was near memory exhaustion; per-update cost is
+     ~85% flushes ([`t5-batch3u-diag`](evidence/2026-10-15/matrix-durations-t5-batch3u-diag.txt): 17.3 of 20.1 ms, ~5.7 ms per
+     flush under load vs 1.3 ms idle). Contention is the working hypothesis, not a measured cause. Both domains now have 1 socket
+     × 6 cores (builder2 verified 6 logical CPUs). `matrix-durations.py` now flags guest clock jumps (that run's Release TRX shows
+     14,902 s; host elapsed for the whole matrix was 20 min 39 s).
 
 **2026-10-15 — remove process-taint enforcement.** Owner, in the session: remove process-taint enforcement from the product; it
 is superseded by staging, and keeping it in code, tests and harness rows wastes development and builder time. The AGENTS.md
