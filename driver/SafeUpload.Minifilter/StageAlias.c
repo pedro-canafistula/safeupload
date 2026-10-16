@@ -66,6 +66,7 @@ static NTSTATUS StageAliasOpenId(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_STRI
             (Directory ? FILE_DIRECTORY_FILE : FILE_NON_DIRECTORY_FILE),
         NULL, 0, IO_IGNORE_SHARE_ACCESS_CHECK, NULL);
     ExFreePoolWithTag(buffer, ALIAS_TAG);
+    if (!NT_SUCCESS(status)) { *Handle = NULL; *Object = NULL; } /* _Outptr_result_nullonfailure_ */
     return status;
 }
 
