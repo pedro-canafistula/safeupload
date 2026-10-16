@@ -9677,9 +9677,10 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     {
         BOOLEAN handled = FALSE;
-        if (KeGetCurrentIrql() == PASSIVE_LEVEL)
+        if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
             *CompletionContext = NULL; /* _Flt_CompletionContext_Outptr_ requires a NULL output on entry */
             result = StageMvpNamespacePre(Data, Objects, CompletionContext, &handled);
+        }
         if (handled) return result;
     }
 #endif
