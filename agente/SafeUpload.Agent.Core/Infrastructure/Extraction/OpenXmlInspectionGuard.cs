@@ -11,6 +11,9 @@ internal static class OpenXmlInspectionGuard
     internal const string Word = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     internal const string Sheet = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     internal const string Drawing = "http://schemas.openxmlformats.org/drawingml/2006/main";
+    internal const string Presentation = "http://schemas.openxmlformats.org/presentationml/2006/main";
+    private const string Diagram = "http://schemas.openxmlformats.org/drawingml/2006/diagram";
+    private const string ModernPresentationComment = "http://schemas.microsoft.com/office/powerpoint/2018/8/main";
 
     // Every admitted type has a reader route and a required XML root (custom XML
     // alone permits an arbitrary well-formed root). Formatting
@@ -63,8 +66,39 @@ internal static class OpenXmlInspectionGuard
         CustomFilePropertiesPart => ("Properties", "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties"), // Enterprise labels and arbitrary property values.
         CustomXmlPart => ("*", ""), // Arbitrary well-formed XML root; all text and attributes are read.
         CustomXmlPropertiesPart => ("datastoreItem", "http://schemas.openxmlformats.org/officeDocument/2006/customXml"), // Data-store identity and schema references.
+        PresentationPart => ("presentation", Presentation), // Slide/master lists and presentation strings.
+        SlidePart => ("sld", Presentation), // All shapes, tables and hidden slides.
+        SlideLayoutPart => ("sldLayout", Presentation), // Stored placeholder text, even when not displayed.
+        SlideMasterPart => ("sldMaster", Presentation),
+        NotesSlidePart => ("notes", Presentation),
+        NotesMasterPart => ("notesMaster", Presentation),
+        HandoutMasterPart => ("handoutMaster", Presentation),
+        SlideCommentsPart => ("cmLst", Presentation), // Classic comments.
+        CommentAuthorsPart => ("cmAuthorLst", Presentation),
+        PowerPointCommentPart => ("cmLst", ModernPresentationComment), // Modern comments and replies.
+        PowerPointAuthorsPart => ("authorLst", ModernPresentationComment),
+        PresentationPropertiesPart => ("presentationPr", Presentation),
+        ViewPropertiesPart => ("viewPr", Presentation),
+        TableStylesPart => ("tblStyleLst", Drawing),
+        DiagramDataPart => ("dataModel", Diagram), // SmartArt node text.
+        DiagramLayoutDefinitionPart => ("layoutDef", Diagram),
+        DiagramStylePart => ("styleDef", Diagram),
+        DiagramColorsPart => ("colorsDef", Diagram),
+        DiagramPersistLayoutPart => ("drawing", "http://schemas.microsoft.com/office/drawing/2008/diagram"),
         _ => throw new UnsupportedContentException()
     };
+
+    // Presentation admission is deliberately independent of the Word/Excel
+    // allowlist. Adding a presentation reader must not admit new parts there.
+    private static bool PresentationOnly(OpenXmlPart part) => part is
+        PresentationPart or SlidePart or SlideLayoutPart or SlideMasterPart or NotesSlidePart or NotesMasterPart or
+        HandoutMasterPart or SlideCommentsPart or CommentAuthorsPart or PowerPointCommentPart or PowerPointAuthorsPart or
+        PresentationPropertiesPart or ViewPropertiesPart or TableStylesPart or DiagramDataPart or DiagramLayoutDefinitionPart or
+        DiagramStylePart or DiagramColorsPart or DiagramPersistLayoutPart;
+
+    private static bool PresentationShared(OpenXmlPart part) => part is
+        ChartPart or VmlDrawingPart or CoreFilePropertiesPart or ExtendedFilePropertiesPart or CustomFilePropertiesPart or
+        ThemePart or ThemeOverridePart or CustomXmlPart or CustomXmlPropertiesPart;
 
     public static IReadOnlyList<OpenXmlPart> Inspect(OpenXmlPackage package, Stream content, CancellationToken cancellationToken)
     {
@@ -81,6 +115,10 @@ internal static class OpenXmlInspectionGuard
                 var part = relationship.OpenXmlPart;
                 if (!visited.Add(part.Uri)) continue;
                 if (visited.Count > MaximumParts) throw new InspectionLimitException();
+                if (package is PresentationDocument
+                    ? !PresentationOnly(part) && !PresentationShared(part)
+                    : PresentationOnly(part))
+                    throw new UnsupportedContentException();
                 _ = Root(part);
                 bool wordPart = part is MainDocumentPart or HeaderPart or FooterPart or FootnotesPart or EndnotesPart or WordprocessingCommentsPart;
                 bool sheetPart = part is WorkbookPart or WorksheetPart or SharedStringTablePart or WorksheetCommentsPart;
