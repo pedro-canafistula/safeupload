@@ -34,8 +34,10 @@ no pending rename/cleanup, confirmed stage absence, and one of:
 
 Unresolved transfers and all bound/security/provenance records stay on their existing
 paths. Caller completion supplies the complete expected snapshot and is checked again
-under the journal gate. Publisher maintenance skips outstanding native-success/outcome
-and journal-progress work. Notification delivery remains in its independent durable
+under the journal gate. Terminal recovery uses its validated snapshot without per-entry
+I/O; the separate maintenance pass performs fresh checks before archival. Bound ACK
+recovery stays independent of this terminal no-op. Publisher maintenance skips
+outstanding native-success/outcome and journal-progress work. Notification delivery remains in its independent durable
 notification store; archival never deletes that store or replays public mutations.
 Released last close is polled while hot so a formerly driver-held stage can eventually
 finish disposal. Private archive I/O failures use monotonic 250 ms to 8 s backoff;
@@ -87,6 +89,8 @@ compaction behavior and the bound path are preserved.
 ## Component evidence and remaining gates
 
 Focused Linux controls and measurements: [result](evidence/2026-10-16/ux-journal-result.md).
+The [terminal-recovery follow-up](evidence/2026-10-16/ux-journal2-result.md) restores
+read-free terminal dispatch while maintenance retains exact archival validation.
 Independent design/implementation reviews and closure are linked there. Existing
 assertions and thresholds remain unchanged. These are component results, not a
 Windows user/SYSTEM matrix, a matched protected-pair T4 10k verdict, or T11 closure.
