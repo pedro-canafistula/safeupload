@@ -11,6 +11,16 @@ public sealed class AuditQueueOverrideTests : IDisposable
     public void Dispose() => _workspace.Dispose();
 
     [Fact]
+    public async Task Identidade_fornecida_pelo_servico_nao_e_substituida_pela_conta_do_processo()
+    {
+        var sink = new LocalQueueAuditSink(_workspace.QueueFile);
+        var record = new AuditOverride(Guid.NewGuid(), "Justificativa autorizada", DateTimeOffset.UtcNow,
+            "S-1-5-21-123-456-789-1001", "PC-ORIGEM");
+        await sink.RecordOverrideAsync(record, CancellationToken.None);
+        Assert.Equal(record, Assert.Single(await sink.ReadPendingOverridesAsync(100, CancellationToken.None)));
+    }
+
+    [Fact]
     public async Task Proxima_gravacao_sobrevive_a_ultima_linha_truncada()
     {
         var sink = new LocalQueueAuditSink(_workspace.QueueFile);

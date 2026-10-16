@@ -16,6 +16,8 @@ public sealed class DispatcherReliabilityTests
     [InlineData(200, "{\"acceptedEvents\":0,\"acceptedOverrides\":0}")]
     [InlineData(200, "null")]
     [InlineData(200, "invalid json")]
+    [InlineData(200, "{\"acceptedEvents\":-1,\"acceptedOverrides\":1}")]
+    [InlineData(200, "{\"acceptedEvents\":1,\"acceptedOverrides\":2}")]
     public async Task Falha_nao_confirma_registros_e_reinicio_reenvia_evento_e_justificativa(int status, string body)
     {
         using var workspace = new TestWorkspace();
@@ -51,6 +53,21 @@ public sealed class DispatcherReliabilityTests
         catch (JsonException) { /* O laço de produção registra a falha e tenta novamente. */ }
     }
 
+    [Fact]
+    public async Task Heartbeat_indisponivel_nao_impede_envio_de_justificativas_pendentes()
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        await sink.RecordOverrideAsync(Guid.NewGuid().ToString(), "Justificativa pendente", CancellationToken.None);
+        var handler = new Handler(200, "{\"acceptedEvents\":0,\"acceptedOverrides\":1}") { FailHeartbeat = true };
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/agent/") };
+        using var dispatcher = new HttpAgentDispatcher(sink, new Policies(), client, "PC-TESTE",
+            TimeSpan.FromSeconds(30), NullLogger<HttpAgentDispatcher>.Instance);
+        await dispatcher.RunCycleAsync(CancellationToken.None);
+        Assert.NotNull(handler.Payload);
+        Assert.Empty(await sink.ReadPendingOverridesAsync(100, CancellationToken.None));
+    }
+
     private sealed class Policies : IPolicyStore
     {
         public Task<Policy> LoadAsync(CancellationToken token) => Task.FromResult(LocalPolicyStore.CreateDefault());
@@ -60,10 +77,14 @@ public sealed class DispatcherReliabilityTests
     {
         public TaskCompletionSource Sent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string? Payload { get; private set; }
+        public bool FailHeartbeat { get; init; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             if (request.RequestUri!.AbsolutePath.EndsWith("heartbeat"))
+            {
+                if (FailHeartbeat) throw new HttpRequestException("Heartbeat indisponível");
                 return new HttpResponseMessage(HttpStatusCode.OK);
+            }
             Payload = await request.Content!.ReadAsStringAsync(token);
             Sent.TrySetResult();
             return new HttpResponseMessage((HttpStatusCode)status)

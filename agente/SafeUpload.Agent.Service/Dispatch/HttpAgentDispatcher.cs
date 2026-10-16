@@ -57,6 +57,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
         ArgumentNullException.ThrowIfNull(client);
         ArgumentException.ThrowIfNullOrWhiteSpace(endpointId);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(interval, TimeSpan.Zero);
 
         _auditSink = auditSink;
         _policyStore = policyStore;
@@ -79,8 +80,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
         {
             try
             {
-                await SendHeartbeatAsync(stoppingToken).ConfigureAwait(false);
-                await DispatchPendingAsync(stoppingToken).ConfigureAwait(false);
+                await RunCycleAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -124,6 +124,17 @@ public sealed class HttpAgentDispatcher : BackgroundService
         {
             _logger.LogWarning("Heartbeat recusado pelo servidor: {Status}.", (int)response.StatusCode);
         }
+    }
+
+    internal async Task RunCycleAsync(CancellationToken cancellationToken)
+    {
+        try { await SendHeartbeatAsync(cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Heartbeat falhou; o envio da auditoria será tentado independentemente.");
+        }
+        await DispatchPendingAsync(cancellationToken).ConfigureAwait(false);
     }
 
     internal async Task DispatchPendingAsync(CancellationToken cancellationToken)

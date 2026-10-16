@@ -85,7 +85,7 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
     }
 
     /// <inheritdoc />
-    public async Task RecordOverrideAsync(
+    public Task RecordOverrideAsync(
         string eventId,
         string justification,
         CancellationToken cancellationToken)
@@ -97,14 +97,25 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         // mesmo arquivo de propósito: a ordem entre o bloqueio e a
         // justificativa é a informação que uma investigação procura, e
         // separar em dois arquivos obrigaria a reconstruí-la por horário.
+        return RecordOverrideAsync(new AuditOverride(Guid.Parse(eventId), justification,
+            DateTimeOffset.UtcNow, Environment.UserName, Environment.MachineName), cancellationToken);
+    }
+
+    public async Task RecordOverrideAsync(AuditOverride auditOverride, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(auditOverride);
+        if (auditOverride.EventId == Guid.Empty) throw new ArgumentException("Identificador de evento vazio.", nameof(auditOverride));
+        ArgumentException.ThrowIfNullOrWhiteSpace(auditOverride.Justification);
+        ArgumentException.ThrowIfNullOrWhiteSpace(auditOverride.UserName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(auditOverride.EndpointId);
         var record = new
         {
             type = "override",
-            eventId,
-            justification,
-            occurredAtUtc = DateTimeOffset.UtcNow,
-            userName = Environment.UserName,
-            endpointId = Environment.MachineName,
+            eventId = auditOverride.EventId,
+            justification = auditOverride.Justification,
+            occurredAtUtc = auditOverride.OccurredAtUtc,
+            userName = auditOverride.UserName,
+            endpointId = auditOverride.EndpointId,
         };
 
         var line = JsonSerializer.Serialize(record, Options);
