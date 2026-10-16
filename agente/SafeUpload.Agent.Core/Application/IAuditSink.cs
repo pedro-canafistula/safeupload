@@ -36,6 +36,10 @@ public interface IAuditSink
     /// <param name="justification">O motivo, como o usuário escreveu.</param>
     Task RecordOverrideAsync(string eventId, string justification, CancellationToken cancellationToken);
 
+    /// <summary>Registra a identidade obtida pelo serviço a partir da conexão autenticada.</summary>
+    Task RecordOverrideAsync(AuditOverride record, CancellationToken cancellationToken)
+        => RecordOverrideAsync(record.EventId.ToString(), record.Justification, cancellationToken);
+
     /// <summary>
     /// Últimos eventos registrados, do mais recente para o mais antigo. É o que
     /// alimenta a grade do simulador.

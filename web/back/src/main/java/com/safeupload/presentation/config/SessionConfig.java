@@ -23,8 +23,12 @@ public class SessionConfig implements WebMvcConfigurer {
             public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
                 if ("OPTIONS".equals(request.getMethod())) return true;
                 var session = request.getSession(false);
-                if (session == null || auth.usuarioAtivo((Long) session.getAttribute("idUsuario")) == null) {
+                var user = session == null ? null : auth.usuarioAtivo((Long) session.getAttribute("idUsuario"));
+                if (user == null) {
                     throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Entre novamente para consultar os dados.");
+                }
+                if (!"admin".equals(user.getRole())) {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acesso restrito à administração.");
                 }
                 return true;
             }

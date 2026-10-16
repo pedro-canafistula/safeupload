@@ -83,6 +83,7 @@ public class ClipboardInspectionServiceTests
         public RecordingLogger<ClipboardInspectionService> Logger { get; } = new();
 
         public ClipboardInspectionService Service { get; }
+        public ClipboardAuditSink Sink { get; } = new();
 
         public Task<ClipboardResponse> Copiar(string texto, string? origem = "notepad", uint? sessao = 1) =>
             Pedir(ClipboardRequest.Classify(texto, origem), sessao);
@@ -93,15 +94,107 @@ public class ClipboardInspectionServiceTests
         public Task<ClipboardResponse> Estado(uint? sessao = 1) =>
             Pedir(ClipboardRequest.State(), sessao);
 
-        public async Task<ClipboardResponse> Pedir(ClipboardRequest pedido, uint? sessao)
+        public async Task<ClipboardResponse> Pedir(ClipboardRequest pedido, uint? sessao,
+            string? userName = null, CancellationToken cancellationToken = default)
         {
-            var resultado = await Service.HandleAsync(pedido, sessao, CancellationToken.None);
+            var resultado = await Service.HandleAsync(pedido, sessao, cancellationToken);
             ClipboardLog.Write(Logger, resultado.Observation);
-            return resultado.Response;
+            return await ClipboardAudit.WriteAsync(resultado, Sink, Logger, userName, cancellationToken);
         }
     }
 
     // ---------------------------------------------------------- classificação
+
+    [Theory]
+    [InlineData(ClipboardMode.Audit)]
+    [InlineData(ClipboardMode.Block)]
+    public async Task Observacao_vai_para_fila_sem_texto_e_sem_alegar_bloqueio(ClipboardMode mode)
+    {
+        var harness = new Harness(Politica(mode) with { Version = 7 });
+        var copy = await harness.Copiar("Cliente Joaquim: " + CpfValido, origem: "EXCEL");
+        Assert.Empty(harness.Sink.Events);
+        var response = await harness.Pedir(ClipboardRequest.Paste(copy.CopyId!, "chrome"),
+            1, "DOMINIO\\usuario");
+        var audit = Assert.Single(harness.Sink.Events);
+        Assert.Equal(audit.EventId.ToString(), response.EventId);
+        Assert.Equal(AuditChannel.Clipboard, audit.Channel);
+        Assert.Equal(Verdict.AllowedWithoutInspection, audit.Verdict);
+        Assert.Equal("clipboard_focus_observed", audit.NotInspectedReason);
+        Assert.Equal(7, audit.PolicyVersion);
+        Assert.Equal(Environment.MachineName, audit.EndpointId);
+        Assert.Equal("DOMINIO\\usuario", audit.UserName);
+        Assert.Equal("EXCEL", audit.ProcessName);
+        Assert.Equal("chrome", audit.DestinationPath);
+        Assert.Equal(("Cliente Joaquim: " + CpfValido).Length * 2, audit.SizeBytes);
+        Assert.Contains(Category.Cpf, audit.Categories);
+        Assert.Empty(audit.MaskedSnippets);
+        Assert.Empty(audit.FileName);
+        Assert.Empty(audit.Extension);
+        Assert.False(audit.Dispatched);
+        var json = System.Text.Json.JsonSerializer.Serialize(audit);
+        Assert.DoesNotContain("Joaquim", json);
+        Assert.DoesNotContain(CpfValido, json);
+        Assert.DoesNotContain(CpfSemMascara, json);
+    }
+
+    [Fact]
+    public async Task Nao_audita_copia_limpa_local_excluida_desconhecida_ou_de_outra_sessao()
+    {
+        var harness = new Harness(Politica(ClipboardMode.Audit));
+        var copy = await harness.Copiar(CpfValido);
+        await harness.Foco(copy.CopyId!, "explorer");
+        await harness.Foco(copy.CopyId!, "chrome", sessao: 2);
+        await harness.Foco("desconhecida", "chrome");
+        var clean = await harness.Copiar("limpo");
+        await harness.Foco(clean.CopyId!, "chrome");
+        await harness.Foco(copy.CopyId!, "chrome");
+        var excluded = await harness.Copiar(CpfValido, origem: "KeePass");
+        await harness.Foco(excluded.CopyId!, "chrome");
+        Assert.Empty(harness.Sink.Events);
+        var disabled = new Harness(Politica(ClipboardMode.Off));
+        var offCopy = await disabled.Copiar(CpfValido);
+        await disabled.Foco(offCopy.CopyId!, "chrome");
+        Assert.Empty(disabled.Sink.Events);
+    }
+
+    [Fact]
+    public async Task Falha_da_fila_nao_altera_decisao_nem_expoe_mensagem_da_excecao()
+    {
+        var harness = new Harness(Politica(ClipboardMode.Audit));
+        harness.Sink.Failure = new IOException("segredo: " + CpfValido);
+        var copy = await harness.Copiar(CpfValido);
+        var response = await harness.Foco(copy.CopyId!, "chrome");
+        Assert.Equal(ClipboardPasteVerdict.AuditOnly, response.Verdict);
+        Assert.Null(response.EventId);
+        Assert.Empty(harness.Sink.Events);
+        Assert.DoesNotContain(harness.Logger.Lines, line => line.Contains(CpfValido));
+    }
+
+    [Fact]
+    public async Task Texto_acima_do_teto_registra_tamanho_sem_inventar_categorias()
+    {
+        var harness = new Harness(Politica(ClipboardMode.Audit, maxTextLength: 10));
+        var copy = await harness.Pedir(new ClipboardRequest(ClipboardProtocol.ClassifyType,
+            Text: "inicio", TextLength: 500_000, SourceProcess: "notepad"), 1);
+        await harness.Foco(copy.CopyId!, "chrome");
+        var audit = Assert.Single(harness.Sink.Events);
+        Assert.Equal(1_000_000L, audit.SizeBytes);
+        Assert.Empty(audit.Categories);
+        Assert.Empty(audit.MaskedSnippets);
+        Assert.Equal(Verdict.AllowedWithoutInspection, audit.Verdict);
+    }
+
+    [Fact]
+    public async Task Cancelamento_da_gravacao_e_propagado()
+    {
+        var harness = new Harness(Politica(ClipboardMode.Audit));
+        var copy = await harness.Copiar(CpfValido);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => harness.Pedir(
+            ClipboardRequest.Paste(copy.CopyId!, "chrome"), 1, cancellationToken: cancellation.Token));
+        Assert.Empty(harness.Sink.Events);
+    }
 
     [Fact]
     public async Task Copiar_um_cpf_marca_sujo()

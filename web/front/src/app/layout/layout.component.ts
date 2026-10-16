@@ -12,6 +12,9 @@ import { AuthService } from '../core/auth.service';
 export class LayoutComponent {
   menu = [
     { rota: '/painel', titulo: 'Painel' },
+    { rota: '/auditoria', titulo: 'Incidentes' },
+    { rota: '/endpoints', titulo: 'Endpoints e agentes' },
+    { rota: '/relatorios', titulo: 'Relatórios' },
     { rota: '/politicas', titulo: 'Políticas' },
     { rota: '/configuracoes', titulo: 'Configurações' }
   ];

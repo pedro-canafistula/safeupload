@@ -4,6 +4,7 @@ using SafeUpload.Agent.Service.Dispatch;
 using SafeUpload.Agent.Service.Interception;
 using SafeUpload.Agent.Service.Network;
 using SafeUpload.Agent.Service.Notifications;
+using SafeUpload.Agent.Service.Policies;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
 using System.Runtime.Versioning;
@@ -118,13 +119,13 @@ public static class Program
         builder.Services.AddSingleton<ClipboardCopyStore>();
         builder.Services.AddSingleton<ClipboardMetrics>();
 
-        // O canal de clipboard le a politica atras de um cache: com a politica
-        // vindo do painel, cada carga e uma chamada HTTP, e com o painel fora
-        // do ar ela espera o prazo do cliente; a colagem decide em 500 ms.
+        // Clipboard usa diretamente o snapshot remoto, já atualizado em fundo.
+        // O cache adicional fica somente no modo local para limitar leituras de disco.
         builder.Services.AddSingleton(provider => new ClipboardInspectionService(
-            new CachedPolicyStore(
-                provider.GetRequiredService<IPolicyStore>(),
-                ClipboardInspectionService.PolicyLifetime),
+            provider.GetRequiredService<IPolicyStore>() is RefreshingPolicyStore remotePolicy
+                ? remotePolicy
+                : new CachedPolicyStore(provider.GetRequiredService<IPolicyStore>(),
+                    ClipboardInspectionService.PolicyLifetime),
             provider.GetRequiredService<ClipboardCopyStore>(),
             provider.GetRequiredService<ClipboardMetrics>()));
 
@@ -160,9 +161,13 @@ public static class Program
                     ? parsedInterval
                     : 30;
 
-            // Timeout curto de proposito: a politica e lida no caminho da
-            // decisao, e um painel lento nao pode virar uma inspecao lenta. Se
-            // estourar, a HttpPolicyStore cai no padrao embutido.
+            if (timeoutSeconds <= 0 || intervalSeconds <= 0)
+                throw new InvalidOperationException("Os prazos de conexão e despacho do Centro de Administração precisam ser positivos.");
+            if (adminUri.Scheme != Uri.UriSchemeHttp && adminUri.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidOperationException("CentroAdministracao:BaseUrl precisa usar HTTP ou HTTPS.");
+
+            // A rede só é consultada em segundo plano. Inspeções usam o último
+            // snapshot validado mesmo durante timeout, falha ou reconexão.
             builder.Services
                 .AddHttpClient(HttpClientName, client =>
                 {
@@ -170,10 +175,16 @@ public static class Program
                     client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
                 });
 
-            builder.Services.AddSingleton<IPolicyStore>(provider =>
-                new HttpPolicyStore(
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
-                    endpointId));
+            builder.Services.AddSingleton<RefreshingPolicyStore>(provider =>
+                new RefreshingPolicyStore(
+                    new DurableHttpPolicyStore(
+                        provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                        endpointId,
+                        Path.Combine(AgentPaths.RootDirectory, "server-policy-cache.json")),
+                    TimeSpan.FromSeconds(30),
+                    provider.GetRequiredService<ILogger<RefreshingPolicyStore>>()));
+            builder.Services.AddSingleton<IPolicyStore>(provider => provider.GetRequiredService<RefreshingPolicyStore>());
+            builder.Services.AddHostedService(provider => provider.GetRequiredService<RefreshingPolicyStore>());
 
             builder.Services.AddHostedService(provider =>
                 new HttpAgentDispatcher(

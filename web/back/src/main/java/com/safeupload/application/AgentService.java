@@ -38,7 +38,10 @@ public class AgentService {
         return new Policy(1, List.of(Category.values()),
                 new MonitoredScopes(List.of(".txt", ".csv", ".docx", ".xlsx", ".pdf"),
                         List.of("C:\\SafeUpload\\Escopo Monitorado"), List.of(), true, true),
-                20, 5, false, false, true, List.of("System", "SafeUpload.Agent.App"));
+                20, 5, false, false, true, List.of("System", "SafeUpload.Agent.App"),
+                new Clipboard(ClipboardMode.Off,
+                        List.of("chrome", "msedge", "firefox", "brave", "opera", "WhatsApp", "Telegram", "ms-teams", "slack", "Discord", "OUTLOOK", "thunderbird"),
+                        List.of("KeePass", "KeePassXC", "1Password", "Bitwarden"), 100_000, true));
     }
 
     @Transactional
@@ -53,6 +56,9 @@ public class AgentService {
         for (AuditEvent event : batch.events()) {
             var document = mapper.valueToTree(event);
             ((com.fasterxml.jackson.databind.node.ObjectNode) document).remove("dispatched");
+            if (event.publishedSha256Hex() == null) {
+                ((com.fasterxml.jackson.databind.node.ObjectNode) document).remove("publishedSha256Hex");
+            }
             store("audit:" + event.eventId(), "audit", event.occurredAtUtc().toInstant(), document.toString());
         }
         for (OverrideEvent event : batch.overrides()) {
@@ -80,6 +86,17 @@ public class AgentService {
                 return mapper.readValue(stored.getPayload(), AuditEvent.class);
             } catch (JsonProcessingException exception) {
                 throw new IllegalStateException("Evento armazenado inválido", exception);
+            }
+        }).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<OverrideEvent> overrideEvents() {
+        return events.findByKindOrderByOccurredAtUtcDescEventKeyAsc("override").stream().map(stored -> {
+            try {
+                return mapper.readValue(stored.getPayload(), OverrideEvent.class);
+            } catch (JsonProcessingException exception) {
+                throw new IllegalStateException("Justificativa armazenada inválida", exception);
             }
         }).toList();
     }

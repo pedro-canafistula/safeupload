@@ -104,7 +104,9 @@ public sealed class ClipboardInspectionService
         // Registra sempre, inclusive com o canal desligado: uma cópia limpa
         // precisa substituir a suja que estava em vigor, e a política pode ter
         // mudado entre uma cópia e outra.
-        var copy = _copies.Register(sessionId, classification.Dirty, request.SourceProcess);
+        var copy = _copies.Register(sessionId, classification.Dirty, request.SourceProcess,
+            classification.Categories, (long)Math.Max(request.TextLength, request.Text?.Length ?? 0) * 2,
+            policy.Version);
 
         bool enabled = classification.Reason != ClipboardCopyReason.ChannelOff;
         ClipboardObservation? observation = null;
@@ -165,7 +167,10 @@ public sealed class ClipboardInspectionService
                 _metrics.Snapshot(),
                 SourceProcess: copy.SourceProcess,
                 DestinationProcess: request.DestinationProcess,
-                Verdict: verdict);
+                Verdict: verdict,
+                Categories: copy.Categories,
+                SizeBytes: copy.SizeBytes,
+                PolicyVersion: copy.PolicyVersion);
 
         return new ClipboardOutcome(
             new ClipboardResponse(ClipboardProtocol.PasteType, CopyId: copy.CopyId, Verdict: verdict),

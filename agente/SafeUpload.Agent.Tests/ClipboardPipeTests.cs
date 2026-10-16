@@ -76,12 +76,13 @@ public class ClipboardPipeTests
                 new FixedPolicyStore(Politica()),
                 new ClipboardCopyStore(),
                 new ClipboardMetrics());
-            _server = new ClipboardPipeServer(Service, Log, PipeName, retryDelay);
+            _server = new ClipboardPipeServer(Service, Log, Sink, PipeName, retryDelay);
         }
 
         public string PipeName { get; }
 
         public ClipboardInspectionService Service { get; }
+        public ClipboardAuditSink Sink { get; } = new();
 
         public ErrorLog<ClipboardPipeServer> Log { get; } = new();
 
@@ -149,6 +150,10 @@ public class ClipboardPipeTests
         Assert.NotNull(foco);
         Assert.Equal(ClipboardPasteVerdict.AuditOnly, foco.Verdict);
         Assert.Equal(1, server.Service.Metrics.FocusOnEgressWhileDirty);
+        var audit = Assert.Single(server.Sink.Events);
+        Assert.Equal(audit.EventId.ToString(), foco.EventId);
+        Assert.Contains(audit.UserName, new[] { Environment.UserName, System.Security.Principal.WindowsIdentity.GetCurrent().Name });
+        Assert.Equal("clipboard_focus_observed", audit.NotInspectedReason);
     }
 
     [Fact]
