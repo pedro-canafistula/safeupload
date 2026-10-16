@@ -89,7 +89,7 @@ public sealed class StagedLargeFileTests : IDisposable
     }
 
     [Fact]
-    public void Known_never_created_allocation_retires_content_while_retaining_metadata()
+    public void Known_never_created_allocation_retires_exact_metadata_without_accumulating_user_charge()
     {
         var budget = Budget(); Guid id = Guid.NewGuid();
         long first = budget.Reserve(id, "one", Path.Combine(_workspace.Root, id.ToString("N") + ".txt"));
@@ -97,7 +97,8 @@ public sealed class StagedLargeFileTests : IDisposable
         budget.RetireFailedAllocation(id);
         var restarted = Budget();
         long next = restarted.Reserve(Guid.NewGuid(), "one");
-        Assert.True(next >= 16 * MiB && next < first); // Content refunded, retained metadata still charged.
+        Assert.Equal(first, next); // Failed CREATE owns neither content nor durable authority.
+        Assert.Single(Directory.GetFiles(Path.Combine(_workspace.Root, ".space-reservations"), "*.json"));
     }
 
     [Fact]
@@ -155,27 +156,30 @@ public sealed class StagedLargeFileTests : IDisposable
     }
 
     [Fact]
-    public void Negative_allocation_receipts_cannot_exceed_the_global_metadata_envelope()
+    public void Historical_negative_receipts_are_charged_without_a_global_metadata_admission_veto()
     {
         var budget = Budget();
         for (int i = 0; i < StagedSpaceBudget.MetadataBytes / 4 / 4096; i++)
             File.WriteAllBytes(Path.Combine(_workspace.Root, Guid.NewGuid().ToString("N") + ".allocation-refused"),
                 new byte[Contract.RequestSize]);
-        budget.RequireNegativeReceiptSpace(_workspace.Root, creating: false);
-        Assert.Throws<StagedSpaceException>(() => budget.RequireNegativeReceiptSpace(_workspace.Root));
+        budget.RefreshNegativeReceiptStorage(_workspace.Root);
+        Assert.True(budget.Reserve(Guid.NewGuid(), "one") >= 16 * MiB);
+        Assert.True(budget.Reserve(Guid.NewGuid(), "two") >= 16 * MiB);
         Assert.Equal(StagedSpaceBudget.MetadataBytes / 4 / 4096, Directory.GetFiles(_workspace.Root).Length);
     }
 
     [Fact]
-    public void Unresolved_negative_receipt_temporary_holds_further_admission_without_deleting_evidence()
+    public void Unresolved_negative_receipt_temporary_is_charged_and_preserved_without_holding_other_admission()
     {
         var budget = Budget();
         string path = Path.Combine(_workspace.Root,
             Guid.NewGuid().ToString("N") + ".allocation-refused." + Guid.NewGuid().ToString("N") + ".tmp");
         File.WriteAllText(path, "interrupted refusal receipt");
-        Assert.Throws<IOException>(() => budget.RequireNegativeReceiptSpace(_workspace.Root));
+        budget.RefreshNegativeReceiptStorage(_workspace.Root);
         Assert.Equal("interrupted refusal receipt", File.ReadAllText(path));
-        Assert.Throws<IOException>(() => Budget());
+        var restarted = Budget();
+        Assert.True(restarted.Reserve(Guid.NewGuid(), "one") >= 16 * MiB);
+        Assert.True(restarted.Reserve(Guid.NewGuid(), "two") >= 16 * MiB);
         Assert.True(File.Exists(path));
     }
 

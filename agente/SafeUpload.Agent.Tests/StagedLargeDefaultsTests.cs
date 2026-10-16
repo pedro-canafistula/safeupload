@@ -189,18 +189,9 @@ public sealed class StagedLargeDefaultsTests : IDisposable
         for (int i = 0; i < 100; i++)
             NegativeReceipt();
         var budget = Upgrade();
-        budget.RequireNegativeReceiptSpace(Stage, creating: false);
+        budget.RefreshNegativeReceiptStorage(Stage);
         Assert.True(budget.Reserve(Guid.NewGuid(), Sid) >= 16 * MiB);
-        // 4 KiB on the developer host, up to 64 KiB on native fixtures: even
-        // the smallest unit permits at most 64 further files in the envelope.
-        for (int i = 0; i < 64; i++)
-        {
-            try { budget.RequireNegativeReceiptSpace(Stage); }
-            catch (StagedSpaceException) { break; }
-            NegativeReceipt();
-        }
-        Assert.Throws<StagedSpaceException>(() => budget.RequireNegativeReceiptSpace(Stage));
-        Assert.InRange(Directory.GetFiles(Stage).Length, 101, 164);
+        Assert.Equal(100, Directory.GetFiles(Stage).Length);
         Upgrade();
     }
 
@@ -210,7 +201,8 @@ public sealed class StagedLargeDefaultsTests : IDisposable
         Directory.CreateDirectory(Stage);
         string path = Path.Combine(Stage, Guid.NewGuid().ToString("N") + ".allocation-refused");
         File.WriteAllBytes(path, new byte[Contract.RequestSize]);
-        Assert.Throws<IOException>(() => Upgrade());
+        var budget = Upgrade();
+        Assert.True(budget.Reserve(Guid.NewGuid(), Sid) >= 16 * MiB);
         Assert.Equal(new byte[Contract.RequestSize], File.ReadAllBytes(path));
     }
 

@@ -96,6 +96,76 @@ public sealed class NotificationRecordTests : IDisposable
     }
 
     [Fact]
+    public void Staging_space_alert_and_invalid_input_do_not_close_later_notifications()
+    {
+        using var record = Record();
+        var alert = new TransferNotification(Guid.NewGuid(), "large.txt", TransferPhase.Retained,
+            InspectionFailure: InspectionFailureKind.NotEnoughStagingSpace);
+        record.Append(alert, 1);
+        Assert.Equal("Retained", Entries()[^1].Phase);
+        Assert.Null(Entries()[^1].Sha256Hex);
+        Assert.Throws<InvalidDataException>(() => record.Append(alert with { TransferId = Guid.Empty }, 1));
+        Assert.Throws<InvalidDataException>(() => record.Append(alert with { PublishedSha256Hex = new string('A', 64) }, 1));
+        Assert.Throws<InvalidDataException>(() => record.Append(alert with { OverrideAllowed = true }, 1));
+        var next = Transfer(); record.Append(next, 1); record.Heartbeat();
+        Assert.Equal(next.TransferId, Entries()[^2].TransferId);
+        Assert.Equal("Heartbeat", Entries()[^1].Kind);
+    }
+
+    [Fact]
+    public void Transient_storage_failure_recovers_in_process_preserves_damage_and_never_delivers_failed_emission()
+    {
+        using var record = new NotificationRecord(DirectoryPath, NullLogger.Instance, NotificationRecord.SegmentBytes,
+            "test/boot", testIdentity: true, recoverCorruption: true);
+        long now = System.Diagnostics.Stopwatch.GetTimestamp(); record.RecoveryClock = () => now;
+        string previousInstance = Entries()[^1].InstanceId;
+        var hub = Hub(record); using var subscription = hub.Subscribe();
+        string temporary = Path.Combine(DirectoryPath, "head.tmp");
+        Directory.CreateDirectory(temporary);
+        var failed = Transfer(); hub.Publish(failed);
+        Assert.False(subscription.Reader.TryRead(out _));
+        Assert.Throws<IOException>(() => record.Heartbeat());
+        now += System.Diagnostics.Stopwatch.Frequency * 2;
+        Assert.Throws<IOException>(() => record.Heartbeat()); // Unsafe child is never normalized.
+        Assert.True(Directory.Exists(temporary));
+        Directory.Delete(temporary);
+        byte[] damaged = File.ReadAllBytes(Active);
+        now += System.Diagnostics.Stopwatch.Frequency * 2;
+        var next = Transfer(); hub.Publish(next);
+        Assert.True(subscription.Reader.TryRead(out var delivered)); Assert.Equal(next, delivered);
+        Assert.False(subscription.Reader.TryRead(out _));
+        string archive = Assert.Single(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+        Assert.Equal(damaged, File.ReadAllBytes(Path.Combine(archive, "emissions.jsonl")));
+        Assert.NotEqual(previousInstance, Entries()[0].InstanceId);
+        Assert.Equal("Start", Entries()[0].Kind); Assert.Equal(1, Entries()[0].Sequence);
+        Assert.DoesNotContain(Entries(), entry => entry.TransferId == failed.TransferId);
+        Assert.Equal(next.TransferId, Entries()[^1].TransferId);
+        record.Dispose();
+        now += System.Diagnostics.Stopwatch.Frequency * 2;
+        Assert.Throws<ObjectDisposedException>(() => record.Append(Transfer(), 1));
+    }
+
+    [Fact]
+    public void Online_empty_history_recovery_starts_a_new_instance_even_for_an_initially_fresh_writer()
+    {
+        using var record = new NotificationRecord(DirectoryPath, NullLogger.Instance, NotificationRecord.SegmentBytes,
+            "test/boot", testIdentity: true, recoverCorruption: true);
+        long now = System.Diagnostics.Stopwatch.GetTimestamp(); record.RecoveryClock = () => now;
+        record.Append(Transfer(), 1);
+        string original = Entries()[^1].InstanceId;
+        string temporary = Path.Combine(DirectoryPath, "head.tmp"); Directory.CreateDirectory(temporary);
+        Assert.Throws<IOException>(() => record.Append(Transfer(), 1));
+        Directory.Delete(temporary);
+        File.Delete(Active); File.Delete(Path.Combine(DirectoryPath, "head.json"));
+        now += System.Diagnostics.Stopwatch.Frequency * 2;
+        record.Append(Transfer(), 1);
+        Assert.NotEqual(original, Entries()[0].InstanceId);
+        Assert.Equal(1, Entries()[0].Sequence); Assert.Equal(NotificationRecord.ZeroHash, Entries()[0].PreviousSha256);
+        Assert.Equal("Start", Entries()[0].Kind);
+        record.Dispose(); using var strict = Record(); // Recovered anchor/chain validates independently.
+    }
+
+    [Fact]
     public void Replayed_events_and_connection_status_are_recorded_again_before_send()
     {
         using var record = Record();

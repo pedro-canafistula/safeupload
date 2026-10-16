@@ -791,18 +791,18 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     // process/identity failures stay uncertain and generic DENY.
                     Process process;
                     try { process = Process.GetProcessById(processId); }
-                    catch (ArgumentException) { return null; }
+                    catch (ArgumentException) { return Refused("requester exited"); }
                     using (process)
                     {
-                        if (process.HasExited) return null;
+                        if (process.HasExited) return Refused("requester exited");
                         SessionResolver.ProcessIdentity requestor = SessionResolver.GetRequiredProcessIdentity(processId);
-                        if (!StagedTransferAllocator.AllocationOwnerMatches(source.RequestorCreationTime, requestor.CreationTimeFileTime)) return null;
+                        if (!StagedTransferAllocator.AllocationOwnerMatches(source.RequestorCreationTime, requestor.CreationTimeFileTime)) return Refused("requester creation time changed");
                         string processName = ReadRequesterProcessName(process);
                         Policy policy = await _policyStore.LoadCurrentAsync(CancellationToken.None).ConfigureAwait(false);
                         var operation = new FileOperation(destination, Path.GetFileName(destination),
                             Path.GetExtension(destination), 0, DateTime.MinValue, processName,
                             processId, destination, kind);
-                        if (!policy.IsMonitoredDestination(operation)) return null;
+                        if (!policy.IsMonitoredDestination(operation)) return Refused("destination is outside the current policy");
                         StagedTransfer? previous = null;
                         Guid? tombstoneOwner = null;
                         if (payload.ReferenceKind == StageV19AllocationReferenceKind.Followup)
@@ -819,17 +819,17 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                                 prior.Transfer.Destination != kind || prior.Transfer.ProcessId != processId ||
                                 prior.Transfer.SessionId != requestor.SessionId ||
                                 !string.Equals(prior.Transfer.RequestorSid, requestor.UserSid.Value, StringComparison.OrdinalIgnoreCase) ||
-                                prior.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime) return null;
+                                prior.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime) return Refused("follow-up parent or owner changed");
                             previous = prior.Transfer;
                         }
                         else if (payload.ReferenceKind == StageV19AllocationReferenceKind.Tombstone)
                         {
-                            if (payload.Disposition != 2) return null;
+                            if (payload.Disposition != 2) return Refused("tombstone requires FILE_CREATE");
                             TransferJournalEntry owner = await _stageJournal.ReadAsync(payload.ParentTransferId,
                                 CancellationToken.None).ConfigureAwait(false);
                             if (owner.Transfer.ProcessId != processId || owner.Transfer.SessionId != requestor.SessionId ||
                                 !string.Equals(owner.Transfer.RequestorSid, requestor.UserSid.Value, StringComparison.OrdinalIgnoreCase) ||
-                                owner.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime) return null;
+                                owner.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime) return Refused("tombstone owner changed");
                             tombstoneOwner = payload.ParentTransferId;
                             processName = owner.Transfer.ProcessName;
                         }
@@ -844,6 +844,12 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         return reply;
                     }
                 }, CancellationToken.None).GetAwaiter().GetResult();
+            StagedAllocationReply? Refused(string reason)
+            {
+                _logger.LogInformation("Allocation {ReservationId}, request {RequestId} refused before backing creation: {Reason}.",
+                    payload.AllocationReservationId, request.RequestId, reason);
+                return null;
+            }
             return (PortVerdict.Allow, resolved, resolved is null ? StageV20Result.NoAllocationCommitted : null);
         }
         catch (Exception ex)
@@ -1586,6 +1592,10 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         var archiveRetry = new StagedJournalMaintenanceRetry();
         while (!cancellationToken.IsCancellationRequested && _stageV20Ready && _stagingRecoveryReady)
         {
+            if (_stageAllocator is not null)
+                await _stageAllocator.RecoverFailedAllocationsAsync(cancellationToken, MaximumItemsPerPass,
+                    (id, error) => _logger.LogDebug(error, "Failed allocation recovery remains pending for {TransferId}.", id))
+                    .ConfigureAwait(false);
             IReadOnlyList<StagedDiscardRequest> pending = [];
             var maintenance = await MaintainTerminalJournalAsync(archiveRetry, async token =>
             {
@@ -1720,6 +1730,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         if (_stageJournal is null || _stagePublisher is null)
             throw new InvalidOperationException("The staging subsystem is not initialized.");
 
+            _stageAllocator?.RecoverFailedAllocationsAsync(stoppingToken, int.MaxValue,
+                (id, error) => _logger.LogWarning(error, "Failed allocation recovery held for {TransferId}; other saves remain available.", id))
+                .GetAwaiter().GetResult();
             _stageJournal.RetainInterruptedAsync(stoppingToken).GetAwaiter().GetResult();
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
             _stagePublisher.RecoverBoundReceiptsAsync(stoppingToken).GetAwaiter().GetResult();

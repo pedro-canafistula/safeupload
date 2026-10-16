@@ -313,6 +313,24 @@ public class NotificationHubTests
         Assert.False(unknown.Reader.TryRead(out _));
     }
 
+    [Fact]
+    public void Staging_space_alert_requires_exact_owner_and_replays_only_to_that_owner()
+    {
+        const string sid = "S-1-5-21-111-222-333-1000";
+        var hub = NotificationTestHub.Create();
+        using var owner = hub.Subscribe(7, sid);
+        using var other = hub.Subscribe(7, "S-1-5-21-999");
+        using var unknown = hub.Subscribe();
+        var alert = new TransferNotification(Guid.NewGuid(), "large.txt", TransferPhase.Retained,
+            InspectionFailure: InspectionFailureKind.NotEnoughStagingSpace);
+        Assert.False(hub.Publish(alert)); Assert.False(hub.Publish(alert, 7));
+        Assert.True(hub.Publish(alert, 7, sid));
+        Assert.True(owner.Reader.TryRead(out var delivered)); Assert.Equal(alert, delivered);
+        Assert.False(other.Reader.TryRead(out _)); Assert.False(unknown.Reader.TryRead(out _));
+        using var replay = hub.Subscribe(7, sid);
+        Assert.True(replay.Reader.TryRead(out var repeated)); Assert.Equal(alert, repeated);
+    }
+
     /// <summary>Relógio de teste, avançado à mão.</summary>
     private sealed class RelogioControlado(DateTimeOffset inicio) : TimeProvider
     {
