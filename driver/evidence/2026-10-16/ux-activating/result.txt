@@ -1,0 +1,64 @@
+SafeUpload published-file Activating local result — 2026-10-16
+Base=59c7e3196aa9e7087d353906c3922e28a20eb659
+SourceCommit=880722cb7f0a69f5a5d5680c96d309f8bc6da353
+BranchInBundle=ux/activating
+Scope=local implementation/diagnostics only; unbound MVP profile
+OriginalRepositoryGit=read-only; commits live in .scratch/ux-activating.git
+
+Root cause and remaining attribution:
+- Publisher rename begins a scoped alias probe; public FILE_OPEN RW meets the name gate before private allocation.
+- Promotion unnecessarily demanded null cache pointers after purge. Readers/cache can retain them after writers are gone.
+- Gate lookup requested no worker pass; a mapped-writer release without an observed callback could leave an idle name parked.
+- Source/shim defects are confirmed. No classification-step capture proves the sole blocker on the reported VM.
+- Global owner pins, instance/global Unknown, stale policy generation and same-ID siblings remain possible independent blockers.
+
+Change:
+- Require successful ordinary filesystem flush, retain both MM truncation/write-probe guards, then revalidate original context/SOP and all existing promotion checks.
+- Cache-pointer emptiness is diagnostic only. Trace adds honest flush basis 0x40, step 17 and flush-failure mask 0x00800000; no wire layout change.
+- Public CREATE can request one existing worker pass and wait at most 2 s, monotonic, max 4 waiters, no locks held; current name gate is re-read afterward.
+- Private allocation, original caller security, existing bounded unbound FILE_OPEN seed, inspection and publication remain required.
+- No Unknown clearing, replacement-SOP promotion, forced context deletion, background timer or new DDI identifier.
+
+Verification:
+- activating-selfcheck.py: 4 tests PASS; production bodies GCC+Clang -Wall -Wextra -Werror + UBSan.
+- Original worker at base compiles and fails retained-cache assertion; seven semantic mutations compile and fail as required.
+- All 14 driver/scripts/t5 Python self-checks PASS; final lower-case suite plus both UX checks: 15/15 exit 0.
+- Three existing kernel fixtures, T4 verdict, matrix/import runner controls PASS.
+- Two writer controls initially failed on absent historical fixtures; unchanged scratch copy with original retained fixtures passes both. Failed receipts retained.
+- Combined selected checks: 24 completed successfully across direct runs and exact-fixture reruns, no assertion/gate modifications.
+- Local offline feature Debug/Release Service/App/Tests compile: 6/6 PASS (SDK 10.0.400). No Windows matrix tests/packages claimed.
+- API delta PASS, no added external DDI identifiers; 99 supported host-stub declarations.
+- Full API audit fails identically on base and changed source: Taint.c:356 InsertHeadList missing header exception. Not suppressed.
+- git diff --check PASS.
+
+Advisory review:
+- gpt-6.1-sol, xhigh, primary-launched sub-agent activation_review; not a qualifying orchestrator-launched independent review.
+- Initial proposed removal of MM checks: REVISE for outstanding MDL write probes.
+- Both guards restored around flush; final verdict: ACCEPT for the narrowed source change, advisory only.
+
+Residual / required Windows gates:
+- Live read-only mapped views/image sections remain conservatively held by MmCanFileBeTruncated(NULL). Prepared MDL probes remain held.
+- An overloaded worker can exhaust the bounded admission wait; filesystem flush I/O has its own latency.
+- Existing retired-promotion harness requires bits 0xF and rejects >0x3F; new honest receipt cannot satisfy it. Assertions unchanged; no qualification claimed.
+- No remote builder/VM, WDK/PREfast/ApiValidator, binary import gate, PS 5.1 parse or protected runtime run was performed.
+- Before qualification: fresh orchestrator review, feature Debug/Release Windows kernel/static/import gates; matched packages and hashes.
+- win10-debug3 t5actor rows in ordinary/runtime/boot Verifier: FILE_OPEN RW after 4 s / 60 s / minutes from fresh process; seed/private edits before publication.
+- Word open+edit+Save: title not Read-Only, reopen exact clean edit; CPF edit blocked with prior public bytes unchanged, including all temp/backup names.
+- Reader/cache/probe/mapping-release, denied NTFS write, sticky Unknown, policy/identity/flush failures; independent destination/raw observations; separate restoration.
+
+Raw local receipt paths:
+.scratch/verification/selfchecks.json (first run retains two missing-fixture failures)
+.scratch/verification/final-source-controls.json and final-source-controls.log
+.scratch/verification/activating-delivery.log
+.scratch/verification/writer-controls-with-retained-fixtures.log
+.scratch/verification/local-agent-compile.log
+.scratch/verification/kernel-api-final.log and api-audit/ (borrowed audit + reference hashes)
+.scratch/activating-* (generated failed setups and expected negative-mutation runs)
+
+Source SHA256:
+d602cf334e2f1f33e83185d961dff4591cc1e7a743c82a88c25b4153a085c0ab  driver/SafeUpload.Minifilter/Protocol.h
+f1e641f3c500b3b4c8d4958fbf0648d356da15e4ecebf0a910c7f8efc396e40b  driver/SafeUpload.Minifilter/Stage.h
+bfc4e0e2e219195ad6a3d63d92599199c3102bb75a2a36bc74261bf383577012  driver/SafeUpload.Minifilter/StageStream.c
+d4bc90b82d0f12753757d9806cfe49a420d27f411937ad95a6eb3411f3624879  driver/SafeUpload.Minifilter/StageWriters.c
+3692418a08dcd6232574ac9e9271b83b3ccde2d93d5258be0a86bc1368054e4d  driver/scripts/ux/activating-selfcheck.py
+873bffd616bb0b11d2a0b7ef5432efd5a07a3645947fd859b747964191d9d59e  driver/scripts/ux/activating_fixture.c

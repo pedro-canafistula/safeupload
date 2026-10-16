@@ -38,7 +38,7 @@ policy, rename-loss, sibling, marker-generation and final CAS checks. Retained
 cache pointers may remain. Both existing `MmCanFileBeTruncated(SOP, NULL)`
 checks remain: they guard outstanding data-section write probes, including a
 prepared MDL whose prepare IRP's W has already ended. Checking before the flush
-prevents a probe completing/dirtifying just after that flush from supplying a
+prevents a probe completing/dirtying just after that flush from supplying a
 false drained-cache proof. This also conservatively holds read-only mapped
 views/image sections; this patch does not claim to distinguish those from
 outstanding probes. Retirement is unchanged; no old incarnation or Unknown is
@@ -157,6 +157,7 @@ suppressed. This is not a new binary import, WDK, PREfast or ApiValidator pass.
 A Sol 6.1 xhigh sub-agent gave advisory ACCEPT after identifying and correcting
 the MDL/write-probe issue. Under the status plan's review provenance rule this
 worker-launched review is advisory, not the fresh orchestrator-launched
-qualifying review. No VM, remote builder or Windows gate ran. Raw logs and
-failed fixture setup attempts are under `.scratch/verification`; the concise
-delivery receipt records hashes and remaining Windows obligations.
+qualifying review. No VM, remote builder or Windows gate ran. Raw receipts are
+under `.scratch/verification`; generated failed fixtures remain under
+`.scratch/activating-*`. The [delivery receipt](evidence/2026-10-16/ux-activating/result.txt)
+records source hashes and remaining Windows obligations.
