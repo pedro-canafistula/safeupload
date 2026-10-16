@@ -6740,6 +6740,7 @@ static NTSTATUS StageAbortUnattachedAllocation(_Inout_ PSTAGE_STREAM Stream);
 #pragma alloc_text(PAGE, StageAbortUnattachedAllocation)
 #endif
 
+_IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageAbortUnattachedAllocation(_Inout_ PSTAGE_STREAM Stream)
 {
     UINT32 result = 0;
