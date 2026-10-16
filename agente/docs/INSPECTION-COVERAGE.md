@@ -2,9 +2,9 @@
 
 Both extraction APIs use the same readers. Word/Excel/PDF round 2 has component matrix evidence in the
 [T9 status plan](../../driver/POST-MVP-PLAN.md#t9-large-files-and-complete-inspection).
-The PowerPoint increment still requires the Windows feature matrix and protected qualification.
+Each format increment requires its own Windows feature matrix and protected qualification.
 Unsupported content yields `unsupported_format`: staged Blocked, legacy AllowedWithoutInspection.
-No OCR, embedded-file inspection or macro execution is provided. Archives are a separate increment.
+Archive-specific refusal reasons are listed below. No OCR, Office embedded-package inspection or macro execution is provided.
 
 ## Word (.docx)
 
@@ -46,8 +46,9 @@ Limits: 16,384 parts (visited set retained), 32,770 ZIP entries, XML depth 256.
 
 The template, slide-show and macro-enabled containers use the same presentation part model.
 `.pptm` is accepted only without VBA or other uninspected parts. Legacy binary `.ppt` remains unsupported.
-As with existing formats, the current policy must include the extension in its inspection scope;
-this increment does not change policy defaults. The fixtures explicitly scope all four extensions.
+As with existing formats, the current policy must include the extension in its inspection scope.
+The agent's newly provisioned default and backend policy now include all four extensions; an existing
+explicit policy remains authoritative and is not silently migrated.
 
 | Payload location | Treatment | Reason |
 |---|---|---|
@@ -82,6 +83,50 @@ Independent raw ZIP/XML fixtures in `PowerPointContentCoverageTests` cover clean
 hidden slides, image-only decks, unknown/orphan parts, opaque payloads, malformed tails and item boundaries through both inspection paths.
 `PowerPointStreamingInspectionTests` covers fragmented/legacy parity, EOF-only CPF, collected live reader state,
 cancellation and borrowed-source ownership. These are local component controls, not Windows or protected-pair qualification.
+
+## Archives (.zip; .7z explicitly refused)
+
+ZIP members use the registered text/CSV, Word, Excel, PowerPoint and PDF streaming inspectors, including their existing
+complete-or-refuse rules. Both service inspection modes scan each member separately inside one existing worker and
+one policy deadline; legacy still captures/hashes the same outer bytes for cache authority. No member is extracted to disk.
+The direct ZIP streaming and legacy extraction APIs use the same member walk and insert boundaries between names/bodies/members.
+
+| Archive content/structure | Treatment | Reason |
+|---|---|---|
+| Stored/Deflate ZIP members, including nested ZIPs | Read | Strict header/inventory reconciliation, exact compressed completion, expanded length and CRC before dispatch. |
+| Each complete entry name, directory/container name and member body | Read separately | Names are data; no filesystem extraction, path resolution, fetch or cross-member match. |
+| Empty ZIP; empty supported members; zero-payload directories | Read/validate | No payload is silently omitted; ordinary zero-byte-file handling is unchanged. |
+| Sensitive members or names | Blocked | Existing categories/masks; `Finding.MemberName` identifies the member, nested names separated by `!/`. Sensitive name components become `[sensitive name]`; controls are escaped. |
+| Encrypted ZIP, including strong/masked-header flags | Refused: `archive_encrypted` | Passwords/decryption are not attempted. |
+| Images, unknown members, unsupported/opaque payloads inside an Office/PDF member | Refused | `archive_unsupported_member` or the child inspector's existing refusal. One failure discards all prior findings. |
+| All nonempty .7z archives, including encrypted/header-encrypted archives | Refused: `archive_7z_unavailable` | No managed 7z parser with pre-admission allocation bounds is qualified in this increment. |
+| ZIP64, multi-disk, self-extracting prefix, comments, unknown extras, special/link entries, ambiguous/duplicate names | Refused | Only the documented ZIP subset is admitted; valid unsupported structures use `archive_unsupported_structure`. |
+| Missing/hidden/overlapping local records, inconsistent central/local/descriptor metadata, malformed names, bad CRC, truncated/extra compressed frames | Refused | Parse failure; no partial approval or partial findings. |
+
+ZIP-specific admission bounds: **three archive levels including the outer archive**, **16,384 entries cumulatively**
+(the existing Office/scanner ceiling), and **1,000:1 maximum per-entry expansion ratio**. The unchanged current policy
+size limit applies to the actual held outer source, each member and the **sum of actual expanded member bytes across
+the entire tree**, including nested ZIP container bytes. Counts/work are never refunded at disposal or reset at nesting.
+The shared finding/candidate ceiling stays 16,384; retained diagnostic-name storage is separately capped at the same
+policy byte budget (UTF-16). Refusal uses `inspection_limit` or `file_too_large`, never truncation. The existing policy
+inspection deadline covers all archive work, queueing and member scans, with no per-member deadline reset.
+
+The strict recognizer validates EOCD and central/local records before BCL ZIP metadata allocation. It admits only store
+and Deflate, explicit version/flag forms, fully reconciled signed/unsigned data descriptors, strict UTF-8 or ASCII names,
+and structurally checked extended/NTFS timestamp extras. Deflate's one-byte bounded input facade prevents read-ahead
+from hiding a suffix; a nonempty final read must observe the final marker. Member byte arrays are cleared/disposed
+on completion, refusal, parse/limit failure and cancellation, including late worker completion after caller timeout.
+
+These bounds cover the added ZIP layer, member storage and scanner state. They do not establish allocation bounds
+inside the existing Office/PDF inspectors or total process peak memory. Incomplete staged inspection is Blocked;
+legacy retains its established AllowedWithoutInspection error classification and never reports Approved for a partial scan.
+Existing explicit policies remain authoritative. Newly provisioned agent and backend defaults include PowerPoint,
+ZIP and the explicit 7z refusal route; no other policy default changes.
+
+`ArchiveInspectionTests`/`ArchiveIntegrityTests` use independent raw ZIP headers/CRC, BCL seekable/nonseekable writers,
+and independently generated encrypted ZIP/7z fixtures. They cover member provenance and redaction, nested existing
+inspectors, exact/over budget boundaries, malformed/late failures, compressed framing, extraction parity and worker/lease lifetime.
+The [design and rejected-parser record](T9-ARCHIVE-INSPECTION.md) lists the 7z limitation and independent review conditions.
 
 ## PDF
 

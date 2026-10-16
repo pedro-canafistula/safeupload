@@ -202,7 +202,7 @@ internal sealed record MonitoredScopesDocument
 
     public static MonitoredScopesDocument Default { get; } = new()
     {
-        Extensions = [".txt", ".csv", ".docx", ".xlsx", ".pdf"],
+        Extensions = [".txt", ".csv", ".docx", ".xlsx", ".pdf", ".pptx", ".pptm", ".potx", ".ppsx", ".zip", ".7z"],
 
         // Caminho de máquina, e não sob %USERPROFILE%: quem lê esta política é
         // um serviço rodando como LocalSystem, para quem %USERPROFILE% aponta

@@ -1,0 +1,69 @@
+{
+  "status": "local diagnostic PASS; Windows archive matrix/protected qualification pending",
+  "worktree_base": "1d485942f35ab449ef8a4b752cdc9003446e6ab7",
+  "uncommitted": true,
+  "changed_files": [
+    "agente/README.md",
+    "agente/SafeUpload.Agent.Core/Application/InspectionService.cs",
+    "agente/SafeUpload.Agent.Core/Domain/Finding.cs",
+    "agente/SafeUpload.Agent.Core/Domain/InspectionResult.cs",
+    "agente/SafeUpload.Agent.Core/Domain/StreamingContentScanner.cs",
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ArchiveInspectionBudget.cs",
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ExtractorRegistry.cs",
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ZipArchiveExtractor.cs",
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ZipInspectionGuard.cs",
+    "agente/SafeUpload.Agent.Core/Infrastructure/PolicyDocument.cs",
+    "agente/SafeUpload.Agent.Tests/ArchiveFixture.cs",
+    "agente/SafeUpload.Agent.Tests/ArchiveInspectionTests.cs",
+    "agente/SafeUpload.Agent.Tests/ArchiveIntegrityTests.cs",
+    "agente/SafeUpload.Agent.Tests/PolicyTests.cs",
+    "agente/docs/INSPECTION-COVERAGE.md",
+    "agente/docs/T9-ARCHIVE-INSPECTION.md",
+    "web/back/src/main/java/com/safeupload/application/AgentService.java",
+    "web/back/src/test/java/com/safeupload/FunctionalMigrationTest.java"
+  ],
+  "new_test_methods": 29,
+  "new_test_cases": 97,
+  "tests_removed_from_stage_baseline": 0,
+  "compile": "all four profiles, Service/App/Tests, warnaserror PASS (12 builds)",
+  "focused_debug": {
+    "passed": 456,
+    "failed": 0,
+    "skipped": 0
+  },
+  "focused_release": {
+    "passed": 456,
+    "failed": 0,
+    "skipped": 0
+  },
+  "temporary_integration_debug": {
+    "passed": 494,
+    "failed": 0,
+    "skipped": 0
+  },
+  "preflight_current_vs_latest": "FAIL: five upstream all-zero-card methods are absent from this older branch; none removed by this delta",
+  "preflight_integration_vs_latest": "PASS; 43 required methods present, zero removals; actual offline xUnit discovery; not Windows matrix evidence",
+  "latest_feat_baseline": "2261eeba47d34fba362e65464b1737a361e1583e",
+  "expected_worktree_four_feature_legs": {
+    "debug_user": 2360,
+    "debug_system": 25,
+    "release_user": 2360,
+    "release_system": 25,
+    "total": 4770
+  },
+  "expected_integrated_four_feature_legs": {
+    "debug_user": 2398,
+    "debug_system": 25,
+    "release_user": 2398,
+    "release_system": 25,
+    "total": 4846
+  },
+  "backend_tests": "not run: JDK 26.0.2.1 available; Maven/Gradle and project wrappers unavailable",
+  "defaults": "agent/backend extension lists exactly equal; every other initializer byte unchanged",
+  "runtime_dependencies_added": [],
+  "seven_zip": "explicit archive_7z_unavailable refusal; SharpCompress 0.50.4 MIT (2026-08-05) assessed/rejected for pre-output/header/dictionary allocation bounds; no NuGet package/hash or lock file added",
+  "review": "../t9-archives-design-review-sol61.md: ACCEPT WITH CONDITIONS; implemented in guard/accounting/dispatch controls; not implementation/VM qualification",
+  "retained_failure": "focused-debug1: empty-Deflate fixture emitted zero compressed bytes; corrected fixture to final empty block [3,0], guard/assertions unchanged",
+  "limits": "existing policy size/deadline unchanged; ZIP guards depth3, cumulative entries16384, per-entry ratio1000, shared candidates16384, diagnostic UTF-16 quota at policy bytes; existing Office/PDF allocation limits remain",
+  "scope": "ZIP supported strict subset; .7z refused; no public extraction/temp files; no commit/push/rebase/VM or remote builder run"
+}

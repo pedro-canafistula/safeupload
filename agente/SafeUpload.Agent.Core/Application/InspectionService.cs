@@ -225,6 +225,16 @@ public sealed class InspectionService
                 return fromCache;
             }
         }
+        catch (ArchiveSizeException)
+        {
+            return await CompleteAsync(operation, policy, stopwatch, inspectionFailure, [],
+                "file_too_large", auditAndCache, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ArchiveRefusalException refusal)
+        {
+            return await CompleteAsync(operation, policy, stopwatch, inspectionFailure, [],
+                refusal.ReasonCode, auditAndCache, cancellationToken).ConfigureAwait(false);
+        }
         catch (InspectionLimitException)
         {
             return await CompleteAsync(operation, policy, stopwatch, inspectionFailure, [],
@@ -353,6 +363,8 @@ public sealed class InspectionService
             byte[] bytes;
             await using (var input = OpenInspectionInput(operation.FilePath))
             {
+                if (extractor is ZipArchiveExtractor or SevenZipRefusingExtractor && input.Length > policy.MaxFileSizeBytes)
+                    throw new ArchiveSizeException();
                 bytes = new byte[checked((int)input.Length)];
                 await input.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
             }
@@ -362,6 +374,8 @@ public sealed class InspectionService
             if (_cache.TryGet(operation, policy.Version, out var cached, fingerprint) && cached is not null)
                 return (cached.Findings, fingerprint, cached);
             using var content = new MemoryStream(bytes, writable: false);
+            if (extractor is ZipArchiveExtractor archive)
+                return (await archive.InspectAsync(content, _extractors, policy, cancellationToken).ConfigureAwait(false), fingerprint, null);
             text = await extractor.ExtractAsync(content, cancellationToken).ConfigureAwait(false);
         }
         else
@@ -370,6 +384,8 @@ public sealed class InspectionService
             // never reuses approval cache entries. Keep this exact file object
             // open through extraction; a replaced name cannot change its bytes.
             await using var input = OpenStagedInput(operation, openSnapshot);
+            if (extractor is ZipArchiveExtractor archive)
+                return (await archive.InspectAsync(input, _extractors, policy, cancellationToken).ConfigureAwait(false), null, null);
             if (extractor is IStreamingTextExtractor streaming)
             {
                 Task<TextReader> OpenReader()
