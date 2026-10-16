@@ -1385,6 +1385,7 @@ typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_STATUS {
 #define SAFEUPLOAD_DENY_REASON_LEGACY_CREATE_GATE ((UINT32) 11)  /* the fail-closed create gate: AuxStatus = the instance's volume kind, name = its volume name */
 #define SAFEUPLOAD_DENY_REASON_BY_ID_UNDECIDABLE  ((UINT32) 12)  /* a write open by file ID whose names could not be classified here; AuxStatus = the classifier's status */
 #define SAFEUPLOAD_DENY_REASON_BY_ID_HIGH_HALF    ((UINT32) 13)  /* a write open by a 128-bit file ID with a non-zero high half on a volume that may hold a scope */
+#define SAFEUPLOAD_DENY_REASON_REGISTRY_SCOPE     ((UINT32) 14)  /* outside opened name; SOP/transition gate refused; AuxStatus = 0xE5000000 | SAFEUPLOAD_SOP_OUTSIDE_* snapshot */
 
 typedef struct _SAFEUPLOAD_DENY_RECORD {
     UINT64 Sequence;                // 1-based, strictly increasing; 0 never appears in a reply

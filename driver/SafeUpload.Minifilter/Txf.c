@@ -58,7 +58,7 @@ static BOOLEAN StageTxfNameInScope(_In_ PFLT_CALLBACK_DATA Data,
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (!inScope) {
         BOOLEAN protectedAlias = FALSE;
-        status = SafeUploadStageCheckNamedAliases(Objects->Instance, name, Kind, &protectedAlias, NULL);
+        status = SafeUploadStageCheckNamedAliases(Data, Objects->Instance, name, Kind, &protectedAlias, NULL);
         if (!NT_SUCCESS(status)) inScope = SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
         else inScope = protectedAlias;
     }
@@ -173,7 +173,7 @@ static BOOLEAN StageTxfSetInformationMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (!inScope) {
             BOOLEAN protectedAlias = FALSE;
-            status = SafeUploadStageCheckNamedAliases(Objects->Instance,
+            status = SafeUploadStageCheckNamedAliases(Data, Objects->Instance,
                 destination, kind, &protectedAlias, NULL);
             if (!NT_SUCCESS(status)) inScope = SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
             else inScope = protectedAlias;

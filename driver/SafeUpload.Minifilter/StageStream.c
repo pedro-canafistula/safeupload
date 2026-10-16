@@ -17,6 +17,8 @@ static NTSTATUS StageAdmissionProbeWorkerBody(_In_ PCUNICODE_STRING VolumeName,
     _In_ PCUNICODE_STRING RelativePath);
 static NTSTATUS StageRegistryEntryProbeWorkerBody(_In_ PCUNICODE_STRING VolumeName,
     _In_ PCUNICODE_STRING RelativePath, _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Status);
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageDirectoryCollisionComplete(_In_ HANDLE Handle);
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, StageQueryNoReparseIdentity)
 #pragma alloc_text(PAGE, SafeUploadStageAdmissionTraceControl)
@@ -24,6 +26,7 @@ static NTSTATUS StageRegistryEntryProbeWorkerBody(_In_ PCUNICODE_STRING VolumeNa
 #pragma alloc_text(PAGE, SafeUploadStageAdmissionProbe)
 #pragma alloc_text(PAGE, StageAdmissionProbeWorkerBody)
 #pragma alloc_text(PAGE, SafeUploadStageRegistryEntryProbe)
+#pragma alloc_text(PAGE, StageDirectoryCollisionComplete)
 #pragma alloc_text(PAGE, StageRegistryEntryProbeWorkerBody)
 #pragma alloc_text(PAGE, StageAdmissionTraceShutdown)
 #endif
@@ -207,7 +210,14 @@ typedef struct _STAGE_ADMISSION_TOKEN_SLOT {
     STAGE_ADMISSION_TOKEN_OWNER Owner;
     LONG64 DirectorySequence;
     BOOLEAN DirectoryMutation;
+    BOOLEAN DirectoryCollision;
 } STAGE_ADMISSION_TOKEN_SLOT, *PSTAGE_ADMISSION_TOKEN_SLOT;
+
+/* Internal token discriminator; no wire or persisted layout changes. */
+#define STAGE_EPOCH_DIRECTORY_COLLISION 0x80000000UL
+/* Counts reservations as well as live probe handles, including lower CREATEs. */
+#define STAGE_DIRECTORY_COLLISION_LIMIT 16
+static volatile LONG StageDirectoryCollisionHolds;
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 /* Captured on the original CREATE before it is queued. Variable inputs are
@@ -8087,7 +8097,8 @@ _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageDirectoryPlainName(_In_ PFLT_FILE_NAME_INFORMATION Name, _In_ PFILE_OBJECT Object);
 _IRQL_requires_(PASSIVE_LEVEL)
 static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
-    _Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects);
+    _Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
+    _In_ BOOLEAN CanHoldCollision, _Out_ PHANDLE CollisionHold);
 _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageExistingDirectory(_Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects, _In_ PFLT_FILE_NAME_INFORMATION Name);
@@ -8231,12 +8242,22 @@ static BOOLEAN StageNameLookupProvesAbsent(_In_ NTSTATUS Status)
     return SafeUploadNameLookupProvesAbsent(Status);
 }
 
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageDirectoryCollisionComplete(_In_ HANDLE Handle)
+{
+    PAGED_CODE();
+    FltClose(Handle);
+    InterlockedDecrement(&StageDirectoryCollisionHolds);
+}
+
 /* Empty directories carry no content. Forward the original CREATE; NTFS
  * decides the caller's grants, sharing, collisions and inherited security.
- * The ordinary file path still stages every descendant content create. */
+ * Scope-root/ancestor FILE_CREATE probes remain collision-only, with a pin
+ * through lower completion. Descendant content creates still use staging. */
 _IRQL_requires_(PASSIVE_LEVEL)
 static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
-    _Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects)
+    _Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
+    _In_ BOOLEAN CanHoldCollision, _Out_ PHANDLE CollisionHold)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
@@ -8246,6 +8267,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
     BOOLEAN deny = FALSE;
     UINT32 reason = SAFEUPLOAD_DENY_REASON_PROTECTED_NAMESPACE;
     PAGED_CODE();
+    *CollisionHold = NULL;
     if (!StageDirectoryCreateCanMutate(Data)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     status = FltGetFileNameInformation(Data,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
@@ -8264,6 +8286,48 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
             FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID | FILE_DELETE_ON_CLOSE) ||
             (disposition != FILE_CREATE && disposition != FILE_OPEN_IF && disposition != FILE_OPEN);
     }
+    /* The exception applies only to a plain supported create at an anchor.
+     * Unsupported EA/stream/attribute/options requests cannot acquire it. */
+    if (!deny && name != NULL && NT_SUCCESS(status) && disposition == FILE_CREATE &&
+        SafeUploadPolicyDirectoryIsScopeAnchor(&name->Name)) {
+        OBJECT_ATTRIBUTES attributes;
+        IO_STATUS_BLOCK io = {0};
+        PFILE_OBJECT object = NULL;
+        FILE_ATTRIBUTE_TAG_INFORMATION tag;
+        ULONG returned = 0;
+        deny = TRUE;
+        if (!CanHoldCollision || FlagOn(Data->Iopb->OperationFlags, SL_CASE_SENSITIVE) ||
+            Objects->Transaction != NULL || IoGetTopLevelIrp() != NULL || kind != SafeUploadVolumeFixed)
+            goto Decision;
+        if (InterlockedIncrement(&StageDirectoryCollisionHolds) > STAGE_DIRECTORY_COLLISION_LIMIT) {
+            InterlockedDecrement(&StageDirectoryCollisionHolds);
+            goto Decision;
+        }
+        /* FILE_CREATE of an existing directory cannot alter it. Keep a native
+         * no-share-delete handle through the original CREATE's completion so a
+         * delete/rename cannot turn this exception into an anchor creation.
+         * Existing DELETE handles conflict; no sharing check is bypassed. */
+        status = FltGetFileSystemType(Objects->Instance, &fs);
+        if (status == STATUS_SUCCESS && fs == FLT_FSTYPE_NTFS) {
+            InitializeObjectAttributes(&attributes, &name->Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+            status = FltCreateFileEx2(SafeUploadData.Filter, Objects->Instance, CollisionHold, &object,
+                FILE_READ_ATTRIBUTES, &attributes, &io, NULL, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN,
+                FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_COMPLETE_IF_OPLOCKED, NULL, 0, 0, NULL);
+        } else status = STATUS_NOT_SUPPORTED;
+        if (status == STATUS_SUCCESS) {
+            status = FltQueryInformationFile(Objects->Instance, object, &tag, sizeof(tag),
+                FileAttributeTagInformation, &returned);
+            if (status == STATUS_SUCCESS && returned == sizeof(tag) &&
+                FlagOn(tag.FileAttributes, FILE_ATTRIBUTE_DIRECTORY) &&
+                !FlagOn(tag.FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT)) deny = FALSE;
+        }
+        if (object != NULL) ObDereferenceObject(object);
+        if (deny) {
+            if (*CollisionHold != NULL) { FltClose(*CollisionHold); *CollisionHold = NULL; }
+            InterlockedDecrement(&StageDirectoryCollisionHolds);
+        }
+    }
+Decision:
     if (deny) SafeUploadDenyDetail(Data, reason, lookup, name != NULL ? &name->Name : NULL);
     if (name != NULL) FltReleaseFileNameInformation(name);
     if (!deny) return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -8393,7 +8457,7 @@ static BOOLEAN StageMvpNamespaceOpen(PFLT_CALLBACK_DATA Data)
 
 static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PSAFEUPLOAD_CREATE_ALIAS_PROOF AliasProof,
-    PSTAGE_ADMISSION_TOKEN_SLOT AdmissionSlot)
+    PSTAGE_ADMISSION_TOKEN_SLOT AdmissionSlot, PHANDLE DirectoryCollisionHold)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     PFLT_FILE_NAME_INFORMATION privateName = NULL;
@@ -8415,6 +8479,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     NTSTATUS status = STATUS_SUCCESS;
     UINT32 denyReason = SAFEUPLOAD_DENY_REASON_NONE;   /* recorded in the deny ring when the create is refused */
     NTSTATUS denyAux = STATUS_SUCCESS;
+    *DirectoryCollisionHold = NULL;
     UNREFERENCED_PARAMETER(AliasProof);   /* only the prototype's writer registry consumes it */
     /* StageAdmit owns the single by-ID classification in the prototype; do
      * not repeat the TxF helper's bounded open before its common by-ID path. */
@@ -8441,12 +8506,14 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE)) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
-            Data->IoStatus.Status = STATUS_ACCESS_DENIED;
-            Data->IoStatus.Information = 0;
-            return FLT_PREOP_COMPLETE;
+            if (!SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+            denyReason = SAFEUPLOAD_DENY_REASON_TOP_LEVEL_IRP;
+            status = STATUS_ACCESS_DENIED; goto Complete;
         }
-        FLT_PREOP_CALLBACK_STATUS directoryResult = StageAdmitDirectoryMutation(Data, Objects);
+        FLT_PREOP_CALLBACK_STATUS directoryResult = StageAdmitDirectoryMutation(Data, Objects,
+            AdmissionSlot != NULL && AdmissionSlot->Token != NULL, DirectoryCollisionHold);
         if (directoryResult != FLT_PREOP_SUCCESS_NO_CALLBACK) return directoryResult;
+        if (*DirectoryCollisionHold != NULL) return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 #endif
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
@@ -8574,8 +8641,10 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     if (writer && KeGetCurrentIrql() == PASSIVE_LEVEL && IoGetTopLevelIrp() == NULL &&
         kind == SafeUploadVolumeFixed && SafeUploadStageTouchesProtectedNamespace(name, kind) &&
         StageExistingDirectory(Data, Objects, name)) {
-        FLT_PREOP_CALLBACK_STATUS directoryResult = StageAdmitDirectoryMutation(Data, Objects);
+        FLT_PREOP_CALLBACK_STATUS directoryResult = StageAdmitDirectoryMutation(Data, Objects,
+            AdmissionSlot != NULL && AdmissionSlot->Token != NULL, DirectoryCollisionHold);
         FltReleaseFileNameInformation(name);
+        if (*DirectoryCollisionHold != NULL) return FLT_PREOP_SUCCESS_WITH_CALLBACK;
         return directoryResult;
     }
     /* A volume no current, pending or boot scope can match has nothing to protect. Without this a name the classifier
@@ -8657,7 +8726,9 @@ Readmit:
                 scopeSequence = SafeUploadPolicyScopeSequenceSnapshot();
             }
 #endif
-            status = SafeUploadStageCheckNamedAliases(Objects->Instance, name, kind, &protectedAlias, proof);
+            status = KeGetCurrentIrql() == PASSIVE_LEVEL && IoGetTopLevelIrp() == NULL ?
+                SafeUploadStageCheckNamedAliases(Data, Objects->Instance, name, kind, &protectedAlias, proof) :
+                STATUS_INVALID_DEVICE_STATE;
             if (proof != NULL && proof->Valid) proof->ScopeSequence = scopeSequence;
             if (status == STATUS_DELETE_PENDING) {
                 /* The probe found the file deleted-pending: no write can reach it, whatever its other names are, and the file
@@ -8830,6 +8901,16 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
+    /* Timestamps/attributes add no bytes and change no names, including through
+     * an outside hard link. Keep the resolved protected-name gates above, but
+     * don't require alias/traverse authority for this metadata-only operation.
+     * All content, EA, size, delete and namespace mutations retain their gates. */
+    if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION &&
+        Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileBasicInformation) {
+        unresolved = FALSE;
+        status = STATUS_SUCCESS;
+        goto Complete;
+    }
     status = FltGetFileSystemType(Objects->Instance, &fs);
     if (!NT_SUCCESS(status)) {
         denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
@@ -8840,7 +8921,7 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
         status = STATUS_SUCCESS;
         goto Complete;
     }
-    status = SafeUploadStageCheckObjectAliases(Objects->Instance, Objects->FileObject,
+    status = SafeUploadStageCheckObjectAliases(Data, Objects->Instance, Objects->FileObject,
         &name->Volume, kind, &protectedAlias);
     if (NT_SUCCESS(status)) {
         unresolved = FALSE;
@@ -8945,7 +9026,7 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     if (!allow) unresolved = FALSE;
     if (allow && !TrackedWriter) {
         BOOLEAN protectedAlias = FALSE;
-        status = SafeUploadStageCheckObjectAliases(Objects->Instance, Objects->FileObject,
+        status = SafeUploadStageCheckObjectAliases(Data, Objects->Instance, Objects->FileObject,
             &source->Volume, kind, &protectedAlias);
         if (status == STATUS_SUCCESS) {
             unresolved = FALSE;
@@ -9191,7 +9272,7 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedMutatingFsctl(PFLT_CALLBACK_DATA Da
         /* The alias scanner intentionally supports NTFS only. Do not let a cached/name-level out-of-scope result
          * stand in for alias coverage on network, removable, unknown, or other filesystem types. */
         if (Objects->FileObject == NULL) goto Unresolved;
-        status = SafeUploadStageCheckObjectAliases(Objects->Instance, Objects->FileObject,
+        status = SafeUploadStageCheckObjectAliases(Data, Objects->Instance, Objects->FileObject,
             &name->Volume, kind, &protectedAlias);
         FltReleaseFileNameInformation(name);
         name = NULL;
@@ -9276,11 +9357,20 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedWritableSection(PFLT_CALLBACK_DATA 
         SafeUploadStageWritersAwaitClassification(Objects->Instance, Objects->FileObject);
         sequence = SafeUploadPolicyScopeSequenceSnapshot();
         if (SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, FALSE) ||
-            SafeUploadStageProtectedName(name, kind) ||
-            SafeUploadStageWritersSopMatchesPolicy(Objects->Instance, Objects->FileObject, FALSE) ||
-            SafeUploadPolicyScopeSequenceSnapshot() != sequence) {
+            SafeUploadStageProtectedName(name, kind)) {
             unresolved = FALSE;
             denyReason = SAFEUPLOAD_DENY_REASON_POLICY_SCOPE;
+            goto Deny;
+        }
+        if (SafeUploadStageWritersSopMatchesPolicy(Objects->Instance, Objects->FileObject, FALSE) ||
+            SafeUploadPolicyScopeSequenceSnapshot() != sequence) {
+            unresolved = FALSE;
+            /* The opened name is outside. A conservative SOP/transition result
+             * is not a literal name match; retain the exact reason for the next
+             * capture instead of labelling unrelated cache files policyScope. */
+            denyReason = SAFEUPLOAD_DENY_REASON_REGISTRY_SCOPE;
+            denyAux = (NTSTATUS)(0xE5000000UL |
+                SafeUploadStageWritersSopOutsideWhy(Objects->Instance, Objects->FileObject));
             goto Deny;
         }
     }
@@ -9688,6 +9778,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_CREATE:
         {
         PVOID legacyCompletionContext = NULL;
+        HANDLE directoryCollisionHold = NULL;
         SAFEUPLOAD_CREATE_ALIAS_PROOF aliasProof;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         PVOID writerReservation = NULL;
@@ -9695,7 +9786,14 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
         NTSTATUS reserveStatus;
 #endif
         RtlZeroMemory(&aliasProof, sizeof(aliasProof));
-        result = StageAdmit(Data, Objects, &aliasProof, AdmissionSlot);
+        result = StageAdmit(Data, Objects, &aliasProof, AdmissionSlot, &directoryCollisionHold);
+        if (directoryCollisionHold != NULL) {
+            /* The original FILE_CREATE is collision-only. The epoch wrapper
+             * owns the handle until post-create, also on lower failure/drain. */
+            AdmissionSlot->DirectoryCollision = TRUE;
+            *CompletionContext = directoryCollisionHold;
+            return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+        }
         if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         /* StageCreate may have settled and detached the requester's last
@@ -10106,7 +10204,8 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchEpoch(PFLT_CALLBACK_DATA Data,
         slot.Owner = StageAdmissionTokenPostOperation;
         token = (PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)slot.Token;
         token->InnerCompletionContext = innerContext;
-        token->OperationKind = Data->Iopb->MajorFunction;
+        token->OperationKind = Data->Iopb->MajorFunction |
+            (slot.DirectoryCollision ? STAGE_EPOCH_DIRECTORY_COLLISION : 0);
         token->DirectoryMutation = slot.DirectoryMutation;
         *CompletionContext = (PVOID)((ULONG_PTR)token | 1);
         /* Even an otherwise no-callback pass-through holds its epoch through lower completion. */
@@ -10284,6 +10383,16 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,
             ((ULONG_PTR)CompletionContext & ~(ULONG_PTR)1);
         FLT_POSTOP_CALLBACK_STATUS result;
         if (token->Signature == SAFEUPLOAD_ADMISSION_EPOCH_TOKEN_SIGNATURE) {
+            if (FlagOn(token->OperationKind, STAGE_EPOCH_DIRECTORY_COLLISION)) {
+                /* The documented post-CREATE exception guarantees PASSIVE,
+                 * including this CREATE-only context's cleanup on drain. Close
+                 * before dropping the epoch; preserve the lower result. */
+                NT_ASSERT(Data->Iopb->MajorFunction == IRP_MJ_CREATE && KeGetCurrentIrql() == PASSIVE_LEVEL);
+                StageDirectoryCollisionComplete((HANDLE)token->InnerCompletionContext);
+                token->InnerCompletionContext = NULL;
+                SafeUploadPolicyAdmissionRelease(token);
+                return FLT_POSTOP_FINISHED_PROCESSING;
+            }
             if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING))
                 SafeUploadStageWritersMutationDraining(Objects->Instance,
                     Objects->FileObject != NULL ? Objects->FileObject->SectionObjectPointer : NULL);

@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
-typedef void VOID, *PVOID, *HANDLE, *PFLT_INSTANCE, *PFLT_VOLUME;
+typedef void VOID, *PVOID, *HANDLE, **PHANDLE, *PFLT_INSTANCE, *PFLT_VOLUME;
 typedef int32_t NTSTATUS, LONG, *PLONG;
 typedef int64_t LONG64;
 typedef uint32_t ULONG, UINT32, ACCESS_MASK, *PULONG;
@@ -22,13 +22,14 @@ typedef struct { ACCESS_MASK DesiredAccess; } IO_SECURITY_CONTEXT, *PIO_SECURITY
 typedef struct { NTSTATUS Status; ULONG Information; } IO_STATUS_BLOCK;
 typedef int FILE_INFORMATION_CLASS, FLT_FILESYSTEM_TYPE, SAFEUPLOAD_VOLUME_KIND, FLT_PREOP_CALLBACK_STATUS;
 typedef struct { BOOLEAN Directory; } FILE_STANDARD_INFORMATION;
+typedef struct { ULONG FileAttributes, ReparseTag; } FILE_ATTRIBUTE_TAG_INFORMATION;
 typedef struct { BOOLEAN DeleteFile; } FILE_DISPOSITION_INFORMATION, *PFILE_DISPOSITION_INFORMATION;
 typedef struct { ULONG Flags; HANDLE RootDirectory; ULONG FileNameLength; WCHAR FileName[512]; } FILE_RENAME_INFORMATION, *PFILE_RENAME_INFORMATION;
 typedef struct { struct { ULONG Options, FileAttributes, EaLength; PVOID EaBuffer; PIO_SECURITY_CONTEXT SecurityContext; } Create;
     struct { FILE_INFORMATION_CLASS FileInformationClass; PVOID InfoBuffer; ULONG Length; } SetFileInformation; } PARAMETERS;
-typedef struct { PARAMETERS Parameters; } IOPB;
+typedef struct { PARAMETERS Parameters; ULONG OperationFlags; } IOPB;
 typedef struct { IOPB *Iopb; IO_STATUS_BLOCK IoStatus; } CALLBACK_DATA, *PFLT_CALLBACK_DATA;
-typedef struct { PFLT_INSTANCE Instance; PFILE_OBJECT FileObject; PFLT_VOLUME Volume; } RELATED_OBJECTS;
+typedef struct { PFLT_INSTANCE Instance; PFILE_OBJECT FileObject; PFLT_VOLUME Volume; PVOID Transaction; } RELATED_OBJECTS;
 typedef const RELATED_OBJECTS *PCFLT_RELATED_OBJECTS;
 typedef struct { ULONG PrefixCount; UNICODE_STRING Prefixes[4]; } SAFEUPLOAD_POLICY;
 typedef struct { BOOLEAN Overflow; ULONG PrefixCount; USHORT PrefixChars[4]; WCHAR Prefixes[4][512]; } BOOT_SCOPES;
@@ -81,6 +82,10 @@ typedef struct { int unused; } OBJECT_ATTRIBUTES;
 #define GENERIC_ALL 0x10000000
 #define MAXIMUM_ALLOWED 0x2000000
 #define SYNCHRONIZE 0x100000
+#define FILE_ATTRIBUTE_DIRECTORY 0x10
+#define SL_CASE_SENSITIVE 1
+#define STAGE_DIRECTORY_COLLISION_LIMIT 16
+#define FileAttributeTagInformation 9
 #define FILE_ATTRIBUTE_REPARSE_POINT 0x400
 #define FILE_ATTRIBUTE_ENCRYPTED 0x4000
 #define FILE_ATTRIBUTE_OFFLINE 0x1000
@@ -119,6 +124,7 @@ typedef struct { int unused; } OBJECT_ATTRIBUTES;
 #define PAGED_CODE() assert(Irql == PASSIVE_LEVEL)
 static int Irql, NamespaceDepth, StageNamespaceResource, SafeUploadPolicyLock;
 static volatile LONG StageDirectoryMutationActive;
+static volatile LONG StageDirectoryCollisionHolds;
 static volatile LONG StageMvpNamespaceFence; /* merged with ux/kernel: the private rename also honours its namespace fence */
 static volatile LONG64 StageDirectorySequence;
 static BOOLEAN StageStopping, SafeUploadBootScopesActive;
@@ -138,6 +144,8 @@ static void StageAcquire(int *p) { assert(p==&StageNamespaceResource && Namespac
 static void StageRelease(int *p) { assert(p==&StageNamespaceResource && NamespaceDepth==1); --NamespaceDepth; }
 static LONG InterlockedCompareExchange(volatile LONG *p,LONG value,LONG compare) { LONG old=*p; if(old==compare)*p=value; return old; }
 static LONG64 InterlockedCompareExchange64(volatile LONG64 *p,LONG64 value,LONG64 compare) { LONG64 old=*p; if(old==compare)*p=value; return old; }
+static LONG InterlockedIncrement(volatile LONG *p) { return ++*p; }
+static LONG InterlockedDecrement(volatile LONG *p) { return --*p; }
 static LONG InterlockedExchange(volatile LONG *p,LONG value) { LONG old=*p; *p=value; return old; }
 static LONG64 InterlockedIncrement64(volatile LONG64 *p) { return ++*p; }
 static void FltAcquirePushLockShared(int *p) { assert(p==&SafeUploadPolicyLock && Irql==0); }
@@ -161,8 +169,8 @@ static int KeGetCurrentIrql(void) { return Irql; }
 static PVOID IoGetTopLevelIrp(void) { return NULL; }
 static BOOLEAN SafeUploadIsAuthenticatedClient(void) { return (BOOLEAN)Auth; }
 static ULONG FltGetRequestorProcessId(PFLT_CALLBACK_DATA d) { (void)d;return 100; }
-static NTSTATUS SafeUploadStageCheckObjectAliases(PFLT_INSTANCE i,PFILE_OBJECT o,PUNICODE_STRING v,SAFEUPLOAD_VOLUME_KIND k,PBOOLEAN p)
-{ (void)i;(void)o;(void)v;(void)k;*p=FALSE;return 0; }
+static NTSTATUS SafeUploadStageCheckObjectAliases(PFLT_CALLBACK_DATA data,PFLT_INSTANCE i,PFILE_OBJECT o,PUNICODE_STRING v,SAFEUPLOAD_VOLUME_KIND k,PBOOLEAN p)
+{ (void)data;(void)i;(void)o;(void)v;(void)k;*p=FALSE;return 0; }
 static BOOLEAN SafeUploadPublicationRename(PFLT_VOLUME v,PUNICODE_STRING s,PUNICODE_STRING d,PBOOLEAN refused)
 { (void)v;(void)s;(void)d;*refused=FALSE;return FALSE; }
 static NTSTATUS SafeUploadStageWritersPrepareRename(PFLT_CALLBACK_DATA d,PCFLT_RELATED_OBJECTS o,PUNICODE_STRING s,PUNICODE_STRING t,BOOLEAN link,PVOID *ctx)
@@ -172,8 +180,10 @@ static VOID SafeUploadStageWritersMutationDraining(PFLT_INSTANCE i,PVOID sop) { 
 #define SectionObjectPointer FileName.Buffer
 static NTSTATUS FltCreateFileEx(PVOID f,PFLT_INSTANCE i,HANDLE *h,PFILE_OBJECT *o,ACCESS_MASK access,OBJECT_ATTRIBUTES *a,IO_STATUS_BLOCK *io,PVOID size,ULONG attr,ULONG share,ULONG disp,ULONG options,PVOID ea,ULONG bytes,ULONG flags)
 { (void)f;(void)i;(void)a;(void)io;(void)size;(void)attr;assert(!NamespaceDepth&&Irql==0);assert(access==(FILE_READ_ATTRIBUTES|SYNCHRONIZE));assert(share==7&&disp==FILE_OPEN&&flags==0&&!ea&&!bytes);assert((options&(FILE_DIRECTORY_FILE|FILE_OPEN_REPARSE_POINT))==(FILE_DIRECTORY_FILE|FILE_OPEN_REPARSE_POINT));++ProbeCalls;if(ProbeStatus)return ProbeStatus;*h=&ProbeObject;*o=&ProbeObject;ProbeRefs=2;return 0; }
-static NTSTATUS FltQueryInformationFile(PFLT_INSTANCE i,PFILE_OBJECT o,FILE_STANDARD_INFORMATION *s,ULONG bytes,FILE_INFORMATION_CLASS c,PVOID returned)
-{ (void)i;(void)returned;assert(o==&ProbeObject&&bytes==sizeof(*s)&&c==FileStandardInformation);s->Directory=(BOOLEAN)NativeDirectory;return 0; }
+static NTSTATUS FltCreateFileEx2(PVOID f,PFLT_INSTANCE i,PHANDLE h,PFILE_OBJECT *o,ACCESS_MASK access,OBJECT_ATTRIBUTES *a,IO_STATUS_BLOCK *io,PVOID size,ULONG attr,ULONG share,ULONG disp,ULONG options,PVOID ea,ULONG bytes,ULONG flags,PVOID ctx)
+{ (void)f;(void)i;(void)a;(void)io;(void)size;(void)attr;(void)ctx;assert(!NamespaceDepth&&Irql==0);assert(access==FILE_READ_ATTRIBUTES&&share==(FILE_SHARE_READ|FILE_SHARE_WRITE)&&disp==FILE_OPEN&&flags==0&&!ea&&!bytes);assert((options&(FILE_DIRECTORY_FILE|FILE_OPEN_REPARSE_POINT))==(FILE_DIRECTORY_FILE|FILE_OPEN_REPARSE_POINT));assert(StageDirectoryCollisionHolds>0);++ProbeCalls;if(ProbeStatus)return ProbeStatus;*h=&ProbeObject;*o=&ProbeObject;ProbeRefs=2;return 0; }
+static NTSTATUS FltQueryInformationFile(PFLT_INSTANCE i,PFILE_OBJECT o,PVOID info,ULONG bytes,FILE_INFORMATION_CLASS c,PULONG returned)
+{ (void)i;assert(!NamespaceDepth&&Irql==0&&o==&ProbeObject);if(c==FileStandardInformation){assert(bytes==sizeof(FILE_STANDARD_INFORMATION));((FILE_STANDARD_INFORMATION *)info)->Directory=(BOOLEAN)NativeDirectory;}else{assert(c==FileAttributeTagInformation&&bytes==sizeof(FILE_ATTRIBUTE_TAG_INFORMATION));((FILE_ATTRIBUTE_TAG_INFORMATION *)info)->FileAttributes=FILE_ATTRIBUTE_DIRECTORY;}if(returned)*returned=bytes;return 0; }
 static VOID ObDereferenceObject(PFILE_OBJECT o) { assert(o==&ProbeObject&&ProbeRefs>0);--ProbeRefs; }
 static VOID FltClose(HANDLE h) { assert(h==&ProbeObject&&ProbeRefs>0);--ProbeRefs; }
 static VOID FltSetCallbackDataDirty(PFLT_CALLBACK_DATA d) { (void)d;++Dirty; }
@@ -184,7 +194,7 @@ static SAFEUPLOAD_POLICY Policy, Pending;
 static void reset(void)
 {
  Irql=NamespaceDepth=StageDirectoryMutationActive=StageStopping=SafeUploadBootScopesActive=0;
- StageDirectorySequence=0; Kind=SafeUploadVolumeFixed;Fs=FLT_FSTYPE_NTFS;MayMatch=NativeDirectory=1;Auth=PrepareCalls=Dirty=ProbeRefs=ProbeCalls=0;
+ StageDirectorySequence=0; StageDirectoryCollisionHolds=0; Kind=SafeUploadVolumeFixed;Fs=FLT_FSTYPE_NTFS;MayMatch=NativeDirectory=1;Auth=PrepareCalls=Dirty=ProbeRefs=ProbeCalls=0;
  NameStatus=ParseStatus=DestinationStatus=ProbeStatus=0;head(&StageStreams);head(&StageAllocationReservations);
  memset(&SafeUploadBootScopes,0,sizeof(SafeUploadBootScopes));memset(&Policy,0,sizeof(Policy));memset(&Pending,0,sizeof(Pending));
  Policy.PrefixCount=1;Policy.Prefixes[0]=u(L"\\Device\\V\\Protected");SafeUploadPolicy=&Policy;SafeUploadPendingPolicy=NULL;
@@ -195,6 +205,7 @@ static STAGE_ADMISSION_TOKEN_SLOT slot(void) { return (STAGE_ADMISSION_TOKEN_SLO
 static void tests(void)
 {
  IOPB iopb={0}; CALLBACK_DATA data={.Iopb=&iopb}; FILE_OBJECT file={.FileName=u(L"\\Protected\\folder")}; RELATED_OBJECTS objects={.Instance=(PVOID)1,.FileObject=&file};
+ HANDLE hold=NULL;
  IO_SECURITY_CONTEXT security={.DesiredAccess=GENERIC_ALL};iopb.Parameters.Create.SecurityContext=&security;
  reset();
  UNICODE_STRING root=u(L"\\Device\\V\\Protected"),child=u(L"\\Device\\V\\Protected\\a\\b.txt"),sibling=u(L"\\Device\\V\\Protected2\\a");
@@ -204,11 +215,20 @@ static void tests(void)
  assert(StageDirectoryPlainName(&Source,&file));UNICODE_STRING selectors[]={u(L"x:stream"),u(L"dir::$DATA"),u(L"dir:$I30:$INDEX_ALLOCATION"),u(L"a:$INDEX_ALLOCATION"),u(L"dir:Zone.Identifier")};
  for(unsigned i=0;i<RTL_NUMBER_OF(selectors);++i)assert(!StageDirectoryPlainPath(&selectors[i]));
  UNICODE_STRING drive=u(L"C:\\Protected\\folder"),ntdrive=u(L"\\??\\C:\\Protected\\folder");assert(StageDirectoryPlainPath(&drive)&&StageDirectoryPlainPath(&ntdrive));
- for(ULONG disposition=0;disposition<=5;++disposition){ iopb.Parameters.Create.Options=FILE_DIRECTORY_FILE|(disposition<<24);assert(StageAdmitDirectoryMutation(&data,&objects)==((disposition==1||disposition==2||disposition==3)?0:1)); }
- iopb.Parameters.Create.Options=FILE_DIRECTORY_FILE|(FILE_CREATE<<24);iopb.Parameters.Create.EaLength=1;assert(StageAdmitDirectoryMutation(&data,&objects)==1);iopb.Parameters.Create.EaLength=0;
- iopb.Parameters.Create.EaBuffer=&file;assert(StageAdmitDirectoryMutation(&data,&objects)==1);iopb.Parameters.Create.EaBuffer=NULL;
- iopb.Parameters.Create.Options|=FILE_DELETE_ON_CLOSE;assert(StageAdmitDirectoryMutation(&data,&objects)==1);iopb.Parameters.Create.Options&=~FILE_DELETE_ON_CLOSE;
- NameStatus=STATUS_OBJECT_PATH_NOT_FOUND;assert(StageAdmitDirectoryMutation(&data,&objects)==0);NameStatus=STATUS_ACCESS_DENIED;assert(StageAdmitDirectoryMutation(&data,&objects)==1);NameStatus=0;
+ for(ULONG disposition=0;disposition<=5;++disposition){ iopb.Parameters.Create.Options=FILE_DIRECTORY_FILE|(disposition<<24);assert(StageAdmitDirectoryMutation(&data,&objects,TRUE,&hold)==((disposition==1||disposition==2||disposition==3)?0:1)); }
+ iopb.Parameters.Create.Options=FILE_DIRECTORY_FILE|(FILE_CREATE<<24);iopb.Parameters.Create.EaLength=1;assert(StageAdmitDirectoryMutation(&data,&objects,TRUE,&hold)==1);iopb.Parameters.Create.EaLength=0;
+ iopb.Parameters.Create.EaBuffer=&file;assert(StageAdmitDirectoryMutation(&data,&objects,TRUE,&hold)==1);iopb.Parameters.Create.EaBuffer=NULL;
+ iopb.Parameters.Create.Options|=FILE_DELETE_ON_CLOSE;assert(StageAdmitDirectoryMutation(&data,&objects,TRUE,&hold)==1);iopb.Parameters.Create.Options&=~FILE_DELETE_ON_CLOSE;
+ NameStatus=STATUS_OBJECT_PATH_NOT_FOUND;assert(StageAdmitDirectoryMutation(&data,&objects,TRUE,&hold)==0);NameStatus=STATUS_ACCESS_DENIED;assert(StageAdmitDirectoryMutation(&data,&objects,TRUE,&hold)==1);NameStatus=0;
+ /* Existing scope roots and ancestors must remain collision-only. New child folders stay native above. */
+ Source.Name=root;iopb.Parameters.Create.Options=FILE_DIRECTORY_FILE|(FILE_CREATE<<24);
+ assert(StageAdmitDirectoryMutation(&data,&objects,TRUE,&hold)==0&&hold&&StageDirectoryCollisionHolds==1&&ProbeRefs==1);
+ StageDirectoryCollisionComplete(hold);assert(StageDirectoryCollisionHolds==0&&ProbeRefs==0);
+ Source.Name=u(L"\\Device\\V");
+ assert(StageAdmitDirectoryMutation(&data,&objects,TRUE,&hold)==0&&hold&&StageDirectoryCollisionHolds==1);
+ StageDirectoryCollisionComplete(hold);assert(StageDirectoryCollisionHolds==0&&ProbeRefs==0);
+ ProbeStatus=STATUS_OBJECT_PATH_NOT_FOUND;assert(StageAdmitDirectoryMutation(&data,&objects,TRUE,&hold)==1&&!hold&&!StageDirectoryCollisionHolds);ProbeStatus=0;
+ reset();
  iopb.Parameters.Create.Options=FILE_OPEN<<24;assert(StageExistingDirectory(&data,&objects,&Source));assert(iopb.Parameters.Create.Options&FILE_DIRECTORY_FILE);assert(Dirty==1&&ProbeRefs==0&&ProbeCalls==1);
  iopb.Parameters.Create.Options=FILE_OPEN<<24;ProbeStatus=STATUS_SHARING_VIOLATION;assert(!StageExistingDirectory(&data,&objects,&Source));assert(!(iopb.Parameters.Create.Options&FILE_DIRECTORY_FILE));ProbeStatus=0;
  STAGE_STREAM stream={.Name=child};STAGE_ADMISSION_TOKEN_SLOT token=slot();add(&StageStreams,&stream.Link);assert(StageDirectoryBeginMutation(&root,NULL,&token)==STATUS_SHARING_VIOLATION);head(&StageStreams);

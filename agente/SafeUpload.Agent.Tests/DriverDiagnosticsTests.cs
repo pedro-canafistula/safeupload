@@ -186,6 +186,7 @@ public sealed class DriverDiagnosticsTests
     [InlineData(1u, "nameUnresolved")]
     [InlineData(3u, "policyScope")]
     [InlineData(6u, "aliasCheckFailed")]
+    [InlineData(14u, "registryScope")]
     [InlineData(10u, "deleteOnClose")]
     [InlineData(99u, "99")]
     public void Refusal_reasons_get_readable_names(uint reason, string expected)
