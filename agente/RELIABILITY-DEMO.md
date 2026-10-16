@@ -30,9 +30,10 @@ Cada etapa inicia um processo C# novo. A pasta temporária usa o construtor
 interno de teste sem ACL de máquina; o serviço usa o construtor público, que
 mantém a validação de ACL protegida.
 
-O backend existente aceita e persiste justificativas, mas a API administrativa
-atual não as expõe na lista de auditoria. O vídeo comprova a confirmação pelo
-contrato e a preservação no JSONL; não promete uma visualização que a UI não tem.
+O backend aceita e persiste justificativas. A consulta administrativa também
+as retorna, vinculadas aos eventos selecionados; em Auditoria, “Ver detalhes”
+mostra a justificativa, a identidade e a data. O acesso exige administrador.
+O registro comprova uma solicitação de exceção, não a conclusão da transferência.
 
 Comportamento implementado:
 
@@ -42,11 +43,15 @@ Comportamento implementado:
 - Cancelamento solicitado pelo chamador continua sendo cancelamento.
 - Uma falha de disco mantém a política válida em memória e gera diagnóstico;
   não garante recuperação dessa versão depois de reiniciar.
-- O serviço mantém o cache em memória de 30 segundos. A renovação ainda usa
-  o prazo HTTP configurado; esta entrega não implementa renovação em segundo plano.
+- O serviço inicializa pelo cache protegido em disco ou pelo padrão existente,
+  sem aguardar HTTP. Atualiza a política em segundo plano a cada 30 segundos.
+  Inspeções usam o último snapshot validado imediatamente durante uma atualização.
+- A identidade de uma justificativa recebida pelo pipe vem do SID verificado
+  da conexão, sem substituí-la pela conta que executa o serviço.
 - Eventos e justificativas só são confirmados localmente após as contagens
   `acceptedEvents` e `acceptedOverrides` coincidirem com o lote enviado.
 - Reenvios usam a idempotência já existente no backend por identificador do evento.
+  Falhas do heartbeat não impedem uma tentativa independente de enviar auditoria.
 - Confirmações preservam linhas desconhecidas e campos adicionais; uma última
   linha truncada é separada da próxima gravação para não consumir o novo evento.
 

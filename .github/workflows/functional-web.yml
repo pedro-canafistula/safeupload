@@ -58,6 +58,8 @@ jobs:
   agent-contract:
     runs-on: windows-latest
     timeout-minutes: 20
+    env:
+      SAFEUPLOAD_MACHINE_TESTS: '0'
     steps:
       # O repositorio tem caminhos acima de 260 caracteres (evidencias do
       # driver em driver/recovery-dispositioned). Sem isto o checkout no
@@ -74,7 +76,13 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Agent tests
-        run: dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj --verbosity minimal
+        run: dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj --verbosity minimal --logger "trx;LogFileName=agent.trx" --results-directory artifacts/agent
+      - name: Agent test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-test-diagnostics
+          path: artifacts/agent/
       - name: Package backend
         run: mvn -B -f web/back/pom.xml clean package -DskipTests
       - name: C# to Java contract
