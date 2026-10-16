@@ -94,8 +94,10 @@ public sealed partial class StagedAttachmentV20Tests
             Assert.NotNull(moved);
             var adopted = f with { Transfer = moved.Transfer,
                 Version = f.Version with { DestinationGeneration = moved.DestinationGeneration } };
+            // A successful publication may dispose the stage before returning.
+            string expected = await File.ReadAllTextAsync(f.Transfer.StagePath);
             Assert.Equal(StagedTransferOutcome.Released, await PublishAsync(adopted));
-            Assert.Equal(await File.ReadAllTextAsync(f.Transfer.StagePath), await File.ReadAllTextAsync(destination));
+            Assert.Equal(expected, await File.ReadAllTextAsync(destination));
             Assert.False(File.Exists(f.Transfer.DestinationPath));
         }
     }
@@ -181,6 +183,64 @@ public sealed partial class StagedAttachmentV20Tests
         var restarted = new StagedTransferJournal(f.JournalDirectory);
         await Assert.ThrowsAsync<IOException>(() => restarted.CancelUnboundPrivateAsync(Guid.NewGuid(), f.Version,
             f.DriverInstanceId, f.Transfer.ProcessId, ProcessCreationTime, default));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Unbound_retarget_after_a_publication_receipt_requires_a_durable_release(bool afterReplacement)
+    {
+        var f = await UnboundSealedAsync();
+        bool injected = false;
+        // Interrupt bookkeeping at its durability boundary without invoking
+        // Windows-only I/O-failure diagnostics on developer hosts.
+        var interruption = new InvalidOperationException("Injected release acknowledgement failure.");
+        var journal = new StagedTransferJournal(f.JournalDirectory, false, 100, (point, entry) =>
+        {
+            if (!injected && entry.State == TransferJournalState.Released &&
+                point == (afterReplacement ? StagedJournalWritePoint.AfterReplacement : StagedJournalWritePoint.BeforeReplacement))
+            {
+                injected = true;
+                throw interruption;
+            }
+        });
+        f = f with { Journal = journal };
+        var intent = await UnboundIntentAsync(f);
+        int mutations = 0;
+        await journal.CommitUnboundPublicationAsync(intent, () => mutations++, default);
+        Assert.Same(interruption, await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            journal.CompleteConfirmedPublicationAsync(intent, default)));
+        string destination = Path.Combine(Path.GetDirectoryName(f.Transfer.DestinationPath)!, "after-release.txt");
+        var request = RenameRequest(f, 17410, destination) with { SealedVersion = true };
+        if (!afterReplacement)
+        {
+            Assert.Equal(TransferJournalState.Publishing, (await journal.ReadAsync(f.Transfer.TransferId, default)).State);
+            await Assert.ThrowsAsync<IOException>(() => journal.PrepareRenameAsync(f.Transfer.TransferId,
+                request.TransactionId, f.Transfer.ProcessId, destination, true, default, request));
+            await journal.CompleteConfirmedPublicationAsync(intent, default);
+        }
+        Assert.Equal(TransferJournalState.Released, (await journal.ReadAsync(f.Transfer.TransferId, default)).State);
+        await Assert.ThrowsAsync<IOException>(() => journal.CommitUnboundPublicationAsync(intent,
+            () => mutations++, default));
+        await journal.PrepareRenameAsync(f.Transfer.TransferId, request.TransactionId,
+            f.Transfer.ProcessId, destination, true, default, request);
+        var moved = await journal.CompleteRenameAsync(f.Transfer.TransferId, request.TransactionId,
+            f.Transfer.ProcessId, destination, true, default, request);
+        await Assert.ThrowsAsync<IOException>(() => journal.CompleteConfirmedPublicationAsync(intent, default));
+        var current = await journal.ReadAsync(f.Transfer.TransferId, default);
+        Assert.Equal(moved, current);
+        Assert.Equal(TransferJournalState.Sealed, current.State);
+        Assert.Null(current.Sha256Hex);
+        Assert.True(File.Exists(f.Transfer.StagePath));
+        Assert.False(File.Exists(destination));
+        Assert.Equal(1, mutations);
+
+        // The live commit marker belongs to the prior version, not this retarget.
+        var adopted = f with { Transfer = moved.Transfer,
+            Version = f.Version with { DestinationGeneration = moved.DestinationGeneration } };
+        var nextIntent = await UnboundIntentAsync(adopted);
+        await journal.CommitUnboundPublicationAsync(nextIntent, () => mutations++, default);
+        Assert.Equal(2, mutations);
     }
 
     [Fact]
