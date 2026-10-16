@@ -297,6 +297,8 @@ NTSTATUS SafeUploadStageWritersPostCreate(_In_ PFLT_CALLBACK_DATA Data,
 _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersOnCleanup(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects);
 BOOLEAN SafeUploadStageWritersNameActivating(_In_ PFLT_INSTANCE Instance, _In_ PCUNICODE_STRING Name);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageWritersAwaitNameActivation(_In_ PFLT_INSTANCE Instance, _In_ PCUNICODE_STRING Name);
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersIsTrackedWriter(_In_opt_ PFLT_INSTANCE Instance,
     _In_opt_ PFILE_OBJECT FileObject);

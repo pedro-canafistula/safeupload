@@ -1260,6 +1260,8 @@ C_ASSERT(sizeof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE) <= 64 * 1024);
 #define SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PROMOTE_DEFERRED ((UINT32)15)
 /* ClassificationStatus 0xD0000000 | source line of the StageRegistryActivationProcess exit that left the pass. */
 #define SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_EXIT_SITE      ((UINT32)16)
+/* Ordinary synchronous flush; retained read-only cache is permitted. */
+#define SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_CACHE_FLUSH    ((UINT32)17)
 #define SAFEUPLOAD_PROMOTE_FAIL_NOT_LISTED           ((ULONG)0x00000001)
 #define SAFEUPLOAD_PROMOTE_FAIL_STATE                ((ULONG)0x00000002)
 #define SAFEUPLOAD_PROMOTE_FAIL_H                    ((ULONG)0x00000004)
@@ -1275,7 +1277,7 @@ C_ASSERT(sizeof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE) <= 64 * 1024);
 #define SAFEUPLOAD_PROMOTE_FAIL_NAME                 ((ULONG)0x00001000)
 #define SAFEUPLOAD_PROMOTE_FAIL_SPILLED_WRITERS      ((ULONG)0x00002000)
 #define SAFEUPLOAD_PROMOTE_FAIL_SPILLED_MUTATING_IO  ((ULONG)0x00004000)
-#define SAFEUPLOAD_PROMOTE_FAIL_SOP_NOT_EMPTY        ((ULONG)0x00008000)
+#define SAFEUPLOAD_PROMOTE_FAIL_SOP_NOT_EMPTY        ((ULONG)0x00008000) /* Historical, reserved. */
 #define SAFEUPLOAD_PROMOTE_FAIL_C                    ((ULONG)0x00010000)
 #define SAFEUPLOAD_PROMOTE_FAIL_SIBLING              ((ULONG)0x00020000)
 #define SAFEUPLOAD_PROMOTE_FAIL_REBOUND              ((ULONG)0x00040000)
@@ -1283,6 +1285,7 @@ C_ASSERT(sizeof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE) <= 64 * 1024);
 #define SAFEUPLOAD_PROMOTE_FAIL_SOP_MAP_MOVED        ((ULONG)0x00100000)
 #define SAFEUPLOAD_PROMOTE_FAIL_INSTANCE_CONTEXT     ((ULONG)0x00200000)
 #define SAFEUPLOAD_PROMOTE_FAIL_RENAME_LOSS          ((ULONG)0x00400000)
+#define SAFEUPLOAD_PROMOTE_FAIL_CACHE_NOT_FLUSHED    ((ULONG)0x00800000)
 
 typedef struct _SAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS {
     SAFEUPLOAD_ACTIVATING_ENTRY_STATUS Entry;
@@ -1564,6 +1567,9 @@ typedef struct _SAFEUPLOAD_ADMISSION_TRACE_ENTRY {
  * were evaluated on the live stream, and neither this entry nor any other incarnation entry of the same data
  * stream held writer state. Named streams of the file are not part of this proof; their own rows gate them. */
 #define SAFEUPLOAD_PROMOTION_BASIS_INCARNATION_REPLACED ((UINT32)0x00000020)
+/* Exact original stream, Free(F), successful ordinary filesystem flush.
+ * Does not assert pointer emptiness, purge or replacement-incarnation proof. */
+#define SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH       ((UINT32)0x00000040)
 #define SAFEUPLOAD_PROMOTION_SNAPSHOT_NONCOHERENT     ((UINT32)0x00000001)
 typedef struct _SAFEUPLOAD_PROMOTION_TRACE_REQUEST {
     SAFEUPLOAD_CONTROL Control;

@@ -45,6 +45,7 @@ Environment:
 #pragma alloc_text(PAGE, SafeUploadStageWritersRegistryEvaluate)
 #pragma alloc_text(PAGE, SafeUploadStageWritersRegistrySnapshotByName)
 #pragma alloc_text(PAGE, SafeUploadStageWritersPromotionTraceReadBatch)
+#pragma alloc_text(PAGE, SafeUploadStageWritersAwaitNameActivation)
 #endif
 
 /* Separate node tag permits actual Verifier allocation failures to be attributed
@@ -343,6 +344,7 @@ static NTSTATUS StageRegistryBuildActivatingStatusPage(_In_ UINT32 StartIndex,
 _IRQL_requires_max_(APC_LEVEL)
 static VOID StageRegistryRecordClassificationResult(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ NTSTATUS Status, _In_ UINT32 Step);
+_IRQL_requires_(PASSIVE_LEVEL)
 static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget, _Inout_ PBOOLEAN MoreWork);
 
@@ -4798,6 +4800,7 @@ __declspec(noinline) static VOID StageRegistryRecordDeferral(
     if (current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NONE ||
         current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NOT_RUN ||
         current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE ||
+        current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_CACHE_FLUSH ||
         current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_CACHE_RETAINED ||
         current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_SCAN_MORE ||
         current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED ||
@@ -5566,7 +5569,7 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
     _In_ BOOLEAN SopEmpty,
     _In_ ULONGLONG ExpectedSopMarkerGeneration,
     _In_ ULONG PolicyGeneration, _In_ ULONG PolicyFlags,
-    _In_ BOOLEAN CacheFlushedAndPurged)
+    _In_ BOOLEAN CacheFlushed)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     KIRQL renameLossIrql;
@@ -5633,7 +5636,7 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
     if (!nameOk) failed |= SAFEUPLOAD_PROMOTE_FAIL_NAME;
     if (StageRegistrySnapshotSpilledWriters(Entry) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_SPILLED_WRITERS;
     if (StageRegistrySnapshotSpilledMutatingIo(Entry) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_SPILLED_MUTATING_IO;
-    if (!SopEmpty) failed |= SAFEUPLOAD_PROMOTE_FAIL_SOP_NOT_EMPTY;
+    if (!CacheFlushed) failed |= SAFEUPLOAD_PROMOTE_FAIL_CACHE_NOT_FLUSHED;
     if (StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_C;
     if (!siblingsFree) failed |= SAFEUPLOAD_PROMOTE_FAIL_SIBLING;
     if (failed == 0) {
@@ -5641,9 +5644,9 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
          * discovered after the earlier PASSIVE scan must keep this promotion waiting. */
         if (!StageRegistryTryPromoteStateNoInline(Entry, ExpectedSopMarkerGeneration,
                 PolicyGeneration, PolicyFlags,
-                SAFEUPLOAD_PROMOTION_BASIS_NAME_MATCH | SAFEUPLOAD_PROMOTION_BASIS_SOP_EMPTY |
-                SAFEUPLOAD_PROMOTION_BASIS_NO_USER_WRITABLE |
-                (CacheFlushedAndPurged ? SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH_PURGE : 0)))
+                SAFEUPLOAD_PROMOTION_BASIS_NAME_MATCH | SAFEUPLOAD_PROMOTION_BASIS_NO_USER_WRITABLE |
+                SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH |
+                (SopEmpty ? SAFEUPLOAD_PROMOTION_BASIS_SOP_EMPTY : 0)))
             failed |= SAFEUPLOAD_PROMOTE_FAIL_STATE_RECHECK;
     }
     StageReleaseSpinLock(&Entry->StateLock, irql);
@@ -6284,7 +6287,9 @@ VOID SafeUploadStageWritersFinishTeardown(VOID)
 
 /* MoreWork is set only when this entry has bounded work of its own left (a link scan or marker scan that ran out of
  * budget), so another pass can finish it. An entry that is waiting for something outside the worker (a rename, a
- * policy commit, a closing handle, a cache owner) leaves it alone: whatever ends the wait queues a reclaim pass. */
+ * policy commit, a closing handle, a cache owner) leaves it alone. Lifetime events
+ * queue a pass; a later public write-open can also request one when no event was observed. */
+_IRQL_requires_(PASSIVE_LEVEL)
 static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget, _Inout_ PBOOLEAN MoreWork)
 {
@@ -6306,7 +6311,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     BOOLEAN directoryRenameInFlight = FALSE;
     BOOLEAN aliasProbe = FALSE, transactionActive = FALSE, noLinkNames = FALSE, unionLinkScoped = FALSE;
     BOOLEAN currentLinkScoped = FALSE, aliasActivated = FALSE;
-    BOOLEAN cacheFlushedAndPurged = FALSE;
+    BOOLEAN cacheFlushed = FALSE;
     BOOLEAN originalValidated = FALSE;
     BOOLEAN noNamesProvenByIdentity = FALSE;
     ULONG promoteFailed = 0;
@@ -6500,10 +6505,9 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     originalSopGeneration = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);
     if (SafeUploadStageWritersOwnerCount() != 0) STAGE_ACT_EXIT();
 
-    /* Free(F) is a single observation behind the published gate. After the
-     * last holder leaves, NTFS may retain clean or dirty cache pointers. The
-     * synchronous file-system barrier below drains and purges that cache;
-     * promotion still requires both pointers empty. */
+    /* Free(F) is a writer observation behind the published admission gate.
+     * Cache-pointer retention alone is not a writer. Drain prior dirty data
+     * after the ledger and S checks, then require the remaining MM guard too. */
     if (InterlockedCompareExchange(&Entry->H, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->W, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
@@ -6518,30 +6522,22 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         if (InterlockedExchange(&Entry->LastSState, newSState) != newSState)
             InterlockedIncrement64(&RegistryChangeSequence);
     }
-    sopEmpty = sop->DataSectionObject == NULL && sop->SharedCacheMap == NULL;
+    /* A returned MDL can still dirty the cache after its prepare IRP ends.
+     * Establish probe-free state before flushing, as well as afterward. */
     if (userWritable || !MmCanFileBeTruncated(sop, NULL)) STAGE_ACT_EXIT();
-    if (!sopEmpty) {
-        /* PASSIVE worker, identity/SOP checked, and no registry/state/section
-         * lock held. Issue below this instance using NTFS's supported flush
-         * and purge path; never use the unsupported StageFence purge helper.
-         * Failure or a retained section keeps the published Activating gate. */
-        status = FltFlushBuffers2(Instance, object, FLT_FLUSH_TYPE_FLUSH_AND_PURGE, NULL);
-        if (status != STATUS_SUCCESS) {
-            StageRegistryRecordClassificationResult(Entry, status,
-                SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE);
-            goto Exit;
-        }
-        cacheFlushedAndPurged = TRUE;
-        /* One row per outcome, so an entry held here on every pass leaves its row (and the snapshot
-         * sequence) unchanged. */
-        if (object->SectionObjectPointer != sop ||
-            sop->DataSectionObject != NULL || sop->SharedCacheMap != NULL) {
-            StageRegistryRecordClassificationResult(Entry, STATUS_SUCCESS,
-                SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_CACHE_RETAINED);
-            goto Exit;
-        }
-        StageRegistryRecordClassificationResult(Entry, STATUS_SUCCESS,
-            SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE);
+    /* PASSIVE worker, exact identity/SOP/context pinned, no locks held.
+     * A synchronous ordinary filesystem flush drains prior dirty data without
+     * trying to evict allowed readers. Reads may repopulate the cache at any
+     * time; neither pointer emptiness nor purge success is an admission fact. */
+    status = FltFlushBuffers2(Instance, object, 0, NULL);
+    StageRegistryRecordClassificationResult(Entry, status,
+        SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_CACHE_FLUSH);
+    if (status != STATUS_SUCCESS) goto Exit;
+    cacheFlushed = TRUE;
+    if (object->SectionObjectPointer != sop ||
+        !StageRegistryOriginalContext(Entry, originalContext, sop)) {
+        StageRegistryRecordDeferral(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
+        goto Exit;
     }
 
     /* Unknown markers are sticky; a bounded observation can only report them. */
@@ -6563,11 +6559,14 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
+        /* Keep the outstanding data-section write-probe guard: a prepared
+         * MDL can outlive its prepare IRP's W. NULL also conservatively holds
+         * read-only mapped views/image sections until their references end.
+         * Check AFTER the flush; never demand cache-pointer eviction. */
         userWritable || !MmCanFileBeTruncated(sop, NULL) ||
         StageRegistrySnapshotSpilledWriters(Entry) != 0 ||
         StageRegistrySnapshotSpilledMutatingIo(Entry) != 0 ||
-        StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0 ||
-        sop->DataSectionObject != NULL || sop->SharedCacheMap != NULL) STAGE_ACT_EXIT();
+        StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0) STAGE_ACT_EXIT();
 
     /* Policy is sampled before RegistryLock to avoid introducing a lock-order edge.
      * The receipt labels this as a sample, not an atomic part of the CAS predicate. */
@@ -6582,7 +6581,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0) == sopMarkerGeneration)
         promoteFailed = StageRegistryTryPromoteEntry(Entry, nameStillMatches, nameSnapshotChars,
             renameVersion, currentGeneration, sopEmpty, sopMarkerGeneration,
-            promotionPolicyGeneration, promotionPolicyFlags, cacheFlushedAndPurged);
+            promotionPolicyGeneration, promotionPolicyFlags, cacheFlushed);
     else
         promoteFailed = SAFEUPLOAD_PROMOTE_FAIL_SOP_MAP_MOVED;
     FltReleasePushLock(&RegistryLock);
@@ -7435,6 +7434,72 @@ BOOLEAN SafeUploadStageWritersNameActivating(_In_ PFLT_INSTANCE Instance, _In_ P
     }
     FltReleasePushLock(&RegistryLock);
     return activating;
+}
+
+/* Admission may be the first event after the last mapped writer disappears.
+ * A bounded request to the existing single worker supplies a fresh proof;
+ * elapsed time, a worker exit, or a held entry reference never grants access.
+ * Only CREATE calls this at PASSIVE with no top-level IRP or filter locks.
+ * Known live writers/losses do not wait, and no periodic worker is armed. */
+static volatile LONG NameActivationWaiters;
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageWritersAwaitNameActivation(_In_ PFLT_INSTANCE Instance, _In_ PCUNICODE_STRING Name)
+{
+    PLIST_ENTRY link;
+    UNICODE_STRING baseName;
+    LARGE_INTEGER interval;
+    ULONGLONG deadline;
+    BOOLEAN canProgress = FALSE;
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    PAGED_CODE();
+    if (Instance == NULL || Name == NULL || Name->Length == 0 ||
+        KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL ||
+        StageRegistryIsReclaimIoThread() || SafeUploadStageMandatoryTeardownActive() ||
+        SafeUploadPolicyScopeTransitionActive() || SafeUploadStageWritersGlobalUnknown() != 0 ||
+        SafeUploadStageWritersOwnerCount() != 0) return;
+    if (!NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&instanceContext))) return;
+    canProgress = InterlockedCompareExchange(&instanceContext->WritersUntracked, 0, 0) == 0 &&
+        InterlockedCompareExchange(&instanceContext->RegistryUnknownReasons, 0, 0) == 0;
+    FltReleaseContext(instanceContext);
+    if (!canProgress) return;
+    canProgress = FALSE;
+    baseName = StageRegistryBaseName(Name);
+    FltAcquirePushLockShared(&RegistryLock);
+    for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
+        PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
+        PSTAGE_SOP_LIFETIME lifetime;
+        UNICODE_STRING entryName;
+        LONG state = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0);
+        if (entry->Retired || !entry->Listed || entry->Instance != Instance || entry->NameChars == 0 ||
+            (state != SAFEUPLOAD_REGISTRY_STATE_ACTIVATING &&
+             state != SAFEUPLOAD_REGISTRY_STATE_UNKNOWN &&
+             InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) == 0)) continue;
+        entryName.Buffer = entry->Name;
+        entryName.Length = entryName.MaximumLength = (USHORT)(entry->NameChars * sizeof(WCHAR));
+        if (!RtlEqualUnicodeString(&entryName, &baseName, TRUE)) continue;
+        lifetime = StageRegistryLifetime(entry);
+        if (state == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN ||
+            InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) != 0 ||
+            lifetime == NULL || InterlockedCompareExchange(&lifetime->Invalid, 0, 0) != 0 ||
+            !StageRegistryEntryHoldsNoWriterState(entry)) {
+            canProgress = FALSE;
+            break;
+        }
+        canProgress = TRUE;
+    }
+    FltReleasePushLock(&RegistryLock);
+    if (!canProgress) return;
+    if (InterlockedIncrement(&NameActivationWaiters) <= STAGE_SECTION_WAITERS_MAX) {
+        deadline = KeQueryInterruptTime() + (ULONGLONG)STAGE_SECTION_PROBE_WAIT_MS * 10000ULL;
+        interval.QuadPart = -10000LL * STAGE_SECTION_PROBE_POLL_MS;
+        SafeUploadStageWritersQueueRecheck();
+        while (SafeUploadStageWritersNameActivating(Instance, Name) &&
+            !SafeUploadStageMandatoryTeardownActive() && !SafeUploadPolicyScopeTransitionActive() &&
+            KeQueryInterruptTime() < deadline) {
+            (VOID)KeDelayExecutionThread(KernelMode, FALSE, &interval);
+        }
+    }
+    InterlockedDecrement(&NameActivationWaiters);
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
