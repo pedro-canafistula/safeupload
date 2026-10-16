@@ -24,31 +24,27 @@ public class AgentService {
     private final EntityManager entityManager;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final PolicyService policies;
 
     public AgentService(EndpointRepository endpoints, ReceivedEventRepository events,
-            EntityManager entityManager, ObjectMapper mapper, Clock clock) {
+            EntityManager entityManager, ObjectMapper mapper, Clock clock, PolicyService policies) {
         this.endpoints = endpoints;
         this.events = events;
         this.entityManager = entityManager;
         this.mapper = mapper;
         this.clock = clock;
+        this.policies = policies;
     }
 
-    public Policy policy() {
-        return new Policy(1, List.of(Category.values()),
-                new MonitoredScopes(List.of(".txt", ".csv", ".docx", ".xlsx", ".pdf"),
-                        List.of("C:\\SafeUpload\\Escopo Monitorado"), List.of(), true, true),
-                20, 5, false, false, true, List.of("System", "SafeUpload.Agent.App"),
-                new Clipboard(ClipboardMode.Off,
-                        List.of("chrome", "msedge", "firefox", "brave", "opera", "WhatsApp", "Telegram", "ms-teams", "slack", "Discord", "OUTLOOK", "thunderbird"),
-                        List.of("KeePass", "KeePassXC", "1Password", "Bitwarden"), 100_000, true));
-    }
+    public Policy policy() { return policies.policy(null); }
+
+    public Policy policy(String endpointId) { return policies.policy(endpointId); }
 
     @Transactional
     public HeartbeatResponse heartbeat(Heartbeat heartbeat) {
         Instant now = clock.instant();
         endpoints.save(new Endpoint(heartbeat, now));
-        return new HeartbeatResponse(heartbeat.endpointId(), OffsetDateTime.ofInstant(now, clock.getZone()), policy().version());
+        return new HeartbeatResponse(heartbeat.endpointId(), OffsetDateTime.ofInstant(now, clock.getZone()), policy(heartbeat.endpointId()).version());
     }
 
     @Transactional

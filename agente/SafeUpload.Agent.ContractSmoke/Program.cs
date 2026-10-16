@@ -9,6 +9,7 @@ using SafeUpload.Agent.Service.Clipboard;
 using SafeUpload.Agent.Service.Policies;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
+using SafeUpload.Agent.Core.Infrastructure.Extraction;
 
 if (args.Length > 0 && args[0] == "--reliability-demo")
 {
@@ -60,7 +61,7 @@ var workspace = Path.GetFullPath(Path.Combine(temporaryRoot, "safeupload-contrac
 Directory.CreateDirectory(workspace);
 var durablePolicies = new DurableHttpPolicyStore(agentClient, endpointId,
     Path.Combine(workspace, "server-policy-cache.json"), enforceProtectedAcl: false);
-using var servicePolicies = new RefreshingPolicyStore(durablePolicies, TimeSpan.FromSeconds(30),
+using var servicePolicies = new RefreshingPolicyStore(durablePolicies, TimeSpan.FromMilliseconds(200),
     NullLogger<RefreshingPolicyStore>.Instance);
 try
 {
@@ -191,6 +192,35 @@ try
     if (endpoint.GetProperty("inspecoes7d").GetInt32() != 6 || endpoint.GetProperty("status").GetString() != "online")
         throw new InvalidOperationException("Heartbeat ou contagem do endpoint não corresponde ao despacho.");
 
+    // The console schema is translated by Java; the real C# reader must see it.
+    using var publication = await client.PostAsJsonAsync("api/politicas", new {
+        versao = "1.0", nome = "Política publicada pelo contrato", destino = new { endpointId },
+        acao = "bloquear", regras = new[] { new { tipo = "cnpj", nome = "CNPJ" } },
+        origem = "console-administrativo"
+    }, cancellationToken);
+    publication.EnsureSuccessStatusCode();
+    while ((await servicePolicies.LoadAsync(cancellationToken)).Version != 2)
+        await Task.Delay(25, cancellationToken);
+    var updated = await servicePolicies.LoadAsync(cancellationToken);
+    if (updated.Version != 2 || updated.AuditOnly || updated.ActiveCategories.Count != 1
+        || !updated.ActiveCategories.Contains(Category.Cnpj) || durablePolicies.LastSource != "remote")
+        throw new InvalidOperationException("Publicação do painel não chegou ao snapshot C#.");
+    var restartedStore = new DurableHttpPolicyStore(agentClient, endpointId,
+        Path.Combine(workspace, "server-policy-cache.json"), enforceProtectedAcl: false);
+    var restoredPublished = await restartedStore.LoadCachedOrDefaultAsync(cancellationToken);
+    if (restoredPublished.Version != 2 || restoredPublished.AuditOnly || restartedStore.LastSource != "disk")
+        throw new InvalidOperationException("Política publicada não sobreviveu ao reinício do cliente.");
+    var samplePath = Path.Combine(workspace, "cnpj-sintetico.txt");
+    await File.WriteAllTextAsync(samplePath, "CNPJ 11.222.333/0001-81", cancellationToken);
+    var sample = new FileInfo(samplePath);
+    var inspector = new InspectionService(servicePolicies, sink, ExtractorRegistry.CreateDefault(),
+        new VerdictCache(), endpointId, "teste-contrato");
+    var decision = await inspector.InspectAsync(new FileOperation(samplePath, sample.Name, ".txt", sample.Length,
+        sample.LastWriteTimeUtc, "contrato", 1, @"E:\demonstracao", DestinationKind.RemovableDrive), cancellationToken);
+    if (!decision.IsBlocked || decision.PolicyVersion != 2 || !decision.Categories.Contains(Category.Cnpj))
+        throw new InvalidOperationException("Motor de inspeção não utilizou a política publicada.");
+    Console.WriteLine("Motor C# detectou CNPJ sintético e decidiu Blocked usando política publicada v2 (sem interceptação de SO).");
+    Console.WriteLine("Publicação painel → Java → C#: versão 2, CNPJ, bloquear; reinício recuperou do disco.");
     Console.WriteLine("Contrato C# → Java aprovado: 4 File, 1 Clipboard, 1 Web, Retained, hash publicado, heartbeat, fila, justificativa consultável e reenvio idempotente.");
 }
 

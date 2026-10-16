@@ -143,3 +143,43 @@ test('clipboard recebido pelo Java aparece no navegador sem duplicar no reenvio'
   await expect(detalhes.getByText('Extensão', { exact: true })).toHaveCount(0);
   await expect(page.getByText('TRECHO_CLIPBOARD_NAO_EXIBIR')).toHaveCount(0);
 });
+
+test('política publicada pelo painel chega ao endpoint correto e informa recebimento pendente', async ({ page, request }, testInfo) => {
+  const api = 'http://127.0.0.1:8080';
+  expect((await request.post(api + '/agent/heartbeat', { data: {
+    endpointId: 'E2E-POLITICA', hostname: 'Computador de política', os: 'Windows 11', agentVersion: '1.0', policyVersion: 1
+  } })).ok()).toBeTruthy();
+  await page.goto('/login');
+  await page.getByLabel('E-mail').fill(email);
+  await page.getByLabel('Senha', { exact: true }).fill(password);
+  await page.getByRole('button', { name: /entrar/i }).click();
+  await expect(page).toHaveURL(/painel/);
+  await page.goto('/politicas');
+  await page.getByLabel('Nome da política').fill('Proteção integrada');
+  await page.getByLabel('Computador que receberá a política').selectOption('E2E-POLITICA');
+  await expect(page.locator('.rule').filter({ hasText: 'Dados de saúde' }).locator('input')).toBeDisabled();
+  await page.locator('.rule').filter({ has: page.getByText('CNPJ', { exact: true }) }).click();
+  await expect(page.getByRole('radio', { name: /Alertar/ })).toBeDisabled();
+  await page.getByRole('button', { name: 'Publicar política' }).click();
+  await expect(page.getByRole('heading', { name: 'Política publicada — versão 2' })).toBeVisible();
+  await expect(page.getByText(/O agente consultará a política na próxima atualização/)).toBeVisible();
+  const policy = await (await request.get(api + '/agent/policy?endpointId=E2E-POLITICA')).json();
+  expect(policy.version).toBe(2);
+  expect(policy.activeCategories).toEqual(['Cnpj']);
+  expect(policy.auditOnly).toBe(false);
+  const other = await (await request.get(api + '/agent/policy?endpointId=OUTRO')).json();
+  expect(other.version).toBe(1);
+  await page.getByRole('radio', { name: /Bloquear/ }).check();
+  await page.getByRole('button', { name: 'Publicar política' }).click();
+  await expect(page.getByRole('heading', { name: 'Política publicada — versão 3' })).toBeVisible();
+  expect((await (await request.get(api + '/agent/policy?endpointId=E2E-POLITICA')).json()).auditOnly).toBe(false);
+  await page.reload();
+  const saved = page.getByRole('region', { name: 'Políticas salvas no servidor' });
+  await expect(saved).toContainText('Proteção integrada');
+  await expect(saved).toContainText('Publicada: v3');
+  await expect(saved).toContainText('Versão informada pelo agente: 1');
+  await page.screenshot({ path: testInfo.outputPath('politicas-desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  await page.screenshot({ path: testInfo.outputPath('politicas-mobile.png'), fullPage: true });
+});

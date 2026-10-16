@@ -1,6 +1,8 @@
 package com.safeupload;
 
 import com.safeupload.application.AgentService;
+import com.safeupload.application.PolicyService;
+import com.safeupload.application.dto.PolicyPublication;
 import com.safeupload.application.dto.AgentContracts.*;
 import com.safeupload.infrastructure.repository.ReceivedEventRepository;
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,9 @@ class PersistenceRestartTest {
         try (var context = start(datasource)) {
             var service = context.getBean(AgentService.class);
             service.heartbeat(new Heartbeat("PC-PERSIST", "Máquina de teste", "Windows 11", "1.0.0", 1));
+            context.getBean(PolicyService.class).publish(new PolicyPublication.Request("1.0", "Proteção persistida",
+                    new PolicyPublication.Destination("PC-PERSIST", null), "bloquear",
+                    List.of(new PolicyPublication.Rule("cnpj", "CNPJ")), null, "console-administrativo"));
             service.submit(new SubmitEvents(List.of(new AuditEvent(eventId, OffsetDateTime.now(), "PC-PERSIST",
                     "teste", "persistido.txt", ".txt", 10L, Verdict.Blocked, List.of(Category.Cpf),
                     List.of("***"), "editor", 1, "C:\\SafeUpload", null, 1, 2L, false)),
@@ -31,6 +36,9 @@ class PersistenceRestartTest {
         }
         try (var context = start(datasource)) {
             var service = context.getBean(AgentService.class);
+            assertThat(service.policy("PC-PERSIST").version()).isEqualTo(2);
+            assertThat(service.policy("PC-PERSIST").activeCategories()).containsExactly(Category.Cnpj);
+            assertThat(service.policy("PC-PERSIST").auditOnly()).isFalse();
             assertThat(service.endpoints()).hasSize(1);
             assertThat(service.auditEvents()).hasSize(1);
             assertThat(service.auditEvents().getFirst().eventId()).isEqualTo(eventId);
