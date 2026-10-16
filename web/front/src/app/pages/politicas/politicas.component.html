@@ -1,61 +1,49 @@
 <header class="page-title">
-  <div>
-    <p class="eyebrow">GERENCIAMENTO DLP</p>
-    <h1>Enviar política</h1>
-    <p class="subtitle">Defina os dados sensíveis que devem ser bloqueados e envie a configuração ao endpoint.</p>
-  </div>
+  <div><p class="eyebrow">GERENCIAMENTO DLP</p><h1>Publicar política</h1>
+    <p class="subtitle">Defina a proteção do computador e publique no servidor.</p></div>
 </header>
-
+<section class="publication-list" *ngIf="publicacoes.length" aria-label="Políticas salvas no servidor">
+  <h2>Políticas salvas no servidor</h2>
+  <p *ngFor="let politica of publicacoes"><strong>{{ politica.nome }}</strong> — {{ politica.endpointId }}<br />
+    Publicada: v{{ politica.version }} · Versão informada pelo agente: {{ versaoInformada(politica.endpointId) }} · {{ politica.publicadaEm | date:'dd/MM HH:mm' }}</p>
+  <p class="helper">A versão informada corresponde ao último heartbeat. Não comprova aplicação no driver; essa etapa exige validação própria.</p>
+</section>
+<p *ngIf="erroConsulta" role="alert">{{ erroConsulta }}</p>
 <section class="policy-panel" aria-labelledby="policy-form-title">
-  <div class="panel-heading">
-    <div class="heading-icon">⌁</div>
-    <div>
-      <h2 id="policy-form-title">Nova política de proteção</h2>
-      <p>O arquivo JSON será preparado com as regras selecionadas para o computador de destino.</p>
-    </div>
-  </div>
-
+  <div class="panel-heading"><div class="heading-icon">⌁</div><div>
+    <h2 id="policy-form-title">Nova política de proteção</h2>
+    <p>A política será salva no servidor e consultada pelo agente do computador selecionado.</p>
+  </div></div>
   <form (ngSubmit)="enviarPolitica()">
     <div class="fields-row">
-      <label>
-        <span>Nome da política <b>*</b></span>
-        <input [(ngModel)]="nome" name="nome" required placeholder="Ex.: Proteção de dados financeiros" />
-      </label>
-      <label>
-        <span>IP do computador que receberá a política <b>*</b></span>
-        <input [(ngModel)]="ipDestino" name="ipDestino" required placeholder="Ex.: 192.168.1.100" inputmode="decimal" />
-      </label>
+      <label><span>Nome da política <b>*</b></span>
+        <input [(ngModel)]="nome" name="nome" maxlength="120" required [disabled]="enviando" placeholder="Ex.: Proteção de dados financeiros" /></label>
+      <label><span>Computador que receberá a política <b>*</b></span>
+        <select [(ngModel)]="endpointId" name="endpointId" required [disabled]="enviando">
+          <option value="">Selecione um computador registrado</option>
+          <option *ngFor="let endpoint of endpoints" [value]="endpoint.endpointId">{{ endpoint.hostname }} — {{ endpoint.endpointId }} ({{ endpoint.status }}, versão informada {{ endpoint.policyVersion }})</option>
+        </select></label>
     </div>
-
-    <div class="action-field">
-      <span>Ação ao identificar o dado</span>
-      <div class="action-options">
-        <label><input type="radio" [(ngModel)]="acao" name="acao" value="bloquear" /> <strong>Bloquear</strong><small>Impede a transferência do conteúdo.</small></label>
-        <label><input type="radio" [(ngModel)]="acao" name="acao" value="alertar" /> <strong>Alertar</strong><small>Registra a ocorrência sem bloquear.</small></label>
-      </div>
-    </div>
-
-    <fieldset>
-      <legend>Opções de barramento na política <b>*</b></legend>
-      <p class="helper">Selecione quais tipos de informações sensíveis o DLP deverá identificar.</p>
-      <div class="rules-grid">
-        <label class="rule" *ngFor="let regra of regras" [class.selected]="regrasSelecionadas.includes(regra.id)">
-          <input type="checkbox" [checked]="regrasSelecionadas.includes(regra.id)" (change)="alternarRegra(regra.id, $any($event.target).checked)" />
-          <span class="checkmark">✓</span>
-          <span><strong>{{ regra.nome }}</strong><small>{{ regra.descricao }}</small></span>
-        </label>
-      </div>
+    <p class="helper">Sem computadores? Inicie o agente e aguarde seu registro.
+      <button type="button" (click)="atualizarComputadores()" [disabled]="enviando">Atualizar computadores</button></p>
+    <div class="action-field"><span>Ação ao identificar o dado</span><div class="action-options">
+      <label><input type="radio" [(ngModel)]="acao" [disabled]="enviando" name="acao" value="bloquear" /> <strong>Bloquear</strong><small>Solicita bloqueio no escopo monitorado pelo agente.</small></label>
+      <label><input type="radio" [(ngModel)]="acao" [disabled]="true" name="acao" value="alertar" /> <strong>Alertar</strong><small>Em desenvolvimento; indisponível nesta versão.</small></label>
+    </div></div>
+    <fieldset [disabled]="enviando"><legend>Regras de proteção <b>*</b></legend>
+      <p class="helper">Selecione os detectores disponíveis. A política mantém o escopo de arquivos do protótipo; proteção de clipboard permanece desativada.</p>
+      <div class="rules-grid"><label class="rule" *ngFor="let regra of regras" [class.selected]="regrasSelecionadas.includes(regra.id)">
+        <input type="checkbox" [disabled]="!suportadas.has(regra.id)" [checked]="regrasSelecionadas.includes(regra.id)" (change)="alternarRegra(regra.id, $any($event.target).checked)" />
+        <span class="checkmark">✓</span><span><strong>{{ regra.nome }}</strong><small>{{ regra.descricao }}<span *ngIf="!suportadas.has(regra.id)"> — Em desenvolvimento; indisponível</span></small></span>
+      </label></div>
     </fieldset>
-
-    <div class="form-footer">
-      <p><b>*</b> Campos obrigatórios</p>
-      <button type="submit" [disabled]="!nome.trim() || !ipDestino.trim() || !regrasSelecionadas.length">Enviar política <span>→</span></button>
-    </div>
+    <div class="form-footer"><p><b>*</b> Campos obrigatórios</p>
+      <button type="submit" [disabled]="enviando || !nome.trim() || !endpointId || !regrasSelecionadas.length">{{ enviando ? 'Publicando…' : 'Publicar política' }} <span>→</span></button></div>
   </form>
 </section>
-
+<p *ngIf="erro" role="alert">{{ erro }}</p>
 <section class="json-result" *ngIf="enviado" aria-live="polite">
-  <div><span class="success-icon">✓</span><div><h2>Política preparada com sucesso</h2><p>JSON gerado para o endpoint <strong>{{ ipDestino }}</strong>.</p></div></div>
-  <button type="button" (click)="baixarJson()">Baixar JSON</button>
-  <pre>{{ jsonGerado }}</pre>
+  <div><span class="success-icon">✓</span><div><h2>Política publicada — versão {{ versaoPublicada }}</h2>
+    <p>Salva para <strong>{{ destinoPublicado }}</strong>. O agente consultará a política na próxima atualização. Confira a versão informada em Endpoints para acompanhar o recebimento.</p></div></div>
+  <button type="button" (click)="baixarJson()">Baixar JSON</button><pre>{{ jsonGerado }}</pre>
 </section>

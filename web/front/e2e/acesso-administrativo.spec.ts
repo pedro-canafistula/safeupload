@@ -20,7 +20,7 @@ for (const perfil of ['user', 'desconhecido', '']) {
         await route.fulfill({ status: 403, json: {} });
       }
     });
-    for (const tela of ['painel', 'auditoria', 'endpoints', 'relatorios']) {
+    for (const tela of ['painel', 'auditoria', 'endpoints', 'relatorios', 'politicas']) {
       await page.goto('/' + tela);
       await expect(page).toHaveURL(/acesso-negado$/);
       await expect(page.getByRole('heading', { name: 'Acesso restrito à administração' })).toBeVisible();
