@@ -9,13 +9,13 @@ namespace SafeUpload.Agent.Service.Interception;
 // do not invalidate. Use aligned, noncached writes from the first byte onward.
 internal static class StagedBackingFile
 {
-    public static async Task<StagedStageIdentity> CreateAsync(string? source, string destination, long maximumBytes, CancellationToken token)
+    public static async Task<StagedStageIdentity> CreateAsync(string? source, string destination, long maximumBytes, CancellationToken token, Action<StagedStageIdentity>? created = null)
     {
         token.ThrowIfCancellationRequested();
         await using var input = source is null ? null : new FileStream(source,
             FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        return (await CreateCoreAsync(input, destination, maximumBytes, token, null, captureIdentity: true)
+        return (await CreateCoreAsync(input, destination, maximumBytes, token, null, captureIdentity: true, created)
             .ConfigureAwait(false))!;
     }
 
@@ -26,7 +26,7 @@ internal static class StagedBackingFile
         => CreateCoreAsync(input, destination, maximumBytes, token, existingPrivateObject, captureIdentity: false);
 
     private static async Task<StagedStageIdentity?> CreateCoreAsync(FileStream? input, string destination,
-        long maximumBytes, CancellationToken token, StagedStageIdentity? existingPrivateObject, bool captureIdentity)
+        long maximumBytes, CancellationToken token, StagedStageIdentity? existingPrivateObject, bool captureIdentity, Action<StagedStageIdentity>? created = null)
     {
         using var backingTiming = StagedRequestTiming.Measure("backing");
         token.ThrowIfCancellationRequested();
@@ -39,6 +39,7 @@ internal static class StagedBackingFile
         if (output.IsInvalid) throw new IOException("Could not create private backing.", new Win32Exception());
         if (existingPrivateObject is not null && StagedDestinationFile.ReadIdentity(output) != existingPrivateObject)
             throw new IOException("The private seed target changed before copying.");
+        created?.Invoke(StagedDestinationFile.ReadIdentity(output));
         const int blockSize = 64 * 1024; // multiple of every admitted sector size
         byte[] bytes = new byte[blockSize];
         IntPtr allocation = Marshal.AllocHGlobal(blockSize * 2);

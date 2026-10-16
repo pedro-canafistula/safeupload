@@ -16,7 +16,7 @@ public sealed partial class StagedTransferJournal
         {
             var current = await ReadCoreAsync(intent.Transfer.TransferId, token).ConfigureAwait(false);
             if (current != intent || current.BoundAllocation is not null || current.UnboundCancellation is not null ||
-                current.State != TransferJournalState.Publishing || current.PendingRename is not null ||
+                current.StageSpaceFailed || current.State != TransferJournalState.Publishing || current.PendingRename is not null ||
                 _unboundCommitted.Contains(current.Transfer.TransferId))
                 throw new IOException("The exact publication intent was cancelled or retargeted.");
             await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);

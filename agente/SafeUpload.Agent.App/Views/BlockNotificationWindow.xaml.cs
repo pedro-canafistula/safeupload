@@ -115,6 +115,7 @@ public partial class BlockNotificationWindow : Window
         InspectionFailureText.Visibility = incomplete ? Visibility.Visible : Visibility.Collapsed;
         string failureMessage = inspectionFailure switch
         {
+            InspectionFailureKind.NotEnoughStagingSpace => "Não há espaço de preparação suficiente. Libere espaço ou conclua a recuperação de salvamentos anteriores e tente novamente.",
             InspectionFailureKind.TooLarge => "O arquivo ultrapassa o limite de inspeção atual.",
             InspectionFailureKind.UnsupportedFormat => "Não há suporte para inspecionar este formato.",
             InspectionFailureKind.Timeout => "A análise não terminou dentro do prazo.",

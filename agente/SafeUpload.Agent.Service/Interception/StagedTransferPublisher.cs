@@ -15,6 +15,7 @@ namespace SafeUpload.Agent.Service.Interception;
 public sealed partial class StagedTransferPublisher
 {
     private readonly InspectionService _inspection;
+    private readonly StagedSpaceBudget? _spaceBudget;
     private readonly NotificationHub _notifications;
     private readonly StagedTransferJournal _journal;
     private readonly string _stagingRoot;
@@ -44,8 +45,9 @@ public sealed partial class StagedTransferPublisher
         ILogger? logger = null,
         IPolicyStore? policyStore = null,
         IStagedHandbackCopier? handbackCopier = null,
-        Func<uint, string?>? sessionUserSidResolver = null)
+        Func<uint, string?>? sessionUserSidResolver = null, StagedSpaceBudget? spaceBudget = null)
     {
+        _spaceBudget = spaceBudget;
         _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
         _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
         _journal = journal ?? throw new ArgumentNullException(nameof(journal));
@@ -178,7 +180,7 @@ public sealed partial class StagedTransferPublisher
         try
         {
             snapshot = await StagedInspectionSnapshot.CreateAsync(sealedFile, _stagingRoot,
-                Path.GetExtension(destinationPath), journalEntry.SealedLength.Value, cancellationToken)
+                Path.GetExtension(destinationPath), journalEntry.SealedLength.Value, cancellationToken, _spaceBudget, transfer.TransferId)
                 .ConfigureAwait(false);
         }
         catch (Exception error) when ((error is IOException or UnauthorizedAccessException) &&
@@ -190,7 +192,7 @@ public sealed partial class StagedTransferPublisher
                 null, CancellationToken.None, expectedTransfer: transfer, closeJustificationWindow: true, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
             PublishTransferNotification(transfer, new TransferNotification(
                 transfer.TransferId, fileName, TransferPhase.Retained,
-                InspectionFailure: InspectionFailureKind.ReadOrParse));
+                InspectionFailure: StagedSpaceFailure.IsSpace(error) ? InspectionFailureKind.NotEnoughStagingSpace : InspectionFailureKind.ReadOrParse));
             return StagedTransferOutcome.Retained;
         }
         await using var snapshotLifetime = snapshot;
@@ -224,7 +226,9 @@ public sealed partial class StagedTransferPublisher
         InspectionResult result;
         try
         {
-            result = await _inspection.InspectStagedAsync(operation, snapshot.OpenRead, cancellationToken).ConfigureAwait(false);
+            result = journalEntry.StageSpaceFailed
+                ? await _inspection.InspectStagedFailureAsync(operation, cancellationToken).ConfigureAwait(false)
+                : await _inspection.InspectStagedAsync(operation, snapshot.OpenRead, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
@@ -250,7 +254,7 @@ public sealed partial class StagedTransferPublisher
         {
             bool ownerSessionMatches = TryGetBoundSession(transfer, out _, out _);
             bool canJustify = false;
-            if (ownerSessionMatches && _justifications is not null && StagedSeedExport.Failure(journalEntry) is null)
+            if (ownerSessionMatches && !journalEntry.StageSpaceFailed && _justifications is not null && StagedSeedExport.Failure(journalEntry) is null)
             {
                 try
                 {
@@ -483,6 +487,7 @@ public sealed partial class StagedTransferPublisher
                 transfer.TransferId).ConfigureAwait(false);
             PublishTransferNotification(transfer, new TransferNotification(
                 transfer.TransferId, fileName, TransferPhase.Retained,
+                InspectionFailure: StagedSpaceFailure.IsSpace(ex) ? InspectionFailureKind.NotEnoughStagingSpace : null,
                 RecoveryAdvice: busy ? StagedRecoveryAdvice.PublicationBusy : null));
             return StagedTransferOutcome.Retained;
         }
@@ -633,7 +638,7 @@ public sealed partial class StagedTransferPublisher
                 if (sourceFile.Identity != entry.StageIdentity || source.Length != entry.SealedLength)
                     throw new IOException("The blocked stage no longer has its measured identity and length.");
                 await using StagedInspectionSnapshot snapshot = await StagedInspectionSnapshot.CreateAsync(
-                    source, _stagingRoot, Path.GetExtension(entry.Transfer.DestinationPath), entry.SealedLength.Value, token)
+                    source, _stagingRoot, Path.GetExtension(entry.Transfer.DestinationPath), entry.SealedLength.Value, token, _spaceBudget, entry.Transfer.TransferId)
                     .ConfigureAwait(false);
                 string digest = snapshot.Digest;
                 if (snapshot.Stream.Length != source.Length ||

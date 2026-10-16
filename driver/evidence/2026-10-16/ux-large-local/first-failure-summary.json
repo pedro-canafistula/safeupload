@@ -1,0 +1,14 @@
+{
+  "rawReceipt": ".scratch/t9/focused-diagnostic1.json",
+  "sha256": "6899DC01D0201BF611726B2D6B568ACEED3159F8E6289C738B1D516D1D587E11",
+  "total": 233,
+  "failed": 51,
+  "productRegression": [
+    {
+      "name": "ArchiveInspectionTests.Actual_expansion_shares_the_unchanged_policy_size_limit[\"exact\"]",
+      "outcome": "Failed",
+      "error": "Xunit.Sdk.EqualException: Assert.Equal() Failure: Values differ\nExpected: Approved\nActual:   AllowedWithoutInspection\n   at Xunit.Assert.Equal[T](T expected, T actual, IEqualityComparer`1 comparer) in /_/src/xunit.assert/Asserts/EqualityAsserts.cs:line 154\n   at Xunit.Assert.Equal[T](T expected, T actual) in /_/src/xunit.assert/Asserts/EqualityAsserts.cs:line 89\n   at SafeUpload.Agent.Tests.ArchiveInspectionTests.Check(String path, Boolean sensitive, String reason, String memberName, Policy policy, String additionalMember) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/ArchiveInspectionTests.cs:line 294\n   at SafeUpload.Agent.Tests.ArchiveInspectionTests.Actual_expansion_shares_the_unchanged_policy_size_limit(String shape) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/ArchiveInspectionTests.cs:line 113\n   at Program.<Main>$(String[] args) in /home/victor/Work/safeupload-ux-large/.scratch/t9/runner/Program.cs:line 36"
+    }
+  ],
+  "otherFailures": "50 diagnostic runner fixture/output-helper construction errors; corrected runner, no product assertion change."
+}

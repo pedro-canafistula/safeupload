@@ -64,6 +64,7 @@ internal static class ZipInspectionGuard
             int nameSize = U16(header, 28), extraSize = U16(header, 30), commentSize = U16(header, 32);
             if (nameSize == 0 || commentSize != 0) throw new ArchiveRefusalException(ArchiveRefusal.UnsupportedStructure);
             RequireExtent(cursor + 46, nameSize + extraSize + commentSize, end);
+            budget.ChargeMetadata(checked(nameSize * 3 + extraSize + commentSize + 128));
             byte[] nameBytes = ReadAt(source, cursor + 46, nameSize, token);
             if ((flags & 0x800) == 0 && nameBytes.Any(value => value >= 128))
                 throw new ArchiveRefusalException(ArchiveRefusal.UnsupportedStructure);
@@ -149,6 +150,79 @@ internal static class ZipInspectionGuard
             return bytes;
         }
         catch { CryptographicOperations.ZeroMemory(bytes); throw; }
+    }
+
+    // Fresh passes reuse the held archive, never allocate member.Length bytes. The
+    // scanner may seek back to the BOM; seeking decodes/discards in bounded chunks.
+    internal static Stream OpenMember(Stream source, Entry entry, CancellationToken token)
+        => new MemberStream(source, entry, token);
+
+    private sealed class MemberStream(Stream source, Entry entry, CancellationToken token) : Stream
+    {
+        private EncodedStream? _encoded;
+        private Stream? _decoded;
+        private long _position;
+        private uint _crc = uint.MaxValue;
+        private bool _validated;
+        private bool _disposed;
+        private void Reset()
+        {
+            _decoded?.Dispose(); _encoded?.Dispose();
+            _encoded = new EncodedStream(source, entry.DataOffset, entry.CompressedLength, entry.Method == 8, token);
+            _decoded = entry.Method == 8 ? new DeflateStream(_encoded, CompressionMode.Decompress, leaveOpen: true) : _encoded;
+            _position = 0; _crc = uint.MaxValue; _validated = false;
+        }
+        public override bool CanRead => !_disposed;
+        public override bool CanSeek => !_disposed;
+        public override bool CanWrite => false;
+        public override long Length => entry.Length;
+        public override long Position { get => _position; set => Seek(value, SeekOrigin.Begin); }
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+        public override int Read(Span<byte> buffer)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this); token.ThrowIfCancellationRequested();
+            if (buffer.IsEmpty) return 0;
+            if (_decoded is null) Reset();
+            if (_position == entry.Length)
+            {
+                if (!_validated)
+                {
+                    Span<byte> extra = stackalloc byte[1];
+                    if (_decoded!.Read(extra) != 0 || _encoded!.Position != entry.CompressedLength || ~_crc != entry.Crc)
+                        throw new InvalidDataException("ZIP consumption or checksum is incomplete.");
+                    _validated = true;
+                }
+                return 0;
+            }
+            int read = _decoded!.Read(buffer[..(int)Math.Min(buffer.Length, entry.Length - _position)]);
+            if (read == 0) throw new InvalidDataException("A ZIP member ended early.");
+            foreach (byte value in buffer[..read]) _crc = CrcTable[(_crc ^ value) & 255] ^ _crc >> 8;
+            _position += read;
+            return read;
+        }
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this); token.ThrowIfCancellationRequested();
+            long target = origin switch { SeekOrigin.Begin => offset, SeekOrigin.Current => checked(_position + offset),
+                SeekOrigin.End => checked(Length + offset), _ => throw new ArgumentOutOfRangeException(nameof(origin)) };
+            if (target < 0 || target > Length) throw new IOException("Invalid ZIP member offset.");
+            if (_decoded is null || target < _position || target == 0) Reset();
+            Span<byte> scratch = stackalloc byte[8192];
+            while (_position < target)
+            {
+                int count = Read(scratch[..(int)Math.Min(scratch.Length, target - _position)]);
+                if (count == 0) throw new EndOfStreamException();
+            }
+            return _position;
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && !_disposed) { _disposed = true; _decoded?.Dispose(); _encoded?.Dispose(); }
+            base.Dispose(disposing);
+        }
+        public override void Flush() { }
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private static void ValidateExtra(byte[] bytes, bool central)

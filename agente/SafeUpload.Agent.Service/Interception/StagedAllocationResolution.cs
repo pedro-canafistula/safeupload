@@ -65,6 +65,9 @@ public sealed partial class StagedTransferAllocator
                 using var stage = StagedStageFile.Open(existing.Transfer.StagePath);
                 if (stage.Identity != existing.StageIdentity)
                     throw StagedRequestRefusal.Create("The committed allocation backing identity changed.");
+                // A manifest may have committed immediately before a crash, with no
+                // grant/reply yet. Complete the same durable grant, never reallocate.
+                _spaceBudget?.Bind(existing);
                 return new(existing.Transfer, existing.DestinationGeneration, existing.StageIdentity!, stage.Stream.Length);
             }
             StagedAllocationReply? allocated = await prepare().ConfigureAwait(false);
@@ -77,12 +80,15 @@ public sealed partial class StagedTransferAllocator
             if (extension.Length > 16 || extension.IndexOfAny(['\\', '/', ':']) >= 0)
                 throw StagedRequestRefusal.Create("Invalid allocation backing extension.");
             string stagePath = Path.Combine(_root, intent.AllocationReservationId.ToString("N") + extension);
-            if (!StagedStageFile.TryDeleteUnjournaled(stagePath, out var failure))
+            if (_spaceBudget is not null)
+                _spaceBudget.RequireFailedAllocationAbsent(intent.AllocationReservationId, stagePath);
+            else if (!StagedStageFile.TryDeleteUnjournaled(stagePath, out var failure))
             {
                 if (failure is not null && StagedRequestRefusal.IsPermanent(failure))
                     throw StagedRequestRefusal.Create("Unjournaled backing is structurally invalid; no terminal release is authorized.");
                 throw new IOException("Unjournaled backing cleanup is unresolved; refusal is not terminal.", failure);
             }
+            _spaceBudget?.RequireNegativeReceiptSpace(_root);
             string temporary = receiptPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {

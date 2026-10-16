@@ -13,8 +13,9 @@ namespace SafeUpload.Agent.Service.Interception;
 /// </summary>
 public sealed partial class StagedTransferAllocator
 {
-    // Matches the currently qualified owned-stream STAGE_MAX_BYTES bound.
+    // Legacy guard until a durable exact-object space grant is issued.
     internal const long MaximumSeedBytes = 16 * 1024 * 1024;
+    private readonly StagedSpaceBudget? _spaceBudget;
     private readonly string _root;
     private readonly StagedTransferJournal _journal;
     private readonly FileSecurity? _fileSecurity;
@@ -24,10 +25,12 @@ public sealed partial class StagedTransferAllocator
     private readonly SemaphoreSlim _v19AllocationGate = new(1, 1);
 
     public StagedTransferAllocator(string root, StagedTransferJournal journal,
-        bool requireProtectedParent = false, bool requireSystemIdentity = false)
+        bool requireProtectedParent = false, bool requireSystemIdentity = false, StagedSpaceBudget? spaceBudget = null)
     {
         _root = Path.GetFullPath(root);
+        _spaceBudget = spaceBudget;
         _journal = journal ?? throw new ArgumentNullException(nameof(journal));
+        if (_spaceBudget is not null) _journal.PrivateTemporaryAdmission = _spaceBudget.RequireMetadataAdmission;
 
         string? volumeRoot = Path.GetPathRoot(_root);
         if (string.IsNullOrEmpty(volumeRoot))
@@ -192,7 +195,7 @@ public sealed partial class StagedTransferAllocator
         if (previous is not null)
         {
             var predecessor = await _journal.ReadAsync(previous.TransferId, cancellationToken).ConfigureAwait(false);
-            if (!predecessor.SealedOnce || predecessor.StageCleanupStarted || predecessor.StageDeleted ||
+            if (predecessor.StageSpaceFailed || !predecessor.SealedOnce || predecessor.StageCleanupStarted || predecessor.StageDeleted ||
                 predecessor.State is not (TransferJournalState.Sealed or TransferJournalState.Retained or
                     TransferJournalState.LegacyEmptyHeld))
                 throw new IOException("The predecessor is blocked or retiring; retry ordinary allocation after retirement.");
@@ -213,6 +216,12 @@ public sealed partial class StagedTransferAllocator
         }
 
         bool copyExisting = disposition is 1 or 3 && sourceExists;
+        if (_spaceBudget is not null) await _spaceBudget.ReconcileAsync(_journal, cancellationToken).ConfigureAwait(false);
+        long seedCapacity = _spaceBudget?.Reserve(id, requestorSid ?? throw new IOException("A capacity grant needs the exact requestor SID."), transfer.StagePath, fullDestination)
+            ?? MaximumSeedBytes;
+        using var seedDeadline = _spaceBudget is null ? null : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        seedDeadline?.CancelAfter(_spaceBudget!.SeedTimeout);
+        CancellationToken seedToken = seedDeadline?.Token ?? cancellationToken;
         StagedStageIdentity? identity = null;
         preparation?.Dispose();
         try
@@ -221,14 +230,18 @@ public sealed partial class StagedTransferAllocator
             if (OperatingSystem.IsWindows())
             {
                 identity = await StagedBackingFile.CreateAsync(copyExisting ? source ?? fullDestination : null,
-                    transfer.StagePath, MaximumSeedBytes, cancellationToken).ConfigureAwait(false);
+                    transfer.StagePath, seedCapacity, seedToken, _spaceBudget is null ? null : exact =>
+                    {
+                        identity = exact;
+                        _spaceBudget.RecordStage(id, transfer.StagePath, exact);
+                    }).ConfigureAwait(false);
             }
             else if (copyExisting)
             {
                 await using var input = new FileStream(source ?? fullDestination,
                     FileMode.Open, FileAccess.Read, FileShare.Read,
                     64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
-                if (input.Length > MaximumSeedBytes)
+                if (input.Length > seedCapacity)
                     throw new IOException("The source exceeds the qualified private-version size limit.");
                 await using var output = new FileStream(transfer.StagePath,
                     FileMode.CreateNew, FileAccess.Write, FileShare.None,
@@ -237,11 +250,11 @@ public sealed partial class StagedTransferAllocator
                 long copied = 0;
                 for (;;)
                 {
-                    int count = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                    int count = await input.ReadAsync(buffer, seedToken).ConfigureAwait(false);
                     if (count == 0) break;
-                    if (count > MaximumSeedBytes - copied)
+                    if (count > seedCapacity - copied)
                         throw new IOException("The source grew beyond the qualified private-version size limit.");
-                    await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
+                    await output.WriteAsync(buffer.AsMemory(0, count), seedToken).ConfigureAwait(false);
                     copied += count;
                 }
                 output.Flush(flushToDisk: true);
@@ -268,6 +281,7 @@ public sealed partial class StagedTransferAllocator
             TransferJournalEntry entry = await _journal.CreateAsync(transfer, cancellationToken, tombstoneOwner,
                 previous?.TransferId, disposition, allocationReferenceId,
                 allocationReferenceKind, driverInstanceId, parentDirectoryIdentity).ConfigureAwait(false);
+            _spaceBudget?.Bind(entry);
             return new StagedAllocation(entry, identity);
         }
         catch (Exception allocationFailure)
@@ -277,6 +291,11 @@ public sealed partial class StagedTransferAllocator
             TransferJournalEntry? committed = await ReadAllocationManifestAsync(id, CancellationToken.None)
                 .ConfigureAwait(false);
             if (committed is not null) throw;
+            if (_spaceBudget is not null)
+            {
+                _spaceBudget.RetireFailedAllocation(id);
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(allocationFailure).Throw();
+            }
             if (!StagedStageFile.TryDeleteUnjournaled(transfer.StagePath, out Exception? cleanupFailure))
                 throw new IOException("The unjournaled allocation stage could not be safely removed.",
                     new AggregateException(allocationFailure, cleanupFailure ??
@@ -383,11 +402,14 @@ public sealed partial class StagedTransferAllocator
             using StagedStageFile stage = StagedStageFile.Open(transfer.StagePath);
             if (stage.Identity != existing.StageIdentity)
                 throw new IOException("The replay stage identity changed.");
+            _spaceBudget?.Bind(existing);
             return new StagedAllocationReply(existing.Transfer, existing.DestinationGeneration,
                 existing.StageIdentity!, stage.Stream.Length);
         }
 
-        if (!StagedStageFile.TryDeleteUnjournaled(transfer.StagePath, out Exception? cleanupFailure))
+        if (_spaceBudget is not null)
+            _spaceBudget.RequireFailedAllocationAbsent(intent.ReservationId, transfer.StagePath);
+        else if (!StagedStageFile.TryDeleteUnjournaled(transfer.StagePath, out Exception? cleanupFailure))
             throw new IOException("An unjournaled private reservation stage could not be safely replaced.",
                 cleanupFailure);
 
@@ -420,6 +442,7 @@ public sealed partial class StagedTransferAllocator
         StagedCreateAfterDiscardRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (_spaceBudget is not null) throw new IOException("Large-file create-after-discard needs a separately charged replacement reservation.");
         await _v19AllocationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {

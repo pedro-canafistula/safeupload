@@ -32,6 +32,12 @@ public static class Program
     /// <summary>Monta e executa o host.</summary>
     public static async Task Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--staged-parser")
+        {
+            Environment.ExitCode = OperatingSystem.IsWindows()
+                ? await StagedParserProcess.RunWorkerAsync().ConfigureAwait(false) : 2;
+            return;
+        }
         if (args.Contains("--seed-boot-policy", StringComparer.OrdinalIgnoreCase))
         {
             if (args.Length != 1)
@@ -92,7 +98,21 @@ public static class Program
         builder.Services.AddSingleton<IAuditSink, LocalQueueAuditSink>();
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
-        builder.Services.AddSingleton<InspectionService>();
+        builder.Services.AddSingleton<InspectionService>(services =>
+        {
+            IStagedParser? parser = null;
+            if (builder.Configuration.GetValue<bool>("Interception:StageSpace:Enabled"))
+            {
+                long memory = builder.Configuration.GetValue<long?>("Interception:StageSpace:ParserMemoryBytes")
+                    ?? throw new IOException("Large-file mode requires an explicit parser memory budget.");
+                if (memory < 64 * 1024 * 1024 || memory > 2L * 1024 * 1024 * 1024)
+                    throw new IOException("The parser memory budget is outside the supported range.");
+                parser = new StagedParserProcess(memory);
+            }
+            return new InspectionService(services.GetRequiredService<IPolicyStore>(),
+                services.GetRequiredService<IAuditSink>(), services.GetRequiredService<ExtractorRegistry>(),
+                services.GetRequiredService<VerdictCache>(), stagedParser: parser);
+        });
         builder.Services.AddSingleton<INotificationRecord>(services =>
         {
             var logger = services.GetRequiredService<ILogger<NotificationRecord>>();

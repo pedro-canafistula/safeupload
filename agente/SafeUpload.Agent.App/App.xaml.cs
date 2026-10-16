@@ -155,6 +155,8 @@ public partial class App : System.Windows.Application
                         StagedRecoveryAdvice.PublicationUnresolved =>
                             $"{fileName}: não foi possível confirmar o último salvamento. Novos salvamentos nesse nome estão bloqueados. Colete os diagnósticos do SafeUpload para suporte.",
                         StagedRecoveryAdvice.PublicationBusy => StagedPublicationPresentation.Busy(fileName),
+                        null when transfer.InspectionFailure == InspectionFailureKind.NotEnoughStagingSpace =>
+                            $"{fileName}: não há espaço de preparação suficiente. Libere espaço ou recupere salvamentos anteriores e tente novamente. O destino não recebeu este salvamento.",
                         null when transfer.InspectionFailure is not null =>
                             $"{fileName}: não foi possível concluir a análise. O arquivo continua guardado localmente e não foi enviado. Se o aviso persistir, colete os diagnósticos do SafeUpload para suporte.",
                         null => $"{fileName} permanece guardado localmente. O envio será tentado novamente.",
