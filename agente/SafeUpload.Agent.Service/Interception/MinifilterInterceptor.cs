@@ -230,7 +230,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 return;
             }
 
-            if (_stagingEnabled && _configuration.GetValue<bool>("Interception:StageSpace:Enabled"))
+            if (_stagingEnabled && StagedSpaceConfiguration.IsEnabled(_configuration))
             {
                 try { port.RequireStageSpaceCapabilities(); }
                 catch (Exception error)
@@ -1666,22 +1666,20 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         try
         {
             _stageJournal = new StagedTransferJournal(journal, requireProtectedParent: true,
-                deferArchiveLoad: _configuration.GetValue<bool>("Interception:StageSpace:Enabled"));
+                deferArchiveLoad: StagedSpaceConfiguration.IsEnabled(_configuration));
             initializingPath = root;
             StagedSpaceBudget.RequireExistingSecurity(root);
-            if (!_configuration.GetValue<bool>("Interception:StageSpace:Enabled") &&
+            if (!StagedSpaceConfiguration.IsEnabled(_configuration) &&
                 Directory.Exists(Path.Combine(root, ".space-reservations")) &&
                 Directory.EnumerateFileSystemEntries(Path.Combine(root, ".space-reservations")).Any())
                 throw new IOException("Staging-space reservations remain. Restore the large-file configuration before recovering or disabling this mode.");
             // Construct the allocator first: it establishes the protected private directory.
             _stageAllocator = new StagedTransferAllocator(root, _stageJournal,
                 requireProtectedParent: true, requireSystemIdentity: true);
-            if (_configuration.GetValue<bool>("Interception:StageSpace:Enabled"))
+            if (StagedSpaceConfiguration.IsEnabled(_configuration))
             {
-                _stageSpaceBudget ??= new StagedSpaceBudget(root, new StagedSpaceOptions(true,
-                    _configuration.GetValue<long?>("Interception:StageSpace:TotalBytes") ?? throw new IOException("Large-file staging requires an explicit TotalBytes setting; proposed resource defaults await owner approval."),
-                    _configuration.GetValue<long?>("Interception:StageSpace:PerUserBytes") ?? throw new IOException("Large-file staging requires an explicit PerUserBytes setting; proposed resource defaults await owner approval."),
-                    _configuration.GetValue<long?>("Interception:StageSpace:FreeSpaceFloorBytes") ?? throw new IOException("Large-file staging requires an explicit FreeSpaceFloorBytes setting; proposed resource defaults await owner approval.")));
+                _stageSpaceBudget ??= new StagedSpaceBudget(root, StagedSpaceConfiguration.Resolve(_configuration, root),
+                    legacyJournal: _stageJournal);
                 _stageSpaceBudget.VerifyInventory(root);
                 _stageAllocator = new StagedTransferAllocator(root, _stageJournal,
                     requireProtectedParent: true, requireSystemIdentity: true, spaceBudget: _stageSpaceBudget);
@@ -1705,6 +1703,13 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         }
         catch (Exception ex)
         {
+            // No worker/admission starts before this method succeeds. A retry
+            // must reconstruct and validate the complete subsystem, rather
+            // than mistake its pre-budget allocator for successful initialization.
+            _stageAllocator = null;
+            _stagePublisher = null;
+            _stageSpaceBudget = null;
+            _stageJournal = null;
             _logger.LogCritical(ex, "Falha ao inicializar o diario de transferencias. Startup path: {Path}", initializingPath);
             return false;
         }

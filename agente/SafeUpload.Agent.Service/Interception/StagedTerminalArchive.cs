@@ -31,6 +31,45 @@ public sealed partial class StagedTransferJournal
     internal int ArchivedTransfers => _archived.Count;
     internal bool IntegrityHeld => _gate.IntegrityHeld;
 
+    internal string DirectoryPath => _directory;
+    internal static bool StageSpaceUpgradeComplete(TransferJournalEntry entry) => CompletedArchiveShape(entry);
+
+    internal async Task VisitStageSpaceUpgradeAsync(Action<TransferJournalEntry> visit, Action<Guid> securitySnapshot,
+        CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            await EnsureArchiveLoadedCoreAsync(token).ConfigureAwait(false);
+            foreach (var file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
+            {
+                token.ThrowIfCancellationRequested();
+                if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
+                    throw new IOException("Unexpected legacy transfer journal file.");
+                visit(await ReadCoreAsync(id, token).ConfigureAwait(false));
+            }
+            foreach (Guid id in _archived.Keys)
+            {
+                token.ThrowIfCancellationRequested();
+                visit(await ReadArchivedCoreAsync(id, token).ConfigureAwait(false));
+            }
+            // Existing immutable snapshots may be referenced by bound history or
+            // be pre-manifest residue. Validate the held bytes/owner/shape before
+            // granting inventory compatibility; references still bind them on read.
+            foreach (var file in new DirectoryInfo(_directory).EnumerateFiles("*.security"))
+            {
+                token.ThrowIfCancellationRequested();
+                if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
+                    throw new IOException("Unexpected legacy security snapshot file.");
+                var bytes = await ReadAllocationSecurityBytesCoreAsync(id, token).ConfigureAwait(false);
+                if (StagedAllocationSecuritySnapshot.Decode(bytes).SnapshotId != id)
+                    throw new IOException("The legacy security snapshot identity changed.");
+                securitySnapshot(id);
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
     internal async Task RequireArchivedReservationsAsync(Func<Guid, bool> reserved, CancellationToken token)
     {
         await _gate.WaitAsync(token).ConfigureAwait(false);

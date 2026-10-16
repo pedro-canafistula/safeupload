@@ -1,5 +1,7 @@
 # Large-mode integration on demo/apps
 
+Later product-default/legacy-upgrade behavior supersedes the opt-in statements below: [current design](UX-LARGE.md).
+
 2026-10-16. Merge `ux/large` (`7edba345`) with `demo/apps` (`667a2652`), including
 allocation abort (`110da6b7`), packed journals (`83bceea2`) and basic metadata (`9ef5b17f`).
 Large mode remains explicitly opt-in and default-off. Runtime readiness/capability

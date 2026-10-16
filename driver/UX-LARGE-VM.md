@@ -12,7 +12,12 @@ execution and no skips; Windows PowerShell 5.1/native-signature gates for any ha
 is separate from these gates. Build/package/receipt hashes must identify the matched pair.
 
 The matrix must include `StagedLargeFileNativeTests` (three rows: manifest-before-grant exact replay and both
-unknown-create refusal/retry paths) and `StagedLargeFileTests`. The Linux diagnostic does not execute the native class.
+unknown-create refusal/retry paths) and `StagedLargeFileTests` plus `StagedLargeDefaultsTests`. The Linux diagnostic does not execute the native class.
+Add default-config startup on a fresh install, upgrade with hot/packed terminal history, pending legacy stages,
+more than 64 historical negative receipts, immutable security snapshots, over-budget recovery and explicit overrides.
+Prove legacy writers keep the old guard while every new version uses budget grants; missing ledgers/modern companions
+stay held. Restart after each committed import and before first new admission. Existing explicit policy values stay authoritative. Force migration validation to fail, reconnect repeatedly, and
+require NotReady with no legacy allocator fallback; repair the cause, then reconstruct accounting before admission.
 
 Every row below runs in **ordinary, runtime-Verifier, and boot-Verifier** modes. Use a fresh label per mode/attempt.
 Observe destination bytes independently throughout, retain original/final hashes, and require ForbiddenByteCount=0,
@@ -38,7 +43,7 @@ is not success for a row requiring publication. Restore and verify the baseline 
 | T9L14 | ZIP32 text >16 MiB succeeds; CRC/length/final-marker/trailing-data faults block. Nested seek member 8 MiB+1, depth >3, metadata >4 MiB, ZIP64 and 7z explicitly refuse; never label those refusals successful supported publication. |
 | T9L15 | Snapshot read lease deliberately survives publisher timeout; retry capture while live must refuse. Close publisher only: no refund. Close final reader/process: exact cleanup and content refund, metadata charge retained. Repeat restart with recorded snapshot, replacement-at-path, hard link and reparse injection; never delete replacement/unknown object. |
 | T9L16 | Deterministic seed access/sharing/size/deadline failure before manifest, then same stable allocation intent: exact cleanup, no permanent lost SID capacity, no double debit/new authority. Crash uncertainty without an exact identity stays charged. |
-| T9L17 | Corrupt/writable/wrong-owner/reparse/multiple-link/oversized reservation record or directory: refuse before parsing/ACL hardening; retain evidence and bytes. Existing unrelated private files and unreserved legacy journals prevent opt-in, with diagnostics. |
+| T9L17 | Corrupt/writable/wrong-owner/reparse/multiple-link/oversized reservation record or directory: refuse before parsing/ACL hardening; retain evidence and bytes. Existing unrelated private files and corrupt/uncertain legacy records remain held; validated legacy journals migrate without startup refusal. |
 | T9L18 | Old driver + large-mode agent; short/oversized/wrong-version capability reply: NotReady, no large allocation/publication. Disable mode with outstanding ledger: refuse downgrade and explain re-enablement/recovery. Old-service downgrade remains an unqualified T14 boundary. |
 | T9L19 | Clean-prefix disk-full save including zero bytes: tray explicitly says not enough staging space; returned partial bytes clearly belong to failed save, no override action. Disk-full hand-back shows custody failure, not a false verified copy. Notifications go only to the original SID/session. |
 | T9L20 | Concurrent same-SID Word/temp/Explorer saves and two-SID long seeding: record the current conservative admission/queue refusal and latency. This prototype limitation must be resolved before claiming everyday T9 UX. Run Notepad, Explorer copy and a real Word direct save after budget release; byte/privacy/namespace regressions remain required. |

@@ -1,14 +1,17 @@
-# T9 large files: opt-in unbound MVP implementation
+# T9 large files: product defaults and accounted staging
 
-2026-10-16, `ux/large`, base `62fd1673`. **Local prototype; T9 is not complete or qualified.**
+2026-10-16, `ux/large`. Initial base `62fd1673`; product-default/upgrade delta based on `a2b67984`. **T9 is not complete or qualified.**
 Claude owns Windows builds and VM execution as standard user `t5actor`. No product VM was contacted here.
 The [demo/apps integration](UX-LARGE-INTEGRATION.md) preserves packed journal scaling, allocation-abort fences and sealed metadata.
-Read the [qualification list](UX-LARGE-VM.md) and [local receipt](evidence/2026-10-16/ux-large-local/result.md).
+Read the [qualification list](UX-LARGE-VM.md), [initial local receipt](evidence/2026-10-16/ux-large-local/result.md) and
+[product-default/upgrade receipt](evidence/2026-10-16/ux-large3-local/result.md).
 
 ## Admission and authority
 
-`Interception:StageSpace:Enabled` selects the large-file path. It requires explicit `TotalBytes`, `PerUserBytes`,
-`FreeSpaceFloorBytes`, and `ParserMemoryBytes` settings. Proposed resource defaults are not silently activated.
+`Interception:StageSpace:Enabled` defaults to **true** (owner, 2026-10-16). `TotalBytes`, `PerUserBytes` and
+`FreeSpaceFloorBytes` default to the approved formulas below, evaluated on the staging volume at service initialization.
+Explicit settings override each field; an overridden total also determines the default per-user quarter.
+`ParserMemoryBytes` defaults to 256 MiB. `appsettings.json` documents enablement/parser memory; formulas remain runtime code.
 The service first obtains an exact four-byte v31 support receipt through authenticated service-SID control 35.
 An older driver, a short/oversized receipt, or another version keeps large-mode admission closed.
 Runtime activation, V30 and other readiness gates remain unchanged. Large mode refuses bound allocation and
@@ -31,10 +34,10 @@ initial unbound backing I/O run in the existing attach-owned interval outside na
 The new completion-status predicate is resident and safe at DISPATCH_LEVEL; grant/name work is PASSIVE/PAGE.
 No new kernel DDI/import is introduced. A fresh binary import/PREfast gate is still required.
 
-The disabled legacy profile retains its 16 MiB guard. This is a compatibility/cutover boundary, not a claim that
-T9 has removed the qualified product limit. Disabling large mode with retained accounting records refuses startup;
-restore the mode/configuration to recover. Enabling on unreserved legacy stages or historical transfer metadata
-also refuses. Automatic legacy migration and mixed-version downgrade with old service binaries are not qualified.
+The explicit disabled profile retains its 16 MiB guard. New product-default allocations have no fixed per-file
+staging cap; their immutable capacity comes from SID/total/free-space accounting. Disabling with retained accounting
+records still refuses startup: restore enablement to recover. Older-service binary downgrade remains unqualified.
+This configuration change does not certify the driver/agent pair or bypass runtime readiness gates.
 
 ## Accounting and cleanup
 
@@ -64,6 +67,34 @@ exclusive deletion, or accept confirmed absence when no identity was ever captur
 stay charged on allocation retry and terminal refusal alike. The same stable failed intent can retry without
 double charging; it cannot reuse a completed grant. A committed-manifest replay validates the tuple and held
 stage identity, then completes the same durable grant before returning; it never reseeds or allocates a new generation.
+
+## Existing installations
+
+Startup validates the existing trusted hot and packed journal before admitting new work. Completed legacy records
+retain their exact bytes, generations, checksums and indexes. Completed-shape records with confirmed stage absence
+receive inventory compatibility only: they cannot grant capacity, authorize publication, or authorize deletion.
+A shared global metadata envelope charges twice the rounded existing hot/cold bytes plus 16 MiB for bounded
+recovery/packing overlap. It is reconstructed on restart and charged against total/free space, not unrelated SIDs.
+Existing immutable `.security` snapshots are held/ACL/format/ID validated and charged by this envelope; their IDs
+permit only security-file metadata inventory, never transfer/capacity authority. New bound allocations stay refused.
+
+Pending legacy stages are **accounted on first start and finished under the original 16 MiB guard**. Persist a
+`LegacyGuard` reservation for four overlapping 16 MiB copies plus retained metadata, using the recorded SID and
+full object identity. An absent SID becomes unattributed total debt; an absent identity remains absent and cannot
+authorize cleanup/refund. These records cannot issue a `.space` companion, reuse new capacity or use the
+no-manifest failed-allocation retirement path. Exact existing cleanup/discard evidence and drained snapshots still
+control content refund. Repeated/partially completed migration checks the same guard/identity/no-companion rules.
+
+A missing ledger cannot relabel a modern large grant as legacy: a companion, actual or sealed content above the
+old guard, identity mismatch or inaccessible/untrusted object stays held. Unknown loose objects and interrupted
+corrupt accounting remain diagnostic holds; filenames never become deletion authority. Ordinary deleted-on-close
+legacy snapshots need no sweep; any unknown surviving snapshot remains held.
+
+Historical negative allocation receipts above the former 64-receipt threshold are compatible after full V20
+request/intent/name validation. Their rounded bytes are charged globally, with only one quarter-global envelope
+of additional growth; partial/corrupt temporary receipts remain held. Existing valid use above a configured budget,
+or a zero/tiny default on a nearly full volume, permits startup/recovery while new reservations fail with the
+staging-space reason. Physical persistence failures still retain custody and require storage recovery.
 
 ## Failure behavior and inspection
 
@@ -95,11 +126,11 @@ Seeding remains a linear copy with constant-size buffers, checked capacity and a
 MVP allocation queue/RPC can still make a slow large seed fail or delay unrelated creates; this needs the native
 seed-cost rows and, if they fail, asynchronous seeding work. Do not count safe refusal as successful large editing.
 
-## Proposed owner resource decision
+## Approved resource defaults
 
-Recommendation for an initial conservative trial, pending owner selection and Windows whole-operation measurements:
+Owner accepted these storage defaults on 2026-10-16. Native whole-operation qualification remains open:
 
-| Setting | Proposal | User consequence |
+| Setting | Default | User consequence |
 |---|---|---|
 | Total physical reservation budget | min(32 GiB, 10% of available stage-volume bytes at initialization) | Keeps substantial room for Windows/other work; limits simultaneous large saves. |
 | Per-SID physical reservation budget | min(8 GiB, total / 4) | One user cannot reserve the configured total. Four-copy accounting means roughly a quarter becomes content capacity. |
@@ -107,11 +138,16 @@ Recommendation for an initial conservative trial, pending owner selection and Wi
 | Complex parser memory | 256 MiB per worker, two existing Core worker slots | Explicit incomplete-inspection failure on exhaustion; Windows aggregate peak still needs measurement. |
 | Seed deadline | 120 s | Bounds copying work; does not extend the existing foreground allocation RPC deadline. |
 
-The existing policy remains **20 MiB / 5 seconds**. Measurements of 2 GiB Word take minutes, so those defaults
-cannot promise ordinary large-file completion. Select inspection size/latency separately; diagnostic probes use
-4 GiB / ten minutes and never alter product policy. A 2 GiB protected row needs more than 8 GiB per SID including
-metadata, enough actual free space for reservations/floor, and an explicitly suitable inspection policy.
+The inspection defaults are now **4096 MiB / 900 seconds** for newly generated policies and omitted resource
+fields in local/remote policies. The measured 2 GiB DOCX took 246 seconds, versus 97 seconds for text and 154 for
+ZIP; 15 minutes leaves processing/queue margin. Parser memory defaults to 256 MiB versus the measured 54–74 MiB
+process peaks. Timeout, hostile parser/resource failure and incomplete inspection still fail closed.
+
+Existing explicit policy limits remain authoritative, including a persisted `20` MiB/`5` second policy: upgrade
+does not silently rewrite an administrator policy or its version/fingerprint. Such installations must update those
+explicit policy fields to use the new large-file limits. A 2 GiB protected save still needs **more than 8 GiB per SID**
+including metadata: the approved default budget may correctly refuse it; increase explicit budgets for that row.
 
 The conservative whole-SID capacity lease permits one active content reservation per SID; simultaneous Word/temp
-saves can refuse. Granular concurrent leases, seamless legacy migration, automatic metadata retirement and lazy
-seeding remain follow-up work. This implementation is reviewable evidence toward T9, not the finished everyday UX.
+saves can refuse. Granular concurrent leases, automatic metadata retirement and lazy seeding remain follow-up work. Legacy
+upgrade accounting is implemented above; hostile/corrupt stores remain holds. This is not full T9 qualification.
