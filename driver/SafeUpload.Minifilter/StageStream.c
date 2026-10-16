@@ -1672,10 +1672,12 @@ static BOOLEAN StageSpaceGrantValid(_In_ const STAGE_SPACE_GRANT *Grant,
     _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *Identity, _In_ const GUID *TransferId);
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageReadSpaceGrant(_Inout_ PSTAGE_STREAM Stream);
+static NTSTATUS StageOpenBacking(PSTAGE_STREAM Stream, BOOLEAN ReadOnly);
 /* alloc_text must name a function before its definition (MSVC C2200). */
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, StageSpaceGrantValid)
 #pragma alloc_text(PAGE, StageReadSpaceGrant)
+#pragma alloc_text(PAGE, StageOpenBacking) /* has PAGED_CODE since ux/large */
 #endif
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -1707,7 +1709,8 @@ static NTSTATUS StageReadSpaceGrant(_Inout_ PSTAGE_STREAM Stream)
     NTSTATUS status;
     PAGED_CODE();
     if (Stream->SpaceCapacity != 0) return STATUS_SUCCESS;
-    buffer = ExAllocatePool2(POOL_FLAG_PAGED, SAFEUPLOAD_MAX_PATH_BYTES, STAGE_TAG);
+    /* Sized in characters for RtlStringCchPrintfW (SAFEUPLOAD_MAX_PATH_BYTES excludes the terminator: PREfast C6386). */
+    buffer = ExAllocatePool2(POOL_FLAG_PAGED, SAFEUPLOAD_MAX_PATH_CHARS * sizeof(WCHAR), STAGE_TAG);
     if (buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     status = RtlStringCchPrintfW(buffer, SAFEUPLOAD_MAX_PATH_CHARS, L"%wZ.space", &Stream->StageName);
     if (!NT_SUCCESS(status)) goto Exit;
