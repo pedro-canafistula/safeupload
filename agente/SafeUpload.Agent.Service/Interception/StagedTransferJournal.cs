@@ -2420,12 +2420,17 @@ public sealed partial class StagedTransferJournal
                 SourcePath = exactRequest is null ? null : current.Transfer.DestinationPath
             };
             if (current.PendingRename == pending) return current;
-            if (current.UnboundCancellation is not null || _unboundCommitted.Contains(id) ||
-                current.State == TransferJournalState.Released ||
+            // Only an exact unbound V20 retarget can invalidate live work.
+            // Legacy callers must wait for inspection/publication to finish.
+            // A durable Released version may retarget its retained stage, even
+            // if the release acknowledgement failed after replacing the journal.
+            if (current.UnboundCancellation is not null ||
+                _unboundCommitted.Contains(id) && current.State != TransferJournalState.Released ||
                 current.State == TransferJournalState.Publishing && !_unboundPublicationAttempts.Contains(id) ||
                 current.PendingRename is not null || current.LastRenameTransactionId == transactionId ||
-                current.BoundAllocation is not null && current.State is (TransferJournalState.Inspecting or
+                (current.BoundAllocation is not null || exactRequest is null) && current.State is (TransferJournalState.Inspecting or
                     TransferJournalState.Approved or TransferJournalState.Publishing) ||
+                current.BoundAllocation is not null && current.State == TransferJournalState.Released ||
                 (current.State == TransferJournalState.Blocked && !current.JustificationWindowClosed))
                 throw StagedRequestRefusal.Create("The staged version is busy.");
             if (sealedVersion != current.SealedOnce)
@@ -2546,7 +2551,13 @@ public sealed partial class StagedTransferJournal
                 StateHistory = history
             };
             await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
-            if (commit) _unboundPublicationAttempts.Remove(id);
+            if (commit)
+            {
+                // The retarget is a new version; neither live fact authorizes
+                // or blocks its publication on behalf of the prior version.
+                _unboundPublicationAttempts.Remove(id);
+                _unboundCommitted.Remove(id);
+            }
             return updated;
         }
         finally { _gate.Release(); }

@@ -953,10 +953,41 @@ public sealed class StagedTransferPublisherTests : IDisposable
             .ReadRecentAsync(10, CancellationToken.None));
         Assert.Throws<IOException>(() => new FileStream(
             transfer.StagePath, FileMode.Open, FileAccess.Write, FileShare.None));
+        // Also test a writer that shares the existing reader. FileShare.None
+        // alone can fail because it denies that reader, even if writes leaked.
+        Assert.Throws<IOException>(() => new FileStream(
+            transfer.StagePath, FileMode.Open, FileAccess.Write,
+            FileShare.ReadWrite | FileShare.Delete));
 
         extractor.Continue.SetResult();
         Assert.Equal(StagedTransferOutcome.Released, await publication);
         Assert.Equal("Clean text.", await File.ReadAllTextAsync(transfer.DestinationPath));
+    }
+
+    [Theory]
+    [InlineData(TransferJournalState.Inspecting)]
+    [InlineData(TransferJournalState.Approved)]
+    [InlineData(TransferJournalState.Publishing)]
+    public async Task Legacy_rename_cannot_retarget_an_inflight_version(TransferJournalState state)
+    {
+        var transfer = Transfer("legacy-busy.txt", "Clean text.");
+        await _journal.TransitionAsync(transfer.TransferId, TransferJournalState.Sealed,
+            TransferJournalState.Inspecting, null, default);
+        if (state is TransferJournalState.Approved or TransferJournalState.Publishing)
+            await _journal.TransitionAsync(transfer.TransferId, TransferJournalState.Inspecting,
+                TransferJournalState.Approved, new string('A', 64), default);
+        if (state == TransferJournalState.Publishing)
+            await _journal.TransitionAsync(transfer.TransferId, TransferJournalState.Approved,
+                TransferJournalState.Publishing, null, default);
+
+        await Assert.ThrowsAsync<IOException>(() => _journal.PrepareRenameAsync(transfer.TransferId,
+            1, transfer.ProcessId, Path.ChangeExtension(transfer.DestinationPath, ".renamed.txt"),
+            true, default));
+        var current = await _journal.ReadAsync(transfer.TransferId, default);
+        Assert.Equal(state, current.State);
+        Assert.Equal(transfer, current.Transfer);
+        Assert.Null(current.PendingRename);
+        Assert.False(File.Exists(transfer.DestinationPath));
     }
 
     [Fact]
