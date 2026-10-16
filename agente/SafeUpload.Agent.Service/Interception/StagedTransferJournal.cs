@@ -240,7 +240,11 @@ public sealed partial class StagedTransferJournal
                         RequireTrustedOwner(security, "journal manifest");
                     RequireNoUntrustedWriters(security, owner);
                 }
-                info.SetAccessControl(directorySecurity);
+                // Reapplying even the same DACL can change NTFS inheritance
+                // control bits and propagate to children. Preserve an already
+                // private descriptor byte-for-byte on a service restart.
+                if (!HasSameProtectedDacl(existingSecurity, directorySecurity))
+                    info.SetAccessControl(directorySecurity);
             }
 
             _fileSecurity = new FileSecurity();
@@ -256,7 +260,8 @@ public sealed partial class StagedTransferJournal
                     RequireTrustedOwner(security, "journal manifest");
                 }
                 RequireNoUntrustedWriters(security, owner);
-                file.SetAccessControl(_fileSecurity);
+                if (!HasSameProtectedDacl(security, _fileSecurity))
+                    file.SetAccessControl(_fileSecurity);
             }
         }
         else
@@ -3280,6 +3285,21 @@ public sealed partial class StagedTransferJournal
         : new FileInfo(path).Create(FileMode.CreateNew, FileSystemRights.FullControl,
             FileShare.None, 4096, FileOptions.Asynchronous | FileOptions.WriteThrough,
             _fileSecurity);
+
+    private static bool HasSameProtectedDacl(FileSystemSecurity existing, FileSystemSecurity required)
+    {
+        // Match protection and the complete ordered ACL, leaving NTFS's stored
+        // auto-inheritance control bits (and owner/group/SACL) untouched.
+        if (!existing.AreAccessRulesProtected) return false;
+        var actual = new RawSecurityDescriptor(existing.GetSecurityDescriptorBinaryForm(), 0).DiscretionaryAcl;
+        var expected = new RawSecurityDescriptor(required.GetSecurityDescriptorBinaryForm(), 0).DiscretionaryAcl;
+        if (actual is null || expected is null) return false;
+        var actualBytes = new byte[actual.BinaryLength];
+        var expectedBytes = new byte[expected.BinaryLength];
+        actual.GetBinaryForm(actualBytes, 0);
+        expected.GetBinaryForm(expectedBytes, 0);
+        return actualBytes.AsSpan().SequenceEqual(expectedBytes);
+    }
 
     private static void AddPrivateRules(
         FileSystemSecurity security, SecurityIdentifier owner, bool inherit)

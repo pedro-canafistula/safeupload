@@ -293,14 +293,15 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
     private void PreserveCorruptRecord(Exception error)
     {
         RequireDirectory();
-        // Preflight every child before moving anything. In particular, an
-        // unsafe ACL/reparse/hard link is not ordinary interrupted-write damage.
+        // Preflight every child before moving anything. These files are only
+        // untrusted evidence: check type/links without reading bytes or trusting
+        // their DACL. The trusted parent authorizes the archival rename.
         var paths = Directory.EnumerateFileSystemEntries(_directory).Where(p => p != Lease).ToArray();
         foreach (string path in paths)
         {
             if (Path.GetFileName(path) is not ("emissions.jsonl" or "previous.jsonl" or "head.json" or "head.tmp"))
                 throw new IOException("Unexpected notification child cannot be archived automatically: " + path, error);
-            using var file = Open(path);
+            StagedJournalFile.RequireRegularFileForPreservation(path);
         }
         string archive = _directory + ".corrupt-" + DateTimeOffset.UtcNow.ToString("yyyyMMddTHHmmssfffffffZ") +
             "-" + Guid.NewGuid().ToString("N");
