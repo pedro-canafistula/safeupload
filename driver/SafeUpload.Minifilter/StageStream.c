@@ -8694,8 +8694,14 @@ Readmit:
      * refusing it here only broke unrelated writers during the classification window (FontCache, the licensing store). */
     if (writer && !privateNamespace && SafeUploadStageProtectedName(name, kind) &&
         SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
-        denyReason = SAFEUPLOAD_DENY_REASON_ACTIVATING_NAME;
-        status = STATUS_ACCESS_DENIED; goto Complete;
+        if (KeGetCurrentIrql() == PASSIVE_LEVEL && IoGetTopLevelIrp() == NULL)
+            SafeUploadStageWritersAwaitNameActivation(Objects->Instance, &name->Name);
+        /* Waiting only requests observation. Re-read the current name gate;
+         * success still proceeds through trust/security/private allocation. */
+        if (SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
+            denyReason = SAFEUPLOAD_DENY_REASON_ACTIVATING_NAME;
+            status = STATUS_ACCESS_DENIED; goto Complete;
+        }
     }
 #endif
     if (RtlPrefixUnicodeString(&privatePrefix, &relative, TRUE)) {
