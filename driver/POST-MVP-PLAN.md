@@ -23,6 +23,14 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-16 — T9 large-file product defaults and upgrade.** Owner accepted total staging budget min(32 GiB, 10% of
+available space), per-user min(8 GiB, total/4), free-space floor max(1 GiB, 5% of volume); resource refusal is fail closed
+with a staging-space alert, isolated per SID, with no fixed per-file staging cap. Follow-up authorizes `StageSpace.Enabled`
+to default true, runtime formulas with explicit overrides, a measured parser memory default, suitable inspection defaults
+and safe existing-install migration. `ux/large` implementation on base `a2b67984`: [design](UX-LARGE.md),
+[local receipt](evidence/2026-10-16/ux-large3-local/result.md). Pending legacy stages are charged under their original guard;
+completed history stays compatible. Runtime readiness gates and Windows/pair qualification remain required.
+
 **2026-10-16 — MVP pair now, batch 3 in parallel.** Owner, in the session, after the [critical-path plan](evidence/2026-10-16/t5-critical-path-plan-sol61.md)
 (full T4/T5 to M2 standard: 180–310 worker-hours plus 30–50 lab hours): "MVP now + batch 3 in parallel". An MVP pair is cut from
 the last booted line (`t5-pair14`, `b97d263e`; its 10k row reached 9,998/10,000 with no blocked bytes, no cap refusal and no
@@ -486,7 +494,7 @@ latest inspector matrix. The remaining delivery requirements and their current p
 | T6 | Directory moves, empty/Explorer moves and final-pair three-mode byte observation | Only the earlier 28/28 copy-fallback component pair is qualified; directory creation/moves remain unresolved. |
 | T7 | Final-pair authorized/denied read rows | Earlier component B02 passes do not cover the revised pair. |
 | T8 | Nine real application workflows in all three modes; agreed owner/DACL/timestamps/attributes/ADS/EAs/labels | Final application/metadata rows and metadata decisions remain missing. |
-| T9 | Stage/seed caps removed under per-user/total budgets; complete format/encoding coverage, bounded parser memory, durable cleanup, interactive failure and protected large-file rows | The legacy profile remains at 16 MiB. An [opt-in unbound local prototype](UX-LARGE.md) adds accounted capacity grants and bounded parser execution; defaults, concurrent/seed UX and Windows qualification remain open. The [earlier 14-case measurement](evidence/2026-10-13/t9-inspector-metrics3-result.json) covers neither staging nor hostile parser memory/publisher costs/protected behavior. Complete-or-refuse coverage landed (`a46124c7`, `52fbb7cb`; drawing/chart/VML text, PDF annotations/form values read, rare payloads refused, Office part allowlist, independent fixtures). |
+| T9 | Stage/seed caps removed under per-user/total budgets; complete format/encoding coverage, bounded parser memory, durable cleanup, interactive failure and protected large-file rows | [Product-default accounted staging](UX-LARGE.md) uses owner-approved runtime storage formulas; new grants have no fixed per-file staging cap. Legacy upgrade retains old guards until cleanup. Concurrent/seed UX and Windows qualification remain open. The [earlier 14-case measurement](evidence/2026-10-13/t9-inspector-metrics3-result.json) covers neither staging nor hostile parser memory/publisher costs/protected behavior. Complete-or-refuse coverage landed (`a46124c7`, `52fbb7cb`; drawing/chart/VML text, PDF annotations/form values read, rare payloads refused, Office part allowlist, independent fixtures). |
 | T10 | Pass the final pair in all modes | Phase B fixed: `m2t10rv6` 13/13 under runtime Verifier on the 10-10 component pair; final-pair three-mode rows remain. |
 | T11 | SOP lifetime/retirement, complete journal scaling/recovery and adversarial review of the working final system | Scoped index/compaction/head-read controls pass; O(N) fresh head I/O and final-system review remain open. |
 
@@ -1138,11 +1146,11 @@ the publishing application can reopen the file and agreed metadata is preserved.
 **Done when:** no fixed driver size cap; per-user/total stage budgets fail closed without harming other users; full-content inspection
 uses bounded memory; incomplete inspection is Blocked with hand-back and policy-authorized justification; runtime rows prove privacy.
 
-- [ ] T9 large-file UX opt-in prototype (`ux/large`, base `62fd1673`): [design/limits](UX-LARGE.md),
+- [ ] T9 large-file UX implementation (`ux/large`; product-default/upgrade delta base `a2b67984`): [design/limits](UX-LARGE.md),
   [local receipt](evidence/2026-10-16/ux-large-local/result.md), [exact Windows rows](UX-LARGE-VM.md).
   Adds identity-bound capacity grants, SID/total reservations, exact orphan/snapshot accounting, failed-prefix refusal,
-  isolated parser resource limits and ZIP text streaming. Disabled by default; explicit resource settings, owner defaults,
-  WDK/native/three-mode evidence and everyday concurrent/seed UX remain open. Legacy 16 MiB profile is not cut over.
+  isolated parser resource limits and ZIP text streaming. Owner-approved defaults and conservative legacy upgrade are implemented;
+  [follow-up receipt](evidence/2026-10-16/ux-large3-local/result.md). WDK/native/three-mode evidence and everyday concurrent/seed UX remain open.
 - [x] **Complete-or-refuse coverage first** (owner direction 2026-10-13; [review finding](M2-COMPLETION-PLAN.md#findings-in-delivery-order)).
   - [x] Read DrawingML shape/text-box text, chart titles/axis and series names/labels/cached values, VML drawing text and PDF
     annotation contents/form-field values; refuse embedded files, PDF attachments, XFA and other unconsumed payloads.

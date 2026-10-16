@@ -28,10 +28,10 @@ internal sealed record PolicyDocument
     public MonitoredScopesDocument? MonitoredScopes { get; init; }
 
     [JsonPropertyName("maxFileSizeMb")]
-    public int MaxFileSizeMb { get; init; } = 20;
+    public int MaxFileSizeMb { get; init; } = 4096;
 
     [JsonPropertyName("inspectionTimeoutSeconds")]
-    public int InspectionTimeoutSeconds { get; init; } = 5;
+    public int InspectionTimeoutSeconds { get; init; } = 900;
 
     [JsonPropertyName("auditOnly")]
     public bool AuditOnly { get; init; }
@@ -53,8 +53,8 @@ internal sealed record PolicyDocument
         Version = 1,
         ActiveCategories = ["Cpf", "Cnpj", "PaymentCard", "Password", "Secret"],
         MonitoredScopes = MonitoredScopesDocument.Default,
-        MaxFileSizeMb = 20,
-        InspectionTimeoutSeconds = 5,
+        MaxFileSizeMb = 4096,
+        InspectionTimeoutSeconds = 900,
         FailOpen = true,
         ExcludedProcesses = ["System", "SafeUpload.Agent.App"],
         Clipboard = ClipboardDocument.Default

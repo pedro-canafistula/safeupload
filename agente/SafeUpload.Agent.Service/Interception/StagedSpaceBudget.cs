@@ -7,14 +7,15 @@ using System.ComponentModel;
 
 namespace SafeUpload.Agent.Service.Interception;
 
-/// <summary>Opt-in private storage reservations. Values are physical bytes, including overlapping copies.</summary>
+/// <summary>Private storage reservations. Values are physical bytes, including overlapping copies.</summary>
 public sealed record StagedSpaceOptions(bool Enabled, long TotalBytes, long PerUserBytes, long FreeSpaceFloorBytes)
 {
     public TimeSpan SeedTimeout { get; init; } = TimeSpan.FromSeconds(120);
     internal const long GiB = 1024L * 1024 * 1024;
-    public static StagedSpaceOptions Proposed(long available, long volumeSize) => new(false,
+    public static StagedSpaceOptions Defaults(long available, long volumeSize) => new(true,
         Math.Min(32 * GiB, available / 10), Math.Min(8 * GiB, available / 40),
         Math.Max(GiB, volumeSize / 20));
+    public static StagedSpaceOptions Proposed(long available, long volumeSize) => Defaults(available, volumeSize) with { Enabled = false };
 }
 
 /// <summary>A resource refusal never grants inspection/publication authority.</summary>
@@ -27,7 +28,7 @@ public sealed class StagedSpaceException(string message) : IOException(message)
 /// Persist capacity BEFORE output creation. A full capacity lease deliberately overcharges small
 /// saves; there is no on-demand kernel RPC, wait, or disk write under a kernel accounting lock.
 /// </summary>
-public sealed class StagedSpaceBudget
+public sealed partial class StagedSpaceBudget
 {
     internal const long MetadataBytes = 1024 * 1024;
     internal const long MinimumCapacity = StagedTransferAllocator.MaximumSeedBytes;
@@ -50,11 +51,13 @@ public sealed class StagedSpaceBudget
     private string? _archiveDirectory;
     private sealed record Snapshot(string Path, StagedStageIdentity Identity);
     private sealed record Reservation(Guid Id, string Sid, long Capacity, string? StagePath,
-        StagedStageIdentity? StageIdentity, Snapshot? Snapshot, int Version, bool ContentReleased = false, bool GrantIssued = false);
+        StagedStageIdentity? StageIdentity, Snapshot? Snapshot, int Version, bool ContentReleased = false, bool GrantIssued = false,
+        bool LegacyGuard = false);
 
-    public StagedSpaceBudget(string stagingRoot, StagedSpaceOptions options, Func<long>? availableBytes = null)
+    public StagedSpaceBudget(string stagingRoot, StagedSpaceOptions options, Func<long>? availableBytes = null,
+        StagedTransferJournal? legacyJournal = null)
     {
-        if (!options.Enabled || options.TotalBytes <= MetadataBytes || options.PerUserBytes <= MetadataBytes ||
+        if (!options.Enabled || options.TotalBytes < 0 || options.PerUserBytes < 0 ||
             options.PerUserBytes > options.TotalBytes || options.FreeSpaceFloorBytes < 0 ||
             options.SeedTimeout <= TimeSpan.Zero || options.SeedTimeout > TimeSpan.FromMinutes(10))
             throw new ArgumentException("Invalid staging space configuration.", nameof(options));
@@ -70,8 +73,6 @@ public sealed class StagedSpaceBudget
             _metadataGranularity = ReadAllocationGranularity(stagingRoot, content: false);
             _stageGranularity = Math.Max(64 * 1024, _metadataGranularity);
             _metadataBytes = Math.Max(MetadataBytes, checked(_metadataGranularity * 16));
-            if (options.PerUserBytes <= _metadataBytes || options.TotalBytes <= _metadataBytes)
-                throw new ArgumentException("The configured budget cannot cover the volume's metadata allocation units.");
             var directorySecurity = new DirectorySecurity();
             directorySecurity.SetAccessRuleProtection(true, false); directorySecurity.SetOwner(owner);
             _fileSecurity = new FileSecurity(); _fileSecurity.SetAccessRuleProtection(true, false); _fileSecurity.SetOwner(owner);
@@ -102,10 +103,12 @@ public sealed class StagedSpaceBudget
                 record.Capacity > (long.MaxValue - _metadataBytes) / CopyCount || (record.Capacity & 65535) != 0 ||
                 record.StageIdentity is not null && record.StagePath is null ||
                 record.GrantIssued && record.StageIdentity is null ||
+                record.LegacyGuard && (record.Capacity != MinimumCapacity || record.GrantIssued) ||
                 !_reservations.TryAdd(record.Id, record))
                 throw new IOException("Invalid staging reservation.");
         }
         // Validate all persisted locators before any exact-object cleanup can use them.
+        if (legacyJournal is not null) UpgradeLegacyJournal(legacyJournal);
         VerifyInventory(stagingRoot);
     }
 
@@ -201,13 +204,14 @@ public sealed class StagedSpaceBudget
             bool reuse = _reservations.TryGetValue(id, out var prior);
             if (reuse)
             {
+                if (prior!.LegacyGuard) throw new IOException("A legacy guarded version cannot be reused for new capacity.");
                 if (prior!.Sid != sid || prior.StagePath != stagePath) throw new IOException("The staging reservation owner changed.");
                 if (!prior.ContentReleased) return prior.Capacity;
                 if (prior.GrantIssued) throw new IOException("A completed allocation reservation cannot be reused.");
                 // The exact failed seed is gone and no reply was ever issued.
                 // Retry this stable allocation intent, retaining its metadata debit.
             }
-            long total = _metadataBytes, user = 0; // Global epoch/recovery metadata reserve.
+            long total = checked(_metadataBytes + _legacyJournalAllowance + _legacyNegativeAllowance), user = 0;
             foreach (var record in _reservations.Values)
             {
                 long charge = checked((record.ContentReleased ? 0 : record.Capacity * CopyCount) + _metadataBytes);
@@ -259,7 +263,8 @@ public sealed class StagedSpaceBudget
             }
             long next = creating ? (SafeUpload.Agent.Minifilter.Contract.RequestSize + _metadataGranularity - 1) /
                 _metadataGranularity * _metadataGranularity : 0;
-            if (bytes > _metadataBytes / 4 - next)
+            if (bytes > checked(_metadataBytes / 4 + _legacyNegativeAllowance) - next ||
+                creating && _options.TotalBytes < checked(_metadataBytes + _legacyJournalAllowance + _legacyNegativeAllowance))
                 throw new StagedSpaceException("Negative allocation receipts require recovery before more metadata can be stored.");
         }
     }
@@ -271,7 +276,8 @@ public sealed class StagedSpaceBudget
             foreach (string path in Directory.EnumerateFiles(directory))
             {
                 string leaf = Path.GetFileName(path);
-                if (leaf.Length >= 32 && Guid.TryParseExact(leaf[..32], "N", out Guid id) && !_reservations.ContainsKey(id))
+                if (leaf.Length >= 32 && Guid.TryParseExact(leaf[..32], "N", out Guid id) &&
+                    !_reservations.ContainsKey(id) && !_legacyCompleted.Contains(id) && !LegacySecurityMetadataPath(path))
                     throw new IOException("Unreserved historical transfer metadata prevents large-mode admission.");
             }
         }
@@ -279,7 +285,7 @@ public sealed class StagedSpaceBudget
         // for the journal while holding the reservation gate.
         journal?.RequireArchivedReservationsAsync(id =>
         {
-            lock (_gate) return _reservations.ContainsKey(id);
+            lock (_gate) return _reservations.ContainsKey(id) || _legacyCompleted.Contains(id);
         }, CancellationToken.None).GetAwaiter().GetResult();
         RequireArchiveAdmission(Path.Combine(directory, "completed", "segments.state"), 0);
     }
@@ -312,7 +318,7 @@ public sealed class StagedSpaceBudget
         long existing = archive ? _archiveAllocations!.GetValueOrDefault(path) :
             File.Exists(path) ? RoundMetadata(new FileInfo(path).Length) : 0;
         long growth = Math.Max(0, RoundMetadata(maximumLength) - existing);
-        long allowance = checked(_reservations.Count * (_metadataBytes / 2) + _metadataBytes / 4);
+        long allowance = checked(_reservations.Count * (_metadataBytes / 2) + _metadataBytes / 4 + _legacyJournalAllowance);
         if (current > allowance - growth)
             throw new StagedSpaceException("Staging archive cleanup must finish before another metadata write.");
         if (archive)
@@ -373,7 +379,8 @@ public sealed class StagedSpaceBudget
             string leaf = Path.GetFileName(temporary);
             bool transfer = leaf.Length >= 32 && Guid.TryParseExact(leaf[..32], "N", out _);
             string prefix = transfer ? leaf[..32] : "";
-            if (transfer && !_reservations.ContainsKey(Guid.ParseExact(prefix, "N")))
+            if (transfer && !_reservations.ContainsKey(Guid.ParseExact(prefix, "N")) &&
+                !_legacyCompleted.Contains(Guid.ParseExact(prefix, "N")) && !LegacySecurityMetadataPath(temporary))
                 throw new StagedSpaceException("The transfer has no metadata reservation.");
             long current = 0;
             foreach (string path in Directory.EnumerateFiles(Path.GetDirectoryName(temporary)!))
@@ -388,11 +395,13 @@ public sealed class StagedSpaceBudget
             }
             // Half of each 1 MiB charge is for journal files, including failed
             // replacement residue; the rest covers ledger overlap, grant/MFT/index overhead.
-            long allowance = transfer ? _metadataBytes / 2 : _metadataBytes / 4;
-            long nextAllocation = (StagedJournalFile.MaximumManifestBytes + _metadataGranularity - 1) / _metadataGranularity * _metadataGranularity;
+            long allowance = LegacySecurityMetadataPath(temporary) ? _legacyJournalAllowance :
+                transfer ? _metadataBytes / 2 : _metadataBytes / 4;
+            long maximum = LegacySecurityMetadataPath(temporary) ? StagedAllocationSecuritySnapshot.MaximumBytes : StagedJournalFile.MaximumManifestBytes;
+            long nextAllocation = (maximum + _metadataGranularity - 1) / _metadataGranularity * _metadataGranularity;
             if (current > allowance - nextAllocation)
                 throw new StagedSpaceException("Staging metadata cleanup must finish before another update.");
-            RequireJournalGrowthAdmission(Path.GetDirectoryName(temporary)!, temporary, StagedJournalFile.MaximumManifestBytes);
+            RequireJournalGrowthAdmission(Path.GetDirectoryName(temporary)!, temporary, maximum);
         }
     }
 
@@ -413,7 +422,7 @@ public sealed class StagedSpaceBudget
         lock (_gate)
         {
             RequireHealthy(); var record = _reservations[id];
-            if (record.ContentReleased || record.GrantIssued || record.Snapshot is not null || record.StagePath is null) return;
+            if (record.LegacyGuard || record.ContentReleased || record.GrantIssued || record.Snapshot is not null || record.StagePath is null) return;
             bool absent = record.StageIdentity is { } exact
                 ? StagedStageFile.TryDeleteExactAndConfirmAbsent(record.StagePath, exact, out _)
                 : StagedStageFile.TryConfirmAbsent(record.StagePath, out _); // No grant/reply issued; access errors do not imply absence.
@@ -430,7 +439,7 @@ public sealed class StagedSpaceBudget
             RequireHealthy();
             if (_reservations.TryGetValue(id, out var record))
             {
-                if (record.StagePath != stagePath || record.GrantIssued || record.Snapshot is not null)
+                if (record.LegacyGuard || record.StagePath != stagePath || record.GrantIssued || record.Snapshot is not null)
                     throw new IOException("The failed allocation cannot be released from its recorded custody.");
                 // This helper deletes only a previously recorded exact identity. A crash
                 // between CREATE and RecordStage leaves an unknown present object held.
@@ -449,6 +458,13 @@ public sealed class StagedSpaceBudget
         {
             RequireHealthy();
             var record = _reservations[entry.Transfer.TransferId];
+            if (record.LegacyGuard)
+            {
+                if (record.ContentReleased || record.StagePath != entry.Transfer.StagePath ||
+                    record.StageIdentity is null || record.StageIdentity != entry.StageIdentity)
+                    throw new IOException("The legacy allocation remains held without exact custody evidence.");
+                return; // Finish this version under its original 16 MiB kernel guard; never issue a larger grant.
+            }
             if (record.ContentReleased || entry.StageIdentity is null || record.StagePath != entry.Transfer.StagePath ||
                 record.Sid != entry.Transfer.RequestorSid ||
                 record.StageIdentity is not null && record.StageIdentity != entry.StageIdentity)
@@ -539,7 +555,8 @@ public sealed class StagedSpaceBudget
                     entry.DiscardAcknowledgedAtUtc is not null && entry.DiscardReservationId is not null &&
                     entry.DiscardKind is (StagedDiscardKind.UnattachedAllocation or StagedDiscardKind.PrivateVersion or
                         StagedDiscardKind.RetireUnexposed or StagedDiscardKind.RetireAttachedPrivate);
-                if (record.ContentReleased || !(disposalComplete || discardComplete) || entry.StageIdentity != record.StageIdentity ||
+                if (record.ContentReleased || !(disposalComplete || discardComplete) || record.StageIdentity is null ||
+                    entry.StageIdentity != record.StageIdentity ||
                     record.StagePath is null || entry.PendingRename is not null ||
                     entry.Transfer.StagePath != record.StagePath || entry.StageCleanupStarted ||
                     entry.HandbackState is StagedHandbackState.Copying) continue;

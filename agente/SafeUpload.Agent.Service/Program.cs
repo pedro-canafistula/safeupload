@@ -101,13 +101,9 @@ public static class Program
         builder.Services.AddSingleton<InspectionService>(services =>
         {
             IStagedParser? parser = null;
-            if (builder.Configuration.GetValue<bool>("Interception:StageSpace:Enabled"))
+            if (StagedSpaceConfiguration.IsEnabled(builder.Configuration))
             {
-                long memory = builder.Configuration.GetValue<long?>("Interception:StageSpace:ParserMemoryBytes")
-                    ?? throw new IOException("Large-file mode requires an explicit parser memory budget.");
-                if (memory < 64 * 1024 * 1024 || memory > 2L * 1024 * 1024 * 1024)
-                    throw new IOException("The parser memory budget is outside the supported range.");
-                parser = new StagedParserProcess(memory);
+                parser = new StagedParserProcess(StagedSpaceConfiguration.ParserMemoryBytes(builder.Configuration));
             }
             return new InspectionService(services.GetRequiredService<IPolicyStore>(),
                 services.GetRequiredService<IAuditSink>(), services.GetRequiredService<ExtractorRegistry>(),

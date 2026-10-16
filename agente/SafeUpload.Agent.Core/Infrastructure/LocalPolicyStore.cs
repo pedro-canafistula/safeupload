@@ -137,7 +137,7 @@ public sealed class LocalPolicyStore : IPolicyStore
 
     /// <summary>
     /// A política que o agente assume quando nunca foi configurado: as quatro
-    /// categorias ligadas, os formatos que sabemos ler, 20 MB de limite, 5 s de
+    /// categorias ligadas, os formatos que sabemos ler, 4096 MiB de limite, 900 s de
     /// timeout e fail-open.
     /// </summary>
     public static Policy CreateDefault() => PolicyDocument.Default.ToPolicy();
