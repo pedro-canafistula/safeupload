@@ -4074,6 +4074,23 @@ static NTSTATUS StageAttachWorkerBody(_Inout_ PSTAGE_ATTACH_TRANSACTION Transact
     return status;
 }
 
+/* Retire only the callback-data lookup key before Filter Manager can reuse its
+ * address. The lookup entry and its teardown/accounting owners remain linked
+ * until the existing final drain. Cancellation has already been disarmed/joined. */
+static VOID StageAttachFinishCallback(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction,
+    _In_ FLT_PREOP_CALLBACK_STATUS Result, _In_opt_ PVOID Context)
+{
+    PFLT_CALLBACK_DATA data;
+    KIRQL irql;
+    NT_ASSERT(!Transaction->CancelRegistered);
+    StageStreamAcquireSpinLock(&StageAttachLock, &irql);
+    data = Transaction->CallbackData;
+    Transaction->CallbackData = NULL;
+    StageStreamReleaseSpinLock(&StageAttachLock, irql);
+    NT_ASSERT(data != NULL);
+    FltCompletePendedPreOperation(data, Result, Context);
+}
+
 static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _In_ NTSTATUS Status)
 {
     NTSTATUS clearStatus = STATUS_SUCCESS;
@@ -4155,7 +4172,7 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
              * before forwarding so an upper-filter cancellation can reach CLOSE. */
             ObDereferenceObject(Transaction->ReferencedFileObject);
             Transaction->ReferencedFileObject = NULL;
-            FltCompletePendedPreOperation(Transaction->CallbackData, FLT_PREOP_SUCCESS_WITH_CALLBACK, record);
+            StageAttachFinishCallback(Transaction, FLT_PREOP_SUCCESS_WITH_CALLBACK, record);
         } else {
             BOOLEAN nativeReadFallback = FALSE;
             if (record != NULL) {
@@ -4174,12 +4191,12 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
                  * read open. Forward the original CREATE without disposition
                  * authority; a later mutation requires exact automatic rebind.
                  * The negative reservation receipt stays for lease release. */
-                FltCompletePendedPreOperation(Transaction->CallbackData, FLT_PREOP_SUCCESS_NO_CALLBACK, NULL);
+                StageAttachFinishCallback(Transaction, FLT_PREOP_SUCCESS_NO_CALLBACK, NULL);
                 goto CompletionFinished;
             }
             Transaction->CallbackData->IoStatus.Status = Status;
             Transaction->CallbackData->IoStatus.Information = 0;
-            FltCompletePendedPreOperation(Transaction->CallbackData, FLT_PREOP_COMPLETE, NULL);
+            StageAttachFinishCallback(Transaction, FLT_PREOP_COMPLETE, NULL);
         }
         goto CompletionFinished;
     }
@@ -4226,7 +4243,7 @@ static VOID StageAttachComplete(_Inout_ PSTAGE_ATTACH_TRANSACTION Transaction, _
         StageAttachRollbackBinding(Transaction, stream);
     Transaction->CallbackData->IoStatus.Status = Status;
     if (!NT_SUCCESS(Status)) Transaction->CallbackData->IoStatus.Information = 0;
-    FltCompletePendedPreOperation(Transaction->CallbackData, FLT_PREOP_COMPLETE, NULL);
+    StageAttachFinishCallback(Transaction, FLT_PREOP_COMPLETE, NULL);
 
     if (NT_SUCCESS(Status) && Transaction->NeedsAttachCommit && stream != NULL) {
         StageAcquire(&StageNamespaceResource);

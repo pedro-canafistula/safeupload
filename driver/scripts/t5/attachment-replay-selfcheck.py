@@ -194,7 +194,7 @@ class AttachmentReplay(unittest.TestCase):
         complete = stream('StageAttachComplete')
         self.order(complete, 'if (NT_SUCCESS(Status) && cancelled) Status = STATUS_CANCELLED;',
                    'if (NT_SUCCESS(Status) && Transaction->NeedsAttachCommit',
-                   'FltCompletePendedPreOperation(Transaction->CallbackData, FLT_PREOP_COMPLETE, NULL)',
+                   'StageAttachFinishCallback(Transaction, FLT_PREOP_COMPLETE, NULL)',
                    'if (NT_SUCCESS(Status) && Transaction->NeedsAttachCommit',
                    'StageClearPrivateDelete(stream)')
         for name in ('StageAttachExchangeRetry', 'StageAttachDrainTransaction', 'StageAttachRunLifecycle'):
