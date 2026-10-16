@@ -222,11 +222,12 @@ public sealed partial class StagedTransferJournal
             }
             else
             {
+                var existingSecurity = StagedPrivateSecurity.ReadDirectory(_directory);
                 if (owner.IsWellKnown(WellKnownSidType.LocalSystemSid))
                 {
-                    RequireTrustedOwner(info.GetAccessControl(), "journal directory");
+                    RequireTrustedOwner(existingSecurity, "journal directory");
                 }
-                RequireNoUntrustedWriters(info.GetAccessControl(), owner);
+                RequireNoUntrustedWriters(existingSecurity, owner);
                 // Setting an inheritable directory DACL can update a child's
                 // shared object before its own ACL is visited. Preflight ALL
                 // children before allowing that propagation, then reopen and
@@ -234,7 +235,7 @@ public sealed partial class StagedTransferJournal
                 foreach (string path in Directory.EnumerateFileSystemEntries(_directory))
                 {
                     using var file = StagedJournalFile.Open(path, maximumBytes: StagedJournalFile.RecoverySizeBound(path));
-                    var security = file.GetAccessControl();
+                    var security = StagedJournalFile.ReadSecurity(file, path);
                     if (owner.IsWellKnown(WellKnownSidType.LocalSystemSid))
                         RequireTrustedOwner(security, "journal manifest");
                     RequireNoUntrustedWriters(security, owner);
@@ -249,7 +250,7 @@ public sealed partial class StagedTransferJournal
             {
                 using var file = StagedJournalFile.Open(path, recoverAcl: true,
                     maximumBytes: StagedJournalFile.RecoverySizeBound(path));
-                var security = file.GetAccessControl();
+                var security = StagedJournalFile.ReadSecurity(file, path);
                 if (owner.IsWellKnown(WellKnownSidType.LocalSystemSid))
                 {
                     RequireTrustedOwner(security, "journal manifest");
@@ -3283,7 +3284,7 @@ public sealed partial class StagedTransferJournal
     {
         string parent = Path.GetDirectoryName(directory) ?? throw new IOException(
             "The journal needs a protected parent directory.");
-        var security = new DirectoryInfo(parent).GetAccessControl();
+        var security = StagedPrivateSecurity.ReadDirectory(parent);
         var owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier
             ?? throw new UnauthorizedAccessException("The journal parent has no Windows owner.");
         if (!owner.IsWellKnown(WellKnownSidType.LocalSystemSid) &&

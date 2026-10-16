@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using Microsoft.Win32.SafeHandles;
 
 namespace SafeUpload.Agent.Service.Interception;
@@ -9,6 +10,15 @@ namespace SafeUpload.Agent.Service.Interception;
 internal static class StagedJournalFile
 {
     internal const int MaximumManifestBytes = 128 * 1024;
+
+    internal static FileSecurity ReadSecurity(FileStream stream, string path)
+    {
+        try { return stream.GetAccessControl(); }
+        catch (UnauthorizedAccessException error)
+        {
+            throw new UnauthorizedAccessException("Journal handle ACL query failed for '" + path + "'.", error);
+        }
+    }
 
     internal static int RecoverySizeBound(string path)
     {

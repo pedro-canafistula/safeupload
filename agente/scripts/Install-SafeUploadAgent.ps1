@@ -6,6 +6,9 @@ param(
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
     [string] $ServiceExecutablePath,
 
+    # Defaults to the App directory in the exact agent package.
+    [string] $AppSourcePath = '',
+
     # Central policy server. Empty (the default) keeps the agent autonomous: it reads C:\ProgramData\SafeUpload\policy.json.
     # appsettings.json ships a panel address, and with any address configured the agent takes its policy from the
     # panel and falls back to a built-in default (other folder, removable and network scopes) when it cannot reach
@@ -22,6 +25,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $serviceName = 'SafeUploadAgent'
 $serviceExecutable = (Resolve-Path -LiteralPath $ServiceExecutablePath).Path
+if ([string]::IsNullOrWhiteSpace($AppSourcePath)) {
+    $AppSourcePath = Join-Path (Split-Path -Parent $serviceExecutable) 'App'
+}
+$appSource = (Resolve-Path -LiteralPath $AppSourcePath).Path
+if (-not (Test-Path -LiteralPath (Join-Path $appSource 'SafeUpload.Agent.App.exe') -PathType Leaf)) {
+    throw 'Agent package is missing App\SafeUpload.Agent.App.exe.'
+}
 $quotedExecutable = '"' + $serviceExecutable + '"'
 $binaryPath = (@($quotedExecutable) + $ServiceArguments) -join ' '
 $agentServiceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent'
@@ -38,6 +48,34 @@ function Invoke-ScChecked([string[]] $Arguments, [string] $Description) {
 # sc.exe on Windows 10 prints "SERVICE_SID_TYPE:  UNRESTRICTED"; other builds and docs use "SERVICE_SID_TYPE_UNRESTRICTED".
 function Test-ServiceSidTypeUnrestricted([string] $QueryOutput) {
     return $QueryOutput -match 'SERVICE_SID_TYPE[_:\s]+UNRESTRICTED'
+}
+
+function Install-SafeUploadApp {
+    $programFiles = [Environment]::GetFolderPath('ProgramFiles')
+    if ($env:ProgramW6432) { $programFiles = $env:ProgramW6432 }
+    $appDirectory = Join-Path $programFiles 'SafeUpload\App'
+    $appExecutable = Join-Path $appDirectory 'SafeUpload.Agent.App.exe'
+    if ($appSource.TrimEnd('\') -ne $appDirectory.TrimEnd('\')) {
+        # Only stop the installed tray; other checkouts/test instances are unrelated.
+        Get-Process -Name 'SafeUpload.Agent.App' -ErrorAction SilentlyContinue | Where-Object {
+            $_.Path -eq $appExecutable
+        } | Stop-Process -Force -ErrorAction Stop
+        [void](New-Item -ItemType Directory -Path $appDirectory -Force)
+        Get-ChildItem -LiteralPath $appSource -Force | Copy-Item -Destination $appDirectory -Recurse -Force
+    }
+    if ((Get-FileHash -LiteralPath $appExecutable -Algorithm SHA256).Hash -ne
+        (Get-FileHash -LiteralPath (Join-Path $appSource 'SafeUpload.Agent.App.exe') -Algorithm SHA256).Hash) {
+        throw 'Installed tray executable differs from the package.'
+    }
+    # Always use the 64-bit all-user Run key, even from 32-bit PowerShell.
+    $machine = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64')
+    try {
+        $run = $machine.CreateSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Run')
+        try { $run.SetValue('SafeUploadApp', ('"' + $appExecutable + '"'), 'String') }
+        finally { $run.Dispose() }
+    } finally { $machine.Dispose() }
+    Write-Output ('AppInstalled=' + $appExecutable)
+    Write-Output 'AppAutostart=HKLM Run SafeUploadApp (every user at sign-in)'
 }
 
 # Windows PowerShell 5.1 mangles embedded quotes when it passes an argument to sc.exe, so the command line (quoted
@@ -143,6 +181,7 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-ServiceSidTypeUnrestricted $sidType)) {
 }
 
 Write-Output "ServiceName=$serviceName"
+Install-SafeUploadApp
 Write-Output 'ServiceSidType=UNRESTRICTED'
 Write-Output 'ServiceConfigured=True'
 Write-Output 'ServiceStarted=False'

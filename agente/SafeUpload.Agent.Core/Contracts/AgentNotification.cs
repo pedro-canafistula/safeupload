@@ -44,7 +44,8 @@ public enum StagedRecoveryAdvice
     CollectDiagnostics = 3,
     RestartWindows = 4,
     JournalRecovery = 5,
-    PublicationUnresolved = 6
+    PublicationUnresolved = 6,
+    PublicationBusy = 7
 }
 
 /// <summary>

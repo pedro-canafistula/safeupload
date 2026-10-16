@@ -43,6 +43,62 @@ public sealed class StagedTransferPublisherTests : IDisposable
     public void Dispose() => _workspace.Dispose();
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Native_destination_sharing_contention_retries_then_releases_or_notifies_its_owner(bool persistent)
+    {
+        var transfer = Transfer("busy-destination.txt", "new approved bytes");
+        await File.WriteAllTextAsync(transfer.DestinationPath, "prior public bytes");
+        using var owner = _notifications.Subscribe(7, TestRequestorSid);
+        using var other = _notifications.Subscribe(7, "S-1-5-21-111-222-333-1001");
+        var notices = new List<TransferNotification>();
+        var gate = new ContendedDestinationGate(persistent, () =>
+        {
+            while (owner.Reader.TryRead(out var notice)) notices.Add(Assert.IsType<TransferNotification>(notice));
+            Assert.DoesNotContain(notices, n => n.Phase is TransferPhase.Retained or TransferPhase.Released or TransferPhase.Blocked);
+        });
+        var publisher = new StagedTransferPublisher(new InspectionService(
+            new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
+            ExtractorRegistry.CreateDefault(), new VerdictCache()), _notifications, _journal, _stagingRoot, gate,
+            sessionUserSidResolver: _ => TestRequestorSid);
+        Assert.Equal(persistent ? StagedTransferOutcome.Retained : StagedTransferOutcome.Released,
+            await publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.Equal(persistent ? 6 : 2, gate.Paths.Count);
+        Assert.Equal(gate.Paths.Count, gate.Revokes);
+        Assert.Equal(gate.Paths.Count, gate.Paths.Distinct().Count());
+        Assert.All(gate.Paths, path => Assert.False(File.Exists(path)));
+        while (owner.Reader.TryRead(out var notice)) notices.Add(Assert.IsType<TransferNotification>(notice));
+        var terminal = Assert.Single(notices, n => n.Phase != TransferPhase.Analyzing);
+        Assert.Equal(persistent ? TransferPhase.Retained : TransferPhase.Released, terminal.Phase);
+        Assert.Equal(persistent ? StagedRecoveryAdvice.PublicationBusy : (StagedRecoveryAdvice?)null, terminal.RecoveryAdvice);
+        Assert.False(terminal.OverrideAllowed); Assert.Null(terminal.InspectionFailure);
+        Assert.False(other.Reader.TryRead(out _));
+        Assert.Equal(persistent ? "prior public bytes" : "new approved bytes", await File.ReadAllTextAsync(transfer.DestinationPath));
+        var durable = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(persistent ? TransferJournalState.Retained : TransferJournalState.Released, durable.State);
+        if (persistent) Assert.Equal("new approved bytes", await File.ReadAllTextAsync(transfer.StagePath));
+        var audit = Assert.Single(await new LocalQueueAuditSink(_workspace.QueueFile).ReadRecentAsync(10, CancellationToken.None));
+        Assert.Equal(persistent ? "publication_busy" : null, audit.NotInspectedReason);
+    }
+
+    private sealed class ContendedDestinationGate(bool persistent, Action beforeAttempt) : IStagedPublicationGate
+    {
+        internal List<string> Paths { get; } = [];
+        internal int Revokes;
+        public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest)
+        {
+            beforeAttempt();
+            Paths.Add(temporaryDestination);
+            var held = persistent || Paths.Count == 1
+                ? new FileStream(transfer.DestinationPath, FileMode.Open, FileAccess.Read, FileShare.Read)
+                : null;
+            return new Release(() => { held?.Dispose(); Revokes++; });
+        }
+        public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames) => false;
+        private sealed class Release(Action release) : IDisposable { public void Dispose() => release(); }
+    }
+
+    [Theory]
     [InlineData(StagedSeedAuthority.Denied, "clean appended bytes")]
     [InlineData(StagedSeedAuthority.Unproven, "clean appended bytes")]
     [InlineData(StagedSeedAuthority.Denied, "")]

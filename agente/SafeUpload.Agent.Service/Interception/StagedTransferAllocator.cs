@@ -87,14 +87,14 @@ public sealed partial class StagedTransferAllocator
             else
             {
                 if (system) StagedTransferJournal.RequireTrustedOwner(
-                    directory.GetAccessControl(), "stage directory");
+                    StagedPrivateSecurity.ReadDirectory(_root), "stage directory");
                 directory.SetAccessControl(security);
                 foreach (var file in directory.EnumerateFiles())
                 {
                     if ((file.Attributes & FileAttributes.ReparsePoint) != 0)
                         throw new IOException("Staging contains a reparse point.");
                     if (system) StagedTransferJournal.RequireTrustedOwner(
-                        file.GetAccessControl(), "stage file");
+                        StagedPrivateSecurity.ReadFile(file.FullName), "stage file");
                     file.SetAccessControl(_fileSecurity);
                 }
             }
