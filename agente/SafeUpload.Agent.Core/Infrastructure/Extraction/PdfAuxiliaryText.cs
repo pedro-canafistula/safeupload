@@ -4,6 +4,7 @@ using System.Xml;
 using SafeUpload.Agent.Core.Domain;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
+using UglyToad.PdfPig.Core;
 using UglyToad.PdfPig.Tokens;
 
 namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
@@ -20,7 +21,7 @@ internal sealed class PdfAuxiliaryText(PdfDocument document)
     private int _appearanceTokens, _appearanceBytes;
     private const int MaximumObjects = 65_536;
     private const int MaximumDepth = 64;
-    private enum Kind { Other, Field, Bookmark }
+    private enum Kind { Other, Field, Bookmark, Structure }
     private int _annotations, _fields, _bookmarks, _objects;
     private readonly HashSet<DictionaryToken> _active = new(ReferenceEqualityComparer.Instance);
 
@@ -98,8 +99,7 @@ internal sealed class PdfAuxiliaryText(PdfDocument document)
     {
         var catalog = document.Structure.Catalog.CatalogDictionary;
         RefusePayloads(catalog, token);
-        if (document.Structure.Trailer.PreviousCrossReferenceOffset is not null)
-            throw new UnsupportedContentException();
+        ValidateCrossReferences(token);
         foreach (var pair in catalog.Data)
         {
             token().ThrowIfCancellationRequested();
@@ -108,7 +108,7 @@ internal sealed class PdfAuxiliaryText(PdfDocument document)
             var value = Resolve(pair.Value, token);
             if (pair.Key is "AcroForm" or "Outlines" or "Names" && value is not DictionaryToken)
                 throw new InvalidDataException("The PDF auxiliary root is not a dictionary.");
-            foreach (var text in ReadObject(value, Kind.Other, 0, token)) yield return text;
+            foreach (var text in ReadObject(value, pair.Key == "StructTreeRoot" ? Kind.Structure : Kind.Other, 0, token)) yield return text;
         }
         if (document.Information.DocumentInformationDictionary is { } information)
             foreach (var text in ReadObject(information, Kind.Other, 0, token)) yield return text;
@@ -157,6 +157,44 @@ internal sealed class PdfAuxiliaryText(PdfDocument document)
         }
     }
 
+    private void ValidateCrossReferences(Func<CancellationToken> token)
+    {
+        var parts = document.Structure.CrossReferenceTable.Parts;
+        if (parts.Count > MaximumObjects) throw new InspectionLimitException();
+        var offsets = parts.Select(part => part.Offset).ToHashSet();
+        if (parts.Count == 0 || offsets.Count != parts.Count ||
+            parts.Any(part => part.Previous is { } previous && !offsets.Contains(previous) ||
+                part.TiedToXrefAtOffset is { } tied && !offsets.Contains(tied)))
+            throw new UnsupportedContentException();
+        if (parts.Count == 1) return;
+        var definitions = new Dictionary<long, (int Generation, XrefLocation Location)>();
+        int entries = 0;
+        foreach (var part in parts)
+        {
+            token().ThrowIfCancellationRequested();
+            // Replacing a trailer root/Info can hide text even without a
+            // redefined object. Do not inspect just the latest such graph.
+            if (Get(part.Dictionary, "Root") is not IndirectReferenceToken root ||
+                root.Data != document.Structure.Trailer.Root ||
+                !Equals(Get(part.Dictionary, "Info"), document.Structure.Trailer.Info) ||
+                !Equals(Get(part.Dictionary, "Encrypt"), document.Structure.Trailer.EncryptionToken))
+                throw new UnsupportedContentException();
+            foreach (var (reference, location) in part.ObjectOffsets)
+            {
+                token().ThrowIfCancellationRequested();
+                if (++entries > MaximumObjects) throw new InspectionLimitException();
+                // Hybrid tables/streams may repeat a reference to the SAME
+                // stored definition (Word does). Another generation, offset,
+                // or compressed-object slot means an unread older version.
+                if (definitions.TryGetValue(reference.ObjectNumber, out var prior) &&
+                    (prior.Generation != reference.Generation || prior.Location.Type != location.Type ||
+                     prior.Location.Value1 != location.Value1 || prior.Location.Value2 != location.Value2))
+                    throw new UnsupportedContentException();
+                definitions[reference.ObjectNumber] = (reference.Generation, location);
+            }
+        }
+    }
+
     private IEnumerable<ReadOnlyMemory<char>> ReadObject(IToken value, Kind kind, int depth, Func<CancellationToken> token, bool appearance = false)
     {
         Check(depth, token);
@@ -180,7 +218,9 @@ internal sealed class PdfAuxiliaryText(PdfDocument document)
             if (!_active.Add(dictionary)) throw new InvalidDataException("The PDF auxiliary graph contains a cycle.");
             try
             {
-                if (!appearance && Get(dictionary, "S") is { } action && !IsName(Resolve(action, token), "URI") && !IsName(Resolve(action, token), "GoTo"))
+                bool structureElement = kind == Kind.Structure && IsName(Get(dictionary, "Type"), "StructElem");
+                if (structureElement && Get(dictionary, "S") is not NameToken) throw new InvalidDataException("The PDF structure role is invalid.");
+                if (!appearance && !structureElement && Get(dictionary, "S") is { } action && !IsName(Resolve(action, token), "URI") && !IsName(Resolve(action, token), "GoTo"))
                     throw new UnsupportedContentException();
                 foreach (var pair in dictionary.Data)
                 {
@@ -202,7 +242,8 @@ internal sealed class PdfAuxiliaryText(PdfDocument document)
                     else
                     {
                         Kind childKind = pair.Key == "Fields" || kind == Kind.Field && pair.Key == "Kids" ? Kind.Field :
-                            pair.Key == "First" || kind == Kind.Bookmark && pair.Key == "Next" ? Kind.Bookmark : Kind.Other;
+                            pair.Key == "First" || kind == Kind.Bookmark && pair.Key == "Next" ? Kind.Bookmark :
+                            kind == Kind.Structure && pair.Key is "K" or "Kids" or "Nums" or "ParentTree" ? Kind.Structure : Kind.Other;
                         foreach (var text in ReadObject(item, childKind, depth + 1, token, appearance)) yield return text;
                     }
                 }

@@ -49,6 +49,7 @@ Limits: 16,384 parts (visited set retained), 32,770 ZIP entries, XML depth 256.
 | Widget/AcroForm V/T/TU, DV, Opt and inherited values | Read, subject to AP refusal | Fields/parents followed; string, hex, name and numeric values supported. |
 | Info strings, outline/bookmark titles, catalog XMP text/attributes | Read | Custom Info, child outlines and strict decoded XMP included. |
 | Marked-content alternate descriptions/expansion properties | Read | Original glyph inspection retained. |
+| Tagged structure element descriptions/titles | Read | StructTreeRoot child and parent-number-tree traversal distinguishes structure roles from actions; ActualText still refused. |
 | AP N/R/D, including every state | Read/validate graphics-only | PdfPig decoding; strict bounded lexer; stored strings, names and comments scanned as separate items. |
 | AP text-showing Tj/TJ/'/", XObject Do, inline BI/ID/EI, ActualText | Refused | Appearance text/rendering is not implemented; includes filled text-field widgets. |
 | AP missing explicit Resources; nested resource streams; external F/FFilter/FDecodeParms/Ref | Refused | Cannot establish local graphics-only coverage or inspect dependent streams. |
@@ -56,11 +57,11 @@ Limits: 16,384 parts (visited set retained), 32,770 ZIP entries, XML depth 256.
 | ActualText; RC; other auxiliary streams; page-level Metadata | Refused | Independent replacement/rich/stream content lacks a reader route. |
 | Page images; EmbeddedFiles; Filespec/EF/AF; FileAttachment; XFA | Refused | Uninspected image/file/form payloads. |
 | JavaScript, non-URI/non-GoTo actions, rich media | Refused | No script execution or multimedia inspection. |
-| Incremental revisions, including many signed or Acrobat-edited PDFs | Refused | Previous revisions are not read; staged saves are Blocked as unsupported_format. |
+| Multiple cross-reference sections (including Word hybrid exports) | Read when no older definition exists | Unmerged sections must agree on each object number's generation and exact file/object-stream location, and on Root/Info/Encrypt. Identical references to the same bytes are allowed; older definitions or changed trailer graphs remain unsupported_format. |
 
 Filled forms whose appearances draw text are also Blocked as `unsupported_format` until appearance text is read.
 Graphics-only APs must have explicit Resources and supported filters; some otherwise valid annotations remain unsupported.
-PDF limits: 4,096 annotation/field/bookmark visits each; 65,536 auxiliary visits; graph depth 64;
+PDF limits: 4,096 annotation/field/bookmark visits each; 65,536 auxiliary and cross-reference visits each; graph depth 64;
 AP cumulative 65,536 tokens and 8 MiB decoded bytes, lexer nesting 64; XMP depth 256 and decoded size 8 MiB.
 These bound extraction work, not third-party decoding allocations. PDF orphan objects and unused page resources
 are not exhaustively inventoried; arbitrary PDF stored-byte completeness and broader T9 qualification remain open.
