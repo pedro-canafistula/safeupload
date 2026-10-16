@@ -202,7 +202,9 @@ public sealed partial class StagedTransferAllocator
         // dispositions need a real empty backing before upper-stream admission.
         string? source = previous?.StagePath;
         bool sourceExists = tombstoneOwner is null &&
-            (source is null ? File.Exists(fullDestination) : File.Exists(source));
+            (OperatingSystem.IsWindows()
+                ? StagedFileMetadata.TryCapturePath(source ?? fullDestination) is not null
+                : File.Exists(source ?? fullDestination));
         if (disposition == 2 && sourceExists) // FILE_CREATE
         {
             throw new IOException("The destination already exists.");

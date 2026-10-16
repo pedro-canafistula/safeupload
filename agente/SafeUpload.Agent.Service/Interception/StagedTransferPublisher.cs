@@ -431,7 +431,7 @@ public sealed partial class StagedTransferPublisher
         {
             await StagedPublicationRetry.ExecuteAsync(async token =>
             {
-                if (File.Exists(destinationPath)) _ = StagedFileMetadata.CapturePath(destinationPath);
+                _ = StagedFileMetadata.TryCapturePath(destinationPath);
                 string temporaryDestination = Path.Combine(directory, ".safeupload-" +
                     transfer.TransferId.ToString("N") +
                     (publicationAttempt++ == 0 ? "" : "-" + Guid.NewGuid().ToString("N")) + ".pending");
@@ -456,7 +456,7 @@ public sealed partial class StagedTransferPublisher
                         // Re-inventory supported storage on the exact output.
                         // The seal's logical attributes are already applied.
                         _ = StagedFileMetadata.Capture(output);
-                        if (File.Exists(destinationPath)) _ = StagedFileMetadata.CapturePath(destinationPath);
+                        _ = StagedFileMetadata.TryCapturePath(destinationPath);
                         StagedDestinationFile.CommitHandle(output, destinationPath);
                         committed = true;
                     }, cancellationToken).ConfigureAwait(false);

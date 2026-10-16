@@ -47,11 +47,24 @@ public sealed record StagedFileMetadata(long CreationTime, long LastAccessTime, 
 
     internal static StagedFileMetadata CapturePath(string path)
     {
+        return TryCapturePath(path) ?? throw new StagedMetadataException("metadata_source_missing");
+    }
+
+    // File.Exists also returns false for denied/failed observations. Only a
+    // native missing leaf is absence; a missing parent is an invalid lookup.
+    internal static StagedFileMetadata? TryCapturePath(string path)
+    {
         using var handle = CreateFile(path, 0x88, 5, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero);
         if (handle.IsInvalid)
-            throw new StagedMetadataException("metadata_source_open_failed", new Win32Exception(Marshal.GetLastWin32Error()));
+        {
+            int error = Marshal.GetLastWin32Error();
+            if (IsMissingLeaf(error)) return null;
+            throw new StagedMetadataException("metadata_source_open_failed", new Win32Exception(error));
+        }
         return Capture(handle);
     }
+
+    internal static bool IsMissingLeaf(int nativeError) => nativeError == 2; // ERROR_FILE_NOT_FOUND
 
     // FILE_STREAM_INFO is an offset chain; never trust a missing terminator,
     // odd name size, overlapping next entry or an unknown stream type/name.

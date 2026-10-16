@@ -3,9 +3,11 @@
 
 #include <fltKernel.h>
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageQueryIdentity(PFLT_INSTANCE Instance, PUNICODE_STRING Name,
     BOOLEAN Directory, PFILE_ID_INFORMATION Identity);
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 SafeUploadStageCheckAccess (
     _In_ PFLT_CALLBACK_DATA Data,
@@ -14,6 +16,7 @@ SafeUploadStageCheckAccess (
     _Out_ PACCESS_MASK GrantedAccess
     );
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 SafeUploadStageCaptureSecurity (
     _In_ PFLT_CALLBACK_DATA Data,
@@ -26,12 +29,14 @@ SafeUploadStageCaptureSecurity (
     _Out_ PACCESS_MASK GrantedAccess
     );
 
+_IRQL_requires_(PASSIVE_LEVEL)
 VOID
 SafeUploadStageFreeSecurity (
     _In_opt_ PSECURITY_DESCRIPTOR SecurityDescriptor,
     _In_ BOOLEAN AssignedDescriptor
     );
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 SafeUploadStageCheckRenameAccess (
     _In_ PFLT_CALLBACK_DATA Data,
@@ -40,6 +45,7 @@ SafeUploadStageCheckRenameAccess (
     _In_ BOOLEAN Replace
     );
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageCheckSubjectAccess(PFLT_CALLBACK_DATA Data,
     PSECURITY_DESCRIPTOR Descriptor, ACCESS_MASK Desired);
 
