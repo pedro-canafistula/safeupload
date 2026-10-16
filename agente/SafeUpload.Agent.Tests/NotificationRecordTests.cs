@@ -223,6 +223,74 @@ public sealed class NotificationRecordTests : IDisposable
         Assert.Single(Directory.GetDirectories(_root, "notifications.corrupt-*"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Startup_archives_a_temporary_head_without_trusting_or_reading_its_dacl(bool denyRead)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using (var record = Record()) record.Append(Transfer(), null);
+        string temporary = Path.Combine(DirectoryPath, "head.tmp");
+        File.Copy(Path.Combine(DirectoryPath, "head.json"), temporary);
+        byte[] bytes = File.ReadAllBytes(temporary);
+        var originalAcl = new FileInfo(temporary).GetAccessControl();
+        var damagedAcl = new FileInfo(temporary).GetAccessControl();
+        damagedAcl.SetAccessRuleProtection(true, true);
+        damagedAcl.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(denyRead ? WellKnownSidType.WorldSid : WellKnownSidType.BuiltinUsersSid, null),
+            denyRead ? FileSystemRights.ReadData : FileSystemRights.Read, denyRead ? AccessControlType.Deny : AccessControlType.Allow));
+        new FileInfo(temporary).SetAccessControl(damagedAcl);
+        var descriptor = new FileInfo(temporary).GetAccessControl().GetSecurityDescriptorBinaryForm();
+        if (denyRead) Assert.Throws<UnauthorizedAccessException>(() => File.ReadAllBytes(temporary));
+        var logger = new RecoveryLogger();
+        using var recovered = new NotificationRecord(DirectoryPath, logger, NotificationRecord.SegmentBytes,
+            "test/boot", testIdentity: true);
+        string archive = Assert.Single(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+        string preserved = Path.Combine(archive, "head.tmp");
+        Assert.False(File.Exists(temporary));
+        Assert.Equal(descriptor, new FileInfo(preserved).GetAccessControl().GetSecurityDescriptorBinaryForm());
+        // Only the test restores read access to inspect the preserved bytes.
+        originalAcl.SetSecurityDescriptorBinaryForm(originalAcl.GetSecurityDescriptorBinaryForm(), AccessControlSections.Access);
+        new FileInfo(preserved).SetAccessControl(originalAcl);
+        Assert.Equal(bytes, File.ReadAllBytes(preserved));
+        Assert.Equal(1, logger.Warnings);
+        var start = Assert.Single(Entries());
+        Assert.Equal("Start", start.Kind);
+        Assert.Equal(1, start.Sequence);
+        Assert.Equal(NotificationRecord.ZeroHash, start.PreviousSha256);
+        var hub = Hub(recovered);
+        using var subscriber = hub.Subscribe();
+        var transfer = Transfer();
+        hub.Publish(transfer, 4);
+        Assert.True(subscriber.Reader.TryRead(out var delivered));
+        Assert.Equal(transfer, delivered);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Recovery_refuses_a_linked_temporary_head_before_moving_any_evidence(bool hardLink)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using (var record = Record()) record.Append(Transfer(), null);
+        byte[] original = File.ReadAllBytes(Active);
+        string outside = Path.Combine(_root, "outside-head.json");
+        File.Copy(Path.Combine(DirectoryPath, "head.json"), outside);
+        byte[] outsideBytes = File.ReadAllBytes(outside);
+        string temporary = Path.Combine(DirectoryPath, "head.tmp");
+        if (hardLink) Assert.True(CreateHardLink(temporary, outside, IntPtr.Zero));
+        else File.CreateSymbolicLink(temporary, outside);
+        try
+        {
+            Assert.Throws<IOException>(() => new NotificationRecord(DirectoryPath, NullLogger.Instance,
+                NotificationRecord.SegmentBytes, "test/boot", testIdentity: true));
+            Assert.Equal(original, File.ReadAllBytes(Active));
+            Assert.Equal(outsideBytes, File.ReadAllBytes(outside));
+            Assert.Empty(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+        }
+        finally { File.Delete(temporary); }
+    }
+
     [Fact]
     public void Recovery_does_not_move_unexpected_children_or_follow_links()
     {

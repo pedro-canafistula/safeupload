@@ -70,6 +70,23 @@ public sealed class StagedPrivateSecurityTests : IDisposable
         Assert.Equal(acl, StagedPrivateSecurity.ReadDirectory(directory).GetSecurityDescriptorBinaryForm());
     }
 
+    [Fact]
+    public async Task Existing_private_manifest_keeps_its_exact_descriptor_across_reinitialization()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        string directory = Path.Combine(_workspace.Root, "journal");
+        var journal = new StagedTransferJournal(directory);
+        var transfer = new StagedTransfer(Guid.NewGuid(),
+            Path.Combine(_workspace.Root, "private.stage"), Path.Combine(_workspace.Root, "public.txt"),
+            SafeUpload.Agent.Core.Domain.DestinationKind.RemovableDrive, "notepad.exe", 123, 1);
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        string manifest = Path.Combine(directory, transfer.TransferId.ToString("N") + ".json");
+        var original = StagedPrivateSecurity.ReadFile(manifest).GetSecurityDescriptorBinaryForm();
+        var restarted = new StagedTransferJournal(directory);
+        Assert.Equal(transfer, (await restarted.ReadAsync(transfer.TransferId, CancellationToken.None)).Transfer);
+        Assert.Equal(original, StagedPrivateSecurity.ReadFile(manifest).GetSecurityDescriptorBinaryForm());
+    }
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CreateHardLink(string link, string existing, IntPtr reserved);
