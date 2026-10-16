@@ -10,11 +10,14 @@ public class Host {
     @Column (name="id_host")
     private Integer idHost;
 
-    @Column (name="hostname")
-    private String hostname;
-
     @Column (name="ip")
     private String ip;
+
+    @Column (name="mascara")
+    private int mascara;
+
+    @Column (name="hostname")
+    private String hostname;
 
     @Column (name="sistema_operacional")
     private String sistemaOperacional;
@@ -37,8 +40,9 @@ public class Host {
     protected Host(){}
 
     public Host (
-        String hostname,
         String ip,
+        int mascara,
+        String hostname,
         String sistemaOperacional,
         String versaoSO,
         String fabricante,
@@ -46,8 +50,9 @@ public class Host {
         String macAddress,
         String numeroSerie
     ) {
-        this.hostname = hostname;
         this.ip = ip;
+        this.mascara = mascara;
+        this.hostname = hostname;
         this.sistemaOperacional = sistemaOperacional;
         this.versaoSO = versaoSO;
         this.fabricante = fabricante;
@@ -60,12 +65,16 @@ public class Host {
         return idHost;
     }
 
-    public String getHostname(){
-        return hostname;
-    }
-
     public String getIp(){
         return ip;
+    }
+
+    public int getMascara(){
+        return mascara;
+    }
+
+    public String getHostname(){
+        return hostname;
     }
 
     public String getSistemaOperacional(){

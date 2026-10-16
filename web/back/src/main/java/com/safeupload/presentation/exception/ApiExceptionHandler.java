@@ -76,6 +76,18 @@ public class ApiExceptionHandler {
             )); 
     }
 
+    @ExceptionHandler(DatabaseErrorException.class)
+    public ResponseEntity<Map<String, Object>> handleDatabaseError(
+        DatabaseErrorException e) {
+
+        return ResponseEntity
+            .status(HttpStatus.CONFLICT)
+            .body(Map.of(
+                "status", HttpStatus.CONFLICT.value(),
+                "erro", "ERRO_USUARIOS_EXISTENTES",
+                "mensagem", e.getMessage()
+            ));
+    }
 
 
 }

@@ -15,9 +15,9 @@ public class AgentController {
 
     public AgentController(AgentService service) { this.service = service; }
 
-    @PostMapping("/firstsignal")
-    public ResponseEntity <FirstSignalResponse> firstsignal(@Valid @RequestBody FirstSignalRequest request) {
-        FirstSignalResponse response = service.firstSignal(request);
+    @PostMapping("/synchronize")
+    public ResponseEntity <SynchronizeResponse> synchronize(@Valid @RequestBody SynchronizeRequest request) {
+        SynchronizeResponse response = service.synchronize(request);
         return ResponseEntity
                 .status(HttpStatus.CREATED.value())
                 .body(response);
@@ -31,4 +31,5 @@ public class AgentController {
                 .body(response);
     }
 
+    
 }

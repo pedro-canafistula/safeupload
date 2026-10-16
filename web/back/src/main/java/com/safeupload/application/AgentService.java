@@ -24,17 +24,19 @@ public class AgentService {
     public AgentService(
         HostRepository hostRepository,
         UsuarioSoRepository usuarioSoRepository,
-        Clock clock) {
+        Clock clock
+    ) {
         this.hostRepository = hostRepository;
         this.clock = clock;
         this.usuarioSoRepository = usuarioSoRepository;
     }
 
     @Transactional
-    public FirstSignalResponse firstSignal (FirstSignalRequest request){
+    public SynchronizeResponse synchronize (SynchronizeRequest request){
         Host host = new Host(
-            request.host().hostname(),
             request.host().ip(),
+            request.host().mascara(),
+            request.host().hostname(),
             request.host().sistema_operacional(),
             request.host().versao_so(),
             request.host().fabricante(),
@@ -57,7 +59,7 @@ public class AgentService {
 
         usuarioSo = usuarioSoRepository.save(usuarioSo);
 
-        return new FirstSignalResponse(HttpStatus.CREATED, host.getIdHost(), usuarioSo.getIdUsuarioSo());
+        return new SynchronizeResponse(HttpStatus.CREATED, host.getIdHost(), usuarioSo.getIdUsuarioSo());
     }
 
     @Transactional
@@ -72,6 +74,7 @@ public class AgentService {
 
         return new HeartbeatResponse(HttpStatus.OK, "Heartbeat contabilizado"); 
     }
+
 
     
 

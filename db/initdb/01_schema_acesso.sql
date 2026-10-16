@@ -4,10 +4,10 @@ USE acesso;
 
 CREATE TABLE IF NOT EXISTS enderecos (
     id_endereco INT PRIMARY KEY AUTO_INCREMENT,
-    cep VARCHAR(10),
+    cep VARCHAR(9),
     logradouro VARCHAR(40),
     numero INT,
-    complemento VARCHAR(40),
+    complemento VARCHAR(100),
     bairro VARCHAR(30),
     cidade VARCHAR(40),
     estado CHAR(2)
@@ -17,10 +17,10 @@ COLLATE utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS empresas (
     id_empresa INT PRIMARY KEY AUTO_INCREMENT,
-    razao_social VARCHAR(100),
+    razao_social VARCHAR(100) UNIQUE,
     nome_fantasia VARCHAR (100),
     cnpj VARCHAR(14),
-    email_contato VARCHAR(75),
+    email_contato VARCHAR(100),
     telefone_contato VARCHAR(14),
     fk_id_endereco INT,
     CONSTRAINT fk_id_endereco_01 FOREIGN KEY (fk_id_endereco) REFERENCES enderecos (id_endereco)
@@ -31,17 +31,18 @@ COLLATE utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS usuarios (
     id_usuario INT PRIMARY KEY AUTO_INCREMENT,
-    username VARCHAR(50) NOT NULL,
-    email VARCHAR(75) NOT NULL,
-    cpf VARCHAR(14) NOT NULL,
-    senha VARCHAR(30),
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(75) NOT NULL UNIQUE,
+    cpf VARCHAR(14) NOT NULL UNIQUE,
+    senha VARCHAR(60),
     nome_completo VARCHAR(100) NOT NULL,
     data_nascimento DATE,
     fk_id_empresa INT,
     fk_id_endereco INT,
-    bloqueado BOOLEAN,
+    bloqueado CHECK(bloqueado BETWEEN 0 AND 1),
     role VARCHAR (20),
-    data_cadastro DATETIME,
+    criado_por VARCHAR(50),
+    data_cadastro TIMESTAMP,
     CONSTRAINT fk_id_empresa_01 FOREIGN KEY (fk_id_empresa) REFERENCES empresas (id_empresa)
     ON DELETE CASCADE,
     CONSTRAINT fk_id_endereco_02 FOREIGN KEY (fk_id_endereco) REFERENCES enderecos (id_endereco)
@@ -54,12 +55,11 @@ CREATE TABLE IF NOT EXISTS sessoes (
     id_sessao INT PRIMARY KEY AUTO_INCREMENT,
     fk_id_usuario INT,
     ip_origem VARCHAR(15),
-    agente_conexao VARCHAR(30),
-    tentativa_conexao BOOLEAN,
+    tentativa_conexao INT,
     motivo VARCHAR(200),
-    status BOOLEAN,
-    data_hora_logon DATETIME,
-    data_hora_logout DATETIME,
+    status INT,
+    data_hora_logon TIMESTAMP,
+    data_hora_logoff TIMESTAMP,
     CONSTRAINT fk_id_usuario_01 FOREIGN KEY (fk_id_usuario) REFERENCES usuarios (id_usuario)
     ON DELETE SET NULL
 ) ENGINE=InnoDB

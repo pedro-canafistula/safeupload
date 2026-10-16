@@ -4,8 +4,9 @@ USE app;
 
 CREATE TABLE IF NOT EXISTS hosts (
     id_host INT PRIMARY KEY AUTO_INCREMENT,
+    ip VARCHAR(15) NOT NULL UNIQUE,
+    mascara INT CHECK(mascara BETWEEN 0 AND 32),
     hostname VARCHAR(100),
-    ip VARCHAR(15) NOT NULL,
     sistema_operacional VARCHAR(40),
     versao_so VARCHAR(20),
     fabricante VARCHAR(50),
@@ -48,14 +49,15 @@ COLLATE utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS regras (
     id_regras INT PRIMARY KEY AUTO_INCREMENT,
-    bloquear_senhas BOOLEAN,
-    bloquear_tokens BOOLEAN,
-    bloquear_cpf BOOLEAN,
-    bloquear_numero_cartao BOOLEAN,
+    bloquear_senha INT,
+    bloquear_token INT,
+    bloquear_cpf INT,
+    bloquear_cnpj INT,
+    bloquear_numero_cartao INT,
     timeout INT,
     tamanho_limite_bytes BIGINT,
     tipo_arquivos_bloqueados INT,
-    enviar_notificacao BOOLEAN
+    enviar_notificacao INT
 ) ENGINE=InnoDB
 CHARACTER SET utf8mb4
 COLLATE utf8mb4_0900_ai_ci;
@@ -64,22 +66,24 @@ CREATE TABLE IF NOT EXISTS auditoria_regras (
     id_registro_auditoria_regras INT PRIMARY KEY AUTO_INCREMENT,
     fk_id_regras INT,
     fk_id_usuario_autor INT,
-    bloquear_senhas_antigo BOOLEAN,
-    bloquear_tokens_antigo BOOLEAN,
-    bloquear_cpf_antigo BOOLEAN,
+    bloquear_senhas_antigo INT,
+    bloquear_tokens_antigo INT,
+    bloquear_cpf_antigo INT,
+    bloquear_cnpj_antigo INT,
     bloquear_numero_cartao_antigo BOOLEAN,
     timeout_antigo INT,
     tamanho_limite_bytes_antigo BIGINT,
     tipo_arquivos_bloqueados_antigo INT,
-    enviar_notificacao_antigo BOOLEAN,
-    bloquear_senhas_novo BOOLEAN,
-    bloquear_tokens_novo BOOLEAN,
-    bloquear_cpf_novo BOOLEAN,
-    bloquear_numero_cartao_novo BOOLEAN,
+    enviar_notificacao_antigo INT,
+    bloquear_senhas_novo INT,
+    bloquear_tokens_novo INT,
+    bloquear_cpf_novo INT,
+    bloquear_cnpj_novo INT,
+    bloquear_numero_cartao_novo INT,
     timeout_novo INT,
     tamanho_limite_bytes_novo BIGINT,
     tipo_arquivos_bloqueados_novo INT,
-    enviar_notificacao_novo BOOLEAN,
+    enviar_notificacao_novo INT,
     data_hora_modificacao DATETIME,
     CONSTRAINT fk_id_regras_01 FOREIGN KEY (fk_id_regras) REFERENCES regras (id_regras)
     ON DELETE SET NULL,
