@@ -56,6 +56,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     private readonly bool _stagingEnabled;
     private readonly SemaphoreSlim _bootPolicyGate = new(1, 1);
     private StagedTransferAllocator? _stageAllocator;
+    private StagedSpaceBudget? _stageSpaceBudget;
+    private readonly IConfiguration _configuration;
     private StagedTransferJournal? _stageJournal;
     private StagedTransferPublisher? _stagePublisher;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, StagedRejectedAllocation>
@@ -117,6 +119,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         _diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
         _stagedJustifications = stagedJustifications ?? throw new ArgumentNullException(nameof(stagedJustifications));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _configuration = configuration;
         _stagingEnabled = configuration.GetValue<bool>("Interception:StagingPrototype");
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
         _admissionEvidence = admissionEvidence ?? throw new ArgumentNullException(nameof(admissionEvidence));
@@ -227,6 +230,15 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 return;
             }
 
+            if (_stagingEnabled && _configuration.GetValue<bool>("Interception:StageSpace:Enabled"))
+            {
+                try { port.RequireStageSpaceCapabilities(); }
+                catch (Exception error)
+                {
+                    _logger.LogCritical(error, "Large-file staging requires a matching driver; admission remains closed.");
+                    return;
+                }
+            }
             if (_stagingEnabled && _stageAllocator is null)
             {
                 if (!InitializeStagingSubsystem(port, stoppingToken)) return;
@@ -413,7 +425,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     }
                     else if (request.Operation == Operation.StageSeal)
                     {
-                        if (request.Reserved == Contract.StageExtensionVersion)
+                        if (request.Reserved is Contract.StageExtensionVersion or 31)
                             (verdict, typedStatusReply) = SealStageV19(request);
                         else if (_stagingEnabled) verdict = PortVerdict.Deny;
                         else verdict = SealStage(request);
@@ -836,6 +848,18 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         }
         catch (Exception ex)
         {
+            if (StagedSpaceFailure.IsSpace(ex))
+            {
+                try
+                {
+                    var owner = SessionResolver.GetRequiredProcessIdentity(checked((int)request.RequestorProcessId));
+                    if (owner.CreationTimeFileTime == source.RequestorCreationTime)
+                        _hub.Publish(new TransferNotification(payload.AllocationReservationId,
+                            Path.GetFileName(NtPathTranslator.ToDosPath(request.GetPath()) ?? "arquivo"), TransferPhase.Retained,
+                            InspectionFailure: InspectionFailureKind.NotEnoughStagingSpace), owner.SessionId, owner.UserSid.Value);
+                }
+                catch (Exception notificationError) { _logger.LogWarning(notificationError, "Space refusal notification could not be delivered."); }
+            }
             _logger.LogWarning(ex, "Exact allocation unresolved for request {RequestId}.", request.RequestId);
             uint? resolution = ClassifyAllocationFailure(ex);
             return (resolution is null ? PortVerdict.Deny : PortVerdict.Allow, null, resolution);
@@ -1231,6 +1255,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     private async Task<(uint Verdict, uint? Result)> SealStageV19Async(SafeUploadRequest request, CancellationToken token)
     {
         using var inspectionTiming = StagedRequestTiming.Measure("inspection-seal");
+        bool resourceFailure = request.Reserved == 31;
         if (_stageJournal is null || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
             _activeDriverInstanceId is not { } activeDriver || request.RequestorProcessId == 0 || request.Flags != 0)
             return (PortVerdict.Deny, null);
@@ -1238,7 +1263,11 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         {
             StagedFileMetadata? metadata = null;
             SafeUploadStageSealV19 payload;
-            if (request.TryReadStagePayload<SafeUploadStageSealMetadata>(Operation.StageSeal, out var measured))
+            if (resourceFailure)
+            {
+                if (!request.TryReadStageResourceSeal(out payload)) return (PortVerdict.Deny, null);
+            }
+            else if (request.TryReadStagePayload<SafeUploadStageSealMetadata>(Operation.StageSeal, out var measured))
             {
                 if (measured.Reserved != 0) return (PortVerdict.Deny, null);
                 payload = measured.Seal;
@@ -1260,7 +1289,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 before.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
                 return (PortVerdict.Deny, null);
             TransferJournalEntry sealedEntry = await _stageJournal.SealAsync(id,
-                checked((int)request.RequestorProcessId), stage, token, expected, metadata).ConfigureAwait(false);
+                checked((int)request.RequestorProcessId), stage, token, expected, metadata, resourceFailure).ConfigureAwait(false);
             if (sealedEntry.State != TransferJournalState.Sealed || sealedEntry.SealedLength is not >= 0)
                 throw new IOException("The ordinary seal has no stable measured length.");
             uint result = StageV19Result.Sealed;
@@ -1284,7 +1313,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             if (!token.IsCancellationRequested && driver == _activeDriverInstanceId &&
                 request.Version == Contract.Version && request.StructSize == Contract.RequestSize && request.HasKnownFlags)
             {
-                if (request.Reserved == Contract.StageExtensionVersion)
+                if (request.Reserved is Contract.StageExtensionVersion or 31)
                     (verdict, result) = await SealStageV19Async(request, token).ConfigureAwait(false);
                 else if (!_stagingEnabled) verdict = SealStage(request);
             }
@@ -1636,14 +1665,32 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         string initializingPath = journal;
         try
         {
-            _stageJournal = new StagedTransferJournal(journal, requireProtectedParent: true);
+            _stageJournal = new StagedTransferJournal(journal, requireProtectedParent: true,
+                deferArchiveLoad: _configuration.GetValue<bool>("Interception:StageSpace:Enabled"));
             initializingPath = root;
+            StagedSpaceBudget.RequireExistingSecurity(root);
+            if (!_configuration.GetValue<bool>("Interception:StageSpace:Enabled") &&
+                Directory.Exists(Path.Combine(root, ".space-reservations")) &&
+                Directory.EnumerateFileSystemEntries(Path.Combine(root, ".space-reservations")).Any())
+                throw new IOException("Staging-space reservations remain. Restore the large-file configuration before recovering or disabling this mode.");
+            // Construct the allocator first: it establishes the protected private directory.
             _stageAllocator = new StagedTransferAllocator(root, _stageJournal,
                 requireProtectedParent: true, requireSystemIdentity: true);
+            if (_configuration.GetValue<bool>("Interception:StageSpace:Enabled"))
+            {
+                _stageSpaceBudget ??= new StagedSpaceBudget(root, new StagedSpaceOptions(true,
+                    _configuration.GetValue<long?>("Interception:StageSpace:TotalBytes") ?? throw new IOException("Large-file staging requires an explicit TotalBytes setting; proposed resource defaults await owner approval."),
+                    _configuration.GetValue<long?>("Interception:StageSpace:PerUserBytes") ?? throw new IOException("Large-file staging requires an explicit PerUserBytes setting; proposed resource defaults await owner approval."),
+                    _configuration.GetValue<long?>("Interception:StageSpace:FreeSpaceFloorBytes") ?? throw new IOException("Large-file staging requires an explicit FreeSpaceFloorBytes setting; proposed resource defaults await owner approval.")));
+                _stageSpaceBudget.VerifyInventory(root);
+                _stageAllocator = new StagedTransferAllocator(root, _stageJournal,
+                    requireProtectedParent: true, requireSystemIdentity: true, spaceBudget: _stageSpaceBudget);
+                _stageSpaceBudget.VerifyJournalInventory(journal, _stageJournal);
+            }
             _stagePublisher = new StagedTransferPublisher(
                 _inspection, _hub, _stageJournal, root,
                 new StagedPublicationGate(port), _stagedJustifications, _logger,
-                _policyStore)
+                _policyStore, spaceBudget: _stageSpaceBudget)
             {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
                 BoundPublication = new StagedBoundPublicationDispatcher(_stageJournal,
@@ -1708,6 +1755,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             try
             {
                 DateTimeOffset bootUtc = DateTimeOffset.UtcNow - TimeSpan.FromMilliseconds(Environment.TickCount64);
+                _stageSpaceBudget?.ReconcileAsync(_stageJournal, stoppingToken).GetAwaiter().GetResult();
                 int compacted = _stageJournal.CompactAsync(bootUtc - TimeSpan.FromDays(1), stoppingToken).GetAwaiter().GetResult();
                 if (compacted > 0)
                     _logger.LogInformation("Diario de transferencias compactado: {Count} entradas concluidas removidas.", compacted);

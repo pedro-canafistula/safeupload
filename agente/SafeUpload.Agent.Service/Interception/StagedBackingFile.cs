@@ -10,7 +10,8 @@ namespace SafeUpload.Agent.Service.Interception;
 internal static class StagedBackingFile
 {
     public static async Task<StagedStageIdentity> CreateAsync(string? source, string destination, long maximumBytes,
-        CancellationToken token, string? metadataSource = null, bool preserveCreation = true)
+        CancellationToken token, string? metadataSource = null, bool preserveCreation = true,
+        Action<StagedStageIdentity>? created = null)
     {
         token.ThrowIfCancellationRequested();
         using StagedStageFile? heldSource = source is null ? null : StagedStageFile.Open(source);
@@ -23,7 +24,7 @@ internal static class StagedBackingFile
             metadata = preserveCreation ? metadata with { LastWriteTime = DateTime.UtcNow.ToFileTimeUtc(),
                 Attributes = (metadata.Attributes & ~0x80u) | 0x20u } : null;
         return (await CreateCoreAsync(heldSource?.Stream, destination, maximumBytes, token, null,
-            captureIdentity: true, metadata)
+            captureIdentity: true, metadata, created)
             .ConfigureAwait(false))!;
     }
 
@@ -35,7 +36,7 @@ internal static class StagedBackingFile
 
     private static async Task<StagedStageIdentity?> CreateCoreAsync(FileStream? input, string destination,
         long maximumBytes, CancellationToken token, StagedStageIdentity? existingPrivateObject, bool captureIdentity,
-        StagedFileMetadata? metadata = null)
+        StagedFileMetadata? metadata = null, Action<StagedStageIdentity>? created = null)
     {
         using var backingTiming = StagedRequestTiming.Measure("backing");
         token.ThrowIfCancellationRequested();
@@ -46,9 +47,10 @@ internal static class StagedBackingFile
         using var output = CreateFile(destination, 0x40000088, 0, IntPtr.Zero, existingPrivateObject is null ? 1u : 3u,
             0xA0200080, IntPtr.Zero); // GENERIC_WRITE; CREATE_NEW or exact OPEN_EXISTING; NO_BUFFERING | WRITE_THROUGH | OPEN_REPARSE_POINT
         if (output.IsInvalid) throw new IOException("Could not create private backing.", new Win32Exception());
-        if (captureIdentity) _ = StagedFileMetadata.Capture(output); // inherited EFS/compression is unsupported too
         if (existingPrivateObject is not null && StagedDestinationFile.ReadIdentity(output) != existingPrivateObject)
             throw new IOException("The private seed target changed before copying.");
+        created?.Invoke(StagedDestinationFile.ReadIdentity(output));
+        if (captureIdentity) _ = StagedFileMetadata.Capture(output); // inherited EFS/compression is unsupported too
         const int blockSize = 64 * 1024; // multiple of every admitted sector size
         byte[] bytes = new byte[blockSize];
         IntPtr allocation = Marshal.AllocHGlobal(blockSize * 2);

@@ -352,6 +352,14 @@ typedef struct _SAFEUPLOAD_STAGE_SEAL_V19 {
     UINT64 DestinationGeneration;
 } SAFEUPLOAD_STAGE_SEAL_V19, *PSAFEUPLOAD_STAGE_SEAL_V19;
 
+/* T9 additive failure-only seal. Older agents reject it, preserving the private version. */
+#define SAFEUPLOAD_STAGE_RESOURCE_SEAL_VERSION 31
+typedef struct _SAFEUPLOAD_STAGE_RESOURCE_SEAL_V31 {
+    SAFEUPLOAD_STAGE_SEAL_V19 Seal; /* inner Version=31, StructSize=48 */
+    UINT32 Failure; /* exactly 1: stage-space/disk-full failure */
+    UINT32 Reserved;
+} SAFEUPLOAD_STAGE_RESOURCE_SEAL_V31;
+C_ASSERT(sizeof(SAFEUPLOAD_STAGE_RESOURCE_SEAL_V31) == 48);
 /* Exact-version basic metadata; the old 40-byte seal remains a distinct layout.
  * No ChangeTime replay. Old receivers reject this larger typed payload. */
 typedef struct _SAFEUPLOAD_STAGE_SEAL_METADATA {
@@ -516,6 +524,7 @@ typedef struct _SAFEUPLOAD_STAGE_ALLOCATION_RESOLUTION_REPLY_V20 {
 #define SAFEUPLOAD_STAGE_DISPOSE_CLEANED_UP ((UINT32) 2)  /* blocked or justified; the stage file is deleted */
 
 #if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+#define SAFEUPLOAD_CONTROL_STAGE_SPACE_CAPABILITIES ((UINT32) 35) /* read-only: exact v31 support receipt */
 #define SAFEUPLOAD_CONTROL_WRITER_METADATA ((UINT32) 34) /* read-only feature extension 27 */
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE       ((UINT32) 5)
 /*

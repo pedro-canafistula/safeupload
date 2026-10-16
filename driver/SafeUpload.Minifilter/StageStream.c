@@ -63,7 +63,7 @@ static NTSTATUS StageCaptureSealBasic(_In_ struct _STAGE_STREAM *Stream);
 #define STAGE_RETRY_DRAIN_MAX_MS 1000
 #define STAGE_RETRY_EXCHANGE_MAX_MS 8000
 #define STAGE_STATUS_READMIT ((NTSTATUS)0xE0535201L) /* internal: StageCreate asks its admission to run again */
-#define STAGE_MAX_BYTES (16 * 1024 * 1024)
+#define STAGE_LEGACY_CAPACITY (16LL * 1024 * 1024) /* Compatibility without an exact T9 grant. */
 /* Storage features require their own logical inspection/reconstruction. */
 #define STAGE_BASIC_ATTRIBUTES (FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | \
     FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED)
@@ -78,6 +78,13 @@ static NTSTATUS StageCaptureSealBasic(_In_ struct _STAGE_STREAM *Stream);
 #define STAGE_WAIT_DRAIN 1           /* no handle, but drain or the read-only reopen cannot finish: a user-mapped view, a section */
 #define STAGE_WAIT_EXCHANGE 2        /* an exchange, or a discard deletion, needs timer retry */
 #define STAGE_WAIT_SERVICE 3         /* seal/rename refusal or no service: retry at the next service connect */
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static BOOLEAN StageIsSpaceFailure(_In_ NTSTATUS Status)
+{
+    return Status == STATUS_DISK_FULL || Status == STATUS_QUOTA_EXCEEDED ||
+        Status == (NTSTATUS)0xC0000802L; /* STATUS_DISK_QUOTA_EXCEEDED */
+}
 
 typedef struct _STAGE_STREAM {
     FSRTL_ADVANCED_FCB_HEADER Header;
@@ -112,6 +119,8 @@ typedef struct _STAGE_STREAM {
     HANDLE BackingHandle;
     PFILE_OBJECT BackingObject;
     ULONG SectorSize;
+    volatile LONG SpaceFailed; /* Sticky for this version: never publish a successful prefix after failed growth. */
+    LONGLONG SpaceCapacity; /* Immutable exact-object capacity; service charged before allocation. */
     BOOLEAN ResourceInitialized;
     BOOLEAN PagingInitialized;
     USHORT VolumeLength;
@@ -1535,8 +1544,11 @@ static NTSTATUS StageFlushUpper(PSTAGE_STREAM Stream)
 static NTSTATUS StageFlush(PSTAGE_STREAM Stream)
 {
     NTSTATUS status = StageFlushUpper(Stream);
-    if (!NT_SUCCESS(status)) return status;
-    return Stream->ReadOnly ? STATUS_SUCCESS : FltFlushBuffers(Stream->BackingInstance, Stream->BackingObject);
+    if (NT_SUCCESS(status) && !Stream->ReadOnly)
+        status = FltFlushBuffers(Stream->BackingInstance, Stream->BackingObject);
+    if (StageIsSpaceFailure(status))
+        InterlockedExchange(&Stream->SpaceFailed, 1);
+    return status;
 }
 
 static VOID StageFreeStream(PSTAGE_STREAM Stream)
@@ -1643,6 +1655,101 @@ static NTSTATUS StageQueryBackingIdentity(PSTAGE_STREAM Stream,
 }
 #endif
 
+/* The private root and all companions are service-only. Identity, not the
+ * companion pathname, binds the reservation to this already-open stage. */
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+typedef struct _STAGE_SPACE_GRANT {
+    UINT64 Magic;
+    LONGLONG Capacity;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 Identity;
+    GUID TransferId;
+    UINT64 Reserved;
+} STAGE_SPACE_GRANT, *PSTAGE_SPACE_GRANT;
+C_ASSERT(sizeof(STAGE_SPACE_GRANT) == 64);
+
+_IRQL_requires_max_(APC_LEVEL)
+static BOOLEAN StageSpaceGrantValid(_In_ const STAGE_SPACE_GRANT *Grant,
+    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *Identity, _In_ const GUID *TransferId)
+{
+    PAGED_CODE();
+    return Grant->Magic == 0x3150535553464153ULL &&
+        Grant->Capacity >= STAGE_LEGACY_CAPACITY && Grant->Capacity <= MAXLONGLONG - 65536 &&
+        (Grant->Capacity & 65535) == 0 && Grant->Reserved == 0 &&
+        RtlEqualMemory(&Grant->TransferId, TransferId, sizeof(GUID)) &&
+        RtlEqualMemory(&Grant->Identity, Identity, sizeof(*Identity));
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageReadSpaceGrant(_Inout_ PSTAGE_STREAM Stream)
+{
+    PWCH buffer;
+    UNICODE_STRING name;
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK io;
+    HANDLE handle = NULL;
+    PFILE_OBJECT object = NULL;
+    FILE_STANDARD_INFORMATION standard;
+    FILE_ATTRIBUTE_TAG_INFORMATION tag;
+    STAGE_SPACE_GRANT grant;
+    LARGE_INTEGER offset;
+    ULONG read = 0;
+    NTSTATUS status;
+    PAGED_CODE();
+    if (Stream->SpaceCapacity != 0) return STATUS_SUCCESS;
+    buffer = ExAllocatePool2(POOL_FLAG_PAGED, SAFEUPLOAD_MAX_PATH_BYTES, STAGE_TAG);
+    if (buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    status = RtlStringCchPrintfW(buffer, SAFEUPLOAD_MAX_PATH_CHARS, L"%wZ.space", &Stream->StageName);
+    if (!NT_SUCCESS(status)) goto Exit;
+    RtlInitUnicodeString(&name, buffer);
+    InitializeObjectAttributes(&attributes, &name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    RtlZeroMemory(&io, sizeof(io));
+    status = FltCreateFileEx2(SafeUploadData.Filter, Stream->BackingInstance, &handle, &object,
+        FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE, &attributes, &io, NULL,
+        FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT,
+        NULL, 0, IO_STOP_ON_SYMLINK, NULL);
+    if (status == STATUS_STOPPED_ON_SYMLINK && io.Information != 0) ExFreePool((PVOID)io.Information);
+    if (status == STATUS_OBJECT_NAME_NOT_FOUND) {
+        /* Every opted-in grant is at least the legacy capacity. Loss of a
+         * companion can only reduce authority, never exceed its reservation. */
+        Stream->SpaceCapacity = STAGE_LEGACY_CAPACITY;
+        status = STATUS_SUCCESS;
+        goto Exit;
+    }
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = FltQueryInformationFile(Stream->BackingInstance, object, &standard,
+        sizeof(standard), FileStandardInformation, NULL);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = FltQueryInformationFile(Stream->BackingInstance, object, &tag,
+        sizeof(tag), FileAttributeTagInformation, NULL);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (standard.EndOfFile.QuadPart != sizeof(grant) || standard.NumberOfLinks != 1 ||
+        standard.DeletePending || FlagOn(tag.FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT)) {
+        status = STATUS_FILE_CORRUPT_ERROR; goto Exit;
+    }
+    offset.QuadPart = 0;
+    RtlZeroMemory(&grant, sizeof(grant));
+    status = FltReadFile(Stream->BackingInstance, object, &offset, sizeof(grant), &grant,
+        FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET, &read, NULL, NULL);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (read != sizeof(grant) || !Stream->HasTransferId || !Stream->StageIdentityValid ||
+        !StageSpaceGrantValid(&grant, &Stream->StageIdentity, &Stream->TransferId)) {
+        status = STATUS_FILE_CORRUPT_ERROR; goto Exit;
+    }
+    Stream->SpaceCapacity = grant.Capacity;
+Exit:
+    if (object != NULL) ObDereferenceObject(object);
+    if (handle != NULL) FltClose(handle);
+    ExFreePoolWithTag(buffer, STAGE_TAG);
+    return status;
+}
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageReadSpaceGrant)
+#pragma alloc_text(PAGE, StageSpaceGrantValid)
+#endif
+#endif
+
+_IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageOpenBacking(PSTAGE_STREAM Stream, BOOLEAN ReadOnly)
 {
     UNICODE_STRING drive = RTL_CONSTANT_STRING(L"\\??\\C:");
@@ -1660,6 +1767,7 @@ static NTSTATUS StageOpenBacking(PSTAGE_STREAM Stream, BOOLEAN ReadOnly)
 #endif
     FLT_FILESYSTEM_TYPE fs;
     NTSTATUS status;
+    PAGED_CODE();
     if (Stream->BackingInstance == NULL) {
         status = FltGetVolumeFromName(SafeUploadData.Filter, &drive, &volume);
         if (!NT_SUCCESS(status)) goto Exit;
@@ -1748,7 +1856,16 @@ static NTSTATUS StageOpenBacking(PSTAGE_STREAM Stream, BOOLEAN ReadOnly)
     status = FltQueryInformationFile(Stream->BackingInstance, Stream->BackingObject,
         &standard, sizeof(standard), FileStandardInformation, NULL);
     if (!NT_SUCCESS(status)) goto Exit;
-    if (standard.EndOfFile.QuadPart > STAGE_MAX_BYTES) { status = STATUS_FILE_TOO_LARGE; goto Exit; }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    status = StageReadSpaceGrant(Stream);
+    if (!NT_SUCCESS(status)) goto Exit;
+#else
+    Stream->SpaceCapacity = STAGE_LEGACY_CAPACITY;
+#endif
+    if (standard.EndOfFile.QuadPart < 0 || standard.EndOfFile.QuadPart > Stream->SpaceCapacity ||
+        standard.AllocationSize.QuadPart < 0 || standard.AllocationSize.QuadPart > Stream->SpaceCapacity) {
+        status = STATUS_DISK_FULL; goto Exit;
+    }
     Stream->Header.FileSize = standard.EndOfFile;
     Stream->Header.ValidDataLength = standard.EndOfFile; /* Allocator copied/flushed every byte. */
     Stream->Header.AllocationSize = standard.AllocationSize;
@@ -1760,6 +1877,10 @@ Exit:
     if (volume != NULL) FltObjectDereference(volume);
     return status;
 }
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageOpenBacking)
+#endif
 
 static VOID StageCloseBacking(PSTAGE_STREAM Stream)
 {
@@ -2595,6 +2716,9 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
                 stream->Header.ValidDataLength = stream->Header.FileSize;
             }
         }
+        /* Unbound T9 grant/backing queries also run while this reserved shell
+         * is exclusively owned, before reacquiring any namespace resource. */
+        if (!bound && NT_SUCCESS(status)) status = StageOpenBacking(stream, FALSE);
         StageAcquire(&StageNamespaceResource);
         stream->AllocationRpcInFlight = FALSE;
         if (previousPinned && !bound) {
@@ -2634,7 +2758,6 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
             status = StageSetIdentity(view, basename);
             if (!NT_SUCCESS(status)) goto Exit;
         }
-        if (!bound) status = StageOpenBacking(stream, FALSE);
         if (!NT_SUCCESS(status)) goto Exit;
 #else
         stream = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*stream), STAGE_TAG);
@@ -4552,7 +4675,8 @@ static NTSTATUS StageResize(PSTAGE_STREAM Stream, PFILE_OBJECT FileObject, LARGE
     NTSTATUS status;
     NT_ASSERT(ExIsResourceAcquiredExclusiveLite(&Stream->Resource));
     if (Stream->ReadOnly || Stream->RenameExchange != NULL) return STATUS_ACCESS_DENIED;
-    if (Size.QuadPart < 0 || Size.QuadPart > STAGE_MAX_BYTES) return STATUS_FILE_TOO_LARGE;
+    if (Size.QuadPart < 0) return STATUS_INVALID_PARAMETER;
+    if (Size.QuadPart > Stream->SpaceCapacity) { InterlockedExchange(&Stream->SpaceFailed, 1); return STATUS_DISK_FULL; }
     if (Size.QuadPart < Stream->Header.FileSize.QuadPart &&
         !MmCanFileBeTruncated(&Stream->Sections, &Size)) return STATUS_USER_MAPPED_FILE;
     /* The upper flush stays on this thread even when recursive: in C02 this thread is still
@@ -4566,7 +4690,11 @@ static NTSTATUS StageResize(PSTAGE_STREAM Stream, PFILE_OBJECT FileObject, LARGE
     if (IoGetTopLevelIrp() != NULL &&
         (status == STATUS_FILE_LOCK_CONFLICT || status == (NTSTATUS)0xC0000476L))
         status = STATUS_UNEXPECTED_IO_ERROR;
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) {
+        if (StageIsSpaceFailure(status))
+            InterlockedExchange(&Stream->SpaceFailed, 1);
+        return status;
+    }
     Stream->Header.FileSize = Size;
     Stream->Header.AllocationSize.QuadPart = (Size.QuadPart + PAGE_SIZE - 1) & ~((LONGLONG)PAGE_SIZE - 1);
     Stream->Header.ValidDataLength = Size; /* Every extended byte was materialized. */
@@ -4612,8 +4740,8 @@ static NTSTATUS StageReadWrite(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
         if (write && (offset.QuadPart == (LONGLONG)(LONG)FILE_WRITE_TO_END_OF_FILE ||
             !FlagOn(((PSTAGE_HANDLE)file->FsContext2)->GrantedAccess, FILE_WRITE_DATA))) offset = Stream->Header.FileSize;
         if (offset.QuadPart == (LONGLONG)(LONG)FILE_USE_FILE_POINTER_POSITION) offset = file->CurrentByteOffset;
-        if (offset.QuadPart < 0 || offset.QuadPart > STAGE_MAX_BYTES ||
-            length > STAGE_MAX_BYTES - (ULONGLONG)offset.QuadPart) {
+        if (offset.QuadPart < 0 ||
+            (ULONGLONG)length > (ULONGLONG)(MAXLONGLONG - offset.QuadPart)) {
             status = STATUS_INVALID_PARAMETER;
             __leave;
         }
@@ -4653,6 +4781,8 @@ static NTSTATUS StageReadWrite(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
         if (NT_SUCCESS(status) && FlagOn(file->Flags, FO_SYNCHRONOUS_IO))
             file->CurrentByteOffset.QuadPart = offset.QuadPart + Data->IoStatus.Information;
     } __except(EXCEPTION_EXECUTE_HANDLER) { status = GetExceptionCode(); }
+    if (write && (StageIsSpaceFailure(status)))
+        InterlockedExchange(&Stream->SpaceFailed, 1);
     StageRelease(&Stream->Resource);
     return status;
 }
@@ -5502,6 +5632,9 @@ static VOID StagePagingComplete(PFLT_CALLBACK_DATA Data, PVOID Context)
     PSTAGE_PAGING_IO io = Context;
     PFLT_CALLBACK_DATA original = io->Original;
     original->IoStatus = Data->IoStatus;
+    if ((original->Iopb->MajorFunction == IRP_MJ_WRITE || original->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION) &&
+        (StageIsSpaceFailure(Data->IoStatus.Status)))
+        InterlockedExchange(&io->Stream->SpaceFailed, 1);
     /* The child owns partial MDLs over the original request's still-locked
      * pages. FltFreeCallbackData frees its MDL chain, never the upper MDLs. */
     FltFreeCallbackData(Data);
@@ -5704,8 +5837,12 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperationCore(PFLT_CALLBACK_DATA Data,
             __try {
                 if (stream->ReadOnly || stream->RenameExchange != NULL)
                     status = STATUS_ACCESS_DENIED;
-                else if (allocation->AllocationSize.QuadPart < 0 || allocation->AllocationSize.QuadPart > STAGE_MAX_BYTES)
-                    status = STATUS_FILE_TOO_LARGE;
+                else if (allocation->AllocationSize.QuadPart < 0)
+                    status = STATUS_INVALID_PARAMETER;
+                else if (allocation->AllocationSize.QuadPart > stream->SpaceCapacity) {
+                    InterlockedExchange(&stream->SpaceFailed, 1);
+                    status = STATUS_DISK_FULL;
+                }
                 else {
                     status = STATUS_SUCCESS;
                     if (allocation->AllocationSize.QuadPart < stream->Header.FileSize.QuadPart)
@@ -5727,11 +5864,15 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperationCore(PFLT_CALLBACK_DATA Data,
                     }
                 }
             } __except(EXCEPTION_EXECUTE_HANDLER) { status = GetExceptionCode(); }
+            if (StageIsSpaceFailure(status))
+                InterlockedExchange(&stream->SpaceFailed, 1);
             StageRelease(&stream->Resource);
         }
         break;
     case IRP_MJ_FLUSH_BUFFERS:
         status = StageFlush(stream);
+        if (StageIsSpaceFailure(status))
+            InterlockedExchange(&stream->SpaceFailed, 1);
         break;
     case IRP_MJ_CLEANUP:
         if (handle != NULL && !handle->Cleaned) {
@@ -6853,7 +6994,8 @@ static VOID StagePerformSealRpcs(PLIST_ENTRY Rpcs)
         status = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED : StageCaptureSealBasic(stream);
         if (status == STATUS_SUCCESS) status = SafeUploadStageSealVersionV19(stream->RpcProcessIdSnapshot,
             &stream->StageName, &stream->RpcIdentitySnapshot,
-            stream->RpcGenerationSnapshot, &stream->SealBasic);
+            stream->RpcGenerationSnapshot, &stream->SealBasic,
+            InterlockedCompareExchange(&stream->SpaceFailed, 0, 0) != 0);
 
         StageAcquire(&StageNamespaceResource);
         if (stream->View != NULL && stream->View->OwnerProcessId == stream->RpcProcessIdSnapshot &&

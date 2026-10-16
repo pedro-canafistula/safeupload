@@ -31,6 +31,7 @@ namespace SafeUpload.Agent.Core.Application;
 public sealed class InspectionService
 {
     private readonly IPolicyStore _policyStore;
+    private readonly IStagedParser? _stagedParser;
     private readonly IAuditSink _auditSink;
     private readonly ExtractorRegistry _extractors;
     private readonly VerdictCache _cache;
@@ -50,8 +51,9 @@ public sealed class InspectionService
         ExtractorRegistry extractors,
         VerdictCache cache,
         string? endpointId = null,
-        string? userName = null)
+        string? userName = null, IStagedParser? stagedParser = null)
     {
+        _stagedParser = stagedParser;
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
         _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
         _extractors = extractors ?? throw new ArgumentNullException(nameof(extractors));
@@ -114,7 +116,7 @@ public sealed class InspectionService
     public async Task<bool> IsCurrentStagedJustificationAllowedAsync(
         FileOperation operation, InspectionResult result, CancellationToken cancellationToken)
     {
-        if (!result.InScope || !result.IsBlocked) return false;
+        if (!result.InScope || !result.IsBlocked || result.FailureKind == InspectionFailureKind.NotEnoughStagingSpace) return false;
         var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
         return current.OverrideAllowed && current.Version == result.PolicyVersion && result.PolicyContentFingerprint is not null &&
             string.Equals(result.PolicyContentFingerprint, PolicyContentFingerprint.Compute(current), StringComparison.Ordinal) &&
@@ -134,9 +136,12 @@ public sealed class InspectionService
         => AuditAsync(operation, inspection with { Verdict = outcome, Reason = reason },
             cancellationToken, eventId, publishedSha256Hex);
 
+    public Task<InspectionResult> InspectStagedFailureAsync(FileOperation operation, CancellationToken token)
+        => InspectCoreAsync(operation, true, token, forcedFailure: "not_enough_staging_space");
+
     private async Task<InspectionResult> InspectCoreAsync(
         FileOperation operation, bool staged, CancellationToken cancellationToken, Func<Stream>? openSnapshot = null,
-        Func<string, IDisposable?>? phaseTiming = null)
+        Func<string, IDisposable?>? phaseTiming = null, string? forcedFailure = null)
     {
         ArgumentNullException.ThrowIfNull(operation);
 
@@ -148,6 +153,9 @@ public sealed class InspectionService
                 : _policyStore.LoadAsync(cancellationToken)).ConfigureAwait(false);
         }
         bool auditAndCache = !staged;
+        if (forcedFailure is not null)
+            return await CompleteAsync(operation, policy, stopwatch, Verdict.Blocked, [], forcedFailure, false, cancellationToken)
+                .ConfigureAwait(false);
         var inspectionFailure = staged ? Verdict.Blocked : Verdict.AllowedWithoutInspection;
 
         // 1. RN-014 — o próprio agente e os processos de sistema jamais são
@@ -227,6 +235,11 @@ public sealed class InspectionService
                 await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false);
                 return fromCache;
             }
+        }
+        catch (StagedParserFailureException failure)
+        {
+            return await CompleteAsync(operation, policy, stopwatch, inspectionFailure, [],
+                failure.Reason, auditAndCache, cancellationToken).ConfigureAwait(false);
         }
         catch (ArchiveSizeException)
         {
@@ -387,6 +400,9 @@ public sealed class InspectionService
             // never reuses approval cache entries. Keep this exact file object
             // open through extraction; a replaced name cannot change its bytes.
             await using var input = OpenStagedInput(operation, openSnapshot);
+            if (_stagedParser is not null && extractor is not (PlainTextExtractor or OfficeOwnerFileExtractor))
+                return (await _stagedParser.InspectAsync(operation.Extension, input, policy, cancellationToken)
+                    .ConfigureAwait(false), null, null);
             if (extractor is ZipArchiveExtractor archive)
                 return (await archive.InspectAsync(input, _extractors, policy, cancellationToken).ConfigureAwait(false), null, null);
             if (extractor is IStreamingTextExtractor streaming)

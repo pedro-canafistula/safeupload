@@ -5,7 +5,7 @@ using SafeUpload.Agent.Core.Domain;
 
 namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 
-/// <summary>Complete-or-refuse ZIP inspection. Members remain in bounded private memory; names never become paths.</summary>
+/// <summary>Complete-or-refuse ZIP inspection. Plaintext members stream from the held archive; seek-requiring members have a fixed memory budget; names never become paths.</summary>
 public sealed class ZipArchiveExtractor : IStreamingTextExtractor
 {
     /// <inheritdoc />
@@ -41,11 +41,14 @@ public sealed class ZipArchiveExtractor : IStreamingTextExtractor
             if (member.Content is not null)
             {
                 var streaming = (IStreamingTextExtractor)member.Extractor!;
-                Add(await Scan(() =>
+                Task<TextReader> OpenReader()
                 {
                     member.Content.Position = 0;
                     return streaming.OpenReaderAsync(member.Content, token);
-                }).ConfigureAwait(false));
+                }
+                using BoundedTextReplay? replay = member.Extractor is PlainTextExtractor
+                    ? new(OpenReader, maximumCharacters: 2 * 1024 * 1024) : null;
+                Add(await Scan(replay is null ? OpenReader : replay.OpenAsync).ConfigureAwait(false));
             }
 
             Task<IReadOnlyList<Finding>> Scan(Func<Task<TextReader>> reader) => StreamingContentScanner.ScanAsync(reader,
@@ -117,28 +120,39 @@ public sealed class ZipArchiveExtractor : IStreamingTextExtractor
             if (entry.FullName != record.Name || entry.Length != record.Length || entry.CompressedLength != record.CompressedLength)
                 throw new InvalidDataException("ZIP member metadata disagrees.");
             var path = new MemberPath(record.Name, parent);
+            // A ZIP name is data; it is never used as an extraction pathname.
+            int slash = Math.Max(record.Name.LastIndexOf('/'), record.Name.LastIndexOf('\\'));
+            int dot = record.Name.LastIndexOf('.');
+            string extension = dot > slash ? record.Name[dot..] : "";
+            var extractor = registry.Resolve(extension);
+            if (record.Directory || extractor is PlainTextExtractor)
+            {
+                budget.Charge(record.Length);
+                using var member = ZipInspectionGuard.OpenMember(content, record, token());
+                if (record.Directory)
+                {
+                    if (member.ReadByte() != -1) throw new InvalidDataException("A ZIP directory contains bytes.");
+                    yield return new(path, null, null);
+                }
+                else yield return new(path, member, extractor);
+                continue;
+            }
+            if (extractor is SevenZipRefusingExtractor) throw new ArchiveRefusalException(ArchiveRefusal.SevenZipUnavailable);
+            if (extractor is not IStreamingTextExtractor) throw new ArchiveRefusalException(ArchiveRefusal.UnsupportedMember);
+            // Office/PDF/nested ZIP parsers require true random access. Refuse
+            // large members before allocating; depth and entries are separately bounded.
+            const int maximumSeekMemberBytes = 8 * 1024 * 1024;
+            if (record.Length > maximumSeekMemberBytes) throw new InspectionLimitException();
             byte[] bytes = ZipInspectionGuard.ReadMember(content, record, budget, token());
             try
             {
                 using var member = new MemoryStream(bytes, writable: false);
-                if (record.Directory) { yield return new(path, null, null); continue; }
-                // A ZIP name is data. Its final suffix selects the inspector;
-                // Path.Combine/GetFullPath/extraction APIs are never involved.
-                int slash = Math.Max(record.Name.LastIndexOf('/'), record.Name.LastIndexOf('\\'));
-                int dot = record.Name.LastIndexOf('.');
-                string extension = dot > slash ? record.Name[dot..] : "";
-                var extractor = registry.Resolve(extension);
-                if (extractor is SevenZipRefusingExtractor) throw new ArchiveRefusalException(ArchiveRefusal.SevenZipUnavailable);
                 if (extractor is ZipArchiveExtractor)
                 {
                     yield return new(path, null, null);
                     foreach (var child in Walk(member, registry, budget, depth + 1, path, token)) yield return child;
                 }
-                else
-                {
-                    if (extractor is not IStreamingTextExtractor) throw new ArchiveRefusalException(ArchiveRefusal.UnsupportedMember);
-                    yield return new(path, member, extractor);
-                }
+                else yield return new(path, member, extractor);
             }
             finally { CryptographicOperations.ZeroMemory(bytes); }
         }

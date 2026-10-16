@@ -2179,8 +2179,20 @@ StageSendVersionRequestV19 (
         seal.LastAccessTime = Basic->LastAccessTime.QuadPart;
         seal.LastWriteTime = Basic->LastWriteTime.QuadPart;
         seal.FileAttributes = Basic->FileAttributes;
-        exchange->Request.ImageNameLength = sizeof(seal);
-        RtlCopyMemory(exchange->Request.ImageName, &seal, sizeof(seal));
+        if (Kind != 0) {
+            SAFEUPLOAD_STAGE_RESOURCE_SEAL_V31 failed;
+            RtlZeroMemory(&failed, sizeof(failed));
+            failed.Seal = seal.Seal;
+            failed.Seal.Version = SAFEUPLOAD_STAGE_RESOURCE_SEAL_VERSION;
+            failed.Seal.StructSize = sizeof(failed);
+            failed.Failure = 1;
+            exchange->Request.Reserved = SAFEUPLOAD_STAGE_RESOURCE_SEAL_VERSION;
+            exchange->Request.ImageNameLength = sizeof(failed);
+            RtlCopyMemory(exchange->Request.ImageName, &failed, sizeof(failed));
+        } else {
+            exchange->Request.ImageNameLength = sizeof(seal);
+            RtlCopyMemory(exchange->Request.ImageName, &seal, sizeof(seal));
+        }
     }
 
     status = StageSendV19Exchange(exchange, FALSE, &verdict, &answered);
@@ -2207,14 +2219,15 @@ SafeUploadStageSealVersionV19 (
     _In_ PUNICODE_STRING StageName,
     _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity,
     _In_ UINT64 DestinationGeneration,
-    _In_ const FILE_BASIC_INFORMATION *Basic
+    _In_ const FILE_BASIC_INFORMATION *Basic,
+    _In_ BOOLEAN SpaceFailed
     )
 {
     UINT32 result = 0;
     NTSTATUS status;
     PAGED_CODE();
     status = StageSendVersionRequestV19(SAFEUPLOAD_OPERATION_STAGE_SEAL, ProcessId,
-        StageName, NULL, StageIdentity, DestinationGeneration, 0, Basic, &result);
+        StageName, NULL, StageIdentity, DestinationGeneration, SpaceFailed ? 1 : 0, Basic, &result);
     return status;
 }
 

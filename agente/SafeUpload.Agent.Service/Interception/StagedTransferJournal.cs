@@ -18,6 +18,10 @@ public sealed partial class StagedTransferJournal
     internal static readonly string EmptySha256Hex = Convert.ToHexString(SHA256.HashData(Array.Empty<byte>()));
     private readonly string _directory;
     private readonly StagedJournalGate _gate = new();
+    internal Action<string>? PrivateTemporaryAdmission { get; set; }
+    internal Action<string, long>? ArchiveGrowthAdmission { get; set; }
+    internal Action<string>? ArchiveStorageChanged { get; set; }
+    internal Func<Guid, bool>? ContentReservationPending { get; set; }
     private readonly FileSecurity? _fileSecurity;
     private readonly SecurityIdentifier? _owner;
     private readonly string _driverEpochPath;
@@ -169,7 +173,7 @@ public sealed partial class StagedTransferJournal
         try
         {
             await using FileStream stream = CreatePrivateTemporary(temporary);
-            await JsonSerializer.SerializeAsync(stream, record, cancellationToken: token)
+            await StagedJournalSerialization.SerializeAsync(stream, record, token)
                 .ConfigureAwait(false);
             if (stream.Length > 4096)
                 throw new InvalidDataException("The driver epoch record exceeds its bound.");
@@ -188,10 +192,13 @@ public sealed partial class StagedTransferJournal
     public StagedTransferJournal(string directory, bool requireProtectedParent = false)
         : this(directory, requireProtectedParent, MaximumScanCacheEntries) { }
 
+    internal StagedTransferJournal(string directory, bool requireProtectedParent, bool deferArchiveLoad)
+        : this(directory, requireProtectedParent, MaximumScanCacheEntries, deferArchiveLoad: deferArchiveLoad) { }
+
     // Small capacities let tests exercise the actual disk-reading scan path at
     // its bound; production always uses the fixed maximum above.
     internal StagedTransferJournal(string directory, bool requireProtectedParent, int scanCacheCapacity,
-        Action<StagedJournalWritePoint, TransferJournalEntry>? writeObserver = null)
+        Action<StagedJournalWritePoint, TransferJournalEntry>? writeObserver = null, bool deferArchiveLoad = false)
     {
         if (scanCacheCapacity <= 0 || scanCacheCapacity > MaximumScanCacheEntries)
             throw new ArgumentOutOfRangeException(nameof(scanCacheCapacity));
@@ -284,7 +291,7 @@ public sealed partial class StagedTransferJournal
             Directory.CreateDirectory(_directory);
         }
         // Validate cold receipts before any handshake can admit staging.
-        EnsureArchiveLoadedCoreAsync(CancellationToken.None).GetAwaiter().GetResult();
+        if (!deferArchiveLoad) EnsureArchiveLoadedCoreAsync(CancellationToken.None).GetAwaiter().GetResult();
     }
 
     public async Task<TransferJournalEntry> CreateAsync(
@@ -396,7 +403,7 @@ public sealed partial class StagedTransferJournal
             await using (var stream = CreatePrivateTemporary(temporary))
             {
                 using (StagedRequestTiming.Measure("journal-serialize"))
-                await JsonSerializer.SerializeAsync(stream, entry, cancellationToken: cancellationToken)
+                await StagedJournalSerialization.SerializeAsync(stream, entry, cancellationToken)
                     .ConfigureAwait(false);
                 if (stream.Length > StagedJournalFile.MaximumManifestBytes)
                     throw new InvalidDataException("Journal manifest exceeds the qualified size bound.");
@@ -767,7 +774,7 @@ public sealed partial class StagedTransferJournal
             ValidateEntry(allocated, child.TransferId);
             await using (var stream = CreatePrivateTemporary(temporary))
             {
-                await JsonSerializer.SerializeAsync(stream, allocated, cancellationToken: cancellationToken)
+                await StagedJournalSerialization.SerializeAsync(stream, allocated, cancellationToken)
                     .ConfigureAwait(false);
                 if (stream.Length > StagedJournalFile.MaximumManifestBytes)
                     throw new InvalidDataException("Journal manifest exceeds the qualified size bound.");
@@ -2077,6 +2084,7 @@ public sealed partial class StagedTransferJournal
         {
             var current = await ReadCoreAsync(transferId, cancellationToken).ConfigureAwait(false);
             if (current.UnboundCancellation is not null ||
+                (current.StageSpaceFailed && next is (TransferJournalState.Approved or TransferJournalState.Publishing or TransferJournalState.Released)) ||
                 (expectedGeneration is not null && current.DestinationGeneration != expectedGeneration))
                 throw new IOException("The staged version was cancelled or retargeted.");
             if (current.PendingRename is not null)
@@ -2192,7 +2200,7 @@ public sealed partial class StagedTransferJournal
     // publication that has already progressed beyond Sealed.
     public async Task<TransferJournalEntry> SealAsync(Guid id, int ownerProcessId,
         string stagePath, CancellationToken token, StagedVersionIdentity? expectedVersion = null,
-        StagedFileMetadata? fileMetadata = null)
+        StagedFileMetadata? fileMetadata = null, bool spaceFailed = false)
     {
         fileMetadata?.Validate();
         if (fileMetadata is not null && expectedVersion is null)
@@ -2216,6 +2224,11 @@ public sealed partial class StagedTransferJournal
                 throw new IOException("A v20 stage cannot be sealed before its exact handle-lifetime receipt.");
             if (current.StageCleanupStarted || current.StageDeleted)
                 throw new IOException("The staged version is being cleaned up or has already been removed.");
+            if (spaceFailed && !current.StageSpaceFailed)
+            {
+                current = current with { StageSpaceFailed = true };
+                await ReplaceAsync(ManifestPath(id), current, token).ConfigureAwait(false);
+            }
             if (current.SealedOnce && (HasMeasuredSeal(current) || current.State == TransferJournalState.LegacyEmptyHeld))
             {
                 await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
@@ -2710,6 +2723,8 @@ public sealed partial class StagedTransferJournal
                   e.JustificationWindowClosed && e.StageDeleted &&
                   e.HandbackState == StagedHandbackState.Verified));
             var finished = entries.Where(Finished).Select(e => e.Transfer.TransferId).ToHashSet();
+            if (ContentReservationPending is { } pendingReservation)
+                finished.RemoveWhere(id => pendingReservation(id));
             // Retain the exact manifest, metadata and ancestry until V26 ACK
             // removal or exact private-cancellation cleanup. Normal builds
             // must also retain cancellation owners from a prior feature run.
@@ -3327,7 +3342,7 @@ public sealed partial class StagedTransferJournal
             {
                 step = "serialize";
                 using (StagedRequestTiming.Measure("journal-serialize"))
-                await JsonSerializer.SerializeAsync(stream, entry, cancellationToken: cancellationToken)
+                await StagedJournalSerialization.SerializeAsync(stream, entry, cancellationToken)
                     .ConfigureAwait(false);
                 if (stream.Length > StagedJournalFile.MaximumManifestBytes)
                     throw new InvalidDataException("Journal manifest exceeds the qualified size bound.");
@@ -3375,12 +3390,17 @@ public sealed partial class StagedTransferJournal
     private string ManifestPath(Guid id) =>
         Path.Combine(_directory, id.ToString("N") + ".json");
 
-    private FileStream CreatePrivateTemporary(string path) => _fileSecurity is null
+    private FileStream CreatePrivateTemporary(string path, bool archive = false)
+    {
+        if (archive) ArchiveGrowthAdmission?.Invoke(path, 0);
+        else PrivateTemporaryAdmission?.Invoke(path);
+        return _fileSecurity is null
         ? new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None,
             4096, FileOptions.Asynchronous)
         : new FileInfo(path).Create(FileMode.CreateNew, FileSystemRights.FullControl,
             FileShare.None, 4096, FileOptions.Asynchronous,
             _fileSecurity);
+    }
 
     private static bool HasSameProtectedDacl(FileSystemSecurity existing, FileSystemSecurity required)
     {
@@ -3523,6 +3543,7 @@ public sealed record TransferJournalEntry(
     public const int MaximumStateHistory = 64;
     public IReadOnlyList<TransferJournalStateChange> StateHistory { get; init; } = [];
     public bool SealedOnce { get; init; }
+    public bool StageSpaceFailed { get; init; }
     public StagedStageIdentity? StageIdentity { get; init; }
     public long? SealedLength { get; init; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
@@ -3599,7 +3620,7 @@ public sealed record TransferJournalEntry(
         if (ReferenceEquals(this, other)) return true;
         return other is not null && UnboundCancellation == other.UnboundCancellation && Transfer == other.Transfer && State == other.State &&
             Sha256Hex == other.Sha256Hex && UpdatedAtUtc == other.UpdatedAtUtc &&
-            StateHistory.SequenceEqual(other.StateHistory) && SealedOnce == other.SealedOnce &&
+            StateHistory.SequenceEqual(other.StateHistory) && SealedOnce == other.SealedOnce && StageSpaceFailed == other.StageSpaceFailed &&
             StageIdentity == other.StageIdentity && SealedLength == other.SealedLength && FileMetadata == other.FileMetadata &&
             ParentVersionIdentity == other.ParentVersionIdentity && DeleteVersionIdentity == other.DeleteVersionIdentity &&
             CreateReservationId == other.CreateReservationId &&
@@ -3703,6 +3724,7 @@ public sealed record TransferJournalEntry(
         hash.Add(BlockedDeletionReceipt);
         hash.Add(StageCleanupStarted);
         hash.Add(StageDeleted);
+        hash.Add(StageSpaceFailed);
         return hash.ToHashCode();
     }
 }

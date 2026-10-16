@@ -1,0 +1,5 @@
+Source-only kernel API audit against 62fd1673
+Changed files: driver/SafeUpload.Minifilter/Communication.c, driver/SafeUpload.Minifilter/Protocol.h, driver/SafeUpload.Minifilter/Stage.h, driver/SafeUpload.Minifilter/StageProtocol.c, driver/SafeUpload.Minifilter/StageStream.c
+New external DDI call names: none
+Added/reused DDI call names: ExAllocatePool2, ExFreePool, ExFreePoolWithTag, FltClose, FltCreateFileEx2, FltFlushBuffers, FltQueryInformationFile, FltReadFile, ObDereferenceObject, RtlCopyMemory, RtlEqualMemory, RtlInitUnicodeString, RtlStringCchPrintfW, RtlZeroMemory
+Not a binary import gate, WDK/PREfast/ApiValidator or IRQL proof.

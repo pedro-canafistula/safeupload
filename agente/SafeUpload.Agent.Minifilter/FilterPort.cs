@@ -700,6 +700,24 @@ public sealed partial class FilterPort : IDisposable
         return reply.Held == 1;
     }
 
+    /// <summary>Old drivers must never enter a large-file allocation profile.</summary>
+    public unsafe void RequireStageSpaceCapabilities()
+    {
+        var control = new SafeUploadControl { Version = Contract.Version,
+            StructSize = (uint)sizeof(SafeUploadControl), Command = ControlCommand.StageSpaceCapabilities };
+        uint version = 0;
+        using var send = EnterSend();
+        int result = FilterSendMessage(send.Handle, (IntPtr)(&control), (uint)sizeof(SafeUploadControl),
+            (IntPtr)(&version), sizeof(uint), out uint returned);
+        ValidateStageSpaceCapabilities(result, returned, version);
+    }
+
+    internal static void ValidateStageSpaceCapabilities(int result, uint returned, uint version)
+    {
+        if (result != 0 || returned != sizeof(uint) || version != 31)
+            throw new IOException("The connected driver does not support the exact large-file grant/failure-seal contract.");
+    }
+
     public unsafe SafeUploadCounters GetCounters()
     {
         var control = new SafeUploadControl

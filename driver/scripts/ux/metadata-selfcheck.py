@@ -147,6 +147,8 @@ typedef struct { uint16_t Length,MaximumLength;WCHAR *Buffer; } UNICODE_STRING,*
 typedef struct { UINT64 VolumeSerialNumber;FILE_ID_128 FileId; } SAFEUPLOAD_STAGE_IDENTITY_V19;
 typedef struct { UINT32 Version,StructSize;GUID ReservationId;SAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity;UINT64 DestinationGeneration;UINT32 Kind; } SAFEUPLOAD_STAGE_VERSION_V19;
 typedef struct { UINT32 Version,StructSize;SAFEUPLOAD_STAGE_IDENTITY_V19 StageIdentity;UINT64 DestinationGeneration; } SAFEUPLOAD_STAGE_SEAL_V19;
+typedef struct { SAFEUPLOAD_STAGE_SEAL_V19 Seal;UINT32 Failure,Reserved; } SAFEUPLOAD_STAGE_RESOURCE_SEAL_V31;
+#define SAFEUPLOAD_STAGE_RESOURCE_SEAL_VERSION 31u
 typedef struct { SAFEUPLOAD_STAGE_SEAL_V19 Seal;LONGLONG CreationTime,LastAccessTime,LastWriteTime;UINT32 FileAttributes,Reserved; } SAFEUPLOAD_STAGE_SEAL_METADATA;
 typedef struct { UINT32 Version,StructSize;UINT64 RequestId;UINT32 Operation,RequestorProcessId,Reserved,PathLength,ImageNameLength;WCHAR Path[512],ImageName[64]; } SAFEUPLOAD_REQUEST;
 typedef struct { SAFEUPLOAD_REQUEST Request;struct { UINT32 StageNameLength; } Response; } SAFEUPLOAD_EXCHANGE,*PSAFEUPLOAD_EXCHANGE;
@@ -192,15 +194,21 @@ int main(void) {
  assert(sizeof(SAFEUPLOAD_STAGE_SEAL_V19)==40 && sizeof(SAFEUPLOAD_STAGE_SEAL_METADATA)==72);
  WCHAR path[]={1,2};UNICODE_STRING name={4,4,path};SAFEUPLOAD_STAGE_IDENTITY_V19 id={.VolumeSerialNumber=9};
  FILE_BASIC_INFORMATION basic={.CreationTime={100},.LastAccessTime={200},.LastWriteTime={300},.FileAttributes=0x2023};
- assert(SafeUploadStageSealVersionV19(42,&name,&id,7,&basic)==0 && !allocations);
+ assert(SafeUploadStageSealVersionV19(42,&name,&id,7,&basic,FALSE)==0 && !allocations);
  assert(sent.ImageNameLength==72 && sent.PathLength==4 && sent.Operation==4 && sent.Reserved==20);
  SAFEUPLOAD_STAGE_SEAL_METADATA seal;memcpy(&seal,sent.ImageName,sizeof(seal));
  assert(seal.Seal.StructSize==72 && seal.Seal.Version==20 && seal.Seal.DestinationGeneration==7 && seal.Seal.StageIdentity.VolumeSerialNumber==9);
  assert(seal.CreationTime==100 && seal.LastAccessTime==200 && seal.LastWriteTime==300 && seal.FileAttributes==0x2023 && !seal.Reserved);
  for(size_t i=72;i<sizeof(sent.ImageName);++i)assert(!((uint8_t*)sent.ImageName)[i]);
- reply=99;assert(SafeUploadStageSealVersionV19(42,&name,&id,7,&basic)==STATUS_INVALID_BUFFER_SIZE && !allocations);
- reply=3;send_status=-9;assert(SafeUploadStageSealVersionV19(42,&name,&id,7,&basic)==-9 && !allocations);send_status=0;
- assert(SafeUploadStageSealVersionV19(42,&name,&id,7,NULL)==STATUS_INVALID_PARAMETER && !allocations);
+ assert(SafeUploadStageSealVersionV19(42,&name,&id,7,&basic,TRUE)==0 && !allocations);
+ assert(sent.ImageNameLength==48 && sent.Reserved==31);
+ SAFEUPLOAD_STAGE_RESOURCE_SEAL_V31 failed;memcpy(&failed,sent.ImageName,sizeof(failed));
+ assert(sizeof(failed)==48 && failed.Seal.Version==31 && failed.Seal.StructSize==48 && failed.Failure==1 && !failed.Reserved);
+ assert(failed.Seal.DestinationGeneration==7 && failed.Seal.StageIdentity.VolumeSerialNumber==9);
+ for(size_t i=48;i<sizeof(sent.ImageName);++i)assert(!((uint8_t*)sent.ImageName)[i]);
+ reply=99;assert(SafeUploadStageSealVersionV19(42,&name,&id,7,&basic,FALSE)==STATUS_INVALID_BUFFER_SIZE && !allocations);
+ reply=3;send_status=-9;assert(SafeUploadStageSealVersionV19(42,&name,&id,7,&basic,FALSE)==-9 && !allocations);send_status=0;
+ assert(SafeUploadStageSealVersionV19(42,&name,&id,7,NULL,FALSE)==STATUS_INVALID_PARAMETER && !allocations);
  puts("production metadata seal wire PASS: 72-byte payload, exact tuple/dates/flags, zero tail, failures and balanced ownership");
 }
 '''

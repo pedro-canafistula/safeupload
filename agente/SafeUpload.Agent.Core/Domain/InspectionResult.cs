@@ -7,7 +7,8 @@ public enum InspectionFailureKind
     UnsupportedFormat,
     Timeout,
     ReadOrParse,
-    Limit
+    Limit,
+    NotEnoughStagingSpace
 }
 
 /// <summary>
@@ -57,6 +58,7 @@ public sealed record InspectionResult(
     /// <summary>Only standard failure codes become UI metadata. Exception messages never cross this boundary.</summary>
     public InspectionFailureKind? FailureKind => Reason switch
     {
+        "not_enough_staging_space" => InspectionFailureKind.NotEnoughStagingSpace,
         "file_too_large" => InspectionFailureKind.TooLarge,
         "unsupported_format" => InspectionFailureKind.UnsupportedFormat,
         "archive_encrypted" or "archive_unsupported_member" or "archive_unsupported_structure" or "archive_7z_unavailable" => InspectionFailureKind.UnsupportedFormat,

@@ -31,6 +31,18 @@ public sealed partial class StagedTransferJournal
     internal int ArchivedTransfers => _archived.Count;
     internal bool IntegrityHeld => _gate.IntegrityHeld;
 
+    internal async Task RequireArchivedReservationsAsync(Func<Guid, bool> reserved, CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            await EnsureArchiveLoadedCoreAsync(token).ConfigureAwait(false);
+            if (_archived.Keys.Any(id => !reserved(id)))
+                throw new IOException("Unreserved archived transfer metadata prevents large-mode admission.");
+        }
+        finally { _gate.Release(); }
+    }
+
     private static bool CompletedArchiveShape(TransferJournalEntry e) =>
         e.BoundAllocation is null && e.AllocationSecurity is null && e.SeedProvenance is null &&
         e.PendingRename is null && !e.StageCleanupStarted &&
@@ -75,10 +87,11 @@ public sealed partial class StagedTransferJournal
                 if (_archiveAppendPath is null || new FileInfo(_archiveAppendPath).Length + ArchiveHeaderBytes + StagedJournalFile.MaximumManifestBytes > MaximumArchiveSegmentBytes)
                     _archiveAppendPath = Path.Combine(_completedDirectory, checked(_archiveSegmentCount + 1).ToString("X8") + ".pack");
                 bool newSegment = !File.Exists(_archiveAppendPath);
-                using (var stream = newSegment ? CreatePrivateTemporary(_archiveAppendPath) : OpenArchiveFile(_archiveAppendPath, writable: true))
+                using (var stream = newSegment ? CreatePrivateTemporary(_archiveAppendPath, archive: true) : OpenArchiveFile(_archiveAppendPath, writable: true))
                 {
                     if (newSegment)
                     {
+                        ArchiveGrowthAdmission?.Invoke(_archiveAppendPath, ArchiveControlBytes);
                         stream.SetLength(ArchiveControlBytes);
                         WriteArchiveFrontier(stream, ArchiveControlBytes);
                     }
@@ -93,6 +106,7 @@ public sealed partial class StagedTransferJournal
                             throw new InvalidDataException("Archived manifest exceeds its bound.");
                         if (stream.Position + ArchiveHeaderBytes + payload.Length > MaximumArchiveSegmentBytes) break;
                         var location = new ArchiveLocation(_archiveAppendPath, stream.Position, payload.Length, Convert.ToHexString(SHA256.HashData(payload)));
+                        ArchiveGrowthAdmission?.Invoke(_archiveAppendPath, stream.Position + ArchiveHeaderBytes + payload.Length);
                         ArchiveObserver?.Invoke("before-append");
                         await WriteArchiveFrameAsync(stream, id, payload, token).ConfigureAwait(false);
                         pending.Add((entry, location));
@@ -125,7 +139,11 @@ public sealed partial class StagedTransferJournal
             _archiveLoaded = false; _archiveAppendPath = null;
             throw;
         }
-        finally { _gate.Release(); }
+        finally
+        {
+            try { ArchiveStorageChanged?.Invoke(_completedDirectory); }
+            finally { _gate.Release(); }
+        }
     }
 
     internal async Task ArchiveDiscardedTransfersAsync(CancellationToken token)
@@ -274,6 +292,7 @@ public sealed partial class StagedTransferJournal
                     using var uncommitted = OpenArchiveFile(path, writable: true);
                     if (uncommitted.Length == 0)
                     {
+                        ArchiveGrowthAdmission?.Invoke(path, ArchiveControlBytes);
                         uncommitted.SetLength(ArchiveControlBytes);
                         WriteArchiveFrontier(uncommitted, ArchiveControlBytes);
                     }
@@ -286,6 +305,7 @@ public sealed partial class StagedTransferJournal
             if (segments.Count > 0) _archiveAppendPath = segments.Last().Value;
         }
         _archiveLoaded = true;
+        ArchiveStorageChanged?.Invoke(_completedDirectory);
     }
 
     private async Task WriteArchiveInventoryCoreAsync(int count, CancellationToken token)
@@ -293,9 +313,11 @@ public sealed partial class StagedTransferJournal
         string temporary = ArchiveInventoryPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            using (var stream = CreatePrivateTemporary(temporary))
+            using (var stream = CreatePrivateTemporary(temporary, archive: true))
             {
-                await JsonSerializer.SerializeAsync(stream, new ArchiveInventory(1, count), cancellationToken: token).ConfigureAwait(false);
+                byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new ArchiveInventory(1, count));
+                ArchiveGrowthAdmission?.Invoke(temporary, payload.Length);
+                await stream.WriteAsync(payload, token).ConfigureAwait(false);
                 await StagedJournalReplacement.CommitAsync(stream, temporary, ArchiveInventoryPath, token).ConfigureAwait(false);
             }
             _archiveSegmentCount = count;
@@ -473,8 +495,11 @@ public sealed partial class StagedTransferJournal
             string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
-                using (var output = CreatePrivateTemporary(temporary))
+                long maximumLength = ArchiveControlBytes + rows.Where(r => !removed.Contains(r.Entry.Transfer.TransferId))
+                    .Sum(r => (long)ArchiveHeaderBytes + r.Location.Length);
+                using (var output = CreatePrivateTemporary(temporary, archive: true))
                 {
+                    ArchiveGrowthAdmission?.Invoke(temporary, maximumLength);
                     output.SetLength(ArchiveControlBytes);
                     output.Position = ArchiveControlBytes;
                     foreach (var row in rows.Where(r => !removed.Contains(r.Entry.Transfer.TransferId)))
@@ -492,6 +517,7 @@ public sealed partial class StagedTransferJournal
                 _archiveLoaded = false;
                 _archiveAppendPath = null;
                 if (File.Exists(temporary)) File.Delete(temporary);
+                ArchiveStorageChanged?.Invoke(_completedDirectory);
             }
         }
         await EnsureArchiveLoadedCoreAsync(token).ConfigureAwait(false);

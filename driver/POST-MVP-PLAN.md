@@ -486,7 +486,7 @@ latest inspector matrix. The remaining delivery requirements and their current p
 | T6 | Directory moves, empty/Explorer moves and final-pair three-mode byte observation | Only the earlier 28/28 copy-fallback component pair is qualified; directory creation/moves remain unresolved. |
 | T7 | Final-pair authorized/denied read rows | Earlier component B02 passes do not cover the revised pair. |
 | T8 | Nine real application workflows in all three modes; agreed owner/DACL/timestamps/attributes/ADS/EAs/labels | Final application/metadata rows and metadata decisions remain missing. |
-| T9 | Stage/seed caps removed under per-user/total budgets; complete format/encoding coverage, bounded parser memory, durable cleanup, interactive failure and protected large-file rows | `StageStream.c:STAGE_MAX_BYTES` and `StagedTransferAllocator.MaximumSeedBytes` remain 16 MiB. The [14-case inspector measurement](evidence/2026-10-13/t9-inspector-metrics3-result.json) covers neither those caps/budgets nor hostile parser memory, publisher costs or protected behavior. Complete-or-refuse coverage landed (`a46124c7`, `52fbb7cb`; drawing/chart/VML text, PDF annotations/form values read, rare payloads refused, Office part allowlist, independent fixtures); budgets and cap removal remain. |
+| T9 | Stage/seed caps removed under per-user/total budgets; complete format/encoding coverage, bounded parser memory, durable cleanup, interactive failure and protected large-file rows | The legacy profile remains at 16 MiB. An [opt-in unbound local prototype](UX-LARGE.md) adds accounted capacity grants and bounded parser execution; defaults, concurrent/seed UX and Windows qualification remain open. The [earlier 14-case measurement](evidence/2026-10-13/t9-inspector-metrics3-result.json) covers neither staging nor hostile parser memory/publisher costs/protected behavior. Complete-or-refuse coverage landed (`a46124c7`, `52fbb7cb`; drawing/chart/VML text, PDF annotations/form values read, rare payloads refused, Office part allowlist, independent fixtures). |
 | T10 | Pass the final pair in all modes | Phase B fixed: `m2t10rv6` 13/13 under runtime Verifier on the 10-10 component pair; final-pair three-mode rows remain. |
 | T11 | SOP lifetime/retirement, complete journal scaling/recovery and adversarial review of the working final system | Scoped index/compaction/head-read controls pass; O(N) fresh head I/O and final-system review remain open. |
 
@@ -1138,6 +1138,11 @@ the publishing application can reopen the file and agreed metadata is preserved.
 **Done when:** no fixed driver size cap; per-user/total stage budgets fail closed without harming other users; full-content inspection
 uses bounded memory; incomplete inspection is Blocked with hand-back and policy-authorized justification; runtime rows prove privacy.
 
+- [ ] T9 large-file UX opt-in prototype (`ux/large`, base `62fd1673`): [design/limits](UX-LARGE.md),
+  [local receipt](evidence/2026-10-16/ux-large-local/result.md), [exact Windows rows](UX-LARGE-VM.md).
+  Adds identity-bound capacity grants, SID/total reservations, exact orphan/snapshot accounting, failed-prefix refusal,
+  isolated parser resource limits and ZIP text streaming. Disabled by default; explicit resource settings, owner defaults,
+  WDK/native/three-mode evidence and everyday concurrent/seed UX remain open. Legacy 16 MiB profile is not cut over.
 - [x] **Complete-or-refuse coverage first** (owner direction 2026-10-13; [review finding](M2-COMPLETION-PLAN.md#findings-in-delivery-order)).
   - [x] Read DrawingML shape/text-box text, chart titles/axis and series names/labels/cached values, VML drawing text and PDF
     annotation contents/form-field values; refuse embedded files, PDF attachments, XFA and other unconsumed payloads.

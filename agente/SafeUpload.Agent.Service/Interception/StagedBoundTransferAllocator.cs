@@ -14,6 +14,7 @@ public sealed partial class StagedTransferAllocator
         string requestorSid, long requestorProcessCreationTime, StagedAllocationBindingV23 binding,
         CancellationToken token, StagedAllocationSecuritySnapshot? security = null)
     {
+        if (_spaceBudget is not null) throw new IOException("Large-file storage admission is unbound-only.");
         binding.Validate();
         if (security is null) throw new InvalidDataException("writer_metadata_incomplete");
         security.RequireBinding(binding);
