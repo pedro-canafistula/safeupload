@@ -131,7 +131,7 @@ def write_trx(path, profile, cases, skipped=None):
 
 def make_matrix(out, omitted=None, skip_profile=None, omitted_case=None, replaced_case=None,
                 omitted_required_case=None, replaced_required_case=None,
-                duplicated_required_case=None):
+                duplicated_required_case=None, omit_member=None, empty_member=None):
     rows = []
     for profile in PROFILES:
         mode = profile.split('-')[0]
@@ -193,18 +193,45 @@ def make_matrix(out, omitted=None, skip_profile=None, omitted_case=None, replace
         name = mode + '-release'
         package = out / (name + '-service-publish.zip')
         payload = b'SYNTHETIC NONEXECUTABLE PACKAGE FIXTURE'
+        members = {member: payload for member in ('SafeUpload.Agent.Service.exe',
+            'App/SafeUpload.Agent.App.exe', 'App/SafeUpload.Agent.App.runtimeconfig.json',
+            'Install-SafeUploadAgent.ps1', 'Uninstall-SafeUploadAgent.ps1') if member != omit_member}
+        if empty_member in members:
+            members[empty_member] = b''
         with zipfile.ZipFile(package, 'w') as archive:
-            archive.writestr('SafeUpload.Agent.Service.exe', payload)
+            for member, content in members.items():
+                archive.writestr(member, content)
         manifest = out / (name + '-package-manifest.txt')
-        manifest.write_text(hashlib.sha256(payload).hexdigest() + '  SafeUpload.Agent.Service.exe\n')
+        manifest.write_text(''.join(hashlib.sha256(content).hexdigest() + '  ' + member + '\n'
+                                   for member, content in members.items()))
         rows.extend((name + '-publish: exit=0 warnings=0 errors=0',
+            name + '-app-publish: exit=0 warnings=0 errors=0',
             name + ': package_sha256=' + digest(package),
             name + ': exe_sha256=' + hashlib.sha256(payload).hexdigest().upper(),
+            name + ': app_exe_sha256=' + hashlib.sha256(members.get('App/SafeUpload.Agent.App.exe', b'')).hexdigest().upper(),
             name + ': package_manifest_sha256=' + digest(manifest)))
     return '\n'.join(rows)
 
 
 class RequiredV20MatrixControls(unittest.TestCase):
+    def test_tray_and_installers_are_required_even_with_matching_manifest_and_package_hashes(self):
+        for member in ('App/SafeUpload.Agent.App.exe', 'Install-SafeUploadAgent.ps1', 'Uninstall-SafeUploadAgent.ps1'):
+            for mutation in ('omit_member', 'empty_member'):
+                with self.subTest(member=member, mutation=mutation), tempfile.TemporaryDirectory(prefix='matrix-tray-') as temporary:
+                    out = Path(temporary)
+                    with self.assertRaisesRegex(RuntimeError, 'missing a nonempty tray/install member'):
+                        gate.verify_matrix_outputs(out, make_matrix(out, **{mutation: member}))
+
+    def test_app_publish_must_pass_and_its_executable_hash_must_match_for_both_profiles(self):
+        for mode in ('normal', 'feature'):
+            for receipt in ('-app-publish: exit=0 warnings=0 errors=0', ': app_exe_sha256='):
+                with self.subTest(mode=mode, receipt=receipt), tempfile.TemporaryDirectory(prefix='matrix-tray-receipt-') as temporary:
+                    out = Path(temporary)
+                    summary = make_matrix(out)
+                    summary = '\n'.join(row for row in summary.splitlines() if not row.startswith(mode + '-release' + receipt))
+                    with self.assertRaises(RuntimeError):
+                        gate.verify_matrix_outputs(out, summary)
+
     def test_complete_synthetic_matrix_binds_every_v20_case_and_result_id(self):
         with tempfile.TemporaryDirectory(prefix='matrix-v20-positive-') as temporary:
             out = Path(temporary)

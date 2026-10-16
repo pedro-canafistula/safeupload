@@ -909,6 +909,18 @@ try {
                 Invoke-DotnetGate ($name + '-publish') (@('publish', $serviceProject,
                     '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=true',
                     '-p:IncludeNativeLibrariesForSelfExtract=true', '-o', $publish) + $common)
+                $appPublish = Join-Path $publish 'App'
+                Invoke-DotnetGate ($name + '-app-publish') (@('publish', $appProject,
+                    '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=true',
+                    '-p:IncludeNativeLibrariesForSelfExtract=true', '-o', $appPublish) + $common)
+                $appExecutable = Join-Path $appPublish 'SafeUpload.Agent.App.exe'
+                if (-not (Test-Path -LiteralPath $appExecutable -PathType Leaf) -or
+                    (Get-Item -LiteralPath $appExecutable).Length -le 0) {
+                    throw ('Publish output is missing a nonempty tray executable: ' + $name)
+                }
+                foreach ($installer in @('Install-SafeUploadAgent.ps1', 'Uninstall-SafeUploadAgent.ps1')) {
+                    Copy-Item -LiteralPath (Join-Path $profileSource ('agente\scripts\' + $installer)) -Destination $publish
+                }
                 $publishFiles = @(Get-ChildItem -LiteralPath $publish -Recurse -File)
                 $serviceExecutable = Join-Path $publish 'SafeUpload.Agent.Service.exe'
                 if ($publishFiles.Count -eq 0 -or -not (Test-Path -LiteralPath $serviceExecutable -PathType Leaf) -or
@@ -924,6 +936,7 @@ try {
                 if ((Get-Item -LiteralPath $package).Length -le 0) { throw ('Publish package is empty: ' + $name) }
                 $summary += "$name`: package_sha256=$((Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash)"
                 $summary += "$name`: exe_sha256=$((Get-FileHash -LiteralPath $serviceExecutable -Algorithm SHA256).Hash)"
+                $summary += "$name`: app_exe_sha256=$((Get-FileHash -LiteralPath $appExecutable -Algorithm SHA256).Hash)"
             }
             foreach ($relative in $expected.Keys) {
                 if ((Get-FileHash -LiteralPath (Join-Path $profileSource $relative) -Algorithm SHA256).Hash -ne $expected[$relative]) {

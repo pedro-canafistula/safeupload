@@ -343,15 +343,22 @@ def validate_package(out, mode, summary):
         exe_hash = package_hashes.get('SafeUpload.Agent.Service.exe')
         if not exe_hash:
             raise RuntimeError('Service executable is absent from package manifest: ' + name)
+        required = ('App/SafeUpload.Agent.App.exe', 'Install-SafeUploadAgent.ps1', 'Uninstall-SafeUploadAgent.ps1')
+        for member in required:
+            if member not in package_hashes or archive.getinfo(member).file_size <= 0:
+                raise RuntimeError('Package is missing a nonempty tray/install member: ' + member)
+        app_hash = package_hashes['App/SafeUpload.Agent.App.exe']
 
     package_summary = name + ': package_sha256=' + sha(package).upper()
     exe_summary = name + ': exe_sha256=' + exe_hash.upper()
     manifest_summary = name + ': package_manifest_sha256=' + sha(manifest).upper()
     read_gate(summary, package_summary)
     read_gate(summary, exe_summary)
+    read_gate(summary, name + ': app_exe_sha256=' + app_hash.upper())
     read_gate(summary, manifest_summary)
     return {'path': str(package), 'sha256': sha(package).upper(),
-            'exe_sha256': exe_hash.upper(), 'manifest_sha256': sha(manifest).upper(),
+            'exe_sha256': exe_hash.upper(), 'app_exe_sha256': app_hash.upper(),
+            'manifest_sha256': sha(manifest).upper(),
             'members': len(manifest_hashes)}
 
 
@@ -470,6 +477,7 @@ def verify_matrix_outputs(out, summary):
         if mode + '-release-publish: exit=0 warnings=0 errors=0' not in summary.splitlines():
             raise RuntimeError('Incomplete publish: ' + mode)
         read_gate(summary, mode + '-release-publish: exit=0 warnings=0 errors=0')
+        read_gate(summary, mode + '-release-app-publish: exit=0 warnings=0 errors=0')
         packages[mode] = validate_package(out, mode, summary)
     if any('SafeUploadOwnedWinFspPrototype' in line for line in summary.splitlines()):
         raise RuntimeError('Stale OwnerWinFsp profile identity appeared in matrix evidence.')
@@ -619,7 +627,7 @@ Write-Output ('BUILDER_PREFLIGHT_MATCH UTC='+[DateTime]::UtcNow.ToString('o'))
                       name + '-results/agent-tests.trx',
                       name + '-results/agent-tests-user.trx',
                       name + '-results/agent-tests-system.trx']
-        names += [mode + '-release-publish.txt', mode + '-release-package-manifest.txt',
+        names += [mode + '-release-publish.txt', mode + '-release-app-publish.txt', mode + '-release-package-manifest.txt',
                   mode + '-release-service-publish.zip']
     fetched = {}
     for name in names:
