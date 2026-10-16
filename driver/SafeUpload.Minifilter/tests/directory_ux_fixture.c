@@ -1,5 +1,8 @@
 /* Injectable OS boundaries only; the runner inserts actual production bodies. */
 #include <assert.h>
+#include <stdlib.h>
+#undef assert
+#define assert(c) do { if (!(c)) { fprintf(stderr, "line %d: %s\n", __LINE__, #c); exit(97); } } while (0)
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -17,27 +20,31 @@ typedef struct { USHORT Length, MaximumLength; WCHAR *Buffer; } UNICODE_STRING, 
 typedef const UNICODE_STRING *PCUNICODE_STRING;
 typedef struct _LIST_ENTRY { struct _LIST_ENTRY *Flink, *Blink; } LIST_ENTRY, *PLIST_ENTRY;
 typedef struct { UNICODE_STRING Name, Stream, Volume; } FLT_FILE_NAME_INFORMATION, *PFLT_FILE_NAME_INFORMATION;
-typedef struct { UNICODE_STRING FileName; } FILE_OBJECT, *PFILE_OBJECT;
+typedef struct { UNICODE_STRING FileName; BOOLEAN WriteAccess, DeleteAccess; } FILE_OBJECT, *PFILE_OBJECT;
 typedef struct { ACCESS_MASK DesiredAccess; } IO_SECURITY_CONTEXT, *PIO_SECURITY_CONTEXT;
 typedef struct { NTSTATUS Status; ULONG Information; } IO_STATUS_BLOCK;
+typedef struct { uint64_t VolumeSerialNumber, FileId; } FILE_ID_INFORMATION;
+/* PRODUCTION_NAMESPACE_TYPES */
 typedef int FILE_INFORMATION_CLASS, FLT_FILESYSTEM_TYPE, SAFEUPLOAD_VOLUME_KIND, FLT_PREOP_CALLBACK_STATUS;
 typedef struct { BOOLEAN Directory; } FILE_STANDARD_INFORMATION;
 typedef struct { ULONG FileAttributes, ReparseTag; } FILE_ATTRIBUTE_TAG_INFORMATION;
 typedef struct { BOOLEAN DeleteFile; } FILE_DISPOSITION_INFORMATION, *PFILE_DISPOSITION_INFORMATION;
-typedef struct { ULONG Flags; HANDLE RootDirectory; ULONG FileNameLength; WCHAR FileName[512]; } FILE_RENAME_INFORMATION, *PFILE_RENAME_INFORMATION;
+typedef struct { union { ULONG Flags; BOOLEAN ReplaceIfExists; }; HANDLE RootDirectory; ULONG FileNameLength; WCHAR FileName[512]; } FILE_RENAME_INFORMATION, *PFILE_RENAME_INFORMATION;
 typedef struct { struct { ULONG Options, FileAttributes, EaLength; PVOID EaBuffer; PIO_SECURITY_CONTEXT SecurityContext; } Create;
     struct { FILE_INFORMATION_CLASS FileInformationClass; PVOID InfoBuffer; ULONG Length; } SetFileInformation; } PARAMETERS;
-typedef struct { PARAMETERS Parameters; ULONG OperationFlags; } IOPB;
+typedef struct { PARAMETERS Parameters; ULONG OperationFlags; int MajorFunction; PFILE_OBJECT TargetFileObject; } IOPB;
 typedef struct { IOPB *Iopb; IO_STATUS_BLOCK IoStatus; } CALLBACK_DATA, *PFLT_CALLBACK_DATA;
 typedef struct { PFLT_INSTANCE Instance; PFILE_OBJECT FileObject; PFLT_VOLUME Volume; PVOID Transaction; } RELATED_OBJECTS;
 typedef const RELATED_OBJECTS *PCFLT_RELATED_OBJECTS;
 typedef struct { ULONG PrefixCount; UNICODE_STRING Prefixes[4]; } SAFEUPLOAD_POLICY;
 typedef struct { BOOLEAN Overflow; ULONG PrefixCount; USHORT PrefixChars[4]; WCHAR Prefixes[4][512]; } BOOT_SCOPES;
 typedef struct { PVOID Token; LONG64 DirectorySequence; BOOLEAN DirectoryMutation; } STAGE_ADMISSION_TOKEN_SLOT, *PSTAGE_ADMISSION_TOKEN_SLOT;
-typedef struct { UNICODE_STRING Name; } STAGE_VIEW;
+typedef struct { UNICODE_STRING Name; PVOID Security; } STAGE_VIEW, *PSTAGE_VIEW;
 typedef struct { struct { WCHAR Path[512]; ULONG PathLength; } Request; } EXCHANGE;
-typedef struct { LIST_ENTRY Link, ReservationLink; UNICODE_STRING Name; STAGE_VIEW *View; EXCHANGE *RenameExchange; } STAGE_STREAM, *PSTAGE_STREAM;
+typedef struct { PFLT_INSTANCE OriginalInstance; LIST_ENTRY Link, ReservationLink; UNICODE_STRING Name; STAGE_VIEW *View; EXCHANGE *RenameExchange; } STAGE_STREAM, *PSTAGE_STREAM;
 typedef struct { int unused; } OBJECT_ATTRIBUTES;
+#define RtlEqualMemory(a,b,c) (memcmp((a),(b),(c))==0)
+#define RtlZeroMemory(a,b) memset((a),0,(b))
 #define _In_
 #define _Inout_
 #define _In_opt_
@@ -49,6 +56,14 @@ typedef struct { int unused; } OBJECT_ATTRIBUTES;
 #define FALSE 0
 #define PASSIVE_LEVEL 0
 #define DISPATCH_LEVEL 2
+#define IRP_MJ_CREATE 0
+#define IRP_MJ_SET_INFORMATION 6
+#define FileIdInformation 59
+#define FLT_FILE_NAME_QUERY_FILESYSTEM_ONLY 4
+#define FLT_FILE_NAME_REQUEST_FROM_CURRENT_PROVIDER 8
+#define STATUS_OBJECT_NAME_NOT_FOUND -12
+#define STATUS_OBJECT_PATH_INVALID -13
+#define STATUS_INVALID_BUFFER_SIZE -14
 #define STATUS_SUCCESS 0
 #define STATUS_ACCESS_DENIED -1
 #define STATUS_SHARING_VIOLATION -2
@@ -125,7 +140,6 @@ typedef struct { int unused; } OBJECT_ATTRIBUTES;
 static int Irql, NamespaceDepth, StageNamespaceResource, SafeUploadPolicyLock;
 static volatile LONG StageDirectoryMutationActive;
 static volatile LONG StageDirectoryCollisionHolds;
-static volatile LONG StageMvpNamespaceFence; /* merged with ux/kernel: the private rename also honours its namespace fence */
 static volatile LONG64 StageDirectorySequence;
 static BOOLEAN StageStopping, SafeUploadBootScopesActive;
 static LIST_ENTRY StageStreams, StageAllocationReservations;
@@ -134,12 +148,24 @@ static BOOT_SCOPES SafeUploadBootScopes;
 static struct { PVOID Filter; ULONG InspectorProcessId; } SafeUploadData;
 static int NativeDirectory, Kind, Fs, MayMatch, Auth, PrepareCalls, Dirty, ProbeRefs, ProbeCalls;
 static NTSTATUS NameStatus, ParseStatus, DestinationStatus, ProbeStatus;
+/* NATIVE_GLOBALS */
 static FLT_FILE_NAME_INFORMATION Source, Destination;
+static PFLT_FILE_NAME_INFORMATION CurrentSourceName;
 static FILE_OBJECT ProbeObject;
 static UNICODE_STRING u(const WCHAR *s) { size_t n=0; while(s[n]) ++n; return (UNICODE_STRING){(USHORT)(n*2),(USHORT)(n*2),(WCHAR *)s}; }
 static WCHAR fold(WCHAR c) { return c>=L'a' && c<=L'z' ? (WCHAR)(c-L'a'+L'A') : c; }
 static BOOLEAN RtlPrefixUnicodeString(PCUNICODE_STRING prefix, PCUNICODE_STRING path, BOOLEAN ignore)
 { assert(Irql==0); if(prefix->Length>path->Length) return FALSE; for(USHORT i=0;i<prefix->Length/2;++i) if((ignore?fold(prefix->Buffer[i]):prefix->Buffer[i])!=(ignore?fold(path->Buffer[i]):path->Buffer[i])) return FALSE; return TRUE; }
+static BOOLEAN RtlEqualUnicodeString(PCUNICODE_STRING a,PCUNICODE_STRING b,BOOLEAN ignore)
+{ return a->Length==b->Length && RtlPrefixUnicodeString(a,b,ignore); }
+static int SourceId=1, NamedId=1, ParentId=2, TargetId=3, TargetExists;
+static NTSTATUS SafeUploadStageQueryIdentity(PFLT_INSTANCE i,PUNICODE_STRING n,BOOLEAN dir,FILE_ID_INFORMATION *id)
+{ (void)i;assert(!NamespaceDepth&&Irql==0);memset(id,0,sizeof(*id));id->VolumeSerialNumber=1;
+  if(RtlEqualUnicodeString(n,&Source.Name,TRUE))id->FileId=(uint64_t)NamedId;
+  else if(RtlEqualUnicodeString(n,&Destination.Name,TRUE)){if(!TargetExists)return STATUS_OBJECT_NAME_NOT_FOUND;id->FileId=(uint64_t)TargetId;}
+  else { assert(dir);id->FileId=(uint64_t)ParentId; }return 0; }
+static NTSTATUS FltGetFileNameInformationUnsafe(PFILE_OBJECT o,PFLT_INSTANCE i,ULONG flags,PFLT_FILE_NAME_INFORMATION *n)
+{ (void)o;(void)i;assert(!NamespaceDepth&&Irql==0&&(flags&FLT_FILE_NAME_QUERY_FILESYSTEM_ONLY));*n=CurrentSourceName?CurrentSourceName:&Source;return 0; }
 static void StageAcquire(int *p) { assert(p==&StageNamespaceResource && NamespaceDepth==0 && Irql==0); ++NamespaceDepth; }
 static void StageRelease(int *p) { assert(p==&StageNamespaceResource && NamespaceDepth==1); --NamespaceDepth; }
 static LONG InterlockedCompareExchange(volatile LONG *p,LONG value,LONG compare) { LONG old=*p; if(old==compare)*p=value; return old; }
@@ -156,7 +182,7 @@ static BOOLEAN SafeUploadPolicyMatchesCurrentOrPendingDestination(SAFEUPLOAD_VOL
 static BOOLEAN SafeUploadStageTouchesProtectedNamespace(PFLT_FILE_NAME_INFORMATION n, SAFEUPLOAD_VOLUME_KIND k) { return SafeUploadPolicyMatchesCurrentOrPendingDestination(k,&n->Name,TRUE); }
 static SAFEUPLOAD_VOLUME_KIND StageVolumeKind(PFLT_INSTANCE p) { (void)p; return Kind; }
 static BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(PFLT_INSTANCE p) { (void)p; return (BOOLEAN)MayMatch; }
-static NTSTATUS FltGetFileNameInformation(PFLT_CALLBACK_DATA d,int flags,PFLT_FILE_NAME_INFORMATION *n) { (void)d;(void)flags;assert(!NamespaceDepth&&Irql==0);*n=NameStatus==0?&Source:NULL;return NameStatus; }
+static NTSTATUS FltGetFileNameInformation(PFLT_CALLBACK_DATA d,int flags,PFLT_FILE_NAME_INFORMATION *n) { (void)d;(void)flags;assert(!NamespaceDepth&&Irql==0);*n=NameStatus==0?&Source:NULL;/* NATIVE_LOOKUP_HOOK */return NameStatus; }
 static NTSTATUS FltParseFileNameInformation(PFLT_FILE_NAME_INFORMATION n) { assert(n&&Irql==0);return ParseStatus; }
 static VOID FltReleaseFileNameInformation(PFLT_FILE_NAME_INFORMATION n) { assert(n); }
 static NTSTATUS FltGetDestinationFileNameInformation(PFLT_INSTANCE i,PFILE_OBJECT o,HANDLE r,WCHAR *name,ULONG length,int flags,PFLT_FILE_NAME_INFORMATION *n)
@@ -183,19 +209,21 @@ static NTSTATUS FltCreateFileEx(PVOID f,PFLT_INSTANCE i,HANDLE *h,PFILE_OBJECT *
 static NTSTATUS FltCreateFileEx2(PVOID f,PFLT_INSTANCE i,PHANDLE h,PFILE_OBJECT *o,ACCESS_MASK access,OBJECT_ATTRIBUTES *a,IO_STATUS_BLOCK *io,PVOID size,ULONG attr,ULONG share,ULONG disp,ULONG options,PVOID ea,ULONG bytes,ULONG flags,PVOID ctx)
 { (void)f;(void)i;(void)a;(void)io;(void)size;(void)attr;(void)ctx;assert(!NamespaceDepth&&Irql==0);assert(access==FILE_READ_ATTRIBUTES&&share==(FILE_SHARE_READ|FILE_SHARE_WRITE)&&disp==FILE_OPEN&&flags==0&&!ea&&!bytes);assert((options&(FILE_DIRECTORY_FILE|FILE_OPEN_REPARSE_POINT))==(FILE_DIRECTORY_FILE|FILE_OPEN_REPARSE_POINT));assert(StageDirectoryCollisionHolds>0);++ProbeCalls;if(ProbeStatus)return ProbeStatus;*h=&ProbeObject;*o=&ProbeObject;ProbeRefs=2;return 0; }
 static NTSTATUS FltQueryInformationFile(PFLT_INSTANCE i,PFILE_OBJECT o,PVOID info,ULONG bytes,FILE_INFORMATION_CLASS c,PULONG returned)
-{ (void)i;assert(!NamespaceDepth&&Irql==0&&o==&ProbeObject);if(c==FileStandardInformation){assert(bytes==sizeof(FILE_STANDARD_INFORMATION));((FILE_STANDARD_INFORMATION *)info)->Directory=(BOOLEAN)NativeDirectory;}else{assert(c==FileAttributeTagInformation&&bytes==sizeof(FILE_ATTRIBUTE_TAG_INFORMATION));((FILE_ATTRIBUTE_TAG_INFORMATION *)info)->FileAttributes=FILE_ATTRIBUTE_DIRECTORY;}if(returned)*returned=bytes;return 0; }
+{ (void)i;(void)o;assert(!NamespaceDepth&&Irql==0);if(c==FileIdInformation){assert(bytes==sizeof(FILE_ID_INFORMATION));FILE_ID_INFORMATION *id=info;memset(id,0,sizeof(*id));id->VolumeSerialNumber=1;id->FileId=(uint64_t)SourceId;}else if(c==FileStandardInformation){assert(bytes==sizeof(FILE_STANDARD_INFORMATION));((FILE_STANDARD_INFORMATION *)info)->Directory=(BOOLEAN)NativeDirectory;}else{assert(c==FileAttributeTagInformation&&bytes==sizeof(FILE_ATTRIBUTE_TAG_INFORMATION));((FILE_ATTRIBUTE_TAG_INFORMATION *)info)->FileAttributes=FILE_ATTRIBUTE_DIRECTORY;}if(returned)*returned=bytes;return 0; }
 static VOID ObDereferenceObject(PFILE_OBJECT o) { assert(o==&ProbeObject&&ProbeRefs>0);--ProbeRefs; }
 static VOID FltClose(HANDLE h) { assert(h==&ProbeObject&&ProbeRefs>0);--ProbeRefs; }
 static VOID FltSetCallbackDataDirty(PFLT_CALLBACK_DATA d) { (void)d;++Dirty; }
+/* NATIVE_STUBS */
 /* PRODUCTION_DIRECTORY */
+/* NATIVE_PRODUCTION */
 static void head(PLIST_ENTRY l) { l->Flink=l->Blink=l; }
 static void add(PLIST_ENTRY h,PLIST_ENTRY e) { e->Flink=h;e->Blink=h->Blink;h->Blink->Flink=e;h->Blink=e; }
 static SAFEUPLOAD_POLICY Policy, Pending;
 static void reset(void)
 {
  Irql=NamespaceDepth=StageDirectoryMutationActive=StageStopping=SafeUploadBootScopesActive=0;
- StageDirectorySequence=0; StageDirectoryCollisionHolds=0; Kind=SafeUploadVolumeFixed;Fs=FLT_FSTYPE_NTFS;MayMatch=NativeDirectory=1;Auth=PrepareCalls=Dirty=ProbeRefs=ProbeCalls=0;
- NameStatus=ParseStatus=DestinationStatus=ProbeStatus=0;head(&StageStreams);head(&StageAllocationReservations);
+ StageDirectorySequence=0; StageDirectoryCollisionHolds=0; SourceId=NamedId=1;ParentId=2;TargetId=3;TargetExists=0;Kind=SafeUploadVolumeFixed;Fs=FLT_FSTYPE_NTFS;MayMatch=NativeDirectory=1;Auth=PrepareCalls=Dirty=ProbeRefs=ProbeCalls=0;
+ CurrentSourceName=NULL;NameStatus=ParseStatus=DestinationStatus=ProbeStatus=0;head(&StageStreams);head(&StageAllocationReservations);
  memset(&SafeUploadBootScopes,0,sizeof(SafeUploadBootScopes));memset(&Policy,0,sizeof(Policy));memset(&Pending,0,sizeof(Pending));
  Policy.PrefixCount=1;Policy.Prefixes[0]=u(L"\\Device\\V\\Protected");SafeUploadPolicy=&Policy;SafeUploadPendingPolicy=NULL;
  Source=(FLT_FILE_NAME_INFORMATION){.Name=u(L"\\Device\\V\\Protected\\folder"),.Volume=u(L"\\Device\\V")};
@@ -204,7 +232,7 @@ static void reset(void)
 static STAGE_ADMISSION_TOKEN_SLOT slot(void) { return (STAGE_ADMISSION_TOKEN_SLOT){.Token=(PVOID)(uintptr_t)8,.DirectorySequence=StageDirectorySequence}; }
 static void tests(void)
 {
- IOPB iopb={0}; CALLBACK_DATA data={.Iopb=&iopb}; FILE_OBJECT file={.FileName=u(L"\\Protected\\folder")}; RELATED_OBJECTS objects={.Instance=(PVOID)1,.FileObject=&file};
+ IOPB iopb={.MajorFunction=IRP_MJ_SET_INFORMATION}; CALLBACK_DATA data={.Iopb=&iopb}; FILE_OBJECT file={.FileName=u(L"\\Protected\\folder")}; RELATED_OBJECTS objects={.Instance=(PVOID)1,.FileObject=&file};
  HANDLE hold=NULL;
  IO_SECURITY_CONTEXT security={.DesiredAccess=GENERIC_ALL};iopb.Parameters.Create.SecurityContext=&security;
  reset();
@@ -255,5 +283,47 @@ static void tests(void)
  reset();Kind=SafeUploadVolumeRemovable;Fs=2;Source.Name=u(L"\\Device\\R\\outside");token=slot();assert(StageNativeDirectoryInformation(&data,&objects,&token,&handled)==0&&!handled&&!token.DirectoryMutation);
  reset();iopb.Parameters.SetFileInformation.FileInformationClass=FileBasicInformation;token=slot();assert(StageNativeDirectoryInformation(&data,&objects,&token,&handled)==0&&handled&&!token.DirectoryMutation);
  assert(NamespaceDepth==0&&ProbeRefs==0);puts("directory production shim: F1-F3, subtree boundaries, allocation/rename pending, stale capture, native failure and draining controls PASS");
+
+ /* The file and directory domains exclude each other, including the lower
+  * completion window. A prelookup generation cannot be refreshed on retry. */
+ reset();STAGE_ADMISSION_TOKEN_SLOT fileMutation=slot(),directoryMutation=slot();
+ assert(StageNamespaceBeginMutation(&fileMutation)==0);
+ assert(StageDirectoryBeginMutation(&root,NULL,&directoryMutation)==STATUS_SHARING_VIOLATION);
+ StageDirectoryEndMutation(FALSE);
+ assert(StageDirectoryBeginMutation(&root,NULL,&directoryMutation)==STATUS_SHARING_VIOLATION);
+ directoryMutation=slot();assert(StageDirectoryBeginMutation(&root,NULL,&directoryMutation)==0);
+ fileMutation=slot();assert(StageNamespaceBeginMutation(&fileMutation)==STATUS_SHARING_VIOLATION);
+ StageDirectoryEndMutation(FALSE);
+ assert(StageNamespaceBeginMutation(&fileMutation)==STATUS_SHARING_VIOLATION);
+ /* A classified protected object is moved out, modified, then moved back.
+  * Even identical final path and ID cannot bless A's stale classification. */
+ reset();STAGE_ADMISSION_TOKEN_SLOT classified=slot(),moveOut=slot();
+ assert(StageNamespaceBeginMutation(&moveOut)==0);Source.Name=u(L"\\Device\\V\\Outside\\file.txt");
+ StageDirectoryEndMutation(FALSE); /* outside content can now change */
+ STAGE_ADMISSION_TOKEN_SLOT moveBack=slot();assert(StageNamespaceBeginMutation(&moveBack)==0);
+ Source.Name=u(L"\\Device\\V\\Protected\\file.txt");StageDirectoryEndMutation(FALSE);
+ assert(StageNamespaceBeginMutation(&classified)==STATUS_SHARING_VIOLATION);
+ /* Clearly outside moves keep native availability during a protected
+  * mutation; they cannot alter either protected binding domain. */
+ reset();fileMutation=slot();assert(StageNamespaceBeginMutation(&fileMutation)==0);
+ Source.Name=u(L"\\Device\\V\\Outside\\folder");Destination.Name=u(L"\\Device\\V\\Outside\\new");
+ token=slot();iopb.Parameters.SetFileInformation.FileInformationClass=FileRenameInformation;
+ iopb.Parameters.SetFileInformation.InfoBuffer=&rename;iopb.Parameters.SetFileInformation.Length=sizeof(rename);
+ assert(StageExternalRename(&data,&objects,FALSE,&ctx,&token)==0&&!token.DirectoryMutation);
+ assert(StageDirectoryMutationActive);StageDirectoryEndMutation(FALSE);
+ /* Current source-object/name, parent and leaf bindings are all authority. */
+ reset();iopb.Parameters.SetFileInformation.InfoBuffer=&rename;iopb.Parameters.SetFileInformation.Length=sizeof(rename);
+ STAGE_NAMESPACE_BINDINGS bindings;token=slot();assert(StageNamespaceBeginMutation(&token)==0);
+ assert(StageNamespaceCaptureBindings(&data,&objects,&Source,&Destination,&bindings)==0);
+ assert(StageNamespaceRevalidateBindings(&data,&objects,&Source,&Destination,&bindings)==0);
+ FLT_FILE_NAME_INFORMATION moved=Source;moved.Name=u(L"\\Device\\V\\Outside\\file.txt");CurrentSourceName=&moved;
+ assert(StageNamespaceRevalidateBindings(&data,&objects,&Source,&Destination,&bindings)==STATUS_SHARING_VIOLATION);CurrentSourceName=NULL;
+ NamedId=9;STAGE_NAMESPACE_BINDINGS invalid;assert(StageNamespaceCaptureBindings(&data,&objects,&Source,&Destination,&invalid)==STATUS_SHARING_VIOLATION);assert(StageNamespaceRevalidateBindings(&data,&objects,&Source,&Destination,&bindings)==STATUS_SHARING_VIOLATION);NamedId=1;
+ ParentId=9;assert(StageNamespaceRevalidateBindings(&data,&objects,&Source,&Destination,&bindings)==STATUS_SHARING_VIOLATION);ParentId=2;
+ TargetExists=1;assert(StageNamespaceRevalidateBindings(&data,&objects,&Source,&Destination,&bindings)==STATUS_SHARING_VIOLATION);
+ assert(StageNamespaceCaptureBindings(&data,&objects,&Source,&Destination,&bindings)==0);TargetId=9;
+ assert(StageNamespaceRevalidateBindings(&data,&objects,&Source,&Destination,&bindings)==STATUS_SHARING_VIOLATION);
+ StageDirectoryEndMutation(FALSE);
 }
-int main(void) { tests();return 0; }
+/* NATIVE_TESTS */
+int main(void) { tests();/* NATIVE_TEST_CALL */return 0; }

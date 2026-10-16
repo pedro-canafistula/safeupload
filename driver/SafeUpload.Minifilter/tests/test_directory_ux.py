@@ -34,6 +34,7 @@ class DirectoryUx(unittest.TestCase):
     def test_compiled_production_directory_cases(self):
         stream, policy = STREAM.read_text(), POLICY.read_text()
         helpers = ''.join(function(stream, name) for name in (
+            'StageNamespaceCaptureBindings', 'StageNamespaceRevalidateBindings', 'StageNamespaceBeginMutation',
             'StageDirectoryContains', 'StageDirectoryStreamPending', 'StageDirectoryPendingLocked',
             'StageDirectoryBeginMutation', 'StageDirectoryEndMutation', 'StageDirectoryPlainPath',
             'StageDirectoryPlainName', 'StageDirectoryCreateCanMutate', 'StageNameLookupProvesAbsent',
@@ -42,7 +43,8 @@ class DirectoryUx(unittest.TestCase):
         policies = ''.join(function(policy, name) for name in (
             'SafeUploadPathUnderPrefix', 'SafeUploadPolicyDirectoryIsScopeAnchor'))
         fixture = (HERE / 'directory_ux_fixture.c').read_text()
-        source = fixture.replace('/* PRODUCTION_POLICY */', policies).replace('/* PRODUCTION_DIRECTORY */', helpers)
+        types = stream[stream.index('typedef struct _STAGE_NAMESPACE_BINDINGS {'):stream.index('_IRQL_requires_(PASSIVE_LEVEL)', stream.index('typedef struct _STAGE_NAMESPACE_BINDINGS {'))]
+        source = fixture.replace('/* PRODUCTION_NAMESPACE_TYPES */', types).replace('/* PRODUCTION_POLICY */', policies).replace('/* PRODUCTION_DIRECTORY */', helpers)
         scratch = Path(os.environ.get('TMPDIR', ROOT / '.scratch'))
         scratch.mkdir(parents=True, exist_ok=True)
         compilers = list(dict.fromkeys(filter(None, (shutil.which(os.environ.get('CC', 'cc')), shutil.which('clang')))))
@@ -53,7 +55,7 @@ class DirectoryUx(unittest.TestCase):
             for compiler in compilers:
                 with self.subTest(compiler=compiler):
                     subprocess.run([compiler, '-std=c11', '-fshort-wchar', '-Wall', '-Wextra', '-Werror',
-                                    '-fsanitize=undefined', str(cfile), '-o', str(binary)], check=True)
+                                    '-fsanitize=undefined', '-fno-sanitize-recover=all', str(cfile), '-o', str(binary)], check=True)
                     subprocess.run([str(binary)], check=True, timeout=30)
 
     def test_staging_and_completion_fence_wiring(self):
@@ -77,7 +79,8 @@ class DirectoryUx(unittest.TestCase):
         self.assertIn('StageAttachQueueCreate(Data, Objects, name', admit)
         self.assertIn('SafeUploadStageProtectedName(name, kind)', admit)
         # All new paged decision helpers remain annotated and placed in PAGE.
-        for name in ('StageDirectoryContains', 'StageDirectoryStreamPending', 'StageDirectoryPendingLocked',
+        for name in ('StageNamespaceCaptureBindings', 'StageNamespaceRevalidateBindings', 'StageNamespaceBeginMutation',
+            'StageDirectoryContains', 'StageDirectoryStreamPending', 'StageDirectoryPendingLocked',
                      'StageDirectoryBeginMutation', 'StageDirectoryPlainPath', 'StageDirectoryPlainName',
                      'StageDirectoryCollisionComplete', 'StageAdmitDirectoryMutation', 'StageExistingDirectory', 'StageNativeDirectoryInformation'):
             self.assertIn('PAGED_CODE();', function(source, name))

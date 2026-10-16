@@ -17,7 +17,7 @@ KERNEL = ROOT / 'driver/SafeUpload.Minifilter/StageStream.c'
 
 
 def body(source, name):
-    match = re.search(r'(?m)^static (?:BOOLEAN|NTSTATUS|FLT_PREOP_CALLBACK_STATUS|FLT_POSTOP_CALLBACK_STATUS) ' + name + r'\([^;]*?\)\s*\{', source)
+    match = re.search(r'(?m)^static (?:BOOLEAN|VOID|NTSTATUS|FLT_PREOP_CALLBACK_STATUS|FLT_POSTOP_CALLBACK_STATUS) ' + name + r'\([^;]*?\)\s*\{', source)
     assert match, name
     end = source.index('{', match.start()) + 1
     depth = 1
@@ -135,17 +135,19 @@ int main(void) {
     target.protectedName=0;CHECK(!StageMvpRenameNeedsCopy(&source,&target));
     target.protectedName=1;source.Name="source.txt";sameScope=0;CHECK(StageMvpRenameNeedsCopy(&source,&target));
     const char *name="source.txt",*other="target.txt";STAGE_STREAM rows[3];
-    reset(rows,2);CHECK(StageMvpCancelNames((void*)1,&name,NULL)==0);CHECK(calls==2);
+    reset(rows,2);CHECK(StageMvpCancelNames((void*)1,&name,NULL,FALSE)==0);CHECK(calls==0&&queued==0);
+    CHECK(!rows[0].PrivateCancellationAccepted&&!rows[1].PrivateCancellationAccepted);
+    reset(rows,2);CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==0);CHECK(calls==2);
     CHECK(rows[0].RpcReferences==0&&rows[1].RpcReferences==0);
     reset(rows,2);rows[1].ShareAccess.OpenCount=1;
-    CHECK(StageMvpCancelNames((void*)1,&name,NULL)==-1);CHECK(calls==0);
+    CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==-1);CHECK(calls==0);
     reset(rows,2);rows[1].Name="target.txt";rows[1].ShareAccess.OpenCount=1;
-    CHECK(StageMvpCancelNames((void*)1,&name,&other)==-1);CHECK(calls==0);
-    reset(rows,1);rpcFailure=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL)==-9);CHECK(rows[0].RpcReferences==0);
-    reset(rows,1);rows[0].Sealed=0;CHECK(StageMvpCancelNames((void*)1,&name,NULL)==0);
+    CHECK(StageMvpCancelNames((void*)1,&name,&other,TRUE)==-1);CHECK(calls==0);
+    reset(rows,1);rpcFailure=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==-9);CHECK(rows[0].RpcReferences==0);
+    reset(rows,1);rows[0].Sealed=0;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==0);
     CHECK(rows[0].DiscardOnClose&&rows[0].DiscardDisposition&&queued==1&&calls==0);
-    reset(rows,1);rows[0].MvpPublicationObserved=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL)==0&&calls==0);
-    reset(rows,1);rows[0].SealRpcInFlight=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL)==-1&&calls==0);
+    reset(rows,1);rows[0].MvpPublicationObserved=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==0&&calls==0);
+    reset(rows,1);rows[0].SealRpcInFlight=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==-1&&calls==0);
     CHECK(resources==0);return 0;
 }
 '''
@@ -178,16 +180,21 @@ class MvpNamespace(unittest.TestCase):
         native = body(source, 'StageMvpNamespacePre')
         self.assertIn('*Handled = TRUE;', native)
         self.assertIn('SafeUploadPreCreate(Data, Objects, CompletionContext)', native)
-        self.assertIn('SafeUploadPostCreate(Data, Objects, legacyContext, Flags)', source)
+        self.assertIn('SafeUploadPostCreate(Data, Objects, LegacyContext, Flags)', source)
         self.assertIn('StageMvpCancelNames(', native)
         self.assertIn('FLT_PREOP_SYNCHRONIZE;', native)
-        # PREfast correction 7172c017 uses a dedicated completion tag. Keep
-        # checking that its completion releases the actual interlocked fence.
+        # The tag carries registry/native ownership; the epoch releases the
+        # shared file/folder fence only after inner completion, and latches
+        # it on drain. No direct clear may bypass that ordering.
         self.assertIn('*CompletionContext = (PVOID)&StageMvpNamespaceCompletionTag;', native)
         post = body(source, 'StagePostOperationCore')
         tagged = post.index('if (CompletionContext == (PVOID)&StageMvpNamespaceCompletionTag) {')
         finish = post.index('return FLT_POSTOP_FINISHED_PROCESSING;', tagged)
-        self.assertIn('InterlockedExchange(&StageMvpNamespaceFence, 0);', post[tagged:finish])
+        self.assertIn('StageMvpNamespacePost(Data, Objects, Flags);', post[tagged:finish])
+        self.assertIn('SafeUploadStageWritersCompleteRename(', body(source, 'StageMvpNamespacePost'))
+        self.assertNotIn('InterlockedExchange(&StageDirectoryMutationActive, 0)', post[tagged:finish])
+        outer = source[source.index('FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation('):]
+        self.assertLess(outer.index('result = StagePostOperationCore('), outer.index('StageDirectoryEndMutation('))
         self.assertNotRegex(native, r'rename->\w+\s*=(?!=)')
         self.assertNotIn('STATUS_NOT_SUPPORTED', body(source, 'StageMvpRenameNeedsCopy'))
         core = body(source, 'StageDispatchCore')
@@ -198,11 +205,12 @@ class MvpNamespace(unittest.TestCase):
         for block in namespace_calls:
             self.assertLess(block.index('*CompletionContext = NULL;'), block.index('StageMvpNamespacePre('))
         create = body(source, 'StageCreate')
-        self.assertIn('namespaceSequence != StageMvpNamespaceSequence', create)
+        self.assertIn('namespaceSequence != StageDirectorySequence', create)
         rename = body(source, 'StageRename')
-        self.assertIn('namespaceSequence != StageMvpNamespaceSequence', rename)
+        self.assertIn('namespaceSequence != StageDirectorySequence', rename)
         external = body(source, 'StageExternalRename')
-        self.assertLess(external.index('&StageMvpNamespaceFence'), external.index('allow = SafeUploadPublicationRename'))
+        self.assertLess(external.index('StageNamespaceBeginMutation('), external.index('allow = SafeUploadPublicationRename'))
+        self.assertIn('StageNamespaceRevalidateBindings(', external)
         publisher = (ROOT / 'agente/SafeUpload.Agent.Service/Interception/StagedTransferPublisher.cs').read_text()
         self.assertLess(publisher.index('CommitUnboundPublicationAsync('), publisher.index('StagedDestinationFile.CommitHandle('))
 
