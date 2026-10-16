@@ -277,12 +277,18 @@ public sealed partial class StagedTransferJournal
                         uncommitted.SetLength(ArchiveControlBytes);
                         WriteArchiveFrontier(uncommitted, ArchiveControlBytes);
                     }
+                    ArchiveObserver?.Invoke("before-recovery-flush");
                     uncommitted.Flush(flushToDisk: true);
+                    ArchiveObserver?.Invoke("after-recovery-flush");
                 }
             }
             if (segments.Count > _archiveSegmentCount)
                 await WriteArchiveInventoryCoreAsync(segments.Count, token).ConfigureAwait(false);
-            foreach (string hot in duplicatedHot) File.Delete(hot);
+            foreach (string hot in duplicatedHot)
+            {
+                ArchiveObserver?.Invoke("before-hot-consolidation");
+                File.Delete(hot);
+            }
             if (segments.Count > 0) _archiveAppendPath = segments.Last().Value;
         }
         _archiveLoaded = true;
@@ -296,7 +302,9 @@ public sealed partial class StagedTransferJournal
             using (var stream = CreatePrivateTemporary(temporary))
             {
                 await JsonSerializer.SerializeAsync(stream, new ArchiveInventory(1, count), cancellationToken: token).ConfigureAwait(false);
+                ArchiveObserver?.Invoke("before-inventory-replace");
                 await StagedJournalReplacement.CommitAsync(stream, temporary, ArchiveInventoryPath, token).ConfigureAwait(false);
+                ArchiveObserver?.Invoke("after-inventory-replace");
             }
             _archiveSegmentCount = count;
         }

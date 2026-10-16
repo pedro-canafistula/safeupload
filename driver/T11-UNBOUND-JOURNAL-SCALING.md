@@ -104,3 +104,17 @@ Windows user/SYSTEM matrix, a matched protected-pair T4 10k verdict, or T11 clos
 Windows four-leg checks, the protected 10k row and crash/power-loss qualification
 remain required. Unsupported-platform diagnostic failures are retained and compared
 with the unchanged base; no test is skipped or weakened to turn those green.
+
+## T11 review-condition audit (2026-10-16)
+
+The `ux/t11` follow-up over `2ed2b20b` also pins **hot** unbound current-epoch
+receipts, refuses missing-epoch rebootstrap over retained driver receipts through
+both entry points, and retains the forward CREATE_AFTER successor referenced by
+an unresolved delete. Cleanup-in-progress and missing disposal/discard receipts
+cannot become finished from age or path absence. Legacy journal-only semantics
+and bound readiness/full-head validation remain unchanged. Added real-journal
+controls cover these cases plus registered-segment failed-flush/reflush ordering,
+second-segment inventory failures and compaction cancellation/fresh-offset use.
+See [the review checklist and exact unrun rows](M2-REVIEW-CONDITIONS.md) and
+[local evidence](evidence/2026-10-16/ux-t11/result.md). This is component closure,
+not completion of T11 or protected 10k qualification.
