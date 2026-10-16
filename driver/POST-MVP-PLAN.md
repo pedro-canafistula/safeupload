@@ -1153,7 +1153,9 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
   isolated parser resource limits and ZIP text streaming. Owner-approved defaults and conservative legacy upgrade are implemented;
   [follow-up receipt](evidence/2026-10-16/ux-large3-local/result.md). The dev `45102e57` failed-CREATE cascade is addressed by
   [stateless refusal/exact recovery and recorder recovery](UX-LARGE-RECOVERY.md), preserving effective/high-water claims;
-  [local regression receipt](evidence/2026-10-16/ux-large4-local/result.md). WDK/native/three-mode evidence and everyday concurrent/seed UX remain open.
+  [local regression receipt](evidence/2026-10-16/ux-large4-local/result.md). The ux-m6-diag matrix follow-up fixes private ACL creation,
+  legacy/staged inspection defaults and unbudgeted snapshot compatibility; [42 large / 14 other-branch failure mapping and local checks](evidence/2026-10-16/ux-large5-local/result.md).
+  Windows four-leg matrix, WDK/native/three-mode evidence and everyday concurrent/seed UX remain open.
 - [x] **Complete-or-refuse coverage first** (owner direction 2026-10-13; [review finding](M2-COMPLETION-PLAN.md#findings-in-delivery-order)).
   - [x] Read DrawingML shape/text-box text, chart titles/axis and series names/labels/cached values, VML drawing text and PDF
     annotation contents/form-field values; refuse embedded files, PDF attachments, XFA and other unconsumed payloads.

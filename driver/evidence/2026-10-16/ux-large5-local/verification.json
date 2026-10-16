@@ -1,0 +1,126 @@
+{
+  "source": {
+    "base": "e329a7a271851f4a3b2b1073484a2530f71f172d",
+    "source_commit": "c2982f6bd358520d8191cf02cb53db5089c4f4c1",
+    "tree": "4c77ee9d6afee905a31feb99d1da5a635407da2e",
+    "original_head": "e329a7a271851f4a3b2b1073484a2530f71f172d",
+    "original_index_sha256": "cf1f56f0cc2f3448c447684ee9446b328568a30df689c5300c7468ffb7216dcb"
+  },
+  "sdk": "10.0.400",
+  "build_settings": {
+    "SafeUploadAdmissionEvidence": true,
+    "configurations": [
+      "Debug",
+      "Release"
+    ],
+    "warnaserror": true,
+    "warnings": 0,
+    "errors": 0,
+    "NuGetAudit": false,
+    "RestorePackagesPath": "/home/victor/Work/safeupload-tools/nuget-cache",
+    "projects": [
+      "Service",
+      "App",
+      "Tests"
+    ],
+    "EnableWindowsTargeting_App": true
+  },
+  "logs": [
+    {
+      "path": ".scratch/ux-large5/build-debug-final.log",
+      "sha256": "829f90f363a44253fafd539f9358fb8a706d6a77205cb70fbc6ba7e5635935ac"
+    },
+    {
+      "path": ".scratch/ux-large5/build-release-final.log",
+      "sha256": "641b8fcf62dc8d343ec576271ddbf400a039b5b7ccc04ca2deb850ac4ddf8d22"
+    },
+    {
+      "path": ".scratch/ux-large5/check-allocation-retry.log",
+      "sha256": "2c503c109dc5b9e5d997744e827d2dbe1b247f26266c4497f1906cbe544e29d1"
+    },
+    {
+      "path": ".scratch/ux-large5/check-feature-defaults.log",
+      "sha256": "8d277da6e95b3d56320b782f502c08cfdd4190d11bf108e4e019a4415f06dd00"
+    },
+    {
+      "path": ".scratch/ux-large5/check-grant.log",
+      "sha256": "a812a8ac84d268e69f64cfa52d299075539c9778ab56277beeedd542c4457e9a"
+    },
+    {
+      "path": ".scratch/ux-large5/check-imports.log",
+      "sha256": "47e488ee9dd22636cff3c820278f2fd780acb7e33c5e29e9cc3de0dd2cbba203"
+    },
+    {
+      "path": ".scratch/ux-large5/check-matrix-runner.log",
+      "sha256": "207651e6abf4cc7805a9a01a0be8b37c47325e14e127b64c10d319fc1395ac47"
+    },
+    {
+      "path": ".scratch/ux-large5/check-metadata-security.log",
+      "sha256": "f0521a9285f7c140098795a2826fac5e6328417ac759ef077923efc4f29e3bc1"
+    },
+    {
+      "path": ".scratch/ux-large5/check-t11-sop.log",
+      "sha256": "7d6a36442acc1510427187cb3cc2fb82024b5c1f9f9ece43a7549ec88e81b54e"
+    },
+    {
+      "path": ".scratch/ux-large5/check-verdict.log",
+      "sha256": "0ba3ffd46bf9222a88fd4066078f24288132dc340c54397a04eb367c5aa11ffd"
+    },
+    {
+      "path": ".scratch/ux-large5/build-app-debug.log",
+      "sha256": "97e617a871622653905ac01b7d34e6eb0a2229695a90b1356c7e5c647816c449"
+    },
+    {
+      "path": ".scratch/ux-large5/build-app-release.log",
+      "sha256": "d0fc5c3ae40e5146c9e97f8b9a1f3b33f25f4815463fd6ca76563c47717e196b"
+    }
+  ],
+  "assemblies": [
+    {
+      "configuration": "debug",
+      "path": ".scratch/ux-large5/artifacts/bin/SafeUpload.Agent.Core/debug/SafeUpload.Agent.Core.dll",
+      "sha256": "cf04e8759c1567d6f4c237baad0b31ce342a76ef5b4beaa31aa8e2b93f9f9f42"
+    },
+    {
+      "configuration": "debug",
+      "path": ".scratch/ux-large5/artifacts/bin/SafeUpload.Agent.Service/debug/SafeUpload.Agent.Service.dll",
+      "sha256": "143da75076436d6eae3baaa68655e5c4d9e6e9d7522e10fa66c59dc38b745a24"
+    },
+    {
+      "configuration": "debug",
+      "path": ".scratch/ux-large5/artifacts/bin/SafeUpload.Agent.Tests/debug/SafeUpload.Agent.Tests.dll",
+      "sha256": "4b7e4c08976b40f59cd057ad0eef95d6dcf44294de4975208fab992e1a62edba"
+    },
+    {
+      "configuration": "release",
+      "path": ".scratch/ux-large5/artifacts/bin/SafeUpload.Agent.Core/release/SafeUpload.Agent.Core.dll",
+      "sha256": "2dbfcf64429538d6b7277d16f539109f06cceee2402255018c71d4624e2c9e45"
+    },
+    {
+      "configuration": "release",
+      "path": ".scratch/ux-large5/artifacts/bin/SafeUpload.Agent.Service/release/SafeUpload.Agent.Service.dll",
+      "sha256": "37c8512cc73e64d3e4f5fc9394cd46290bb7f23616c365b067a4e2f866497f67"
+    },
+    {
+      "configuration": "release",
+      "path": ".scratch/ux-large5/artifacts/bin/SafeUpload.Agent.Tests/release/SafeUpload.Agent.Tests.dll",
+      "sha256": "a5aeef5fb42b02f84d0845605beedc9c8e9bd04201b940328893f3cced161063"
+    },
+    {
+      "configuration": "debug",
+      "path": ".scratch/ux-large5/app-artifacts/bin/SafeUpload.Agent.App/debug/SafeUpload.Agent.App.dll",
+      "sha256": "825e48f84e0926bb91cb30e4970a312c8a58dc64559a467954760c53c879f1fd"
+    },
+    {
+      "configuration": "release",
+      "path": ".scratch/ux-large5/app-artifacts/bin/SafeUpload.Agent.App/release/SafeUpload.Agent.App.dll",
+      "sha256": "44eab7b25faf82d2c1b04b149649c0ed280ab0cd53418b889001552d0bad9362"
+    }
+  ],
+  "limitations": [
+    "No builder, product VM, Windows native test, four-leg Windows matrix, WDK, PREfast or ApiValidator run in this session.",
+    "Native behavior must be run on Windows; in-process selected methods are only Linux diagnostics.",
+    "First-free-builder wrapper requires shared lock/log writes outside this session writable roots; those lab coordination files were not bypassed.",
+    "No new throughput/memory benchmark: parser implementation and accepted resource values are unchanged; prior 2GiB text/DOCX/ZIP rationale remains applicable."
+  ]
+}

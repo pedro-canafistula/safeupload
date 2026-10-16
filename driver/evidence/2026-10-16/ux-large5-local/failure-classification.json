@@ -1,0 +1,394 @@
+{
+  "input_matrices": [
+    {
+      "path": ".scratch/ux-m6-diag/feature-debug-user.trx",
+      "sha256": "eec4310c20e53f44c66fd4cf7e87bccef5ff7f612429cf8776799652413895f2",
+      "counters": {
+        "total": "2721",
+        "executed": "2721",
+        "passed": "2665",
+        "failed": "56",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      }
+    },
+    {
+      "path": ".scratch/ux-m6-diag/feature-release-user.trx",
+      "sha256": "7cb081d361d2350d0dec511e9a7348bf6cba11b827941d4ccaffaaa6ff143a3a",
+      "counters": {
+        "total": "2721",
+        "executed": "2721",
+        "passed": "2665",
+        "failed": "56",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      }
+    }
+  ],
+  "counts": {
+    "private_storage_acl": 38,
+    "t11_epoch_fixture": 9,
+    "meta2_missing_parent": 5,
+    "legacy_inspection_defaults": 3,
+    "unbudgeted_snapshot_contract": 1
+  },
+  "failures": [
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Over_budget_legacy_recovery_does_not_refuse_startup_or_admit_new_bytes(completed: False)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Unresolved_negative_receipt_temporary_holds_further_admission_without_deleting_evidence",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeIntegrationTests.Compaction_pins_unconsumed_content_cleanup_receipts(packed: True)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_requires_gate_confirmed_disposal_before_parent_ack",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+      "group": "t11_epoch_fixture",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction(childDisposition: UnattachedAllocation)",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+      "group": "t11_epoch_fixture",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Later_open_copies_the_sealed_version_without_changing_it",
+      "message": "SafeUpload.Agent.Service.Interception.StagedMetadataException : metadata_source_open_failed\r\n---- System.ComponentModel.Win32Exception : The system cannot find the path specified.",
+      "group": "meta2_missing_parent",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent(childCleanupKind: DriverUnloadEmpty)",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+      "group": "t11_epoch_fixture",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Exact_free_space_admission_includes_all_copies_metadata_and_floor(delta: -1, allowed: False)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_successor_must_be_exactly_retired_before_its_parent(childCleanupKind: OwnerExitEmpty)",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+      "group": "t11_epoch_fixture",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Failed_journal_replacement_residue_has_a_bounded_storage_envelope",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedHandbackTests.Completed_BLOCK_after_requester_exit_remains_idle_across_reconnect_and_name_reuse",
+      "message": "SafeUpload.Agent.Service.Interception.StagedMetadataException : metadata_source_open_failed\r\n---- System.ComponentModel.Win32Exception : The system cannot find the path specified.",
+      "group": "meta2_missing_parent",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch(mutation: \"driver-epoch\")",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+      "group": "t11_epoch_fixture",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.AuditTrailTests.Motivo_de_nao_inspecao_e_registrado",
+      "message": "Assert.Equal() Failure: Strings differ\r\nExpected: \"file_too_large\"\r\nActual:   null",
+      "group": "legacy_inspection_defaults",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_released_successor_replacement_blocks_parent_cleanup_without_deleting_replacement",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+      "group": "t11_epoch_fixture",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeIntegrationTests.Lost_prepare_refunds_content_only_after_exact_cleanup_hot_or_packed(packed: True)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeIntegrationTests.Compaction_pins_unconsumed_content_cleanup_receipts(packed: False)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Validated_legacy_security_snapshot_is_metadata_compatibility_and_never_transfer_authority",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Exact_free_space_admission_includes_all_copies_metadata_and_floor(delta: 0, allowed: True)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeIntegrationTests.Archive_refusal_keeps_hot_receipt_for_a_later_metadata_only_retry",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Missing_ledger_cannot_reclassify_a_larger_grant_or_sealed_version_as_legacy(sealedEvidence: False)",
+      "message": "Assert.Throws() Failure: Exception type was not an exact match\r\nExpected: typeof(System.IO.IOException)\r\nActual:   typeof(System.UnauthorizedAccessException)\r\n---- System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Read_lease_has_no_write_or_delete_rights_and_survives_the_owner_until_its_last_close",
+      "message": "Assert.IsType() Failure: Value is not the exact type\r\nExpected: typeof(System.IO.FileStream)\r\nActual:   typeof(SafeUpload.Agent.Service.Interception.StagedInspectionSnapshot+ReadLease)",
+      "group": "unbudgeted_snapshot_contract",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.An_extreme_free_floor_cannot_wrap_into_a_positive_admission",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeIntegrationTests.Packed_metadata_keeps_its_reservation_and_exact_seal_after_restart",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Terminal_refusal_never_adopts_an_unknown_present_object_as_cleanup_authority(reserved: True)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.A_failed_seed_can_retry_the_same_stable_intent_after_restart_without_double_charge",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeIntegrationTests.Archive_growth_and_compaction_overlap_stay_inside_retained_metadata_debits",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch(mutation: \"process-creation\")",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+      "group": "t11_epoch_fixture",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Terminal_refusal_never_adopts_an_unknown_present_object_as_cleanup_authority(reserved: False)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Allocation_is_journaled_before_the_stage_name_is_returned",
+      "message": "SafeUpload.Agent.Service.Interception.StagedMetadataException : metadata_source_open_failed\r\n---- System.ComponentModel.Win32Exception : The system cannot find the path specified.",
+      "group": "meta2_missing_parent",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Known_never_created_allocation_retires_content_while_retaining_metadata",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Allocation_persists_requestor_sid_and_process_creation_time",
+      "message": "SafeUpload.Agent.Service.Interception.StagedMetadataException : metadata_source_open_failed\r\n---- System.ComponentModel.Win32Exception : The system cannot find the path specified.",
+      "group": "meta2_missing_parent",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Structurally_corrupt_legacy_negative_receipt_remains_held_unchanged",
+      "message": "Assert.Throws() Failure: Exception type was not an exact match\r\nExpected: typeof(System.IO.IOException)\r\nActual:   typeof(System.UnauthorizedAccessException)\r\n---- System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Corrupt_receipts_do_not_reset_usage_on_restart",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Exact_free_space_admission_includes_all_copies_metadata_and_floor(delta: 262144, allowed: True)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Unknown_private_objects_and_interrupted_accounting_are_never_swept_or_admitted",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Terminal_refusal_retires_only_the_recorded_exact_unissued_seed",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Rn013_arquivo_grande_demais_e_liberado_sem_inspecao",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: AllowedWithoutInspection\r\nActual:   Blocked",
+      "group": "legacy_inspection_defaults",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.InspectionServiceTests.Rn012_timeout_libera_a_operacao",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: AllowedWithoutInspection\r\nActual:   Approved",
+      "group": "legacy_inspection_defaults",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Negative_allocation_receipts_cannot_exceed_the_global_metadata_envelope",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_parent_cleanup_requires_terminal_child_ack_and_survives_restart_compaction(childDisposition: PrivateVersion)",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+      "group": "t11_epoch_fixture",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Preexisting_negative_receipt_storage_is_accounted_without_an_upgrade_startup_refusal",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Over_budget_legacy_recovery_does_not_refuse_startup_or_admit_new_bytes(completed: True)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Completed_legacy_hot_and_packed_history_remains_compatible_and_unchanged(packed: True)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Partially_imported_legacy_guard_never_accepts_a_later_unaccounted_companion",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.User_exhaustion_preserves_another_users_capacity_and_survives_restart",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Completed_legacy_hot_and_packed_history_remains_compatible_and_unchanged(packed: False)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Pending_legacy_stage_is_charged_under_its_original_guard_and_refunded_only_after_exact_cleanup",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Approved_default_per_user_exhaustion_survives_restart_without_consuming_another_users_share",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeIntegrationTests.Refunded_history_does_not_participate_in_foreground_reconciliation",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeIntegrationTests.Lost_prepare_refunds_content_only_after_exact_cleanup_hot_or_packed(packed: False)",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferAllocatorTests.Direct_emptyheld_cleanup_rejects_mismatched_child_writer_or_epoch(mutation: \"sid\")",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: Active\r\nActual:   Rejected",
+      "group": "t11_epoch_fixture",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_publication_is_retained_and_never_audited_as_sent",
+      "message": "Assert.Equal() Failure: Strings differ\r\n           \u2193 (pos 0)\r\nExpected: \"publication_failed\"\r\nActual:   \"metadata_source_open_failed\"\r\n           \u2191 (pos 0)",
+      "group": "meta2_missing_parent",
+      "scope": "other_branch"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Missing_ledger_cannot_reclassify_a_larger_grant_or_sealed_version_as_legacy(sealedEvidence: True)",
+      "message": "Assert.Throws() Failure: Exception type was not an exact match\r\nExpected: typeof(System.IO.IOException)\r\nActual:   typeof(System.UnauthorizedAccessException)\r\n---- System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Concurrent_same_user_reservations_cannot_double_spend_free_capacity",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeIntegrationTests.Enabling_large_mode_cannot_adopt_unreserved_packed_history",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeDefaultsTests.Missing_legacy_sid_or_identity_is_charged_globally_without_inventing_cleanup_authority",
+      "message": "System.UnauthorizedAccessException : Journal object grants mutation rights to an untrusted identity.",
+      "group": "private_storage_acl",
+      "scope": "large_fix"
+    }
+  ],
+  "both_profiles_have_identical_56_failure_names": true
+}
