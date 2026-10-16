@@ -1082,6 +1082,9 @@ after M2 with image OCR, owner 2026-10-16);
 the publishing application can reopen the file and agreed metadata is preserved.
 
 - [ ] Trace/replay real save sequences, including temporary/backup deletes under T5; respect staged rename limits.
+- [ ] PowerPoint and archive inspection (owner 2026-10-16): PowerPoint `1d485942` merged, matrix
+  [`t9-pptx1`](evidence/2026-10-16/exact-agent-matrix-t9-pptx1-summary.txt) ExactAgentMatrixGate=PASS (2,263 user + 25 SYSTEM per feature configuration);
+  archives and the default monitored extensions (agent and backend) in progress.
 - [ ] Implement and test the metadata contract decided 2026-10-16 (native owner/DACL/SACL/label, timestamps, attributes; Zone.Identifier
   carried with its file; other ADS, EAs, EFS, offline, reparse points and hard links refused).
 - [ ] Qualify application rows under the matched pair with independent byte observation and restoration.
