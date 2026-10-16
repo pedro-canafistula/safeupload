@@ -1382,7 +1382,8 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     ([full-disk recovery](evidence/2026-10-13/t9-formula1-preflight.host.json), [headroom](evidence/2026-10-13/t9-formula1-headroom.host.json));
     the fresh complete matrix above passes both test and packaging gates. Protected large-file and memory qualification remains open.
 - [ ] Qualify large clean/CPF, corrupt/encrypted/password-protected, parser/extraction-limit, timeout and disk-full cases.
-- [ ] All-zero payment-card question resolved (owner 2026-10-16: all-zero is not a card); implement and test.
+- [x] All-zero payment-card question resolved (owner 2026-10-16: all-zero is not a card): `8697056e`, merged; matrix
+  [`t9-allzero1`](evidence/2026-10-16/exact-agent-matrix-t9-allzero1-summary.txt) ExactAgentMatrixGate=PASS (2,210 user + 25 SYSTEM per feature configuration).
 
 ### T10. Permission and owner changes
 

@@ -1,0 +1,40 @@
+﻿LABEL=t9-allzero1
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=8697056e872a6f56d73e0cb9e93f8b4902ab2637
+ARCHIVE_SHA256=1895C2A2966746A109D2B3B399141A92F3E86C26E32F86CA56B3E1815F91B053
+AgentMatrixProfiles=feature-debug,feature-release
+AgentMatrixTestLegs=4
+Builder=builder1
+BuilderHost=192.168.122.210
+BuilderComputerName=DESKTOP-O1LP5DG
+ParityCheck=False
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=0 warnings=0 errors=0
+feature-debug-tests-system-identity: S-1-5-18
+feature-debug-tests-system: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=2235
+feature-release: admission_evidence=true
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-app-build: exit=0 warnings=0 errors=0
+feature-release-test-build: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-release-tests-user: exit=0 warnings=0 errors=0
+feature-release-tests-system-identity: S-1-5-18
+feature-release-tests-system: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=2235
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_manifest_sha256=EF2BA58CE9A859DDA298F9FFFF0EFFD218D771B5335C55193578B6C83BE82E62
+feature-release: package_sha256=9E1EB37F0FFEBF73DFC1622BE038FEBCB929AFBC3B7FA8849819A14B04CCDBB2
+feature-release: exe_sha256=47DF011F4C2F7A769A338162E0A9798114919C9BEC3FA56C906934B4F3A932C8
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-16T03:43:39.9812519Z
