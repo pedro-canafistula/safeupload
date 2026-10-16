@@ -36,6 +36,9 @@ that name and refuses (sharing violation) while a writer holds one; a private re
 an unmonitored file to a monitored name is refused as not-same-device (copy, inspected); folders: create native, rename/delete
 native when nothing under them is pending (else busy), moved in from outside = not-same-device. Owner decision (option A): PowerPoint's
 package-root thumbnail (`docProps/thumbnail.jpeg`, rendered from slide 1) is accepted without OCR; images anywhere else stay refused.
+T9 resource defaults (owner, 2026-10-16 16:10 BRT, recommended values accepted): no fixed per-file staging cap; total staging budget
+min(32 GiB, 10% of available space), per user min(8 GiB, total/4), free-space floor max(1 GiB, 5% of the volume); a save beyond a budget
+fails closed with a "not enough staging space" reason and alert, without affecting other users.
 
 **2026-10-16 — MVP pair now, batch 3 in parallel.** Owner, in the session, after the [critical-path plan](evidence/2026-10-16/t5-critical-path-plan-sol61.md)
 (full T4/T5 to M2 standard: 180–310 worker-hours plus 30–50 lab hours): "MVP now + batch 3 in parallel". An MVP pair is cut from
