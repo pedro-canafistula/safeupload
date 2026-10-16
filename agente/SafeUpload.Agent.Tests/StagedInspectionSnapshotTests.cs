@@ -87,6 +87,36 @@ public sealed class StagedInspectionSnapshotTests : IDisposable
         Assert.Equal(original, await File.ReadAllBytesAsync(path));
     }
 
+    [Fact]
+    public async Task Budgeted_snapshot_keeps_its_slot_until_the_read_lease_closes_without_changing_native_rights()
+    {
+        string root = Path.Combine(_workspace.Root, "private-stage");
+        StagedPrivateStorage.CreateDirectory(root);
+        var budget = new StagedSpaceBudget(root, new(true, 512L << 20, 128L << 20, 0), () => 2L << 30);
+        Guid id = Guid.NewGuid(); string stage = Path.Combine(root, id.ToString("N") + ".txt");
+        budget.Reserve(id, "S-1-5-21-100", stage);
+        using (var output = StagedPrivateStorage.CreateFile(stage)) { output.WriteByte(42); output.Flush(true); }
+        using (var exact = StagedStageFile.Open(stage)) budget.RecordStage(id, stage, exact.Identity);
+        var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"));
+        var transfer = new StagedTransfer(id, stage, Path.Combine(_workspace.Root, "public.txt"),
+            DestinationKind.Cloud, "fixture", 17, 1) { RequestorSid = "S-1-5-21-100" };
+        budget.Bind(await journal.CreateAsync(transfer, default));
+        await using var source = File.OpenRead(stage);
+        var snapshot = await StagedInspectionSnapshot.CreateAsync(source, root, ".txt", source.Length, default, budget, id);
+        await using var lease = Assert.IsType<StagedInspectionSnapshot.ReadLease>(snapshot.OpenRead());
+        var information = new byte[56];
+        Assert.Equal(0, NtQueryObject(lease.Handle, 0, information, (uint)information.Length, out uint returned));
+        Assert.Equal((uint)information.Length, returned);
+        Assert.Equal(0x00120089u, BinaryPrimitives.ReadUInt32LittleEndian(information.AsSpan(4)));
+        await snapshot.DisposeAsync();
+        Assert.True(File.Exists(snapshot.Path)); Assert.False(lease.CanWrite);
+        await Assert.ThrowsAsync<StagedSpaceException>(() => StagedInspectionSnapshot.CreateAsync(
+            source, root, ".txt", source.Length, default, budget, id));
+        await lease.DisposeAsync(); Assert.False(File.Exists(snapshot.Path));
+        await using var next = await StagedInspectionSnapshot.CreateAsync(source, root, ".txt", source.Length, default, budget, id);
+        Assert.True(File.Exists(next.Path)); Assert.False(File.Exists(transfer.DestinationPath));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

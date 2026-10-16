@@ -24,7 +24,7 @@ public sealed class StagedLargeDefaultsTests : IDisposable
         .AddInMemoryCollection(settings.ToDictionary(x => "Interception:StageSpace:" + x.Key, x => (string?)x.Value)).Build();
     private StagedSpaceBudget Upgrade(StagedSpaceOptions? options = null)
     {
-        Directory.CreateDirectory(Stage);
+        StagedPrivateStorage.CreateDirectory(Stage);
         return new(Stage, options ?? new(true, 512 * MiB, 128 * MiB, 0), () => 2 * GiB,
             new StagedTransferJournal(Hot, requireProtectedParent: false, deferArchiveLoad: true));
     }
@@ -63,7 +63,7 @@ public sealed class StagedLargeDefaultsTests : IDisposable
     [Fact]
     public void Approved_default_per_user_exhaustion_survives_restart_without_consuming_another_users_share()
     {
-        Directory.CreateDirectory(Stage);
+        StagedPrivateStorage.CreateDirectory(Stage);
         var options = StagedSpaceConfiguration.Resolve(Config(), Stage, _ => (640 * GiB, 1000 * GiB));
         var budget = new StagedSpaceBudget(Stage, options, () => 640 * GiB);
         long capacity = budget.Reserve(Guid.NewGuid(), Sid);
@@ -185,7 +185,7 @@ public sealed class StagedLargeDefaultsTests : IDisposable
     [Fact]
     public void Preexisting_negative_receipt_storage_is_accounted_without_an_upgrade_startup_refusal()
     {
-        Directory.CreateDirectory(Stage);
+        StagedPrivateStorage.CreateDirectory(Stage);
         for (int i = 0; i < 100; i++)
             NegativeReceipt();
         var budget = Upgrade();
@@ -198,7 +198,7 @@ public sealed class StagedLargeDefaultsTests : IDisposable
     [Fact]
     public void Structurally_corrupt_legacy_negative_receipt_remains_held_unchanged()
     {
-        Directory.CreateDirectory(Stage);
+        StagedPrivateStorage.CreateDirectory(Stage);
         string path = Path.Combine(Stage, Guid.NewGuid().ToString("N") + ".allocation-refused");
         File.WriteAllBytes(path, new byte[Contract.RequestSize]);
         var budget = Upgrade();
@@ -209,7 +209,7 @@ public sealed class StagedLargeDefaultsTests : IDisposable
     [Fact]
     public void Validated_legacy_security_snapshot_is_metadata_compatibility_and_never_transfer_authority()
     {
-        Directory.CreateDirectory(Stage); Directory.CreateDirectory(Hot);
+        StagedPrivateStorage.CreateDirectory(Stage); _ = new StagedTransferJournal(Hot);
         Guid id = Guid.NewGuid(); var binding = SecuritySnapshotFixture.Binding();
         byte[] descriptor = SecuritySnapshotFixture.Descriptor();
         byte[] bytes = StagedAllocationSecuritySnapshot.Create(id, binding, 1, 0x7f, descriptor, descriptor).Encode();
@@ -226,16 +226,16 @@ public sealed class StagedLargeDefaultsTests : IDisposable
     [Fact]
     public async Task New_inspection_defaults_cover_large_files_while_explicit_old_policy_values_are_preserved()
     {
-        var defaults = LocalPolicyStore.CreateDefault();
+        var defaults = LocalPolicyStore.CreateStagedDefault();
         Assert.Equal(4096, defaults.MaxFileSizeMb);
         Assert.Equal(900, defaults.InspectionTimeoutSeconds);
         await File.WriteAllTextAsync(_workspace.PolicyFile,
             """{"version":7,"activeCategories":["Cpf"],"maxFileSizeMb":20,"inspectionTimeoutSeconds":5}""");
-        var explicitPolicy = await new LocalPolicyStore(_workspace.PolicyFile).LoadAsync(default);
+        var explicitPolicy = await new LocalPolicyStore(_workspace.PolicyFile).LoadCurrentAsync(default);
         Assert.Equal(20, explicitPolicy.MaxFileSizeMb);
         Assert.Equal(5, explicitPolicy.InspectionTimeoutSeconds);
         await File.WriteAllTextAsync(_workspace.PolicyFile, """{"version":8,"activeCategories":["Cpf"]}""");
-        var implicitPolicy = await new LocalPolicyStore(_workspace.PolicyFile).LoadAsync(default);
+        var implicitPolicy = await new LocalPolicyStore(_workspace.PolicyFile).LoadCurrentAsync(default);
         Assert.Equal(4096, implicitPolicy.MaxFileSizeMb);
         Assert.Equal(900, implicitPolicy.InspectionTimeoutSeconds);
         string path = Path.Combine(_workspace.Root, "large.txt");
@@ -257,7 +257,7 @@ public sealed class StagedLargeDefaultsTests : IDisposable
 
     private async Task<(StagedTransferJournal Journal, TransferJournalEntry Entry)> Legacy(bool completed)
     {
-        Directory.CreateDirectory(Stage);
+        StagedPrivateStorage.CreateDirectory(Stage);
         Guid id = Guid.NewGuid(); string stage = Path.Combine(Stage, id.ToString("N") + ".txt");
         await File.WriteAllTextAsync(stage, "private");
         var journal = new StagedTransferJournal(Hot);

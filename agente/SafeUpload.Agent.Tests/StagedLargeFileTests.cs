@@ -13,10 +13,12 @@ namespace SafeUpload.Agent.Tests;
 public sealed class StagedLargeFileTests : IDisposable
 {
     private readonly TestWorkspace _workspace = new();
+    private string Stage => Path.Combine(_workspace.Root, "private-stage");
+    public StagedLargeFileTests() => StagedPrivateStorage.CreateDirectory(Stage);
     private const long MiB = 1024 * 1024;
     public void Dispose() => _workspace.Dispose();
     private StagedSpaceOptions Options() => new(true, 512 * MiB, 128 * MiB, 32 * MiB);
-    private StagedSpaceBudget Budget(long available = 2048 * MiB) => new(_workspace.Root, Options(), () => available);
+    private StagedSpaceBudget Budget(long available = 2048 * MiB) => new(Stage, Options(), () => available);
 
     [Fact]
     public void User_exhaustion_preserves_another_users_capacity_and_survives_restart()
@@ -62,11 +64,13 @@ public sealed class StagedLargeFileTests : IDisposable
     public void Unknown_private_objects_and_interrupted_accounting_are_never_swept_or_admitted()
     {
         var budget = Budget();
-        string unknown = Path.Combine(_workspace.Root, "orphan.inspection.txt");
+        string unknown = Path.Combine(Stage, "orphan.inspection.txt");
         File.WriteAllText(unknown, "preserve these bytes");
-        Assert.Throws<IOException>(() => budget.VerifyInventory(_workspace.Root));
+        Assert.Throws<IOException>(() => budget.VerifyInventory(Stage));
         Assert.Equal("preserve these bytes", File.ReadAllText(unknown));
-        File.WriteAllText(Path.Combine(_workspace.Root, ".space-reservations", Guid.NewGuid().ToString("N") + ".json.new"), "partial");
+        using (var output = StagedPrivateStorage.CreateFile(Path.Combine(Stage, ".space-reservations",
+                   Guid.NewGuid().ToString("N") + ".json.new")))
+            output.Write(System.Text.Encoding.UTF8.GetBytes("partial"));
         Assert.Throws<IOException>(() => Budget());
     }
 
@@ -74,7 +78,7 @@ public sealed class StagedLargeFileTests : IDisposable
     public void Corrupt_receipts_do_not_reset_usage_on_restart()
     {
         Budget().Reserve(Guid.NewGuid(), "one");
-        string path = Directory.GetFiles(Path.Combine(_workspace.Root, ".space-reservations"), "*.json").Single();
+        string path = Directory.GetFiles(Path.Combine(Stage, ".space-reservations"), "*.json").Single();
         File.WriteAllText(path, "{\"Id\":");
         Assert.Throws<System.Text.Json.JsonException>(() => Budget());
         Assert.True(File.Exists(path));
@@ -84,7 +88,7 @@ public sealed class StagedLargeFileTests : IDisposable
     public void An_extreme_free_floor_cannot_wrap_into_a_positive_admission()
     {
         var options = Options() with { FreeSpaceFloorBytes = long.MaxValue };
-        var budget = new StagedSpaceBudget(_workspace.Root, options, () => 2048 * MiB);
+        var budget = new StagedSpaceBudget(Stage, options, () => 2048 * MiB);
         Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "one"));
     }
 
@@ -92,19 +96,19 @@ public sealed class StagedLargeFileTests : IDisposable
     public void Known_never_created_allocation_retires_exact_metadata_without_accumulating_user_charge()
     {
         var budget = Budget(); Guid id = Guid.NewGuid();
-        long first = budget.Reserve(id, "one", Path.Combine(_workspace.Root, id.ToString("N") + ".txt"));
+        long first = budget.Reserve(id, "one", Path.Combine(Stage, id.ToString("N") + ".txt"));
         Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "one"));
         budget.RetireFailedAllocation(id);
         var restarted = Budget();
         long next = restarted.Reserve(Guid.NewGuid(), "one");
         Assert.Equal(first, next); // Failed CREATE owns neither content nor durable authority.
-        Assert.Single(Directory.GetFiles(Path.Combine(_workspace.Root, ".space-reservations"), "*.json"));
+        Assert.Single(Directory.GetFiles(Path.Combine(Stage, ".space-reservations"), "*.json"));
     }
 
     [Fact]
     public void A_failed_seed_can_retry_the_same_stable_intent_after_restart_without_double_charge()
     {
-        Guid id = Guid.NewGuid(); string path = Path.Combine(_workspace.Root, id.ToString("N") + ".txt");
+        Guid id = Guid.NewGuid(); string path = Path.Combine(Stage, id.ToString("N") + ".txt");
         var budget = Budget(); long first = budget.Reserve(id, "one", path);
         budget.RetireFailedAllocation(id);
         var restarted = Budget();
@@ -117,7 +121,7 @@ public sealed class StagedLargeFileTests : IDisposable
     [InlineData(true)]
     public void Terminal_refusal_never_adopts_an_unknown_present_object_as_cleanup_authority(bool reserved)
     {
-        Guid id = Guid.NewGuid(); string path = Path.Combine(_workspace.Root, id.ToString("N") + ".txt");
+        Guid id = Guid.NewGuid(); string path = Path.Combine(Stage, id.ToString("N") + ".txt");
         var budget = Budget();
         if (reserved) budget.Reserve(id, "one", path);
         File.WriteAllText(path, "created before the identity receipt");
@@ -135,7 +139,7 @@ public sealed class StagedLargeFileTests : IDisposable
     [Fact]
     public void Terminal_refusal_retires_only_the_recorded_exact_unissued_seed()
     {
-        Guid id = Guid.NewGuid(); string path = Path.Combine(_workspace.Root, id.ToString("N") + ".txt");
+        Guid id = Guid.NewGuid(); string path = Path.Combine(Stage, id.ToString("N") + ".txt");
         var budget = Budget(); budget.Reserve(id, "one", path);
         File.WriteAllText(path, "known failed seed");
         using (var stage = StagedStageFile.Open(path)) budget.RecordStage(id, path, stage.Identity);
@@ -148,7 +152,7 @@ public sealed class StagedLargeFileTests : IDisposable
     public void Failed_journal_replacement_residue_has_a_bounded_storage_envelope()
     {
         var budget = Budget(); Guid id = Guid.NewGuid(); budget.Reserve(id, "one");
-        string journal = Path.Combine(_workspace.Root, "journal"); Directory.CreateDirectory(journal);
+        string journal = Path.Combine(Stage, "journal"); Directory.CreateDirectory(journal);
         string prefix = Path.Combine(journal, id.ToString("N"));
         for (int i = 0; i < 4; i++) File.WriteAllBytes(prefix + "." + i + ".tmp", new byte[128 * 1024]);
         Assert.Throws<StagedSpaceException>(() => budget.RequireMetadataAdmission(prefix + ".next.tmp"));
@@ -160,22 +164,22 @@ public sealed class StagedLargeFileTests : IDisposable
     {
         var budget = Budget();
         for (int i = 0; i < StagedSpaceBudget.MetadataBytes / 4 / 4096; i++)
-            File.WriteAllBytes(Path.Combine(_workspace.Root, Guid.NewGuid().ToString("N") + ".allocation-refused"),
+            File.WriteAllBytes(Path.Combine(Stage, Guid.NewGuid().ToString("N") + ".allocation-refused"),
                 new byte[Contract.RequestSize]);
-        budget.RefreshNegativeReceiptStorage(_workspace.Root);
+        budget.RefreshNegativeReceiptStorage(Stage);
         Assert.True(budget.Reserve(Guid.NewGuid(), "one") >= 16 * MiB);
         Assert.True(budget.Reserve(Guid.NewGuid(), "two") >= 16 * MiB);
-        Assert.Equal(StagedSpaceBudget.MetadataBytes / 4 / 4096, Directory.GetFiles(_workspace.Root).Length);
+        Assert.Equal(StagedSpaceBudget.MetadataBytes / 4 / 4096, Directory.GetFiles(Stage).Length);
     }
 
     [Fact]
     public void Unresolved_negative_receipt_temporary_is_charged_and_preserved_without_holding_other_admission()
     {
         var budget = Budget();
-        string path = Path.Combine(_workspace.Root,
+        string path = Path.Combine(Stage,
             Guid.NewGuid().ToString("N") + ".allocation-refused." + Guid.NewGuid().ToString("N") + ".tmp");
         File.WriteAllText(path, "interrupted refusal receipt");
-        budget.RefreshNegativeReceiptStorage(_workspace.Root);
+        budget.RefreshNegativeReceiptStorage(Stage);
         Assert.Equal("interrupted refusal receipt", File.ReadAllText(path));
         var restarted = Budget();
         Assert.True(restarted.Reserve(Guid.NewGuid(), "one") >= 16 * MiB);
@@ -188,14 +192,14 @@ public sealed class StagedLargeFileTests : IDisposable
     {
         long exact = 2 * StagedSpaceBudget.MetadataBytes + 16 * MiB * 4;
         var options = new StagedSpaceOptions(true, exact, exact, 0);
-        string path = Path.Combine(_workspace.Root, Guid.NewGuid().ToString("N") + ".allocation-refused");
+        string path = Path.Combine(Stage, Guid.NewGuid().ToString("N") + ".allocation-refused");
         File.WriteAllBytes(path, []);
-        var budget = new StagedSpaceBudget(_workspace.Root, options, () => 2048 * MiB);
+        var budget = new StagedSpaceBudget(Stage, options, () => 2048 * MiB);
         Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "one"));
         Assert.Equal(0, new FileInfo(path).Length);
-        Assert.Empty(Directory.GetFiles(Path.Combine(_workspace.Root, ".space-reservations")));
+        Assert.Empty(Directory.GetFiles(Path.Combine(Stage, ".space-reservations")));
         File.Delete(path); // Only the fixture owner removes its malformed evidence.
-        var clean = new StagedSpaceBudget(_workspace.Root, options, () => 2048 * MiB);
+        var clean = new StagedSpaceBudget(Stage, options, () => 2048 * MiB);
         Assert.Equal(16 * MiB, clean.Reserve(Guid.NewGuid(), "one"));
     }
 
@@ -211,7 +215,7 @@ public sealed class StagedLargeFileTests : IDisposable
     [Fact]
     public async Task A_failed_write_cannot_approve_even_an_empty_or_clean_prefix()
     {
-        var policy = LocalPolicyStore.CreateDefault() with { OverrideAllowed = true };
+        var policy = LocalPolicyStore.CreateStagedDefault() with { OverrideAllowed = true };
         var service = new InspectionService(new FixedPolicyStore(policy), new LocalQueueAuditSink(_workspace.QueueFile),
             ExtractorRegistry.CreateDefault(), new VerdictCache());
         foreach (string text in new[] { "", "clean prefix" })

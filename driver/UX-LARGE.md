@@ -142,10 +142,15 @@ Owner accepted these storage defaults on 2026-10-16. Native whole-operation qual
 | Complex parser memory | 256 MiB per worker, two existing Core worker slots | Explicit incomplete-inspection failure on exhaustion; Windows aggregate peak still needs measurement. |
 | Seed deadline | 120 s | Bounds copying work; does not extend the existing foreground allocation RPC deadline. |
 
-The inspection defaults are now **4096 MiB / 900 seconds** for newly generated policies and omitted resource
-fields in local/remote policies. The measured 2 GiB DOCX took 246 seconds, versus 97 seconds for text and 154 for
-ZIP; 15 minutes leaves processing/queue margin. Parser memory defaults to 256 MiB versus the measured 54–74 MiB
-process peaks. Timeout, hostile parser/resource failure and incomplete inspection still fail closed.
+For omitted resource fields in local/remote policies, staged inspection (`LoadCurrentAsync`) defaults to
+**4096 MiB / 900 seconds**. Legacy inspection (`LoadAsync` and `CreateDefault`) retains **20 MiB / 5 seconds**
+and its existing RN-012/RN-013 behavior; `CreateStagedDefault` selects the staged view. Newly generated policy
+JSON omits these resource overrides so provisioning from either mode cannot pin the other mode's defaults.
+Each explicit field overrides that field in both modes; explicit null remains malformed. The effective values
+still participate in the policy fingerprint, and staged policy reads still require current authority without fallback.
+The measured 2 GiB DOCX took 246 seconds, versus 97 seconds for text and 154 for ZIP; 15 minutes leaves
+processing/queue margin. Parser memory defaults to 256 MiB versus the measured 54–74 MiB process peaks.
+Staged timeout, hostile parser/resource failure and incomplete inspection still fail closed.
 
 Existing explicit policy limits remain authoritative, including a persisted `20` MiB/`5` second policy: upgrade
 does not silently rewrite an administrator policy or its version/fingerprint. Such installations must update those

@@ -276,7 +276,7 @@ public sealed partial class ArchiveInspectionTests : IDisposable
     { string path = Path.Combine(_workspace.Root, Guid.NewGuid() + extension); File.WriteAllBytes(path, bytes); return path; }
     private static Policy Policy()
     {
-        var policy = LocalPolicyStore.CreateDefault();
+        var policy = LocalPolicyStore.CreateStagedDefault();
         return policy with { MonitoredScopes = policy.MonitoredScopes with { Extensions = policy.MonitoredScopes.Extensions.Concat(new[] { ".zip", ".7z" }).ToHashSet(StringComparer.OrdinalIgnoreCase) } };
     }
     private Task<InspectionResult> Inspect(string path, bool staged, Policy? policy = null)

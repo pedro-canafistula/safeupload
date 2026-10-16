@@ -12,7 +12,7 @@ public sealed class StagedAllocationRecoveryTests : IDisposable
     private string Records => Path.Combine(Stage, ".space-reservations");
     private StagedSpaceBudget Budget()
     {
-        Directory.CreateDirectory(Stage);
+        StagedPrivateStorage.CreateDirectory(Stage);
         return new(Stage, new(true, 512 * MiB, 128 * MiB, 0), () => 2048 * MiB);
     }
     private StagedTransferJournal Journal() => new(Path.Combine(_workspace.Root, "journal"));

@@ -65,6 +65,7 @@ public sealed partial class StagedSpaceBudget
         _options = options;
         _directory = Path.Combine(Path.GetFullPath(stagingRoot), ".space-reservations");
         _available = availableBytes ?? (() => new DriveInfo(Path.GetPathRoot(_directory)!).AvailableFreeSpace);
+        if (!Directory.Exists(stagingRoot)) StagedPrivateStorage.CreateDirectory(stagingRoot);
         RequireExistingSecurity(stagingRoot);
         if (OperatingSystem.IsWindows())
         {
@@ -74,18 +75,8 @@ public sealed partial class StagedSpaceBudget
             _metadataGranularity = ReadAllocationGranularity(stagingRoot, content: false);
             _stageGranularity = Math.Max(64 * 1024, _metadataGranularity);
             _metadataBytes = Math.Max(MetadataBytes, checked(_metadataGranularity * 16));
-            var directorySecurity = new DirectorySecurity();
-            directorySecurity.SetAccessRuleProtection(true, false); directorySecurity.SetOwner(owner);
-            _fileSecurity = new FileSecurity(); _fileSecurity.SetAccessRuleProtection(true, false); _fileSecurity.SetOwner(owner);
-            foreach (var sid in new[] { owner, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
-                         new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null) })
-            {
-                directorySecurity.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl,
-                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
-                _fileSecurity.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, AccessControlType.Allow));
-            }
-            var directory = new DirectoryInfo(_directory);
-            if (!directory.Exists) directory.Create(directorySecurity);
+            _fileSecurity = StagedPrivateStorage.FileSecurity();
+            StagedPrivateStorage.CreateDirectory(_directory);
         }
         else Directory.CreateDirectory(_directory);
         if ((File.GetAttributes(_directory) & FileAttributes.ReparsePoint) != 0)
@@ -703,7 +694,7 @@ public sealed partial class StagedSpaceBudget
         record.Id.TryWriteBytes(bytes.AsSpan(40));
         return bytes;
     }
-    private static void WriteGrant(Reservation record)
+    private void WriteGrant(Reservation record)
     {
         byte[] bytes = GrantBytes(record);
         string path = record.StagePath! + ".space";
@@ -714,7 +705,10 @@ public sealed partial class StagedSpaceBudget
             if (input.Length != 64 || !existing.SequenceEqual(bytes)) throw new IOException("The capacity grant changed.");
             return;
         }
-        using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough);
+        using var output = OperatingSystem.IsWindows()
+            ? new FileInfo(path).Create(FileMode.CreateNew, FileSystemRights.FullControl,
+                FileShare.None, 4096, FileOptions.WriteThrough, _fileSecurity!)
+            : new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough);
         output.Write(bytes); output.Flush(true);
     }
 }

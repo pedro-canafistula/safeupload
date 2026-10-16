@@ -13,7 +13,7 @@ public sealed class StagedLargeIntegrationTests : IDisposable
     public void Dispose() => _workspace.Dispose();
     private StagedSpaceBudget Budget()
     {
-        Directory.CreateDirectory(Stage);
+        StagedPrivateStorage.CreateDirectory(Stage);
         return new(Stage, new(true, 512L << 20, 128L << 20, 0), () => 2L << 30);
     }
 
@@ -95,7 +95,7 @@ public sealed class StagedLargeIntegrationTests : IDisposable
     [Fact]
     public async Task Exact_metadata_and_sticky_space_failure_both_survive_seal_replay()
     {
-        Directory.CreateDirectory(Stage);
+        StagedPrivateStorage.CreateDirectory(Stage);
         string stage = Path.Combine(Stage, "version.txt"); File.WriteAllText(stage, "clean prefix");
         var journal = new StagedTransferJournal(Hot);
         var transfer = new StagedTransfer(Guid.NewGuid(), stage, Path.Combine(_workspace.Root, "target.txt"),

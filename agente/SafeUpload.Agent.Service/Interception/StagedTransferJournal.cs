@@ -3462,7 +3462,7 @@ public sealed partial class StagedTransferJournal
         return actualBytes.AsSpan().SequenceEqual(expectedBytes);
     }
 
-    private static void AddPrivateRules(
+    internal static void AddPrivateRules(
         FileSystemSecurity security, SecurityIdentifier owner, bool inherit)
     {
         foreach (var sid in new[]
