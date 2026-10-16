@@ -2317,8 +2317,12 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
          * admission contract. Afterwards cleanup detaches the old version,
          * and CREATE uses the ordinary allocator's next generation. Only the
          * exact allocation owner's attach worker may resume an unresolved
-         * attachment; foreign readers/writers retain DELETE_PENDING. */
+         * attachment. Unattached cleanup reports a retryable sharing conflict;
+         * actual delete and completion-permission ambiguity stay held. */
         status = STATUS_DELETE_PENDING;
+        if (privateDelete->AllocationReceiptPending &&
+            !privateDelete->AttachCompletionMayExist && !privateDelete->AttachCompletionKnown)
+            status = STATUS_SHARING_VIOLATION;
         goto Exit;
     }
 #endif
@@ -3666,8 +3670,10 @@ static NTSTATUS StageAttachRunLifecycle(_Inout_ PSTAGE_ATTACH_TRANSACTION Transa
                 &Stream->AttachPrepareRequest, &result);
         }
         if (!NT_SUCCESS(status)) {
-            if (!Stream->AttachPrepareMayExist)
-                StageAttachQueueUnattachedAllocation(Stream);
+            /* No Commit or completion permission was sent. A lost Prepare
+             * must be durably aborted before kind-5 cleanup, including when
+             * it reaches the service after this failed CREATE unwinds. */
+            StageAttachQueueUnattachedAllocation(Stream);
             return status;
         }
         if (result != SAFEUPLOAD_STAGE_RESULT_ATTACH_PREPARED) return STATUS_INVALID_BUFFER_SIZE;
@@ -3962,8 +3968,12 @@ static NTSTATUS StageAttachResumeOrRun(_Inout_ PSTAGE_ATTACH_TRANSACTION Transac
                 current->AttachCommitResult == SAFEUPLOAD_STAGE_RESULT_ATTACH_COMMITTED &&
                 !current->AttachCompletionMayExist;
         } else if (current != NULL && current->AttachTerminalPending) {
+            status = STATUS_DELETE_PENDING;
+            if (current->AllocationReceiptPending &&
+                !current->AttachCompletionMayExist && !current->AttachCompletionKnown)
+                status = STATUS_SHARING_VIOLATION;
             StageRelease(&StageNamespaceResource);
-            return STATUS_DELETE_PENDING;
+            return status;
         }
     }
     StageRelease(&StageNamespaceResource);
@@ -6564,6 +6574,36 @@ static VOID StagePerformHandleReceiptRpcs(PLIST_ENTRY Rpcs)
 /* The worker performs these calls only after releasing NamespaceResource.
  * RpcReferences pins the stream through the reply and exact-generation
  * revalidation; a stale V2 ACK cannot detach a newly attached V3. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageAbortUnattachedAllocation(_Inout_ PSTAGE_STREAM Stream);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageAbortUnattachedAllocation)
+#endif
+
+static NTSTATUS StageAbortUnattachedAllocation(_Inout_ PSTAGE_STREAM Stream)
+{
+    UINT32 result = 0;
+    BOOLEAN requestMayExist = FALSE;
+    NTSTATUS status;
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    if (!Stream->AttachPrepareMayExist || Stream->AttachPrepareKnown) return STATUS_SUCCESS;
+    /* This worker can cancel only pre-Commit uncertainty. Neither a generic
+     * denial nor AlreadyCommitted is authority to delete a possibly exposed
+     * version. Collection pins the exact tuple and excludes live attachment. */
+    if (Stream->AttachCommitMayExist || Stream->AttachCommitKnown ||
+        Stream->AttachCompletionMayExist || Stream->AttachCompletionKnown)
+        return STATUS_INVALID_DEVICE_STATE;
+    status = SafeUploadStageAttachmentExchangeV20(Stream->RpcProcessIdSnapshot,
+        &Stream->Name, StageVolumeKind(Stream->OriginalInstance),
+        SAFEUPLOAD_OPERATION_STAGE_ATTACH_ABORT, &Stream->RpcTransferIdSnapshot,
+        Stream->RpcGenerationSnapshot, &Stream->RpcIdentitySnapshot,
+        &Stream->DriverInstanceId, &Stream->AllocationParentDirectoryIdentity,
+        &Stream->AttachAbortRequest, &result, &requestMayExist);
+    if (!NT_SUCCESS(status)) return status;
+    return result == SAFEUPLOAD_STAGE_RESULT_ATTACH_ABORTED ? STATUS_SUCCESS : STATUS_INVALID_DEVICE_STATE;
+}
+
 static VOID StagePerformDiscardRpcs(PLIST_ENTRY Rpcs)
 {
     while (!IsListEmpty(Rpcs)) {
@@ -6572,12 +6612,17 @@ static VOID StagePerformDiscardRpcs(PLIST_ENTRY Rpcs)
         UINT32 kind = stream->RpcKindSnapshot;
         const GUID *currentReservation;
         BOOLEAN requestCurrent;
+        LONG serviceGeneration = InterlockedCompareExchange(&StageServiceGeneration, 0, 0);
         NTSTATUS status;
         InitializeListHead(&stream->RpcLink);
         status = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED :
-            SafeUploadStageDiscardVersionV19(stream->RpcProcessIdSnapshot,
-            &stream->StageName, &stream->RpcReservationSnapshot,
-            &stream->RpcIdentitySnapshot, stream->RpcGenerationSnapshot, kind, &result);
+            (kind == SAFEUPLOAD_STAGE_DISCARD_KIND_UNATTACHED_ALLOCATION ?
+                StageAbortUnattachedAllocation(stream) : STATUS_SUCCESS);
+        if (NT_SUCCESS(status))
+            status = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED :
+                SafeUploadStageDiscardVersionV19(stream->RpcProcessIdSnapshot,
+                &stream->StageName, &stream->RpcReservationSnapshot,
+                &stream->RpcIdentitySnapshot, stream->RpcGenerationSnapshot, kind, &result);
 
         StageAcquire(&StageNamespaceResource);
         currentReservation = kind == SAFEUPLOAD_STAGE_DISCARD_KIND_PRIVATE_VERSION && stream->PrivateDeleteReserved ?
@@ -6587,6 +6632,8 @@ static VOID StagePerformDiscardRpcs(PLIST_ENTRY Rpcs)
             stream->DiscardRpcInFlight && stream->RpcKindSnapshot == kind && stream->DiscardRpcKind == kind &&
             RtlEqualMemory(currentReservation, &stream->RpcReservationSnapshot, sizeof(GUID));
         if (requestCurrent &&
+            StageServiceAvailable && serviceGeneration == InterlockedCompareExchange(&StageServiceGeneration, 0, 0) &&
+            !InterlockedCompareExchange(&StageReconcileNeeded, 0, 0) && SafeUploadStageProtocolIsReady() &&
             RtlEqualMemory(&stream->TransferId, &stream->RpcTransferIdSnapshot, sizeof(GUID)) &&
             stream->DestinationGeneration == stream->RpcGenerationSnapshot &&
             StageV19IdentityEqual(&stream->StageIdentity, &stream->RpcIdentitySnapshot)) {
@@ -6599,6 +6646,7 @@ static VOID StagePerformDiscardRpcs(PLIST_ENTRY Rpcs)
                 stream->Retired = TRUE; /* exact service ACK includes removal of this identity */
                 if (kind == SAFEUPLOAD_STAGE_DISCARD_KIND_UNATTACHED_ALLOCATION) {
                     PSTAGE_STREAM parent = stream->AllocationReceiptParent;
+                    stream->AttachTerminalPending = FALSE;
                     stream->AllocationReceiptPending = FALSE;
                     stream->AllocationRecoveryPending = FALSE;
                     stream->AllocationRecoveryInFlight = FALSE;

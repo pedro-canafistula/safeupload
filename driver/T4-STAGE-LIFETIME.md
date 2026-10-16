@@ -327,6 +327,59 @@ pool gate (318.863 B/cycle against 4). The NO_WAITER branch was not triggered; i
 Aggregate growth follows the writer-registry tag while stage-owned allocations return to zero; object/reference attribution remains
 open. Further VM tests stop under the owner's repeated-failure rule. The 10,000-cycle and raw-observer gates remain outstanding.
 
+### 12.1 V20 allocation/Prepare reply recovery — 2026-10-16
+
+The owner's `uxk5t4ord2-*` report (driver ux-k5, agent `59c7e319`) stopped at cycle 548 after three mapped-name failures:
+cycle 532 first returned Win32 121, then later opens returned Win32 5. StageAttachPrepare's reply returned NO_WAITER after
+7,267 ms; allocation/seal journal waits/scans/writes also took seconds. The supplied raw evidence path was unavailable in the
+`ux/allocfault` workspace, so those timings are owner-supplied observations, not independently re-read here.
+
+The V20 ownership defect is distinct from the legacy basename cleanup above. After a lost Prepare, the driver knew the exact
+allocated tuple but left `AttachCompletionPending` and `AttachPrepareMayExist` held. Only a may-have-reached op15 could resume
+on another CREATE; maintenance could neither seal nor discard the prepared version. The next open therefore hit the permanent
+same-name delete-pending barrier. Journal scanning latency explains the opportunity for a timeout; this change does not optimize
+those scans or claim to eliminate timeouts.
+
+- A failed Prepare now enters terminal unattached cleanup after the synthetic binding unwinds. The existing collector still
+  requires zero upper objects/shares/sections/cache, closed backing, no attachment in flight and no op15 ambiguity. It pins the
+  stream through every unlocked exchange. Unknown StageAllocate replies retain the existing byte-exact request replay, followed
+  by kind-5 cleanup (or the existing exact NoAllocationCommitted terminal receipt); no new allocation identity is invented.
+- Before kind-5 cleanup of an unknown Prepare, the worker sends the exact op14 Abort. The agent serializes Abort with Prepare
+  under the journal gate and may abort an exact `None` allocation as well as `Prepared`. An abort-first record prevents a late
+  Prepare from reviving it. Prepared-first abort preserves its historical Prepare receipt; replay only returns that history.
+  Commit/permission ambiguity never enters this new cleanup path. AlreadyCommitted, generic DENY, timeout and malformed replies
+  grant no deletion/release authority. Abort requests remain byte-identical across retries; lost abort/deletion replies retry
+  unfinished bookkeeping against the original object and generation.
+- The existing exact kind-5 deletion/absence ACK resolves the journal disposition and only then releases the kernel reservation,
+  predecessor receipt reference and version. DiscardPending plus DiscardAcknowledgedAtUtc is the terminal record; StageDeleted
+  remains the separate publication-disposal receipt. Channel changes or changed tuples cannot apply an old ACK. During cleanup,
+  both same-owner and foreign CREATE routes return a retryable sharing conflict; the first timeout remains Win32 121. After ACK,
+  the next CREATE uses a fresh allocation/generation. Actual private deletes and ambiguous op15 retain their existing holds.
+
+No wire layout, imports, runtime activation gate, sticky Unknown rule or T4 assertion changes. The updated driver/agent must be
+delivered together: an older agent may conservatively refuse abort-before-Prepare. Service absence, structural identity failure,
+unresolved deletion or a crash before durable disposition remain held; the fix does not turn uncertain cleanup into success.
+
+Local verification: production C extraction compiled/run with GCC and Clang (UBSan, warnings as errors); existing T5 self-checks,
+three existing C shims, T4 verdict replay and import self-check; feature agent Debug/Release build and focused diagnostic controls.
+The focused Linux runner uses a failure-only shim for diagnostic GetFileInformationByHandleEx (returns failure, never identity
+authority); it is not Windows native evidence. Results and the independent Sol 6.1 xhigh review are recorded in
+[the implementation receipt](evidence/2026-10-16/ux-allocfault/result.md).
+
+Required VM list, with all existing T4 assertions retained:
+
+1. Matched feature Debug/Release WDK/PREfast/ApiValidator at 0/0, both artifact import gates, and the four feature agent matrix legs
+   (Debug/Release × user/SYSTEM), before product qualification. No product VM was booted for this implementation.
+2. Allocation-reply fault row in ordinary/runtime-Verifier/boot-Verifier: delay/drop StageAllocate before/after durable allocation;
+   delay/drop Prepare before/after journal commit; Abort ordered before late Prepare; lost Abort and lost cleanup ACK; same-owner
+   and foreign retries. Require retryable failure, unchanged independent public-byte observations, exactly one disposition/delete,
+   durable journal resolution, fresh successful open/generation after ACK, zero residual stage/version/view/receipt references,
+   and no cap refusal or Verifier finding. Negative controls: changed identity/generation/epoch, sharing failure, disconnect/reconnect
+   and stale-channel ACK; op13/op15 ambiguity must remain held under its existing rules.
+3. Unchanged 256 smoke then 10,000 ordinary/runtime-/boot-Verifier gates, including contexts/pool/idle/cap/Ready checks, followed
+   by C01–C04/B01/B02/X01 independent raw-observer regressions in all three modes and separate baseline restoration. Follow the
+   current status plan's stop rules and builder-free timing windows on `win10-debug3` only.
+
 ## Implementation note — increment 9
 
 2026-10-13; `wt/t5-inc9`, based on `77466b8142a6a24b924a1d228494f46a3595373f`. Kernel implementation draft,

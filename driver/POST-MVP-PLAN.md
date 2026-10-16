@@ -581,6 +581,9 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
       No builder jobs or host maintenance during timing-sensitive rows.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
+  - 2026-10-16 `ux/allocfault`: [V20 repair/design and unchanged fault-row requirements](T4-STAGE-LIFETIME.md#121-v20-allocationprepare-reply-recovery--2026-10-16)
+    cancel an unknown Prepare before exact unattached deletion; abort-before-Prepare is durable and later opens retry until the
+    deletion ACK releases the name. [Local implementation receipt](evidence/2026-10-16/ux-allocfault/result.md); no VM qualification.
 - [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):
   256/256, every required assertion PASS, 69.8% of idle SUfl growth released. New 10k: 10,000/10,000, functional/pool/registry/Ready
   assertions PASS, pool slope −1.293 B/cycle; contexts bound FAIL above. Both separate restorations PASS; further product VM runs stopped.
