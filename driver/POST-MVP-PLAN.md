@@ -23,6 +23,15 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-16 — MVP pair now, batch 3 in parallel.** Owner, in the session, after the [critical-path plan](evidence/2026-10-16/t5-critical-path-plan-sol61.md)
+(full T4/T5 to M2 standard: 180–310 worker-hours plus 30–50 lab hours): "MVP now + batch 3 in parallel". An MVP pair is cut from
+the last booted line (`t5-pair14`, `b97d263e`; its 10k row reached 9,998/10,000 with no blocked bytes, no cap refusal and no
+Verifier hit) plus the two 10k fixes (agent journal-replace retry and op13/op15 retry-not-refusal; kernel SOP witness detach after
+one focused Sol review), then T4 smoke/10k/raw cells and the T5 Notepad/delete rows in three modes. Documented MVP limits: 16 MiB
+stage cap, restart-time bookkeeping stays held (fail closed), the journal keeps one manifest per save, folder moves refused. Batch 3
+continues on `wt/t5-batch2` along the critical-path plan and replaces the MVP pair when qualified; MVP VM rows have priority for
+builder-free windows. Then M3 and the USB/SMB designs.
+
 **2026-10-16 — moves into protection get cross-drive metadata.** Owner, in the session (recommended option): a file or folder moved
 into protection, which SafeUpload turns into a cross-drive-style copy, ends with what Windows gives a move to another drive: the
 files inherit the protected folder's permissions (an explicit source permission is not carried over) and keep the dates Windows'
