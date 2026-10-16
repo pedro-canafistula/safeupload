@@ -1604,6 +1604,11 @@ public sealed partial class StagedTransferJournal
         RequireManifestPath(transfer.DestinationPath);
         if (entry.Sha256Hex is not null && (entry.Sha256Hex.Length != 64 || !entry.Sha256Hex.All(Uri.IsHexDigit)))
             throw new InvalidDataException("The transfer manifest has an invalid digest.");
+        if (entry.UnboundCancellation is { } cancellation &&
+            (entry.BoundAllocation is not null || cancellation.OperationId == Guid.Empty ||
+             cancellation.Version != VersionIdentity(entry) || cancellation.Generation <= entry.DestinationGeneration ||
+             !entry.SealedOnce || entry.PendingRename is not null || entry.State != TransferJournalState.Retained))
+            throw new InvalidDataException("Invalid unbound cancellation receipt.");
         bool requiresSeal = entry.State is TransferJournalState.SealPending or TransferJournalState.LegacyEmptyHeld or
             TransferJournalState.Sealed or TransferJournalState.Inspecting or
             TransferJournalState.Approved or TransferJournalState.Publishing or TransferJournalState.Released or
@@ -1810,6 +1815,7 @@ public sealed partial class StagedTransferJournal
             (entry.StageCleanupStarted && (entry.HandbackState != StagedHandbackState.Verified ||
                 !entry.JustificationWindowClosed)) ||
             (entry.StageDeleted && !(
+                entry.UnboundCancellation is not null ||
                 (entry.State == TransferJournalState.Released &&
                  entry.HandbackState == StagedHandbackState.NotAttempted && entry.SealedOnce &&
                  entry.SealedLength is >= 0 && entry.Sha256Hex is not null && !entry.StageCleanupStarted) ||
@@ -1992,7 +1998,8 @@ public sealed partial class StagedTransferJournal
         CancellationToken cancellationToken,
         StagedTransfer? expectedTransfer = null,
         BlockedTransferEvidence? blockedEvidence = null,
-        bool closeJustificationWindow = false)
+        bool closeJustificationWindow = false,
+        long? expectedGeneration = null)
     {
         // Sealed is never a caller-supplied assertion. Legacy callers still
         // pass through this API, but the journal performs the same durable
@@ -2022,6 +2029,9 @@ public sealed partial class StagedTransferJournal
         try
         {
             var current = await ReadCoreAsync(transferId, cancellationToken).ConfigureAwait(false);
+            if (current.UnboundCancellation is not null ||
+                (expectedGeneration is not null && current.DestinationGeneration != expectedGeneration))
+                throw new IOException("The staged version was cancelled or retargeted.");
             if (current.PendingRename is not null)
                 throw new IOException("A pending namespace transaction holds this version locally.");
             if (current.BoundAllocation is not null && next == TransferJournalState.Released)
@@ -2119,6 +2129,9 @@ public sealed partial class StagedTransferJournal
                 updated = StagedSeedExport.PrivateBlocked(updated, seedFailure);
             await ReplaceAsync(ManifestPath(transferId), updated, cancellationToken)
                 .ConfigureAwait(false);
+            if (next == TransferJournalState.Publishing && current.BoundAllocation is null)
+                _unboundPublicationAttempts.Add(transferId);
+            else _unboundPublicationAttempts.Remove(transferId);
             return updated;
         }
         finally
@@ -2402,9 +2415,12 @@ public sealed partial class StagedTransferJournal
                 SourcePath = exactRequest is null ? null : current.Transfer.DestinationPath
             };
             if (current.PendingRename == pending) return current;
-            if (current.PendingRename is not null || current.LastRenameTransactionId == transactionId ||
-                current.State is TransferJournalState.Inspecting or
-                    TransferJournalState.Approved or TransferJournalState.Publishing ||
+            if (current.UnboundCancellation is not null || _unboundCommitted.Contains(id) ||
+                current.State == TransferJournalState.Released ||
+                current.State == TransferJournalState.Publishing && !_unboundPublicationAttempts.Contains(id) ||
+                current.PendingRename is not null || current.LastRenameTransactionId == transactionId ||
+                current.BoundAllocation is not null && current.State is (TransferJournalState.Inspecting or
+                    TransferJournalState.Approved or TransferJournalState.Publishing) ||
                 (current.State == TransferJournalState.Blocked && !current.JustificationWindowClosed))
                 throw StagedRequestRefusal.Create("The staged version is busy.");
             if (sealedVersion != current.SealedOnce)
@@ -2525,6 +2541,7 @@ public sealed partial class StagedTransferJournal
                 StateHistory = history
             };
             await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
+            if (commit) _unboundPublicationAttempts.Remove(id);
             return updated;
         }
         finally { _gate.Release(); }
@@ -2579,6 +2596,7 @@ public sealed partial class StagedTransferJournal
     }
 
     internal static bool PendingDispatchRequired(TransferJournalEntry entry) =>
+        entry.UnboundCancellation is not null ? !entry.StageDeleted :
         entry.PendingRename is not null ||
         !BlockedCleanupComplete(entry) && entry.State is not (TransferJournalState.Released or TransferJournalState.Discarded) ||
         entry.State == TransferJournalState.Released && entry.HandbackState == StagedHandbackState.Verified &&
@@ -3080,6 +3098,7 @@ public sealed partial class StagedTransferJournal
 
     private async Task<bool> IsCurrentDestinationAsync(TransferJournalEntry current, CancellationToken token)
     {
+        if (current.UnboundCancellation is not null) return false;
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
         if (current.BoundAllocation is { } bound)
         {
@@ -3364,6 +3383,8 @@ public sealed partial class StagedTransferJournal
         // released version at its new name. TransitionAsync independently
         // refuses direct resealing of Released entries.
         (TransferJournalState.Released, TransferJournalState.Sealed) => true,
+        (TransferJournalState.Approved, TransferJournalState.Sealed) => true,
+        (TransferJournalState.Publishing, TransferJournalState.Sealed) => true, // only live, uncommitted retarget
         (TransferJournalState.Inspecting, TransferJournalState.Retained) => true,
         (TransferJournalState.Approved, TransferJournalState.Retained) => true,
         (TransferJournalState.Approved, TransferJournalState.Publishing) => true,
@@ -3432,6 +3453,8 @@ public sealed record TransferJournalEntry(
     public Guid? EmptyHeldNotificationQueuedByInstanceId { get; init; }
     public long DestinationGeneration { get; init; }
     public StagedNameTombstone? NamespaceTombstones { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public StagedUnboundCancellation? UnboundCancellation { get; init; }
     public StagedRename? PendingRename { get; init; }
     public ulong LastRenameTransactionId { get; init; }
     public string? LastRenameDestination { get; init; }
@@ -3456,7 +3479,7 @@ public sealed record TransferJournalEntry(
     public bool Equals(TransferJournalEntry? other)
     {
         if (ReferenceEquals(this, other)) return true;
-        return other is not null && Transfer == other.Transfer && State == other.State &&
+        return other is not null && UnboundCancellation == other.UnboundCancellation && Transfer == other.Transfer && State == other.State &&
             Sha256Hex == other.Sha256Hex && UpdatedAtUtc == other.UpdatedAtUtc &&
             StateHistory.SequenceEqual(other.StateHistory) && SealedOnce == other.SealedOnce &&
             StageIdentity == other.StageIdentity && SealedLength == other.SealedLength &&
@@ -3507,6 +3530,7 @@ public sealed record TransferJournalEntry(
         hash.Add(Sha256Hex);
         hash.Add(UpdatedAtUtc);
         foreach (TransferJournalStateChange change in StateHistory) hash.Add(change);
+        hash.Add(UnboundCancellation);
         hash.Add(SealedOnce);
         hash.Add(StageIdentity);
         hash.Add(SealedLength);

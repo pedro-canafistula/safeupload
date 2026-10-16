@@ -118,6 +118,7 @@ public sealed partial class StagedTransferPublisher
                 .ConfigureAwait(false);
             if (journalEntry.State == TransferJournalState.LegacyEmptyHeld) return StagedTransferOutcome.Retained;
         }
+        if (journalEntry.UnboundCancellation is not null) return StagedTransferOutcome.Retained;
         if (journalEntry.PendingRename is not null || journalEntry.Transfer != transfer || !journalEntry.SealedOnce ||
             journalEntry.SealedLength is not >= 0 || journalEntry.StageIdentity is null ||
             (justified is null
@@ -168,8 +169,8 @@ public sealed partial class StagedTransferPublisher
         }
 
         await _journal.TransitionAsync(transfer.TransferId, journalEntry.State,
-            TransferJournalState.Inspecting, null, cancellationToken, transfer,
-            closeJustificationWindow: justified is not null).ConfigureAwait(false);
+            TransferJournalState.Inspecting, null, cancellationToken, expectedTransfer: transfer,
+            closeJustificationWindow: justified is not null, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
         // File sharing does not revoke an already mapped writable section.
         // Inspect and publish a separate service-only snapshot, so even a
         // delayed paging write cannot change the inspected publication bytes.
@@ -186,7 +187,7 @@ public sealed partial class StagedTransferPublisher
             _logger?.LogWarning(error, "Staged inspection snapshot failed for {TransferId}.", transfer.TransferId);
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
-                null, CancellationToken.None, transfer, closeJustificationWindow: true).ConfigureAwait(false);
+                null, CancellationToken.None, expectedTransfer: transfer, closeJustificationWindow: true, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
             PublishTransferNotification(transfer, new TransferNotification(
                 transfer.TransferId, fileName, TransferPhase.Retained,
                 InspectionFailure: InspectionFailureKind.ReadOrParse));
@@ -200,7 +201,7 @@ public sealed partial class StagedTransferPublisher
         {
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
-                null, cancellationToken).ConfigureAwait(false);
+                null, cancellationToken, expectedTransfer: transfer, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
             PublishTransferNotification(transfer, new TransferNotification(
                 transfer.TransferId, fileName, TransferPhase.Retained));
             return StagedTransferOutcome.Retained;
@@ -230,7 +231,7 @@ public sealed partial class StagedTransferPublisher
             _logger?.LogWarning(ex, "Staged inspection failed for {TransferId}.", transfer.TransferId);
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
-                null, CancellationToken.None).ConfigureAwait(false);
+                null, CancellationToken.None, expectedTransfer: transfer, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
             PublishTransferNotification(transfer, new TransferNotification(
                 transfer.TransferId, fileName, TransferPhase.Retained,
                 InspectionFailure: InspectionFailureKind.ReadOrParse));
@@ -268,7 +269,7 @@ public sealed partial class StagedTransferPublisher
                 TransferJournalState.Inspecting, TransferJournalState.Blocked,
                 inspectedDigest, cancellationToken, blockedEvidence: new BlockedTransferEvidence(
                     result.PolicyVersion, expires, WindowClosed: !canJustify,
-                    InspectionFailure: result.FailureKind) { PolicyFingerprint = result.PolicyContentFingerprint }).ConfigureAwait(false);
+                    InspectionFailure: result.FailureKind) { PolicyFingerprint = result.PolicyContentFingerprint }, expectedTransfer: transfer, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
                 Verdict.Blocked, result.Reason, cancellationToken,
                 transfer.TransferId).ConfigureAwait(false);
@@ -328,7 +329,7 @@ public sealed partial class StagedTransferPublisher
             // Blocked hand-back path above.
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
-                null, cancellationToken).ConfigureAwait(false);
+                null, cancellationToken, expectedTransfer: transfer, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
                 Verdict.Retained,
                 result.Verdict == Verdict.Approved ? "policy_changed" : result.Reason ?? "not_inspected",
@@ -348,7 +349,7 @@ public sealed partial class StagedTransferPublisher
         {
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
-                null, cancellationToken).ConfigureAwait(false);
+                null, cancellationToken, expectedTransfer: transfer, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
                 Verdict.Retained, "stage_changed_during_inspection", cancellationToken,
                 transfer.TransferId).ConfigureAwait(false);
@@ -362,7 +363,7 @@ public sealed partial class StagedTransferPublisher
         {
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
-                null, cancellationToken).ConfigureAwait(false);
+                null, cancellationToken, expectedTransfer: transfer, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
                 Verdict.Retained, "stage_measurement_changed", cancellationToken, transfer.TransferId)
                 .ConfigureAwait(false);
@@ -372,10 +373,10 @@ public sealed partial class StagedTransferPublisher
         }
         await _journal.TransitionAsync(transfer.TransferId,
             TransferJournalState.Inspecting, TransferJournalState.Approved,
-            digest, cancellationToken).ConfigureAwait(false);
+            digest, cancellationToken, expectedTransfer: transfer, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
         TransferJournalEntry publicationIntent = await _journal.TransitionAsync(transfer.TransferId,
             TransferJournalState.Approved, TransferJournalState.Publishing,
-            null, cancellationToken).ConfigureAwait(false);
+            null, cancellationToken, expectedTransfer: transfer, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
 
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
         if (journalEntry.BoundAllocation is not null)
@@ -429,8 +430,11 @@ public sealed partial class StagedTransferPublisher
                     StagedStageIdentity publishedObject = StagedDestinationFile.ReadIdentity(output);
                     var completion = new ConfirmedPublication(publicationIntent, publishedObject,
                         operation, result, justifiedApproval);
-                    StagedDestinationFile.CommitHandle(output, destinationPath);
-                    committed = true;
+                    await _journal.CommitUnboundPublicationAsync(publicationIntent, () =>
+                    {
+                        StagedDestinationFile.CommitHandle(output, destinationPath);
+                        committed = true;
+                    }, cancellationToken).ConfigureAwait(false);
                     lock (_confirmedPublications) _confirmedPublications.Add(transfer.TransferId, completion);
                 }
                 finally
@@ -473,7 +477,7 @@ public sealed partial class StagedTransferPublisher
             bool busy = ex is StagedPublicationBusyException;
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Publishing, TransferJournalState.Retained,
-                null, CancellationToken.None).ConfigureAwait(false);
+                null, CancellationToken.None, expectedTransfer: transfer, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
                 Verdict.Retained, busy ? "publication_busy" : "publication_failed", CancellationToken.None,
                 transfer.TransferId).ConfigureAwait(false);

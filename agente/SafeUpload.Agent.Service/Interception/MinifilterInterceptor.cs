@@ -1440,7 +1440,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             {
                 if (entry.PendingRename is not null) continue;
                 if (entry.State == TransferJournalState.LegacyEmptyHeld) continue; // guarded startup migration only
-                if (entry.State is (TransferJournalState.Publishing or TransferJournalState.Blocked) ||
+                if (entry.UnboundCancellation is not null ||
+                    entry.State is (TransferJournalState.Publishing or TransferJournalState.Blocked) ||
                     entry.State == TransferJournalState.Released &&
                     entry.HandbackState == StagedHandbackState.Verified && entry.JustificationWindowClosed && !entry.StageDeleted)
                 {
@@ -1607,7 +1608,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             foreach (TransferJournalEntry entry in _stageJournal.ReadPendingAsync(stoppingToken)
                          .GetAwaiter().GetResult())
             {
-                if (entry.State == TransferJournalState.Publishing ||
+                if (entry.UnboundCancellation is not null || entry.State == TransferJournalState.Publishing ||
                     entry.State == TransferJournalState.Blocked &&
                     entry.HandbackState is StagedHandbackState.NotAttempted or StagedHandbackState.Copying)
                     _stagePublisher.RecoverPendingTransferAsync(entry, stoppingToken).GetAwaiter().GetResult();

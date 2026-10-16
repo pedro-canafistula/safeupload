@@ -1044,4 +1044,9 @@ VOID SafeUploadClearPublicationPermitsForConnection(_In_ PVOID ConnectionCookie,
 VOID SafeUploadFreeDirectoryView(_In_opt_ PVOID View);
 #endif
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadPolicySameProtectedScope(_In_ PCUNICODE_STRING Source, _In_ PCUNICODE_STRING Target);
+#endif
+
 #endif // _SAFEUPLOAD_FILTER_H_

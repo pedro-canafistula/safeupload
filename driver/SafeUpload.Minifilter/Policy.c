@@ -849,6 +849,7 @@ SafeUploadBuildStringTable (
     #pragma alloc_text(PAGE, SafeUploadFinalizeBootPolicy)
     #pragma alloc_text(PAGE, SafeUploadBuildStringTable)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    #pragma alloc_text(PAGE, SafeUploadPolicySameProtectedScope)
     #pragma alloc_text(PAGE, SafeUploadPolicyCopyScope)
     #pragma alloc_text(PAGE, SafeUploadPolicySetPending)
     #pragma alloc_text(PAGE, SafeUploadPolicyAdmissionCoverageSnapshot)
@@ -2129,6 +2130,25 @@ Routine Description:
 
     return matched;
 }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadPolicySameProtectedScope(_In_ PCUNICODE_STRING Source, _In_ PCUNICODE_STRING Target)
+{
+    UINT32 index;
+    BOOLEAN same = FALSE;
+    PAGED_CODE();
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    if (SafeUploadPolicy != NULL) {
+        for (index = 0; index < SafeUploadPolicy->PrefixCount; ++index) {
+            if (SafeUploadPathUnderPrefix(&SafeUploadPolicy->Prefixes[index], Source) &&
+                SafeUploadPathUnderPrefix(&SafeUploadPolicy->Prefixes[index], Target)) { same = TRUE; break; }
+        }
+    }
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    return same;
+}
+#endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 

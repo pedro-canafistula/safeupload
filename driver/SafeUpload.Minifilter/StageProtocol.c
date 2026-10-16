@@ -1320,7 +1320,7 @@ NTSTATUS SafeUploadStageCancelPrivate(const SAFEUPLOAD_PRIVATE_CANCEL_REQUEST *R
     NTSTATUS status = STATUS_DEVICE_NOT_READY;
     PAGED_CODE();
     RtlZeroMemory(Reply, sizeof(*Reply));
-    if (!SafeUploadStageProtocolNativeForwardAllowed(0, 0) || SafeUploadStageMandatoryTeardownActive())
+    if (!SafeUploadStageProtocolIsReady() || SafeUploadStageMandatoryTeardownActive())
         return STATUS_DEVICE_NOT_READY;
     if (Request->Version != SAFEUPLOAD_PRIVATE_CANCEL_VERSION || Request->StructSize != sizeof(*Request) ||
         Request->Reserved != 0 || Request->Generation == 0 || Request->Generation > (UINT64)MAXLONGLONG ||

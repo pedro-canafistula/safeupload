@@ -138,6 +138,16 @@ public sealed partial class StagedTransferPublisher
                 return;
             }
 #endif
+            if (entry.UnboundCancellation is not null)
+            {
+                if (!StagedDiscardCleanup.TryDeleteExactAndConfirmAbsent(entry.Transfer.StagePath,
+                    entry.StageIdentity, out Exception? failure))
+                    throw new IOException("Cancelled stage cleanup is waiting for its exact handles.", failure);
+                if (!_publicationGate.DisposeStage(id, SafeUpload.Agent.Minifilter.StageDisposeOutcome.CleanedUp,
+                    CommittedRenames(entry))) throw new IOException("Cancelled stage disposal acknowledgement is pending.");
+                await _journal.CompleteUnboundCancellationCleanupAsync(entry, token).ConfigureAwait(false);
+                return;
+            }
             if (HasConfirmedPublication(id))
                 await FinishConfirmedPublicationAsync(id, token).ConfigureAwait(false);
             else if (entry.State == TransferJournalState.Publishing)
@@ -254,6 +264,8 @@ public sealed partial class StagedTransferJournal
             var released = current with { State = TransferJournalState.Released, StateHistory = history,
                 UpdatedAtUtc = history.Count == 0 ? DateTimeOffset.UtcNow : history[^1].OccurredAtUtc };
             await ReplaceAsync(ManifestPath(current.Transfer.TransferId), released, token).ConfigureAwait(false);
+            _unboundPublicationAttempts.Remove(current.Transfer.TransferId);
+            _unboundCommitted.Remove(current.Transfer.TransferId);
             return released;
         }
         finally { _gate.Release(); }
