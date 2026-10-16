@@ -329,6 +329,8 @@ static volatile LONG StageFilteringReady;
 /* Unbound MVP: one native namespace operation at a time. No resource spans
  * cancellation RPC or NTFS. The original operation's post owns clearing it. */
 static volatile LONG StageMvpNamespaceFence;
+/* Completion-context tag of a fenced native namespace operation; the fence itself is only ever touched interlocked. */
+static UCHAR StageMvpNamespaceCompletionTag;
 static volatile LONG64 StageMvpNamespaceSequence;
 static BOOLEAN StageMvpNamespaceCreateCallback;
 static PVOID StageMvpNamespaceCreateContext; /* Single fenced native CREATE; legacy read/taint post context. */
@@ -9625,7 +9627,7 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(PFLT_CALLBACK_DATA Data,
         StageMvpNamespaceCreateContext = legacyContext;
         StageMvpNamespaceCreateCallback = result == FLT_PREOP_SUCCESS_WITH_CALLBACK;
     }
-    *CompletionContext = (PVOID)&StageMvpNamespaceFence;
+    *CompletionContext = (PVOID)&StageMvpNamespaceCompletionTag;
     fenced = FALSE; /* The original native operation's post now owns clearing. */
     result = major == IRP_MJ_CREATE ? FLT_PREOP_SUCCESS_WITH_CALLBACK : FLT_PREOP_SYNCHRONIZE;
     goto Exit;
@@ -9676,6 +9678,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
     {
         BOOLEAN handled = FALSE;
         if (KeGetCurrentIrql() == PASSIVE_LEVEL)
+            *CompletionContext = NULL; /* _Flt_CompletionContext_Outptr_ requires a NULL output on entry */
             result = StageMvpNamespacePre(Data, Objects, CompletionContext, &handled);
         if (handled) return result;
     }
@@ -9698,6 +9701,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
          * disposed view. Classify the now-native open before legacy CREATE. */
         if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
             BOOLEAN handled;
+            *CompletionContext = NULL; /* _Flt_CompletionContext_Outptr_ requires a NULL output on entry */
             result = StageMvpNamespacePre(Data, Objects, CompletionContext, &handled);
             if (handled) return result;
         }
@@ -10167,7 +10171,7 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
          (Data->Iopb->MajorFunction == IRP_MJ_CLEANUP &&
           FltGetRequestorProcessId(Data) != SafeUploadData.InspectorProcessId)))
         SafeUploadStageNativeNameChanged(Objects->Instance);
-    if (CompletionContext == (PVOID)&StageMvpNamespaceFence) {
+    if (CompletionContext == (PVOID)&StageMvpNamespaceCompletionTag) {
         PVOID legacyContext = StageMvpNamespaceCreateContext;
         BOOLEAN legacyCallback = StageMvpNamespaceCreateCallback;
         StageMvpNamespaceCreateContext = NULL;
