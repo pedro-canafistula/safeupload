@@ -4,6 +4,16 @@ Both extraction APIs use the same readers. Round 2 awaits Windows build/tests an
 Unsupported content yields `unsupported_format`: staged Blocked, legacy AllowedWithoutInspection.
 No PowerPoint registration, OCR, embedded-file inspection or macro execution is provided.
 
+## Payment-card detection (RN-003)
+
+Legacy and streaming/staged inspection recognize every 16-digit Luhn-valid number except
+`0000000000000000` (owner decision, 2026-10-16). The exception is exactly all-zero;
+other Luhn-valid numbers, including those with leading zeros, still produce payment-card findings.
+Both scanners normalize single `.`, `-`, `/` or space separators between digits before validation;
+the validator itself accepts only normalized ASCII digits. An all-zero-only document is clean
+when no other detection rule matches. A real card beside it still blocks, with the existing mask
+that preserves only the final two digits. CPF/CNPJ repeated-digit rules are unchanged.
+
 ## Word (.docx)
 
 | Payload location | Treatment | Reason |

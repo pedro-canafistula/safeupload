@@ -33,6 +33,74 @@ public sealed class StreamingContentScannerTests(ITestOutputHelper output) : IDi
     ];
 
     [Theory]
+    [InlineData("0000000000000000")]
+    [InlineData("0000 0000 0000 0000")]
+    [InlineData("0000-0000-0000-0000")]
+    [InlineData("0000.0000.0000.0000")]
+    [InlineData("0000/0000/0000/0000")]
+    [InlineData("0000.0000-0000/0000")]
+    [InlineData("00000000000000000000000000000000")]
+    public async Task All_zero_numbers_produce_no_findings_across_reader_boundaries(string text)
+    {
+        foreach (int chunk in new[] { 1, 7, 8192 })
+            Assert.Empty(await ScanAsync(new string('a', 8184) + ": " + text, chunk));
+    }
+
+    [Theory]
+    [InlineData("0000000000000000; 4111 1111 1111 1111")]
+    [InlineData("4111 1111 1111 1111; 0000000000000000")]
+    [InlineData("0000.0000-0000/0000\n4111111111111111")]
+    [InlineData("4111111111111111\n0000.0000-0000/0000")]
+    public async Task All_zero_numbers_do_not_hide_real_cards_or_change_masks(string text)
+    {
+        foreach (int chunk in new[] { 1, 7, 8192 })
+        {
+            var finding = Assert.Single(await ScanAsync(text, chunk));
+            Assert.Equal(Category.PaymentCard, finding.Category);
+            Assert.Equal("••••••••••••••11", finding.MaskedSnippet);
+        }
+    }
+
+    [Theory]
+    [InlineData("0000000000000000", false)]
+    [InlineData("0000 0000 0000 0000", false)]
+    [InlineData("0000-0000-0000-0000", false)]
+    [InlineData("0000.0000.0000.0000", false)]
+    [InlineData("0000/0000/0000/0000", false)]
+    [InlineData("0000.0000-0000/0000", false)]
+    [InlineData("0000000000000000; 4111 1111 1111 1111", true)]
+    [InlineData("4111 1111 1111 1111; 0000000000000000", true)]
+    public async Task All_zero_documents_are_clean_and_only_real_cards_block_in_both_inspection_paths(
+        string text, bool hasCard)
+    {
+        string path = _workspace.WriteText("cards.txt", "Documento: " + text);
+        byte[] original = await File.ReadAllBytesAsync(path);
+        var policies = new LocalPolicyStore(_workspace.PolicyFile);
+        foreach (bool staged in new[] { false, true })
+        {
+            var streaming = new ReaderOnlyExtractor();
+            var service = new InspectionService(policies, new LocalQueueAuditSink(_workspace.QueueFile),
+                staged ? new ExtractorRegistry([streaming]) : ExtractorRegistry.CreateDefault(), new VerdictCache());
+            var operation = TestWorkspace.Operation(path);
+            var result = staged
+                ? await service.InspectStagedAsync(operation, CancellationToken.None)
+                : await service.InspectAsync(operation, CancellationToken.None);
+
+            Assert.Equal(hasCard ? Verdict.Blocked : Verdict.Approved, result.Verdict);
+            Assert.Null(result.Reason);
+            if (hasCard)
+            {
+                var finding = Assert.Single(result.Findings);
+                Assert.Equal(Category.PaymentCard, finding.Category);
+                Assert.Equal("••••••••••••••11", finding.MaskedSnippet);
+            }
+            else Assert.Empty(result.Findings);
+            if (staged) Assert.True(streaming.Readers > 1);
+            Assert.Equal(original, await File.ReadAllBytesAsync(path));
+        }
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(7)]
     [InlineData(257)]
