@@ -32,6 +32,6 @@ public class SessionConfig implements WebMvcConfigurer {
                 }
                 return true;
             }
-        }).addPathPatterns("/api/painel", "/api/auditoria", "/api/endpoints");
+        }).addPathPatterns("/api/painel", "/api/auditoria", "/api/endpoints", "/api/politicas", "/api/politicas/**");
     }
 }

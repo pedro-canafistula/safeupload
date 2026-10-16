@@ -16,7 +16,7 @@ public class AgentController {
     public HeartbeatResponse heartbeat(@Valid @RequestBody Heartbeat request) { return service.heartbeat(request); }
 
     @GetMapping("/policy")
-    public Policy policy() { return service.policy(); }
+    public Policy policy(@RequestParam(required = false) String endpointId) { return service.policy(endpointId); }
 
     @PostMapping("/events")
     public SubmitResponse events(@Valid @RequestBody SubmitEvents request) { return service.submit(request); }
