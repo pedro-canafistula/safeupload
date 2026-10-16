@@ -1672,6 +1672,7 @@ static BOOLEAN StageSpaceGrantValid(_In_ const STAGE_SPACE_GRANT *Grant,
     _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *Identity, _In_ const GUID *TransferId);
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageReadSpaceGrant(_Inout_ PSTAGE_STREAM Stream);
+_IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageOpenBacking(PSTAGE_STREAM Stream, BOOLEAN ReadOnly);
 /* alloc_text must name a function before its definition (MSVC C2200). */
 #ifdef ALLOC_PRAGMA
