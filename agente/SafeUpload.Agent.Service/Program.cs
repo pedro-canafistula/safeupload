@@ -171,9 +171,12 @@ public static class Program
                 });
 
             builder.Services.AddSingleton<IPolicyStore>(provider =>
-                new HttpPolicyStore(
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
-                    endpointId));
+                new CachedPolicyStore(
+                    new DurableHttpPolicyStore(
+                        provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                        endpointId,
+                        Path.Combine(AgentPaths.RootDirectory, "server-policy-cache.json")),
+                    TimeSpan.FromSeconds(30)));
 
             builder.Services.AddHostedService(provider =>
                 new HttpAgentDispatcher(
