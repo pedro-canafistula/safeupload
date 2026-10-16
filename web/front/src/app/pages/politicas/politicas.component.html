@@ -1,1 +1,61 @@
-<header class="page-title"><h1>Políticas</h1></header><section class="surface"><div class="heading"><h2>Políticas ativas</h2><button>Nova política</button></div><div class="table-wrap"><table><thead><tr><th>Ativa</th><th>Política</th><th>Canais</th><th>Ação</th><th>Ocorrências (7d)</th></tr></thead><tbody><tr *ngFor="let policy of policies"><td><span class="active-dot">●</span></td><td><strong>{{ policy.name }}</strong><small>{{ policy.description }}</small></td><td>{{ policy.channels }}</td><td><span class="tag">{{ policy.action }}</span></td><td>{{ policy.occurrences }}</td></tr></tbody></table></div></section>
+<header class="page-title">
+  <div>
+    <p class="eyebrow">GERENCIAMENTO DLP</p>
+    <h1>Enviar política</h1>
+    <p class="subtitle">Defina os dados sensíveis que devem ser bloqueados e envie a configuração ao endpoint.</p>
+  </div>
+</header>
+
+<section class="policy-panel" aria-labelledby="policy-form-title">
+  <div class="panel-heading">
+    <div class="heading-icon">⌁</div>
+    <div>
+      <h2 id="policy-form-title">Nova política de proteção</h2>
+      <p>O arquivo JSON será preparado com as regras selecionadas para o computador de destino.</p>
+    </div>
+  </div>
+
+  <form (ngSubmit)="enviarPolitica()">
+    <div class="fields-row">
+      <label>
+        <span>Nome da política <b>*</b></span>
+        <input [(ngModel)]="nome" name="nome" required placeholder="Ex.: Proteção de dados financeiros" />
+      </label>
+      <label>
+        <span>IP do computador que receberá a política <b>*</b></span>
+        <input [(ngModel)]="ipDestino" name="ipDestino" required placeholder="Ex.: 192.168.1.100" inputmode="decimal" />
+      </label>
+    </div>
+
+    <div class="action-field">
+      <span>Ação ao identificar o dado</span>
+      <div class="action-options">
+        <label><input type="radio" [(ngModel)]="acao" name="acao" value="bloquear" /> <strong>Bloquear</strong><small>Impede a transferência do conteúdo.</small></label>
+        <label><input type="radio" [(ngModel)]="acao" name="acao" value="alertar" /> <strong>Alertar</strong><small>Registra a ocorrência sem bloquear.</small></label>
+      </div>
+    </div>
+
+    <fieldset>
+      <legend>Opções de barramento na política <b>*</b></legend>
+      <p class="helper">Selecione quais tipos de informações sensíveis o DLP deverá identificar.</p>
+      <div class="rules-grid">
+        <label class="rule" *ngFor="let regra of regras" [class.selected]="regrasSelecionadas.includes(regra.id)">
+          <input type="checkbox" [checked]="regrasSelecionadas.includes(regra.id)" (change)="alternarRegra(regra.id, $any($event.target).checked)" />
+          <span class="checkmark">✓</span>
+          <span><strong>{{ regra.nome }}</strong><small>{{ regra.descricao }}</small></span>
+        </label>
+      </div>
+    </fieldset>
+
+    <div class="form-footer">
+      <p><b>*</b> Campos obrigatórios</p>
+      <button type="submit" [disabled]="!nome.trim() || !ipDestino.trim() || !regrasSelecionadas.length">Enviar política <span>→</span></button>
+    </div>
+  </form>
+</section>
+
+<section class="json-result" *ngIf="enviado" aria-live="polite">
+  <div><span class="success-icon">✓</span><div><h2>Política preparada com sucesso</h2><p>JSON gerado para o endpoint <strong>{{ ipDestino }}</strong>.</p></div></div>
+  <button type="button" (click)="baixarJson()">Baixar JSON</button>
+  <pre>{{ jsonGerado }}</pre>
+</section>

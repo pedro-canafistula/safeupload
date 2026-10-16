@@ -88,6 +88,8 @@ web/front/dist/
 web/front/.angular/
 web/front/test-results/
 web/front/playwright-report/
+db/secrets/MYSQL_SENHA_ROOT.txt
+db/secrets/MYSQL_SENHA_APP.txt
 [Ll]og/
 [Ll]ogs/
 
