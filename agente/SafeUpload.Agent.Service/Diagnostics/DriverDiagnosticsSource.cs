@@ -289,6 +289,7 @@ public sealed class DriverDiagnosticsSource
         11 => "legacyCreateGate",
         12 => "byIdUndecidable",
         13 => "byIdHighHalf",
+        14 => "registryScope",
         _ => reason.ToString(),
     };
 

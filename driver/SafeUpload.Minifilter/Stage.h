@@ -98,9 +98,11 @@ typedef struct _SAFEUPLOAD_CREATE_ALIAS_PROOF {
     ULONGLONG ScopeSequence;        /* SafeUploadPolicyScopeSequenceSnapshot() read before the check */
     FILE_ID_INFORMATION Identity;   /* the file the check examined, when it existed */
 } SAFEUPLOAD_CREATE_ALIAS_PROOF, *PSAFEUPLOAD_CREATE_ALIAS_PROOF;
-NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance, _In_ PFLT_FILE_NAME_INFORMATION Name,
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_CALLBACK_DATA Data, _In_ PFLT_INSTANCE Instance, _In_ PFLT_FILE_NAME_INFORMATION Name,
     _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected, _Inout_opt_ PSAFEUPLOAD_CREATE_ALIAS_PROOF Proof);
-NTSTATUS SafeUploadStageCheckObjectAliases(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Object,
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageCheckObjectAliases(_In_ PFLT_CALLBACK_DATA Data, _In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Object,
     _In_ PUNICODE_STRING Volume, _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected);
 BOOLEAN SafeUploadPublicationCreate(_In_ PUNICODE_STRING Name, _In_ ULONG Disposition, _In_ BOOLEAN Writer);
 BOOLEAN SafeUploadPublicationRename(_In_ PFLT_VOLUME TargetVolume, _In_ PUNICODE_STRING Source,

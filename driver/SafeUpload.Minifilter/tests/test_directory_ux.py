@@ -37,7 +37,7 @@ class DirectoryUx(unittest.TestCase):
             'StageDirectoryContains', 'StageDirectoryStreamPending', 'StageDirectoryPendingLocked',
             'StageDirectoryBeginMutation', 'StageDirectoryEndMutation', 'StageDirectoryPlainPath',
             'StageDirectoryPlainName', 'StageDirectoryCreateCanMutate', 'StageNameLookupProvesAbsent',
-            'StageAdmitDirectoryMutation', 'StageExistingDirectory', 'StageNativeDirectoryInformation',
+            'StageDirectoryCollisionComplete', 'StageAdmitDirectoryMutation', 'StageExistingDirectory', 'StageNativeDirectoryInformation',
             'StageExternalRename'))
         policies = ''.join(function(policy, name) for name in (
             'SafeUploadPathUnderPrefix', 'SafeUploadPolicyDirectoryIsScopeAnchor'))
@@ -79,7 +79,7 @@ class DirectoryUx(unittest.TestCase):
         # All new paged decision helpers remain annotated and placed in PAGE.
         for name in ('StageDirectoryContains', 'StageDirectoryStreamPending', 'StageDirectoryPendingLocked',
                      'StageDirectoryBeginMutation', 'StageDirectoryPlainPath', 'StageDirectoryPlainName',
-                     'StageAdmitDirectoryMutation', 'StageExistingDirectory', 'StageNativeDirectoryInformation'):
+                     'StageDirectoryCollisionComplete', 'StageAdmitDirectoryMutation', 'StageExistingDirectory', 'StageNativeDirectoryInformation'):
             self.assertIn('PAGED_CODE();', function(source, name))
             self.assertIn('#pragma alloc_text(PAGE, ' + name + ')', source)
         self.assertNotIn('PAGED_CODE', function(source, 'StageDirectoryEndMutation'))

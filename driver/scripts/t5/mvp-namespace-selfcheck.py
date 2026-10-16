@@ -17,7 +17,7 @@ KERNEL = ROOT / 'driver/SafeUpload.Minifilter/StageStream.c'
 
 
 def body(source, name):
-    match = re.search(r'(?m)^static (?:BOOLEAN|NTSTATUS|FLT_PREOP_CALLBACK_STATUS) ' + name + r'\([^;]*?\)\s*\{', source)
+    match = re.search(r'(?m)^static (?:BOOLEAN|NTSTATUS|FLT_PREOP_CALLBACK_STATUS|FLT_POSTOP_CALLBACK_STATUS) ' + name + r'\([^;]*?\)\s*\{', source)
     assert match, name
     end = source.index('{', match.start()) + 1
     depth = 1
@@ -181,11 +181,22 @@ class MvpNamespace(unittest.TestCase):
         self.assertIn('SafeUploadPostCreate(Data, Objects, legacyContext, Flags)', source)
         self.assertIn('StageMvpCancelNames(', native)
         self.assertIn('FLT_PREOP_SYNCHRONIZE;', native)
-        self.assertIn('*CompletionContext = (PVOID)&StageMvpNamespaceFence;', native)
+        # PREfast correction 7172c017 uses a dedicated completion tag. Keep
+        # checking that its completion releases the actual interlocked fence.
+        self.assertIn('*CompletionContext = (PVOID)&StageMvpNamespaceCompletionTag;', native)
+        post = body(source, 'StagePostOperationCore')
+        tagged = post.index('if (CompletionContext == (PVOID)&StageMvpNamespaceCompletionTag) {')
+        finish = post.index('return FLT_POSTOP_FINISHED_PROCESSING;', tagged)
+        self.assertIn('InterlockedExchange(&StageMvpNamespaceFence, 0);', post[tagged:finish])
         self.assertNotRegex(native, r'rename->\w+\s*=(?!=)')
         self.assertNotIn('STATUS_NOT_SUPPORTED', body(source, 'StageMvpRenameNeedsCopy'))
         core = body(source, 'StageDispatchCore')
         self.assertLess(core.index('StageMvpNamespacePre('), core.index('SafeUploadPreCreate('))
+        guarded = re.findall(r'if \(KeGetCurrentIrql\(\) == PASSIVE_LEVEL\) \{([^{}]*)\}', core)
+        namespace_calls = [block for block in guarded if 'StageMvpNamespacePre(' in block]
+        self.assertEqual(len(namespace_calls), 2)
+        for block in namespace_calls:
+            self.assertLess(block.index('*CompletionContext = NULL;'), block.index('StageMvpNamespacePre('))
         create = body(source, 'StageCreate')
         self.assertIn('namespaceSequence != StageMvpNamespaceSequence', create)
         rename = body(source, 'StageRename')
