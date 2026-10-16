@@ -114,7 +114,8 @@ public sealed partial class StagedTransferPublisher
             // explicit dispatcher must still reconcile them after cleanup.
             if (!receiptRecovery && StagedTransferJournal.BlockedCleanupComplete(entry) && !HasConfirmedPublication(id))
             {
-                await _journal.ArchiveCompletedAsync(entry, token).ConfigureAwait(false);
+                // Keep terminal recovery read-free. The maintenance pass archives
+                // completed unbound snapshots with its own fresh exact-state checks.
                 lock (_confirmedPublications) _pendingJournalProgress.Remove(id);
                 _recoveryRetries.Remove(id);
                 lock (_recoveryNotified) _recoveryNotified.Remove(id);

@@ -189,6 +189,59 @@ public sealed class StagedTerminalArchiveTests(ITestOutputHelper output) : IDisp
         Assert.Equal(entry, await Journal().ReadAsync(entry.Transfer.TransferId, default));
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Terminal_recovery_is_read_free_and_maintenance_still_archives_exact_receipts(
+        bool justifiedRelease, bool cleanupOnly)
+    {
+        var journal = Journal(); var entry = Completed();
+        entry = entry with
+        {
+            State = justifiedRelease ? TransferJournalState.Released : TransferJournalState.Blocked,
+            BlockedPolicyVersion = 1, HandbackState = StagedHandbackState.Verified,
+            HandbackPath = Path.Combine(_workspace.Root, "returned.txt"), HandbackLength = 1,
+            JustificationWindowClosed = true,
+            BlockedDeletionReceipt = new(new(entry.Transfer.TransferId, entry.DestinationGeneration, entry.StageIdentity!),
+                0, 1, entry.Sha256Hex!)
+        };
+        Put(entry);
+        var terminal = await journal.ReadAsync(entry.Transfer.TransferId, default);
+        Assert.True(StagedTransferJournal.BlockedCleanupComplete(terminal));
+        var inspection = new SafeUpload.Agent.Core.Application.InspectionService(
+            new SafeUpload.Agent.Core.Infrastructure.LocalPolicyStore(_workspace.PolicyFile),
+            new SafeUpload.Agent.Core.Infrastructure.LocalQueueAuditSink(_workspace.QueueFile),
+            SafeUpload.Agent.Core.Infrastructure.Extraction.ExtractorRegistry.CreateDefault(),
+            new SafeUpload.Agent.Core.Application.VerdictCache());
+        var gate = new LastCloseGate();
+        var publisher = new StagedTransferPublisher(inspection, NotificationTestHub.Create(), journal, _workspace.Root, gate);
+        int archiveWrites = 0;
+        journal.ArchiveObserver = _ => archiveWrites++;
+        long terminalReads = journal.ManifestReads;
+        for (int pass = 0; pass < 8; pass++)
+        {
+            if (cleanupOnly) await publisher.RecoverPendingTransferAsync(terminal, default, cleanupOnly: true);
+            else await publisher.RecoverPendingTransferAsync(terminal, default);
+        }
+        Assert.Equal(terminalReads, journal.ManifestReads);
+        Assert.Equal(0, archiveWrites);
+        Assert.Equal(0, gate.Disposals);
+        Assert.Single(Directory.GetFiles(Hot, "*.json"));
+
+        // Recovery's no-op projection does not remove the maintenance obligation.
+        // Maintenance still rereads the exact manifest before durable archival.
+        await publisher.ArchiveCompletedTransfersAsync(default);
+        Assert.True(journal.ManifestReads > terminalReads);
+        Assert.True(archiveWrites > 0);
+        Assert.Empty(Directory.GetFiles(Hot, "*.json"));
+        var restarted = Journal();
+        Assert.Equal(terminal, await restarted.ReadAsync(entry.Transfer.TransferId, default));
+        Assert.Equal(entry.DestinationGeneration + 1,
+            (await restarted.CreateAsync(NewTransfer(entry.Transfer.DestinationPath), default)).DestinationGeneration);
+    }
+
     [Fact]
     public async Task Blocked_archive_requires_and_preserves_exact_delete_receipt_and_handback()
     {
