@@ -184,6 +184,22 @@ public sealed class StagedLargeFileTests : IDisposable
     }
 
     [Fact]
+    public void Even_empty_legacy_refusal_files_debit_physical_metadata_without_refusing_startup()
+    {
+        long exact = 2 * StagedSpaceBudget.MetadataBytes + 16 * MiB * 4;
+        var options = new StagedSpaceOptions(true, exact, exact, 0);
+        string path = Path.Combine(_workspace.Root, Guid.NewGuid().ToString("N") + ".allocation-refused");
+        File.WriteAllBytes(path, []);
+        var budget = new StagedSpaceBudget(_workspace.Root, options, () => 2048 * MiB);
+        Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "one"));
+        Assert.Equal(0, new FileInfo(path).Length);
+        Assert.Empty(Directory.GetFiles(Path.Combine(_workspace.Root, ".space-reservations")));
+        File.Delete(path); // Only the fixture owner removes its malformed evidence.
+        var clean = new StagedSpaceBudget(_workspace.Root, options, () => 2048 * MiB);
+        Assert.Equal(16 * MiB, clean.Reserve(Guid.NewGuid(), "one"));
+    }
+
+    [Fact]
     public async Task Oversized_journal_serialization_never_writes_beyond_the_existing_limit()
     {
         using var output = new MemoryStream();

@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using System.Security.AccessControl;
 using SafeUpload.Agent.Service.Interception;
 
 namespace SafeUpload.Agent.Tests;
@@ -24,6 +25,8 @@ public sealed class StagedAllocationRecoveryTests : IDisposable
         string path = Path.Combine(Stage, first.ToString("N") + ".txt");
         long capacity = budget.Reserve(first, "one", path);
         var template = JsonNode.Parse(File.ReadAllText(Path.Combine(Records, first.ToString("N") + ".json")))!;
+        var templateSecurity = OperatingSystem.IsWindows()
+            ? new FileInfo(Path.Combine(Records, first.ToString("N") + ".json")).GetAccessControl() : null;
         File.Delete(Path.Combine(Records, first.ToString("N") + ".json"));
         // Exact old-release shape produced after CREATE failed before backing
         // creation. Reproduce a population larger than both old metadata caps.
@@ -32,7 +35,9 @@ public sealed class StagedAllocationRecoveryTests : IDisposable
             Guid id = Guid.NewGuid(); var old = template.DeepClone();
             old["Id"] = id; old["StagePath"] = Path.Combine(Stage, id.ToString("N") + ".txt");
             old["ContentReleased"] = true;
-            File.WriteAllText(Path.Combine(Records, id.ToString("N") + ".json"), old.ToJsonString());
+            string recordPath = Path.Combine(Records, id.ToString("N") + ".json");
+            File.WriteAllText(recordPath, old.ToJsonString());
+            if (templateSecurity is not null) new FileInfo(recordPath).SetAccessControl(templateSecurity);
         }
         budget = Budget();
         Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "one"));
