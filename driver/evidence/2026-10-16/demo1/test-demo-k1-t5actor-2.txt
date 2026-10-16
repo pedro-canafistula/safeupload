@@ -1,0 +1,8 @@
+T user WIN10-DEBUGGED\t5actor
+T new file, wait 3 s, rename OK 3103ms 
+T rename published file OK 37ms 
+T notepad edit published file (ctrl+s) OK 57ms 
+T edit published file adding CPF OK 25ms 
+T delete published file OK 171ms 
+T DONE
+L humano4.txt:0:, New Text Document h4.txt:0:, scopia3.txt:19:texto limpo editado, smover3.txt:13:texto limpo , snota3-renomeado.txt:16:Notas da reuniao, snota3.txt:16:Notas da reuniao, srel3.txt:2:v2

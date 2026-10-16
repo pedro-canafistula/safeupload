@@ -8,9 +8,7 @@ namespace SafeUpload.Agent.Core.Infrastructure.Extraction;
 /// inspecionar; staged bloqueia conteúdo em escopo. Ambas preservam o motivo
 /// <c>unsupported_format</c>.
 ///
-/// PDF está fora desta entrega por decisão de escopo. Adicioná-lo depois é
-/// escrever um <see cref="ITextExtractor"/> e registrá-lo aqui; nada mais no
-/// agente precisa mudar.
+/// Cada extrator recusa os payloads que não consegue inspecionar integralmente.
 /// </summary>
 public sealed class ExtractorRegistry
 {
@@ -46,14 +44,17 @@ public sealed class ExtractorRegistry
     public IReadOnlySet<string> SupportedExtensions { get; }
 
     /// <summary>
-    /// Composição padrão: texto puro, Word, Excel e PDF.
+    /// Composição padrão: texto puro, Word, Excel, PowerPoint, PDF e ZIP; 7z tem recusa explícita.
     /// </summary>
     public static ExtractorRegistry CreateDefault() => new(
     [
         new PlainTextExtractor(),
         new OpenXmlWordExtractor(),
         new OpenXmlSheetExtractor(),
-        new PdfExtractor()
+        new OpenXmlPowerPointExtractor(),
+        new PdfExtractor(),
+        new ZipArchiveExtractor(),
+        new SevenZipRefusingExtractor()
     ]);
 
     /// <summary>

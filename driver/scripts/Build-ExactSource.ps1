@@ -1,9 +1,9 @@
 <#
 Runs on the isolated Windows builder. Builds a Git-commit source archive in a fresh child directory.
 The archive hash verifies delivery; the commit identifies source. The legacy worktree parameter set is
-retained for old callers. Builds the four driver configurations
-(normal/feature x Debug/Release) with /warnaserror, PREfast (DriverRecommendedRules) and ApiValidator, builds the
-Inspector with and without the feature define, test-signs the feature Debug SYS, and writes a summary.
+retained for old callers. Builds the two feature driver configurations
+(Debug/Release) with /warnaserror, PREfast (DriverRecommendedRules) and ApiValidator, builds the
+Inspector with the feature define, test-signs the feature Debug SYS, and writes a summary.
 Never installs or loads anything. Refuses to reuse an existing child directory.
 #>
 [CmdletBinding(DefaultParameterSetName = 'Commit')]
@@ -14,14 +14,17 @@ param(
     [Parameter(Mandatory, ParameterSetName = 'Worktree')] [ValidatePattern('^[0-9a-fA-F]{64}$')] [string] $ManifestSha256,
     [Parameter(Mandatory)] [ValidatePattern('^[0-9A-Fa-f]{40}$')] [string] $CertificateThumbprint,
     [ValidateSet('CurrentUser', 'LocalMachine')] [string] $CertificateStoreLocation = 'CurrentUser',
-    [ValidateSet('false', 'true')] [string] $OwnerWinFspPrototype = 'false'
+    [ValidateSet('false', 'true')] [string] $OwnerWinFspPrototype = 'false',
+    [string] $BuilderName = $env:SAFEUPLOAD_BUILDER,
+    [string] $BuilderSupportPath = (Join-Path $PSScriptRoot 'ApprovedBuilders.ps1'),
+    [string] $BuilderConfigPath = (Join-Path $PSScriptRoot 'approved-builders.json')
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-if ($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or
-    (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69') {
-    throw 'Wrong builder.'
-}
+. $BuilderSupportPath
+$builder = Get-ApprovedBuilder -Role 'kernel-sign' -Label $Label -BuilderName $BuilderName -ConfigPath $BuilderConfigPath
+Assert-ApprovedBuilderIdentity $builder
+
 $documents = 'C:\Users\vika\Documents'
 $run = Join-Path $documents ('exact-' + $Label)
 $archive = Join-Path $documents ('exact-' + $Label + '.zip')
@@ -62,6 +65,8 @@ if ($seen -ne $expected.Count) { throw "Manifest lists $($expected.Count) files 
 }
 
 $summary = New-Object System.Collections.ArrayList
+[void]$summary.Add('KernelBuildProfiles=owned-feature,owned-feature-release')
+foreach ($row in @(Get-BuilderReceipt $builder)) { [void]$summary.Add($row) }
 function Invoke-NativeToLog([string] $Executable, [string[]] $Arguments, [string] $Log) {
     if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { throw 'Native build tool missing.' }
     $previousErrorPreference = $ErrorActionPreference
@@ -77,45 +82,41 @@ function Invoke-NativeToLog([string] $Executable, [string[]] $Arguments, [string
 Push-Location $src
 try {
     foreach ($configuration in @('Debug', 'Release')) {
-        foreach ($feature in @('false', 'true')) {
-            $ownerFeature = if ($feature -eq 'true' -and $OwnerWinFspPrototype -eq 'true') { 'true' } else { 'false' }
-            $name = if ($feature -eq 'true') { 'owned-feature' } else { 'normal' }
-            if ($configuration -eq 'Release') { $name += '-release' }
-            $log = Join-Path $out ($name + '-wdk.txt')
-            $exit = Invoke-NativeToLog $msbuild @('driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj',
-                '/t:Rebuild', "/p:Configuration=$configuration", '/p:Platform=x64', '/warnaserror',
-                "/p:SafeUploadStagingPrototype=$feature", "/p:SafeUploadOwnedWinFspPrototype=$ownerFeature", '/p:RunCodeAnalysis=true',
-                '/p:EnablePREfast=true', "/p:CodeAnalysisRuleSet=$rules") $log
-            $text = [IO.File]::ReadAllText($log)
-            $w = ([regex]::Matches($text, '(?m)^\s*(\d+) Warning\(s\)') | ForEach-Object { $_.Groups[1].Value }) -join ','
-            $e = ([regex]::Matches($text, '(?m)^\s*(\d+) Error\(s\)') | ForEach-Object { $_.Groups[1].Value }) -join ','
-            $sys = "driver\SafeUpload.Minifilter\x64\$configuration\SafeUpload.sys"
-            $artifactHash = 'NONE'
-            if ($exit -eq 0 -and (Test-Path -LiteralPath $sys)) {
-                Copy-Item -LiteralPath $sys -Destination (Join-Path $out ($name + '.sys')) -Force
-                $artifactHash = (Get-FileHash -LiteralPath $sys -Algorithm SHA256).Hash
-            }
-            [void]$summary.Add("driver:$name : configuration=$configuration feature=$feature owner_fsp=$ownerFeature exit=$exit succeeded=$($text -match 'Build succeeded') warnings=$w errors=$e apivalidator=$($text -match 'ApiValidator') prefast=$($text -match 'DriverRecommendedRules') artifact_sha256=$artifactHash")
-        }
-    }
-    foreach ($feature in @('false', 'true')) {
-        $ownerFeature = if ($feature -eq 'true' -and $OwnerWinFspPrototype -eq 'true') { 'true' } else { 'false' }
-        $name = if ($feature -eq 'true') { 'inspector-feature-release' } else { 'inspector-normal-release' }
-        $log = Join-Path $out ($name + '.txt')
-        $exit = Invoke-NativeToLog $msbuild @('driver\SafeUpload.Inspector\SafeUpload.Inspector.vcxproj',
-            '/t:Rebuild', '/p:Configuration=Release', '/p:Platform=x64', '/warnaserror',
-            "/p:SafeUploadStagingPrototype=$feature", "/p:SafeUploadOwnedWinFspPrototype=$ownerFeature") $log
+        $ownerFeature = $OwnerWinFspPrototype
+        $name = 'owned-feature'
+        if ($configuration -eq 'Release') { $name += '-release' }
+        $log = Join-Path $out ($name + '-wdk.txt')
+        $exit = Invoke-NativeToLog $msbuild @('driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj',
+            '/t:Rebuild', "/p:Configuration=$configuration", '/p:Platform=x64', '/warnaserror',
+            "/p:SafeUploadStagingPrototype=true", "/p:SafeUploadOwnedWinFspPrototype=$ownerFeature", '/p:RunCodeAnalysis=true',
+            '/p:EnablePREfast=true', "/p:CodeAnalysisRuleSet=$rules") $log
         $text = [IO.File]::ReadAllText($log)
         $w = ([regex]::Matches($text, '(?m)^\s*(\d+) Warning\(s\)') | ForEach-Object { $_.Groups[1].Value }) -join ','
         $e = ([regex]::Matches($text, '(?m)^\s*(\d+) Error\(s\)') | ForEach-Object { $_.Groups[1].Value }) -join ','
-        $exe = 'driver\SafeUpload.Inspector\x64\Release\SafeUpload.Inspector.exe'
+        $sys = "driver\SafeUpload.Minifilter\x64\$configuration\SafeUpload.sys"
         $artifactHash = 'NONE'
-        if ($exit -eq 0 -and (Test-Path -LiteralPath $exe)) {
-            Copy-Item -LiteralPath $exe -Destination (Join-Path $out ($name + '.exe')) -Force
-            $artifactHash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
+        if ($exit -eq 0 -and (Test-Path -LiteralPath $sys)) {
+            Copy-Item -LiteralPath $sys -Destination (Join-Path $out ($name + '.sys')) -Force
+            $artifactHash = (Get-FileHash -LiteralPath $sys -Algorithm SHA256).Hash
         }
-        [void]$summary.Add("$name : owner_fsp=$ownerFeature exit=$exit succeeded=$($text -match 'Build succeeded') warnings=$w errors=$e artifact_sha256=$artifactHash")
+        [void]$summary.Add("driver:$name : configuration=$configuration feature=true owner_fsp=$ownerFeature exit=$exit succeeded=$($text -match 'Build succeeded') warnings=$w errors=$e apivalidator=$($text -match 'ApiValidator') prefast=$($text -match 'DriverRecommendedRules') artifact_sha256=$artifactHash")
     }
+    $ownerFeature = $OwnerWinFspPrototype
+    $name = 'inspector-feature-release'
+    $log = Join-Path $out ($name + '.txt')
+    $exit = Invoke-NativeToLog $msbuild @('driver\SafeUpload.Inspector\SafeUpload.Inspector.vcxproj',
+        '/t:Rebuild', '/p:Configuration=Release', '/p:Platform=x64', '/warnaserror',
+        "/p:SafeUploadStagingPrototype=true", "/p:SafeUploadOwnedWinFspPrototype=$ownerFeature") $log
+    $text = [IO.File]::ReadAllText($log)
+    $w = ([regex]::Matches($text, '(?m)^\s*(\d+) Warning\(s\)') | ForEach-Object { $_.Groups[1].Value }) -join ','
+    $e = ([regex]::Matches($text, '(?m)^\s*(\d+) Error\(s\)') | ForEach-Object { $_.Groups[1].Value }) -join ','
+    $exe = 'driver\SafeUpload.Inspector\x64\Release\SafeUpload.Inspector.exe'
+    $artifactHash = 'NONE'
+    if ($exit -eq 0 -and (Test-Path -LiteralPath $exe)) {
+        Copy-Item -LiteralPath $exe -Destination (Join-Path $out ($name + '.exe')) -Force
+        $artifactHash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
+    }
+    [void]$summary.Add("$name : owner_fsp=$ownerFeature exit=$exit succeeded=$($text -match 'Build succeeded') warnings=$w errors=$e artifact_sha256=$artifactHash")
     $fixture = Join-Path $src 'driver\SafeUpload.WriterFixture\WriterFixture.cs'
     if (Test-Path -LiteralPath $fixture) {
         $log = Join-Path $out 'writer-fixture.txt'
@@ -162,7 +163,8 @@ if (Test-Path -LiteralPath $unsigned) {
             if ($signatureValid) { $signedHash = $outputHash }
         } catch { $signatureStatus = 'VerificationFailed' }
     }
-    @{ UTC = [DateTime]::UtcNow.ToString('o'); SignExit = $signExit;
+    @{ Builder = $builder.name; BuilderHost = $builder.host; BuilderComputerName = $builder.computer_name;
+        ParityCheck = $builder.ParityCheck; UTC = [DateTime]::UtcNow.ToString('o'); SignExit = $signExit;
         SignatureStatus = $signatureStatus; ExpectedSigner = $CertificateThumbprint;
         CertificateStoreLocation = $CertificateStoreLocation;
         ActualSigner = $actualSigner; SignatureValid = $signatureValid;

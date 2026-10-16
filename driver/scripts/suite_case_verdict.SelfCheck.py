@@ -247,6 +247,16 @@ sys.exit(int(os.environ.get('MOCK_RUNNER_EXIT', '0')))
         self.assertNotIn('batch complete', output)
         self.assertEqual(['begin batchcheck1', 'runner batchcheck1', 'end batchcheck1'], calls)
 
+    def test_failed_case_captures_guest_evidence_without_changing_the_outcome(self):
+        # Diagnostic capture runs only for a failed case, before its disk is discarded; exit code and call order are unchanged.
+        output, calls = self.run_batch(1, MOCK_VERDICT='FAIL')
+        self.assertEqual(['begin batchcheck1', 'runner batchcheck1', 'end batchcheck1'], calls)
+        self.assertIn(f'failure evidence for {TAG} {CASE}', output)
+        self.assertLess(output.index('failure evidence for'), output.index('STOP:'))
+        evidence = list((self.root / 'driver/evidence').glob(f'*/batch-{TAG}-failure-guest.txt'))
+        self.assertEqual(1, len(evidence))
+        self.assertTrue(list((self.root / 'driver/evidence').glob(f'*/batch-{TAG}-failure-domstate.txt')))
+
     def test_runner_exit_one_discards_disk_then_stops(self):
         output, calls = self.run_batch(1, MOCK_RUNNER_EXIT='1')
         self.assertIn('failed: runner exit 1', output)

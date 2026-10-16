@@ -1,0 +1,32 @@
+{
+  "builders": [
+    {
+      "name": "builder1",
+      "host": "192.168.122.210",
+      "computer_name": "DESKTOP-O1LP5DG",
+      "ssh_user": "vika",
+      "roles": [
+        "kernel-sign",
+        "matrix",
+        "gate"
+      ],
+      "gate_approved": true,
+      "uuid": "C6440689-D11C-4C63-A463-F3722B7DDB69",
+      "mac": "52-54-00-63-87-7A"
+    },
+    {
+      "name": "builder2",
+      "host": "192.168.122.211",
+      "computer_name": "SU-BUILDER2",
+      "ssh_user": "vika",
+      "roles": [
+        "kernel-sign",
+        "matrix",
+        "gate"
+      ],
+      "gate_approved": true,
+      "uuid": "9A20C45F-7C79-4742-887F-5B279309FAB9",
+      "mac": "52-54-00-63-87-7B"
+    }
+  ]
+}

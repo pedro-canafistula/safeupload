@@ -1,0 +1,5 @@
+16bbf79b8efc80d1ec4a825d9154e9af656726af5ab47b0b8d31531e619a97cd  /mnt/storage/safeupload-archive/pairs/t5-pair14/SafeUpload-stage-prototype.sys
+b5574331ef156f151c4e95fb9051ffec989d4d673a5ef71f1c7bd80c35c97030  /mnt/storage/safeupload-archive/pairs/t5-pair14/feature-release-service-publish.zip
+HarnessCommit=d9535b71f1f0f87cfa03aa75551204ed196e21b4
+Driver=t5-batch1b (b97d263e; signed A6D6...; feature Debug; four WDK 0/0; imports PASS); Agent=t5-batch1b feature Release (b97d263e; matrix 1,615/2,197 PASS)
+Mode=T4 smoke 256 verifier-from-boot sample_every=64; win10-debug3 on base-20261014 (Edge Update disabled); main-disk overlay; no builder jobs

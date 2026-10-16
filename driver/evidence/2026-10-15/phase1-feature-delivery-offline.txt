@@ -1,0 +1,77 @@
+Phase 1 feature-only delivery gates; offline controls only
+UTC=2026-10-15T18:34:22.777463+00:00
+BaseCommit=27c8807ffa69a68560d20775ead04a1d7f225911
+WorkingTree=uncommitted
+AgentMatrixProfiles=feature-debug,feature-release
+AgentMatrixTestLegs=4
+KernelBuildProfiles=owned-feature,owned-feature-release
+RemoteBuildsStarted=False
+
+agent-matrix:Exit=0
+test_complete_synthetic_matrix_binds_every_v20_case_and_result_id (__main__.RequiredV20MatrixControls.test_complete_synthetic_matrix_binds_every_v20_case_and_result_id) ... ok
+test_each_exact_epoch_theory_case_is_required_despite_consistent_discovery_and_trx_omission (__main__.RequiredV20MatrixControls.test_each_exact_epoch_theory_case_is_required_despite_consistent_discovery_and_trx_omission) ... ok
+test_each_new_required_case_is_rejected_when_consistently_omitted (__main__.RequiredV20MatrixControls.test_each_new_required_case_is_rejected_when_consistently_omitted) ... ok
+test_each_new_required_case_rejects_a_consistent_duplicate_display_row (__main__.RequiredV20MatrixControls.test_each_new_required_case_rejects_a_consistent_duplicate_display_row) ... ok
+test_each_new_required_case_rejects_a_wrong_public_argument (__main__.RequiredV20MatrixControls.test_each_new_required_case_rejects_a_wrong_public_argument) ... ok
+test_every_feature_requirement_survives (__main__.RequiredV20MatrixControls.test_every_feature_requirement_survives) ... ok
+test_every_v20_method_is_required_in_each_profile_even_when_all_discovered_cases_pass (__main__.RequiredV20MatrixControls.test_every_v20_method_is_required_in_each_profile_even_when_all_discovered_cases_pass) ... ok
+test_feature_guards_and_mutations (__main__.RequiredV20MatrixControls.test_feature_guards_and_mutations) ... ok
+test_skipped_required_case_cannot_pass_any_profile (__main__.RequiredV20MatrixControls.test_skipped_required_case_cannot_pass_any_profile) ... ok
+test_wrong_epoch_argument_cannot_replace_the_reviewed_case (__main__.RequiredV20MatrixControls.test_wrong_epoch_argument_cannot_replace_the_reviewed_case) ... ok
+test_builder_receipt_mismatch_refuses_gate (__main__.RunnerModeControls.test_builder_receipt_mismatch_refuses_gate) ... ok
+test_default_builder_and_roles (__main__.RunnerModeControls.test_default_builder_and_roles) ... ok
+test_duration_report_fixtures_read_only_and_sorted (__main__.RunnerModeControls.test_duration_report_fixtures_read_only_and_sorted) ... ok
+test_powershell_checks_are_in_windows_gate (__main__.RunnerModeControls.test_powershell_checks_are_in_windows_gate) ... ok
+test_remote_refuses_before_caller_or_upload (__main__.RunnerModeControls.test_remote_refuses_before_caller_or_upload) ... ok
+test_selection_guard_mutations_are_caught (__main__.RunnerModeControls.test_selection_guard_mutations_are_caught) ... ok
+test_standalone_debuggee_transport_keeps_its_old_dependencies (__main__.RunnerModeControls.test_standalone_debuggee_transport_keeps_its_old_dependencies) ... ok
+test_wrapper_guard_mutations_are_caught (__main__.RunnerModeControls.test_wrapper_guard_mutations_are_caught) ... ok
+test_wrapper_modes_and_receipts_even_after_failure (__main__.RunnerModeControls.test_wrapper_modes_and_receipts_even_after_failure) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 1.399s
+
+OK
+
+kernel-gate:Exit=0
+test_feature_delivery_and_each_missing_or_failed_guard (__main__.KernelDeliveryControls.test_feature_delivery_and_each_missing_or_failed_guard) ... ok
+test_guard_mutations_are_caught (__main__.KernelDeliveryControls.test_guard_mutations_are_caught) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 12.396s
+
+OK
+
+feature-defaults:Exit=0
+test_local_compile_defaults_explicit_normals_and_mutations (__main__.FeatureAgentDefaults.test_local_compile_defaults_explicit_normals_and_mutations) ... ok
+test_preflight_feature_defaults_explicit_normal_and_mutations (__main__.FeatureAgentDefaults.test_preflight_feature_defaults_explicit_normal_and_mutations) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.373s
+
+OK
+
+driver-imports:Exit=0
+DriverImports not-a-driver.sys FAIL unreadable: 'Unable to read the DOS Header, possibly a truncated file.'
+DriverImportAvailability=FAIL
+DriverImportsSelfCheck=PASS; synthetic controls and 2 retained driver(s)
+
+matrix-powershell:Exit=0
+BuildExactAgentMatrixSelfCheck=PASS; controls=fail-fast,all-four-feature-legs,non-gates,lifetime-stop; mutations=14
+
+kernel-powershell:Exit=0
+BuildExactSourceSelfCheck=PASS; controls=parameter-sets,two-feature-builds,analysis,Inspector,profile-receipt; mutations=8
+
+local-powershell-parse:Exit=0
+Build-ExactAgentMatrix.ps1:ParseErrors=0
+Build-ExactSource.ps1:ParseErrors=0
+Build-ExactAgentMatrix.SelfCheck.ps1:ParseErrors=0
+Build-ExactSource.SelfCheck.ps1:ParseErrors=0
+LocalPowerShellVersion=7.4.2
+
+shell-syntax:Exit=0
+
+diff-whitespace:Exit=0
+
+UnchangedFeatureRequirements=PASS; methods=43; v20_methods=26; required_case_groups=3
+ChangedPythonSyntax=PASS

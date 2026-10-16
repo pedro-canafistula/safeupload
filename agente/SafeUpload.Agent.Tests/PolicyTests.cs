@@ -1,5 +1,7 @@
 using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Infrastructure;
+using SafeUpload.Agent.Core.Infrastructure.Extraction;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -37,9 +39,8 @@ public class PolicyTests : IDisposable
     }
 
     /// <summary>
-    /// O .pdf entrou na política padrão junto com seu extrator, e a ordem
-    /// importa: monitorar uma extensão sem saber abri-la faz o driver mandar
-    /// requisições que o motor não tem como responder.
+    /// O nome histórico fica estável; a política agora inclui PowerPoint e arquivos compactados.
+    /// Escopo e registro de extratores precisam concordar.
     /// </summary>
     [Fact]
     public async Task Politica_padrao_vigia_os_cinco_formatos()
@@ -51,8 +52,34 @@ public class PolicyTests : IDisposable
         Assert.True(policy.IsMonitoredExtension(".docx"));
         Assert.True(policy.IsMonitoredExtension(".xlsx"));
         Assert.True(policy.IsMonitoredExtension(".pdf"));
+        Assert.True(policy.IsMonitoredExtension(".pptx"));
+        Assert.True(policy.IsMonitoredExtension(".pptm"));
+        Assert.True(policy.IsMonitoredExtension(".potx"));
+        Assert.True(policy.IsMonitoredExtension(".ppsx"));
+        Assert.Equal(11, policy.MonitoredScopes.Extensions.Count);
 
-        Assert.False(policy.IsMonitoredExtension(".zip"));
+        Assert.True(policy.IsMonitoredExtension(".zip"));
+        Assert.True(policy.IsMonitoredExtension(".7z"));
+        Assert.True(policy.MonitoredScopes.Extensions.SetEquals(new[] { ".txt", ".csv", ".docx", ".xlsx", ".pdf", ".pptx", ".pptm", ".potx", ".ppsx", ".zip", ".7z" }));
+    }
+
+    [Theory]
+    [InlineData(".pptx")]
+    [InlineData(".pptm")]
+    [InlineData(".potx")]
+    [InlineData(".ppsx")]
+    public async Task Default_policy_inspects_PowerPoint_without_an_explicit_policy_edit(string extension)
+    {
+        string path = PowerPointFixture.Create(_workspace.Root, extension);
+        var service = new InspectionService(new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
+            ExtractorRegistry.CreateDefault(), new VerdictCache());
+        foreach (bool staged in new[] { false, true })
+        {
+            var result = staged ? await service.InspectStagedAsync(TestWorkspace.Operation(path), CancellationToken.None)
+                : await service.InspectAsync(TestWorkspace.Operation(path), CancellationToken.None);
+            Assert.True(result.InScope); Assert.Equal(Verdict.Approved, result.Verdict);
+            Assert.Null(result.Reason); Assert.Empty(result.Findings);
+        }
     }
 
     /// <summary>

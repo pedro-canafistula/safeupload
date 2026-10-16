@@ -1,0 +1,14 @@
+﻿LABEL=t5-batch3d
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=0214b5d5caca6d9f8a0456f0c87588c1712163e7
+ARCHIVE_SHA256=2D32E3DBDC2C020350D823730451CB7A7A7149C0D0113CBB824A1FE6289A7636
+normal-debug: admission_evidence=false
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-app-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+normal-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+normal-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+normal-debug-tests-user: exit=1 warnings=0 errors=0
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-15T08:29:03.3985709Z

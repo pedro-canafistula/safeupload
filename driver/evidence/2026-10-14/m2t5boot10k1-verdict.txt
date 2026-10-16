@@ -1,0 +1,22 @@
+T4GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T4DriverLoaded PASS the filter is still loaded after the cycles
+T4VerifierActive PASS runtime Verifier 0x13B still verifies SafeUpload.sys
+T4CyclesCompleted FAIL 9998 of 10000 cycles reached their outcome; outcomes {"resave-approve": {"Ok": 1874, "Failed": 1}, "new-approve": {"Ok": 1874, "Failed": 1}, "replace-approve": {"Ok": 1875, "Failed": 0}, "mapped-approve": {"Ok": 1875, "Failed": 0}, "resave-block": {"Ok": 625, "Failed": 0}, "new-block": {"Ok": 625, "Failed": 0}, "replace-block": {"Ok": 625, "Failed": 0}, "mapped-block": {"Ok": 625, "Failed": 0}}; first failures ['5002 new-approve actor: error Exception calling "WriteAllBytes" with "2" argument(s): "Access to the path \'C:\\Protected\\t4\\new-5002.txt\' is denied."', '5129 resave-approve actor: error Exception calling "WriteAllBytes" with "2" argument(s): "Access to the path \'C:\\Protected\\t4\\same-1.txt\' is denied."']
+T4ActorStopped PASS the actor acknowledged stop
+T4StopReason INFO completed-with-failures; attempted 10000; failures 2
+T4NoBlockedBytesPublished PASS no blocked version reached its public name
+T4PoolFlat FAIL driver nonpaged bytes (Verifier pool tracking) from cycle 1000: 6659700 -> 7232016 at cycle 10000, after idle 7266424; slope 75.914 B/cycle (limit 4); peak 8040024
+T4RegistryBounded PASS 25 samples within registry capacity; idle capacity failures 0; invalid samples []
+T4Memory INFO start: SUfl live 446, bytes 124200; SwUr bytes 6581840; module bytes 6621792
+T4Memory INFO last-cycle: SUfl live 25158, bytes 5660264; SwUr bytes 6574592; module bytes 7232016
+T4Memory INFO idle: SUfl live 25165, bytes 5661832; SwUr bytes 6615664; module bytes 7266424
+T4Memory INFO purged: SUfl live 2371, bytes 555976; SwUr bytes 6649488; module bytes 6750112
+T4ContextsReleased PASS SUfl live start 446, purged 2371; limit start + 2048; released 22794 of idle growth since start 24719; purge NTSTATUS PASS [{"Operation": "RtlAdjustPrivilege", "Privilege": 13, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "RtlAdjustPrivilege", "Privilege": 5, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 2, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 3, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 4, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}]; purged sample present
+T4VersionsReleased FAIL after settle: live versions 1, views 1, created 9999, released 9998, views released 9998
+T4TombstonesReleased PASS after the actor exited: tombstones 0
+T4NoCapRefusal PASS cap refusals 0, tombstone refusals 0
+T4StageFilesDeleted FAIL stage files after idle 1 (journal manifests 9999, hand-backs 2500); driver deletes 7498, failures 0
+T4StageWorkerIdle FAIL stage worker passes over 60 s with nothing waiting: 24 (timer fires 0; waiting versions 0)
+T4WorkerWakes INFO {"wakeCleanup": 9998, "wakeClose": 10000, "wakeDispose": 9998, "wakeConnect": 1, "wakeExit": 1861, "wakeTimer": 9764, "wakeInline": 42494, "timerArms": 28530, "disposeHeld": 9998, "disposeNotHeld": 1386, "disposeStale": 0, "disposeDeferred": 0, "passes": 79804}
+T4CycleTime INFO median 1356 ms, p95 2593 ms, max 7088 ms over 10000 cycles
+T4Duration INFO 18196 s (verifier-from-boot, 10000 cycles)

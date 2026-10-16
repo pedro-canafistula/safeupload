@@ -1,0 +1,17 @@
+**ACCEPT WITH CONDITIONS — design only, `e9952b33`.** No demonstrated authority bypass. Read-only review; no edits, builds, tests or VMs.
+
+1. **Medium — clarify absence authority.** Verified: the semantic root stores totals/policy; reconstruction builds `_records`/`_used`, and [`Read` answers absence from RAM](agente/SafeUpload.Agent.Service/Interception/StagedSemanticWalV30.cs:188). The [proposal](driver/T5-INCREMENTAL-VALIDATION.md:15) requires validated index state but does not distinguish trusted membership descriptors from cached decoding. **Required:** explicitly define immutable membership/allocation metadata derived only from complete validated recovery or the owner’s complete frontier-durable transaction—or specify a durable index and revise costs. Test deleted/reused-key absence and damaged allocation candidates, requiring hold without overwrite. This is a contract ambiguity, not a verified exploit.
+
+2. **Medium — make sweep invalidation precise.** The [idle design](driver/T5-INCREMENTAL-VALIDATION.md:36) is coherent: no store gate or arena pin across I/O, foreground preemption, stale-sample discard, atomic result publication and teardown drain. However, **Frontier equality is insufficient**: [checkpoint reset preserves Frontier while advancing Arena](agente/SafeUpload.Agent.Service/Interception/StagedRedoWalV30.cs:464). **Required:** bind snapshots to canonical control plus owner mutation/lifecycle/hold state; invalidate before physical mutation/reuse and discard stale failures before latching corruption. Add paused-sweep controls against checkpoint reset, failed `Applying`, an already-latched hold and teardown—not only a revision-changing save.
+
+3. **Low — read arithmetic verified; clarify assumptions and counter scopes.** Independently recomputed the proposed workload:
+
+   | Reads after creation | Bytes | Full-return requests |
+   |---|---:|---:|
+   | Foreground | 573,435,904 | 100,000 |
+   | Checkpoints | 209,256,448 | 50,308 |
+   | Total | **782,692,352** | **150,308** |
+
+   **Required:** label the 28,672-byte root+record example as sharing one COMMIT; separate originating transactions require another COMMIT read. State that retained **280,662,016 written bytes** include creation. Count actual dependencies and additional lookups; these are algebraic predictions, not measurements.
+
+4. **Informational — integrity guarantees and threat boundary are acceptable for stated M2 scope.** **Design inference:** exact descriptor provenance, fresh selected bytes, typed closure and control rereads suffice for consumed-state integrity; control equality alone does not validate cached payload. Free-page validation before overwrite and full validation before checkpoint/reclamation preserve evidence. Revision-2 durability, floors, ordering, exact repair, drains and lifetime guarantees remain specified, except the expressly approved unrelated-corruption timing change. The unauthenticated cold coherent rollback limitation is accurate and matches the [existing test](agente/SafeUpload.Agent.Tests/StagedCheckpointV30Tests.cs:199). **Required:** preserve that limitation, replacement no-authority/no-write/latched-hold controls, and all previous qualification conditions—including flush and lifecycle latency measurements. Design acceptance does not qualify the implementation or protected pair.

@@ -32,6 +32,34 @@ baseline() {  # $1 evidence path
     grep -q 'BaselineClean=True' "$1"
 }
 source "$(dirname "${BASH_SOURCE[0]}")/run-disk.sh"
+# Diagnostic only, before a failed case's run disk is discarded (m2t5od1 lost every guest trace: the after-boot child left no
+# output and SSH was refused when artifacts were copied). Host side: domain state and reason, and a screenshot (PNG despite any
+# name). If the guest answers within the usual wait: crash/shutdown events, minidump list, MEMORY.DMP size, the case's leftover
+# phase output, and a copy of C:\Windows\Minidump. Every step is best effort; it never changes the verdict, exit code or cleanup.
+failure_capture() {  # $1 tag, $2 case
+    local out="$ev/batch-$1-failure"
+    { $V domstate "$dom" --reason; $V dominfo "$dom"; } > "$out-domstate.txt" 2>&1 || true
+    $V screenshot "$dom" "$out-screen.png" > /dev/null 2>&1 || true
+    if wait_up; then
+        remote > "$out-guest.txt" 2>&1 <<PS || true
+\$ErrorActionPreference = 'Continue'
+'LastBootUpTime=' + (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')
+\$since = (Get-Date).AddHours(-3)
+Get-WinEvent -FilterHashtable @{ LogName = 'System'; StartTime = \$since; Id = 41, 1001, 6008, 1074, 6005, 6006, 7031, 7034, 7023 } -ErrorAction SilentlyContinue |
+    Sort-Object TimeCreated | ForEach-Object { 'Event ' + \$_.TimeCreated.ToUniversalTime().ToString('o') + ' ' + \$_.Id + ' ' + \$_.ProviderName + ' ' + ((\$_.Message -replace '\s+', ' ') -replace '^(.{0,400}).*$', '\$1') }
+Get-ChildItem -LiteralPath 'C:\Windows\Minidump' -File -ErrorAction SilentlyContinue | ForEach-Object { 'Minidump ' + \$_.Name + ' ' + \$_.Length + ' ' + \$_.LastWriteTimeUtc.ToString('o') }
+\$dump = Get-Item -LiteralPath 'C:\Windows\MEMORY.DMP' -ErrorAction SilentlyContinue; if (\$dump) { 'MemoryDump ' + \$dump.Length + ' ' + \$dump.LastWriteTimeUtc.ToString('o') }
+Get-ChildItem -LiteralPath 'C:\Users\vika\Documents' -File -Filter '*$1-*' -ErrorAction SilentlyContinue | ForEach-Object { 'CaseFile ' + \$_.Name + ' ' + \$_.Length }
+foreach (\$f in @(Get-ChildItem -LiteralPath 'C:\Users\vika\Documents' -File -Filter '*$1-*.err' -ErrorAction SilentlyContinue)) { '--- ' + \$f.Name; Get-Content -LiteralPath \$f.FullName -TotalCount 60 -ErrorAction SilentlyContinue }
+PS
+        mkdir -p "$out-minidump"
+        timeout 300 scp -r -F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR \
+            -o StrictHostKeyChecking=yes "vika@$host:C:/Windows/Minidump" "$out-minidump/" > /dev/null 2>&1 || true
+    else
+        echo 'GuestUnreachable=True' > "$out-guest.txt"
+    fi
+    log "failure evidence for $1 $2 in $out-*"
+}
 # The guest's wall clock starts about 4 h behind after each cold start, and the Windows time service steps it a few minutes later; a
 # step inside a trial moves last-access times outside every allowed transition (C01 and C02 BLOCK, m21v10 and m21v12:
 # DirectoryMetadata at the first samples after the step, nothing else changed). Once the fresh disk is up, make the time service
@@ -92,6 +120,7 @@ for case in "$@"; do
         [[ "$verdict" == CaseVerdict=FAIL\ reason=* ]] || verdict="CaseVerdict=FAIL reason=verdict helper failed"
     fi
     log "result $tag $case: $verdict"
+    [ "$verdict_exit" -eq 0 ] || failure_capture "$tag" "$case"
     run_disk_end "$dom" "$tag" >> "$disk" 2>&1 && grep -qx 'RunDiskBaseUntouched=True' "$disk" ||
         { log "STOP: run files of $tag not discarded cleanly ($disk)"; exit 3; }
     [ "$verdict_exit" -eq 0 ] || { log "STOP: $tag $case failed: ${verdict#* reason=}"; exit 1; }

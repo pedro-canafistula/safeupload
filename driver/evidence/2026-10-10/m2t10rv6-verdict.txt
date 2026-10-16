@@ -1,0 +1,27 @@
+T10GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T10DriverLoaded PASS the filter is still loaded after the run
+T10VerifierActive PASS runtime-verifier still verifies SafeUpload.sys
+T10AdminIsAdministrator PASS WIN10-DEBUGGED\vika admin=True
+T10FileGrant PASS exit=0 processed file: C:\Protected\t10\admin.txt Successfully processed 1 files; Failed processing 0 files
+T10FileSetowner PASS exit=0 processed file: C:\Protected\t10\admin.txt Successfully processed 1 files; Failed processing 0 files
+T10FileTakeown PASS exit=0  SUCCESS: The file (or folder): "C:\Protected\t10\admin.txt" now owned by user "WIN10-DEBUGGED\vika".
+T10FileSetacl PASS exit=0
+T10FolderGrantTree PASS exit=0 processed file: C:\Protected\t10 processed file: C:\Protected\t10\admin.txt processed file: C:\Protected\t10\existing.txt Successfully processed 3 files; Failed processing 0 files
+T10FolderResetTree PASS exit=0 processed file: C:\Protected\t10 processed file: C:\Protected\t10\admin.txt processed file: C:\Protected\t10\existing.txt Successfully processed 3 files; Failed processing 0 files
+T10FileReadable PASS 
+T10PhaseBCompleted PASS 13 of 13 checks; error None
+T10ExistingPublished PASS the pre-existing protected file is readable
+T10VersionHeld PASS actor holds a staged version: ok
+T10StageFilePresent PASS new stage files: C:\ProgramData\SafeUpload\staging\d873c26b939040c6b4df86d567d7c564.txt
+T10AdminFileAclChanged PASS icacls exit 0; processed file: C:\Protected\t10\existing.txt Successfully processed 1 files; Failed processing 0 files 
+T10AdminFolderAclChanged PASS icacls exit 0; processed file: C:\Protected\t10 Successfully processed 1 files; Failed processing 0 files 
+T10PrivateBackingClosedToSecurityChanges PASS an administrator-equivalent can neither read nor change a stage file's security: refused/5
+T10HeldBlocked PASS release: ok
+T10ActorFileAclAllowed PASS actor icacls on the file: ok
+T10CpfAfterGrantBlocked PASS write: ok
+T10NoBlockedBytesPublished PASS the public file never holds the blocked bytes
+T10ActorFolderAclRefusedByWindows PASS actor icacls on the folder: exit 5 icacls.exe : C:\Protected\t10: Access is denied. At C:\T10\permissions-actor.ps1:35 char:25 + $out = (& icacls.exe $c.Path @($c.Args) 2>&1 | Out-St ... + ~~~~~~~~~~~
+T10CleanPublished PASS write: ok
+T10PrivateDirectoryAclUnchanged PASS the private stage directory keeps its security descriptor
+T10AceAfterPublication INFO admin ACE survived publication: False; SDDL O:SYG:SYD:AI(A;ID;0x1200a9;;;BU)(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU)
+T10Duration INFO 253 s (runtime-verifier)

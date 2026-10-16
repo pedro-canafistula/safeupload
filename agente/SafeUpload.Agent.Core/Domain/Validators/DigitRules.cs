@@ -1,8 +1,8 @@
 namespace SafeUpload.Agent.Core.Domain.Validators;
 
 /// <summary>
-/// Aritmética compartilhada por CPF e CNPJ. Ambos usam o mesmo dígito
-/// verificador módulo 11, mudando apenas o vetor de pesos.
+/// Regras de dígitos compartilhadas por CPF, CNPJ e cartão. CPF e CNPJ usam
+/// o mesmo dígito verificador módulo 11, mudando apenas o vetor de pesos.
 /// </summary>
 internal static class DigitRules
 {
@@ -23,10 +23,11 @@ internal static class DigitRules
     }
 
     /// <summary>
-    /// Sequências de dígitos repetidos (00000000000, 11111111111, ...) são
+    /// No CPF e CNPJ, sequências repetidas (00000000000, 11111111111, ...) são
     /// rejeitadas antes da conta. Elas não são documentos reais e várias delas
     /// passariam no cálculo — 000.000.000-00 é o caso clássico —, o que geraria
-    /// bloqueio em cima de dado de teste ou de preenchimento.
+    /// bloqueio em cima de dado de teste ou de preenchimento. O cartão usa
+    /// esta comparação somente para excluir a sequência composta só por zeros.
     /// </summary>
     internal static bool IsAllSameDigit(ReadOnlySpan<char> digits)
     {

@@ -14,12 +14,19 @@ opcional**:
 
 | Projeto | O que é |
 |---|---|
-| `SafeUpload.Agent.Core` | Domínio: validadores (CPF/CNPJ/Luhn/senha/segredos), motor de decisão (`InspectionService`), extratores de texto (.txt/.docx/.xlsx/.pdf), política e auditoria |
+| `SafeUpload.Agent.Core` | Domínio: validadores (CPF/CNPJ/Luhn/senha/segredos), motor de decisão (`InspectionService`), extratores de texto/CSV, Word, Excel, PowerPoint, PDF e ZIP, política e auditoria |
 | `SafeUpload.Agent.Service` | Serviço Windows que roda 24/7, intercepta operações de arquivo e chama o Core para decidir |
 | `SafeUpload.Agent.App` | Interface WPF (bandeja do sistema, tela de status/histórico, aviso de bloqueio) — só exibe, não decide nada |
 | `SafeUpload.Agent.Tests` | Testes automatizados (xUnit, sem framework de mock) |
 | `SafeUpload.Agent.Minifilter` | Biblioteca de protocolo que conecta o Service ao driver de kernel |
 | `SafeUpload.Agent.Network` | Inspeção TLS do tráfego web: CA local e certificados por host (Fase 1), proxy TLS e parser HTTP/1.1 (Fase 2), desvio dos navegadores (Fase 3); exceções e inspeção nas próximas fases ([arquitetura](../docs/rede/ARQUITETURA-INSPECAO-TLS.md), [plano](../docs/rede/PLANO-INSPECAO-TLS.md)) |
+
+As extensões padrão, tanto na política criada pelo agente quanto na política
+servida pelo backend, são `.txt`, `.csv`, `.docx`, `.xlsx`, `.pdf`, `.pptx`,
+`.pptm`, `.potx`, `.ppsx`, `.zip` e `.7z`. Políticas explícitas existentes não
+são migradas automaticamente. ZIP inspeciona cada membro sob orçamento cumulativo;
+7z permanece recusado com `archive_7z_unavailable`. Veja o escopo e as recusas
+em [INSPECTION-COVERAGE.md](docs/INSPECTION-COVERAGE.md).
 
 Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
 lógica) — e `driver/` na raiz do repositório, o driver de kernel

@@ -32,7 +32,7 @@ The owner's 2026-10-13 instruction replaces Luna for future reviews with **Sol 6
 ## Product invariants
 
 - Staged protection fails closed: no uninspected nonempty bytes at the protected destination. Incomplete extraction, timeout, missing policy or uncertain identity cannot imply approval. Preserve legacy behavior unless its change is explicitly in scope.
-- Keep taint enforcement and staging feature gates. Normal builds compile staging out. USB/removable, SMB/UNC and cloud sync remain disabled until their own approved support and qualification gates. M2 covers local fixed NTFS.
+- Staging is the product path. Runtime activation/readiness gates (V30 enablement, NotReady holds, capability gates) stay until qualification and owner cutover approval; compile-time staging-out builds are retired (owner, 2026-10-15; this approves no activation or cutover of unqualified staging). Process-taint enforcement is being removed from the product (owner, 2026-10-15; superseded by staging). USB/removable, SMB/UNC and cloud sync remain disabled until their own approved support and qualification gates. M2 covers local fixed NTFS.
 - Bind authorization, inspection, publication, delete and recovery to the exact object, destination identity, generation and current policy required by the design. Paths and content hashes alone are not object authority.
 - Preserve the original caller's Windows grants, sharing, owner/DACL/SACL/label semantics and cleanup lifetimes. SYSTEM access must not create caller authority. Never hand back unreadable seeded bytes without the approved read/export policy.
 - Empty files follow the approved ordinary seal/inspect/publish path. Do not revive EmptyHeld. Only an already-published successor cancels a prior delete; pending or blocked saves do not.
@@ -47,8 +47,8 @@ Use committed source and fresh labels with the existing runners. Record the Git 
 | Work | Verification |
 |---|---|
 | Documentation only | Check diffs, links and consistency with current evidence; no product VM boot required |
-| Agent component | Focused relevant controls for feedback; complete normal/feature × Debug/Release matrix for the delivery checkpoint |
-| Kernel | Four normal/feature × Debug/Release WDK builds, PREfast and ApiValidator, all at 0 warnings / 0 errors; required Verifier rows |
+| Agent component | Focused relevant controls for feedback; feature Debug/Release matrix with user + SYSTEM legs (4 legs) for the delivery checkpoint |
+| Kernel | Two feature Debug/Release WDK builds, PREfast and ApiValidator, all at 0 warnings / 0 errors, with import availability PASS over both; required Verifier rows |
 | Harness | Windows PowerShell **5.1** parse/native signature checks, relevant self-checks, then an authorized real run |
 | Milestone | Matched driver/agent artifacts, all required ordinary/runtime-Verifier/boot-Verifier rows, independent byte observations, separate restoration and final adversarial review |
 
@@ -73,7 +73,8 @@ Inspect structured summaries, complete test discovery/execution coverage, packag
 - The approved target is **`win10-debug3` only**. Keep `win10-debug2` off because it shares the guest IP. Set `SAFEUPLOAD_DEBUGGEE=win10-debug3` explicitly; older runner defaults/inventory are broader than current authorization.
 - The recorded builder is separate from the qualified Windows 10 **19045.2965** target. Native behavior observed on builder 19045.6466 is mechanism evidence, not target qualification.
 - Use existing disposable qcow2 overlays, reset EFI variables at each start, no TPM, test signing and Secure Boot off. Preserve the original base/XML and delete the run disk. Verify restoration separately with the existing baseline procedure.
-- Run BLOCK-window tests serially. Do not run concurrent jobs against the same mutable builder or target. Use monotonic elapsed time for deadlines; the guest wall clock can jump.
+- Run BLOCK-window tests serially. One job per builder: two different approved builders may run jobs in parallel, but never run two jobs on the same builder or the same VM target, and run no builder job on either builder during a timing-sensitive T4 row (owner, 2026-10-15). Use monotonic elapsed time for deadlines; the guest wall clock can jump.
+- Approved builders (owner, 2026-10-15): `builder1` = `192.168.122.210` (`DESKTOP-O1LP5DG`) and `builder2` = `192.168.122.211` (`SU-BUILDER2`, cloned from builder1, parity recorded). Both hold the test-signing certificate (owner decision B) and run every job type; dispatch each job to the first free builder with the role (`driver/scripts/approved-builders.json`), never behind a busy builder when the other is free.
 - Stop on repeated identical failures, changed baselines or required failed assertions according to the status plan. Preserve the first failure and identify the hypothesis before proposing another run.
 - Host-wide polkit, QEMU hooks, sudoers, libvirt, systemd or other host configuration changes require owner approval. Do not apply Ansible/Terraform/image changes to a qualified baseline as part of routine testing.
 - Ask for product decisions only when needed: failure policy, read/export authority, metadata contract, resource defaults, scope or cutover. Explain what users will experience and give a concrete recommendation. Continue independent authorized work meanwhile.

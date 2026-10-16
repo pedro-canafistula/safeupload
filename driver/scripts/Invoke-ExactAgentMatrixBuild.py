@@ -5,11 +5,13 @@ Never commits changes or installs the agent. --prepare-only performs no network
 operation. The commit identifies source; the archive hash verifies delivery.
 """
 import argparse
+from approved_builders import (SSH, select, receipt, receipt_lines, identity_ps, remote_args)
 import datetime
 import hashlib
 import json
 from pathlib import Path
 import re
+import runpy
 import stat
 import subprocess
 from collections import Counter
@@ -19,11 +21,6 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 REPO = Path(__file__).resolve().parents[2]
-SSH = ['-F', '/dev/null', '-i', '/home/victor/.ssh/id_ed25519',
-       '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'LogLevel=ERROR',
-       '-o', 'StrictHostKeyChecking=yes']
-HOST = '192.168.122.210'
-REMOTE = 'vika@' + HOST + ':C:/Users/vika/Documents/'
 TRX_NS = {'t': 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'}
 FAILED_COUNTERS = ('failed', 'error', 'timeout', 'aborted', 'inconclusive',
                    'passedButRunAborted', 'notRunnable', 'notExecuted', 'disconnected',
@@ -31,6 +28,8 @@ FAILED_COUNTERS = ('failed', 'error', 'timeout', 'aborted', 'inconclusive',
 SYSTEM_FILTER_MARKERS = ('CertificateAuthorityTests', 'TlsInspectionProxyTests', 'TrafficDiversionTests')
 MACHINE_FACT_CLASSES = ('MachineCertificateAuthorityTests', 'TrafficDiversionTests')
 VSTEST_DISCOVERY_HEADER = 'The following Tests are available:'
+MATRIX_MODES = ('feature',)
+MATRIX_PROFILE_ROW = 'AgentMatrixProfiles=feature-debug,feature-release'
 STAGED_V20_REQUIRED_TESTS = {
     ('SafeUpload.Agent.Tests.StagedAttachmentV20Tests', method)
     for method in (
@@ -355,12 +354,7 @@ def validate_package(out, mode, summary):
             'members': len(manifest_hashes)}
 
 
-def verify_matrix_outputs(out, summary):
-    """Prove that each profile executed its complete discovered inventory exactly once."""
-    tests = {}
-    packages = {}
-    required_normal = {('SafeUpload.Agent.Tests.AdmissionEvidenceEndpointTests',
-                        'EvidenceTypesExistOnlyInFeatureBuilds')} | STAGED_V20_REQUIRED_TESTS
+def required_feature_tests():
     required_feature = {('SafeUpload.Agent.Tests.AdmissionEvidenceWireTests', method)
                         for method in (
                             'Managed_status_mirrors_match_driver_sizes_and_offsets',
@@ -383,12 +377,19 @@ def verify_matrix_outputs(out, summary):
                              'NonzeroReservedFlagsInNonTargetActivatingEntryPreserveRawPageAndInvalidateCapture',
                              'BackpressureDeadlineCancelsCaptureAndTerminalizesReservedHook')}
     required_feature |= STAGED_V20_REQUIRED_TESTS
-    for mode in ('normal', 'feature'):
+    return required_feature
+
+
+def verify_matrix_outputs(out, summary):
+    """Prove that both feature profiles executed every discovered case exactly once."""
+    tests = {}
+    packages = {}
+    read_gate(summary, MATRIX_PROFILE_ROW)
+    read_gate(summary, 'AgentMatrixTestLegs=4')
+    for mode in MATRIX_MODES:
         for configuration in ('debug', 'release'):
             name = mode + '-' + configuration
-            expected_admission = (required_feature if mode == 'feature' else required_normal)
-            expected_switch = 'true' if mode == 'feature' else 'false'
-            read_gate(summary, name + ': admission_evidence=' + expected_switch)
+            read_gate(summary, name + ': admission_evidence=true')
             for action in ('build', 'app-build', 'test-build', 'tests-discovery-list',
                            'tests-discovery-fqns', 'tests-user', 'tests-system', 'tests'):
                 read_gate(summary, name + '-' + action + ': exit=0 warnings=0 errors=0')
@@ -460,7 +461,7 @@ def verify_matrix_outputs(out, summary):
                 raise RuntimeError('MachineFact test ran in the unprivileged account: ' + name)
 
             required_result_ids = {}
-            for class_name, method_name in sorted(expected_admission):
+            for class_name, method_name in sorted(required_feature_tests()):
                 fqn = class_name + '.' + method_name
                 required_result_ids[fqn] = require_required_passed_result_ids(
                     discovered_cases, merged['cases'], merged['results_by_fqn'], fqn, name)
@@ -511,6 +512,9 @@ def create_feature_release_view(work, out, provenance, tests, package_info):
     test_count = tests['feature-release']['total']
     summary = '\n'.join((
         'ArtifactView=exact-agent-compatible-feature-release',
+        MATRIX_PROFILE_ROW,
+        'AgentMatrixTestLegs=4',
+        *[key + '=' + str(value) for key, value in provenance['BuilderIdentity'].items()],
         'SourceKind=GitCommit',
         'SourceCommit=' + provenance['SourceCommit'],
         'ARCHIVE_SHA256=' + provenance['ArchiveSHA256'].upper(),
@@ -525,21 +529,77 @@ def create_feature_release_view(work, out, provenance, tests, package_info):
     return view
 
 
+def matrix_fetch_names(diagnostic_continue):
+    names = ['summary.txt', 'dotnet-info.txt']
+    for mode in MATRIX_MODES:
+        for configuration in ('debug', 'release'):
+            name = mode + '-' + configuration
+            names += [name + '-build.txt', name + '-app-build.txt', name + '-tests.txt',
+                      name + '-test-build.txt', name + '-tests-user.txt',
+                      name + '-tests-system.txt', name + '-tests-system.txt.stderr',
+                      name + '-tests-discovery-list.txt', name + '-tests-discovery-fqns.txt',
+                      name + '-results/agent-tests-discovered-fq.txt',
+                      name + '-results/agent-tests.trx',
+                      name + '-results/agent-tests-user.trx',
+                      name + '-results/agent-tests-system.trx']
+        names += [mode + '-release-publish.txt']
+        if not diagnostic_continue:
+            names += [mode + '-release-package-manifest.txt',
+                      mode + '-release-service-publish.zip']
+    if diagnostic_continue:
+        names = [name for name in names if not name.endswith(('-tests.txt', '/agent-tests.trx'))]
+    return names
+
+
+def diagnostic_completion(out, builder, provenance, result, fetched):
+    completed = False
+    errors = []
+    try:
+        summary = (out / 'summary.txt').read_text(encoding='utf-8-sig')
+        for row in receipt_lines(builder) + ['AgentMatrixGate=False', 'DiagnosticContinue=True',
+                                           MATRIX_PROFILE_ROW, 'AgentMatrixTestLegs=4',
+                                           'LabelKind=diagnostic', 'DiagnosticProfilesCompleted=2',
+                                           'DiagnosticTestLegsAttempted=4',
+                                           'SourceCommit=' + provenance['SourceCommit'],
+                                           'ARCHIVE_SHA256=' + provenance['ArchiveSHA256'].upper()]:
+            read_gate(summary, row)
+        if 'AgentMatrixGate=True' in summary.splitlines():
+            raise RuntimeError('Diagnostic summary claims a gate')
+        completed = all(row['Fetched'] for row in fetched.values())
+    except (OSError, RuntimeError) as exc:
+        errors.append(str(exc))
+    return {**receipt(builder), 'Provenance': provenance, 'AgentMatrixGate': False,
+            'DiagnosticContinue': True, 'LabelKind': 'diagnostic', 'Packages': {},
+            'Notice': 'DiagnosticContinue: not a gate', 'DiagnosticCompleted': completed,
+            'BuildExit': result, 'Fetched': fetched, 'ReceiptErrors': errors}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('label')
     parser.add_argument('--commit', default='HEAD')
     parser.add_argument('--prepare-only', action='store_true')
+    parser.add_argument('--diagnostic-continue', action='store_true',
+                        help='Attempt all four feature test legs; never a gate and never fetch packages')
     args = parser.parse_args()
     if not re.fullmatch('[A-Za-z0-9._-]{3,60}', args.label):
         parser.error('invalid label')
+    builder = select('matrix', args.label)
+    remote_root = 'C:/Users/' + builder['ssh_user'] + '/Documents/'
+    remote_dest = builder['ssh_user'] + '@' + builder['host'] + ':' + remote_root
     commit = subprocess.check_output(
         ['git', 'rev-parse', '--verify', args.commit + '^{commit}'], cwd=REPO, text=True).strip()
     work = REPO / 'output' / 'exact-agent-matrix' / args.label
     work.mkdir(parents=True, exist_ok=False)
     subprocess.run(['git', 'archive', '--format=zip', '-o', str(work / 'src.zip'),
                     commit, 'agente'], cwd=REPO, check=True)
-    provenance = {'SourceCommit': commit, 'ArchiveSHA256': sha(work / 'src.zip')}
+    provenance = {'SourceCommit': commit, 'ArchiveSHA256': sha(work / 'src.zip'),
+                  'BuilderIdentity': receipt(builder), 'Label': args.label,
+                  'Profiles': ['feature-debug', 'feature-release'], 'TestLegs': 4,
+                  'LabelKind': 'diagnostic' if args.diagnostic_continue else ('parity' if builder['parity_check'] else 'gate'),
+                  'DiagnosticContinue': args.diagnostic_continue,
+                  'Notice': ('DiagnosticContinue: not a gate' if args.diagnostic_continue else
+                             ('ParityCheck: not a gate' if builder['parity_check'] else 'gate candidate'))}
     evidence = REPO / 'driver' / 'evidence' / datetime.date.today().isoformat()
     evidence.mkdir(parents=True, exist_ok=True)
     prefix = 'exact-agent-matrix-' + args.label
@@ -551,7 +611,12 @@ def main():
         path.write_bytes(data)
         return path
 
-    retain('source.txt', ('SourceCommit=' + commit + '\nArchiveSHA256=' + provenance['ArchiveSHA256'] + '\n').encode())
+    retain('source.txt', ('SourceCommit=' + commit + '\nArchiveSHA256=' + provenance['ArchiveSHA256']
+                          + '\n' + '\n'.join(receipt_lines(builder)) + '\nLabel=' + args.label
+                          + '\nLabelKind=' + provenance['LabelKind']
+                          + '\n' + MATRIX_PROFILE_ROW + '\nAgentMatrixTestLegs=4'
+                          + '\nDiagnosticContinue=' + str(args.diagnostic_continue)
+                          + '\nNotice=' + provenance['Notice'] + '\n').encode())
     print('SOURCE_COMMIT=' + commit + '; archive=' + str(work / 'src.zip'), flush=True)
     if args.prepare_only:
         print('PREPARED_ONLY; network operations=0', flush=True)
@@ -560,37 +625,45 @@ def main():
     def remote(ps, name):
         capture_setup = ("[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)\n"
                          "$OutputEncoding = New-Object System.Text.UTF8Encoding($false)\n")
-        result = subprocess.run(['python3', str(REPO / 'driver/scripts/remote_ps.py'), HOST],
+        result = subprocess.run(['python3', str(REPO / 'driver/scripts/remote_ps.py'),
+                                 *remote_args(builder, 'matrix', args.label)],
                                 input=(capture_setup + ps).encode('utf-8'),
                                 capture_output=True, cwd=REPO)
         retain(name + '.stdout.txt', result.stdout)
         retain(name + '.stderr.txt', result.stderr)
         return result.returncode
 
-    preflight = """$ErrorActionPreference='Stop'
-if($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or
-   (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69' -or
-   -not @(Get-NetAdapter|Where-Object {$_.MacAddress -eq '52-54-00-63-87-7A'}).Count){throw 'Wrong builder; delivery refused.'}
-Write-Output ('BUILDER_PREFLIGHT_MATCH UTC='+[DateTime]::UtcNow.ToString('o'))
-"""
+    preflight = identity_ps(builder)
     for leaf in (prefix, prefix + '.zip',
-                 'Build-ExactAgentMatrix-' + args.label + '.ps1'):
-        preflight += "if(Test-Path -LiteralPath 'C:\\Users\\vika\\Documents\\" + leaf + "'){throw 'Remote build destination already exists.'}\n"
+                 'Build-ExactAgentMatrix-' + args.label + '.ps1', prefix + '-tools'):
+        preflight += "if(Test-Path -LiteralPath '" + remote_root + leaf + "'){throw 'Remote build destination already exists.'}\n"
     if remote(preflight, 'builder-preflight') != 0:
         raise RuntimeError('Builder preflight failed before source delivery')
+    if remote("[void](New-Item -ItemType Directory -Path '" + remote_root + prefix + "-tools')", 'tools-directory') != 0:
+        raise RuntimeError('Could not create fresh builder tools directory')
     archive_sha = provenance['ArchiveSHA256']
     tool = REPO / 'driver/scripts/Build-ExactAgentMatrix.ps1'
     tool_sha = sha(tool)
+    helper_checks = ''
     for local, target in ((work / 'src.zip', prefix + '.zip'),
-                          (tool, 'Build-ExactAgentMatrix-' + args.label + '.ps1')):
-        subprocess.run(['scp', *SSH, str(local), REMOTE + target], check=True)
+                          (tool, 'Build-ExactAgentMatrix-' + args.label + '.ps1'),
+                          (REPO / 'driver/scripts/ApprovedBuilders.ps1', prefix + '-tools/ApprovedBuilders.ps1'),
+                          (REPO / 'driver/scripts/approved-builders.json', prefix + '-tools/approved-builders.json')):
+        subprocess.run(['scp', *SSH, str(local), remote_dest + target], check=True)
+        if local != work / 'src.zip':
+            helper_checks += ("if((Get-FileHash -LiteralPath '" + remote_root + target
+                              + "' -Algorithm SHA256).Hash -ne '" + sha(local)
+                              + "'){throw 'Uploaded build support hash mismatch.'}\n")
     print('DELIVERED; builder identity and archive delivery verified', flush=True)
-    remote_tool = 'C:\\Users\\vika\\Documents\\Build-ExactAgentMatrix-' + args.label + '.ps1'
-    cleanup_selftest = "$ErrorActionPreference='Stop'\n"
+    remote_tool = remote_root + 'Build-ExactAgentMatrix-' + args.label + '.ps1'
+    builder_parameters = (" -BuilderName '" + builder['name'] + "' -BuilderSupportPath '"
+                          + remote_root + prefix + "-tools/ApprovedBuilders.ps1' -BuilderConfigPath '"
+                          + remote_root + prefix + "-tools/approved-builders.json'")
+    cleanup_selftest = "$ErrorActionPreference='Stop'\n" + helper_checks
     cleanup_selftest += "if((Get-FileHash -LiteralPath '" + remote_tool + "' -Algorithm SHA256).Hash -ne '" + tool_sha + "'){throw 'Uploaded build tool hash mismatch.'}\n"
     cleanup_selftest += "if($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1){throw 'Harness parsing requires Windows PowerShell 5.1.'}\n"
     cleanup_selftest += "$parseTokens=$null; $parseErrors=$null; [void][System.Management.Automation.Language.Parser]::ParseFile('" + remote_tool + "',[ref]$parseTokens,[ref]$parseErrors); if($parseErrors.Count){throw 'Harness PowerShell 5.1 parse failed.'}; Write-Output 'HARNESS_POWERSHELL51_PARSE=PASS'\n"
-    cleanup_selftest += "& '" + remote_tool + "' -Label '" + args.label + "' -ArchiveSha256 '" + archive_sha + "' -SourceCommit '" + commit + "' -CleanupSelfTestOnly\n"
+    cleanup_selftest += "& '" + remote_tool + "' -Label '" + args.label + "' -ArchiveSha256 '" + archive_sha + "' -SourceCommit '" + commit + "'" + builder_parameters + " -CleanupSelfTestOnly\n"
     selftest_exit = remote(cleanup_selftest, 'system-job-cleanup-selftest')
     selftest_log = evidence / (prefix + '-system-job-cleanup-selftest.stdout.txt')
     if (selftest_exit != 0 or not selftest_log.exists()
@@ -600,32 +673,19 @@ Write-Output ('BUILDER_PREFLIGHT_MATCH UTC='+[DateTime]::UtcNow.ToString('o'))
             not in selftest_log.read_bytes() or
             b'HARNESS_POWERSHELL51_PARSE=PASS' not in selftest_log.read_bytes()):
         raise RuntimeError('Builder process-job cleanup self-test failed; matrix execution was not started')
-    ps = "$ErrorActionPreference='Stop'\n"
+    ps = "$ErrorActionPreference='Stop'\n" + helper_checks
     ps += "if((Get-FileHash -LiteralPath '" + remote_tool + "' -Algorithm SHA256).Hash -ne '" + tool_sha + "'){throw 'Uploaded build tool hash mismatch.'}\n"
-    ps += "& '" + remote_tool + "' -Label '" + args.label + "' -ArchiveSha256 '" + archive_sha + "' -SourceCommit '" + commit + "'\n"
+    ps += "& '" + remote_tool + "' -Label '" + args.label + "' -ArchiveSha256 '" + archive_sha + "' -SourceCommit '" + commit + "'" + builder_parameters + (" -DiagnosticContinue" if args.diagnostic_continue else '') + "\n"
     result = remote(ps, 'build')
     print('BUILD_RETURNED=' + str(result) + '; collecting retained evidence', flush=True)
     out = work / 'out'
     out.mkdir()
-    names = ['summary.txt', 'dotnet-info.txt']
-    for mode in ('normal', 'feature'):
-        for configuration in ('debug', 'release'):
-            name = mode + '-' + configuration
-            names += [name + '-build.txt', name + '-app-build.txt', name + '-tests.txt',
-                      name + '-test-build.txt', name + '-tests-user.txt',
-                      name + '-tests-system.txt', name + '-tests-system.txt.stderr',
-                      name + '-tests-discovery-list.txt', name + '-tests-discovery-fqns.txt',
-                      name + '-results/agent-tests-discovered-fq.txt',
-                      name + '-results/agent-tests.trx',
-                      name + '-results/agent-tests-user.trx',
-                      name + '-results/agent-tests-system.trx']
-        names += [mode + '-release-publish.txt', mode + '-release-package-manifest.txt',
-                  mode + '-release-service-publish.zip']
+    names = matrix_fetch_names(args.diagnostic_continue)
     fetched = {}
     for name in names:
         path = out / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        fetch = subprocess.run(['scp', *SSH, REMOTE + prefix + '/out/' + name, str(path)],
+        fetch = subprocess.run(['scp', *SSH, remote_dest + prefix + '/out/' + name, str(path)],
                                capture_output=True)
         if fetch.returncode:
             fetched[name] = {'Fetched': False, 'Exit': fetch.returncode}
@@ -634,12 +694,33 @@ Write-Output ('BUILDER_PREFLIGHT_MATCH UTC='+[DateTime]::UtcNow.ToString('o'))
         if name.endswith('.zip') and path.stat().st_size <= 0:
             raise RuntimeError('Fetched empty package: ' + name)
         retain(name.replace('/', '-'), path.read_bytes())
-    retain('fetch-readout.json', (json.dumps(fetched, indent=2) + '\n').encode())
+    retain('fetch-readout.json', (json.dumps({'Provenance': provenance, 'Fetched': fetched}, indent=2) + '\n').encode())
+    durations, _ = runpy.run_path(str(Path(__file__).with_name('matrix-durations.py')))['report'](out)
+    retain('durations.txt', ('\n'.join(receipt_lines(builder)) + '\nLabel=' + args.label
+                            + '\nLabelKind=' + provenance['LabelKind'] + '\nNotice=' + provenance['Notice'] + '\n' + durations + '\n').encode())
+    print(durations, flush=True)
+    if args.diagnostic_continue:
+        diagnostic_readout = diagnostic_completion(out, builder, provenance, result, fetched)
+        retain('root-readout.json', (json.dumps(diagnostic_readout, indent=2) + '\n').encode())
+        print('DiagnosticContinue: not a gate; AgentMatrixGate=False; DiagnosticContinue=True', flush=True)
+        if not diagnostic_readout['DiagnosticCompleted'] or result != 0:
+            raise RuntimeError('Diagnostic run has failures or incomplete receipts; inspect retained evidence')
+        return
     if result != 0 or not all(row['Fetched'] for row in fetched.values()):
         raise RuntimeError('Build or evidence retrieval incomplete; inspect retained logs')
     summary = (out / 'summary.txt').read_text(encoding='utf-8-sig')
+    for row in receipt_lines(builder):
+        read_gate(summary, row)
     read_gate(summary, 'SourceCommit=' + commit)
     read_gate(summary, 'ARCHIVE_SHA256=' + archive_sha.upper())
+    if builder['parity_check']:
+        read_gate(summary, 'AgentMatrixGate=False')
+        tests, packages = verify_matrix_outputs(out, summary)
+        retain('root-readout.json', (json.dumps({'Provenance': provenance, **receipt(builder),
+               'AgentMatrixGate': False, 'Tests': tests, 'Packages': packages,
+               'Notice': 'ParityCheck: not a gate'}, indent=2) + '\n').encode())
+        print('ParityCheck=True; not a gate; AgentMatrixGate=False; ' + json.dumps(tests), flush=True)
+        return
     if 'AgentMatrixGate=True' not in summary.splitlines():
         raise RuntimeError('Matrix completion sentinel missing')
     tests, packages = verify_matrix_outputs(out, summary)
@@ -649,6 +730,7 @@ Write-Output ('BUILDER_PREFLIGHT_MATCH UTC='+[DateTime]::UtcNow.ToString('o'))
         raise RuntimeError('Feature compatibility package differs from the independently validated matrix package.')
     retain('feature-release-view-summary.txt', (feature_view / 'summary.txt').read_bytes())
     readout = {'UTC': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+               **receipt(builder), 'DiagnosticContinue': False,
                'AgentMatrixGate': 'PASS', 'Tests': tests, 'Packages': packages,
                'FeatureReleaseCompatibilityView': str(feature_view),
                'FeatureReleaseZip': str(feature_zip), 'Provenance': provenance,

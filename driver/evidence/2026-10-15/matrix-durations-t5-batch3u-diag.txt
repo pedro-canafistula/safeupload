@@ -1,0 +1,13 @@
+TRX leg wall times (Times start/finish):
+feature-debug/user: 595.612 s
+feature-debug/system: 3.719 s
+feature-release/user: 14902.362 s (CLOCK JUMP SUSPECTED: summed test time 896.261 s; use host elapsed)
+feature-release/system: 3.339 s
+First leg: feature-debug/user: 595.612 s
+Tests over 60 s (descending duration):
+206.834 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedSemanticMembershipV30Tests.Ten_thousand_opt_in_updates_match_the_accepted_foreground_checkpoint_and_durability_arithmetic
+201.007 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedCheckpointV30Tests.Ten_thousand_checkpoint_updates_have_fixed_files_bounded_actual_IO_and_one_reconstruction
+198.555 s | feature-release/user | Passed | SafeUpload.Agent.Tests.StagedCheckpointV30Tests.Ten_thousand_checkpoint_updates_have_fixed_files_bounded_actual_IO_and_one_reconstruction
+164.095 s | feature-release/user | Passed | SafeUpload.Agent.Tests.StagedStorageV30Tests.Ten_thousand_workspace_cycles_plateau_and_do_not_rescan_history_or_release_physical_bytes
+131.447 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedStorageV30Tests.Ten_thousand_workspace_cycles_plateau_and_do_not_rescan_history_or_release_physical_bytes
+118.269 s | feature-release/user | Passed | SafeUpload.Agent.Tests.StagedSemanticMembershipV30Tests.Ten_thousand_opt_in_updates_match_the_accepted_foreground_checkpoint_and_durability_arithmetic

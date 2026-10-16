@@ -1,0 +1,86 @@
+﻿[
+    {
+        "sequence":  1,
+        "timeUtc":  "2026-10-16T14:39:17.0130418Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  null,
+        "processId":  4684,
+        "threadId":  4708,
+        "major":  "ACQUIRE_FOR_SECTION_SYNCHRONIZATION",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x4",
+        "options":  "0x0",
+        "reason":  "policyScope",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "ofile\\AppData\\Local\\Microsoft\\Windows\\WebCache\\WebCacheV01.dat"
+    },
+    {
+        "sequence":  2,
+        "timeUtc":  "2026-10-16T14:39:18.1070426Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  null,
+        "processId":  4776,
+        "threadId":  4792,
+        "major":  "ACQUIRE_FOR_SECTION_SYNCHRONIZATION",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x4",
+        "options":  "0x0",
+        "reason":  "policyScope",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "rddiskVolume3\\ProgramData\\Microsoft\\Network\\Downloader\\qmgr.db"
+    },
+    {
+        "sequence":  3,
+        "timeUtc":  "2026-10-16T14:40:27.2618482Z",
+        "status":  "0x80000011",
+        "statusName":  "STATUS_DEVICE_BUSY",
+        "siteOffset":  null,
+        "processId":  7184,
+        "threadId":  7188,
+        "major":  "SET_INFORMATION",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x40",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected\\teste.txt"
+    },
+    {
+        "sequence":  4,
+        "timeUtc":  "2026-10-16T14:40:27.2618589Z",
+        "status":  "0x80000011",
+        "statusName":  "STATUS_DEVICE_BUSY",
+        "siteOffset":  null,
+        "processId":  7184,
+        "threadId":  7188,
+        "major":  "SET_INFORMATION",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0xD",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected\\teste.txt"
+    }
+]
