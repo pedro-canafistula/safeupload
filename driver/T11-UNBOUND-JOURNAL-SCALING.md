@@ -91,6 +91,13 @@ compaction behavior and the bound path are preserved.
 Focused Linux controls and measurements: [result](evidence/2026-10-16/ux-journal-result.md).
 The [terminal-recovery follow-up](evidence/2026-10-16/ux-journal2-result.md) restores
 read-free terminal dispatch while maintenance retains exact archival validation.
+The [outcome-scaling follow-up](evidence/2026-10-16/ux-journal3-result.md) removes a
+separate full-history audit read from legacy notification work reached by public
+file observation. Positive recent-event requests read complete UTF-8 lines from
+the tail without rewriting history. The same audit lock guards publication's
+outcome append, so this also removes that source of contention. Full-history
+requests and legacy UTF-16/32 queue compatibility keep their existing full scans;
+no transfer archive, exact receipt, barrier or retention contract changes.
 Independent design/implementation reviews and closure are linked there. Existing
 assertions and thresholds remain unchanged. These are component results, not a
 Windows user/SYSTEM matrix, a matched protected-pair T4 10k verdict, or T11 closure.
