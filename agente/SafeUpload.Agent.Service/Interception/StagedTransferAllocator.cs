@@ -221,7 +221,8 @@ public sealed partial class StagedTransferAllocator
             if (OperatingSystem.IsWindows())
             {
                 identity = await StagedBackingFile.CreateAsync(copyExisting ? source ?? fullDestination : null,
-                    transfer.StagePath, MaximumSeedBytes, cancellationToken).ConfigureAwait(false);
+                    transfer.StagePath, MaximumSeedBytes, cancellationToken,
+                    sourceExists ? source ?? fullDestination : null, preserveCreation: disposition != 0).ConfigureAwait(false);
             }
             else if (copyExisting)
             {

@@ -1125,6 +1125,8 @@ the publishing application can reopen the file and agreed metadata is preserved.
   for unbounded header/dictionary allocation ([assessment](../agente/docs/T9-ARCHIVE-INSPECTION.md)); owner choice pending.
 - [ ] Implement and test the metadata contract decided 2026-10-16 (native owner/DACL/SACL/label, timestamps, attributes; Zone.Identifier
   carried with its file; other ADS, EAs, EFS, offline, reparse points and hard links refused).
+  - [ ] Unbound `ux/meta` [basic metadata increment](UX-METADATA.md): exact sealed dates/ordinary attributes and unsupported-storage checks;
+    native descriptor construction, public metadata serialization and inspected atomic MOTW remain unfinished. No T8 completion or VM qualification.
 - [ ] Qualify application rows under the matched pair with independent byte observation and restoration.
 
 ### T9. Large files and complete inspection
