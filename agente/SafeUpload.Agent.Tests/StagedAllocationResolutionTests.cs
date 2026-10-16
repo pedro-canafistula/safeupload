@@ -64,12 +64,13 @@ public sealed class StagedAllocationResolutionTests : IDisposable
         Assert.Null(result); Assert.Equal(0, allocations); Assert.False(File.Exists(Destination));
         var restarted = new StagedTransferAllocator(Root, Journal());
         Assert.Null(await restarted.ResolveAllocationRequestV20Async(request, Destination, DestinationKind.Cloud,
-            () => throw new InvalidOperationException("A terminal reservation must never be allocated later."), default));
-        Assert.Single(Directory.GetFiles(Root, "*.allocation-refused"));
+            () => Task.FromResult<StagedAllocationReply?>(null), default));
+        Assert.Empty(Directory.GetFiles(Root, "*.allocation-refused*"));
+        Assert.Empty(await Journal().ReadPendingAsync(default));
     }
 
     [Fact]
-    public async Task Definitive_refusal_cleans_unjournaled_backing_before_persisting_exact_receipt()
+    public async Task Definitive_refusal_cleans_unjournaled_backing_without_creating_durable_metadata()
     {
         var allocator = new StagedTransferAllocator(Root, Journal()); var request = Request();
         Assert.True(request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source));
@@ -78,8 +79,8 @@ public sealed class StagedAllocationResolutionTests : IDisposable
         Assert.Null(await allocator.ResolveAllocationRequestV20Async(request, Destination, DestinationKind.Cloud,
             () => Task.FromResult<StagedAllocationReply?>(null), default));
         Assert.False(File.Exists(stage)); Assert.False(File.Exists(Destination));
-        byte[] saved = await File.ReadAllBytesAsync(Assert.Single(Directory.GetFiles(Root, "*.allocation-refused")));
-        Assert.Equal(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref request, 1)).ToArray(), saved);
+        Assert.Empty(Directory.GetFiles(Root, "*.allocation-refused*"));
+        Assert.Empty(await Journal().ReadPendingAsync(default));
     }
 
     [Fact]
@@ -139,7 +140,7 @@ public sealed class StagedAllocationResolutionTests : IDisposable
     }
 
     [Fact]
-    public async Task Refusal_and_allocation_serialize_and_never_commit_both_for_one_reservation()
+    public async Task Stateless_refusal_and_late_allocation_serialize_for_exact_kind5_cleanup()
     {
         var journal = Journal(); await journal.ReconcileDriverInstanceV20Async(_driver, (uint)StageV20Capability.Required, default);
         var allocator = new StagedTransferAllocator(Root, journal); var request = Request();
@@ -151,8 +152,15 @@ public sealed class StagedAllocationResolutionTests : IDisposable
         var second = allocator.ResolveAllocationRequestV20Async(request, Destination, DestinationKind.Cloud,
             () => Allocate(allocator, request), default);
         Assert.False(second.IsCompleted); resume.SetResult();
-        Assert.Null(await first); Assert.Null(await second);
-        Assert.Empty(await journal.ReadPendingAsync(default));
+        Assert.Null(await first);
+        var late = Assert.IsType<StagedAllocationReply>(await second);
+        Assert.Single(await journal.ReadPendingAsync(default));
+        var discard = new StagedDiscardRequest(late.Transfer.TransferId,
+            new(late.Transfer.TransferId, late.DestinationGeneration, late.StageIdentity), StagedDiscardKind.UnattachedAllocation);
+        Assert.Equal(StagedDiscardStatus.Pending, await journal.BeginOrConfirmDiscardAsync(discard, default, 17, _driver));
+        Assert.Equal(StagedDiscardStatus.Acknowledged, await journal.CompleteDiscardAsync(discard, default));
+        Assert.False(File.Exists(late.Transfer.StagePath)); Assert.False(File.Exists(Destination));
+        Assert.Empty(Directory.GetFiles(Root, "*.allocation-refused*"));
     }
 
     [Theory]
@@ -163,8 +171,9 @@ public sealed class StagedAllocationResolutionTests : IDisposable
     public async Task Altered_request_cannot_reuse_a_terminal_reservation(int offset)
     {
         var allocator = new StagedTransferAllocator(Root, Journal()); var request = Request();
-        Assert.Null(await allocator.ResolveAllocationRequestV20Async(request, Destination, DestinationKind.Cloud,
-            () => Task.FromResult<StagedAllocationReply?>(null), default));
+        request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source);
+        await File.WriteAllBytesAsync(Path.Combine(Root, source.Intent.AllocationReservationId.ToString("N") + ".allocation-refused"),
+            MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref request, 1)).ToArray());
         byte[] bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref request, 1)).ToArray();
         bytes[offset] ^= 1; var changed = MemoryMarshal.Read<SafeUploadRequest>(bytes);
         await Assert.ThrowsAsync<IOException>(() => allocator.ResolveAllocationRequestV20Async(changed, Destination,

@@ -381,8 +381,8 @@ public sealed partial class StagedTransferJournal
                 throw new IOException("Publication or rename currently holds this destination.");
             if (tombstoneOwner is not null)
             {
-                long head = versions.Select(e => e.Generation).DefaultIfEmpty(0).Max();
-                var claims = versions.Where(e => e.Generation == head).ToArray();
+                long head = versions.Where(e => !e.RetiredAllocation).Select(e => e.Generation).DefaultIfEmpty(0).Max();
+                var claims = versions.Where(e => !e.RetiredAllocation && e.Generation == head).ToArray();
                 if (claims.Length != 1 || !claims[0].Tombstone ||
                     claims[0].Entry.Transfer.TransferId != tombstoneOwner ||
                     claims[0].Entry.Transfer.ProcessId != transfer.ProcessId ||
@@ -3095,19 +3095,18 @@ public sealed partial class StagedTransferJournal
     // Pending renames reserve both names. Path identity is the bounded NTFS
     // milestone's key; alias/file-ID identity remains a namespace acceptance gate.
     private sealed record DestinationClaim(TransferJournalEntry Entry, long Generation,
-        bool Tombstone, bool Reserved);
+        bool Tombstone, bool Reserved, bool RetiredAllocation);
 
     private async Task<List<DestinationClaim>> DestinationVersionsAsync(string destination, CancellationToken token)
     {
         using var phaseTiming = StagedRequestTiming.Measure("journal-scan");
         var versions = new List<DestinationClaim>();
         await EnsureArchiveLoadedCoreAsync(token).ConfigureAwait(false);
-        if (_archivedClaims.TryGetValue(destination, out var maximum))
-            foreach (Guid id in maximum.Transfers)
-            {
-                var archived = await ReadArchivedCoreAsync(id, token).ConfigureAwait(false);
-                AddClaim(archived);
-            }
+        var archivedIds = new HashSet<Guid>();
+        if (_archivedClaims.TryGetValue(destination, out var maximum)) archivedIds.UnionWith(maximum.Transfers);
+        if (_archivedEffectiveClaims.TryGetValue(destination, out var effective)) archivedIds.UnionWith(effective.Transfers);
+        foreach (Guid id in archivedIds)
+            AddClaim(await ReadArchivedCoreAsync(id, token).ConfigureAwait(false));
         foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
         {
             if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
@@ -3139,7 +3138,8 @@ public sealed partial class StagedTransferJournal
             }
             if (generation >= 0 || pending)
                 versions.Add(new(entry, Math.Max(0, generation), tombstone,
-                    pending || (current && (entry.PendingRename is not null || entry.State == TransferJournalState.Publishing))));
+                    pending || (current && (entry.PendingRename is not null || entry.State == TransferJournalState.Publishing)),
+                    RetiredUnattachedAllocation(entry)));
         }
     }
 
@@ -3239,6 +3239,16 @@ public sealed partial class StagedTransferJournal
             throw new IOException("A later save or pending rename supersedes this destination version.");
     }
 
+    private static bool RetiredUnattachedAllocation(TransferJournalEntry entry) =>
+        entry.BoundAllocation is null && entry.State == TransferJournalState.DiscardPending &&
+        entry.DiscardKind == StagedDiscardKind.UnattachedAllocation &&
+        entry.DiscardReservationId == entry.Transfer.TransferId && entry.DiscardRequestedAtUtc is not null &&
+        entry.DiscardAcknowledgedAtUtc is not null && !entry.SealedOnce &&
+        entry.AttachmentStateV20 is (StagedAttachmentStateV20.None or StagedAttachmentStateV20.Aborted) &&
+        entry.CompletionPermitRequestIdV20 is null && entry.HandleObservedRequestIdV20 is null &&
+        entry.PendingRename is null &&
+        entry.NamespaceTombstones is null && entry.UnboundCancellation is null;
+
     private async Task<bool> IsCurrentDestinationAsync(TransferJournalEntry current, CancellationToken token)
     {
         if (current.UnboundCancellation is not null) return false;
@@ -3252,7 +3262,8 @@ public sealed partial class StagedTransferJournal
                 head.PendingCommit is null && current.PendingRename is null;
         }
 #endif
-        var versions = await DestinationVersionsAsync(current.Transfer.DestinationPath, token).ConfigureAwait(false);
+        var versions = (await DestinationVersionsAsync(current.Transfer.DestinationPath, token).ConfigureAwait(false))
+            .Where(e => !e.RetiredAllocation).ToList();
         long generation = versions.Select(e => e.Generation).DefaultIfEmpty(0).Max();
         return current.DestinationGeneration == generation &&
             versions.Count(e => e.Generation == generation) == 1 &&
@@ -3451,7 +3462,7 @@ public sealed partial class StagedTransferJournal
         return actualBytes.AsSpan().SequenceEqual(expectedBytes);
     }
 
-    private static void AddPrivateRules(
+    internal static void AddPrivateRules(
         FileSystemSecurity security, SecurityIdentifier owner, bool inherit)
     {
         foreach (var sid in new[]

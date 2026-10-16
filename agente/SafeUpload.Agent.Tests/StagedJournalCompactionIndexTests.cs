@@ -103,6 +103,18 @@ public sealed class StagedJournalCompactionIndexTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Kind5_high_water_and_effective_barrier_both_survive_compaction_with_an_older_pending_save()
+    {
+        var old = Entry(1); var published = Entry(2); var late = Entry(3);
+        late = late with { State = TransferJournalState.DiscardPending,
+            DiscardKind = StagedDiscardKind.UnattachedAllocation, DiscardReservationId = late.Transfer.TransferId,
+            DiscardRequestedAtUtc = Updated, DiscardAcknowledgedAtUtc = Updated };
+        var retained = StagedTransferJournal.FindCompactionProtectedTransfers([old, published, late],
+            new HashSet<Guid> { published.Transfer.TransferId, late.Transfer.TransferId }, default);
+        Assert.True(retained.SetEquals([old.Transfer.TransferId, published.Transfer.TransferId, late.Transfer.TransferId]));
+    }
+
+    [Fact]
     public void Cancelled_index_selection_stops_before_creating_a_retention_result()
     {
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel();

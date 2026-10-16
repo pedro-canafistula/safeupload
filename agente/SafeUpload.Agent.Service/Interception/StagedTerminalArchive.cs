@@ -20,6 +20,7 @@ public sealed partial class StagedTransferJournal
     private sealed record ArchiveMaximum(long Generation, HashSet<Guid> Transfers);
     private readonly Dictionary<Guid, ArchiveLocation> _archived = new();
     private readonly Dictionary<string, ArchiveMaximum> _archivedClaims = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ArchiveMaximum> _archivedEffectiveClaims = new(StringComparer.OrdinalIgnoreCase);
     private bool _archiveLoaded;
     private string? _archiveAppendPath;
     private int _archiveSegmentCount;
@@ -267,7 +268,7 @@ public sealed partial class StagedTransferJournal
 
     private async Task LoadArchiveCoreAsync(CancellationToken token)
     {
-        _archived.Clear(); _archivedClaims.Clear(); _archiveAuditIds.Clear();
+        _archived.Clear(); _archivedClaims.Clear(); _archivedEffectiveClaims.Clear(); _archiveAuditIds.Clear();
         _archiveAuditCursor = 0; _archiveAppendPath = null; _archiveSegmentCount = 0;
         if (Directory.Exists(_completedDirectory))
         {
@@ -374,14 +375,19 @@ public sealed partial class StagedTransferJournal
 
     private void AddArchivedClaims(TransferJournalEntry entry)
     {
-        Add(entry.Transfer.DestinationPath, Math.Max(entry.DestinationGeneration, entry.UnboundCancellation?.Generation ?? 0));
+        Add(_archivedClaims, entry.Transfer.DestinationPath, Math.Max(entry.DestinationGeneration, entry.UnboundCancellation?.Generation ?? 0));
+        if (!RetiredUnattachedAllocation(entry))
+            Add(_archivedEffectiveClaims, entry.Transfer.DestinationPath, Math.Max(entry.DestinationGeneration, entry.UnboundCancellation?.Generation ?? 0));
         for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
-            Add(name.DestinationPath, name.Generation);
-        void Add(string path, long generation)
+        {
+            Add(_archivedClaims, name.DestinationPath, name.Generation);
+            Add(_archivedEffectiveClaims, name.DestinationPath, name.Generation);
+        }
+        void Add(Dictionary<string, ArchiveMaximum> claims, string path, long generation)
         {
             Guid id = entry.Transfer.TransferId;
-            if (!_archivedClaims.TryGetValue(path, out var prior) || generation > prior.Generation)
-                _archivedClaims[path] = new(generation, [id]);
+            if (!claims.TryGetValue(path, out var prior) || generation > prior.Generation)
+                claims[path] = new(generation, [id]);
             else if (generation == prior.Generation) prior.Transfers.Add(id);
         }
     }

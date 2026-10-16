@@ -114,6 +114,44 @@ public sealed class StagedLargeFileNativeTests : IDisposable
         Assert.False(ReadGrantIssued(id));
     }
 
+    [Fact]
+    public async Task Many_failed_creates_and_old_refusals_recover_at_startup_and_background_then_normal_saves_succeed()
+    {
+        var budget = Budget(); var journal = Journal();
+        var allocator = new StagedTransferAllocator(Root, journal, spaceBudget: budget);
+        await journal.ReconcileDriverInstanceV20Async(_driver, (uint)StageV20Capability.Required, default);
+        for (int i = 0; i < 96; i++)
+        {
+            Guid id = Guid.NewGuid(); var request = Request(id);
+            Assert.Null(await allocator.ResolveAllocationRequestV20Async(request, Destination, DestinationKind.Cloud,
+                () => Task.FromResult<StagedAllocationReply?>(null), default));
+            // Upgrade fixture from the regressed build, exceeding the old global threshold.
+            await File.WriteAllBytesAsync(Path.Combine(Root, id.ToString("N") + ".allocation-refused"),
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref request, 1)).ToArray());
+        }
+        Guid damaged = Guid.NewGuid(); string partial = Path.Combine(Root,
+            damaged.ToString("N") + ".allocation-refused." + Guid.NewGuid().ToString("N") + ".tmp");
+        await File.WriteAllTextAsync(partial, "partial legacy refusal: retain exactly");
+        var restartedJournal = Journal();
+        budget = new StagedSpaceBudget(Root, new(true, 512 * MiB, 128 * MiB, 32 * MiB), () => 2048 * MiB,
+            restartedJournal);
+        allocator = new StagedTransferAllocator(Root, restartedJournal, spaceBudget: budget);
+        var failures = new List<Guid>();
+        await allocator.RecoverFailedAllocationsAsync(default, int.MaxValue, (id, _) => failures.Add(id));
+        Assert.Equal(new[] { damaged }, failures);
+        Assert.Equal(partial, Assert.Single(Directory.GetFiles(Root, "*.allocation-refused*")));
+        await allocator.RecoverFailedAllocationsAsync(default, 16); // Background retry is safe/idempotent.
+        Assert.Equal("partial legacy refusal: retain exactly", await File.ReadAllTextAsync(partial));
+        await Assert.ThrowsAsync<IOException>(() => allocator.ResolveAllocationRequestV20Async(Request(damaged),
+            Destination, DestinationKind.Cloud, () => Task.FromResult<StagedAllocationReply?>(null), default));
+        Guid good = Guid.NewGuid();
+        var reply = Assert.IsType<StagedAllocationReply>(await allocator.ResolveAllocationRequestV20Async(Request(good),
+            Destination, DestinationKind.Cloud, async () => await Allocate(allocator, good), default));
+        Assert.True(File.Exists(reply.Transfer.StagePath)); Assert.True(ReadGrantIssued(good));
+        Assert.True(budget.Reserve(Guid.NewGuid(), "S-1-5-21-999") >= 16 * MiB);
+        Assert.False(File.Exists(Destination));
+    }
+
     private bool ReadGrantIssued(Guid id)
     {
         using var record = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Root, ".space-reservations", id.ToString("N") + ".json")));

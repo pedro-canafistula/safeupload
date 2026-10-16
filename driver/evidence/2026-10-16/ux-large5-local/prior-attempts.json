@@ -1,0 +1,47 @@
+{
+  "kind": "Preserved earlier/broader diagnostic failures, no product assertions changed or skipped",
+  "attempts": [
+    {
+      "receipt": ".scratch/ux-large5/focused-first.json",
+      "sha256": "43596249b76c745e6e55ff5bacfc132304ac9446fcbb25b22b4c18fe28dd2db8",
+      "total": 144,
+      "failed": 3,
+      "failures": [
+        {
+          "name": "PolicyTests.Caminhos_monitorados_chegam_expandidos[]",
+          "outcome": "Failed",
+          "error": "Xunit.Sdk.DoesNotContainException: Assert.DoesNotContain() Failure: Item found in collection\n             \u2193 (pos 0)\nCollection: ['%', 'U', 'S', 'E', 'R', \u00b7\u00b7\u00b7]\nFound:      '%'\n   at Xunit.Assert.DoesNotContain[T](T expected, IEnumerable`1 collection, IEqualityComparer`1 comparer) in /_/src/xunit.assert/Asserts/CollectionAsserts.cs:line 402\n   at Xunit.Assert.DoesNotContain[T](T expected, IEnumerable`1 collection) in /_/src/xunit.assert/Asserts/CollectionAsserts.cs:line 372\n   at SafeUpload.Agent.Tests.PolicyTests.Caminhos_monitorados_chegam_expandidos() in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/PolicyTests.cs:line 108\n   at Program.<Main>$(String[] args) in /home/victor/Work/safeupload-ux-large/.scratch/ux-large5/runner/Program.cs:line 38"
+        },
+        {
+          "name": "PolicyTests.Escopo_padrao_e_caminho_de_maquina[]",
+          "outcome": "Failed",
+          "error": "Xunit.Sdk.EqualException: Assert.Equal() Failure: Strings differ\n               \u2193 (pos 3)\nExpected: \"C:\\\\/SafeUpload/Escopo Monitorado\"\nActual:   \"C:\\\\SafeUpload\\\\Escopo Monitorado\"\n               \u2191 (pos 3)\n   at Xunit.Assert.Equal(ReadOnlySpan`1 expected, ReadOnlySpan`1 actual, Boolean ignoreCase, Boolean ignoreLineEndingDifferences, Boolean ignoreWhiteSpaceDifferences, Boolean ignoreAllWhiteSpace) in /_/src/xunit.assert/Asserts/StringAsserts.cs:line 965\n   at Xunit.Assert.Equal(String expected, String actual, Boolean ignoreCase, Boolean ignoreLineEndingDifferences, Boolean ignoreWhiteSpaceDifferences, Boolean ignoreAllWhiteSpace) in /_/src/xunit.assert/Asserts/StringAsserts.cs:line 1342\n   at Xunit.Assert.Equal(String expected, String actual) in /_/src/xunit.assert/Asserts/StringAsserts.cs:line 849\n   at SafeUpload.Agent.Tests.PolicyTests.Escopo_padrao_e_caminho_de_maquina() in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/PolicyTests.cs:line 128\n   at Program.<Main>$(String[] args) in /home/victor/Work/safeupload-ux-large/.scratch/ux-large5/runner/Program.cs:line 38"
+        },
+        {
+          "name": "PolicyTests.Quarentena_fica_fora_da_pasta_vigiada[]",
+          "outcome": "Failed",
+          "error": "Xunit.Sdk.TrueException: Assert.True() Failure\nExpected: True\nActual:   False\n   at Xunit.Assert.True(Nullable`1 condition, String userMessage) in /_/src/xunit.assert/Asserts/BooleanAsserts.cs:line 141\n   at Xunit.Assert.True(Boolean condition) in /_/src/xunit.assert/Asserts/BooleanAsserts.cs:line 95\n   at SafeUpload.Agent.Tests.PolicyTests.Quarentena_fica_fora_da_pasta_vigiada() in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/PolicyTests.cs:line 142\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\n   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)"
+        }
+      ]
+    },
+    {
+      "receipt": ".scratch/ux-large5/focused-debug-final.json",
+      "sha256": "1427de794f72a3f79e3b09e813d455f544bee1883df738623001fcbfba8ae4a6",
+      "total": 311,
+      "failed": 1,
+      "failures": [
+        {
+          "name": "NotificationRecordTests.A_second_writer_is_refused_until_the_first_closes[]",
+          "outcome": "Failed",
+          "error": "Xunit.Sdk.ThrowsException: Assert.Throws() Failure: No exception was thrown\nExpected: typeof(System.IO.IOException)\n   at Xunit.Assert.Throws(Type exceptionType, Exception exception) in /_/src/xunit.assert/Asserts/ExceptionAsserts.cs:line 42\n   at Xunit.Assert.Throws[T](Func`1 testCode) in /_/src/xunit.assert/Asserts/ExceptionAsserts.cs:line 113\n   at SafeUpload.Agent.Tests.NotificationRecordTests.A_second_writer_is_refused_until_the_first_closes() in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/NotificationRecordTests.cs:line 454\n   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)\n   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\n   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)"
+        }
+      ]
+    }
+  ],
+  "dispositions": {
+    "PolicyTests.Caminhos_monitorados_chegam_expandidos": "Linux has no Windows USERPROFILE expansion; original test remains unchanged for Windows.",
+    "PolicyTests.Escopo_padrao_e_caminho_de_maquina": "Linux Path.Combine/root semantics differ from the literal Windows machine path; unchanged.",
+    "PolicyTests.Quarentena_fica_fora_da_pasta_vigiada": "Windows drive path is not rooted under Linux; unchanged.",
+    "NotificationRecordTests.A_second_writer_is_refused_until_the_first_closes": "Linux does not reproduce the native Windows exclusive writer sharing rule; unchanged and required in Windows matrix."
+  }
+}

@@ -12,6 +12,7 @@ public sealed partial class StagedTransferJournal
     {
         token.ThrowIfCancellationRequested();
         var legacyClaims = new Dictionary<string, (long Generation, HashSet<Guid> Transfers)>(StringComparer.OrdinalIgnoreCase);
+        var legacyEffectiveClaims = new Dictionary<string, (long Generation, HashSet<Guid> Transfers)>(StringComparer.OrdinalIgnoreCase);
         var boundClaims = new SortedDictionary<StagedDestinationIdentity, (long Generation, HashSet<Guid> Transfers)>(
             StagedDestinationIdentity.OrderedComparer);
         var byId = new Dictionary<Guid, TransferJournalEntry>(entries.Count);
@@ -24,12 +25,21 @@ public sealed partial class StagedTransferJournal
             if (!finished.Contains(id)) protectedIds.Add(id);
             AddClaim(entry.Transfer.DestinationPath, entry.BoundAllocation,
                 Math.Max(entry.DestinationGeneration, entry.UnboundCancellation?.Generation ?? 0), id);
+            if (entry.BoundAllocation is null && !RetiredUnattachedAllocation(entry))
+                AddMaximum(legacyEffectiveClaims, entry.Transfer.DestinationPath,
+                    Math.Max(entry.DestinationGeneration, entry.UnboundCancellation?.Generation ?? 0), id);
             for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
+            {
                 AddClaim(name.DestinationPath, name.AllocationBindingV23, name.Generation, id);
+                if (name.AllocationBindingV23 is null)
+                    AddMaximum(legacyEffectiveClaims, name.DestinationPath, name.Generation, id);
+            }
         }
         // Keep every maximum-generation tie. Legacy locators and identity-bound
         // destinations are separate authorities, even when their paths agree.
-        foreach (var claim in legacyClaims.Values.Concat(boundClaims.Values))
+        // Never let a retired high-water allocation hide the last effective
+        // publication barrier and resurrect an older pending save after pruning.
+        foreach (var claim in legacyClaims.Values.Concat(legacyEffectiveClaims.Values).Concat(boundClaims.Values))
             protectedIds.UnionWith(claim.Transfers);
 
         var pending = new Queue<Guid>(protectedIds);

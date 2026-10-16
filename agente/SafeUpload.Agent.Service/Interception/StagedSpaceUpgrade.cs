@@ -1,5 +1,3 @@
-using System.Runtime.InteropServices;
-using SafeUpload.Agent.Minifilter;
 
 namespace SafeUpload.Agent.Service.Interception;
 
@@ -17,12 +15,6 @@ public sealed partial class StagedSpaceBudget
         string directory = journal.DirectoryPath;
         long existing = MetadataFiles(directory).Concat(MetadataFiles(Path.Combine(directory, "completed"))).Sum(x => x.Value);
         _legacyJournalAllowance = checked(existing * 2 + 16 * MetadataBytes);
-        foreach (string path in Directory.EnumerateFiles(Path.GetDirectoryName(_directory)!, "*.allocation-refused*"))
-        {
-            if (!IsNegativeReceipt(path)) throw new IOException("Unresolved legacy negative allocation receipt.");
-            ValidateLegacyNegativeReceipt(path);
-            _legacyNegativeAllowance = checked(_legacyNegativeAllowance + RoundMetadata(new FileInfo(path).Length));
-        }
         journal.PrivateTemporaryAdmission = RequireMetadataAdmission;
         journal.ArchiveGrowthAdmission = RequireArchiveAdmission;
         journal.ArchiveStorageChanged = RefreshArchiveStorage;
@@ -59,19 +51,6 @@ public sealed partial class StagedSpaceBudget
         // Only exempt, completed history needs the separate shared envelope.
         if (_legacyCompleted.Count == 0 && _legacySecuritySnapshots.Count == 0) _legacyJournalAllowance = 0;
         VerifyJournalInventory(directory, journal);
-    }
-
-    private static void ValidateLegacyNegativeReceipt(string path)
-    {
-        using var input = StagedJournalFile.Open(path, maximumBytes: Contract.RequestSize);
-        byte[] bytes = new byte[Contract.RequestSize]; input.ReadExactly(bytes);
-        var request = MemoryMarshal.Read<SafeUploadRequest>(bytes);
-        if (!request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source) ||
-            request.RequestId == 0 || request.RequestorProcessId == 0 || source.RequestorCreationTime <= 0 ||
-            source.Intent.AllocationReservationId != Guid.ParseExact(Path.GetFileName(path)[..32], "N") ||
-            source.Intent.DriverInstanceId == Guid.Empty || source.Intent.Disposition > 5 || source.Intent.ReferenceKind > 2 ||
-            (source.Intent.ReferenceKind == 0) != (source.Intent.ParentTransferId == Guid.Empty))
-            throw new IOException("The legacy negative allocation receipt has an invalid exact request.");
     }
 
     private bool LegacySecurityMetadataPath(string path)

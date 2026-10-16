@@ -9,8 +9,14 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
 source = (ROOT / "driver/SafeUpload.Minifilter/StageStream.c").read_text()
-start = source.index("static BOOLEAN StageSpaceGrantValid(")
-body_start = source.index("{", start)
+# MSVC needs the alloc_text declaration before the definition; skip its
+# forward declaration rather than accidentally compiling the intervening code.
+functions = list(re.finditer(r"static BOOLEAN StageSpaceGrantValid\([^;{}]*\)\s*\{", source))
+assert len(functions) == 1, "Expected exactly one production grant validator definition"
+start = functions[0].start()
+body_start = functions[0].end() - 1
+pragma = source.index("#pragma alloc_text(PAGE, StageSpaceGrantValid)")
+assert pragma < start, "MSVC alloc_text must precede the function definition"
 depth, end = 1, body_start + 1
 while depth:
     depth += (source[end] == "{") - (source[end] == "}")

@@ -24,7 +24,10 @@ public class PolicyTests : IDisposable
     {
         Assert.False(File.Exists(_workspace.PolicyFile));
 
-        var policy = await LoadAsync();
+        var legacy = await LoadAsync();
+        Assert.Equal(20, legacy.MaxFileSizeMb);
+        Assert.Equal(TimeSpan.FromSeconds(5), legacy.InspectionTimeout);
+        var policy = await new LocalPolicyStore(_workspace.PolicyFile).LoadCurrentAsync(CancellationToken.None);
 
         Assert.True(File.Exists(_workspace.PolicyFile));
         Assert.Equal(1, policy.Version);

@@ -11,8 +11,8 @@ imports PASS on both artifacts; agent feature Debug/Release × user/SYSTEM four-
 execution and no skips; Windows PowerShell 5.1/native-signature gates for any harness used. Source review acceptance
 is separate from these gates. Build/package/receipt hashes must identify the matched pair.
 
-The matrix must include `StagedLargeFileNativeTests` (three rows: manifest-before-grant exact replay and both
-unknown-create refusal/retry paths) and `StagedLargeFileTests` plus `StagedLargeDefaultsTests`. The Linux diagnostic does not execute the native class.
+The matrix must include `StagedLargeFileNativeTests` (four rows: manifest-before-grant exact replay and both
+unknown-create refusal/retry paths, plus 96 historical refusals/partial metadata followed by normal admission) and `StagedLargeFileTests` plus `StagedLargeDefaultsTests`. The Linux diagnostic does not execute the native class.
 Add default-config startup on a fresh install, upgrade with hot/packed terminal history, pending legacy stages,
 more than 64 historical negative receipts, immutable security snapshots, over-budget recovery and explicit overrides.
 Prove legacy writers keep the old guard while every new version uses budget grants; missing ledgers/modern companions
@@ -47,7 +47,7 @@ is not success for a row requiring publication. Restore and verify the baseline 
 | T9L18 | Old driver + large-mode agent; short/oversized/wrong-version capability reply: NotReady, no large allocation/publication. Disable mode with outstanding ledger: refuse downgrade and explain re-enablement/recovery. Old-service downgrade remains an unqualified T14 boundary. |
 | T9L19 | Clean-prefix disk-full save including zero bytes: tray explicitly says not enough staging space; returned partial bytes clearly belong to failed save, no override action. Disk-full hand-back shows custody failure, not a false verified copy. Notifications go only to the original SID/session. |
 | T9L20 | Concurrent same-SID Word/temp/Explorer saves and two-SID long seeding: record the current conservative admission/queue refusal and latency. This prototype limitation must be resolved before claiming everyday T9 UX. Run Notepad, Explorer copy and a real Word direct save after budget release; byte/privacy/namespace regressions remain required. |
-| T9L21 | Repeat many complete/blocked/failed saves, restart, exhaust metadata replacement/negative-receipt headroom and reclaim only exact authorized objects. Content charges return; retained records stay charged; metadata cannot grow beyond its envelope or starve unreserved recovery work. |
+| T9L21 | Repeat many complete/blocked/failed saves and restart. New refusals create no metadata; old negative files and never-granted failed ledgers recover exactly, with malformed nonce isolation. Exact kind-5/private retirement ACKs shed per-SID metadata into accounted shared hot/packed history. Unknown custody stays charged; no double refund or unrecorded publication. Run [T9R01–T9R06](UX-LARGE-RECOVERY.md) as well. |
 
 After the focused rows pass, run all affected existing T4/T5/T7/T8/T10 namespace, sharing, empty, delete, hand-back,
 policy/justification, publication/recovery and raw-byte rows on the matched pair, plus the required milestone matrix.

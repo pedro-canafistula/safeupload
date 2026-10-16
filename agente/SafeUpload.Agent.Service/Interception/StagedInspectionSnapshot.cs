@@ -12,11 +12,12 @@ internal sealed class StagedInspectionSnapshot : IAsyncDisposable
     public FileStream Stream { get; }
     public string Digest { get; }
     private IDisposable? _budgetLifetime;
+    private readonly bool _tracksBudget;
     private int _references = 1;
     private int _disposed;
 
-    private StagedInspectionSnapshot(string path, FileStream stream, string digest)
-        => (Path, Stream, Digest) = (path, stream, digest);
+    private StagedInspectionSnapshot(string path, FileStream stream, string digest, bool tracksBudget)
+        => (Path, Stream, Digest, _tracksBudget) = (path, stream, digest, tracksBudget);
 
     internal static async Task<StagedInspectionSnapshot> CreateAsync(FileStream source,
         string root, string extension, long expectedLength, CancellationToken token,
@@ -40,7 +41,7 @@ internal sealed class StagedInspectionSnapshot : IAsyncDisposable
             captured.Position = 0;
             read = DuplicateRead(captured);
             await captured.DisposeAsync().ConfigureAwait(false);
-            return new(path, read, digest) { _budgetLifetime = budgetLifetime };
+            return new(path, read, digest, spaceBudget is not null) { _budgetLifetime = budgetLifetime };
         }
         catch
         {
@@ -57,6 +58,10 @@ internal sealed class StagedInspectionSnapshot : IAsyncDisposable
     internal Stream OpenRead()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        // Without accounting there is no callback to retain. Preserve the
+        // original exact FileStream/native-handle contract in that mode.
+        // This immutable flag cannot change during disposal of a budgeted owner.
+        if (!_tracksBudget) return DuplicateRead(Stream);
         Interlocked.Increment(ref _references);
         try { return new ReadLease(DuplicateRead(Stream), ReleaseReference); }
         catch { ReleaseReference(); throw; }

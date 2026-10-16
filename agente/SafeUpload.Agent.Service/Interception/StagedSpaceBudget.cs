@@ -48,6 +48,7 @@ public sealed partial class StagedSpaceBudget
     private bool _faulted;
     private Dictionary<string, long>? _archiveAllocations;
     private long _archiveAllocationBytes;
+    private long _hotAllocationBytes;
     private string? _archiveDirectory;
     private sealed record Snapshot(string Path, StagedStageIdentity Identity);
     private sealed record Reservation(Guid Id, string Sid, long Capacity, string? StagePath,
@@ -64,6 +65,7 @@ public sealed partial class StagedSpaceBudget
         _options = options;
         _directory = Path.Combine(Path.GetFullPath(stagingRoot), ".space-reservations");
         _available = availableBytes ?? (() => new DriveInfo(Path.GetPathRoot(_directory)!).AvailableFreeSpace);
+        if (!Directory.Exists(stagingRoot)) StagedPrivateStorage.CreateDirectory(stagingRoot);
         RequireExistingSecurity(stagingRoot);
         if (OperatingSystem.IsWindows())
         {
@@ -73,18 +75,8 @@ public sealed partial class StagedSpaceBudget
             _metadataGranularity = ReadAllocationGranularity(stagingRoot, content: false);
             _stageGranularity = Math.Max(64 * 1024, _metadataGranularity);
             _metadataBytes = Math.Max(MetadataBytes, checked(_metadataGranularity * 16));
-            var directorySecurity = new DirectorySecurity();
-            directorySecurity.SetAccessRuleProtection(true, false); directorySecurity.SetOwner(owner);
-            _fileSecurity = new FileSecurity(); _fileSecurity.SetAccessRuleProtection(true, false); _fileSecurity.SetOwner(owner);
-            foreach (var sid in new[] { owner, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
-                         new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null) })
-            {
-                directorySecurity.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl,
-                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
-                _fileSecurity.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, AccessControlType.Allow));
-            }
-            var directory = new DirectoryInfo(_directory);
-            if (!directory.Exists) directory.Create(directorySecurity);
+            _fileSecurity = StagedPrivateStorage.FileSecurity();
+            StagedPrivateStorage.CreateDirectory(_directory);
         }
         else Directory.CreateDirectory(_directory);
         if ((File.GetAttributes(_directory) & FileAttributes.ReparsePoint) != 0)
@@ -184,9 +176,9 @@ public sealed partial class StagedSpaceBudget
                 if (record.Snapshot is { } snapshot) { RequireChild(snapshot.Path); paths.Add(snapshot.Path); }
             }
             foreach (string path in Directory.EnumerateFiles(root))
-                if (!paths.Contains(path) && !IsNegativeReceipt(path))
+                if (!paths.Contains(path) && !IsNegativeReceiptPath(path))
                     throw new IOException("Unreserved private staging object: " + Path.GetFileName(path));
-            RequireNegativeReceiptSpace(root, creating: false);
+            RefreshNegativeReceiptStorage(root);
             void RequireChild(string path)
             {
                 if (!string.Equals(Path.GetDirectoryName(Path.GetFullPath(path)), root, StringComparison.OrdinalIgnoreCase))
@@ -239,33 +231,46 @@ public sealed partial class StagedSpaceBudget
         }
     }
 
-    private static bool IsNegativeReceipt(string path)
+    // Compatibility only: no new negative receipts are created. Even partial
+    // legacy data is debited as storage, not interpreted as allocation authority.
+    internal static bool IsNegativeReceiptPath(string path)
     {
         string leaf = Path.GetFileName(path);
-        if (!leaf.EndsWith(".allocation-refused", StringComparison.Ordinal) || leaf.Length != 32 + ".allocation-refused".Length ||
-            !Guid.TryParseExact(leaf[..32], "N", out _)) return false;
-        using var input = StagedJournalFile.Open(path, maximumBytes: SafeUpload.Agent.Minifilter.Contract.RequestSize);
-        if (input.Length != SafeUpload.Agent.Minifilter.Contract.RequestSize)
-            throw new IOException("Incomplete negative allocation receipt.");
-        return true; // Existing allocator validates the complete exact tuple before replay.
+        if (leaf.Length < 32 || !Guid.TryParseExact(leaf[..32], "N", out var id) || id == Guid.Empty) return false;
+        string suffix = leaf[32..];
+        const string refused = ".allocation-refused";
+        return suffix == refused || suffix.Length == refused.Length + 1 + 32 + 4 &&
+            suffix.StartsWith(refused + ".", StringComparison.Ordinal) && suffix.EndsWith(".tmp", StringComparison.Ordinal) &&
+            Guid.TryParseExact(suffix.AsSpan(refused.Length + 1, 32), "N", out _);
     }
 
-    internal void RequireNegativeReceiptSpace(string stagingRoot, bool creating = true)
+    internal void RefreshNegativeReceiptStorage(string stagingRoot)
     {
         lock (_gate)
         {
             RequireHealthy(); long bytes = 0;
             foreach (string path in Directory.EnumerateFiles(stagingRoot, "*.allocation-refused*"))
             {
-                if (!IsNegativeReceipt(path)) throw new IOException("Unrecognized negative allocation receipt.");
-                long length = new FileInfo(path).Length;
-                bytes = checked(bytes + (length + _metadataGranularity - 1) / _metadataGranularity * _metadataGranularity);
+                if (!IsNegativeReceiptPath(path)) throw new IOException("Unrecognized legacy refusal metadata.");
+                // A regular held file supplies the size. Malformed bytes stay
+                // held for this nonce, never become a global admission veto.
+                var metadata = StagedStageFile.ReadAttachedMetadata(path);
+                bytes = checked(bytes + NegativeStorageCharge(metadata.Length));
             }
-            long next = creating ? (SafeUpload.Agent.Minifilter.Contract.RequestSize + _metadataGranularity - 1) /
-                _metadataGranularity * _metadataGranularity : 0;
-            if (bytes > checked(_metadataBytes / 4 + _legacyNegativeAllowance) - next ||
-                creating && _options.TotalBytes < checked(_metadataBytes + _legacyJournalAllowance + _legacyNegativeAllowance))
-                throw new StagedSpaceException("Negative allocation receipts require recovery before more metadata can be stored.");
+            _legacyNegativeAllowance = bytes;
+        }
+    }
+
+    private long NegativeStorageCharge(long length) =>
+        checked(Math.Max(_metadataGranularity, RoundMetadata(length)) + _metadataGranularity);
+
+    internal void RetiredNegativeReceipt(long length)
+    {
+        lock (_gate)
+        {
+            // No new refusals are persisted. Startup inventories their rounded
+            // bytes once; exact confirmed deletion is the only refund event.
+            _legacyNegativeAllowance = Math.Max(0, _legacyNegativeAllowance - NegativeStorageCharge(length));
         }
     }
 
@@ -312,8 +317,9 @@ public sealed partial class StagedSpaceBudget
             throw new IOException("The archive accounting directory changed.");
         // Hot admission stays O(active). Cold bytes are reconstructed once,
         // debited before growth and refreshed only by archive maintenance.
-        long current = _archiveAllocationBytes;
-        foreach (var file in MetadataFiles(journalRoot)) current = checked(current + file.Value);
+        _hotAllocationBytes = 0;
+        foreach (var file in MetadataFiles(journalRoot)) _hotAllocationBytes = checked(_hotAllocationBytes + file.Value);
+        long current = checked(_archiveAllocationBytes + _hotAllocationBytes);
         bool archive = string.Equals(Path.GetDirectoryName(path), completed, StringComparison.OrdinalIgnoreCase);
         long existing = archive ? _archiveAllocations!.GetValueOrDefault(path) :
             File.Exists(path) ? RoundMetadata(new FileInfo(path).Length) : 0;
@@ -321,6 +327,7 @@ public sealed partial class StagedSpaceBudget
         long allowance = checked(_reservations.Count * (_metadataBytes / 2) + _metadataBytes / 4 + _legacyJournalAllowance);
         if (current > allowance - growth)
             throw new StagedSpaceException("Staging archive cleanup must finish before another metadata write.");
+        if (!archive) _hotAllocationBytes = checked(_hotAllocationBytes + growth);
         if (archive)
         {
             _archiveAllocations![path] = checked(existing + growth);
@@ -421,14 +428,14 @@ public sealed partial class StagedSpaceBudget
     {
         lock (_gate)
         {
-            RequireHealthy(); var record = _reservations[id];
-            if (record.LegacyGuard || record.ContentReleased || record.GrantIssued || record.Snapshot is not null || record.StagePath is null) return;
+            RequireHealthy();
+            if (!_reservations.TryGetValue(id, out var record) || record.LegacyGuard || record.GrantIssued ||
+                record.Snapshot is not null || _liveSnapshots.Contains(id) || record.StagePath is null) return;
             bool absent = record.StageIdentity is { } exact
                 ? StagedStageFile.TryDeleteExactAndConfirmAbsent(record.StagePath, exact, out _)
                 : StagedStageFile.TryConfirmAbsent(record.StagePath, out _); // No grant/reply issued; access errors do not imply absence.
-            if (!absent) return;
-            var next = record with { ContentReleased = true };
-            Persist(next); _reservations[id] = next;
+            if (!absent || !StagedStageFile.TryConfirmAbsent(record.StagePath + ".space", out _)) return;
+            DeleteReservationMetadata(record);
         }
     }
 
@@ -444,12 +451,40 @@ public sealed partial class StagedSpaceBudget
                 // This helper deletes only a previously recorded exact identity. A crash
                 // between CREATE and RecordStage leaves an unknown present object held.
                 RetireFailedAllocation(id);
-                if (!_reservations[id].ContentReleased)
+                if (_reservations.ContainsKey(id))
                     throw new IOException("Failed allocation cleanup is unresolved; no terminal refusal is authorized.");
             }
             if (!StagedStageFile.TryConfirmAbsent(stagePath, out var failure))
                 throw new IOException("An unknown private object remains; no terminal refusal is authorized.", failure);
         }
+    }
+
+    // Caller holds allocator serialization and has established manifest absence.
+    // Never erase issued authority, unknown custody, readers, or replacement data.
+    internal bool RetireUnissuedMetadata(Guid id)
+    {
+        lock (_gate)
+        {
+            RetireFailedAllocation(id);
+            return !_reservations.ContainsKey(id);
+        }
+    }
+
+    private void DeleteReservationMetadata(Reservation record)
+    {
+        string path = RecordPath(record.Id);
+        StagedStageIdentity identity;
+        using (var held = StagedStageFile.Open(path))
+        {
+            if (held.Stream.Length > 64 * 1024 || JsonSerializer.Deserialize<Reservation>(held.Stream) != record)
+                throw new IOException("Reservation metadata changed; retain its charge.");
+            identity = held.Identity;
+        }
+        if (!StagedStageFile.TryDeleteExactAndConfirmAbsent(path, identity, out var failure))
+            throw new IOException("Exact reservation metadata retirement is unresolved.", failure);
+        // A crash before this removal only overcharges; restart reconstructs
+        // absence after the durable metadata deletion. Repeated cleanup is a no-op.
+        _reservations.Remove(record.Id);
     }
 
     internal void Bind(TransferJournalEntry entry)
@@ -517,58 +552,114 @@ public sealed partial class StagedSpaceBudget
         }
     }
 
-    internal async Task ReconcileAsync(StagedTransferJournal journal, CancellationToken token)
+    private int _recoveryCursor;
+
+    internal async Task ReconcileAsync(StagedTransferJournal journal, CancellationToken token,
+        int maximumItems = int.MaxValue, Action<Guid, Exception>? held = null)
     {
         Reservation[] records;
-        lock (_gate) { RequireHealthy(); records = _reservations.Values.ToArray(); }
+        lock (_gate)
+        {
+            RequireHealthy();
+            int start = _reservations.Count == 0 ? 0 : _recoveryCursor % _reservations.Count;
+            records = _reservations.Values.Skip(start).Take(maximumItems).ToArray();
+            _recoveryCursor = records.Length < maximumItems || start + records.Length >= _reservations.Count ? 0 : start + records.Length;
+        }
         foreach (var record in records)
         {
             token.ThrowIfCancellationRequested();
-            // Refunded history retains only its metadata debit. It no longer
-            // owns a cleanup proof and must not re-read archived receipts on
-            // every foreground allocation.
-            if (record.ContentReleased && record.Snapshot is null) continue;
-            TransferJournalEntry entry;
-            try { entry = await journal.ReadAsync(record.Id, token).ConfigureAwait(false); }
-            catch (FileNotFoundException)
+            try
             {
-                // No typed reply is possible before GrantIssued is persisted.
-                // Retire only the recorded exact seed; uncertain objects remain charged.
-                RetireFailedAllocation(record.Id);
-                continue;
-            }
-            lock (_gate)
-            {
-                if (_liveSnapshots.Contains(record.Id) || _reservations[record.Id] != record) continue;
-                if (record.Snapshot is { } snapshot)
+                TransferJournalEntry entry;
+                try { entry = await journal.ReadAsync(record.Id, token).ConfigureAwait(false); }
+                catch (FileNotFoundException)
                 {
-                    if (!StagedStageFile.TryDeleteExactAndConfirmAbsent(snapshot.Path, snapshot.Identity, out _)) continue;
-                    var next = record with { Snapshot = null };
-                    Persist(next); _reservations[record.Id] = next;
+                    // No typed reply is possible before GrantIssued is persisted.
+                    // Retire only the recorded exact seed; uncertain objects remain charged.
+                    RetireUnissuedMetadata(record.Id);
+                    continue;
                 }
-                bool disposalComplete = entry.StageDeleted &&
-                    (entry.UnboundCancellation is not null || entry.State is
-                        (TransferJournalState.Released or TransferJournalState.Discarded or TransferJournalState.Blocked));
-                // Kind-5 (and ordinary private discard) ACK is its own exact
-                // deletion receipt; DiscardPending deliberately has no StageDeleted.
-                bool discardComplete = entry.State == TransferJournalState.DiscardPending &&
-                    entry.DiscardAcknowledgedAtUtc is not null && entry.DiscardReservationId is not null &&
-                    entry.DiscardKind is (StagedDiscardKind.UnattachedAllocation or StagedDiscardKind.PrivateVersion or
-                        StagedDiscardKind.RetireUnexposed or StagedDiscardKind.RetireAttachedPrivate);
-                if (record.ContentReleased || !(disposalComplete || discardComplete) || record.StageIdentity is null ||
-                    entry.StageIdentity != record.StageIdentity ||
-                    record.StagePath is null || entry.PendingRename is not null ||
-                    entry.Transfer.StagePath != record.StagePath || entry.StageCleanupStarted ||
-                    entry.HandbackState is StagedHandbackState.Copying) continue;
-                if (discardComplete && !StagedStageFile.TryConfirmAbsent(record.StagePath, out _)) continue;
-                // Require durable exact-object cleanup, plus drained snapshot
-                // leases. Path absence alone never authorizes a content refund.
-                string grant = record.StagePath + ".space";
-                File.Delete(grant);
-                var released = _reservations[record.Id] with { ContentReleased = true };
-                Persist(released); _reservations[record.Id] = released;
+                lock (_gate)
+                {
+                    if (_liveSnapshots.Contains(record.Id) || !_reservations.TryGetValue(record.Id, out var current) || current != record) continue;
+                    if (record.Snapshot is { } snapshot)
+                    {
+                        if (!StagedStageFile.TryDeleteExactAndConfirmAbsent(snapshot.Path, snapshot.Identity, out _)) continue;
+                        var next = record with { Snapshot = null };
+                        Persist(next); _reservations[record.Id] = next;
+                    }
+                    bool disposalComplete = entry.StageDeleted &&
+                        (entry.UnboundCancellation is not null || entry.State is
+                            (TransferJournalState.Released or TransferJournalState.Discarded or TransferJournalState.Blocked));
+                    // Kind-5 (and ordinary private discard) ACK is its own exact
+                    // deletion receipt; DiscardPending deliberately has no StageDeleted.
+                    bool discardComplete = entry.State == TransferJournalState.DiscardPending &&
+                        entry.DiscardAcknowledgedAtUtc is not null && entry.DiscardReservationId is not null &&
+                        entry.DiscardKind is (StagedDiscardKind.UnattachedAllocation or StagedDiscardKind.PrivateVersion or
+                            StagedDiscardKind.RetireUnexposed or StagedDiscardKind.RetireAttachedPrivate);
+                    if (record.ContentReleased)
+                    {
+                        RetireCompletedMetadata(record, entry, journal);
+                        continue;
+                    }
+                    if (!(disposalComplete || discardComplete) || record.StageIdentity is null ||
+                        entry.StageIdentity != record.StageIdentity ||
+                        record.StagePath is null || entry.PendingRename is not null ||
+                        entry.Transfer.StagePath != record.StagePath || entry.StageCleanupStarted ||
+                        entry.HandbackState is StagedHandbackState.Copying) continue;
+                    if (discardComplete && !StagedStageFile.TryConfirmAbsent(record.StagePath, out _)) continue;
+                    // Require durable exact-object cleanup, plus drained snapshot
+                    // leases. Path absence alone never authorizes a content refund.
+                    DeleteGrant(record);
+                    if (RetireCompletedMetadata(_reservations[record.Id], entry, journal, exactContentRelease: true)) continue;
+                    var released = _reservations[record.Id] with { ContentReleased = true };
+                    Persist(released); _reservations[record.Id] = released;
+                    RetireCompletedMetadata(released, entry, journal);
+                }
+            }
+            catch (Exception error) when (held is not null && error is IOException or UnauthorizedAccessException)
+            {
+                held(record.Id, error);
             }
         }
+    }
+
+    // Finished never-exposed allocations keep exact journal/replay evidence and
+    // high-water generations, but do not retain one 1-MiB SID charge per abort.
+    private bool RetireCompletedMetadata(Reservation record, TransferJournalEntry entry, StagedTransferJournal journal,
+        bool exactContentRelease = false)
+    {
+        if ((!record.ContentReleased && !exactContentRelease) || record.Snapshot is not null || _liveSnapshots.Contains(record.Id) ||
+            entry.DiscardKind is not (StagedDiscardKind.UnattachedAllocation or StagedDiscardKind.RetireUnexposed or
+                StagedDiscardKind.RetireAttachedPrivate) || !StagedTransferJournal.StageSpaceUpgradeComplete(entry) ||
+            !StagedStageFile.TryConfirmAbsent(entry.Transfer.StagePath, out _) ||
+            !StagedStageFile.TryConfirmAbsent(entry.Transfer.StagePath + ".space", out _)) return false;
+        // Replace the per-user metadata envelope BEFORE deleting its ledger.
+        // Startup independently reconstructs completed inventory and this same
+        // shared storage debit from authenticated hot/packed journal records.
+        // Admission already maintains these conservative physical frontiers;
+        // no hot/cold directory scan per retired item or foreground cleanup.
+        long bytes = checked(_hotAllocationBytes + _archiveAllocationBytes);
+        _legacyJournalAllowance = Math.Max(_legacyJournalAllowance, checked(bytes * 2 + 16 * MetadataBytes));
+        _legacyCompleted.Add(record.Id);
+        DeleteReservationMetadata(record);
+        return true;
+    }
+
+    private static void DeleteGrant(Reservation record)
+    {
+        string path = record.StagePath! + ".space";
+        if (StagedStageFile.TryConfirmAbsent(path, out _)) return;
+        StagedStageIdentity identity;
+        using (var held = StagedStageFile.Open(path))
+        {
+            byte[] bytes = new byte[64]; held.Stream.ReadExactly(bytes);
+            if (held.Stream.Length != 64 || !bytes.AsSpan().SequenceEqual(GrantBytes(record)))
+                throw new IOException("Capacity grant changed; retain this transfer's charge.");
+            identity = held.Identity;
+        }
+        if (!StagedStageFile.TryDeleteExactAndConfirmAbsent(path, identity, out var error, expectedLength: 64))
+            throw new IOException("Exact capacity grant deletion remains pending.", error);
     }
 
     private void RequireHealthy()
@@ -591,7 +682,7 @@ public sealed partial class StagedSpaceBudget
         }
         catch { _faulted = true; throw; } // Never refund an ambiguous durable write.
     }
-    private static void WriteGrant(Reservation record)
+    private static byte[] GrantBytes(Reservation record)
     {
         byte[] bytes = new byte[64];
         BinaryPrimitives.WriteUInt64LittleEndian(bytes, 0x3150535553464153UL); // SAFSUSP1
@@ -601,6 +692,11 @@ public sealed partial class StagedSpaceBudget
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(24), identity.FileIdLow);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), identity.FileIdHigh);
         record.Id.TryWriteBytes(bytes.AsSpan(40));
+        return bytes;
+    }
+    private void WriteGrant(Reservation record)
+    {
+        byte[] bytes = GrantBytes(record);
         string path = record.StagePath! + ".space";
         if (File.Exists(path))
         {
@@ -609,7 +705,10 @@ public sealed partial class StagedSpaceBudget
             if (input.Length != 64 || !existing.SequenceEqual(bytes)) throw new IOException("The capacity grant changed.");
             return;
         }
-        using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough);
+        using var output = OperatingSystem.IsWindows()
+            ? new FileInfo(path).Create(FileMode.CreateNew, FileSystemRights.FullControl,
+                FileShare.None, 4096, FileOptions.WriteThrough, _fileSecurity!)
+            : new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough);
         output.Write(bytes); output.Flush(true);
     }
 }

@@ -4,7 +4,8 @@
 Claude owns Windows builds and VM execution as standard user `t5actor`. No product VM was contacted here.
 The [demo/apps integration](UX-LARGE-INTEGRATION.md) preserves packed journal scaling, allocation-abort fences and sealed metadata.
 Read the [qualification list](UX-LARGE-VM.md), [initial local receipt](evidence/2026-10-16/ux-large-local/result.md) and
-[product-default/upgrade receipt](evidence/2026-10-16/ux-large3-local/result.md).
+[product-default/upgrade receipt](evidence/2026-10-16/ux-large3-local/result.md) and
+[failed-allocation/notification recovery](UX-LARGE-RECOVERY.md).
 
 ## Admission and authority
 
@@ -50,8 +51,9 @@ objects remain held; there is no filename-only orphan deletion sweep.
 Normally retain 1 MiB per transfer and 1 MiB globally for metadata. On larger-cluster volumes, each becomes at least
 16 allocation units. At most half the transfer envelope is admitted for journal files, including failed replacement
 residue; ledger current/replacement records are each bounded to 64 KiB, the grant is 64 bytes, and the remaining
-headroom covers their allocation rounding and private-object MFT/index overhead. Global journal metadata and
-negative allocation receipts each receive at most one quarter of the global envelope. Journal serialization now
+headroom covers their allocation rounding and private-object MFT/index overhead. Global journal metadata
+receives one quarter of the global envelope; refusals are stateless and create no metadata. Legacy refusal files
+are charged separately by rounded storage plus per-file metadata and recovered exactly. Journal serialization now
 refuses before writing beyond the existing 128 KiB limit. Exhausted metadata headroom refuses further creation;
 failed residue is preserved. Unbound-only scope excludes bound descriptor/security-store copies.
 
@@ -65,7 +67,9 @@ remains charged as long as its records remain. There is no silent expiry or dest
 A failed allocation with no manifest and no issued grant can retire its recorded exact seed after confirmed
 exclusive deletion, or accept confirmed absence when no identity was ever captured. Unknown existing objects
 stay charged on allocation retry and terminal refusal alike. The same stable failed intent can retry without
-double charging; it cannot reuse a completed grant. A committed-manifest replay validates the tuple and held
+double charging; it cannot reuse a completed grant. Confirmed unissued failed allocations retire their exact ledger
+rather than retaining one MiB forever. Completed kind-5/private retirement ACKs can replace their per-SID metadata
+charge with the reconstructible shared journal envelope; replay and generation high-water remain durable. A committed-manifest replay validates the tuple and held
 stage identity, then completes the same durable grant before returning; it never reseeds or allocates a new generation.
 
 ## Existing installations
@@ -90,9 +94,9 @@ old guard, identity mismatch or inaccessible/untrusted object stays held. Unknow
 corrupt accounting remain diagnostic holds; filenames never become deletion authority. Ordinary deleted-on-close
 legacy snapshots need no sweep; any unknown surviving snapshot remains held.
 
-Historical negative allocation receipts above the former 64-receipt threshold are compatible after full V20
-request/intent/name validation. Their rounded bytes are charged globally, with only one quarter-global envelope
-of additional growth; partial/corrupt temporary receipts remain held. Existing valid use above a configured budget,
+Historical negative allocation receipts have no count-based admission veto. Valid exact V20 request/intent/name
+records retire only after no manifest and exact unissued backing/grant absence. Partial/corrupt canonical or temporary
+records remain charged and hold their own nonce while unrelated saves continue; new refusals persist no files. Existing valid use above a configured budget,
 or a zero/tiny default on a nearly full volume, permits startup/recovery while new reservations fail with the
 staging-space reason. Physical persistence failures still retain custody and require storage recovery.
 
@@ -138,10 +142,15 @@ Owner accepted these storage defaults on 2026-10-16. Native whole-operation qual
 | Complex parser memory | 256 MiB per worker, two existing Core worker slots | Explicit incomplete-inspection failure on exhaustion; Windows aggregate peak still needs measurement. |
 | Seed deadline | 120 s | Bounds copying work; does not extend the existing foreground allocation RPC deadline. |
 
-The inspection defaults are now **4096 MiB / 900 seconds** for newly generated policies and omitted resource
-fields in local/remote policies. The measured 2 GiB DOCX took 246 seconds, versus 97 seconds for text and 154 for
-ZIP; 15 minutes leaves processing/queue margin. Parser memory defaults to 256 MiB versus the measured 54–74 MiB
-process peaks. Timeout, hostile parser/resource failure and incomplete inspection still fail closed.
+For omitted resource fields in local/remote policies, staged inspection (`LoadCurrentAsync`) defaults to
+**4096 MiB / 900 seconds**. Legacy inspection (`LoadAsync` and `CreateDefault`) retains **20 MiB / 5 seconds**
+and its existing RN-012/RN-013 behavior; `CreateStagedDefault` selects the staged view. Newly generated policy
+JSON omits these resource overrides so provisioning from either mode cannot pin the other mode's defaults.
+Each explicit field overrides that field in both modes; explicit null remains malformed. The effective values
+still participate in the policy fingerprint, and staged policy reads still require current authority without fallback.
+The measured 2 GiB DOCX took 246 seconds, versus 97 seconds for text and 154 for ZIP; 15 minutes leaves
+processing/queue margin. Parser memory defaults to 256 MiB versus the measured 54–74 MiB process peaks.
+Staged timeout, hostile parser/resource failure and incomplete inspection still fail closed.
 
 Existing explicit policy limits remain authoritative, including a persisted `20` MiB/`5` second policy: upgrade
 does not silently rewrite an administrator policy or its version/fingerprint. Such installations must update those
