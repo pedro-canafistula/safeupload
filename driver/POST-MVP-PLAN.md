@@ -34,8 +34,8 @@ feat/driver-m2 at `d104d994`). Orchestrator design calls for the unbound profile
 of a published file is native; deleting or renaming a published file is native NTFS, cancels unpublished versions waiting for
 that name and refuses (sharing violation) while a writer holds one; a private rename retargets its pending publication; renaming
 an unmonitored file to a monitored name is refused as not-same-device (copy, inspected); folders: create native, rename/delete
-native when nothing under them is pending (else busy), moved in from outside = not-same-device. Pending owner decision: accept
-PowerPoint's package thumbnail (`docProps/thumbnail.jpeg`) without OCR (recommended) or keep refusing every saved .pptx.
+native when nothing under them is pending (else busy), moved in from outside = not-same-device. Owner decision (option A): PowerPoint's
+package-root thumbnail (`docProps/thumbnail.jpeg`, rendered from slide 1) is accepted without OCR; images anywhere else stay refused.
 
 **2026-10-16 — MVP pair now, batch 3 in parallel.** Owner, in the session, after the [critical-path plan](evidence/2026-10-16/t5-critical-path-plan-sol61.md)
 (full T4/T5 to M2 standard: 180–310 worker-hours plus 30–50 lab hours): "MVP now + batch 3 in parallel". An MVP pair is cut from
