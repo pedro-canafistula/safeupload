@@ -1055,10 +1055,10 @@ the publishing application can reopen the file and agreed metadata is preserved.
 **Done when:** no fixed driver size cap; per-user/total stage budgets fail closed without harming other users; full-content inspection
 uses bounded memory; incomplete inspection is Blocked with hand-back and policy-authorized justification; runtime rows prove privacy.
 
-- [ ] **Complete-or-refuse coverage first** (owner direction 2026-10-13; [review finding](M2-COMPLETION-PLAN.md#findings-in-delivery-order)).
-  - [ ] Read DrawingML shape/text-box text, chart titles/axis and series names/labels/cached values, VML drawing text and PDF
+- [x] **Complete-or-refuse coverage first** (owner direction 2026-10-13; [review finding](M2-COMPLETION-PLAN.md#findings-in-delivery-order)).
+  - [x] Read DrawingML shape/text-box text, chart titles/axis and series names/labels/cached values, VML drawing text and PDF
     annotation contents/form-field values; refuse embedded files, PDF attachments, XFA and other unconsumed payloads.
-  - [ ] Replace the Office part denylist with an allowlist; independent fixtures include a clean cell plus a CPF-only drawing text box,
+  - [x] Replace the Office part denylist with an allowlist; independent fixtures include a clean cell plus a CPF-only drawing text box,
     a CPF chart label, a clean PDF page plus a CPF annotation or form value, an attachment and an unknown part type.
   - [x] First increment (Astra worker, integrated here): 27-type read allowlist, unreferenced/unknown parts refused, drawings/charts/VML/
     threaded comments/properties read; PDF annotations/fields/outlines/Info/XMP read; attachments/XFA/JS/AP/RC refused; legacy uses the
@@ -1068,6 +1068,10 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     custom properties/XML), External relationship targets scanned, graphics-only PDF appearance streams accepted after strict decoding and
     lexing. [Matrix `t9-round2-int2`](evidence/2026-10-13/exact-agent-matrix-t9-round2-int2-summary.txt): 1,356 normal / 1,726 feature tests per
     Debug/Release profile, no skips, 0/0 (`t9-round2-int1` failed on a fixture that appended zero bytes; receipt kept, fixture fixed).
+  - Closed 2026-10-16 at component level by the two rounds: `OfficeContentCoverageTests` (drawing/chart title, axis, series,
+    category, cached number, label, VML, threaded comments, Word alternate text boxes, unknown/unreferenced parts refused, allowlisted
+    clean packages approved) and `PdfContentCoverageTests` (annotation contents, form values, Info/XMP, attachments/embedded files/XFA/
+    appearance/rich contents refused). Protected large-file and failure rows stay under the items below.
   - Conservative holds recorded 2026-10-13 (fail-closed, owner may revisit): filled PDF form fields and FreeText annotations whose
     appearance draws text, incrementally saved PDFs (earlier revisions are not inventoried) and page-level PDF metadata are Blocked as
     `unsupported_format`; binary printer settings, images, OLE/packages, ActiveX, altChunk and VBA stay refused. Users of such files
