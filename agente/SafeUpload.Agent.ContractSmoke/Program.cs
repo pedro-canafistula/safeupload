@@ -16,6 +16,21 @@ if (args.Length > 0 && args[0] == "--reliability-demo")
     return;
 }
 
+if (args.Length > 0 && args[0] == "--protected-cache-probe")
+{
+    if (!OperatingSystem.IsWindows())
+        throw new PlatformNotSupportedException("A validação de ACL protegida exige Windows.");
+    if (args.Length != 3 || !int.TryParse(args[2], out var expectedVersion) || expectedVersion <= 0)
+        throw new ArgumentException("Uso: --protected-cache-probe caminho-cache versao");
+    using var probeClient = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:1/agent/") };
+    var probeStore = new DurableHttpPolicyStore(probeClient, Environment.MachineName, args[1]);
+    var restored = await probeStore.LoadCachedOrDefaultAsync(CancellationToken.None);
+    if (probeStore.LastSource != "disk" || restored.Version != expectedVersion)
+        throw new InvalidOperationException("O cache protegido não foi validado e recuperado do disco.");
+    Console.WriteLine($"ProtectedCacheVerified=True;Version={restored.Version};Source={probeStore.LastSource}");
+    return;
+}
+
 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 var cancellationToken = timeout.Token;
 using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:18080/") };
