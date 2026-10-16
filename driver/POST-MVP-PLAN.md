@@ -23,6 +23,11 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-16 — moves into protection get cross-drive metadata.** Owner, in the session (recommended option): a file or folder moved
+into protection, which SafeUpload turns into a cross-drive-style copy, ends with what Windows gives a move to another drive: the
+files inherit the protected folder's permissions (an explicit source permission is not carried over) and keep the dates Windows'
+cross-drive move keeps. This is the metadata reference for T6 moves under the T8 contract; it closes T6 design review finding 1.
+
 **2026-10-16 — T8 metadata contract, Mark of the Web, PowerPoint/archives in M2, images after M2.** Owner, in the session, chose
 the recommended option of each question ([T8 memo](evidence/2026-10-16/t8-metadata-contract-sol61.md), [T9 gap plan](evidence/2026-10-16/t9-gap-plan-sol61.md)):
 1. **Metadata:** a published file carries what Windows gives the same caller's operation without SafeUpload: owner/group, DACL
