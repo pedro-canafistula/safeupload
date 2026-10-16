@@ -1,0 +1,10 @@
+OUT T word new SaveAs2 FAIL 55170ms Word cannot save or create this file. Make sure that the disk you want to save the file on is not full, write-protected, or damaged.
+OUT  (C:\Protected\k4403.docx)
+OUT T word open after 4s ReadOnly? FAIL 1184ms Sorry, we couldn't find your file. Was it moved, renamed, or deleted?
+OUT  (C:\Protected\k4403.docx)
+OUT T word open after 30s ReadOnly? FAIL 30010ms Sorry, we couldn't find your file. Was it moved, renamed, or deleted?
+OUT  (C:\Protected\k4403.docx)
+OUT T direct RW open of published FAIL 9469ms Exception calling "Open" with "4" argument(s): "Could not find file 'C:\Protected\k4403.docx'."
+OUT T powerpoint clean OK 4237ms present:34016
+OUT T powerpoint cpf OK 3160ms absent
+OUT DONE

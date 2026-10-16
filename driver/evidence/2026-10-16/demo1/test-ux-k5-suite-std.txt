@@ -1,0 +1,10 @@
+OUT T notepad save-as probe+save clean OK 2378ms present:5
+OUT T notepad save cpf OK 2027ms absent
+OUT T ctrl+s edit clean OK 2047ms present:14
+OUT T ctrl+s edit adds cpf OK 2224ms Notas editadas
+OUT T explorer copy clean OK 2397ms present:7
+OUT T explorer copy cpf OK 2044ms absent
+OUT T explorer move clean OK 2065ms present:7 src=False
+OUT T explorer move cpf OK 2046ms absent src=False
+OUT T new text document OK 2027ms present:0
+OUT DONE

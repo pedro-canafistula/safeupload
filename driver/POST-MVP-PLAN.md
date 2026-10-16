@@ -39,6 +39,15 @@ package-root thumbnail (`docProps/thumbnail.jpeg`, rendered from slide 1) is acc
 T9 resource defaults (owner, 2026-10-16 16:10 BRT, recommended values accepted): no fixed per-file staging cap; total staging budget
 min(32 GiB, 10% of available space), per user min(8 GiB, total/4), free-space floor max(1 GiB, 5% of the volume); a save beyond a budget
 fails closed with a "not enough staging space" reason and alert, without affecting other users.
+  Dev line state 2026-10-16 17:20 BRT (`demo/apps` b59ea08e; unreviewed dev builds, owner-approved): every listed app workflow passes as
+  t5actor on driver `ux-k8` + agent of `2ed2b20b` (Notepad, Explorer copy/move/rename/delete/new file/folders, Word Save As + read-write
+  open + edit/save, Excel, PowerPoint, PDF, ZIP; CPF blocked with the tray card; service restart survives) —
+  [evidence](evidence/2026-10-16/demo1/) `test-ux-k8-*.txt`. Windows agent matrix `ux-m5-diag` 2,604/2,604 + 25/25 both. Merged branches:
+  ux/kernel (native namespace ops), ux/dirs (folders), ux/outside (outside refusals), ux/activating (writer promotion liveness),
+  ux/fix1, ux/allocfault (lost allocation replies), ux/journal (archive scaling, read-free terminal recovery), ux/meta + ux/meta2
+  (metadata, partial), ux/large (opt-in), ux/t11 (SOP startup proof, compaction retention, [review checklist](M2-REVIEW-CONDITIONS.md)
+  once merged to this branch). T4 `uxk5t4ord2` stopped at cycle 548 (journal scan O(n) -> reply timeout -> stranded name; receipt kept);
+  rerun `uxk8t4ord` in progress. Dev-disk shutdown freeze = OneDrive DebugBreak into the absent kernel debugger (not SafeUpload).
 
 **2026-10-16 — MVP pair now, batch 3 in parallel.** Owner, in the session, after the [critical-path plan](evidence/2026-10-16/t5-critical-path-plan-sol61.md)
 (full T4/T5 to M2 standard: 180–310 worker-hours plus 30–50 lab hours): "MVP now + batch 3 in parallel". An MVP pair is cut from

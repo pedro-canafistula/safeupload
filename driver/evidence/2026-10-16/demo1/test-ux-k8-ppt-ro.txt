@@ -1,0 +1,7 @@
+OUT T word new SaveAs2 OK 3686ms present:13354
+OUT T word open after 4s ReadOnly? OK 1248ms ReadOnly=False
+OUT T word open after 30s ReadOnly? OK 33270ms ReadOnly=False present:13397
+OUT T direct RW open of published OK 46ms ok
+OUT T powerpoint clean OK 3929ms present:34027
+OUT T powerpoint cpf OK 6420ms absent
+OUT DONE

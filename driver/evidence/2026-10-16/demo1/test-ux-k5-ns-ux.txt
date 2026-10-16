@@ -1,0 +1,12 @@
+OUT T rename published (F2) OK 2043ms old=absent new=present:7
+OUT T delete published (Del) OK 2003ms absent
+OUT T new file + rename at 0.1s OK 3207ms old=absent new=present:0
+OUT T new file + rename at 3s OK 5026ms old=absent new=present:0
+OUT T rename published .txt -> .tmp (unmonitored) OK 4040ms old=absent new=present:7
+OUT T rename unmonitored .tmp -> .txt (refused as copy) OK 63ms present:7
+OUT T word new SaveAs2 OK 3822ms present:13362
+OUT T word open + edit + Save OK 7529ms present:13402
+OUT T word reopen shows v2 OK 129ms Versao 1 do relatorio versao 2
+OUT T word edit adds CPF + Save OK 6405ms content=Versao 1 do relatorio versao 2
+OUT T leftovers ~$1-limpo.docx,n4307-c.tmp
+OUT DONE

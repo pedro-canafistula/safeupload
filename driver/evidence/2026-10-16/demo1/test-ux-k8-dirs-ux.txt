@@ -1,0 +1,7 @@
+OUT T new folder OK 83ms True
+OUT T save into new folder OK 3037ms True
+OUT T rename idle folder OK 4ms old=False new=True
+OUT T delete idle folder OK 3ms exists=False
+OUT T explorer copy folder OK 4116ms dir=True a=True b=False
+OUT T explorer move folder OK 4136ms dir=True a=True b=False src=False
+OUT DONE
