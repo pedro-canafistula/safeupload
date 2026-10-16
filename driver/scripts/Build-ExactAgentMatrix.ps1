@@ -919,7 +919,11 @@ try {
                     throw ('Publish output is missing a nonempty tray executable: ' + $name)
                 }
                 foreach ($installer in @('Install-SafeUploadAgent.ps1', 'Uninstall-SafeUploadAgent.ps1')) {
-                    Copy-Item -LiteralPath (Join-Path $profileSource ('agente\scripts\' + $installer)) -Destination $publish
+                    $installerSource = Join-Path $profileSource ('agente\scripts\' + $installer)
+                    $parseTokens = $null; $parseErrors = $null
+                    [void][Management.Automation.Language.Parser]::ParseFile($installerSource, [ref]$parseTokens, [ref]$parseErrors)
+                    if ($parseErrors.Count -ne 0) { throw ('Installer PowerShell 5.1 parse failed: ' + $installer) }
+                    Copy-Item -LiteralPath $installerSource -Destination $publish
                 }
                 $publishFiles = @(Get-ChildItem -LiteralPath $publish -Recurse -File)
                 $serviceExecutable = Join-Path $publish 'SafeUpload.Agent.Service.exe'
