@@ -35,7 +35,8 @@ internal sealed class StagedParserProcess(long memoryBytes) : IStagedParser
             RedirectStandardInput = true, RedirectStandardOutput = true
         };
         if (Path.GetFileNameWithoutExtension(start.FileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-            start.ArgumentList.Add(typeof(Program).Assembly.Location);
+            // Framework-dependent development host only; the shipped single-file service runs itself (IL3000-safe).
+            start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, typeof(Program).Assembly.GetName().Name + ".dll"));
         start.ArgumentList.Add("--staged-parser");
         start.Environment["DOTNET_GCHeapHardLimit"] = (memoryBytes / 2).ToString("X");
         using var job = ParserJob.Create(memoryBytes);
