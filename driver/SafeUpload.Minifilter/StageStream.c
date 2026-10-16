@@ -4834,6 +4834,30 @@ static NTSTATUS StageCancelSealedPrivate(PSTAGE_STREAM Stream)
 }
 #endif
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* Demo compatibility (owner, 2026-10-16): applications close a new file and at once delete or rename it (the Save As
+ * write probe, temporary-file renames). The exact op19 handle receipt for that close is then still travelling, and the
+ * checks below would answer BUSY/ACCESS_DENIED. Wait, bounded and with no lock held, until the receipt settles; the
+ * checks themselves are unchanged and still decide. A stream found through a live file object stays allocated. */
+static VOID StageWaitHandleReceiptSettled(PSTAGE_STREAM Stream)
+{
+    LARGE_INTEGER interval;
+    ULONGLONG deadline;
+    BOOLEAN busy;
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) return;
+    interval.QuadPart = -10 * 1000 * 10; /* 10 ms */
+    deadline = KeQueryInterruptTime() + 10ULL * 1000 * 1000 * 10; /* 10 s */
+    for (;;) {
+        StageAcquire(&StageNamespaceResource);
+        busy = Stream->HandleReceiptPending || Stream->HandleReceiptInFlight ||
+            (Stream->AnyHandleCleanupObserved && !Stream->HandleReceiptAcknowledged);
+        StageRelease(&StageNamespaceResource);
+        if (!busy || KeQueryInterruptTime() >= deadline) return;
+        (VOID)KeDelayExecutionThread(KernelMode, FALSE, &interval);
+    }
+}
+#endif
+
 /* T5 (driver/T5-DELETES.md R3): a delete of the owner's own private version discards it at the last cleanup; it is never sealed,
  * inspected or published, and the public name, if any, is untouched. FILE_DISPOSITION_ON_CLOSE sets or clears the handle's
  * delete-on-close instead, as on NTFS. The bound sealed branch first durably
@@ -4857,6 +4881,7 @@ static NTSTATUS StageSetDisposition(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Strea
         if (KeGetCurrentIrql() != PASSIVE_LEVEL || FlagOn(flags, FILE_DISPOSITION_ON_CLOSE)) return STATUS_CANNOT_DELETE;
         return StageCancelSealedPrivate(Stream);
     }
+    StageWaitHandleReceiptSettled(Stream);
 #endif
     /* NamespaceResource serializes this legacy/unsealed private discard with
      * creates and renames. Public deletion uses the separate exact relay. */
@@ -4934,6 +4959,9 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     posix = extended && BooleanFlagOn(*(PULONG)rename, FILE_RENAME_POSIX_SEMANTICS);
     if (extended && FlagOn(*(PULONG)rename, ~(FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS)))
         return STATUS_NOT_SUPPORTED;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    StageWaitHandleReceiptSettled(Stream);
+#endif
     StageAcquire(&StageNamespaceResource);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (Stream->PrivateCancellationBusy || Stream->PrivateCancellationAccepted) {
