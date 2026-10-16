@@ -368,6 +368,7 @@ static VOID StageRegistrySetEntryUnknownLockedAt(_In_ PSTAGE_REGISTRY_ENTRY Entr
     _In_ LONG Reason, _In_ ULONG OriginSite);
 #define StageRegistrySetEntryUnknownLocked(Entry, Reason) \
     StageRegistrySetEntryUnknownLockedAt((Entry), (Reason), (ULONG)__LINE__)
+static VOID StageRegistryPublishGlobalUnknownAt(_In_ LONG Reason, _In_ ULONG OriginSite);
 #define StageRegistryPublishGlobalUnknown(Reason) \
     StageRegistryPublishGlobalUnknownAt((Reason), (ULONG)__LINE__)
 static VOID StageRegistryMarkEntryUnknownAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
