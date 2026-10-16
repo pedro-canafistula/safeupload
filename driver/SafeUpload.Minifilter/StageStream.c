@@ -3462,6 +3462,8 @@ static NTSTATUS StageAttachExchangeRetry(_Inout_ PSTAGE_ATTACH_TRANSACTION Trans
     PSTAGE_STREAM stream;
     BOOLEAN requestMayExist = FALSE;
     BOOLEAN exactTerminalAllowed = FALSE;
+    ULONG persistenceAttempt = 0;
+    LARGE_INTEGER persistenceRetryInterval;
     NTSTATUS status;
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     if (Result != NULL) *Result = 0;
@@ -3497,20 +3499,41 @@ static NTSTATUS StageAttachExchangeRetry(_Inout_ PSTAGE_ATTACH_TRANSACTION Trans
                 STATUS_VOLUME_DISMOUNTED : STATUS_CANCELLED;
     }
     if (stream->View == NULL) return STATUS_INVALID_DEVICE_STATE;
-    status = SafeUploadStageAttachmentExchangeV20(stream->View->OwnerProcessId,
-        &stream->Name, Transaction->VolumeKind, Operation, &stream->TransferId,
-        stream->DestinationGeneration, &stream->StageIdentity, &Transaction->DriverInstanceId,
-        &stream->AllocationParentDirectoryIdentity, Request, Result, &requestMayExist);
-    if (requestMayExist) {
-        Transaction->ServiceRequestMayExist = TRUE;
-        StageAcquire(&StageNamespaceResource);
-        if (Operation == SAFEUPLOAD_OPERATION_STAGE_ATTACH_PREPARE)
-            stream->AttachPrepareMayExist = TRUE;
-        else if (Operation == SAFEUPLOAD_OPERATION_STAGE_ATTACH_COMMIT)
-            stream->AttachCommitMayExist = TRUE;
-        else if (Operation == SAFEUPLOAD_OPERATION_STAGE_ATTACH_COMPLETION_PERMITTED)
-            stream->AttachCompletionMayExist = TRUE;
-        StageRelease(&StageNamespaceResource);
+    for (;;) {
+        if (SafeUploadStageMandatoryTeardownActive()) return STATUS_PORT_DISCONNECTED;
+        requestMayExist = FALSE;
+        *Result = 0;
+        status = SafeUploadStageAttachmentExchangeV20(stream->View->OwnerProcessId,
+            &stream->Name, Transaction->VolumeKind, Operation, &stream->TransferId,
+            stream->DestinationGeneration, &stream->StageIdentity, &Transaction->DriverInstanceId,
+            &stream->AllocationParentDirectoryIdentity, Request, Result, &requestMayExist);
+        if (requestMayExist) {
+            Transaction->ServiceRequestMayExist = TRUE;
+            StageAcquire(&StageNamespaceResource);
+            if (Operation == SAFEUPLOAD_OPERATION_STAGE_ATTACH_PREPARE)
+                stream->AttachPrepareMayExist = TRUE;
+            else if (Operation == SAFEUPLOAD_OPERATION_STAGE_ATTACH_COMMIT)
+                stream->AttachCommitMayExist = TRUE;
+            else if (Operation == SAFEUPLOAD_OPERATION_STAGE_ATTACH_COMPLETION_PERMITTED)
+                stream->AttachCompletionMayExist = TRUE;
+            StageRelease(&StageNamespaceResource);
+        }
+        /* Retry only exact private-bookkeeping uncertainty, on this counted
+         * CREATE and immutable request. Six exchanges, five waits totalling
+         * 620 ms; RPC/storage time is separate. Exhaustion remains held/fails
+         * closed through the existing lifecycle. No lock spans the wait. */
+        if (status != STATUS_DEVICE_BUSY || *Result != SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE ||
+            (Operation != SAFEUPLOAD_OPERATION_STAGE_ATTACH_COMMIT &&
+             Operation != SAFEUPLOAD_OPERATION_STAGE_ATTACH_COMPLETION_PERMITTED) ||
+            persistenceAttempt == 5) break;
+        if (!StageAttachRetryAllowed(Transaction) ||
+            InterlockedCompareExchange(&Transaction->CancelRequested, 0, 0) != 0) return STATUS_CANCELLED;
+        persistenceRetryInterval.QuadPart = -((LONGLONG)(20U << persistenceAttempt) * 10 * 1000);
+        ++persistenceAttempt;
+        (VOID)KeDelayExecutionThread(KernelMode, FALSE, &persistenceRetryInterval);
+        if (SafeUploadStageMandatoryTeardownActive()) return STATUS_PORT_DISCONNECTED;
+        if (!StageAttachRetryAllowed(Transaction) ||
+            InterlockedCompareExchange(&Transaction->CancelRequested, 0, 0) != 0) return STATUS_CANCELLED;
     }
     return status;
 }

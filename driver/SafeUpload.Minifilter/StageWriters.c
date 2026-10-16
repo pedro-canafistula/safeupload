@@ -89,8 +89,12 @@ typedef struct _STAGE_SOP_LIFETIME {
     volatile LONG References;
     volatile LONG Ended;
     volatile LONG Invalid;
+    LONG NonRetiredBindings; /* RegistryLock exclusive, not reference count */
     PVOID Sop; /* immutable comparison token, NEVER dereferenced */
 } STAGE_SOP_LIFETIME, *PSTAGE_SOP_LIFETIME;
+#ifdef _WIN64
+C_ASSERT(sizeof(STAGE_SOP_LIFETIME) == 24);
+#endif
 
 __declspec(align(16)) struct _STAGE_MUTATING_IO_MARKER_CONTEXT {
     ULONG Signature;
@@ -984,13 +988,39 @@ static VOID StageRegistryReleaseLifetime(_In_opt_ PSTAGE_SOP_LIFETIME Lifetime)
         ExFreePoolWithTag(Lifetime, STAGE_SOP_LIFETIME_TAG);
 }
 
+/* Counter corruption supplies no retirement evidence. Keep the witness invalid
+ * and the machine tracking-loss latch sticky; never repair/clamp the count. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static VOID StageRegistryLifetimeViolation(_In_ PSTAGE_SOP_LIFETIME Lifetime)
+{
+    InterlockedExchange(&Lifetime->Invalid, 1);
+    StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP);
+}
+
+/* Caller holds RegistryLock exclusive at the actual FALSE->TRUE transition.
+ * Retirement retains the entry-owned witness reference until destruction. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static VOID StageRegistryRetireLifetimeLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    PSTAGE_SOP_LIFETIME lifetime = StageRegistryLifetime(Entry);
+    if (lifetime != NULL) {
+        if (lifetime->NonRetiredBindings <= 0 ||
+            lifetime->NonRetiredBindings > (LONG)SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT)
+            StageRegistryLifetimeViolation(lifetime);
+        else --lifetime->NonRetiredBindings;
+    }
+}
+
 __declspec(noinline) static VOID StageRegistryDereference(_In_opt_ PSTAGE_REGISTRY_ENTRY Entry)
 {
     if (Entry == NULL) return;
     if (InterlockedDecrement(&Entry->References) == 0) {
         /* Sole final owner: listed history/retirement would still hold a
          * reference, so no concurrent retirement can clear these final pins. */
-        StageRegistryReleaseLifetime(StageRegistryLifetime(Entry));
+        PSTAGE_SOP_LIFETIME lifetime = StageRegistryLifetime(Entry);
+        if (lifetime != NULL && !Entry->Retired) StageRegistryLifetimeViolation(lifetime);
+        NT_ASSERT(lifetime == NULL || Entry->Retired);
+        StageRegistryReleaseLifetime(lifetime);
         if (Entry->Volume != NULL) FltObjectDereference(Entry->Volume);
         if (Entry->Instance != NULL) FltObjectDereference(Entry->Instance);
         if (Entry->StaticPool) StageRegistryCompactPoolPush(Entry);
@@ -2517,18 +2547,20 @@ __declspec(noinline) static BOOLEAN StageWritersInsertNode(
     return compatible;
 }
 
-/* A successful prune has already proved the exact identity quiescent and, under RegistryLock, excluded every writer,
- * reservation, transaction and section slot. Drop only that retired entry's idle context-cache reference. The caller pins
- * both objects and holds no registry lock. A replacement writer either installs its cache first (this comparison refuses)
- * or installs it afterwards and clears the empty-cache witness. Never detach the context: that could orphan a concurrent
- * writer's cleanup list. This helper is resident because WriterLock raises IRQL. */
+/* Only the successful ordinary-prune path calls this with a pinned entry and
+ * context. RegistryLock->WriterLock serializes binding/retirement/detach; the
+ * cache predicate is unchanged. A metadata-only successor may leave an older
+ * retired cache entry, so witness detach must not depend on cache equality.
+ * Resident, O(1): no registry walk, allocation, I/O or filter-object call. */
 _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageWritersReleasePrunedCache(
     _In_ PSAFEUPLOAD_STREAM_CONTEXT StreamContext, _In_ PSTAGE_REGISTRY_ENTRY Entry)
 {
     KIRQL irql;
     PSTAGE_REGISTRY_ENTRY released = NULL;
+    PSTAGE_SOP_LIFETIME detached = NULL, lifetime;
 
+    FltAcquirePushLockExclusive(&RegistryLock);
     StageAcquireSpinLock(&StreamContext->WriterLock, &irql);
     if (StreamContext->WriterRegistryEntry == Entry && Entry->Retired &&
         IsListEmpty(&StreamContext->WriterObjects) &&
@@ -2541,8 +2573,23 @@ __declspec(noinline) static VOID StageWritersReleasePrunedCache(
         StreamContext->WriterRegistryCachePruned = TRUE;
         released = Entry;
     }
+    lifetime = (PSTAGE_SOP_LIFETIME)StreamContext->WriterSopLifetime;
+    if (lifetime != NULL && (lifetime->NonRetiredBindings < 0 ||
+        lifetime->NonRetiredBindings > (LONG)SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT))
+        StageRegistryLifetimeViolation(lifetime);
+    if (Entry->Retired && !Entry->Listed && lifetime != NULL &&
+        lifetime == StageRegistryLifetime(Entry) && lifetime->NonRetiredBindings == 0 &&
+        IsListEmpty(&StreamContext->WriterObjects) &&
+        InterlockedCompareExchange(&StreamContext->WritersUntracked, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) == 0 &&
+        !StreamContext->WriterSopLifetimeInvalid &&
+        InterlockedCompareExchange(&lifetime->Invalid, 0, 0) == 0) {
+        StreamContext->WriterSopLifetime = NULL;
+        detached = lifetime; /* transfer only the context-owned reference */
+    }
     StageReleaseSpinLock(&StreamContext->WriterLock, irql);
-    /* Borrowers either took their own entry reference under WriterLock, or finish reading before this unlock. */
+    FltReleasePushLock(&RegistryLock);
+    StageRegistryReleaseLifetime(detached);
     StageRegistryDereference(released);
 }
 
@@ -2622,52 +2669,69 @@ _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static BOOLEAN StageRegistryBindLifetime(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PSAFEUPLOAD_STREAM_CONTEXT Context, _In_ PVOID Sop)
 {
-    PSTAGE_SOP_LIFETIME fresh = NULL, lifetime = NULL, existing = NULL;
-    KIRQL irql = PASSIVE_LEVEL;
-    BOOLEAN valid = FALSE;
-    if (SafeUploadStageMandatoryTeardownActive()) return FALSE;
-    StageAcquireSpinLock(&Context->WriterLock, &irql);
-    valid = Context->WriterSopLifetime != NULL || Context->WriterSopLifetimeInvalid;
-    StageReleaseSpinLock(&Context->WriterLock, irql);
-    if (!valid) {
-        fresh = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*fresh), STAGE_SOP_LIFETIME_TAG);
-        if (fresh != NULL) {
-            InterlockedExchange(&fresh->References, 1);
-            InterlockedExchange(&fresh->Ended, 0);
-            InterlockedExchange(&fresh->Invalid, 0);
-            fresh->Sop = Sop;
+    PSTAGE_SOP_LIFETIME fresh, lifetime, existing;
+    KIRQL irql;
+    BOOLEAN valid, allocationSkipped, retry;
+    for (;;) {
+        fresh = NULL;
+        if (SafeUploadStageMandatoryTeardownActive()) return FALSE;
+        /* Hint only: never retain a borrowed witness across the two checks. */
+        StageAcquireSpinLock(&Context->WriterLock, &irql);
+        allocationSkipped = Context->WriterSopLifetime != NULL || Context->WriterSopLifetimeInvalid;
+        StageReleaseSpinLock(&Context->WriterLock, irql);
+        if (!allocationSkipped) {
+            fresh = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*fresh), STAGE_SOP_LIFETIME_TAG);
+            if (fresh != NULL) {
+                InterlockedExchange(&fresh->References, 1);
+                InterlockedExchange(&fresh->Ended, 0);
+                InterlockedExchange(&fresh->Invalid, 0);
+                fresh->NonRetiredBindings = 0;
+                fresh->Sop = Sop;
+            }
         }
-    }
-    valid = FALSE;
-    StageAcquireSpinLock(&Context->WriterLock, &irql);
-    lifetime = (PSTAGE_SOP_LIFETIME)Context->WriterSopLifetime;
-    if (lifetime == NULL && fresh != NULL && !Context->WriterSopLifetimeInvalid &&
-        !SafeUploadStageMandatoryTeardownActive()) {
-        Context->WriterSopLifetime = fresh;
-        lifetime = fresh;
-        fresh = NULL; /* context owns the allocation reference */
-    }
-    if (!SafeUploadStageMandatoryTeardownActive() &&
-        lifetime != NULL && lifetime->Sop == Sop && !Context->WriterSopLifetimeInvalid &&
-        InterlockedCompareExchange(&lifetime->Invalid, 0, 0) == 0 &&
-        InterlockedCompareExchange(&lifetime->Ended, 0, 0) == 0) {
-        InterlockedIncrement(&lifetime->References);
-        existing = (PSTAGE_SOP_LIFETIME)InterlockedCompareExchangePointer(
-            &Entry->SopLifetime, lifetime, NULL);
-        valid = existing == NULL || existing == lifetime;
-        if (existing != NULL) StageRegistryReleaseLifetime(lifetime);
-        if (valid && InterlockedCompareExchangePointer(&Context->WriterRegistryEntry, NULL, NULL) == NULL) {
-            /* A tracked metadata-only CREATE now also needs a context for
-             * its witness. Bind its H=0 ledger cache rather than making the
-             * pre-existing missing-context census spuriously Unknown. */
-            StageRegistryReference(Entry);
-            InterlockedExchangePointer(&Context->WriterRegistryEntry, Entry);
-            Context->WriterRegistryCachePruned = FALSE;
+        valid = FALSE;
+        retry = FALSE;
+        FltAcquirePushLockExclusive(&RegistryLock);
+        StageAcquireSpinLock(&Context->WriterLock, &irql);
+        lifetime = (PSTAGE_SOP_LIFETIME)Context->WriterSopLifetime;
+        if (Entry->Listed && !Entry->Retired && !Entry->Transient &&
+            !Context->WriterSopLifetimeInvalid && !SafeUploadStageMandatoryTeardownActive()) {
+            /* Detach after the hint is distinct from genuine allocation OOM. */
+            retry = lifetime == NULL && fresh == NULL && allocationSkipped;
+            if (lifetime == NULL && fresh != NULL) {
+                Context->WriterSopLifetime = fresh;
+                lifetime = fresh;
+                fresh = NULL; /* context owns allocation reference */
+            }
+            if (lifetime != NULL && lifetime->Sop == Sop &&
+                InterlockedCompareExchange(&lifetime->Invalid, 0, 0) == 0 &&
+                InterlockedCompareExchange(&lifetime->Ended, 0, 0) == 0) {
+                existing = StageRegistryLifetime(Entry);
+                if (lifetime->NonRetiredBindings < 0 ||
+                    lifetime->NonRetiredBindings > (LONG)SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT ||
+                    (existing == lifetime && lifetime->NonRetiredBindings == 0) ||
+                    (existing == NULL && lifetime->NonRetiredBindings == (LONG)SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT)) {
+                    StageRegistryLifetimeViolation(lifetime);
+                } else {
+                    InterlockedIncrement(&lifetime->References);
+                    existing = (PSTAGE_SOP_LIFETIME)InterlockedCompareExchangePointer(
+                        &Entry->SopLifetime, lifetime, NULL);
+                    if (existing == NULL) ++lifetime->NonRetiredBindings;
+                    else StageRegistryReleaseLifetime(lifetime); /* attached context keeps this nonfinal */
+                    valid = existing == NULL || existing == lifetime;
+                    if (valid && InterlockedCompareExchangePointer(&Context->WriterRegistryEntry, NULL, NULL) == NULL) {
+                        StageRegistryReference(Entry);
+                        InterlockedExchangePointer(&Context->WriterRegistryEntry, Entry);
+                        Context->WriterRegistryCachePruned = FALSE;
+                    }
+                }
+            }
         }
+        StageReleaseSpinLock(&Context->WriterLock, irql);
+        FltReleasePushLock(&RegistryLock);
+        StageRegistryReleaseLifetime(fresh);
+        if (!retry) return valid;
     }
-    StageReleaseSpinLock(&Context->WriterLock, irql);
-    StageRegistryReleaseLifetime(fresh);
-    return valid;
 }
 
 /* Called BEFORE any explicit context removal. A diagnostic deletion is loss,
@@ -3983,6 +4047,7 @@ static VOID StageRegistryRetireInstance(_In_opt_ PFLT_INSTANCE Instance, _In_ BO
             if ((Instance == NULL || current->Instance == Instance) && !current->Retired) {
                 entry = current;
                 entry->Retired = TRUE;
+                StageRegistryRetireLifetimeLocked(entry);
                 RemoveEntryList(&entry->Link);
                 entry->Listed = FALSE;
                 instanceReference = entry->Instance;
@@ -4251,6 +4316,7 @@ __declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTR
         RemoveEntryList(&Entry->Link);
         Entry->Listed = FALSE;
         Entry->Retired = TRUE;
+        StageRegistryRetireLifetimeLocked(Entry);
         InterlockedIncrement64(&RegistryChangeSequence);
     }
     StageReleaseSpinLock(&SectionLock, irql);

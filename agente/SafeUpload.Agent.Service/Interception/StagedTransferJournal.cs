@@ -3214,7 +3214,8 @@ public sealed partial class StagedTransferJournal
                 try
                 {
                     _writeObserver?.Invoke(StagedJournalWritePoint.BeforeReplacement, entry);
-                    StagedDestinationFile.Commit(stream, temporary, manifestPath);
+                    await StagedJournalReplacement.CommitAsync(stream, temporary, manifestPath,
+                        cancellationToken).ConfigureAwait(false);
                     replacementReturned = true;
                     _writeObserver?.Invoke(StagedJournalWritePoint.AfterReplacement, entry);
                 }

@@ -997,7 +997,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     // with a real journal, including structural refusals and storage faults.
     internal static (uint Verdict, SafeUploadStageLifecycleV20? Reply) ApplyStageLifecycleV20(
         SafeUploadRequest request, StagedTransferJournal journal, Guid activeDriver,
-        IPolicyStore policyStore, ILogger<MinifilterInterceptor> logger, Func<StagedTransfer, bool> isExactLiveOwner)
+        IPolicyStore policyStore, ILogger<MinifilterInterceptor> logger, Func<StagedTransfer, bool> isExactLiveOwner,
+        Func<string, string?>? resolveDestination = null)
     {
         if (request.RequestId == 0 ||
             request.RequestorProcessId == 0 ||
@@ -1010,7 +1011,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
         try
         {
-            string? destination = NtPathTranslator.ToDosPath(request.GetPath());
+            // Production uses the Windows translator; portable component controls
+            // supply their local namespace without invoking QueryDosDevice.
+            string? destination = (resolveDestination ?? NtPathTranslator.ToDosPath)(request.GetPath());
             if (destination is null) return (PortVerdict.Deny, null);
             int processId = checked((int)request.RequestorProcessId);
             StagedVersionIdentity version = new(payload.TransferId,
@@ -1046,7 +1049,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         {
             logger.LogWarning(ex, "Stage-v20 lifecycle operation {Operation} refused for request {RequestId}.",
                 request.Operation, request.RequestId);
-            if (request.Operation == Operation.StageHandleObserved && !StagedRequestRefusal.IsPermanent(ex))
+            if ((request.Operation is Operation.StageAttachCommit or Operation.StageCompletionPermit &&
+                    ex is StagedJournalPersistenceException) ||
+                (request.Operation == Operation.StageHandleObserved && !StagedRequestRefusal.IsPermanent(ex)))
             {
                 SafeUploadStageLifecycleV20 retry = payload;
                 retry.Result = StageV20Result.RetryableFailure;
