@@ -35,6 +35,10 @@ Environment:
 
 #include "Filter.h"
 
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, SafeUploadPolicyDirectoryIsScopeAnchor)
+#endif
+
 //
 //  Guards SafeUploadPolicy. Shared for readers, exclusive for the swap.
 //
@@ -1741,6 +1745,41 @@ Return Value:
     FltReleasePushLock( &SafeUploadPolicyLock );
 
     return matched;
+}
+
+/* A configured scope or its ancestor cannot move: policy prefixes are fixed,
+ * even when the directory has no live private versions. No I/O or allocation. */
+_IRQL_requires_(PASSIVE_LEVEL)
+BOOLEAN SafeUploadPolicyDirectoryIsScopeAnchor(_In_ PCUNICODE_STRING Directory)
+{
+    const SAFEUPLOAD_POLICY *snapshots[2];
+    ULONG snapshot, index;
+    BOOLEAN anchor = FALSE;
+    PAGED_CODE();
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    snapshots[0] = SafeUploadPolicy;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    snapshots[1] = SafeUploadPendingPolicy;
+#else
+    snapshots[1] = NULL;
+#endif
+    for (snapshot = 0; snapshot < RTL_NUMBER_OF(snapshots) && !anchor; ++snapshot) {
+        const SAFEUPLOAD_POLICY *policy = snapshots[snapshot];
+        if (policy == NULL) continue;
+        for (index = 0; index < policy->PrefixCount && !anchor; ++index)
+            anchor = SafeUploadPathUnderPrefix(Directory, &policy->Prefixes[index]);
+    }
+    if (SafeUploadBootScopesActive) {
+        if (SafeUploadBootScopes.Overflow) anchor = TRUE;
+        for (index = 0; index < SafeUploadBootScopes.PrefixCount && !anchor; ++index) {
+            UNICODE_STRING prefix;
+            prefix.Buffer = SafeUploadBootScopes.Prefixes[index];
+            prefix.Length = prefix.MaximumLength = (USHORT)(SafeUploadBootScopes.PrefixChars[index] * sizeof(WCHAR));
+            anchor = SafeUploadPathUnderPrefix(Directory, &prefix);
+        }
+    }
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    return anchor;
 }
 
 BOOLEAN
