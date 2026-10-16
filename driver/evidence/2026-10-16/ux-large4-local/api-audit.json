@@ -1,0 +1,206 @@
+{
+  "base": "45102e57",
+  "kernelFilesByteIdentical": 45,
+  "newKernelImports": 0,
+  "newManagedNativeImports": 0,
+  "allocTextBeforeDefinition": [
+    {
+      "function": "StageSpaceGrantValid",
+      "pragmaLine": 1679,
+      "definitionLine": 1685
+    },
+    {
+      "function": "StageReadSpaceGrant",
+      "pragmaLine": 1680,
+      "definitionLine": 1697
+    },
+    {
+      "function": "StageOpenBacking",
+      "pragmaLine": 1681,
+      "definitionLine": 1764
+    }
+  ],
+  "files": [
+    {
+      "path": "driver/SafeUpload.Minifilter/BootPolicy.c",
+      "sha256": "47ed57eb10e339bc912d6774429820a0a4122e72c963fef12e88dd05edd1536c"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/Communication.c",
+      "sha256": "36ff1fbfc8f34133c0e77a12be4e1ade3a962ffd73311fc0807b55d734372005"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/Context.c",
+      "sha256": "71f15d5e0d0e61322bb1d1eec5511a3f26a77c1b9a29cc1c2de82bb664c6ae03"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/DenyRing.c",
+      "sha256": "8864cae294552e5f3bf16f6c2b158fa32a05521cfc3748ff1804767fa38d582b"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/Filter.c",
+      "sha256": "67a5295c8741f49fea3e97fb36d57578684de917544b921d23fdb5b0f8c0765c"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/Filter.h",
+      "sha256": "e6867c80c0651df35c08c8ef9144319dce7fcd241b869b9afe7fb16625e4ccd3"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/Override.c",
+      "sha256": "babbf6aed51162156b3bec6db523b38bb1725c1885c9bb5d8e7bd7ad087c5b87"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/Policy.c",
+      "sha256": "3d9f5ee0ba55fe89faa97ab7a14b21d5f32a0ba15bb7f78bbc1fd4cc2d6c4c13"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/Protocol.h",
+      "sha256": "02822b6d5b383dc1d6969588d8dec52bd67713977085f68292c3fccf91d7cca7"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/SafeUpload.Minifilter.vcxproj",
+      "sha256": "999f4c8435cd672607ebe192387a92b5b43c770c74748f67761002c801a094a9"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/SafeUpload.inf",
+      "sha256": "b6f0400e7751f9d70cb03a3ffcd9c53c976bdca155451e41e2bc779741486f1d"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/SafeUpload.rc",
+      "sha256": "7b29c6cd59a4fee84a98f8cd63f4a4b9a1daab4ce00f69f78b6f8861f1355eeb"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/Stage.h",
+      "sha256": "7696ac9d25839d0d9a05bd36156328ce4f2d0b1c65128f8587090d4ab78ec774"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageAdmission.c",
+      "sha256": "2524557cdc4a0a24373c17c3e829022f7a04929870ac030f180ea49887c6601f"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageAlias.c",
+      "sha256": "36c5adf26fa8e0e03624e5cd6d186e9cb5a4c8d844b69cfe25c340e18e48cf85"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageBoundAllocation.h",
+      "sha256": "b7aa54140271aba26a6ac566f14fb11b5b7f4bb6766af59e103cd8a02c4a3e8c"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageBoundPublication.c",
+      "sha256": "0270fb43066e35bd1cd417be44a40170f837f21c813e115498868ecd0885356c"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageBoundPublication.h",
+      "sha256": "6496146ec8d0efa3243d01515193bfba678249aab03299be5bfef0c2283f973b"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageBoundPublicationInternal.h",
+      "sha256": "aec572fdecf42f446ef3db8e1e0be3ae134b4ed210ad7f7e9b2fa1ad88349b6e"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageDirectory.c",
+      "sha256": "2e7085bf0f28267169a78a6cfb4355e3dcc82be3b794359ee960c0dd82276bf1"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageFence.c",
+      "sha256": "2c2c9d2b1812355b6d792969b49acd62cdb2dd8daec602bd52392282e1a557ba"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageNativeObservation.c",
+      "sha256": "97a4973ec70c9a7370b0e1fb1a65eee74f843c8ba271faaff7ea928f0d373aff"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageNativeRecords.c",
+      "sha256": "35cf8d6d20d7f46233bd0d46b2099184028a889831c034a283126e537731feac"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageNativeRecords.h",
+      "sha256": "b19702dfca01d7136447e9068d08e53e47b9b887a27c9104f7c95f69180c861d"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageNativeWire.c",
+      "sha256": "e22004a60f0ea7d4c020aef756f210381f8255c0ebc2e7ed2158b483c2b6b57d"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageNativeWire.h",
+      "sha256": "ce992bc37134b82485ea9a53460cedbd25e7e98619024830325a34bc51774d06"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "sha256": "4194b6c7bb8a4bce093d524a542daa083c84739a5fa9a8c913b798fdaf8f3984"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StagePublic.c",
+      "sha256": "0c73c2361ed6edeae715117647947416e61b66cc23680e9b4d357c76f22daede"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StagePublic.h",
+      "sha256": "d0fd5e7f40f635133b06b4f12b60cc797dc3017a03c3f875a9751c60faa6f219"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StagePublicRelay.h",
+      "sha256": "9f155711ea311df841097e92814e6e62066419828c75e3a7dd353c723887b85e"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageSecurity.c",
+      "sha256": "2bd9372e528f4b557331dc1d44004c70ccf2345c54e629b84f6f0ef473dc0816"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageSecurity.h",
+      "sha256": "77faf8d334956a489baf13651e9956a8eb8d551ada5bb0601d2160e8e20075dc"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageStream.c",
+      "sha256": "725f4a6ea975d4ecedb671d2c9edb3f516b75154b3d3a824b47c30cdfbe5f048"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageWriterMetadata.h",
+      "sha256": "01c1e1732425e8e08ba7f7875fb5991f67491f1a04ad7b83f04d6388441aac48"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/StageWriters.c",
+      "sha256": "d4bc90b82d0f12753757d9806cfe49a420d27f411937ad95a6eb3411f3624879"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/Taint.c",
+      "sha256": "a6c6391a95861a047510855800c4deba0018c2a540387235b9a16e54fcee3f6d"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/Txf.c",
+      "sha256": "25b2d9b4b80f4b56fb27af64a8b2410379acd246172fb869e2724cbcb801b398"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/allocation_reply_fault_fixture.c",
+      "sha256": "08cce634a215e242f8c10f801704b78197d82d4791f174b652696692030406c7"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/bound_publication_buffers_fixture.c",
+      "sha256": "1cc1d1514fc9877143f35431c8d4977701a255eb79fa1b4f8c346dc93060f1ac"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/directory_ux_fixture.c",
+      "sha256": "38387a9535584ca0b9503597886cb4b57756581cefea83239b86d71789ab8ac4"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/test_allocation_reply_fault.py",
+      "sha256": "e60e559885b767beea77cb88d8b3f223c91a494c587e7c09ea1fb1317146d100"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/test_bound_publication_buffers.py",
+      "sha256": "28c2d34a4eea8f43e5048af344af381429373918a30ffc51aed0172140203a19"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/test_directory_ux.py",
+      "sha256": "e604b08cd2161dd4f0f0b69b32105892b0b6f5694677cea7f06707c46216bdef"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/test_writer_metadata_readers.py",
+      "sha256": "b9d98474bc6945c11e5e152dd432859e2a59fb850ee9499d059df400c9a7ce07"
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/writer_metadata_readers_fixture.c",
+      "sha256": "b4dca3858f77922710449007bc717d2c8a0be6badbbe6570ea3696ccd0afa5a6"
+    }
+  ],
+  "qualification": "source audit; offline import self-check separate; no WDK/ApiValidator/VM claim"
+}

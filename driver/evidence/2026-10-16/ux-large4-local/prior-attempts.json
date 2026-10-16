@@ -1,0 +1,71 @@
+{
+  "retainedAttempts": [
+    {
+      "path": ".scratch/ux-large4/focused-first.json",
+      "sha256": "b401ca24d38a2a88aa1d7b6b55c99ab7cf05241c2ed570cecec25cd0f7967b74",
+      "total": 92,
+      "failed": 1,
+      "failures": [
+        {
+          "name": "NotificationRecordTests.A_second_writer_is_refused_until_the_first_closes[]",
+          "outcome": "Failed",
+          "error": "Xunit.Sdk.ThrowsException: Assert.Throws() Failure: No exception was thrown\nExpected: typeof(System.IO.IOException)\n   at Xunit.Assert.Throws(Type exceptionType, Exception exception) in /_/src/xunit.assert/Asserts/ExceptionAsserts.cs:line 42\n   at Xunit.Assert.Throws[T](Func`1 testCode) in /_/src/xunit.assert/Asserts/ExceptionAsserts.cs:line 113\n   at SafeUpload.Agent.Tests.NotificationRecordTests.A_second_writer_is_refused_until_the_first_closes() in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/NotificationRecordTests.cs:line 432\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\n   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)"
+        }
+      ]
+    },
+    {
+      "path": ".scratch/ux-large4/focused-second.json",
+      "sha256": "0ed9ffc9e8e228b8a3779411f2205fac291b678c44ffa91b89effe03f414c93c",
+      "total": 153,
+      "failed": 5,
+      "failures": [
+        {
+          "name": "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum[1000]",
+          "outcome": "Failed",
+          "error": "System.PlatformNotSupportedException: Destination authority requires the Windows filename comparator.\n   at SafeUpload.Agent.Service.Interception.StagedDestinationLeafComparer.Compare(String left, String right, Boolean caseSensitive) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedDestinationLeafComparer.cs:line 17\n   at SafeUpload.Agent.Service.Interception.StagedDestinationIdentity.Compare(StagedDestinationIdentity left, StagedDestinationIdentity right) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedDestinationCommitJournal.cs:line 68\n   at System.Collections.Generic.SortedDictionary`2.KeyValuePairComparer.Compare(KeyValuePair`2 x, KeyValuePair`2 y)\n   at System.Collections.Generic.SortedSet`1.FindNode(T item)\n   at System.Collections.Generic.SortedDictionary`2.TryGetValue(TKey key, TValue& value)\n   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.AddMaximum[TKey](IDictionary`2 claims, TKey destination, Int64 generation, Guid transfer) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedJournalCompaction.cs:line 78\n   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.<FindCompactionProtectedTransfers>g__AddClaim|87_1(String locator, StagedAllocationBindingV23 binding, Int64 generation, Guid transfer, <>c__DisplayClass87_0&) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedJournalCompaction.cs:line 71\n   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.FindCompactionProtectedTransfers(IReadOnlyList`1 entries, IReadOnlySet`1 finished, CancellationToken token) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedJournalCompaction.cs:line 26\n   at SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Measure(String shape, IReadOnlyList`1 entries) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/StagedJournalCompactionIndexTests.cs:line 46\n   at SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(Int32 destinations) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/StagedJournalCompactionIndexTests.cs:line 154\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\n   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)"
+        },
+        {
+          "name": "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum[10000]",
+          "outcome": "Failed",
+          "error": "System.PlatformNotSupportedException: Destination authority requires the Windows filename comparator.\n   at SafeUpload.Agent.Service.Interception.StagedDestinationLeafComparer.Compare(String left, String right, Boolean caseSensitive) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedDestinationLeafComparer.cs:line 17\n   at SafeUpload.Agent.Service.Interception.StagedDestinationIdentity.Compare(StagedDestinationIdentity left, StagedDestinationIdentity right) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedDestinationCommitJournal.cs:line 68\n   at System.Collections.Generic.SortedDictionary`2.KeyValuePairComparer.Compare(KeyValuePair`2 x, KeyValuePair`2 y)\n   at System.Collections.Generic.SortedSet`1.FindNode(T item)\n   at System.Collections.Generic.SortedDictionary`2.TryGetValue(TKey key, TValue& value)\n   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.AddMaximum[TKey](IDictionary`2 claims, TKey destination, Int64 generation, Guid transfer) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedJournalCompaction.cs:line 78\n   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.<FindCompactionProtectedTransfers>g__AddClaim|87_1(String locator, StagedAllocationBindingV23 binding, Int64 generation, Guid transfer, <>c__DisplayClass87_0&) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedJournalCompaction.cs:line 71\n   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.FindCompactionProtectedTransfers(IReadOnlyList`1 entries, IReadOnlySet`1 finished, CancellationToken token) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedJournalCompaction.cs:line 26\n   at SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Measure(String shape, IReadOnlyList`1 entries) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/StagedJournalCompactionIndexTests.cs:line 46\n   at SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(Int32 destinations) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/StagedJournalCompactionIndexTests.cs:line 154\n   at InvokeStub_StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(Object, Span`1)\n   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)"
+        },
+        {
+          "name": "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum[50000]",
+          "outcome": "Failed",
+          "error": "System.PlatformNotSupportedException: Destination authority requires the Windows filename comparator.\n   at SafeUpload.Agent.Service.Interception.StagedDestinationLeafComparer.Compare(String left, String right, Boolean caseSensitive) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedDestinationLeafComparer.cs:line 17\n   at SafeUpload.Agent.Service.Interception.StagedDestinationIdentity.Compare(StagedDestinationIdentity left, StagedDestinationIdentity right) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedDestinationCommitJournal.cs:line 68\n   at System.Collections.Generic.SortedDictionary`2.KeyValuePairComparer.Compare(KeyValuePair`2 x, KeyValuePair`2 y)\n   at System.Collections.Generic.SortedSet`1.FindNode(T item)\n   at System.Collections.Generic.SortedDictionary`2.TryGetValue(TKey key, TValue& value)\n   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.AddMaximum[TKey](IDictionary`2 claims, TKey destination, Int64 generation, Guid transfer) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedJournalCompaction.cs:line 78\n   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.<FindCompactionProtectedTransfers>g__AddClaim|87_1(String locator, StagedAllocationBindingV23 binding, Int64 generation, Guid transfer, <>c__DisplayClass87_0&) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedJournalCompaction.cs:line 71\n   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.FindCompactionProtectedTransfers(IReadOnlyList`1 entries, IReadOnlySet`1 finished, CancellationToken token) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedJournalCompaction.cs:line 26\n   at SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Measure(String shape, IReadOnlyList`1 entries) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/StagedJournalCompactionIndexTests.cs:line 46\n   at SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(Int32 destinations) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/StagedJournalCompactionIndexTests.cs:line 154\n   at InvokeStub_StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(Object, Span`1)\n   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)"
+        },
+        {
+          "name": "StagedTransferJournalTests.Kind5_high_water_cannot_compact_away_a_published_barrier_and_revive_an_older_save[false]",
+          "outcome": "Failed",
+          "error": "System.IO.DirectoryNotFoundException: /home/victor/Work/safeupload-ux-large/.scratch/ux-large4/tmp/safeupload-testes/bd2b4b07b446439cac583e41489a94e5/destination\n   at SafeUpload.Agent.Service.Interception.StagedStageFile.ReadDirectoryIdentity(String path) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedStageFile.cs:line 147\n   at SafeUpload.Agent.Tests.StagedTransferJournalTests.Kind5_high_water_cannot_compact_away_a_published_barrier_and_revive_an_older_save(Boolean packed) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/StagedTransferJournalTests.cs:line 1374\n   at Program.<Main>$(String[] args) in /home/victor/Work/safeupload-ux-large/.scratch/ux-large4/runner/Program.cs:line 38"
+        },
+        {
+          "name": "StagedTransferJournalTests.Kind5_high_water_cannot_compact_away_a_published_barrier_and_revive_an_older_save[true]",
+          "outcome": "Failed",
+          "error": "System.IO.DirectoryNotFoundException: /home/victor/Work/safeupload-ux-large/.scratch/ux-large4/tmp/safeupload-testes/e146c1282f1f47bc8ff24747379a462e/destination\n   at SafeUpload.Agent.Service.Interception.StagedStageFile.ReadDirectoryIdentity(String path) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Service/Interception/StagedStageFile.cs:line 147\n   at SafeUpload.Agent.Tests.StagedTransferJournalTests.Kind5_high_water_cannot_compact_away_a_published_barrier_and_revive_an_older_save(Boolean packed) in /home/victor/Work/safeupload-ux-large/agente/SafeUpload.Agent.Tests/StagedTransferJournalTests.cs:line 1374\n   at Program.<Main>$(String[] args) in /home/victor/Work/safeupload-ux-large/.scratch/ux-large4/runner/Program.cs:line 38"
+        }
+      ]
+    }
+  ],
+  "otherRetainedRaw": [
+    {
+      "path": ".scratch/ux-large4/build-debug.log",
+      "sha256": "f9a7efdfc03f2798e3df3f9b3bc4b0cb7c23735b98b00d5a99d7a57dead793b1"
+    },
+    {
+      "path": ".scratch/ux-large4/build-debug3.log",
+      "sha256": "dd260c4af79f9e04597f62a9f5dbd54129105de5a6865196b1f7c07c115598e0"
+    },
+    {
+      "path": ".scratch/ux-large4/selfcheck-grant.log",
+      "sha256": "867d66d0280315b040125cde33b8436e05f6ed5d5af831b648a5ae99c7a0eec0"
+    }
+  ],
+  "dispositions": [
+    "First diagnostic: Windows exclusive sharing control unsupported on Linux; unchanged for matrix.",
+    "Second diagnostic: Windows destination comparator unsupported in three bound cases; unchanged for matrix. Two new compaction fixtures lacked their destination directory; fixed fixture, same assertions passed.",
+    "Initial build had nullable warning later fixed; a test constructor argument then failed compilation and was corrected. No suppression.",
+    "Grant shim initially extracted forward declaration after upstream MSVC fix; now locates actual definition, asserts pragma order, all original checks/mutations/Werror retained.",
+    "Final diagnostic executed all 150 actual selected cases successfully, then selector-coverage validation caught requested non-test helper NotificationRecordTests.Append. Corrected scratch selector, independently verified no actual controls missing; no product-test filter changed."
+  ]
+}

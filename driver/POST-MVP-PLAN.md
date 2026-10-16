@@ -1151,7 +1151,9 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
   [local receipt](evidence/2026-10-16/ux-large-local/result.md), [exact Windows rows](UX-LARGE-VM.md).
   Adds identity-bound capacity grants, SID/total reservations, exact orphan/snapshot accounting, failed-prefix refusal,
   isolated parser resource limits and ZIP text streaming. Owner-approved defaults and conservative legacy upgrade are implemented;
-  [follow-up receipt](evidence/2026-10-16/ux-large3-local/result.md). WDK/native/three-mode evidence and everyday concurrent/seed UX remain open.
+  [follow-up receipt](evidence/2026-10-16/ux-large3-local/result.md). The dev `45102e57` failed-CREATE cascade is addressed by
+  [stateless refusal/exact recovery and recorder recovery](UX-LARGE-RECOVERY.md), preserving effective/high-water claims;
+  [local regression receipt](evidence/2026-10-16/ux-large4-local/result.md). WDK/native/three-mode evidence and everyday concurrent/seed UX remain open.
 - [x] **Complete-or-refuse coverage first** (owner direction 2026-10-13; [review finding](M2-COMPLETION-PLAN.md#findings-in-delivery-order)).
   - [x] Read DrawingML shape/text-box text, chart titles/axis and series names/labels/cached values, VML drawing text and PDF
     annotation contents/form-field values; refuse embedded files, PDF attachments, XFA and other unconsumed payloads.
