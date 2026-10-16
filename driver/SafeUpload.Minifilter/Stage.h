@@ -272,6 +272,12 @@ _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersInvalidateLifetime(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Context);
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersContextRetired(_In_ PSAFEUPLOAD_STREAM_CONTEXT Context);
+/* Association -> RegistryLock -> WriterLock. Never held across allocation, I/O or final release. */
+extern EX_PUSH_LOCK SafeUploadStreamContextAssociationLock;
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadStageWritersAcquireContextLease(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Context);
+_IRQL_requires_max_(APC_LEVEL)
+VOID SafeUploadStageWritersReleaseContextLease(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Context);
 
 #define SAFEUPLOAD_WRITERS_ONLY_CONTEXT ((PVOID)(ULONG_PTR)0x1000)
 BOOLEAN SafeUploadStageWritersWantPostCreate(_In_ PFLT_CALLBACK_DATA Data);

@@ -26,6 +26,7 @@
 # classification is INFO only, and diskpart/fltmc receipts travel with the existing failure-evidence export.
 # T4_PURGE_ATTRIBUTION=yes records per-window Kernel-File ETW and SUfl/SUwH timelines, then repeat/agent-stop purge controls.
 # Non-qualifying; cycles < 10000; cannot combine with hand-back, delete or volume diagnostics.
+# T4_IMMEDIATE_REOPEN=yes adds no-retry same-owner and separate-process read/RW probes after each APPROVE.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; cycles="${5:-10000}"; mode="${6:-runtime-verifier}"; sample_every="${7:-500}"
@@ -33,6 +34,8 @@ dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?
 [[ "$cycles" =~ ^[0-9]{1,6}$ ]] || { echo 'Invalid cycle count'; exit 2; }
 [[ "$sample_every" =~ ^[1-9][0-9]{0,5}$ ]] || { echo 'Invalid sample interval'; exit 2; }
 case "$mode" in ordinary|runtime-verifier|verifier-from-boot) ;; *) echo 'Unknown mode'; exit 2;; esac
+immediate_reopen=${T4_IMMEDIATE_REOPEN-no}
+case "$immediate_reopen" in no|yes) ;; *) echo 'T4_IMMEDIATE_REOPEN must be yes or no'; exit 2;; esac
 purge_attribution=${T4_PURGE_ATTRIBUTION-no}
 case "$purge_attribution" in
     no) ;;
@@ -179,6 +182,7 @@ finish() {
     if [ "$phase" = cycles ]; then
         # Preserve partial progress even when the launcher receives a signal.
         timeout 90 scp "${opts[@]}" "vika@$host:C:/T4/cycles.jsonl" "$ev/$tag-cycles-at-stop.jsonl" >/dev/null 2>&1 || true
+        if [ "$immediate_reopen" = yes ]; then timeout 90 scp "${opts[@]}" "vika@$host:C:/T4/reopens.jsonl" "$ev/$tag-reopens-at-stop.jsonl" >/dev/null 2>&1 || true; fi
         timeout 90 scp "${opts[@]}" "vika@$host:C:/T4/samples.jsonl" "$ev/$tag-samples-at-stop.jsonl" >/dev/null 2>&1 || true
         capture_failure_evidence
     fi
@@ -244,6 +248,7 @@ scp "${opts[@]}" "$sys" "vika@$host:$guest/SafeUpload-t4.sys" && scp "${opts[@]}
   && scp "${opts[@]}" agente/scripts/Protect-SafeUploadPolicy.ps1 "vika@$host:$guest/Protect-SafeUploadPolicy.ps1" \
   && scp "${opts[@]}" agente/scripts/Get-SafeUploadDiagnostics.ps1 "vika@$host:$guest/Get-SafeUploadDiagnostics.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-actor.ps1 "vika@$host:$guest/t4-cycles-actor.ps1" \
+  && scp "${opts[@]}" driver/scripts/t4/reopen-after-publication.ps1 "vika@$host:$guest/reopen-after-publication.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/cycles-coordinator.ps1 "vika@$host:$guest/t4-cycles-coordinator.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/failure-evidence.ps1 "vika@$host:$guest/failure-evidence.ps1" \
   && scp "${opts[@]}" driver/scripts/t4/purge-attribution.ps1 "vika@$host:$guest/purge-attribution.ps1" \
@@ -424,6 +429,7 @@ $hr = [T4Lsa]::CreateProfile($sid, $name, $profilePath, 260)
 'ACTOR_PROFILE=' + $profilePath.ToString() + ' hr=0x' + $hr.ToString('X8')
 # The actor cannot read the admin's Documents: run it from C:\T4 (readable by Users).
 Copy-Item -LiteralPath "$d\t4-cycles-actor.ps1" -Destination 'C:\T4\cycles-actor.ps1' -Force
+Copy-Item -LiteralPath "$d\reopen-after-publication.ps1" -Destination 'C:\T4\reopen-after-publication.ps1' -Force
 $actor = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\T4\cycles-actor.ps1"'
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 12) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName 't4-actor' -Action $actor -User ($env:COMPUTERNAME + '\' + $name) -Password $password -RunLevel Limited -Settings $settings -Force | Out-Null
@@ -440,13 +446,14 @@ if ('__HANDBACK__' -eq 'yes') { $coordinatorArgs += ' -BlockHeavy -HandbackDiagn
 if ('__DELETE__' -eq 'yes') { $coordinatorArgs += ' -DeleteAttribution' }
 if ('__VOLUME__' -eq 'yes') { $coordinatorArgs += ' -VolumeDiscriminator' }
 if ('__PURGEATTR__' -eq 'yes') { $coordinatorArgs += ' -PurgeAttribution' }
+if ('__REOPEN__' -eq 'yes') { $coordinatorArgs += ' -ImmediateReopen' }
 $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $coordinatorArgs
 Register-ScheduledTask -TaskName 't4-coordinator' -Principal $principal -Action $coordinator -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 't4-coordinator'
 'COORDINATOR_STARTED=True'
 PS
 )
-setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}; setup_ps=${setup_ps//__HANDBACK__/$handback_diagnostic}; setup_ps=${setup_ps//__DELETE__/$delete_attribution}; setup_ps=${setup_ps//__VOLUME__/$volume_discriminator}; setup_ps=${setup_ps//__PURGEATTR__/$purge_attribution}
+setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}; setup_ps=${setup_ps//__HANDBACK__/$handback_diagnostic}; setup_ps=${setup_ps//__DELETE__/$delete_attribution}; setup_ps=${setup_ps//__VOLUME__/$volume_discriminator}; setup_ps=${setup_ps//__PURGEATTR__/$purge_attribution}; setup_ps=${setup_ps//__REOPEN__/$immediate_reopen}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 if [ "$mode" != ordinary ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi
@@ -506,6 +513,7 @@ PS
     capture_failure_evidence
     scp "${opts[@]}" "vika@$host:C:/T4/samples.jsonl" "$ev/$tag-samples.jsonl" >/dev/null 2>&1 || true
     scp "${opts[@]}" "vika@$host:C:/T4/cycles.jsonl" "$ev/$tag-cycles.jsonl" >/dev/null 2>&1 || true
+    if [ "$immediate_reopen" = yes ]; then scp "${opts[@]}" "vika@$host:C:/T4/reopens.jsonl" "$ev/$tag-reopens.jsonl" >/dev/null 2>&1 || true; fi
     mkdir -p "$ev/$tag-verifier"
     scp "${opts[@]}" "vika@$host:C:/T4/verifier-*.txt" "$ev/$tag-verifier/" >/dev/null 2>&1 || true
     scp "${opts[@]}" "vika@$host:C:/T4/control/actor-error.txt" "$ev/$tag-actor-error.txt" >/dev/null 2>&1 || true

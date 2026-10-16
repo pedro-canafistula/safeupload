@@ -2596,6 +2596,11 @@ __declspec(noinline) static VOID StageWritersReleasePrunedCache(
     }
     StageReleaseSpinLock(&StreamContext->WriterLock, irql);
     FltReleasePushLock(&RegistryLock);
+    /* The ordinary worker still owns Entry's pass/history pins; Entry owns
+     * its witness even after Retired. These releases are strictly nonfinal,
+     * including while the worker holds Association. No destructor can run. */
+    NT_ASSERT(detached == NULL || InterlockedCompareExchange(&detached->References, 0, 0) > 1);
+    NT_ASSERT(released == NULL || InterlockedCompareExchange(&released->References, 0, 0) > 1);
     StageRegistryReleaseLifetime(detached);
     StageRegistryDereference(released);
 }
@@ -2604,7 +2609,9 @@ __declspec(noinline) static VOID StageWritersReleasePrunedCache(
  * retired every binding. Fence the remaining inert cache before removing its
  * exact Filter Manager association. Never turn explicit deletion into Ended.
  * Resident: the short WriterLock section raises IRQL. No Filter Manager call
- * or destructor runs under either lock. Caller owns a context reference. */
+ * or destructor runs under either inner lock. Association is held exclusive
+ * from the pre-prune idle check through detach; the caller's pin prevents
+ * FltDeleteContext from invoking our cleanup callback. */
 _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageWritersRetirePrunedContext(
     _In_ PSAFEUPLOAD_STREAM_CONTEXT Context, _In_ PSTAGE_REGISTRY_ENTRY Entry)
@@ -2614,7 +2621,7 @@ __declspec(noinline) static VOID StageWritersRetirePrunedContext(
     FltAcquirePushLockExclusive(&RegistryLock);
     StageAcquireSpinLock(&Context->WriterLock, &irql);
     if (Entry->Retired && !Entry->Listed && !Context->WriterContextRetired &&
-        Context->WriterRegistryCachePruned && Context->WriterRegistryEntry == NULL &&
+        Context->WriterContextUsers == 0 && Context->WriterRegistryCachePruned && Context->WriterRegistryEntry == NULL &&
         Context->WriterSopLifetime == NULL && !Context->WriterSopLifetimeInvalid &&
         IsListEmpty(&Context->WriterObjects) &&
         InterlockedCompareExchange(&Context->WritersUntracked, 0, 0) == 0 &&
@@ -2633,8 +2640,60 @@ __declspec(noinline) static VOID StageWritersRetirePrunedContext(
     FltReleasePushLock(&RegistryLock);
     if (detach) {
         FltDeleteContext((PFLT_CONTEXT)Context);
-        KeSetEvent(&Context->WriterContextDetached, IO_NO_INCREMENT, FALSE);
     }
+}
+
+EX_PUSH_LOCK SafeUploadStreamContextAssociationLock;
+
+/* Caller holds Association shared. No allocation, I/O or reference release. */
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) BOOLEAN SafeUploadStageWritersAcquireContextLease(
+    _Inout_ PSAFEUPLOAD_STREAM_CONTEXT Context)
+{
+    KIRQL irql;
+    BOOLEAN acquired = FALSE;
+    StageAcquireSpinLock(&Context->WriterLock, &irql);
+    if (!Context->WriterContextRetired && Context->WriterContextUsers >= 0 &&
+        Context->WriterContextUsers < MAXLONG) {
+        ++Context->WriterContextUsers;
+        acquired = TRUE;
+    }
+    StageReleaseSpinLock(&Context->WriterLock, irql);
+    return acquired;
+}
+
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) VOID SafeUploadStageWritersReleaseContextLease(
+    _Inout_ PSAFEUPLOAD_STREAM_CONTEXT Context)
+{
+    KIRQL irql;
+    BOOLEAN recheck;
+    StageAcquireSpinLock(&Context->WriterLock, &irql);
+    if (Context->WriterContextUsers <= 0) {
+        Context->WriterSopLifetimeInvalid = TRUE;
+        StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP);
+        StageReleaseSpinLock(&Context->WriterLock, irql);
+        return;
+    }
+    --Context->WriterContextUsers;
+    recheck = Context->WriterContextUsers == 0 && Context->WriterRegistryEntry != NULL;
+    StageReleaseSpinLock(&Context->WriterLock, irql);
+    /* A lease-vetoed prune leaves the entry listed and discoverable. Retry
+     * only after the last user leaves; never allocate work under WriterLock. */
+    if (recheck) SafeUploadStageWritersQueueRecheck();
+}
+
+/* Association exclusive prevents a new lease between this test and unlink. */
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static BOOLEAN StageWritersContextIdle(
+    _In_ PSAFEUPLOAD_STREAM_CONTEXT Context)
+{
+    KIRQL irql;
+    BOOLEAN idle;
+    StageAcquireSpinLock(&Context->WriterLock, &irql);
+    idle = Context->WriterContextUsers == 0;
+    StageReleaseSpinLock(&Context->WriterLock, irql);
+    return idle;
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -2669,22 +2728,15 @@ static NTSTATUS StageRegistryGetBoundContext(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     NTSTATUS status;
     PAGED_CODE();
     *Context = NULL;
-    for (;;) {
-        context = NULL;
-        status = SafeUploadGetOrCreateStreamContext(Objects, FileObject, &context);
-        if (!NT_SUCCESS(status)) return status;
-        if (StageRegistryBindLifetime(Entry, context, FileObject->SectionObjectPointer)) {
-            *Context = context;
-            return STATUS_SUCCESS;
-        }
-        /* A lookup pin can predate the fence. Only that race retries; real
-         * allocation/identity failure keeps the existing sticky-loss path. */
-        if (!SafeUploadStageWritersContextRetired(context)) {
-            FltReleaseContext(context);
-            return STATUS_INSUFFICIENT_RESOURCES;
-        }
-        FltReleaseContext(context);
+    context = NULL;
+    status = SafeUploadGetOrCreateStreamContext(Objects, FileObject, &context);
+    if (!NT_SUCCESS(status)) return status;
+    if (!StageRegistryBindLifetime(Entry, context, FileObject->SectionObjectPointer)) {
+        SafeUploadReleaseStreamContext(context);
+        return STATUS_INSUFFICIENT_RESOURCES;
     }
+    *Context = context;
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS StageRegistryEnlistTransaction(_In_ PFLT_INSTANCE Instance,
@@ -2991,7 +3043,7 @@ NTSTATUS SafeUploadStageWritersPostCreate(
          * in-flight marker is removed below. */
         entry = NULL;
     }
-    FltReleaseContext(streamContext);
+    SafeUploadReleaseStreamContext(streamContext);
     SafeUploadStageWritersCancelReservation(reservation);
     return STATUS_SUCCESS;
 
@@ -3004,7 +3056,7 @@ TrackingLost:
     /* Tracking this writer failed. The open is never refused or cancelled (the registry is a ledger, not a gate): the loss is
      * recorded above as entry, instance or machine Unknown, which withholds every protection claim and promotion. Scoped
      * writes are still decided by the admission path. */
-    if (streamContext != NULL) FltReleaseContext(streamContext);
+    if (streamContext != NULL) SafeUploadReleaseStreamContext(streamContext);
     if (hasWriterHandle && reservation->Node != NULL)
         (VOID)StageRegistryTrackUnknownWriter(reservation, Data, FltObjects, fileObject);
     if (FltObjects->Transaction != NULL && reservation->BoundEntry == NULL)
@@ -3129,6 +3181,7 @@ VOID SafeUploadStageWritersFreeContext(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Stream
         IsListEmpty(&StreamContext->WriterObjects) &&
         InterlockedCompareExchange(&StreamContext->WritersUntracked, 0, 0) == 0;
 
+    NT_ASSERT(StreamContext->WriterContextUsers == 0);
     if (StreamContext->WriterContextRetired && (lifetime != NULL || registryEntry != NULL ||
         !IsListEmpty(&StreamContext->WriterObjects) ||
         InterlockedCompareExchange(&StreamContext->WritersUntracked, 0, 0) != 0))
@@ -3924,7 +3977,7 @@ __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_
     if (SafeUploadStageMandatoryTeardownActive()) {
         StageReleaseSpinLock(&SectionLock, irql);
         FltReleasePushLock(&RegistryLock);
-        FltReleaseContext(streamContext);
+        SafeUploadReleaseStreamContext(streamContext);
         return;
     }
     slot = StageRegistryFindSopSlotLocked(FileObject->SectionObjectPointer, &found);
@@ -3997,7 +4050,7 @@ __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_
     } else {
         StageRegistryMarkUnknown(Reservation->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION, FALSE);
     }
-    FltReleaseContext(streamContext);
+    SafeUploadReleaseStreamContext(streamContext);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -6974,7 +7027,7 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
             PFLT_INSTANCE entryInstance = NULL;
             PFLT_VOLUME entryVolume = NULL;
             PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
-            BOOLEAN pruned = FALSE;
+            BOOLEAN pruned = FALSE, associationHeld = FALSE;
             ULONGLONG evidenceSequence = 0;
             BOOLEAN activationCandidate = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) ==
                 SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
@@ -7005,22 +7058,33 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
                  InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) == 0 &&
                  InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) == 0)) &&
                 StageRegistryEntryQuiescent(entry, instances[index], volumes[index], &streamContext, &evidenceSequence)) {
-                FltAcquirePushLockExclusive(&RegistryLock);
-                pruned = StageRegistryPruneLocked(entry, evidenceSequence, &mapReference, &entryInstance, &entryVolume);
-                FltReleasePushLock(&RegistryLock);
+                if (streamContext != NULL) {
+                    FltAcquirePushLockExclusive(&SafeUploadStreamContextAssociationLock);
+                    associationHeld = TRUE;
+                }
+                if (streamContext == NULL || StageWritersContextIdle(streamContext)) {
+                    FltAcquirePushLockExclusive(&RegistryLock);
+                    pruned = StageRegistryPruneLocked(entry, evidenceSequence, &mapReference, &entryInstance, &entryVolume);
+                    FltReleasePushLock(&RegistryLock);
+                }
             }
             if (pruned) {
                 InterlockedIncrement64(&RegistryPruned);
-                if (StageRegistryTakeWriterReleaseWake(entry)) SafeUploadStageWritersQueueRecheck();
                 if (streamContext != NULL) {
                     StageWritersReleasePrunedCache(streamContext, entry);
                     StageWritersRetirePrunedContext(streamContext, entry);
                 }
+                if (associationHeld) {
+                    FltReleasePushLock(&SafeUploadStreamContextAssociationLock);
+                    associationHeld = FALSE;
+                }
+                if (StageRegistryTakeWriterReleaseWake(entry)) SafeUploadStageWritersQueueRecheck();
                 if (entryVolume != NULL) FltObjectDereference(entryVolume);
                 if (entryInstance != NULL) FltObjectDereference(entryInstance);
                 StageRegistryDereference(mapReference);
                 StageRegistryDereference(entry); /* the registry-history reference */
             }
+            if (associationHeld) FltReleasePushLock(&SafeUploadStreamContextAssociationLock);
             if (streamContext != NULL) FltReleaseContext(streamContext);
             FltObjectDereference(volumes[index]);
             FltObjectDereference(instances[index]);
@@ -7147,6 +7211,7 @@ VOID SafeUploadStageWritersInitialize(VOID)
     InterlockedExchange(&RegistryLifetimeOwners, 0);
     KeInitializeSpinLock(&RegistryCompactPoolLock);
     FltInitializePushLock(&RegistryLock);
+    FltInitializePushLock(&SafeUploadStreamContextAssociationLock);
     FltInitializePushLock(&StageAnchorLock);
     InitializeListHead(&StageAnchorList);
     RegistryCompactPool = ExAllocatePool2(POOL_FLAG_NON_PAGED,

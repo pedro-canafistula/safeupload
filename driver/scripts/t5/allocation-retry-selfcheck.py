@@ -172,8 +172,12 @@ class AllocationRecovery(unittest.TestCase):
                       'Stream->Sections.ImageSectionObject == NULL', 'standard.DeletePending',
                       'ExWaitForRundownProtectionRelease(&Stream->PagingRundown)'):
             self.assertIn(guard, retire)
-        self.assertIn('if (pending.DeletePending) { status = STATUS_SHARING_VIOLATION; goto Exit; }',
-                      body(self.stream, 'StageCreate'))
+        # The gate still refuses the same request; the inserted diagnostic
+        # records its branch without changing status or continuation.
+        self.assertRegex(body(self.stream, 'StageCreate'),
+            r'if \(pending\.DeletePending\) \{\s*#if SAFEUPLOAD_STAGING_PROTOTYPE\s*'
+            r'sharingGate = 8;\s*#endif\s*'
+            r'status = STATUS_SHARING_VIOLATION; goto Exit;\s*\}')
 
 
     def test_requester_exit_during_metadata_read_stays_transient(self):

@@ -2303,6 +2303,9 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     USHORT basenameLength;
     KIRQL irql;
     NTSTATUS status = STATUS_SUCCESS;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    UINT32 sharingGate = 0;
+#endif
     *Handled = TRUE;
 #if !SAFEUPLOAD_STAGING_PROTOTYPE
     UNREFERENCED_PARAMETER(AllowAttachResume);
@@ -2312,6 +2315,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     StageAcquire(&StageNamespaceResource);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (InterlockedCompareExchange(&StageMvpNamespaceFence, 0, 0) != 0) {
+        sharingGate = 1;
         status = STATUS_SHARING_VIOLATION; goto Exit;
     }
     namespaceSequence = StageMvpNamespaceSequence;
@@ -2325,6 +2329,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     if (InterlockedCompareExchange(&StageDirectoryMutationActive, 0, 0) != 0 ||
         (transaction != NULL && transaction->DirectorySequence !=
             InterlockedCompareExchange64(&StageDirectorySequence, 0, 0))) {
+        sharingGate = 2;
         status = STATUS_SHARING_VIOLATION;
         goto Exit;
     }
@@ -2347,7 +2352,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         status = STATUS_DELETE_PENDING;
         if (privateDelete->AllocationReceiptPending &&
             !privateDelete->AttachCompletionMayExist && !privateDelete->AttachCompletionKnown)
-            status = STATUS_SHARING_VIOLATION;
+            { sharingGate = 3; status = STATUS_SHARING_VIOLATION; }
         goto Exit;
     }
 #endif
@@ -2363,7 +2368,11 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
      * view: a detached, unreferenced view is released (T4), so its address can
      * be reused. */
     if (ById && (view == NULL || view->Generation != ExpectedGeneration)) {
-        status = STATUS_SHARING_VIOLATION; goto Exit;
+        status = STATUS_SHARING_VIOLATION;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        sharingGate = 4;
+#endif
+        goto Exit;
     }
     if (view == NULL) hidden = StageHiddenTombstone(owner, &Name->Name);
     /* A name open was admitted against a snapshot of the owner's private
@@ -2374,6 +2383,9 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         status = STAGE_STATUS_READMIT; goto Exit;
     }
     if (view != NULL && view->Current->OriginalInstance != Objects->Instance) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        sharingGate = 5;
+#endif
         status = STATUS_SHARING_VIOLATION; goto Exit;
     }
     if (hidden != NULL) {
@@ -2473,6 +2485,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
             KeSetEvent(&StageWorkEvent, IO_NO_INCREMENT, FALSE);
             status = STATUS_SHARING_VIOLATION;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+            sharingGate = 6;
             if (!Writer && !stream->BoundAllocation && stream->RenameExchange == NULL && stream->ReadOnly && !stream->Sealed)
                 status = STAGE_STATUS_READMIT; /* seal began after the unlocked namespace-reopen wait */
 #endif
@@ -2485,12 +2498,22 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
             /* T11: a create nested inside another file-system call (a top-level IRP is set) must not send the backing a new
              * request while the namespace lock is held. The backing cannot be verified there, so the open fails as a retryable
              * sharing conflict instead of being served from a possibly delete-pending stage. */
-            if (IoGetTopLevelIrp() != NULL) { status = STATUS_SHARING_VIOLATION; goto Exit; }
+            if (IoGetTopLevelIrp() != NULL) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+                sharingGate = 7;
+#endif
+                status = STATUS_SHARING_VIOLATION; goto Exit;
+            }
             RtlZeroMemory(&pending, sizeof(pending));
             status = FltQueryInformationFile(stream->BackingInstance, stream->BackingObject,
                 &pending, sizeof(pending), FileStandardInformation, NULL);
             if (!NT_SUCCESS(status)) goto Exit;
-            if (pending.DeletePending) { status = STATUS_SHARING_VIOLATION; goto Exit; }
+            if (pending.DeletePending) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+                sharingGate = 8;
+#endif
+                status = STATUS_SHARING_VIOLATION; goto Exit;
+            }
         }
     }
     if (stream == NULL || (Writer && stream->Sealed)) {
@@ -2611,7 +2634,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
             StageRemoveAllocationNameReservation(stream);
         }
         if (NT_SUCCESS(status) && (InterlockedCompareExchange(&StageMvpNamespaceFence, 0, 0) != 0 ||
-            namespaceSequence != StageMvpNamespaceSequence)) status = STATUS_SHARING_VIOLATION;
+            namespaceSequence != StageMvpNamespaceSequence)) { sharingGate = 9; status = STATUS_SHARING_VIOLATION; }
         if (NT_SUCCESS(status) && (StageStopping || SafeUploadStageMandatoryTeardownActive()))
             status = STATUS_DEVICE_NOT_READY;
         if (NT_SUCCESS(status) && allocationServiceGeneration !=
@@ -2721,6 +2744,9 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     StageAcquire(&stream->Resource);
     status = IoCheckShareAccess(granted, Data->Iopb->Parameters.Create.ShareAccess,
         file, &stream->ShareAccess, FALSE);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (status == STATUS_SHARING_VIOLATION) sharingGate = 10;
+#endif
     if (NT_SUCCESS(status) && !newStream && Writer &&
         (disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF || disposition == FILE_SUPERSEDE)) {
         LARGE_INTEGER zero = {0};
@@ -2807,6 +2833,18 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         StageDropTombstone(owner, &view->Name);
     }
 Exit:
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (status == STATUS_SHARING_VIOLATION) {
+        UINT32 detail = sharingGate;
+        if (stream != NULL) {
+            detail |= (stream->ReadOnly ? 0x100u : 0) | (stream->Sealed ? 0x200u : 0) |
+                (stream->RenameExchange != NULL ? 0x400u : 0);
+            detail |= ((UINT32)InterlockedCompareExchange(&stream->FileObjects, 0, 0) & 0xffffu) << 16;
+        }
+        SafeUploadDenyDetail(Data, SAFEUPLOAD_DENY_REASON_STAGE_CREATE_CONFLICT,
+            (NTSTATUS)detail, &Name->Name);
+    }
+#endif
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (allocationRequest != NULL) ExFreePoolWithTag(allocationRequest, STAGE_TAG);
     if (!NT_SUCCESS(status) && newStream && stream != NULL && stream->BoundAllocation &&

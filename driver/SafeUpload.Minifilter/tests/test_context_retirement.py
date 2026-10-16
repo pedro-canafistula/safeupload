@@ -27,10 +27,13 @@ static void SafeUploadStageAdmissionCoverageEnd(void){}
 static int contexts,deleted;
 static void FltDeleteContext(PFLT_CONTEXT p){CONTEXT *c=p;assert(!registry&&!writer);
  assert(c->attached&&c->WriterContextRetired&&!c->WriterRegistryEntry&&!c->WriterSopLifetime);
- assert(!c->WriterObjects&&!c->WritersUntracked&&!c->WriterContextDetached);
+ assert(!c->WriterObjects&&!c->WritersUntracked);
  c->attached=0;contexts--;deleted++;}
-static void KeSetEvent(int *p,int increment,int wait){(void)increment;(void)wait;
- assert(!registry&&!writer&&!*p);*p=1;}
+#define MAXLONG INT32_MAX
+static int rechecks;
+static void SafeUploadStageWritersQueueRecheck(void){assert(!writer&&!registry);rechecks++;}
+static BOOLEAN SafeUploadStageWritersAcquireContextLease(CONTEXT *c);
+static void SafeUploadStageWritersReleaseContextLease(CONTEXT *c);
 typedef int NTSTATUS;
 typedef void *PCFLT_RELATED_OBJECTS;
 typedef struct { void *SectionObjectPointer; } FILE_OBJECT,*PFILE_OBJECT;
@@ -42,9 +45,10 @@ static CONTEXT *lookupContext;
 static void (*onLookup)(void);
 static int lookupReleases;
 static NTSTATUS SafeUploadGetOrCreateStreamContext(PCFLT_RELATED_OBJECTS o,PFILE_OBJECT f,CONTEXT **c){
- (void)o;(void)f;assert(!registry&&!writer);*c=lookupContext;
+ (void)o;(void)f;assert(!registry&&!writer);*c=lookupContext;assert(SafeUploadStageWritersAcquireContextLease(*c));
  if(onLookup){void(*hook)(void)=onLookup;onLookup=NULL;hook();}return 0;}
 static void FltReleaseContext(void *p){assert(p&&!registry&&!writer);lookupReleases++;}
+static void SafeUploadReleaseStreamContext(CONTEXT *p){SafeUploadStageWritersReleaseContextLease(p);FltReleaseContext(p);}
 '''
 
 MAIN = r'''
@@ -53,10 +57,8 @@ static CONTEXT context(void){CONTEXT c={0};c.TeardownToken=&active;c.attached=1;
 static STAGE_REGISTRY_ENTRY *entry(void){STAGE_REGISTRY_ENTRY *e=calloc(1,sizeof(*e));allocations++;e->References=1;e->Listed=1;return e;}
 static void retire(STAGE_REGISTRY_ENTRY *e){assert(!e->Retired);FltAcquirePushLockExclusive(&RegistryLock);
  e->Retired=1;e->Listed=0;StageRegistryRetireLifetimeLocked(e);FltReleasePushLock(&RegistryLock);}
-static void finish(CONTEXT *c,STAGE_REGISTRY_ENTRY *e){retire(e);StageWritersReleasePrunedCache(c,e);StageWritersRetirePrunedContext(c,e);}
-static CONTEXT *oldLookup,*nextLookup;
-static STAGE_REGISTRY_ENTRY *lookupEntry;
-static void retireDuringLookup(void){finish(oldLookup,lookupEntry);lookupContext=nextLookup;}
+static void finish(CONTEXT *c,STAGE_REGISTRY_ENTRY *e){if(!StageWritersContextIdle(c))return;retire(e);StageWritersReleasePrunedCache(c,e);StageWritersRetirePrunedContext(c,e);}
+
 int main(void){
  (void)&FltDeleteContext;
  void *sop=(void*)123;
@@ -65,21 +67,24 @@ int main(void){
  for(int cycle=0;cycle<10000;cycle++){
   CONTEXT c=context();STAGE_REGISTRY_ENTRY *e=entry();
   assert(StageRegistryBindLifetime(e,&c,sop));finish(&c,e);
-  assert(contexts==0&&c.WriterContextDetached&&c.WriterContextRetired&&!c.WriterRegistryCachePruned);
+  assert(contexts==0&&c.WriterContextRetired&&!c.WriterRegistryCachePruned);
   assert(SafeUploadStageWritersContextRetired(&c));
   /* Repeat worker visits cannot delete an already unset context. */
   int before=deleted;StageWritersRetirePrunedContext(&c,e);assert(deleted==before);
   StageRegistryDereference(e);assert(allocations==frees);
  }
  assert(deleted==10000);
- /* Execute the production Get+Bind retry, including the pin obtained before
-  * retirement. A real binding failure returns failure without retry/authority. */
- {CONTEXT old=context(),fresh=context();STAGE_REGISTRY_ENTRY *a=entry(),*b=entry();
- assert(StageRegistryBindLifetime(a,&old,sop));oldLookup=&old;nextLookup=&fresh;lookupEntry=a;
- lookupContext=&old;onLookup=retireDuringLookup;FILE_OBJECT file={sop};CONTEXT *result=NULL;
- int before=lookupReleases;assert(StageRegistryGetBoundContext(b,NULL,&file,&result)==0);
- assert(result==&fresh&&lookupReleases==before+1&&fresh.WriterSopLifetime&&!old.WriterSopLifetime);
- FltReleaseContext(result);finish(&fresh,b);StageRegistryDereference(a);StageRegistryDereference(b);}
+ /* A successful physical post-CREATE lease vetoes prune before unlink.
+  * Last-user release wakes the existing worker; no pending-detach list and
+  * no detached-context event is needed for eventual bounded retirement. */
+ {CONTEXT c=context();STAGE_REGISTRY_ENTRY *e=entry();lookupContext=&c;
+ FILE_OBJECT file={sop};CONTEXT *result=NULL;
+ assert(StageRegistryGetBoundContext(e,NULL,&file,&result)==0&&result==&c);
+ assert(c.WriterContextUsers==1);finish(&c,e);
+ assert(e->Listed&&!e->Retired&&c.attached&&!c.WriterContextRetired);
+ int before=rechecks;SafeUploadReleaseStreamContext(result);
+ assert(!c.WriterContextUsers&&rechecks==before+1);
+ finish(&c,e);assert(!c.attached);StageRegistryDereference(e);}
  {CONTEXT c=context();STAGE_REGISTRY_ENTRY *e=entry();lookupContext=&c;
  FILE_OBJECT file={sop};CONTEXT *result=(void*)1;failAllocation=1;
  assert(StageRegistryGetBoundContext(e,NULL,&file,&result)==STATUS_INSUFFICIENT_RESOURCES&&!result);
@@ -135,7 +140,7 @@ def program(source):
     sop = source[source.index('typedef struct _STAGE_SOP_LIFETIME'):source.index('} STAGE_SOP_LIFETIME, *PSTAGE_SOP_LIFETIME;') + len('} STAGE_SOP_LIFETIME, *PSTAGE_SOP_LIFETIME;')]
     types = w.TYPES.replace('typedef struct CONTEXT {', 'typedef struct { LONG State; } TOKEN;\ntypedef struct CONTEXT {')
     types = types.replace('LONG WritersUntracked; int WriterObjects;',
-                          'LONG WritersUntracked; int WriterObjects,WriterContextDetached,attached; TOKEN *TeardownToken;')
+                          'LONG WritersUntracked; int WriterObjects,WriterContextUsers,attached; TOKEN *TeardownToken;')
     # Public definition: the old helper's extractor starts at the last static
     # prefix. Select the public accessor explicitly instead.
     def public(name):
@@ -143,15 +148,20 @@ def program(source):
         at = w.t.strip_code(source).index(body)
         start = source.rfind('BOOLEAN ' + name, 0, at)
         return source[start:at + len(body)].replace('_In_', '').replace('_Inout_', '')
-    definitions = '\n'.join(w.definition(source, name) for name in w.NAMES + ('StageWritersRetirePrunedContext',))
+    definitions = '\n'.join(w.definition(source, name) for name in w.NAMES + ('StageWritersRetirePrunedContext', 'StageWritersContextIdle'))
     definitions += public('SafeUploadStageWritersContextRetired') + public('SafeUploadStageWritersInvalidateLifetime')
+    definitions += public('SafeUploadStageWritersAcquireContextLease')
+    name = 'SafeUploadStageWritersReleaseContextLease'
+    body = w.body(source, name); at = w.t.strip_code(source).index(body)
+    start = source.rfind('VOID ' + name, 0, at)
+    definitions += source[start:at + len(body)].replace('_Inout_', '')
     definitions += w.definition(source, 'StageRegistryGetBoundContext').replace('_Outptr_result_nullonfailure_', '')
     return w.SHIM + sop + types + EXTRA + definitions + MAIN
 
 
 class ContextRetirement(unittest.TestCase):
     def run_control(self, source, expected):
-        scratch = ROOT / '.scratch/ux-leak/tmp'
+        scratch = ROOT / '.scratch/ux-leak2/tmp'
         scratch.mkdir(parents=True, exist_ok=True)
         for compiler in dict.fromkeys(filter(None, (shutil.which('cc'), shutil.which('clang')))):
             with tempfile.TemporaryDirectory(dir=scratch, prefix='context-retire-') as temp:
@@ -169,6 +179,13 @@ class ContextRetirement(unittest.TestCase):
         source = PATH.read_text().replace('FltDeleteContext((PFLT_CONTEXT)Context);', '(void)Context;')
         self.run_control(source, 97)
 
+    def test_pruning_with_active_lease_fails(self):
+        source = PATH.read_text()
+        body = w.body(source, 'StageWritersContextIdle')
+        at = w.t.strip_code(source).index(body)
+        region = source[at:at + len(body)]
+        self.run_control(source[:at] + region.replace('idle = Context->WriterContextUsers == 0;', 'idle = TRUE;') + source[at + len(body):], 97)
+
     def test_rebinding_retired_context_fails(self):
         source = PATH.read_text()
         body = w.body(source, 'StageRegistryBindLifetime')
@@ -182,7 +199,7 @@ class ContextRetirement(unittest.TestCase):
         source = PATH.read_text()
         fence = w.body(source, 'StageWritersRetirePrunedContext')
         self.assertLess(fence.index('FltReleasePushLock'), fence.index('FltDeleteContext'))
-        self.assertLess(fence.index('FltDeleteContext'), fence.index('KeSetEvent'))
+        self.assertIn('Context->WriterContextUsers == 0', fence)
         self.assertNotIn('Ended', fence)
         self.assertNotIn('PAGED_CODE', fence)
         self.assertIn('if (StreamContext->WriterContextRetired)', w.body(source, 'StageWritersInsertNode'))
@@ -191,11 +208,17 @@ class ContextRetirement(unittest.TestCase):
         self.assertIn('!StreamContext->WriterContextRetired', w.body(source, 'SafeUploadStageWritersFreeContext'))
         context = (PATH.parent/'Context.c').read_text()
         lookup = context[context.index('SafeUploadGetOrCreateStreamContext (', context.index('Stream context.')):]
-        self.assertIn('KeInitializeEvent(&created->WriterContextDetached', lookup)
-        self.assertIn('KeWaitForSingleObject(&existing->WriterContextDetached', lookup)
+        self.assertNotIn('WriterContextDetached', lookup)
+        self.assertNotIn('KeWaitForSingleObject', lookup)
+        self.assertIn('SafeUploadStageWritersAcquireContextLease(existing)', lookup)
         self.assertNotIn('FltDeleteContext', lookup)
         bound = w.body(source, 'StageRegistryGetBoundContext')
-        self.assertIn('SafeUploadStageWritersContextRetired(context)', bound)
+        self.assertNotIn('for (;;)', bound)
+        self.assertIn('SafeUploadReleaseStreamContext(context)', bound)
+        worker = w.body(source, 'StageRegistryReclaimWorker')
+        self.assertLess(worker.index('FltAcquirePushLockExclusive(&SafeUploadStreamContextAssociationLock)'), worker.index('StageWritersContextIdle(streamContext)'))
+        self.assertLess(worker.index('StageWritersContextIdle(streamContext)'), worker.index('StageRegistryPruneLocked('))
+        self.assertLess(worker.index('StageWritersRetirePrunedContext(streamContext, entry)'), worker.index('FltReleasePushLock(&SafeUploadStreamContextAssociationLock)'))
         self.assertIn('PAGED_CODE()', bound)
         self.assertLess(source.index('#pragma alloc_text(PAGE, StageRegistryGetBoundContext)'),
                         w.t.strip_code(source).index(bound))

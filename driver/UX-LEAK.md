@@ -1,5 +1,9 @@
 # T4: disposal completion and inert stream-context retirement
 
+Follow-up: [CREATE leases and reopen regression candidate](UX-LEAK2.md). The
+event-wait protocol below is historical; Word regression native validation is
+open.
+
 2026-10-16, `ux/leak`, base `54e0efd7`. Implementation/review input; not a
 Windows build or protected-pair qualification receipt.
 

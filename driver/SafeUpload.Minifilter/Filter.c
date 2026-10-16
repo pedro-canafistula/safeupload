@@ -2066,7 +2066,7 @@ Return Value:
 
     if (streamContext != NULL) {
 
-        FltReleaseContext( streamContext );
+        SafeUploadReleaseStreamContext( streamContext );
     }
 
     if (scopeFlags == 0 && !overrideGranted) {
