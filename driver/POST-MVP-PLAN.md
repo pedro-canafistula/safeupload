@@ -433,7 +433,7 @@ latest inspector matrix. The remaining delivery requirements and their current p
 | T7 | Final-pair authorized/denied read rows | Earlier component B02 passes do not cover the revised pair. |
 | T8 | Nine real application workflows in all three modes; agreed owner/DACL/timestamps/attributes/ADS/EAs/labels | Final application/metadata rows and metadata decisions remain missing. |
 | T9 | Stage/seed caps removed under per-user/total budgets; complete format/encoding coverage, bounded parser memory, durable cleanup, interactive failure and protected large-file rows | `StageStream.c:STAGE_MAX_BYTES` and `StagedTransferAllocator.MaximumSeedBytes` remain 16 MiB. The [14-case inspector measurement](evidence/2026-10-13/t9-inspector-metrics3-result.json) covers neither those caps/budgets nor hostile parser memory, publisher costs or protected behavior. Complete-or-refuse coverage landed (`a46124c7`, `52fbb7cb`; drawing/chart/VML text, PDF annotations/form values read, rare payloads refused, Office part allowlist, independent fixtures); budgets and cap removal remain. |
-| T10 | Repair stage access in phase B and pass the final pair in all modes | `m2t10rv5` stopped at 5/13; admin-only success is insufficient. |
+| T10 | Pass the final pair in all modes | Phase B fixed: `m2t10rv6` 13/13 under runtime Verifier on the 10-10 component pair; final-pair three-mode rows remain. |
 | T11 | SOP lifetime/retirement, complete journal scaling/recovery and adversarial review of the working final system | Scoped index/compaction/head-read controls pass; O(N) fresh head I/O and final-system review remain open. |
 
 T4's unexplained contexts and the open T5 security questions remain prerequisites for the integrated delivery. Do not enable admission,
@@ -1359,7 +1359,11 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
 cannot publish unapproved bytes, proven by the observer.
 
 - [x] Security-only opens use the public file/folder; staged backing remains inaccessible (`771a551b`).
-- [ ] Fix/finish phase B: `m2t10rv5` stopped after 5/13 checks when its stage-file access was denied; do not count admin-only success as the row passing.
+- [x] Phase B: `m2t10rv5` stopped after 5/13 because the coordinator's own stage-ACL probe threw on the expected denial; fixed in
+  `c71215a1`/`1f41c15f` (refusals recorded, not thrown). [`m2t10rv6`](evidence/2026-10-10/m2t10rv6-verdict.txt) passed 13/13 phase-B checks
+  under runtime Verifier on the 10-10 component pair, including actor-level (non-admin) file ACL change, CPF-after-grant blocked,
+  no blocked bytes published and the private backing closed to security changes. It records an admin ACE lost when a new version
+  was published (`T10AceAfterPublication` False): carried into the T8 metadata contract.
 - [ ] Rerun all modes on the final pair. Carry publication ACL/owner fidelity into T8.
 
 ### T11. Review conditions
