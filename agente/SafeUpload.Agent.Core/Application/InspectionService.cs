@@ -194,8 +194,11 @@ public sealed class InspectionService
                 .ConfigureAwait(false);
         }
 
-        // 5. RN-013 — sem extrator para a extensão, não há o que varrer.
-        var extractor = _extractors.Resolve(operation.Extension);
+        // 5. RN-013 — sem extrator para a extensão, não há o que varrer. Office owner files ("~$name.docx") are inspected
+        // as text, not refused as unreadable packages (owner decision 2026-10-16).
+        var extractor = OfficeOwnerFileExtractor.Matches(operation.FileName, operation.Extension, operation.SizeBytes)
+            ? OfficeOwnerFileExtractor.Instance
+            : _extractors.Resolve(operation.Extension);
         if (extractor is null)
         {
             return await CompleteAsync(

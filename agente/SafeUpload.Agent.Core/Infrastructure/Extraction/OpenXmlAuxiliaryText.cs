@@ -41,6 +41,10 @@ internal static class OpenXmlAuxiliaryText
                         }
                         if (attributes)
                         {
+                            // Owner decision 2026-10-16: an attribute holding exactly one 20-hex-digit font PANOSE code
+                            // (DrawingML panose="…", w:panose1/@w:val) classifies a font and is skipped; Word's default
+                            // theme put a Luhn-valid 16-digit window in every new document. Any other value is scanned.
+                            bool panoseElement = xml.LocalName == "panose1" && NamespaceMatches(xml.NamespaceURI, OpenXmlInspectionGuard.Word);
                             if (xml.MoveToFirstAttribute())
                             {
                                 do
@@ -49,9 +53,20 @@ internal static class OpenXmlAuxiliaryText
                                     // Namespace declarations and xml:space are XML syntax, not user text.
                                     if (xml.NamespaceURI == "http://www.w3.org/2000/xmlns/" ||
                                         xml.NamespaceURI == "http://www.w3.org/XML/1998/namespace" && xml.LocalName == "space") continue;
-                                    int count;
-                                    while ((count = xml.ReadValueChunk(buffer, 0, buffer.Length)) != 0)
-                                    { token().ThrowIfCancellationRequested(); yield return buffer.AsMemory(0, count); }
+                                    bool panose = xml.NamespaceURI.Length == 0 && xml.LocalName == "panose" ||
+                                        panoseElement && xml.LocalName == "val" && NamespaceMatches(xml.NamespaceURI, OpenXmlInspectionGuard.Word);
+                                    int count = xml.ReadValueChunk(buffer, 0, buffer.Length);
+                                    if (panose && count == 20 && IsHexDigits(buffer.AsSpan(0, 20)))
+                                    {
+                                        int extra = xml.ReadValueChunk(buffer, 20, buffer.Length - 20);
+                                        if (extra == 0) continue; // The whole value is one PANOSE code.
+                                        count += extra;
+                                    }
+                                    while (count != 0)
+                                    {
+                                        token().ThrowIfCancellationRequested(); yield return buffer.AsMemory(0, count);
+                                        count = xml.ReadValueChunk(buffer, 0, buffer.Length);
+                                    }
                                     yield return "\n".AsMemory();
                                 } while (xml.MoveToNextAttribute());
                                 xml.MoveToElement();
@@ -139,6 +154,13 @@ internal static class OpenXmlAuxiliaryText
         expected.StartsWith("http://schemas.openxmlformats.org/", StringComparison.Ordinal) &&
         actual == expected.Replace("http://schemas.openxmlformats.org/", "http://purl.oclc.org/ooxml/", StringComparison.Ordinal)
             .Replace("/2006/", "/", StringComparison.Ordinal);
+
+    private static bool IsHexDigits(ReadOnlySpan<char> value)
+    {
+        foreach (char c in value)
+            if (!char.IsAsciiHexDigit(c)) return false;
+        return true;
+    }
 
     private static bool PrimaryContainer(OpenXmlPart part, XmlReader xml, int cellDepth, int bodyDepth)
     {
