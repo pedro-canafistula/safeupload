@@ -23,6 +23,14 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-15 — one 10,000-update checkpoint endurance test.** Owner, in the session: "I accept merging them into one".
+`StagedSemanticMembershipV30Tests.Ten_thousand_opt_in_updates_match_the_accepted_foreground_checkpoint_and_durability_arithmetic`
+and `StagedCheckpointV30Tests.Ten_thousand_checkpoint_updates_have_fixed_files_bounded_actual_IO_and_one_reconstruction` drive the
+same semantic WAL path with identical I/O totals after the default incremental-validation cutover. Keep one 10,000-update endurance
+row that carries every assertion of both (exact durability arithmetic, fixed files, bounded actual I/O, one reconstruction) plus the
+focused selected/multipart/read-set controls; the merged-away method is listed in `agent-test-removals.authorized`. Confirm the
+identical work from the instrumented Windows counters first. Saves ~150–330 s per feature user leg; no threshold changes.
+
 **2026-10-15 — Defender exclusions on the builders.** Builders were slow because Defender real-time scanning (`MsMpEng`) used about
 1.6–1.9 of 4 cores on each builder while the test host used about 0.1 (no exclusions). Owner approved exclusions on both builders
 only: folders `C:\Users\vika\Documents`, `C:\Users\vika\AppData\Local\Temp`, `C:\Users\vika\.nuget`, `C:\Windows\SystemTemp`,
