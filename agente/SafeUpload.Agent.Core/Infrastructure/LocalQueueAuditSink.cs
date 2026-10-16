@@ -132,12 +132,78 @@ public sealed class LocalQueueAuditSink : IAuditSink
         int maxEvents,
         CancellationToken cancellationToken)
     {
-        var all = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
+        if (maxEvents <= 0)
+        {
+            var all = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
+            all.Reverse();
+            return all;
+        }
 
-        // Do mais recente para o mais antigo, que é a ordem em que a grade do
-        // simulador mostra a fila.
-        all.Reverse();
-        return maxEvents > 0 && all.Count > maxEvents ? all.GetRange(0, maxEvents) : all;
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { return await ReadRecentUnsynchronizedAsync(maxEvents, cancellationToken).ConfigureAwait(false); }
+        finally { _writeLock.Release(); }
+    }
+
+    // Public-file observation can enter legacy inspection after staged publication.
+    // Announce asks for five recent events there, under the same lock used by the
+    // publisher's outcome append. Do not parse the entire retained audit history
+    // on that path. Keep history untouched and read complete UTF-8 lines backwards
+    // from this handle's captured end, with bounded block storage. A long record
+    // still costs its own size; invalid/empty lines retain the existing skip rule.
+    private async Task<List<AuditEvent>> ReadRecentUnsynchronizedAsync(int maxEvents, CancellationToken token)
+    {
+        var events = new List<AuditEvent>();
+        if (!File.Exists(_queueFile)) return events;
+        await using var stream = new FileStream(_queueFile, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite, 4096, FileOptions.Asynchronous | FileOptions.RandomAccess);
+        long end = stream.Length;
+        byte[] block = new byte[8192];
+        int prefix = (int)Math.Min(4, end);
+        await stream.ReadExactlyAsync(block.AsMemory(0, prefix), token).ConfigureAwait(false);
+        // StreamReader historically accepted UTF-16/32 BOMs as well. These are
+        // not the queue writer's format; preserve that compatibility explicitly.
+        if (prefix >= 2 && (block[0] == 0xff && block[1] == 0xfe || block[0] == 0xfe && block[1] == 0xff) ||
+            prefix == 4 && block[0] == 0 && block[1] == 0 && block[2] == 0xfe && block[3] == 0xff)
+        {
+            var all = await ReadAllUnsynchronizedAsync(token).ConfigureAwait(false);
+            all.Reverse();
+            return all.Count > maxEvents ? all.GetRange(0, maxEvents) : all;
+        }
+        long lineEnd = end;
+        while (end > 0 && events.Count < maxEvents)
+        {
+            token.ThrowIfCancellationRequested();
+            long start = Math.Max(0, end - block.Length);
+            int count = checked((int)(end - start));
+            stream.Position = start;
+            await stream.ReadExactlyAsync(block.AsMemory(0, count), token).ConfigureAwait(false);
+            for (int i = count - 1; i >= 0 && events.Count < maxEvents; i--)
+            {
+                if (block[i] is not (10 or 13)) continue;
+                await ReadLineAsync(start + i + 1, lineEnd).ConfigureAwait(false);
+                lineEnd = start + i;
+            }
+            end = start;
+        }
+        if (events.Count < maxEvents) await ReadLineAsync(0, lineEnd).ConfigureAwait(false);
+        return events;
+
+        async Task ReadLineAsync(long start, long stop)
+        {
+            token.ThrowIfCancellationRequested();
+            if (stop <= start) return;
+            byte[] bytes = new byte[checked((int)(stop - start))];
+            stream.Position = start;
+            await stream.ReadExactlyAsync(bytes, token).ConfigureAwait(false);
+            string line = Encoding.UTF8.GetString(bytes);
+            if (start == 0 && line.StartsWith('\uFEFF')) line = line[1..];
+            if (string.IsNullOrWhiteSpace(line)) return;
+            try
+            {
+                if (JsonSerializer.Deserialize<AuditEvent>(line, Options) is { } entry) events.Add(entry);
+            }
+            catch (JsonException) { } // Same truncated/malformed-line rule as the full reader.
+        }
     }
 
     /// <inheritdoc />
