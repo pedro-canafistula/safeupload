@@ -101,6 +101,9 @@ SafeUploadStageQuerySecurity (
     /* Validate the complete returned representation, including optional
      * components when present. Requiring ACL presence would reject a valid
      * absent/NULL ACL. This legacy query is not all-parts T8 evidence. */
+    /* LengthNeeded is documented for the buffer-too-small case only; a successful second query may leave it 0
+     * (ux-k12: every new protected file failed STATUS_INVALID_SECURITY_DESCR). Validate the buffer actually used. */
+    if (status == STATUS_SUCCESS && returned == 0) returned = needed;
     if (status == STATUS_SUCCESS && *Descriptor != NULL &&
         (returned < sizeof(SECURITY_DESCRIPTOR_RELATIVE) || returned > needed ||
          !RtlValidRelativeSecurityDescriptor(*Descriptor, returned, 0))) {
