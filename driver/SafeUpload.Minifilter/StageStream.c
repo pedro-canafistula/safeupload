@@ -5386,6 +5386,20 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperationCore(PFLT_CALLBACK_DATA Data,
             Data->Iopb->Parameters.SetFileInformation.FileInformationClass != FilePositionInformation) {
             status = STATUS_ACCESS_DENIED;
         }
+        else if (Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileBasicInformation &&
+            Data->Iopb->Parameters.SetFileInformation.Length >= sizeof(FILE_BASIC_INFORMATION)) {
+            /* Demo compatibility (owner, 2026-10-16): Word, Explorer and CopyFile set the timestamps and attributes of the file
+             * they just wrote. Apply the timestamps to the private backing stage and leave its attributes unchanged, so a
+             * hidden or read-only flag can never make the stage unmanageable. Metadata only: never fails the caller. */
+            FILE_BASIC_INFORMATION basic = *(PFILE_BASIC_INFORMATION)Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+            basic.FileAttributes = 0; /* 0 leaves the attributes unchanged */
+            StageAcquire(&stream->Resource);
+            if (stream->BackingObject != NULL)
+                (VOID)FltSetInformationFile(stream->BackingInstance, stream->BackingObject, &basic, sizeof(basic),
+                    FileBasicInformation);
+            StageRelease(&stream->Resource);
+            status = STATUS_SUCCESS;
+        }
         else if (Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileEndOfFileInformation &&
             Data->Iopb->Parameters.SetFileInformation.Length >= sizeof(FILE_END_OF_FILE_INFORMATION)) {
             StageAcquire(&stream->Resource);
