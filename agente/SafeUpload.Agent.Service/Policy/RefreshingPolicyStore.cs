@@ -53,7 +53,9 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
             var restored = await _restore(token).ConfigureAwait(false);
             restored.EnsureValid();
             Volatile.Write(ref _current, restored);
-            _logger.LogInformation("Política inicial v{Version} disponível sem consulta de rede.", restored.Version);
+            var source = _remote is DurableHttpPolicyStore durable ? durable.LastSource : "local";
+            _logger.LogInformation("Política inicial v{Version} disponível sem consulta de rede. Origem={Source}.",
+                restored.Version, source);
             return restored;
         }
         finally { _initializeGate.Release(); }
@@ -83,7 +85,7 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
             var refreshed = await _remote.LoadAsync(token).ConfigureAwait(false);
             refreshed.EnsureValid();
             Volatile.Write(ref _current, refreshed);
-            _logger.LogInformation("Política v{Version} disponível após atualização em segundo plano.", refreshed.Version);
+            _logger.LogInformation("Política v{Version} disponível após atualização.", refreshed.Version);
         }
         finally { _refreshGate.Release(); }
     }
