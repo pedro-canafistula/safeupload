@@ -9,6 +9,12 @@ using SafeUpload.Agent.Service.Clipboard;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 
+if (args.Length > 0 && args[0] == "--reliability-demo")
+{
+    await ReliabilityDemo.RunAsync(args);
+    return;
+}
+
 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 var cancellationToken = timeout.Token;
 using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:18080/") };
@@ -72,6 +78,7 @@ try
         "https://example.test/upload", null, policy.Version, 2, false, Channel: AuditChannel.Web);
     events.Add(webEvent);
     await sink.WriteAsync(webEvent, cancellationToken);
+    await sink.RecordOverrideAsync(webEvent.EventId.ToString(), "Justificativa sintética do contrato", cancellationToken);
     var queueText = await File.ReadAllTextAsync(sink.QueueFilePath, cancellationToken);
     if (queueText.Contains("529.982.247-25") || queueText.Contains("52998224725"))
         throw new InvalidOperationException("A fila de clipboard contém texto não mascarado.");
@@ -85,6 +92,8 @@ try
     try
     {
         while ((await sink.ReadPendingAsync(100, cancellationToken)).Count != 0)
+            await Task.Delay(100, cancellationToken);
+        while ((await sink.ReadPendingOverridesAsync(100, cancellationToken)).Count != 0)
             await Task.Delay(100, cancellationToken);
     }
     finally
