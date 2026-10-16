@@ -3528,7 +3528,7 @@ static NTSTATUS StageAttachExchangeRetry(_Inout_ PSTAGE_ATTACH_TRANSACTION Trans
             persistenceAttempt == 5) break;
         if (!StageAttachRetryAllowed(Transaction) ||
             InterlockedCompareExchange(&Transaction->CancelRequested, 0, 0) != 0) return STATUS_CANCELLED;
-        persistenceRetryInterval.QuadPart = -((LONGLONG)(20U << persistenceAttempt) * 10 * 1000);
+        persistenceRetryInterval.QuadPart = -(((LONGLONG)20 << persistenceAttempt) * 10 * 1000);
         ++persistenceAttempt;
         (VOID)KeDelayExecutionThread(KernelMode, FALSE, &persistenceRetryInterval);
         if (SafeUploadStageMandatoryTeardownActive()) return STATUS_PORT_DISCONNECTED;
