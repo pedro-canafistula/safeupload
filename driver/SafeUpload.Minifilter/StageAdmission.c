@@ -1372,7 +1372,7 @@ static NTSTATUS StageCanaryCheckSopLifetime(_In_ PFLT_INSTANCE Instance, _In_ PU
     status = FltClose(sharedHandle);
     if (status != STATUS_SUCCESS) goto Exit;
     sharedHandle = NULL;
-    ObDereferenceObject(sharedObject); sharedObject = NULL;
+    if (sharedObject != NULL) { ObDereferenceObject(sharedObject); sharedObject = NULL; }
     InitializeObjectAttributes(&attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
     status = ZwCreateSection(&section, SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE,
         &attributes, NULL, PAGE_READWRITE, SEC_COMMIT, *Handle);
