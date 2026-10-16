@@ -1,0 +1,7 @@
+OUT user WIN10-DEBUGGED\t5actor
+OUT T word new clean SaveAs2 OK 1094ms saved
+OUT T word new cpf SaveAs2 OK 301ms saved
+OUT T word open published + edit + save FAIL 4172ms Word cannot complete the save due to a file permission error.
+OUT  (C:\Protected\ux1-limpo.docx)
+OUT L ux1-limpo.docx 13357
+OUT DONE

@@ -1,0 +1,4 @@
+H agent 6C4C2F4A7C5091FD
+H driver 9945B571AB5FF24CFD06060934EC32F6C627FD592259169B5C28AEAC9BCE0168
+S policy v3 { "failOpen": false, "version": 3, "overrideEnabled": false, "monitoredScopes": { "extensions": [ ".txt", ".docx", ".xls
+S reboot

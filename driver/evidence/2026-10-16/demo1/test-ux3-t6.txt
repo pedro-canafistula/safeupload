@@ -1,0 +1,11 @@
+OUT T cmd move clean OK 2067ms present:13 src=False
+OUT T cmd move cpf OK 2049ms absent src=False
+OUT T Move-Item clean OK 2037ms present:13 src=False
+OUT T Move-Item cpf OK 2032ms absent src=False
+OUT T MoveFileEx(0) clean OK 2009ms ret=False err=17 absent
+OUT T MoveFileEx(COPY_ALLOWED) clean OK 2040ms ret=True present:13 src=False
+OUT T MoveFileEx(COPY_ALLOWED) cpf OK 2031ms ret=True absent
+OUT T empty file move OK 2025ms present:0
+OUT T new folder OK 48ms False
+OUT T explorer copy folder FAIL 3792ms Cannot convert value "a=" to type "System.Int32". Error: "Input string was not in a correct format."
+OUT DONE

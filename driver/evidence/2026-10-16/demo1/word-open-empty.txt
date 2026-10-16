@@ -1,0 +1,27 @@
+L relatorio-trimestral.docx 0 16:50:13 Archive
+L relatorio2.txt 8 16:35:18 Archive
+J 15:49:46 relatorio-trimestral.docx state=12 len=?
+J 15:49:46 relatorio-trimestral.docx state=7 len=0
+J 15:49:46 relatorio-trimestral.docx state=7 len=0
+J 15:49:47 relatorio-trimestral.docx state=7 len=0
+J 15:49:47 relatorio-trimestral.docx state=5 len=0
+J 15:49:48 ~WRD0000.tmp state=12 len=?
+J 15:49:56 ~$latorio-trimestral.docx state=6 len=162
+J 15:50:13 relatorio-trimestral.docx state=5 len=0
+J 15:50:32 relatorio-trimestral.docx state=0 len=?
+J 15:50:33 ~$latorio-trimestral.docx state=6 len=162
+D 15:50:32 STATUS_NOT_SUPPORTED QUERY_SECURITY 0  relatorio-trimestral.docx
+D 15:50:32 STATUS_ACCESS_DENIED FILE_SYSTEM_CONTROL 0  relatorio-trimestral.docx
+D 15:50:32 STATUS_ACCESS_DENIED FILE_SYSTEM_CONTROL 0  relatorio-trimestral.docx
+D 15:50:32 STATUS_NOT_SUPPORTED FILE_SYSTEM_CONTROL 0  relatorio-trimestral.docx
+D 15:50:32 STATUS_NOT_SUPPORTED FILE_SYSTEM_CONTROL 0  relatorio-trimestral.docx
+D 15:50:32 STATUS_ACCESS_DENIED FILE_SYSTEM_CONTROL 0  Protected
+D 15:50:32 STATUS_ACCESS_DENIED FILE_SYSTEM_CONTROL 0  Protected
+D 15:50:32 STATUS_ACCESS_DENIED FILE_SYSTEM_CONTROL 0  Protected
+D 15:50:32 STATUS_ACCESS_DENIED FILE_SYSTEM_CONTROL 0  relatorio-trimestral.docx
+D 15:50:33 STATUS_ACCESS_DENIED FILE_SYSTEM_CONTROL 0  relatorio-trimestral.docx
+D 15:50:42 STATUS_NOT_SUPPORTED FILE_SYSTEM_CONTROL 0  relatorio-trimestral.docx
+D 15:50:42 STATUS_ACCESS_DENIED FILE_SYSTEM_CONTROL 0  relatorio-trimestral.docx
+D 15:50:42 STATUS_NOT_SUPPORTED FILE_SYSTEM_CONTROL 0  relatorio-trimestral.docx
+D 15:50:42 STATUS_ACCESS_DENIED FILE_SYSTEM_CONTROL 0  relatorio-trimestral.docx
+D 15:50:47 STATUS_ACCESS_DENIED FILE_SYSTEM_CONTROL 0  relatorio-trimestral.docx

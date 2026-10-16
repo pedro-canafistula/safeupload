@@ -1,0 +1,9 @@
+OUT T excel new clean SaveAs OK 3928ms present:8803
+OUT T excel new cpf SaveAs OK 3183ms absent
+OUT T powerpoint new clean SaveAs OK 4320ms absent
+OUT T powerpoint new cpf SaveAs OK 3164ms absent
+OUT T word export pdf clean OK 6112ms absent
+OUT T word export pdf cpf OK 4754ms absent
+OUT T zip clean (Compress-Archive) OK 6126ms present:135
+OUT T zip cpf (Compress-Archive) OK 3064ms absent
+OUT DONE

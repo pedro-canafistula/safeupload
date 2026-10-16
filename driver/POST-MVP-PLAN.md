@@ -23,6 +23,20 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-16 (evening) — M2 user experience first.** Owner goal: M2 is done when real apps work as standard user `t5actor` on one
+matched pair with staging enabled (Notepad, Word, Excel, PowerPoint, PDF, .zip, Explorer copy/move/rename/delete/folders), plus T4
+and the T6–T11 rows; dev builds may be installed unreviewed on win10-debug3's dev run disk (one fresh Sol 6.1 xhigh review per
+coherent kernel delta before the first qualification boot). Owner decisions: Office owner files (`~$*`) are inspected as plain
+text instead of refused; an attribute holding exactly one 20-hex-digit PANOSE code is skipped. Batch 3, compaction and V30 continue
+only where they fix a user-visible failure, a 10k leak/cap refusal or a crash; the rest (and the parked T6 census branch
+`wt/t6-dirs` 5b9c868c) moves to a post-M2 hardening list. Dev line: `demo/apps` (MVP line + UX fixes, merged with
+feat/driver-m2 at `d104d994`). Orchestrator design calls for the unbound profile (recorded for review): a no-content-write open
+of a published file is native; deleting or renaming a published file is native NTFS, cancels unpublished versions waiting for
+that name and refuses (sharing violation) while a writer holds one; a private rename retargets its pending publication; renaming
+an unmonitored file to a monitored name is refused as not-same-device (copy, inspected); folders: create native, rename/delete
+native when nothing under them is pending (else busy), moved in from outside = not-same-device. Pending owner decision: accept
+PowerPoint's package thumbnail (`docProps/thumbnail.jpeg`) without OCR (recommended) or keep refusing every saved .pptx.
+
 **2026-10-16 — MVP pair now, batch 3 in parallel.** Owner, in the session, after the [critical-path plan](evidence/2026-10-16/t5-critical-path-plan-sol61.md)
 (full T4/T5 to M2 standard: 180–310 worker-hours plus 30–50 lab hours): "MVP now + batch 3 in parallel". An MVP pair is cut from
 the last booted line (`t5-pair14`, `b97d263e`; its 10k row reached 9,998/10,000 with no blocked bytes, no cap refusal and no
