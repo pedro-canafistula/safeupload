@@ -24,6 +24,7 @@ public interface INotificationRecord
 public sealed class NotificationRecord : INotificationRecord, IDisposable
 {
     public const int SegmentBytes = 4 * 1024 * 1024;
+    public const int RetainedSegmentBytes = 256 * 1024;
     public const int MaximumLineBytes = 16 * 1024;
     public const string ZeroHash = "0000000000000000000000000000000000000000000000000000000000000000";
     private readonly string _directory;
@@ -42,7 +43,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
     private bool _failed, _disposed;
 
     public NotificationRecord(string directory, ILogger<NotificationRecord> logger)
-        : this(directory, logger, SegmentBytes, BootIdentity(), false, true) { }
+        : this(directory, logger, RetainedSegmentBytes, BootIdentity(), false, true) { }
 
     // Tests use a private temporary tree and the invoking identity. Production
     // never permits this exception and never repairs an existing descriptor.
@@ -51,7 +52,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
     {
         _directory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
         _limit = segmentBytes;
-        if (_limit < MaximumLineBytes * 2) throw new ArgumentOutOfRangeException(nameof(segmentBytes));
+        if (_limit < MaximumLineBytes * 2 || _limit > SegmentBytes) throw new ArgumentOutOfRangeException(nameof(segmentBytes));
         _boot = bootId;
         _logger = logger;
         if (OperatingSystem.IsWindows() && testIdentity)
@@ -225,7 +226,10 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
             kind, transfer, eventId, phase, session, _hash, dropped)
         { Sha256Hex = digest, HandBackPath = handBackPath, BlockReason = blockReason };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(entry);
-        if (bytes.Length + 1 > MaximumLineBytes || file.Length + bytes.Length + 1 > _limit)
+        // A first rotation after upgrading may append its announcement to an
+        // old (up to 4 MiB) segment. Preserve and validate that chain unchanged.
+        int limit = kind == "Rotation" ? SegmentBytes : _limit;
+        if (bytes.Length + 1 > MaximumLineBytes || file.Length + bytes.Length + 1 > limit)
             throw new InvalidDataException("Notification record size bound exceeded.");
         file.Position = file.Length;
         file.Write(bytes);
@@ -350,7 +354,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
     private FileStream Open(string path, bool writable = false)
     {
         RequireDirectory();
-        var stream = StagedJournalFile.Open(path, writable: writable, maximumBytes: _limit);
+        var stream = StagedJournalFile.Open(path, writable: writable, maximumBytes: SegmentBytes);
         try { if (OperatingSystem.IsWindows()) RequireAcl(stream.GetAccessControl(), false); return stream; }
         catch { stream.Dispose(); throw; }
     }

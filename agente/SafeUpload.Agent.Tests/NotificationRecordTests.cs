@@ -260,6 +260,55 @@ public sealed class NotificationRecordTests : IDisposable
     }
 
     [Fact]
+    public void Two_hours_of_heartbeats_keep_a_small_hash_chained_window_across_restart()
+    {
+        using (var record = Record(NotificationRecord.RetainedSegmentBytes))
+            for (int i = 0; i < 7200; i++) record.Heartbeat();
+        AssertRetainedWindow();
+        long last = Entries()[^1].Sequence;
+        using (var restarted = Record(NotificationRecord.RetainedSegmentBytes))
+            restarted.Heartbeat();
+        Assert.True(Entries()[^1].Sequence > last);
+        AssertRetainedWindow();
+    }
+
+    [Fact]
+    public void Smaller_window_accepts_legacy_segments_and_ages_them_out_without_chain_reset()
+    {
+        using (var record = Record())
+            for (int i = 0; i < 700; i++) record.Heartbeat();
+        Assert.True(new FileInfo(Active).Length > NotificationRecord.RetainedSegmentBytes);
+        long last = Entries()[^1].Sequence;
+        using (var record = Record(NotificationRecord.RetainedSegmentBytes))
+        {
+            Assert.Equal(last + 2, Entries()[^1].Sequence); // Rotation, Start
+            for (int i = 0; i < 700; i++) record.Heartbeat();
+        }
+        AssertRetainedWindow();
+        Assert.Empty(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+    }
+
+    private void AssertRetainedWindow()
+    {
+        Assert.All(new[] { Active, Path.Combine(DirectoryPath, "previous.jsonl") },
+            path => Assert.InRange(new FileInfo(path).Length, 1, NotificationRecord.RetainedSegmentBytes));
+        var lines = new[] { "previous.jsonl", "emissions.jsonl" }
+            .SelectMany(name => File.ReadAllLines(Path.Combine(DirectoryPath, name))).ToArray();
+        var entries = Entries();
+        Assert.True(entries[0].Sequence > 1);
+        Assert.Equal(entries[^1].DroppedThroughSequence + 1, entries[0].Sequence);
+        for (int i = 1; i < entries.Count; i++)
+        {
+            Assert.Equal(entries[i - 1].Sequence + 1, entries[i].Sequence);
+            Assert.Equal(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(lines[i - 1]))),
+                entries[i].PreviousSha256);
+        }
+        var head = JsonSerializer.Deserialize<NotificationRecordHead>(File.ReadAllText(Path.Combine(DirectoryPath, "head.json")))!;
+        Assert.Equal(entries[^1].Sequence, head.Sequence);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(lines[^1]))), head.Sha256);
+    }
+
+    [Fact]
     public void A_second_writer_is_refused_until_the_first_closes()
     {
         using (var record = Record())
