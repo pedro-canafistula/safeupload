@@ -1183,7 +1183,10 @@ NTSTATUS SafeUploadStageAdmissionDeleteStreamContext(_In_ PCUNICODE_STRING Volum
         goto Exit;
     }
 
-    SafeUploadStageWritersInvalidateLifetime(streamContext);
+    if (!SafeUploadStageWritersInvalidateLifetime(streamContext)) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto Exit;
+    }
     FltDeleteContext((PFLT_CONTEXT)streamContext);
     status = STATUS_SUCCESS;
 

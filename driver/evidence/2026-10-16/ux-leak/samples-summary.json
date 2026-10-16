@@ -1,0 +1,105 @@
+{
+  "source": ".scratch/uxk8t4ord-samples-at-stop.jsonl",
+  "sha256": "0560207dc55fdceaac7a043448495148aff8dee9f28e6bd354c7c7df8e2cf10b",
+  "samples": [
+    {
+      "cycle": 0,
+      "sufl_live": 453,
+      "sufl_bytes": 125792,
+      "registry_entries": 237,
+      "dispose_not_held": 0,
+      "journals": 0,
+      "handbacks": 0
+    },
+    {
+      "cycle": 500,
+      "sufl_live": 1246,
+      "sufl_bytes": 303264,
+      "registry_entries": 258,
+      "dispose_not_held": 224043,
+      "journals": 376,
+      "handbacks": 124
+    },
+    {
+      "cycle": 1000,
+      "sufl_live": 3656,
+      "sufl_bytes": 843104,
+      "registry_entries": 261,
+      "dispose_not_held": 703433,
+      "journals": 752,
+      "handbacks": 248
+    },
+    {
+      "cycle": 1500,
+      "sufl_live": 4284,
+      "sufl_bytes": 983696,
+      "registry_entries": 262,
+      "dispose_not_held": 1363052,
+      "journals": 1128,
+      "handbacks": 372
+    },
+    {
+      "cycle": 2000,
+      "sufl_live": 4848,
+      "sufl_bytes": 1109952,
+      "registry_entries": 243,
+      "dispose_not_held": 2139126,
+      "journals": 1500,
+      "handbacks": 500
+    },
+    {
+      "cycle": 2500,
+      "sufl_live": 5446,
+      "sufl_bytes": 1243824,
+      "registry_entries": 249,
+      "dispose_not_held": 3034419,
+      "journals": 1876,
+      "handbacks": 624
+    },
+    {
+      "cycle": 3000,
+      "sufl_live": 6049,
+      "sufl_bytes": 1378816,
+      "registry_entries": 241,
+      "dispose_not_held": 4084399,
+      "journals": 2252,
+      "handbacks": 748
+    },
+    {
+      "cycle": 3500,
+      "sufl_live": 6647,
+      "sufl_bytes": 1512688,
+      "registry_entries": 247,
+      "dispose_not_held": 5303991,
+      "journals": 2628,
+      "handbacks": 872
+    },
+    {
+      "cycle": 4000,
+      "sufl_live": 7244,
+      "sufl_bytes": 1646336,
+      "registry_entries": 245,
+      "dispose_not_held": 6716612,
+      "journals": 3000,
+      "handbacks": 1000
+    },
+    {
+      "cycle": 4500,
+      "sufl_live": 7825,
+      "sufl_bytes": 1776400,
+      "registry_entries": 243,
+      "dispose_not_held": 8317695,
+      "journals": 3376,
+      "handbacks": 1124
+    },
+    {
+      "cycle": 5000,
+      "sufl_live": 8427,
+      "sufl_bytes": 1911168,
+      "registry_entries": 249,
+      "dispose_not_held": 10107036,
+      "journals": 3752,
+      "handbacks": 1248
+    }
+  ]
+}

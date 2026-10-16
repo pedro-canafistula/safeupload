@@ -544,6 +544,7 @@ BOOLEAN SafeUploadInstanceAdmissionGateSatisfied(_In_ PFLT_INSTANCE Instance)
 //
 ///////////////////////////////////////////////////////////////////////////
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 SafeUploadGetOrCreateStreamContext (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
@@ -603,14 +604,16 @@ Return Value:
         return STATUS_NOT_SUPPORTED;
     }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+LookupContext:
+#endif
     status = FltGetStreamContext( FltObjects->Instance,
                                   FileObject,
                                   (PFLT_CONTEXT *) &existing );
 
     if (NT_SUCCESS( status )) {
 
-        *StreamContext = existing;
-        return STATUS_SUCCESS;
+        goto FoundContext;
     }
 
     if (status != STATUS_NOT_FOUND) {
@@ -634,6 +637,7 @@ Return Value:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     KeInitializeSpinLock( &created->WriterLock );
     InitializeListHead( &created->WriterObjects );
+    KeInitializeEvent(&created->WriterContextDetached, NotificationEvent, FALSE);
 
     /*
      *  Hold the instance context while taking a token reference. A stream context
@@ -669,8 +673,8 @@ Return Value:
         //  one handed to the caller.
         //
 
-        *StreamContext = created;
-        return STATUS_SUCCESS;
+        existing = created;
+        goto FoundContext;
     }
 
     //
@@ -687,11 +691,27 @@ Return Value:
         //  with a reference already taken, which becomes the caller's.
         //
 
-        *StreamContext = existing;
-        return STATUS_SUCCESS;
+        goto FoundContext;
     }
 
     return status;
+
+FoundContext:
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (SafeUploadStageWritersContextRetired(existing)) {
+        /* The retiring worker is the only deletion owner. Keep this pin until
+         * its lock-free detach completes; never delete an already unset
+         * context or spin against a preempted worker. No caller lock is held. */
+        (VOID)KeWaitForSingleObject(&existing->WriterContextDetached,
+            Executive, KernelMode, FALSE, NULL);
+        FltReleaseContext(existing);
+        existing = NULL;
+        created = NULL;
+        goto LookupContext;
+    }
+#endif
+    *StreamContext = existing;
+    return STATUS_SUCCESS;
 }
 
 

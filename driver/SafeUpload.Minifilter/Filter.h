@@ -412,6 +412,8 @@ typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
     PVOID WriterSopLifetime; /* Owns a small witness, not the stream; WriterLock. */
     BOOLEAN WriterSopLifetimeInvalid; /* Explicit deletion never proves natural retirement. */
     BOOLEAN WriterRegistryCachePruned; /* Under WriterLock: an exact, empty cache passed the existing prune gate. */
+    BOOLEAN WriterContextRetired; /* WriterLock: inert cache fenced before exact Filter Manager detach; never rebound. */
+    KEVENT WriterContextDetached; /* The sole retiring worker signals after FltDeleteContext, while pinned. */
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
 
 #endif
@@ -450,6 +452,7 @@ SafeUploadHandleHasOverride (
     _In_ PCFLT_RELATED_OBJECTS FltObjects
     );
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 SafeUploadGetOrCreateStreamContext (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,

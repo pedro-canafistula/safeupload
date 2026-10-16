@@ -391,7 +391,7 @@ static volatile LONG RegistryLifetimeOwners;
 _IRQL_requires_(DISPATCH_LEVEL)
 __declspec(noinline) static PSTAGE_REGISTRY_SOP_SLOT StageRegistryFindSopSlotLocked(
     _In_ PVOID SectionObjectPointer, _Out_ PBOOLEAN Found);
-_IRQL_requires_max_(APC_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_WRITER_RESERVATION Reservation,
     _In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ PFILE_OBJECT FileObject);
@@ -2515,6 +2515,10 @@ __declspec(noinline) static BOOLEAN StageWritersInsertNode(
     PSTAGE_REGISTRY_ENTRY previous = NULL;
 
     StageAcquireSpinLock(&StreamContext->WriterLock, &irql);
+    if (StreamContext->WriterContextRetired) {
+        StageReleaseSpinLock(&StreamContext->WriterLock, irql);
+        return FALSE;
+    }
     if (StreamContext->WriterRegistryEntry != NULL && StreamContext->WriterRegistryEntry != Node->Entry &&
         IsListEmpty(&StreamContext->WriterObjects)) {
         PSTAGE_REGISTRY_ENTRY cached = (PSTAGE_REGISTRY_ENTRY)StreamContext->WriterRegistryEntry;
@@ -2594,6 +2598,93 @@ __declspec(noinline) static VOID StageWritersReleasePrunedCache(
     FltReleasePushLock(&RegistryLock);
     StageRegistryReleaseLifetime(detached);
     StageRegistryDereference(released);
+}
+
+/* Ordinary prune has already consumed original-incarnation evidence and
+ * retired every binding. Fence the remaining inert cache before removing its
+ * exact Filter Manager association. Never turn explicit deletion into Ended.
+ * Resident: the short WriterLock section raises IRQL. No Filter Manager call
+ * or destructor runs under either lock. Caller owns a context reference. */
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static VOID StageWritersRetirePrunedContext(
+    _In_ PSAFEUPLOAD_STREAM_CONTEXT Context, _In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    KIRQL irql;
+    BOOLEAN detach = FALSE;
+    FltAcquirePushLockExclusive(&RegistryLock);
+    StageAcquireSpinLock(&Context->WriterLock, &irql);
+    if (Entry->Retired && !Entry->Listed && !Context->WriterContextRetired &&
+        Context->WriterRegistryCachePruned && Context->WriterRegistryEntry == NULL &&
+        Context->WriterSopLifetime == NULL && !Context->WriterSopLifetimeInvalid &&
+        IsListEmpty(&Context->WriterObjects) &&
+        InterlockedCompareExchange(&Context->WritersUntracked, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) == 0 &&
+        Context->TeardownToken != NULL &&
+        InterlockedCompareExchange(&Context->TeardownToken->State, 0, 0) == SAFEUPLOAD_INSTANCE_STATE_ACTIVE &&
+        SafeUploadStageWritersGlobalUnknown() == 0 && !SafeUploadStageMandatoryTeardownActive()) {
+        SafeUploadStageAdmissionCoverageBegin();
+        Context->WriterContextRetired = TRUE;
+        Context->WriterRegistryCachePruned = FALSE;
+        InterlockedIncrement64(&RegistryChangeSequence);
+        SafeUploadStageAdmissionCoverageEnd();
+        detach = TRUE;
+    }
+    StageReleaseSpinLock(&Context->WriterLock, irql);
+    FltReleasePushLock(&RegistryLock);
+    if (detach) {
+        FltDeleteContext((PFLT_CONTEXT)Context);
+        KeSetEvent(&Context->WriterContextDetached, IO_NO_INCREMENT, FALSE);
+    }
+}
+
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) BOOLEAN SafeUploadStageWritersContextRetired(
+    _In_ PSAFEUPLOAD_STREAM_CONTEXT Context)
+{
+    KIRQL irql;
+    BOOLEAN retired;
+    StageAcquireSpinLock(&Context->WriterLock, &irql);
+    retired = Context->WriterContextRetired;
+    StageReleaseSpinLock(&Context->WriterLock, irql);
+    return retired;
+}
+
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static BOOLEAN StageRegistryBindLifetime(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ PSAFEUPLOAD_STREAM_CONTEXT Context, _In_ PVOID Sop);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageRegistryGetBoundContext(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _In_ PFILE_OBJECT FileObject,
+    _Outptr_result_nullonfailure_ PSAFEUPLOAD_STREAM_CONTEXT *Context);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageRegistryGetBoundContext)
+#endif
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageRegistryGetBoundContext(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _In_ PFILE_OBJECT FileObject,
+    _Outptr_result_nullonfailure_ PSAFEUPLOAD_STREAM_CONTEXT *Context)
+{
+    PSAFEUPLOAD_STREAM_CONTEXT context;
+    NTSTATUS status;
+    PAGED_CODE();
+    *Context = NULL;
+    for (;;) {
+        context = NULL;
+        status = SafeUploadGetOrCreateStreamContext(Objects, FileObject, &context);
+        if (!NT_SUCCESS(status)) return status;
+        if (StageRegistryBindLifetime(Entry, context, FileObject->SectionObjectPointer)) {
+            *Context = context;
+            return STATUS_SUCCESS;
+        }
+        /* A lookup pin can predate the fence. Only that race retries; real
+         * allocation/identity failure keeps the existing sticky-loss path. */
+        if (!SafeUploadStageWritersContextRetired(context)) {
+            FltReleaseContext(context);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+        FltReleaseContext(context);
+    }
 }
 
 static NTSTATUS StageRegistryEnlistTransaction(_In_ PFLT_INSTANCE Instance,
@@ -2697,7 +2788,7 @@ __declspec(noinline) static BOOLEAN StageRegistryBindLifetime(_In_ PSTAGE_REGIST
         FltAcquirePushLockExclusive(&RegistryLock);
         StageAcquireSpinLock(&Context->WriterLock, &irql);
         lifetime = (PSTAGE_SOP_LIFETIME)Context->WriterSopLifetime;
-        if (Entry->Listed && !Entry->Retired && !Entry->Transient &&
+        if (Entry->Listed && !Entry->Retired && !Entry->Transient && !Context->WriterContextRetired &&
             !Context->WriterSopLifetimeInvalid && !SafeUploadStageMandatoryTeardownActive()) {
             /* Detach after the hint is distinct from genuine allocation OOM. */
             retry = lifetime == NULL && fresh == NULL && allocationSkipped;
@@ -2739,17 +2830,22 @@ __declspec(noinline) static BOOLEAN StageRegistryBindLifetime(_In_ PSTAGE_REGIST
 
 /* Called BEFORE any explicit context removal. A diagnostic deletion is loss,
  * never the natural end-of-stream witness used by startup/reclaim. */
-_Use_decl_annotations_
-VOID SafeUploadStageWritersInvalidateLifetime(PSAFEUPLOAD_STREAM_CONTEXT Context)
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadStageWritersInvalidateLifetime(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Context)
 {
     PSTAGE_SOP_LIFETIME lifetime = NULL;
     KIRQL irql = PASSIVE_LEVEL;
+    BOOLEAN deleteOwned = FALSE;
     StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP);
     StageAcquireSpinLock(&Context->WriterLock, &irql);
-    Context->WriterSopLifetimeInvalid = TRUE;
-    lifetime = (PSTAGE_SOP_LIFETIME)Context->WriterSopLifetime;
-    if (lifetime != NULL) InterlockedExchange(&lifetime->Invalid, 1);
+    if (!Context->WriterContextRetired && !Context->WriterSopLifetimeInvalid) {
+        Context->WriterSopLifetimeInvalid = TRUE;
+        lifetime = (PSTAGE_SOP_LIFETIME)Context->WriterSopLifetime;
+        if (lifetime != NULL) InterlockedExchange(&lifetime->Invalid, 1);
+        deleteOwned = TRUE;
+    }
     StageReleaseSpinLock(&Context->WriterLock, irql);
+    return deleteOwned;
 }
 
 NTSTATUS SafeUploadStageWritersPostCreate(
@@ -2848,8 +2944,8 @@ NTSTATUS SafeUploadStageWritersPostCreate(
             StageRegistryMarkUnknown(reservation->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
         goto TrackingLost;
     }
-    status = SafeUploadGetOrCreateStreamContext(FltObjects, fileObject, &streamContext);
-    if (!NT_SUCCESS(status) || !StageRegistryBindLifetime(entry, streamContext, fileObject->SectionObjectPointer)) {
+    status = StageRegistryGetBoundContext(entry, FltObjects, fileObject, &streamContext);
+    if (!NT_SUCCESS(status)) {
         if (hasWriterHandle) InterlockedIncrement64(&WriterUntrackedCreates);
         InterlockedIncrement64(&RegistryAllocationFailures);
         StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);
@@ -3029,8 +3125,14 @@ VOID SafeUploadStageWritersFreeContext(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Stream
     BOOLEAN entriesRemain = lifetime != NULL && InterlockedCompareExchange(&lifetime->References, 0, 0) > 1;
     BOOLEAN naturalEnd = tokenState == SAFEUPLOAD_INSTANCE_STATE_ACTIVE &&
         !SafeUploadStageMandatoryTeardownActive() && !StreamContext->WriterSopLifetimeInvalid &&
+        !StreamContext->WriterContextRetired &&
         IsListEmpty(&StreamContext->WriterObjects) &&
         InterlockedCompareExchange(&StreamContext->WritersUntracked, 0, 0) == 0;
+
+    if (StreamContext->WriterContextRetired && (lifetime != NULL || registryEntry != NULL ||
+        !IsListEmpty(&StreamContext->WriterObjects) ||
+        InterlockedCompareExchange(&StreamContext->WritersUntracked, 0, 0) != 0))
+        StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP);
 
     /* The last context reference is being released, so no operation can still mutate this list. */
     while (!IsListEmpty(&StreamContext->WriterObjects)) {
@@ -3107,7 +3209,9 @@ UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OB
         KIRQL irql;
         StageAcquireSpinLock(&streamContext->WriterLock, &irql);
         entry = (PSTAGE_REGISTRY_ENTRY)streamContext->WriterRegistryEntry;
-        if (entry == NULL) {
+        if (streamContext->WriterContextRetired) {
+            result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+        } else if (entry == NULL) {
             /* Preserve the retired entry's known H == 0 after releasing its allocation. A fresh or lost context has no
              * such witness; an overflow marker also leaves the sticky WritersUntracked bit set below. */
             if (!streamContext->WriterRegistryCachePruned || !IsListEmpty(&streamContext->WriterObjects))
@@ -3791,7 +3895,7 @@ __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknownAt(_In_ PFLT_INST
     return recorded;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_WRITER_RESERVATION Reservation,
     _In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ PFILE_OBJECT FileObject)
@@ -3867,12 +3971,14 @@ __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_
         node->Entry = NULL;
         SafeUploadStageAdmissionCoverageBegin();
         StageAcquireSpinLock(&streamContext->WriterLock, &irql);
-        InterlockedExchange(&streamContext->WritersUntracked, 1);
-        InsertTailList(&streamContext->WriterObjects, &node->Link);
-        InterlockedIncrement64(&RegistryChangeSequence);
+        if (!streamContext->WriterContextRetired) {
+            InterlockedExchange(&streamContext->WritersUntracked, 1);
+            InsertTailList(&streamContext->WriterObjects, &node->Link);
+            InterlockedIncrement64(&RegistryChangeSequence);
+            inserted = TRUE;
+        }
         StageReleaseSpinLock(&streamContext->WriterLock, irql);
         SafeUploadStageAdmissionCoverageEnd();
-        inserted = TRUE;
     } else if (entry != NULL) {
         node->Entry = entry;
         if (StageWritersInsertNode(streamContext, node)) {
@@ -6906,7 +7012,10 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
             if (pruned) {
                 InterlockedIncrement64(&RegistryPruned);
                 if (StageRegistryTakeWriterReleaseWake(entry)) SafeUploadStageWritersQueueRecheck();
-                if (streamContext != NULL) StageWritersReleasePrunedCache(streamContext, entry);
+                if (streamContext != NULL) {
+                    StageWritersReleasePrunedCache(streamContext, entry);
+                    StageWritersRetirePrunedContext(streamContext, entry);
+                }
                 if (entryVolume != NULL) FltObjectDereference(entryVolume);
                 if (entryInstance != NULL) FltObjectDereference(entryInstance);
                 StageRegistryDereference(mapReference);

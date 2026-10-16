@@ -269,7 +269,9 @@ VOID SafeUploadStageWritersOwnerRelease(VOID);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 LONG SafeUploadStageWritersOwnerCount(VOID);
 _IRQL_requires_max_(APC_LEVEL)
-VOID SafeUploadStageWritersInvalidateLifetime(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Context);
+BOOLEAN SafeUploadStageWritersInvalidateLifetime(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Context);
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadStageWritersContextRetired(_In_ PSAFEUPLOAD_STREAM_CONTEXT Context);
 
 #define SAFEUPLOAD_WRITERS_ONLY_CONTEXT ((PVOID)(ULONG_PTR)0x1000)
 BOOLEAN SafeUploadStageWritersWantPostCreate(_In_ PFLT_CALLBACK_DATA Data);
