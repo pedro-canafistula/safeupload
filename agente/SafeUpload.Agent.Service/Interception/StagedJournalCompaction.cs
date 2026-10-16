@@ -22,7 +22,8 @@ public sealed partial class StagedTransferJournal
             Guid id = entry.Transfer.TransferId;
             byId.Add(id, entry);
             if (!finished.Contains(id)) protectedIds.Add(id);
-            AddClaim(entry.Transfer.DestinationPath, entry.BoundAllocation, entry.DestinationGeneration, id);
+            AddClaim(entry.Transfer.DestinationPath, entry.BoundAllocation,
+                Math.Max(entry.DestinationGeneration, entry.UnboundCancellation?.Generation ?? 0), id);
             for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
                 AddClaim(name.DestinationPath, name.AllocationBindingV23, name.Generation, id);
         }

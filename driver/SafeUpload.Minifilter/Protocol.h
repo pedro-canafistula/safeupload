@@ -360,6 +360,16 @@ typedef struct _SAFEUPLOAD_STAGE_RESOURCE_SEAL_V31 {
     UINT32 Reserved;
 } SAFEUPLOAD_STAGE_RESOURCE_SEAL_V31;
 C_ASSERT(sizeof(SAFEUPLOAD_STAGE_RESOURCE_SEAL_V31) == 48);
+/* Exact-version basic metadata; the old 40-byte seal remains a distinct layout.
+ * No ChangeTime replay. Old receivers reject this larger typed payload. */
+typedef struct _SAFEUPLOAD_STAGE_SEAL_METADATA {
+    SAFEUPLOAD_STAGE_SEAL_V19 Seal;
+    LONGLONG CreationTime;
+    LONGLONG LastAccessTime;
+    LONGLONG LastWriteTime;
+    UINT32 FileAttributes;
+    UINT32 Reserved;
+} SAFEUPLOAD_STAGE_SEAL_METADATA, *PSAFEUPLOAD_STAGE_SEAL_METADATA;
 
 /* V19 allocations are replayable by AllocationReservationId. The parent is
  * resolved by the service from the durable manifest; the driver supplies only
@@ -1399,6 +1409,8 @@ typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_STATUS {
 #define SAFEUPLOAD_DENY_REASON_BY_ID_UNDECIDABLE  ((UINT32) 12)  /* a write open by file ID whose names could not be classified here; AuxStatus = the classifier's status */
 #define SAFEUPLOAD_DENY_REASON_BY_ID_HIGH_HALF    ((UINT32) 13)  /* a write open by a 128-bit file ID with a non-zero high half on a volume that may hold a scope */
 #define SAFEUPLOAD_DENY_REASON_REGISTRY_SCOPE     ((UINT32) 14)  /* outside opened name; SOP/transition gate refused; AuxStatus = 0xE5000000 | SAFEUPLOAD_SOP_OUTSIDE_* snapshot */
+#define SAFEUPLOAD_DENY_REASON_METADATA_UNSUPPORTED ((UINT32) 15)
+#define SAFEUPLOAD_DENY_REASON_STREAM_UNSUPPORTED ((UINT32) 16)
 
 typedef struct _SAFEUPLOAD_DENY_RECORD {
     UINT64 Sequence;                // 1-based, strictly increasing; 0 never appears in a reply
@@ -1876,6 +1888,9 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_STAGE_VERSION_V19, StageIdentity ) == 24 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_STAGE_VERSION_V19, DestinationGeneration ) == 48 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_STAGE_VERSION_V19, Kind ) == 56 );
 C_ASSERT( sizeof( SAFEUPLOAD_STAGE_SEAL_V19 ) == 40 );
+C_ASSERT( sizeof( SAFEUPLOAD_STAGE_SEAL_METADATA ) == 72 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_STAGE_SEAL_METADATA, CreationTime ) == 40 );
+C_ASSERT( sizeof( SAFEUPLOAD_STAGE_SEAL_METADATA ) <= SAFEUPLOAD_MAX_IMAGE_NAME_CHARS * sizeof(WCHAR) );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_STAGE_SEAL_V19, StageIdentity ) == 8 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_STAGE_SEAL_V19, DestinationGeneration ) == 32 );
 C_ASSERT( sizeof( SAFEUPLOAD_STAGE_ALLOCATE_V19 ) == 64 );

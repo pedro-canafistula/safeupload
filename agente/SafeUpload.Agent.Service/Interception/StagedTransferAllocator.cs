@@ -30,7 +30,13 @@ public sealed partial class StagedTransferAllocator
         _root = Path.GetFullPath(root);
         _spaceBudget = spaceBudget;
         _journal = journal ?? throw new ArgumentNullException(nameof(journal));
-        if (_spaceBudget is not null) _journal.PrivateTemporaryAdmission = _spaceBudget.RequireMetadataAdmission;
+        if (_spaceBudget is not null)
+        {
+            _journal.PrivateTemporaryAdmission = _spaceBudget.RequireMetadataAdmission;
+            _journal.ArchiveGrowthAdmission = _spaceBudget.RequireArchiveAdmission;
+            _journal.ArchiveStorageChanged = _spaceBudget.RefreshArchiveStorage;
+            _journal.ContentReservationPending = _spaceBudget.ContentReservationPending;
+        }
 
         string? volumeRoot = Path.GetPathRoot(_root);
         if (string.IsNullOrEmpty(volumeRoot))
@@ -230,7 +236,9 @@ public sealed partial class StagedTransferAllocator
             if (OperatingSystem.IsWindows())
             {
                 identity = await StagedBackingFile.CreateAsync(copyExisting ? source ?? fullDestination : null,
-                    transfer.StagePath, seedCapacity, seedToken, _spaceBudget is null ? null : exact =>
+                    transfer.StagePath, seedCapacity, seedToken,
+                    sourceExists ? source ?? fullDestination : null, preserveCreation: disposition != 0,
+                    created: _spaceBudget is null ? null : exact =>
                     {
                         identity = exact;
                         _spaceBudget.RecordStage(id, transfer.StagePath, exact);

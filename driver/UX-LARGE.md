@@ -2,6 +2,7 @@
 
 2026-10-16, `ux/large`, base `62fd1673`. **Local prototype; T9 is not complete or qualified.**
 Claude owns Windows builds and VM execution as standard user `t5actor`. No product VM was contacted here.
+The [demo/apps integration](UX-LARGE-INTEGRATION.md) preserves packed journal scaling, allocation-abort fences and sealed metadata.
 Read the [qualification list](UX-LARGE-VM.md) and [local receipt](evidence/2026-10-16/ux-large-local/result.md).
 
 ## Admission and authority

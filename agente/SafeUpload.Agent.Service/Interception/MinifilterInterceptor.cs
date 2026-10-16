@@ -1256,14 +1256,26 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     {
         using var inspectionTiming = StagedRequestTiming.Measure("inspection-seal");
         bool resourceFailure = request.Reserved == 31;
-        SafeUploadStageSealV19 payload;
-        bool validPayload = resourceFailure ? request.TryReadStageResourceSeal(out payload)
-            : request.TryReadStagePayload<SafeUploadStageSealV19>(Operation.StageSeal, out payload);
         if (_stageJournal is null || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
-            _activeDriverInstanceId is not { } activeDriver || request.RequestorProcessId == 0 || request.Flags != 0 || !validPayload)
+            _activeDriverInstanceId is not { } activeDriver || request.RequestorProcessId == 0 || request.Flags != 0)
             return (PortVerdict.Deny, null);
         try
         {
+            StagedFileMetadata? metadata = null;
+            SafeUploadStageSealV19 payload;
+            if (resourceFailure)
+            {
+                if (!request.TryReadStageResourceSeal(out payload)) return (PortVerdict.Deny, null);
+            }
+            else if (request.TryReadStagePayload<SafeUploadStageSealMetadata>(Operation.StageSeal, out var measured))
+            {
+                if (measured.Reserved != 0) return (PortVerdict.Deny, null);
+                payload = measured.Seal;
+                metadata = new(measured.CreationTime, measured.LastAccessTime, measured.LastWriteTime, measured.FileAttributes);
+                metadata.Validate();
+            }
+            else if (!request.TryReadStagePayload<SafeUploadStageSealV19>(Operation.StageSeal, out payload))
+                return (PortVerdict.Deny, null);
             string? stage = NtPathTranslator.ToDosPath(request.GetPath());
             if (stage is null || !IsOwnedStagePath(stage) ||
                 !Guid.TryParseExact(Path.GetFileName(stage)[..32], "N", out Guid id) ||
@@ -1277,7 +1289,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 before.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
                 return (PortVerdict.Deny, null);
             TransferJournalEntry sealedEntry = await _stageJournal.SealAsync(id,
-                checked((int)request.RequestorProcessId), stage, token, expected, resourceFailure).ConfigureAwait(false);
+                checked((int)request.RequestorProcessId), stage, token, expected, metadata, resourceFailure).ConfigureAwait(false);
             if (sealedEntry.State != TransferJournalState.Sealed || sealedEntry.SealedLength is not >= 0)
                 throw new IOException("The ordinary seal has no stable measured length.");
             uint result = StageV19Result.Sealed;
@@ -1449,21 +1461,68 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         }
     }
 
+    private enum TerminalMaintenanceResult { Complete, Pending, Held }
+
+    private async Task<TerminalMaintenanceResult> MaintainTerminalJournalAsync(StagedJournalMaintenanceRetry retry,
+        Func<CancellationToken, Task> work, CancellationToken token)
+    {
+        bool complete;
+        try
+        {
+            complete = await retry.RunAsync(work, error => _logger.LogWarning(error,
+                "Terminal journal maintenance is pending; retrying metadata with bounded backoff."), token).ConfigureAwait(false);
+        }
+        catch (InvalidDataException error)
+        {
+            _logger.LogCritical(error, "Terminal journal integrity failed; new saves remain held. Validate the journal before restarting the service.");
+            _stageV20Ready = false; _stagingRecoveryReady = false;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            _boundReadiness.Invalidate(StagedBoundBlocker.UnresolvedPrerequisite);
+#endif
+            return TerminalMaintenanceResult.Held;
+        }
+        if (_stageJournal?.IntegrityHeld == true)
+        {
+            _logger.LogCritical("Terminal journal integrity is held; new saves remain held. Validate the journal before restarting the service.");
+            _stageV20Ready = false; _stagingRecoveryReady = false;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            _boundReadiness.Invalidate(StagedBoundBlocker.UnresolvedPrerequisite);
+#endif
+            return TerminalMaintenanceResult.Held;
+        }
+        return complete ? TerminalMaintenanceResult.Complete : TerminalMaintenanceResult.Pending;
+    }
+
     private async Task PublishSealedLoopAsync(CancellationToken cancellationToken)
     {
         if (_stageJournal is null || _stagePublisher is null) return;
 
         await _stagingReadySignal.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var archiveRetry = new StagedJournalMaintenanceRetry();
 
         while (!cancellationToken.IsCancellationRequested && _stageV20Ready && _stagingRecoveryReady)
         {
-            await RecoverRejectedAllocationsAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<TransferJournalEntry>? pending = null;
+            var maintenance = await MaintainTerminalJournalAsync(archiveRetry, async token =>
+            {
+                await RecoverRejectedAllocationsAsync(token).ConfigureAwait(false);
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
-            await _stagePublisher.RecoverBoundReceiptsAsync(cancellationToken).ConfigureAwait(false);
+                await _stagePublisher.RecoverBoundReceiptsAsync(token).ConfigureAwait(false);
 #endif
-            await _stagePublisher.RecoverJournalProgressAsync(cancellationToken).ConfigureAwait(false);
-            foreach (var entry in await _stageJournal.ReadPendingAsync(cancellationToken)
-                         .ConfigureAwait(false))
+                await _stagePublisher.RecoverJournalProgressAsync(token).ConfigureAwait(false);
+                // Last close may follow the original disposal response.
+                await _stagePublisher.DisposeReleasedStagesAsync(token).ConfigureAwait(false);
+                await _stagePublisher.ArchiveCompletedTransfersAsync(token).ConfigureAwait(false);
+                await _stageJournal.ValidateArchivedSliceAsync(token).ConfigureAwait(false);
+                pending = await _stageJournal.ReadPendingAsync(token).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
+            if (maintenance == TerminalMaintenanceResult.Held) return;
+            if (maintenance == TerminalMaintenanceResult.Pending)
+            {
+                await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+            foreach (var entry in pending!)
             {
                 if (entry.PendingRename is not null) continue;
                 if (entry.State == TransferJournalState.LegacyEmptyHeld) continue; // guarded startup migration only
@@ -1524,10 +1583,21 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         if (_stageJournal is null) return;
         const int MaximumItemsPerPass = 16;
         await _stagingReadySignal.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var archiveRetry = new StagedJournalMaintenanceRetry();
         while (!cancellationToken.IsCancellationRequested && _stageV20Ready && _stagingRecoveryReady)
         {
-            IReadOnlyList<StagedDiscardRequest> pending = await _stageJournal
-                .ReadDiscardPendingAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<StagedDiscardRequest> pending = [];
+            var maintenance = await MaintainTerminalJournalAsync(archiveRetry, async token =>
+            {
+                await _stageJournal.ArchiveDiscardedTransfersAsync(token).ConfigureAwait(false);
+                pending = await _stageJournal.ReadDiscardPendingAsync(token).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
+            if (maintenance == TerminalMaintenanceResult.Held) return;
+            if (maintenance == TerminalMaintenanceResult.Pending)
+            {
+                await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
             if (pending.Count > 0)
             {
                 int start = _discardCleanupCursor % pending.Count;
@@ -1557,6 +1627,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                             }
                         }
                         await _stageJournal.CompleteDiscardAsync(request, cancellationToken)
+                            .ConfigureAwait(false);
+                        await _stageJournal.ArchiveCompletedAsync(
+                            await _stageJournal.ReadAsync(request.Version.TransferId, cancellationToken).ConfigureAwait(false), cancellationToken)
                             .ConfigureAwait(false);
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1592,7 +1665,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         string initializingPath = journal;
         try
         {
-            _stageJournal = new StagedTransferJournal(journal, requireProtectedParent: true);
+            _stageJournal = new StagedTransferJournal(journal, requireProtectedParent: true,
+                deferArchiveLoad: _configuration.GetValue<bool>("Interception:StageSpace:Enabled"));
             initializingPath = root;
             StagedSpaceBudget.RequireExistingSecurity(root);
             if (!_configuration.GetValue<bool>("Interception:StageSpace:Enabled") &&
@@ -1609,9 +1683,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     _configuration.GetValue<long?>("Interception:StageSpace:PerUserBytes") ?? throw new IOException("Large-file staging requires an explicit PerUserBytes setting; proposed resource defaults await owner approval."),
                     _configuration.GetValue<long?>("Interception:StageSpace:FreeSpaceFloorBytes") ?? throw new IOException("Large-file staging requires an explicit FreeSpaceFloorBytes setting; proposed resource defaults await owner approval.")));
                 _stageSpaceBudget.VerifyInventory(root);
-                _stageSpaceBudget.VerifyJournalInventory(journal);
                 _stageAllocator = new StagedTransferAllocator(root, _stageJournal,
                     requireProtectedParent: true, requireSystemIdentity: true, spaceBudget: _stageSpaceBudget);
+                _stageSpaceBudget.VerifyJournalInventory(journal, _stageJournal);
             }
             _stagePublisher = new StagedTransferPublisher(
                 _inspection, _hub, _stageJournal, root,
@@ -1673,12 +1747,15 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         discarded.StageIdentity, out Exception? deletionFailure))
                     _logger.LogWarning(deletionFailure, "Estagio descartado {TransferId} nao pode ser removido.",
                         discarded.Transfer.TransferId);
+                else _stageJournal.ArchiveCompletedAsync(discarded, stoppingToken).GetAwaiter().GetResult();
             }
+            _stagePublisher.ArchiveCompletedTransfersAsync(stoppingToken).GetAwaiter().GetResult();
             // T11: finished transfers from earlier boots leave the journal, so it stops growing with every save. The cutoff is a day
             // before this boot: no per-boot driver state can name those transfers, and the guest clock's step after boot is covered.
             try
             {
                 DateTimeOffset bootUtc = DateTimeOffset.UtcNow - TimeSpan.FromMilliseconds(Environment.TickCount64);
+                _stageSpaceBudget?.ReconcileAsync(_stageJournal, stoppingToken).GetAwaiter().GetResult();
                 int compacted = _stageJournal.CompactAsync(bootUtc - TimeSpan.FromDays(1), stoppingToken).GetAwaiter().GetResult();
                 if (compacted > 0)
                     _logger.LogInformation("Diario de transferencias compactado: {Count} entradas concluidas removidas.", compacted);

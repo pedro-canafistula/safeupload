@@ -12,7 +12,8 @@ internal static class StagedJournalReplacement
     internal static async Task CommitAsync(FileStream stream, string temporary,
         string destination, CancellationToken token)
     {
-        stream.Flush(flushToDisk: true);
+        using (StagedRequestTiming.Measure("journal-flush")) stream.Flush(flushToDisk: true);
+        using var renameTiming = StagedRequestTiming.Measure("journal-replace");
         await ReplaceAsync(() =>
         {
             if (OperatingSystem.IsWindows())

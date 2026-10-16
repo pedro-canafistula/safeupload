@@ -581,6 +581,9 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
       No builder jobs or host maintenance during timing-sensitive rows.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
+  - 2026-10-16 `ux/allocfault`: [V20 repair/design and unchanged fault-row requirements](T4-STAGE-LIFETIME.md#121-v20-allocationprepare-reply-recovery--2026-10-16)
+    cancel an unknown Prepare before exact unattached deletion; abort-before-Prepare is durable and later opens retry until the
+    deletion ACK releases the name. [Local implementation receipt](evidence/2026-10-16/ux-allocfault/result.md); no VM qualification.
 - [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):
   256/256, every required assertion PASS, 69.8% of idle SUfl growth released. New 10k: 10,000/10,000, functional/pool/registry/Ready
   assertions PASS, pool slope −1.293 B/cycle; contexts bound FAIL above. Both separate restorations PASS; further product VM runs stopped.
@@ -1125,6 +1128,8 @@ the publishing application can reopen the file and agreed metadata is preserved.
   for unbounded header/dictionary allocation ([assessment](../agente/docs/T9-ARCHIVE-INSPECTION.md)); owner choice pending.
 - [ ] Implement and test the metadata contract decided 2026-10-16 (native owner/DACL/SACL/label, timestamps, attributes; Zone.Identifier
   carried with its file; other ADS, EAs, EFS, offline, reparse points and hard links refused).
+  - [ ] Unbound `ux/meta` [basic metadata increment](UX-METADATA.md): exact sealed dates/ordinary attributes and unsupported-storage checks;
+    native descriptor construction, public metadata serialization and inspected atomic MOTW remain unfinished. No T8 completion or VM qualification.
 - [ ] Qualify application rows under the matched pair with independent byte observation and restoration.
 
 ### T9. Large files and complete inspection
@@ -1458,6 +1463,8 @@ cannot publish unapproved bytes, proven by the observer.
 - [ ] Rerun all modes on the final pair. Carry publication ACL/owner fidelity into T8.
 
 ### T11. Review conditions
+
+2026-10-16 unbound MVP candidate (`ux/journal`): [active-journal scaling design](T11-UNBOUND-JOURNAL-SCALING.md) packs completed receipts out of the hot set, retains generation/identity obligations and adds archive recovery controls. Linux feedback is component evidence only; the Windows feature matrix and protected 10k pair remain open.
 
 **Problem:** remaining locking, generation, section-lifetime and journal-scaling findings need closure.
 **Done when:** every finding has a tested change or row and the M2 adversarial review closes the working system.

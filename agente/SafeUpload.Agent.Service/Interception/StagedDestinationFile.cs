@@ -53,7 +53,7 @@ internal static class StagedDestinationFile
         if (!OperatingSystem.IsWindows())
             return File.OpenHandle(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
 
-        var handle = CreateFile(path, 0x40010000, 0, IntPtr.Zero, 1,
+        var handle = CreateFile(path, 0x40010088, 0, IntPtr.Zero, 1,
             0xA0000080, IntPtr.Zero); // GENERIC_WRITE | DELETE, CREATE_NEW, NO_BUFFERING | WRITE_THROUGH
         if (handle.IsInvalid)
         {
@@ -103,7 +103,10 @@ internal static class StagedDestinationFile
     public static bool TryDeleteUncommitted(SafeFileHandle output)
     {
         if (!OperatingSystem.IsWindows() || output.IsInvalid || output.IsClosed) return false;
-        return SetFileInformationByHandle(output, 4, [1], 1); // FileDispositionInfo: DeleteFile = TRUE
+        // This is the exclusively held, uncommitted service temporary, never
+        // the public target. Cleanup must also work after readonly replay.
+        return SetFileInformationByHandle(output, 21, BitConverter.GetBytes(0x13u), sizeof(uint));
+        // FileDispositionInfoEx: DELETE | POSIX_SEMANTICS | IGNORE_READONLY_ATTRIBUTE
     }
 
     public static void CommitHandle(SafeFileHandle output, string destination)

@@ -1,0 +1,257 @@
+{
+  "sourceParents": [
+    "7edba3458b4bb0543f46d5bf99b62021d3471362",
+    "667a2652"
+  ],
+  "largeMode": "explicit opt-in; default-off",
+  "kind": "Focused Linux in-process diagnostic, actual xUnit methods/data; not Windows matrix/native qualification",
+  "tests": {
+    "Debug": {
+      "total": 476,
+      "failed": 0,
+      "skipped": 0,
+      "classes": {
+        "ArchiveInspectionTests": 93,
+        "InspectionWorkBudgetTests": 8,
+        "PlainTextDecodingTests": 36,
+        "PowerPointContentCoverageTests": 85,
+        "StagedAllocationResolutionTests": 19,
+        "StagedAttachmentV20Tests": 14,
+        "StagedFileMetadataTests": 28,
+        "StagedInspectionFailureTests": 16,
+        "StagedJournalMaintenanceRetryTests": 3,
+        "StagedJournalReplacementTests": 11,
+        "StagedLargeFileTests": 27,
+        "StagedLargeIntegrationTests": 10,
+        "StagedPublicationRetryTests": 13,
+        "StagedRenameReceiptWireTests": 22,
+        "StagedSnapshotCopyTests": 7,
+        "StagedTerminalArchiveTests": 34,
+        "StreamingContentScannerTests": 37,
+        "WordStreamingInspectionTests": 13
+      },
+      "receipt": ".scratch/ux-large2-final-debug3.json",
+      "sha256": "fbc8ecdcbf4a2d1f00095f737f0b295c2e0db08f9228c4d994c23d9d9ffbd552"
+    },
+    "Release": {
+      "total": 476,
+      "failed": 0,
+      "skipped": 0,
+      "classes": {
+        "ArchiveInspectionTests": 93,
+        "InspectionWorkBudgetTests": 8,
+        "PlainTextDecodingTests": 36,
+        "PowerPointContentCoverageTests": 85,
+        "StagedAllocationResolutionTests": 19,
+        "StagedAttachmentV20Tests": 14,
+        "StagedFileMetadataTests": 28,
+        "StagedInspectionFailureTests": 16,
+        "StagedJournalMaintenanceRetryTests": 3,
+        "StagedJournalReplacementTests": 11,
+        "StagedLargeFileTests": 27,
+        "StagedLargeIntegrationTests": 10,
+        "StagedPublicationRetryTests": 13,
+        "StagedRenameReceiptWireTests": 22,
+        "StagedSnapshotCopyTests": 7,
+        "StagedTerminalArchiveTests": 34,
+        "StreamingContentScannerTests": 37,
+        "WordStreamingInspectionTests": 13
+      },
+      "receipt": ".scratch/ux-large2-final-release.json",
+      "sha256": "8b6bd59dc81a47ceea30028b2a2aff9ebc8f7ed467e104a5a332ac9948fc1ea6"
+    }
+  },
+  "driverEntryPoints": [
+    {
+      "script": "driver/scripts/t5/allocation-retry-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/allocation-retry-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/attach-completion-key-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/attach-completion-key-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/attach-pin-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/attach-pin-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/attachment-replay-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/attachment-replay-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/manifest-retry-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/manifest-retry-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/mvp-namespace-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/mvp-namespace-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/reconcile-retry-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/reconcile-retry-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/rename-receipt-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/rename-receipt-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/rename-sharing-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/rename-sharing-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/sop-witness-detach-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/sop-witness-detach-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/stream-listing-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/stream-listing-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/teardown-participation-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/teardown-participation-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/t5/unknown-origin-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/unknown-origin-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/ux/activating-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/activating-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/ux/large-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/large-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/ux/outside-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/outside-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/ux/metadata-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/metadata-selfcheck.txt"
+    },
+    {
+      "script": "driver/SafeUpload.Minifilter/tests/test_bound_publication_buffers.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/test_bound_publication_buffers.txt"
+    },
+    {
+      "script": "driver/SafeUpload.Minifilter/tests/test_directory_ux.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/test_directory_ux.txt"
+    },
+    {
+      "script": "driver/SafeUpload.Minifilter/tests/test_writer_metadata_readers.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/test_writer_metadata_readers.txt"
+    },
+    {
+      "script": "driver/SafeUpload.Minifilter/tests/test_allocation_reply_fault.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/test_allocation_reply_fault.txt"
+    },
+    {
+      "script": "driver/scripts/t4/verdict-selfcheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/verdict-selfcheck.txt"
+    },
+    {
+      "script": "driver/scripts/Invoke-ExactAgentMatrixBuild.SelfCheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/Invoke-ExactAgentMatrixBuild.SelfCheck.txt"
+    },
+    {
+      "script": "driver/scripts/Invoke-ExactSourceBuild.SelfCheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/Invoke-ExactSourceBuild.SelfCheck.txt"
+    },
+    {
+      "script": "driver/scripts/Prepare-ExactWorktreeSource.SelfCheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/Prepare-ExactWorktreeSource.SelfCheck.txt"
+    },
+    {
+      "script": "driver/scripts/FeatureAgentDefaults.SelfCheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/FeatureAgentDefaults.SelfCheck.txt"
+    },
+    {
+      "script": "driver/scripts/Test-DriverImports.SelfCheck.py",
+      "exit": 0,
+      "log": "/home/victor/Work/safeupload-ux-large/.scratch/ux-large2-driver-results/Test-DriverImports.SelfCheck.txt"
+    }
+  ],
+  "apiAudit": {
+    "base667a2652": {
+      "pass": false,
+      "error": "Unproved target kernel routines:\ndriver/SafeUpload.Minifilter/Taint.c:356: InsertHeadList"
+    },
+    "integrated": {
+      "pass": false,
+      "error": "Unproved target kernel routines:\ndriver/SafeUpload.Minifilter/Taint.c:356: InsertHeadList"
+    },
+    "newKernelCallNames": [],
+    "hostStubDeclarations": 90,
+    "scope": "Source-only audit. Not WDK, PREfast, ApiValidator, IRQL proof or actual binary import availability."
+  },
+  "artifacts": [
+    {
+      "path": ".scratch/ux-large2-work/.scratch/artifacts/bin/SafeUpload.Agent.Core/debug/SafeUpload.Agent.Core.dll",
+      "sha256": "cd766a3dba72e2db72d0f207b20262011000abfb0969eeb10e0bbbdc9c8ab691"
+    },
+    {
+      "path": ".scratch/ux-large2-work/.scratch/artifacts/bin/SafeUpload.Agent.Minifilter/debug/SafeUpload.Agent.Minifilter.dll",
+      "sha256": "eaddbaf6f31748c7a7b04c01300bc460eac0752cc39c2a429b2d8734c417a0d9"
+    },
+    {
+      "path": ".scratch/ux-large2-work/.scratch/artifacts/bin/SafeUpload.Agent.Service/debug/SafeUpload.Agent.Service.dll",
+      "sha256": "50df1edb88fa616ace612ecf36a526743e95c7b065d73d2985fa1ed7e59d5a3c"
+    },
+    {
+      "path": ".scratch/ux-large2-work/.scratch/artifacts/bin/SafeUpload.Agent.Tests/debug/SafeUpload.Agent.Tests.dll",
+      "sha256": "21159c5611670c9f6e39dbe87dbe5984560897e1e89d1d661a3db933a5a4221c"
+    },
+    {
+      "path": ".scratch/ux-large2-work/.scratch/artifacts/bin/SafeUpload.Agent.App/debug/SafeUpload.Agent.App.dll",
+      "sha256": "79b0bb192d0a045276c0e627b8ca931b00d061c8c5ec35c977ae506757d9bab1"
+    },
+    {
+      "path": ".scratch/ux-large2-work/.scratch/artifacts/bin/SafeUpload.Agent.Core/release/SafeUpload.Agent.Core.dll",
+      "sha256": "f681ae2dbedbab0dc4aa53a997685640c73771551575a4a83430125f75c21892"
+    },
+    {
+      "path": ".scratch/ux-large2-work/.scratch/artifacts/bin/SafeUpload.Agent.Minifilter/release/SafeUpload.Agent.Minifilter.dll",
+      "sha256": "9f2eab0bcfbe2ca3dd998c6c7f5bb7ea8f6e4f3b3ff86e5ba26c569df6f315b9"
+    },
+    {
+      "path": ".scratch/ux-large2-work/.scratch/artifacts/bin/SafeUpload.Agent.Service/release/SafeUpload.Agent.Service.dll",
+      "sha256": "cc601acb8d280dd8d9e6305c040bae5b48e554a2c286cd3b068a532787a35568"
+    },
+    {
+      "path": ".scratch/ux-large2-work/.scratch/artifacts/bin/SafeUpload.Agent.Tests/release/SafeUpload.Agent.Tests.dll",
+      "sha256": "8c3e1c163217bd0326a06f8a4fe189b1fcca024133a71f6dd12f33aa1afab497"
+    },
+    {
+      "path": ".scratch/ux-large2-work/.scratch/artifacts/bin/SafeUpload.Agent.App/release/SafeUpload.Agent.App.dll",
+      "sha256": "766102e876e3e51571f2ec404ee08be60529ec42986a5526e2ae55b8d258c3ad"
+    }
+  ],
+  "failedAttemptSummary": ".scratch/ux-large2-first-failure.json"
+}

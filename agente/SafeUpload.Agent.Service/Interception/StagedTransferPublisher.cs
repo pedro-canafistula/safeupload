@@ -170,6 +170,24 @@ public sealed partial class StagedTransferPublisher
             return StagedTransferOutcome.Retained;
         }
 
+        StagedFileMetadata metadata;
+        try
+        {
+            // Also inventory the real stage: the logical seal never licenses
+            // an extra stream/EA or unsupported storage on the backing object.
+            StagedFileMetadata actual = StagedFileMetadata.Capture(sealedFile.SafeFileHandle);
+            metadata = journalEntry.FileMetadata ?? actual;
+            metadata.Validate();
+        }
+        catch (StagedMetadataException error)
+        {
+            await RetainUninspectedAsync(transfer, cancellationToken).ConfigureAwait(false);
+            _logger?.LogWarning(error, "Staged metadata refused for {TransferId}: {Reason}.", transfer.TransferId, error.Reason);
+            PublishTransferNotification(transfer, new TransferNotification(transfer.TransferId, fileName, TransferPhase.Retained,
+                RecoveryAdvice: StagedRecoveryAdvice.UnsupportedMetadata, MetadataFailure: error.Reason));
+            return StagedTransferOutcome.Retained;
+        }
+
         await _journal.TransitionAsync(transfer.TransferId, journalEntry.State,
             TransferJournalState.Inspecting, null, cancellationToken, expectedTransfer: transfer,
             closeJustificationWindow: justified is not null, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
@@ -417,6 +435,7 @@ public sealed partial class StagedTransferPublisher
         {
             await StagedPublicationRetry.ExecuteAsync(async token =>
             {
+                if (File.Exists(destinationPath)) _ = StagedFileMetadata.CapturePath(destinationPath);
                 string temporaryDestination = Path.Combine(directory, ".safeupload-" +
                     transfer.TransferId.ToString("N") +
                     (publicationAttempt++ == 0 ? "" : "-" + Guid.NewGuid().ToString("N")) + ".pending");
@@ -425,10 +444,12 @@ public sealed partial class StagedTransferPublisher
                 using var output = StagedDestinationFile.CreateUnbuffered(temporaryDestination);
                 try
                 {
+                    _ = StagedFileMetadata.Capture(output); // check actual inherited storage, not CREATE's NORMAL input
                     inspectedFile.Position = 0;
                     _logger?.LogDebug("Approved publication file opened for {TransferId}.", transfer.TransferId);
                     await StagedDestinationFile.WriteUnbufferedAsync(output, inspectedFile, token)
                         .ConfigureAwait(false);
+                    metadata.Apply(output);
                     _logger?.LogDebug("Approved publication bytes copied for {TransferId}.", transfer.TransferId);
                     _logger?.LogDebug("Renaming approved publication file for {TransferId}.", transfer.TransferId);
                     StagedStageIdentity publishedObject = StagedDestinationFile.ReadIdentity(output);
@@ -436,6 +457,10 @@ public sealed partial class StagedTransferPublisher
                         operation, result, justifiedApproval);
                     await _journal.CommitUnboundPublicationAsync(publicationIntent, () =>
                     {
+                        // Re-inventory supported storage on the exact output.
+                        // The seal's logical attributes are already applied.
+                        _ = StagedFileMetadata.Capture(output);
+                        if (File.Exists(destinationPath)) _ = StagedFileMetadata.CapturePath(destinationPath);
                         StagedDestinationFile.CommitHandle(output, destinationPath);
                         committed = true;
                     }, cancellationToken).ConfigureAwait(false);
@@ -452,7 +477,8 @@ public sealed partial class StagedTransferPublisher
                 if (current.Transfer != transfer || current.State != TransferJournalState.Publishing ||
                     current.PendingRename is not null || current.StageCleanupStarted || current.StageDeleted ||
                     current.StageIdentity != stageFile.Identity || current.SealedLength != sealedFile.Length ||
-                    current.SealedLength != inspectedFile.Length || current.Sha256Hex != digest)
+                    current.SealedLength != inspectedFile.Length || current.Sha256Hex != digest ||
+                    current.FileMetadata != journalEntry.FileMetadata)
                     return false;
                 sealedFile.Position = 0;
                 string currentDigest = Convert.ToHexString(await SHA256.HashDataAsync(sealedFile, token).ConfigureAwait(false));
@@ -483,12 +509,14 @@ public sealed partial class StagedTransferPublisher
                 TransferJournalState.Publishing, TransferJournalState.Retained,
                 null, CancellationToken.None, expectedTransfer: transfer, expectedGeneration: journalEntry.DestinationGeneration).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
-                Verdict.Retained, busy ? "publication_busy" : "publication_failed", CancellationToken.None,
+                Verdict.Retained, ex is StagedMetadataException failure ? failure.Reason : busy ? "publication_busy" : "publication_failed", CancellationToken.None,
                 transfer.TransferId).ConfigureAwait(false);
             PublishTransferNotification(transfer, new TransferNotification(
                 transfer.TransferId, fileName, TransferPhase.Retained,
                 InspectionFailure: StagedSpaceFailure.IsSpace(ex) ? InspectionFailureKind.NotEnoughStagingSpace : null,
-                RecoveryAdvice: busy ? StagedRecoveryAdvice.PublicationBusy : null));
+                RecoveryAdvice: ex is StagedMetadataException ? StagedRecoveryAdvice.UnsupportedMetadata :
+                    busy ? StagedRecoveryAdvice.PublicationBusy : null,
+                MetadataFailure: (ex as StagedMetadataException)?.Reason));
             return StagedTransferOutcome.Retained;
         }
 
@@ -535,10 +563,11 @@ public sealed partial class StagedTransferPublisher
                     entry.StageIdentity, out Exception? deletionFailure))
                 throw new IOException("The released stage identity did not match the manifest or absence was not confirmed.",
                     deletionFailure);
-            await _journal.CompleteReleasedStageDisposalAsync(
+            var disposed = await _journal.CompleteReleasedStageDisposalAsync(
                 new StagedVersionIdentity(entry.Transfer.TransferId, entry.DestinationGeneration,
                     entry.StageIdentity ?? throw new IOException("The released stage has no captured identity.")),
                 token).ConfigureAwait(false);
+            await _journal.ArchiveCompletedAsync(disposed, token).ConfigureAwait(false);
         }
         catch (Exception ex) when (!token.IsCancellationRequested && ex is IOException or UnauthorizedAccessException or
             System.ComponentModel.Win32Exception or InvalidOperationException or ArgumentException)
@@ -566,9 +595,19 @@ public sealed partial class StagedTransferPublisher
         foreach (TransferJournalEntry entry in await _journal.ReadReleasedAsync(token).ConfigureAwait(false))
         {
             token.ThrowIfCancellationRequested();
-            if (!IsDisposableRelease(entry)) continue;
-            await DisposeReleasedStageAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
+            if (HasUnfinishedCallerWork(entry.Transfer.TransferId)) continue;
+            if (IsDisposableRelease(entry))
+                await DisposeReleasedStageAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
+            else if (entry.StageDeleted)
+                await _journal.ArchiveCompletedAsync(entry, token).ConfigureAwait(false);
         }
+    }
+
+    internal async Task ArchiveCompletedTransfersAsync(CancellationToken token)
+    {
+        var candidates = await _journal.ReadCompletedCandidatesAsync(token).ConfigureAwait(false);
+        foreach (var batch in candidates.Where(e => !HasUnfinishedCallerWork(e.Transfer.TransferId)).Chunk(16))
+            await _journal.ArchiveCompletedBatchAsync(batch, token).ConfigureAwait(false);
     }
 
     /// <summary>The service deleted a blocked or justified stage: the driver may release the version now.</summary>
@@ -756,7 +795,11 @@ public sealed partial class StagedTransferPublisher
 
     private async Task ProcessBlockedCleanupCoreAsync(TransferJournalEntry entry, CancellationToken token)
     {
-        if (StagedTransferJournal.BlockedCleanupComplete(entry)) return;
+        if (StagedTransferJournal.BlockedCleanupComplete(entry))
+        {
+            await _journal.ArchiveCompletedAsync(entry, token).ConfigureAwait(false);
+            return;
+        }
         entry = await _journal.ReadAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
         if (entry.SealedLength is not >= 0 || entry.StageIdentity is null ||
             entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
@@ -844,7 +887,10 @@ public sealed partial class StagedTransferPublisher
             // absence. Pending deletion is not StageDeleted.
             DisposeCleanedUpStage(current);
             if (StagedStageFile.TryConfirmAbsent(current.Transfer.StagePath, out Exception? absenceFailure))
-                await _journal.CompleteStageCleanupAsync(current.Transfer.TransferId, token).ConfigureAwait(false);
+            {
+                var completed = await _journal.CompleteStageCleanupAsync(current.Transfer.TransferId, token).ConfigureAwait(false);
+                await _journal.ArchiveCompletedAsync(completed, token).ConfigureAwait(false);
+            }
             else if (absenceFailure is not null)
                 throw new IOException("Blocked stage absence could not be established.", absenceFailure);
         }

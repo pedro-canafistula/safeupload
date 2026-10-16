@@ -9,13 +9,22 @@ namespace SafeUpload.Agent.Service.Interception;
 // do not invalidate. Use aligned, noncached writes from the first byte onward.
 internal static class StagedBackingFile
 {
-    public static async Task<StagedStageIdentity> CreateAsync(string? source, string destination, long maximumBytes, CancellationToken token, Action<StagedStageIdentity>? created = null)
+    public static async Task<StagedStageIdentity> CreateAsync(string? source, string destination, long maximumBytes,
+        CancellationToken token, string? metadataSource = null, bool preserveCreation = true,
+        Action<StagedStageIdentity>? created = null)
     {
         token.ThrowIfCancellationRequested();
-        await using var input = source is null ? null : new FileStream(source,
-            FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        return (await CreateCoreAsync(input, destination, maximumBytes, token, null, captureIdentity: true, created)
+        using StagedStageFile? heldSource = source is null ? null : StagedStageFile.Open(source);
+        var metadata = heldSource is not null ? StagedFileMetadata.Capture(heldSource.Stream.SafeFileHandle) :
+            metadataSource is null ? null : StagedFileMetadata.CapturePath(metadataSource);
+        if (metadata is not null && (metadata.Attributes & 1) != 0)
+            throw new StagedMetadataException("metadata_readonly_destination");
+        // Truncation retains the old creation date, but has a new write date.
+        if (metadata is not null && source is null)
+            metadata = preserveCreation ? metadata with { LastWriteTime = DateTime.UtcNow.ToFileTimeUtc(),
+                Attributes = (metadata.Attributes & ~0x80u) | 0x20u } : null;
+        return (await CreateCoreAsync(heldSource?.Stream, destination, maximumBytes, token, null,
+            captureIdentity: true, metadata, created)
             .ConfigureAwait(false))!;
     }
 
@@ -26,7 +35,8 @@ internal static class StagedBackingFile
         => CreateCoreAsync(input, destination, maximumBytes, token, existingPrivateObject, captureIdentity: false);
 
     private static async Task<StagedStageIdentity?> CreateCoreAsync(FileStream? input, string destination,
-        long maximumBytes, CancellationToken token, StagedStageIdentity? existingPrivateObject, bool captureIdentity, Action<StagedStageIdentity>? created = null)
+        long maximumBytes, CancellationToken token, StagedStageIdentity? existingPrivateObject, bool captureIdentity,
+        StagedFileMetadata? metadata = null, Action<StagedStageIdentity>? created = null)
     {
         using var backingTiming = StagedRequestTiming.Measure("backing");
         token.ThrowIfCancellationRequested();
@@ -34,12 +44,13 @@ internal static class StagedBackingFile
         // A streamed bound below also prevents growth from consuming more disk.
         if (input is not null && input.Length > maximumBytes)
             throw new IOException("The source exceeds the qualified private-version size limit.");
-        using var output = CreateFile(destination, 0x40000000, 0, IntPtr.Zero, existingPrivateObject is null ? 1u : 3u,
+        using var output = CreateFile(destination, 0x40000088, 0, IntPtr.Zero, existingPrivateObject is null ? 1u : 3u,
             0xA0200080, IntPtr.Zero); // GENERIC_WRITE; CREATE_NEW or exact OPEN_EXISTING; NO_BUFFERING | WRITE_THROUGH | OPEN_REPARSE_POINT
         if (output.IsInvalid) throw new IOException("Could not create private backing.", new Win32Exception());
         if (existingPrivateObject is not null && StagedDestinationFile.ReadIdentity(output) != existingPrivateObject)
             throw new IOException("The private seed target changed before copying.");
         created?.Invoke(StagedDestinationFile.ReadIdentity(output));
+        if (captureIdentity) _ = StagedFileMetadata.Capture(output); // inherited EFS/compression is unsupported too
         const int blockSize = 64 * 1024; // multiple of every admitted sector size
         byte[] bytes = new byte[blockSize];
         IntPtr allocation = Marshal.AllocHGlobal(blockSize * 2);
@@ -67,6 +78,7 @@ internal static class StagedBackingFile
             // FileEndOfFileInfo accepts the exact (possibly partial) length.
             if (!SetFileInformationByHandle(output, 6, ref length, sizeof(long)) || !FlushFileBuffers(output))
                 throw new IOException("Could not durably finish private backing.", new Win32Exception());
+            metadata?.Apply(output);
         }
         finally { Marshal.FreeHGlobal(allocation); }
         return captureIdentity ? StagedDestinationFile.ReadIdentity(output) : null;

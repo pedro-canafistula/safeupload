@@ -290,6 +290,8 @@ public sealed class DriverDiagnosticsSource
         12 => "byIdUndecidable",
         13 => "byIdHighHalf",
         14 => "registryScope",
+        15 => "metadataUnsupported",
+        16 => "alternateStreamUnsupported",
         _ => reason.ToString(),
     };
 
