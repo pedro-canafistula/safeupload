@@ -1,0 +1,747 @@
+{
+  "base": "2a2a2b8973bcb30dadbea7a0ec4b669448bbed78",
+  "platform": "Linux .NET 10.0.11 SDK 10.0.400",
+  "runner": "Direct invocation of unchanged xUnit methods/data; standard host denied socket creation",
+  "normal_focused": {
+    "discovered": 63,
+    "passed": 63,
+    "failed": 0,
+    "skipped": 0
+  },
+  "baseline_diagnostic": {
+    "discovered": 243,
+    "passed": 135,
+    "failed": 108,
+    "skipped": 0
+  },
+  "existing_modified_diagnostic": {
+    "discovered": 243,
+    "passed": 135,
+    "failed": 108
+  },
+  "existing_outcome_changes": [],
+  "normal_10k": [
+    "10k migration ms=2473.796; archive bytes=21881184",
+    "10k archive startup ms=359.116",
+    "10k sameDestination=False: pending(5)=1.310ms/18560B allocate=1.356ms/20984B seal=6.577ms/63736B",
+    "10k migration ms=1531.149; archive bytes=21831298",
+    "10k archive startup ms=256.200",
+    "10k sameDestination=True: pending(5)=0.190ms/13560B allocate=6.440ms/20936B seal=2.875ms/62440B"
+  ],
+  "baseline_10k": [
+    "cold pending ms=1009.539 allocated=67198640 count=0",
+    "cold allocate ms=70.564 allocated=9862312 generation=2",
+    "cold seal ms=97.154 allocated=19753968",
+    "warm pending ms=43.043 allocated=10569984 count=1",
+    "warm allocate ms=43.861 allocated=9852016 generation=3",
+    "warm seal ms=90.601 allocated=19722632"
+  ],
+  "hashes": {
+    "agente/SafeUpload.Agent.Service/bin/Debug/net10.0-windows/SafeUpload.Agent.Service.dll": "fe0f67179cbf1e56aedb9eeda9c87112e9a7cf21cb0a353ad02eece2c782c3ab",
+    "agente/SafeUpload.Agent.Tests/bin/Debug/net10.0-windows/SafeUpload.Agent.Tests.dll": "4b1b91e9db1593bb32bfccc2276d3159ae83e4d18e4a92f20b1c444c16b0b76b",
+    "agente/SafeUpload.Agent.Service/bin/Release/net10.0-windows/SafeUpload.Agent.Service.dll": "07f1748d35413ce1b89ba3fc8eb1cabc2071e0dbd01a14be8e9907499ca9c66a",
+    "agente/SafeUpload.Agent.Tests/bin/Release/net10.0-windows/SafeUpload.Agent.Tests.dll": "77453bbe94cf746d743dbe9c9151655dadf5f0d757ab1e2a7cbd04fc3950d8ca"
+  },
+  "feature_release_focused": {
+    "discovered": 68,
+    "passed": 63,
+    "failed": 5,
+    "skipped": 0
+  },
+  "feature_release_10k": [
+    "10k migration ms=2324.501; archive bytes=21881268",
+    "10k archive startup ms=358.546",
+    "10k sameDestination=False: pending(5)=1.350ms/17080B allocate=1.422ms/20440B seal=7.013ms/60568B",
+    "10k migration ms=1465.485; archive bytes=21831277",
+    "10k archive startup ms=251.744",
+    "10k sameDestination=True: pending(5)=0.137ms/12080B allocate=1.287ms/20488B seal=2.510ms/75512B"
+  ],
+  "feature_release_failures": [
+    {
+      "name": "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(1000)",
+      "error": "System.PlatformNotSupportedException: Destination authority requires the Windows filename comparator."
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(10000)",
+      "error": "System.PlatformNotSupportedException: Destination authority requires the Windows filename comparator."
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(50000)",
+      "error": "System.PlatformNotSupportedException: Destination authority requires the Windows filename comparator."
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(False)",
+      "error": "System.DllNotFoundException: Unable to load shared library 'kernel32.dll' or one of its dependencies. In order to help diagnose loading problems, consider using a tool like strace. If you're using glibc, consider setting the LD_DEBUG environment variable: "
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(True)",
+      "error": "System.DllNotFoundException: Unable to load shared library 'kernel32.dll' or one of its dependencies. In order to help diagnose loading problems, consider using a tool like strace. If you're using glibc, consider setting the LD_DEBUG environment variable: "
+    }
+  ],
+  "normal_cases": [
+    {
+      "name": "StagedJournalCompactionIndexTests.Cancelled_index_selection_stops_before_creating_a_retention_result()",
+      "passed": true,
+      "ms": 8.2287
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Every_maximum_generation_tie_keeps_its_own_reference_chain()",
+      "passed": true,
+      "ms": 14.5317
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(1000)",
+      "passed": true,
+      "ms": 8.2918
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(10000)",
+      "passed": true,
+      "ms": 47.1144
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(50000)",
+      "passed": true,
+      "ms": 258.4778
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Shared_references_and_cycles_are_visited_without_losing_any_reachable_record()",
+      "passed": true,
+      "ms": 0.7722
+    },
+    {
+      "name": "StagedJournalMaintenanceRetryTests.Integrity_failure_and_cancellation_escape_instead_of_becoming_a_retry()",
+      "passed": true,
+      "ms": 3.0657
+    },
+    {
+      "name": "StagedJournalMaintenanceRetryTests.Pending_retry_prevents_followup_scan_until_persistent_io_failure_clears()",
+      "passed": true,
+      "ms": 1.1412
+    },
+    {
+      "name": "StagedJournalMaintenanceRetryTests.Transient_metadata_failure_backs_off_monotonically_and_success_resets_retry()",
+      "passed": true,
+      "ms": 0.8681
+    },
+    {
+      "name": "StagedJournalReplacementTests.Cancellation_after_success_does_not_repeat_or_report_an_uncertain_commit()",
+      "passed": true,
+      "ms": 1.9017
+    },
+    {
+      "name": "StagedJournalReplacementTests.Cancellation_during_backoff_stops_before_another_rename()",
+      "passed": true,
+      "ms": 2.9445
+    },
+    {
+      "name": "StagedJournalReplacementTests.Exhaustion_has_six_attempts_and_a_620_ms_total_wait_budget()",
+      "passed": true,
+      "ms": 3.7032
+    },
+    {
+      "name": "StagedJournalReplacementTests.Held_manifest_reader_shares_write_and_delete_and_keeps_its_old_object_after_replace()",
+      "passed": true,
+      "ms": 11.9754
+    },
+    {
+      "name": "StagedJournalReplacementTests.Nontransient_native_failure_is_preserved_without_retry(2)",
+      "passed": true,
+      "ms": 0.8635
+    },
+    {
+      "name": "StagedJournalReplacementTests.Nontransient_native_failure_is_preserved_without_retry(87)",
+      "passed": true,
+      "ms": 0.3204
+    },
+    {
+      "name": "StagedJournalReplacementTests.Nontransient_native_failure_is_preserved_without_retry(112)",
+      "passed": true,
+      "ms": 0.065
+    },
+    {
+      "name": "StagedJournalReplacementTests.Transient_native_rename_failure_retries_the_same_action_then_stops_at_success(5)",
+      "passed": true,
+      "ms": 9.6869
+    },
+    {
+      "name": "StagedJournalReplacementTests.Transient_native_rename_failure_retries_the_same_action_then_stops_at_success(32)",
+      "passed": true,
+      "ms": 0.2964
+    },
+    {
+      "name": "StagedJournalReplacementTests.Transient_native_rename_failure_retries_the_same_action_then_stops_at_success(33)",
+      "passed": true,
+      "ms": 0.0676
+    },
+    {
+      "name": "StagedJournalReplacementTests.Unclassified_io_and_structural_failure_never_acquire_a_rename_retry()",
+      "passed": true,
+      "ms": 1.1991
+    },
+    {
+      "name": "StagedRequestTimingTests.Ambient_request_flows_to_continuation_without_leaking_into_next_request()",
+      "passed": true,
+      "ms": 6.6398
+    },
+    {
+      "name": "StagedRequestTimingTests.Create_inspection_reports_policy_phase_without_changing_verdict()",
+      "passed": true,
+      "ms": 101.9644
+    },
+    {
+      "name": "StagedRequestTimingTests.Journal_wait_is_visible_until_acquisition_and_cancellation_restores_phase()",
+      "passed": true,
+      "ms": 2.9705
+    },
+    {
+      "name": "StagedRequestTimingTests.Nested_scopes_restore_live_phase_and_dispose_only_once()",
+      "passed": true,
+      "ms": 0.2882
+    },
+    {
+      "name": "StagedRequestTimingTests.Overlapping_scans_complete_out_of_order_without_losing_the_live_phase_or_counting_time_twice()",
+      "passed": true,
+      "ms": 0.2487
+    },
+    {
+      "name": "StagedRequestTimingTests.Phases_use_invariant_durations_and_dequeue_relative_offsets()",
+      "passed": true,
+      "ms": 0.3846
+    },
+    {
+      "name": "StagedRequestTimingTests.Warning_rule_is_failed_reply_or_at_least_one_second(999,False,False)",
+      "passed": true,
+      "ms": 1.7446
+    },
+    {
+      "name": "StagedRequestTimingTests.Warning_rule_is_failed_reply_or_at_least_one_second(1000,False,True)",
+      "passed": true,
+      "ms": 0.2387
+    },
+    {
+      "name": "StagedRequestTimingTests.Warning_rule_is_failed_reply_or_at_least_one_second(0,True,True)",
+      "passed": true,
+      "ms": 0.0134
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart(digest)",
+      "passed": true,
+      "ms": 129.2028
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart(length)",
+      "passed": true,
+      "ms": 3.6746
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart(id)",
+      "passed": true,
+      "ms": 6.4399
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart(missing)",
+      "passed": true,
+      "ms": 2.7378
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_preserves_exact_receipt_and_rejects_changed_completion_and_reused_id()",
+      "passed": true,
+      "ms": 5.2757
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_segment_reparse_is_refused_without_changing_its_target()",
+      "passed": true,
+      "ms": 3.1881
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Blocked_archive_requires_and_preserves_exact_delete_receipt_and_handback()",
+      "passed": true,
+      "ms": 7.7028
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Cancellation_retains_its_separate_generation_and_exact_cleanup_replay()",
+      "passed": true,
+      "ms": 21.0319
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Coherently_rechecksummed_runtime_rewrite_cannot_change_the_validated_claim_index()",
+      "passed": true,
+      "ms": 3.4982
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Compaction_deletes_old_receipts_but_keeps_generation_and_hot_ancestor_closure()",
+      "passed": true,
+      "ms": 16.2294
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Compaction_interruption_holds_live_index_and_restart_preserves_all_required_claims(before-compaction-replace)",
+      "passed": true,
+      "ms": 7.587
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Compaction_interruption_holds_live_index_and_restart_preserves_all_required_claims(after-compaction-replace)",
+      "passed": true,
+      "ms": 7.2497
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Current_epoch_receipts_ignore_age_until_exact_drain_and_keep_the_high_water_afterward()",
+      "passed": true,
+      "ms": 20.6598
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Duplicate_batch_ids_are_refused_before_writing_any_archive_frame()",
+      "passed": true,
+      "ms": 1.4408
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Duplicate_hot_archive_disagreement_is_never_silently_selected()",
+      "passed": true,
+      "ms": 3.9863
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_append_before_frontier_preserves_old_receipts_and_leaves_new_work_hot()",
+      "passed": true,
+      "ms": 7.5627
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt(before-append)",
+      "passed": true,
+      "ms": 4.8479
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt(before-frontier)",
+      "passed": true,
+      "ms": 5.4785
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt(before-flush)",
+      "passed": true,
+      "ms": 3.1742
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt(after-flush)",
+      "passed": true,
+      "ms": 7.8943
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Late_driver_last_close_eventually_archives_the_exact_release_without_republishing()",
+      "passed": true,
+      "ms": 13.5196
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Rename_tombstone_barriers_and_maximum_ties_survive_archive_restart_and_compaction()",
+      "passed": true,
+      "ms": 9.8763
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Ten_thousand_terminal_records_leave_constant_hot_work_and_bounded_allocate_seal_cost(False)",
+      "passed": true,
+      "ms": 2849.0145
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Ten_thousand_terminal_records_leave_constant_hot_work_and_bounded_allocate_seal_cost(True)",
+      "passed": true,
+      "ms": 1797.961
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Truncated_committed_archive_never_drops_a_barrier_even_with_a_hot_duplicate(False)",
+      "passed": true,
+      "ms": 3.8133
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Truncated_committed_archive_never_drops_a_barrier_even_with_a_hot_duplicate(True)",
+      "passed": true,
+      "ms": 2.5965
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Uncommitted_append_tail_behind_the_durable_frontier_cannot_add_a_generation()",
+      "passed": true,
+      "ms": 5.4936
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot(stage-present)",
+      "passed": true,
+      "ms": 1.2744
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot(disposal-pending)",
+      "passed": true,
+      "ms": 0.499
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot(rename-pending)",
+      "passed": true,
+      "ms": 2.0773
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot(handback-failed)",
+      "passed": true,
+      "ms": 0.3379
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot(window-open)",
+      "passed": true,
+      "ms": 0.3294
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Whole_committed_frame_or_control_loss_is_not_an_empty_archive(0)",
+      "passed": true,
+      "ms": 3.751
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Whole_committed_frame_or_control_loss_is_not_an_empty_archive(4096)",
+      "passed": true,
+      "ms": 3.2651
+    }
+  ],
+  "feature_release_cases": [
+    {
+      "name": "StagedJournalCompactionIndexTests.Cancelled_index_selection_stops_before_creating_a_retention_result()",
+      "passed": true,
+      "ms": 8.875
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Every_maximum_generation_tie_keeps_its_own_reference_chain()",
+      "passed": true,
+      "ms": 14.1005
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(1000)",
+      "passed": false
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(10000)",
+      "passed": false
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(50000)",
+      "passed": false
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(False)",
+      "passed": false
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(True)",
+      "passed": false
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(1000)",
+      "passed": true,
+      "ms": 20.4469
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(10000)",
+      "passed": true,
+      "ms": 60.4936
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history(50000)",
+      "passed": true,
+      "ms": 241.7684
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Shared_references_and_cycles_are_visited_without_losing_any_reachable_record()",
+      "passed": true,
+      "ms": 0.6839
+    },
+    {
+      "name": "StagedJournalMaintenanceRetryTests.Integrity_failure_and_cancellation_escape_instead_of_becoming_a_retry()",
+      "passed": true,
+      "ms": 2.8463
+    },
+    {
+      "name": "StagedJournalMaintenanceRetryTests.Pending_retry_prevents_followup_scan_until_persistent_io_failure_clears()",
+      "passed": true,
+      "ms": 1.0787
+    },
+    {
+      "name": "StagedJournalMaintenanceRetryTests.Transient_metadata_failure_backs_off_monotonically_and_success_resets_retry()",
+      "passed": true,
+      "ms": 0.8278
+    },
+    {
+      "name": "StagedJournalReplacementTests.Cancellation_after_success_does_not_repeat_or_report_an_uncertain_commit()",
+      "passed": true,
+      "ms": 1.3292
+    },
+    {
+      "name": "StagedJournalReplacementTests.Cancellation_during_backoff_stops_before_another_rename()",
+      "passed": true,
+      "ms": 2.7107
+    },
+    {
+      "name": "StagedJournalReplacementTests.Exhaustion_has_six_attempts_and_a_620_ms_total_wait_budget()",
+      "passed": true,
+      "ms": 3.4404
+    },
+    {
+      "name": "StagedJournalReplacementTests.Held_manifest_reader_shares_write_and_delete_and_keeps_its_old_object_after_replace()",
+      "passed": true,
+      "ms": 10.2092
+    },
+    {
+      "name": "StagedJournalReplacementTests.Nontransient_native_failure_is_preserved_without_retry(2)",
+      "passed": true,
+      "ms": 0.5383
+    },
+    {
+      "name": "StagedJournalReplacementTests.Nontransient_native_failure_is_preserved_without_retry(87)",
+      "passed": true,
+      "ms": 0.1914
+    },
+    {
+      "name": "StagedJournalReplacementTests.Nontransient_native_failure_is_preserved_without_retry(112)",
+      "passed": true,
+      "ms": 0.0528
+    },
+    {
+      "name": "StagedJournalReplacementTests.Transient_native_rename_failure_retries_the_same_action_then_stops_at_success(5)",
+      "passed": true,
+      "ms": 9.0485
+    },
+    {
+      "name": "StagedJournalReplacementTests.Transient_native_rename_failure_retries_the_same_action_then_stops_at_success(32)",
+      "passed": true,
+      "ms": 0.2329
+    },
+    {
+      "name": "StagedJournalReplacementTests.Transient_native_rename_failure_retries_the_same_action_then_stops_at_success(33)",
+      "passed": true,
+      "ms": 0.0677
+    },
+    {
+      "name": "StagedJournalReplacementTests.Unclassified_io_and_structural_failure_never_acquire_a_rename_retry()",
+      "passed": true,
+      "ms": 0.9346
+    },
+    {
+      "name": "StagedRequestTimingTests.Ambient_request_flows_to_continuation_without_leaking_into_next_request()",
+      "passed": true,
+      "ms": 5.0466
+    },
+    {
+      "name": "StagedRequestTimingTests.Create_inspection_reports_policy_phase_without_changing_verdict()",
+      "passed": true,
+      "ms": 97.6206
+    },
+    {
+      "name": "StagedRequestTimingTests.Journal_wait_is_visible_until_acquisition_and_cancellation_restores_phase()",
+      "passed": true,
+      "ms": 3.163
+    },
+    {
+      "name": "StagedRequestTimingTests.Nested_scopes_restore_live_phase_and_dispose_only_once()",
+      "passed": true,
+      "ms": 0.2257
+    },
+    {
+      "name": "StagedRequestTimingTests.Overlapping_scans_complete_out_of_order_without_losing_the_live_phase_or_counting_time_twice()",
+      "passed": true,
+      "ms": 0.2244
+    },
+    {
+      "name": "StagedRequestTimingTests.Phases_use_invariant_durations_and_dequeue_relative_offsets()",
+      "passed": true,
+      "ms": 0.2312
+    },
+    {
+      "name": "StagedRequestTimingTests.Warning_rule_is_failed_reply_or_at_least_one_second(999,False,False)",
+      "passed": true,
+      "ms": 1.6697
+    },
+    {
+      "name": "StagedRequestTimingTests.Warning_rule_is_failed_reply_or_at_least_one_second(1000,False,True)",
+      "passed": true,
+      "ms": 0.1984
+    },
+    {
+      "name": "StagedRequestTimingTests.Warning_rule_is_failed_reply_or_at_least_one_second(0,True,True)",
+      "passed": true,
+      "ms": 0.013
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart(digest)",
+      "passed": true,
+      "ms": 119.036
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart(length)",
+      "passed": true,
+      "ms": 3.5693
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart(id)",
+      "passed": true,
+      "ms": 6.2892
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart(missing)",
+      "passed": true,
+      "ms": 2.5578
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_preserves_exact_receipt_and_rejects_changed_completion_and_reused_id()",
+      "passed": true,
+      "ms": 6.3334
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_segment_reparse_is_refused_without_changing_its_target()",
+      "passed": true,
+      "ms": 3.2635
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Blocked_archive_requires_and_preserves_exact_delete_receipt_and_handback()",
+      "passed": true,
+      "ms": 7.8724
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Cancellation_retains_its_separate_generation_and_exact_cleanup_replay()",
+      "passed": true,
+      "ms": 22.3269
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Coherently_rechecksummed_runtime_rewrite_cannot_change_the_validated_claim_index()",
+      "passed": true,
+      "ms": 3.9662
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Compaction_deletes_old_receipts_but_keeps_generation_and_hot_ancestor_closure()",
+      "passed": true,
+      "ms": 16.9887
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Compaction_interruption_holds_live_index_and_restart_preserves_all_required_claims(before-compaction-replace)",
+      "passed": true,
+      "ms": 7.0485
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Compaction_interruption_holds_live_index_and_restart_preserves_all_required_claims(after-compaction-replace)",
+      "passed": true,
+      "ms": 6.472
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Current_epoch_receipts_ignore_age_until_exact_drain_and_keep_the_high_water_afterward()",
+      "passed": true,
+      "ms": 20.7198
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Duplicate_batch_ids_are_refused_before_writing_any_archive_frame()",
+      "passed": true,
+      "ms": 1.623
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Duplicate_hot_archive_disagreement_is_never_silently_selected()",
+      "passed": true,
+      "ms": 3.3072
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_append_before_frontier_preserves_old_receipts_and_leaves_new_work_hot()",
+      "passed": true,
+      "ms": 8.1007
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt(before-append)",
+      "passed": true,
+      "ms": 6.1242
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt(before-frontier)",
+      "passed": true,
+      "ms": 3.9277
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt(before-flush)",
+      "passed": true,
+      "ms": 3.2809
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt(after-flush)",
+      "passed": true,
+      "ms": 4.0438
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Late_driver_last_close_eventually_archives_the_exact_release_without_republishing()",
+      "passed": true,
+      "ms": 13.6445
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Rename_tombstone_barriers_and_maximum_ties_survive_archive_restart_and_compaction()",
+      "passed": true,
+      "ms": 9.3466
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Ten_thousand_terminal_records_leave_constant_hot_work_and_bounded_allocate_seal_cost(False)",
+      "passed": true,
+      "ms": 2699.4256
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Ten_thousand_terminal_records_leave_constant_hot_work_and_bounded_allocate_seal_cost(True)",
+      "passed": true,
+      "ms": 1722.3161
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Truncated_committed_archive_never_drops_a_barrier_even_with_a_hot_duplicate(False)",
+      "passed": true,
+      "ms": 3.8311
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Truncated_committed_archive_never_drops_a_barrier_even_with_a_hot_duplicate(True)",
+      "passed": true,
+      "ms": 4.5095
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Uncommitted_append_tail_behind_the_durable_frontier_cannot_add_a_generation()",
+      "passed": true,
+      "ms": 5.6645
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot(stage-present)",
+      "passed": true,
+      "ms": 1.5184
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot(disposal-pending)",
+      "passed": true,
+      "ms": 0.5129
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot(rename-pending)",
+      "passed": true,
+      "ms": 1.7998
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot(handback-failed)",
+      "passed": true,
+      "ms": 0.3404
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot(window-open)",
+      "passed": true,
+      "ms": 0.3548
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Whole_committed_frame_or_control_loss_is_not_an_empty_archive(0)",
+      "passed": true,
+      "ms": 3.881
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Whole_committed_frame_or_control_loss_is_not_an_empty_archive(4096)",
+      "passed": true,
+      "ms": 2.7133
+    }
+  ],
+  "builds": {
+    "normal-clean-build.log": {
+      "warnings": 0,
+      "errors": 0,
+      "sha256": "5b366df97bae77acf3f75f986c3dce37dffdf2201ed09365ac69bf8e30ee1364"
+    },
+    "feature-release-build.log": {
+      "warnings": 0,
+      "errors": 0,
+      "sha256": "1042e0ecace1b11e5eb6af05843647dc8ed4208726a1467f0d5ac70ccf44f316"
+    }
+  }
+}

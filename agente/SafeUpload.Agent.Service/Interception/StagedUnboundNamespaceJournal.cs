@@ -80,6 +80,7 @@ public sealed partial class StagedTransferJournal
             if (current.UnboundCancellation is null || current.UnboundCancellation != expected.UnboundCancellation ||
                 !StagedStageFile.TryConfirmAbsent(current.Transfer.StagePath, out _))
                 throw new IOException("The cancelled exact stage has no absence receipt.");
+            if (current.StageDeleted) return; // immutable exact completion replay
             await ReplaceAsync(ManifestPath(current.Transfer.TransferId), current with {
                 StageDeleted = true, UpdatedAtUtc = DateTimeOffset.UtcNow
             }, token).ConfigureAwait(false);

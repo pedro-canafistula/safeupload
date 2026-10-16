@@ -47,7 +47,7 @@ internal static class StagedJournalFile
         RequireRegularFile(handle);
     }
 
-    public static FileStream Open(string path, bool recoverAcl = false, bool writable = false, int maximumBytes = MaximumManifestBytes)
+    public static FileStream Open(string path, bool recoverAcl = false, bool writable = false, int maximumBytes = MaximumManifestBytes, bool writeThrough = true)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -64,7 +64,7 @@ internal static class StagedJournalFile
         // unexpected directory can be identified and refused). Never follow
         // the final link; trusted ownership is still checked by the caller.
         var handle = CreateFile(path, 0x80000000U | (writable ? 0x40000000U : 0) | (recoverAcl ? 0x40000U : 0),
-            writable ? 1U : 5U, IntPtr.Zero, 3, 0x42200000U | (writable ? 0x80000000U : 0), IntPtr.Zero);
+            writable ? 1U : 5U, IntPtr.Zero, 3, 0x42200000U | (writable && writeThrough ? 0x80000000U : 0), IntPtr.Zero);
         if (handle.IsInvalid)
         {
             var error = new Win32Exception(Marshal.GetLastWin32Error());

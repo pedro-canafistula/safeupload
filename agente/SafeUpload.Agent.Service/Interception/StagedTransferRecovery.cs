@@ -47,6 +47,11 @@ public sealed partial class StagedTransferPublisher
         lock (_confirmedPublications) _confirmedPublications.Remove(id);
     }
 
+    private bool HasUnfinishedCallerWork(Guid id)
+    {
+        lock (_confirmedPublications) return _confirmedPublications.ContainsKey(id) || _pendingJournalProgress.ContainsKey(id);
+    }
+
     internal bool HasConfirmedPublication(Guid id)
     {
         lock (_confirmedPublications) return _confirmedPublications.ContainsKey(id);
@@ -109,6 +114,7 @@ public sealed partial class StagedTransferPublisher
             // explicit dispatcher must still reconcile them after cleanup.
             if (!receiptRecovery && StagedTransferJournal.BlockedCleanupComplete(entry) && !HasConfirmedPublication(id))
             {
+                await _journal.ArchiveCompletedAsync(entry, token).ConfigureAwait(false);
                 lock (_confirmedPublications) _pendingJournalProgress.Remove(id);
                 _recoveryRetries.Remove(id);
                 lock (_recoveryNotified) _recoveryNotified.Remove(id);
@@ -146,6 +152,7 @@ public sealed partial class StagedTransferPublisher
                 if (!_publicationGate.DisposeStage(id, SafeUpload.Agent.Minifilter.StageDisposeOutcome.CleanedUp,
                     CommittedRenames(entry))) throw new IOException("Cancelled stage disposal acknowledgement is pending.");
                 await _journal.CompleteUnboundCancellationCleanupAsync(entry, token).ConfigureAwait(false);
+                await _journal.ArchiveCompletedAsync(await _journal.ReadAsync(id, token).ConfigureAwait(false), token).ConfigureAwait(false);
                 return;
             }
             if (HasConfirmedPublication(id))

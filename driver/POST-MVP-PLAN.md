@@ -1457,6 +1457,8 @@ cannot publish unapproved bytes, proven by the observer.
 
 ### T11. Review conditions
 
+2026-10-16 unbound MVP candidate (`ux/journal`): [active-journal scaling design](T11-UNBOUND-JOURNAL-SCALING.md) packs completed receipts out of the hot set, retains generation/identity obligations and adds archive recovery controls. Linux feedback is component evidence only; the Windows feature matrix and protected 10k pair remain open.
+
 **Problem:** remaining locking, generation, section-lifetime and journal-scaling findings need closure.
 **Done when:** every finding has a tested change or row and the M2 adversarial review closes the working system.
 

@@ -530,10 +530,11 @@ public sealed partial class StagedTransferPublisher
                     entry.StageIdentity, out Exception? deletionFailure))
                 throw new IOException("The released stage identity did not match the manifest or absence was not confirmed.",
                     deletionFailure);
-            await _journal.CompleteReleasedStageDisposalAsync(
+            var disposed = await _journal.CompleteReleasedStageDisposalAsync(
                 new StagedVersionIdentity(entry.Transfer.TransferId, entry.DestinationGeneration,
                     entry.StageIdentity ?? throw new IOException("The released stage has no captured identity.")),
                 token).ConfigureAwait(false);
+            await _journal.ArchiveCompletedAsync(disposed, token).ConfigureAwait(false);
         }
         catch (Exception ex) when (!token.IsCancellationRequested && ex is IOException or UnauthorizedAccessException or
             System.ComponentModel.Win32Exception or InvalidOperationException or ArgumentException)
@@ -561,9 +562,19 @@ public sealed partial class StagedTransferPublisher
         foreach (TransferJournalEntry entry in await _journal.ReadReleasedAsync(token).ConfigureAwait(false))
         {
             token.ThrowIfCancellationRequested();
-            if (!IsDisposableRelease(entry)) continue;
-            await DisposeReleasedStageAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
+            if (HasUnfinishedCallerWork(entry.Transfer.TransferId)) continue;
+            if (IsDisposableRelease(entry))
+                await DisposeReleasedStageAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
+            else if (entry.StageDeleted)
+                await _journal.ArchiveCompletedAsync(entry, token).ConfigureAwait(false);
         }
+    }
+
+    internal async Task ArchiveCompletedTransfersAsync(CancellationToken token)
+    {
+        var candidates = await _journal.ReadCompletedCandidatesAsync(token).ConfigureAwait(false);
+        foreach (var batch in candidates.Where(e => !HasUnfinishedCallerWork(e.Transfer.TransferId)).Chunk(16))
+            await _journal.ArchiveCompletedBatchAsync(batch, token).ConfigureAwait(false);
     }
 
     /// <summary>The service deleted a blocked or justified stage: the driver may release the version now.</summary>
@@ -751,7 +762,11 @@ public sealed partial class StagedTransferPublisher
 
     private async Task ProcessBlockedCleanupCoreAsync(TransferJournalEntry entry, CancellationToken token)
     {
-        if (StagedTransferJournal.BlockedCleanupComplete(entry)) return;
+        if (StagedTransferJournal.BlockedCleanupComplete(entry))
+        {
+            await _journal.ArchiveCompletedAsync(entry, token).ConfigureAwait(false);
+            return;
+        }
         entry = await _journal.ReadAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
         if (entry.SealedLength is not >= 0 || entry.StageIdentity is null ||
             entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
@@ -839,7 +854,10 @@ public sealed partial class StagedTransferPublisher
             // absence. Pending deletion is not StageDeleted.
             DisposeCleanedUpStage(current);
             if (StagedStageFile.TryConfirmAbsent(current.Transfer.StagePath, out Exception? absenceFailure))
-                await _journal.CompleteStageCleanupAsync(current.Transfer.TransferId, token).ConfigureAwait(false);
+            {
+                var completed = await _journal.CompleteStageCleanupAsync(current.Transfer.TransferId, token).ConfigureAwait(false);
+                await _journal.ArchiveCompletedAsync(completed, token).ConfigureAwait(false);
+            }
             else if (absenceFailure is not null)
                 throw new IOException("Blocked stage absence could not be established.", absenceFailure);
         }
