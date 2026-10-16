@@ -27,6 +27,8 @@ public sealed partial class StagedTransferJournal
             try
             {
                 original = await ReadDriverEpochCoreAsync(token).ConfigureAwait(false);
+                if (original is null && await HasRetainedDriverReceiptsCoreAsync(token).ConfigureAwait(false))
+                    return StagedDriverEpochReconcileV20.Rejected;
                 if (original is not null)
                 {
                     if (original.DriverInstanceId == driverInstanceId)
@@ -61,6 +63,8 @@ public sealed partial class StagedTransferJournal
             {
                 DriverEpochRecord? current = await ReadDriverEpochCoreAsync(token).ConfigureAwait(false);
                 if (current != original) return StagedDriverEpochReconcileV20.Rejected;
+                if (current is null && await HasRetainedDriverReceiptsCoreAsync(token).ConfigureAwait(false))
+                    return StagedDriverEpochReconcileV20.Rejected;
                 // Recheck after obtaining the lock: a disconnected or replaced
                 // replay may not durably authorize a new epoch.
                 bootEvidence.RequireCurrentBoot(driverInstanceId);

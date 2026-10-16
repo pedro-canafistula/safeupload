@@ -72,11 +72,36 @@ public sealed partial class StagedTransferJournal
                         : StagedDriverEpochReconcileV20.DrainReplayOnly;
                 if (current.DrainNonce is null) return StagedDriverEpochReconcileV20.Rejected;
             }
+            else
+            {
+                // Missing epoch metadata is first use only when no retained
+                // driver receipt exists. A fresh GUID cannot manufacture the
+                // lost drain proof and make old replay owners collectible.
+                if (await HasRetainedDriverReceiptsCoreAsync(token).ConfigureAwait(false))
+                    return StagedDriverEpochReconcileV20.Rejected;
+            }
             await WriteDriverEpochCoreAsync(new DriverEpochRecord(driverInstanceId, null,
                 null, DateTimeOffset.UtcNow, null), token).ConfigureAwait(false);
             return StagedDriverEpochReconcileV20.Active;
         }
         finally { _gate.Release(); }
+    }
+
+    // Caller holds the journal gate; both startup entry points use the same
+    // first-use proof. Fresh reads preserve archive/manifest integrity checks.
+    private async Task<bool> HasRetainedDriverReceiptsCoreAsync(CancellationToken token)
+    {
+        foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
+        {
+            token.ThrowIfCancellationRequested();
+            if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
+                throw new InvalidDataException($"Unexpected journal file: {file.FullName}");
+            if ((await ReadCoreAsync(id, token).ConfigureAwait(false)).DriverInstanceId is not null) return true;
+        }
+        await EnsureArchiveLoadedCoreAsync(token).ConfigureAwait(false);
+        foreach (Guid id in _archived.Keys)
+            if ((await ReadArchivedCoreAsync(id, token).ConfigureAwait(false)).DriverInstanceId is not null) return true;
+        return false;
     }
 
     /// <summary>
@@ -2710,8 +2735,17 @@ public sealed partial class StagedTransferJournal
                 entries.Add(await ReadArchivedCoreAsync(id, cancellationToken).ConfigureAwait(false));
             DriverEpochRecord? activeEpoch = await ReadDriverEpochCoreAsync(cancellationToken).ConfigureAwait(false);
             bool Finished(TransferJournalEntry e) =>
-                !(_archived.ContainsKey(e.Transfer.TransferId) && e.DriverInstanceId is { } driver &&
+                // Hot receipts carry the same live-driver replay obligations as
+                // archived receipts. Age/absence cannot replace an exact drain.
+                !((e.BoundAllocation is null || _archived.ContainsKey(e.Transfer.TransferId)) && e.DriverInstanceId is { } driver &&
                   (activeEpoch is null || activeEpoch is { DrainNonce: null } && activeEpoch.DriverInstanceId == driver)) &&
+                !e.StageCleanupStarted &&
+                (e.DiscardRequestedAtUtc is null || e.DiscardAcknowledgedAtUtc is not null) &&
+                // Preserve legacy journal-only release semantics. A V20 unbound
+                // release needs its driver's disposal receipt, even if a file
+                // happens to be absent when maintenance looks at its pathname.
+                !(e.BoundAllocation is null && e.DriverInstanceId is not null &&
+                  e.State == TransferJournalState.Released && !e.StageDeleted) &&
                 e.PendingRename is null && e.UpdatedAtUtc < cutoffUtc && !PathExists(e.Transfer.StagePath) &&
                 (e.UnboundCancellation is not null && e.StageDeleted ||
                  e.State == TransferJournalState.Discarded ||
