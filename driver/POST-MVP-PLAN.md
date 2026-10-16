@@ -1064,7 +1064,10 @@ and never publish uninspected bytes; C05 reflects inspection rather than blanket
   - [x] Design `driver/T6-DIRECTORY-MOVES.md` (`wt/t6-dirs` `82da3a06`): [review](evidence/2026-10-16/t6-design-review-sol61.md) REVISE, then
     [re-review](evidence/2026-10-16/t6-design-rereview-sol61.md) **ACCEPT WITH CONDITIONS** (idle census proof, lock/rundown rules, checked
     ancestry for every live T5 consumer, native traces first, separate gates).
-  - [ ] Native caller traces on a builder (PS 5.1/Explorer fallback, cross-drive metadata, Windows 10 admission, MOTW, busy/idle).
+  - [x] Native traces steps 1–2 ([`t6trace3`](evidence/2026-10-16/t6trace3-result.md), harness `c216ed1a`/`6dfe9c3d`): real cross-volume folder moves
+    fall back to copy+delete in PS 5.1 and the Explorer engine; cmd/MoveFileEx fail with the source intact; cross-drive DACLs inherit
+    the destination; timestamps are per caller.
+  - [ ] Traces 3–5 after implementation (induced NOT_SAME_DEVICE incl. PS 5.1, admission, MOTW, busy/idle).
 
 ### T7. Reads follow Windows permissions
 
