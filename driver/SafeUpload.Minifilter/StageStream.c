@@ -1669,6 +1669,17 @@ C_ASSERT(sizeof(STAGE_SPACE_GRANT) == 64);
 
 _IRQL_requires_max_(APC_LEVEL)
 static BOOLEAN StageSpaceGrantValid(_In_ const STAGE_SPACE_GRANT *Grant,
+    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *Identity, _In_ const GUID *TransferId);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageReadSpaceGrant(_Inout_ PSTAGE_STREAM Stream);
+/* alloc_text must name a function before its definition (MSVC C2200). */
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageSpaceGrantValid)
+#pragma alloc_text(PAGE, StageReadSpaceGrant)
+#endif
+
+_IRQL_requires_max_(APC_LEVEL)
+static BOOLEAN StageSpaceGrantValid(_In_ const STAGE_SPACE_GRANT *Grant,
     _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *Identity, _In_ const GUID *TransferId)
 {
     PAGED_CODE();
@@ -1743,10 +1754,6 @@ Exit:
     ExFreePoolWithTag(buffer, STAGE_TAG);
     return status;
 }
-#ifdef ALLOC_PRAGMA
-#pragma alloc_text(PAGE, StageReadSpaceGrant)
-#pragma alloc_text(PAGE, StageSpaceGrantValid)
-#endif
 #endif
 
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -1878,9 +1885,6 @@ Exit:
     return status;
 }
 
-#ifdef ALLOC_PRAGMA
-#pragma alloc_text(PAGE, StageOpenBacking)
-#endif
 
 static VOID StageCloseBacking(PSTAGE_STREAM Stream)
 {
