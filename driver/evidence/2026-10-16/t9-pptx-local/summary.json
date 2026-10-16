@@ -1,0 +1,58 @@
+{
+  "status": "local diagnostic PASS; no Windows matrix or product VM run",
+  "worktree_base": "2bd56d60da865d8b3b5752c0f4c7ac4f9a6b4d07",
+  "worktree_branch": "wt/t9-pptx-archives",
+  "uncommitted": true,
+  "new_test_methods": 11,
+  "new_test_cases": 91,
+  "compile_all_profiles": "PASS; Service/App/Tests in normal/feature Debug/Release; warnaserror; SDK 10.0.400",
+  "focused_debug": {
+    "passed": 257,
+    "failed": 0,
+    "skipped": 0
+  },
+  "focused_release": {
+    "passed": 257,
+    "failed": 0,
+    "skipped": 0
+  },
+  "preflight_against_starting_feat": "PASS; zero removals; offline xUnit discovery of 2bd56d60",
+  "upstream_advanced_to": "ba34c73170ce6da59955f0305f3200759ebe1ecd",
+  "preflight_on_temporary_latest_integration": "PASS; zero removals; upstream source retained; worktree not rebased",
+  "temporary_integration_debug": {
+    "passed": 257,
+    "failed": 0,
+    "skipped": 0
+  },
+  "expected_current_worktree_four_legs": {
+    "debug_user": 2263,
+    "debug_system": 25,
+    "release_user": 2263,
+    "release_system": 25,
+    "total": 4576
+  },
+  "expected_after_integrating_latest_feat_four_legs": {
+    "debug_user": 2301,
+    "debug_system": 25,
+    "release_user": 2301,
+    "release_system": 25,
+    "total": 4652
+  },
+  "vstest": "SocketException(13); in-process xUnit used",
+  "retained_failed_attempts": {
+    "focused-debug": "ZIP fixture Create-mode GetEntry error",
+    "focused-debug2": "PowerPoint absent from default policy scope; fixtures now explicitly scoped",
+    "focused-debug3": "two foreign Office fixtures used incompatible officeDocument main relationships; corrected child part fixtures without changing assertions"
+  },
+  "remaining": "Windows matrix and protected qualification; current policy must scope extensions; archives remain for later",
+  "changed_files": [
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/ExtractorRegistry.cs",
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/OpenXmlInspectionGuard.cs",
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/OpenXmlPowerPointExtractor.cs",
+    "agente/SafeUpload.Agent.Core/Infrastructure/Extraction/PresentationTextReader.cs",
+    "agente/SafeUpload.Agent.Tests/PowerPointContentCoverageTests.cs",
+    "agente/SafeUpload.Agent.Tests/PowerPointFixture.cs",
+    "agente/SafeUpload.Agent.Tests/PowerPointStreamingInspectionTests.cs",
+    "agente/docs/INSPECTION-COVERAGE.md"
+  ]
+}
