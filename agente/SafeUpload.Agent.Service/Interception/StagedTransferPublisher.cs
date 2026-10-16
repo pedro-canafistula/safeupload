@@ -339,9 +339,6 @@ public sealed partial class StagedTransferPublisher
         }
 
         string directory = Path.GetDirectoryName(destinationPath)!;
-        string temporaryDestination = Path.Combine(directory, ".safeupload-" +
-            transfer.TransferId.ToString("N") + ".pending");
-
         // The digest belongs to the same locked version the inspector read.
         sealedFile.Position = 0;
         string digest = Convert.ToHexString(
@@ -410,20 +407,22 @@ public sealed partial class StagedTransferPublisher
 #endif
 
         bool committed = false;
+        int publicationAttempt = 0;
         try
         {
-            if (inspectedFile.Length < 0 || inspectedFile.Length != journalEntry.SealedLength ||
-                sealedFile.Length != journalEntry.SealedLength || stageFile.Identity != journalEntry.StageIdentity)
-                throw new IOException("The measured snapshot changed before publication.");
-            _logger?.LogDebug("Requesting kernel publication permission for {TransferId}.", transfer.TransferId);
-            using var permit = _publicationGate.Authorize(transfer, temporaryDestination, digest);
-            _logger?.LogDebug("Creating approved publication file for {TransferId}.", transfer.TransferId);
-            using (var output = StagedDestinationFile.CreateUnbuffered(temporaryDestination))
+            await StagedPublicationRetry.ExecuteAsync(async token =>
             {
+                string temporaryDestination = Path.Combine(directory, ".safeupload-" +
+                    transfer.TransferId.ToString("N") +
+                    (publicationAttempt++ == 0 ? "" : "-" + Guid.NewGuid().ToString("N")) + ".pending");
+                _logger?.LogDebug("Requesting kernel publication permission for {TransferId}.", transfer.TransferId);
+                using var permit = _publicationGate.Authorize(transfer, temporaryDestination, digest);
+                using var output = StagedDestinationFile.CreateUnbuffered(temporaryDestination);
                 try
                 {
+                    inspectedFile.Position = 0;
                     _logger?.LogDebug("Approved publication file opened for {TransferId}.", transfer.TransferId);
-                    await StagedDestinationFile.WriteUnbufferedAsync(output, inspectedFile, cancellationToken)
+                    await StagedDestinationFile.WriteUnbufferedAsync(output, inspectedFile, token)
                         .ConfigureAwait(false);
                     _logger?.LogDebug("Approved publication bytes copied for {TransferId}.", transfer.TransferId);
                     _logger?.LogDebug("Renaming approved publication file for {TransferId}.", transfer.TransferId);
@@ -436,9 +435,26 @@ public sealed partial class StagedTransferPublisher
                 }
                 finally
                 {
-                    if (!committed) StagedDestinationFile.TryDeleteUncommitted(output);
+                    if (!committed && !StagedDestinationFile.TryDeleteUncommitted(output))
+                        throw new IOException("Uncommitted publication cleanup is unresolved; retry refused.");
                 }
-            }
+            }, async token =>
+            {
+                var current = await _journal.ReadAsync(transfer.TransferId, token).ConfigureAwait(false);
+                if (current.Transfer != transfer || current.State != TransferJournalState.Publishing ||
+                    current.PendingRename is not null || current.StageCleanupStarted || current.StageDeleted ||
+                    current.StageIdentity != stageFile.Identity || current.SealedLength != sealedFile.Length ||
+                    current.SealedLength != inspectedFile.Length || current.Sha256Hex != digest)
+                    return false;
+                sealedFile.Position = 0;
+                string currentDigest = Convert.ToHexString(await SHA256.HashDataAsync(sealedFile, token).ConfigureAwait(false));
+                sealedFile.Position = 0;
+                if (currentDigest != digest) return false;
+                return justifiedApproval
+                    ? StagedSeedExport.Failure(current) is null &&
+                        await _inspection.IsCurrentStagedJustificationAllowedAsync(operation, result, token).ConfigureAwait(false)
+                    : await _inspection.IsCurrentStagedApprovalAsync(operation, result, token).ConfigureAwait(false);
+            }, () => committed, cancellationToken).ConfigureAwait(false);
             _logger?.LogDebug("Approved publication rename completed for {TransferId}.", transfer.TransferId);
         }
         catch (Exception ex) when (committed)
@@ -452,17 +468,18 @@ public sealed partial class StagedTransferPublisher
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             _logger?.LogWarning(ex, "Staged publication failed for {TransferId}.", transfer.TransferId);
-            // The handle already marked an uncommitted temporary for deletion; reopening the
-            // name can be refused (its permit is spent), and nothing here may skip Retained.
-            try { File.Delete(temporaryDestination); } catch (Exception) { }
+            // A typed sharing refusal survived successful cleanup/revocation
+            // and exhausted the live retry budget. Unknown outcomes stay held.
+            bool busy = ex is StagedPublicationBusyException;
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Publishing, TransferJournalState.Retained,
                 null, CancellationToken.None).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
-                Verdict.Retained, "publication_failed", CancellationToken.None,
+                Verdict.Retained, busy ? "publication_busy" : "publication_failed", CancellationToken.None,
                 transfer.TransferId).ConfigureAwait(false);
             PublishTransferNotification(transfer, new TransferNotification(
-                transfer.TransferId, fileName, TransferPhase.Retained));
+                transfer.TransferId, fileName, TransferPhase.Retained,
+                RecoveryAdvice: busy ? StagedRecoveryAdvice.PublicationBusy : null));
             return StagedTransferOutcome.Retained;
         }
 

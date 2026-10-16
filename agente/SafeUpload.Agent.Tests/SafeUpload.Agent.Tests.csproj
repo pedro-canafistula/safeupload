@@ -24,6 +24,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <Compile Include="..\SafeUpload.Agent.App\Notifications\StagedSeedBlockPresentation.cs" Link="StagedSeedBlockPresentation.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\Notifications\StagedPublicationPresentation.cs" Link="StagedPublicationPresentation.cs" />
   </ItemGroup>
 
   <ItemGroup>
