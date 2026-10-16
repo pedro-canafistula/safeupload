@@ -49,7 +49,7 @@ def contract(src):
     retry = body('StageStream.c', 'StageAttachExchangeRetry')
     require('for (;;) {' in retry and retry.count('StageAttachRetryAllowed(Transaction)') >= 4)
     require('persistenceAttempt == 5) break;' in retry)
-    require('20U << persistenceAttempt' in retry and '++persistenceAttempt;' in retry)
+    require('(LONGLONG)20 << persistenceAttempt' in retry and '++persistenceAttempt;' in retry)
     require(retry.count('InterlockedCompareExchange(&Transaction->CancelRequested, 0, 0) != 0') >= 3)
     require('InterlockedIncrement64' not in retry and 'Request->RequestId =' not in retry.replace('Request->RequestId ==', ''))
     # The actual host-C run below also enforces no wait with Namespace held.
@@ -195,7 +195,7 @@ class ManifestRetry(unittest.TestCase):
             ('StageProtocol.c', 'Result == SAFEUPLOAD_STAGE_RESULT_ATTACH_ALREADY_COMMITTED ||\n            Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE', 'Result == SAFEUPLOAD_STAGE_RESULT_ATTACH_ALREADY_COMMITTED'),
             ('StageProtocol.c', 'Result == SAFEUPLOAD_STAGE_RESULT_COMPLETION_PERMITTED ||\n            Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE', 'Result == SAFEUPLOAD_STAGE_RESULT_COMPLETION_PERMITTED'),
             ('StageStream.c', 'persistenceAttempt == 5) break;', 'FALSE) break;'),
-            ('StageStream.c', '20U << persistenceAttempt', '20U'),
+            ('StageStream.c', '(LONGLONG)20 << persistenceAttempt', '(LONGLONG)20'),
             ('StageStream.c', 'if (!StageAttachRetryAllowed(Transaction) ||', 'if (FALSE ||'),
             ('StageStream.c', '*Result != SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE', 'FALSE'),
             ('StageStream.c', 'status != STATUS_DEVICE_BUSY ||', 'FALSE ||'),
