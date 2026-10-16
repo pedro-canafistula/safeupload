@@ -1283,6 +1283,9 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     or introduce per-user/total quotas, and no startup deletion sweep is implemented by that change. Capture also precedes
     InspectionService's bounded worker/deadline admission; those parser slots alone do not bound concurrent snapshot storage.
 - [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
+  - Open (2026-10-16): staged files whose extension is not monitored are **Retained** (`not_inspected`, never published;
+    `StagedTransferPublisher` current-approval branch), not blocked and handed back. The owner's image decision needs the
+    "images are not inspected yet" reason and hand-back; default monitored extensions gain PowerPoint and archives with T8.
   - Strict current-policy implementation (`bfffa535`): staged inspection, approval, justification, allocation/rename/attach
     admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and
     HTTP failure/empty responses cannot substitute cached/default policy authority. Legacy fallback remains available to its
