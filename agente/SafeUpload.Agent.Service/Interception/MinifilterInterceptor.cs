@@ -2049,8 +2049,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
         try
         {
-            IReadOnlyList<AuditEvent> recent =
-                _auditSink.ReadRecentAsync(5, CancellationToken.None).GetAwaiter().GetResult();
+            IReadOnlyList<AuditEvent> recent;
+            using (StagedRequestTiming.Measure("audit-recent"))
+                recent = _auditSink.ReadRecentAsync(5, CancellationToken.None).GetAwaiter().GetResult();
 
             AuditEvent? auditEvent = recent.FirstOrDefault(e =>
                 string.Equals(e.FileName, operation.FileName, StringComparison.OrdinalIgnoreCase));
