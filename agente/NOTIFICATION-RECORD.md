@@ -7,7 +7,7 @@ The service creates `%ProgramData%\SafeUpload\notifications`. Production require
 | Field | Meaning |
 | --- | --- |
 | `Version` | `1` |
-| `Sequence` | Increasing Int64 across service starts, boots, and rotations |
+| `Sequence` | Increasing Int64 across healthy starts, boots, and rotations; corruption recovery starts a new chain |
 | `BootId` | machine name + `/` + Windows boot UTC time in round-trip format (microsecond precision, matching the suite's CIM boot identity) |
 | `InstanceId` | new GUID for each recorder/service lifetime |
 | `Utc`, `Qpc`, `QpcFrequency` | UTC emission time, Stopwatch timestamp, and frequency |
@@ -18,11 +18,13 @@ The service creates `%ProgramData%\SafeUpload\notifications`. Production require
 | `PreviousSha256` | uppercase SHA-256 of the preceding exact UTF-8 JSON bytes, excluding LF; 64 zeroes for genesis |
 | `DroppedThroughSequence` | announced discarded prefix, initially zero |
 
-`head.json` contains `Version`, `Sequence`, and `Sha256` for the last line. This separate protected, flushed head detects tail truncation that a chain by itself cannot detect. `writer.lock` is a zero-byte exclusive writer lease, authenticated like the other files. A retained lease with missing history cannot silently start a new sequence.
+`head.json` contains `Version`, `Sequence`, and `Sha256` for the last line. This separate protected, flushed head detects tail truncation that a chain by itself cannot detect. `writer.lock` is a zero-byte exclusive writer lease, authenticated like the other files. A retained lease with missing history triggers explicit corruption recovery.
 
-Each append uses write-through IO and `Flush(true)`, then writes and flushes a private temporary head before replacing `head.json`. Only then can the hub retain/enqueue a publication. Replay enqueue and connection-status sends also append before sending. Broadcast publication has one record independent of subscriber count; these are emission records, not client delivery acknowledgments. A recording error is logged and suppresses that send; any uncertain recorder write poisons that recorder lifetime. A malformed/truncated record or interrupted head update is retained for investigation, never automatically repaired.
+Each append uses write-through IO and `Flush(true)`, then writes and flushes a private temporary head before replacing `head.json`. Only then can the hub retain/enqueue a publication. Replay enqueue and connection-status sends also append before sending. Broadcast publication has one record independent of subscriber count; these are emission records, not client delivery acknowledgments. A recording error is logged and suppresses that send; any uncertain recorder write poisons that recorder lifetime.
 
-The recorder emits `Start`, one-second `Heartbeat` records, and a best-effort `Stop`. Rotation first durably appends a `Rotation` record announcing the prefix to discard, then removes the older segment and renames the active segment to `previous.jsonl`. Sequences and predecessor hashes continue into the new active file. Crashes partway through rotation may require investigation; they cannot qualify absence evidence. Total retained segment data is bounded by 8 MiB plus small head/lease/temporary metadata.
+At startup, content corruption (including a missing/mismatched head, truncated history or leftover `head.tmp`) is preserved by renaming the record files into a private sibling `notifications.corrupt-<UTC timestamp>-<GUID>` directory. The exclusive writer lease stays held throughout. The service logs a warning with the archive path and starts a fresh chain at sequence 1 with a new instance ID. No corrupted history is treated as valid coverage or replayed. ACL/link admission failures, unexpected children and failed archival still refuse startup; existing descriptors are never repaired. Archives are retained for investigation and are not automatically deleted.
+
+The recorder emits `Start`, one-second `Heartbeat` records, and a best-effort `Stop`. Rotation first durably appends a `Rotation` record announcing the prefix to discard, then removes the older segment and renames the active segment to `previous.jsonl`. Sequences and predecessor hashes continue into the new active file. Crashes partway through rotation cannot qualify absence evidence. The active and previous segments together are bounded by 8 MiB plus small head/lease/temporary metadata; corruption archives consume additional retained space.
 
 The WP4 adapter authenticates ancestors, owner, exact DACL, regular file type, single link, and bounded bytes from the same opened handles. Live files permit write/delete sharing so a snapshot cannot cause a service IO failure. Torn reads, incomplete lines, chain/sequence errors, and mismatched heads cause retry, then INCONCLUSIVE. Product bytes and descriptors are retained as case artifacts.
 
