@@ -80,10 +80,18 @@ internal sealed class StagedRequestTiming
 internal sealed class StagedJournalGate
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private Exception? _failure;
+    internal bool IntegrityHeld => Volatile.Read(ref _failure) is not null;
+    internal void FailClosed(Exception error) => Interlocked.CompareExchange(ref _failure, error, null);
     internal async Task WaitAsync(CancellationToken token = default)
     {
         using var timing = StagedRequestTiming.Measure("journal-wait");
         await _gate.WaitAsync(token).ConfigureAwait(false);
+        if (Volatile.Read(ref _failure) is { } failure)
+        {
+            _gate.Release();
+            throw new IOException("Terminal journal integrity is held until validated restart.", failure);
+        }
     }
     internal int Release() => _gate.Release();
 }
