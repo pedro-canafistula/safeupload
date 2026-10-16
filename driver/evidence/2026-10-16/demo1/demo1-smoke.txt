@@ -1,0 +1,62 @@
+STEP notepad-clean = ok
+STEP notepad-cpf = ok
+STEP notepad-resave = ok
+STEP word-first-save = ERROR The device does not recognize the command.
+STEP word-owner-file = ERROR Exception setting "Attributes": "The request is not supported.
+"
+STEP word-save-temp = ok
+Rename-Item : Cannot rename because item at 'C:\Protected\report.docx' does not exist.
+At C:\Users\vika\AppData\Local\Temp\remote_ps_44f240b9e2684a5683856738598253c3.ps1:35 char:26
++ ... tep 'word-rename-old' { Rename-Item "$p\report.docx" '~WRL0001.tmp' }
+STEP word-rename-old = ok+                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (:) [Rename-Item], PSInvalidOperationException
+    + FullyQualifiedErrorId : InvalidOperation,Microsoft.PowerShell.Commands.RenameItemCommand
+STEP word-rename-new = ERROR An object at the specified path C:\Protected\~WRD0001.tmp does not exist.
+Remove-Item : Cannot find path 'C:\Protected\~WRL0001.tmp' because it does not exist.
+At C:\Users\vika\AppData\Local\Temp\remote_ps_44f240b9e2684a5683856738598253c3.ps1:37 char:26
++ Step 'word-delete-old' { Remove-Item "$p\~WRL0001.tmp" -Force }
++                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (C:\Protected\~WRL0001.tmp:String) [Remove-Item], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.RemoveItemCommand
+STEP word-delete-old = ok
+Remove-Item : Cannot find path 'C:\Protected\~$report.docx' because it does not exist.
+At C:\Users\vika\AppData\Local\Temp\remote_ps_44f240b9e2684a5683856738598253c3.ps1:38 char:27
+STEP word-close-owner = ok+ Step 'word-close-owner' { Remove-Item "$p\~`$report.docx" -Force }
++                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (C:\Protected\~$report.docx:String) [Remove-Item], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.RemoveItemCommand
+STEP word-cpf-save = ok
+STEP explorer-copy-in = ok
+Rename-Item : Cannot rename because item at 'C:\Protected\copied.txt' does not exist.
+At C:\Users\vika\AppData\Local\Temp\remote_ps_44f240b9e2684a5683856738598253c3.ps1:43 char:50
++ ... { Start-Sleep -Seconds 5; Rename-Item "$p\copied.txt" 'renamed.txt' }
++                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (:) [Rename-Item], PSInvalidOperationException
+    + FullyQualifiedErrorId : InvalidOperation,Microsoft.PowerShell.Commands.RenameItemCommand
+STEP explorer-rename = ok
+Rename-Item : Cannot find path 'C:\Protected\New Text Document.txt' because it does not exist.
+At C:\Users\vika\AppData\Local\Temp\remote_ps_44f240b9e2684a5683856738598253c3.ps1:44 char:94
++ ... cument.txt", ''); Rename-Item "$p\New Text Document.txt" 'note.txt' }
++                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+STEP explorer-new-text-document = ok    + CategoryInfo          : ObjectNotFound: (C:\Protected\New Text Document.txt:String) [Rename-Item], ItemNotFoundE 
+   xception
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.RenameItemCommand
+New-Item : Access to the path 'New folder' is denied.
+At C:\Users\vika\AppData\Local\Temp\remote_ps_44f240b9e2684a5683856738598253c3.ps1:45 char:30
++ ... er-new-folder' { New-Item -ItemType Directory "$p\New folder" | Out-N ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Protected\New folder:String) [New-Item], UnauthorizedAccessExcepti 
+   on
+    + FullyQualifiedErrorId : CreateDirectoryUnauthorizedAccessError,Microsoft.PowerShell.Commands.NewItemCommand
+STEP explorer-new-folder = ok
+Remove-Item : Cannot find path 'C:\Protected\renamed.txt' because it does not exist.
+At C:\Users\vika\AppData\Local\Temp\remote_ps_44f240b9e2684a5683856738598253c3.ps1:46 char:50
++ ... lete' { Start-Sleep -Seconds 5; Remove-Item "$p\renamed.txt" -Force }
++                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+STEP explorer-delete = ok    + CategoryInfo          : ObjectNotFound: (C:\Protected\renamed.txt:String) [Remove-Item], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.RemoveItemCommand
+== final contents of C:\Protected
+ITEM copied.txt | 29 B | Archive | Copied from Documents, clean.
+ITEM notepad-clean.txt | 30 B | Archive | Meeting notes v2, still clean.
+ITEM ~WRD0001.tmp | 898 B | Archive, NotContentIndexed | 
+ITEM New Text Document.txt | 0 B | Archive, NotContentIndexed | 

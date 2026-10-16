@@ -31,6 +31,13 @@ one focused Sol review), then T4 smoke/10k/raw cells and the T5 Notepad/delete r
 stage cap, restart-time bookkeeping stays held (fail closed), the journal keeps one manifest per save, folder moves refused. Batch 3
 continues on `wt/t5-batch2` along the critical-path plan and replaces the MVP pair when qualified; MVP VM rows have priority for
 builder-free windows. Then M3 and the USB/SMB designs.
+  MVP track (`wt/mvp-pair`): `0d0ae2a6` journal retry + SOP witness detach, focused review REVISE (declaration order) fixed in
+  `47882864`, PREfast C6297 in `9e392df3`; WDK `mvp-k3` PASS; matrix `mvp-m1` all green except one Release case of the pre-existing
+  rare publisher stall (receipt kept; `mvp-m2` rerun for the feature package). Demo VM (`demo1`, t5-pair14) findings
+  ([evidence](evidence/2026-10-16/demo1/)): direct saves and Explorer copy/move of `.txt`/`.docx` publish clean and block CPF after a
+  fresh boot; Word direct save is refused (FileBasicInformation/compression/object-ID/temp-file operations unsupported; T8); an
+  installer pushed the driver into its fail-closed state until reboot. Kernel attach-key race ([RCA](evidence/2026-10-16/demo1/copy-rca-sol61.md))
+  fixed in `6bda78ef`: review ACCEPT WITH CONDITIONS, WDK `mvp-k4` PASS. Next: MVP VM rows after the owner's demo.
 
 **2026-10-16 — moves into protection get cross-drive metadata.** Owner, in the session (recommended option): a file or folder moved
 into protection, which SafeUpload turns into a cross-drive-style copy, ends with what Windows gives a move to another drive: the
