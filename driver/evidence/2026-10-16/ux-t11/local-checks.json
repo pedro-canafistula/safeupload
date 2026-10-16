@@ -1,0 +1,257 @@
+{
+  "source_base": "2ed2b20b45df06e8cd26aab73f0e8640c3e93717",
+  "scope": "Linux local diagnostic only; no Windows build/VM/matrix/qualification",
+  "sdk": "/home/victor/Work/safeupload-tools/dotnet/dotnet 10.0.400",
+  "offline_selfchecks": [
+    {
+      "path": "driver/scripts/t5/allocation-retry-selfcheck.py",
+      "exit": 0,
+      "seconds": 0.851
+    },
+    {
+      "path": "driver/scripts/t5/attach-completion-key-selfcheck.py",
+      "exit": 0,
+      "seconds": 2.646
+    },
+    {
+      "path": "driver/scripts/t5/attach-pin-selfcheck.py",
+      "exit": 0,
+      "seconds": 1.576
+    },
+    {
+      "path": "driver/scripts/t5/attachment-replay-selfcheck.py",
+      "exit": 0,
+      "seconds": 19.88
+    },
+    {
+      "path": "driver/scripts/t5/manifest-retry-selfcheck.py",
+      "exit": 0,
+      "seconds": 0.903
+    },
+    {
+      "path": "driver/scripts/t5/mvp-namespace-selfcheck.py",
+      "exit": 0,
+      "seconds": 0.321
+    },
+    {
+      "path": "driver/scripts/t5/reconcile-retry-selfcheck.py",
+      "exit": 0,
+      "seconds": 1.274
+    },
+    {
+      "path": "driver/scripts/t5/rename-receipt-selfcheck.py",
+      "exit": 0,
+      "seconds": 0.253
+    },
+    {
+      "path": "driver/scripts/t5/rename-sharing-selfcheck.py",
+      "exit": 0,
+      "seconds": 0.273
+    },
+    {
+      "path": "driver/scripts/t5/sop-witness-detach-selfcheck.py",
+      "exit": 0,
+      "seconds": 4.493
+    },
+    {
+      "path": "driver/scripts/t5/stream-listing-selfcheck.py",
+      "exit": 0,
+      "seconds": 0.072
+    },
+    {
+      "path": "driver/scripts/t5/teardown-participation-selfcheck.py",
+      "exit": 0,
+      "seconds": 4.623
+    },
+    {
+      "path": "driver/scripts/t5/unknown-origin-selfcheck.py",
+      "exit": 0,
+      "seconds": 3.481
+    },
+    {
+      "path": "driver/scripts/t5/notepad-verdict.SelfCheck.py",
+      "exit": 0,
+      "seconds": 0.042
+    },
+    {
+      "path": "driver/scripts/ux/activating-selfcheck.py",
+      "exit": 0,
+      "seconds": 5.203
+    },
+    {
+      "path": "driver/scripts/ux/metadata-selfcheck.py",
+      "exit": 0,
+      "seconds": 0.445
+    },
+    {
+      "path": "driver/scripts/ux/outside-selfcheck.py",
+      "exit": 0,
+      "seconds": 0.451
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/test_allocation_reply_fault.py",
+      "exit": 0,
+      "seconds": 0.338
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/test_bound_publication_buffers.py",
+      "exit": 0,
+      "seconds": 0.112
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/test_directory_ux.py",
+      "exit": 0,
+      "seconds": 0.465
+    },
+    {
+      "path": "driver/SafeUpload.Minifilter/tests/test_writer_metadata_readers.py",
+      "exit": 0,
+      "seconds": 0.134
+    },
+    {
+      "path": "driver/scripts/t4/verdict-selfcheck.py",
+      "exit": 0,
+      "seconds": 2.335
+    },
+    {
+      "path": "driver/scripts/Invoke-ExactAgentMatrixBuild.SelfCheck.py",
+      "exit": 0,
+      "seconds": 1.816
+    },
+    {
+      "path": "driver/scripts/Invoke-ExactSourceBuild.SelfCheck.py",
+      "exit": 0,
+      "seconds": 12.807
+    },
+    {
+      "path": "driver/scripts/FeatureAgentDefaults.SelfCheck.py",
+      "exit": 0,
+      "seconds": 0.477
+    },
+    {
+      "path": "driver/scripts/Test-DriverImports.SelfCheck.py",
+      "exit": 0,
+      "seconds": 0.163
+    },
+    {
+      "path": "driver/scripts/t11/sop-lifetime-selfcheck.py",
+      "exit": 0,
+      "seconds": 0.809
+    }
+  ],
+  "focused_agent": {
+    "Debug": {
+      "passed": 88,
+      "failed": 5,
+      "same_failures_as_base": true,
+      "failures": [
+        "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(1000)",
+        "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(10000)",
+        "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(50000)",
+        "StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(False)",
+        "StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(True)"
+      ],
+      "new_cases": [
+        "StagedJournalCompactionIndexTests.Unresolved_create_after_delete_retains_successor_and_its_transitive_reference_closure()",
+        "StagedTerminalArchiveTests.Compaction_cancellation_revalidates_offsets_before_same_instance_reuse(after-compaction-replace)",
+        "StagedTerminalArchiveTests.Compaction_cancellation_revalidates_offsets_before_same_instance_reuse(before-compaction-replace)",
+        "StagedTerminalArchiveTests.Failed_flush_in_registered_segment_reflushes_exact_duplicate_before_hot_deletion()",
+        "StagedTerminalArchiveTests.Hot_current_epoch_receipts_survive_age_and_only_exact_drain_releases_obsolete_history()",
+        "StagedTerminalArchiveTests.Missing_epoch_cannot_be_rebootstrapped_over_retained_driver_receipts(False)",
+        "StagedTerminalArchiveTests.Missing_epoch_cannot_be_rebootstrapped_over_retained_driver_receipts(True)",
+        "StagedTerminalArchiveTests.Segment_rollover_inventory_failure_preserves_all_receipts_across_restart(after-inventory-replace)",
+        "StagedTerminalArchiveTests.Segment_rollover_inventory_failure_preserves_all_receipts_across_restart(before-inventory-replace)",
+        "StagedTerminalArchiveTests.Superseded_hot_receipts_keep_unresolved_obligations_after_restart(cleanup-in-progress)",
+        "StagedTerminalArchiveTests.Superseded_hot_receipts_keep_unresolved_obligations_after_restart(discard-ack)",
+        "StagedTerminalArchiveTests.Superseded_hot_receipts_keep_unresolved_obligations_after_restart(disposal-receipt)",
+        "StagedTerminalArchiveTests.Superseded_hot_receipts_keep_unresolved_obligations_after_restart(missing-epoch)",
+        "StagedTerminalArchiveTests.Unresolved_delete_keeps_its_exact_archived_create_after_successor_even_after_overtaking()"
+      ]
+    },
+    "Release": {
+      "passed": 88,
+      "failed": 5,
+      "same_failures_as_base": true,
+      "failures": [
+        "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(1000)",
+        "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(10000)",
+        "StagedJournalCompactionIndexTests.Many_bound_names_under_one_parent_keep_only_each_name_maximum(50000)",
+        "StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(False)",
+        "StagedJournalCompactionIndexTests.Ordered_bound_claims_preserve_native_unicode_name_equality_in_a_nondefault_culture(True)"
+      ],
+      "new_cases": [
+        "StagedJournalCompactionIndexTests.Unresolved_create_after_delete_retains_successor_and_its_transitive_reference_closure()",
+        "StagedTerminalArchiveTests.Compaction_cancellation_revalidates_offsets_before_same_instance_reuse(after-compaction-replace)",
+        "StagedTerminalArchiveTests.Compaction_cancellation_revalidates_offsets_before_same_instance_reuse(before-compaction-replace)",
+        "StagedTerminalArchiveTests.Failed_flush_in_registered_segment_reflushes_exact_duplicate_before_hot_deletion()",
+        "StagedTerminalArchiveTests.Hot_current_epoch_receipts_survive_age_and_only_exact_drain_releases_obsolete_history()",
+        "StagedTerminalArchiveTests.Missing_epoch_cannot_be_rebootstrapped_over_retained_driver_receipts(False)",
+        "StagedTerminalArchiveTests.Missing_epoch_cannot_be_rebootstrapped_over_retained_driver_receipts(True)",
+        "StagedTerminalArchiveTests.Segment_rollover_inventory_failure_preserves_all_receipts_across_restart(after-inventory-replace)",
+        "StagedTerminalArchiveTests.Segment_rollover_inventory_failure_preserves_all_receipts_across_restart(before-inventory-replace)",
+        "StagedTerminalArchiveTests.Superseded_hot_receipts_keep_unresolved_obligations_after_restart(cleanup-in-progress)",
+        "StagedTerminalArchiveTests.Superseded_hot_receipts_keep_unresolved_obligations_after_restart(discard-ack)",
+        "StagedTerminalArchiveTests.Superseded_hot_receipts_keep_unresolved_obligations_after_restart(disposal-receipt)",
+        "StagedTerminalArchiveTests.Superseded_hot_receipts_keep_unresolved_obligations_after_restart(missing-epoch)",
+        "StagedTerminalArchiveTests.Unresolved_delete_keeps_its_exact_archived_create_after_successor_even_after_overtaking()"
+      ]
+    }
+  },
+  "baseline_focused": {
+    "passed": 74,
+    "failed": 5
+  },
+  "task_test_preflight": {
+    "base": "2ed2b20b",
+    "baseline_methods": 1102,
+    "current_methods": 1110,
+    "removed": [],
+    "added": [
+      "SafeUpload.Agent.Tests.StagedJournalCompactionIndexTests.Unresolved_create_after_delete_retains_successor_and_its_transitive_reference_closure",
+      "SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Compaction_cancellation_revalidates_offsets_before_same_instance_reuse",
+      "SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Failed_flush_in_registered_segment_reflushes_exact_duplicate_before_hot_deletion",
+      "SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Hot_current_epoch_receipts_survive_age_and_only_exact_drain_releases_obsolete_history",
+      "SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Missing_epoch_cannot_be_rebootstrapped_over_retained_driver_receipts",
+      "SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Segment_rollover_inventory_failure_preserves_all_receipts_across_restart",
+      "SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Superseded_hot_receipts_keep_unresolved_obligations_after_restart",
+      "SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Unresolved_delete_keeps_its_exact_archived_create_after_successor_even_after_overtaking"
+    ],
+    "required_methods": 43,
+    "required_method_missing": [],
+    "historical_stop_absent_on_task_base": true
+  },
+  "historical_discovery_preflight": "STOP: removed Existing_target_dispositions_seed_only_the_exact_held_source_and_replay_after_reopen already absent in task base; not waived",
+  "source_api_audit": {
+    "base": {
+      "pass": false,
+      "error": "Unproved target kernel routines:\ndriver/SafeUpload.Minifilter/Taint.c:356: InsertHeadList"
+    },
+    "working": {
+      "pass": false,
+      "error": "Unproved target kernel routines:\ndriver/SafeUpload.Minifilter/Taint.c:356: InsertHeadList"
+    },
+    "new_external_DDIs": []
+  },
+  "host_stub_audit": {
+    "audited_host_declarations": 39
+  },
+  "raw_local_receipts": {
+    ".scratch/verification/agent-compile.log": "3272ec2bdbfc43b7944ff64c1046c6284a7d140fbb88455532863e89d6c16260",
+    ".scratch/verification/focused-build-Debug.log": "91595d76b1565fda83efb25a4627e64c522d966da1dd4a7f6493361f2d8b9c82",
+    ".scratch/verification/focused-build-Release.log": "e006c33c8cfefd84fbf04448a5687b466dd036aed50cd4d52e56b11fa2b37281",
+    ".scratch/verification/focused-Debug.log": "f85989ef3c2b8a9a6ede85baa5154a15de9d366be5af8c9a49a22913b1242cc2",
+    ".scratch/verification/focused-Release.log": "bc18a02b449b960f3249bbddb3375240a438cd36ddd93ce25b591e87f6477739",
+    ".scratch/verification/baseline-build.log": "6e358da007176fffeb110353da79ca11de5e1b20b1060ae33a8bc7ef783240a9",
+    ".scratch/verification/baseline-focused.log": "89a796c4e50e2b5cefe82a9145be589491d0eca52d9c681413463f3b96efe93c",
+    ".scratch/verification/vstest-attempt.log": "23476a25a6c879fcdd3c4ad9d2f2a18cfc3e8c24102e4f699bdcb6aa47aacfbd",
+    ".scratch/verification/agent-preflight.log": "357c687e6bc3c8af3ce6391c6598b2a41765b3f639d828114aeae47f5b9c7091",
+    ".scratch/verification/sop-final.log": "fa1cdba30e7e551d5f9f4613155ad6410e8babd1944c10900393e7ae9e5af3a5",
+    ".scratch/verification/api-audit/final.log": "d48c755934d1d6b0a3ce1cb34c5b0b5d9bbceeaca881642438b98ce9b089b3c4",
+    ".scratch/verification/api-audit/stub-result.json": "3c70a0516536694b60a7beabee50f25eb3b830adcf6c2414351040ea333657a5",
+    ".scratch/verification/task-test-preflight-corrected.log": "e94028a98da6bee7c68b8cd071a5d989ec8c44cc44ac3e3e8fffc09a9a9fbd60"
+  },
+  "agent_test_assemblies": {
+    "Debug": "add4062c0dc4f882cf1bd664cd6e9f4cee26ace3c6912b1aeeef708d953f3500",
+    "Release": "31a38fab3316e6b09881a42b3413a931cd148cf6792c5eb65e6ae0fd08e1e831"
+  }
+}

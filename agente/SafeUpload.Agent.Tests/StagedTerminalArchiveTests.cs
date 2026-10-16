@@ -449,6 +449,104 @@ public sealed class StagedTerminalArchiveTests(ITestOutputHelper output) : IDisp
     }
 
     [Fact]
+    public async Task Hot_current_epoch_receipts_survive_age_and_only_exact_drain_releases_obsolete_history()
+    {
+        var journal = Journal(); Guid epoch = Guid.NewGuid();
+        Assert.Equal(StagedDriverEpochReconcileV20.Active, await journal.ReconcileDriverInstanceV20Async(epoch, 0x1bf, default));
+        var first = Completed() with { DriverInstanceId = epoch, AllocationReferenceKind = 0 };
+        var second = Completed(2, first.Transfer.DestinationPath, 2) with { DriverInstanceId = epoch, AllocationReferenceKind = 0 };
+        Put(first); Put(second);
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddYears(1), default));
+        Assert.Equal(first, await Journal().ReadAsync(first.Transfer.TransferId, default));
+        Assert.True(await journal.DrainDriverInstanceV20Async(epoch, 81, 82, default));
+        Assert.Equal(1, await Journal().CompactAsync(DateTimeOffset.UtcNow, default));
+        await Assert.ThrowsAsync<FileNotFoundException>(() => Journal().ReadAsync(first.Transfer.TransferId, default));
+        Assert.Equal(second, await Journal().ReadAsync(second.Transfer.TransferId, default));
+        Assert.Equal(3, (await Journal().CreateAsync(NewTransfer(first.Transfer.DestinationPath), default)).DestinationGeneration);
+    }
+
+    [Theory]
+    [InlineData("missing-epoch")]
+    [InlineData("disposal-receipt")]
+    [InlineData("cleanup-in-progress")]
+    [InlineData("discard-ack")]
+    public async Task Superseded_hot_receipts_keep_unresolved_obligations_after_restart(string obligation)
+    {
+        var journal = Journal(); Guid epoch = Guid.NewGuid();
+        Assert.Equal(StagedDriverEpochReconcileV20.Active, await journal.ReconcileDriverInstanceV20Async(epoch, 0x1bf, default));
+        // Establish ended epoch independently of the deliberately unfinished
+        // fixture below. No public operation is inferred from this disk image.
+        Assert.True(await journal.DrainDriverInstanceV20Async(epoch, 91, 92, default));
+        var first = Completed() with { DriverInstanceId = epoch, AllocationReferenceKind = 0 };
+        first = obligation switch
+        {
+            "disposal-receipt" => first with { StageDeleted = false },
+            "cleanup-in-progress" => first with { StageDeleted = false, StageCleanupStarted = true,
+                HandbackState = StagedHandbackState.Verified, HandbackPath = Path.Combine(_workspace.Root, "returned.txt"),
+                JustificationWindowClosed = true },
+            "discard-ack" => first with { State = TransferJournalState.DiscardPending, StageDeleted = false,
+                DiscardReservationId = first.Transfer.TransferId, DiscardKind = StagedDiscardKind.PrivateVersion,
+                DiscardRequestedAtUtc = DateTimeOffset.UtcNow.AddDays(-7) },
+            _ => first
+        };
+        var second = Completed(2, first.Transfer.DestinationPath, 2);
+        Put(first); Put(second);
+        if (obligation == "missing-epoch") File.Delete(Path.Combine(Hot, "driver-epoch.state"));
+        Assert.Equal(0, await Journal().CompactAsync(DateTimeOffset.UtcNow.AddYears(1), default));
+        Assert.Equal(first, await Journal().ReadAsync(first.Transfer.TransferId, default));
+        Assert.Equal(second, await Journal().ReadAsync(second.Transfer.TransferId, default));
+        Assert.Equal(3, (await Journal().CreateAsync(NewTransfer(first.Transfer.DestinationPath), default)).DestinationGeneration);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Missing_epoch_cannot_be_rebootstrapped_over_retained_driver_receipts(bool archived)
+    {
+        var journal = Journal(); Guid epoch = Guid.NewGuid();
+        Assert.Equal(StagedDriverEpochReconcileV20.Active, await journal.ReconcileDriverInstanceV20Async(epoch, 0x1bf, default));
+        var first = Completed() with { DriverInstanceId = epoch, AllocationReferenceKind = 0 };
+        var second = Completed(2, first.Transfer.DestinationPath, 2);
+        Put(first); Put(second);
+        if (archived) Assert.True(await journal.ArchiveCompletedAsync(first, default));
+        File.Delete(Path.Combine(Hot, "driver-epoch.state"));
+        var restarted = Journal();
+        Assert.Equal(StagedDriverEpochReconcileV20.Rejected, await restarted.ReconcileDriverInstanceV20Async(Guid.NewGuid(), 0x1bf, default));
+        Assert.Equal(StagedDriverEpochReconcileV20.Rejected, await restarted.ReconcileDriverInstanceV20Async(epoch, 0x1bf, default));
+        Guid next = Guid.NewGuid(); var session = new StagedNativeRecoverySession(next, 11, 88);
+        var proof = session.ReconcileReplay(next, 11, true, true, []); bool ranRecovery = false;
+        Assert.Equal(StagedDriverEpochReconcileV20.Rejected, await restarted.ReconcileDriverStartupAsync(next, 0x1bf,
+            proof, _ => { ranRecovery = true; return Task.CompletedTask; }, default));
+        Assert.False(ranRecovery);
+        Assert.False(File.Exists(Path.Combine(Hot, "driver-epoch.state")));
+        Assert.Equal(0, await restarted.CompactAsync(DateTimeOffset.UtcNow.AddYears(1), default));
+        Assert.Equal(first, await Journal().ReadAsync(first.Transfer.TransferId, default));
+        Assert.Equal(second, await Journal().ReadAsync(second.Transfer.TransferId, default));
+    }
+
+    [Fact]
+    public async Task Unresolved_delete_keeps_its_exact_archived_create_after_successor_even_after_overtaking()
+    {
+        var journal = Journal(); var deleted = Completed();
+        var child = Completed(2, deleted.Transfer.DestinationPath, 2);
+        deleted = deleted with { State = TransferJournalState.DiscardPending, StageDeleted = false,
+            DiscardReservationId = deleted.Transfer.TransferId, DiscardKind = StagedDiscardKind.PrivateVersion,
+            DiscardRequestedAtUtc = DateTimeOffset.UtcNow.AddDays(-7), CreateAfterReservationId = child.Transfer.TransferId };
+        child = child with { CreateReservationId = child.Transfer.TransferId,
+            DeleteVersionIdentity = new(deleted.Transfer.TransferId, deleted.DestinationGeneration, deleted.StageIdentity!) };
+        var newest = Completed(3, deleted.Transfer.DestinationPath, 3);
+        Put(deleted); Put(child); Put(newest);
+        Assert.True(await journal.ArchiveCompletedAsync(child, default));
+        Assert.True(await journal.ArchiveCompletedAsync(newest, default));
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow, default));
+        var restarted = Journal();
+        Assert.Equal(deleted, await restarted.ReadAsync(deleted.Transfer.TransferId, default));
+        Assert.Equal(child, await restarted.ReadAsync(child.Transfer.TransferId, default));
+        Assert.Equal(newest, await restarted.ReadAsync(newest.Transfer.TransferId, default));
+        Assert.Equal(4, (await restarted.CreateAsync(NewTransfer(deleted.Transfer.DestinationPath), default)).DestinationGeneration);
+    }
+
+    [Fact]
     public async Task Coherently_rechecksummed_runtime_rewrite_cannot_change_the_validated_claim_index()
     {
         var journal = Journal(); var entry = Completed(); Put(entry);
@@ -462,6 +560,63 @@ public sealed class StagedTerminalArchiveTests(ITestOutputHelper output) : IDisp
         File.WriteAllBytes(segment, old);
         await Assert.ThrowsAsync<InvalidDataException>(() => journal.ReadAsync(entry.Transfer.TransferId, default));
         await Assert.ThrowsAsync<IOException>(() => journal.CreateAsync(NewTransfer(entry.Transfer.DestinationPath), default));
+    }
+
+    [Fact]
+    public async Task Failed_flush_in_registered_segment_reflushes_exact_duplicate_before_hot_deletion()
+    {
+        var journal = Journal(); var first = Completed(); Put(first);
+        Assert.True(await journal.ArchiveCompletedAsync(first, default));
+        var next = Completed(2, first.Transfer.DestinationPath, 2); Put(next);
+        journal.ArchiveObserver = at => { if (at == "before-flush") throw new IOException("injected flush failure"); };
+        await Assert.ThrowsAsync<IOException>(() => journal.ArchiveCompletedAsync(next, default));
+        string hot = Path.Combine(Hot, next.Transfer.TransferId.ToString("N") + ".json");
+        Assert.True(File.Exists(hot)); var phases = new List<string>();
+        journal.ArchiveObserver = at =>
+        {
+            if (at is "before-recovery-flush" or "after-recovery-flush" or "before-hot-consolidation")
+            { Assert.True(File.Exists(hot)); phases.Add(at); }
+        };
+        Assert.Equal(next, await journal.ReadAsync(next.Transfer.TransferId, default));
+        Assert.Equal(new[] { "before-recovery-flush", "after-recovery-flush", "before-hot-consolidation" }, phases);
+        Assert.False(File.Exists(hot));
+        Assert.Equal(first, await Journal().ReadAsync(first.Transfer.TransferId, default));
+        Assert.Equal(next, await Journal().ReadAsync(next.Transfer.TransferId, default));
+    }
+
+    [Theory]
+    [InlineData("before-inventory-replace")]
+    [InlineData("after-inventory-replace")]
+    public async Task Segment_rollover_inventory_failure_preserves_all_receipts_across_restart(string point)
+    {
+        var journal = Journal();
+        var entries = Enumerable.Range(1, 2200).Select(i => Completed(i)).ToArray();
+        foreach (var entry in entries) Put(entry);
+        journal.ArchiveObserver = at =>
+        {
+            if (at == point && Directory.GetFiles(Cold, "*.pack").Length == 2)
+                throw new IOException("injected rollover inventory failure");
+        };
+        await Assert.ThrowsAsync<IOException>(() => journal.ArchiveCompletedBatchAsync(entries, default));
+        Assert.Equal(2, Directory.GetFiles(Cold, "*.pack").Length);
+        var restarted = Journal();
+        foreach (var entry in entries) Assert.Equal(entry, await restarted.ReadAsync(entry.Transfer.TransferId, default));
+        Assert.Equal(2, (await restarted.CreateAsync(NewTransfer(entries[^1].Transfer.DestinationPath), default)).DestinationGeneration);
+    }
+
+    [Theory]
+    [InlineData("before-compaction-replace")]
+    [InlineData("after-compaction-replace")]
+    public async Task Compaction_cancellation_revalidates_offsets_before_same_instance_reuse(string point)
+    {
+        var journal = Journal(); var first = Completed(); var last = Completed(2, first.Transfer.DestinationPath, 2);
+        foreach (var entry in new[] { first, last }) { Put(entry); Assert.True(await journal.ArchiveCompletedAsync(entry, default)); }
+        using var cancellation = new CancellationTokenSource();
+        journal.ArchiveObserver = at => { if (at == point) { cancellation.Cancel(); cancellation.Token.ThrowIfCancellationRequested(); } };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => journal.CompactAsync(DateTimeOffset.UtcNow, cancellation.Token));
+        journal.ArchiveObserver = null;
+        Assert.Equal(last, await journal.ReadAsync(last.Transfer.TransferId, default));
+        Assert.Equal(3, (await journal.CreateAsync(NewTransfer(first.Transfer.DestinationPath), default)).DestinationGeneration);
     }
 
     [Fact]
