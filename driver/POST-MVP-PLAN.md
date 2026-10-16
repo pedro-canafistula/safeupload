@@ -1130,6 +1130,7 @@ the publishing application can reopen the file and agreed metadata is preserved.
   carried with its file; other ADS, EAs, EFS, offline, reparse points and hard links refused).
   - [ ] Unbound `ux/meta` [basic metadata increment](UX-METADATA.md): exact sealed dates/ordinary attributes and unsupported-storage checks;
     native descriptor construction, public metadata serialization and inspected atomic MOTW remain unfinished. No T8 completion or VM qualification.
+  - [ ] `ux/meta2` [round-2 prerequisite checkpoint](UX-METADATA-ROUND2.md): strict native absence/query validation and dormant descriptor/MOTW controls; whole-version producer, native construction and commit fence remain blocked/open. No T8 completion.
 - [ ] Qualify application rows under the matched pair with independent byte observation and restoration.
 
 ### T9. Large files and complete inspection

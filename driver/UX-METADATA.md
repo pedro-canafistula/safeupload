@@ -3,6 +3,8 @@
 2026-10-16, `ux/meta`, base `62fd1673`. The owner's native metadata and MOTW
 decision in [POST-MVP-PLAN.md](POST-MVP-PLAN.md#owner-decisions) is the contract.
 This is a bounded implementation increment, **not completion of T8**.
+The [round-2 prerequisite checkpoint](UX-METADATA-ROUND2.md) records the
+remaining completion-signal/native-construction/fence blockers and exact VM rows.
 
 The demo FileBasicInformation handler silently dropped attributes and ignored
 lower errors. The publisher copied only unnamed bytes to a new SYSTEM-created
