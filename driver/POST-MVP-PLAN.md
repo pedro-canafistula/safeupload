@@ -23,6 +23,17 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-16 — folders follow the copy rule; idle folder renames; all-zero numbers are not cards.** Owner, in the session, chose the
+recommended option of each question:
+1. **All-zero card (T9):** `0000000000000000` no longer counts as a payment card (it passes Luhn; CPF/CNPJ already ignore repeated
+   digits). Every other 16-digit Luhn-valid number still blocks.
+2. **Folder moves into protection (T6), "like copies":** empty folders may be created inside protection; Explorer/PowerShell folder
+   moves into protection behave like a move to another drive: every file is copied in and inspected, clean files publish, CPF files
+   are blocked and handed back, and the caller removes the source as usual. `cmd move`/`MoveFileEx` of a whole folder fail as Windows
+   does across drives. No strict tree transaction in M2. Directory streams/EAs carry no uninspected content (T8 contract).
+3. **Folder rename/move inside protection (T6), "allow when idle":** allowed when nothing under the folder has a save, delete or
+   recovery in progress; otherwise refused with a try-again message. Short design note and the pre-boot review first.
+
 **2026-10-15 — one 10,000-update checkpoint endurance test.** Owner, in the session: "I accept merging them into one".
 `StagedSemanticMembershipV30Tests.Ten_thousand_opt_in_updates_match_the_accepted_foreground_checkpoint_and_durability_arithmetic`
 and `StagedCheckpointV30Tests.Ten_thousand_checkpoint_updates_have_fixed_files_bounded_actual_IO_and_one_reconstruction` drive the
@@ -1029,7 +1040,8 @@ and never publish uninspected bytes; C05 reflects inspection rather than blanket
 
 - [x] Copy fallback via STATUS_NOT_SAME_DEVICE (`baec933f`); runtime row `m2t6rv4` passed 28/28 on its component pair.
 - [ ] Rerun ordinary, runtime and boot-Verifier on the final pair, including empty files and real Explorer drag.
-- [ ] Resolve and qualify directory moves; current Explorer folder move leaves the source intact because protected directory creation is refused.
+- [ ] Directory moves (owner 2026-10-16: like copies; idle renames inside protection): design note (RCA `driver/evidence/2026-10-16/t6-dirmove-rca-sol61.md`),
+  review, implementation, native caller traces, then D-rows in all three modes. Today protected directory creation is refused.
 
 ### T7. Reads follow Windows permissions
 
@@ -1354,7 +1366,7 @@ uses bounded memory; incomplete inspection is Blocked with hand-back and policy-
     ([full-disk recovery](evidence/2026-10-13/t9-formula1-preflight.host.json), [headroom](evidence/2026-10-13/t9-formula1-headroom.host.json));
     the fresh complete matrix above passes both test and packaging gates. Protected large-file and memory qualification remains open.
 - [ ] Qualify large clean/CPF, corrupt/encrypted/password-protected, parser/extraction-limit, timeout and disk-full cases.
-- [ ] Resolve the all-zero payment-card classification question with user-visible options before changing its current verdict.
+- [ ] All-zero payment-card question resolved (owner 2026-10-16: all-zero is not a card); implement and test.
 
 ### T10. Permission and owner changes
 
