@@ -1,15 +1,16 @@
 # T5 UX namespace gap on the MVP pair
 
-2026-10-16. Base `79795efa` (`demo/apps`), worktree branch `ux/kernel`.
+2026-10-16. Round 1 base `79795efa` (`demo/apps`); round 2 base `ca173d2a`, branch `ux/kernel`.
 Sharing correction: `1dfadee4`.
-**Incomplete implementation: the four reported workflows are not fixed by this change.**
+**Round 2 design (owner / Claude orchestrator, 2026-10-16): implement D1–D6 on the unbound MVP profile.**
+The sharing correction below records the base; the unbound design has no V30 prerequisite.
 No VM, WDK/PREfast/ApiValidator or independent implementation review was run.
 
 The owner's requested behavior is the contract: operations on already inspected public
 bytes should use native namespace semantics; private renames retarget inspection and
 publication; a Word swap must finish with the inspected temporary version at the final
 name. The earlier blanket physical-rename refusal in [T5-DELETES.md](T5-DELETES.md)
-does not override this new request. Neither does it supply the missing public transaction.
+does not override this new request. The native original-object operations below implement that namespace contract.
 
 The 2026-10-16 Demo build decision is absent from this checkout's
 [status plan](POST-MVP-PLAN.md). It was read in the main worktree's
@@ -17,7 +18,7 @@ The 2026-10-16 Demo build decision is absent from this checkout's
 [reported evidence](/home/victor/Work/safeupload-staging/driver/evidence/2026-10-16/demo1/).
 The main worktree and its evidence were not changed.
 
-## Implemented correction
+## Round 1 sharing correction
 
 `StageRename` formerly required `ShareAccess.OpenCount == ShareAccess.SharedDelete`.
 That also required the **renaming open** to grant delete sharing. A handle with DELETE
@@ -40,50 +41,121 @@ ordered before subtraction, so malformed counters cannot underflow into permissi
 same-open duplication, missing DELETE, invalid counters and 32-bit boundary counts.
 The original predicate fails the same controls. This is a host shim, not native evidence.
 
-## Precise integration blocker
+## Decided unbound design (D1–D6)
 
-There is no live checked public namespace transaction on this MVP profile:
+This design supersedes the former requirement in this note for a bound public
+transaction. Bound readiness and V30 stay disabled. Normal driver builds keep staging compiled out.
 
-| Boundary | Existing code | Consequence |
-|---|---|---|
-| Public DELETE open | `StageAttachWorkerBody` selects `StageAttachPrepareNative` only when `SafeUploadStageProtocolNativeForwardAllowed` succeeds and there is no owner private view. | The active MVP path can allocate a private version for a DELETE-capable open of a public file. Deleting that version cannot delete the checked public object. |
-| Public delete relay | `StageDispatchEpoch` calls `SafeUploadStagePublicDispositionPre`, but it handles only objects in the native record map. | Calling the relay earlier does not create the missing original native open or combined writer capability. |
-| Capability/readiness | `SafeUploadStageProtocolNativeForwardAllowed` requires bound-head bit `0x40`. `StagedBoundReadiness.NativeHolds` keeps that path off; `SafeUploadStageProtocolBoundAllocationReady` returns FALSE. | Flipping a selector or advertising the bit would bypass the explicitly retained create-security, seed/export and version-publication prerequisites. |
-| Public rename | `StageRename` updates private names and owner tombstones through V20. `StageExternalRename` refuses protected physical renames except authenticated publication. V25's `NativeDispositionPrepare` accepts disposition, not rename. | There is no existing public two-name rename relay to invoke. Reinspection/copy publication at the new name leaves the old public link behind. |
-| Publication ordering | The unbound branch of `StagedTransferPublisher` uses the legacy publication permit/temporary/rename path. `IsCurrentDestinationAsync` uses `DestinationVersionsAsync` for these entries. The bound head/commit queue is a separate branch. | Recording a public delete only in the bound head would not fence an older unbound publisher. Checking current path absence is insufficient. |
-| Sealed private reopen | `StageCreate` rotates a sealed stream whenever `Writer` is true; `StageAdmit` includes DELETE in `writerAccess`. | A namespace-only reopen can become a new version rather than retain the pending version being renamed. The supplied success/old-name observation does not identify the exact seal/publication interleaving. |
+- D1: a non-content-writing existing-name open with no requester private view uses
+  the original NTFS CREATE, caller grant/share and cleanup. DELETE, reads and
+  WRITE_ATTRIBUTES do not rotate a sealed private version. Generic/MAXIMUM_ALLOWED
+  requests remain content-capable; creating/truncating dispositions remain staged.
+  The legacy CREATE gate must not reject an admitted namespace-only open. Its
+  read inspection/taint callbacks remain active. OPEN_IF uses this route only for
+  an existing file and is narrowed to OPEN to prevent a racing unlink creating a placeholder.
+- D2: original-handle disposition and delete-on-close go to NTFS. First refuse any
+  matching private version with open handles; durably cancel sealed unpublished
+  versions through the existing exact V28 request/receipt. Cancellation is not
+  physical deletion and never supplies authority on a public object.
+- D3: original-handle rename forwards its entire native buffer/flags unchanged.
+  Same protected scope is allowed, except unmonitored-to-monitored extension gets
+  NOT_SAME_DEVICE for staged copy. Leaving protection is native. Source pending
+  versions and replacement target pending versions follow D2. Hard links retain
+  the existing gate. NTFS enforces DELETE, target access, sharing and flag rules.
+- D4: private namespace-only reopen retains its exact sealed version. Private
+  rename retargets the existing V20 transaction and invalidates any old inspection
+  attempt; publication must use the committed name/generation and reinspect it.
+  A namespace reopen pins the closing version and uses the existing monotonic
+  ten-second receipt wait to let an already-started seal settle, outside every
+  resource. A seal starting just after that wait readmits the CREATE. No new
+  timer, forced drain or lifetime inference is introduced.
+- D5: native published-to-backup rename, private temp-to-final retarget and native
+  backup delete compose without a placeholder or cancelled old save publishing later.
+- D6: unbound final rename and cancellation share the journal mutex. Immediately
+  before the rename, re-read the exact intent, current generation, cancellation and
+  pending rename. A successful rename records an in-process receipt under that
+  mutex. On crash, existing unresolved Publishing recovery holds the name; no
+  digest/path inference and no replay of the public mutation.
 
-Consequently, forwarding a rename/delete directly to NTFS, deleting an old path as SYSTEM
-after publishing a copy, or merely adding accepted flag bits is not a complete fix.
-Those approaches respectively omit durable ordering, exact caller/object authority, or
-the actual public namespace operation. The existing private retarget path is not a
-physical-rename receipt. No false-success workaround or readiness bypass was added.
+Kernel namespace mutation uses a single bounded admission fence: install it under
+StageNamespaceResource, pin one matching stream at a time, release every resource
+before V28 RPC, and retain the fence through the original NTFS operation's post
+callback. While fenced, protected allocations/private retargets and publication
+renames return sharing violation. No lock spans RPC or native I/O. This deliberately
+serializes these short namespace operations globally on the MVP profile; it adds no
+per-name table, timer, unbounded storage or imports. A monotonic sequence change
+also refuses an allocation/retarget which started before the fence and resumes
+after it cleared. An in-flight attachment must recheck before exposing its handle. Accepted cancellations remain
+terminal if a later native operation fails. Failed/lost cancellation replies refuse
+the native operation and replay the same exact request on retry.
 
-Finishing the task needs a coherent **driver and agent** change, with these boundaries
-closed together before claiming the four cases work:
+V28 uses the existing operation ID, transfer ID, driver instance, full stage ID,
+generation and owner PID/creation time. The agent verifies each against the manifest
+and active epoch. Unbound cancellation writes its durable receipt to that manifest;
+the receipt also bars transition, rename, justification and startup publication.
+Replies echo the entire request; only Canceled with a strictly later generation or
+RequiresPublicDelete with zero generation is accepted. Bound requests keep their
+existing anchored destination-turn path. No new wire layout or readiness bit.
 
-1. Use the original native DELETE-only open, or the already caller-checked combined
-   backend for a data writer. Preserve its grant, sharing, subject, identity and cleanup.
-   A namespace-only reopen of a still-private sealed version must keep that exact version.
-2. Put every active MVP allocation/publication and public delete/rename through the same
-   destination ordering authority. A source barrier must also prevent an older private
-   version from resurrecting the source after rename/delete, including after restart.
-   Migrating only public operations to the dormant bound head does not accomplish this.
-3. Extend the existing relay with a two-name, exact-object public rename prepare/result
-   transaction. Snapshot both destination identities and expected heads. Preserve native
-   source-object identity; retain an uncertain result instead of retrying the mutation.
-   A Word backup delete then targets the renamed original object, never a replacement.
-4. Carry accepted rename flags and original target authority through commit. In particular,
-   `FILE_RENAME_IGNORE_READONLY_ATTRIBUTE` requires target WRITE_ATTRIBUTES when replacing
-   a read-only file. The current V20 rename source frame carries no flags, and the legacy
-   publisher's rename flags are fixed. Accepting the bit only in `StageRename` loses that
-   contract. Storage-reserve flags also have access requirements; they are not safe no-ops.
+Independent review remains an orchestrator obligation before a revised VM boot.
+This implementation task runs local diagnostic checks only; no WDK, PREfast,
+ApiValidator, Windows PowerShell gate or protected runtime qualification is implied.
 
-This boundary needs the independent product-security design review required by
-[AGENTS.md](../AGENTS.md) and the concrete lifetime review before boot. The current status
-plan requires that review to come from a fresh Sol 6.1 xhigh session launched by Claude;
-no self-review is represented as that result here. The present sharing correction does
-not enable the missing transaction.
+## Round 2 implementation and verification
+
+D1–D3 route by-name, non-content-writing native opens, metadata changes,
+disposition and rename through `StageMvpNamespacePre`. No writable public handle,
+private version, second app object, altered sharing or flag translation is added.
+Existing-file identity probes are metadata only; the original NTFS operation
+still supplies all caller authority. The private namespace stays ahead of this
+route. DELETE grants are checked before SET_INFORMATION cancellation; native
+CREATE delete-on-close still receives NTFS's original access check.
+
+D4 retains the sealed private version on namespace reopens and permits the V20
+retarget to invalidate a live unbound inspection/approval/publication attempt.
+Sealed replacement targets use exact cancellation first. Every publisher state
+transition checks its captured transfer and generation, preventing an old
+inspection from approving the retargeted version. Unresolved, restarted
+Publishing entries cannot be retargeted/cancelled from an inferred result.
+
+D6 reuses the V28 wire tuple and validates it against the active unbound manifest.
+Its durable cancellation receipt is terminal, survives restart/reply loss and
+blocks inspection, justification and final publication. Startup and live workers
+retry exact stage cleanup and ordinary disposal acknowledgement separately.
+The publisher checks the complete intent and current destination under the journal
+mutex immediately before its native rename; it reserves the in-process result
+slot before I/O, so no allocation follows the successful mutation in that mutex.
+A confirmed mutation is never retried because its Released bookkeeping failed.
+
+Local diagnostics and source hashes are in
+[the round 2 receipt](evidence/2026-10-16/ux-kernel-namespace2/result.txt).
+The C controls compile the actual namespace-open, copy-fallback, cancellation and
+legacy writer predicates with cc/clang, warnings as errors, including a negative
+mutation. The cancellation controls exercise open-handle conflicts, both names,
+all pending versions, RPC failure, pins, lock release and never-sealed probes.
+Existing T5 controls, the two driver C fixtures, import controls and agent compile
+checks remain separate from a newly built `.sys` import/PREfast gate.
+
+The selected agent diagnostic executes the actual test methods and all InlineData
+rows in process because VSTest's local socket is denied by the sandbox. It is not
+a substitute runner for the Windows matrix. The retained result records both
+passing journal controls and Windows-only failures. No test or assertion is
+removed, renamed, skipped or relaxed. Added cases: **16 normal / 17 feature**,
+including two real-publisher controls requiring Windows.
+
+Commit delivery is blocked in this session: `git add` cannot create
+`/home/victor/Work/safeupload-staging/.git/worktrees/safeupload-ux-kernel/index.lock`
+(`Read-only file system`). HEAD stays `ca173d2a`; files remain reviewable in the
+worktree. No push, VM, remote build, independent review, or qualification is claimed.
+
+Residual limitations: the bounded global fence can return a transient sharing
+violation to unrelated private opens/retargets. Cancellation remains terminal if
+the subsequent native request fails. Existing private cross-parent rename remains
+held by its allocation-parent/op19 identity check; native published-file rename
+within a protected scope can cross parents. Native delete-on-close timing,
+permissions/flags and all real application results still need the VM controls
+below, including later saves while a scheduled delete is open. Existing unbound
+profile seed/metadata limitations are not evidence of bound readiness.
 
 API audit references:
 [rename flags and access](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information),
@@ -91,7 +163,7 @@ API audit references:
 [share-check serialization](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iocheckshareaccess), and
 [destination name-query contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltgetdestinationfilenameinformation).
 
-## Local verification
+## Round 1 local verification
 
 All 16 scripts passed: all twelve `scripts/t5/*selfcheck.py` scripts (including the new
 sharing shim), T5 `notepad-verdict.SelfCheck.py`, T4 `verdict-selfcheck.py`, the exact agent
@@ -154,3 +226,34 @@ initial failure logs; do not count the sharing-only patch as passing this list.
 The reported FSCTLs are separate remaining surfaces: `0x9C040` is SET_COMPRESSION;
 `0x900C0` is CREATE_OR_GET_OBJECT_ID. The latter can create metadata and must not be
 globally reclassified as a read-only query. Neither refusal was changed here.
+
+## Additional round 2 VM rows
+
+Use the unbound MVP profile explicitly: bound-head capability 0x40 off, bound
+readiness false. After orchestrator review and four WDK/PREfast/ApiValidator builds,
+run serially on win10-debug3 with matched committed packages, a standard actor,
+independent file-ID/byte observations and separate baseline restoration.
+
+- D1: READ_DATA/READ_ATTRIBUTES/WRITE_ATTRIBUTES/DELETE opens of an existing file,
+  with and without read access, sharing denial, duplicate handles, denied DELETE
+  with parent DELETE_CHILD alternatives, READ_CONTROL and OPEN_IF. No private
+  allocation for admitted native opens; sensitive published reads still taint.
+- D2/D3: disposition legacy/Ex, clear/on-close/POSIX, native CREATE delete-on-close;
+  rename legacy/Ex, replace on/off, native accepted flags and access denials,
+  read-only/image/share conflicts. Check source and target private-open conflicts,
+  multiple sealed generations/owners, cancellation reply loss and exact cleanup.
+- D3: same-scope cross-parent native rename preserves full file ID and bytes;
+  monitored to unmonitored is native; unmonitored to monitored returns
+  NOT_SAME_DEVICE and its copy stages/blocks as appropriate. Moving outside
+  protection is native; outside-to-protected still uses staged copy.
+- D4/D5: create/write, then rename after 0/100 ms, before/after close/op19/seal,
+  while inspecting and before final rename. Clean and CPF variants; old-name
+  absence for a new private temp, exact inspected bytes only at the final name.
+  Word Save As and overwrite, published-to-WRL backup, WRD-to-final retarget,
+  backup delete, and a zero-byte placeholder both pending and already published.
+  Repeat with Explorer, Rename-Item, DeleteFile/Remove-Item and real app handles.
+- D6: pause the publisher immediately before final rename and race native source
+  delete/rename, replacement target cancellation, private retarget and restart.
+  Cancelled generations never publish. An already successful rename is not
+  replayed. Repeat with a later pending, blocked and published save while a
+  scheduled delete is open; verify NTFS last-close results and recovery holds.

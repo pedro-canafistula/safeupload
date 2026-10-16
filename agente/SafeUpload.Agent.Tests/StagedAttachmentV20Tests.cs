@@ -13,7 +13,7 @@ using PortVerdict = SafeUpload.Agent.Minifilter.Verdict;
 
 namespace SafeUpload.Agent.Tests;
 
-public sealed class StagedAttachmentV20Tests : IDisposable
+public sealed partial class StagedAttachmentV20Tests : IDisposable
 {
     private const string RequestorSid = "S-1-5-21-111-222-333-1000";
     private const long ProcessCreationTime = 638953632000000000;
