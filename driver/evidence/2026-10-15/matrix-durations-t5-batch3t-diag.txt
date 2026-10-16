@@ -1,0 +1,13 @@
+TRX leg wall times (Times start/finish):
+feature-debug/user: 726.493 s
+feature-debug/system: 4.218 s
+feature-release/user: 580.853 s
+feature-release/system: 3.305 s
+First leg: feature-debug/user: 726.493 s
+Tests over 60 s (descending duration):
+245.833 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedCheckpointV30Tests.Ten_thousand_checkpoint_updates_have_fixed_files_bounded_actual_IO_and_one_reconstruction
+209.359 s | feature-release/user | Passed | SafeUpload.Agent.Tests.StagedCheckpointV30Tests.Ten_thousand_checkpoint_updates_have_fixed_files_bounded_actual_IO_and_one_reconstruction
+197.033 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedStorageV30Tests.Ten_thousand_workspace_cycles_plateau_and_do_not_rescan_history_or_release_physical_bytes
+177.442 s | feature-release/user | Passed | SafeUpload.Agent.Tests.StagedSemanticMembershipV30Tests.Ten_thousand_opt_in_updates_match_the_accepted_foreground_checkpoint_and_durability_arithmetic
+149.217 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedSemanticMembershipV30Tests.Ten_thousand_opt_in_updates_match_the_accepted_foreground_checkpoint_and_durability_arithmetic
+102.404 s | feature-release/user | Passed | SafeUpload.Agent.Tests.StagedStorageV30Tests.Ten_thousand_workspace_cycles_plateau_and_do_not_rescan_history_or_release_physical_bytes
