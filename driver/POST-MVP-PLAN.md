@@ -1061,6 +1061,10 @@ and never publish uninspected bytes; C05 reflects inspection rather than blanket
 - [ ] Rerun ordinary, runtime and boot-Verifier on the final pair, including empty files and real Explorer drag.
 - [ ] Directory moves (owner 2026-10-16: like copies; idle renames inside protection): design note (RCA `driver/evidence/2026-10-16/t6-dirmove-rca-sol61.md`),
   review, implementation, native caller traces, then D-rows in all three modes. Today protected directory creation is refused.
+  - [x] Design `driver/T6-DIRECTORY-MOVES.md` (`wt/t6-dirs` `82da3a06`): [review](evidence/2026-10-16/t6-design-review-sol61.md) REVISE, then
+    [re-review](evidence/2026-10-16/t6-design-rereview-sol61.md) **ACCEPT WITH CONDITIONS** (idle census proof, lock/rundown rules, checked
+    ancestry for every live T5 consumer, native traces first, separate gates).
+  - [ ] Native caller traces on a builder (PS 5.1/Explorer fallback, cross-drive metadata, Windows 10 admission, MOTW, busy/idle).
 
 ### T7. Reads follow Windows permissions
 
