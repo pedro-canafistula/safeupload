@@ -1232,11 +1232,21 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     {
         using var inspectionTiming = StagedRequestTiming.Measure("inspection-seal");
         if (_stageJournal is null || !_stagingEnabled || !_stageV20Ready || !_stagingRecoveryReady ||
-            _activeDriverInstanceId is not { } activeDriver || request.RequestorProcessId == 0 || request.Flags != 0 ||
-            !request.TryReadStagePayload<SafeUploadStageSealV19>(Operation.StageSeal, out var payload))
+            _activeDriverInstanceId is not { } activeDriver || request.RequestorProcessId == 0 || request.Flags != 0)
             return (PortVerdict.Deny, null);
         try
         {
+            StagedFileMetadata? metadata = null;
+            SafeUploadStageSealV19 payload;
+            if (request.TryReadStagePayload<SafeUploadStageSealMetadata>(Operation.StageSeal, out var measured))
+            {
+                if (measured.Reserved != 0) return (PortVerdict.Deny, null);
+                payload = measured.Seal;
+                metadata = new(measured.CreationTime, measured.LastAccessTime, measured.LastWriteTime, measured.FileAttributes);
+                metadata.Validate();
+            }
+            else if (!request.TryReadStagePayload<SafeUploadStageSealV19>(Operation.StageSeal, out payload))
+                return (PortVerdict.Deny, null);
             string? stage = NtPathTranslator.ToDosPath(request.GetPath());
             if (stage is null || !IsOwnedStagePath(stage) ||
                 !Guid.TryParseExact(Path.GetFileName(stage)[..32], "N", out Guid id) ||
@@ -1250,7 +1260,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 before.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
                 return (PortVerdict.Deny, null);
             TransferJournalEntry sealedEntry = await _stageJournal.SealAsync(id,
-                checked((int)request.RequestorProcessId), stage, token, expected).ConfigureAwait(false);
+                checked((int)request.RequestorProcessId), stage, token, expected, metadata).ConfigureAwait(false);
             if (sealedEntry.State != TransferJournalState.Sealed || sealedEntry.SealedLength is not >= 0)
                 throw new IOException("The ordinary seal has no stable measured length.");
             uint result = StageV19Result.Sealed;

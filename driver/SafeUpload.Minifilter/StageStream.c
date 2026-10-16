@@ -35,10 +35,24 @@ static VOID StageDirectoryCollisionComplete(_In_ HANDLE Handle);
 _IRQL_requires_max_(APC_LEVEL)
 static BOOLEAN StageRenameShareAllowed(_In_ const SHARE_ACCESS *ShareAccess,
     _In_ PFILE_OBJECT FileObject);
+struct _STAGE_STREAM;
+static VOID StageOverlayBasic(_In_ const struct _STAGE_STREAM *Stream, _Inout_ PFILE_BASIC_INFORMATION Basic);
+static VOID StageBasicWritten(_Inout_ struct _STAGE_STREAM *Stream);
+static BOOLEAN StageBasicReadonly(_In_ const struct _STAGE_STREAM *Stream);
+static VOID StageInitializeBasic(_Inout_ struct _STAGE_STREAM *Stream,
+    _In_opt_ const struct _STAGE_STREAM *Previous, _In_ BOOLEAN Exists,
+    _In_ ULONG Disposition, _In_ ULONG Attributes);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageSetBasicInformation(_In_ PFLT_CALLBACK_DATA Data,
+    _In_ struct _STAGE_STREAM *Stream, _In_ ACCESS_MASK GrantedAccess);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageCaptureSealBasic(_In_ struct _STAGE_STREAM *Stream);
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageReleaseInstanceReferences)
 #pragma alloc_text(PAGE, StageRenameShareAllowed)
+#pragma alloc_text(PAGE, StageSetBasicInformation)
+#pragma alloc_text(PAGE, StageCaptureSealBasic)
 #endif
 
 #define STAGE_TAG 'sUpS'
@@ -50,6 +64,9 @@ static BOOLEAN StageRenameShareAllowed(_In_ const SHARE_ACCESS *ShareAccess,
 #define STAGE_RETRY_EXCHANGE_MAX_MS 8000
 #define STAGE_STATUS_READMIT ((NTSTATUS)0xE0535201L) /* internal: StageCreate asks its admission to run again */
 #define STAGE_MAX_BYTES (16 * 1024 * 1024)
+/* Storage features require their own logical inspection/reconstruction. */
+#define STAGE_BASIC_ATTRIBUTES (FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | \
+    FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #define STAGE_ATTACH_LIMIT_PER_INSTANCE 32
 #define STAGE_ATTACH_LIMIT_GLOBAL 128
@@ -82,6 +99,11 @@ typedef struct _STAGE_STREAM {
     ULONG DeleteOnCloseCount;   /* T5: active per-handle on-close requests; NamespaceResource then Resource */
     BOOLEAN Discarded;          /* T5: the service journaled it Discarded; terminal like Sealed, never inspected or published */
     NTSTATUS DrainStatus;
+    /* Resource: logical app metadata, never the private backing's ACL/flags.
+     * Positive times override service flush/close side effects. */
+    FILE_BASIC_INFORMATION BasicOverrides;
+    FILE_BASIC_INFORMATION SealBasic;
+    BOOLEAN SealBasicValid;
     UNICODE_STRING StageName;
     WCHAR StageBuffer[SAFEUPLOAD_MAX_PATH_CHARS];
     PSAFEUPLOAD_EXCHANGE RenameExchange;
@@ -2367,6 +2389,13 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID) && !ById) ||
         FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE | FILE_NO_INTERMEDIATE_BUFFERING) ||
         file->FsContext != NULL || file->FsContext2 != NULL) {
+        if (Name->Stream.Length != 0)
+            SafeUploadDenyDetail(Data, SAFEUPLOAD_DENY_REASON_STREAM_UNSUPPORTED, STATUS_NOT_SUPPORTED, &Name->Name);
+        status = STATUS_NOT_SUPPORTED; goto Exit;
+    }
+    if (Writer && (Data->Iopb->Parameters.Create.EaLength != 0 ||
+        FlagOn(Data->Iopb->Parameters.Create.FileAttributes, ~STAGE_BASIC_ATTRIBUTES))) {
+        SafeUploadDenyDetail(Data, SAFEUPLOAD_DENY_REASON_METADATA_UNSUPPORTED, STATUS_NOT_SUPPORTED, &Name->Name);
         status = STATUS_NOT_SUPPORTED; goto Exit;
     }
     /* T5: delete-on-close discards only a private-only name; a name that exists publicly cannot be deleted through staging yet. */
@@ -2418,6 +2447,14 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         status = SafeUploadStageCheckAccess(Data, view->Security, desired, &granted);
         if (!NT_SUCCESS(status)) goto Exit;
         stream = view->Current;
+        if (Writer && (FlagOn(desired, FILE_WRITE_DATA | FILE_APPEND_DATA | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED) ||
+            disposition == FILE_SUPERSEDE || disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF)) {
+            BOOLEAN readOnlyAttribute;
+            StageAcquire(&stream->Resource);
+            readOnlyAttribute = StageBasicReadonly(stream);
+            StageRelease(&stream->Resource);
+            if (readOnlyAttribute) { status = STATUS_ACCESS_DENIED; goto Exit; }
+        }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (stream->AttachLifecycleInFlight || stream->AttachCompletionFence || stream->AttachTerminalPending ||
             stream->AttachRetirePending ||
@@ -2660,6 +2697,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     if (bound) granted = transaction->WriterGrantedAccess;
 #endif
     if (newStream && NT_SUCCESS(status)) {
+        StageInitializeBasic(stream, previous, exists, disposition, Data->Iopb->Parameters.Create.FileAttributes);
         /* The file object may be bound locally, but the upper create stays
          * pending until the exact v20 attach transaction permits completion. */
         stream->AttachCompletionPending = TRUE;
@@ -4532,6 +4570,7 @@ static NTSTATUS StageResize(PSTAGE_STREAM Stream, PFILE_OBJECT FileObject, LARGE
     Stream->Header.FileSize = Size;
     Stream->Header.AllocationSize.QuadPart = (Size.QuadPart + PAGE_SIZE - 1) & ~((LONGLONG)PAGE_SIZE - 1);
     Stream->Header.ValidDataLength = Size; /* Every extended byte was materialized. */
+    StageBasicWritten(Stream);
     if (Stream->Sections.SharedCacheMap != NULL) {
         StageInitializeCache(Stream, FileObject);
         sizes.AllocationSize = Stream->Header.AllocationSize;
@@ -4603,6 +4642,9 @@ static NTSTATUS StageReadWrite(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
             CcCopyWrite(file, &offset, length, TRUE, buffer);
             Data->IoStatus.Information = length;
             status = STATUS_SUCCESS;
+            /* A later app write supersedes an earlier explicit write date;
+             * delayed paging for this write does not supersede a later setter. */
+            StageBasicWritten(Stream);
             if (FlagOn(file->Flags, FO_WRITE_THROUGH)) status = StageFlush(Stream);
         } else {
             CcCopyRead(file, &offset, length, TRUE, buffer, &Data->IoStatus);
@@ -4639,6 +4681,7 @@ static NTSTATUS StageQuery(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream, PSTAGE
             status = FltQueryInformationFile(Stream->BackingInstance, Stream->BackingObject,
                 all, bytes, cls, &returned);
             if (NT_SUCCESS(status)) {
+                StageOverlayBasic(Stream, &all->BasicInformation);
                 all->StandardInformation.EndOfFile = Stream->Header.FileSize;
                 all->StandardInformation.AllocationSize = Stream->Header.AllocationSize;
                 all->InternalInformation.IndexNumber.QuadPart = 0; /* No invented destination file ID. */
@@ -4683,9 +4726,118 @@ static NTSTATUS StageQuery(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream, PSTAGE
             if (NT_SUCCESS(status) && cls == FileStandardInformation) {
                 ((PFILE_STANDARD_INFORMATION)output)->EndOfFile = Stream->Header.FileSize;
                 ((PFILE_STANDARD_INFORMATION)output)->AllocationSize = Stream->Header.AllocationSize;
+            } else if (NT_SUCCESS(status) && cls == FileBasicInformation) {
+                StageOverlayBasic(Stream, (PFILE_BASIC_INFORMATION)output);
+            } else if (NT_SUCCESS(status) && (cls == FileNetworkOpenInformation || cls == FileAttributeTagInformation)) {
+                FILE_BASIC_INFORMATION basic = {0};
+                StageOverlayBasic(Stream, &basic);
+                if (cls == FileAttributeTagInformation) {
+                    if (basic.FileAttributes != 0) ((PFILE_ATTRIBUTE_TAG_INFORMATION)output)->FileAttributes = basic.FileAttributes;
+                } else {
+                    PFILE_NETWORK_OPEN_INFORMATION network = output;
+                    if (basic.CreationTime.QuadPart != 0) network->CreationTime = basic.CreationTime;
+                    if (basic.LastAccessTime.QuadPart != 0) network->LastAccessTime = basic.LastAccessTime;
+                    if (basic.LastWriteTime.QuadPart != 0) network->LastWriteTime = basic.LastWriteTime;
+                    if (basic.FileAttributes != 0) network->FileAttributes = basic.FileAttributes;
+                }
             }
         } else status = STATUS_NOT_SUPPORTED;
     } __except(EXCEPTION_EXECUTE_HANDLER) { status = GetExceptionCode(); }
+    StageRelease(&Stream->Resource);
+    return status;
+}
+
+/* Resource is held; overlay the logical version, not its service-owned flags. */
+static VOID StageBasicWritten(_Inout_ PSTAGE_STREAM Stream)
+{
+    Stream->BasicOverrides.LastWriteTime.QuadPart = 0;
+    if (Stream->BasicOverrides.FileAttributes != 0)
+        Stream->BasicOverrides.FileAttributes =
+            (Stream->BasicOverrides.FileAttributes & ~FILE_ATTRIBUTE_NORMAL) | FILE_ATTRIBUTE_ARCHIVE;
+}
+
+static BOOLEAN StageBasicReadonly(_In_ const STAGE_STREAM *Stream)
+{
+    return BooleanFlagOn(Stream->SealBasicValid ? Stream->SealBasic.FileAttributes :
+        Stream->BasicOverrides.FileAttributes, FILE_ATTRIBUTE_READONLY);
+}
+
+static VOID StageInitializeBasic(_Inout_ PSTAGE_STREAM Stream, _In_opt_ const STAGE_STREAM *Previous,
+    _In_ BOOLEAN Exists, _In_ ULONG Disposition, _In_ ULONG Attributes)
+{
+    if (Previous != NULL && Previous->SealBasicValid && Disposition != FILE_SUPERSEDE) {
+        Stream->BasicOverrides = Previous->SealBasic;
+        if (Disposition == FILE_OVERWRITE || Disposition == FILE_OVERWRITE_IF) StageBasicWritten(Stream);
+    }
+    if (!Exists || Disposition == FILE_SUPERSEDE)
+        Stream->BasicOverrides.FileAttributes = (Attributes & ~FILE_ATTRIBUTE_NORMAL) | FILE_ATTRIBUTE_ARCHIVE;
+}
+
+static VOID StageOverlayBasic(_In_ const STAGE_STREAM *Stream, _Inout_ PFILE_BASIC_INFORMATION Basic)
+{
+    const FILE_BASIC_INFORMATION *over = &Stream->BasicOverrides;
+    if (Stream->SealBasicValid) { *Basic = Stream->SealBasic; return; }
+    if (over->CreationTime.QuadPart != 0) Basic->CreationTime = over->CreationTime;
+    if (over->LastAccessTime.QuadPart != 0) Basic->LastAccessTime = over->LastAccessTime;
+    if (over->LastWriteTime.QuadPart != 0) Basic->LastWriteTime = over->LastWriteTime;
+    if (over->FileAttributes != 0) Basic->FileAttributes = over->FileAttributes;
+}
+
+_Use_decl_annotations_
+static NTSTATUS StageSetBasicInformation(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream, ACCESS_MASK GrantedAccess)
+{
+    FILE_BASIC_INFORMATION basic;
+    NTSTATUS status = STATUS_SUCCESS;
+    PAGED_CODE();
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) return STATUS_INVALID_DEVICE_STATE;
+    if (!FlagOn(GrantedAccess, FILE_WRITE_ATTRIBUTES)) return STATUS_ACCESS_DENIED;
+    if (Data->Iopb->Parameters.SetFileInformation.Length < sizeof(basic) ||
+        Data->Iopb->Parameters.SetFileInformation.InfoBuffer == NULL) return STATUS_INFO_LENGTH_MISMATCH;
+    __try { basic = *(PFILE_BASIC_INFORMATION)Data->Iopb->Parameters.SetFileInformation.InfoBuffer; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return GetExceptionCode(); }
+    /* Suppression/resumption is per upper FILE_OBJECT. A shared lower handle
+     * must never give one upper caller another caller's suppression state. */
+    if (basic.CreationTime.QuadPart < 0 || basic.LastAccessTime.QuadPart < 0 ||
+        basic.LastWriteTime.QuadPart < 0 || basic.ChangeTime.QuadPart < 0 ||
+        FlagOn(basic.FileAttributes, ~STAGE_BASIC_ATTRIBUTES)) return STATUS_NOT_SUPPORTED;
+    if (FlagOn(basic.FileAttributes, ~FILE_ATTRIBUTE_NORMAL)) basic.FileAttributes &= ~FILE_ATTRIBUTE_NORMAL;
+    StageAcquire(&Stream->Resource);
+    if (Stream->ReadOnly || Stream->Sealed || Stream->RenameExchange != NULL || Stream->BackingObject == NULL)
+        status = STATUS_ACCESS_DENIED;
+    else {
+        if (basic.CreationTime.QuadPart != 0) Stream->BasicOverrides.CreationTime = basic.CreationTime;
+        if (basic.LastAccessTime.QuadPart != 0) Stream->BasicOverrides.LastAccessTime = basic.LastAccessTime;
+        if (basic.LastWriteTime.QuadPart != 0) Stream->BasicOverrides.LastWriteTime = basic.LastWriteTime;
+        if (basic.FileAttributes != 0) Stream->BasicOverrides.FileAttributes = basic.FileAttributes;
+        /* ChangeTime belongs to physical publication, per the owner decision. */
+    }
+    StageRelease(&Stream->Resource);
+    return status;
+}
+
+/* The seal RPC pin owns this drained backing. No namespace/stream lock spans
+ * the lower query. Cache flush and the writable handle's cleanup already ended. */
+_Use_decl_annotations_
+static NTSTATUS StageCaptureSealBasic(PSTAGE_STREAM Stream)
+{
+    FILE_BASIC_INFORMATION basic;
+    NTSTATUS status;
+    ULONG returned = 0;
+    PAGED_CODE();
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) return STATUS_INVALID_DEVICE_STATE;
+    if (Stream->SealBasicValid) return STATUS_SUCCESS;
+    if (!Stream->ReadOnly || Stream->BackingObject == NULL) return STATUS_INVALID_DEVICE_STATE;
+    RtlZeroMemory(&basic, sizeof(basic));
+    status = FltQueryInformationFile(Stream->BackingInstance, Stream->BackingObject,
+        &basic, sizeof(basic), FileBasicInformation, &returned);
+    if (status != STATUS_SUCCESS) return NT_SUCCESS(status) ? STATUS_UNEXPECTED_IO_ERROR : status;
+    if (returned != sizeof(basic)) return STATUS_INFO_LENGTH_MISMATCH;
+    StageAcquire(&Stream->Resource);
+    StageOverlayBasic(Stream, &basic);
+    if (basic.CreationTime.QuadPart < 0 || basic.LastAccessTime.QuadPart < 0 ||
+        basic.LastWriteTime.QuadPart < 0 || FlagOn(basic.FileAttributes, ~STAGE_BASIC_ATTRIBUTES))
+        status = STATUS_NOT_SUPPORTED;
+    else { Stream->SealBasic = basic; Stream->SealBasicValid = TRUE; }
     StageRelease(&Stream->Resource);
     return status;
 }
@@ -4958,6 +5110,13 @@ static NTSTATUS StageSetDisposition(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Strea
     if (FlagOn(flags, ~(FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS | FILE_DISPOSITION_FORCE_IMAGE_SECTION_CHECK |
         FILE_DISPOSITION_ON_CLOSE | FILE_DISPOSITION_IGNORE_READONLY_ATTRIBUTE)))
         return STATUS_INVALID_PARAMETER;
+    if (FlagOn(flags, FILE_DISPOSITION_DELETE) && !FlagOn(flags, FILE_DISPOSITION_IGNORE_READONLY_ATTRIBUTE)) {
+        BOOLEAN readonlyAttribute;
+        StageAcquire(&Stream->Resource);
+        readonlyAttribute = StageBasicReadonly(Stream);
+        StageRelease(&Stream->Resource);
+        if (readonlyAttribute) return STATUS_CANNOT_DELETE;
+    }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (Stream->Sealed && FlagOn(flags, FILE_DISPOSITION_DELETE)) {
         if (KeGetCurrentIrql() != PASSIVE_LEVEL || FlagOn(flags, FILE_DISPOSITION_ON_CLOSE)) return STATUS_CANNOT_DELETE;
@@ -4981,6 +5140,8 @@ static NTSTATUS StageSetDisposition(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Strea
     }
     StageAcquire(&Stream->Resource);
     if (Stream->ReadOnly || Stream->Sealed) status = STATUS_CANNOT_DELETE;
+    else if (FlagOn(flags, FILE_DISPOSITION_DELETE) && !FlagOn(flags, FILE_DISPOSITION_IGNORE_READONLY_ATTRIBUTE) &&
+        StageBasicReadonly(Stream)) status = STATUS_CANNOT_DELETE;
     else if (Stream->RenameExchange != NULL) status = STATUS_SHARING_VIOLATION;
     else if (FlagOn(flags, FILE_DISPOSITION_DELETE) && Stream->Sections.ImageSectionObject != NULL) status = STATUS_CANNOT_DELETE;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -5104,6 +5265,10 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
         targetStream = target->Current;
         targetGeneration = target->Generation;
         if (targetStream == NULL) { status = STATUS_SHARING_VIOLATION; goto Exit; }
+        StageAcquire(&targetStream->Resource);
+        status = StageBasicReadonly(targetStream) ? STATUS_ACCESS_DENIED : STATUS_SUCCESS;
+        StageRelease(&targetStream->Resource);
+        if (!NT_SUCCESS(status)) goto Exit;
         InterlockedIncrement(&targetStream->RpcReferences);
         targetPinned = TRUE;
     }
@@ -5143,7 +5308,8 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
         status = SafeUploadStageCheckSubjectAccess(Data, target->Security, DELETE);
         if (!NT_SUCCESS(status)) goto Exit;
         StageAcquire(&replaced->Resource);
-        if (replaced->RenameExchange != NULL || (replaced->ReadOnly && !replaced->Sealed) ||
+        if (StageBasicReadonly(replaced)) status = STATUS_ACCESS_DENIED;
+        else if (replaced->RenameExchange != NULL || (replaced->ReadOnly && !replaced->Sealed) ||
             (!posix && replaced->ShareAccess.OpenCount != 0) ||
             replaced->ShareAccess.OpenCount != replaced->ShareAccess.SharedDelete ||
             replaced->Sections.ImageSectionObject != NULL)
@@ -5514,20 +5680,9 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperationCore(PFLT_CALLBACK_DATA Data,
             Data->Iopb->Parameters.SetFileInformation.FileInformationClass != FilePositionInformation) {
             status = STATUS_ACCESS_DENIED;
         }
-        else if (Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileBasicInformation &&
-            Data->Iopb->Parameters.SetFileInformation.Length >= sizeof(FILE_BASIC_INFORMATION)) {
-            /* Demo compatibility (owner, 2026-10-16): Word, Explorer and CopyFile set the timestamps and attributes of the file
-             * they just wrote. Apply the timestamps to the private backing stage and leave its attributes unchanged, so a
-             * hidden or read-only flag can never make the stage unmanageable. Metadata only: never fails the caller. */
-            FILE_BASIC_INFORMATION basic = *(PFILE_BASIC_INFORMATION)Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
-            basic.FileAttributes = 0; /* 0 leaves the attributes unchanged */
-            StageAcquire(&stream->Resource);
-            if (stream->BackingObject != NULL)
-                (VOID)FltSetInformationFile(stream->BackingInstance, stream->BackingObject, &basic, sizeof(basic),
-                    FileBasicInformation);
-            StageRelease(&stream->Resource);
-            status = STATUS_SUCCESS;
-        }
+        else if (Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileBasicInformation)
+            status = KeGetCurrentIrql() == PASSIVE_LEVEL ?
+                StageSetBasicInformation(Data, stream, handle->GrantedAccess) : STATUS_INVALID_DEVICE_STATE;
         else if (Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileEndOfFileInformation &&
             Data->Iopb->Parameters.SetFileInformation.Length >= sizeof(FILE_END_OF_FILE_INFORMATION)) {
             StageAcquire(&stream->Resource);
@@ -5718,6 +5873,11 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperationCore(PFLT_CALLBACK_DATA Data,
         break; /* Never let a foreign filesystem decode an owned upper FCB. */
     }
     Data->IoStatus.Status = status;
+    if (status == STATUS_NOT_SUPPORTED &&
+        (Data->Iopb->MajorFunction == IRP_MJ_SET_EA ||
+         (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION &&
+          Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileBasicInformation)))
+        SafeUploadDenyDetail(Data, SAFEUPLOAD_DENY_REASON_METADATA_UNSUPPORTED, status, &stream->Name);
     if (!NT_SUCCESS(status) || Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION) {
         DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
             "[SafeUploadStage] op=%u class=%u status=%08x\n", Data->Iopb->MajorFunction,
@@ -6689,10 +6849,10 @@ static VOID StagePerformSealRpcs(PLIST_ENTRY Rpcs)
         PSTAGE_STREAM stream = CONTAINING_RECORD(RemoveHeadList(Rpcs), STAGE_STREAM, RpcLink);
         NTSTATUS status;
         InitializeListHead(&stream->RpcLink);
-        status = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED :
-            SafeUploadStageSealVersionV19(stream->RpcProcessIdSnapshot,
+        status = SafeUploadStageMandatoryTeardownActive() ? STATUS_PORT_DISCONNECTED : StageCaptureSealBasic(stream);
+        if (status == STATUS_SUCCESS) status = SafeUploadStageSealVersionV19(stream->RpcProcessIdSnapshot,
             &stream->StageName, &stream->RpcIdentitySnapshot,
-            stream->RpcGenerationSnapshot);
+            stream->RpcGenerationSnapshot, &stream->SealBasic);
 
         StageAcquire(&StageNamespaceResource);
         if (stream->View != NULL && stream->View->OwnerProcessId == stream->RpcProcessIdSnapshot &&

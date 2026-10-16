@@ -1655,6 +1655,9 @@ public sealed partial class StagedTransferJournal
             TransferJournalState.Sealed or TransferJournalState.Inspecting or
             TransferJournalState.Approved or TransferJournalState.Publishing or TransferJournalState.Released or
             TransferJournalState.Blocked;
+        entry.FileMetadata?.Validate();
+        if (entry.FileMetadata is not null && (!entry.SealedOnce || entry.StageIdentity is null))
+            throw new InvalidDataException("Basic metadata is missing its exact sealed version.");
         if ((requiresSeal && !entry.SealedOnce) ||
             (entry.State is TransferJournalState.Allocated or TransferJournalState.Unsealed or TransferJournalState.Discarded &&
                 entry.SealedOnce) ||
@@ -2188,8 +2191,12 @@ public sealed partial class StagedTransferJournal
     // Acknowledge the same frozen version without resetting inspection or a
     // publication that has already progressed beyond Sealed.
     public async Task<TransferJournalEntry> SealAsync(Guid id, int ownerProcessId,
-        string stagePath, CancellationToken token, StagedVersionIdentity? expectedVersion = null)
+        string stagePath, CancellationToken token, StagedVersionIdentity? expectedVersion = null,
+        StagedFileMetadata? fileMetadata = null)
     {
+        fileMetadata?.Validate();
+        if (fileMetadata is not null && expectedVersion is null)
+            throw new IOException("Basic metadata requires an exact-version seal.");
         await _gate.WaitAsync(token).ConfigureAwait(false);
         try
         {
@@ -2201,6 +2208,9 @@ public sealed partial class StagedTransferJournal
             StagedSeedCompletion.Require(current);
             if (expectedVersion is not null && VersionIdentity(current) != expectedVersion)
                 throw new IOException("The exact v19 seal generation or stage identity changed.");
+            if ((current.FileMetadata is not null && fileMetadata is not null && current.FileMetadata != fileMetadata) ||
+                (current.SealedOnce && current.FileMetadata != fileMetadata && fileMetadata is not null))
+                throw new IOException("The exact seal's basic metadata changed.");
             if (current.DriverInstanceId is not null &&
                 current.AttachmentStateV20 != StagedAttachmentStateV20.HandleObserved)
                 throw new IOException("A v20 stage cannot be sealed before its exact handle-lifetime receipt.");
@@ -2231,6 +2241,7 @@ public sealed partial class StagedTransferJournal
                     State = TransferJournalState.SealPending,
                     SealedOnce = true,
                     SealedLength = null,
+                    FileMetadata = fileMetadata,
                     Sha256Hex = null,
                     UpdatedAtUtc = history.Count == 0 ? DateTimeOffset.UtcNow : history[^1].OccurredAtUtc,
                     StateHistory = history
@@ -3514,6 +3525,8 @@ public sealed record TransferJournalEntry(
     public bool SealedOnce { get; init; }
     public StagedStageIdentity? StageIdentity { get; init; }
     public long? SealedLength { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public StagedFileMetadata? FileMetadata { get; init; }
     /// <summary>Exact predecessor tuple captured from the journal under the destination gate.</summary>
     public StagedVersionIdentity? ParentVersionIdentity { get; init; }
     /// <summary>Exact private version discarded by a manifest-first replacement allocation.</summary>
@@ -3587,7 +3600,7 @@ public sealed record TransferJournalEntry(
         return other is not null && UnboundCancellation == other.UnboundCancellation && Transfer == other.Transfer && State == other.State &&
             Sha256Hex == other.Sha256Hex && UpdatedAtUtc == other.UpdatedAtUtc &&
             StateHistory.SequenceEqual(other.StateHistory) && SealedOnce == other.SealedOnce &&
-            StageIdentity == other.StageIdentity && SealedLength == other.SealedLength &&
+            StageIdentity == other.StageIdentity && SealedLength == other.SealedLength && FileMetadata == other.FileMetadata &&
             ParentVersionIdentity == other.ParentVersionIdentity && DeleteVersionIdentity == other.DeleteVersionIdentity &&
             CreateReservationId == other.CreateReservationId &&
             CreateAfterReservationId == other.CreateAfterReservationId &&
@@ -3639,6 +3652,7 @@ public sealed record TransferJournalEntry(
         hash.Add(SealedOnce);
         hash.Add(StageIdentity);
         hash.Add(SealedLength);
+        hash.Add(FileMetadata);
         hash.Add(ParentVersionIdentity);
         hash.Add(DeleteVersionIdentity);
         hash.Add(CreateReservationId);
@@ -3829,7 +3843,7 @@ internal static class StagedRequestRefusal
         return error;
     }
     internal static bool IsPermanent(Exception error) =>
-        error is InvalidDataException || error.Data[Key] is true ||
+        error is InvalidDataException || error is StagedMetadataException { IsPermanent: true } || error.Data[Key] is true ||
         error is not (IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or TimeoutException);
 }
 

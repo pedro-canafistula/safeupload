@@ -22,7 +22,8 @@ public sealed partial class StagedTransferJournal
             await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             // Reserve the live fact before I/O so no allocation follows a
-            // successful mutation. The callback does only the native rename.
+            // successful mutation. The callback validates metadata before the
+            // native rename and performs no work after native success.
             _unboundCommitted.Add(current.Transfer.TransferId);
             try { commit(); }
             catch { _unboundCommitted.Remove(current.Transfer.TransferId); throw; }
