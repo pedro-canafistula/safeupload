@@ -8,8 +8,9 @@ preparados a partir de `894feb82`, além dos ajustes descritos aqui.
 
 - A última política remota válida é persistida com o mesmo limite de confiança
   de ACL da política local. Arquivo sem proteção é recusado, sem reparo silencioso.
-- O serviço inicializa pelo cache protegido ou pelo padrão existente sem esperar
-  HTTP. A busca remota ocorre em segundo plano a cada 30 segundos. Inspeções
+- O serviço recupera primeiro o cache protegido ou o padrão existente. Conclui
+  uma carga remota inicial limitada pelo timeout antes de iniciar os interceptores,
+  que configuram seus escopos no startup. Depois renova em fundo a cada 30 segundos. Inspeções
   usam um snapshot validado durante atualizações, timeout e indisponibilidade.
 - Políticas com versão não positiva, nenhuma categoria reconhecida ou parâmetros
   inválidos não substituem a última válida. Categorias numéricas não viram
@@ -39,9 +40,9 @@ primeiro usuário, autenticação de endpoints ou o código do driver.
 | Verificação | Resultado |
 | --- | --- |
 | Agente da main, antes das mudanças | 648 aprovados, 7 falhas de privilégio, 4 ignorados; 659 casos |
-| Agente consolidado | 682 aprovados, as mesmas 7 falhas, 4 ignorados; 693 casos |
+| Agente consolidado | 683 aprovados, as mesmas 7 falhas, 4 ignorados; 694 casos |
 | Comparação dos testes que falharam | Nomes idênticos na main e na consolidação; nenhuma falha adicional |
-| Testes direcionados de política, fila, dispatcher e justificativas | 78 aprovados |
+| Testes direcionados de política, fila, dispatcher e justificativas | 79 aprovados |
 | Backend Java 21 | 20 testes aprovados, incluindo H2 persistente após reinício e autorização administrativa |
 | Frontend Angular | Build aprovado |
 | Navegador Chromium/Playwright | 22 testes aprovados, incluindo integração Java real, justificativas, reenvio, filtros, texto literal e permissões |
@@ -80,6 +81,8 @@ certificado ou regra de rede e mantém as evidências em uma pasta temporária n
 
 - A homologação do serviço instalado e da ACL privilegiada continua exigindo VM
   Windows apropriada. A validação local não homologa o driver nem o produto inteiro.
+- A aplicação de mudanças de escopo ao gatilho já ativo exige validação específica;
+  esta entrega preserva a configuração inicial e não muda o protocolo do driver.
 - A política publicada pelo backend continua fixa; não foi criado um editor de
   políticas persistente nesta entrega.
 - A autenticação individual do endpoint e o provisionamento seguro continuam

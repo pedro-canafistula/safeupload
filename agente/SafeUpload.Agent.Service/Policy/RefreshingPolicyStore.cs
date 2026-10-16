@@ -62,6 +62,15 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         await LoadAsync(cancellationToken).ConfigureAwait(false);
+        // Interceptores configuram seus escopos na inicialização. Conclui uma
+        // carga remota limitada pelo timeout HTTP antes de iniciá-los, como
+        // no fluxo anterior; todas as renovações posteriores ficam em fundo.
+        try { await RefreshAsync(cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Carga remota inicial falhou; política recuperada mantida.");
+        }
         await base.StartAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -83,14 +92,14 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
     {
         while (!stoppingToken.IsCancellationRequested)
         {
+            try { await Task.Delay(_interval, stoppingToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             try { await RefreshAsync(stoppingToken).ConfigureAwait(false); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception exception)
             {
                 _logger.LogWarning(exception, "Falha na atualização de política; último snapshot mantido.");
             }
-            try { await Task.Delay(_interval, stoppingToken).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }
 }

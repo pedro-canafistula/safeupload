@@ -76,13 +76,30 @@ public sealed class RefreshingPolicyStoreTests
     [Fact]
     public async Task Parada_do_servico_cancela_rede_pendente_e_preserva_snapshot()
     {
-        var remote = new ControlledRemote();
-        using var store = Store(remote);
+        var remote = new ControlledRemote { BlockSecondCall = true };
+        remote.Result.SetResult(Policy(9));
+        using var store = new RefreshingPolicyStore(remote, _ => Task.FromResult(Policy(7)),
+            TimeSpan.FromMilliseconds(1), NullLogger<RefreshingPolicyStore>.Instance);
         await store.StartAsync(CancellationToken.None);
-        await remote.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await remote.SecondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await store.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(remote.Cancelled);
+        Assert.Equal(9, (await store.LoadAsync(CancellationToken.None)).Version);
+    }
+
+    [Fact]
+    public async Task Startup_conclui_primeira_carga_antes_de_ativar_os_interceptores()
+    {
+        var remote = new ControlledRemote();
+        using var store = Store(remote);
+        var startup = store.StartAsync(CancellationToken.None);
+        await remote.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(startup.IsCompleted);
         Assert.Equal(7, (await store.LoadAsync(CancellationToken.None)).Version);
+        remote.Result.SetResult(Policy(9));
+        await startup;
+        Assert.Equal(9, (await store.LoadAsync(CancellationToken.None)).Version);
+        await store.StopAsync(CancellationToken.None);
     }
 
     private static RefreshingPolicyStore Store(ControlledRemote remote) => new(remote,
@@ -92,13 +109,23 @@ public sealed class RefreshingPolicyStoreTests
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<Policy> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource SecondStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool BlockSecondCall;
         public int Calls;
         public bool Cancelled;
         public async Task<Policy> LoadAsync(CancellationToken token)
         {
-            Interlocked.Increment(ref Calls);
+            var call = Interlocked.Increment(ref Calls);
             Started.TrySetResult();
-            try { return await Result.Task.WaitAsync(token); }
+            try
+            {
+                if (BlockSecondCall && call > 1)
+                {
+                    SecondStarted.TrySetResult();
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                }
+                return await Result.Task.WaitAsync(token);
+            }
             catch (OperationCanceledException) { Cancelled = true; throw; }
         }
     }

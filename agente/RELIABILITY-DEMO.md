@@ -43,8 +43,9 @@ Comportamento implementado:
 - Cancelamento solicitado pelo chamador continua sendo cancelamento.
 - Uma falha de disco mantém a política válida em memória e gera diagnóstico;
   não garante recuperação dessa versão depois de reiniciar.
-- O serviço inicializa pelo cache protegido em disco ou pelo padrão existente,
-  sem aguardar HTTP. Atualiza a política em segundo plano a cada 30 segundos.
+- O serviço lê primeiro o cache protegido ou o padrão existente. Antes de ativar
+  os interceptores, conclui uma carga remota inicial limitada pelo timeout HTTP,
+  para configurar os escopos corretos. Depois renova em fundo a cada 30 segundos.
   Inspeções usam o último snapshot validado imediatamente durante uma atualização.
 - A identidade de uma justificativa recebida pelo pipe vem do SID verificado
   da conexão, sem substituí-la pela conta que executa o serviço.
