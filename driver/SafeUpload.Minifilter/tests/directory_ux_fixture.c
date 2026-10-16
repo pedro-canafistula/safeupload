@@ -119,6 +119,7 @@ typedef struct { int unused; } OBJECT_ATTRIBUTES;
 #define PAGED_CODE() assert(Irql == PASSIVE_LEVEL)
 static int Irql, NamespaceDepth, StageNamespaceResource, SafeUploadPolicyLock;
 static volatile LONG StageDirectoryMutationActive;
+static volatile LONG StageMvpNamespaceFence; /* merged with ux/kernel: the private rename also honours its namespace fence */
 static volatile LONG64 StageDirectorySequence;
 static BOOLEAN StageStopping, SafeUploadBootScopesActive;
 static LIST_ENTRY StageStreams, StageAllocationReservations;
