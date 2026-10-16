@@ -1559,11 +1559,13 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 
     private bool InitializeStagingSubsystem(FilterPort port, CancellationToken stoppingToken)
     {
+        string root = Path.Combine(AgentPaths.RootDirectory, "staging");
+        string journal = Path.Combine(AgentPaths.RootDirectory, "staging-journal");
+        string initializingPath = journal;
         try
         {
-            string root = Path.Combine(AgentPaths.RootDirectory, "staging");
-            string journal = Path.Combine(AgentPaths.RootDirectory, "staging-journal");
             _stageJournal = new StagedTransferJournal(journal, requireProtectedParent: true);
+            initializingPath = root;
             _stageAllocator = new StagedTransferAllocator(root, _stageJournal,
                 requireProtectedParent: true, requireSystemIdentity: true);
             _stagePublisher = new StagedTransferPublisher(
@@ -1584,7 +1586,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogCritical(ex, "Falha ao inicializar o diario de transferencias.");
+            _logger.LogCritical(ex, "Falha ao inicializar o diario de transferencias. Startup path: {Path}", initializingPath);
             return false;
         }
     }
