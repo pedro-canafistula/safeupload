@@ -29,8 +29,13 @@ static NTSTATUS StageRegistryEntryProbeWorkerBody(_In_ PCUNICODE_STRING VolumeNa
 #endif
 #endif
 
+_IRQL_requires_max_(APC_LEVEL)
+static BOOLEAN StageRenameShareAllowed(_In_ const SHARE_ACCESS *ShareAccess,
+    _In_ PFILE_OBJECT FileObject);
+
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageReleaseInstanceReferences)
+#pragma alloc_text(PAGE, StageRenameShareAllowed)
 #endif
 
 #define STAGE_TAG 'sUpS'
@@ -4927,6 +4932,21 @@ ExitNamespace:
     return status;
 }
 
+/* Resource held by the caller. NTFS requires the OTHER opens to share delete;
+ * the DELETE-authorized handle performing the rename need not share it with
+ * another opener. IoUpdateShareAccess counted this handle too. Do not change
+ * the ledger or exclude any other FILE_OBJECT. A duplicated handle still
+ * refers to this same open and adds no share participant. */
+_Use_decl_annotations_
+static BOOLEAN StageRenameShareAllowed(const SHARE_ACCESS *ShareAccess, PFILE_OBJECT FileObject)
+{
+    PAGED_CODE();
+    if (!FileObject->DeleteAccess || ShareAccess->OpenCount == 0 ||
+        ShareAccess->SharedDelete > ShareAccess->OpenCount)
+        return FALSE;
+    return ShareAccess->OpenCount - ShareAccess->SharedDelete == (FileObject->SharedDelete ? 0UL : 1UL);
+}
+
 static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
 {
     PFILE_RENAME_INFORMATION rename = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
@@ -5007,7 +5027,7 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     }
 #endif
     StageAcquire(&Stream->Resource);
-    status = Stream->ShareAccess.OpenCount == Stream->ShareAccess.SharedDelete ?
+    status = StageRenameShareAllowed(&Stream->ShareAccess, Data->Iopb->TargetFileObject) ?
         STATUS_SUCCESS : STATUS_SHARING_VIOLATION;
     StageRelease(&Stream->Resource);
     if (!NT_SUCCESS(status)) goto Exit;
