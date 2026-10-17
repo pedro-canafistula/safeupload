@@ -1,0 +1,20 @@
+﻿LABEL=m2-ux-agent-1017b
+BUILDER=SU-BUILDER2
+SourceCommit=80dc919c8cc0e20ed792a794cac4f50ee1ed44a3
+ARCHIVE_SHA256=59FDC2310E94F1D55B715F72582CBC14CD10BC155A2435AB89F7E0F8B3A34427
+AgentMatrixProfiles=feature-debug,feature-release
+AgentMatrixTestLegs=4
+Builder=builder2
+BuilderHost=192.168.122.211
+BuilderComputerName=SU-BUILDER2
+ParityCheck=False
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=SU-BUILDER2\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=1 warnings=0 errors=0
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-17T21:46:36.1496255Z

@@ -22,7 +22,7 @@
 
 ## Review policy
 
-The owner's 2026-10-13 instruction replaces Luna for future reviews with **Sol 6.1, xhigh** (`gpt-6.1-sol`, `reasoning_effort=xhigh`). Preserve historical Luna reports and their provenance.
+The owner's 2026-10-17 instruction uses **Sol 6.1, high** (`gpt-6.1-sol`, `reasoning_effort=high`) for delegated work, with no fast tier. It supersedes the earlier xhigh default. Preserve historical Luna and Sol reports and their provenance.
 
 - Use independent review for product-security designs, kernel lifetime/lock-order/retirement changes before their first VM boot, and one adversarial review of the working milestone pair.
 - Keep ordinary implementation with the primary agent. Review a coherent change and its remaining conditions; avoid a review for every small revision.

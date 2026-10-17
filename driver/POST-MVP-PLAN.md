@@ -1,6 +1,6 @@
 # SafeUpload MVP status plan
 
-Updated 2026-10-13. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
+Updated 2026-10-17. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
 destination, keeping unapproved bytes private throughout. M2 is the current milestone, not the completion boundary.
 Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](POST-MVP-LOG.md), and the local WIP branch noted below.
 
@@ -9,7 +9,7 @@ Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](PO
 | Order | Scope | Status |
 |---|---|---|
 | M1 | T0–T3: safe to leave loaded | Complete on the recorded M1 pair |
-| **M2** | **T4–T11: everyday file work** | **Active; product VM gates stopped at T4's contexts bound** |
+| **M2** | **T4–T11: everyday file work** | **Active; integrated kernel review accepted with conditions; agent repairs/build gates precede T4 qualification** |
 | M3 | T12, T14: release configuration and lifecycle | After M2 |
 | T21 | USB/removable | After M3; own design, owner decisions, Sol 6.1 xhigh design review and destination qualification |
 | T22 | SMB/UNC | After T21; own design, owner decisions, Sol 6.1 xhigh design review and destination qualification |
@@ -22,6 +22,9 @@ USB, SMB/UNC and cloud-sync are required MVP work; they are no longer deferred u
 respective support and qualification gates are met and the owner approves cutover.
 
 ## Owner decisions
+
+**2026-10-17 — delegated work uses Sol high.** Owner: use only Sol high agents, with no fast tier for now. This supersedes the prior
+xhigh default for new reviews; earlier reports retain their original model/effort provenance. Ordinary implementation stays with Codex.
 
 **2026-10-16 (evening) — M2 user experience first.** Owner goal: M2 is done when real apps work as standard user `t5actor` on one
 matched pair with staging enabled (Notepad, Word, Excel, PowerPoint, PDF, .zip, Explorer copy/move/rename/delete/folders), plus T4
@@ -492,42 +495,26 @@ M1 passed 69/69 cells on `m1-driver21` (`498f4ed7`) plus agent `4d02039a`, with 
 
 ## M2 — active
 
-**Next delivery checkpoint:** T4's revised smoke passed; its 10,000-cycle row failed the loaded-context bound. Further product VM rows
-remain stopped except the owner-authorized hand-back attribution diagnostic, with no kernel reclamation or threshold change authorized.
-Work order from the 2026-10-13 owner direction: T9 complete-or-refuse coverage (drawings/charts/VML, PDF annotations/forms, Office part
-allowlist); the T4 hand-back diagnostic; batch-wrapper failure propagation; the T18 retry design; then the integrated T5 pair, following
-the [completion sequence](M2-COMPLETION-PLAN.md). Complete the integrated T5 pair: checked allocation/manifests/coherent seeding, every physical publication/delete through the shared head and permits,
-exact close/startup reconciliation, cleanup acknowledgements and service-independent mandatory teardown. Group implementation and static checks around that
-integration. After the single pre-boot kernel lifetime review, qualify native deletes in both forced orders and real Notepad
-clean/CPF Save As in all three modes, with independent bytes and separate restoration. Component passes do not complete T5.
-Keep the broad application/metadata matrix in T8; all existing assertions and the full milestone sequence remain required.
+**Next delivery checkpoint:** qualify one matched local-NTFS pair, starting with T4. Planned M2 rows remain authorized on
+win10-debug3 only (owner, 2026-10-13); no revised pair has qualified. Keep the unchanged raw-volume, Verifier, context/pool and
+separate restoration gates. Current [integration evidence](evidence/2026-10-17/m2-integration-status.md):
 
-The [latest progress/direction review](evidence/2026-10-12/m2-progress-direction-review.md), covering `a7e238ff` and the latest builder attempts,
-confirms the architecture and scope but finds delivery still fragmented. Original ordinary dispositions and known-cleanup ACK/retirement
-are connected; no revised protected T5 pair has run. Finish checked writer authority, shared publication/deletes and automatic recovery
-as one delivery checkpoint. The [publication contract](T5-BOUND-PUBLICATION.md) now has its corrected Luna design review;
-transport/client and durable native-result journal are implemented; kernel object integration and recovery remain unfinished.
-The seeded-content hand-back choice is option 1 (owner, 2026-10-13). The retained-object construction passed its direct native query gate and
-is ready to implement; the failed zero-access reopen is discarded. Unprotected native controls do not qualify this pair.
-
-**Current M2 completion audit — 2026-10-13, refreshed at `f0dd623e`.** No T4–T11 completion claim is established by the
-latest inspector matrix. The remaining delivery requirements and their current proof are:
-
-| Item | Required proof still outstanding | Current authoritative state |
+| T item | Current state | Next required result |
 |---|---|---|
-| T4 | Passing loaded-context 10k gate, allocation-reply fault row, raw C01–C04/B01/B02/X01 and final pair | [10k contexts FAIL](evidence/2026-10-12/m2t4purge10ka1-verdict.txt). Planned rows authorized (owner, 2026-10-13). [KD rows 1–3](evidence/2026-10-13/t4-delete-kd-attribution-result.md): growth follows opens of released files; driver reference versus stream retention still undecided (volume-teardown discriminator next). |
-| T5 | Checked writer/seed/security authority, shared physical commit/recovery pipeline, final WDK/agent gates and three-mode native/Notepad rows | Option 1 and the dormant connected path landed (`a27defd8`; four WDK builds and matrix PASS). Pre-boot Sol 6.1 xhigh lifetime review: [REJECT](evidence/2026-10-13/t5-preboot-review-sol61.md), [REJECT](evidence/2026-10-14/t5-fix1-review-sol61.md), then [ACCEPT for the first Verifier boot](evidence/2026-10-14/t5-fix2-review-sol61.md) of `98e0a6d8`; boots, batch 1 (merged) and batch 3 (receipt lifetimes, in progress) follow. Readiness stays NotReady on four named blockers; [native descriptor construction](T5-NATIVE-PUBLIC-OPENS.md#descriptor-candidate-controls-2026-10-15) is exact for every measured shape; the moved-then-saved marker-only difference is owner-accepted (2026-10-15). |
-| T6 | Directory moves, empty/Explorer moves and final-pair three-mode byte observation | Only the earlier 28/28 copy-fallback component pair is qualified; directory creation/moves remain unresolved. |
-| T7 | Final-pair authorized/denied read rows | Earlier component B02 passes do not cover the revised pair. |
-| T8 | Nine real application workflows in all three modes; agreed owner/DACL/timestamps/attributes/ADS/EAs/labels | Final application/metadata rows and metadata decisions remain missing. |
-| T9 | Stage/seed caps removed under per-user/total budgets; complete format/encoding coverage, bounded parser memory, durable cleanup, interactive failure and protected large-file rows | [Product-default accounted staging](UX-LARGE.md) uses owner-approved runtime storage formulas; new grants have no fixed per-file staging cap. Legacy upgrade retains old guards until cleanup. Concurrent/seed UX and Windows qualification remain open. The [earlier 14-case measurement](evidence/2026-10-13/t9-inspector-metrics3-result.json) covers neither staging nor hostile parser memory/publisher costs/protected behavior. Complete-or-refuse coverage landed (`a46124c7`, `52fbb7cb`; drawing/chart/VML text, PDF annotations/form values read, rare payloads refused, Office part allowlist, independent fixtures). |
-| T10 | Pass the final pair in all modes | Phase B fixed: `m2t10rv6` 13/13 under runtime Verifier on the 10-10 component pair; final-pair three-mode rows remain. |
-| T11 | SOP lifetime/retirement, complete journal scaling/recovery and adversarial review of the working final system | Scoped index/compaction/head-read controls pass; O(N) fresh head I/O and final-system review remain open. |
+| T4 | Context leases/retirement integrated at `412f05ad`; combined kernel review accepted with runtime conditions after namespace corrections `311c393e`. Immediate-reopen harness PS5.1 gate PASS. | Fresh WDK/import gates, agent matrix, 256-cycle smoke with immediate reopens, unchanged 10k cells and raw-byte rows. |
+| T5 | Native namespace corrections reviewed; all-rename cancellation authority and DOC fallback controls pass. Agent first matrix leg failed 7/2,760; focused repairs/diagnostics committed. | Passing four-leg agent matrix, forced native delete orders, clean/CPF Notepad and public operations in all three modes. |
+| T6 | Copy-fallback component evidence and owner-approved folder/cross-drive metadata contract exist; merged namespace/folder source is unqualified. | Final-pair file/folder moves, idle rename and pending conflicts in all required modes. |
+| T7 | Windows-authorized read design retained. | Final-pair authorized/denied reads and exact bytes. |
+| T8 | Standard-user app dev evidence exists; final metadata implementation/qualification remains incomplete. | Eight required app workflows, matching owner/DACL/SACL/label/times/attributes/MOTW controls in all modes. |
+| T9 | Product-default accounted staging and large-file source integrated; complete-or-refuse inspectors implemented. | Windows budgets/upgrade, parser bounds, large-file and failure UX on the matched pair. |
+| T10 | Earlier runtime-Verifier component pass exists. | Final-pair permissions/ownership rows in all modes with metadata preservation. |
+| T11 | Epoch/archive and context retirement repairs integrated; component controls are distinct from qualification. | Final journal/recovery/lifetime gates and one adversarial review of the working M2 pair. |
 
-T4's unexplained contexts and the open T5 security questions remain prerequisites for the integrated delivery. Do not enable admission,
-change the failed contexts bound, discard native security control bits, add an unapproved descriptor repair, or count an unprotected
-component pass as that delivery. Storage-budget/default decisions require the measured scope and explicit user-visible failure
-behavior; the unchanged inspector defaults and scoped measurements above do not decide them.
+- [ ] T4: close build/agent prerequisites, then run smoke and 10k with independent bytes and separate restoration.
+- [ ] T5–T11: qualify the coherent pair against every existing assertion; component/dev passes do not complete these items.
+- [ ] T11: perform final adversarial review only after the runtime evidence exists.
+
+The superseded checkpoint narratives are in [POST-MVP-LOG.md](POST-MVP-LOG.md#archived-m2-checkpoint-narrative--replaced-2026-10-17).
 
 ### T4. Remove the 128-saves-per-boot ceiling
 
