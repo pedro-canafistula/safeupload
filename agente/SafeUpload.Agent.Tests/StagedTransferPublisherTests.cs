@@ -1169,6 +1169,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         var publisher = new StagedTransferPublisher(new InspectionService(store,
             new LocalQueueAuditSink(_workspace.QueueFile), registry, new VerdictCache()),
             _notifications, _journal, _stagingRoot, gate, broker,
+            logger: new PublisherDiagnosticLog(),
             handbackCopier: new VerifiedSnapshotHandbackCopier(_workspace.Root),
             sessionUserSidResolver: _ => TestRequestorSid);
         string content = failure == "size" ? new string('x', 1024 * 1024 + 1) : "Clean fixture bytes.";
@@ -1267,6 +1268,17 @@ public sealed class StagedTransferPublisherTests : IDisposable
             }
         }
         finally { paused.Continue.TrySetResult(); }
+    }
+
+    // Keep the existing deadlines and assertions. If publication stalls, the
+    // TRX captures the last reached native step instead of only TimeoutException.
+    private sealed class PublisherDiagnosticLog : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel level) => true;
+        public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Console.WriteLine($"Publisher QPC={System.Diagnostics.Stopwatch.GetTimestamp()} {level}: {formatter(state, exception)} {exception}");
     }
 
     private sealed class ThrowingExtractor : ITextExtractor
