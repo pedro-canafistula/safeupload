@@ -1280,10 +1280,8 @@ public sealed partial class StagedTransferJournal
             // Retiring an unattached child removes its ordinary name claim,
             // but cannot turn legacy owner cleanup into predecessor cleanup.
             // That historical chain still needs the exact child reservation.
-            if (!alreadyPending && (await DestinationVersionsAsync(current.Transfer.DestinationPath, token)
-                    .ConfigureAwait(false)).Any(e => e.Generation > current.DestinationGeneration))
-                throw new IOException("The legacy predecessor still requires its exact child cleanup reservation.");
-            if (!alreadyPending) await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
+            if (!alreadyPending) await RequireCurrentDestinationAsync(current, token,
+                includeRetiredAllocations: true).ConfigureAwait(false);
         }
         else if (request.Kind == StagedDiscardKind.EmptyHeldPredecessor)
         {
@@ -1377,7 +1375,8 @@ public sealed partial class StagedTransferJournal
                     throw new IOException("A direct cleanup cannot consume a CREATE_AFTER reservation.");
                 RequireDirectEmptyHeldChildTerminal(current, child, requireReleasedStageDeleted: false);
             }
-            if (!alreadyPending) await RequireCurrentDestinationAsync(child, token).ConfigureAwait(false);
+            if (!alreadyPending) await RequireCurrentDestinationAsync(child, token,
+                includeRetiredAllocations: true).ConfigureAwait(false);
         }
 
         if (alreadyPending)
@@ -3286,9 +3285,10 @@ public sealed partial class StagedTransferJournal
                 absenceFailure);
     }
 
-    private async Task RequireCurrentDestinationAsync(TransferJournalEntry current, CancellationToken token)
+    private async Task RequireCurrentDestinationAsync(TransferJournalEntry current, CancellationToken token,
+        bool includeRetiredAllocations = false)
     {
-        if (!await IsCurrentDestinationAsync(current, token).ConfigureAwait(false))
+        if (!await IsCurrentDestinationAsync(current, token, includeRetiredAllocations).ConfigureAwait(false))
             throw new IOException("A later save or pending rename supersedes this destination version.");
     }
 
@@ -3302,7 +3302,8 @@ public sealed partial class StagedTransferJournal
         entry.PendingRename is null &&
         entry.NamespaceTombstones is null && entry.UnboundCancellation is null;
 
-    private async Task<bool> IsCurrentDestinationAsync(TransferJournalEntry current, CancellationToken token)
+    private async Task<bool> IsCurrentDestinationAsync(TransferJournalEntry current, CancellationToken token,
+        bool includeRetiredAllocations = false)
     {
         if (current.UnboundCancellation is not null) return false;
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
@@ -3316,7 +3317,7 @@ public sealed partial class StagedTransferJournal
         }
 #endif
         var versions = (await DestinationVersionsAsync(current.Transfer.DestinationPath, token).ConfigureAwait(false))
-            .Where(e => !e.RetiredAllocation).ToList();
+            .Where(e => includeRetiredAllocations || !e.RetiredAllocation).ToList();
         long generation = versions.Select(e => e.Generation).DefaultIfEmpty(0).Max();
         return current.DestinationGeneration == generation &&
             versions.Count(e => e.Generation == generation) == 1 &&
