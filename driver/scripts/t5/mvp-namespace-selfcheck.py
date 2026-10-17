@@ -205,9 +205,9 @@ class MvpNamespace(unittest.TestCase):
         for block in namespace_calls:
             self.assertLess(block.index('*CompletionContext = NULL;'), block.index('StageMvpNamespacePre('))
         create = body(source, 'StageCreate')
-        self.assertIn('namespaceSequence != StageDirectorySequence', create)
+        self.assertIn('namespaceSequence != InterlockedCompareExchange64(&StageDirectorySequence, 0, 0)', create)
         rename = body(source, 'StageRename')
-        self.assertIn('namespaceSequence != StageDirectorySequence', rename)
+        self.assertIn('namespaceSequence != InterlockedCompareExchange64(&StageDirectorySequence, 0, 0)', rename)
         external = body(source, 'StageExternalRename')
         self.assertLess(external.index('StageNamespaceBeginMutation('), external.index('allow = SafeUploadPublicationRename'))
         self.assertIn('StageNamespaceRevalidateBindings(', external)

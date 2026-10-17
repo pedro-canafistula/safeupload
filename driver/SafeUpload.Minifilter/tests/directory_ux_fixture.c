@@ -20,7 +20,7 @@ typedef struct { USHORT Length, MaximumLength; WCHAR *Buffer; } UNICODE_STRING, 
 typedef const UNICODE_STRING *PCUNICODE_STRING;
 typedef struct _LIST_ENTRY { struct _LIST_ENTRY *Flink, *Blink; } LIST_ENTRY, *PLIST_ENTRY;
 typedef struct { UNICODE_STRING Name, Stream, Volume; } FLT_FILE_NAME_INFORMATION, *PFLT_FILE_NAME_INFORMATION;
-typedef struct { UNICODE_STRING FileName; BOOLEAN WriteAccess, DeleteAccess; } FILE_OBJECT, *PFILE_OBJECT;
+typedef struct { UNICODE_STRING FileName; BOOLEAN WriteAccess, DeleteAccess; PVOID FsContext; } FILE_OBJECT, *PFILE_OBJECT;
 typedef struct { ACCESS_MASK DesiredAccess; } IO_SECURITY_CONTEXT, *PIO_SECURITY_CONTEXT;
 typedef struct { NTSTATUS Status; ULONG Information; } IO_STATUS_BLOCK;
 typedef struct { uint64_t VolumeSerialNumber, FileId; } FILE_ID_INFORMATION;

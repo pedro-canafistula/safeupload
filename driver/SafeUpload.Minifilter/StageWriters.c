@@ -7590,7 +7590,11 @@ BOOLEAN SafeUploadStageWritersNameActivating(_In_ PFLT_INSTANCE Instance, _In_ P
     BOOLEAN activating = FALSE;
     if (Instance == NULL || Name == NULL || Name->Length == 0) return FALSE;
     FltAcquirePushLockShared(&RegistryLock);
-    for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
+    /* The lower rename can have finished while a DISPATCH/draining post is
+     * queued. Retained descendant names still have the old prefix: gate BOTH
+     * ranges until the bounded completion rewrite removes its live record. */
+    activating = StageRegistryDirectoryRenameInFlightLocked(Instance, &baseName);
+    for (link = RegistryEntries.Flink; !activating && link != &RegistryEntries; link = link->Flink) {
         PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
         UNICODE_STRING entryName;
         BOOLEAN aliasProbe = InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0;

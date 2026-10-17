@@ -19,7 +19,7 @@ POLICY = HERE.parent / 'Policy.c'
 
 
 def function(source, name):
-    match = re.search(r'(?m)^(?:static\s+)?(?:BOOLEAN|VOID|NTSTATUS|FLT_PREOP_CALLBACK_STATUS)\s+' +
+    match = re.search(r'(?m)^(?:__declspec\(noinline\)\s+)?(?:static\s+)?(?:BOOLEAN|VOID|NTSTATUS|FLT_PREOP_CALLBACK_STATUS)\s+' +
                       re.escape(name) + r'\s*\([^;]*?\)\s*\{', source)
     assert match, name
     end = source.index('{', match.start()) + 1

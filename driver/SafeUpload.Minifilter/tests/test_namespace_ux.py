@@ -7,6 +7,7 @@ Keep first failures under .scratch; mutations must fail real controls.
 from pathlib import Path
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -29,12 +30,20 @@ def program(stream):
              'StageNativeDirectoryInformation', 'StageExternalRename')
     helpers = ''.join(d.function(stream, name) for name in names)
     native = ''.join(d.function(stream, name) for name in (
-        'StageMvpNamespaceOpen', 'StageMvpRenameNeedsCopy', 'StageRenameAuthorizeReplacement',
+        'StageMvpNamespaceOpen', 'StageMvpNamespaceCreateEligible', 'StageNamespacePostStatus',
+        'StageMvpNamespaceCreateOpened', 'StageInstallRenameExchange', 'StageMvpRenameNeedsCopy', 'StageRenameAuthorizeReplacement',
         'StageMvpNamespacePre', 'StageMvpNamespacePostCreate', 'StageMvpNamespacePost'))
     types = stream[stream.index('typedef struct _STAGE_NAMESPACE_BINDINGS {'):stream.index(
         '_IRQL_requires_(PASSIVE_LEVEL)', stream.index('typedef struct _STAGE_NAMESPACE_BINDINGS {'))]
     policies = ''.join(d.function(policy, name) for name in (
         'SafeUploadPathUnderPrefix', 'SafeUploadPolicyDirectoryIsScopeAnchor'))
+    admit = d.function(stream, 'StageAdmit')
+    demotion = re.search(r'    if \(KeGetCurrentIrql\(\) == PASSIVE_LEVEL && disposition == FILE_OPEN &&\n.*?writer = FALSE;', admit, re.S)
+    assert demotion, 'shared writer demotion'
+    create = d.function(stream, 'StageCreate')
+    a = create.index('    if (view == NULL && !Writer) {')
+    b = create.index('    if (Name->Name.Length', a)
+    fallback = create[a:b]
     fixture = (HERE / 'directory_ux_fixture.c').read_text()
     extra = (HERE / 'namespace_ux_fixture.c').read_text()
     globals_, rest = extra.split('/* GLOBALS */')[1].split('/* STUBS */')
@@ -44,13 +53,16 @@ def program(stream):
             .replace('/* NATIVE_GLOBALS */', globals_).replace('/* NATIVE_STUBS */', stubs)
             .replace('/* NATIVE_PRODUCTION */', native).replace('/* NATIVE_TESTS */', tests)
             .replace('/* NATIVE_LOOKUP_HOOK */', 'if(LookupHook)LookupHook();')
-            .replace('/* NATIVE_TEST_CALL */', 'namespace_tests();'))
+            .replace('/* NATIVE_TEST_CALL */', 'namespace_tests();')
+            .replace('/* PRODUCTION_DEMOTION */', demotion[0])
+            .replace('/* PRODUCTION_PRIVATE_FALLBACK */', fallback))
 
 
 def registry_program(source):
     fixture = (HERE / 'namespace_registry_fixture.c').read_text()
     production = ''.join(d.function(source, name) for name in (
-        'SafeUploadStageWritersCompleteRename', 'SafeUploadStageWritersNameActivating'))
+        'StageRegistryNameHasPathPrefix', 'StageRegistryDirectoryRenameInFlightLocked', 'StageRegistryCompleteDirectoryRename',
+        'SafeUploadStageWritersCompleteRename', 'StageRegistryRenameWorker', 'SafeUploadStageWritersNameActivating'))
     return fixture.replace('/* PRODUCTION */', production)
 
 
@@ -87,7 +99,11 @@ class NamespaceUx(unittest.TestCase):
             ('!RtlEqualMemory(&objectIdentity, &Bindings->Source, sizeof(objectIdentity))', 'FALSE'),
             ('!RtlEqualUnicodeString(&current->Name, &Source->Name, TRUE)', 'FALSE'),
             ('!RtlEqualMemory(&current.Parent, &Bindings->Parent, sizeof(current.Parent))', 'FALSE'),
-            ('Data->IoStatus.Status == STATUS_SUCCESS) {\n        if (name != NULL', 'TRUE) {\n        if (name != NULL'),
+            ('StageMvpNamespaceCreateOpened(Data, Objects)) {\n        if (name != NULL', 'TRUE) {\n        if (name != NULL'),
+            ('return NT_SUCCESS(Data->IoStatus.Status) && Data->IoStatus.Status != STATUS_REPARSE', 'return Data->IoStatus.Status == STATUS_SUCCESS && Data->IoStatus.Status != STATUS_REPARSE'),
+            ('FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID | FILE_OPEN_REPARSE_POINT) &&', 'FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID) &&'),
+            ('StageMvpNamespaceCreateEligible(Data, Objects)) writer = FALSE;', 'StageMvpNamespaceOpen(Data)) writer = FALSE;'),
+            ('(MajorFunction == IRP_MJ_SET_INFORMATION && Mutation)', '((void)MajorFunction, FALSE && Mutation)'),
             ('status = SafeUploadStageCheckSubjectAccess(Data, Target->Security, DELETE);', 'status = STATUS_SUCCESS; (void)&SafeUploadStageCheckSubjectAccess; (void)Target;'),
             ('StageMvpNamespaceRegistryContext = registryRenameContext != NULL ? registryRenameContext : mutatingIoContext;', 'StageMvpNamespaceRegistryContext = NULL;'),
         )
@@ -107,10 +123,22 @@ class NamespaceUx(unittest.TestCase):
             ('RtlCopyMemory(entry->Name, rename->Name, rename->NameChars * sizeof(WCHAR));', '(void)0;'),
             ('if (Draining || (Succeeded && rename->Ambiguous)) {', 'if (FALSE) {'),
             ('InterlockedIncrement(&entry->RenameVersion);', '(void)&InterlockedIncrement;'),
+            ('activating = StageRegistryDirectoryRenameInFlightLocked(Instance, &baseName);', 'activating = FALSE; (void)&StageRegistryDirectoryRenameInFlightLocked;'),
         ):
             with self.subTest(mutation=old):
                 self.assertIn(old, source)
                 self.assertNotEqual(run(source.replace(old, new), 'cc', registry=True).returncode, 0)
+
+    def test_shared_routing_and_synchronized_epoch_wiring(self):
+        source = d.STREAM.read_text()
+        admit = d.function(source, 'StageAdmit')
+        native = d.function(source, 'StageMvpNamespacePre')
+        self.assertIn('StageMvpNamespaceCreateEligible(Data, Objects)) writer = FALSE;', admit)
+        self.assertIn('if (!StageMvpNamespaceCreateEligible(Data, Objects)) return result;', native)
+        self.assertNotIn('StageMvpNamespaceOpen(Data)', admit[:admit.index('writer = FALSE;')])
+        epoch = d.function(source, 'StageDispatchEpoch')
+        self.assertIn('return StageNamespacePostStatus(Data->Iopb->MajorFunction, slot.DirectoryMutation, result);', epoch)
+        self.assertLess(epoch.index('token->DirectoryMutation = slot.DirectoryMutation;'), epoch.index('return StageNamespacePostStatus('))
 
     def test_private_authority_precedes_cancel_and_retains_evidence(self):
         source = d.STREAM.read_text()
@@ -132,7 +160,7 @@ class NamespaceUx(unittest.TestCase):
         # The exact pinned descriptor stays reachable through post-RPC checks.
         self.assertGreater(rename.index('targetStream = NULL;', cancel), release)
         for name in ('StageNamespaceCaptureBindings', 'StageNamespaceRevalidateBindings',
-                     'StageNamespaceBeginMutation', 'StageMvpNamespacePre', 'StageMvpNamespacePostCreate',
+                     'StageNamespaceBeginMutation', 'StageMvpNamespaceCreateEligible', 'StageMvpNamespacePre', 'StageMvpNamespacePostCreate',
                      'StageRenameAuthorizeReplacement'):
             fn = d.function(source, name)
             definition = source.index(fn)
