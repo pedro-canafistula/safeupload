@@ -99,7 +99,7 @@ public sealed class NotificationRecordTests : IDisposable
         var next = Transfer();
         restarted.Append(next, 7);
         Assert.Equal(next.TransferId, Entries()[^1].TransferId);
-        Assert.Single(Entries().Where(entry => entry.TransferId == notice.TransferId));
+        Assert.Single(Entries(), entry => entry.TransferId == notice.TransferId);
     }
 
     [Theory]
