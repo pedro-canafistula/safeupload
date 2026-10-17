@@ -109,9 +109,11 @@ function Wait-T4PurgeTimeline($Diagnostic, [string]$Label, [int]$Seconds, $Windo
 function Read-T4PurgeEtl($Diagnostic, $Window, [int]$MaxEvents = 400000, [string]$ProbeLeaf = '') {
     $summary = [ordered]@{ Label=$Window.Label; TotalEvents=0L; EventsById=@{}; TotalCreates=0L; DistinctPaths=0;
         TopProcesses=@(); TopProcessDirectories=@(); TopDirectories=@(); LostEvents=$Window.LostEvents;
-        LostBuffers=$Window.LostBuffers; ProbeCreates=@(); Truncated=$false; MaxEvents=$MaxEvents; EtlBytes=$null; Error=$null }
+        LostBuffers=$Window.LostBuffers; ProbeCreates=@(); ProbeProcesses=@(); ProbeProcessDirectories=@();
+        Truncated=$false; MaxEvents=$MaxEvents; EtlBytes=$null; Error=$null }
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $processes = @{}; $pairs = @{}; $directories = @{}; $identities = @{}; $probes = @{}
+    $probeProcesses = @{}; $probePairs = @{}
     foreach ($process in @($Window.StartProcesses) + @($Window.EndProcesses)) {
         $key = [string]$process.ProcessId
         if (-not $identities.ContainsKey($key)) { $identities[$key] = @() }
@@ -167,6 +169,8 @@ function Read-T4PurgeEtl($Diagnostic, $Window, [int]$MaxEvents = 400000, [string
                                 $probes[$probeKey] = [pscustomobject]@{ ProcessId=$processId; Name=$name; Path=$path; CreateCount=0L }
                             }
                             $probes[$probeKey].CreateCount++
+                            $probeProcesses[$processKey] = $true
+                            $probePairs[$processKey + '|' + $directory] = $true
                         }
                         $pairKey = $processKey + '|' + $directory
                         if (-not $pairs.ContainsKey($pairKey)) {
@@ -184,6 +188,11 @@ function Read-T4PurgeEtl($Diagnostic, $Window, [int]$MaxEvents = 400000, [string
     # Hitting the bound is conservatively reported as truncated (the exact-bound case is uncertain).
     $summary.Truncated = $summary.TotalEvents -ge $MaxEvents
     $summary.ProbeCreates = @($probes.Values)
+    # The named probe must remain auditable even when background activity
+    # pushes its process/directory outside the bounded top-N display lists.
+    # Select the actual aggregate buckets; do not reconstruct them from probes.
+    $summary.ProbeProcesses = @($probeProcesses.Keys | ForEach-Object { $processes[$_] })
+    $summary.ProbeProcessDirectories = @($probePairs.Keys | ForEach-Object { $pairs[$_] })
     $summary.DistinctPaths = $paths.Count
     $summary.TopProcesses = @($processes.Values | Sort-Object -Property @{Expression='CreateCount';Descending=$true},ProcessId,Name | Select-Object -First 15)
     $summary.TopProcessDirectories = @($pairs.Values | Sort-Object -Property @{Expression='CreateCount';Descending=$true},ProcessId,Directory | Select-Object -First 30)

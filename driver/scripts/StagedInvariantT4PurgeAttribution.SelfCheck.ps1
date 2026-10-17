@@ -23,6 +23,7 @@ function Assert-PurgeAttribution([bool]$Good, [string]$Label) {
 $root = Join-Path $env:TEMP ('T4PurgeAttributionSelfCheck-' + [guid]::NewGuid().ToString('N'))
 $diagnostic = New-T4PurgeAttribution $root
 $window = $null
+$passed = $false
 try {
     $window = Start-T4PurgeWindow $diagnostic 'selfcheck'
     Assert-PurgeAttribution $window.Started 'real elevated Kernel-File session start'
@@ -43,11 +44,11 @@ try {
     $summary = $window.Summary
     Assert-PurgeAttribution ($diagnostic.Errors.Count -eq 0 -and $null -ne $summary -and -not $summary.Error) 'same ETL parser has no errors'
     Assert-PurgeAttribution ($summary.TotalCreates -gt 0 -and $summary.EventsById['12'] -gt 0 -and $summary.DistinctPaths -gt 0) 'create event 12 and paths'
-    $ownCreates = @($summary.TopProcesses | Where-Object { $_.ProcessId -eq $PID -and $_.CreateCount -gt 0 })
+    $ownCreates = @($summary.ProbeProcesses | Where-Object { $_.ProcessId -eq $PID -and $_.CreateCount -gt 0 })
     Assert-PurgeAttribution ($ownCreates.Count -gt 0) 'event header attributes creates to self-check PID'
     # ETW may use a device path. Compare the unique temp-directory suffix without resolving it by opening files.
     $suffix = '\' + [IO.Path]::GetFileName($root) + '\'
-    $ownDirectories = @($summary.TopProcessDirectories | Where-Object {
+    $ownDirectories = @($summary.ProbeProcessDirectories | Where-Object {
         $_.ProcessId -eq $PID -and $_.Directory.EndsWith($suffix, [StringComparison]::OrdinalIgnoreCase) -and $_.CreateCount -gt 0
     })
     Assert-PurgeAttribution ($ownDirectories.Count -gt 0) 'temp directory under own PID has create events'
@@ -56,7 +57,8 @@ try {
     })
     Assert-PurgeAttribution ($probeCreates.Count -gt 0) 'exact unique probe file under own PID has event 12'
     foreach ($name in 'Label','TotalEvents','EventsById','TotalCreates','DistinctPaths','TopProcesses',
-        'TopProcessDirectories','TopDirectories','LostEvents','LostBuffers','Truncated','MaxEvents','EtlBytes','Error') {
+        'TopProcessDirectories','TopDirectories','ProbeCreates','ProbeProcesses','ProbeProcessDirectories',
+        'LostEvents','LostBuffers','Truncated','MaxEvents','EtlBytes','Error') {
         Assert-PurgeAttribution ($summary.PSObject.Properties.Name -contains $name) ('summary field ' + $name)
     }
     Assert-PurgeAttribution ($summary.TopProcesses.Count -le 15 -and $summary.TopProcessDirectories.Count -le 30 -and
@@ -73,8 +75,9 @@ try {
     }
     Assert-PurgeAttribution ($timeline[1].Qpc -gt $timeline[0].Qpc -and
         $timeline[1].ElapsedMs - $timeline[0].ElapsedMs -ge 900) 'monotonic timeline'
+    $passed = $true
 } catch {
-    # Print the native receipts before the temporary folder is removed, so the gate receipt keeps the cause.
+    # Keep the failed ETL, parser summary and timeline for diagnosis.
     if ($null -ne $window) {
         foreach ($receipt in $window.NativeReceipts) {
             'logman ' + $receipt.Label + ' exit=' + $receipt.ExitCode + ' error=' + $receipt.Error + ' text=' + (([string]$receipt.Text) -replace '\s+', ' ')
@@ -84,6 +87,8 @@ try {
     throw
 } finally {
     if ($null -ne $window -and -not $window.Stopped) { Stop-T4PurgeWindow $diagnostic $window }
-    if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
+    if ($passed) {
+        if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
+    } else { 'T4PurgeAttributionFailedEvidence=' + $root }
 }
 'T4PurgeAttributionSelfCheck=PASS;Controls=' + $count + ';Qualification=False'

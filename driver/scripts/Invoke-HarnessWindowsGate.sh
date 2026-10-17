@@ -37,7 +37,12 @@ foreach(\$f in @(${list%,})){
   "\${f}:ParseErrors=\$(\$e.Count);SHA256=\$h"; if(\$e.Count -ne 0){\$ok=\$false; \$e | ForEach-Object { '  '+\$_.Extent.StartLineNumber+': '+\$_.Message }}
 }
 foreach(\$c in @(${checklist%,})){
-  \$out=& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path '$dest' \$c) 2>&1
+  # Native stderr is evidence, not an exception that can skip the exit receipt.
+  \$savedPreference=\$ErrorActionPreference
+  try {
+    \$ErrorActionPreference='Continue'; \$global:LASTEXITCODE=\$null
+    \$out=& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path '$dest' \$c) 2>&1
+  } finally { \$ErrorActionPreference=\$savedPreference }
   \$code=\$LASTEXITCODE; \$keep=3; if(\$code -ne 0){\$keep=25}; \$out | Select-Object -Last \$keep | ForEach-Object { "  \$c> \$_" }
   "\${c}:Exit=\$code"; if(\$code -ne 0){\$ok=\$false}
 }
