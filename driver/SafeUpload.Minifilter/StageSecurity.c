@@ -1,6 +1,7 @@
 #include "Filter.h"
 #include "StageSecurity.h"
 
+_IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS SafeUploadStageQuerySecurity(_In_ PFLT_INSTANCE Instance,
     _In_ PUNICODE_STRING Name, _In_ BOOLEAN Directory,
     _Outptr_result_nullonfailure_ PSECURITY_DESCRIPTOR *Descriptor);
@@ -15,6 +16,7 @@ static NTSTATUS SafeUploadStageQuerySecurity(_In_ PFLT_INSTANCE Instance,
 #pragma alloc_text(PAGE, SafeUploadStageQueryIdentity)
 #endif
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageQueryIdentity(PFLT_INSTANCE Instance, PUNICODE_STRING Name,
     BOOLEAN Directory, PFILE_ID_INFORMATION Identity)
 {
@@ -43,6 +45,7 @@ NTSTATUS SafeUploadStageQueryIdentity(PFLT_INSTANCE Instance, PUNICODE_STRING Na
 
 // Read the destination's descriptor below our instance. This never creates,
 // truncates, or writes to the protected destination.
+_IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS
 SafeUploadStageQuerySecurity (
     _In_ PFLT_INSTANCE Instance,
@@ -52,10 +55,10 @@ SafeUploadStageQuerySecurity (
     )
 {
     OBJECT_ATTRIBUTES attributes;
-    IO_STATUS_BLOCK ioStatus;
+    IO_STATUS_BLOCK ioStatus = {0};
     HANDLE handle = NULL;
     PFILE_OBJECT fileObject = NULL;
-    ULONG needed = 0;
+    ULONG needed = 0, returned = 0;
     NTSTATUS status;
 
     PAGED_CODE();
@@ -73,23 +76,40 @@ SafeUploadStageQuerySecurity (
         }
         return status;
     }
+    if (status != STATUS_SUCCESS || ioStatus.Status != STATUS_SUCCESS || ioStatus.Information != FILE_OPENED ||
+        handle == NULL || fileObject == NULL) {
+        if (fileObject != NULL) ObDereferenceObject(fileObject);
+        if (handle != NULL) FltClose(handle);
+        return STATUS_INVALID_SECURITY_DESCR;
+    }
 
     status = FltQuerySecurityObject( Instance, fileObject,
-        OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION |
-            DACL_SECURITY_INFORMATION,
+        OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
         NULL, 0, &needed );
-    if (status == STATUS_BUFFER_TOO_SMALL && needed > 0 && needed <= 65536) {
+    if (status == STATUS_BUFFER_TOO_SMALL &&
+        needed >= sizeof(SECURITY_DESCRIPTOR_RELATIVE) && needed <= 65536) {
         *Descriptor = ExAllocatePool2( POOL_FLAG_PAGED, needed,
                                        SAFEUPLOAD_POOL_TAG );
         if (*Descriptor == NULL) {
             status = STATUS_INSUFFICIENT_RESOURCES;
         } else {
             status = FltQuerySecurityObject( Instance, fileObject,
-                OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION |
-                    DACL_SECURITY_INFORMATION,
-                *Descriptor, needed, NULL );
+                OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                *Descriptor, needed, &returned );
         }
     }
+    /* Validate the complete returned representation, including optional
+     * components when present. Requiring ACL presence would reject a valid
+     * absent/NULL ACL. This legacy query is not all-parts T8 evidence. */
+    /* LengthNeeded is documented for the buffer-too-small case only; a successful second query may leave it 0
+     * (ux-k12: every new protected file failed STATUS_INVALID_SECURITY_DESCR). Validate the buffer actually used. */
+    if (status == STATUS_SUCCESS && returned == 0) returned = needed;
+    if (status == STATUS_SUCCESS && *Descriptor != NULL &&
+        (returned < sizeof(SECURITY_DESCRIPTOR_RELATIVE) || returned > needed ||
+         !RtlValidRelativeSecurityDescriptor(*Descriptor, returned, 0))) {
+        status = STATUS_INVALID_SECURITY_DESCR;
+    }
+    if (status != STATUS_SUCCESS && NT_SUCCESS(status)) status = STATUS_NOT_SUPPORTED;
     ObDereferenceObject( fileObject );
     FltClose( handle );
     if (NT_SUCCESS( status ) && *Descriptor == NULL) {
@@ -102,6 +122,7 @@ SafeUploadStageQuerySecurity (
     return status;
 }
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 SafeUploadStageCheckAccess (
     _In_ PFLT_CALLBACK_DATA Data,
@@ -142,6 +163,7 @@ SafeUploadStageCheckAccess (
     return STATUS_SUCCESS;
 }
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 SafeUploadStageCaptureSecurity (
     _In_ PFLT_CALLBACK_DATA Data,
@@ -234,6 +256,7 @@ SafeUploadStageCaptureSecurity (
     return status;
 }
 
+_IRQL_requires_(PASSIVE_LEVEL)
 VOID
 SafeUploadStageFreeSecurity (
     _In_opt_ PSECURITY_DESCRIPTOR SecurityDescriptor,
@@ -250,6 +273,7 @@ SafeUploadStageFreeSecurity (
     }
 }
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 SafeUploadStageCheckRenameAccess (
     _In_ PFLT_CALLBACK_DATA Data,
@@ -333,6 +357,7 @@ Exit:
 
 /* SET_INFORMATION has no CREATE access state. Use its original thread/process,
  * including impersonation, even when a preceding filter changes execution. */
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageCheckSubjectAccess(PFLT_CALLBACK_DATA Data,
     PSECURITY_DESCRIPTOR Descriptor, ACCESS_MASK Desired)
 {

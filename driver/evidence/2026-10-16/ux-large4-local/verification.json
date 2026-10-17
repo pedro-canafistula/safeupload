@@ -1,0 +1,176 @@
+{
+  "label": "ux-large4-local-20261016",
+  "sourceCommit": "51bddbc3e12ec5772117bfd960491c5bea99963b",
+  "checks": {
+    "grant-retry": {
+      "path": ".scratch/ux-large4/selfcheck-grant-retry.log",
+      "sha256": "a812a8ac84d268e69f64cfa52d299075539c9778ab56277beeedd542c4457e9a",
+      "tail": [
+        "GrantValidator=cc: PASS; exact identity/GUID, >2GiB, boundaries, overflow, alignment, padding, negative mutation",
+        "GrantValidator=clang: PASS; exact identity/GUID, >2GiB, boundaries, overflow, alignment, padding, negative mutation"
+      ]
+    },
+    "allocation": {
+      "path": ".scratch/ux-large4/selfcheck-allocation.log",
+      "sha256": "8e7f98685df707245edd90787203756eb9448bf0835f46aa2c52c10d4c4a3d72",
+      "tail": [
+        ".......",
+        "----------------------------------------------------------------------",
+        "Ran 7 tests in 0.852s",
+        "",
+        "OK"
+      ]
+    },
+    "manifest": {
+      "path": ".scratch/ux-large4/selfcheck-manifest.log",
+      "sha256": "b7d0cad0207f8bb1cf4eeceed10187781ce3c2e9eb6661782bcb0ad71832cebd",
+      "tail": [
+        "...",
+        "----------------------------------------------------------------------",
+        "Ran 3 tests in 1.023s",
+        "",
+        "OK"
+      ]
+    },
+    "reconcile": {
+      "path": ".scratch/ux-large4/selfcheck-reconcile.log",
+      "sha256": "ad287154b014676d468c7bde261ab9014ef53ac44b6bdf6d3fc48f52d0420430",
+      "tail": [
+        "...............",
+        "----------------------------------------------------------------------",
+        "Ran 15 tests in 1.355s",
+        "",
+        "OK"
+      ]
+    },
+    "driver-imports": {
+      "path": ".scratch/ux-large4/selfcheck-driver-imports.log",
+      "sha256": "47e488ee9dd22636cff3c820278f2fd780acb7e33c5e29e9cc3de0dd2cbba203",
+      "tail": [
+        "DriverImports not-a-driver.sys FAIL unreadable: 'Unable to read the DOS Header, possibly a truncated file.'",
+        "DriverImportAvailability=FAIL",
+        "DriverImportsSelfCheck=PASS; synthetic controls and 1 retained driver(s)"
+      ]
+    },
+    "agent-matrix": {
+      "path": ".scratch/ux-large4/selfcheck-agent-matrix.log",
+      "sha256": "b059456d1f1c121b9bf874f6c67349b98493fe99e49d68d3fb3b6084e4abefbb",
+      "tail": [
+        "test_standalone_debuggee_transport_keeps_its_old_dependencies (__main__.RunnerModeControls.test_standalone_debuggee_transport_keeps_its_old_dependencies) ... ok",
+        "test_wrapper_guard_mutations_are_caught (__main__.RunnerModeControls.test_wrapper_guard_mutations_are_caught) ... ok",
+        "test_wrapper_modes_and_receipts_even_after_failure (__main__.RunnerModeControls.test_wrapper_modes_and_receipts_even_after_failure) ... ok",
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 21 tests in 1.976s",
+        "",
+        "OK"
+      ]
+    },
+    "agent-defaults": {
+      "path": ".scratch/ux-large4/selfcheck-agent-defaults.log",
+      "sha256": "03b4b3678c0982c8a5f32035892721c84339d9c98e6ef4c994ec80d6f9b950cf",
+      "tail": [
+        "test_local_compile_defaults_explicit_normals_and_mutations (__main__.FeatureAgentDefaults.test_local_compile_defaults_explicit_normals_and_mutations) ... ok",
+        "test_preflight_feature_defaults_explicit_normal_and_mutations (__main__.FeatureAgentDefaults.test_preflight_feature_defaults_explicit_normal_and_mutations) ... ok",
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 2 tests in 0.543s",
+        "",
+        "OK"
+      ]
+    },
+    "metadata-security": {
+      "path": ".scratch/ux-large4/selfcheck-metadata-security.log",
+      "sha256": "3ffe3c79528500d6048fa3b0ab08bd9dcc5f3f66a2184f0af463e6a350c438fa",
+      "tail": [
+        ".legacy security capture: bounded allocation, complete query, malformed/short/pending/open failures and balanced cleanup PASS",
+        "legacy security capture: bounded allocation, complete query, malformed/short/pending/open failures and balanced cleanup PASS",
+        ".",
+        "----------------------------------------------------------------------",
+        "Ran 2 tests in 0.858s",
+        "",
+        "OK"
+      ]
+    },
+    "t11-sop": {
+      "path": ".scratch/ux-large4/selfcheck-t11-sop.log",
+      "sha256": "60fb6b793dc44dc29abdf196d4803a1711e1cf1367eab5c73a9118138bc841b3",
+      "tail": [
+        "...",
+        "----------------------------------------------------------------------",
+        "Ran 3 tests in 1.192s",
+        "",
+        "OK"
+      ]
+    },
+    "t4-verdict": {
+      "path": ".scratch/ux-large4/selfcheck-t4-verdict.log",
+      "sha256": "0ba3ffd46bf9222a88fd4066078f24288132dc340c54397a04eb367c5aa11ffd",
+      "tail": [
+        "T4VolumeDiscriminatorControl=PASS; three classifications and missing result remain INFO, all existing lines and exit unchanged",
+        "purge synthetic replay: T4PurgeAttributionMode INFO purge attribution diagnostic; non-qualifying",
+        "purge synthetic replay: T4PurgeAttribution INFO exit creates 8258, top SafeUpload.Agent.Service.exe[42]=8257, System[4]=1, pass.exe[90]=0; idle creates 17528, top SafeUpload.Agent.Service.exe[42]=17527, System[4]=1, pass.exe[90]=0; purge creates 100, top SafeUpload.Agent.Service.exe[42]=99, System[4]=1, pass.exe[90]=0; SUfl live purged 2391, purged-repeat 2391, purged-agent-stopped 1191; agent stopped True, restart True, readiness True",
+        "T4PurgeAttributionControl=PASS; present/partial/error/missing results INFO only, all existing lines and exit unchanged",
+        "T4DeletePreflightControl=PASS; 9 offline option/dependency controls, no VM contact",
+        "T4VolumePreflightControl=PASS; 10 offline option/dependency controls, no VM contact",
+        "T4PurgePreflightControl=PASS; 9 offline option/combination controls, no VM contact",
+        "T4VerdictSelfCheck=PASS; retained replay and context/registry refusal controls; Qualification=False"
+      ]
+    },
+    "build-debug": {
+      "path": ".scratch/ux-large4/final-build-debug2.log",
+      "sha256": "cad813c4c15b33a6d17d0793f2431ae8c994d299d9a8e50109d6c1a37b84dc9e",
+      "warnings": 0,
+      "errors": 0
+    },
+    "build-release": {
+      "path": ".scratch/ux-large4/final-build-release2.log",
+      "sha256": "f8f3713803f2f0a86a634625ce3ef30330e4b52fee7572d0192487570cd67024",
+      "warnings": 0,
+      "errors": 0
+    }
+  },
+  "localAssemblies": [
+    {
+      "configuration": "debug",
+      "path": ".scratch/ux-large4/artifacts/bin/SafeUpload.Agent.Core/debug/SafeUpload.Agent.Core.dll",
+      "sha256": "d13ceb88b438ed5d3961135d357d8c7425bc218c50eded17ce74ce510dfe1abb"
+    },
+    {
+      "configuration": "debug",
+      "path": ".scratch/ux-large4/artifacts/bin/SafeUpload.Agent.Minifilter/debug/SafeUpload.Agent.Minifilter.dll",
+      "sha256": "9c74ef11dfd538dfc7b840de77aab174724243294fabcef2799d3441712417c6"
+    },
+    {
+      "configuration": "debug",
+      "path": ".scratch/ux-large4/artifacts/bin/SafeUpload.Agent.Service/debug/SafeUpload.Agent.Service.dll",
+      "sha256": "bed879867f3af5ec4597d34491e4966add218b8281525a38179cd43d566175fc"
+    },
+    {
+      "configuration": "debug",
+      "path": ".scratch/ux-large4/artifacts/bin/SafeUpload.Agent.Tests/debug/SafeUpload.Agent.Tests.dll",
+      "sha256": "60db30a9401d20fe268ae638576c1ceb138e85f2f6d7412ba67cb38cf9704441"
+    },
+    {
+      "configuration": "release",
+      "path": ".scratch/ux-large4/artifacts/bin/SafeUpload.Agent.Core/release/SafeUpload.Agent.Core.dll",
+      "sha256": "64930d417eed36b5c24542190eafea88a4f34fead7cfe7b18af6eda1b6302033"
+    },
+    {
+      "configuration": "release",
+      "path": ".scratch/ux-large4/artifacts/bin/SafeUpload.Agent.Minifilter/release/SafeUpload.Agent.Minifilter.dll",
+      "sha256": "e5f27f58102dfbafa687d744052bdca42026c89eb8cfa9621889aaad1c48e32c"
+    },
+    {
+      "configuration": "release",
+      "path": ".scratch/ux-large4/artifacts/bin/SafeUpload.Agent.Service/release/SafeUpload.Agent.Service.dll",
+      "sha256": "a20dae891ae935be164b5d2ef212f3ac15c7a1c2dc1f9b08ac70704847ef1111"
+    },
+    {
+      "configuration": "release",
+      "path": ".scratch/ux-large4/artifacts/bin/SafeUpload.Agent.Tests/release/SafeUpload.Agent.Tests.dll",
+      "sha256": "6037fcf418364e5857e0927dd4232ccd9bd837531dbee474b609388a4bc7ae22"
+    }
+  ],
+  "noWindowsOrVmClaim": true
+}

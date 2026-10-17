@@ -53,12 +53,13 @@ internal static class StagedDestinationFile
         if (!OperatingSystem.IsWindows())
             return File.OpenHandle(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
 
-        var handle = CreateFile(path, 0x40010000, 0, IntPtr.Zero, 1,
+        var handle = CreateFile(path, 0x40010088, 0, IntPtr.Zero, 1,
             0xA0000080, IntPtr.Zero); // GENERIC_WRITE | DELETE, CREATE_NEW, NO_BUFFERING | WRITE_THROUGH
         if (handle.IsInvalid)
         {
             var error = new Win32Exception(Marshal.GetLastWin32Error());
             handle.Dispose();
+            if (error.NativeErrorCode is 32 or 33) throw new StagedPublicationBusyException(error);
             throw new IOException("Could not create approved publication file.", error);
         }
         return handle;
@@ -97,12 +98,15 @@ internal static class StagedDestinationFile
         return length;
     }
 
-    // Best effort before the handle closes: an uncommitted publication temporary is removed
-    // through the handle that created it (its name's publication permit is already spent).
-    public static void TryDeleteUncommitted(SafeFileHandle output)
+    // Before the handle closes, discard through the exact creating handle
+    // (its name's permit is spent). Failure must prevent publication retry.
+    public static bool TryDeleteUncommitted(SafeFileHandle output)
     {
-        if (!OperatingSystem.IsWindows() || output.IsInvalid || output.IsClosed) return;
-        _ = SetFileInformationByHandle(output, 4, [1], 1); // FileDispositionInfo: DeleteFile = TRUE
+        if (!OperatingSystem.IsWindows() || output.IsInvalid || output.IsClosed) return false;
+        // This is the exclusively held, uncommitted service temporary, never
+        // the public target. Cleanup must also work after readonly replay.
+        return SetFileInformationByHandle(output, 21, BitConverter.GetBytes(0x13u), sizeof(uint));
+        // FileDispositionInfoEx: DELETE | POSIX_SEMANTICS | IGNORE_READONLY_ATTRIBUTE
     }
 
     public static void CommitHandle(SafeFileHandle output, string destination)
@@ -116,8 +120,11 @@ internal static class StagedDestinationFile
         BitConverter.GetBytes(name.Length).CopyTo(buffer, offset - sizeof(uint));
         name.CopyTo(buffer, offset);
         if (!SetFileInformationByHandle(output, 22, buffer, buffer.Length))
-            throw new IOException("Could not replace the destination entry.",
-                new Win32Exception(Marshal.GetLastWin32Error()));
+        {
+            var error = new Win32Exception(Marshal.GetLastWin32Error());
+            if (error.NativeErrorCode is 32 or 33) throw new StagedPublicationBusyException(error);
+            throw new IOException("Could not replace the destination entry.", error);
+        }
     }
 
     // Capture the object on the held publication handle, never by reopening

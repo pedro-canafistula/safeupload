@@ -2073,6 +2073,7 @@ Return Value:
             command == SAFEUPLOAD_CONTROL_STAGE_DISPOSE ||
 #if SAFEUPLOAD_STAGING_PROTOTYPE
             command == SAFEUPLOAD_CONTROL_BOUND_PUBLICATION ||
+            command == SAFEUPLOAD_CONTROL_STAGE_SPACE_CAPABILITIES ||
             command == SAFEUPLOAD_CONTROL_WRITER_METADATA ||
             command == SAFEUPLOAD_CONTROL_NATIVE_RECORD_REPLAY ||
             command == SAFEUPLOAD_CONTROL_NATIVE_NAME_OBSERVATION ||
@@ -2089,6 +2090,24 @@ Return Value:
         if (command == SAFEUPLOAD_CONTROL_BOUND_PUBLICATION) {
             status = SafeUploadBoundPublicationControl(PortCookie, InputBuffer, InputBufferLength,
                 OutputBuffer, OutputBufferLength, ReturnOutputBufferLength);
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_STAGE_SPACE_CAPABILITIES) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(UINT32)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) || controlHeader.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+            ProbeForWrite(OutputBuffer, sizeof(UINT32), __alignof(UINT32));
+            *(UINT32 *)OutputBuffer = SAFEUPLOAD_STAGE_RESOURCE_SEAL_VERSION;
+            *ReturnOutputBufferLength = sizeof(UINT32);
+            status = STATUS_SUCCESS;
             leave;
         }
 

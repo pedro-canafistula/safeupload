@@ -7,13 +7,41 @@
 #define ALIAS_BYTES 65536
 #define ALIAS_LIMIT 64
 
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageAliasOpenId(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_STRING Volume,
+    _In_ LONGLONG Id, _In_ BOOLEAN Directory, _Out_ PHANDLE Handle,
+    _Outptr_result_nullonfailure_ PFILE_OBJECT *Object);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageAliasEntryProtected(_In_ PFLT_CALLBACK_DATA Data, _In_ PFLT_INSTANCE Instance,
+    _In_ PUNICODE_STRING Volume, _In_ PFILE_LINK_ENTRY_INFORMATION Entry,
+    _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageAliasQuery(_In_ PFLT_CALLBACK_DATA Data, _In_ PFLT_INSTANCE Instance,
+    _In_ PFILE_OBJECT Object, _In_ PUNICODE_STRING Volume,
+    _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected);
+
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageCheckNamedAliases)
 #pragma alloc_text(PAGE, SafeUploadStageCheckObjectAliases)
+#pragma alloc_text(PAGE, StageAliasOpenId)
+#pragma alloc_text(PAGE, StageAliasEntryProtected)
+#pragma alloc_text(PAGE, StageAliasQuery)
 #endif
 
-static NTSTATUS StageAliasOpenId(PFLT_INSTANCE Instance, PUNICODE_STRING Volume,
-    LONGLONG Id, BOOLEAN Directory, PHANDLE Handle, PFILE_OBJECT *Object)
+/* Preserve native query/open failure sites, as well as the NTSTATUS returned to
+ * the admission gate. The old aliasCheckFailed record could not distinguish an
+ * object query, parent ID open, or parent name query. No token is inferred from
+ * the outer request's KernelMode flag. */
+__declspec(noinline) static NTSTATUS StageAliasFailure(_In_ PFLT_CALLBACK_DATA Data, _In_ NTSTATUS Status)
+{
+    SafeUploadDenySiteHint(Data, _ReturnAddress());
+    return Status;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageAliasOpenId(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_STRING Volume,
+    _In_ LONGLONG Id, _In_ BOOLEAN Directory, _Out_ PHANDLE Handle,
+    _Outptr_result_nullonfailure_ PFILE_OBJECT *Object)
 {
     PWCHAR buffer;
     UNICODE_STRING name;
@@ -21,6 +49,7 @@ static NTSTATUS StageAliasOpenId(PFLT_INSTANCE Instance, PUNICODE_STRING Volume,
     IO_STATUS_BLOCK io = {0};
     ULONG length = Volume->Length + sizeof(WCHAR) + sizeof(Id);
     NTSTATUS status;
+    PAGED_CODE();
     *Handle = NULL; *Object = NULL;
     if (length > SAFEUPLOAD_MAX_PATH_CHARS * sizeof(WCHAR)) return STATUS_NAME_TOO_LONG;
     buffer = ExAllocatePool2(POOL_FLAG_PAGED, length, ALIAS_TAG);
@@ -37,12 +66,14 @@ static NTSTATUS StageAliasOpenId(PFLT_INSTANCE Instance, PUNICODE_STRING Volume,
             (Directory ? FILE_DIRECTORY_FILE : FILE_NON_DIRECTORY_FILE),
         NULL, 0, IO_IGNORE_SHARE_ACCESS_CHECK, NULL);
     ExFreePoolWithTag(buffer, ALIAS_TAG);
+    if (!NT_SUCCESS(status)) { *Handle = NULL; *Object = NULL; } /* _Outptr_result_nullonfailure_ */
     return status;
 }
 
-static NTSTATUS StageAliasEntryProtected(PFLT_INSTANCE Instance,
-    PUNICODE_STRING Volume, PFILE_LINK_ENTRY_INFORMATION Entry,
-    SAFEUPLOAD_VOLUME_KIND Kind, PBOOLEAN Protected)
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageAliasEntryProtected(_In_ PFLT_CALLBACK_DATA Data, _In_ PFLT_INSTANCE Instance,
+    _In_ PUNICODE_STRING Volume, _In_ PFILE_LINK_ENTRY_INFORMATION Entry,
+    _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected)
 {
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
@@ -51,15 +82,17 @@ static NTSTATUS StageAliasEntryProtected(PFLT_INSTANCE Instance,
     UNICODE_STRING path;
     ULONG length, index;
     NTSTATUS status;
+    PAGED_CODE();
+    *Protected = FALSE;
     for (index = 0; index < Entry->FileNameLength; ++index)
         if (Entry->FileName[index] == L'\\' || Entry->FileName[index] == L'/' ||
             Entry->FileName[index] == L'\0' || Entry->FileName[index] == L':')
             return STATUS_DATA_ERROR;
     status = StageAliasOpenId(Instance, Volume, Entry->ParentFileId, TRUE, &handle, &object);
-    if (status != STATUS_SUCCESS) goto Exit;
+    if (status != STATUS_SUCCESS) { status = StageAliasFailure(Data, status); goto Exit; }
     status = FltGetFileNameInformationUnsafe(object, Instance,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_FILESYSTEM_ONLY, &parent);
-    if (!NT_SUCCESS(status)) goto Exit;
+    if (!NT_SUCCESS(status)) { status = StageAliasFailure(Data, status); goto Exit; }
     status = FltParseFileNameInformation(parent);
     if (!NT_SUCCESS(status)) goto Exit;
     /* Verify that the ID was resolved on the intended original volume. */
@@ -88,23 +121,27 @@ Exit:
     return status;
 }
 
-static NTSTATUS StageAliasQuery(PFLT_INSTANCE Instance, PFILE_OBJECT Object,
-    PUNICODE_STRING Volume, SAFEUPLOAD_VOLUME_KIND Kind, PBOOLEAN Protected)
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageAliasQuery(_In_ PFLT_CALLBACK_DATA Data, _In_ PFLT_INSTANCE Instance,
+    _In_ PFILE_OBJECT Object, _In_ PUNICODE_STRING Volume,
+    _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected)
 {
     PFILE_LINKS_INFORMATION links = NULL;
     PFILE_LINK_ENTRY_INFORMATION entry;
     FILE_STANDARD_INFORMATION standard;
     ULONG returned = 0, offset, index, available, nameBytes;
     NTSTATUS status;
+    PAGED_CODE();
     *Protected = FALSE;
     status = FltQueryInformationFile(Instance, Object, &standard,
         sizeof(standard), FileStandardInformation, NULL);
-    if (!NT_SUCCESS(status) || standard.Directory || standard.NumberOfLinks <= 1) return status;
+    if (!NT_SUCCESS(status)) return StageAliasFailure(Data, status);
+    if (standard.Directory || standard.NumberOfLinks <= 1) return status;
     if (standard.NumberOfLinks > ALIAS_LIMIT) return STATUS_TOO_MANY_LINKS;
     links = ExAllocatePool2(POOL_FLAG_PAGED, ALIAS_BYTES, ALIAS_TAG);
     if (links == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     status = FltQueryInformationFile(Instance, Object, links, ALIAS_BYTES, FileHardLinkInformation, &returned);
-    if (status != STATUS_SUCCESS) goto Exit; /* Never interpret a partial enumeration. */
+    if (status != STATUS_SUCCESS) { status = StageAliasFailure(Data, status); goto Exit; } /* Never interpret a partial enumeration. */
     if (returned > ALIAS_BYTES || returned < (ULONG)FIELD_OFFSET(FILE_LINKS_INFORMATION, Entry) ||
         links->BytesNeeded == 0 || links->BytesNeeded > ALIAS_BYTES || links->EntriesReturned == 0 ||
         links->EntriesReturned > ALIAS_LIMIT || links->EntriesReturned < standard.NumberOfLinks) {
@@ -123,7 +160,7 @@ static NTSTATUS StageAliasQuery(PFLT_INSTANCE Instance, PFILE_OBJECT Object,
             status = STATUS_DATA_ERROR; goto Exit;
         }
         nameBytes = entry->FileNameLength * sizeof(WCHAR);
-        status = StageAliasEntryProtected(Instance, Volume, entry, Kind, Protected);
+        status = StageAliasEntryProtected(Data, Instance, Volume, entry, Kind, Protected);
         if (!NT_SUCCESS(status) || *Protected) goto Exit;
         if (index + 1 == links->EntriesReturned) {
             if (entry->NextEntryOffset != 0) status = STATUS_DATA_ERROR;
@@ -155,7 +192,8 @@ static BOOLEAN StageAliasIsVolumeSystemFile(_In_ PFLT_FILE_NAME_INFORMATION Name
     return FALSE;
 }
 
-NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance,
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_CALLBACK_DATA Data, _In_ PFLT_INSTANCE Instance,
     _In_ PFLT_FILE_NAME_INFORMATION Name, _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected,
     _Inout_opt_ PSAFEUPLOAD_CREATE_ALIAS_PROOF Proof)
 {
@@ -188,7 +226,7 @@ NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance,
      * create that really goes through a symbolic link re-enters this filter under the target's name and is classified there. */
     if (status == STATUS_STOPPED_ON_SYMLINK && io.Information != 0) ExFreePool((PVOID)io.Information);
     if (status == STATUS_SUCCESS) {
-        status = StageAliasQuery(Instance, object, &Name->Volume, Kind, Protected);
+        status = StageAliasQuery(Data, Instance, object, &Name->Volume, Kind, Protected);
         /* The proof names the file this check examined, so a name re-pointed before the create cannot inherit it. */
         if (status == STATUS_SUCCESS && !*Protected && Proof != NULL) {
             ULONG returned = 0;
@@ -205,19 +243,16 @@ NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance,
             Proof->Valid = TRUE;
         }
         status = STATUS_SUCCESS;
-    }
+    } else status = StageAliasFailure(Data, status);
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
     return status;
 }
 
-NTSTATUS SafeUploadStageCheckObjectAliases(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Object,
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageCheckObjectAliases(_In_ PFLT_CALLBACK_DATA Data, _In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Object,
     _In_ PUNICODE_STRING Volume, _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected)
 {
-    FILE_STANDARD_INFORMATION standard;
-    FILE_INTERNAL_INFORMATION identity;
-    HANDLE handle = NULL;
-    PFILE_OBJECT queried = NULL;
     FLT_FILESYSTEM_TYPE fs;
     NTSTATUS status;
     PAGED_CODE();
@@ -225,15 +260,9 @@ NTSTATUS SafeUploadStageCheckObjectAliases(_In_ PFLT_INSTANCE Instance, _In_ PFI
     if (IoGetTopLevelIrp() != NULL) return STATUS_ACCESS_DENIED;
     status = FltGetFileSystemType(Instance, &fs);
     if (!NT_SUCCESS(status) || fs != FLT_FSTYPE_NTFS) return status;
-    status = FltQueryInformationFile(Instance, Object, &standard, sizeof(standard), FileStandardInformation, NULL);
-    if (!NT_SUCCESS(status) || standard.Directory || standard.NumberOfLinks <= 1) return status;
-    status = FltQueryInformationFile(Instance, Object, &identity, sizeof(identity), FileInternalInformation, NULL);
-    if (!NT_SUCCESS(status)) return status;
-    /* Open the actual source object by ID with READ_ATTRIBUTES. Looking up its
-     * current opened path could instead inspect a replacement object. */
-    status = StageAliasOpenId(Instance, Volume, identity.IndexNumber.QuadPart, FALSE, &handle, &queried);
-    if (status == STATUS_SUCCESS) status = StageAliasQuery(Instance, queried, Volume, Kind, Protected);
-    if (queried != NULL) ObDereferenceObject(queried);
-    if (handle != NULL) FltClose(handle);
-    return status;
+    /* The callback already owns the exact open object. Query it directly:
+     * reopening its ID added an access/traverse decision in the current thread's
+     * subject (potentially restricted/impersonating), without adding identity
+     * authority. A pathname reopen could inspect a replacement instead. */
+    return StageAliasQuery(Data, Instance, Object, Volume, Kind, Protected);
 }

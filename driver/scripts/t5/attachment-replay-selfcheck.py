@@ -126,7 +126,13 @@ class AttachmentReplay(unittest.TestCase):
         valid = body('StageProtocol.c', 'StageProtocolStatusResultValid')
         branch = valid[valid.index('case SAFEUPLOAD_OPERATION_STAGE_ATTACH_COMPLETION_PERMITTED:'):]
         branch = branch[:branch.index('case SAFEUPLOAD_OPERATION_STAGE_RETIRE_UNEXPOSED:')]
-        self.assertRegex(branch, r'return Result == SAFEUPLOAD_STAGE_RESULT_COMPLETION_PERMITTED;\s*$')
+        self.assertRegex(branch, r'return Result == SAFEUPLOAD_STAGE_RESULT_COMPLETION_PERMITTED \|\|\s*'
+                         r'Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE;\s*$')
+        # The exact retry reply is storage uncertainty, never completion permission.
+        exchange = body('StageProtocol.c', 'SafeUploadStageAttachmentExchangeV20')
+        self.order(exchange, 'StageProtocolReadAttachReplyV20(exchange, &expected, Result)',
+                   'if (NT_SUCCESS(status) && *Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE) status = STATUS_DEVICE_BUSY;',
+                   'return status;')
 
     def test_one_lifecycle_claim_through_completion(self):
         create = stream('StageCreate')
@@ -188,7 +194,7 @@ class AttachmentReplay(unittest.TestCase):
         complete = stream('StageAttachComplete')
         self.order(complete, 'if (NT_SUCCESS(Status) && cancelled) Status = STATUS_CANCELLED;',
                    'if (NT_SUCCESS(Status) && Transaction->NeedsAttachCommit',
-                   'FltCompletePendedPreOperation(Transaction->CallbackData, FLT_PREOP_COMPLETE, NULL)',
+                   'StageAttachFinishCallback(Transaction, FLT_PREOP_COMPLETE, NULL)',
                    'if (NT_SUCCESS(Status) && Transaction->NeedsAttachCommit',
                    'StageClearPrivateDelete(stream)')
         for name in ('StageAttachExchangeRetry', 'StageAttachDrainTransaction', 'StageAttachRunLifecycle'):
@@ -365,7 +371,11 @@ MUTATIONS = (
      'Stream->DrainStatus = status;\n            StageClearPrivateDelete(Stream);\n            Stream->Wait = STAGE_WAIT_SERVICE;'),
     ('early_seal', 'StageStream.c', 'Stream->Wait = STAGE_WAIT_SERVICE;\n        return;\n    }\n#endif\n    Stream->Wait = STAGE_WAIT_NONE;',
      'Stream->Wait = STAGE_WAIT_SERVICE;\n        StageSealVersion(Stream);\n    }\n#endif\n    Stream->Wait = STAGE_WAIT_NONE;'),
-    ('synthetic_op15_result', 'StageProtocol.c', 'return Result == SAFEUPLOAD_STAGE_RESULT_COMPLETION_PERMITTED;', 'return TRUE;'),
+    ('synthetic_op15_result', 'StageProtocol.c',
+     'return Result == SAFEUPLOAD_STAGE_RESULT_COMPLETION_PERMITTED ||\n            Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE;', 'return TRUE;'),
+    ('retry_as_permission', 'StageProtocol.c',
+     'if (NT_SUCCESS(status) && *Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE) status = STATUS_DEVICE_BUSY;',
+     'if (NT_SUCCESS(status) && *Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE) status = STATUS_SUCCESS;'),
     ('changed_replay_bytes', 'StageProtocol.c', 'status = RtlEqualMemory(Request, expected, sizeof(*expected)) ? STATUS_SUCCESS :', 'status = TRUE ? STATUS_SUCCESS :'),
     ('missing_handoff', 'StageStream.c', 'Transaction->Stream = stream;', ''),
     ('missing_attach_pin', 'StageStream.c', 'Transaction->BindingInstalled = TRUE;\n    InterlockedIncrement(&stream->RpcReferences);',

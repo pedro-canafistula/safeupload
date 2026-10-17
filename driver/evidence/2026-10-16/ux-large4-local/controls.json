@@ -1,0 +1,823 @@
+{
+  "label": "ux-large4-local-20261016",
+  "sourceCommit": "51bddbc3e12ec5772117bfd960491c5bea99963b",
+  "kind": "Linux in-process diagnostic: actual Fact/Theory methods, not Windows/VSTest/matrix qualification",
+  "primaryCases": 150,
+  "finalFixtureAndAccountingRechecks": 6,
+  "uniqueCases": 151,
+  "failed": 0,
+  "selectors": [
+    "NotificationHubTests",
+    "NotificationRecordTests.Chain_hashes_exact_utf8_line_without_lf_and_restart_keeps_sequence",
+    "NotificationRecordTests.Complete_history_removal_cannot_silently_reset_an_existing_writer_lease",
+    "NotificationRecordTests.Concurrent_emitters_have_one_durable_total_order_matching_delivery",
+    "NotificationRecordTests.Corruption_is_refused_without_repair",
+    "NotificationRecordTests.Inspection_failure_metadata_is_refused_for_unknown_kind_or_nonblocked_phase",
+    "NotificationRecordTests.Online_empty_history_recovery_starts_a_new_instance_even_for_an_initially_fresh_writer",
+    "NotificationRecordTests.Record_is_flushed_before_queue_and_retained_state_are_changed",
+    "NotificationRecordTests.Recovery_does_not_move_unexpected_children_or_follow_links",
+    "NotificationRecordTests.Released_transfer_requires_its_published_digest",
+    "NotificationRecordTests.Reparse_directory_is_refused",
+    "NotificationRecordTests.Replayed_events_and_connection_status_are_recorded_again_before_send",
+    "NotificationRecordTests.Retired_empty_private_reason_is_reserved_and_cannot_be_emitted",
+    "NotificationRecordTests.Rotation_announces_loss_and_keeps_bounded_contiguous_history",
+    "NotificationRecordTests.Smaller_window_accepts_legacy_segments_and_ages_them_out_without_chain_reset",
+    "NotificationRecordTests.Staging_space_alert_and_invalid_input_do_not_close_later_notifications",
+    "NotificationRecordTests.Startup_preserves_damaged_history_warns_and_delivers_on_a_fresh_chain",
+    "NotificationRecordTests.Transient_storage_failure_recovers_in_process_preserves_damage_and_never_delivers_failed_emission",
+    "NotificationRecordTests.Two_hours_of_heartbeats_keep_a_small_hash_chained_window_across_restart",
+    "NotificationRecordTests.Write_failure_suppresses_delivery_replay_and_status_and_is_logged",
+    "StagedAllocationRecoveryTests",
+    "StagedJournalCompactionIndexTests.Cancelled_index_selection_stops_before_creating_a_retention_result",
+    "StagedJournalCompactionIndexTests.Every_maximum_generation_tie_keeps_its_own_reference_chain",
+    "StagedJournalCompactionIndexTests.Kind5_high_water_and_effective_barrier_both_survive_compaction_with_an_older_pending_save",
+    "StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history",
+    "StagedJournalCompactionIndexTests.Shared_references_and_cycles_are_visited_without_losing_any_reachable_record",
+    "StagedJournalCompactionIndexTests.Unresolved_create_after_delete_retains_successor_and_its_transitive_reference_closure",
+    "StagedLargeDefaultsTests",
+    "StagedLargeFileTests",
+    "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart",
+    "StagedTerminalArchiveTests.Archive_preserves_exact_receipt_and_rejects_changed_completion_and_reused_id",
+    "StagedTerminalArchiveTests.Archive_segment_reparse_is_refused_without_changing_its_target",
+    "StagedTerminalArchiveTests.Blocked_archive_requires_and_preserves_exact_delete_receipt_and_handback",
+    "StagedTerminalArchiveTests.Cancellation_retains_its_separate_generation_and_exact_cleanup_replay",
+    "StagedTerminalArchiveTests.Coherently_rechecksummed_runtime_rewrite_cannot_change_the_validated_claim_index",
+    "StagedTerminalArchiveTests.Compaction_deletes_old_receipts_but_keeps_generation_and_hot_ancestor_closure",
+    "StagedTerminalArchiveTests.Compaction_interruption_holds_live_index_and_restart_preserves_all_required_claims",
+    "StagedTerminalArchiveTests.Current_epoch_receipts_ignore_age_until_exact_drain_and_keep_the_high_water_afterward",
+    "StagedTerminalArchiveTests.Duplicate_batch_ids_are_refused_before_writing_any_archive_frame",
+    "StagedTerminalArchiveTests.Duplicate_hot_archive_disagreement_is_never_silently_selected",
+    "StagedTerminalArchiveTests.Interrupted_append_before_frontier_preserves_old_receipts_and_leaves_new_work_hot",
+    "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt",
+    "StagedTerminalArchiveTests.Late_driver_last_close_eventually_archives_the_exact_release_without_republishing",
+    "StagedTerminalArchiveTests.Rename_tombstone_barriers_and_maximum_ties_survive_archive_restart_and_compaction",
+    "StagedTerminalArchiveTests.Ten_thousand_terminal_records_leave_constant_hot_work_and_bounded_allocate_seal_cost",
+    "StagedTerminalArchiveTests.Truncated_committed_archive_never_drops_a_barrier_even_with_a_hot_duplicate",
+    "StagedTerminalArchiveTests.Uncommitted_append_tail_behind_the_durable_frontier_cannot_add_a_generation",
+    "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot",
+    "StagedTerminalArchiveTests.Whole_committed_frame_or_control_loss_is_not_an_empty_archive",
+    "StagedTransferJournalTests.Compaction_keeps_the_newest_version_while_an_older_one_can_still_be_justified",
+    "StagedTransferJournalTests.Kind5_high_water_cannot_compact_away_a_published_barrier_and_revive_an_older_save",
+    "StagedTransferJournalTests.Late_yes_kind5_cleanup_retires_effective_claim_but_preserves_generation_high_water",
+    "StagedTransferJournalTests.V19_unattached_allocation_cleanup_cannot_discard_a_sealed_version",
+    "StagedTransferJournalTests.V19_unattached_allocation_cleanup_is_exact_epoch_bound_and_ignores_public_collision",
+    "StagedLargeFileTests.Even_empty_legacy_refusal_files_debit_physical_metadata_without_refusing_startup"
+  ],
+  "outcomes": [
+    {
+      "name": "NotificationHubTests.Assinante_que_nao_le_nao_bloqueia_quem_publica[]",
+      "outcome": "Passed",
+      "elapsedMs": 36.9893
+    },
+    {
+      "name": "NotificationHubTests.Assinante_recebe_o_que_foi_publicado[]",
+      "outcome": "Passed",
+      "elapsedMs": 2.4134
+    },
+    {
+      "name": "NotificationHubTests.Assinante_sem_sessao_conhecida_recebe_tudo[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.2085
+    },
+    {
+      "name": "NotificationHubTests.Assinatura_descartada_para_de_receber[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.1707
+    },
+    {
+      "name": "NotificationHubTests.Descartar_duas_vezes_nao_lanca[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.0603
+    },
+    {
+      "name": "NotificationHubTests.Estado_atual_e_retido_para_quem_conectar_depois[]",
+      "outcome": "Passed",
+      "elapsedMs": 2.5624
+    },
+    {
+      "name": "NotificationHubTests.Estado_nao_entra_na_janela_de_reproducao[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.1545
+    },
+    {
+      "name": "NotificationHubTests.Estado_retido_e_sempre_o_mais_recente[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.1094
+    },
+    {
+      "name": "NotificationHubTests.Evento_antigo_nao_e_reproduzido[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.2695
+    },
+    {
+      "name": "NotificationHubTests.Evento_com_sessao_nao_vaza_para_outra_sessao[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.2675
+    },
+    {
+      "name": "NotificationHubTests.Evento_nao_substitui_o_estado_retido[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.1264
+    },
+    {
+      "name": "NotificationHubTests.Evento_publicado_sem_ninguem_ouvindo_e_entregue_a_quem_conecta[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.1768
+    },
+    {
+      "name": "NotificationHubTests.Evento_sem_sessao_vai_para_todos[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.134
+    },
+    {
+      "name": "NotificationHubTests.Sem_assinante_publicar_nao_lanca[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.0843
+    },
+    {
+      "name": "NotificationHubTests.Staged_blocked_notification_requires_matching_session_and_user_sid[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.5749
+    },
+    {
+      "name": "NotificationHubTests.Staging_space_alert_requires_exact_owner_and_replays_only_to_that_owner[]",
+      "outcome": "Passed",
+      "elapsedMs": 2.0136
+    },
+    {
+      "name": "NotificationHubTests.Todos_os_assinantes_recebem[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.4453
+    },
+    {
+      "name": "NotificationRecordTests.Chain_hashes_exact_utf8_line_without_lf_and_restart_keeps_sequence[]",
+      "outcome": "Passed",
+      "elapsedMs": 4337.9184
+    },
+    {
+      "name": "NotificationRecordTests.Complete_history_removal_cannot_silently_reset_an_existing_writer_lease[]",
+      "outcome": "Passed",
+      "elapsedMs": 213.0908
+    },
+    {
+      "name": "NotificationRecordTests.Concurrent_emitters_have_one_durable_total_order_matching_delivery[]",
+      "outcome": "Passed",
+      "elapsedMs": 6090.052
+    },
+    {
+      "name": "NotificationRecordTests.Corruption_is_refused_without_repair[\"edit\"]",
+      "outcome": "Passed",
+      "elapsedMs": 81.1606
+    },
+    {
+      "name": "NotificationRecordTests.Corruption_is_refused_without_repair[\"tail\"]",
+      "outcome": "Passed",
+      "elapsedMs": 83.6935
+    },
+    {
+      "name": "NotificationRecordTests.Corruption_is_refused_without_repair[\"partial\"]",
+      "outcome": "Passed",
+      "elapsedMs": 83.2921
+    },
+    {
+      "name": "NotificationRecordTests.Corruption_is_refused_without_repair[\"sequence\"]",
+      "outcome": "Passed",
+      "elapsedMs": 97.8279
+    },
+    {
+      "name": "NotificationRecordTests.Corruption_is_refused_without_repair[\"head\"]",
+      "outcome": "Passed",
+      "elapsedMs": 97.5842
+    },
+    {
+      "name": "NotificationRecordTests.Inspection_failure_metadata_is_refused_for_unknown_kind_or_nonblocked_phase[0]",
+      "outcome": "Passed",
+      "elapsedMs": 106.1143
+    },
+    {
+      "name": "NotificationRecordTests.Inspection_failure_metadata_is_refused_for_unknown_kind_or_nonblocked_phase[3]",
+      "outcome": "Passed",
+      "elapsedMs": 80.6365
+    },
+    {
+      "name": "NotificationRecordTests.Inspection_failure_metadata_is_refused_for_unknown_kind_or_nonblocked_phase[1]",
+      "outcome": "Passed",
+      "elapsedMs": 4.3919
+    },
+    {
+      "name": "NotificationRecordTests.Inspection_failure_metadata_is_refused_for_unknown_kind_or_nonblocked_phase[2]",
+      "outcome": "Passed",
+      "elapsedMs": 4.2685
+    },
+    {
+      "name": "NotificationRecordTests.Online_empty_history_recovery_starts_a_new_instance_even_for_an_initially_fresh_writer[]",
+      "outcome": "Passed",
+      "elapsedMs": 235.4856
+    },
+    {
+      "name": "NotificationRecordTests.Record_is_flushed_before_queue_and_retained_state_are_changed[]",
+      "outcome": "Passed",
+      "elapsedMs": 84.4069
+    },
+    {
+      "name": "NotificationRecordTests.Recovery_does_not_move_unexpected_children_or_follow_links[]",
+      "outcome": "Passed",
+      "elapsedMs": 87.3805
+    },
+    {
+      "name": "NotificationRecordTests.Released_transfer_requires_its_published_digest[]",
+      "outcome": "Passed",
+      "elapsedMs": 71.5915
+    },
+    {
+      "name": "NotificationRecordTests.Reparse_directory_is_refused[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.3943
+    },
+    {
+      "name": "NotificationRecordTests.Replayed_events_and_connection_status_are_recorded_again_before_send[]",
+      "outcome": "Passed",
+      "elapsedMs": 83.7151
+    },
+    {
+      "name": "NotificationRecordTests.Retired_empty_private_reason_is_reserved_and_cannot_be_emitted[]",
+      "outcome": "Passed",
+      "elapsedMs": 71.9026
+    },
+    {
+      "name": "NotificationRecordTests.Rotation_announces_loss_and_keeps_bounded_contiguous_history[]",
+      "outcome": "Passed",
+      "elapsedMs": 1893.5973
+    },
+    {
+      "name": "NotificationRecordTests.Smaller_window_accepts_legacy_segments_and_ages_them_out_without_chain_reset[]",
+      "outcome": "Passed",
+      "elapsedMs": 70477.9445
+    },
+    {
+      "name": "NotificationRecordTests.Staging_space_alert_and_invalid_input_do_not_close_later_notifications[]",
+      "outcome": "Passed",
+      "elapsedMs": 11.437
+    },
+    {
+      "name": "NotificationRecordTests.Startup_preserves_damaged_history_warns_and_delivers_on_a_fresh_chain[\"tail\"]",
+      "outcome": "Passed",
+      "elapsedMs": 26.0966
+    },
+    {
+      "name": "NotificationRecordTests.Startup_preserves_damaged_history_warns_and_delivers_on_a_fresh_chain[\"partial\"]",
+      "outcome": "Passed",
+      "elapsedMs": 19.6324
+    },
+    {
+      "name": "NotificationRecordTests.Startup_preserves_damaged_history_warns_and_delivers_on_a_fresh_chain[\"json\"]",
+      "outcome": "Passed",
+      "elapsedMs": 18.8994
+    },
+    {
+      "name": "NotificationRecordTests.Startup_preserves_damaged_history_warns_and_delivers_on_a_fresh_chain[\"head\"]",
+      "outcome": "Passed",
+      "elapsedMs": 19.8752
+    },
+    {
+      "name": "NotificationRecordTests.Startup_preserves_damaged_history_warns_and_delivers_on_a_fresh_chain[\"missing-head\"]",
+      "outcome": "Passed",
+      "elapsedMs": 19.8837
+    },
+    {
+      "name": "NotificationRecordTests.Startup_preserves_damaged_history_warns_and_delivers_on_a_fresh_chain[\"temporary-head\"]",
+      "outcome": "Passed",
+      "elapsedMs": 19.403
+    },
+    {
+      "name": "NotificationRecordTests.Startup_preserves_damaged_history_warns_and_delivers_on_a_fresh_chain[\"missing-history\"]",
+      "outcome": "Passed",
+      "elapsedMs": 20.1446
+    },
+    {
+      "name": "NotificationRecordTests.Transient_storage_failure_recovers_in_process_preserves_damage_and_never_delivers_failed_emission[]",
+      "outcome": "Passed",
+      "elapsedMs": 11.604
+    },
+    {
+      "name": "NotificationRecordTests.Two_hours_of_heartbeats_keep_a_small_hash_chained_window_across_restart[]",
+      "outcome": "Passed",
+      "elapsedMs": 18567.3444
+    },
+    {
+      "name": "NotificationRecordTests.Write_failure_suppresses_delivery_replay_and_status_and_is_logged[]",
+      "outcome": "Passed",
+      "elapsedMs": 3.9606
+    },
+    {
+      "name": "StagedAllocationRecoveryTests.Background_recovery_is_bounded_and_a_held_unknown_object_does_not_stop_other_users[]",
+      "outcome": "Passed",
+      "elapsedMs": 180.4727
+    },
+    {
+      "name": "StagedAllocationRecoveryTests.Exact_kind5_abort_releases_sid_metadata_and_keeps_hot_or_packed_replay_accounted[false]",
+      "outcome": "Passed",
+      "elapsedMs": 5139.5104
+    },
+    {
+      "name": "StagedAllocationRecoveryTests.Exact_kind5_abort_releases_sid_metadata_and_keeps_hot_or_packed_replay_accounted[true]",
+      "outcome": "Passed",
+      "elapsedMs": 535.4083
+    },
+    {
+      "name": "StagedAllocationRecoveryTests.Hundreds_of_failed_allocations_recover_on_restart_once_then_same_and_other_users_save[]",
+      "outcome": "Passed",
+      "elapsedMs": 54.689
+    },
+    {
+      "name": "StagedAllocationRecoveryTests.Repeated_failed_seeds_have_no_retained_metadata_and_never_double_refund[]",
+      "outcome": "Passed",
+      "elapsedMs": 332.2361
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Cancelled_index_selection_stops_before_creating_a_retention_result[]",
+      "outcome": "Passed",
+      "elapsedMs": 1.9392
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Every_maximum_generation_tie_keeps_its_own_reference_chain[]",
+      "outcome": "Passed",
+      "elapsedMs": 7.955
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Kind5_high_water_and_effective_barrier_both_survive_compaction_with_an_older_pending_save[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.3149
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history[1000]",
+      "outcome": "Passed",
+      "elapsedMs": 4.9575
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history[10000]",
+      "outcome": "Passed",
+      "elapsedMs": 54.4296
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Reference_chains_retain_every_exact_ancestor_and_remove_unreferenced_history[50000]",
+      "outcome": "Passed",
+      "elapsedMs": 284.7664
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Shared_references_and_cycles_are_visited_without_losing_any_reachable_record[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.5732
+    },
+    {
+      "name": "StagedJournalCompactionIndexTests.Unresolved_create_after_delete_retains_successor_and_its_transitive_reference_closure[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.469
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Approved_default_per_user_exhaustion_survives_restart_without_consuming_another_users_share[]",
+      "outcome": "Passed",
+      "elapsedMs": 7.2938
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Completed_legacy_hot_and_packed_history_remains_compatible_and_unchanged[false]",
+      "outcome": "Passed",
+      "elapsedMs": 11.8115
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Completed_legacy_hot_and_packed_history_remains_compatible_and_unchanged[true]",
+      "outcome": "Passed",
+      "elapsedMs": 8.0647
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Explicit_storage_parser_and_disable_settings_override_each_default[]",
+      "outcome": "Passed",
+      "elapsedMs": 4.6648
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Missing_ledger_cannot_reclassify_a_larger_grant_or_sealed_version_as_legacy[false]",
+      "outcome": "Passed",
+      "elapsedMs": 5.3223
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Missing_ledger_cannot_reclassify_a_larger_grant_or_sealed_version_as_legacy[true]",
+      "outcome": "Passed",
+      "elapsedMs": 2.0697
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Missing_legacy_sid_or_identity_is_charged_globally_without_inventing_cleanup_authority[]",
+      "outcome": "Passed",
+      "elapsedMs": 5.7933
+    },
+    {
+      "name": "StagedLargeDefaultsTests.New_inspection_defaults_cover_large_files_while_explicit_old_policy_values_are_preserved[]",
+      "outcome": "Passed",
+      "elapsedMs": 9714.5638
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Over_budget_legacy_recovery_does_not_refuse_startup_or_admit_new_bytes[false]",
+      "outcome": "Passed",
+      "elapsedMs": 6.1823
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Over_budget_legacy_recovery_does_not_refuse_startup_or_admit_new_bytes[true]",
+      "outcome": "Passed",
+      "elapsedMs": 2.2375
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Partially_imported_legacy_guard_never_accepts_a_later_unaccounted_companion[]",
+      "outcome": "Passed",
+      "elapsedMs": 4.7241
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Pending_legacy_stage_is_charged_under_its_original_guard_and_refunded_only_after_exact_cleanup[]",
+      "outcome": "Passed",
+      "elapsedMs": 8.4843
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Preexisting_negative_receipt_storage_is_accounted_without_an_upgrade_startup_refusal[]",
+      "outcome": "Passed",
+      "elapsedMs": 11.712
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Product_defaults_derive_from_the_staging_volume_and_enable_accounting[0,10,0,0,1]",
+      "outcome": "Passed",
+      "elapsedMs": 2.0124
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Product_defaults_derive_from_the_staging_volume_and_enable_accounting[100,200,10,2560,10]",
+      "outcome": "Passed",
+      "elapsedMs": 0.3413
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Product_defaults_derive_from_the_staging_volume_and_enable_accounting[640,1000,32,8192,50]",
+      "outcome": "Passed",
+      "elapsedMs": 0.0398
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Structurally_corrupt_legacy_negative_receipt_remains_held_unchanged[]",
+      "outcome": "Passed",
+      "elapsedMs": 1.3572
+    },
+    {
+      "name": "StagedLargeDefaultsTests.Validated_legacy_security_snapshot_is_metadata_compatibility_and_never_transfer_authority[]",
+      "outcome": "Passed",
+      "elapsedMs": 8.0664
+    },
+    {
+      "name": "StagedLargeFileTests.A_crc_failure_after_a_sensitive_prefix_returns_no_partial_findings[]",
+      "outcome": "Passed",
+      "elapsedMs": 40.7361
+    },
+    {
+      "name": "StagedLargeFileTests.A_failed_seed_can_retry_the_same_stable_intent_after_restart_without_double_charge[]",
+      "outcome": "Passed",
+      "elapsedMs": 3.6575
+    },
+    {
+      "name": "StagedLargeFileTests.A_failed_write_cannot_approve_even_an_empty_or_clean_prefix[]",
+      "outcome": "Passed",
+      "elapsedMs": 4.2228
+    },
+    {
+      "name": "StagedLargeFileTests.An_extreme_free_floor_cannot_wrap_into_a_positive_admission[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.4789
+    },
+    {
+      "name": "StagedLargeFileTests.Concurrent_same_user_reservations_cannot_double_spend_free_capacity[]",
+      "outcome": "Passed",
+      "elapsedMs": 4.4855
+    },
+    {
+      "name": "StagedLargeFileTests.Corrupt_receipts_do_not_reset_usage_on_restart[]",
+      "outcome": "Passed",
+      "elapsedMs": 1.5729
+    },
+    {
+      "name": "StagedLargeFileTests.Exact_free_space_admission_includes_all_copies_metadata_and_floor[-1,false]",
+      "outcome": "Passed",
+      "elapsedMs": 0.4147
+    },
+    {
+      "name": "StagedLargeFileTests.Exact_free_space_admission_includes_all_copies_metadata_and_floor[0,true]",
+      "outcome": "Passed",
+      "elapsedMs": 1.7257
+    },
+    {
+      "name": "StagedLargeFileTests.Exact_free_space_admission_includes_all_copies_metadata_and_floor[262144,true]",
+      "outcome": "Passed",
+      "elapsedMs": 0.94
+    },
+    {
+      "name": "StagedLargeFileTests.Failed_journal_replacement_residue_has_a_bounded_storage_envelope[]",
+      "outcome": "Passed",
+      "elapsedMs": 2.2224
+    },
+    {
+      "name": "StagedLargeFileTests.Historical_negative_receipts_are_charged_without_a_global_metadata_admission_veto[]",
+      "outcome": "Passed",
+      "elapsedMs": 5.3109
+    },
+    {
+      "name": "StagedLargeFileTests.Known_never_created_allocation_retires_exact_metadata_without_accumulating_user_charge[]",
+      "outcome": "Passed",
+      "elapsedMs": 2.5728
+    },
+    {
+      "name": "StagedLargeFileTests.Large_mode_requires_an_exact_matching_driver_support_receipt[0,4,31,true]",
+      "outcome": "Passed",
+      "elapsedMs": 0.4997
+    },
+    {
+      "name": "StagedLargeFileTests.Large_mode_requires_an_exact_matching_driver_support_receipt[-1,4,31,false]",
+      "outcome": "Passed",
+      "elapsedMs": 0.396
+    },
+    {
+      "name": "StagedLargeFileTests.Large_mode_requires_an_exact_matching_driver_support_receipt[0,0,31,false]",
+      "outcome": "Passed",
+      "elapsedMs": 0.0361
+    },
+    {
+      "name": "StagedLargeFileTests.Large_mode_requires_an_exact_matching_driver_support_receipt[0,8,31,false]",
+      "outcome": "Passed",
+      "elapsedMs": 0.0273
+    },
+    {
+      "name": "StagedLargeFileTests.Large_mode_requires_an_exact_matching_driver_support_receipt[0,4,20,false]",
+      "outcome": "Passed",
+      "elapsedMs": 0.0283
+    },
+    {
+      "name": "StagedLargeFileTests.Oversized_journal_serialization_never_writes_beyond_the_existing_limit[]",
+      "outcome": "Passed",
+      "elapsedMs": 2.5276
+    },
+    {
+      "name": "StagedLargeFileTests.Resource_failure_seal_requires_its_exact_additive_envelope_and_zero_padding[]",
+      "outcome": "Passed",
+      "elapsedMs": 3.3626
+    },
+    {
+      "name": "StagedLargeFileTests.Terminal_refusal_never_adopts_an_unknown_present_object_as_cleanup_authority[false]",
+      "outcome": "Passed",
+      "elapsedMs": 0.518
+    },
+    {
+      "name": "StagedLargeFileTests.Terminal_refusal_never_adopts_an_unknown_present_object_as_cleanup_authority[true]",
+      "outcome": "Passed",
+      "elapsedMs": 1.507
+    },
+    {
+      "name": "StagedLargeFileTests.Terminal_refusal_retires_only_the_recorded_exact_unissued_seed[]",
+      "outcome": "Passed",
+      "elapsedMs": 4.3552
+    },
+    {
+      "name": "StagedLargeFileTests.Unknown_private_objects_and_interrupted_accounting_are_never_swept_or_admitted[]",
+      "outcome": "Passed",
+      "elapsedMs": 0.782
+    },
+    {
+      "name": "StagedLargeFileTests.Unresolved_negative_receipt_temporary_is_charged_and_preserved_without_holding_other_admission[]",
+      "outcome": "Passed",
+      "elapsedMs": 3.6843
+    },
+    {
+      "name": "StagedLargeFileTests.User_exhaustion_preserves_another_users_capacity_and_survives_restart[]",
+      "outcome": "Passed",
+      "elapsedMs": 3.8461
+    },
+    {
+      "name": "StagedLargeFileTests.Zip_member_replay_has_bounded_allocations_and_checks_complete_integrity[false]",
+      "outcome": "Passed",
+      "elapsedMs": 172.0435
+    },
+    {
+      "name": "StagedLargeFileTests.Zip_member_replay_has_bounded_allocations_and_checks_complete_integrity[true]",
+      "outcome": "Passed",
+      "elapsedMs": 1159.8043
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart[\"digest\"]",
+      "outcome": "Passed",
+      "elapsedMs": 8.0075
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart[\"length\"]",
+      "outcome": "Passed",
+      "elapsedMs": 3.8023
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart[\"id\"]",
+      "outcome": "Passed",
+      "elapsedMs": 3.6994
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_damage_holds_all_authority_after_detection_and_refuses_restart[\"missing\"]",
+      "outcome": "Passed",
+      "elapsedMs": 2.9098
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_preserves_exact_receipt_and_rejects_changed_completion_and_reused_id[]",
+      "outcome": "Passed",
+      "elapsedMs": 5.0931
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Archive_segment_reparse_is_refused_without_changing_its_target[]",
+      "outcome": "Passed",
+      "elapsedMs": 3.6811
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Blocked_archive_requires_and_preserves_exact_delete_receipt_and_handback[]",
+      "outcome": "Passed",
+      "elapsedMs": 7.5665
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Cancellation_retains_its_separate_generation_and_exact_cleanup_replay[]",
+      "outcome": "Passed",
+      "elapsedMs": 16.099
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Coherently_rechecksummed_runtime_rewrite_cannot_change_the_validated_claim_index[]",
+      "outcome": "Passed",
+      "elapsedMs": 3.8073
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Compaction_deletes_old_receipts_but_keeps_generation_and_hot_ancestor_closure[]",
+      "outcome": "Passed",
+      "elapsedMs": 15.6525
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Compaction_interruption_holds_live_index_and_restart_preserves_all_required_claims[\"before-compaction-replace\"]",
+      "outcome": "Passed",
+      "elapsedMs": 7.5672
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Compaction_interruption_holds_live_index_and_restart_preserves_all_required_claims[\"after-compaction-replace\"]",
+      "outcome": "Passed",
+      "elapsedMs": 8.3212
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Current_epoch_receipts_ignore_age_until_exact_drain_and_keep_the_high_water_afterward[]",
+      "outcome": "Passed",
+      "elapsedMs": 23.8609
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Duplicate_batch_ids_are_refused_before_writing_any_archive_frame[]",
+      "outcome": "Passed",
+      "elapsedMs": 1.3675
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Duplicate_hot_archive_disagreement_is_never_silently_selected[]",
+      "outcome": "Passed",
+      "elapsedMs": 3.5561
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_append_before_frontier_preserves_old_receipts_and_leaves_new_work_hot[]",
+      "outcome": "Passed",
+      "elapsedMs": 8.8927
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt[\"before-append\"]",
+      "outcome": "Passed",
+      "elapsedMs": 5.5813
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt[\"before-frontier\"]",
+      "outcome": "Passed",
+      "elapsedMs": 5.3005
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt[\"before-flush\"]",
+      "outcome": "Passed",
+      "elapsedMs": 2.8938
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Interrupted_archive_keeps_a_restartable_exact_receipt[\"after-flush\"]",
+      "outcome": "Passed",
+      "elapsedMs": 5.381
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Late_driver_last_close_eventually_archives_the_exact_release_without_republishing[]",
+      "outcome": "Passed",
+      "elapsedMs": 10.2555
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Rename_tombstone_barriers_and_maximum_ties_survive_archive_restart_and_compaction[]",
+      "outcome": "Passed",
+      "elapsedMs": 9.4383
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Ten_thousand_terminal_records_leave_constant_hot_work_and_bounded_allocate_seal_cost[false]",
+      "outcome": "Passed",
+      "elapsedMs": 2626.3123
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Ten_thousand_terminal_records_leave_constant_hot_work_and_bounded_allocate_seal_cost[true]",
+      "outcome": "Passed",
+      "elapsedMs": 11796.4218
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Truncated_committed_archive_never_drops_a_barrier_even_with_a_hot_duplicate[false]",
+      "outcome": "Passed",
+      "elapsedMs": 4.4547
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Truncated_committed_archive_never_drops_a_barrier_even_with_a_hot_duplicate[true]",
+      "outcome": "Passed",
+      "elapsedMs": 3.3183
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Uncommitted_append_tail_behind_the_durable_frontier_cannot_add_a_generation[]",
+      "outcome": "Passed",
+      "elapsedMs": 5.9297
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot[\"stage-present\"]",
+      "outcome": "Passed",
+      "elapsedMs": 1.6289
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot[\"disposal-pending\"]",
+      "outcome": "Passed",
+      "elapsedMs": 0.5791
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot[\"rename-pending\"]",
+      "outcome": "Passed",
+      "elapsedMs": 2.4248
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot[\"handback-failed\"]",
+      "outcome": "Passed",
+      "elapsedMs": 0.3602
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Unfinished_cleanup_rename_or_handback_stays_hot[\"window-open\"]",
+      "outcome": "Passed",
+      "elapsedMs": 0.2971
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Whole_committed_frame_or_control_loss_is_not_an_empty_archive[0]",
+      "outcome": "Passed",
+      "elapsedMs": 4.4229
+    },
+    {
+      "name": "StagedTerminalArchiveTests.Whole_committed_frame_or_control_loss_is_not_an_empty_archive[4096]",
+      "outcome": "Passed",
+      "elapsedMs": 2.9878
+    },
+    {
+      "name": "StagedTransferJournalTests.Compaction_keeps_the_newest_version_while_an_older_one_can_still_be_justified[]",
+      "outcome": "Passed",
+      "elapsedMs": 28.2557
+    },
+    {
+      "name": "StagedTransferJournalTests.Kind5_high_water_cannot_compact_away_a_published_barrier_and_revive_an_older_save[false]",
+      "outcome": "Passed",
+      "elapsedMs": 30.3118
+    },
+    {
+      "name": "StagedTransferJournalTests.Kind5_high_water_cannot_compact_away_a_published_barrier_and_revive_an_older_save[true]",
+      "outcome": "Passed",
+      "elapsedMs": 32.4425
+    },
+    {
+      "name": "StagedTransferJournalTests.Late_yes_kind5_cleanup_retires_effective_claim_but_preserves_generation_high_water[false,false]",
+      "outcome": "Passed",
+      "elapsedMs": 20.3852
+    },
+    {
+      "name": "StagedTransferJournalTests.Late_yes_kind5_cleanup_retires_effective_claim_but_preserves_generation_high_water[true,false]",
+      "outcome": "Passed",
+      "elapsedMs": 18.4728
+    },
+    {
+      "name": "StagedTransferJournalTests.Late_yes_kind5_cleanup_retires_effective_claim_but_preserves_generation_high_water[false,true]",
+      "outcome": "Passed",
+      "elapsedMs": 23.0918
+    },
+    {
+      "name": "StagedTransferJournalTests.Late_yes_kind5_cleanup_retires_effective_claim_but_preserves_generation_high_water[true,true]",
+      "outcome": "Passed",
+      "elapsedMs": 19.8855
+    },
+    {
+      "name": "StagedTransferJournalTests.V19_unattached_allocation_cleanup_cannot_discard_a_sealed_version[]",
+      "outcome": "Passed",
+      "elapsedMs": 14.8194
+    },
+    {
+      "name": "StagedTransferJournalTests.V19_unattached_allocation_cleanup_is_exact_epoch_bound_and_ignores_public_collision[]",
+      "outcome": "Passed",
+      "elapsedMs": 9.9792
+    },
+    {
+      "name": "StagedLargeFileTests.Even_empty_legacy_refusal_files_debit_physical_metadata_without_refusing_startup[]",
+      "outcome": "Passed",
+      "elapsedMs": 2.4684
+    }
+  ]
+}

@@ -13,7 +13,7 @@ using PortVerdict = SafeUpload.Agent.Minifilter.Verdict;
 
 namespace SafeUpload.Agent.Tests;
 
-public sealed class StagedAttachmentV20Tests : IDisposable
+public sealed partial class StagedAttachmentV20Tests : IDisposable
 {
     private const string RequestorSid = "S-1-5-21-111-222-333-1000";
     private const long ProcessCreationTime = 638953632000000000;
@@ -530,6 +530,91 @@ public sealed class StagedAttachmentV20Tests : IDisposable
         {
             if (exception is not null) Errors.Add(exception);
         }
+    }
+
+    // Both build profiles, existing parameterless fixture and friend APIs.
+    [Theory]
+    [InlineData(13u, false)] [InlineData(13u, true)]
+    [InlineData(15u, false)] [InlineData(15u, true)]
+    public async Task Op13_and_op15_persistence_fault_returns_exact_retry_then_replays_durable_progress(uint operation, bool after)
+    {
+        var f = await CreateFixtureAsync(false);
+        Assert.Equal(6u, await ApplyAsync(f, 12, 9301));
+        if (operation == 15) Assert.Equal(7u, await ApplyAsync(f, 13, 9302));
+        var payload = new SafeUploadStageLifecycleV20
+        {
+            Version = Contract.StageExtensionVersion, StructSize = Contract.StageLifecycleV20Size,
+            Operation = operation, RequestId = 9303, TransferId = f.Version.TransferId,
+            DestinationGeneration = (ulong)f.Version.DestinationGeneration,
+            StageIdentity = WireIdentity(f.Version.StageIdentity), DriverInstanceId = f.DriverInstanceId,
+            ParentDirectoryIdentity = WireIdentity(f.ParentDirectoryIdentity)
+        };
+        var request = LifecycleRequest(f, payload); bool fired = false;
+        var journal = new StagedTransferJournal(f.JournalDirectory, false, 4, (point, entry) =>
+        {
+            bool target = operation == 13 ? entry.AttachCommitRequestIdV20 == 9303 : entry.CompletionPermitRequestIdV20 == 9303;
+            if (fired || !target || point != (after ? StagedJournalWritePoint.AfterReplacement : StagedJournalWritePoint.BeforeReplacement)) return;
+            fired = true; throw new IOException("Injected manifest rename failure", new System.ComponentModel.Win32Exception(5));
+        });
+        _workspace.WritePolicy(JsonSerializer.Serialize(PolicyDocument.Default with
+        {
+            MonitoredScopes = MonitoredScopesDocument.Default with
+            { DestinationPaths = [Path.GetDirectoryName(f.Transfer.DestinationPath)!] }
+        }));
+        var log = new LifecycleErrorLog(); var policy = new LocalPolicyStore(_workspace.PolicyFile);
+        Func<string, string?> resolve = OperatingSystem.IsWindows() ? NtPathTranslator.ToDosPath : path => path;
+        var retry = MinifilterInterceptor.ApplyStageLifecycleV20(request, journal, f.DriverInstanceId, policy, log, _ => true, resolve);
+        Assert.True(fired); Assert.IsType<StagedJournalPersistenceException>(Assert.Single(log.Errors));
+        Assert.Equal(PortVerdict.Allow, retry.Verdict); var expected = payload; expected.Result = StageV20Result.RetryableFailure;
+        var actual = retry.Reply!.Value;
+        Assert.Equal(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref expected, 1)).ToArray(),
+            MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref actual, 1)).ToArray());
+        Assert.True(File.Exists(f.Transfer.StagePath)); Assert.False(File.Exists(f.Transfer.DestinationPath));
+        var recovered = MinifilterInterceptor.ApplyStageLifecycleV20(request, new StagedTransferJournal(f.JournalDirectory),
+            f.DriverInstanceId, policy, log, _ => true, resolve);
+        Assert.Equal(PortVerdict.Allow, recovered.Verdict);
+        Assert.Equal(operation == 13 ? StageV20Result.AttachCommitted : StageV20Result.CompletionPermitted, recovered.Reply!.Value.Result);
+        var saved = await journal.ReadAsync(f.Transfer.TransferId, default);
+        Assert.Equal(operation == 13 ? StagedAttachmentStateV20.Committed : StagedAttachmentStateV20.CompletionPermitted, saved.AttachmentStateV20);
+        Assert.Null(saved.DiscardRequestedAtUtc); Assert.False(saved.StageCleanupStarted);
+    }
+
+    [Theory]
+    [InlineData(13u)] [InlineData(15u)]
+    public async Task Op13_and_op15_structural_mismatch_still_refuses_without_persistence_retry(uint operation)
+    {
+        var f = await CreateFixtureAsync(false);
+        Assert.Equal(6u, await ApplyAsync(f, 12, 9401));
+        if (operation == 15) Assert.Equal(7u, await ApplyAsync(f, 13, 9402));
+        var payload = new SafeUploadStageLifecycleV20
+        {
+            Version = Contract.StageExtensionVersion, StructSize = Contract.StageLifecycleV20Size,
+            Operation = operation, RequestId = 9403, TransferId = f.Version.TransferId,
+            DestinationGeneration = (ulong)f.Version.DestinationGeneration + 1,
+            StageIdentity = WireIdentity(f.Version.StageIdentity), DriverInstanceId = f.DriverInstanceId,
+            ParentDirectoryIdentity = WireIdentity(f.ParentDirectoryIdentity)
+        };
+        var log = new LifecycleErrorLog();
+        var refused = MinifilterInterceptor.ApplyStageLifecycleV20(LifecycleRequest(f, payload), f.Journal,
+            f.DriverInstanceId, new LocalPolicyStore(_workspace.PolicyFile), log, _ => true,
+            OperatingSystem.IsWindows() ? NtPathTranslator.ToDosPath : path => path);
+        Assert.Equal(PortVerdict.Deny, refused.Verdict); Assert.Null(refused.Reply);
+        Assert.True(StagedRequestRefusal.IsPermanent(Assert.Single(log.Errors)));
+        Assert.True(File.Exists(f.Transfer.StagePath)); Assert.False(File.Exists(f.Transfer.DestinationPath));
+    }
+
+    [Fact]
+    public async Task Journal_transition_replaces_a_manifest_while_its_validated_reader_holds_the_old_object()
+    {
+        var f = await CreateFixtureAsync(false);
+        string path = Path.Combine(f.JournalDirectory, f.Transfer.TransferId.ToString("N") + ".json");
+        await using var held = StagedJournalFile.Open(path);
+        var updated = await f.Journal.TransitionAsync(f.Transfer.TransferId, TransferJournalState.Allocated,
+            TransferJournalState.Unsealed, null, default);
+        var old = await JsonSerializer.DeserializeAsync<TransferJournalEntry>(held);
+        Assert.Equal(TransferJournalState.Allocated, old!.State);
+        Assert.Equal(TransferJournalState.Unsealed, updated.State);
+        Assert.Equal(JsonSerializer.Serialize(updated), JsonSerializer.Serialize(await f.Journal.ReadAsync(f.Transfer.TransferId, default)));
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

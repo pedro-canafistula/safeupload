@@ -35,6 +35,10 @@ Environment:
 
 #include "Filter.h"
 
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, SafeUploadPolicyDirectoryIsScopeAnchor)
+#endif
+
 //
 //  Guards SafeUploadPolicy. Shared for readers, exclusive for the swap.
 //
@@ -849,6 +853,7 @@ SafeUploadBuildStringTable (
     #pragma alloc_text(PAGE, SafeUploadFinalizeBootPolicy)
     #pragma alloc_text(PAGE, SafeUploadBuildStringTable)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    #pragma alloc_text(PAGE, SafeUploadPolicySameProtectedScope)
     #pragma alloc_text(PAGE, SafeUploadPolicyCopyScope)
     #pragma alloc_text(PAGE, SafeUploadPolicySetPending)
     #pragma alloc_text(PAGE, SafeUploadPolicyAdmissionCoverageSnapshot)
@@ -1742,6 +1747,41 @@ Return Value:
     return matched;
 }
 
+/* A configured scope or its ancestor cannot move: policy prefixes are fixed,
+ * even when the directory has no live private versions. No I/O or allocation. */
+_IRQL_requires_(PASSIVE_LEVEL)
+BOOLEAN SafeUploadPolicyDirectoryIsScopeAnchor(_In_ PCUNICODE_STRING Directory)
+{
+    const SAFEUPLOAD_POLICY *snapshots[2];
+    ULONG snapshot, index;
+    BOOLEAN anchor = FALSE;
+    PAGED_CODE();
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    snapshots[0] = SafeUploadPolicy;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    snapshots[1] = SafeUploadPendingPolicy;
+#else
+    snapshots[1] = NULL;
+#endif
+    for (snapshot = 0; snapshot < RTL_NUMBER_OF(snapshots) && !anchor; ++snapshot) {
+        const SAFEUPLOAD_POLICY *policy = snapshots[snapshot];
+        if (policy == NULL) continue;
+        for (index = 0; index < policy->PrefixCount && !anchor; ++index)
+            anchor = SafeUploadPathUnderPrefix(Directory, &policy->Prefixes[index]);
+    }
+    if (SafeUploadBootScopesActive) {
+        if (SafeUploadBootScopes.Overflow) anchor = TRUE;
+        for (index = 0; index < SafeUploadBootScopes.PrefixCount && !anchor; ++index) {
+            UNICODE_STRING prefix;
+            prefix.Buffer = SafeUploadBootScopes.Prefixes[index];
+            prefix.Length = prefix.MaximumLength = (USHORT)(SafeUploadBootScopes.PrefixChars[index] * sizeof(WCHAR));
+            anchor = SafeUploadPathUnderPrefix(Directory, &prefix);
+        }
+    }
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    return anchor;
+}
+
 BOOLEAN
 SafeUploadPolicyMatchesDestination (
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
@@ -2129,6 +2169,25 @@ Routine Description:
 
     return matched;
 }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadPolicySameProtectedScope(_In_ PCUNICODE_STRING Source, _In_ PCUNICODE_STRING Target)
+{
+    UINT32 index;
+    BOOLEAN same = FALSE;
+    PAGED_CODE();
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    if (SafeUploadPolicy != NULL) {
+        for (index = 0; index < SafeUploadPolicy->PrefixCount; ++index) {
+            if (SafeUploadPathUnderPrefix(&SafeUploadPolicy->Prefixes[index], Source) &&
+                SafeUploadPathUnderPrefix(&SafeUploadPolicy->Prefixes[index], Target)) { same = TRUE; break; }
+        }
+    }
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    return same;
+}
+#endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 

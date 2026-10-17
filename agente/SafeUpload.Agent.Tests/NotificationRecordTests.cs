@@ -18,8 +18,10 @@ public sealed class NotificationRecordTests : IDisposable
     private string DirectoryPath => Path.Combine(_root, "notifications");
     private string Active => Path.Combine(DirectoryPath, "emissions.jsonl");
     public NotificationRecordTests() => Directory.CreateDirectory(_root);
+    // Existing corruption controls still exercise strict validation unchanged.
+    // Production uses recovery; the controls below also prove its fresh chain.
     private NotificationRecord Record(int limit = NotificationRecord.SegmentBytes) => new(
-        DirectoryPath, NullLogger<NotificationRecord>.Instance, limit, "test/boot", testIdentity: true);
+        DirectoryPath, NullLogger<NotificationRecord>.Instance, limit, "test/boot", testIdentity: true, recoverCorruption: false);
     private static NotificationHub Hub(INotificationRecord record, ILogger<NotificationHub>? logger = null) => new(
         record, logger ?? NullLogger<NotificationHub>.Instance);
     private static TransferNotification Transfer() => new(Guid.NewGuid(), "fixture.txt",
@@ -91,6 +93,76 @@ public sealed class NotificationRecordTests : IDisposable
             InspectionFailure: phase == TransferPhase.Blocked ? (InspectionFailureKind)999 : InspectionFailureKind.Timeout);
         Assert.Throws<InvalidDataException>(() => record.Append(notification, null));
         Assert.DoesNotContain(Entries(), entry => entry.Kind == "Transfer");
+    }
+
+    [Fact]
+    public void Staging_space_alert_and_invalid_input_do_not_close_later_notifications()
+    {
+        using var record = Record();
+        var alert = new TransferNotification(Guid.NewGuid(), "large.txt", TransferPhase.Retained,
+            InspectionFailure: InspectionFailureKind.NotEnoughStagingSpace);
+        record.Append(alert, 1);
+        Assert.Equal("Retained", Entries()[^1].Phase);
+        Assert.Null(Entries()[^1].Sha256Hex);
+        Assert.Throws<InvalidDataException>(() => record.Append(alert with { TransferId = Guid.Empty }, 1));
+        Assert.Throws<InvalidDataException>(() => record.Append(alert with { PublishedSha256Hex = new string('A', 64) }, 1));
+        Assert.Throws<InvalidDataException>(() => record.Append(alert with { OverrideAllowed = true }, 1));
+        var next = Transfer(); record.Append(next, 1); record.Heartbeat();
+        Assert.Equal(next.TransferId, Entries()[^2].TransferId);
+        Assert.Equal("Heartbeat", Entries()[^1].Kind);
+    }
+
+    [Fact]
+    public void Transient_storage_failure_recovers_in_process_preserves_damage_and_never_delivers_failed_emission()
+    {
+        using var record = new NotificationRecord(DirectoryPath, NullLogger.Instance, NotificationRecord.SegmentBytes,
+            "test/boot", testIdentity: true, recoverCorruption: true);
+        long now = System.Diagnostics.Stopwatch.GetTimestamp(); record.RecoveryClock = () => now;
+        string previousInstance = Entries()[^1].InstanceId;
+        var hub = Hub(record); using var subscription = hub.Subscribe();
+        string temporary = Path.Combine(DirectoryPath, "head.tmp");
+        Directory.CreateDirectory(temporary);
+        var failed = Transfer(); hub.Publish(failed);
+        Assert.False(subscription.Reader.TryRead(out _));
+        Assert.Throws<IOException>(() => record.Heartbeat());
+        now += System.Diagnostics.Stopwatch.Frequency * 2;
+        Assert.Throws<IOException>(() => record.Heartbeat()); // Unsafe child is never normalized.
+        Assert.True(Directory.Exists(temporary));
+        Directory.Delete(temporary);
+        byte[] damaged = File.ReadAllBytes(Active);
+        now += System.Diagnostics.Stopwatch.Frequency * 2;
+        var next = Transfer(); hub.Publish(next);
+        Assert.True(subscription.Reader.TryRead(out var delivered)); Assert.Equal(next, delivered);
+        Assert.False(subscription.Reader.TryRead(out _));
+        string archive = Assert.Single(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+        Assert.Equal(damaged, File.ReadAllBytes(Path.Combine(archive, "emissions.jsonl")));
+        Assert.NotEqual(previousInstance, Entries()[0].InstanceId);
+        Assert.Equal("Start", Entries()[0].Kind); Assert.Equal(1, Entries()[0].Sequence);
+        Assert.DoesNotContain(Entries(), entry => entry.TransferId == failed.TransferId);
+        Assert.Equal(next.TransferId, Entries()[^1].TransferId);
+        record.Dispose();
+        now += System.Diagnostics.Stopwatch.Frequency * 2;
+        Assert.Throws<ObjectDisposedException>(() => record.Append(Transfer(), 1));
+    }
+
+    [Fact]
+    public void Online_empty_history_recovery_starts_a_new_instance_even_for_an_initially_fresh_writer()
+    {
+        using var record = new NotificationRecord(DirectoryPath, NullLogger.Instance, NotificationRecord.SegmentBytes,
+            "test/boot", testIdentity: true, recoverCorruption: true);
+        long now = System.Diagnostics.Stopwatch.GetTimestamp(); record.RecoveryClock = () => now;
+        record.Append(Transfer(), 1);
+        string original = Entries()[^1].InstanceId;
+        string temporary = Path.Combine(DirectoryPath, "head.tmp"); Directory.CreateDirectory(temporary);
+        Assert.Throws<IOException>(() => record.Append(Transfer(), 1));
+        Directory.Delete(temporary);
+        File.Delete(Active); File.Delete(Path.Combine(DirectoryPath, "head.json"));
+        now += System.Diagnostics.Stopwatch.Frequency * 2;
+        record.Append(Transfer(), 1);
+        Assert.NotEqual(original, Entries()[0].InstanceId);
+        Assert.Equal(1, Entries()[0].Sequence); Assert.Equal(NotificationRecord.ZeroHash, Entries()[0].PreviousSha256);
+        Assert.Equal("Start", Entries()[0].Kind);
+        record.Dispose(); using var strict = Record(); // Recovered anchor/chain validates independently.
     }
 
     [Fact]
@@ -170,6 +242,144 @@ public sealed class NotificationRecordTests : IDisposable
         Assert.Throws<InvalidDataException>(() => Record());
     }
 
+    [Theory]
+    [InlineData("tail")]
+    [InlineData("partial")]
+    [InlineData("json")]
+    [InlineData("head")]
+    [InlineData("missing-head")]
+    [InlineData("temporary-head")]
+    [InlineData("missing-history")]
+    public void Startup_preserves_damaged_history_warns_and_delivers_on_a_fresh_chain(string damage)
+    {
+        string head = Path.Combine(DirectoryPath, "head.json");
+        using (var record = Record()) record.Append(Transfer(), null);
+        var oldInstance = Entries()[0].InstanceId;
+        if (damage == "tail") File.WriteAllLines(Active, File.ReadAllLines(Active)[..^1], new UTF8Encoding(false));
+        if (damage == "partial") File.AppendAllText(Active, "{\"Version\":");
+        if (damage == "json") File.WriteAllText(Active, "{broken}\n");
+        if (damage == "head") File.WriteAllText(head, "{\"Version\":1,\"Sequence\":1,\"Sha256\":\"bad\"}");
+        if (damage == "missing-head") File.Delete(head);
+        if (damage == "temporary-head") File.Copy(head, Path.Combine(DirectoryPath, "head.tmp"));
+        if (damage == "missing-history") { File.Delete(Active); File.Delete(head); }
+        var original = Directory.GetFiles(DirectoryPath).Where(p => Path.GetFileName(p) != "writer.lock")
+            .ToDictionary(p => Path.GetFileName(p)!, File.ReadAllBytes);
+        var logger = new RecoveryLogger();
+        using (var recovered = new NotificationRecord(DirectoryPath, logger, NotificationRecord.SegmentBytes,
+            "test/boot", testIdentity: true))
+        {
+            string archive = Assert.Single(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+            Assert.Equal(original.Keys.Order(), Directory.GetFiles(archive).Select(Path.GetFileName).Order());
+            foreach (var (name, bytes) in original) Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(archive, name!)));
+            Assert.Equal(1, logger.Warnings);
+            Assert.Contains(archive, logger.Message);
+            var start = Assert.Single(Entries());
+            Assert.Equal("Start", start.Kind);
+            Assert.Equal(1, start.Sequence);
+            Assert.Equal(NotificationRecord.ZeroHash, start.PreviousSha256);
+            Assert.NotEqual(oldInstance, start.InstanceId);
+            if (OperatingSystem.IsWindows()) Assert.Throws<IOException>(() => Record());
+            var hub = Hub(recovered);
+            using var subscriber = hub.Subscribe();
+            var transfer = Transfer();
+            hub.Publish(transfer, 4);
+            Assert.True(subscriber.Reader.TryRead(out var delivered));
+            Assert.Equal(transfer, delivered);
+            Assert.Equal(transfer.TransferId, Entries()[^1].TransferId);
+        }
+        long last = Entries()[^1].Sequence;
+        using var restarted = Record(); // Fresh history satisfies the original strict validator.
+        Assert.Equal(last + 1, Entries()[^1].Sequence);
+        Assert.Single(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Startup_archives_a_temporary_head_without_trusting_or_reading_its_dacl(bool denyRead)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using (var record = Record()) record.Append(Transfer(), null);
+        string temporary = Path.Combine(DirectoryPath, "head.tmp");
+        File.Copy(Path.Combine(DirectoryPath, "head.json"), temporary);
+        byte[] bytes = File.ReadAllBytes(temporary);
+        var originalAcl = new FileInfo(temporary).GetAccessControl();
+        var damagedAcl = new FileInfo(temporary).GetAccessControl();
+        damagedAcl.SetAccessRuleProtection(true, true);
+        damagedAcl.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(denyRead ? WellKnownSidType.WorldSid : WellKnownSidType.BuiltinUsersSid, null),
+            denyRead ? FileSystemRights.ReadData : FileSystemRights.Read, denyRead ? AccessControlType.Deny : AccessControlType.Allow));
+        new FileInfo(temporary).SetAccessControl(damagedAcl);
+        var descriptor = new FileInfo(temporary).GetAccessControl().GetSecurityDescriptorBinaryForm();
+        if (denyRead) Assert.Throws<UnauthorizedAccessException>(() => File.ReadAllBytes(temporary));
+        var logger = new RecoveryLogger();
+        using var recovered = new NotificationRecord(DirectoryPath, logger, NotificationRecord.SegmentBytes,
+            "test/boot", testIdentity: true);
+        string archive = Assert.Single(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+        string preserved = Path.Combine(archive, "head.tmp");
+        Assert.False(File.Exists(temporary));
+        Assert.Equal(descriptor, new FileInfo(preserved).GetAccessControl().GetSecurityDescriptorBinaryForm());
+        // Only the test restores read access to inspect the preserved bytes.
+        originalAcl.SetSecurityDescriptorBinaryForm(originalAcl.GetSecurityDescriptorBinaryForm(), AccessControlSections.Access);
+        new FileInfo(preserved).SetAccessControl(originalAcl);
+        Assert.Equal(bytes, File.ReadAllBytes(preserved));
+        Assert.Equal(1, logger.Warnings);
+        var start = Assert.Single(Entries());
+        Assert.Equal("Start", start.Kind);
+        Assert.Equal(1, start.Sequence);
+        Assert.Equal(NotificationRecord.ZeroHash, start.PreviousSha256);
+        var hub = Hub(recovered);
+        using var subscriber = hub.Subscribe();
+        var transfer = Transfer();
+        hub.Publish(transfer, 4);
+        Assert.True(subscriber.Reader.TryRead(out var delivered));
+        Assert.Equal(transfer, delivered);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Recovery_refuses_a_linked_temporary_head_before_moving_any_evidence(bool hardLink)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using (var record = Record()) record.Append(Transfer(), null);
+        byte[] original = File.ReadAllBytes(Active);
+        string outside = Path.Combine(_root, "outside-head.json");
+        File.Copy(Path.Combine(DirectoryPath, "head.json"), outside);
+        byte[] outsideBytes = File.ReadAllBytes(outside);
+        string temporary = Path.Combine(DirectoryPath, "head.tmp");
+        if (hardLink) Assert.True(CreateHardLink(temporary, outside, IntPtr.Zero));
+        else File.CreateSymbolicLink(temporary, outside);
+        try
+        {
+            Assert.Throws<IOException>(() => new NotificationRecord(DirectoryPath, NullLogger.Instance,
+                NotificationRecord.SegmentBytes, "test/boot", testIdentity: true));
+            Assert.Equal(original, File.ReadAllBytes(Active));
+            Assert.Equal(outsideBytes, File.ReadAllBytes(outside));
+            Assert.Empty(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+        }
+        finally { File.Delete(temporary); }
+    }
+
+    [Fact]
+    public void Recovery_does_not_move_unexpected_children_or_follow_links()
+    {
+        using (var record = Record()) record.Append(Transfer(), null);
+        string outside = Path.Combine(_root, "outside");
+        File.WriteAllText(outside, "outside evidence");
+        File.Delete(Active);
+        File.CreateSymbolicLink(Active, outside);
+        Assert.Throws<IOException>(() => new NotificationRecord(DirectoryPath, NullLogger.Instance,
+            NotificationRecord.SegmentBytes, "test/boot", testIdentity: true));
+        Assert.Equal("outside evidence", File.ReadAllText(outside));
+        Assert.Empty(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+        File.Delete(Active);
+        Directory.CreateDirectory(Path.Combine(DirectoryPath, "unexpected"));
+        Assert.Throws<IOException>(() => new NotificationRecord(DirectoryPath, NullLogger.Instance,
+            NotificationRecord.SegmentBytes, "test/boot", testIdentity: true));
+        Assert.Empty(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+    }
+
     [Fact]
     public void Rotation_announces_loss_and_keeps_bounded_contiguous_history()
     {
@@ -185,6 +395,55 @@ public sealed class NotificationRecordTests : IDisposable
         using var restarted = Record(limit);
         Assert.True(Entries()[^1].Sequence > last);
         Assert.Equal("Start", Entries()[^1].Kind);
+    }
+
+    [Fact]
+    public void Two_hours_of_heartbeats_keep_a_small_hash_chained_window_across_restart()
+    {
+        using (var record = Record(NotificationRecord.RetainedSegmentBytes))
+            for (int i = 0; i < 7200; i++) record.Heartbeat();
+        AssertRetainedWindow();
+        long last = Entries()[^1].Sequence;
+        using (var restarted = Record(NotificationRecord.RetainedSegmentBytes))
+            restarted.Heartbeat();
+        Assert.True(Entries()[^1].Sequence > last);
+        AssertRetainedWindow();
+    }
+
+    [Fact]
+    public void Smaller_window_accepts_legacy_segments_and_ages_them_out_without_chain_reset()
+    {
+        using (var record = Record())
+            for (int i = 0; i < 700; i++) record.Heartbeat();
+        Assert.True(new FileInfo(Active).Length > NotificationRecord.RetainedSegmentBytes);
+        long last = Entries()[^1].Sequence;
+        using (var record = Record(NotificationRecord.RetainedSegmentBytes))
+        {
+            Assert.Equal(last + 2, Entries()[^1].Sequence); // Rotation, Start
+            for (int i = 0; i < 700; i++) record.Heartbeat();
+        }
+        AssertRetainedWindow();
+        Assert.Empty(Directory.GetDirectories(_root, "notifications.corrupt-*"));
+    }
+
+    private void AssertRetainedWindow()
+    {
+        Assert.All(new[] { Active, Path.Combine(DirectoryPath, "previous.jsonl") },
+            path => Assert.InRange(new FileInfo(path).Length, 1, NotificationRecord.RetainedSegmentBytes));
+        var lines = new[] { "previous.jsonl", "emissions.jsonl" }
+            .SelectMany(name => File.ReadAllLines(Path.Combine(DirectoryPath, name))).ToArray();
+        var entries = Entries();
+        Assert.True(entries[0].Sequence > 1);
+        Assert.Equal(entries[^1].DroppedThroughSequence + 1, entries[0].Sequence);
+        for (int i = 1; i < entries.Count; i++)
+        {
+            Assert.Equal(entries[i - 1].Sequence + 1, entries[i].Sequence);
+            Assert.Equal(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(lines[i - 1]))),
+                entries[i].PreviousSha256);
+        }
+        var head = JsonSerializer.Deserialize<NotificationRecordHead>(File.ReadAllText(Path.Combine(DirectoryPath, "head.json")))!;
+        Assert.Equal(entries[^1].Sequence, head.Sequence);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(lines[^1]))), head.Sha256);
     }
 
     [Fact]
@@ -249,6 +508,8 @@ public sealed class NotificationRecordTests : IDisposable
         Assert.Throws<UnauthorizedAccessException>(() => record.Append(Transfer(), null));
         record.Dispose(); // Release the exclusive writer before testing recovery admission.
         Assert.Throws<UnauthorizedAccessException>(() => Record());
+        Assert.Throws<UnauthorizedAccessException>(() => new NotificationRecord(DirectoryPath, NullLogger.Instance,
+            NotificationRecord.SegmentBytes, "test/boot", testIdentity: true));
         Assert.Equal(before, (directory ? (FileSystemSecurity)new DirectoryInfo(path).GetAccessControl() : new FileInfo(path).GetAccessControl()).GetSecurityDescriptorSddlForm(AccessControlSections.All));
     }
 
@@ -290,6 +551,15 @@ public sealed class NotificationRecordTests : IDisposable
         public bool IsEnabled(LogLevel level) => true;
         public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         { if (level == LogLevel.Error) Errors++; }
+    }
+    private sealed class RecoveryLogger : ILogger
+    {
+        public int Warnings;
+        public string Message = "";
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel level) => true;
+        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        { if (level == LogLevel.Warning) { Warnings++; Message = formatter(state, exception); } }
     }
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

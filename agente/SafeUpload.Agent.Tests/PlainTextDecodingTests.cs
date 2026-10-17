@@ -92,7 +92,7 @@ public sealed class PlainTextDecodingTests : IDisposable
         }
         string path = Path.Combine(_workspace.Root, "invalid.txt");
         await File.WriteAllBytesAsync(path, bytes);
-        var policy = LocalPolicyStore.CreateDefault() with { Version = 9 };
+        var policy = LocalPolicyStore.CreateStagedDefault() with { Version = 9 };
         var sink = new LocalQueueAuditSink(_workspace.QueueFile);
         var service = new InspectionService(new FixedPolicyStore(policy), sink,
             new ExtractorRegistry([new PlainTextExtractor()]), new VerdictCache());

@@ -1,0 +1,29 @@
+{
+  "base": "e329a7a271851f4a3b2b1073484a2530f71f172d",
+  "kind": "Source audit; not WDK/ApiValidator or native behavior qualification",
+  "kernel_files_compared": 45,
+  "changed_kernel_files": [],
+  "new_managed_native_import_files": [],
+  "alloc_text_before_definitions": {
+    "StageSpaceGrantValid": true,
+    "StageReadSpaceGrant": true,
+    "StageOpenBacking": true
+  },
+  "journal_check_unchanged_except_rule_builder_visibility": true,
+  "tests": {
+    "base_methods": 1182,
+    "working_methods": 1189,
+    "removed": [],
+    "added": [
+      "SafeUpload.Agent.Tests.InspectionModeDefaultsTests.A_staged_read_cannot_enlarge_the_legacy_last_good_acl_fallback",
+      "SafeUpload.Agent.Tests.InspectionModeDefaultsTests.Explicit_null_is_malformed_in_both_modes_and_transports",
+      "SafeUpload.Agent.Tests.InspectionModeDefaultsTests.Local_and_remote_consumers_select_mode_defaults_but_preserve_each_explicit_setting",
+      "SafeUpload.Agent.Tests.InspectionModeDefaultsTests.Provisioning_from_either_mode_does_not_serialize_one_modes_defaults_as_an_override",
+      "SafeUpload.Agent.Tests.StagedInspectionSnapshotTests.Budgeted_snapshot_keeps_its_slot_until_the_read_lease_closes_without_changing_native_rights",
+      "SafeUpload.Agent.Tests.StagedPrivateStorageNativeTests.Budget_creates_root_ledger_and_grant_with_private_descriptors_before_reopen_or_restart",
+      "SafeUpload.Agent.Tests.StagedPrivateStorageNativeTests.Private_creation_excludes_inherited_mutators_without_changing_the_parent_or_existing_unsafe_objects"
+    ],
+    "required_feature_methods": 43,
+    "missing_required": []
+  }
+}

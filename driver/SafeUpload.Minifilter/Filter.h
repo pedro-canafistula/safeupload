@@ -733,6 +733,7 @@ typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_TOKEN {
     PSAFEUPLOAD_ADMISSION_EPOCH Epoch;
     PVOID InnerCompletionContext;
     UINT32 OperationKind;
+    BOOLEAN DirectoryMutation; /* StageStream's short native-directory admission fence. */
 } SAFEUPLOAD_ADMISSION_EPOCH_TOKEN, *PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN;
 
 NTSTATUS SafeUploadPolicyAdmissionAcquire(_Outptr_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN *Token);
@@ -765,6 +766,8 @@ BOOLEAN SafeUploadPolicyMatchesCurrentOrPendingDestination(
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_opt_ PCUNICODE_STRING NormalizedPath,
     _In_ BOOLEAN IncludeAncestors);
+_IRQL_requires_(PASSIVE_LEVEL)
+BOOLEAN SafeUploadPolicyDirectoryIsScopeAnchor(_In_ PCUNICODE_STRING Directory);
 
 LONG
 SafeUploadCurrentPolicyGeneration (
@@ -1042,6 +1045,11 @@ VOID SafeUploadClearPublicationPermits(VOID);
 VOID SafeUploadClearPublicationPermitsForConnection(_In_ PVOID ConnectionCookie,
     _In_ LONG64 ConnectionGeneration);
 VOID SafeUploadFreeDirectoryView(_In_opt_ PVOID View);
+#endif
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadPolicySameProtectedScope(_In_ PCUNICODE_STRING Source, _In_ PCUNICODE_STRING Target);
 #endif
 
 #endif // _SAFEUPLOAD_FILTER_H_

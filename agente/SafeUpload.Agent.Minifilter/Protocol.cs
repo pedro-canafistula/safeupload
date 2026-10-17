@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 // Managed mirror of driver/SafeUpload.Minifilter/Protocol.h.
 //
 // Protocol.h is the source of truth. Every structure here exists to match
@@ -111,6 +112,9 @@ public static class Contract
         Check(nameof(SafeUploadStageCreateAfterDiscardV19), sizeof(SafeUploadStageCreateAfterDiscardV19),
               StageCreateAfterDiscardV19Size);
         Check(nameof(SafeUploadStageVersionV19), sizeof(SafeUploadStageVersionV19), StageVersionV19Size);
+        Check(nameof(SafeUploadStageSealMetadata), sizeof(SafeUploadStageSealMetadata), 72);
+        CheckOffset(nameof(SafeUploadStageSealMetadata) + ".CreationTime",
+            (int)Marshal.OffsetOf<SafeUploadStageSealMetadata>(nameof(SafeUploadStageSealMetadata.CreationTime)), 40);
         Check(nameof(SafeUploadStageSealV19), sizeof(SafeUploadStageSealV19), StageSealV19Size);
         Check(nameof(SafeUploadStageAllocateV19), sizeof(SafeUploadStageAllocateV19), StageAllocateV19Size);
         Check(nameof(SafeUploadStageAllocateV20), sizeof(SafeUploadStageAllocateV20), StageAllocateV20Size);
@@ -426,6 +430,7 @@ public static class ControlCommand
     public const uint StagePublication = 4;
     public const uint AdmissionCoverage = 24;
     public const uint StageDispose = 29;
+    public const uint StageSpaceCapabilities = 35;
 }
 
 /// <summary>Outcome of SAFEUPLOAD_CONTROL_STAGE_DISPOSE: why the service no longer needs a staged version.</summary>
@@ -553,6 +558,7 @@ public unsafe partial struct SafeUploadRequest
         get
         {
             const uint legacyKnown = 0x000001ff;
+            if (Reserved == 31) return Operation == global::SafeUpload.Agent.Minifilter.Operation.StageSeal && Flags == 0;
             if (Reserved == 28 || Operation == 22)
             {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
@@ -666,6 +672,28 @@ public unsafe partial struct SafeUploadRequest
         return true;
     }
 
+    /// <summary>Failure-only T9 envelope; normal v20 validation stays exact.</summary>
+    public bool TryReadStageResourceSeal(out SafeUploadStageSealV19 seal)
+    {
+        seal = default;
+        if (Reserved != 31 || Flags != 0 || ImageNameLength != 48) return false;
+        SafeUploadRequest copy = this;
+        fixed (char* slot = ImageName)
+        {
+            var bytes = new ReadOnlySpan<byte>((byte*)slot, Contract.MaxImageNameChars * sizeof(char));
+            if (BinaryPrimitives.ReadUInt32LittleEndian(bytes) != 31 ||
+                BinaryPrimitives.ReadUInt32LittleEndian(bytes[4..]) != 48 ||
+                BinaryPrimitives.ReadUInt32LittleEndian(bytes[40..]) != 1 || !IsZero(bytes[44..])) return false;
+        }
+        copy.Reserved = Contract.StageExtensionVersion;
+        copy.ImageNameLength = 40;
+        byte* destination = (byte*)copy.ImageName;
+        new Span<byte>(destination + 40, Contract.MaxImageNameChars * sizeof(char) - 40).Clear();
+        BinaryPrimitives.WriteUInt32LittleEndian(new Span<byte>(destination, 4), Contract.StageExtensionVersion);
+        BinaryPrimitives.WriteUInt32LittleEndian(new Span<byte>(destination + 4, 4), 40);
+        return copy.TryReadStagePayload(global::SafeUpload.Agent.Minifilter.Operation.StageSeal, out seal);
+    }
+
     private static bool IsZero(ReadOnlySpan<byte> bytes)
     {
         foreach (byte value in bytes)
@@ -675,7 +703,7 @@ public unsafe partial struct SafeUploadRequest
         return true;
     }
 
-    public bool UsesStageBinaryPayload => Reserved == 28 || Operation == 22 ||
+    public bool UsesStageBinaryPayload => Reserved == 31 || Reserved == 28 || Operation == 22 ||
         Reserved == Contract.StagePublicDispositionVersion || Operation == 21 ||
         Reserved == Contract.StageNativeLifecycleVersion || Operation == 20 ||
         Reserved == Contract.StageBoundAllocationVersion ||
@@ -825,6 +853,18 @@ public struct SafeUploadStageSealV19
     public uint StructSize;
     public SafeUploadStageIdentityV19 StageIdentity;
     public ulong DestinationGeneration;
+}
+
+/// <summary>Measured seal plus app basic metadata, exactly 72 bytes; no ChangeTime replay.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct SafeUploadStageSealMetadata
+{
+    public SafeUploadStageSealV19 Seal;
+    public long CreationTime;
+    public long LastAccessTime;
+    public long LastWriteTime;
+    public uint FileAttributes;
+    public uint Reserved;
 }
 
 /// <summary>Replayable v19 allocation intent, exactly 64 bytes.</summary>

@@ -47,6 +47,11 @@ public sealed partial class StagedTransferPublisher
         lock (_confirmedPublications) _confirmedPublications.Remove(id);
     }
 
+    private bool HasUnfinishedCallerWork(Guid id)
+    {
+        lock (_confirmedPublications) return _confirmedPublications.ContainsKey(id) || _pendingJournalProgress.ContainsKey(id);
+    }
+
     internal bool HasConfirmedPublication(Guid id)
     {
         lock (_confirmedPublications) return _confirmedPublications.ContainsKey(id);
@@ -109,6 +114,8 @@ public sealed partial class StagedTransferPublisher
             // explicit dispatcher must still reconcile them after cleanup.
             if (!receiptRecovery && StagedTransferJournal.BlockedCleanupComplete(entry) && !HasConfirmedPublication(id))
             {
+                // Keep terminal recovery read-free. The maintenance pass archives
+                // completed unbound snapshots with its own fresh exact-state checks.
                 lock (_confirmedPublications) _pendingJournalProgress.Remove(id);
                 _recoveryRetries.Remove(id);
                 lock (_recoveryNotified) _recoveryNotified.Remove(id);
@@ -138,6 +145,17 @@ public sealed partial class StagedTransferPublisher
                 return;
             }
 #endif
+            if (entry.UnboundCancellation is not null)
+            {
+                if (!StagedDiscardCleanup.TryDeleteExactAndConfirmAbsent(entry.Transfer.StagePath,
+                    entry.StageIdentity, out Exception? failure))
+                    throw new IOException("Cancelled stage cleanup is waiting for its exact handles.", failure);
+                if (!_publicationGate.DisposeStage(id, SafeUpload.Agent.Minifilter.StageDisposeOutcome.CleanedUp,
+                    CommittedRenames(entry))) throw new IOException("Cancelled stage disposal acknowledgement is pending.");
+                await _journal.CompleteUnboundCancellationCleanupAsync(entry, token).ConfigureAwait(false);
+                await _journal.ArchiveCompletedAsync(await _journal.ReadAsync(id, token).ConfigureAwait(false), token).ConfigureAwait(false);
+                return;
+            }
             if (HasConfirmedPublication(id))
                 await FinishConfirmedPublicationAsync(id, token).ConfigureAwait(false);
             else if (entry.State == TransferJournalState.Publishing)
@@ -254,6 +272,8 @@ public sealed partial class StagedTransferJournal
             var released = current with { State = TransferJournalState.Released, StateHistory = history,
                 UpdatedAtUtc = history.Count == 0 ? DateTimeOffset.UtcNow : history[^1].OccurredAtUtc };
             await ReplaceAsync(ManifestPath(current.Transfer.TransferId), released, token).ConfigureAwait(false);
+            _unboundPublicationAttempts.Remove(current.Transfer.TransferId);
+            _unboundCommitted.Remove(current.Transfer.TransferId);
             return released;
         }
         finally { _gate.Release(); }

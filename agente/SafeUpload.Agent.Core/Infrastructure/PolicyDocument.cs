@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using SafeUpload.Agent.Core.Domain;
 
 namespace SafeUpload.Agent.Core.Infrastructure;
@@ -27,11 +28,25 @@ internal sealed record PolicyDocument
     [JsonPropertyName("monitoredScopes")]
     public MonitoredScopesDocument? MonitoredScopes { get; init; }
 
+    private int? _maxFileSizeMb, _inspectionTimeoutSeconds;
+
+    // Absence selects the consumption mode's defaults. Null is still malformed,
+    // never a way to replace an explicit small limit with the larger default.
     [JsonPropertyName("maxFileSizeMb")]
-    public int MaxFileSizeMb { get; init; } = 20;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MaxFileSizeMb
+    {
+        get => _maxFileSizeMb;
+        init => _maxFileSizeMb = value ?? throw new JsonException("maxFileSizeMb must be an integer.");
+    }
 
     [JsonPropertyName("inspectionTimeoutSeconds")]
-    public int InspectionTimeoutSeconds { get; init; } = 5;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? InspectionTimeoutSeconds
+    {
+        get => _inspectionTimeoutSeconds;
+        init => _inspectionTimeoutSeconds = value ?? throw new JsonException("inspectionTimeoutSeconds must be an integer.");
+    }
 
     [JsonPropertyName("auditOnly")]
     public bool AuditOnly { get; init; }
@@ -53,8 +68,6 @@ internal sealed record PolicyDocument
         Version = 1,
         ActiveCategories = ["Cpf", "Cnpj", "PaymentCard", "Password", "Secret"],
         MonitoredScopes = MonitoredScopesDocument.Default,
-        MaxFileSizeMb = 20,
-        InspectionTimeoutSeconds = 5,
         FailOpen = true,
         ExcludedProcesses = ["System", "SafeUpload.Agent.App"],
         Clipboard = ClipboardDocument.Default
@@ -64,7 +77,7 @@ internal sealed record PolicyDocument
     /// Converte para o objeto de domínio. Não valida: quem chama decide quando
     /// aplicar a RN-009, e as duas IPolicyStore fazem isso no carregamento.
     /// </summary>
-    public Policy ToPolicy()
+    public Policy ToPolicy(bool staged = false)
     {
         var categories = new HashSet<Category>();
         foreach (var name in ActiveCategories ?? [])
@@ -106,8 +119,8 @@ internal sealed record PolicyDocument
                 destinations,
                 scopes.RemovableDrives,
                 scopes.NetworkPaths),
-            MaxFileSizeMb,
-            InspectionTimeoutSeconds,
+            MaxFileSizeMb ?? (staged ? 4096 : 20),
+            InspectionTimeoutSeconds ?? (staged ? 900 : 5),
             FailOpen,
             excluded,
             AuditOnly,

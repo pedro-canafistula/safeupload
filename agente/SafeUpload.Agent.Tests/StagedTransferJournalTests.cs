@@ -1354,6 +1354,46 @@ public sealed class StagedTransferJournalTests : IDisposable
             TransferJournalState.Blocked, TransferJournalState.Inspecting, null, CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Kind5_high_water_cannot_compact_away_a_published_barrier_and_revive_an_older_save(bool packed)
+    {
+        var journal = Journal(); var old = Transfer();
+        Directory.CreateDirectory(Path.GetDirectoryName(old.DestinationPath)!);
+        await BlockAsync(journal, old, windowClosed: false);
+        var published = Transfer() with { DestinationPath = old.DestinationPath };
+        var barrier = await ReleaseAsync(journal, published);
+        // Legacy publication fixture with exact disposal completed, eligible for packing.
+        barrier = barrier with { StageDeleted = true };
+        await File.WriteAllTextAsync(Path.Combine(_workspace.Root, "journal", published.TransferId.ToString("N") + ".json"),
+            System.Text.Json.JsonSerializer.Serialize(barrier));
+        journal = Journal(); Guid driver = Guid.NewGuid();
+        await journal.ReconcileDriverInstanceV20Async(driver, (uint)SafeUpload.Agent.Minifilter.StageV20Capability.Required, default);
+        var late = Transfer() with { DestinationPath = old.DestinationPath,
+            RequestorSid = "S-1-5-21-111-222-333-1000", RequestorProcessCreationTime = 123456 };
+        var allocated = await journal.CreateAsync(late, default, allocationDisposition: 3,
+            allocationReferenceKind: 0, driverInstanceId: driver,
+            parentDirectoryIdentity: StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(late.DestinationPath)!));
+        var discard = new StagedDiscardRequest(late.TransferId,
+            new(late.TransferId, allocated.DestinationGeneration, allocated.StageIdentity!), StagedDiscardKind.UnattachedAllocation);
+        await journal.BeginOrConfirmDiscardAsync(discard, default, late.ProcessId, driver);
+        await journal.CompleteDiscardAsync(discard, default);
+        if (packed)
+        {
+            Assert.True(await journal.ArchiveCompletedAsync(barrier, default));
+            Assert.True(await journal.ArchiveCompletedAsync(await journal.ReadAsync(late.TransferId, default), default));
+        }
+        Assert.True(await journal.DrainDriverInstanceV20Async(driver, 101, 102, default));
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddMinutes(1), default));
+        journal = Journal();
+        Assert.Equal(barrier, await journal.ReadAsync(published.TransferId, default));
+        await Assert.ThrowsAsync<IOException>(() => journal.TransitionAsync(old.TransferId,
+            TransferJournalState.Blocked, TransferJournalState.Inspecting, null, default));
+        var next = Transfer() with { DestinationPath = old.DestinationPath };
+        Assert.True((await journal.CreateAsync(next, default)).DestinationGeneration > allocated.DestinationGeneration);
+    }
+
     [Fact]
     public async Task Compaction_keeps_a_released_version_whose_stage_is_still_on_disk()
     {
@@ -1587,6 +1627,54 @@ public sealed class StagedTransferJournalTests : IDisposable
         TransferJournalEntry terminal = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
         Assert.Equal(exact.DestinationGeneration, terminal.DestinationGeneration);
         Assert.Equal(StagedDiscardKind.UnattachedAllocation, terminal.DiscardKind);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Late_yes_kind5_cleanup_retires_effective_claim_but_preserves_generation_high_water(bool packed, bool aborted)
+    {
+        var journal = Journal(); var predecessor = Transfer(); Guid driver = Guid.NewGuid();
+        await journal.ReconcileDriverInstanceV20Async(driver, (uint)SafeUpload.Agent.Minifilter.StageV20Capability.Required, default);
+        Directory.CreateDirectory(Path.GetDirectoryName(predecessor.DestinationPath)!);
+        var first = await journal.CreateAsync(predecessor, default);
+        await journal.SealAsync(predecessor.TransferId, predecessor.ProcessId, predecessor.StagePath, default);
+        var late = Transfer() with { DestinationPath = predecessor.DestinationPath,
+            RequestorSid = "S-1-5-21-111-222-333-1000", RequestorProcessCreationTime = 123456 };
+        var allocated = await journal.CreateAsync(late, default, allocationDisposition: 3,
+            allocationReferenceKind: 0, driverInstanceId: driver,
+            parentDirectoryIdentity: StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(late.DestinationPath)!));
+        Assert.True(allocated.DestinationGeneration > first.DestinationGeneration);
+        string renamed = Path.Combine(_workspace.Root, "destination", "renamed.txt");
+        await Assert.ThrowsAsync<IOException>(() => journal.PrepareRenameAsync(predecessor.TransferId, 701,
+            predecessor.ProcessId, renamed, true, default)); // A live allocation still holds currentness.
+        var discard = new StagedDiscardRequest(late.TransferId,
+            new(late.TransferId, allocated.DestinationGeneration, allocated.StageIdentity!), StagedDiscardKind.UnattachedAllocation);
+        if (aborted)
+        {
+            var parent = StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(late.DestinationPath)!);
+            Assert.Equal(6u, await journal.ApplyAttachmentV20Async(new(12, 901, discard.Version, driver,
+                parent, late.DestinationPath, late.ProcessId), true, true, default));
+            Assert.Equal(8u, await journal.ApplyAttachmentV20Async(new(14, 902, discard.Version, driver,
+                parent, late.DestinationPath, late.ProcessId), true, true, default));
+        }
+        await journal.BeginOrConfirmDiscardAsync(discard, default, late.ProcessId, driver);
+        await Assert.ThrowsAsync<IOException>(() => journal.PrepareRenameAsync(predecessor.TransferId, 701,
+            predecessor.ProcessId, renamed, true, default)); // Requested cleanup alone is insufficient.
+        Assert.Equal(StagedDiscardStatus.Acknowledged, await journal.CompleteDiscardAsync(discard, default));
+        if (packed) Assert.True(await journal.ArchiveCompletedAsync(await journal.ReadAsync(late.TransferId, default), default));
+        journal = Journal();
+        var pending = await journal.PrepareRenameAsync(predecessor.TransferId, 701, predecessor.ProcessId, renamed, true, default);
+        Assert.NotNull(pending.PendingRename);
+        await journal.CompleteRenameAsync(predecessor.TransferId, 701, predecessor.ProcessId, renamed, false, default);
+        var next = Transfer() with { DestinationPath = predecessor.DestinationPath };
+        var nextEntry = await journal.CreateAsync(next, default);
+        Assert.True(nextEntry.DestinationGeneration > allocated.DestinationGeneration);
+        Assert.Equal(StagedDiscardStatus.Acknowledged, await journal.CompleteDiscardAsync(discard, default));
+        Assert.True(File.Exists(predecessor.StagePath)); Assert.False(File.Exists(late.StagePath));
+        Assert.False(File.Exists(predecessor.DestinationPath));
     }
 
     [Fact]

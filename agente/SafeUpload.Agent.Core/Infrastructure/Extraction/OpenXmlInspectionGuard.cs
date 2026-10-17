@@ -115,6 +115,9 @@ internal static class OpenXmlInspectionGuard
                 var part = relationship.OpenXmlPart;
                 if (!visited.Add(part.Uri)) continue;
                 if (visited.Count > MaximumParts) throw new InspectionLimitException();
+                // Owner decision 2026-10-16 (option A): PowerPoint writes a package-root thumbnail rendered from slide 1, whose
+                // text is inspected; accept it without OCR. Images anywhere else stay refused until image inspection exists.
+                if (package is PresentationDocument && ReferenceEquals(container, package) && part is ThumbnailPart) continue;
                 if (package is PresentationDocument
                     ? !PresentationOnly(part) && !PresentationShared(part)
                     : PresentationOnly(part))

@@ -94,7 +94,7 @@ public sealed class HttpPolicyStore : IPolicyStore
 
         if (document is null && !allowFallback)
             throw new InvalidPolicyException("The policy service returned no current policy.");
-        var policy = document is null ? LocalPolicyStore.CreateDefault() : document.ToPolicy();
+        var policy = document is null ? LocalPolicyStore.CreateDefault() : document.ToPolicy(staged: !allowFallback);
 
         // Mesma regra da versão local: valida no carregamento, não no uso. Uma
         // política publicada sem categoria ativa é erro de configuração do

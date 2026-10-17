@@ -1,0 +1,186 @@
+{
+  "base": "a2b67984ade69152716aef4d0edec1f2e4bcfeb6",
+  "kind": "Local modified-source component diagnostics; final committed-source Windows gates remain required",
+  "dotnet": "/home/victor/Work/safeupload-tools/dotnet/dotnet, SDK10.0.400/runtime10.0.11",
+  "builds": {
+    "featureDebug": "PASS 0 warnings / 0 errors",
+    "featureRelease": "PASS 0 warnings / 0 errors"
+  },
+  "diagnostic": {
+    "kind": "In-process diagnostic; actual test methods and InlineData, no VSTest host",
+    "rows": 321,
+    "failures": 0,
+    "skipsInSelectedRows": 0,
+    "elapsedTestSeconds": 77.1558827,
+    "classes": {
+      "ArchiveInspectionTests": 93,
+      "HttpPolicyStoreTests": 10,
+      "InspectionWorkBudgetTests": 8,
+      "PlainTextDecodingTests": 36,
+      "PolicyTests": 1,
+      "StagedInspectionFailureTests": 16,
+      "StagedJournalReplacementTests": 11,
+      "StagedLargeDefaultsTests": 18,
+      "StagedLargeFileTests": 27,
+      "StagedLargeIntegrationTests": 10,
+      "StagedSnapshotCopyTests": 7,
+      "StagedTerminalArchiveTests": 34,
+      "StreamingContentScannerTests": 37,
+      "WordStreamingInspectionTests": 13
+    },
+    "note": "Explicit portable subset plus the authorized default-policy contract; three existing Windows-path controls from the earlier Linux attempt remain for the Windows matrix. No test methods removed or skipped in product source."
+  },
+  "earlierFailedDiagnostic": {
+    "rows": 127,
+    "failures": 8,
+    "failedNames": [
+      "PolicyTests.Caminhos_monitorados_chegam_expandidos[]",
+      "PolicyTests.Escopo_padrao_e_caminho_de_maquina[]",
+      "PolicyTests.Quarentena_fica_fora_da_pasta_vigiada[]",
+      "StagedLargeDefaultsTests.Completed_legacy_hot_and_packed_history_remains_compatible_and_unchanged[false]",
+      "StagedLargeDefaultsTests.Completed_legacy_hot_and_packed_history_remains_compatible_and_unchanged[true]",
+      "StagedLargeDefaultsTests.Missing_ledger_cannot_reclassify_a_larger_grant_or_sealed_version_as_legacy[true]",
+      "StagedLargeDefaultsTests.Over_budget_legacy_recovery_does_not_refuse_startup_or_admit_new_bytes[true]",
+      "StagedLargeDefaultsTests.Pending_legacy_stage_is_charged_under_its_original_guard_and_refunded_only_after_exact_cleanup[]"
+    ],
+    "resolution": "Five new fixture histories corrected; three pre-existing Windows-path assumptions remain required on Windows. Failed receipts retained."
+  },
+  "offlineChecks": {
+    "FeatureAgentDefaults": 2,
+    "ExactAgentMatrixRunner": 21,
+    "GrantShimCompilers": [
+      "cc",
+      "clang"
+    ],
+    "ManifestRetry": 3,
+    "ReconcileRetry": 15
+  },
+  "rawReceipts": [
+    {
+      "path": ".scratch/ux-large3/build-first.txt",
+      "sha256": "A78E4FB7B6AEEABE5F7F2AA3A5E129D7F3DFA1A2B625CC66617188363DC3FA08"
+    },
+    {
+      "path": ".scratch/ux-large3/runner-build-first.txt",
+      "sha256": "30D70674905A9E9327EF0BA4F6D393DE94F34F4E5E3BC6C490274C1C11708E06"
+    },
+    {
+      "path": ".scratch/ux-large3/runner-build-second.txt",
+      "sha256": "1BEE532EA422A0D0638C34346F1D1EB6FECDFDD8C0D1B5C6F2F974E97E1D0BFA"
+    },
+    {
+      "path": ".scratch/ux-large3/defaults-second.json",
+      "sha256": "FF405AD93BE65AA7286DACB31797EB8D670136B3384AE0778BAF37579CC9A323"
+    },
+    {
+      "path": ".scratch/ux-large3/defaults-second.stderr",
+      "sha256": "C91F62BC0FCBC151011C8660F3BDBC9C8549770B17F6D22535906C22450254C2"
+    },
+    {
+      "path": ".scratch/ux-large3/runner-build-third.txt",
+      "sha256": "74E0ECB4635C453620E16007182A46CAF13DDF388273634797FB3EBCC7E91133"
+    },
+    {
+      "path": ".scratch/ux-large3/defaults-third.json",
+      "sha256": "27172C35776C1BCCCA682C753280C7D3097B5C9AFDF60A5983110ADE034449DF"
+    },
+    {
+      "path": ".scratch/ux-large3/defaults-third.stderr",
+      "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+      "path": ".scratch/ux-large3/final-debug-build.txt",
+      "sha256": "A108855124CB274817E2A1D4E172F3B28D71DFB5240B7CC8F66D0E09B3A4E2D5"
+    },
+    {
+      "path": ".scratch/ux-large3/final-release-build.txt",
+      "sha256": "DAA35581EF35CF9C9F8C373E4711306AE645FDDB8A19F8A7DACC05A06808E531"
+    },
+    {
+      "path": ".scratch/ux-large3/runner-build-final.txt",
+      "sha256": "56E439E807AE97F657FC7974C9B81A0A45DC87C5E8E90591222BC342D4276F71"
+    },
+    {
+      "path": ".scratch/ux-large3/focused-final.json",
+      "sha256": "76C57944F0BF75E12CB16ECE966107342A64B4D26132661D05A59A2EF37B1956"
+    },
+    {
+      "path": ".scratch/ux-large3/focused-final.stderr",
+      "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+      "path": ".scratch/ux-large3/FeatureAgentDefaults.SelfCheck.txt",
+      "sha256": "B68188F579FD2B332ABBEEC34A251849AA6FAC194138DBF69B90D6E431FD196A"
+    },
+    {
+      "path": ".scratch/ux-large3/Invoke-ExactAgentMatrixBuild.SelfCheck.txt",
+      "sha256": "C7F97B5F3FE05531AC4FF6604288D2DFCBAF1AD9EFA406BEC157BA78AECF6918"
+    },
+    {
+      "path": ".scratch/ux-large3/large-selfcheck.txt",
+      "sha256": "A812A8AC84D268E69F64CFA52D299075539C9778AB56277BEEEDD542C4457E9A"
+    },
+    {
+      "path": ".scratch/ux-large3/manifest-retry-selfcheck.txt",
+      "sha256": "5F220242E10D5A7F4A623C18B4B01BCEB15DD02264DC96938731678B5DC9D4D0"
+    },
+    {
+      "path": ".scratch/ux-large3/reconcile-retry-selfcheck.txt",
+      "sha256": "F97038E46CB1351E3EDFF1B275EA07D43038B466A2AF1EF2F0B5F8C4A51CB98D"
+    }
+  ],
+  "localArtifacts": [
+    {
+      "path": ".scratch/ux-large3/artifacts/bin/SafeUpload.Agent.Core/debug/SafeUpload.Agent.Core.dll",
+      "sha256": "7AB076DA540969BD990F1FD6D68A436B5757B79A2BF0D31900B4D9F47D1B2C4A"
+    },
+    {
+      "path": ".scratch/ux-large3/artifacts/bin/SafeUpload.Agent.Core/release/SafeUpload.Agent.Core.dll",
+      "sha256": "FF415AAA49F59BEFDD835B0C242367F1180AE63D8BDF02A4E31EB758C8A8CC98"
+    },
+    {
+      "path": ".scratch/ux-large3/artifacts/bin/SafeUpload.Agent.Network/debug/SafeUpload.Agent.Network.dll",
+      "sha256": "CA5617C2B7622D5FB66E9AF673D3713EEC9736DDB220D7A7DBF9975EB249C0A1"
+    },
+    {
+      "path": ".scratch/ux-large3/artifacts/bin/SafeUpload.Agent.Network/release/SafeUpload.Agent.Network.dll",
+      "sha256": "5F7CCF02AE56F03EA89C611B588AB963F6FE10ACA6750C50D68503B30B4BCA73"
+    },
+    {
+      "path": ".scratch/ux-large3/artifacts/bin/SafeUpload.Agent.Minifilter/debug/SafeUpload.Agent.Minifilter.dll",
+      "sha256": "36AA3C14632EAB051707C2511A67EE780F70F559D000ED703C16271DBC0D7040"
+    },
+    {
+      "path": ".scratch/ux-large3/artifacts/bin/SafeUpload.Agent.Minifilter/release/SafeUpload.Agent.Minifilter.dll",
+      "sha256": "CD592F0730F2925C1E105F4CBD114B5233251A2CF58B968B461FDC4FC7EAE507"
+    },
+    {
+      "path": ".scratch/ux-large3/artifacts/bin/SafeUpload.Agent.Service/debug/SafeUpload.Agent.Service.dll",
+      "sha256": "EA8E40662E7800417A695CEA3835BAE5679C778C457187EDBE1F02FAE5D84AB5"
+    },
+    {
+      "path": ".scratch/ux-large3/artifacts/bin/SafeUpload.Agent.Service/release/SafeUpload.Agent.Service.dll",
+      "sha256": "208DFDD6A1506A1499C5E1934D60FC89EAA94BCD49AE174BA0B5803638EB11EF"
+    },
+    {
+      "path": ".scratch/ux-large3/artifacts/bin/SafeUpload.Agent.Tests/debug/SafeUpload.Agent.Tests.dll",
+      "sha256": "7A4F909B2E0102AA604ADED731ABF11CE3633594A20D17415F3DB10D4AD35E12"
+    },
+    {
+      "path": ".scratch/ux-large3/artifacts/bin/SafeUpload.Agent.Tests/release/SafeUpload.Agent.Tests.dll",
+      "sha256": "68E3D2938A1C58BD13B61C409CA63F1A6E5FF8B7B30481220BD0858BD15111A4"
+    },
+    {
+      "path": ".scratch/ux-large3/runner-artifacts/bin/Runner/debug/Runner.dll",
+      "sha256": "4A47638C2C2DFC665E2B44E96829965FF2775A300315FADF49296C92458712D2"
+    },
+    {
+      "path": ".scratch/ux-large3/runner/Program.cs",
+      "sha256": "A7770189EA72C735ED1CFE9AB3CDF6DCE0B33F474D965C2B41DEF14F239C3A9C"
+    }
+  ],
+  "kernelDelta": false,
+  "windowsMatrix": false,
+  "productVMContacted": false,
+  "protectedPairQualified": false
+}

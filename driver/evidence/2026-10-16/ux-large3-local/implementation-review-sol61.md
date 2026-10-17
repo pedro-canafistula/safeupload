@@ -1,0 +1,36 @@
+# Independent T9 default/upgrade implementation review
+
+2026-10-16. Sol 6.1, xhigh. Reviewed the final working source delta against `a2b67984`, including untracked `StagedSpaceConfiguration.cs`, `StagedSpaceUpgrade.cs` and `StagedLargeDefaultsTests.cs`. This is the coherent implementation review following `design-review.md`; primary-agent fixes were checked as part of the same review. Only review receipts were written. No builds, test execution, Windows/VM actions or Git mutations were performed by the reviewer.
+
+**Disposition: ACCEPT WITH CONDITIONS for the scoped source change. No remaining blocking source findings.** This accepts product-security design/implementation, not component gates, driver/agent qualification, runtime activation or cutover.
+
+## Findings closed
+
+- **Design F1, larger unaccounted authority:** `ValidateLegacyGuard` requires confirmed companion absence, guards sealed/hand-back and actual lengths, checks the existing exact stage identity when one was recorded, and preserves missing identity. Persisted legacy records repeat these checks at restart. `Reserve`, failed-allocation cleanup and grant issuance cannot repurpose them. `Bind` returns without writing a grant. A missing large-mode ledger plus surviving companion stays held; it is not reduced to a 16 MiB debit.
+- **Design F2, negative-receipt upgrade refusal:** migration validates the held V20 request framing, process/request/creation/intent fields and reservation filename. It rounds and charges the existing negative-receipt baseline globally, permitting the existing population without inventing replay authority. Additional growth remains limited; malformed/partial objects remain held. The exact-request resolver remains the replay authority.
+- **Bound auxiliary inventory:** migration reads immutable `.security` objects through the journal's held size/ACL checks, decodes them and matches the embedded snapshot ID. A separate compatibility set recognizes only canonical `.security` and `.security.<GUID>.tmp` names. Those IDs cannot substitute for transfer reservations or authorize ordinary manifest creation. Referenced dependencies still undergo the original binding/digest/provenance checks on journal read. Rounded existing storage and allowed binary replacement overlap use the charged shared envelope, including binary sizes above the transfer's half-MiB journal allowance. New bound allocation remains refused by the existing large-mode scope gate.
+
+## Authority, accounting and lifecycle checks
+
+The new defaults resolve from the actual staging volume, preserve explicit overrides, and select the bounded parser process at the approved default memory. Policy omission defaults become 4096 MiB/900 s while explicit old values remain authoritative. Runtime readiness and exact v31 capability checks remain in place.
+
+Pending legacy versions retain their original SID and exact identity when present; unattributed history is total debt and cannot become another user's authority. Imported capacity is fixed to the existing legacy guard. Snapshot leases and the existing journal-backed exact cleanup checks govern content refunds. A null identity cannot authorize refund or deletion. Unknown objects are neither adopted nor removed.
+
+Terminal inventory exemptions require the existing completed shape and confirmed stage absence. They are rebuilt from trusted hot/packed records every startup, remain separate from reservations and do not change generation, publication, delete, seed or export authority. The existing archive completion/integrity/frontier rules are unchanged.
+
+The rounded journal envelope and archive hooks are installed before deferred archive loading can perform repair/control writes. Journal visitation owns the journal gate before invoking budget callbacks; no new path waits for the journal while holding the budget gate. Existing debt above current budgets, including tiny/zero limits, can recover while new reservations fail with the resource reason. Checked arithmetic and ambiguous persistence retain conservative holds.
+
+## Remaining conditions and evidence limits
+
+1. Preserve and report the actual component results. At review closure the third diagnostic was still running; its incomplete JSON was not treated as a verdict. Earlier diagnostic receipts retain five invalid-state-history fixture failures and three Windows-path assumptions exercised on Linux. The fixtures now carry valid histories, so the negative controls can reach migration checks. `git diff --check a2b67984` passed. A successful diagnostic subset is still not the required Windows four-leg feature matrix.
+2. Complete the specified Windows matrix/native/protected large-file and failure rows before claiming qualification or activating/cutting over the protected pair. In particular, Windows held-stage metadata sharing, ACL ownership, large immutable grants, restart/recovery, snapshot/child lifetimes, low-space behavior and bound legacy recovery dependencies need their normal native evidence. Standalone auxiliary-storage controls do not prove the complete bound recovery pipeline.
+3. Retain explicit downgrade limits. The current binary refuses `Enabled=false` when reservation records remain. An older binary can ignore the added `LegacyGuard` field in the version-1 JSON shape; older-binary downgrade is unsupported and must not be presented as a safe recovery/rollback procedure. No downgrade qualification was added here.
+4. Keep documentation scoped to the implemented upgrade population and remaining UX limits. Corrupt/unaccounted objects still hold, v31 is required, explicit inspection settings remain in force, full-SID leases can refuse concurrent saves, and synchronous seed cost remains a separate qualification item. Default enablement is not completion of T9 or approval of a previously unqualified staging cutover.
+
+No publication/delete retry, incomplete-inspection approval, fabricated exact-object authority, new lock inversion or premature content refund was found in this delta.
+
+## Closure addendum — initialization failure and retry
+
+Spot-checked the final `InitializeStagingSubsystem` catch change within this same review. Clearing `_stageAllocator`, `_stagePublisher`, `_stageSpaceBudget` and `_stageJournal` is required and correct: the caller uses a nonnull allocator as its initialization sentinel, while the first allocator is constructed before budget migration can fail. On failure the caller returns before worker creation, driver reconciliation or staging readiness. Clearing the entire partial subsystem forces the next connection to reconstruct/validate durable reservations and journal state instead of using that pre-budget allocator. Successfully persisted migration entries remain on disk and replay through normal constructor validation. No worker or live snapshot lease is detached by this failure path. **Acceptance unchanged.**
+
+The completed `defaults-third.json` diagnostic was then inspected: 100 outcomes, zero failures, including 18 `StagedLargeDefaultsTests` outcomes. This supersedes the earlier observation that the third diagnostic was incomplete; it remains an in-process diagnostic rather than the required Windows feature matrix. Expanded diagnostics and final builds were still running and are outside this source-review verdict.

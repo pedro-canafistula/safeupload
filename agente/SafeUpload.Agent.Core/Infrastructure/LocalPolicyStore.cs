@@ -113,12 +113,14 @@ public sealed class LocalPolicyStore : IPolicyStore
                     throw new InvalidPolicyException($"O arquivo {_policyFile} não contém uma política.");
                 }
 
-                var policy = document.ToPolicy();
+                var policy = document.ToPolicy(staged: !allowFallback);
 
                 // RN-009: the validation happens at load time. Cache only a
                 // policy whose protected ACL and contents both passed checks.
                 policy.EnsureValid();
-                _lastGoodPolicy = policy;
+                // Legacy fallback must retain its own limits even when the most
+                // recent successful read was for staged publication authority.
+                _lastGoodPolicy = allowFallback ? policy : document.ToPolicy();
                 return policy;
             }
             catch (PolicyFileAclRejectedException) when (allowFallback && _lastGoodPolicy is not null)
@@ -137,10 +139,13 @@ public sealed class LocalPolicyStore : IPolicyStore
 
     /// <summary>
     /// A política que o agente assume quando nunca foi configurado: as quatro
-    /// categorias ligadas, os formatos que sabemos ler, 20 MB de limite, 5 s de
+    /// categorias ligadas, os formatos que sabemos ler, 20 MiB de limite, 5 s de
     /// timeout e fail-open.
     /// </summary>
     public static Policy CreateDefault() => PolicyDocument.Default.ToPolicy();
+
+    /// <summary>Owner-approved staged defaults, without changing legacy RN-012/013.</summary>
+    public static Policy CreateStagedDefault() => PolicyDocument.Default.ToPolicy(staged: true);
 
     private async Task WriteDefaultAsync(CancellationToken cancellationToken)
     {

@@ -1,0 +1,15 @@
+# T4/T11 unbound archive — worker-recovery closure
+
+2026-10-16. Requested reviewer: Sol 6.1, xhigh. Narrow closure of the required correction in [implementation-review.md](implementation-review.md), against the updated working tree over `2a2a2b8973bcb30dadbea7a0ec4b669448bbed78`. Read the retry helper/tests, maintenance wrapper, both live loops, empty-frontier initialization, late-close control and revised design. No source/Git changes or tests run by the reviewer; `git diff --check` is clean.
+
+**ACCEPT WITH CONDITIONS at source-review level. The worker-recovery blocker is closed.** No remaining implementation correctness blocker was found within this reviewed scope. Earlier findings and review provenance remain in the original reports.
+
+- `StagedJournalMaintenanceRetry.RunAsync` now distinguishes completion from pending work. Recoverable I/O uses monotonic 250 ms–8 s backoff; cancellation and `InvalidDataException` escape. Success resets the backoff.
+- `MaintainTerminalJournalAsync` distinguishes Complete/Pending/Held. Both loops delay and continue on Pending, so neither a failed pass nor a backoff skip falls through into an unguarded scan. Publication recovery, maintenance and its pending snapshot share the guarded boundary (`MinifilterInterceptor.cs:1467`); discarded archival and its pending snapshot do likewise (`:1551`). This resolves the follow-up issue in the first retry revision.
+- Detected integrity failure or an already-latched journal hold disables both staging readiness bits, invalidates feature bound readiness and logs the validation/restart remedy before ending the affected loop. No public mutation is added to the retry helper; existing recovery retains its exact-receipt rules.
+- New segments receive a valid empty committed frontier before the append fault hooks. An interrupted first append can retain its hot record and recover from that valid empty frontier.
+- The persistent-I/O control checks that a follow-up scan cannot run during failure/backoff and resumes after success. The late-close control exercises held→released disposal, eventual stage absence/archive and refusal to authorize any publication; another poll performs no new disposal. The revised design reflects the implemented control/frontier/reflush/idle-audit contract.
+
+Conditions are verification, not unresolved design choices: execute and inspect the focused controls against this final source, retain the required failed-flush/reflush, rollover/inventory and compaction interruption coverage, and complete the Windows user/SYSTEM matrix plus protected-pair qualification before making those claims. The existing Linux-only reparse control does not establish Windows ACL/owner/reparse admission. Coherent cold rollback of the whole private store is outside the corruption checks demonstrated here; checksums and a mutable local frontier are not external anti-rollback authority.
+
+No V30 activation/import, driver change, VM action, threshold relaxation or T11/milestone closure is authorized or established by this review.

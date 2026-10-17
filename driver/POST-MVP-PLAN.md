@@ -49,6 +49,14 @@ fails closed with a "not enough staging space" reason and alert, without affecti
   once merged to this branch). T4 `uxk5t4ord2` stopped at cycle 548 (journal scan O(n) -> reply timeout -> stranded name; receipt kept);
   rerun `uxk8t4ord` in progress. Dev-disk shutdown freeze = OneDrive DebugBreak into the absent kernel debugger (not SafeUpload).
 
+**2026-10-16 — T9 large-file product defaults and upgrade.** Owner accepted total staging budget min(32 GiB, 10% of
+available space), per-user min(8 GiB, total/4), free-space floor max(1 GiB, 5% of volume); resource refusal is fail closed
+with a staging-space alert, isolated per SID, with no fixed per-file staging cap. Follow-up authorizes `StageSpace.Enabled`
+to default true, runtime formulas with explicit overrides, a measured parser memory default, suitable inspection defaults
+and safe existing-install migration. `ux/large` implementation on base `a2b67984`: [design](UX-LARGE.md),
+[local receipt](evidence/2026-10-16/ux-large3-local/result.md). Pending legacy stages are charged under their original guard;
+completed history stays compatible. Runtime readiness gates and Windows/pair qualification remain required.
+
 **2026-10-16 — MVP pair now, batch 3 in parallel.** Owner, in the session, after the [critical-path plan](evidence/2026-10-16/t5-critical-path-plan-sol61.md)
 (full T4/T5 to M2 standard: 180–310 worker-hours plus 30–50 lab hours): "MVP now + batch 3 in parallel". An MVP pair is cut from
 the last booted line (`t5-pair14`, `b97d263e`; its 10k row reached 9,998/10,000 with no blocked bytes, no cap refusal and no
@@ -512,7 +520,7 @@ latest inspector matrix. The remaining delivery requirements and their current p
 | T6 | Directory moves, empty/Explorer moves and final-pair three-mode byte observation | Only the earlier 28/28 copy-fallback component pair is qualified; directory creation/moves remain unresolved. |
 | T7 | Final-pair authorized/denied read rows | Earlier component B02 passes do not cover the revised pair. |
 | T8 | Nine real application workflows in all three modes; agreed owner/DACL/timestamps/attributes/ADS/EAs/labels | Final application/metadata rows and metadata decisions remain missing. |
-| T9 | Stage/seed caps removed under per-user/total budgets; complete format/encoding coverage, bounded parser memory, durable cleanup, interactive failure and protected large-file rows | `StageStream.c:STAGE_MAX_BYTES` and `StagedTransferAllocator.MaximumSeedBytes` remain 16 MiB. The [14-case inspector measurement](evidence/2026-10-13/t9-inspector-metrics3-result.json) covers neither those caps/budgets nor hostile parser memory, publisher costs or protected behavior. Complete-or-refuse coverage landed (`a46124c7`, `52fbb7cb`; drawing/chart/VML text, PDF annotations/form values read, rare payloads refused, Office part allowlist, independent fixtures); budgets and cap removal remain. |
+| T9 | Stage/seed caps removed under per-user/total budgets; complete format/encoding coverage, bounded parser memory, durable cleanup, interactive failure and protected large-file rows | [Product-default accounted staging](UX-LARGE.md) uses owner-approved runtime storage formulas; new grants have no fixed per-file staging cap. Legacy upgrade retains old guards until cleanup. Concurrent/seed UX and Windows qualification remain open. The [earlier 14-case measurement](evidence/2026-10-13/t9-inspector-metrics3-result.json) covers neither staging nor hostile parser memory/publisher costs/protected behavior. Complete-or-refuse coverage landed (`a46124c7`, `52fbb7cb`; drawing/chart/VML text, PDF annotations/form values read, rare payloads refused, Office part allowlist, independent fixtures). |
 | T10 | Pass the final pair in all modes | Phase B fixed: `m2t10rv6` 13/13 under runtime Verifier on the 10-10 component pair; final-pair three-mode rows remain. |
 | T11 | SOP lifetime/retirement, complete journal scaling/recovery and adversarial review of the working final system | Scoped index/compaction/head-read controls pass; O(N) fresh head I/O and final-system review remain open. |
 
@@ -607,6 +615,9 @@ pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run
       No builder jobs or host maintenance during timing-sensitive rows.
 - [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
   The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
+  - 2026-10-16 `ux/allocfault`: [V20 repair/design and unchanged fault-row requirements](T4-STAGE-LIFETIME.md#121-v20-allocationprepare-reply-recovery--2026-10-16)
+    cancel an unknown Prepare before exact unattached deletion; abort-before-Prepare is durable and later opens retry until the
+    deletion ACK releases the name. [Local implementation receipt](evidence/2026-10-16/ux-allocfault/result.md); no VM qualification.
 - [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):
   256/256, every required assertion PASS, 69.8% of idle SUfl growth released. New 10k: 10,000/10,000, functional/pool/registry/Ready
   assertions PASS, pool slope −1.293 B/cycle; contexts bound FAIL above. Both separate restorations PASS; further product VM runs stopped.
@@ -1118,7 +1129,7 @@ and never publish uninspected bytes; C05 reflects inspection rather than blanket
 - [x] Copy fallback via STATUS_NOT_SAME_DEVICE (`baec933f`); runtime row `m2t6rv4` passed 28/28 on its component pair.
 - [ ] Rerun ordinary, runtime and boot-Verifier on the final pair, including empty files and real Explorer drag.
 - [ ] Directory moves (owner 2026-10-16: like copies; idle renames inside protection): design note (RCA `driver/evidence/2026-10-16/t6-dirmove-rca-sol61.md`),
-  review, implementation, native caller traces, then D-rows in all three modes. Today protected directory creation is refused.
+  review, implementation, native caller traces, then D-rows in all three modes. The small unbound MVP [directory UX change](UX-DIRECTORIES.md) has local controls and Sol 6.1 xhigh acceptance with conditions; WDK/native three-mode qualification remains open.
   - [x] Design `driver/T6-DIRECTORY-MOVES.md` (`wt/t6-dirs` `82da3a06`): [review](evidence/2026-10-16/t6-design-review-sol61.md) REVISE, then
     [re-review](evidence/2026-10-16/t6-design-rereview-sol61.md) **ACCEPT WITH CONDITIONS** (idle census proof, lock/rundown rules, checked
     ancestry for every live T5 consumer, native traces first, separate gates).
@@ -1151,6 +1162,9 @@ the publishing application can reopen the file and agreed metadata is preserved.
   for unbounded header/dictionary allocation ([assessment](../agente/docs/T9-ARCHIVE-INSPECTION.md)); owner choice pending.
 - [ ] Implement and test the metadata contract decided 2026-10-16 (native owner/DACL/SACL/label, timestamps, attributes; Zone.Identifier
   carried with its file; other ADS, EAs, EFS, offline, reparse points and hard links refused).
+  - [ ] Unbound `ux/meta` [basic metadata increment](UX-METADATA.md): exact sealed dates/ordinary attributes and unsupported-storage checks;
+    native descriptor construction, public metadata serialization and inspected atomic MOTW remain unfinished. No T8 completion or VM qualification.
+  - [ ] `ux/meta2` [round-2 prerequisite checkpoint](UX-METADATA-ROUND2.md): strict native absence/query validation and dormant descriptor/MOTW controls; whole-version producer, native construction and commit fence remain blocked/open. No T8 completion.
 - [ ] Qualify application rows under the matched pair with independent byte observation and restoration.
 
 ### T9. Large files and complete inspection
@@ -1159,6 +1173,15 @@ the publishing application can reopen the file and agreed metadata is preserved.
 **Done when:** no fixed driver size cap; per-user/total stage budgets fail closed without harming other users; full-content inspection
 uses bounded memory; incomplete inspection is Blocked with hand-back and policy-authorized justification; runtime rows prove privacy.
 
+- [ ] T9 large-file UX implementation (`ux/large`; product-default/upgrade delta base `a2b67984`): [design/limits](UX-LARGE.md),
+  [local receipt](evidence/2026-10-16/ux-large-local/result.md), [exact Windows rows](UX-LARGE-VM.md).
+  Adds identity-bound capacity grants, SID/total reservations, exact orphan/snapshot accounting, failed-prefix refusal,
+  isolated parser resource limits and ZIP text streaming. Owner-approved defaults and conservative legacy upgrade are implemented;
+  [follow-up receipt](evidence/2026-10-16/ux-large3-local/result.md). The dev `45102e57` failed-CREATE cascade is addressed by
+  [stateless refusal/exact recovery and recorder recovery](UX-LARGE-RECOVERY.md), preserving effective/high-water claims;
+  [local regression receipt](evidence/2026-10-16/ux-large4-local/result.md). The ux-m6-diag matrix follow-up fixes private ACL creation,
+  legacy/staged inspection defaults and unbudgeted snapshot compatibility; [42 large / 14 other-branch failure mapping and local checks](evidence/2026-10-16/ux-large5-local/result.md).
+  Windows four-leg matrix, WDK/native/three-mode evidence and everyday concurrent/seed UX remain open.
 - [x] **Complete-or-refuse coverage first** (owner direction 2026-10-13; [review finding](M2-COMPLETION-PLAN.md#findings-in-delivery-order)).
   - [x] Read DrawingML shape/text-box text, chart titles/axis and series names/labels/cached values, VML drawing text and PDF
     annotation contents/form-field values; refuse embedded files, PDF attachments, XFA and other unconsumed payloads.
@@ -1479,6 +1502,8 @@ cannot publish unapproved bytes, proven by the observer.
 - [ ] Rerun all modes on the final pair. Carry publication ACL/owner fidelity into T8.
 
 ### T11. Review conditions
+
+2026-10-16 unbound MVP candidate (`ux/journal`): [active-journal scaling design](T11-UNBOUND-JOURNAL-SCALING.md) packs completed receipts out of the hot set, retains generation/identity obligations and adds archive recovery controls. Linux feedback is component evidence only; the Windows feature matrix and protected 10k pair remain open.
 
 **Problem:** remaining locking, generation, section-lifetime and journal-scaling findings need closure.
 **Done when:** every finding has a tested change or row and the M2 adversarial review closes the working system.

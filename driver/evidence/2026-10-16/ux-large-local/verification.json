@@ -1,0 +1,185 @@
+{
+  "base": "62fd1673209b03c1ee8998316527c3e0d028d519",
+  "source": "modified local source on ux/large; delivered through scratch-only commit bundle; see delivery receipt for final commit",
+  "host": {
+    "os": "Linux-7.2.5-3-omarchy-x86_64-with-glibc2.44",
+    "cpu": "AMD Ryzen 9 3900X, 12 cores / 24 logical CPUs",
+    "physicalMemoryBytes": 33546350592,
+    "dotnet": "SDK 10.0.400 / runtime 10.0.11",
+    "cache": "filesystem/host cache and other local workload uncontrolled"
+  },
+  "focusedDiagnostic": {
+    "kind": "In-process diagnostic; actual test methods and InlineData, no VSTest host",
+    "total": 248,
+    "failed": 0,
+    "skipped": 0,
+    "classes": {
+      "ArchiveInspectionTests": 93,
+      "InspectionWorkBudgetTests": 8,
+      "PlainTextDecodingTests": 36,
+      "StagedInspectionFailureTests": 16,
+      "StagedJournalReplacementTests": 11,
+      "StagedLargeFileTests": 27,
+      "StagedSnapshotCopyTests": 7,
+      "StreamingContentScannerTests": 37,
+      "WordStreamingInspectionTests": 13
+    },
+    "nativeLargeFileRowsExecuted": 0,
+    "note": "ArchiveIntegrityTests.cs is a partial ArchiveInspectionTests; included in its 93 rows. Not VSTest discovery or the Windows matrix."
+  },
+  "builds": {
+    "featureDebug": "PASS 0 warnings / 0 errors",
+    "featureRelease": "PASS 0 warnings / 0 errors",
+    "trayReleaseCrossCompile": "PASS 0 warnings / 0 errors"
+  },
+  "rawReceipts": [
+    {
+      "path": ".scratch/t9/final-debug-build.txt",
+      "sha256": "2A8697BB1C413179CA21DA40829449CE21060B3B4AC792FBDD65588ED80BD189"
+    },
+    {
+      "path": ".scratch/t9/final-release-build.txt",
+      "sha256": "DDC5A408A718B423436569FAFC71D7DD052DA528527C46C3C505C50266CD5FF5"
+    },
+    {
+      "path": ".scratch/t9/app-release-build.txt",
+      "sha256": "429EF1187B70D73BB0FAEF243C9795E448182B41A38E3319E3235E202DE2C54C"
+    },
+    {
+      "path": ".scratch/t9/runner-build-delivered.txt",
+      "sha256": "EA4DD63C7490037B2F5C9ED90E30D0D740FE473312771F9667717837CCE2FFBF"
+    },
+    {
+      "path": ".scratch/t9/focused-delivered.json",
+      "sha256": "D03F103B384201FE8F5C1809188F617E8E35F2CA1D45725B210A788776BA46E2"
+    },
+    {
+      "path": ".scratch/t9/focused-delivered.stderr",
+      "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+      "path": ".scratch/t9/test-first.txt",
+      "sha256": "B82DF48B047D79F8BD65BA1EED00919B05391E4CEDCC47B8FFC49FC3C9A83F5C"
+    },
+    {
+      "path": ".scratch/t9/focused-diagnostic1.json",
+      "sha256": "6899DC01D0201BF611726B2D6B568ACEED3159F8E6289C738B1D516D1D587E11"
+    },
+    {
+      "path": ".scratch/t9/large-selfcheck-final.txt",
+      "sha256": "A812A8AC84D268E69F64CFA52D299075539C9778AB56277BEEEDD542C4457E9A"
+    },
+    {
+      "path": ".scratch/t9/api-audit.txt",
+      "sha256": "3590E40C0BE4C087B5132CB45A2D67805B214E2BEF99A33B5EAE4DC347A9AF28"
+    },
+    {
+      "path": ".scratch/t9/t4-selfcheck.txt",
+      "sha256": "0BA3FFD46BF9222A88FD4066078F24288132DC340C54397A04EB367C5AA11FFD"
+    },
+    {
+      "path": ".scratch/t9/matrix-selfcheck.txt",
+      "sha256": "02199F1CE2C7DAC48C6535927F4A6D7C2EC8E6583248F289CD1727B5CA46A4AC"
+    },
+    {
+      "path": ".scratch/t9/import-selfcheck.txt",
+      "sha256": "47E488EE9DD22636CFF3C820278F2FD780ACB7E33C5E29E9CC3DE0DD2CBBA203"
+    },
+    {
+      "path": ".scratch/t9/outside-selfcheck.txt",
+      "sha256": "524E64E84E3E7684E449303663C32525EC4898337A32474A9ACE9C4C596F2802"
+    },
+    {
+      "path": ".scratch/t9/activating-selfcheck.txt",
+      "sha256": "D02BE52D7BAB5B179A9609575489CD7D2A1CE1EE291724BCF353DCC472CC0C69"
+    },
+    {
+      "path": ".scratch/t9/delivery-mvp-namespace-selfcheck.txt",
+      "sha256": "FF225AD0E4E72B99B0DA42FFE859B6E1A015916346D07BEA8D05AFA89B0F2911"
+    },
+    {
+      "path": ".scratch/t9/delivery-allocation-retry-selfcheck.txt",
+      "sha256": "88F9B4BBBD477CE7DFC121CA3F369C4B57719241918B8567705F06877F544672"
+    },
+    {
+      "path": ".scratch/t9/delivery-manifest-retry-selfcheck.txt",
+      "sha256": "88D7E23A67A6911E32B3FB0019EB221DE5889B642B0151807E700E29E2C24A04"
+    },
+    {
+      "path": ".scratch/t9/delivery-reconcile-retry-selfcheck.txt",
+      "sha256": "6936D594A7C49D9B5A39C7B3A9C244AFE9FB35680089EAD5E755917ED45770C1"
+    },
+    {
+      "path": ".scratch/t9/measure-final-build.txt",
+      "sha256": "20D884CB8B7589999937219D52974BB220933BC14EBC674E0C2A2415909AF60D"
+    },
+    {
+      "path": ".scratch/t9/measure-final.log",
+      "sha256": "E400E34CEF1B3C814B84179B2138CCD450B1C51579A0FFF221092498F92F7E24"
+    }
+  ],
+  "localArtifacts": [
+    {
+      "path": ".scratch/t9/delivery-artifacts/bin/SafeUpload.Agent.Core/debug/SafeUpload.Agent.Core.dll",
+      "sha256": "41183B797C28FBDE12E219DFAD1B9E5F71D9822AF01DE75F80CD266E1CB7C90D"
+    },
+    {
+      "path": ".scratch/t9/delivery-artifacts/bin/SafeUpload.Agent.Core/release/SafeUpload.Agent.Core.dll",
+      "sha256": "03778FCE710B993A679324424FA95149A1EC5F6E5284F486D045546F42AFDCB4"
+    },
+    {
+      "path": ".scratch/t9/delivery-artifacts/bin/SafeUpload.Agent.Network/debug/SafeUpload.Agent.Network.dll",
+      "sha256": "384A0A6996C969680E4A6D8E511B4AF647BC0D309DDE50C61C86DE37DABA6A4A"
+    },
+    {
+      "path": ".scratch/t9/delivery-artifacts/bin/SafeUpload.Agent.Network/release/SafeUpload.Agent.Network.dll",
+      "sha256": "27BF8873B4321BE41F95CDEE64216B124BF9216BED8CF9972401055C94164385"
+    },
+    {
+      "path": ".scratch/t9/delivery-artifacts/bin/SafeUpload.Agent.Minifilter/debug/SafeUpload.Agent.Minifilter.dll",
+      "sha256": "79EE884C628F358B9D00D91D14E69AB3838EB7B4B2F646B8A2F3ED95387EEB3C"
+    },
+    {
+      "path": ".scratch/t9/delivery-artifacts/bin/SafeUpload.Agent.Minifilter/release/SafeUpload.Agent.Minifilter.dll",
+      "sha256": "227D5559BA789EC8F16FCC1BAD9264181ED4A97A617E70165CEFA541C658B055"
+    },
+    {
+      "path": ".scratch/t9/delivery-artifacts/bin/SafeUpload.Agent.Service/debug/SafeUpload.Agent.Service.dll",
+      "sha256": "1AA1F076D40FC4E4628FF58F6DD699C9AB0686A45C7F332F8A109FCD838A6C48"
+    },
+    {
+      "path": ".scratch/t9/delivery-artifacts/bin/SafeUpload.Agent.Service/release/SafeUpload.Agent.Service.dll",
+      "sha256": "24980E265D1CF99C59DD9376D56C277408BB0E3AF531DC16EF6A4DBA101D86FE"
+    },
+    {
+      "path": ".scratch/t9/delivery-artifacts/bin/SafeUpload.Agent.Tests/debug/SafeUpload.Agent.Tests.dll",
+      "sha256": "BD896FF747458DEEEBF3506B5D2465197CEBB96E55A8C4761643BF70DB67AEC2"
+    },
+    {
+      "path": ".scratch/t9/delivery-artifacts/bin/SafeUpload.Agent.Tests/release/SafeUpload.Agent.Tests.dll",
+      "sha256": "F21B23016C0F6A9D2427267E04B10B19FD9C65F0D8C5D784DE292AB6B984BD1F"
+    },
+    {
+      "path": ".scratch/t9/app-artifacts/bin/SafeUpload.Agent.App/release/SafeUpload.Agent.App.dll",
+      "sha256": "7ABE206EE1D3BEEF7285B52B7439DA5D1F4CAC563511A10A6ECA3553C57C295E"
+    },
+    {
+      "path": ".scratch/t9/measure-final-artifacts/bin/LargeFileMeasure/release/LargeFileMeasure.dll",
+      "sha256": "FF875CC857E31197D3054026929F983AB2CED53810E5BC20171D43958E15D572"
+    },
+    {
+      "path": ".scratch/t9/measure-final-artifacts/bin/SafeUpload.Agent.Core/release/SafeUpload.Agent.Core.dll",
+      "sha256": "D2B940054858D4F9284DE1E14C3EFADCEFEED967842BD545423DC12923D46A7F"
+    },
+    {
+      "path": ".scratch/t9/runner-artifacts/bin/Runner/debug/Runner.dll",
+      "sha256": "E3DF9B0EB60D059AB664EF36833E94C74D2589EEB78C3FD59C1F11A2EDB6F35B"
+    },
+    {
+      "path": ".scratch/t9/runner/Program.cs",
+      "sha256": "74661941B9BC86EF9F9086AEB49C61D91E41BEB04FFAEA31E5109A624F5281E8"
+    }
+  ],
+  "windowsQualification": false,
+  "productVMContacted": false
+}

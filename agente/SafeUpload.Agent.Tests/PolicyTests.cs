@@ -24,7 +24,10 @@ public class PolicyTests : IDisposable
     {
         Assert.False(File.Exists(_workspace.PolicyFile));
 
-        var policy = await LoadAsync();
+        var legacy = await LoadAsync();
+        Assert.Equal(20, legacy.MaxFileSizeMb);
+        Assert.Equal(TimeSpan.FromSeconds(5), legacy.InspectionTimeout);
+        var policy = await new LocalPolicyStore(_workspace.PolicyFile).LoadCurrentAsync(CancellationToken.None);
 
         Assert.True(File.Exists(_workspace.PolicyFile));
         Assert.Equal(1, policy.Version);
@@ -32,9 +35,9 @@ public class PolicyTests : IDisposable
         // conferir uma a uma: se uma categoria nova aparecer sem passar por
         // aqui, ela esta ativa na politica padrao sem ninguem ter decidido.
         Assert.Equal(5, policy.ActiveCategories.Count);
-        Assert.Equal(20, policy.MaxFileSizeMb);
-        Assert.Equal(20L * 1024 * 1024, policy.MaxFileSizeBytes);
-        Assert.Equal(TimeSpan.FromSeconds(5), policy.InspectionTimeout);
+        Assert.Equal(4096, policy.MaxFileSizeMb);
+        Assert.Equal(4096L * 1024 * 1024, policy.MaxFileSizeBytes);
+        Assert.Equal(TimeSpan.FromSeconds(900), policy.InspectionTimeout);
         Assert.True(policy.FailOpen);
     }
 

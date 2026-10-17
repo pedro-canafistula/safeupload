@@ -98,9 +98,11 @@ typedef struct _SAFEUPLOAD_CREATE_ALIAS_PROOF {
     ULONGLONG ScopeSequence;        /* SafeUploadPolicyScopeSequenceSnapshot() read before the check */
     FILE_ID_INFORMATION Identity;   /* the file the check examined, when it existed */
 } SAFEUPLOAD_CREATE_ALIAS_PROOF, *PSAFEUPLOAD_CREATE_ALIAS_PROOF;
-NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance, _In_ PFLT_FILE_NAME_INFORMATION Name,
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_CALLBACK_DATA Data, _In_ PFLT_INSTANCE Instance, _In_ PFLT_FILE_NAME_INFORMATION Name,
     _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected, _Inout_opt_ PSAFEUPLOAD_CREATE_ALIAS_PROOF Proof);
-NTSTATUS SafeUploadStageCheckObjectAliases(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Object,
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageCheckObjectAliases(_In_ PFLT_CALLBACK_DATA Data, _In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Object,
     _In_ PUNICODE_STRING Volume, _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected);
 BOOLEAN SafeUploadPublicationCreate(_In_ PUNICODE_STRING Name, _In_ ULONG Disposition, _In_ BOOLEAN Writer);
 BOOLEAN SafeUploadPublicationRename(_In_ PFLT_VOLUME TargetVolume, _In_ PUNICODE_STRING Source,
@@ -162,7 +164,9 @@ NTSTATUS SafeUploadStageSeal(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageNam
 NTSTATUS SafeUploadStageDiscard(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 NTSTATUS SafeUploadStageSealVersionV19(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName,
-    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity, _In_ UINT64 DestinationGeneration);
+    _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity, _In_ UINT64 DestinationGeneration,
+    _In_ const FILE_BASIC_INFORMATION *Basic,
+    _In_ BOOLEAN SpaceFailed);
 NTSTATUS SafeUploadStageDiscardVersionV19(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName,
     _In_ const GUID *ReservationId, _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity,
     _In_ UINT64 DestinationGeneration, _In_ UINT32 Kind, _Out_ PUINT32 Result);
@@ -295,6 +299,8 @@ NTSTATUS SafeUploadStageWritersPostCreate(_In_ PFLT_CALLBACK_DATA Data,
 _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersOnCleanup(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects);
 BOOLEAN SafeUploadStageWritersNameActivating(_In_ PFLT_INSTANCE Instance, _In_ PCUNICODE_STRING Name);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageWritersAwaitNameActivation(_In_ PFLT_INSTANCE Instance, _In_ PCUNICODE_STRING Name);
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersIsTrackedWriter(_In_opt_ PFLT_INSTANCE Instance,
     _In_opt_ PFILE_OBJECT FileObject);
