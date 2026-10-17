@@ -144,7 +144,7 @@ StageQueryBoundSecurity (
     return status;
 }
 
-_IRQL_requires_(PASSIVE_LEVEL)
+_Use_decl_annotations_
 static NTSTATUS SafeUploadStageQuerySecurity(PFLT_INSTANCE Instance,
     PUNICODE_STRING Name, BOOLEAN Directory, PSECURITY_DESCRIPTOR *Descriptor)
 {
