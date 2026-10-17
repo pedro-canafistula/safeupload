@@ -22,7 +22,8 @@ public sealed partial class StagedTransferJournal
             Guid id = entry.Transfer.TransferId;
             byId.Add(id, entry);
             if (!finished.Contains(id)) protectedIds.Add(id);
-            AddClaim(entry.Transfer.DestinationPath, entry.BoundAllocation, entry.DestinationGeneration, id);
+            AddClaim(entry.Transfer.DestinationPath, entry.BoundAllocation,
+                Math.Max(entry.DestinationGeneration, entry.UnboundCancellation?.Generation ?? 0), id);
             for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
                 AddClaim(name.DestinationPath, name.AllocationBindingV23, name.Generation, id);
         }
@@ -41,6 +42,11 @@ public sealed partial class StagedTransferJournal
             if (entry.ParentVersionIdentity is { } parent) Retain(parent.TransferId);
             if (entry.DeleteVersionIdentity is { } deleted) Retain(deleted.TransferId);
             if (entry.AllocationReferenceId is { } owner) Retain(owner);
+            // A pending delete may durably name its CREATE_AFTER successor
+            // before the successor is terminal. Retain that exact replay owner
+            // too; the successor's back-reference alone is not a closure edge
+            // from the still-unresolved delete.
+            if (entry.CreateAfterReservationId is { } successor) Retain(successor);
         }
         return protectedIds;
 

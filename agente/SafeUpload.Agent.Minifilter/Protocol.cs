@@ -111,6 +111,9 @@ public static class Contract
         Check(nameof(SafeUploadStageCreateAfterDiscardV19), sizeof(SafeUploadStageCreateAfterDiscardV19),
               StageCreateAfterDiscardV19Size);
         Check(nameof(SafeUploadStageVersionV19), sizeof(SafeUploadStageVersionV19), StageVersionV19Size);
+        Check(nameof(SafeUploadStageSealMetadata), sizeof(SafeUploadStageSealMetadata), 72);
+        CheckOffset(nameof(SafeUploadStageSealMetadata) + ".CreationTime",
+            (int)Marshal.OffsetOf<SafeUploadStageSealMetadata>(nameof(SafeUploadStageSealMetadata.CreationTime)), 40);
         Check(nameof(SafeUploadStageSealV19), sizeof(SafeUploadStageSealV19), StageSealV19Size);
         Check(nameof(SafeUploadStageAllocateV19), sizeof(SafeUploadStageAllocateV19), StageAllocateV19Size);
         Check(nameof(SafeUploadStageAllocateV20), sizeof(SafeUploadStageAllocateV20), StageAllocateV20Size);
@@ -825,6 +828,18 @@ public struct SafeUploadStageSealV19
     public uint StructSize;
     public SafeUploadStageIdentityV19 StageIdentity;
     public ulong DestinationGeneration;
+}
+
+/// <summary>Measured seal plus app basic metadata, exactly 72 bytes; no ChangeTime replay.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct SafeUploadStageSealMetadata
+{
+    public SafeUploadStageSealV19 Seal;
+    public long CreationTime;
+    public long LastAccessTime;
+    public long LastWriteTime;
+    public uint FileAttributes;
+    public uint Reserved;
 }
 
 /// <summary>Replayable v19 allocation intent, exactly 64 bytes.</summary>

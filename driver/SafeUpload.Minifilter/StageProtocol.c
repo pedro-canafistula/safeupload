@@ -26,7 +26,7 @@ static BOOLEAN StageProtocolBytesZero(_In_reads_bytes_(Length) const UCHAR *Byte
 static NTSTATUS StageSendVersionRequestV19(_In_ UINT32 Operation, _In_ ULONG ProcessId,
     _In_ PUNICODE_STRING StageName, _In_opt_ const GUID *ReservationId,
     _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity, _In_ UINT64 DestinationGeneration,
-    _In_ UINT32 Kind, _Out_opt_ PUINT32 Result);
+    _In_ UINT32 Kind, _In_opt_ const FILE_BASIC_INFORMATION *Basic, _Out_opt_ PUINT32 Result);
 static NTSTATUS StageProtocolPrepareAttachRequestV20(_In_ ULONG ProcessId,
     _In_ PUNICODE_STRING DestinationName, _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_ UINT32 Operation, _In_ const GUID *TransferId, _In_ UINT64 DestinationGeneration,
@@ -1320,7 +1320,7 @@ NTSTATUS SafeUploadStageCancelPrivate(const SAFEUPLOAD_PRIVATE_CANCEL_REQUEST *R
     NTSTATUS status = STATUS_DEVICE_NOT_READY;
     PAGED_CODE();
     RtlZeroMemory(Reply, sizeof(*Reply));
-    if (!SafeUploadStageProtocolNativeForwardAllowed(0, 0) || SafeUploadStageMandatoryTeardownActive())
+    if (!SafeUploadStageProtocolIsReady() || SafeUploadStageMandatoryTeardownActive())
         return STATUS_DEVICE_NOT_READY;
     if (Request->Version != SAFEUPLOAD_PRIVATE_CANCEL_VERSION || Request->StructSize != sizeof(*Request) ||
         Request->Reserved != 0 || Request->Generation == 0 || Request->Generation > (UINT64)MAXLONGLONG ||
@@ -1583,12 +1583,14 @@ static BOOLEAN StageProtocolStatusResultValid(_In_ UINT32 Operation, _In_ UINT32
     case SAFEUPLOAD_OPERATION_STAGE_ATTACH_COMMIT:
         return Result == SAFEUPLOAD_STAGE_RESULT_ATTACH_COMMITTED ||
             Result == SAFEUPLOAD_STAGE_RESULT_ATTACH_COMMIT_DENIED ||
-            Result == SAFEUPLOAD_STAGE_RESULT_ATTACH_ALREADY_COMMITTED;
+            Result == SAFEUPLOAD_STAGE_RESULT_ATTACH_ALREADY_COMMITTED ||
+            Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE;
     case SAFEUPLOAD_OPERATION_STAGE_ATTACH_ABORT:
         return Result == SAFEUPLOAD_STAGE_RESULT_ATTACH_ABORTED ||
             Result == SAFEUPLOAD_STAGE_RESULT_ATTACH_ALREADY_COMMITTED;
     case SAFEUPLOAD_OPERATION_STAGE_ATTACH_COMPLETION_PERMITTED:
-        return Result == SAFEUPLOAD_STAGE_RESULT_COMPLETION_PERMITTED;
+        return Result == SAFEUPLOAD_STAGE_RESULT_COMPLETION_PERMITTED ||
+            Result == SAFEUPLOAD_STAGE_RESULT_RETRYABLE_FAILURE;
     case SAFEUPLOAD_OPERATION_STAGE_RETIRE_UNEXPOSED:
         return Result == SAFEUPLOAD_STAGE_RESULT_ATTACH_RETIRED_UNEXPOSED;
     case SAFEUPLOAD_OPERATION_STAGE_RETIRE_ATTACHED_PRIVATE:
@@ -2120,6 +2122,7 @@ StageSendVersionRequestV19 (
     _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity,
     _In_ UINT64 DestinationGeneration,
     _In_ UINT32 Kind,
+    _In_opt_ const FILE_BASIC_INFORMATION *Basic,
     _Out_opt_ PUINT32 Result
     )
 {
@@ -2165,12 +2168,17 @@ StageSendVersionRequestV19 (
         exchange->Request.ImageNameLength = sizeof(extension);
         RtlCopyMemory(exchange->Request.ImageName, &extension, sizeof(extension));
     } else {
-        SAFEUPLOAD_STAGE_SEAL_V19 seal;
+        SAFEUPLOAD_STAGE_SEAL_METADATA seal;
         RtlZeroMemory(&seal, sizeof(seal));
-        seal.Version = SAFEUPLOAD_STAGE_EXTENSION_VERSION;
-        seal.StructSize = sizeof(seal);
-        seal.StageIdentity = *StageIdentity;
-        seal.DestinationGeneration = DestinationGeneration;
+        if (Basic == NULL) { ExFreePoolWithTag(exchange, SAFEUPLOAD_POOL_TAG); return STATUS_INVALID_PARAMETER; }
+        seal.Seal.Version = SAFEUPLOAD_STAGE_EXTENSION_VERSION;
+        seal.Seal.StructSize = sizeof(seal);
+        seal.Seal.StageIdentity = *StageIdentity;
+        seal.Seal.DestinationGeneration = DestinationGeneration;
+        seal.CreationTime = Basic->CreationTime.QuadPart;
+        seal.LastAccessTime = Basic->LastAccessTime.QuadPart;
+        seal.LastWriteTime = Basic->LastWriteTime.QuadPart;
+        seal.FileAttributes = Basic->FileAttributes;
         exchange->Request.ImageNameLength = sizeof(seal);
         RtlCopyMemory(exchange->Request.ImageName, &seal, sizeof(seal));
     }
@@ -2198,14 +2206,15 @@ SafeUploadStageSealVersionV19 (
     _In_ ULONG ProcessId,
     _In_ PUNICODE_STRING StageName,
     _In_ const SAFEUPLOAD_STAGE_IDENTITY_V19 *StageIdentity,
-    _In_ UINT64 DestinationGeneration
+    _In_ UINT64 DestinationGeneration,
+    _In_ const FILE_BASIC_INFORMATION *Basic
     )
 {
     UINT32 result = 0;
     NTSTATUS status;
     PAGED_CODE();
     status = StageSendVersionRequestV19(SAFEUPLOAD_OPERATION_STAGE_SEAL, ProcessId,
-        StageName, NULL, StageIdentity, DestinationGeneration, 0, &result);
+        StageName, NULL, StageIdentity, DestinationGeneration, 0, Basic, &result);
     return status;
 }
 
@@ -2222,7 +2231,7 @@ SafeUploadStageDiscardVersionV19 (
 {
     PAGED_CODE();
     return StageSendVersionRequestV19(SAFEUPLOAD_OPERATION_STAGE_DISCARD, ProcessId,
-        StageName, ReservationId, StageIdentity, DestinationGeneration, Kind, Result);
+        StageName, ReservationId, StageIdentity, DestinationGeneration, Kind, NULL, Result);
 }
 
 static BOOLEAN

@@ -1453,6 +1453,13 @@ static BOOLEAN SafeUploadCreateIsWriter(_In_ PFLT_CALLBACK_DATA Data)
     PIO_SECURITY_CONTEXT security = Data->Iopb->Parameters.Create.SecurityContext;
     ULONG disposition = Data->Iopb->Parameters.Create.Options >> 24;
     if (security == NULL) return FALSE;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* Unbound native namespace opens retain source inspection/taint, but
+     * metadata and DELETE grants cannot cause a destination CREATE refusal. */
+    if (disposition == FILE_OPEN && !FlagOn(security->DesiredAccess,
+        FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED))
+        return FALSE;
+#endif
     return BooleanFlagOn(security->DesiredAccess,
             FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA |
             FILE_DELETE_CHILD | DELETE | MAXIMUM_ALLOWED |   /* T10: WRITE_DAC/WRITE_OWNER add no content */
@@ -2059,7 +2066,7 @@ Return Value:
 
     if (streamContext != NULL) {
 
-        FltReleaseContext( streamContext );
+        SafeUploadReleaseStreamContext( streamContext );
     }
 
     if (scopeFlags == 0 && !overrideGranted) {

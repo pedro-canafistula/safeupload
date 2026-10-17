@@ -5,6 +5,32 @@ namespace SafeUpload.Agent.Tests;
 public sealed class InstallSafeUploadAgentScriptTests
 {
     [Fact]
+    public void Tray_is_copied_to_program_files_and_registered_for_every_user()
+    {
+        string script = ReadInstallerScript();
+        Assert.Contains("Join-Path $programFiles 'SafeUpload\\App'", script, StringComparison.Ordinal);
+        Assert.Contains("Join-Path $appDirectory 'SafeUpload.Agent.App.exe'", script, StringComparison.Ordinal);
+        Assert.Contains("Copy-Item -Destination $appDirectory -Recurse -Force", script, StringComparison.Ordinal);
+        Assert.Contains("OpenBaseKey('LocalMachine', 'Registry64')", script, StringComparison.Ordinal);
+        Assert.Contains("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", script, StringComparison.Ordinal);
+        Assert.Contains("$run.SetValue('SafeUploadApp', ('\"' + $appExecutable + '\"'), 'String')", script, StringComparison.Ordinal);
+        Assert.Contains("\nInstall-SafeUploadApp\n", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Uninstall_removes_the_same_run_entry_and_app_after_service_stop()
+    {
+        string script = ReadInstallerScript("Uninstall-SafeUploadAgent.ps1");
+        Assert.Contains("#Requires -Version 5.1", script, StringComparison.Ordinal);
+        Assert.Contains("OpenBaseKey('LocalMachine', 'Registry64')", script, StringComparison.Ordinal);
+        Assert.Contains("$run.DeleteValue('SafeUploadApp', $false)", script, StringComparison.Ordinal);
+        Assert.Contains("Join-Path $programFiles 'SafeUpload\\App'", script, StringComparison.Ordinal);
+        Assert.Contains("Remove-Item -LiteralPath $appDirectory -Recurse -Force", script, StringComparison.Ordinal);
+        Assert.True(script.IndexOf("Stop-Service", StringComparison.Ordinal) < script.IndexOf("DeleteValue", StringComparison.Ordinal));
+        Assert.DoesNotContain("Remove-Item -LiteralPath $appDirectory -Recurse -Force -ErrorAction SilentlyContinue", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Installer_requires_successful_system_seed_before_staging_boot_start()
     {
         string script = ReadInstallerScript();
@@ -66,13 +92,13 @@ public sealed class InstallSafeUploadAgentScriptTests
         Assert.Contains("-not (Test-ServiceSidTypeUnrestricted $sidType)", ReadInstallerScript(), StringComparison.Ordinal);
     }
 
-    private static string ReadInstallerScript()
+    private static string ReadInstallerScript(string name = "Install-SafeUploadAgent.ps1")
     {
         for (DirectoryInfo? directory = new(AppContext.BaseDirectory);
              directory is not null;
              directory = directory.Parent)
         {
-            string candidate = Path.Combine(directory.FullName, "scripts", "Install-SafeUploadAgent.ps1");
+            string candidate = Path.Combine(directory.FullName, "scripts", name);
             // The assertions look for whole lines ("\nName\n"); a Windows checkout has CR LF line endings.
             if (File.Exists(candidate))
                 return File.ReadAllText(candidate).Replace("\r\n", "\n", StringComparison.Ordinal);

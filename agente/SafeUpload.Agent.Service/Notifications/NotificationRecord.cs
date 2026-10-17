@@ -17,12 +17,14 @@ public interface INotificationRecord
 /// <summary>
 /// Emissions, not delivery receipts. One serialized writer; durable head anchors
 /// the tail. Any uncertain write poisons this instance until administrative
-/// recovery, so a damaged timeline can never authorize subsequent delivery.
+/// recovery. Startup preserves a damaged timeline aside and starts a new chain;
+/// the damaged timeline can never authorize delivery or absence evidence.
 /// Privileged local actors are in the trust boundary (as with the journal).
 /// </summary>
 public sealed class NotificationRecord : INotificationRecord, IDisposable
 {
     public const int SegmentBytes = 4 * 1024 * 1024;
+    public const int RetainedSegmentBytes = 256 * 1024;
     public const int MaximumLineBytes = 16 * 1024;
     public const string ZeroHash = "0000000000000000000000000000000000000000000000000000000000000000";
     private readonly string _directory;
@@ -41,16 +43,16 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
     private bool _failed, _disposed;
 
     public NotificationRecord(string directory, ILogger<NotificationRecord> logger)
-        : this(directory, logger, SegmentBytes, BootIdentity(), false, true) { }
+        : this(directory, logger, RetainedSegmentBytes, BootIdentity(), false, true) { }
 
     // Tests use a private temporary tree and the invoking identity. Production
     // never permits this exception and never repairs an existing descriptor.
     internal NotificationRecord(string directory, ILogger logger, int segmentBytes,
-        string bootId, bool testIdentity, bool heartbeat = false)
+        string bootId, bool testIdentity, bool heartbeat = false, bool recoverCorruption = true)
     {
-        _directory = Path.GetFullPath(directory);
+        _directory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
         _limit = segmentBytes;
-        if (_limit < MaximumLineBytes * 2) throw new ArgumentOutOfRangeException(nameof(segmentBytes));
+        if (_limit < MaximumLineBytes * 2 || _limit > SegmentBytes) throw new ArgumentOutOfRangeException(nameof(segmentBytes));
         _boot = bootId;
         _logger = logger;
         if (OperatingSystem.IsWindows() && testIdentity)
@@ -85,7 +87,15 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
         try
         {
             if (_lease.Length != 0) throw new InvalidDataException("Invalid notification writer lease.");
-            Recover();
+            // Strict validation remains available to evidence/validation tests.
+            // Only content damage is recoverable: ACL, link, sharing and I/O
+            // admission failures must still refuse the recorder.
+            try { Recover(); }
+            catch (Exception error) when (recoverCorruption &&
+                error is InvalidDataException or JsonException or FileNotFoundException)
+            {
+                PreserveCorruptRecord(error);
+            }
             Write("Start", null, null, null, null);
             if (heartbeat) _timer = new Timer(_ => Tick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
@@ -216,7 +226,10 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
             kind, transfer, eventId, phase, session, _hash, dropped)
         { Sha256Hex = digest, HandBackPath = handBackPath, BlockReason = blockReason };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(entry);
-        if (bytes.Length + 1 > MaximumLineBytes || file.Length + bytes.Length + 1 > _limit)
+        // A first rotation after upgrading may append its announcement to an
+        // old (up to 4 MiB) segment. Preserve and validate that chain unchanged.
+        int limit = kind == "Rotation" ? SegmentBytes : _limit;
+        if (bytes.Length + 1 > MaximumLineBytes || file.Length + bytes.Length + 1 > limit)
             throw new InvalidDataException("Notification record size bound exceeded.");
         file.Position = file.Length;
         file.Write(bytes);
@@ -277,6 +290,34 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
         _dropped = lines[^1].Entry.DroppedThroughSequence;
     }
 
+    private void PreserveCorruptRecord(Exception error)
+    {
+        RequireDirectory();
+        // Preflight every child before moving anything. These files are only
+        // untrusted evidence: check type/links without reading bytes or trusting
+        // their DACL. The trusted parent authorizes the archival rename.
+        var paths = Directory.EnumerateFileSystemEntries(_directory).Where(p => p != Lease).ToArray();
+        foreach (string path in paths)
+        {
+            if (Path.GetFileName(path) is not ("emissions.jsonl" or "previous.jsonl" or "head.json" or "head.tmp"))
+                throw new IOException("Unexpected notification child cannot be archived automatically: " + path, error);
+            StagedJournalFile.RequireRegularFileForPreservation(path);
+        }
+        string archive = _directory + ".corrupt-" + DateTimeOffset.UtcNow.ToString("yyyyMMddTHHmmssfffffffZ") +
+            "-" + Guid.NewGuid().ToString("N");
+        if (OperatingSystem.IsWindows()) new DirectoryInfo(archive).Create(DirectoryAcl());
+        else Directory.CreateDirectory(archive);
+        // Keep the exclusive writer lease in place throughout recovery. Each
+        // rename preserves original bytes/ACLs and never overwrites evidence.
+        // A failed move aborts startup; a later attempt preserves the remainder.
+        foreach (string path in paths) File.Move(path, Path.Combine(archive, Path.GetFileName(path)));
+        _sequence = 0;
+        _hash = ZeroHash;
+        _dropped = 0;
+        _logger.LogWarning(error,
+            "Corrupt notification record preserved at {Archive}; starting a new notification chain. Prior coverage is unavailable.", archive);
+    }
+
     internal static List<(NotificationRecordEntry Entry, string Hash)> ReadLines(FileStream file)
     {
         using var memory = new MemoryStream();
@@ -295,7 +336,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
             if (entry.Version != 1 || entry.Sequence <= 0 || entry.DroppedThroughSequence < 0 ||
                 entry.DroppedThroughSequence >= entry.Sequence || string.IsNullOrWhiteSpace(entry.BootId) ||
                 !Guid.TryParse(entry.InstanceId, out var instance) || instance == Guid.Empty || entry.Utc == default || entry.Utc.Offset != TimeSpan.Zero || entry.Qpc < 0 || entry.QpcFrequency <= 0 ||
-                entry.PreviousSha256.Length != 64 || !entry.PreviousSha256.All(Uri.IsHexDigit) ||
+                entry.PreviousSha256 is not { Length: 64 } || !entry.PreviousSha256.All(Uri.IsHexDigit) ||
                 entry.Kind is not ("Start" or "Heartbeat" or "Stop" or "Rotation" or "Transfer" or "Event" or "Status"))
                 throw new InvalidDataException("Invalid notification record fields.");
             if ((entry.Kind == "Transfer" && (entry.TransferId is null || entry.TransferId == Guid.Empty ||
@@ -314,7 +355,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
     private FileStream Open(string path, bool writable = false)
     {
         RequireDirectory();
-        var stream = StagedJournalFile.Open(path, writable: writable, maximumBytes: _limit);
+        var stream = StagedJournalFile.Open(path, writable: writable, maximumBytes: SegmentBytes);
         try { if (OperatingSystem.IsWindows()) RequireAcl(stream.GetAccessControl(), false); return stream; }
         catch { stream.Dispose(); throw; }
     }

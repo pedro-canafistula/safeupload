@@ -544,6 +544,7 @@ BOOLEAN SafeUploadInstanceAdmissionGateSatisfied(_In_ PFLT_INSTANCE Instance)
 //
 ///////////////////////////////////////////////////////////////////////////
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 SafeUploadGetOrCreateStreamContext (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
@@ -557,8 +558,8 @@ Routine Description:
     Returns the stream context for a file, creating it if this is the first
     time the driver has seen the file.
 
-    On success the caller owns a reference and must release it with
-    FltReleaseContext.
+    On success the caller owns a reference and an active-use lease and must
+    release both with SafeUploadReleaseStreamContext.
 
     IRQL: PASSIVE_LEVEL.
 
@@ -603,16 +604,21 @@ Return Value:
         return STATUS_NOT_SUPPORTED;
     }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    FltAcquirePushLockShared(&SafeUploadStreamContextAssociationLock);
+#endif
     status = FltGetStreamContext( FltObjects->Instance,
                                   FileObject,
                                   (PFLT_CONTEXT *) &existing );
 
     if (NT_SUCCESS( status )) {
 
-        *StreamContext = existing;
-        return STATUS_SUCCESS;
+        goto FoundContext;
     }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    FltReleasePushLock(&SafeUploadStreamContextAssociationLock);
+#endif
     if (status != STATUS_NOT_FOUND) {
 
         return status;
@@ -656,6 +662,9 @@ Return Value:
     //  an error.
     //
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    FltAcquirePushLockShared(&SafeUploadStreamContextAssociationLock);
+#endif
     status = FltSetStreamContext( FltObjects->Instance,
                                   FileObject,
                                   FLT_SET_CONTEXT_KEEP_IF_EXISTS,
@@ -669,29 +678,49 @@ Return Value:
         //  one handed to the caller.
         //
 
-        *StreamContext = created;
-        return STATUS_SUCCESS;
+        existing = created;
+        goto FoundContext;
     }
-
-    //
-    //  Ours did not go in, so release it. This runs the cleanup callback
-    //  and tears down the push lock we just initialized.
-    //
-
-    FltReleaseContext( created );
 
     if (status == STATUS_FLT_CONTEXT_ALREADY_DEFINED) {
-
-        //
-        //  We lost the race. FltSetStreamContext handed back the winner
-        //  with a reference already taken, which becomes the caller's.
-        //
-
-        *StreamContext = existing;
-        return STATUS_SUCCESS;
+        /* Keep the losing allocation pinned until outside Association: its
+         * cleanup callback takes registry locks and releases the token. */
+        goto FoundContext;
     }
-
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    FltReleasePushLock(&SafeUploadStreamContextAssociationLock);
+#endif
+    FltReleaseContext(created);
     return status;
+
+FoundContext:
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* The shared association lock spans lookup/set and the lease. Ordinary
+     * prune must see zero leases under its exclusive turn BEFORE unlinking
+     * the entry. No retired association is observable, and no completion
+     * waits for a worker-owned event while its accepted FILE_OBJECT is open. */
+    if (!SafeUploadStageWritersAcquireContextLease(existing)) {
+        FltReleasePushLock(&SafeUploadStreamContextAssociationLock);
+        if (created != NULL && created != existing) FltReleaseContext(created);
+        FltReleaseContext(existing);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    FltReleasePushLock(&SafeUploadStreamContextAssociationLock);
+#endif
+    if (created != NULL && created != existing) FltReleaseContext(created);
+    *StreamContext = existing;
+    return STATUS_SUCCESS;
+}
+
+/* A lease is separate from a Filter Manager reference: diagnostic/snapshot
+ * references do not mutate a binding or inspection cache and are not leases. */
+_IRQL_requires_max_(APC_LEVEL)
+VOID SafeUploadReleaseStreamContext(_In_ PSAFEUPLOAD_STREAM_CONTEXT StreamContext)
+{
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageWritersReleaseContextLease(StreamContext);
+#endif
+    FltReleaseContext(StreamContext);
 }
 
 

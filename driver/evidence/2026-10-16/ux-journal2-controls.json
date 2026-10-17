@@ -1,0 +1,104 @@
+{
+  "base": "83bceea2496ba61511ccf0dfba07282a7fc1d809",
+  "runner": "serial in-process Linux invocation of unchanged xUnit assertions/data; Windows native matrix not run",
+  "profiles": {
+    "debug": {
+      "discovered": 61,
+      "passed": 61,
+      "failed": 0,
+      "skipped": 0,
+      "ten_thousand_record_measurements": [
+        "10k migration ms=2480.135; archive bytes=21901250",
+        "10k archive startup ms=372.755",
+        "10k sameDestination=False: pending(5)=1.371ms/18560B allocate=1.303ms/21160B seal=6.603ms/63928B",
+        "10k migration ms=1570.008; archive bytes=21851302",
+        "10k archive startup ms=304.247",
+        "10k sameDestination=True: pending(5)=0.181ms/14200B allocate=1.341ms/21280B seal=2.403ms/62576B"
+      ],
+      "build": {
+        "warnings": 0,
+        "errors": 0
+      },
+      "sha256": {
+        "agente/SafeUpload.Agent.Service/bin/Debug/net10.0-windows/SafeUpload.Agent.Service.dll": "684d68d05f3c4d2b206f1218e44e894a7b2902cb28542b6daf3ef2ee4006ac94",
+        "agente/SafeUpload.Agent.Tests/bin/Debug/net10.0-windows/SafeUpload.Agent.Tests.dll": "85e0fb47f1be1808af1d19e32214cfd8f574b8f0a31e58cd675f6ae2d3e3e1e3"
+      },
+      "regression_cases": [
+        {
+          "name": "StagedTerminalArchiveTests.Terminal_recovery_is_read_free_and_maintenance_still_archives_exact_receipts(False,False)",
+          "passed": true,
+          "ms": 9.399
+        },
+        {
+          "name": "StagedTerminalArchiveTests.Terminal_recovery_is_read_free_and_maintenance_still_archives_exact_receipts(False,True)",
+          "passed": true,
+          "ms": 4.3348
+        },
+        {
+          "name": "StagedTerminalArchiveTests.Terminal_recovery_is_read_free_and_maintenance_still_archives_exact_receipts(True,False)",
+          "passed": true,
+          "ms": 3.7222
+        },
+        {
+          "name": "StagedTerminalArchiveTests.Terminal_recovery_is_read_free_and_maintenance_still_archives_exact_receipts(True,True)",
+          "passed": true,
+          "ms": 3.7343
+        }
+      ]
+    },
+    "release": {
+      "discovered": 61,
+      "passed": 61,
+      "failed": 0,
+      "skipped": 0,
+      "ten_thousand_record_measurements": [
+        "10k migration ms=2534.987; archive bytes=21901284",
+        "10k archive startup ms=372.409",
+        "10k sameDestination=False: pending(5)=1.443ms/17080B allocate=1.464ms/20464B seal=7.434ms/61016B",
+        "10k migration ms=1486.945; archive bytes=21851302",
+        "10k archive startup ms=224.374",
+        "10k sameDestination=True: pending(5)=0.228ms/12720B allocate=1.317ms/20160B seal=2.818ms/58824B"
+      ],
+      "build": {
+        "warnings": 0,
+        "errors": 0
+      },
+      "sha256": {
+        "agente/SafeUpload.Agent.Service/bin/Release/net10.0-windows/SafeUpload.Agent.Service.dll": "f4b1926e7b9459ef750658cf531fa211edaccd6c5ab0df62f2c6a8d59ac3254d",
+        "agente/SafeUpload.Agent.Tests/bin/Release/net10.0-windows/SafeUpload.Agent.Tests.dll": "98d66b9e46fe9cde327d6864570de28ccb0dcb4b115c774aeb9c276818efbea3"
+      },
+      "regression_cases": [
+        {
+          "name": "StagedTerminalArchiveTests.Terminal_recovery_is_read_free_and_maintenance_still_archives_exact_receipts(False,False)",
+          "passed": true,
+          "ms": 12.8235
+        },
+        {
+          "name": "StagedTerminalArchiveTests.Terminal_recovery_is_read_free_and_maintenance_still_archives_exact_receipts(False,True)",
+          "passed": true,
+          "ms": 5.2769
+        },
+        {
+          "name": "StagedTerminalArchiveTests.Terminal_recovery_is_read_free_and_maintenance_still_archives_exact_receipts(True,False)",
+          "passed": true,
+          "ms": 3.8849
+        },
+        {
+          "name": "StagedTerminalArchiveTests.Terminal_recovery_is_read_free_and_maintenance_still_archives_exact_receipts(True,True)",
+          "passed": true,
+          "ms": 3.8999
+        }
+      ]
+    }
+  },
+  "unchanged_tests": {
+    "agente/SafeUpload.Agent.Tests/StagedBoundPublicationDispatcherTests.cs": "12652029a7afee80bca4083468f74febf726ed442c3da75f2cec06d1569f6f6e",
+    "agente/SafeUpload.Agent.Tests/StagedPublicationNativeJournalTests.cs": "f42db5fa48e3582b6733d1eabc0b30461fff77fd585359a015446fb2ee44d3bb"
+  },
+  "before_regression": {
+    "discovered": 4,
+    "passed": 0,
+    "failed": 4,
+    "skipped": 0
+  }
+}

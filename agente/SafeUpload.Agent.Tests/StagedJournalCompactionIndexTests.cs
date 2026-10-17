@@ -110,6 +110,19 @@ public sealed class StagedJournalCompactionIndexTests(ITestOutputHelper output)
             [], new HashSet<Guid>(), cancellation.Token));
     }
 
+    [Fact]
+    public void Unresolved_create_after_delete_retains_successor_and_its_transitive_reference_closure()
+    {
+        var pendingDelete = Entry(1); var successor = Entry(2); var allocation = Entry(3); var newest = Entry(4);
+        pendingDelete = pendingDelete with { CreateAfterReservationId = successor.Transfer.TransferId };
+        successor = successor with { DeleteVersionIdentity = new(pendingDelete.Transfer.TransferId, 1, pendingDelete.StageIdentity!),
+            AllocationReferenceId = allocation.Transfer.TransferId, AllocationReferenceKind = 2 };
+        TransferJournalEntry[] entries = [pendingDelete, successor, allocation, newest];
+        var finished = Finished(entries); finished.Remove(pendingDelete.Transfer.TransferId);
+        var retained = StagedTransferJournal.FindCompactionProtectedTransfers(entries, finished, default);
+        Assert.True(retained.SetEquals(entries.Select(e => e.Transfer.TransferId)));
+    }
+
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
     [Theory]
     [InlineData(1000)]

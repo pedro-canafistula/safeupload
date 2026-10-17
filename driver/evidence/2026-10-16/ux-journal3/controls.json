@@ -1,0 +1,223 @@
+{
+  "base": "2121f24ee568b41c9da4175328df7fc017a0b98b",
+  "branch": "ux/journal",
+  "bundle": ".scratch/ux-journal3.bundle",
+  "scope": "Linux component feedback; native rename callback is a no-op; not Windows/T4 qualification",
+  "runtime": ".NET SDK 10.0.400 / runtime 10.0.11",
+  "microBefore": {
+    "eightReadsMs": 1948.2,
+    "bytes": 193736408,
+    "perReadMs": 243.525
+  },
+  "microAfter": {
+    "debug": {
+      "eightReadsMs": 3.369,
+      "bytes": 258352,
+      "perReadMs": 0.421125
+    },
+    "release": {
+      "eightReadsMs": 3.577,
+      "bytes": 254600,
+      "perReadMs": 0.447125
+    }
+  },
+  "controlLimits": {
+    "eightReadsAllocatedBytes": 2097152,
+    "eightReadsElapsedMs": 1000
+  },
+  "focused": {
+    "debug": {
+      "discovered": 84,
+      "passed": 84,
+      "failed": 0,
+      "skipped": 0,
+      "classes": {
+        "AuditRecentScalingTests": 9,
+        "AuditTrailTests": 10,
+        "QueueEncodingTests": 4,
+        "StagedJournalMaintenanceRetryTests": 3,
+        "StagedJournalReplacementTests": 11,
+        "StagedRequestTimingTests": 9,
+        "StagedTerminalArchiveTests": 38
+      },
+      "logSha256": "0ca8001420c824c9c81db34371bf0653d969c7b36d41dfb4937dbb798c2c1c92"
+    },
+    "release": {
+      "discovered": 84,
+      "passed": 84,
+      "failed": 0,
+      "skipped": 0,
+      "classes": {
+        "AuditRecentScalingTests": 9,
+        "AuditTrailTests": 10,
+        "QueueEncodingTests": 4,
+        "StagedJournalMaintenanceRetryTests": 3,
+        "StagedJournalReplacementTests": 11,
+        "StagedRequestTimingTests": 9,
+        "StagedTerminalArchiveTests": 38
+      },
+      "logSha256": "6a646c30f955b0e5e07863b464aeaa18f7a9a66ae71c63aa6956431b09d8ff69"
+    }
+  },
+  "repro": {
+    "normal": {
+      "completedCycles": 10000,
+      "destinationNames": 8,
+      "sampleWindow": 100,
+      "phaseNames": [
+        "allocate",
+        "seal",
+        "maintenance",
+        "journalPublication",
+        "completionArchive"
+      ],
+      "finalMeanMs": 14.480860999999999,
+      "finalPhaseMeanMs": {
+        "allocate": 1.1418910000000002,
+        "seal": 2.4512970000000003,
+        "maintenance": 1.012267,
+        "journalPublication": 5.048254,
+        "completionArchive": 4.827151999999999
+      },
+      "hot": 0,
+      "archived": 10000,
+      "archiveSegments": 7,
+      "archiveBytes": 25739028,
+      "queueBytes": 6338876,
+      "auditRecords": 10000,
+      "notificationHeadSequence": 10025,
+      "retainedNotificationChainValid": true,
+      "log": "repro-normal.jsonl",
+      "logSha256": "fee2971d1f060b2cd98d27898a52575cd9bc2e9988959d210ce6041552a1de88"
+    },
+    "before": {
+      "completedCycles": 10000,
+      "destinationNames": 8,
+      "sampleWindow": 100,
+      "phaseNames": [
+        "allocate",
+        "seal",
+        "maintenance",
+        "journalPublication",
+        "completionArchive",
+        "observerAuditRecent"
+      ],
+      "finalMeanMs": 156.957887,
+      "finalPhaseMeanMs": {
+        "allocate": 3.905512999999999,
+        "seal": 3.160149,
+        "maintenance": 1.2517130000000005,
+        "journalPublication": 6.316264000000001,
+        "completionArchive": 5.7837239999999985,
+        "observerAuditRecent": 136.540524
+      },
+      "hot": 0,
+      "archived": 10000,
+      "archiveSegments": 7,
+      "archiveBytes": 25738751,
+      "queueBytes": 12717857,
+      "auditRecords": 20000,
+      "notificationHeadSequence": 10025,
+      "retainedNotificationChainValid": true,
+      "log": "repro-before.jsonl",
+      "logSha256": "fdecc9f1bf794f4fc0eea560b3625fb0da11affc760b4bd5eaf6808f1da89c90"
+    },
+    "after": {
+      "completedCycles": 10000,
+      "destinationNames": 8,
+      "sampleWindow": 100,
+      "phaseNames": [
+        "allocate",
+        "seal",
+        "maintenance",
+        "journalPublication",
+        "completionArchive",
+        "observerAuditRecent"
+      ],
+      "finalMeanMs": 16.438787,
+      "finalPhaseMeanMs": {
+        "allocate": 1.262617,
+        "seal": 2.873105999999999,
+        "maintenance": 1.1833490000000007,
+        "journalPublication": 5.798024999999999,
+        "completionArchive": 5.106154000000003,
+        "observerAuditRecent": 0.21553599999999995
+      },
+      "hot": 0,
+      "archived": 10000,
+      "archiveSegments": 7,
+      "archiveBytes": 25719190,
+      "queueBytes": 12677712,
+      "auditRecords": 20000,
+      "notificationHeadSequence": 10025,
+      "retainedNotificationChainValid": true,
+      "log": "repro-after.jsonl",
+      "logSha256": "fea9693be3fef51e35de32a4a713f6bd7f8274ca104df765005f40087d08cf7e"
+    }
+  },
+  "sourceSha256": {
+    "agente/SafeUpload.Agent.Core/Infrastructure/LocalQueueAuditSink.cs": "3d5994b9e19f304c68ce8602f2de1c0409ca7be498a683c49f753c7afcba12b1",
+    "agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs": "47ab3691fd3ca75d6017f8126f08b0329d25a631536d622b5961df7630e67b49",
+    "agente/SafeUpload.Agent.Tests/AuditRecentScalingTests.cs": "8d527c9d870db60144c73b1884cbe128750c61b10b79a236f7990f0d7359c4f5",
+    "agente/SafeUpload.Agent.Tests/StagedBoundPublicationDispatcherTests.cs": "12652029a7afee80bca4083468f74febf726ed442c3da75f2cec06d1569f6f6e",
+    "agente/SafeUpload.Agent.Tests/StagedPublicationNativeJournalTests.cs": "f42db5fa48e3582b6733d1eabc0b30461fff77fd585359a015446fb2ee44d3bb"
+  },
+  "unchangedInvariantTestSha256": {
+    "agente/SafeUpload.Agent.Tests/StagedBoundPublicationDispatcherTests.cs": "12652029a7afee80bca4083468f74febf726ed442c3da75f2cec06d1569f6f6e",
+    "agente/SafeUpload.Agent.Tests/StagedPublicationNativeJournalTests.cs": "f42db5fa48e3582b6733d1eabc0b30461fff77fd585359a015446fb2ee44d3bb"
+  },
+  "fixtureSha256": "5e6a443f084b2136c62895712b62b12324a6f2ef386536ea1975f251cdea3111",
+  "originalJournalOnlyFixtureSha256": "e8ac46c78c6543113eeffbffd367d4f86b0f11218121d20a44faeb4ba8e250b0",
+  "artifactSha256": {
+    ".scratch/ux-journal3/repro/bin/Debug/net10.0-windows/SafeUpload.Agent.Core.dll": "b49eed6067c065ae069ceb5d1e9485355d0e35e80fccefed9145f1fb55ead965",
+    ".scratch/ux-journal3/after-artifacts/bin/runner/debug/SafeUpload.Agent.Core.dll": "5e5955461d75371905c3badb918722be37af80b04785687ebec3be2e0d1cf54f",
+    ".scratch/ux-journal3/after-artifacts/bin/runner/debug/SafeUpload.Agent.Service.dll": "2ac2ceb841a677e808b0764887b8bad85c1ff512a21bec7d0c7b90b21cae767a",
+    ".scratch/ux-journal3/after-artifacts/bin/runner/debug/SafeUpload.Agent.Tests.dll": "9b94352fe6c223ceeca85983b05f5a9e65807b2edfb721c5575b37a30fe65603",
+    ".scratch/ux-journal3/after-artifacts/bin/runner/release/SafeUpload.Agent.Core.dll": "7c56a0679c3aa9a9bd7c943353ad584ededd209da5439c5461e16eb4cb29ccfc",
+    ".scratch/ux-journal3/after-artifacts/bin/runner/release/SafeUpload.Agent.Service.dll": "72a0740659386267e3335c96e396a0f49e28bc055e71d811ef1e26d51046d683",
+    ".scratch/ux-journal3/after-artifacts/bin/runner/release/SafeUpload.Agent.Tests.dll": "c85226f4ca209ebf0f0e48811e5e0502e649bed77214d6fe27120a708e302951"
+  },
+  "liveInput": {
+    "records": 4659,
+    "failures": 0,
+    "distinctTargets": 1171,
+    "sha256": "f125777670a10fe630caa17f09f106181fbb8d1f5dba5de335acb2f7dc82571d",
+    "bands": [
+      {
+        "from": 1000,
+        "to": 1499,
+        "count": 500,
+        "ackMedianMs": 44.55,
+        "outcomeMedianMs": 929.2
+      },
+      {
+        "from": 2000,
+        "to": 2499,
+        "count": 500,
+        "ackMedianMs": 48.0,
+        "outcomeMedianMs": 1293.75
+      },
+      {
+        "from": 3000,
+        "to": 3499,
+        "count": 500,
+        "ackMedianMs": 56.849999999999994,
+        "outcomeMedianMs": 1791.25
+      },
+      {
+        "from": 4000,
+        "to": 4499,
+        "count": 500,
+        "ackMedianMs": 59.7,
+        "outcomeMedianMs": 2394.6
+      },
+      {
+        "from": 4500,
+        "to": 4659,
+        "count": 160,
+        "ackMedianMs": 57.85,
+        "outcomeMedianMs": 2494.75
+      }
+    ]
+  }
+}

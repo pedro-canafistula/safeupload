@@ -44,7 +44,9 @@ public enum StagedRecoveryAdvice
     CollectDiagnostics = 3,
     RestartWindows = 4,
     JournalRecovery = 5,
-    PublicationUnresolved = 6
+    PublicationUnresolved = 6,
+    PublicationBusy = 7,
+    UnsupportedMetadata = 8
 }
 
 /// <summary>
@@ -64,7 +66,8 @@ public sealed record TransferNotification(
     string? SnapshotSha256Hex = null,
     InspectionFailureKind? InspectionFailure = null,
     StagedBlockReason? BlockReason = null,
-    StagedRecoveryAdvice? RecoveryAdvice = null) : AgentNotification
+    StagedRecoveryAdvice? RecoveryAdvice = null,
+    string? MetadataFailure = null) : AgentNotification
 {
     public const string TypeName = "transfer";
 }

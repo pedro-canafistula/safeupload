@@ -1,0 +1,231 @@
+{
+  "base": "54e0efd7",
+  "note": "Current patched-source line numbers. FltAllocateContext tags come from SafeUploadContextRegistration; all four registered types use SUfl. This is a source inventory, not per-object runtime attribution.",
+  "sites": [
+    {
+      "source": "driver/SafeUpload.Minifilter/Communication.c",
+      "line": 2003,
+      "call": "ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( SAFEUPLOAD_POLICY_MESSAGE ), SAFEUPLOAD_POOL_TAG )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Communication.c",
+      "line": 2537,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*coverageStatus), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Communication.c",
+      "line": 2594,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*reply), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Communication.c",
+      "line": 2690,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*activatingPage), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Communication.c",
+      "line": 2719,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*activatingDiagnosticPage), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Context.c",
+      "line": 326,
+      "call": "FltAllocateContext( FltObjects->Filter, FLT_INSTANCE_CONTEXT, sizeof( SAFEUPLOAD_INSTANCE_CONTEXT ), NonPagedPool, (PFLT_CONTEXT *) &instanceContext )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Context.c",
+      "line": 624,
+      "call": "FltAllocateContext( FltObjects->Filter, FLT_STREAM_CONTEXT, sizeof( SAFEUPLOAD_STREAM_CONTEXT ), NonPagedPool, (PFLT_CONTEXT *) &created )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Context.c",
+      "line": 758,
+      "call": "FltAllocateContext( FltObjects->Filter, FLT_STREAMHANDLE_CONTEXT, sizeof( SAFEUPLOAD_STREAMHANDLE_CONTEXT ), NonPagedPool, (PFLT_CONTEXT *) &handleContext )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Filter.c",
+      "line": 1141,
+      "call": "ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( SAFEUPLOAD_EXCHANGE ), SAFEUPLOAD_POOL_TAG )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Policy.c",
+      "line": 175,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*epoch), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Policy.c",
+      "line": 312,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*token), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Policy.c",
+      "line": 1111,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(SAFEUPLOAD_POLICY), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageAdmission.c",
+      "line": 85,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, bytes, SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageAdmission.c",
+      "line": 170,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, bytes, SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageAdmission.c",
+      "line": 618,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, SAFEUPLOAD_ADMISSION_COVERAGE_MAX_INSTANCES * sizeof(*instances), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageAdmission.c",
+      "line": 639,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, count * sizeof(*records), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageDirectory.c",
+      "line": 44,
+      "call": "ExAllocatePool2( POOL_FLAG_PAGED, bytes, SAFEUPLOAD_POOL_TAG )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageDirectory.c",
+      "line": 92,
+      "call": "ExAllocatePool2( POOL_FLAG_PAGED, sizeof( *view ), SAFEUPLOAD_POOL_TAG )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageDirectory.c",
+      "line": 94,
+      "call": "ExAllocatePool2( POOL_FLAG_PAGED, 65536, SAFEUPLOAD_POOL_TAG )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageDirectory.c",
+      "line": 293,
+      "call": "ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( *objects ), SAFEUPLOAD_POOL_TAG )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageDirectory.c",
+      "line": 337,
+      "call": "FltAllocateContext( FltObjects->Filter, FLT_STREAMHANDLE_CONTEXT, sizeof( *created ), NonPagedPool, (PFLT_CONTEXT *) &created )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 806,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*Exchange->RenameReply), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 868,
+      "call": "ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( *exchange ), SAFEUPLOAD_POOL_TAG )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 1143,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 1266,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 1331,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 1393,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 1479,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 1554,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 1638,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*expected), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 1732,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 1759,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*expected), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 1789,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*expected), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 1926,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 2023,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*expected), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 2039,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 2095,
+      "call": "ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( *exchange ), SAFEUPLOAD_POOL_TAG )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageProtocol.c",
+      "line": 2148,
+      "call": "ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageSecurity.c",
+      "line": 91,
+      "call": "ExAllocatePool2( POOL_FLAG_PAGED, needed, SAFEUPLOAD_POOL_TAG )"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageStream.c",
+      "line": 1017,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, fullPathBytes, SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageStream.c",
+      "line": 1159,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, fullPathBytes, SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageStream.c",
+      "line": 1333,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, fullNameBytes, SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageStream.c",
+      "line": 10818,
+      "call": "ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*overlay) + Name->Length, SAFEUPLOAD_POOL_TAG)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/StageWriters.c",
+      "line": 8497,
+      "call": "FltAllocateContext(SafeUploadData.Filter, FLT_TRANSACTION_CONTEXT, sizeof(*context), NonPagedPoolNx, (PFLT_CONTEXT *)&context)"
+    },
+    {
+      "source": "driver/SafeUpload.Minifilter/Taint.c",
+      "line": 346,
+      "call": "ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( SAFEUPLOAD_TAINT_ENTRY ), SAFEUPLOAD_POOL_TAG )"
+    }
+  ]
+}

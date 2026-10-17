@@ -75,12 +75,45 @@ public sealed class PowerPointContentCoverageTests : IDisposable
         await Check(path, sensitive: true);
     }
 
+    // Owner decision 2026-10-16 (option A): the package-root thumbnail PowerPoint renders from slide 1 is accepted without OCR;
+    // the slide text is still inspected, and an image related from anywhere else still refuses the deck.
+    [Theory]
+    [InlineData("clean", false)]
+    [InlineData("cpf-in-slide", true)]
+    public async Task PowerPoint_package_thumbnail_is_accepted_and_the_slides_are_still_inspected(string slide, bool sensitive)
+    {
+        string path = PowerPointFixture.Create(_workspace.Root, ".pptx");
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            if (slide == "cpf-in-slide") Write(zip, Slide, SlideXml(Shape(Rich(Cpf))));
+            AddPng(zip, "", "docProps/thumbnail.png", "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail");
+        }
+        await Check(path, sensitive: sensitive);
+    }
+
+    [Fact]
+    public async Task PowerPoint_thumbnail_relationship_from_a_slide_still_refuses_the_deck()
+    {
+        string path = PowerPointFixture.Create(_workspace.Root, ".pptx");
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+            AddPng(zip, Slide, "ppt/media/thumbnail.png", "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail");
+        await Check(path, failure: InspectionFailureKind.UnsupportedFormat);
+    }
+
+    private static void AddPng(ZipArchive zip, string parent, string name, string relation)
+    {
+        Add(zip, parent, name, relation, "image/png", "<placeholder/>");
+        // A real one-pixel PNG, not XML masquerading as an image.
+        zip.GetEntry(name)!.Delete();
+        using var image = zip.CreateEntry(name).Open();
+        image.Write(Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"));
+    }
+
     [Theory]
     [InlineData("unknown")]
     [InlineData("orphan-xml")]
     [InlineData("orphan-slide")]
     [InlineData("image")]
-    [InlineData("thumbnail")]
     [InlineData("image-only")]
     [InlineData("media")]
     [InlineData("ole")]

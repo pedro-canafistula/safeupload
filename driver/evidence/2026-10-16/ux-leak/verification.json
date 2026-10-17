@@ -1,0 +1,45 @@
+{
+  "base": "54e0efd7",
+  "qualification": false,
+  "windows_build": false,
+  "vm_boot": false,
+  "expected_before_failure": true,
+  "disposal_cycles": 10000,
+  "hot_manifests_at_end": 0,
+  "disposal_calls": 20000,
+  "archived": 10000,
+  "archive_cases_per_configuration": 50,
+  "archive_configurations": [
+    "feature Debug",
+    "feature Release"
+  ],
+  "unchanged_scaling_10k_cases": 2,
+  "kernel_host_compilers": [
+    "GCC",
+    "Clang"
+  ],
+  "kernel_host_sanitizer": "UBSan",
+  "kernel_scripts": 20,
+  "kernel_unittest_cases": 114,
+  "offline_matrix_controls": 21,
+  "local_agent_compiles": "normal/feature x Debug/Release x Service/App/Tests 0 warnings 0 errors",
+  "logs_sha256": {
+    "agent-before.log": "c98d9a8f1a985e5bb49beabc4d79c670af5e7f0a2a420c84c4ddaefaf6c7fcb3",
+    "agent-after-10k.log": "4c628a5e45ca35f1fe8e25b1905c59964764a038a32ed22bf86b3f27b932d5e7",
+    "agent-archive.log": "fc932ca7c0c3231a91188e7131691535c9881cb3b17b290e63fcd4d760f8dd65",
+    "agent-archive-release.log": "fc932ca7c0c3231a91188e7131691535c9881cb3b17b290e63fcd4d760f8dd65",
+    "agent-existing-10k-isolated.log": "5671de5caa88e58d0b9d003e23803da573cc724ca9e70c7ca5dd64d07bbd49be",
+    "kernel-selfchecks.log": "785377b457d6ab1581ef69533f8c85bbf2125a34440f9e9ec876c138fb0d3f59",
+    "context-controls-delivery.log": "2a4b5895bcb4ad468e29186d991b5f07a21111343fe03a6d6df775c4308f241e",
+    "witness-controls-final.log": "3eb40a4e0688f22fb92e27e11aba8af4a0c1cf45a6ec31a7859550e8ce09e5cf",
+    "local-compile.log": "77fa70dd3435884f151ef7f4e633d443ee2b0a4db215efa20855ab0caac7f7f4",
+    "import-selfcheck.log": "47e488ee9dd22636cff3c820278f2fd780acb7e33c5e29e9cc3de0dd2cbba203",
+    "matrix-selfcheck.log": "da4cbd8b9bffd3ffb7c4be27bc292d888b8b2c99caf071d9740ef38c0257a4d8"
+  },
+  "diagnostic_artifacts_sha256": {
+    ".scratch/ux-leak/controls/agente/SafeUpload.Agent.Service/bin/Debug/net10.0-windows/SafeUpload.Agent.Service.dll": "b90220e503565550cc7808074089712132f66d9856654acaa5621ea5738b87a4",
+    ".scratch/ux-leak/controls/agente/SafeUpload.Agent.Tests/bin/Debug/net10.0-windows/SafeUpload.Agent.Tests.dll": "b9ede0fce998ce11744afe69ff803066b3feb0e6a8f7a73fb39f22a52d9f5b10",
+    ".scratch/ux-leak/controls/agente/SafeUpload.Agent.Service/bin/Release/net10.0-windows/SafeUpload.Agent.Service.dll": "b18c12656f3054493a5c5e630cf5615f84133e350df4bad941b719676b658c15",
+    ".scratch/ux-leak/controls/agente/SafeUpload.Agent.Tests/bin/Release/net10.0-windows/SafeUpload.Agent.Tests.dll": "71994593c2515d81482ae2713b501c25038f853b6528923e03a911a78b3dbca2"
+  }
+}

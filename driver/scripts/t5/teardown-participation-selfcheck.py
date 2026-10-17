@@ -763,7 +763,7 @@ class TeardownParticipation(unittest.TestCase):
         # m2t5boot8: the reservation survived attachment, refused other processes' reads
         # with DELETE_PENDING and parked the worker before seal.
         text = code(K / 'StageStream.c')
-        start = text.index('stream->AttachCompletionFence = FALSE;', text.index('FltCompletePendedPreOperation(Transaction->CallbackData'))
+        start = text.index('stream->AttachCompletionFence = FALSE;', text.index('StageAttachFinishCallback(Transaction, FLT_PREOP_COMPLETE, NULL)'))
         block = text[text.rindex('StageAcquire(&StageNamespaceResource)', 0, start):]
         block = block[:block.index('StageRelease(&StageNamespaceResource);')]
         self.order(block, 'StageAcquire(&StageNamespaceResource)', 'AttachCompletionFence = FALSE',
