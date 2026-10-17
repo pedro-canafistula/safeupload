@@ -37,7 +37,15 @@ public sealed class StagedAllocationRecoveryTests : IDisposable
             old["ContentReleased"] = true;
             string recordPath = Path.Combine(Records, id.ToString("N") + ".json");
             File.WriteAllText(recordPath, old.ToJsonString());
-            if (templateSecurity is not null) new FileInfo(recordPath).SetAccessControl(templateSecurity);
+            if (templateSecurity is not null)
+            {
+                // SetAccessControl writes only modified sections. A freshly
+                // read template is otherwise a no-op on Windows.
+                var restored = new FileSecurity();
+                restored.SetSecurityDescriptorBinaryForm(templateSecurity.GetSecurityDescriptorBinaryForm(),
+                    AccessControlSections.Access | AccessControlSections.Owner | AccessControlSections.Group);
+                new FileInfo(recordPath).SetAccessControl(restored);
+            }
         }
         budget = Budget();
         Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "one"));

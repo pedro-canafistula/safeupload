@@ -107,7 +107,9 @@ public sealed class PolicyContentBindingTests : IDisposable
         Assert.True(await Allowed(result));
         Assert.False(await Allowed(result with { PolicyContentFingerprint = null }));
         Assert.DoesNotContain(result.PolicyContentFingerprint!, JsonSerializer.Serialize(result));
-        document["maxFileSizeMb"] = document["maxFileSizeMb"]!.GetValue<int>() + 1;
+        // The default document omits mode-specific limits. Change the effective
+        // staged limit, preserving the same-version policy-revocation control.
+        document["maxFileSizeMb"] = (await store.LoadCurrentAsync(CancellationToken.None)).MaxFileSizeMb + 1;
         await File.WriteAllTextAsync(_workspace.PolicyFile, document.ToJsonString());
         Assert.Equal(result.PolicyVersion, (await store.LoadCurrentAsync(CancellationToken.None)).Version);
         Assert.False(await Allowed(result));

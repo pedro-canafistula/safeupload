@@ -1277,6 +1277,12 @@ public sealed partial class StagedTransferJournal
         {
             if (request.ReservationId != current.Transfer.TransferId)
                 throw new IOException("EmptyHeld retirement must be reserved to the exact version.");
+            // Retiring an unattached child removes its ordinary name claim,
+            // but cannot turn legacy owner cleanup into predecessor cleanup.
+            // That historical chain still needs the exact child reservation.
+            if (!alreadyPending && (await DestinationVersionsAsync(current.Transfer.DestinationPath, token)
+                    .ConfigureAwait(false)).Any(e => e.Generation > current.DestinationGeneration))
+                throw new IOException("The legacy predecessor still requires its exact child cleanup reservation.");
             if (!alreadyPending) await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
         }
         else if (request.Kind == StagedDiscardKind.EmptyHeldPredecessor)

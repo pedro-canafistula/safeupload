@@ -207,9 +207,11 @@ public sealed class NotificationRecordTests : IDisposable
         long now = System.Diagnostics.Stopwatch.GetTimestamp(); record.RecoveryClock = () => now;
         record.Append(Transfer(), 1);
         string original = Entries()[^1].InstanceId;
-        string temporary = Path.Combine(DirectoryPath, "head.tmp"); Directory.CreateDirectory(temporary);
+        // CreateNew collision is IOException on Windows and Unix. A directory
+        // collision instead reports UnauthorizedAccessException on Windows.
+        string temporary = Path.Combine(DirectoryPath, "head.tmp"); File.WriteAllText(temporary, "checkpoint collision");
         Assert.Throws<IOException>(() => record.Append(Transfer(), 1));
-        Directory.Delete(temporary);
+        File.Delete(temporary);
         File.Delete(Active); File.Delete(Path.Combine(DirectoryPath, "head.json"));
         now += System.Diagnostics.Stopwatch.Frequency * 2;
         record.Append(Transfer(), 1);

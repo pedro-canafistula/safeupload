@@ -654,7 +654,7 @@ public sealed class StagedHandbackTests : IDisposable
         if (shape == "same-version-edit")
         {
             var changed = JsonNode.Parse(await File.ReadAllTextAsync(_workspace.PolicyFile))!;
-            changed["maxFileSizeMb"] = changed["maxFileSizeMb"]!.GetValue<int>() + 1;
+            changed["maxFileSizeMb"] = (await policy.LoadCurrentAsync(CancellationToken.None)).MaxFileSizeMb + 1;
             await File.WriteAllTextAsync(_workspace.PolicyFile, changed.ToJsonString());
         }
         else if (shape == "legacy-missing")
