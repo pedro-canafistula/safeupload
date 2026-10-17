@@ -40,6 +40,8 @@ def program(stream):
     admit = d.function(stream, 'StageAdmit')
     demotion = re.search(r'    if \(KeGetCurrentIrql\(\) == PASSIVE_LEVEL && disposition == FILE_OPEN &&\n.*?writer = FALSE;', admit, re.S)
     assert demotion, 'shared writer demotion'
+    readmit = admit[admit.index('Readmit:\n') + len('Readmit:\n'):]
+    readmit = readmit[:readmit.index('    if (!service) {')]
     create = d.function(stream, 'StageCreate')
     a = create.index('    if (view == NULL && !Writer) {')
     b = create.index('    if (Name->Name.Length', a)
@@ -55,6 +57,7 @@ def program(stream):
             .replace('/* NATIVE_LOOKUP_HOOK */', 'if(LookupHook)LookupHook();')
             .replace('/* NATIVE_TEST_CALL */', 'namespace_tests();')
             .replace('/* PRODUCTION_DEMOTION */', demotion[0])
+            .replace('/* PRODUCTION_READMISSION */', readmit)
             .replace('/* PRODUCTION_PRIVATE_FALLBACK */', fallback))
 
 
@@ -103,6 +106,9 @@ class NamespaceUx(unittest.TestCase):
             ('return NT_SUCCESS(Data->IoStatus.Status) && Data->IoStatus.Status != STATUS_REPARSE', 'return Data->IoStatus.Status == STATUS_SUCCESS && Data->IoStatus.Status != STATUS_REPARSE'),
             ('FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID | FILE_OPEN_REPARSE_POINT) &&', 'FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID) &&'),
             ('StageMvpNamespaceCreateEligible(Data, Objects)) writer = FALSE;', 'StageMvpNamespaceOpen(Data)) writer = FALSE;'),
+            ('!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&\n        StageMvpNamespaceCreateEligible', 'StageMvpNamespaceCreateEligible'),
+            ('writer = requestedWriter;', '(void)requestedWriter;'),
+            ('if (mutation && !StageNameLookupProvesAbsent(status)) {', 'if (FALSE) {'),
             ('(MajorFunction == IRP_MJ_SET_INFORMATION && Mutation)', '((void)MajorFunction, FALSE && Mutation)'),
             ('status = SafeUploadStageCheckSubjectAccess(Data, Target->Security, DELETE);', 'status = STATUS_SUCCESS; (void)&SafeUploadStageCheckSubjectAccess; (void)Target;'),
             ('StageMvpNamespaceRegistryContext = registryRenameContext != NULL ? registryRenameContext : mutatingIoContext;', 'StageMvpNamespaceRegistryContext = NULL;'),
@@ -134,6 +140,12 @@ class NamespaceUx(unittest.TestCase):
         admit = d.function(source, 'StageAdmit')
         native = d.function(source, 'StageMvpNamespacePre')
         self.assertIn('StageMvpNamespaceCreateEligible(Data, Objects)) writer = FALSE;', admit)
+        self.assertIn('writer = requestedWriter;', admit[admit.index('Readmit:'):])
+        self.assertNotIn('StageMvpNamespaceOpen(Data)', admit)
+        dispatch = d.function(source, 'StageDispatchCore')
+        guard = dispatch.index('if (nativeMutationRequired) return StageCompleteAccessDenied(Data);')
+        self.assertLess(guard, dispatch.index('result = SafeUploadPreCreate(Data, Objects, &legacyCompletionContext);'))
+        self.assertLess(dispatch.index('&nativeMutationRequired);'), guard)
         self.assertIn('if (!StageMvpNamespaceCreateEligible(Data, Objects)) return result;', native)
         self.assertNotIn('StageMvpNamespaceOpen(Data)', admit[:admit.index('writer = FALSE;')])
         epoch = d.function(source, 'StageDispatchEpoch')

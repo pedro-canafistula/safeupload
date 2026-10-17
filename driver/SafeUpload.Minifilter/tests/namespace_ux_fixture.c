@@ -39,6 +39,7 @@ static unsigned char StageMvpNamespaceCompletionTag;
 static int CancelCalls, PreflightCalls, CancelStatus, PrivateOpen, LegacyPostCalls, LegacyDenied, LegacyPreCalls;
 static int MutatingOwners, RenameOwnsMutation, RenameCompleteCalls, CompletedSuccess, CompletedDraining;
 static int SubjectStatus, DestinationAccessStatus, SubjectChecks, DestinationChecks, CancelOpenCalls;
+static int PendingCancellation, NativeReplaceChecks;
 static PVOID SecurityEvidence=(PVOID)(uintptr_t)73;
 static BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(int a,int b){(void)a;(void)b;return FALSE;}
 static PVOID FltGetRequestorProcess(PFLT_CALLBACK_DATA d){(void)d;return (PVOID)(uintptr_t)100;}
@@ -55,8 +56,9 @@ static FLT_PREOP_CALLBACK_STATUS SafeUploadPreCreate(PFLT_CALLBACK_DATA d,PCFLT_
 static int SafeUploadPostCreate(PFLT_CALLBACK_DATA d,PCFLT_RELATED_OBJECTS o,PVOID ctx,FLT_POST_OPERATION_FLAGS flags)
 { (void)o;assert(ctx==(PVOID)(uintptr_t)32);LegacyPostCalls++;if(LegacyDenied&&!flags)d->IoStatus.Status=STATUS_ACCESS_DENIED;return 0; }
 static VOID FltCancelFileOpen(PFLT_INSTANCE i,PFILE_OBJECT o){(void)i;(void)o;assert(!NamespaceDepth);CancelOpenCalls++;}
-static NTSTATUS StageMvpCancelNames(PFLT_INSTANCE i,PUNICODE_STRING s,PUNICODE_STRING t,BOOLEAN cancel)
+static NTSTATUS StageMvpCancelNames(PFLT_INSTANCE i,PUNICODE_STRING s,PUNICODE_STRING t,BOOLEAN cancel,PBOOLEAN required)
 { (void)i;(void)s;(void)t;assert(StageDirectoryMutationActive&&!NamespaceDepth&&Irql==0);
+ if(required)*required=(BOOLEAN)PendingCancellation;
  if(!cancel){PreflightCalls++;return PrivateOpen?STATUS_SHARING_VIOLATION:0;}CancelCalls++;return CancelStatus; }
 static BOOLEAN SafeUploadStageWritersBeginMutatingIo(PFLT_CALLBACK_DATA d,PFLT_INSTANCE i,PFILE_OBJECT f,PVOID *ctx,PBOOLEAN tracked)
 { (void)d;(void)i;(void)f;assert(!NamespaceDepth);MutatingOwners++;*ctx=(PVOID)(uintptr_t)24;*tracked=FALSE;return TRUE; }
@@ -75,6 +77,10 @@ static NTSTATUS SafeUploadStageCheckSubjectAccess(PFLT_CALLBACK_DATA d,PVOID des
 { (void)d;assert(!NamespaceDepth&&descriptor==SecurityEvidence&&access==DELETE);SubjectChecks++;return SubjectStatus; }
 static NTSTATUS SafeUploadStageCheckRenameAccess(PFLT_CALLBACK_DATA d,PFLT_INSTANCE i,PUNICODE_STRING n,BOOLEAN replace)
 { (void)d;(void)i;(void)n;(void)replace;assert(!NamespaceDepth);DestinationChecks++;return DestinationAccessStatus; }
+static NTSTATUS SafeUploadStageCheckNativeReplace(PFLT_CALLBACK_DATA d,PFLT_INSTANCE i,PUNICODE_STRING s,
+ PUNICODE_STRING t,const FILE_ID_INFORMATION *src,const FILE_ID_INFORMATION *parent,const FILE_ID_INFORMATION *target,BOOLEAN exists)
+{ (void)d;(void)i;(void)s;(void)t;(void)src;(void)parent;(void)target;(void)exists;
+ assert(!NamespaceDepth&&StageDirectoryMutationActive);NativeReplaceChecks++;return DestinationAccessStatus; }
 /* TESTS */
 /* Compile the actual StageAdmit demotion and the actual StageCreate fallback
  * that used to expose a public delete-on-close when no requester view exists.
@@ -84,6 +90,14 @@ static BOOLEAN classified_writer(PFLT_CALLBACK_DATA Data,PCFLT_RELATED_OBJECTS O
  ULONG disposition=Data->Iopb->Parameters.Create.Options>>24;
  (void)Objects; /* keep negative mutation executable under -Werror */
  /* PRODUCTION_DEMOTION */
+ return writer;
+}
+static BOOLEAN readmitted_writer(PFLT_CALLBACK_DATA Data,PCFLT_RELATED_OBJECTS Objects,
+ BOOLEAN requestedWriter,BOOLEAN writer)
+{
+ ULONG disposition=Data->Iopb->Parameters.Create.Options>>24;
+ (void)Objects;
+ /* PRODUCTION_READMISSION */
  return writer;
 }
 static NTSTATUS requester_without_view(BOOLEAN Writer,PBOOLEAN Handled)
@@ -101,6 +115,7 @@ static VOID namespace_reset(void)
  reset();NativeDirectory=0;CancelCalls=PreflightCalls=CancelStatus=PrivateOpen=LegacyPostCalls=LegacyDenied=LegacyPreCalls=0;
  MutatingOwners=RenameOwnsMutation=RenameCompleteCalls=CompletedSuccess=CompletedDraining=0;
  SubjectChecks=DestinationChecks=SubjectStatus=DestinationAccessStatus=CancelOpenCalls=0;LookupHook=NULL;
+ PendingCancellation=NativeReplaceChecks=0;
  assert(!StageMvpNamespaceCreateName&&!StageMvpNamespaceRegistryContext&&!StageMvpNamespaceCreateContext);
  Source.Name=u(L"\\Device\\V\\Protected\\file.txt");Destination.Name=u(L"\\Device\\V\\Protected\\new.txt");
 }
@@ -160,8 +175,31 @@ static VOID namespace_tests(void)
  assert(requester_without_view(writer,&privateHandled)==STATUS_ACCESS_DENIED&&privateHandled);
  assert(otherOwnerSealed); /* no legacy public CREATE or cancellation ran */
  assert(!CancelCalls&&!PreflightCalls&&!LegacyPreCalls&&!StageDirectoryMutationActive);
+ /* Metadata-only opens excluded from native routing must also keep ordinary
+  * admission, even when they carry no DOC bit. */
+ io.Parameters.Create.Options&=~FILE_DELETE_ON_CLOSE;
+ security.DesiredAccess=FILE_WRITE_ATTRIBUTES;
+ assert(classified_writer(&data,&objects,TRUE));
+ assert(readmitted_writer(&data,&objects,TRUE,FALSE));
+ io.Parameters.Create.Options|=FILE_DELETE_ON_CLOSE;
+ security.DesiredAccess=DELETE|FILE_READ_ATTRIBUTES;
  io.Parameters.Create.Options&=~FILE_OPEN_REPARSE_POINT;
  assert(StageMvpNamespaceCreateEligible(&data,&objects));
+ /* A fault in the existing-object probe is a refusal, never an unowned
+  * native DOC. Absence keeps writer intent for private create/refusal. */
+ namespace_reset();IdentityStatus=STATUS_ACCESS_DENIED;token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled);
+ assert(data.IoStatus.Status==IdentityStatus&&!CancelCalls&&!LegacyPreCalls&&!StageDirectoryMutationActive);
+ namespace_reset();IdentityStatus=STATUS_OBJECT_NAME_NOT_FOUND;token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_NO_CALLBACK&&!handled);
+ writer=classified_writer(&data,&objects,TRUE);assert(writer);
+ assert(requester_without_view(writer,&privateHandled)==STATUS_ACCESS_DENIED&&privateHandled);
+ /* The private receipt wait detached the last view; its reader decision must
+  * not survive readmission, including a later excluded reparse create. */
+ assert(readmitted_writer(&data,&objects,TRUE,FALSE));
+ io.Parameters.Create.Options|=FILE_OPEN_REPARSE_POINT;
+ assert(readmitted_writer(&data,&objects,TRUE,FALSE));
+ io.Parameters.Create.Options&=~FILE_OPEN_REPARSE_POINT;
  /* Every successful opened-object result is checked before exposure, including
   * the real alternate oplock success. Reparse/pending/non-open cannot cancel. */
  NTSTATUS outcomes[]={STATUS_SUCCESS,STATUS_OPLOCK_BREAK_IN_PROGRESS,0x40000000};
@@ -203,6 +241,7 @@ static VOID namespace_tests(void)
  }
  for(int completion=0;completion<3;completion++){
   namespace_reset();token=slot();ctx=NULL;assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SYNCHRONIZE);
+  assert(!NativeReplaceChecks); /* no unpublished cancellation obligation */
   assert(ctx==&StageMvpNamespaceCompletionTag&&MutatingOwners==1&&RenameOwnsMutation&&PrepareCalls==1&&CancelCalls==1);
   assert(rename.Flags==(FILE_RENAME_REPLACE_IF_EXISTS|0x100));/* flags unchanged */
   STAGE_ADMISSION_TOKEN_SLOT folder=slot();assert(StageDirectoryBeginMutation(&Source.Name,NULL,&folder)==STATUS_SHARING_VIOLATION);
@@ -212,6 +251,16 @@ static VOID namespace_tests(void)
   assert(StageDirectoryMutationActive);StageDirectoryEndMutation(completion==2);
   assert(StageDirectoryMutationActive==(completion==2));
  }
+ /* Supplemental authority is necessary only before cancelling private work.
+  * A denial leaves every pending version intact; lower flags are unchanged. */
+ namespace_reset();PendingCancellation=1;DestinationAccessStatus=STATUS_ACCESS_DENIED;token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled);
+ assert(NativeReplaceChecks==1&&!CancelCalls&&!MutatingOwners&&data.IoStatus.Status==STATUS_ACCESS_DENIED);
+ StageDirectoryEndMutation(FALSE);
+ namespace_reset();PendingCancellation=1;token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SYNCHRONIZE);
+ assert(NativeReplaceChecks==1&&CancelCalls==1&&rename.Flags==(FILE_RENAME_REPLACE_IF_EXISTS|0x100));
+ data.IoStatus.Status=0;StageMvpNamespacePost(&data,&objects,0);StageDirectoryEndMutation(FALSE);
  /* Immutable target descriptor survives detachment; denied subject or parent
   * checks fail before cancellation, never falling back to SYSTEM authority. */
  namespace_reset();STAGE_STREAM stream={.OriginalInstance=objects.Instance};STAGE_VIEW target={.Security=SecurityEvidence};

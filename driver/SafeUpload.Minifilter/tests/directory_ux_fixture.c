@@ -159,9 +159,10 @@ static BOOLEAN RtlPrefixUnicodeString(PCUNICODE_STRING prefix, PCUNICODE_STRING 
 static BOOLEAN RtlEqualUnicodeString(PCUNICODE_STRING a,PCUNICODE_STRING b,BOOLEAN ignore)
 { return a->Length==b->Length && RtlPrefixUnicodeString(a,b,ignore); }
 static int SourceId=1, NamedId=1, ParentId=2, TargetId=3, TargetExists;
+static NTSTATUS IdentityStatus;
 static NTSTATUS SafeUploadStageQueryIdentity(PFLT_INSTANCE i,PUNICODE_STRING n,BOOLEAN dir,FILE_ID_INFORMATION *id)
 { (void)i;assert(!NamespaceDepth&&Irql==0);memset(id,0,sizeof(*id));id->VolumeSerialNumber=1;
-  if(RtlEqualUnicodeString(n,&Source.Name,TRUE))id->FileId=(uint64_t)NamedId;
+  if(RtlEqualUnicodeString(n,&Source.Name,TRUE)){if(IdentityStatus)return IdentityStatus;id->FileId=(uint64_t)NamedId;}
   else if(RtlEqualUnicodeString(n,&Destination.Name,TRUE)){if(!TargetExists)return STATUS_OBJECT_NAME_NOT_FOUND;id->FileId=(uint64_t)TargetId;}
   else { assert(dir);id->FileId=(uint64_t)ParentId; }return 0; }
 static NTSTATUS FltGetFileNameInformationUnsafe(PFILE_OBJECT o,PFLT_INSTANCE i,ULONG flags,PFLT_FILE_NAME_INFORMATION *n)
@@ -188,7 +189,8 @@ static VOID FltReleaseFileNameInformation(PFLT_FILE_NAME_INFORMATION n) { assert
 static NTSTATUS FltGetDestinationFileNameInformation(PFLT_INSTANCE i,PFILE_OBJECT o,HANDLE r,WCHAR *name,ULONG length,int flags,PFLT_FILE_NAME_INFORMATION *n)
 { (void)i;(void)o;(void)r;(void)name;(void)length;(void)flags;assert(!NamespaceDepth);*n=DestinationStatus==0?&Destination:NULL;return DestinationStatus; }
 static NTSTATUS FltGetFileSystemType(PFLT_INSTANCE i,FLT_FILESYSTEM_TYPE *fs) { (void)i;assert(!NamespaceDepth);*fs=Fs;return 0; }
-static BOOLEAN SafeUploadNameLookupProvesAbsent(NTSTATUS s) { return s==STATUS_OBJECT_PATH_NOT_FOUND; }
+static BOOLEAN SafeUploadNameLookupProvesAbsent(NTSTATUS s)
+{ return s==STATUS_OBJECT_PATH_NOT_FOUND||s==STATUS_OBJECT_NAME_NOT_FOUND; }
 static VOID SafeUploadDenyDetail(PFLT_CALLBACK_DATA d,UINT32 r,NTSTATUS s,PUNICODE_STRING n) { (void)d;(void)r;(void)s;(void)n; }
 static NTSTATUS FltIsDirectory(PFILE_OBJECT o,PFLT_INSTANCE i,PBOOLEAN d) { (void)o;(void)i;assert(!NamespaceDepth);*d=(BOOLEAN)NativeDirectory;return 0; }
 static int KeGetCurrentIrql(void) { return Irql; }
@@ -222,7 +224,7 @@ static SAFEUPLOAD_POLICY Policy, Pending;
 static void reset(void)
 {
  Irql=NamespaceDepth=StageDirectoryMutationActive=StageStopping=SafeUploadBootScopesActive=0;
- StageDirectorySequence=0; StageDirectoryCollisionHolds=0; SourceId=NamedId=1;ParentId=2;TargetId=3;TargetExists=0;Kind=SafeUploadVolumeFixed;Fs=FLT_FSTYPE_NTFS;MayMatch=NativeDirectory=1;Auth=PrepareCalls=Dirty=ProbeRefs=ProbeCalls=0;
+ StageDirectorySequence=0; StageDirectoryCollisionHolds=0; SourceId=NamedId=1;ParentId=2;TargetId=3;TargetExists=IdentityStatus=0;Kind=SafeUploadVolumeFixed;Fs=FLT_FSTYPE_NTFS;MayMatch=NativeDirectory=1;Auth=PrepareCalls=Dirty=ProbeRefs=ProbeCalls=0;
  CurrentSourceName=NULL;NameStatus=ParseStatus=DestinationStatus=ProbeStatus=0;head(&StageStreams);head(&StageAllocationReservations);
  memset(&SafeUploadBootScopes,0,sizeof(SafeUploadBootScopes));memset(&Policy,0,sizeof(Policy));memset(&Pending,0,sizeof(Pending));
  Policy.PrefixCount=1;Policy.Prefixes[0]=u(L"\\Device\\V\\Protected");SafeUploadPolicy=&Policy;SafeUploadPendingPolicy=NULL;

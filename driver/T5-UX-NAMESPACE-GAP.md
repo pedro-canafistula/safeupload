@@ -17,6 +17,39 @@ The current [status plan](POST-MVP-PLAN.md) records the demo decisions. The
 [reported evidence](/home/victor/Work/safeupload-staging/driver/evidence/2026-10-16/demo1/)
 was read without changing the main worktree or its evidence.
 
+## 2026-10-17 integration review corrections
+
+The independent review of `412f05ad` returned REVISE for two P1 findings;
+the lease/retirement delta had no additional P0/P1 finding. This correction
+still needs independent acceptance and a new WDK build before qualification.
+
+- Native CREATE eligibility is only permission to attempt routing. DOC retains
+  its original writer intent until a private handle or the complete native
+  fence/preflight/post path owns it. Readmission restores that original intent
+  and rechecks the full eligibility predicate after an unlocked receipt wait.
+  Uncertain identity refuses DOC. A final dispatch guard prevents an unresolved
+  or protected DOC declined by both routes from reaching legacy CREATE; only a
+  resolved, alias-checked outside name can release that guard.
+- A public replacement with no unpublished cancellation obligation goes to
+  native NTFS without the legacy approximate permission gate. Before cancelling
+  pending private work, a dedicated helper validates the original target-parent
+  object's full identity and checks target DELETE **or** parent DELETE_CHILD
+  against one captured original subject, using descriptors read from the exact
+  bound objects. It relies on the original I/O-manager parent lookup for
+  traversal/create-child authority, without requiring bypass-traverse privilege
+  or reopening under SYSTEM authority. NULL ParentOfTarget is accepted only for
+  a simple relative leaf in the existing source parent, with current ADD_FILE
+  checked there. Same-object rename retains the source handle's DELETE grant.
+  Original rename flags and share state stay with NTFS, including its final
+  refusal after a terminal private cancellation.
+
+References: Microsoft's [SET processing](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/set-file-information-processing)
+and [replacement access checks](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-set-information3).
+Host controls execute the routing, readmission and supplemental authority
+bodies with GCC and Clang/UBSan, including denied/both-granted delete
+alternatives, original restricted subjects, exact-object substitution, query
+faults and missing parent evidence. They do not qualify native Windows behavior.
+
 ## ux/nsfix re-review 2 and ns-k2 corrections
 
 Base `ee14eee8` (the first correction plus the owner's initial PREfast fixes).

@@ -9059,9 +9059,9 @@ static BOOLEAN StageMvpNamespaceOpen(PFLT_CALLBACK_DATA Data)
             GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED);
 }
 
-/* This predicate decides both native routing and the writer demotion in
- * StageAdmit. Excluded mutating CREATEs must keep the ordinary staged/refuse
- * path; no legacy fallback may acquire untracked delete-on-close authority. */
+/* Eligibility permits a routing attempt, not authority to forward a mutation.
+ * A delete-on-close keeps writer intent until an actual private open or the
+ * fenced native pre/post path owns it. */
 _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageMvpNamespaceCreateEligible(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects)
@@ -9083,7 +9083,8 @@ static BOOLEAN StageMvpNamespaceCreateEligible(_In_ PFLT_CALLBACK_DATA Data,
 
 static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PSAFEUPLOAD_CREATE_ALIAS_PROOF AliasProof,
-    PSTAGE_ADMISSION_TOKEN_SLOT AdmissionSlot, PHANDLE DirectoryCollisionHold)
+    PSTAGE_ADMISSION_TOKEN_SLOT AdmissionSlot, PHANDLE DirectoryCollisionHold,
+    PBOOLEAN NativeMutationRequired)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     PFLT_FILE_NAME_INFORMATION privateName = NULL;
@@ -9097,7 +9098,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     ULONG disposition = Data->Iopb->Parameters.Create.Options >> 24;
     ULONG pid = FltGetRequestorProcessId(Data);
     BOOLEAN service = SafeUploadIsAuthenticatedClient() && pid == SafeUploadData.InspectorProcessId;
-    BOOLEAN writer, writerAccess, handled = TRUE, privateNamespace = FALSE;
+    BOOLEAN writer, requestedWriter, writerAccess, handled = TRUE, privateNamespace = FALSE;
     UNICODE_STRING relative;
     UNICODE_STRING privatePrefix = RTL_CONSTANT_STRING(L"\\ProgramData\\SafeUpload\\staging\\");
     ULONGLONG zeroId = 0;
@@ -9106,6 +9107,12 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     UINT32 denyReason = SAFEUPLOAD_DENY_REASON_NONE;   /* recorded in the deny ring when the create is refused */
     NTSTATUS denyAux = STATUS_SUCCESS;
     *DirectoryCollisionHold = NULL;
+    /* Until a resolved, alias-checked outside name proves otherwise, a DOC
+     * declined by both staging routes must not reach legacy CREATE. */
+    *NativeMutationRequired = !service &&
+        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&
+        !FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE) &&
+        SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     UNREFERENCED_PARAMETER(AliasProof);   /* only the prototype's writer registry consumes it */
     /* StageAdmit owns the single by-ID classification in the prototype; do
      * not repeat the TxF helper's bounded open before its common by-ID path. */
@@ -9129,6 +9136,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     writer = writerAccess ||
         disposition == FILE_CREATE || disposition == FILE_OPEN_IF || disposition == FILE_SUPERSEDE ||
         disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF;
+    requestedWriter = writer;
     if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE)) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
@@ -9146,6 +9154,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     kind = StageVolumeKind(Objects->Instance);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (KeGetCurrentIrql() == PASSIVE_LEVEL && disposition == FILE_OPEN &&
+        !FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&
         StageMvpNamespaceCreateEligible(Data, Objects)) writer = FALSE;
 #endif
     if (!service && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID)) {
@@ -9291,6 +9300,14 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     }
 #endif
 Readmit:
+    /* A receipt wait can outlive the private view. Never carry that view's
+     * reader demotion into admission against a different namespace. */
+    writer = requestedWriter;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (KeGetCurrentIrql() == PASSIVE_LEVEL && disposition == FILE_OPEN &&
+        !FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&
+        StageMvpNamespaceCreateEligible(Data, Objects)) writer = FALSE;
+#endif
     if (!service) {
         StageAcquire(&StageNamespaceResource);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -9373,6 +9390,7 @@ Readmit:
                 status = STATUS_ACCESS_DENIED; goto Complete;
             }
         }
+        *NativeMutationRequired = FALSE; /* resolved outside name and aliases checked */
         handled = FALSE; goto Complete;
     }
     if (service) {
@@ -9387,8 +9405,8 @@ Readmit:
     }
     if (FLT_IS_IRP_OPERATION(Data) && FltIsIoCanceled(Data)) { status = STATUS_CANCELLED; goto Complete; }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (privateNamespace && kind == SafeUploadVolumeFixed && StageMvpNamespaceOpen(Data) &&
-        !SafeUploadStageProtocolNativeForwardAllowed(0, 0)) {
+    if (privateNamespace && KeGetCurrentIrql() == PASSIVE_LEVEL &&
+        StageMvpNamespaceCreateEligible(Data, Objects)) {
         PSTAGE_STREAM reopening = NULL;
         StageAcquire(&StageNamespaceResource);
         expectedView = StageFindView(FltGetRequestorProcess(Data), &name->Name);
@@ -10187,7 +10205,8 @@ __declspec(noinline) static FLT_PREOP_CALLBACK_STATUS StageCompleteEpochRetry(_I
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageMvpCancelNames(_In_ PFLT_INSTANCE Instance,
-    _In_ PUNICODE_STRING Source, _In_opt_ PUNICODE_STRING Target, _In_ BOOLEAN Cancel);
+    _In_ PUNICODE_STRING Source, _In_opt_ PUNICODE_STRING Target, _In_ BOOLEAN Cancel,
+    _Out_opt_ PBOOLEAN CancellationRequired);
 _IRQL_requires_(PASSIVE_LEVEL)
 static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects, _Flt_CompletionContext_Outptr_ PVOID *CompletionContext,
@@ -10205,10 +10224,11 @@ static BOOLEAN StageMvpRenameNeedsCopy(_In_ PFLT_FILE_NAME_INFORMATION Source,
  * unbounded allocation, and no namespace/stream resource spans the exchange. */
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageMvpCancelNames(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_STRING Source,
-    _In_opt_ PUNICODE_STRING Target, _In_ BOOLEAN Cancel)
+    _In_opt_ PUNICODE_STRING Target, _In_ BOOLEAN Cancel, _Out_opt_ PBOOLEAN CancellationRequired)
 {
     ULONG attempt;
     PAGED_CODE();
+    if (CancellationRequired != NULL) *CancellationRequired = FALSE;
     for (attempt = 0; attempt <= STAGE_LIMIT; ++attempt) {
         PLIST_ENTRY link;
         PSTAGE_STREAM cancel = NULL;
@@ -10224,9 +10244,10 @@ static NTSTATUS StageMvpCancelNames(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_S
                 stream->PrivateCancellationBusy || stream->BoundAllocation) status = STATUS_SHARING_VIOLATION;
             StageRelease(&stream->Resource);
             if (!NT_SUCCESS(status)) break;
-            if (!Cancel) continue; /* Read-only preflight before original NTFS CREATE. */
             if (stream->Discarded || stream->PrivateCancellationAccepted || stream->Disposed ||
                 stream->MvpPublicationObserved) continue;
+            if (CancellationRequired != NULL) *CancellationRequired = TRUE;
+            if (!Cancel) continue; /* Read-only preflight before authorization/cancellation. */
             if (!stream->Sealed) {
                 /* A closed, never-sealed probe cannot have an inspector. Use
                  * ordinary private discard; the worker owns the exact ACK. */
@@ -10327,7 +10348,16 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
         StageRelease(&StageNamespaceResource);
         if (privateName) goto Exit;
         status = SafeUploadStageQueryIdentity(Objects->Instance, &source->Name, FALSE, &identity);
-        if (!NT_SUCCESS(status)) goto Exit; /* existing non-directory file only */
+        if (!NT_SUCCESS(status)) {
+            /* Absence may still take the ordinary private-create path. An
+             * uncertain existing object's identity cannot authorize native
+             * DOC, nor erase its original mutating intent in admission. */
+            if (mutation && !StageNameLookupProvesAbsent(status)) {
+                *Handled = TRUE;
+                goto Refuse;
+            }
+            goto Exit;
+        }
         /* OPEN_IF may use this route only as OPEN_EXISTING. The native open
          * still checks existence and authority; a racing unlink cannot create
          * an uninspected placeholder through this branch. */
@@ -10370,6 +10400,7 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
     status = StageNamespaceCaptureBindings(Data, Objects, source, target, &bindings);
     if (!NT_SUCCESS(status)) goto Refuse;
     if (major != IRP_MJ_CREATE) {
+        BOOLEAN cancellationRequired = FALSE;
         (VOID)SafeUploadStageWritersBeginMutatingIo(Data, Objects->Instance, file,
             &mutatingIoContext, &trackedWriter);
         if (rename != NULL) {
@@ -10377,19 +10408,23 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
                 FALSE, &registryRenameContext);
             SafeUploadStageWritersAttachMutatingIo(registryRenameContext, &mutatingIoContext);
         }
-        if (target != NULL && replace) {
-            status = SafeUploadStageCheckRenameAccess(Data, Objects->Instance, &target->Name, TRUE);
+        status = StageMvpCancelNames(Objects->Instance, &source->Name,
+            target != NULL && replace ? &target->Name : NULL, FALSE, &cancellationRequired);
+        if (!NT_SUCCESS(status)) goto Refuse;
+        if (target != NULL && replace && cancellationRequired) {
+            status = SafeUploadStageCheckNativeReplace(Data, Objects->Instance, &source->Name, &target->Name,
+                &bindings.Source, &bindings.Parent, &bindings.Target, bindings.TargetExists);
             if (!NT_SUCCESS(status)) goto Refuse;
         }
         status = StageMvpCancelNames(Objects->Instance, &source->Name,
-            target != NULL && replace ? &target->Name : NULL, TRUE);
+            target != NULL && replace ? &target->Name : NULL, TRUE, NULL);
         if (!NT_SUCCESS(status)) goto Refuse;
     }
     status = StageNamespaceRevalidateBindings(Data, Objects, source, target, &bindings);
     if (!NT_SUCCESS(status)) goto Refuse;
     if (major == IRP_MJ_CREATE) {
         PVOID legacyContext = NULL;
-        status = StageMvpCancelNames(Objects->Instance, &source->Name, NULL, FALSE);
+        status = StageMvpCancelNames(Objects->Instance, &source->Name, NULL, FALSE, NULL);
         if (!NT_SUCCESS(status)) goto Refuse;
         result = SafeUploadPreCreate(Data, Objects, &legacyContext);
         if (result == FLT_PREOP_COMPLETE) goto Exit;
@@ -10462,7 +10497,7 @@ static VOID StageMvpNamespacePostCreate(_Inout_ PFLT_CALLBACK_DATA Data,
             if (NT_SUCCESS(status) && !RtlEqualMemory(&identity,
                 &StageMvpNamespaceCreateIdentity, sizeof(identity))) status = STATUS_SHARING_VIOLATION;
             if (NT_SUCCESS(status))
-                status = StageMvpCancelNames(Objects->Instance, &name->Name, NULL, TRUE);
+                status = StageMvpCancelNames(Objects->Instance, &name->Name, NULL, TRUE, NULL);
         }
         if (!NT_SUCCESS(status)) {
             FltCancelFileOpen(Objects->Instance, Objects->FileObject);
@@ -10548,6 +10583,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
         {
         PVOID legacyCompletionContext = NULL;
         HANDLE directoryCollisionHold = NULL;
+        BOOLEAN nativeMutationRequired = FALSE;
         SAFEUPLOAD_CREATE_ALIAS_PROOF aliasProof;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         PVOID writerReservation = NULL;
@@ -10555,7 +10591,8 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
         NTSTATUS reserveStatus;
 #endif
         RtlZeroMemory(&aliasProof, sizeof(aliasProof));
-        result = StageAdmit(Data, Objects, &aliasProof, AdmissionSlot, &directoryCollisionHold);
+        result = StageAdmit(Data, Objects, &aliasProof, AdmissionSlot, &directoryCollisionHold,
+            &nativeMutationRequired);
         if (directoryCollisionHold != NULL) {
             /* The original FILE_CREATE is collision-only. The epoch wrapper
              * owns the handle until post-create, also on lower failure/drain. */
@@ -10574,6 +10611,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             if (handled) return result;
         }
 #endif
+        if (nativeMutationRequired) return StageCompleteAccessDenied(Data);
         result = SafeUploadPreCreate(Data, Objects, &legacyCompletionContext);
         if (result == FLT_PREOP_COMPLETE) return result;
 #if SAFEUPLOAD_STAGING_PROTOTYPE

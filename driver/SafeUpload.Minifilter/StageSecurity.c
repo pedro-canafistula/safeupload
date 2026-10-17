@@ -5,9 +5,16 @@ _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS SafeUploadStageQuerySecurity(_In_ PFLT_INSTANCE Instance,
     _In_ PUNICODE_STRING Name, _In_ BOOLEAN Directory,
     _Outptr_result_nullonfailure_ PSECURITY_DESCRIPTOR *Descriptor);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageQueryBoundSecurity(_In_ PFLT_INSTANCE Instance,
+    _In_ PUNICODE_STRING Name, _In_ BOOLEAN Directory,
+    _In_opt_ const FILE_ID_INFORMATION *Expected,
+    _Outptr_result_nullonfailure_ PSECURITY_DESCRIPTOR *Descriptor);
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageQuerySecurity)
+#pragma alloc_text(PAGE, StageQueryBoundSecurity)
+#pragma alloc_text(PAGE, SafeUploadStageCheckNativeReplace)
 #pragma alloc_text(PAGE, SafeUploadStageCheckAccess)
 #pragma alloc_text(PAGE, SafeUploadStageCaptureSecurity)
 #pragma alloc_text(PAGE, SafeUploadStageFreeSecurity)
@@ -47,10 +54,11 @@ NTSTATUS SafeUploadStageQueryIdentity(PFLT_INSTANCE Instance, PUNICODE_STRING Na
 // truncates, or writes to the protected destination.
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS
-SafeUploadStageQuerySecurity (
+StageQueryBoundSecurity (
     _In_ PFLT_INSTANCE Instance,
     _In_ PUNICODE_STRING Name,
     _In_ BOOLEAN Directory,
+    _In_opt_ const FILE_ID_INFORMATION *Expected,
     _Outptr_result_nullonfailure_ PSECURITY_DESCRIPTOR *Descriptor
     )
 {
@@ -83,6 +91,20 @@ SafeUploadStageQuerySecurity (
         return STATUS_INVALID_SECURITY_DESCR;
     }
 
+    /* Read the descriptor from the very object whose complete identity was
+     * captured under the namespace fence, never a second pathname authority. */
+    if (Expected != NULL) {
+        FILE_ID_INFORMATION identity = {0};
+        status = FltQueryInformationFile(Instance, fileObject, &identity,
+            sizeof(identity), FileIdInformation, &returned);
+        if (!NT_SUCCESS(status) || returned != sizeof(identity) ||
+            !RtlEqualMemory(&identity, Expected, sizeof(identity))) {
+            ObDereferenceObject(fileObject);
+            FltClose(handle);
+            return NT_SUCCESS(status) ? STATUS_SHARING_VIOLATION : status;
+        }
+        returned = 0;
+    }
     status = FltQuerySecurityObject( Instance, fileObject,
         OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
         NULL, 0, &needed );
@@ -119,6 +141,96 @@ SafeUploadStageQuerySecurity (
         ExFreePoolWithTag( *Descriptor, SAFEUPLOAD_POOL_TAG );
         *Descriptor = NULL;
     }
+    return status;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS SafeUploadStageQuerySecurity(PFLT_INSTANCE Instance,
+    PUNICODE_STRING Name, BOOLEAN Directory, PSECURITY_DESCRIPTOR *Descriptor)
+{
+    PAGED_CODE();
+    return StageQueryBoundSecurity(Instance, Name, Directory, NULL, Descriptor);
+}
+
+/* Native SET_INFORMATION already carries the source handle's DELETE grant.
+ * The I/O manager performed the original target-parent lookup, including its
+ * traversal/create-child checks. Do not replace it with a fresh absolute
+ * traversal or require SeChangeNotifyPrivilege. This supplemental check is
+ * needed only before cancelling an unpublished version; NTFS still decides
+ * the actual rename, flags, readonly/image and sharing semantics. */
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageCheckNativeReplace(PFLT_CALLBACK_DATA Data,
+    PFLT_INSTANCE Instance, PUNICODE_STRING Source, PUNICODE_STRING Destination,
+    const FILE_ID_INFORMATION *SourceIdentity, const FILE_ID_INFORMATION *ParentIdentity,
+    const FILE_ID_INFORMATION *TargetIdentity, BOOLEAN TargetExists)
+{
+    SECURITY_SUBJECT_CONTEXT subject;
+    PSECURITY_DESCRIPTOR parentSecurity = NULL, targetSecurity = NULL;
+    PPRIVILEGE_SET privileges = NULL;
+    ACCESS_MASK granted = 0;
+    NTSTATUS status = STATUS_ACCESS_DENIED, accessStatus = STATUS_ACCESS_DENIED;
+    PEPROCESS process = FltGetRequestorProcess(Data);
+    PFILE_RENAME_INFORMATION rename = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+    PFILE_OBJECT parentObject = Data->Iopb->Parameters.SetFileInformation.ParentOfTarget;
+    UNICODE_STRING parent = *Destination, sourceParent = *Source;
+    USHORT chars = parent.Length / sizeof(WCHAR), sourceChars = sourceParent.Length / sizeof(WCHAR), i;
+    BOOLEAN deleteAllowed = !TargetExists || RtlEqualMemory(SourceIdentity, TargetIdentity, sizeof(*SourceIdentity));
+    PAGED_CODE();
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || Data->Thread == NULL || process == NULL ||
+        rename == NULL || !Data->Iopb->TargetFileObject->DeleteAccess) return STATUS_ACCESS_DENIED;
+    while (chars != 0 && parent.Buffer[chars - 1] != L'\\') --chars;
+    if (chars == 0) return STATUS_OBJECT_PATH_INVALID;
+    parent.Length = parent.MaximumLength = (USHORT)((chars - 1) * sizeof(WCHAR));
+    if (parentObject != NULL) {
+        FILE_ID_INFORMATION identity = {0};
+        ULONG returned = 0;
+        status = FltQueryInformationFile(Instance, parentObject, &identity,
+            sizeof(identity), FileIdInformation, &returned);
+        if (!NT_SUCCESS(status)) return status;
+        if (returned != sizeof(identity) || !RtlEqualMemory(&identity, ParentIdentity, sizeof(identity)))
+            return STATUS_SHARING_VIOLATION;
+    } else {
+        /* NULL means a simple relative rename in the existing source parent.
+         * A full/rooted lookup without its original parent is not evidence. */
+        if (rename->RootDirectory != NULL || rename->FileNameLength == 0 ||
+            (rename->FileNameLength & 1) != 0) return STATUS_ACCESS_DENIED;
+        for (i = 0; i < rename->FileNameLength / sizeof(WCHAR); ++i)
+            if (rename->FileName[i] == L'\\' || rename->FileName[i] == L'/' ||
+                rename->FileName[i] == L':' || rename->FileName[i] == 0) return STATUS_ACCESS_DENIED;
+        while (sourceChars != 0 && sourceParent.Buffer[sourceChars - 1] != L'\\') --sourceChars;
+        if (sourceChars == 0) return STATUS_OBJECT_PATH_INVALID;
+        sourceParent.Length = sourceParent.MaximumLength = (USHORT)((sourceChars - 1) * sizeof(WCHAR));
+        if (!RtlEqualUnicodeString(&sourceParent, &parent, TRUE)) return STATUS_SHARING_VIOLATION;
+    }
+    status = StageQueryBoundSecurity(Instance, &parent, TRUE, ParentIdentity, &parentSecurity);
+    if (!NT_SUCCESS(status)) return status;
+    if (!deleteAllowed) {
+        status = StageQueryBoundSecurity(Instance, Destination, FALSE, TargetIdentity, &targetSecurity);
+        if (!NT_SUCCESS(status)) goto Free;
+    }
+    SeCaptureSubjectContextEx(Data->Thread, process, &subject);
+    SeLockSubjectContext(&subject);
+    if (parentObject == NULL && !SeAccessCheck(parentSecurity, &subject, TRUE, FILE_ADD_FILE, 0,
+            &privileges, IoGetFileObjectGenericMapping(), UserMode, &granted, &accessStatus)) {
+        status = STATUS_ACCESS_DENIED; goto Release;
+    }
+    if (privileges != NULL) { SeFreePrivileges(privileges); privileges = NULL; }
+    if (!deleteAllowed) {
+        deleteAllowed = SeAccessCheck(targetSecurity, &subject, TRUE, DELETE, 0,
+            &privileges, IoGetFileObjectGenericMapping(), UserMode, &granted, &accessStatus);
+        if (privileges != NULL) { SeFreePrivileges(privileges); privileges = NULL; }
+        if (!deleteAllowed)
+            deleteAllowed = SeAccessCheck(parentSecurity, &subject, TRUE, FILE_DELETE_CHILD, 0,
+                &privileges, IoGetFileObjectGenericMapping(), UserMode, &granted, &accessStatus);
+    }
+    status = deleteAllowed ? STATUS_SUCCESS : STATUS_ACCESS_DENIED;
+Release:
+    if (privileges != NULL) SeFreePrivileges(privileges);
+    SeUnlockSubjectContext(&subject);
+    SeReleaseSubjectContext(&subject);
+Free:
+    if (targetSecurity != NULL) ExFreePoolWithTag(targetSecurity, SAFEUPLOAD_POOL_TAG);
+    ExFreePoolWithTag(parentSecurity, SAFEUPLOAD_POOL_TAG);
     return status;
 }
 
