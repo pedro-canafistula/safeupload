@@ -17,6 +17,95 @@ The current [status plan](POST-MVP-PLAN.md) records the demo decisions. The
 [reported evidence](/home/victor/Work/safeupload-staging/driver/evidence/2026-10-16/demo1/)
 was read without changing the main worktree or its evidence.
 
+## ux/nsfix re-review 2 and ns-k2 corrections
+
+Base `ee14eee8` (the first correction plus the owner's initial PREfast fixes).
+The supplied [re-review](../.scratch/review2.md) closed the original stale-source
+and authorization-ordering findings and found no further blocker in the leak
+rework. It returned **REVISE** for the following three P1 cases. The supplied
+[ns-k2 receipt](../.scratch/ns-k2-prefast.txt) also failed PREfast; the corrections
+below are source changes and passing host controls, **not a passing WDK build**.
+
+1. **Deferred directory registry completion.** The epoch wrapper now requests
+   `FLT_PREOP_SYNCHRONIZE` for every fenced SET_INFORMATION, including directory
+   rename and disposition. Normal completion finishes the bounded registry
+   rewrite before the epoch releases exclusion. This uses the documented
+   [synchronized-completion contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/returning-flt-preop-synchronize)
+   without retaining a resource across lower I/O. Draining may still defer; its
+   existing fence remains latched until reboot. `NameActivating` additionally
+   consults the existing live directory-rename range records under RegistryLock,
+   gating both old and new prefixes until completion removes the record. It
+   never clears an entry's Sticky Unknown reason. The host control compiles the
+   real directory completion, deferred worker and name gate, pauses the injected
+   DISPATCH queue, and attempts new-name admission before running the worker.
+   New/old ranges stay held; an adjacent sibling remains outside the range.
+2. **Native routing / writer-demotion mismatch.** `StageMvpNamespaceCreateEligible`
+   is now the shared predicate for native CREATE routing and writer demotion.
+   It includes options, operation flags, transaction/IRP context, fixed NTFS and
+   the existing protocol/service exclusions. OPEN|DELETE_ON_CLOSE|OPEN_REPARSE_POINT
+   therefore keeps writer classification when native pre declines it; it must
+   take ordinary staged admission or refuse. It cannot fall through to an
+   unfenced legacy public CREATE. The cross-owner control combines the full
+   native pre with the actual demotion and absent-requester-view fallback
+   fragments from StageAdmit/StageCreate; the excluded open cannot acquire a
+   legacy handle or cancel the other owner's pending sealed save. Reinstating
+   the former intent-only demotion fails this executed control.
+3. **Alternate successful CREATE outcomes.** Native post now recognizes
+   `NT_SUCCESS` opened-object outcomes, including
+   [STATUS_OPLOCK_BREAK_IN_PROGRESS](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/breaking-oplocks),
+   rather than testing exact STATUS_SUCCESS. Opened/created/overwritten/superseded
+   information requires an actual FILE_OBJECT with FsContext; reparse, pending,
+   failures and non-open information are excluded. The original object's DELETE
+   grant and exact file ID are still checked, then pending saves are cancelled,
+   before handle exposure and fence release. Successful informational status is
+   preserved. Controls exercise ordinary/oplock/informational success across all
+   opened information values, object substitution, reparse/pending/failure and
+   non-open outcomes. The former exact-success test fails these controls.
+
+PREfast/source-contract corrections:
+
+- C28213: `StageRenameShareAllowed` and `StageMvpNamespaceOpen` definitions now
+  carry `_Use_decl_annotations_` alone. Their original IRQL contracts remain on
+  their prototypes; the owner's corrected cancellation prototype is preserved.
+- C28150: the spin-protected RenameExchange install is now a `noinline` resident
+  helper with DISPATCH-capable entry and same-IRQL return contracts. The PAGE,
+  PASSIVE StageRename calls that helper while retaining the original lock order;
+  no raised-IRQL instruction remains in its PAGE body. The helper has no wait,
+  allocation or name access. Host controls verify incoming IRQL is restored at
+  PASSIVE/APC/DISPATCH.
+- All remaining private-rename reads of StageDirectorySequence are interlocked.
+  The new `namespace-contract-selfcheck.py` audits both changed production units
+  for combined `_Use_decl_annotations_`/SAL, late PAGE pragmas, non-interlocked
+  fence/sequence accesses and the PAGE spin-lock pattern, with negative controls.
+- C6001/C4701: namespace binding structs and observation/snapshot locals are
+  initialized. External rename also requires an explicit successful binding
+  capture before revalidation; zero initialization never supplies authority.
+
+Verification: all 7 kernel runners (17 unittest tests), all 15 T5 Python
+self-check runners (105 unittest tests plus the 14-assertion Notepad verdict
+control), and all 3 UX runners (9 tests) passed. T11 SOP lifetime (3 tests), T4
+verdict self-check and the offline import-gate self-check passed. The expanded
+namespace runner passes with cc/clang, warnings as errors and fatal UBSan;
+15 compiled negative mutations and the source-contract rejection controls fail
+as required. The namespace runner was repeated after its final admission-fragment
+control was added. No assertions, thresholds or warnings were suppressed.
+
+The corrected source API inventory uses the vcxproj's 22 production translation
+units and top-level headers: four new internal helpers, no new external API
+symbols. The first inventory mistakenly included host fixture C files; its failed
+receipt is retained separately. Raw receipts and failed attempts are local under
+`.scratch/nsfix2-verification/` and `.scratch/namespace-ux-*`. No agent code changed.
+
+Remaining gates: focused independent re-review, feature Debug/Release WDK +
+PREfast + ApiValidator at 0/0, both binary-import availability results, then the
+matched Windows/Verifier pair on win10-debug3. Add native rows for paused directory
+completion/new-name admission, the exact cross-owner reparse-flag delete-on-close
+sequence, and FILE_COMPLETE_IF_OPLOCKED alternate success with independent
+identity/cancellation receipts. Keep the earlier Word swap, placeholder,
+file/folder interleaving, denied-authority and fault/draining rows below.
+No VM or remote build was run here. Shared Git metadata is unchanged; delivery is
+`.scratch/ux-nsfix2.bundle`, head `ux/nsfix`, based on `ee14eee8`.
+
 ## ux/nsfix pre-boot review corrections
 
 Follow-up base `597d09d1`, branch `ux/nsfix`, 2026-10-16. The supplied independent
@@ -61,7 +150,8 @@ Review acceptance and Windows qualification remain outstanding.
    Unknown and the latched namespace fence. This closes the new-name admission
    bypass while preserving native rename flags and lower NTFS enforcement.
 
-The added helpers repeat their IRQL contracts on definitions. PAGE placement is
+Historical round-1 annotation claim (corrected after ns-k2 above): the added
+helpers repeated IRQL contracts on definitions. PAGE placement is
 before definitions; the raised-IRQL completion contains no name query, resource
 acquisition, wait or allocation. CREATE alone calls its PASSIVE helper, including
 on drain. The only new cross-completion name reference is bounded by the single
