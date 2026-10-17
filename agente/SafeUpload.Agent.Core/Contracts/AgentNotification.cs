@@ -29,7 +29,7 @@ public enum TransferPhase
     Retained
 }
 
-/// <summary>Persisted values retained for compatibility; new notifications do not emit retired reasons.</summary>
+/// <summary>Seed-export restrictions remain active; the retired empty-save value is reserved for compatibility.</summary>
 public enum StagedBlockReason
 {
     ReservedEmptySavePrivate = 0,

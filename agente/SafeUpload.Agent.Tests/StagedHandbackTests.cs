@@ -205,6 +205,7 @@ public sealed class StagedHandbackTests : IDisposable
         string stage = Path.Combine(_stagingRoot, Guid.NewGuid().ToString("N") + ".txt");
         await File.WriteAllTextAsync(stage, "CPF: 529.982.247-25");
         string destination = Path.Combine(_workspace.Root, "protected", "exited-writer.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         var transfer = new StagedTransfer(Guid.NewGuid(), stage, destination, DestinationKind.RemovableDrive,
             "explorer.exe", owner, 7) { RequestorSid = TestRequestorSid, RequestorProcessCreationTime = ownerCreation };
         await journal.CreateAsync(transfer, default); await journal.SealAsync(transfer.TransferId, owner, stage, default);

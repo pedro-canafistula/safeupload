@@ -4,7 +4,8 @@
 Sharing correction: `1dfadee4`.
 **Round 2 design (owner / Claude orchestrator, 2026-10-16): implement D1–D6 on the unbound MVP profile.**
 The sharing correction below records the base; the unbound design has no V30 prerequisite.
-No VM, WDK/PREfast/ApiValidator or independent implementation review was run.
+Round 2 had no VM, WDK/PREfast/ApiValidator or independent implementation review.
+The later REVISE review and its corrections are recorded below.
 
 The owner's requested behavior is the contract: operations on already inspected public
 bytes should use native namespace semantics; private renames retarget inspection and
@@ -12,11 +13,198 @@ publication; a Word swap must finish with the inspected temporary version at the
 name. The earlier blanket physical-rename refusal in [T5-DELETES.md](T5-DELETES.md)
 does not override this new request. The native original-object operations below implement that namespace contract.
 
-The 2026-10-16 Demo build decision is absent from this checkout's
-[status plan](POST-MVP-PLAN.md). It was read in the main worktree's
-[current plan](/home/victor/Work/safeupload-staging/driver/POST-MVP-PLAN.md), along with the
-[reported evidence](/home/victor/Work/safeupload-staging/driver/evidence/2026-10-16/demo1/).
-The main worktree and its evidence were not changed.
+The current [status plan](POST-MVP-PLAN.md) records the demo decisions. The
+[reported evidence](/home/victor/Work/safeupload-staging/driver/evidence/2026-10-16/demo1/)
+was read without changing the main worktree or its evidence.
+
+## ux/nsfix re-review 2 and ns-k2 corrections
+
+Base `ee14eee8` (the first correction plus the owner's initial PREfast fixes).
+The supplied [re-review](../.scratch/review2.md) closed the original stale-source
+and authorization-ordering findings and found no further blocker in the leak
+rework. It returned **REVISE** for the following three P1 cases. The supplied
+[ns-k2 receipt](../.scratch/ns-k2-prefast.txt) also failed PREfast; the corrections
+below are source changes and passing host controls, **not a passing WDK build**.
+
+1. **Deferred directory registry completion.** The epoch wrapper now requests
+   `FLT_PREOP_SYNCHRONIZE` for every fenced SET_INFORMATION, including directory
+   rename and disposition. Normal completion finishes the bounded registry
+   rewrite before the epoch releases exclusion. This uses the documented
+   [synchronized-completion contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/returning-flt-preop-synchronize)
+   without retaining a resource across lower I/O. Draining may still defer; its
+   existing fence remains latched until reboot. `NameActivating` additionally
+   consults the existing live directory-rename range records under RegistryLock,
+   gating both old and new prefixes until completion removes the record. It
+   never clears an entry's Sticky Unknown reason. The host control compiles the
+   real directory completion, deferred worker and name gate, pauses the injected
+   DISPATCH queue, and attempts new-name admission before running the worker.
+   New/old ranges stay held; an adjacent sibling remains outside the range.
+2. **Native routing / writer-demotion mismatch.** `StageMvpNamespaceCreateEligible`
+   is now the shared predicate for native CREATE routing and writer demotion.
+   It includes options, operation flags, transaction/IRP context, fixed NTFS and
+   the existing protocol/service exclusions. OPEN|DELETE_ON_CLOSE|OPEN_REPARSE_POINT
+   therefore keeps writer classification when native pre declines it; it must
+   take ordinary staged admission or refuse. It cannot fall through to an
+   unfenced legacy public CREATE. The cross-owner control combines the full
+   native pre with the actual demotion and absent-requester-view fallback
+   fragments from StageAdmit/StageCreate; the excluded open cannot acquire a
+   legacy handle or cancel the other owner's pending sealed save. Reinstating
+   the former intent-only demotion fails this executed control.
+3. **Alternate successful CREATE outcomes.** Native post now recognizes
+   `NT_SUCCESS` opened-object outcomes, including
+   [STATUS_OPLOCK_BREAK_IN_PROGRESS](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/breaking-oplocks),
+   rather than testing exact STATUS_SUCCESS. Opened/created/overwritten/superseded
+   information requires an actual FILE_OBJECT with FsContext; reparse, pending,
+   failures and non-open information are excluded. The original object's DELETE
+   grant and exact file ID are still checked, then pending saves are cancelled,
+   before handle exposure and fence release. Successful informational status is
+   preserved. Controls exercise ordinary/oplock/informational success across all
+   opened information values, object substitution, reparse/pending/failure and
+   non-open outcomes. The former exact-success test fails these controls.
+
+PREfast/source-contract corrections:
+
+- C28213: `StageRenameShareAllowed` and `StageMvpNamespaceOpen` definitions now
+  carry `_Use_decl_annotations_` alone. Their original IRQL contracts remain on
+  their prototypes; the owner's corrected cancellation prototype is preserved.
+- C28150: the spin-protected RenameExchange install is now a `noinline` resident
+  helper with DISPATCH-capable entry and same-IRQL return contracts. The PAGE,
+  PASSIVE StageRename calls that helper while retaining the original lock order;
+  no raised-IRQL instruction remains in its PAGE body. The helper has no wait,
+  allocation or name access. Host controls verify incoming IRQL is restored at
+  PASSIVE/APC/DISPATCH.
+- All remaining private-rename reads of StageDirectorySequence are interlocked.
+  The new `namespace-contract-selfcheck.py` audits both changed production units
+  for combined `_Use_decl_annotations_`/SAL, late PAGE pragmas, non-interlocked
+  fence/sequence accesses and the PAGE spin-lock pattern, with negative controls.
+- C6001/C4701: namespace binding structs and observation/snapshot locals are
+  initialized. External rename also requires an explicit successful binding
+  capture before revalidation; zero initialization never supplies authority.
+
+Verification: all 7 kernel runners (17 unittest tests), all 15 T5 Python
+self-check runners (105 unittest tests plus the 14-assertion Notepad verdict
+control), and all 3 UX runners (9 tests) passed. T11 SOP lifetime (3 tests), T4
+verdict self-check and the offline import-gate self-check passed. The expanded
+namespace runner passes with cc/clang, warnings as errors and fatal UBSan;
+15 compiled negative mutations and the source-contract rejection controls fail
+as required. The namespace runner was repeated after its final admission-fragment
+control was added. No assertions, thresholds or warnings were suppressed.
+
+The corrected source API inventory uses the vcxproj's 22 production translation
+units and top-level headers: four new internal helpers, no new external API
+symbols. The first inventory mistakenly included host fixture C files; its failed
+receipt is retained separately. Raw receipts and failed attempts are local under
+`.scratch/nsfix2-verification/` and `.scratch/namespace-ux-*`. No agent code changed.
+
+Remaining gates: focused independent re-review, feature Debug/Release WDK +
+PREfast + ApiValidator at 0/0, both binary-import availability results, then the
+matched Windows/Verifier pair on win10-debug3. Add native rows for paused directory
+completion/new-name admission, the exact cross-owner reparse-flag delete-on-close
+sequence, and FILE_COMPLETE_IF_OPLOCKED alternate success with independent
+identity/cancellation receipts. Keep the earlier Word swap, placeholder,
+file/folder interleaving, denied-authority and fault/draining rows below.
+No VM or remote build was run here. Shared Git metadata is unchanged; delivery is
+`.scratch/ux-nsfix2.bundle`, head `ux/nsfix`, based on `ee14eee8`.
+
+## ux/nsfix pre-boot review corrections
+
+Follow-up base `597d09d1`, branch `ux/nsfix`, 2026-10-16. The supplied independent
+Sol 6.1 xhigh review of the same kernel code at `85e89b7f` returned **REVISE**
+([local review](../.scratch/review1.md)). These are implementation corrections to
+D1–D6 on the unbound MVP profile; they introduce no V30/readiness activation.
+Review acceptance and Windows qualification remain outstanding.
+
+1. **Stale classification / file and directory races.** File operations now use
+   the existing directory mutation fence and sequence. The admission slot's
+   sequence is captured at dispatch, before lookup; claiming the fence rejects
+   a crossed generation, including a completed move out/back with identical
+   final path and file ID. Protected external file/folder mutations and the
+   service's unbound publication rename join the same exclusion. Clearly outside
+   moves keep their ordinary availability. Filesystem-only, current-provider
+   observations compare the current source object's name and file ID with the
+   source-name binding, and retain destination-parent and optional target file
+   IDs. Those bindings are checked again after cancellation, immediately before
+   forwarding. Directory disposition and rename also validate their original
+   object/name binding. The admission epoch holds exclusion through lower and
+   registry completion; draining latches it until reboot. No resource spans
+   those observations, cancellation RPC or native lower I/O.
+2. **Cancellation after caller authority.** Native delete-on-close CREATE first
+   performs a side-effect-free private-handle preflight. It forwards the original
+   CREATE, retaining the common fence. Only successful NTFS authorization and
+   legacy post-create processing, the original object's DELETE grant, and its
+   exact file ID permit cancellation in the PASSIVE post-create callback. Denied
+   CREATEs never cancel a save. Private replacement now checks source sharing,
+   the pinned target view's immutable DELETE security, and destination access
+   before cancelling the sealed target. The target stream reference retains
+   its view/security across both access checks and RPC; source/target generations
+   and name ownership are revalidated before cancellation and afterward, before
+   releasing that evidence. Access checks run outside the namespace resource.
+   Cancellation rechecks closed-handle state atomically with its busy claim;
+   private CREATE refuses while cancellation owns that claim.
+3. **Registry lifetime / Sticky Unknown.** Native SET_INFORMATION starts the
+   existing mutating-I/O owner, prepares registry rename ownership, and transfers
+   both through the native completion tag. Resident completion calls the existing
+   registry completion routines on success, failure and drain before the epoch
+   releases exclusion. Known success updates the retained name and rename version
+   without clearing an existing Unknown reason. Uncertain completion preserves
+   Unknown and the latched namespace fence. This closes the new-name admission
+   bypass while preserving native rename flags and lower NTFS enforcement.
+
+Historical round-1 annotation claim (corrected after ns-k2 above): the added
+helpers repeated IRQL contracts on definitions. PAGE placement is
+before definitions; the raised-IRQL completion contains no name query, resource
+acquisition, wait or allocation. CREATE alone calls its PASSIVE helper, including
+on drain. The only new cross-completion name reference is bounded by the single
+native mutation owner and is released on every CREATE outcome. Source API
+inventory found six new internal helper calls and **no new external API symbols**;
+this is not a binary-import or ApiValidator result.
+
+Host verification (2026-10-16): all seven kernel Python runners (16 tests), all
+14 T5 self-check runners (103 unittest tests plus 14 Notepad verdict assertions), and all three UX self-check runners (9 tests)
+passed. T11 SOP-lifetime controls (3 tests), T4 verdict self-check and the driver
+import gate's offline self-check also passed. Relevant namespace/directory/MVP
+controls were rerun after the final namespace changes. Raw logs and failed
+setup/control attempts are retained locally in `.scratch/verification/` and the
+`.scratch/namespace-ux-*` failure directories; none is Windows qualification.
+
+`tests/test_namespace_ux.py` compiles the production native pre/post path, binding
+and fence helpers, replacement-access helper, and registry completion/name gate
+with both `cc` and `clang`, warnings as errors and fatal UBSan. Deterministic
+controls cover the move-out/modify/move-back generation, the file/folder fence
+interleaving in both directions, current source name/object substitution, changed
+destination parent/leaf, denied lower/legacy CREATE, denied replacement security,
+original rename flags, ordinary failure and draining ownership, and renamed
+Activating/Sticky Unknown admission. Ten negative mutations must fail executed
+controls. The existing directory and MVP cancellation controls remain in place.
+
+Remaining conditions / VM rows for the orchestrator:
+
+- Repeat independent pre-boot review; feature Debug/Release WDK + PREfast +
+  ApiValidator at 0/0 and binary import availability, then the matched pair's
+  ordinary, runtime-Verifier and boot-Verifier controls on `win10-debug3` only.
+- Pause a native file rename after classification; move its object out, modify
+  outside, then resume; repeat with a folder rename moving its containing tree.
+  A stale request must refuse and independent raw observations must show no
+  uninspected bytes inside. Check both overlapping and already-completed B.
+- Deny DELETE/traverse/share on native delete-on-close CREATE and target DELETE
+  or parent-add access on private replacement. The exact pending-save receipts
+  must remain uncancelled on authorization denial. Include restricted/impersonated
+  callers, successful grants, object substitution, cancellation disconnect/fault,
+  and cleanup/draining. A granted delete-on-close CREATE whose later cancellation
+  fails is cancelled with its original grant; NTFS can apply its requested
+  delete-on-close effects during that cleanup. This is not an authorization
+  denial or a retry of a completed public mutation.
+- Rename Activating and Sticky Unknown entries; the new name must remain held,
+  old-name bookkeeping must follow known success, and uncertain completion must
+  stay held. Exercise failed lower rename and draining ownership with Verifier.
+- Published rename/delete, monitored-extension copy fallback, move outside,
+  Word published-backup/private-temp/final-name swap, first 0-byte placeholder,
+  idle folder rename and busy subtree refusal. Include legacy and extended native
+  rename/disposition flags, native ACL alternatives and outside-move concurrency.
+
+No Windows build, VM row or agent change was made for this correction. Git's
+shared metadata remains unchanged; delivery uses a scratch Git repository and
+`.scratch/ux-nsfix.bundle` with branch head `ux/nsfix`.
 
 ## Round 1 sharing correction
 
@@ -44,7 +232,8 @@ The original predicate fails the same controls. This is a host shim, not native 
 ## Decided unbound design (D1–D6)
 
 This design supersedes the former requirement in this note for a bound public
-transaction. Bound readiness and V30 stay disabled. Normal driver builds keep staging compiled out.
+transaction. Bound readiness and V30 stay disabled on this profile. Staging-out builds were
+retired by the owner on 2026-10-15; shipping checks use feature Debug/Release.
 
 - D1: a non-content-writing existing-name open with no requester private view uses
   the original NTFS CREATE, caller grant/share and cleanup. DELETE, reads and
@@ -53,10 +242,11 @@ transaction. Bound readiness and V30 stay disabled. Normal driver builds keep st
   The legacy CREATE gate must not reject an admitted namespace-only open. Its
   read inspection/taint callbacks remain active. OPEN_IF uses this route only for
   an existing file and is narrowed to OPEN to prevent a racing unlink creating a placeholder.
-- D2: original-handle disposition and delete-on-close go to NTFS. First refuse any
-  matching private version with open handles; durably cancel sealed unpublished
-  versions through the existing exact V28 request/receipt. Cancellation is not
-  physical deletion and never supplies authority on a public object.
+- D2: original-handle disposition and delete-on-close go to NTFS. First refuse
+  matching private versions with open handles. On a granted DELETE handle, cancel
+  sealed unpublished versions through the existing exact V28 request/receipt.
+  For native delete-on-close CREATE, cancellation follows the successful original
+  NTFS CREATE in post, before app cleanup. Cancellation supplies no public grant.
 - D3: original-handle rename forwards its entire native buffer/flags unchanged.
   Same protected scope is allowed, except unmonitored-to-monitored extension gets
   NOT_SAME_DEVICE for staged copy. Leaving protection is native. Source pending

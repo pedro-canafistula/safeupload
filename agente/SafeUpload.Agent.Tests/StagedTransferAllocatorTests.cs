@@ -210,6 +210,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"));
         var allocator = new StagedTransferAllocator(root, journal);
         string destination = Path.Combine(_workspace.Root, "destination", "report.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
 
         var first = await allocator.AllocateAsync(destination, DestinationKind.Cloud,
             "word.exe", 17, 2, CancellationToken.None);
@@ -236,9 +237,11 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"));
         var allocator = new StagedTransferAllocator(root, journal);
         string sid = "S-1-5-21-111-222-333-1000";
+        string destination = Path.Combine(_workspace.Root, "destination", "bound.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
 
         StagedTransfer transfer = await allocator.AllocateAsync(
-            Path.Combine(_workspace.Root, "destination", "bound.txt"), DestinationKind.Cloud,
+            destination, DestinationKind.Cloud,
             "word.exe", 17, 2, 2, null, CancellationToken.None,
             requestorSid: sid, requestorProcessCreationTime: 638953632000000000);
 
@@ -336,6 +339,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"));
         var allocator = new StagedTransferAllocator(root, journal);
         string destination = Path.Combine(_workspace.Root, "destination", "report.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         var first = await allocator.AllocateAsync(destination, DestinationKind.Cloud,
             "word.exe", 17, 2, CancellationToken.None);
         await File.WriteAllTextAsync(first.StagePath, "approved version");

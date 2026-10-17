@@ -28,6 +28,16 @@ function Read-T4ControlText([string]$Path) {
         }
     }
 }
+function Stop-T4ReopenProcess([Diagnostics.Process]$Process, [string]$Prefix) {
+    if (-not $Process.WaitForExit(5000)) {
+        $Process.Kill()
+        if (-not $Process.WaitForExit(5000)) {
+            [IO.File]::WriteAllText(($Prefix + '.termination-unconfirmed.json'),
+                ('{"ObserverPid":' + $Process.Id + ',"TerminationConfirmed":false}'))
+            throw 'reopen observer termination not confirmed'
+        }
+    }
+}
 Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
@@ -60,6 +70,11 @@ public static class T4Native {
             int error = Marshal.GetLastWin32Error();
             throw new Win32Exception(error, step + " Win32=" + error);
         }
+    }
+    public static int ProbeOpen(string path, uint access) {
+        IntPtr file = CreateFileW(path, access, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
+        if (file == new IntPtr(-1)) return Marshal.GetLastWin32Error();
+        return CloseHandle(file) ? 0 : Marshal.GetLastWin32Error();
     }
     public static void Replace(string temporary, string target, byte[] bytes) {
         // GENERIC_WRITE | DELETE, CREATE_ALWAYS; include delete sharing for the held-handle rename (as in C04).
@@ -117,8 +132,28 @@ for (;;) {
     $parts = $line -split ' ', 4
     $n = $parts[0]; $pattern = $parts[1]; $name = $parts[2]; $bytes = [IO.File]::ReadAllBytes($parts[3])
     $target = Join-Path $Root $name
+    $observer = $null
     $result = 'ok'
     try {
+        if ($pattern.EndsWith('-reopen')) {
+            $pattern = $pattern.Substring(0, $pattern.Length - '-reopen'.Length)
+            $prefix = Join-Path $Control ('reopen-' + $n)
+            foreach ($suffix in @('.ready', '.go', '.abort', '.result.json', '.owner.json')) {
+                if ([IO.File]::Exists($prefix + $suffix)) { throw 'reopen requires a fresh control directory' }
+            }
+            $helper = Join-Path $PSScriptRoot 'reopen-after-publication.ps1'
+            foreach ($argument in @($helper, $target, $parts[3], $prefix)) {
+                if ($argument.Contains('"')) { throw 'invalid quote in reopen argument' }
+            }
+            $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $helper +
+                '" -Path "' + $target + '" -ExpectedPath "' + $parts[3] + '" -SignalPrefix "' + $prefix + '" -WriterPid ' + $PID
+            $observer = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $arguments -PassThru -WindowStyle Hidden
+            $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 30 * [Diagnostics.Stopwatch]::Frequency
+            while (-not [IO.File]::Exists($prefix + '.ready')) {
+                if ($observer.HasExited -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $deadline) { throw 'reopen observer did not become ready' }
+                Start-Sleep -Milliseconds 2
+            }
+        }
         switch ($pattern) {
             'resave' { [IO.File]::WriteAllBytes($target, $bytes) }
             'new' { [IO.File]::WriteAllBytes($target, $bytes) }
@@ -126,14 +161,48 @@ for (;;) {
             'mapped' { [T4Native]::Mapped($target, $bytes) }
             default { throw "unknown pattern $pattern" }
         }
-    } catch { $result = 'error ' + ($_.Exception.Message -replace '\s+', ' ') }
+    } catch {
+        $result = 'error ' + ($_.Exception.Message -replace '\s+', ' ')
+        if ($null -ne $observer) {
+            try { if (-not $observer.HasExited) { $observer.Kill() }; Stop-T4ReopenProcess $observer $prefix }
+            finally { $observer.Dispose(); $observer = $null }
+        }
+    }
     $ack = Join-Path $Control ('ack-' + $n + '.txt')
     Set-Content -LiteralPath ($ack + '.tmp') -Value $result
     [IO.File]::Move(($ack + '.tmp'), $ack)
     Remove-Item -LiteralPath $command.FullName -Force
+    if ($null -ne $observer -and $result -eq 'ok') {
+        # Save ACK lets the independent coordinator observe publication. The
+        # original writer then probes its own namespace too: Word's reported
+        # refusal can be private-view-only and invisible to the child.
+        $probe = [ordered]@{ WriterPid=$PID; ReadError=$null; ReadWriteError=$null; Error=$null }
+        try {
+            $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 180 * [Diagnostics.Stopwatch]::Frequency
+            while (-not [IO.File]::Exists($prefix + '.go')) {
+                if ([IO.File]::Exists($prefix + '.abort')) { throw 'publication observation failed' }
+                if ([Diagnostics.Stopwatch]::GetTimestamp() -ge $deadline) { throw 'owner publication signal timeout' }
+                Start-Sleep -Milliseconds 1
+            }
+            $probe.SignalSeenQpc = [Diagnostics.Stopwatch]::GetTimestamp()
+            $probe.ReadError = [T4Native]::ProbeOpen($target, ([uint32]2147483648))
+            $probe.ReadWriteError = [T4Native]::ProbeOpen($target, ([uint32]3221225472))
+            $probe.FinishedQpc = [Diagnostics.Stopwatch]::GetTimestamp()
+        } catch { $probe.Error = $_.Exception.ToString() }
+        try { Stop-T4ReopenProcess $observer $prefix; $probe.TerminationConfirmed = $true }
+        catch { $probe.Error = $_.Exception.ToString(); $probe.TerminationConfirmed = $false }
+        finally { $observer.Dispose(); $observer = $null }
+        [IO.File]::WriteAllText(($prefix + '.owner.part'), ($probe | ConvertTo-Json))
+        [IO.File]::Move(($prefix + '.owner.part'), ($prefix + '.owner.json'))
+    }
 }
 'ACTOR_STOPPED' | Set-Content -LiteralPath (Join-Path $Control 'actor-stopped.txt')
 } catch {
+    if ($null -ne $observer) {
+        try { if (-not $observer.HasExited) { $observer.Kill() }; Stop-T4ReopenProcess $observer $prefix }
+        catch { [IO.File]::WriteAllText(($prefix + '.stop-error.txt'), $_.Exception.ToString()) }
+        finally { $observer.Dispose(); $observer = $null }
+    }
     # A task exit alone loses the failing operation. Preserve the exception and
     # source line before rethrowing; this receipt never substitutes for an ack.
     ($_ | Format-List * -Force | Out-String) + "`n" + $_.ScriptStackTrace |

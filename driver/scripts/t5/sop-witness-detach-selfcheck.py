@@ -159,7 +159,7 @@ typedef struct ENTRY {
 } STAGE_REGISTRY_ENTRY,*PSTAGE_REGISTRY_ENTRY;
 typedef struct CONTEXT {
  int WriterLock; PVOID volatile WriterSopLifetime,WriterRegistryEntry;
- BOOLEAN WriterSopLifetimeInvalid,WriterRegistryCachePruned;
+ BOOLEAN WriterSopLifetimeInvalid,WriterRegistryCachePruned,WriterContextRetired;
  LONG WritersUntracked; int WriterObjects;
 } CONTEXT,*PSAFEUPLOAD_STREAM_CONTEXT;
 #define IsListEmpty(p) (*(p)==0)

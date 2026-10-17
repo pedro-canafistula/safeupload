@@ -154,6 +154,82 @@ public sealed class StagedTerminalArchiveTests(ITestOutputHelper output) : IDisp
     }
 
     [Fact]
+    public async Task Ten_thousand_driver_deleted_releases_retire_the_disposal_work_set()
+    {
+        const int count = 10_000;
+        var journal = Journal();
+        string staging = Path.Combine(_workspace.Root, "staging"); Directory.CreateDirectory(staging);
+        var inspection = new SafeUpload.Agent.Core.Application.InspectionService(
+            new SafeUpload.Agent.Core.Infrastructure.LocalPolicyStore(_workspace.PolicyFile),
+            new SafeUpload.Agent.Core.Infrastructure.LocalQueueAuditSink(_workspace.QueueFile),
+            SafeUpload.Agent.Core.Infrastructure.Extraction.ExtractorRegistry.CreateDefault(),
+            new SafeUpload.Agent.Core.Application.VerdictCache());
+        var gate = new LastCloseGate();
+        var publisher = new StagedTransferPublisher(inspection, NotificationTestHub.Create(), journal, staging, gate);
+        string digest = Convert.ToHexString(SHA256.HashData("clean"u8));
+        var maximum = new long[4];
+        for (int i = 0; i < count; i++)
+        {
+            int name = i % maximum.Length;
+            Guid id = Guid.NewGuid();
+            string stage = Path.Combine(staging, id.ToString("N") + ".txt");
+            await File.WriteAllTextAsync(stage, "clean");
+            var transfer = new StagedTransfer(id, stage, Path.Combine(_workspace.Root, $"public-{name}.txt"),
+                DestinationKind.RemovableDrive, "fixture", 1234, 1);
+            var allocated = await journal.CreateAsync(transfer, default);
+            Assert.Equal(++maximum[name], allocated.DestinationGeneration);
+            await journal.SealAsync(id, transfer.ProcessId, stage, default);
+            await journal.TransitionAsync(id, TransferJournalState.Sealed, TransferJournalState.Inspecting, null, default);
+            await journal.TransitionAsync(id, TransferJournalState.Inspecting, TransferJournalState.Approved, digest, default);
+            await journal.TransitionAsync(id, TransferJournalState.Approved, TransferJournalState.Publishing, null, default);
+            await journal.TransitionAsync(id, TransferJournalState.Publishing, TransferJournalState.Released, null, default);
+            gate.Held = true;
+            await publisher.DisposeReleasedStagesAsync(default);
+            Assert.Single(Directory.GetFiles(Hot, "*.json"));
+            // Actual driver path: it accepted DISPOSE while held, then last
+            // close deleted the exact stage before the next service pass.
+            File.Delete(stage);
+            gate.Held = false;
+            await publisher.DisposeReleasedStagesAsync(default);
+            Assert.Empty(Directory.GetFiles(Hot, "*.json"));
+            Assert.Empty(await journal.ReadReleasedAsync(default));
+            Assert.Empty(await journal.ReadPendingAsync(default));
+            Assert.False(File.Exists(stage));
+            Assert.False(publisher.HasConfirmedPublication(id));
+        }
+        Assert.Equal(count * 2, gate.Disposals);
+        Assert.Equal(count, journal.ArchivedTransfers);
+        var restarted = Journal();
+        Assert.Empty(await restarted.ReadReleasedAsync(default));
+        int before = gate.Disposals;
+        await publisher.DisposeReleasedStagesAsync(default);
+        Assert.Equal(before, gate.Disposals);
+        Assert.InRange(Directory.GetFiles(Cold, "*.pack").Length, 1, 64);
+        output.WriteLine($"driver-deleted releases={count}; hot=0; disposals={gate.Disposals}; archived={journal.ArchivedTransfers}");
+    }
+
+    [Fact]
+    public async Task Missing_stage_ancestor_does_not_become_a_disposal_receipt()
+    {
+        var journal = Journal();
+        string staging = Path.Combine(_workspace.Root, "staging"); Directory.CreateDirectory(staging);
+        var entry = Completed() with { StageDeleted = false };
+        entry = entry with { Transfer = entry.Transfer with { StagePath = Path.Combine(staging, "missing", "stage.txt") } };
+        Put(entry);
+        var inspection = new SafeUpload.Agent.Core.Application.InspectionService(
+            new SafeUpload.Agent.Core.Infrastructure.LocalPolicyStore(_workspace.PolicyFile),
+            new SafeUpload.Agent.Core.Infrastructure.LocalQueueAuditSink(_workspace.QueueFile),
+            SafeUpload.Agent.Core.Infrastructure.Extraction.ExtractorRegistry.CreateDefault(),
+            new SafeUpload.Agent.Core.Application.VerdictCache());
+        var publisher = new StagedTransferPublisher(inspection, NotificationTestHub.Create(), journal, staging,
+            new LastCloseGate { Held = false });
+        await publisher.DisposeReleasedStagesAsync(default);
+        Assert.Single(Directory.GetFiles(Hot, "*.json"));
+        Assert.False((await journal.ReadAsync(entry.Transfer.TransferId, default)).StageDeleted);
+        Assert.Equal(0, journal.ArchivedTransfers);
+    }
+
+    [Fact]
     public async Task Archive_preserves_exact_receipt_and_rejects_changed_completion_and_reused_id()
     {
         var journal = Journal(); var entry = Completed(); Put(entry);

@@ -412,6 +412,8 @@ typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
     PVOID WriterSopLifetime; /* Owns a small witness, not the stream; WriterLock. */
     BOOLEAN WriterSopLifetimeInvalid; /* Explicit deletion never proves natural retirement. */
     BOOLEAN WriterRegistryCachePruned; /* Under WriterLock: an exact, empty cache passed the existing prune gate. */
+    BOOLEAN WriterContextRetired; /* WriterLock: inert cache fenced before exact Filter Manager detach; never rebound. */
+    LONG WriterContextUsers; /* WriterLock: active get/create leases veto ordinary prune before unlink. */
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
 
 #endif
@@ -450,12 +452,17 @@ SafeUploadHandleHasOverride (
     _In_ PCFLT_RELATED_OBJECTS FltObjects
     );
 
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 SafeUploadGetOrCreateStreamContext (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ PFILE_OBJECT FileObject,
     _Outptr_result_nullonfailure_ PSAFEUPLOAD_STREAM_CONTEXT *StreamContext
     );
+
+/* Pair only with successful SafeUploadGetOrCreateStreamContext calls. */
+_IRQL_requires_max_(APC_LEVEL)
+VOID SafeUploadReleaseStreamContext(_In_ PSAFEUPLOAD_STREAM_CONTEXT StreamContext);
 
 //
 //  One request and its response in a single pool block. Keeping them in

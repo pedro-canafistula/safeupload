@@ -558,7 +558,10 @@ public sealed partial class StagedTransferPublisher
             // have moved on before the disposal was sent (a committed rename re-inspects the version): check again.
             entry = await _journal.ReadAsync(transferId, token).ConfigureAwait(false);
             if (!IsDisposableRelease(entry) || CommittedRenames(entry) != renames) return;
-            RequirePrivateStagePath(entry.Transfer.StagePath);
+            // Last close may already have let the driver delete this exact
+            // stage. Ancestors must still be private/no-follow; only the leaf
+            // may be absent before the identity-bound disposal check below.
+            RequirePrivateStagePath(entry.Transfer.StagePath, allowAbsentLeaf: true);
             if (!StagedDiscardCleanup.TryDeleteExactAndConfirmAbsent(entry.Transfer.StagePath,
                     entry.StageIdentity, out Exception? deletionFailure))
                 throw new IOException("The released stage identity did not match the manifest or absence was not confirmed.",
@@ -1069,7 +1072,7 @@ public sealed partial class StagedTransferPublisher
         length, lastWriteUtc, transfer.ProcessName, transfer.ProcessId,
         transfer.DestinationPath, transfer.Destination);
 
-    private void RequirePrivateStagePath(string path)
+    private void RequirePrivateStagePath(string path, bool allowAbsentLeaf = false)
     {
         string relative = Path.GetRelativePath(_stagingRoot, path);
         if (relative is "." or ".." || Path.IsPathRooted(relative) ||
@@ -1080,8 +1083,16 @@ public sealed partial class StagedTransferPublisher
              current = Path.GetDirectoryName(current))
             if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Blocked staging contains a reparse point.");
-        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
-            throw new IOException("Blocked staging contains a reparse point.");
+        try
+        {
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+                throw new IOException("Blocked staging contains a reparse point.");
+        }
+        catch (FileNotFoundException) when (allowAbsentLeaf)
+        {
+            // Absence is rechecked by the exact disposer and under the journal
+            // gate. Missing ancestors/access errors/reparse points still fail.
+        }
     }
 
 }

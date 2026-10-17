@@ -15,6 +15,8 @@ otherwise it creates the separate 256-file corpus. No diagnostic observation cha
 -VolumeDiscriminator appends five purge/30 s samples around a 512-file NTFS VHD metadata-open/delete/teardown sequence,
 without changing the original samples or gates. It needs boot Verifier and cycles < 10000, excludes -DeleteAttribution, and needs
 no memory tools; classification is non-qualifying INFO, with diskpart/fltmc scripts and receipts in the failure-evidence export.
+-ImmediateReopen adds a prestarted same-token child plus same-writer read/read-write probes, once after each APPROVE
+public-byte observation (no open retries); records C:\T4\reopens.jsonl. Requires reopen-after-publication.ps1 beside actor.
 Results: C:\T4\cycles.jsonl (one line per cycle), C:\T4\samples.jsonl, C:\T4\result.json.
 #>
 param(
@@ -29,7 +31,8 @@ param(
     [switch]$HandbackDiagnostic,
     [switch]$DeleteAttribution,
     [switch]$VolumeDiscriminator,
-    [switch]$PurgeAttribution
+    [switch]$PurgeAttribution,
+    [switch]$ImmediateReopen
 )
 $ErrorActionPreference = 'Stop'
 function Read-T4ControlText([string]$Path) {
@@ -635,7 +638,7 @@ function Same([byte[]]$A, [byte[]]$B) { if ($null -eq $A -or $null -eq $B -or $A
 
 New-Item -ItemType Directory -Force -Path $out, $control | Out-Null
 Remove-Item -LiteralPath (Join-Path $out 'cycles.jsonl'), (Join-Path $out 'samples.jsonl'), (Join-Path $out 'result.json') -ErrorAction SilentlyContinue
-$result = [ordered]@{ Cycles = $Cycles; Started = [DateTime]::UtcNow.ToString('o'); Completed = 0; Attempted = 0;
+$result = [ordered]@{ Cycles = $Cycles; ImmediateReopen = [bool]$ImmediateReopen; Started = [DateTime]::UtcNow.ToString('o'); Completed = 0; Attempted = 0;
     Failures = @(); FailureCount = 0; FailureEvidence = @(); BlockedBytesPublished = $false;
     StopReason = 'coordinator-error'; Outcomes = [ordered]@{} }
 $failureCounts = @{}
@@ -684,7 +687,8 @@ try {
         $started = [Diagnostics.Stopwatch]::GetTimestamp()
         $command = Join-Path $control ('cmd-' + $i + '.txt')
         $staging = Join-Path $control ('next-' + $i + '.part')   # the actor only picks up cmd-*.txt
-        Set-Content -LiteralPath $staging -Value ("$i $pattern $name $payload"); [IO.File]::Move($staging, $command)
+        $actorPattern = if ($ImmediateReopen -and -not $sensitive) { $pattern + '-reopen' } else { $pattern }
+        Set-Content -LiteralPath $staging -Value ("$i $actorPattern $name $payload"); [IO.File]::Move($staging, $command)
         $ack = Join-Path $control ('ack-' + $i + '.txt')
         $deadline = $started + 60 * $frequency
         while (-not (Test-Path $ack)) { if ([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline) { break }; Start-Sleep -Milliseconds 2 }
@@ -701,9 +705,37 @@ try {
                 } else { if (Same (Read-Public $target) $bytes) { $ok = $true } }
                 if (-not $ok) { Start-Sleep -Milliseconds 20 }
             } while (-not $ok -and [Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
-            if (-not $ok) { $why = if ($sensitive) { 'no hand-back of the blocked bytes' } else { 'the public file never held the approved bytes' } }
+            if ($ImmediateReopen -and -not $sensitive -and $ok) {
+                $prefix = Join-Path $control ('reopen-' + $i)
+                $signalQpc = [Diagnostics.Stopwatch]::GetTimestamp()
+                [IO.File]::WriteAllText(($prefix + '.go'), [string]$signalQpc)
+                $reopenDeadline = $signalQpc + 30 * $frequency
+                while (-not [IO.File]::Exists($prefix + '.result.json') -or -not [IO.File]::Exists($prefix + '.owner.json')) {
+                    if ([Diagnostics.Stopwatch]::GetTimestamp() -ge $reopenDeadline) { break }
+                    Start-Sleep -Milliseconds 2
+                }
+                if (-not [IO.File]::Exists($prefix + '.result.json') -or -not [IO.File]::Exists($prefix + '.owner.json')) {
+                    $ok = $false; $why = 'immediate reopen observer timed out'
+                } else {
+                    $probe = [IO.File]::ReadAllText($prefix + '.result.json') | ConvertFrom-Json
+                    $ownerProbe = [IO.File]::ReadAllText($prefix + '.owner.json') | ConvertFrom-Json
+                    $probe | Add-Member -NotePropertyName Owner -NotePropertyValue $ownerProbe
+                    $probe | Add-Member -NotePropertyName PublicationObservedQpc -NotePropertyValue $signalQpc
+                    Write-T4ResultLine (Join-Path $out 'reopens.jsonl') ($probe | ConvertTo-Json -Depth 6 -Compress)
+                    if ($ownerProbe.Error -or -not $ownerProbe.TerminationConfirmed -or $ownerProbe.ReadError -ne 0 -or $ownerProbe.ReadWriteError -ne 0 -or
+                        $probe.Error -or $probe.ObserverPid -eq $probe.WriterPid -or
+                        $probe.Read.OpenError -ne 0 -or $probe.Read.CloseError -ne 0 -or $probe.Read.Error -or -not $probe.Read.BytesMatch -or
+                        $probe.ReadWrite.OpenError -ne 0 -or $probe.ReadWrite.CloseError -ne 0 -or $probe.ReadWrite.Error -or -not $probe.ReadWrite.BytesMatch) {
+                        $ok = $false; $why = 'immediate cross-process read/read-write failed (see reopens.jsonl)'
+                    }
+                }
+            }
+            if (-not $ok -and -not $why) { $why = if ($sensitive) { 'no hand-back of the blocked bytes' } else { 'the public file never held the approved bytes' } }
             # A blocked version never reaches the public name.
             if ($sensitive -and (Same (Read-Public $target) $bytes)) { $ok = $false; $why = 'BLOCKED BYTES PUBLISHED' }
+        }
+        if ($ImmediateReopen -and -not $sensitive -and -not $ok) {
+            [IO.File]::WriteAllText((Join-Path $control ('reopen-' + $i + '.abort')), 'publication/reopen failed')
         }
         $done = [Diagnostics.Stopwatch]::GetTimestamp()
         if ($ackText -ne 'timeout') { Remove-Item -LiteralPath $payload, $ack -Force -ErrorAction SilentlyContinue }
@@ -776,6 +808,10 @@ try {
     $result.ErrorDetail = $_.Exception.ToString()
     $result.ErrorScriptStackTrace = $_.ScriptStackTrace
 } finally {
+    if ($ImmediateReopen -and $i -gt 0) {
+        try { [IO.File]::WriteAllText((Join-Path $control ('reopen-' + $i + '.abort')), 'coordinator finished') }
+        catch { $result.ReopenAbortError = $_.Exception.ToString() }
+    }
     if ($actorLaunched -and -not $result.ActorStopped) {
         try { $result.ActorStopped = Stop-T4Actor $control }
         catch { $result.ActorStopError = $_.Exception.ToString() }

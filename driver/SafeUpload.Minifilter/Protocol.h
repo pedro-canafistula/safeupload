@@ -1411,6 +1411,7 @@ typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_STATUS {
 #define SAFEUPLOAD_DENY_REASON_REGISTRY_SCOPE     ((UINT32) 14)  /* outside opened name; SOP/transition gate refused; AuxStatus = 0xE5000000 | SAFEUPLOAD_SOP_OUTSIDE_* snapshot */
 #define SAFEUPLOAD_DENY_REASON_METADATA_UNSUPPORTED ((UINT32) 15)
 #define SAFEUPLOAD_DENY_REASON_STREAM_UNSUPPORTED ((UINT32) 16)
+#define SAFEUPLOAD_DENY_REASON_STAGE_CREATE_CONFLICT ((UINT32) 17) /* Aux: gate[7:0], ReadOnly/Sealed/Rename[10:8], FileObjects[31:16]. Gates: 1 namespace, 2 directory, 3 allocation receipt, 4 ID snapshot, 5 instance, 6 seal/rename, 7 nested backing query, 8 delete-pending, 9 namespace changed, 10 synthetic share. */
 
 typedef struct _SAFEUPLOAD_DENY_RECORD {
     UINT64 Sequence;                // 1-based, strictly increasing; 0 never appears in a reply

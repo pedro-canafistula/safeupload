@@ -1312,10 +1312,15 @@ public sealed class StagedTransferPublisherTests : IDisposable
     public async Task Failed_publication_is_retained_and_never_audited_as_sent()
     {
         var transfer = Transfer("clean.txt", "Clean text.");
-        Directory.Delete(Path.GetDirectoryName(transfer.DestinationPath)!);
+        var gate = new RecordingPublicationGate(refuse: true);
+        var publisher = new StagedTransferPublisher(new InspectionService(
+                new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
+                ExtractorRegistry.CreateDefault(), new VerdictCache()),
+            _notifications, _journal, _stagingRoot, gate);
 
-        var outcome = await _publisher.PublishAsync(transfer, CancellationToken.None);
+        var outcome = await publisher.PublishAsync(transfer, CancellationToken.None);
 
+        Assert.True(gate.Called); // fail after the strict native destination lookup succeeds
         Assert.Equal(StagedTransferOutcome.Retained, outcome);
         Assert.False(File.Exists(transfer.DestinationPath));
         Assert.True(File.Exists(transfer.StagePath));

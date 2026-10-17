@@ -78,6 +78,60 @@ public sealed class NotificationRecordTests : IDisposable
         Assert.DoesNotContain(Entries(), entry => entry.Kind == "Transfer");
     }
 
+    [Fact]
+    public void Seed_export_restriction_is_recorded_and_survives_restart_without_export_authority()
+    {
+        var notice = new TransferNotification(Guid.NewGuid(), "write-only.txt", TransferPhase.Blocked,
+            HandbackVerified: false, SnapshotSha256Hex: new string('B', 64),
+            BlockReason: StagedBlockReason.SeedExportRestricted);
+        using (var record = Record())
+        {
+            record.Append(notice, 7);
+            var entry = Entries()[^1];
+            Assert.Equal(notice.TransferId, entry.TransferId);
+            Assert.Equal(StagedBlockReason.SeedExportRestricted, entry.BlockReason);
+            Assert.Equal("Blocked", entry.Phase);
+            Assert.Equal((uint)7, entry.TargetSessionId);
+            Assert.Equal(notice.SnapshotSha256Hex, entry.Sha256Hex);
+            Assert.Null(entry.HandBackPath);
+        }
+        using var restarted = Record();
+        var next = Transfer();
+        restarted.Append(next, 7);
+        Assert.Equal(next.TransferId, Entries()[^1].TransferId);
+        Assert.Single(Entries().Where(entry => entry.TransferId == notice.TransferId));
+    }
+
+    [Theory]
+    [InlineData("analyzing")]
+    [InlineData("released")]
+    [InlineData("retained")]
+    [InlineData("override")]
+    [InlineData("handback")]
+    [InlineData("unknown")]
+    public void Seed_export_restriction_rejects_inconsistent_authority_without_closing_record(string mutation)
+    {
+        using var record = Record();
+        var notice = new TransferNotification(Guid.NewGuid(), "write-only.txt", TransferPhase.Blocked,
+            HandbackVerified: false, SnapshotSha256Hex: new string('B', 64),
+            BlockReason: StagedBlockReason.SeedExportRestricted);
+        notice = mutation switch
+        {
+            "analyzing" => notice with { Phase = TransferPhase.Analyzing },
+            "released" => notice with { Phase = TransferPhase.Released },
+            "retained" => notice with { Phase = TransferPhase.Retained },
+            "override" => notice with { OverrideAllowed = true },
+            "handback" => notice with { HandbackVerified = true, HandbackPath = "returned.txt" },
+            "unknown" => notice with { BlockReason = (StagedBlockReason)999 },
+            _ => throw new ArgumentOutOfRangeException(nameof(mutation))
+        };
+        Assert.Throws<InvalidDataException>(() => record.Append(notice, 7));
+        Assert.DoesNotContain(Entries(), entry => entry.TransferId == notice.TransferId);
+        var next = Transfer();
+        record.Append(next, 7);
+        Assert.Equal(next.TransferId, Entries()[^1].TransferId);
+    }
+
     [Theory]
     [InlineData(TransferPhase.Analyzing)]
     [InlineData(TransferPhase.Retained)]

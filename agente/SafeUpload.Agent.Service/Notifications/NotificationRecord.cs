@@ -130,8 +130,11 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 throw new InvalidDataException("A staging-space refusal has no publication or override authority.");
             if (notification is TransferNotification transfer)
             {
-                if (transfer.BlockReason is not null)
-                    throw new InvalidDataException("Retired staged block reasons cannot be emitted.");
+                if (transfer.BlockReason is { } reason &&
+                    (reason != StagedBlockReason.SeedExportRestricted ||
+                     transfer.Phase != TransferPhase.Blocked || transfer.OverrideAllowed ||
+                     transfer.HandbackVerified != false || transfer.HandbackPath is not null))
+                    throw new InvalidDataException("Invalid staged seed-export restriction.");
                 if (
                 ((transfer.PublishedSha256Hex is { } digest &&
                   (digest.Length != 64 || !digest.All(Uri.IsHexDigit))) ||
