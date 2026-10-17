@@ -14,7 +14,7 @@ static NTSTATUS StageQueryBoundSecurity(_In_ PFLT_INSTANCE Instance,
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageQuerySecurity)
 #pragma alloc_text(PAGE, StageQueryBoundSecurity)
-#pragma alloc_text(PAGE, SafeUploadStageCheckNativeReplace)
+#pragma alloc_text(PAGE, SafeUploadStageCheckNativeRename)
 #pragma alloc_text(PAGE, SafeUploadStageCheckAccess)
 #pragma alloc_text(PAGE, SafeUploadStageCaptureSecurity)
 #pragma alloc_text(PAGE, SafeUploadStageFreeSecurity)
@@ -159,10 +159,10 @@ static NTSTATUS SafeUploadStageQuerySecurity(PFLT_INSTANCE Instance,
  * needed only before cancelling an unpublished version; NTFS still decides
  * the actual rename, flags, readonly/image and sharing semantics. */
 _IRQL_requires_(PASSIVE_LEVEL)
-NTSTATUS SafeUploadStageCheckNativeReplace(PFLT_CALLBACK_DATA Data,
+NTSTATUS SafeUploadStageCheckNativeRename(PFLT_CALLBACK_DATA Data,
     PFLT_INSTANCE Instance, PUNICODE_STRING Source, PUNICODE_STRING Destination,
     const FILE_ID_INFORMATION *SourceIdentity, const FILE_ID_INFORMATION *ParentIdentity,
-    const FILE_ID_INFORMATION *TargetIdentity, BOOLEAN TargetExists)
+    const FILE_ID_INFORMATION *TargetIdentity, BOOLEAN TargetExists, BOOLEAN Replace)
 {
     SECURITY_SUBJECT_CONTEXT subject;
     PSECURITY_DESCRIPTOR parentSecurity = NULL, targetSecurity = NULL;
@@ -178,6 +178,12 @@ NTSTATUS SafeUploadStageCheckNativeReplace(PFLT_CALLBACK_DATA Data,
     PAGED_CODE();
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || Data->Thread == NULL || process == NULL ||
         rename == NULL || !Data->Iopb->TargetFileObject->DeleteAccess) return STATUS_ACCESS_DENIED;
+    if (TargetExists && !Replace && !RtlEqualMemory(SourceIdentity, TargetIdentity, sizeof(*SourceIdentity)))
+        return STATUS_OBJECT_NAME_COLLISION;
+    /* NTFS returns success for an exact same-parent/name no-op before adding
+     * any target link. Case-only changes do not take this shortcut. */
+    if (TargetExists && RtlEqualMemory(SourceIdentity, TargetIdentity, sizeof(*SourceIdentity)) &&
+        RtlEqualUnicodeString(Source, Destination, FALSE)) return STATUS_SUCCESS;
     while (chars != 0 && parent.Buffer[chars - 1] != L'\\') --chars;
     if (chars == 0) return STATUS_OBJECT_PATH_INVALID;
     parent.Length = parent.MaximumLength = (USHORT)((chars - 1) * sizeof(WCHAR));

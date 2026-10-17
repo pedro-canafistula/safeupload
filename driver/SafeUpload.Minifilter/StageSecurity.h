@@ -50,9 +50,9 @@ NTSTATUS SafeUploadStageCheckSubjectAccess(PFLT_CALLBACK_DATA Data,
     PSECURITY_DESCRIPTOR Descriptor, ACCESS_MASK Desired);
 
 _IRQL_requires_(PASSIVE_LEVEL)
-NTSTATUS SafeUploadStageCheckNativeReplace(PFLT_CALLBACK_DATA Data,
+NTSTATUS SafeUploadStageCheckNativeRename(PFLT_CALLBACK_DATA Data,
     PFLT_INSTANCE Instance, PUNICODE_STRING Source, PUNICODE_STRING Destination,
     const FILE_ID_INFORMATION *SourceIdentity, const FILE_ID_INFORMATION *ParentIdentity,
-    const FILE_ID_INFORMATION *TargetIdentity, BOOLEAN TargetExists);
+    const FILE_ID_INFORMATION *TargetIdentity, BOOLEAN TargetExists, BOOLEAN Replace);
 
 #endif

@@ -32,14 +32,16 @@ still needs independent acceptance and a new WDK build before qualification.
   resolved, alias-checked outside name can release that guard.
 - A public replacement with no unpublished cancellation obligation goes to
   native NTFS without the legacy approximate permission gate. Before cancelling
-  pending private work, a dedicated helper validates the original target-parent
+  pending private work for any rename, a dedicated helper validates the original target-parent
   object's full identity and checks target DELETE **or** parent DELETE_CHILD
   against one captured original subject, using descriptors read from the exact
   bound objects. It relies on the original I/O-manager parent lookup for
   traversal/create-child authority, without requiring bypass-traverse privilege
   or reopening under SYSTEM authority. NULL ParentOfTarget is accepted only for
   a simple relative leaf in the existing source parent, with current ADD_FILE
-  checked there. Same-object rename retains the source handle's DELETE grant.
+  checked there. A non-replacing collision refuses before cancellation.
+  Same-object rename retains the source handle's DELETE grant; an exact
+  case-sensitive same-name no-op needs no new ADD_FILE grant.
   Original rename flags and share state stay with NTFS, including its final
   refusal after a terminal private cancellation.
 

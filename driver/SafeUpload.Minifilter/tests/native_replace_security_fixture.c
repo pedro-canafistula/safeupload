@@ -43,6 +43,7 @@ typedef struct { PUNICODE_STRING Name; } OBJECT_ATTRIBUTES;
 #define STATUS_INSUFFICIENT_RESOURCES -6
 #define STATUS_STOPPED_ON_SYMLINK -7
 #define STATUS_NOT_SUPPORTED -8
+#define STATUS_OBJECT_NAME_COLLISION -9
 #define DELETE 2
 #define FILE_ADD_FILE 1
 #define FILE_DELETE_CHILD 4
@@ -120,39 +121,45 @@ int main(void)
  io.Parameters.SetFileInformation.ParentOfTarget=&Parent;
  for(SubjectClass=0;SubjectClass<3;SubjectClass++)for(int t=0;t<2;t++)for(int p=0;p<2;p++){
   ts.Masks[SubjectClass]=t?DELETE:0;ps.Masks[SubjectClass]=p?FILE_DELETE_CHILD:0;
-  assert(SafeUploadStageCheckNativeReplace(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE)==((t||p)?0:STATUS_ACCESS_DENIED));
+  assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE,TRUE)==((t||p)?0:STATUS_ACCESS_DENIED));
   assert(!Locks&&!Opens&&!Descriptors);
  }
  SubjectClass=0;ps.Masks[0]=0;ts.Masks[0]=DELETE;
  /* Exact full identity, not just file-ID low half or matching path. */
  Parent.Identity.VolumeSerialNumber=9;
- assert(SafeUploadStageCheckNativeReplace(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE)==STATUS_SHARING_VIOLATION);
+ assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE,TRUE)==STATUS_SHARING_VIOLATION);
  Parent.Identity=parent;Target.Identity.FileId[0]=9;
- assert(SafeUploadStageCheckNativeReplace(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE)==STATUS_SHARING_VIOLATION);
+ assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE,TRUE)==STATUS_SHARING_VIOLATION);
  Target.Identity=target;
  for(int fault=0;fault<3;fault++){
   QueryFault=fault==0;IdentityFault=fault==1;IdentityShort=fault==2;
-  assert(SafeUploadStageCheckNativeReplace(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE)<0);
+  assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE,TRUE)<0);
   assert(!Locks&&!Opens&&!Descriptors);
  }
  QueryFault=IdentityFault=IdentityShort=0;
  /* Same-object rename retains source DELETE already granted even if the DACL
   * has since revoked it; it is not a fresh open of the target. */
  ts.Masks[0]=0;
- assert(SafeUploadStageCheckNativeReplace(&data,(PVOID)1,&sn,&dn,&src,&parent,&src,TRUE)==0);
+ assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&dn,&src,&parent,&src,TRUE,TRUE)==0);
  /* Relative leaf uses the source parent; create-child still checked. */
  io.Parameters.SetFileInformation.ParentOfTarget=NULL;ps.Masks[0]=FILE_ADD_FILE|FILE_DELETE_CHILD;
- assert(SafeUploadStageCheckNativeReplace(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE)==0);
+ assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE,TRUE)==0);
  ps.Masks[0]=FILE_DELETE_CHILD;
- assert(SafeUploadStageCheckNativeReplace(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE)==STATUS_ACCESS_DENIED);
+ assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE,TRUE)==STATUS_ACCESS_DENIED);
+ /* Ordinary rename needs ADD_FILE too. A collision or denied new link must
+  * refuse before a caller can cancel the source's pending private save. */
+ assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,FALSE,FALSE)==STATUS_ACCESS_DENIED);
+ assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,TRUE,FALSE)==STATUS_OBJECT_NAME_COLLISION);
+ ps.Masks[0]=0;
+ assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&sn,&src,&parent,&src,TRUE,FALSE)==0);
  ps.Masks[0]=FILE_ADD_FILE;
- assert(SafeUploadStageCheckNativeReplace(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,FALSE)==0);
+ assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,FALSE,FALSE)==0);
  for(int shape=0;shape<3;shape++){
   rename.RootDirectory=shape==0?(PVOID)1:NULL;rename.FileName[0]=shape==1?L'\\':L':';
-  assert(SafeUploadStageCheckNativeReplace(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,FALSE)<0);
+  assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&dn,&src,&parent,&target,FALSE,FALSE)<0);
  }
  rename.RootDirectory=NULL;rename.FileName[0]=L'x';UNICODE_STRING elsewhere=u(L"\\Device\\V\\Elsewhere\\new.txt");
- assert(SafeUploadStageCheckNativeReplace(&data,(PVOID)1,&sn,&elsewhere,&src,&parent,&target,FALSE)==STATUS_SHARING_VIOLATION);
+ assert(SafeUploadStageCheckNativeRename(&data,(PVOID)1,&sn,&elsewhere,&src,&parent,&target,FALSE,FALSE)==STATUS_SHARING_VIOLATION);
  assert(!Locks&&!Opens&&!Descriptors&&Captures>0&&AccessChecks>0);
  puts("native replacement: original subjects, parent alternatives, exact SD identity, faults, relative lookup, existing grants PASS");
 }

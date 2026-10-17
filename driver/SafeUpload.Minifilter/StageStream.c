@@ -10411,9 +10411,9 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
         status = StageMvpCancelNames(Objects->Instance, &source->Name,
             target != NULL && replace ? &target->Name : NULL, FALSE, &cancellationRequired);
         if (!NT_SUCCESS(status)) goto Refuse;
-        if (target != NULL && replace && cancellationRequired) {
-            status = SafeUploadStageCheckNativeReplace(Data, Objects->Instance, &source->Name, &target->Name,
-                &bindings.Source, &bindings.Parent, &bindings.Target, bindings.TargetExists);
+        if (target != NULL && cancellationRequired) {
+            status = SafeUploadStageCheckNativeRename(Data, Objects->Instance, &source->Name, &target->Name,
+                &bindings.Source, &bindings.Parent, &bindings.Target, bindings.TargetExists, replace);
             if (!NT_SUCCESS(status)) goto Refuse;
         }
         status = StageMvpCancelNames(Objects->Instance, &source->Name,

@@ -16,7 +16,7 @@ class NativeReplaceSecurity(unittest.TestCase):
     def test_exact_object_and_original_subject_authority(self):
         source = (HERE.parent / 'StageSecurity.c').read_text()
         bodies = ''.join(d.function(source, name) for name in (
-            'StageQueryBoundSecurity', 'SafeUploadStageCheckNativeReplace'))
+            'StageQueryBoundSecurity', 'SafeUploadStageCheckNativeRename'))
         fixture = (HERE / 'native_replace_security_fixture.c').read_text().replace('/* PRODUCTION */', bodies)
         scratch = Path(os.environ.get('TMPDIR', d.ROOT / '.scratch'))
         scratch.mkdir(parents=True, exist_ok=True)

@@ -77,9 +77,9 @@ static NTSTATUS SafeUploadStageCheckSubjectAccess(PFLT_CALLBACK_DATA d,PVOID des
 { (void)d;assert(!NamespaceDepth&&descriptor==SecurityEvidence&&access==DELETE);SubjectChecks++;return SubjectStatus; }
 static NTSTATUS SafeUploadStageCheckRenameAccess(PFLT_CALLBACK_DATA d,PFLT_INSTANCE i,PUNICODE_STRING n,BOOLEAN replace)
 { (void)d;(void)i;(void)n;(void)replace;assert(!NamespaceDepth);DestinationChecks++;return DestinationAccessStatus; }
-static NTSTATUS SafeUploadStageCheckNativeReplace(PFLT_CALLBACK_DATA d,PFLT_INSTANCE i,PUNICODE_STRING s,
- PUNICODE_STRING t,const FILE_ID_INFORMATION *src,const FILE_ID_INFORMATION *parent,const FILE_ID_INFORMATION *target,BOOLEAN exists)
-{ (void)d;(void)i;(void)s;(void)t;(void)src;(void)parent;(void)target;(void)exists;
+static NTSTATUS SafeUploadStageCheckNativeRename(PFLT_CALLBACK_DATA d,PFLT_INSTANCE i,PUNICODE_STRING s,
+ PUNICODE_STRING t,const FILE_ID_INFORMATION *src,const FILE_ID_INFORMATION *parent,const FILE_ID_INFORMATION *target,BOOLEAN exists,BOOLEAN replace)
+{ (void)d;(void)i;(void)s;(void)t;(void)src;(void)parent;(void)target;(void)exists;(void)replace;
  assert(!NamespaceDepth&&StageDirectoryMutationActive);NativeReplaceChecks++;return DestinationAccessStatus; }
 /* TESTS */
 /* Compile the actual StageAdmit demotion and the actual StageCreate fallback
@@ -261,6 +261,10 @@ static VOID namespace_tests(void)
  assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SYNCHRONIZE);
  assert(NativeReplaceChecks==1&&CancelCalls==1&&rename.Flags==(FILE_RENAME_REPLACE_IF_EXISTS|0x100));
  data.IoStatus.Status=0;StageMvpNamespacePost(&data,&objects,0);StageDirectoryEndMutation(FALSE);
+ namespace_reset();PendingCancellation=1;DestinationAccessStatus=STATUS_ACCESS_DENIED;rename.Flags=0;token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled);
+ assert(NativeReplaceChecks==1&&!CancelCalls&&!MutatingOwners&&data.IoStatus.Status==STATUS_ACCESS_DENIED);
+ StageDirectoryEndMutation(FALSE);rename.Flags=FILE_RENAME_REPLACE_IF_EXISTS|0x100;
  /* Immutable target descriptor survives detachment; denied subject or parent
   * checks fail before cancellation, never falling back to SYSTEM authority. */
  namespace_reset();STAGE_STREAM stream={.OriginalInstance=objects.Instance};STAGE_VIEW target={.Security=SecurityEvidence};
