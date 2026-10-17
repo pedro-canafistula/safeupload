@@ -1,0 +1,4 @@
+DriverImports SafeUpload-stage-prototype.sys PASS 248 imports all exported by the reference
+DriverImports owned-feature.sys PASS 248 imports all exported by the reference
+DriverImports owned-feature-release.sys PASS 247 imports all exported by the reference
+DriverImportAvailability=PASS

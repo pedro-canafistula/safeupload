@@ -992,4 +992,3 @@ T4's unexplained contexts and the open T5 security questions remain prerequisite
 change the failed contexts bound, discard native security control bits, add an unapproved descriptor repair, or count an unprotected
 component pass as that delivery. Storage-budget/default decisions require the measured scope and explicit user-visible failure
 behavior; the unchanged inspector defaults and scoped measurements above do not decide them.
-
