@@ -992,3 +992,999 @@ T4's unexplained contexts and the open T5 security questions remain prerequisite
 change the failed contexts bound, discard native security control bits, add an unapproved descriptor repair, or count an unprotected
 component pass as that delivery. Storage-budget/default decisions require the measured scope and explicit user-visible failure
 behavior; the unchanged inspector defaults and scoped measurements above do not decide them.
+
+## Archived T4 status narrative — 2026-10-17
+
+Superseded status only; current decisions/gates remain in POST-MVP-PLAN.md.
+
+### T4. Remove the 128-saves-per-boot ceiling
+
+**Problem:** retired versions retained slots; later saves failed until reboot. Registry/context memory attribution remains unresolved.
+**Done when:** 10,000 mixed approve/block saves in one boot pass with flat nonpaged pool, no Verifier hit, no cap refusal, zero residual
+versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01 pass in all three modes.
+
+**Owner decision — 2026-10-12: smoke occupancy and loaded-context release.** The 256-cycle row is a smoke test; its module-pool
+slope is informational and is never a stop reason. SafeUpload.sys Verifier bytes are almost entirely the writer registry: fixed pool
+plus 2,400 bytes per live named entry, capped at 4,096. Live occupancy floats around 220–280; one entry at the last of four samples
+moves the slope by 11.25 B/cycle. In `m2t4clean256b1`, module bytes rose 89,856 between cycles 64 and 256 while SwUr rose
+39 × 2,400 = 93,600 bytes. Short slopes (−23, 192, 319, 462 B/cycle) are occupancy noise. The 10k slope of 1.501 B/cycle over
+cycles 1,000–10,000 is the meaningful measurement. The short row retains the 64 KiB idle endpoint band (`T4PoolEndpoint`);
+leak detection remains the 10,000-cycle row's unchanged slope < 4 B/cycle from cycle 1,000 and the 64 KiB endpoint band (`T4PoolFlat`).
+
+Strengthen the 10k gate with `T4ContextsReleased`: after the existing idle sample, as SYSTEM enable privileges 13 and 5, then empty
+working sets, flush the modified list and purge the standby list through `NtSetSystemInformation` class 80, commands 2/3/4 in order.
+Record every NTSTATUS without throwing on failure, wait 30 seconds for NTFS delayed close, then sample `purged`. Require all purge
+statuses to succeed and live SUfl allocations at `purged` ≤ `start` + 2,048; missing purge evidence fails the 10k assertion. Short rows
+report this check as INFO. No handles, driver calls or file deletion are part of the purge. Every sampled registry entry count must
+remain within capacity and idle capacity failures must be zero (`T4RegistryBounded`, all rows).
+
+In `m2t4boot10k1011a2`, live SUfl grew from 343 to 14,898, tracking roughly 13,100 created/kept files (9,155 journal manifests,
+2,075 hand-backs, approximately 1,875 new public files). `m2t4memdiag1` proves unload releases them; the new check establishes whether
+memory pressure releases contexts while the driver stays loaded. This adds a gate and does not relax the long-row or functional
+assertions. The repeated-failure stop rule applies to the 10k row and functional assertions, never a short slope.
+
+Validate the actual purge Add-Type signature on Windows PowerShell 5.1 with the harness gate, and replay retained evidence with
+`python3 driver/scripts/t4/verdict-selfcheck.py` before any run. Use win10-debug3 only, the existing disposable disk/reset-NVRAM and
+separate-restoration workflow, unchanged k11 (`EBDFCE549EA1DC271498A5F6A38D151AC952ADE9105D476B073A313EB271C851`) and agent
+`6198eee7` archive (`21F725DD4995603979CF173C43499477B45E2CC5085404AFC594C5B04CD5293F`), verifying both hashes before boot.
+Run 256 boot-Verifier cycles sampled every 64 first. Stop if any required assertion fails, any purge status fails, purge evidence is
+missing, or purge releases less than half of the SUfl growth since start; understand that measurement before a long run. Only after
+smoke passes run 10,000 boot-Verifier cycles and require every assertion, including post-idle `T4AdmissionRecovered`. Only after both
+pass run C01–C04, B01, B02 and X01 in all three modes. Stop and report any run failure other than the informational short slope.
+
+- [x] Lifetime fix and pre-boot review, including `60fecdbc`; `m2-driver5-t11` has
+  [all four WDK/PREfast/ApiValidator builds at 0/0](evidence/2026-10-10/exact-m2-driver5-t11-summary.txt).
+- [x] Simplified VM setup, bounded readiness and repeated-failure capture/stop:
+  [PowerShell 5.1 readiness controls](evidence/2026-10-11/harness-windows-gate-t4-readiness-1011-a2.txt) and
+  [18 self-checks plus 27 failure controls](evidence/2026-10-11/harness-windows-gate-t4-stop-evidence-1011-a1.txt).
+- [x] Journal recovery through `aea1ec16`; [main agent matrix at `8e0156c9`](evidence/2026-10-12/exact-agent-matrix-t4-journal-recovery6-summary.txt):
+  normal Debug/Release 895 tests each, feature Debug/Release 1,245 each, no skips, 0 warnings/errors.
+- [x] Reviewed allocation-reply cleanup/timing on isolated protocol-18 agent `6198eee7`;
+  [four-profile matrix](evidence/2026-10-12/exact-agent-matrix-t4-rejected-allocation1-summary.txt): 558 normal / 625 feature tests each, no skips, 0/0.
+- [ ] **Memory attribution:** [analysis and independent Luna lifetime review](evidence/2026-10-12/t4-memory-direction.md).
+  - [x] Approved diagnostic `m2t4memdiag1`: 256/256, original short assertions pass, zero staged leftovers; unload returns SUfl/SwUr
+    and Verifier allocations to zero; separate restoration passes ([result and raw evidence](evidence/2026-10-12/t4-memory-attribution-result.md)).
+  - [ ] Establish bounded retention while loaded with the owner-approved purge gate above. The new
+    [10k verdict](evidence/2026-10-12/m2t4purge10ka1-verdict.txt) fails `T4ContextsReleased`: start 335, idle 15,952, purged 2,712;
+    limit 2,383, exceeded by 329. All five native statuses are zero; purge releases 13,240 allocations (84.8% of idle growth).
+    This proves substantial release while loaded, but does not meet the chosen bound. No kernel reclamation or threshold change is authorized.
+    The historical [clean short result](evidence/2026-10-12/t4-clean-short-result.md) is retained unchanged; its slope is now informational.
+  - [ ] Hand-back attribution diagnostic (owner-authorized 2026-10-13, non-qualifying; see owner decisions): block-heavy mix, handle
+    holders of kept files after purge, SUfl after deleting only the hand-backs. Decide the next step from the drop, not before.
+    - [x] Harness `e642e212` (`T4_HANDBACK_DIAGNOSTIC=yes`); [PowerShell 5.1 gate](evidence/2026-10-13/harness-windows-gate-t4-handback-diag1.txt)
+      PASS with a holder self-check; offline replay proves the diagnostic changes no gate line.
+    - [x] Row `m2t4hbdiag1` ([result](evidence/2026-10-13/t4-handback-attribution-result.md), [verdict](evidence/2026-10-13/m2t4hbdiag1-verdict.txt)):
+      2,000/2,000, separate restoration PASS. Purge left 234 above start with 1,500 hand-backs present — hypothesis refuted. Deleting
+      the unheld hand-backs added 2,087 retained 224-byte contexts (≈1.39 per delete) that a second purge kept; no process held them.
+    - [x] Static audit ([Astra, read-only](evidence/2026-10-13/t4-delete-context-audit.md)): create → disposition → cleanup context
+      references are balanced in the tested `60fecdbc`; writer nodes/SOP slots own no context or FILE_OBJECT. The only owning driver
+      file reference is the activation anchor (`StageWriters.c:5882–5885`), unproven for these files. Cause undetermined.
+    - [ ] **Owner-authorized 2026-10-13:** one identity-resolved local-KD attribution row on win10-debug3 with the unchanged pair
+      (bounded unprotected corpus, fresh baseline, serial deletes, `!fltkd` stream/context walks, anchor census, FILE_OBJECT/control-
+      area ownership). Non-qualifying; other product VM rows stay stopped; no threshold, assertion or reclamation change.
+    - [x] Row `m2t4delattr1` ([result](evidence/2026-10-13/t4-delete-kd-attribution-result.md)): 256/256, restoration PASS. Deleting
+      corpus files with attached contexts released them (728 → 566); the hand-back growth therefore follows delete opens on streams
+      already torn down. KD identity data was lost to a harness syntax error (MASM `&&`); voluntary unload was refused at teardown.
+    - [x] Harness fix `a22a604a`; row `m2t4delattr2` (restoration PASS): activation anchors ruled out (0); contexts are live FltMgr
+      stream contexts (logical = pool); deleting files with attached contexts releases them. Identity walk blocked by `!poolfind` syntax.
+    - [x] Harness `38e42a09`; row `m2t4delattr3b` ([result](evidence/2026-10-13/t4-delete-kd-attribution-result.md#row-3--m2t4delattr3b-harness-38e42a09),
+      restoration PASS): growth follows any open of an already-released file (metadata-only opens +451, deletes −158), not deletes;
+      leading hypothesis NTFS stream retention below the filter. `!poolfind` under local KD cannot read segment-heap pages: no
+      further KD pool-walk rows. Run on a Storage-HDD overlay (main disk 14 GB < 15): 8 allocation replies hit NO_WAITER, one
+      cycle failed closed (`T4CyclesCompleted` 255/256) and `T4PoolEndpoint` exceeded by 32,976 B; first failure preserved.
+    - [x] Volume-teardown discriminator `m2t4vol1` (harness `4b7e5d82`, [result](evidence/2026-10-13/t4-delete-kd-attribution-result.md#row-4--volume-teardown-discriminator-m2t4vol1-harness-4b7e5d82)):
+      Inconclusive — 512 opens of released files on a plain VHD NTFS volume retained 30 contexts, so the C: growth depends on those
+      files. One allocation reply hit NO_WAITER after a 67 s service stall (cycle failed closed, 255/256); first failure preserved.
+    - [x] Ported `6198eee7`'s reviewed exact NO_WAITER allocation cleanup and request timing to the M2 agent (Astra worker,
+      integrated here): phases for every operation plus a 60 s receive-loop heartbeat; bound V23/V26 lost-reply handling unchanged.
+      [Matrix `t4-v18port1`](evidence/2026-10-14/exact-agent-matrix-t4-v18port1-summary.txt) PASS: 1,486 normal / 2,066 feature per
+      profile, 44 new tests, no skips, 0/0.
+    - [ ] Compare C: populations in/out of the actor profile and with/without the hand-back creation path, on the new agent.
+      No builder jobs or host maintenance during timing-sensitive rows.
+- [ ] Qualify the allocation-reply fault path under protection; the latest clean short run did not exercise NO_WAITER.
+  The historical delay's cause remains open ([diagnosis](evidence/2026-10-12/t4-allocation-reply-diagnosis.md)).
+  - 2026-10-16 `ux/allocfault`: [V20 repair/design and unchanged fault-row requirements](T4-STAGE-LIFETIME.md#121-v20-allocationprepare-reply-recovery--2026-10-16)
+    cancel an unknown Prepare before exact unattached deletion; abort-before-Prepare is durable and later opens retry until the
+    deletion ACK releases the name. [Local implementation receipt](evidence/2026-10-16/ux-allocfault/result.md); no VM qualification.
+- [ ] Pass the complete short and 10k rows with the revised harness. [New smoke](evidence/2026-10-12/m2t4purge256a1-verdict.txt):
+  256/256, every required assertion PASS, 69.8% of idle SUfl growth released. New 10k: 10,000/10,000, functional/pool/registry/Ready
+  assertions PASS, pool slope −1.293 B/cycle; contexts bound FAIL above. Both separate restorations PASS; further product VM runs stopped.
+  The historical [journal-failure diagnosis](evidence/2026-10-11/t4-journal-failure-diagnosis.md) remains preserved.
+- [x] Correct verdict exit classification found by the new long row: an explanatory `purge NTSTATUS PASS` incorrectly made its
+  `T4ContextsReleased FAIL` line return success. Read the status token only; the
+  [offline contexts-only failure control](evidence/2026-10-13/t4-purge-verdict-exit-selfcheck.txt) requires exit 1 with all other assertions PASS.
+  Original run evidence, including the incorrect exit 0 receipt, is retained unchanged; no further VM row was run for this reporting fix.
+- [ ] Run the required raw-volume regression cells above, then rerun T4 on the final M2 pair.
+  The cycle row's sampled public-byte checks do not replace the raw-volume observer.
+
+## Archived T5 status narrative — 2026-10-17
+
+Superseded status only; current decisions/gates remain in POST-MVP-PLAN.md.
+
+### T5. Empty saves, Notepad Save As and deletes
+
+**Problem:** public probe deletion was refused and private-delete names stayed occupied until physical cleanup. EmptyHeld broke normal
+zero-byte file operations and added a successor protocol. Empty is now ordinary content; public deletes are M2.
+**Done when:** clean saves publish exactly their bytes; CPF saves hand back and leave new names absent or existing prior bytes intact;
+no empty probe is left behind; no uninspected nonempty byte reaches the public name. All existing other assertions pass in three modes.
+
+- [x] Owner reversal recorded 2026-10-11 in this plan and [MVP-PLAN.md](MVP-PLAN.md).
+- [x] [Source classification](evidence/2026-10-11/t5-empty-public-delete-component-classification.md) distinguishes EmptyHeld-only
+  removal from independent identity, callback drain and cleanup protections; [native NTFS controls](evidence/2026-10-11/t5-ntfs-disposition-control-1011.txt) verify ordinary clear, on-close timing and parent DELETE_CHILD authority.
+- [x] [Delete design](T5-DELETES.md), source classification and [independent Luna design review](evidence/2026-10-11/t5-empty-public-delete-design-review-luna6.md)
+  ready before code: private last-close name release, checked public deletes, durable ordering, reserved enum slots and guarded legacy migration.
+- [x] Simpler unload design reviewed in the same note: voluntary veto for outstanding private work; mandatory teardown drains local
+  references without waiting on the service. Startup retains private stages; adding a reaper or changing failure policy needs an owner decision.
+- [x] Native actor skips DeleteFileW after a failed CREATE_NEW; [PowerShell 5.1/native controls](evidence/2026-10-11/t5-actor-probe-native-control-1011a2.txt)
+  prove the existing object's full identity survives and successful new-name probes still delete/save. Protected rows remain unqualified.
+- [x] Actor branches force a held-writer delete and an observer-gated after-publication delete;
+  [PowerShell 5.1/native NTFS controls](evidence/2026-10-11/t5-actor-forced-delete-orders-native-control-1011a1.txt) pass both native
+  orders and the failed-create identity guard. Protected coordinator/order receipts and runtime qualification remain open.
+- [ ] Implement reviewed design; remove EmptyHeld/SupersededEmpty/AbandonedEmpty, EmptySavePrivate and CREATE_AFTER_PRIVATE_DISCARD /
+  SuccessorReservation chains. Keep independent identity cleanup, local rundown and exact-ACK safeguards where applicable.
+  - [x] Released-stage cleanup checks volume + full 128-bit ID and refuses reparse replacements (`a9c0fb59`); its four WDK builds pass
+    at 0/0 with PREfast/ApiValidator ([summary](evidence/2026-10-11/exact-t5-exact-cleanup1-summary.txt)). Verifier qualification remains pending.
+  - [x] Ordinary measured-zero publication, guarded legacy migration, removed empty notice, and last-cleanup private-name release
+    implemented (`f305d607`, `d8fd93c6`); seal replay refuses changed identity/length. This is source/test completion, not VM qualification.
+  - [x] EmptyHeld kernel flags, successor ancestry, rotation and create-after sends/replay removed (`028a1b66`); generic exact ACKs,
+    failed-allocation receipts, paging rundown and RPC/worker pins remain. Public-delete backends and complete teardown rescope are still open.
+  - [x] Identity-keyed destination head/commit queue and ordinary-delete journal layer (`b5c2d13f`, `fe529a2d`); 19 new cases pass in
+    each agent profile. Durable accepted reservations release locks while waiting; only newer Published suppresses a delete.
+  - [x] Caller CREATE-subject snapshot, separate NTFS-checked backend factory and exact authenticated service-process hold
+    (`334f11af`–`3be0fe71`), original process-lifetime/effective-SID binding and reconciled service-epoch pin; normal builds omit
+    the backend. The factory is not yet connected to public-delete handling.
+  - [x] [Native public-open correction](T5-NATIVE-PUBLIC-OPENS.md) and automatic accepted/unresolved recovery have a
+    [READY WITH CORRECTIONS Luna review](evidence/2026-10-11/t5-automatic-native-delete-recovery-review-luna6.md).
+    [Builder parent-query control](evidence/2026-10-11/t5-native-pending-link-control-builder-1011a1.txt) identifies a pending original
+    and exact absence after last reader close; protected runtime and automatic-recovery fault rows remain pending.
+  - [x] Native accepted/unresolved journal component (`960ba2d7`, `e9458807`) with immutable on-close kind, current-session cleanup/cancellation/qualified-boot proof,
+    automatic queue wake and retained generation floor; all 28 component cases pass in each agent profile. The
+    [boot-lifetime review](evidence/2026-10-11/t5-native-boot-lifetime-design-review-luna6.md) rejects counter-only release;
+    gated last-close dispatch is now connected; startup activation and protected automatic-recovery qualification remain pending.
+  - [x] Anchored native parent observer (`3df7aa97`) without child opens, using complete repeated 128-bit directory enumeration;
+    all 14 buffer/native-handle cases pass in each agent profile. The metadata RPC below replaces handle export; live recovery remains pending.
+  - [x] Named-file recovery guidance, exact owner-session/SID delivery and structured diagnostics (`a3b3b81e`, `6ee1112e`);
+    [18 cases pass in each agent profile](evidence/2026-10-11/t5-native-notice4-static-gates.md), including real emission-record reopening and qualified Restart advice.
+    Startup preflight now emits owner-scoped diagnostics (`9e9dea9d`); [10 startup cases pass per feature profile](evidence/2026-10-11/t5-native-startup-notice-static-gates.md).
+    Gated last-close dispatch now reuses this guidance (`da66fef4`); startup activation/runtime remain pending. Emission cannot clear a hold.
+  - [x] Owner approves the [forced-instance exception](evidence/2026-10-11/t5-native-instance-teardown-feasibility-luna6.md) for M2 fixed NTFS:
+    keep the named-file hold until qualified Restart recovery; T21 must reconcile at remount instead. Implementation/runtime remain open.
+  - [x] Bounded native-object record map, exact CREATE/CLEANUP/cancellation ownership and unload veto (`5591afe8`, `e9458807`);
+    [canceled-CREATE design review](evidence/2026-10-11/t5-native-cancelled-create-design-luna6.md) and
+    [static gates](evidence/2026-10-11/t5-native-replay-static-gates.md). Authenticated read-only replay is built/tested (`aa1a2a46`);
+    durable destination-head discovery exists (`e97585cb`). Gated original-CREATE producer/typed lifecycle and terminal receipt removal
+    are connected (`b6e3d1b6`–`dcf4b276`); [26 lifecycle controls pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md).
+    Ordinary native disposition is connected at `d5779d5a`; combined backends, startup/directory-event activation and pre-boot review remain pending; capability stays off.
+  - [x] [Startup epoch security design](evidence/2026-10-11/t5-native-startup-epoch-design-review-luna6.md) reviewed with corrections:
+    authenticated boot metadata, asynchronous private preflight and visible readiness gate implemented (`9c1f9737`);
+    [agent gates pass](evidence/2026-10-11/t5-native-startup-static-gates.md). Anchored native hold release/runtime remain open.
+  - [x] [Observation transport review](evidence/2026-10-11/t5-native-observation-transport-review-luna6.md): return checked metadata directly;
+    volume-GUID/legacy-hold and portable-device guards implemented (`1d3f47cc`, `e088cde4`) with [passing static gates](evidence/2026-10-11/t5-native-volume-static-gates.md).
+    Authenticated metadata RPC and strict receiver implemented (`13a8fb8b`, `589e9034`), with [passing query static gates](evidence/2026-10-11/t5-native-query-static-gates.md)
+    including 42 new query cases per feature profile. Live recovery and runtime portability/hold-release checks remain open.
+  - [ ] Correct ordinary CREATE authority: disposition-specific rights, case/identity anchors, native sharing, complete security labels,
+    post-allocation authorization and live replay identity; see the [current review](evidence/2026-10-12/m2-progress-direction-review.md).
+    Replay identity is fixed (`dbe02d04`); [kernel seed/read-authority corrections](T5-NATIVE-PUBLIC-OPENS.md#owner-choice--unreadable-seeded-bytes) remain open; the hand-back choice is option 1 (2026-10-13).
+    [Native rights/grant controls](evidence/2026-10-12/writer-permission-native-control-a5.txt), `0a5add63`: 980 comparisons pass on the builder;
+    existing supersede with NULL descriptor preserves queried security. Qualified-platform, assignment, seed and kernel integration remain open.
+    Every queued CREATE now captures its original static subject and owned access/share/options/case/EA/supplied-security inputs;
+    [direct native ID controls](evidence/2026-10-12/writer-permission-native-control-a8.txt) pass all eight retained share-0 cases.
+    Capture source `f5cff550` passes [four revised WDK 0/0 gates](evidence/2026-10-12/exact-t5-writer-capture3-summary.txt).
+    Original opened/relative/raw-ID lookup and root capture at `4b478e10` passes
+    [four WDK/PREfast/ApiValidator 0/0 builds](evidence/2026-10-13/exact-t5-lookup-capture4-summary.txt), including nonpageable cancellation cleanup.
+    [90 native sharing cases](evidence/2026-10-12/writer-split-share-lifetime-native-a9.txt) validate closing supplemental checks
+    before retaining the original-grant lease. Checked backends, assigned security/seeding transport and runtime remain open.
+    The [focused writer-authority report](<../reports/T5 native writer authority.md>) records seven finite control groups and
+    unresolved low-token capture, native assignment/creator-grant, metadata and coherent-seed mechanisms. It is provisional
+    design evidence; admission, the pending owner hand-back choice and the product-run stop are unchanged.
+    The [durable allocation security record](T5-NATIVE-PUBLIC-OPENS.md#durable-allocation-security-record-implementation-checkpoint)
+    is connected to manifest commit, exact replay/recovery and retention-aware cleanup (`4c235172`, `ac69dc00`);
+    [Windows matrix passes](evidence/2026-10-13/exact-agent-matrix-t5-security-storage2-summary.txt) at 913 normal/1,269 feature
+    tests per Debug/Release profile with no skips and 0 warnings/errors. Lost committed metadata refuses replay and retains backing.
+    Complete native snapshot production, metadata RPC, rename rebinding and publication descriptor use remain open.
+    [Seven native SYSTEM security cases](evidence/2026-10-13/t5-security-roundtrip-native4.txt) expose a publication-construction
+    limitation: two inherited descriptors lose `SE_DACL_AUTO_INHERITED` on the original temporary CREATE. Exact control equality
+    is unresolved; no masking, protection repair or privileged post-set is approved. Metadata share-zero queries pass with a
+    private SYSTEM SeSecurityPrivilege copy, not extra original-writer or temporary-handle rights.
+    The [14-row inheritance-request comparison](evidence/2026-10-13/t5-security-auto-request1.txt) adds only the documented
+    `SE_DACL_AUTO_INHERIT_REQ` to candidate CREATE inputs; both constructions retain the same five matches/two inherited-control
+    failures. The exact expected descriptor is unchanged, so this candidate is rejected. PowerShell 5.1 and strict independent
+    fixture/task/worker restoration pass; publication remains NotReady, with no kernel/agent change or product boot.
+    **Owner decision 2026-10-15: marker-only difference accepted for the moved shape** (see owner decisions); the exact-equality
+    check must implement exactly that rule before NotReady can lift. [Decision memo](evidence/2026-10-15/t5-descriptor-decision-sol61.md). Ordinary new
+    files inherit their folder's permissions, so the inherited-creation shape is the everyday case and NotReady blocks routine
+    saves. Options: keep exact equality (publication stays unavailable), accept a narrow exception for only the DACL
+    auto-inherited marker (`0x0400`) with every other byte equal, or redesign publication around preserving the existing object.
+    [Builder controls](T5-NATIVE-PUBLIC-OPENS.md#descriptor-candidate-controls-2026-10-15) (`a85e8dbb`): a NULL-input CREATE in the
+    destination parent reproduces the everyday inherited shape **exactly**; stored replay stays exact for the protected/explicit
+    shapes; conversion is rejected. Only a file moved from another folder and saved in place still differs, by the marker alone,
+    with equal access, and any later inheritance operation re-marks it. Recommendation: construct with native inheritance or stored
+    replay whichever is exact, and accept the marker-only difference for the moved shape (accepted by the owner 2026-10-15).
+  - [ ] Connect checked public proxy/backend capabilities, all namespace/physical commits, exact last-close reconciliation and
+    sealed-private cancellation to that head; finish teardown and its kernel lifetime review before boot. The complete shared head is not live.
+    [Ordinary disposition relay](T5-NATIVE-PUBLIC-OPENS.md#ordinary-public-disposition-integration--proposal-for-review-2026-10-12)
+    design is READY WITH CORRECTIONS. Original native-open/disposition producer, typed permit/result and known-cleanup ACK/retirement
+    are connected (`10a8ea4e`, `d5779d5a`); [all static gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md), including 22 ordinary controls.
+    The capability stays off; owner tombstones, combined backends, startup/events and protected qualification remain open. Pre-boot lifetime review is required.
+    [Reviewed integration contract](evidence/2026-10-11/t5-bound-allocation-publication-design-review-luna6.md), V23 transport and
+    Windows filename resolver are implemented (`827b3f41`, `5f294008`) with [passing static gates](evidence/2026-10-12/t5-bound-allocation-static-gates.md).
+  - [x] Service V23 dispatch → anchored seeding → bound manifest/head claim and receipt validation connected (`ca5a9cfa`–`be78b958`);
+    [agent gates pass](evidence/2026-10-12/t5-bound-service-allocation-gates.md), including 14 allocation/continuation and two native Windows controls per feature profile.
+    Interrupted claims retain exact private cleanup obligations. Kernel producer/physical commits remain open; admission stays disabled.
+- [ ] **Integrated checkpoint (goal item 5, 2026-10-13).** [Gap inventory and ten-increment plan](evidence/2026-10-13/t5-integration-plan-astra.md)
+  (Astra, read-only, at `a00e7e14`): option-1 provenance → original-authority writer lease → metadata transport → V23 allocation/kernel
+  seeding → V26 permits → bound inspection/publication → unified deletes → startup/last-close recovery → T11 SOP → mandatory local
+  teardown and readiness composition; one pre-boot Sol 6.1 xhigh lifetime review covers the kernel increments. Unresolved native
+  mechanisms (descriptor `0x8C04 → 0x8804`, low-impersonation capture, coherent seed interval, export authority proof) stay
+  fail-closed holds with named reasons; none is approved as a narrower contract. Readiness stays false until all increments land.
+  - [x] Increment 1: option-1 provenance and private/no-export enforcement (agent; Astra worker, integrated here). Durable
+    `SeedProvenance`/`SeedCompletion` on the allocation manifest; denied/unproven export persists Blocked + Failed with
+    `seed_export_denied|unproven|recipient_unproven`, no hand-back path, justification closed; guards at hand-back, journal APIs,
+    justification registration/recovery/callback, recovery recopy, cleanup/compaction retention; new tray reason
+    `SeedExportRestricted` (value 1). With no kernel producer yet, every bound seed with prior bytes resolves to unproven.
+    Draft matrix `t5-option1a`: 3 profiles PASS, feature Release 1 intermittent publisher-test timeout (pre-existing; hardened
+    in the preceding test commit). Integrated `t5-option1-int2` failed one timing assertion (`Rn012_timeout_libera_a_operacao` 7,549 ms
+    vs 7,000; first failure in 307 runs; receipt kept); identical rerun [`t5-option1-int3`](evidence/2026-10-13/exact-agent-matrix-t5-option1-int3-summary.txt)
+    PASS at 1,387 normal / 1,769 feature tests per profile, 0/0, that test at ~5.0 s.
+  - [x] Increments 2–4 (kernel + agent, dormant; Astra workers; side branches `wt/t5-inc2..4`): original-authority writer lease and
+    capture with nine named refusals; paged writer-metadata carrier (control 34 / extension 27) — [review](evidence/2026-10-13/t5-carrier-review-sol61.md)
+    REVISE, [re-review](evidence/2026-10-13/t5-carrier-rereview-sol61.md) ACCEPT WITH CONDITIONS; gated V23 selection and kernel seed copy with
+    `seed_coherence_unproved` / `seed_completion_unproved` refusals. Kernel builds `t5-inc2a/b` and `t5-inc3a` failed on PREfast
+    C6001/SAL classes (receipts kept, fixed). Increment 2 landed after [four WDK builds `t5-inc2c`](evidence/2026-10-13/exact-t5-inc2c-summary.txt)
+    at 0/0. Increment 3 landed after [four WDK builds `t5-inc3d`](evidence/2026-10-13/exact-t5-inc3d-summary.txt) at 0/0 and
+    [matrix `t5-inc3d`](evidence/2026-10-13/exact-agent-matrix-t5-inc3d-summary.txt) PASS. Increment 4 landed after
+    [four WDK builds `t5-inc4d`](evidence/2026-10-13/exact-t5-inc4d-summary.txt) at 0/0 and [matrix `t5-inc4c`](evidence/2026-10-13/exact-agent-matrix-t5-inc4c-summary.txt)
+    PASS (identical agent tree). Increments 5–10 were drafted on stacked branches; because each fix had to be carried through every
+    later tree, they were completed and verified together in the top tree and land as one dormant connected-path commit.
+  - [x] Increments 5–10 (kernel + agent, dormant; top tree `wt/t5-inc10` at `03fbe057`): V26 permits, bound inspection/publication,
+    unified deletes, startup/last-close recovery, T11 SOP, teardown completion and `StagedBoundReadiness`. Landed after
+    [four WDK builds `t5-top3`](evidence/2026-10-13/exact-t5-top3-summary.txt) at 0/0 with PREfast/ApiValidator and
+    [matrix `t5-top2`](evidence/2026-10-13/exact-agent-matrix-t5-top2-summary.txt) PASS (1,453 normal / 2,023 feature, identical agent
+    tree). Failed receipts kept: kernel `t5-inc5a`–`t5-inc9a` and `t5-top1/2` (IRQL/paging, stack, buffer, SAL classes; C4013; C28251),
+    matrix `t5-top1` (CS8604). Readiness stays NotReady with four named blockers; no admission, positive selector or boot.
+  - [x] Single pre-boot Sol 6.1 xhigh lifetime review of the [package](T5-PREBOOT-REVIEW-PACKAGE.md) and kernel delta
+    ([receipt](evidence/2026-10-13/t5-preboot-review-sol61.md)): REJECT for the first boot — DriverEntry failure unwind leaked the
+    writer registry, native replay rows were written to paged memory under `NativeLock`, attach captures preceded capacity admission.
+    Teardown, lock order, dormant gates and fail-closed paths found sound; the four NotReady holds accepted for a dormant boot.
+  - [x] Fixes `c7518c7a` (also the fence-failure unwind and three more paged-row callers): [four WDK builds `t5-fix1`](evidence/2026-10-13/exact-t5-fix1-summary.txt)
+    at 0/0 with PREfast/ApiValidator, signed (LocalMachine signer, feature Debug `66E25B04…7E6A`); three new source controls fail on the
+    unfixed sources. Agent tree unchanged since matrix `t5-top2`.
+  - [x] Focused re-review of `c7518c7a` ([receipt](evidence/2026-10-14/t5-fix1-review-sol61.md)): REJECT — identity outputs written under
+    `NativeLock` into paged replay buffers (reachable while dormant), paged rows read by confirmation/ACK, a stranding allocation
+    failure introduced in `NativeReadPage`, an unlocked two-counter detach sample; the controls checked spelling, not properties.
+  - [x] Second fixes `98e0a6d8`: no caller memory touched under `NativeLock` except nonpaged rows from all nine reader call sites;
+    `NativeReadPage` allocation-free again; locked detach sample; property controls catch 11 mutations.
+    [Four WDK builds `t5-fix2`](evidence/2026-10-14/exact-t5-fix2-summary.txt) 0/0, signed feature Debug `4B4711D8…29B8`.
+  - [x] Second focused re-review of `98e0a6d8` ([receipt](evidence/2026-10-14/t5-fix2-review-sol61.md)): **ACCEPT for the first
+    Verifier boot of the dormant pair** on win10-debug3; sweep of all 16 spin-lock families found no paged access. Activation stays
+    held on the four NotReady blockers. Its low finding (controls missed the facts workers' allocation-failure ordering and
+    function-local row provenance) is closed by property controls; 15 source controls, 15 mutations caught.
+  - [ ] First boot of the dormant pair: signed feature driver `t5-fix2` (`4B4711D8…29B8`) with agent package `t5-top2` (identical agent
+    tree), boot Verifier T4 smoke row, then the raw C01–C04/B01/B02/X01 cells in all three modes; separate restoration each.
+    - [x] `m2t5boot1`–`3` **failed: the guest never returned after the install reboot** (exit 17; restoration PASS each). Screenshots show
+      WinRE ([boot2](evidence/2026-10-14/m2t5boot2-install-unreachable.png)) even with `AutoReboot=0` (boot3), so the failure precedes
+      Windows reading crash control: the boot-start minifilter's early load under boot Verifier is the leading suspect. The harness now
+      captures screenshot/vCPU/memory of an unreachable guest (`0f52ad58`, `c6607f01`, `9536216f`); WinRE dumps were deleted unread.
+      Conservative hold: no other row runs this pair until the stop code is known.
+    - [x] Runtime-Verifier load `m2t5rv1` found the cause: `fltmc load` 0x8007007F (ERROR_PROC_NOT_FOUND). The feature driver imported
+      `ntoskrnl!SeDeleteClientSecurity`, a function in the current WDK for this NTDDI_VERSION (a macro before Windows 11) that Windows 10
+      19041/19045 does not export; as a boot-start driver every boot failed. ApiValidator does not check target availability.
+    - [x] Import gate `b3857680` (every driver import checked against the Windows 10 19045 export tables, exit 5 otherwise). Fix `3b2c95c1`
+      plus review condition `926286ae` (PASSIVE-only token release; the DISPATCH-capable final release only asserts), [focused review](evidence/2026-10-14/t5-fix3-review-sol61.md)
+      ACCEPT WITH CONDITIONS. [Four WDK builds `t5-fix4`](evidence/2026-10-14/exact-t5-fix4-summary.txt) 0/0, [imports PASS](evidence/2026-10-14/exact-t5-fix4-imports.txt),
+      signed feature Debug `EE764659…CC93`; agent package `t4-v18port1` (identical agent tree).
+    - [x] `m2t5boot4`/`5`: **the fixed pair boots** — driver loaded under boot Verifier from first load — but the agent never reported
+      Ready (exit 19; restoration PASS). Readiness diagnostics (`9aaf5af4`) showed the service running while `NotificationPipeServer`
+      logged "All pipe instances are busy" every second: a departed client was noticed only by a failed write, and with T18's quiet
+      status every status probe kept one of the 16 instances. Fixes `cc051051` (one pending read per client ends the connection) and
+      `d07925ef` (the accept loop disposes a pipe whose client left before accept; it leaked until finalization), three pipe tests.
+      [Matrix `t5-pipe4`](evidence/2026-10-14/exact-agent-matrix-t5-pipe4-summary.txt) PASS 1,489 / 2,069 per profile. Failed receipts
+      kept: `t5-pipe1` (CA2022 in a test), `t5-pipe2` (leak test, 25 s), `t5-pipe3` (`Rn012_timeout` 7,519 ms, not overlapping the
+      pipe tests; the identical rerun `t5-pipe4` passed).
+    - [x] `m2t5boot6` (fixed driver and agent): the pipe works, but the agent's first SetPolicy failed with STATUS_IO_TIMEOUT after
+      the 30 s epoch drain and the driver failed closed (exit 19; restoration PASS). `a27defd8` had made every FSCTL and SET_SECURITY
+      an epoch operation held through lower completion (k11 had neither); pending oplock requests and waiting USN reads pin the boot
+      epoch. Fix `e854544d` excludes only the non-mutating oplock request/acknowledge family, `FSCTL_READ_USN_JOURNAL` and
+      `FSCTL_WAIT_FOR_REPAIR` (a partial restoration of k11 behavior). [Focused review](evidence/2026-10-14/t5-fix5-review-sol61.md)
+      ACCEPT WITH CONDITIONS; [four WDK builds `t5-fix5`](evidence/2026-10-14/exact-t5-fix5-summary.txt) 0/0, imports PASS, signed
+      `93788401…0064`. Activation holds added: unbounded oplock-acknowledge waits of mutating epoch operations keep the fail-closed
+      timeout; NOTIFY-only `FSCTL_DELETE_USN_JOURNAL` follow-up; the bound publication's FSCTL classification needs the same distinction.
+    - [x] `m2t5boot7` (t5-fix5 driver, t5-pipe4 agent): **booted, policy accepted, agent Ready** — both fixes confirmed. Every save was
+      then denied (0/256; stopped on repeated identical failures; restoration PASS): the service refused each v20 attach PREPARE because
+      its data open of the private stage hit ERROR_SHARING_VIOLATION against the driver's writable backing handle, opened with no
+      sharing (unchanged since k11; the protocol-18 agent never ran the v20 attach flow). Fix `a3f46954`: operations 12/13/15/19 read
+      identity and length through a FILE_READ_ATTRIBUTES handle (no-follow, regular-file, single-link, FILE_ID_INFO checks kept); other
+      attach operations keep a data open without write sharing. [Matrix `t5-attach1`](evidence/2026-10-14/exact-agent-matrix-t5-attach1-summary.txt) PASS 1,491 / 2,071.
+    - [x] `m2t5boot8` (t5-fix5 driver, t5-attach1 agent; Ready): cycle 1's coordinator read of the just re-saved
+      `C:\Protected\t4\same-1.txt` was refused with STATUS_DELETE_PENDING by the driver (deny ring; exit 19; restoration PASS). Cause
+      (Sol RCA, confirmed independently): the successful v20 attachment cleared its receipts and reservation link but never the
+      allocation's `PrivateDeleteReserved`, so every other process's open of the name was refused and the worker parked before seal.
+      Fix `38e188c0` clears it in the final successful attachment block unless the stream is delete-on-close or discarded, and requeues
+      the stream; source control 17 tests, mutation caught. [Focused review](evidence/2026-10-14/t5-fix6-review-sol61.md) ACCEPT WITH
+      CONDITIONS; [four WDK builds `t5-fix6`](evidence/2026-10-14/exact-t5-fix6-summary.txt) 0/0, [imports PASS](evidence/2026-10-14/exact-t5-fix6-imports.txt),
+      signed `02B73B58…7E13`. Recovery-qualification hold: a lost op15 reply leaves `AttachCompletionPending` and the reservation, and
+      a later owner CREATE is refused before `AllowAttachResume`; exact attachment replay (lost-reply/cancellation controls) is required
+      without broadly clearing reservations on failure. Follow-up, not applied: a foreign read during the allocation window still gets
+      a sharing violation.
+    - [x] `m2t5boot9` (t5-fix6 driver, t5-attach1 agent; Ready): no more refusals, but cycles 1–5 never published (0/5; stopped on
+      repeated identical failures; restoration PASS). Each journal reached v20 HandleObserved (op19) with State 0, never sealed.
+      Cause: `Listed` was set only for receipt-retained allocations, never at the ordinary CREATE insertion, so op19 revalidation
+      discarded every HANDLE_OBSERVED ACK and parked the stream in `STAGE_WAIT_SERVICE` (no timer). Fix `426c7dcd` sets it under
+      `StageListLock` at that insertion; control `stream-listing-selfcheck.py`, mutation caught. [Focused review](evidence/2026-10-14/t5-fix7-review-sol61.md)
+      ACCEPT WITH CONDITIONS (observe seal progression next; an unlinked stream briefly keeps a stale `Listed`, which nothing
+      consults); [four WDK builds `t5-fix7`](evidence/2026-10-14/exact-t5-fix7-summary.txt) 0/0, [imports PASS](evidence/2026-10-14/exact-t5-fix7-imports.txt),
+      signed `7DB90CFE…1AE7`. New recovery-qualification hold: a lost seal ACK strands the kernel once inspection advances (the
+      handler accepts only Sealed). Exact op15 replay is implemented on `wt/t5-attach-replay` (`ee69ed10`; build `t5-replay1`
+      0/0), pending its review.
+      An [independent root-cause analysis](evidence/2026-10-14/m2t5boot9-rca-sol61.md) reached the same cause and fix.
+    - [x] `m2t5boot10` (t5-fix7 driver, t5-attach1 agent): driver loaded under boot Verifier from first load, but the agent never
+      reported Ready (exit 19; restoration PASS). Coverage went Pending (PolicyOrTopologyChanging) and then stayed Degraded
+      `WriterStateUnknown` from about 47 s after agent start, before any cycle; coverage queries also hit ERROR_RETRY (the census
+      returns STATUS_RETRY when the registry changes mid-scan). First such failure in 17 readiness checks since 2026-10-10 (1 of 4
+      with the T5 writer code); the Listed fix touches only staged-stream receipts. Hypothesis: a boot-time writer-tracking loss
+      (per-entry or SOP Unknown, sticky by design) next to a volume topology change (m2t5boot9 counted 54 dismount teardowns).
+      Readiness diagnostics now also record the writer-state counters, deny ring, SafeUpload instances and System events.
+    - [x] `m2t5boot11` (same pair): not Ready again (exit 19; restoration PASS), now StageStartupPending: the driver's startup
+      reconcile stayed pending (`waitingVersions` 1 with no versions), so the agent's recovery gate never opened.
+    - [x] `m2t5boot12` (A/B: m2t5boot9's t5-fix6 driver, Ready at 09:10 UTC): not Ready (exit 19; restoration PASS), Degraded
+      `WriterStateUnknown` like m2t5boot10, with `registryUnknownReasons` 0x46 (allocation, identity, cleanup),
+      `registryInstanceUnknown` 1, about 50 dismount instance teardowns and the same pending reconcile. **The Listed fix is not the
+      cause**; the same pair turned from Ready to failing between 09:10 and 09:37 UTC. Boots 11 and 12 show Windows clearing the
+      access history of every registry hive at boot, including the BCD hive on the FAT EFI partition. Hypothesis: time-triggered
+      boot maintenance on this base now produces writer-tracking losses outside the protected scope that still deny C: coverage,
+      and pins the reconcile. **Stopped product rows** (three readiness failures) pending root cause.
+    - [x] Pre-existing op16 resume defect found by the [replay review](evidence/2026-10-14/t5-replay-review-sol61.md) (REJECT of
+      the replay change): `StageAttachResumeOrRun` released the transaction's stream pin and the drain released it again
+      (`RpcReferences` −1: never retired, mandatory teardown waits forever), and the drain resent op16 for a retired stream. Fix
+      `034a906f` + control `44dc68d3`, [focused review](evidence/2026-10-14/t5-pin-review-sol61.md) ACCEPT WITH CONDITIONS,
+      [four WDK builds `t5-pin1`](evidence/2026-10-14/exact-t5-pin1-summary.txt) 0/0, imports PASS, signed `57B9CB09…D996`; merged
+      `acf440fe`. Exact attachment replay (`84ded060`, `bdab1f51`: owner-only exact op15 replay, live validation of cached permits,
+      reversible unload veto, held waits) [re-review](evidence/2026-10-14/t5-replay2-review-sol61.md) ACCEPT WITH CONDITIONS,
+      [four WDK builds `t5-replay2`](evidence/2026-10-14/exact-t5-replay2-summary.txt) 0/0; merged. Recovery holds remain: owner
+      exit/never retries, no typed op15 refusal in v20, lost seal ACK.
+    - [x] Readiness root cause ([analysis](evidence/2026-10-14/m2t5boot12-readiness-rca-sol61.md)): (1) proven — the startup
+      reconcile was never retried: the timer's armed flag was cleared only by the worker pass, which is skipped while reconciling,
+      so after the service's EpochBusy reply nothing re-armed it (boots succeeded only when the agent's startup preparation
+      finished before the handshake); (2) writer Unknown confirmed but unattributed (the source lets losses outside C: deny its
+      coverage via global escalation or machine-wide SOP markers).
+    - [x] Fix (1): `bcc209c3` arms from the notification timer's own state (`KeReadStateTimer`), `e80df96e` maintains the timer at
+      disconnect, `f706bbc2` applies a reconcile result only for the current service generation; either acceptance wakes one pass.
+      Reviews: [a211847c](evidence/2026-10-14/t5-recon-review-sol61.md) and [32d8ce34](evidence/2026-10-14/t5-recon2-review-sol61.md)
+      (expiry-flag designs) REJECT, [bcc209c3](evidence/2026-10-14/t5-timer-review-sol61.md) and [e80df96e](evidence/2026-10-14/t5-timer2-review-sol61.md)
+      REJECT, [f706bbc2](evidence/2026-10-14/t5-timer3-review-sol61.md) **ACCEPT**. For (2), diagnostics `fb6bf4c6`+`78af6223`+`258a6ea8`
+      record the first origin (source line, reason) of global, entry and SOP Unknown and print all loss counters
+      ([review](evidence/2026-10-14/t5-diag-review-sol61.md) ACCEPT WITH CONDITIONS; build `t5-diag1` failed C6262, receipts kept).
+      [Four WDK builds `t5-diag3`](evidence/2026-10-14/exact-t5-diag3-summary.txt) 0/0, imports PASS, signed `BC03DBC4…0C65`;
+      [agent matrix `t5-diag2`](evidence/2026-10-14/exact-agent-matrix-t5-diag2-summary.txt) PASS 1,497 / 2,077 (feature Release
+      `9325F657…FD8E`).
+    - [x] `m2t5boot13` (t5-diag3 driver, t5-diag2 agent): **Ready at once** (the reconcile fix holds where boots 10–12 failed);
+      **16 of 19 cycles passed**: resave, new and mapped saves in approve and block modes (published, or handed back with the public
+      name untouched), versions released and stages deleted; no writer Unknown (all first origins zero). Stopped on repeated
+      identical failures (exit 1; restoration PASS): every replace onto an already published name (cycles 11, 15, 19) stayed
+      private. The rename committed with the destination generation advanced (2, 3) and the service refused each cleanup receipt
+      (op19): "the v20 attachment tuple does not match the exact allocation manifest"; renames onto absent names (cycles 3, 7)
+      passed. The refused receipt is retried about four times a second.
+    - [x] [Root cause](evidence/2026-10-14/m2t5boot13-rca-sol61.md) (the agent's refusal is correct): a committed rename onto an
+      occupied name takes the destination's next generation in the service journal, but `RetargetStage` replies only Allow and the
+      driver never adopts the generation, so op19 carries the stale one. Secondary: the exchange backoff resets during each attempt
+      (in-flight exchanges are not counted) and explicit refusals are retried as exchanges, against the timer rule.
+    - [x] Fix `2e0cd707`…`1603a35e`: the service persists an exact rename-commit receipt atomically with the journal update and
+      returns it (typed 1,168-byte v20 receipt, capability 0x80); the driver validates it and adopts the committed generation before
+      releasing the rename fence; replays return the same receipt, abort keeps the tuple. An exchange stays counted while in flight
+      (backoff no longer resets); structural refusals park until reconnect, transient failures back off to 8 s; disconnected
+      exchanges leave the timer; availability is published only for the current channel. Reviews:
+      [2e0cd707](evidence/2026-10-14/t5-rename-review-sol61.md) REJECT, [9abdff29](evidence/2026-10-14/t5-rename2-review-sol61.md)
+      REJECT, [through f24c4c2c](evidence/2026-10-14/t5-rename3-review-sol61.md) **ACCEPT WITH CONDITIONS** (runtime control of a
+      paused authentication racing a disconnect is a qualification item). [Four WDK builds `t5-rename4`](evidence/2026-10-14/exact-t5-rename4-summary.txt)
+      0/0, imports PASS, signed `2238F821…08B8`; [agent matrix `t5-rename6`](evidence/2026-10-14/exact-agent-matrix-t5-rename6-summary.txt)
+      PASS 1,547 / 2,127 (feature Release `DB8F780A…DDE4`). Failed receipts kept: `t5-rename1` (test compile errors),
+      `t5-rename2` and `t5-rename3` (wire tests corrupted by marshalling; an owner case cleared one byte), `t5-rename5` (a required
+      test had been renamed; restored).
+    - [x] `m2t5boot14` (t5-rename4 driver, t5-rename6 agent): Ready at once; **26 of 29 cycles passed, including every replace onto
+      an existing name** (the receipt fix works) and BLOCK cycles. Stopped on repeated identical failures (exit 1; restoration PASS):
+      the owner's next save to a name whose previous version was blocked was refused with STATUS_DELETE_PENDING (cycles 21, 24, 29;
+      the blocked versions' journals show the hand-back done and stage cleanup started but not finished). Also, exact allocation
+      replays for requests whose process had exited were refused and retried many times per second (6,374 timer arms).
+    - [x] [Root cause](evidence/2026-10-14/m2t5boot14-rca-sol61.md): the agent deletes a blocked stage through an exclusive open
+      while the driver keeps its read-only backing open (error 32), so disposal never arrives and the blocked version never retires;
+      the owner's next save then sends a follow-up allocation that the agent denies for a Blocked predecessor, the driver keeps the
+      answered denial as an unresolved receipt that reserves the name (DELETE_PENDING) and pins the predecessor, and its replays loop
+      (allocation recovery is forced to EXCHANGE, collected without parking or deadline and requeued inline after each reply).
+    - [x] Fix `cdfdb396`…`18e07a90` (merged `de287bcc`): blocked cleanup opens the exact stage sharing READ|DELETE, persists the
+      disposition and wakes retirement before waiting for absence; a save before retirement is told to retry, after it allocates
+      ordinarily from the public file (no blocked-byte seeding); exact "no allocation committed" result (20) serialized with
+      allocation (manifest first, PID plus creation time; requester exit during capture is transient 19); allocation recovery parks
+      refusals and backs off transient failures. [Review](evidence/2026-10-14/t5-block-review-sol61.md) REJECT (exit race), fixed;
+      [re-review](evidence/2026-10-14/t5-block2-review-sol61.md) **ACCEPT WITH CONDITIONS**. [Four WDK builds `t5-block1`](evidence/2026-10-14/exact-t5-block1-summary.txt)
+      0/0, imports PASS, signed `80D6A645…8D9B`; [agent matrix `t5-block4`](evidence/2026-10-14/exact-agent-matrix-t5-block4-summary.txt)
+      PASS 1,592 / 2,172 (feature Release `D2978B18…8395`). Failed receipts kept: `t5-block1` matrix (`.Count` on the tombstone
+      chain), `t5-block2` (exact exception type). Activation hold: refusal receipts (1,192 bytes each) need reserved count/storage
+      accounting rebuilt at restart, fail-closed exhaustion and retirement only on durable driver-epoch evidence.
+    - [x] **`m2t5boot15` (t5-block1 driver, t5-block4 agent): T4 smoke PASS** (exit 0; restoration PASS): Ready at once; 256/256
+      cycles (every pattern, approve and block, including saves after a block and replaces onto published names); no blocked bytes
+      published; all versions, views and tombstones released; all stage files deleted (192 driver deletes, 0 failures); idle worker
+      with nothing waiting; pool endpoint, registry bounds and post-idle admission recovery PASS. `T4ContextsReleased` (INFO on short
+      rows) is within the start + 2,048 bound, but the purge released 940 of 1,931 SUfl growth (48.7%), under the 2026-10-12 half
+      criterion for proceeding to a long run: **the 10,000-cycle row stays held** until that measurement is understood
+      (conservative). The raw cells are not a long run and proceed.
+    - [x] Purge attribution diagnostic (harness `d157b681`, merged `e91472d6`; gates [hg-purgeattr1](evidence/2026-10-14/harness-windows-gate-hg-purgeattr1.txt)
+      failed on a shadowed exit code, receipt kept; [hg-purgeattr2](evidence/2026-10-14/harness-windows-gate-hg-purgeattr2.txt) PASS).
+      Row `m2t5purgeattr1`, same pair, non-qualifying ([verdict](evidence/2026-10-14/m2t5purgeattr1-verdict.txt), restoration PASS):
+      every T4 line PASS; SUfl start 442, idle 1,610, purged 653 — **released 957 of 1,168 (81.9%)**, 211 above start (k11 smoke
+      440). No burst after the actor exits (+12, versus +1,019 in `m2t5boot15`); a repeat purge reached 587 and a purge with the agent
+      stopped 588, so the residue is not agent-held. Kernel-File ETW ([summary](evidence/2026-10-14/m2t5purgeattr1-purge-attribution/purge-attribution/summary.json))
+      shows a Microsoft Edge self-update on the guest base (setup.exe, EdgeUpdate: thousands of creates under Program Files) in the
+      post-workload windows — background maintenance that confounds this measurement — and two agent defects: the agent never goes
+      idle (16 replace-blocked entries reopened about 2.35 times per second each with their journal manifest and parent
+      directories, about 450 creates/s), and after a service restart it retries disposal of all 192 driver-deleted released stages
+      (FileNotFoundException, "retried at the next service start"). Both go into the batched fix. **The 10k row stays held** until
+      the fixed pair's own smoke row passes the half criterion: the busy loop scales with blocked entries and would distort a long
+      row. Disabling Edge updates on the base would be an image change and needs the owner.
+    - [ ] Raw C01–C04/B01/B02/X01 cells in ordinary, runtime-Verifier and boot-Verifier modes with this pair (separate restoration each).
+      **Stopped after three identical failures** (`m2t5ro1`, `m2t5ob1`, `m2t5oc1`, C01-approve-absent ordinary; receipts kept; host
+      restoration discarded each run disk): the case completes, but in-guest restoration's `fltmc unload SafeUpload` returns 0x801F0010.
+      Harness `549fa0b1` (unload while the service runs) never applied because each trial stops its own agent first; `1db2d9fe`
+      restarts the test agent and retries for 120 s ([attempts](evidence/2026-10-14/boot-start-invariant-C01-approve-absent-ordinary-m2t5oc1-artifacts/driver-unload-with-service.txt)):
+      every attempt vetoed. Cause (source): `a27defd8` added `SafeUploadStageWritersUnloadReady`, which vetoes a voluntary unload
+      unless the volume-wide writer registry is empty — never true on a running system (230–250 entries from boot in `m2t5boot15`).
+      That is stricter than the approved [T5-DELETES §7](T5-DELETES.md#7-unload-and-shutdown-rescope) contract (veto only while
+      staged work is outstanding); registry entries pin instances, so the fix is a reviewed retirement path, batched with the
+      recovery holds. Design in progress; no further raw-cell runs until it lands.
+  - [ ] **Batched recovery holds + voluntary unload** (one implementation, build, matrix, review and boot): designs
+    [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md) (lost seal ACK, op15 owner exit/typed refusal, refusal-receipt storage and epoch
+    retirement) and [T5-VOLUNTARY-UNLOAD.md](T5-VOLUNTARY-UNLOAD.md) (committed local teardown despite ordinary writer history;
+    late-load fail-closed). [Independent review](evidence/2026-10-14/t5-designs-review-sol61.md) **REVISE** for both: exact seal
+    request with `SealPending`, complete exposure-possible transitions, one joint op17/unload state machine, per-operation owner
+    validation. Revision `bbd806c5` resolved four of five; [re-review](evidence/2026-10-14/t5-designs-rereview-sol61.md) **REVISE**
+    again, all three new findings in the added durable epoch retirement (retirement storage CREATE closed too early, no bootstrap
+    contract for a retirement-only reconnect, a permanent-refusal mode needing an owner rescope).
+    **Scope decision (conservative, 2026-10-14):** epoch retirement and refusal-receipt reclamation are deferred; receipts stay
+    charged until a later reviewed retirement design (hold 3 only forbids retiring without durable evidence; budget exhaustion fails
+    closed). Two batches:
+    - Batch 1 (unblocks the VM): voluntary unload as reversible preparation → the existing quarantine/`EPOCH_DRAINED` exchange →
+      committed local teardown that retires ordinary writer history, with no retirement mode and no change to post-ACK veto
+      behavior; the agent busy-loop fix ([RCA](evidence/2026-10-14/m2t5purgeattr1-agent-loop-rca-sol61.md): completed BLOCK
+      records stay in pending dispatch, and `~` historical names trigger short-name probes); restoration records
+      `--writer-state-status` (LastUnloadVeto) after a refused unload. The late-load hardening is deferred: runtime-Verifier rows load
+      with `fltmc load` and rely on the demand-start trust path, so changing it changes the qualification method and needs its own
+      decision.
+      **Batch 1 done, merged `679f0b12`** (`b75625eb` + fixes `b97d263e`; Sol 6.1 xhigh workers). First round: gate
+      [hg-batch1a](evidence/2026-10-14/harness-windows-gate-hg-batch1a.txt) PASS, kernel [t5-batch1a](evidence/2026-10-14/exact-t5-batch1a-summary.txt)
+      0/0, matrix [t5-batch1a](evidence/2026-10-14/exact-agent-matrix-t5-batch1a-summary.txt) **FAIL** (7 of 1,590 normal Debug:
+      a real hand-back recovery regression plus two new-test setup errors; receipts kept) and [pre-boot review](evidence/2026-10-14/t5-batch1-review-sol61.md)
+      REVISE (kernel alias-proof instance race with early retirement; bound-publication recovery suppressing justified cleanup;
+      veto capture with an already-running service). All fixed in one change; gate [hg-batch1b](evidence/2026-10-14/harness-windows-gate-hg-batch1b.txt)
+      PASS, [four WDK builds t5-batch1b](evidence/2026-10-14/exact-t5-batch1b-summary.txt) 0/0 with PREfast/ApiValidator,
+      [imports PASS](evidence/2026-10-14/exact-t5-batch1b-imports.txt), [matrix t5-batch1b](evidence/2026-10-14/exact-agent-matrix-t5-batch1b-summary.txt)
+      PASS at exactly 1,615 normal / 2,197 feature per profile (user + SYSTEM), no skips; [re-review](evidence/2026-10-14/t5-batch1-review2-sol61.md)
+      **ACCEPT WITH CONDITIONS** for the first Verifier boot (conditions: those gates). Builder space: 96 old build folders with host
+      receipts reclaimed first (2.9 → 12.9 GB free).
+      - [x] **`m2t5boot16` (t5-batch1b pair `t5-pair14`: driver `16BBF79B…97CD`, agent `B5574331…7030`; new base): T4 smoke PASS**
+        ([verdict](evidence/2026-10-14/m2t5boot16-verdict.txt), [pair](evidence/2026-10-14/m2t5boot16-pair.txt), independent
+        restoration PASS): Ready at once under boot Verifier; 256/256 cycles; every T4 line PASS. SUfl start 443, idle 952, purged
+        565 — **released 387 of 509 idle growth (76%)**, 122 above start; idle growth fell from 1,168–1,931 to 509 with the idle agent
+        and no Edge update. The half criterion passes for this pair, so the 10k row is no longer held by it (it still follows the
+        raw cells and runs on the final pair).
+      - [x] **`m2t5boot10k1` (same pair, 10,000 boot-Verifier cycles): FAIL, restoration PASS** ([verdict](evidence/2026-10-14/m2t5boot10k1-verdict.txt)).
+        **`T4ContextsReleased` PASS** — the gate k11 failed: SUfl start 446, purged 2,371 (limit 2,494); the purge released 22,794 of
+        24,719. Failed: `T4CyclesCompleted` 9,998/10,000, `T4VersionsReleased`/`T4StageFilesDeleted` (one version and stage left),
+        `T4StageWorkerIdle` (24 passes in 60 s), `T4PoolFlat` (75.9 B/cycle, limit 4). Cause of the two failed cycles (5002 new,
+        5129 resave; agent events): the journal's atomic manifest replace failed with Win32 5 (Access denied — rename over a target
+        that another opener holds), and on the op13/op15 paths that transient persistence failure became a refusal, so the driver
+        refused the application's CREATE; cycle 5002's half-attached allocation (`AttachmentStateV20=1`) then kept its stage and
+        the worker awake. Four more such failures hit inspection and recovered on retry. Fix (in the batch-2/3 tree): retry or
+        POSIX-semantics replace for this transient, readers that share delete, and op13/op15 answering retry rather than refused on
+        a persistence failure. `T4PoolFlat`: a step of ~10,800 contexts at cycles 5000–5500 is the two failure-evidence captures
+        copying ~5,000 manifests each; outside it, driver bytes still grow ~34 B/cycle (k11: 1.5), and the purge returns them
+        (7.27 → 6.75 MB, start 6.62 MB; allocations 25,592 → 2,868), so it looks like T5 memory tied to cached files' stream
+        contexts rather than a leak. [RCA](evidence/2026-10-14/m2t5boot10k1-pool-slope-rca-sol61.md): the 24-byte `SwUl`
+        SOP-lifetime witness batch 1 attaches to every tracked stream context (also for metadata-mutation opens) is a direct driver
+        allocation, so Verifier counts it (34.5 B/cycle ≈ 24 B × 1.44 per cycle); all references are balanced and the purge frees it,
+        so it scales with cached files; the capture step is exactly 10,131 witnesses. Fix (kernel lifetime change, design and review
+        first, joins batch 3): detach the context's witness once no non-retired registry entry needs it. The gate is unchanged.
+        Design `driver/T5-SOP-WITNESS-DETACH.md` on `wt/t5-batch2` (`c001e83a`); [independent review](evidence/2026-10-15/t5-witness-detach-review-sol61.md)
+        **REVISE**: predicate, references, lock order and End/Unknown semantics sound, but the full registry walk under the WriterLock
+        spin lock (up to 20,480 entries) has no hold-time bound. Revision 2 (`77fc029f`): the witness counts its non-retired bound
+        entries (+1 on the winning bind, −1 at the only two retirement writes, under `RegistryLock`), so detach is O(1);
+        [delta re-review](evidence/2026-10-15/t5-witness-detach-rereview-sol61.md) **ACCEPT WITH CONDITIONS** (implement the
+        exactly-once rules and fail-closed violation handling, qualify hold time under CREATE/reclaim pressure, sample `SwUl`
+        directly; the RCA link resolves on merge). Implementation joins batch 3; T4PoolFlat stays unchanged.
+      - [ ] Raw C01–C04/B01/B02/X01 cells in ordinary, runtime-Verifier and boot-Verifier modes with this pair.
+        **Stopped: C01-approve-absent ordinary failed twice** (`m2t5od1`, diagnostic rerun `m2t5oe1` with the new failure capture
+        `a2900ee5`; receipts kept). After the after-boot phase's restoration retried the voluntary unload, the guest stayed alive
+        and idle at the lock screen ([screenshot](evidence/2026-10-14/batch-m2t5oe1-failure-screen.png)) but every SSH connection
+        was reset and the case's own output file could not be opened. [RCA](evidence/2026-10-14/m2t5od1-wedge-rca-sol61.md):
+        `StageUnloadAdmissionClosed` refuses every CREATE on the volume, unprotected opens included (`StageStream.c:9391`); a
+        refused epoch drain enters quarantine with that gate still closed and `fltmc` returns, so the whole guest stops opening
+        files. With batch 1 the unload now reaches the epoch drain, which the agent refuses because approved saves leave Released
+        entries with `StageDeleted=false` (the driver deleted the stage without a per-version receipt — batch 2's op24). A
+        second defect: the agent clears the driver IDs after an epoch ACK that a same-connection replay needs. Both fixes
+        (scope the unload admission gate to protected/staged opens; keep same-connection replay after the ACK) join batch 2;
+        the raw cells wait for batch 2.
+  - [ ] **Batch 2 implementation** (`wt/t5-batch2`, Sol 6.1 xhigh, staged local checkpoints `d7d050f6`…`92f2b159`; fixes
+    `a086b3dd`): V29 transport, op24/control 35 delete receipts (Released `StageDeleted` from an exact receipt, so a disposed
+    approved stage no longer refuses EPOCH_DRAINED), exact seal receipts, typed op15/exposure/op23, cancellation-CLOSE, the
+    accepted custody exception, the two wedge fixes, exact `0xFBF` negotiation. [Pre-boot review](evidence/2026-10-14/t5-batch2-codereview-sol61.md)
+    REVISE (disposal proofs dropped on disconnect, circular failed-attachment cleanup, unbounded positive history), all fixed;
+    [re-review](evidence/2026-10-14/t5-batch2-rereview-code-sol61.md) **ACCEPT WITH CONDITIONS** (WDK, matrix, harness gates).
+    Expected 2,260 normal / 2,842 feature tests per profile.
+    **Builds (2026-10-15, boot branch `wt/t5-batch2-boot`, all failed receipts kept):** WDK `t5-batch2b`/`c`/`d` failed the feature
+    profiles (C4013 `RtlValidAcl`, C4389, C4701, then PREfast C28125: release-control probes had no `__except`); fixed in
+    `6f1e914c`, `ee2c3574`, `7a6393a3` (probes now follow the dispose control). [`t5-batch2e`](evidence/2026-10-15/exact-t5-batch2e-summary.txt):
+    four WDK builds 0/0, PREfast, ApiValidator and import gate PASS. Matrix [`t5-batch2b`](evidence/2026-10-15/exact-agent-matrix-t5-batch2b-summary.txt)
+    failed 7/2,235 (normal Debug); `740d094e` restores the IOException refusal contract and fixes a test setup. Matrix
+    [`t5-batch2f`](evidence/2026-10-15/exact-agent-matrix-t5-batch2f-summary.txt): 2,238/2,240, the two remaining failures are the
+    existing `Direct_emptyheld_parent_cleanup_…_survives_restart_compaction` cases (expect 2 manifests compacted after a successor;
+    batch 2 keeps 1 or 0 because its accepted design retains receipts while replay is possible). **Decision (conservative):** the
+    tests stay unchanged, so batch 2 cannot pass the matrix, produces no packages and is not booted on its own; its fixes join
+    batch 3, whose receipt closure must make these two tests pass unchanged. The bounded batch-2 rows move to the batch-3 pair.
+    **Activation hold found in review:** with epoch retirement deferred, positive, completion, exposure, seal and release receipts
+    all accumulate with cumulative 1,024-record limits and per-save full-manifest scans, so about 1,024 protected saves in a
+    machine's lifetime would exhaust capacity ([positive addendum review](evidence/2026-10-14/t5-posdesign-review-sol61.md),
+    REVISE). Batch 2 is used only for bounded rows on fresh disks (T4 smoke, raw cells); no 10k row and no activation on it.
+    The 1,024 / 448 MiB evaluation defaults are **not** proposed for approval. Batch 3 (design in progress,
+    `T5-RECEIPT-LIFETIMES.md`): each receipt is released on exact per-request closure or authenticated driver-instance
+    replacement, closed history is compacted to what must survive (e.g. per-destination generation high-water), counters are
+    incremental, and the only limit is a genuine in-flight bound.
+    **Batch 3 progress (2026-10-15, local `wt/t5-batch2`, Sol 6.1 xhigh worker):** design accepted; staged checkpoints through
+    `043d2f1a` (V30 transport, RequestId issuance, journal-replace fix for the 10k row, banks/bootstrap, durable receipt domain,
+    counted factories, the accepted SOP witness detach, batch-2 fixes). Feedback builds kept: WDK `t5-batch3a`/`b`/`c`/`e` failed
+    on PREfast/declaration errors, each fixed; [`t5-batch3f`](evidence/2026-10-15/exact-t5-batch3f-summary.txt) passes four builds 0/0
+    with PREfast, ApiValidator and imports. Matrix `t5-batch3d`: 2,392/2,394 (the two known compaction cases). Closure,
+    compaction, cap removal and activation remain; V30 stays disabled. **Resource defaults for the owner (not tuned, not
+    approved):** 4,702,608 bytes of fixed nonpaged receipt banks (13 × 128-slot banks of 156,744 B, op23 1,096,776 B, op24
+    1,253,448 B, control35 313,416 B, op17 1,296 B) and an eager per-machine receipt layout of 3,877 files in 19 directories
+    (~0.65 MB logical; NTFS allocation unmeasured), created only once V30 is enabled.
+    **Batch 3 progress (2026-10-16, `wt/t5-batch2`):** receipt closure (`7685e4d7`; the three compaction tests pass unchanged on
+    Windows), FIFO admission over cancel-safe queues (`3af022b0`, after WDK `t5-batch3y-k` failed on routines absent from 19045 —
+    a local kernel API audit now checks every call against the 19045 exports), production owner/queue lifetimes (`96238321`),
+    resource configuration (`29c950e8`), origin binding (`dafb57c1`) and publisher phase timing (`40bd5713`). WDK builds
+    `t5-batch3z-k`, `-ab-k`, `-ad-k` PASS. Matrix `t5-batch3ag-diag` (`40bd5713`): 3,813/3,813 + 25/25 in both feature configurations.
+    Open: a rare 5–15 s stall in the blocked/hand-back publish path (normal 67–206 ms) failed one publisher test in four earlier
+    diagnostic matrices; the recorder stays in to capture it. Execution providers, remaining receipt families, compaction/
+    migration, cap removal, endurance and the activation path remain; V30 stays disabled.
+    **Feature-profile gap found (2026-10-15):** every batch-2/3 matrix stopped after the normal Debug leg, so the feature legs never
+    ran until `integ-m1` (taint-removal branch, 4 feature legs): 3,398/3,528 with 130 failures. [RCA](evidence/2026-10-15/t5-feature-failures-rca-sol61.md):
+    128 are stale feature fixtures after batch 2 activated exact seal receipts (`92f2b159`; product refusals correct), plus the two
+    known compaction cases; one seed-corruption test conflicts with the accepted replay-first rule and is split, listed old to new.
+    Fixture fix running on `wt/t5-feature-fixtures`; from now on feedback matrices run all legs (diagnostic continue).
+    - Batch 2: exact seal receipt, op15 typed refusal/exposure evidence/op23, stateless refusals (owner decision; no refusal
+      receipts or budget), and a negotiated per-version driver-delete receipt (a restart cannot finish released-stage bookkeeping
+      today: `Held=0` and a missing path are not deletion evidence). Design [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md) after
+      reviews [batch2-rereview](evidence/2026-10-14/t5-batch2-rereview-sol61.md) and [review3](evidence/2026-10-14/t5-batch2-review3-sol61.md)
+      (REVISE) is **accepted with conditions** ([review4](evidence/2026-10-14/t5-batch2-review4-sol61.md): only a provenance link,
+      fixed); implementation starts from the reviewed batch-1 tip.
+    **Owner decision (2026-10-14 evening, see owner decisions):** a save whose requester exited before its file was ever exposed can
+    leave its private bytes retained by the service. The narrow exception is **accepted**: proved service-owned residue with exact
+    custody, charged storage, ancestry and nonpublication obligations does not block unload; the bytes stay private and nothing is
+    deleted automatically; residue without that proof still vetoes. Batch 2 implements it. Refusal receipts are dropped (owner
+    decision, 2026-10-14 evening), so there is no refusal budget to decide.
+  - [x] Service-independent mandatory teardown for current objects (kernel; Astra worker, integrated here): a separate mandatory path
+    fences new ownership and cancels attaches, closes service ports early, closes public backends outside locks, drains callbacks/
+    channel/workers/staged objects/paging rundown, then unregisters; it never calls `PrepareUnload`, the epoch drain or a cleanup RPC.
+    Voluntary `PrepareUnload` is unchanged. Coverage-lost native records stay held. [Four WDK builds](evidence/2026-10-13/exact-t5-teardown2-summary.txt)
+    at 0/0 with PREfast/ApiValidator (`t5-teardown1` failed on 4 PAGED_CODE/SAL errors, receipt kept; fixed). Test signing used the
+    default signer and failed; the pre-boot package will be built with the recorded LocalMachine signer. Part of the pre-boot review
+    package; later increments extend it to new record types. [Implementation note](T5-DELETES.md#7-unload-and-shutdown-rescope).
+- [ ] Qualify both deterministic native orders: DeleteFileW before seal and after independently observed publication; both succeed.
+  - [x] Prepare clean/CPF forced-order coordinator gates and no-empty-leftover verdicts; Windows PowerShell 5.1 parsing,
+    168 schema assertions and actual unprotected NTFS actor controls pass ([raw output](evidence/2026-10-11/t5-forced-order-harness-controls-1011a5.txt));
+    14 host evidence-rejection controls pass ([output](evidence/2026-10-11/t5-host-forced-order-verdict-control-1011a1.txt)). Protected coordinator runs remain pending.
+- [ ] Run real Notepad clean/CPF Save As in ordinary, runtime-Verifier and boot-Verifier modes, independently observing destination bytes.
+- [ ] Add compatibility/ordering rows: Explorer New Text Document → rename → another process opens it in Notepad; empty copy/move;
+  clear-and-save existing; authorized and denied public delete; delete during newer save; delete followed by blocked CPF.
+- [ ] Four WDK 0/0 builds, agent matrix, Verifier and separate restoration on the revised pair.
+
+Latest static gates: agent `a7e238ff`, WDK `f5cff550`; agent subtree is unchanged through the WDK commit.
+four WDK builds at **0 warnings / 0 errors**, PREfast/ApiValidator; **880/880** per normal profile and **1230/1230** per feature profile,
+every discovered case executed once without skips,
+service/tray builds and Release packages at 0/0 ([readout](evidence/2026-10-12/t5-bound-service-allocation-gates.md)).
+Raw build output, TRX and execution checks remain local under the readout's recorded prefixes. No revised pair has booted.
+V23 allocation, native CREATE/close, ordinary disposition/known-cleanup, 34 v26 publication-client and 13 native-result journal controls pass;
+kernel publication records/hooks remain open. Bound-writer capture,
+combined backends, owner tombstones, shared physical commits, startup and directory events remain open; reopening is not service-restart qualification.
+Both build runners use the Git commit as the source identifier, without source manifests or worktree freezes; archive hashes check
+delivery. Agent-runner [PowerShell 5.1 controls](evidence/2026-10-11/t5-agent-commit-build-powershell51-gate2.txt) and
+[matrix self-checks](evidence/2026-10-11/t5-agent-matrix-runner-selfcheck.txt) pass.
+
+Ordinary CPF overwrite of an existing file preserves prior bytes. Explicit authorized deletion followed by a blocked new save leaves
+that name absent. Do not delete a pre-existing file after a failed CREATE_NEW probe. Historical EmptyHeld source/build acceptance
+(`e0de7e46`) is not runtime qualification of this revised behavior. Preserve exact file identity, callback/worker/owner lifetime and
+cleanup obligations; removal must follow the source classification, not a text-wide deletion.
+
+## Archived T9 status narrative — 2026-10-17
+
+Superseded status only; current decisions/gates remain in POST-MVP-PLAN.md.
+
+### T9. Large files and complete inspection
+
+**Problem:** 16 MiB driver/seeding limits and whole-memory extraction prevent ordinary large-file use.
+**Done when:** no fixed driver size cap; per-user/total stage budgets fail closed without harming other users; full-content inspection
+uses bounded memory; incomplete inspection is Blocked with hand-back and policy-authorized justification; runtime rows prove privacy.
+
+- [ ] T9 large-file UX implementation (`ux/large`; product-default/upgrade delta base `a2b67984`): [design/limits](UX-LARGE.md),
+  [local receipt](evidence/2026-10-16/ux-large-local/result.md), [exact Windows rows](UX-LARGE-VM.md).
+  Adds identity-bound capacity grants, SID/total reservations, exact orphan/snapshot accounting, failed-prefix refusal,
+  isolated parser resource limits and ZIP text streaming. Owner-approved defaults and conservative legacy upgrade are implemented;
+  [follow-up receipt](evidence/2026-10-16/ux-large3-local/result.md). The dev `45102e57` failed-CREATE cascade is addressed by
+  [stateless refusal/exact recovery and recorder recovery](UX-LARGE-RECOVERY.md), preserving effective/high-water claims;
+  [local regression receipt](evidence/2026-10-16/ux-large4-local/result.md). The ux-m6-diag matrix follow-up fixes private ACL creation,
+  legacy/staged inspection defaults and unbudgeted snapshot compatibility; [42 large / 14 other-branch failure mapping and local checks](evidence/2026-10-16/ux-large5-local/result.md).
+  Windows four-leg matrix, WDK/native/three-mode evidence and everyday concurrent/seed UX remain open.
+- [x] **Complete-or-refuse coverage first** (owner direction 2026-10-13; [review finding](M2-COMPLETION-PLAN.md#findings-in-delivery-order)).
+  - [x] Read DrawingML shape/text-box text, chart titles/axis and series names/labels/cached values, VML drawing text and PDF
+    annotation contents/form-field values; refuse embedded files, PDF attachments, XFA and other unconsumed payloads.
+  - [x] Replace the Office part denylist with an allowlist; independent fixtures include a clean cell plus a CPF-only drawing text box,
+    a CPF chart label, a clean PDF page plus a CPF annotation or form value, an attachment and an unknown part type.
+  - [x] First increment (Astra worker, integrated here): 27-type read allowlist, unreferenced/unknown parts refused, drawings/charts/VML/
+    threaded comments/properties read; PDF annotations/fields/outlines/Info/XMP read; attachments/XFA/JS/AP/RC refused; legacy uses the
+    streaming readers. [Matrix `t9-coverage1`](evidence/2026-10-13/exact-agent-matrix-t9-coverage1-summary.txt): 1,210 normal / 1,580 feature
+    tests per Debug/Release profile, no skips, 0/0. [Coverage table](../agente/docs/INSPECTION-COVERAGE.md).
+  - [x] Round 2: 17 more XML part types read (tables, cell metadata, pivot caches, external links, people, comment extensions, glossary,
+    custom properties/XML), External relationship targets scanned, graphics-only PDF appearance streams accepted after strict decoding and
+    lexing. [Matrix `t9-round2-int2`](evidence/2026-10-13/exact-agent-matrix-t9-round2-int2-summary.txt): 1,356 normal / 1,726 feature tests per
+    Debug/Release profile, no skips, 0/0 (`t9-round2-int1` failed on a fixture that appended zero bytes; receipt kept, fixture fixed).
+  - Closed 2026-10-16 at component level by the two rounds: `OfficeContentCoverageTests` (drawing/chart title, axis, series,
+    category, cached number, label, VML, threaded comments, Word alternate text boxes, unknown/unreferenced parts refused, allowlisted
+    clean packages approved) and `PdfContentCoverageTests` (annotation contents, form values, Info/XMP, attachments/embedded files/XFA/
+    appearance/rich contents refused). Protected large-file and failure rows stay under the items below.
+  - Conservative holds recorded 2026-10-13 (fail-closed, owner may revisit): filled PDF form fields and FreeText annotations whose
+    appearance draws text, incrementally saved PDFs (earlier revisions are not inventoried) and page-level PDF metadata are Blocked as
+    `unsupported_format`; binary printer settings, images, OLE/packages, ActiveX, altChunk and VBA stay refused. Users of such files
+    see the existing unsupported-content block with hand-back until those payloads are read.
+- [x] Failure classification, bounded worker concurrency, notifications, single-handle snapshot input, parser-integrity controls and
+  bounded numeric-scanner scratch space are implemented; [component gates](evidence/2026-10-10/m2-agent-component-gates.json).
+- [ ] Finish whole-file streaming, format/encoding/extraction coverage, stage-space accounting/orphan cleanup and seeding cost.
+  - Office auxiliary-text implementation (`41ed0f66`): Word footnotes/endnotes/comments and classic Excel comment text/authors
+    are included in extraction, with paragraph/note boundaries preserved. Present Word header/footer/note parts must have a root;
+    malformed auxiliary XML cannot become a clean partial extraction. Independent package-XML controls exercise identifiers only
+    in these parts, empty/clean notes, numeric fragments across adjacent notes, corruption, masked findings and unchanged bytes.
+    Source mechanisms follow Microsoft's [Word part API](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.packaging.maindocumentpart?view=openxml-3.0.1)
+    and [Spreadsheet comments model](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.comments?view=openxml-3.0.1).
+    This does not close streaming or complete Office coverage: modern/threaded comments, images/OCR, drawings/charts, embedded/external
+    content, formula completeness and other metadata remain unqualified. The existing declarations of excluded content do not prove
+    staged whole-content inspection; these remaining cases require inspection or explicit incomplete-inspection refusal.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-office-notes1-summary.txt) passes 974 normal/1,344 feature tests
+    per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. All
+    [12 independent package controls](evidence/2026-10-13/t9-office-notes1-controls.json) pass in every profile; sensitive/corrupt
+    cases exercise both legacy and staged outcomes and preserve original package bytes. Valid empty note text remains accepted.
+    [Preflight duplicate-output cleanup](evidence/2026-10-13/t9-office-notes1-preflight-cleanup.stdout.txt) preserves the previous
+    verified source/packages/evidence. No product pair was installed or booted; T4's stop and T5 NotReady remain in force.
+  - Known unsupported Office payload refusal (`449ddfaf`): before returning extracted text, both Office extractors walk the
+    package's relationship graph with cancellation and a visited-part set. Reachable images, thumbnails, embedded objects/packages,
+    ActiveX persistence parts and alternative-format imports receive `unsupported_format`: staged Blocked, legacy
+    AllowedWithoutInspection, using the existing inspection-failure path. No OCR, embedded execution, file deletion or source rewrite.
+    Traversal follows Microsoft's [part relationship API](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.packaging.openxmlpartcontainer.parts?view=openxml-3.0.1).
+    Independent ZIP/relationship XML controls include Word body/header/footnote images, Excel drawing images, valid raster thumbnails,
+    embedded Word packages, opaque objects/controls, HTML imports, clean text-only packages and unchanged source bytes.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-office-payload1-summary.txt) passes 990 normal/1,360 feature tests
+    per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors; all
+    [16 payload controls](evidence/2026-10-13/t9-office-payload1-controls.json) pass in each profile. This closes the identified known-part
+    partial-approval path, not complete Office coverage: drawings/charts without images, modern/threaded comments, external or
+    unreferenced package content, formula completeness, other metadata and whole-file streaming remain open. No protected run occurred.
+    [Scoped builder cleanup](evidence/2026-10-13/t9-office-payload1-preflight-host.json) removed only hash-verified unpacked duplicates
+    from completed builds while preserving their source, package ZIPs/manifests and evidence; no host-wide configuration changed.
+  - Staged plaintext streaming (`56e2e53f`): the strict BOM-aware extractor now opens disposable readers on the same held private
+    snapshot. Complete numeric, bounded-regex, unbounded-token and password passes preserve existing category precedence, masks
+    and ordering without capturing the source or full extracted text. Fixed buffers carry boundary context; only offsets, labels and
+    masked findings persist between passes. A 16,384 candidate/finding budget produces explicit `inspection_limit` Blocked with
+    empty findings rather than approving a partial scan. Existing policy size/deadline limits, worker concurrency, legacy capture/cache
+    and Office/PDF paths are unchanged. The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-stream-text1-summary.txt)
+    passes 1,013 normal/1,383 feature tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors.
+    All [18 streaming controls](evidence/2026-10-13/t9-stream-text1-controls.json) pass in each profile: every category subset,
+    fragmented input, all fixed-pattern overlap positions, deterministic mixed text, two-million-character unbounded values/whitespace,
+    strict UTF-8/16/32 readers on real snapshots, explicit budget failure and cancellation/stream ownership. Boundary word categories
+    follow [.NET's regex implementation](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Text.RegularExpressions/src/System/Text/RegularExpressions/RegexCharClass.cs).
+    These component passes do not establish peak live memory, default-limit throughput, protected publication or complete format coverage.
+    [Scoped preflight cleanup](evidence/2026-10-13/t9-stream-text1-preflight.host.json) preserves previous source/packages/evidence.
+    No product pair was installed or booted; source/evidence remain local while the earlier push approval is pending.
+  - Spreadsheet formula coverage (`6b13ce8f`): inspect each formula expression and its cached result on separate lines, including
+    shared-formula masters. Cached clean display text cannot hide a credential literal in the formula. Missing cached results receive
+    `unsupported_format` (staged Blocked, legacy AllowedWithoutInspection); a present empty result remains valid. No formula, link or
+    external data is executed. Microsoft's [formula model](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.cellformula?view=openxml-3.0.1)
+    defines the expression and shared masters; [cell values](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.cellvalue?view=openxml-3.0.1)
+    carry cached results. Independent ZIP/XML controls cover formula-only secrets, cached CPF, both sources, shared formulas,
+    clean/empty results, missing normal/shared caches and numeric boundaries, in both modes with masked findings, audit behavior and
+    unchanged source bytes. This addresses a concrete partial-extraction gap; formula evaluation, external/unreferenced content,
+    other Office content and DOM/output streaming remain open.
+    The [complete exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-formula1-summary.txt) passes 1,044 normal/1,414 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors, with both release packages
+    independently verified. All [20 formula and 11 large-input controls](evidence/2026-10-13/t9-formula1-controls-measurements.json)
+    pass in every profile. No protected pair was installed or booted; commits remain local pending the earlier push approval.
+  - Staged Word text streaming (`6840afe3`, scalar/lookahead correction `6127e878`, tested source `99473988`): each pass opens
+    package parts on the same held snapshot through a facade that cannot dispose the caller stream. Header/body/footer/notes/comments
+    use XML pull readers with 8 KiB value chunks; part DOMs, complete text-node strings and a complete extracted-output string are
+    absent from this staged path. Legacy extraction/cache stays unchanged. Roots and the main body are required, DTDs/external XML
+    resolution are disabled, corrupt tails refuse the whole scan, and all part/package readers dispose on completion/failure.
+    Paragraph/run/table boundaries are preserved. Nested text-box paragraphs are emitted once on separate lines, preserving surrounding
+    text instead of duplicating descendants through the outer paragraph's InnerText. Selected-part/depth budgets (16,384/256) produce
+    explicit `inspection_limit` Blocked, without partial findings/approval. Existing policy size/deadline, worker and unsupported-payload
+    gates remain intact. This is text-node streaming, not proof of complete Word coverage or bounded hostile metadata: XML attributes,
+    parser name tables, SDK/package relationship metadata and other Office content remain qualification findings.
+    The [initial matrix](evidence/2026-10-13/exact-agent-matrix-t9-word-stream1-summary.txt) passes 1,055 normal/1,425 feature tests
+    per Debug/Release profile and all [11 initial controls](evidence/2026-10-13/t9-word-stream1-controls.json). The
+    [corrected complete matrix](evidence/2026-10-13/exact-agent-matrix-t9-word-stream3-summary.txt) passes 1,057 normal/1,427 feature
+    tests per profile, exact discovery/execution coverage, no skips, 0 warnings/errors and both verified release packages. All
+    [13 controls and live-state samples](evidence/2026-10-13/t9-word-stream3-controls-memory.json) pass: fragmented reads, nested
+    paragraphs, 8 MiB single text nodes with clean/EOF CPF, malformed/missing roots/body/tails, DTD refusal, scalar/peek/EOF behavior,
+    cancellation and source ownership/SHA-256. Isolated 8/32 MiB real-package controls collect live reader state at checkpoints; these
+    are not process-peak, hostile-metadata or protected measurements. The [prior corrected-source matrix](evidence/2026-10-13/t9-word-stream2-retained-failure.json)
+    failed the existing legacy queue/parsing deadline control at 8,162 ms against its unchanged 7,500 ms upper bound. One full identical-source
+    retry passes above; no assertion, policy budget, timing bound or test filter changed. Failed raw evidence remains retained.
+    Scoped duplicate-output cleanup preserves source/packages/manifests/evidence
+    ([initial](evidence/2026-10-13/t9-word-stream1-preflight.host.json), [corrected](evidence/2026-10-13/t9-word-stream2-preflight.host.json),
+    [retry](evidence/2026-10-13/t9-word-stream3-preflight.host.json)). No product pair was installed or booted; source/evidence remain local.
+  - Staged spreadsheet streaming (`015354d4`): a pull reader consumes stored shared-string items once, including unused entries,
+    then cell formulas/inline/cached values and classic comment authors/text on separate lines. Shared references are checked against
+    the actual parsed table count; neither a complete shared-string array nor worksheet DOM/output string is required. Stored text is
+    ordered by package-part traversal; repeated cell references do not duplicate findings. This deliberately differs from legacy
+    cell-display order/counts and inspects stored credentials that unused shared entries previously hid. Legacy capture/extraction/cache
+    remains unchanged. Workbook defined-name text is also consumed. Present roots are required, malformed tails/invalid references
+    refuse the complete scan, missing formula caches retain unsupported-format refusal, and all part/package readers close without
+    closing the held caller snapshot. Parts/depth/reference-field budgets (16,384/256/32 chars) prevent unbounded selected-part state,
+    nesting and reference accumulation; policy size/deadline/worker limits are unchanged. Hostile XML attributes/name tables,
+    SDK/package metadata and complete spreadsheet content still need separate qualification.
+    The [complete Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-sheet-stream1-summary.txt) passes 1,073 normal/1,443
+    feature tests per Debug/Release profile, exact discovery/execution coverage, no skips, 0 warnings/errors and both verified packages.
+    All [16 new controls and live-state samples](evidence/2026-10-13/t9-sheet-stream1-controls-memory.json) pass in every profile:
+    fragmented rich/shared/inline/formula text, unused/repeated shared references, invalid/oversized indices, corrupt table/sheet tails,
+    large shared/inline/cached values, scalar/peek/cancellation/source lifetime and original SHA-256. Existing formula/comment/empty/
+    malformed-content controls remain in the full matrix. Collected live reader state on real 8 MiB values is sampled in an isolated
+    collection; it is not a process-peak or protected measurement. [Scoped preflight](evidence/2026-10-13/t9-sheet-stream1-preflight.host.json)
+    removes only verified unpacked duplicates, retaining source/packages/manifests/evidence. No product pair was installed or booted;
+    source/evidence remain local pending the earlier push approval. T9 overall and M2 final/runtime gates remain open.
+  - Staged PDF extracted-text streaming (`33ca257e`): consume page letter values in content order, with existing platform page
+    newlines and raster-image refusal, without Page.Text or a document-wide extracted-output string. A read-only stream facade
+    preserves the caller's held snapshot across page/package disposal; cancellation is checked between letter/page operations.
+    Legacy capture/extraction/cache and policy/worker budgets remain unchanged. The pinned PdfPig 0.1.16
+    [Page.Text implementation](https://github.com/UglyToad/PdfPig/blob/v0.1.16/src/UglyToad.PdfPig/Content/Page.cs)
+    concatenates these same letter values; [page construction](https://github.com/UglyToad/PdfPig/blob/v0.1.16/src/UglyToad.PdfPig/Content/Pages.cs)
+    still parses a page's content and retains document structures/resources. This removes output copies, not a worst-case parser bound.
+    Large individual pages, metadata/resource caches, annotations/forms/ActualText and other PDF content, encryption/corruption and
+    parser behavior remain qualification findings; the existing lenient parser setting was not changed by this checkpoint.
+    The [complete Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-pdf-stream1-summary.txt) passes 1,079 normal/1,449 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips, 0 warnings/errors and both verified packages. All
+    [six independent raw-PDF controls](evidence/2026-10-13/t9-pdf-stream1-controls.json) pass in every profile: independently authored
+    object/xref structures, fragmented reads, page/numeric boundaries, last-page CPF, blank pages, scalar/peek/EOF/cancellation and
+    source ownership/SHA-256. Existing image-content refusal and privacy controls remain in the full suite. This is not a PDF process-peak
+    or protected measurement. [Scoped preflight](evidence/2026-10-13/t9-pdf-stream1-preflight.host.json) preserves completed source,
+    packages/manifests and evidence. No product pair was installed or booted; commits remain local pending the earlier push approval.
+  - Measured snapshot-copy bound (`9a46baf3`): copy at most the sealed length with fixed 64 KiB scratch space. Initial length
+    mismatch, growth during capture, premature EOF and cancellation cannot yield a complete inspection snapshot. Existing digest,
+    publication and failure handling remain intact. The [complete exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-snapshot-bound2-summary.txt)
+    passes 1,086 normal/1,456 feature tests per Debug/Release profile, exact discovery/execution coverage, no skips, 0 warnings/errors
+    and both independently verified Release packages. All [seven copy controls](evidence/2026-10-13/t9-snapshot-bound2-controls.json)
+    pass in every profile, including source growth from 128 KiB to 8 MiB while copied/read bytes stay at 128 KiB.
+    The [initial matrix](evidence/2026-10-13/t9-snapshot-bound1-retained-failure.json) passed every test but failed final feature ZIP
+    creation on builder disk exhaustion; its empty summary/partial ZIP remain failure evidence. One identical-source retry passes,
+    without changing assertions, policy budgets, timing bounds or filters. Scoped duplicate-output cleanup
+    ([initial](evidence/2026-10-13/t9-snapshot-bound1-preflight.host.json), [retry](evidence/2026-10-13/t9-snapshot-bound2-preflight.host.json))
+    preserves source/packages/manifests/raw evidence. No product pair was installed or booted; commits remain local pending push approval.
+  - Owned-handle snapshot lifecycle (`245da04a`, completion-port correction `fa3019cc`): create the service-only temporary object
+    with delete-on-close and no sharing, copy/hash the measured bytes, then drop its write handle. Publication/hand-back and scanner
+    workers receive read-only duplicates of that held object, without reopening or deleting a pathname. A worker owns its lease
+    until actual completion, including after timeout; the existing worker/deadline and late-result gates remain intact. The new
+    inspection entry point rejects missing, writable, nonseekable or wrong-length leases without falling back to a pathname.
+    The [first matrix](evidence/2026-10-13/t9-snapshot-handles1-retained-failure.json) compiled at 0/0 but failed 87/1,079 normal Debug
+    user cases: duplicated asynchronous handles could not bind the same file object's completion port again. The correction uses
+    synchronous native handles; .NET 10's [FileStream strategy](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Private.CoreLib/src/System/IO/Strategies/OSFileStreamStrategy.cs)
+    and [Windows offset I/O](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Private.CoreLib/src/System/IO/RandomAccess.Windows.cs)
+    retain independent logical read offsets and async call support. Nineteen controls cover all four formats, native read grants,
+    independent concurrent offsets, empty/failing capture, noncooperative parser lifetime and independent Windows process termination.
+    The [corrected-source matrix](evidence/2026-10-13/t9-snapshot-handles2-retained-failure.json) passes both normal profiles at
+    1,105/1,105; feature Debug fails only the immediate process-exit cleanup observation (1/1,450 user cases). An
+    [independent 20-trial native-signal diagnostic](evidence/2026-10-13/t9-snapshot-close-diag1-result.json) finds every file immediately
+    absent after WaitForExit(int), without cleanup polling, path deletion or purge. The failure is consistent with .NET's
+    [early exit-code HasExited path](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/ProcessManager.Windows.cs)
+    allowing WaitForExitAsync to complete before the native process object is signaled. Test correction `e2854de5` waits for that
+    actual signal, retaining the ten-second bound and immediate absence assertion. The
+    [complete matrix at `0581833c`](evidence/2026-10-13/exact-agent-matrix-t9-office-stores1-summary.txt) passes 1,116 normal/1,486 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips, 0 warnings/errors and both independently verified
+    Release packages. All [19 snapshot lifecycle controls](evidence/2026-10-13/t9-office-stores1-controls.json) pass in each profile,
+    including the unchanged immediate-absence assertion after native process completion. Both failures remain retained.
+    No product assertion, policy budget, original backing/public-file cleanup or kernel code changed.
+    [Scoped duplicate-output recovery](evidence/2026-10-13/t9-snapshot-handles1-preflight.host.json) preserved source/packages/evidence;
+    subsequent [snapshot](evidence/2026-10-13/t9-snapshot-handles2-preflight.host.json) and
+    [combined-matrix](evidence/2026-10-13/t9-office-stores1-preflight.host.json) headroom checks were read-only, with no further cleanup.
+    Whole-machine interruption/orphan recovery and quotas remain open.
+  - Office stored-payload/relationship safeguards (`0581833c`): custom XML stores, custom document properties and unknown SDK
+    extension parts now use the existing unsupported-content refusal instead of approving only their visible body/cell text.
+    Staged failures remain Blocked with empty findings; legacy failures retain AllowedWithoutInspection. No stored payload is
+    executed, deleted or rewritten. Microsoft's [custom XML overview](https://learn.microsoft.com/en-us/visualstudio/vsto/custom-xml-parts-overview?view=visualstudio)
+    confirms these stores persist data inside Office files. The relationship walk caps its unique visited parts at 16,384, matching
+    the staged text-reader part budget, with explicit inspection_limit. This bounds the walk's own state/work, not SDK/ZIP/XML
+    metadata allocation before enumeration. Ten independent Word/Excel payload cases and a 17,000-header package control cover
+    refusal/classification in both modes and unchanged source bytes. The complete matrix above also passes all
+    [26 payload and one relationship-budget controls](evidence/2026-10-13/t9-office-stores1-controls.json) in each profile, including
+    the existing image/embedded-payload and clean-package controls. Complete format coverage, hostile parser metadata,
+    storage budgets and the protected milestone gate remain open. No product pair was installed or booted; commits remain local.
+  - Snapshot storage finding: the prior ordinary-publisher inspection lifecycle used random private `.inspection` names, with no durable
+    snapshot-owner/cleanup obligation in the transfer journal. Process interruption could leave copies, and deletion failure could
+    mask capture/cleanup errors or surface after an already-completed transfer. Source/inspection/publication authority must remain
+    separate from cleanup success. Durable identity-bound cleanup and storage charging remain required; filename matching, an
+    unverified pathname or digest alone must not authorize deletion. The exact-length copy safeguard does not solve these findings
+    or introduce per-user/total quotas, and no startup deletion sweep is implemented by that change. Capture also precedes
+    InspectionService's bounded worker/deadline admission; those parser slots alone do not bound concurrent snapshot storage.
+- [ ] Handle policy-load/snapshot failures safely; qualify interactive failure UI, hand-back, digest and policy-bound justification.
+  - Open (2026-10-16): staged files whose extension is not monitored are **Retained** (`not_inspected`, never published;
+    `StagedTransferPublisher` current-approval branch), not blocked and handed back. The owner's image decision needs the
+    "images are not inspected yet" reason and hand-back; default monitored extensions gain PowerPoint and archives with T8.
+  - Strict current-policy implementation (`bfffa535`): staged inspection, approval, justification, allocation/rename/attach
+    admission and hand-back routing use an explicit current read. Local ACL rejection or loss of an already loaded file and
+    HTTP failure/empty responses cannot substitute cached/default policy authority. Legacy fallback remains available to its
+    existing consumers. Controls cover provider failures/recovery, all staged decision routes, retention during an ACL failure
+    before publication, and refusal to export hand-back bytes. Whole-file streaming, failure UI and protected qualification remain open.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-current-policy1-summary.txt) passes 936 normal/1,306 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. All
+    [13 new authority/fallback controls](evidence/2026-10-13/t9-current-policy1-controls.json) pass in every profile. Initial local
+    provisioning may still create/validate its live default file; disappearance after loading refuses a current read without
+    recreating a default. That checkpoint identified same-version semantic edits as a separate publication/justification
+    binding gap; the follow-up below addresses it.
+    [Scoped preflight cleanup](evidence/2026-10-13/t9-current-policy-preflight-cleanup.stdout.txt) preserves the previous verified
+    source/packages/evidence. No product pair was installed or booted; T4's stopped gate and T5 NotReady remain in force.
+  - Complete-policy binding implementation (`f792d437`, corrected fixture `aa6ad3a8`): staged results carry a deterministic fingerprint of every policy
+    field, with collection order normalized and exact strings/strict UTF-8 preserved. Approval and justification require both
+    that fingerprint and the version. Blocked manifests persist the binding; recovery rechecks it before restoring a callback.
+    Missing historical bindings or same-version edits retain the exact private version for a new inspection, without inventing
+    prior authority or deleting backing. Controls cover every field, framing/order/encoding, same-version decision/publication
+    races, durable restart/justification and malformed/missing metadata. Audit/UI payloads and driver ABI remain unchanged.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-policy-binding3-summary.txt) passes 962 normal/1,332 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. All
+    [27 targeted binding/recovery controls](evidence/2026-10-13/t9-policy-binding3-controls.json) pass in every profile. The
+    [first matrix](evidence/2026-10-13/exact-agent-matrix-t9-policy-binding1-summary.txt) correctly distinguished the configured
+    clipboard defaults from an omitted block; the equality fixture was corrected to represent omitted/explicit empty defaults.
+    The [second matrix](evidence/2026-10-13/exact-agent-matrix-t9-policy-binding2-summary.txt) failed the existing queued-deadline
+    control at 7,707 ms against its unchanged 7,500 ms bound. One complete retry of the identical source passes above; no timing
+    threshold, test filter or assertion was changed. All failed raw receipts remain retained. Scoped duplicate-output cleanup
+    preserves source/packages/evidence; no product pair was installed or booted. T9 streaming/runtime and M2 final gates remain open.
+  - Ordinary-publisher preparation failures (`c6f1f435`, recovery call corrected in `3d2d5979`, tested source `e62b658a`): snapshot
+    creation, durable-length validation and hashing finish together before inspection starts. I/O/access failure transitions the exact
+    version to Retained, closes its exception window and sends only safe read/parse-failure metadata to its owner; initial current-policy
+    read failures also carry that metadata. The tray explains that analysis did not finish and bytes were not sent. These holds neither
+    publish nor register a justification callback; a trusted snapshot/current policy must be available before new inspection can proceed.
+    Existing private bytes and prior public bytes survive. Without trusted preparation/authority, this path cannot claim a verified
+    hand-back or inspected digest. Retained startup/retry UX, disk-full, snapshot orphan cleanup/storage budgets and protected UI/runtime
+    qualification remain open; the controls invoke a fresh ordinary publisher inspection directly, not automatic service/UI retry.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t9-preparation3-summary.txt) passes 992 normal/1,362 feature tests
+    per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. Both
+    [new failure controls](evidence/2026-10-13/t9-preparation3-controls.json) pass in every profile: real directory CreateFiles denial,
+    exact DACL restoration/access recovery, durable stage retention, owner-only notification, preserved public bytes, safe failure
+    metadata, no callback/permit, and successful explicit reinspection after the failure clears. Source changes include application builds;
+    no protected pair was installed or booted, and bound-publication integration is not qualified by these ordinary-publisher controls.
+    [Retained failures](evidence/2026-10-13/t9-preparation-retained-failures.json) record the missed recovery caller's first build error
+    and the second matrix's fixture restoration failure. The fixture now explicitly marks/restores the saved DACL and proves recovered
+    creation access: [.NET persists changed security sections only](https://github.com/dotnet/runtime/blob/main/src/libraries/System.IO.FileSystem.AccessControl/src/System/Security/AccessControl/FileSystemSecurity.cs).
+    No assertion or timing limit was relaxed. [Scoped preflight cleanup](evidence/2026-10-13/t9-preparation1-preflight-host.json)
+    preserves completed source/packages/evidence. Commits remain local while the earlier source/evidence push approval is pending.
+- [ ] Measure cold/warm throughput and peak memory before choosing defaults; existing 256 MiB warm-input measurements are not staged qualification.
+  - Fresh-process inspector measurement tooling (`c25192a2`): a separate read-only Windows Release process per retained synthetic
+    file measures first/repeat wall/CPU time and cumulative process peak working set. Source/corpus hashes and measured assembly
+    hashes are checked; staged classification never audits/caches an outcome, and inputs remain unchanged. Policy stays at 20 MiB/
+    five seconds. The [first measurement run](evidence/2026-10-13/t9-inspector-metrics2-retained-result.json) builds at 0 warnings/errors
+    and passes 12 plaintext/Word/spreadsheet cases (1/20 MiB decoded text, clean/EOF CPF), with both scans per case. Twenty-MiB first
+    scans take 1.265–1.964 seconds, repeats 0.776–1.004 seconds; observed cumulative process peaks are 41.5–49.9 MiB. Word/Excel
+    fixtures are highly compressed 21–22 KiB packages containing 20 MiB text, not 20 MiB package files. The first 1 MiB/16-page PDF
+    case is Blocked with inspection_timeout at 5.022 seconds and peaks at 148.5 MiB; the PDF CPF case was not run. No failure/limit
+    was relaxed. These are inspector-only observations: filesystem cache is uncontrolled, no publisher copy/policy I/O is measured,
+    and cold-filesystem, hostile-parser, protected and complete-format qualification remain open. No default has been chosen/changed.
+  - Bounded per-worker PDF text replay (`a7aaabc6`, PDF-only correction `f4be7e09`): retain at most four MiB
+    of extracted PDF characters inside one staged worker, usable only after complete extraction EOF. Later detector passes keep the same precedence/masks on those exact
+    characters; overflow abandons/clears the replay and follows the existing full streaming passes. Disposal clears the character
+    buffer, including failure/timeout worker completion. Plaintext/Office retain their fresh readers. There is no persistent text or cached approval, and legacy behavior,
+    candidate limits, policy deadlines/size limits and worker ownership remain unchanged. Nine controls cover fragmented reads,
+    full detector parity, capacity/overflow, abandoned/late-failing extraction, scalar/EOF/cancellation and owner disposal. This bounds
+    the added replay storage; it does not bound the underlying PDF/ZIP/XML parser. The
+    [first replay matrix](evidence/2026-10-13/t9-text-replay1-retained-failure.json) compiles at 0/0 but fails seven normal Debug user
+    cases: six unchanged plaintext controls require multiple fresh readers, and the new late-failure fixture omitted its synchronous
+    reader implementation. The correction preserves those assertions, restricts replay to PDF and fixes the fixture. Its
+    [first corrected matrix](evidence/2026-10-13/t9-pdf-replay2-retained-failure.json) passes 1,125/1,125 normal Debug cases, then normal
+    Release fails only the unchanged staged missing-cache spreadsheet formula control (UnsupportedFormat became Timeout).
+    All nine replay controls pass in both executed profiles. The
+    [complete identical-source retry](evidence/2026-10-13/exact-agent-matrix-t9-pdf-replay3-summary.txt) passes 1,125 normal/1,495 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips, 0 warnings/errors and both verified Release packages.
+    All [21 scoped controls](evidence/2026-10-13/t9-pdf-replay3-controls.json) pass per profile: nine replay, six unchanged strict
+    plaintext-reader and six PDF streaming cases. No assertion, budget, timing limit or test filter changed; original failures remain retained.
+    Corpus-reuse tooling (`c351236e`) verifies the retained archive, manifest
+    and every fixture byte/hash before copying; its offline reuse control passed, so before/after inputs stay identical.
+    [Headroom preflight](evidence/2026-10-13/t9-text-replay1-preflight.host.json) stopped before delivery;
+    [scoped recovery](evidence/2026-10-13/t9-text-replay1-headroom.host.json) removed only two hash-verified unpacked duplicates,
+    preserving source/packages/manifests/raw evidence. The
+    [corrected preflight](evidence/2026-10-13/t9-pdf-replay2-preflight.host.json) passes without further cleanup/configuration changes.
+    [Retry headroom recovery](evidence/2026-10-13/t9-pdf-replay3-headroom.host.json) removes only two verified old completed lifecycle
+    unpacked duplicates; their source/packages/manifests/evidence remain retained.
+    No product pair was installed or booted.
+    The [isolated byte-identical measurement rerun](evidence/2026-10-13/t9-inspector-metrics3-result.json) passes all 14 cases and both
+    scans per case, with input, corpus/archive, measured assembly and policy hashes verified. The same clean 1 MiB/16-page PDF that
+    previously timed out now approves in 1.517 seconds, repeats in 0.868 seconds; the EOF-CPF counterpart blocks in 1.583/0.817 seconds.
+    PDF cumulative process peaks remain 148.3–153.7 MiB. Twenty-MiB plaintext/Word/Excel first scans take 1.388–1.884 seconds,
+    repeats 0.789–1.194 seconds, with 41.4–49.7 MiB observed peaks. These are single retained measurements with uncontrolled
+    filesystem cache, not paired statistical latency gates, publisher costs, hostile-parser bounds or protected qualification.
+    PDF runtime improved without policy/default changes; its parser-memory and complete-content findings remain open.
+  - Large-plaintext component controls (`c2dd8033`, complete matrix at `6b13ce8f` above): real 1/20 MiB ASCII snapshots are read
+    completely on first/repeat scans under the unchanged 20 MiB/five-second default. Clean and EOF-only CPF cases prove approval/block,
+    complete reader disposal, no cache/audit shortcut and unchanged source SHA-256. Malformed UTF-8/16/32 tails refuse approval,
+    including the no-detector extraction path. Isolated 8/64 MiB logical readers measure collected live scanner-state growth at read
+    checkpoints, using no source-sized body; these are not process-peak, cold filesystem-cache, all-format or protected measurements.
+    The [first large-input matrix](evidence/2026-10-13/t9-large-text1-retained-failure.json) failed the existing malformed Excel-comment
+    control when ReadOrParse became Timeout. Its identical-source [retry](evidence/2026-10-13/t9-large-text2-controls-incomplete-matrix.json)
+    passes every test in all four profiles, then fails feature Release packaging on builder disk exhaustion: neither is a complete
+    matrix PASS. Failed raw receipts are preserved; no assertion, timing bound, policy default or test filter changed. Scoped recovery
+    verifies/removes eight older unpacked duplicates while retaining source, ZIPs, manifests and evidence
+    ([full-disk recovery](evidence/2026-10-13/t9-formula1-preflight.host.json), [headroom](evidence/2026-10-13/t9-formula1-headroom.host.json));
+    the fresh complete matrix above passes both test and packaging gates. Protected large-file and memory qualification remains open.
+- [ ] Qualify large clean/CPF, corrupt/encrypted/password-protected, parser/extraction-limit, timeout and disk-full cases.
+- [x] All-zero payment-card question resolved (owner 2026-10-16: all-zero is not a card): `8697056e`, merged; matrix
+  [`t9-allzero1`](evidence/2026-10-16/exact-agent-matrix-t9-allzero1-summary.txt) ExactAgentMatrixGate=PASS (2,210 user + 25 SYSTEM per feature configuration).
+
+## Archived T11 status narrative — 2026-10-17
+
+Superseded status only; current decisions/gates remain in POST-MVP-PLAN.md.
+
+### T11. Review conditions
+
+2026-10-16 unbound MVP candidate (`ux/journal`): [active-journal scaling design](T11-UNBOUND-JOURNAL-SCALING.md) packs completed receipts out of the hot set, retains generation/identity obligations and adds archive recovery controls. Linux feedback is component evidence only; the Windows feature matrix and protected 10k pair remain open.
+
+**Problem:** remaining locking, generation, section-lifetime and journal-scaling findings need closure.
+**Done when:** every finding has a tested change or row and the M2 adversarial review closes the working system.
+
+- [x] Nested sealed-stage query guard (`203d31e9`), 32-bit serial-generation arithmetic (`b8394357`), journal cache eviction (`cb1d0930`).
+- [ ] Validate SOP lifetime at startup; retire changed-SOP registry entries with a lifetime review before first boot.
+- [ ] Finish journal compaction without losing generation barriers or unresolved identity/cleanup obligations.
+  - 2026-10-13 component checkpoint (`16c980a4`): compaction now groups bound generation claims by full
+    volume-root/parent/mount/case/leaf identity, keeping legacy pathname claims separate. Its retained-reference closure
+    includes allocation-reference owners as well as exact parent/delete versions. Journal-only controls cover distinct
+    identities sharing a locator, case-sensitive tombstones, case-insensitive aliases, legacy separation, lost-head recovery
+    and tombstone-owner replay after restart. The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t11-bound-compaction2-summary.txt)
+    passes 913 normal/1,278 feature tests per Debug/Release profile, including all nine new compaction controls, with exact
+    discovery/execution coverage, no skips and 0 warnings/errors. This does not close the full compaction/scaling or final-pair review gate.
+    The destination hash deliberately omits the leaf to preserve Windows equality; many names under one parent share its
+    bucket. The follow-ups below replace that lookup, repeated closure scans, live queue lookup and startup duplicate
+    indexing; per-destination head resolution and full journal I/O remain separate findings.
+    The [first matrix stopped on builder disk exhaustion](evidence/2026-10-13/exact-agent-matrix-t11-bound-compaction1-build.stderr.txt)
+    after both normal test profiles passed. [Scoped recovery](evidence/2026-10-13/t11-builder-generated-cleanup2.stdout.txt)
+    verified eight unpacked publication copies against host-retained ZIPs/manifests before removal (one inline bootstrap,
+    then seven copies), preserving source, packages and evidence; the fresh matrix above passes without product VM boots.
+  - Follow-up implementation (`23b7eed9`): the bound claim index uses an ordered tree with the same Windows ordinal
+    filename comparator as destination equality, avoiding leaf-hash collision chains. A GUID-indexed queue walks retained
+    parent/delete/allocation references once each, including shared references/cycles. Snapshot controls exercise 1k/10k/50k
+    ancestor chains, up to 50k bound destinations/100k claims under one parent, maximum ties, cancellation and native Unicode
+    equality under Turkish culture. Eligibility and durable file validation remain in the existing compactor. Index timings
+    qualify only that in-memory decision phase; full journal I/O/scaling and final-pair review remain open.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t11-compaction-scaling1-summary.txt) passes 919 normal/1,289
+    feature tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. All six normal
+    and eleven feature index controls pass, alongside the nine disk-backed bound retention/restart controls. In feature Release,
+    the [single index measurements](evidence/2026-10-13/t11-compaction-scaling1-index-timings.json) are 12.897/209.442/1,208.669 ms
+    for 2k/20k/100k bound claims; the 50k-reference chain takes 58.403 ms. These are scoped measurements, not end-to-end latency
+    assertions. [Preflight duplicate-output cleanup](evidence/2026-10-13/t11-scaling-preflight-cleanup.stdout.txt) preserves the
+    previous source/packages/evidence and prevents another builder disk-full failure. No product pair was installed or booted.
+  - Destination-index follow-up (`5a825944`): live queue cells and startup head duplicate detection now share the
+    compactor's ordered full-identity/Windows-leaf comparator. This removes same-parent leaf-hash collision chains from all
+    three indexes while preserving alias serialization and duplicate-head refusal. Real private-journal controls exercise
+    1k/10k simultaneously retained queue cells, canceled alias waits, distinct case/volume/parent identities, exact zero-cell
+    teardown and 1k/10k on-disk head reads with unchanged generation tuples. The
+    [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t11-destination-index1-summary.txt) passes 923 normal/1,293 feature
+    tests per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors, including all four new
+    integration controls in each profile and existing alias/duplicate-head/publication controls. The
+    [single feature Release measurements](evidence/2026-10-13/t11-destination-index1-timings.json) acquire/release 10k live queue
+    cells in 370.063/38.711 ms and discover 10k real private head files in 6,078.922 ms, preserving every generation tuple.
+    Timings include the production read/queue paths but exclude fixture-file construction; they are not a latency gate or
+    protected-pair qualification. Per-destination durable-head resolution still scans every head on every request; that
+    I/O scaling cost remains an explicit finding. Scoped cleanup of four verified unpacked package duplicates preserves
+    prior source/packages/evidence ([preflight](evidence/2026-10-13/t11-destination-index-preflight-cleanup.stdout.txt),
+    [extra headroom](evidence/2026-10-13/t11-destination-index-headroom-cleanup.stdout.txt)). No product pair was installed or booted.
+  - Fresh head-read batching (`c911d5d0`): startup discovery and each destination resolution now read bounded batches of at most
+    eight heads concurrently per journal. The journal gate remains held; every started reader finishes/disposes before batch failure
+    returns. Single-file reads avoid worker scheduling. Complete fresh validation still covers every head, including unrelated files:
+    owner/ACL, no-follow/single-link/size, JSON schema, full identity/storage filename and alias conflicts are not replaced by a cache.
+    New real-file controls measure 1k/10k lookup paths, corrupt an unrelated head after a successful lookup to prove it still refuses,
+    and prove parse failures drain readers with exclusive leases on every file before recovery; cancellation leaves the journal usable.
+    The [exact Windows matrix](evidence/2026-10-13/exact-agent-matrix-t11-head-reads1-summary.txt) passes 995 normal/1,365 feature tests
+    per Debug/Release profile, exact discovery/execution coverage, no skips and 0 warnings/errors. All seven destination integration
+    cases (three new) pass in each profile. [Single full-read measurements and the retained sequential baseline](evidence/2026-10-13/t11-head-reads1-controls-timings.json)
+    report feature Release discovery of 10k real heads at 3,360.008 ms (the preceding `t9-preparation3` run measured 5,536.233 ms),
+    and a 10k-head lookup at 4,501.360 ms. The 1k observations vary between runs; these are suite measurements, not controlled paired
+    benchmarks or latency assertions. This reduces observed long-scan elapsed time while preserving integrity, but every lookup still
+    reads O(number of durable heads): the asymptotic I/O cost, full journal scaling and final-pair review remain open.
+    [Scoped preflight cleanup](evidence/2026-10-13/t11-head-reads1-preflight-host.json) preserves completed source/packages/evidence.
+    No protected pair was installed or booted; this change remains local while the earlier source/evidence push approval is pending.
+- [ ] Close every M2 review condition against the final matched pair.
