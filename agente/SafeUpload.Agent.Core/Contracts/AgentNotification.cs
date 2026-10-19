@@ -108,6 +108,10 @@ public sealed record StatusNotification(
 {
     /// <summary>Discriminador desta mensagem no NDJSON.</summary>
     public const string TypeName = "status";
+
+    /// <summary>Optional local diagnostics; never determines ProtectionActive or admission readiness.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PolicyIntegrationStatus? PolicyIntegration { get; init; }
 }
 
 /// <summary>

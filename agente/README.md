@@ -218,9 +218,16 @@ cujo escopo foi aceito após as operações de porta e BootPolicy retornarem.
 readiness/proteção ativa. Uma nova política recebida não altera esse histórico de
 aceite. Compare fingerprints apenas de consumos equivalentes: defaults omitidos
 podem diferir entre snapshot legado e leitura estrita. Hash ausente é diagnóstico
-indisponível, nunca equivalência. Estado é somente em memória, separado de
-heartbeat, notificações da bandeja e protocolo do driver; observações idênticas
-não repetem o log. Não há atualização dinâmica do driver neste incremento.
+indisponível, nunca equivalência. Estado é somente em memória, separado do
+heartbeat e protocolo do driver; observações idênticas não repetem o log.
+A bandeja recebe um resumo opcional pela mensagem de status local existente,
+sem hashes ou exceções internas. A seção Sincronização da política mostra a
+política disponível, a última consulta bem-sucedida e o último aceite de escopo.
+Um publicador separado verifica mudanças a cada dois segundos, preservando a
+gravação durável de notificações antes da entrega. Versões antigas continuam
+sem o campo opcional; a tela exibe diagnóstico indisponível. Perder a conexão
+com o serviço limpa o resumo exibido. Nada disso altera os campos de proteção
+ou introduz atualização dinâmica do driver.
 
 **Limitações conhecidas desta integração:** sem autenticação entre agente e
 servidor; identidade padrão do endpoint é o hostname (`Environment.MachineName`,

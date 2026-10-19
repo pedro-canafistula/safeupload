@@ -17,7 +17,7 @@ Atualizado em 19/10/2026. Escopo desta entrega: código do agente e seus contrat
 4. Leitura limitada de auditoria recente da equipe preservada, com distinção entre eventos, justificativas e registros desconhecidos.
 5. Diagnóstico local `PolicyIntegration`: snapshot disponível/origem, última leitura estrita e histórico do último aceite de escopo pelo caminho driver/BootPolicy. Falha de aplicação e encerramento invalidam o recibo atual, preservando histórico. Fingerprint distingue conteúdos sob mesma versão.
 
-Aceite de escopo, heartbeat, pedido de justificativa e readiness são fatos distintos. O diagnóstico não concede autoridade nem comprova proteção ativa. Não há novo mecanismo de atualização dinâmica do driver nem novo contrato HTTP/IPC nesta entrega. Consulte o [README do agente](../README.md) para os campos de diagnóstico e uso das ferramentas.
+Aceite de escopo, heartbeat, pedido de justificativa e readiness são fatos distintos. O diagnóstico não concede autoridade nem comprova proteção ativa. Não há novo mecanismo de atualização dinâmica do driver nem novo contrato HTTP ou do driver. A extensão opcional da mensagem interna de status, descrita abaixo, pertence exclusivamente ao agente. Consulte o [README do agente](../README.md) para os campos de diagnóstico e uso das ferramentas.
 
 ## Divisão de responsabilidades e dependências
 
@@ -36,7 +36,7 @@ USB/removíveis, SMB/UNC e cloud-sync dependem dos próprios planos de suporte e
 
 | Ensaio | Resultado e limite |
 |---|---|
-| Recorte de integração feature | 374/374 Debug e 374/374 Release, sem falhas/ignorados; preserva os 362 casos do checkpoint anterior |
+| Checkpoint anterior de integração feature | 374/374 Debug e 374/374 Release, sem falhas/ignorados; preserva os 362 casos anteriores |
 | Novos diagnósticos sem flag de evidência | 12/12 Debug; recorte, não matriz completa normal/SYSTEM |
 | Auditoria com Java real | 49 verificações: online, indisponibilidade, retomada, reenvio idempotente no cenário e reinício; dois eventos e duas justificativas |
 | Publicação/leitura com Java real | 44 verificações nas revisões 1/2/3; categorias, cache, refresh e heartbeat; sem transferência real pelo driver |
@@ -56,6 +56,18 @@ dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj -c Relea
 Esses comandos reproduzem os 12 novos controles, não o recorte completo de 374. Não definir SAFEUPLOAD_MACHINE_TESTS=1 nem executar a matriz SYSTEM/VM sem preparar e validar o ambiente apropriado.
 
 ## Evidências e entrega
+
+### Apresentação local do diagnóstico — incremento de 19/10
+
+A tela de status da bandeja passa a mostrar Sincronização da política: versão disponível/origem, última consulta bem-sucedida e último aceite de escopo. O resumo `policyIntegration` é opcional na mensagem `status` do canal de notificação já existente, sem alterar seu nome, ACLs ou roteamento. Não contém fingerprints, mensagens de exceção, caminhos ou corpo da política. Um serviço publicador separado verifica mudanças a cada dois segundos; observações idênticas não repetem registros. A gravação durável continua precedendo a entrega; uma falha preserva o status anterior e permite nova tentativa.
+
+O publicador não cria status de proteção antes do interceptador. Seus metadados não mudam ProtectionActive, AuditOnly, cobertura ou geração nativa. Status posteriores preservam o resumo corrente; reconexão recebe o último status registrado. Na interface, desconexão limpa as informações; serviços antigos sem o campo opcional exibem diagnóstico indisponível. A indicação de proteção continua usando os campos anteriores.
+
+Validação deste incremento: 16 controles novos aprovados em Debug normal e no recorte Release feature de 68 controles. Incluem compatibilidade da forma antiga, projeção sem dados internos, preservação dos campos reais de proteção, falha de registro com retentativa, ciclo do publicador e pipe privado real com reconexão. O recorte Debug ampliado inicial executou 477 casos: 473 passaram, incluindo os 374 anteriores e os 15 novos iniciais; quatro testes existentes de NotificationRecordTests falharam ao criar links simbólicos por falta de privilégio do Windows. Não houve alteração dessas asserções, skips, concessão de privilégio ou repetição da mesma falha. A validação privilegiada permanece pendente; os recortes focados aprovados não substituem esse gate.
+
+WPF Release compilado com zero avisos/erros. Renderização isolada do StatusView e seu StatusViewModel reais verificou os estados pendente, desconectado e serviço antigo com dados sintéticos, sem iniciar App.OnStartup, bandeja, clipboard, serviço ou driver. As imagens não são homologação do aplicativo instalado. Os recibos e primeiras tentativas estão no checkpoint bandeja-politica-agente-20261019.
+
+Driver, biblioteca SafeUpload.Agent.Minifilter, backend e Angular continuam sem alterações. Mudança necessária no driver exige comunicação prévia ao Vitor; alteração em outra frente exige alinhamento prévio com o usuário e responsáveis.
 
 Relatórios, TRX, recibos e patches originais permanecem preservados no workspace de desenvolvimento, fora do código versionado. Checkpoints: auditoria-m2-atual-20261018, java-m2-atual-20261018, angular-m2-atual-20261018, contratos-restantes-m2-20261018 e diagnostico-politica-agente-20261019. O registro de entrega Git relaciona commits e hashes aos checkpoints. Dados de ensaio, bancos, runtimes, node_modules e builds locais não devem entrar no PR.
 

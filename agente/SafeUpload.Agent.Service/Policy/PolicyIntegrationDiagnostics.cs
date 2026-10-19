@@ -1,4 +1,5 @@
 using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Core.Contracts;
 
 namespace SafeUpload.Agent.Service.Policies;
 
@@ -14,6 +15,18 @@ public sealed class PolicyIntegrationDiagnostics
     internal PolicyIntegrationSnapshot Read()
     {
         lock (_gate) return _state;
+    }
+
+    internal PolicyIntegrationStatus ForNotification()
+    {
+        var state = Read();
+        string source = state.SnapshotSource is "remote" or "memory" or "disk" or "default" or "local"
+            ? state.SnapshotSource : "unknown";
+        bool? matches = state.DriverScopeRecorded && state.StrictReadError is null &&
+            state.StrictFingerprint is not null && state.LastAcceptedFingerprint is not null
+            ? state.StrictFingerprint == state.LastAcceptedFingerprint : null;
+        return new(state.SnapshotVersion, source, state.StrictVersion, state.LastAcceptedVersion,
+            state.DriverScopeRecorded, state.StrictReadError is not null, state.ApplyError is not null, matches);
     }
 
     internal void RecordSnapshot(Policy policy, string source) => Update(state => state with
