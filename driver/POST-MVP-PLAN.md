@@ -514,7 +514,7 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 
 | T item | Current state | Next required result |
 |---|---|---|
-| T4 | Kernel WDK/import gates and immediate-reopen harness PASS; context/namespace review accepted with runtime conditions. Full feature agent matrix `m2-ux-agent-1019a` running. | Complete matrix, 256-cycle smoke with immediate reopens, unchanged 10k cells and raw-byte rows. |
+| T4 | Kernel WDK/import gates and immediate-reopen harness PASS; context/namespace review accepted with runtime conditions. Fresh matrix `m2-ux-agent-1019b` running; Debug user 2,760/2,760. | Complete matrix, 256-cycle smoke with immediate reopens, unchanged 10k cells and raw-byte rows. |
 | T5 | Native namespace corrections reviewed. Agent repairs at `c1a3ba04` pass focused Windows controls 89/89; this is not the four-leg matrix. | Passing four-leg agent matrix, forced native delete orders, clean/CPF Notepad and public operations in all three modes. |
 | T6 | Copy-fallback component evidence and owner-approved folder/cross-drive metadata contract exist; merged namespace/folder source is unqualified. | Final-pair file/folder moves, idle rename and pending conflicts in all required modes. |
 | T7 | Windows-authorized read design retained. | Final-pair authorized/denied reads and exact bytes. |

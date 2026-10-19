@@ -1,0 +1,8 @@
+{
+  "SourceCommit": "a3ea2a481df588b7fc65cadb6ea678bc8c1c0904",
+  "Passed": 204,
+  "Total": 204,
+  "Skipped": 0,
+  "DiagnosticSubset": true,
+  "MatrixGate": false
+}

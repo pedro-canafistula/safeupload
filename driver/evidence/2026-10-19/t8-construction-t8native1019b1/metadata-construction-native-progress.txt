@@ -1,0 +1,7 @@
+NativeOpen=C:\Windows\SystemTemp\safeupload-t8-construction-13a54a22c66e4f45b6f7d0a3cbdffe38 Requested=0x011F01FF Status=0xC000050B Information=0
+NativeFailure=System.IO.IOException: Register fixture failed.
+   at T8MetadataConstructionControl.Register(IDictionary`2 inventory, String path, Boolean directory)
+   at T8MetadataConstructionControl.Run(Int32 callerPid, Int64 callerStarted, String callerSid, String root, String progressFile)
+CleanupFailure=System.IO.IOException: Fixture root remains.
+   at T8MetadataConstructionControl.Run(Int32 callerPid, Int64 callerStarted, String callerSid, String root, String progressFile)
+ProcessPrivilegesUnchanged=True

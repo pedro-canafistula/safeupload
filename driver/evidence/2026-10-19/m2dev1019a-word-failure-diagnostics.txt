@@ -1,0 +1,879 @@
+PublicExists=True
+{
+    "FullName":  "C:\\Protected\\m2dev1019a-word-clean.docx",
+    "Length":  13382,
+    "Attributes":  32
+}
+
+Algorithm       Hash                                                                   Path                            
+---------       ----                                                                   ----                            
+SHA256          61437258B964525CF3947B5E4C8F03CE47F8F949B855E39995A38142C131EFE3       C:\Protected\m2dev1019a-word-...
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:cx="http://schemas.microsoft.com/office/drawing/2014/chartex" xmlns:cx1="http://schemas.microsoft.com/office/drawing/2015/9/8/chartex" xmlns:cx2="http://schemas.microsoft.com/office/drawing/2015/10/21/chartex" xmlns:cx3="http://schemas.microsoft.com/office/drawing/2016/5/9/chartex" xmlns:cx4="http://schemas.microsoft.com/office/drawing/2016/5/10/chartex" xmlns:cx5="http://schemas.microsoft.com/office/drawing/2016/5/11/chartex" xmlns:cx6="http://schemas.microsoft.com/office/drawing/2016/5/12/chartex" xmlns:cx7="http://schemas.microsoft.com/office/drawing/2016/5/13/chartex" xmlns:cx8="http://schemas.microsoft.com/office/drawing/2016/5/14/chartex" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:aink="http://schemas.microsoft.com/office/drawing/2016/ink" xmlns:am3d="http://schemas.microsoft.com/office/drawing/2017/model3d" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:oel="http://schemas.microsoft.com/office/2019/extlst" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:w16cex="http://schemas.microsoft.com/office/word/2018/wordml/cex" xmlns:w16cid="http://schemas.microsoft.com/office/word/2016/wordml/cid" xmlns:w16="http://schemas.microsoft.com/office/word/2018/wordml" xmlns:w16du="http://schemas.microsoft.com/office/word/2023/wordml/word16du" xmlns:w16sdtdh="http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash" xmlns:w16sdtfl="http://schemas.microsoft.com/office/word/2024/wordml/sdtformatlock" xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 w15 w16se w16cid w16 w16cex w16sdtdh w16sdtfl w16du wp14"><w:body><w:p w14:paraId="6E85E320" w14:textId="5C1AD3F0" w:rsidR="00A93C80" w:rsidRDefault="00490B5C"><w:r><w:t>Quarterly meeting notes without personal data.</w:t></w:r></w:p><w:sectPr w:rsidR="00A93C80"><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/><w:cols w:space="708"/><w:docGrid w:linePitch="360"/></w:sectPr></w:body></w:document>
+[
+    {
+        "sequence":  8,
+        "timeUtc":  "2026-10-19T14:34:08.3181605Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  null,
+        "processId":  1412,
+        "threadId":  1144,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x100080",
+        "options":  "0x1000020",
+        "reason":  "privateNamespace",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "ad\\staging\\61E27CDDC98D11F1A0BE525400AADD13.ALLOCATION-REFUSED"
+    },
+    {
+        "sequence":  9,
+        "timeUtc":  "2026-10-19T14:34:08.3182412Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  null,
+        "processId":  1412,
+        "threadId":  1144,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x100080",
+        "options":  "0x1000020",
+        "reason":  "privateNamespace",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "ad\\staging\\61E27CDFC98D11F1A0BE525400AADD13.ALLOCATION-REFUSED"
+    },
+    {
+        "sequence":  10,
+        "timeUtc":  "2026-10-19T14:34:08.3183197Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  null,
+        "processId":  1412,
+        "threadId":  1144,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x100080",
+        "options":  "0x1000020",
+        "reason":  "privateNamespace",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "ad\\staging\\61E27CE0C98D11F1A0BE525400AADD13.ALLOCATION-REFUSED"
+    },
+    {
+        "sequence":  11,
+        "timeUtc":  "2026-10-19T14:34:08.3185192Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  null,
+        "processId":  1412,
+        "threadId":  1144,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x100080",
+        "options":  "0x1000020",
+        "reason":  "privateNamespace",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "ad\\staging\\61E27C0FC98D11F1A0BE525400AADD13.ALLOCATION-REFUSED"
+    },
+    {
+        "sequence":  12,
+        "timeUtc":  "2026-10-19T14:34:08.3187087Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  null,
+        "processId":  1412,
+        "threadId":  1144,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x100080",
+        "options":  "0x1000020",
+        "reason":  "privateNamespace",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "ad\\staging\\61E27C31C98D11F1A0BE525400AADD13.ALLOCATION-REFUSED"
+    },
+    {
+        "sequence":  13,
+        "timeUtc":  "2026-10-19T14:34:08.3190247Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  null,
+        "processId":  1412,
+        "threadId":  1144,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x100080",
+        "options":  "0x1000020",
+        "reason":  "privateNamespace",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "ad\\staging\\61E27C0DC98D11F1A0BE525400AADD13.ALLOCATION-REFUSED"
+    },
+    {
+        "sequence":  14,
+        "timeUtc":  "2026-10-19T14:38:25.4637744Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  "0x269F1",
+        "processId":  6448,
+        "threadId":  5492,
+        "major":  "FILE_SYSTEM_CONTROL",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x900C0",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected"
+    },
+    {
+        "sequence":  15,
+        "timeUtc":  "2026-10-19T14:38:26.1848632Z",
+        "status":  "0xC00000BB",
+        "statusName":  "STATUS_NOT_SUPPORTED",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "FILE_SYSTEM_CONTROL",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x9C040",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected\\~WRD0000.tmp"
+    },
+    {
+        "sequence":  16,
+        "timeUtc":  "2026-10-19T14:38:26.3971879Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x80",
+        "options":  "0x1200000",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  17,
+        "timeUtc":  "2026-10-19T14:38:26.3993000Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x120089",
+        "options":  "0x1400060",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  18,
+        "timeUtc":  "2026-10-19T14:38:26.3994393Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x120089",
+        "options":  "0x1000060",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  19,
+        "timeUtc":  "2026-10-19T14:38:26.3995552Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x120089",
+        "options":  "0x1400060",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  20,
+        "timeUtc":  "2026-10-19T14:38:26.3996845Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x120089",
+        "options":  "0x1000060",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  21,
+        "timeUtc":  "2026-10-19T14:38:26.4552680Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x80",
+        "options":  "0x1200000",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  22,
+        "timeUtc":  "2026-10-19T14:38:26.4553739Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x120089",
+        "options":  "0x1400060",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  23,
+        "timeUtc":  "2026-10-19T14:38:26.4555281Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x120089",
+        "options":  "0x1000060",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  24,
+        "timeUtc":  "2026-10-19T14:38:26.4556444Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x120089",
+        "options":  "0x1400060",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  25,
+        "timeUtc":  "2026-10-19T14:38:26.4557847Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x120089",
+        "options":  "0x1000060",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  26,
+        "timeUtc":  "2026-10-19T14:38:26.4560039Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x80",
+        "options":  "0x1200000",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  27,
+        "timeUtc":  "2026-10-19T14:38:26.4561130Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x120089",
+        "options":  "0x1400060",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  28,
+        "timeUtc":  "2026-10-19T14:38:26.4562062Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x120089",
+        "options":  "0x1400060",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  29,
+        "timeUtc":  "2026-10-19T14:38:26.4563512Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x120089",
+        "options":  "0x1000060",
+        "reason":  "17",
+        "auxStatus":  "0x00000406",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  30,
+        "timeUtc":  "2026-10-19T14:38:26.5403426Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x80",
+        "options":  "0x1200000",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  31,
+        "timeUtc":  "2026-10-19T14:38:26.6359130Z",
+        "status":  "0xC00000BB",
+        "statusName":  "STATUS_NOT_SUPPORTED",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  4764,
+        "major":  "FILE_SYSTEM_CONTROL",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x900C0",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  32,
+        "timeUtc":  "2026-10-19T14:38:26.6406648Z",
+        "status":  "0xC00000BB",
+        "statusName":  "STATUS_NOT_SUPPORTED",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  4764,
+        "major":  "FILE_SYSTEM_CONTROL",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x900C0",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected\\m2dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  33,
+        "timeUtc":  "2026-10-19T14:38:26.6956935Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  "0x269F1",
+        "processId":  5576,
+        "threadId":  7460,
+        "major":  "FILE_SYSTEM_CONTROL",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x900C0",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected"
+    },
+    {
+        "sequence":  34,
+        "timeUtc":  "2026-10-19T14:38:26.6958259Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  "0x269F1",
+        "processId":  5576,
+        "threadId":  7460,
+        "major":  "FILE_SYSTEM_CONTROL",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x900C0",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected"
+    },
+    {
+        "sequence":  35,
+        "timeUtc":  "2026-10-19T14:38:26.6961518Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  "0x269F1",
+        "processId":  5576,
+        "threadId":  7460,
+        "major":  "FILE_SYSTEM_CONTROL",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x900C0",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected"
+    },
+    {
+        "sequence":  36,
+        "timeUtc":  "2026-10-19T14:38:27.0122634Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  "0x269F1",
+        "processId":  5576,
+        "threadId":  7460,
+        "major":  "FILE_SYSTEM_CONTROL",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x900C0",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected"
+    },
+    {
+        "sequence":  37,
+        "timeUtc":  "2026-10-19T14:38:27.5374214Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  "0x269F1",
+        "processId":  5576,
+        "threadId":  7460,
+        "major":  "FILE_SYSTEM_CONTROL",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x900C0",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected"
+    },
+    {
+        "sequence":  38,
+        "timeUtc":  "2026-10-19T14:38:27.5375308Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  "0x269F1",
+        "processId":  5576,
+        "threadId":  7460,
+        "major":  "FILE_SYSTEM_CONTROL",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x900C0",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected"
+    },
+    {
+        "sequence":  39,
+        "timeUtc":  "2026-10-19T14:38:27.5378155Z",
+        "status":  "0xC0000022",
+        "statusName":  "STATUS_ACCESS_DENIED",
+        "siteOffset":  "0x269F1",
+        "processId":  5576,
+        "threadId":  7460,
+        "major":  "FILE_SYSTEM_CONTROL",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+                      "nameIsCreateName"
+                  ],
+        "access":  "0x900C0",
+        "options":  "0x0",
+        "reason":  "",
+        "auxStatus":  null,
+        "auxStatusName":  null,
+        "name":  "\\Protected"
+    },
+    {
+        "sequence":  40,
+        "timeUtc":  "2026-10-19T14:38:27.5388092Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x80",
+        "options":  "0x1200000",
+        "reason":  "17",
+        "auxStatus":  "0x00000003",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\~$dev1019a-word-clean.docx"
+    },
+    {
+        "sequence":  41,
+        "timeUtc":  "2026-10-19T14:38:27.5388725Z",
+        "status":  "0xC0000043",
+        "statusName":  "STATUS_SHARING_VIOLATION",
+        "siteOffset":  null,
+        "processId":  6448,
+        "threadId":  5204,
+        "major":  "CREATE",
+        "minor":  0,
+        "irql":  0,
+        "flags":  [
+
+                  ],
+        "access":  "0x80",
+        "options":  "0x1200000",
+        "reason":  "17",
+        "auxStatus":  "0x00000003",
+        "auxStatusName":  "",
+        "name":  "\\Device\\HarddiskVolume3\\Protected\\~$dev1019a-word-clean.docx"
+    }
+]
+{
+    "admissionCoverageQuery":  {
+                                   "retries":  48,
+                                   "exhaustedSequences":  2
+                               },
+    "refusals":  {
+                     "recorded":  41,
+                     "accessDenied":  21,
+                     "retry":  0,
+                     "otherStatus":  20,
+                     "benignIgnored":  0,
+                     "notRecorded":  0,
+                     "nextSequence":  42
+                 },
+    "volumeWideFallback":  {
+                               "queries":  429594,
+                               "answeredTrue":  429524
+                           },
+    "reclaimWorker":  {
+                          "passes":  9729,
+                          "parkedPasses":  43,
+                          "moreWorkRequeues":  8,
+                          "wakeupsSkipped":  1232857
+                      },
+    "stageWorker":  {
+                        "liveVersions":  1,
+                        "liveViews":  1,
+                        "tombstones":  0,
+                        "waitingVersions":  0,
+                        "versionsCreated":  1,
+                        "versionsReleased":  1,
+                        "viewsReleased":  1,
+                        "capRefusals":  0,
+                        "tombstoneRefusals":  0,
+                        "passes":  346,
+                        "wakeCleanup":  9,
+                        "wakeClose":  3,
+                        "wakeDispose":  298,
+                        "wakeConnect":  1,
+                        "wakeExit":  36,
+                        "wakeTimer":  5,
+                        "wakeInline":  61,
+                        "timerArms":  13,
+                        "disposeHeld":  298,
+                        "disposeNotHeld":  496,
+                        "disposeStale":  0,
+                        "disposeDeferred":  0,
+                        "stageDeletes":  0,
+                        "stageDeleteFailures":  0
+                    },
+    "imageBase":  "0xFFFFF8052DD10000",
+    "writerState":  {
+                        "registryEntries":  399,
+                        "registryCapacity":  4096,
+                        "registryReservations":  0,
+                        "registryOverflow":  0,
+                        "registryUnknownReasons":  0,
+                        "registryInstanceUnknown":  0,
+                        "registryPruned":  4692,
+                        "registryReclaimPasses":  9729,
+                        "registryCapacityFailures":  0,
+                        "registryAllocationFailures":  0,
+                        "registryIdentityFailures":  3,
+                        "registryTransactionFailures":  0,
+                        "registryRenameFailures":  0,
+                        "registryDroppedAtDismount":  0,
+                        "registryDroppedWhileMounted":  0,
+                        "writersDroppedAtTeardown":  0,
+                        "writersDroppedWhileMounted":  0,
+                        "cleanupUnmatched":  0,
+                        "writerGlobalFirstUnknown":  {
+                                                         "reason":  0,
+                                                         "site":  0
+                                                     },
+                        "writerEntryFirstUnknown":  {
+                                                        "reason":  0,
+                                                        "site":  0
+                                                    },
+                        "writerSopFirstUnknown":  {
+                                                      "reason":  0,
+                                                      "site":  0
+                                                  },
+                        "writerSopUnknownCount":  0,
+                        "registryNameTierEntries":  399,
+                        "registryCompactTierEntries":  0,
+                        "sectionInFlightNow":  0,
+                        "sectionInFlightMaxDepth":  1,
+                        "sectionInFlightStuck":  0,
+                        "stageStreams":  1,
+                        "stageFileObjects":  1,
+                        "untrackedCreates":  0,
+                        "txfRefused":  0,
+                        "instanceTeardownsDismount":  49,
+                        "instanceTeardownsOther":  0
+                    }
+}
+{
+    "FullName":  "C:\\Protected\\m2dev1019a-word-clean.docx",
+    "Length":  13382
+}
+[
+    {
+        "Name":  "completed",
+        "LastWriteTime":  "\/Date(1792404736078)\/"
+    },
+    {
+        "Name":  "61e27b8dc98d11f1a0be525400aadd13.json",
+        "LastWriteTime":  "\/Date(1792174517657)\/"
+    },
+    {
+        "Name":  "61e27bb5c98d11f1a0be525400aadd13.json",
+        "LastWriteTime":  "\/Date(1792174562344)\/"
+    },
+    {
+        "Name":  "942c9d13cbc811f1a0c5525400aadd13.json",
+        "LastWriteTime":  "\/Date(1792420712297)\/"
+    },
+    {
+        "Name":  "a40fbb3ec99511f1a0c1525400aadd13.json",
+        "LastWriteTime":  "\/Date(1792178084899)\/"
+    },
+    {
+        "Name":  "a40fbb65c99511f1a0c1525400aadd13.json",
+        "LastWriteTime":  "\/Date(1792178152193)\/"
+    },
+    {
+        "Name":  "a40fbb6fc99511f1a0c1525400aadd13.json",
+        "LastWriteTime":  "\/Date(1792259798218)\/"
+    },
+    {
+        "Name":  "a40fbc0cc99511f1a0c1525400aadd13.json",
+        "LastWriteTime":  "\/Date(1792178288144)\/"
+    },
+    {
+        "Name":  "a40fbc0fc99511f1a0c1525400aadd13.json",
+        "LastWriteTime":  "\/Date(1792178293400)\/"
+    },
+    {
+        "Name":  "a40fbc12c99511f1a0c1525400aadd13.json",
+        "LastWriteTime":  "\/Date(1792259798234)\/"
+    },
+    {
+        "Name":  "driver-epoch.state",
+        "LastWriteTime":  "\/Date(1792419812780)\/"
+    }
+]
+{
+    "LastTaskResult":  1
+}
+
+

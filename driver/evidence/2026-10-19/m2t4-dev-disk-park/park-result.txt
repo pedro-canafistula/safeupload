@@ -1,0 +1,3 @@
+Domain 'win10-debug3' defined from driver/evidence/2026-10-19/m2t4-dev-disk-park/original-base.xml
+
+DevDiskParked=True DevDiskDeleted=False BaseStatUnchanged=True CanonicalXmlRestored=True Qualification=False

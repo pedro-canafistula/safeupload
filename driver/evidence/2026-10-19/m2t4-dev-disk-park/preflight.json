@@ -1,0 +1,8 @@
+{
+  "PreflightOnly": true,
+  "DevDiskRetained": true,
+  "BaseStatUnchanged": true,
+  "OriginalXmlMatchesAfterOnlyDiskSwap": true,
+  "NoTpm": true,
+  "ParkedYet": false
+}

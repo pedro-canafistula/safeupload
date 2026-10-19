@@ -1,0 +1,20 @@
+﻿LABEL=m2-ux-agent-1019a
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=62127384df75e479877725e551045f4f64e1ef9a
+ARCHIVE_SHA256=8E210C0A58A227ADE49947B84F87B90F142CC86CDBE0AB16B1CF221689B992B4
+AgentMatrixProfiles=feature-debug,feature-release
+AgentMatrixTestLegs=4
+Builder=builder1
+BuilderHost=192.168.122.210
+BuilderComputerName=DESKTOP-O1LP5DG
+ParityCheck=False
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=1 warnings=0 errors=0
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-19T14:30:15.8769288Z

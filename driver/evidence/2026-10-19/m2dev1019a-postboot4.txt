@@ -1,0 +1,138 @@
+
+SERVICE_NAME: SafeUpload 
+        TYPE               : 2  FILE_SYSTEM_DRIVER  
+        STATE              : 4  RUNNING 
+                                (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+        WIN32_EXIT_CODE    : 0  (0x0)
+        SERVICE_EXIT_CODE  : 0  (0x0)
+        CHECKPOINT         : 0x0
+        WAIT_HINT          : 0x0
+
+Filter Name                     Num Instances    Altitude    Frame
+------------------------------  -------------  ------------  -----
+bindflt                                 1       409800         0
+SafeUpload                              4       321410         0
+storqosflt                              0       244000         0
+wcifs                                   0       189900         0
+CldFlt                                  1       180451         0
+FileCrypt                               0       141100         0
+luafv                                   1       135000         0
+npsvctrig                               1        46000         0
+Wof                                     2        40700         0
+FileInfo                                4        40500         0
+Status={"type":"status","policyVersion":4,"activeCategories":3,"protectionActive":true,"auditOnly":false,"admissionCoverage":"Ready","admissionCoverageReason":"Ready","nativePolicyGeneration":2147483647}
+BootedDevPair=PASS Qualification=False
+[
+    {
+        "Name":  "act044814.ps1",
+        "Length":  2976
+    },
+    {
+        "Name":  "act047995.ps1",
+        "Length":  2670
+    },
+    {
+        "Name":  "act054619.ps1",
+        "Length":  902
+    },
+    {
+        "Name":  "act092023.ps1",
+        "Length":  1944
+    },
+    {
+        "Name":  "act170807.ps1",
+        "Length":  2670
+    },
+    {
+        "Name":  "act176944.ps1",
+        "Length":  3486
+    },
+    {
+        "Name":  "act184113.ps1",
+        "Length":  1944
+    },
+    {
+        "Name":  "act243145.ps1",
+        "Length":  2670
+    },
+    {
+        "Name":  "act254777.ps1",
+        "Length":  1944
+    },
+    {
+        "Name":  "act296917.ps1",
+        "Length":  2670
+    },
+    {
+        "Name":  "act341054.ps1",
+        "Length":  836
+    },
+    {
+        "Name":  "act351489.ps1",
+        "Length":  836
+    },
+    {
+        "Name":  "act399394.ps1",
+        "Length":  1944
+    },
+    {
+        "Name":  "act456327.ps1",
+        "Length":  2976
+    },
+    {
+        "Name":  "act460993.ps1",
+        "Length":  1187
+    },
+    {
+        "Name":  "act462331.ps1",
+        "Length":  2976
+    },
+    {
+        "Name":  "act464230.ps1",
+        "Length":  1357
+    },
+    {
+        "Name":  "act521167.ps1",
+        "Length":  1944
+    },
+    {
+        "Name":  "act589263.ps1",
+        "Length":  2670
+    },
+    {
+        "Name":  "act699417.ps1",
+        "Length":  1944
+    },
+    {
+        "Name":  "act734703.ps1",
+        "Length":  2976
+    },
+    {
+        "Name":  "act766324.ps1",
+        "Length":  2976
+    },
+    {
+        "Name":  "act800396.ps1",
+        "Length":  2670
+    },
+    {
+        "Name":  "act826095.ps1",
+        "Length":  1944
+    },
+    {
+        "Name":  "act858514.ps1",
+        "Length":  2976
+    },
+    {
+        "Name":  "act878672.ps1",
+        "Length":  836
+    },
+    {
+        "Name":  "act879970.ps1",
+        "Length":  2670
+    },
+    {
+        "Name":  "act893840.ps1",
+        "Length":  2976
+    }
+]
