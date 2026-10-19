@@ -45,6 +45,7 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly string _queueFile;
     private readonly Action<FileStream> _flushToDisk;
+    private readonly IAuditWriteFailureObserver? _failureObserver;
 
     /// <summary>Usa o caminho padrão do agente.</summary>
     public LocalQueueAuditSink() : this(AgentPaths.QueueFile)
@@ -58,12 +59,20 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
     }
 
     // The fault seam is internal and never selected by configuration or IPC.
-    internal LocalQueueAuditSink(string queueFile, Action<FileStream> flushToDisk)
+    public LocalQueueAuditSink(string queueFile, IAuditWriteFailureObserver failureObserver)
+        : this(queueFile, static stream => stream.Flush(flushToDisk: true),
+            failureObserver ?? throw new ArgumentNullException(nameof(failureObserver)))
+    {
+    }
+
+    internal LocalQueueAuditSink(string queueFile, Action<FileStream> flushToDisk,
+        IAuditWriteFailureObserver? failureObserver = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(queueFile);
         ArgumentNullException.ThrowIfNull(flushToDisk);
         _queueFile = queueFile;
         _flushToDisk = flushToDisk;
+        _failureObserver = failureObserver;
     }
 
     /// <summary>Caminho do arquivo de fila, para exibição na interface.</summary>
@@ -75,22 +84,7 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         ArgumentNullException.ThrowIfNull(auditEvent);
 
         var line = JsonSerializer.Serialize(auditEvent, Options);
-
-        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var directory = Path.GetDirectoryName(_queueFile);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            await AppendLineAsync(line, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await AppendRecordAsync(line, AuditWriteKind.Event, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -128,21 +122,29 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         };
 
         var line = JsonSerializer.Serialize(record, Options);
+        await AppendRecordAsync(line, AuditWriteKind.Override, cancellationToken).ConfigureAwait(false);
+    }
 
-        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+    private async Task AppendRecordAsync(string line, AuditWriteKind kind, CancellationToken cancellationToken)
+    {
         try
         {
-            var directory = Path.GetDirectoryName(_queueFile);
-            if (!string.IsNullOrEmpty(directory))
+            await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                Directory.CreateDirectory(directory);
+                var directory = Path.GetDirectoryName(_queueFile);
+                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+                await AppendLineAsync(line, cancellationToken).ConfigureAwait(false);
             }
-
-            await AppendLineAsync(line, cancellationToken).ConfigureAwait(false);
+            finally { _writeLock.Release(); }
         }
-        finally
+        catch (Exception error) when (!cancellationToken.IsCancellationRequested)
         {
-            _writeLock.Release();
+            // Observe only after releasing the queue lock. A diagnostic failure
+            // must never replace the original persistence error or retry a write.
+            try { _failureObserver?.OnWriteFailure(kind, error); }
+            catch (Exception) { }
+            throw;
         }
     }
 

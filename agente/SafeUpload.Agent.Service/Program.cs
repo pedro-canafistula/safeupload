@@ -100,7 +100,11 @@ public static class Program
         // Administração configurado: é ela que deixa o endpoint continuar
         // registrando com a rede fora do ar. O envio ao painel é uma etapa
         // posterior, feita pelo HttpAgentDispatcher, e não um substituto.
-        builder.Services.AddSingleton<IAuditSink, LocalQueueAuditSink>();
+        builder.Services.AddSingleton<SafeUpload.Agent.Service.Audit.AuditWriteFailureDiagnostics>();
+        builder.Services.AddSingleton<IAuditWriteFailureObserver>(services =>
+            services.GetRequiredService<SafeUpload.Agent.Service.Audit.AuditWriteFailureDiagnostics>());
+        builder.Services.AddSingleton<IAuditSink>(services => new LocalQueueAuditSink(AgentPaths.QueueFile,
+            services.GetRequiredService<IAuditWriteFailureObserver>()));
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
         builder.Services.AddSingleton<InspectionService>(services =>
