@@ -229,7 +229,18 @@ function Invoke-NotepadSaveAs([string]$Path, [string]$Text) {
         $obs.FileNameBeforeSave = $nameBox.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
         $obs.SaveButtonName = $save.Current.Name
         $saveHandle = [IntPtr]$save.Current.NativeWindowHandle
-        if ($saveHandle -eq [IntPtr]::Zero -or -not [T5Native]::PostButtonClick($saveHandle)) { throw 'Save button native click could not be posted' }
+        $dialogHandle = [IntPtr]$dialog.Current.NativeWindowHandle
+        $obs.SaveButtonHandle = $saveHandle.ToInt64()
+        $obs.SaveDialogHandle = $dialogHandle.ToInt64()
+        if ($saveHandle -ne [IntPtr]::Zero) {
+            $obs.SaveMethod = 'native-button'
+            if (-not [T5Native]::PostButtonClick($saveHandle)) { throw ('Save button click could not be posted: ' + ($obs | ConvertTo-Json -Compress)) }
+        } else {
+            # DirectUI buttons need not own an HWND. Send this one IDOK command
+            # to the exact Notepad dialog; no button action was posted above.
+            $obs.SaveMethod = 'dialog-command'
+            if ($dialogHandle -eq [IntPtr]::Zero -or -not [T5Native]::PostCommand($dialogHandle, 1)) { throw ('Save dialog command could not be posted: ' + ($obs | ConvertTo-Json -Compress)) }
+        }
         Start-Sleep -Seconds 4
         $obs.WindowsAfterSave = @(Get-WindowTexts $p.Id)
         $obs.Title = (Get-Process -Id $p.Id).MainWindowTitle
