@@ -41,7 +41,6 @@ public static class T5Native {
     // .NET Framework SendKeys uses a journal hook that Windows refuses without UI access: set the text and post the command.
     public static void SetText(IntPtr hwnd, string text) { SendMessageW(hwnd, 0x000C /* WM_SETTEXT */, IntPtr.Zero, text); }
     public static bool PostCommand(IntPtr hwnd, int id) { return PostMessageW(hwnd, 0x0111 /* WM_COMMAND */, new IntPtr(id), IntPtr.Zero); }
-    public static bool PostButtonClick(IntPtr hwnd) { return PostMessageW(hwnd, 0x00F5 /* BM_CLICK */, IntPtr.Zero, IntPtr.Zero); }
     static int Err() { return Marshal.GetLastWin32Error(); }
     static bool Valid(IntPtr h) { return h != IntPtr.Zero && h != new IntPtr(-1); }
     static int CloseCode(IntPtr h) { return CloseHandle(h) ? 0 : Err(); }
@@ -222,25 +221,19 @@ function Invoke-NotepadSaveAs([string]$Path, [string]$Text) {
         if ($null -eq $nameBox) { throw 'file name box not found' }
         $nameBox.SetFocus()
         $nameBox.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($Path)
-        $save = $dialog.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::AutomationIdProperty, '1')))
+        # Folder items reuse AutomationId=1. Require the actual dialog button;
+        # invoking a matching folder merely navigates and never saves anything.
+        $saveButtons = $dialog.FindAll([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.AndCondition(
+            (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::AutomationIdProperty, '1')),
+            (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)))))
+        if ($saveButtons.Count -ne 1) { throw 'Expected exactly one Save button' }
+        $save = $saveButtons[0]
         # Commit the filename edit's focus transition before invoking the dialog.
         # UIA ValuePattern alone can leave the common dialog's cached name stale.
         $save.SetFocus()
         $obs.FileNameBeforeSave = $nameBox.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
         $obs.SaveButtonName = $save.Current.Name
-        $saveHandle = [IntPtr]$save.Current.NativeWindowHandle
-        $dialogHandle = [IntPtr]$dialog.Current.NativeWindowHandle
-        $obs.SaveButtonHandle = $saveHandle.ToInt64()
-        $obs.SaveDialogHandle = $dialogHandle.ToInt64()
-        if ($saveHandle -ne [IntPtr]::Zero) {
-            $obs.SaveMethod = 'native-button'
-            if (-not [T5Native]::PostButtonClick($saveHandle)) { throw ('Save button click could not be posted: ' + ($obs | ConvertTo-Json -Compress)) }
-        } else {
-            # DirectUI buttons need not own an HWND. Send this one IDOK command
-            # to the exact Notepad dialog; no button action was posted above.
-            $obs.SaveMethod = 'dialog-command'
-            if ($dialogHandle -eq [IntPtr]::Zero -or -not [T5Native]::PostCommand($dialogHandle, 1)) { throw ('Save dialog command could not be posted: ' + ($obs | ConvertTo-Json -Compress)) }
-        }
+        $save.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
         Start-Sleep -Seconds 4
         $obs.WindowsAfterSave = @(Get-WindowTexts $p.Id)
         $obs.Title = (Get-Process -Id $p.Id).MainWindowTitle
