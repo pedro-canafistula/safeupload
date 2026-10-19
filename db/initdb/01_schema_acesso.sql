@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     data_nascimento DATE,
     fk_id_empresa INT,
     fk_id_endereco INT,
-    bloqueado CHECK(bloqueado BETWEEN 0 AND 1),
+    bloqueado TINYINT NOT NULL DEFAULT 0 CHECK (bloqueado BETWEEN 0 AND 1),
     role VARCHAR (20),
     criado_por VARCHAR(50),
     data_cadastro TIMESTAMP,
