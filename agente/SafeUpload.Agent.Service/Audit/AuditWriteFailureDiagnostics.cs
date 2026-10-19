@@ -1,4 +1,5 @@
 using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Core.Contracts;
 
 namespace SafeUpload.Agent.Service.Audit;
 
@@ -11,6 +12,17 @@ public sealed class AuditWriteFailureDiagnostics(ILogger<AuditWriteFailureDiagno
     private AuditWriteFailureSnapshot _state = new(0, null, null);
 
     internal AuditWriteFailureSnapshot Read() { lock (_gate) return _state; }
+
+    internal AuditWriteStatus ForNotification()
+    {
+        var state = Read();
+        return new(state.FailureCount, state.LastKind switch
+        {
+            AuditWriteKind.Event => "event",
+            AuditWriteKind.Override => "override",
+            _ => null
+        }, state.LastErrorClass);
+    }
 
     public void OnWriteFailure(AuditWriteKind kind, Exception error)
     {

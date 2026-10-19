@@ -195,6 +195,7 @@ public static class Program
         // A entrega das notificacoes aos aplicativos conectados.
         builder.Services.AddHostedService<NotificationPipeServer>();
         builder.Services.AddHostedService<PolicyIntegrationStatusPublisher>();
+        builder.Services.AddHostedService<SafeUpload.Agent.Service.Audit.AuditWriteStatusPublisher>();
 
         // O caminho de volta, e o unico: recebe justificativas do aplicativo.
         // Nao altera veredito - submete um motivo para um bloqueio que este

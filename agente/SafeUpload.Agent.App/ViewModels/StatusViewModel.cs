@@ -30,6 +30,13 @@ public sealed class StatusViewModel : ObservableObject
     private string _monitoringState = "AGUARDANDO";
     private bool _connected;
     private PolicyIntegrationPresentation _policyIntegration = PolicyIntegrationPresentation.Unavailable;
+    private AuditWritePresentation _auditWrites = AuditWritePresentation.Unavailable;
+
+    public AuditWritePresentation AuditWrites
+    {
+        get => _auditWrites;
+        private set => SetProperty(ref _auditWrites, value);
+    }
 
     public PolicyIntegrationPresentation PolicyIntegration
     {
@@ -116,6 +123,7 @@ public sealed class StatusViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(status);
 
         PolicyIntegration = PolicyIntegrationPresentation.From(status.PolicyIntegration);
+        AuditWrites = AuditWritePresentation.From(status.AuditWrites);
 
         Connected = true;
         PolicyVersion = $"v{status.PolicyVersion}";
@@ -173,6 +181,7 @@ public sealed class StatusViewModel : ObservableObject
     {
         Connected = false;
         PolicyIntegration = PolicyIntegrationPresentation.Disconnected;
+        AuditWrites = AuditWritePresentation.Disconnected;
         SecurityState = "Serviço indisponível";
         SecurityCaption = "SEM COMUNICAÇÃO COM O SERVIÇO";
         PolicyVersion = "—";

@@ -39,6 +39,7 @@ public sealed class NotificationHub
 
     private StatusNotification? _currentStatus;
     private PolicyIntegrationStatus? _policyIntegration;
+    private AuditWriteStatus? _auditWrites;
 
     public NotificationHub(INotificationRecord record, ILogger<NotificationHub> logger)
         : this(record, logger, TimeProvider.System) { }
@@ -147,8 +148,12 @@ public sealed class NotificationHub
 
         lock (_gate)
         {
-            if (notification is StatusNotification incoming && _policyIntegration is { } integration)
-                notification = incoming with { PolicyIntegration = integration };
+            if (notification is StatusNotification incoming)
+                notification = incoming with
+                {
+                    PolicyIntegration = _policyIntegration ?? incoming.PolicyIntegration,
+                    AuditWrites = _auditWrites ?? incoming.AuditWrites
+                };
             if (!TryRecord(notification, targetSessionId)) return false;
 
             if (notification is StatusNotification status)
@@ -188,6 +193,20 @@ public sealed class NotificationHub
             // Never synthesize protection/readiness fields to carry diagnostics.
             if (_currentStatus is null || Publish(_currentStatus)) return true;
             _policyIntegration = previous;
+            return false;
+        }
+    }
+
+    /// <summary>Refresh only historical audit diagnostics, using the existing durable delivery rule.</summary>
+    internal bool PublishAuditWrites(AuditWriteStatus summary)
+    {
+        lock (_gate)
+        {
+            if (_auditWrites == summary) return true;
+            var previous = _auditWrites;
+            _auditWrites = summary;
+            if (_currentStatus is null || Publish(_currentStatus)) return true;
+            _auditWrites = previous;
             return false;
         }
     }

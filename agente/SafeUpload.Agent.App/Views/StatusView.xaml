@@ -184,6 +184,17 @@
                 </StackPanel>
             </Border>
 
+            <Border Style="{StaticResource PanelCard}" Margin="0,20,0,0">
+                <StackPanel>
+                    <TextBlock Text="Gravação da auditoria local" FontSize="15" FontWeight="SemiBold"
+                               Foreground="{StaticResource Text}" />
+                    <TextBlock Text="{Binding AuditWrites.Summary}" Margin="0,12,0,0" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding AuditWrites.Detail}" Style="{StaticResource MutedText}"
+                               Margin="0,5,0,0" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding AuditWrites.Message}" Margin="0,8,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
             <!-- Monitoramento de Atividade -->
             <Border Style="{StaticResource PanelCard}" Margin="0,20,0,0" Padding="0">
                 <StackPanel>

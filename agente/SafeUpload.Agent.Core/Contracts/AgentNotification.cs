@@ -112,6 +112,10 @@ public sealed record StatusNotification(
     /// <summary>Optional local diagnostics; never determines ProtectionActive or admission readiness.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PolicyIntegrationStatus? PolicyIntegration { get; init; }
+
+    /// <summary>Optional historical failures; never determines protection or admission readiness.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AuditWriteStatus? AuditWrites { get; init; }
 }
 
 /// <summary>
