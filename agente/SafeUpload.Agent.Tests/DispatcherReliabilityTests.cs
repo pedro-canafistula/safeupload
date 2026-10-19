@@ -68,6 +68,67 @@ public sealed class DispatcherReliabilityTests
         Assert.Empty(await sink.ReadPendingOverridesAsync(100, CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData(false, "{\"acceptedEvents\":1}")]
+    [InlineData(true, "{\"acceptedOverrides\":1}")]
+    [InlineData(false, "{\"acceptedEvents\":1,\"acceptedOverrides\":null}")]
+    [InlineData(true, "{\"acceptedEvents\":null,\"acceptedOverrides\":1}")]
+    public async Task Missing_or_null_zero_count_keeps_single_kind_batch_unchanged_until_complete_receipt(
+        bool overrideOnly, string incompleteReceipt)
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        Guid id = await WriteSingleKind(sink, overrideOnly);
+        byte[] before = await File.ReadAllBytesAsync(workspace.QueueFile);
+        await RunOneCycle(sink, new Handler(200, incompleteReceipt));
+        Assert.Equal(before, await File.ReadAllBytesAsync(workspace.QueueFile));
+
+        var reopened = new LocalQueueAuditSink(workspace.QueueFile);
+        Assert.Equal(overrideOnly ? 0 : 1, (await reopened.ReadPendingAsync(100, default)).Count);
+        Assert.Equal(overrideOnly ? 1 : 0, (await reopened.ReadPendingOverridesAsync(100, default)).Count);
+        var accepted = new Handler(200, overrideOnly
+            ? "{\"acceptedEvents\":0,\"acceptedOverrides\":1}"
+            : "{\"acceptedEvents\":1,\"acceptedOverrides\":0}");
+        await RunOneCycle(reopened, accepted);
+        Assert.Empty(await reopened.ReadPendingAsync(100, default));
+        Assert.Empty(await reopened.ReadPendingOverridesAsync(100, default));
+        using var payload = JsonDocument.Parse(accepted.Payload!);
+        var collection = payload.RootElement.GetProperty(overrideOnly ? "overrides" : "events");
+        Assert.Single(collection.EnumerateArray());
+        Assert.Equal(id, collection[0].GetProperty("eventId").GetGuid());
+        Assert.Single(await File.ReadAllLinesAsync(workspace.QueueFile));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Explicit_zero_count_is_valid_for_single_kind_batch(bool overrideOnly)
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        await WriteSingleKind(sink, overrideOnly);
+        var accepted = new Handler(200, overrideOnly
+            ? "{\"acceptedEvents\":0,\"acceptedOverrides\":1,\"futureMetadata\":true}"
+            : "{\"acceptedEvents\":1,\"acceptedOverrides\":0,\"futureMetadata\":true}");
+        await RunOneCycle(sink, accepted);
+        var reopened = new LocalQueueAuditSink(workspace.QueueFile);
+        Assert.Empty(await reopened.ReadPendingAsync(100, default));
+        Assert.Empty(await reopened.ReadPendingOverridesAsync(100, default));
+        Assert.Single(await File.ReadAllLinesAsync(workspace.QueueFile));
+    }
+
+    private static async Task<Guid> WriteSingleKind(LocalQueueAuditSink sink, bool overrideOnly)
+    {
+        Guid id = Guid.NewGuid();
+        if (overrideOnly)
+            await sink.RecordOverrideAsync(id.ToString(), "Justificativa de teste", default);
+        else
+            await sink.WriteAsync(new AuditEvent(id, DateTimeOffset.UtcNow, "PC-TESTE", "usuario",
+                "synthetic.txt", ".txt", 10, Verdict.Blocked, [Category.Cpf], [], "teste", 1,
+                @"E:\destino", null, 1, 1, false), default);
+        return id;
+    }
+
     private sealed class Policies : IPolicyStore
     {
         public Task<Policy> LoadCurrentAsync(CancellationToken token) => LoadAsync(token);

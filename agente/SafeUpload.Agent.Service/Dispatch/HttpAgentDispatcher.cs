@@ -211,5 +211,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
         IReadOnlyList<AuditEvent> Events,
         IReadOnlyList<AuditOverride> Overrides);
 
-    private sealed record SubmitResponse(int AcceptedEvents, int AcceptedOverrides);
+    // Missing/null counters are not an explicit zero. Require the full existing
+    // receipt even when one kind of record was absent from this batch.
+    private sealed record SubmitResponse(int? AcceptedEvents, int? AcceptedOverrides);
 }
