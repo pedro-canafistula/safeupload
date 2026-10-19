@@ -4,6 +4,14 @@ using SafeUpload.Agent.Minifilter;
 
 namespace SafeUpload.Agent.Service.Interception;
 
+// Only the serialized allocator's completed absence proof creates this marker.
+// A resource exception, message or nested marker is never release authority.
+internal sealed class StagedNoAllocationCommittedException : IOException
+{
+    internal StagedNoAllocationCommittedException(StagedSpaceException cause)
+        : base("Staging space was refused and the exact allocation is confirmed absent.", cause) { }
+}
+
 public sealed partial class StagedTransferAllocator
 {
     internal static bool AllocationOwnerMatches(long expectedCreationTime, long? observedCreationTime) =>
@@ -80,26 +88,57 @@ public sealed partial class StagedTransferAllocator
                 _spaceBudget?.Bind(existing);
                 return new(existing.Transfer, existing.DestinationGeneration, existing.StageIdentity!, stage.Stream.Length);
             }
-            StagedAllocationReply? allocated = await prepare().ConfigureAwait(false);
-            if (allocated is not null) return allocated;
-            // A missing manifest alone is insufficient: a crashed pre-commit
-            // backing must first be identity-qualified, deleted and absent.
-            if (await ReadAllocationManifestAsync(intent.AllocationReservationId, token).ConfigureAwait(false) is not null)
-                throw StagedRequestRefusal.Create("Allocation committed while preparing a terminal refusal.");
-            string extension = Path.GetExtension(Path.GetFullPath(destination));
-            if (extension.Length > 16 || extension.IndexOfAny(['\\', '/', ':']) >= 0)
-                throw StagedRequestRefusal.Create("Invalid allocation backing extension.");
-            string stagePath = Path.Combine(_root, intent.AllocationReservationId.ToString("N") + extension);
-            if (_spaceBudget is not null)
-                _spaceBudget.RequireFailedAllocationAbsent(intent.AllocationReservationId, stagePath);
-            else if (!StagedStageFile.TryDeleteUnjournaled(stagePath, out var failure))
+            StagedAllocationReply? allocated;
+            try { allocated = await prepare().ConfigureAwait(false); }
+            catch (StagedSpaceException spaceFailure) when (_spaceBudget is not null)
             {
-                if (failure is not null && StagedRequestRefusal.IsPermanent(failure))
-                    throw StagedRequestRefusal.Create("Unjournaled backing is structurally invalid; no terminal release is authorized.");
-                throw new IOException("Unjournaled backing cleanup is unresolved; refusal is not terminal.", failure);
+                try
+                {
+                    await RequireNoAllocationCommittedAsync(intent.AllocationReservationId, destination, token)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception proofFailure)
+                {
+                    // Keep the original resource cause directly traversable for
+                    // the owner alert, and preserve the failed proof diagnostics.
+                    var unresolved = new IOException("Staging space was refused, but allocation absence is unresolved: " +
+                        proofFailure.Message, spaceFailure);
+                    unresolved.Data["AllocationAbsenceProofFailure"] = proofFailure;
+                    throw unresolved;
+                }
+                throw new StagedNoAllocationCommittedException(spaceFailure);
             }
+            if (allocated is not null) return allocated;
+            await RequireNoAllocationCommittedAsync(intent.AllocationReservationId, destination, token)
+                .ConfigureAwait(false);
             return null;
         }
         finally { _v19AllocationGate.Release(); }
+    }
+
+    // Caller owns _v19AllocationGate, including failed-allocation recovery.
+    // A missing manifest or an exception alone is never a cleanup receipt.
+    private async Task RequireNoAllocationCommittedAsync(Guid reservationId, string destination, CancellationToken token)
+    {
+        // A missing manifest alone is insufficient: a crashed pre-commit
+        // backing must first be identity-qualified, deleted and absent.
+        if (await ReadAllocationManifestAsync(reservationId, token).ConfigureAwait(false) is not null)
+            throw StagedRequestRefusal.Create("Allocation committed while preparing a terminal refusal.");
+        string extension = Path.GetExtension(Path.GetFullPath(destination));
+        if (extension.Length > 16 || extension.IndexOfAny(['\\', '/', ':']) >= 0)
+            throw StagedRequestRefusal.Create("Invalid allocation backing extension.");
+        string stagePath = Path.Combine(_root, reservationId.ToString("N") + extension);
+        if (_spaceBudget is not null)
+            _spaceBudget.RequireFailedAllocationAbsent(reservationId, stagePath);
+        else if (!StagedStageFile.TryDeleteUnjournaled(stagePath, out var failure))
+        {
+            if (failure is not null && StagedRequestRefusal.IsPermanent(failure))
+                throw StagedRequestRefusal.Create("Unjournaled backing is structurally invalid; no terminal release is authorized.");
+            throw new IOException("Unjournaled backing cleanup is unresolved; refusal is not terminal.", failure);
+        }
+        // No ledger can vouch for an orphaned companion. Preserve it rather
+        // than deleting unknown capacity authority or claiming a refusal.
+        if (!StagedStageFile.TryConfirmAbsent(stagePath + ".space", out var grantFailure))
+            throw new IOException("Allocation grant absence is unresolved; no terminal refusal is authorized.", grantFailure);
     }
 }

@@ -237,6 +237,202 @@ public sealed class StagedAllocationResolutionTests : IDisposable
         Assert.NotEqual(StageV20Result.NoAllocationCommitted, retry.Result);
     }
 
+    private StagedSpaceBudget Budget() => new(Root,
+        new(true, 512L << 20, 128L << 20, 0), () => 2048L << 20);
+
+    [Fact]
+    public async Task Real_budget_exhaustion_proves_no_allocation_without_losing_alert_or_prior_charge()
+    {
+        StagedPrivateStorage.CreateDirectory(Root);
+        var journal = Journal();
+        await journal.ReconcileDriverInstanceV20Async(_driver, (uint)StageV20Capability.Required, default);
+        var budget = Budget(); var allocator = new StagedTransferAllocator(Root, journal, spaceBudget: budget);
+        var prior = Assert.IsType<StagedAllocationReply>(await Allocate(allocator, Request()));
+        byte[] priorBytes = await File.ReadAllBytesAsync(prior.Transfer.StagePath);
+        var request = Request();
+        foreach (bool restart in new[] { false, true })
+        {
+            if (restart)
+            {
+                budget = Budget();
+                allocator = new StagedTransferAllocator(Root, Journal(), spaceBudget: budget);
+            }
+            var error = await Assert.ThrowsAsync<StagedNoAllocationCommittedException>(() =>
+                allocator.ResolveAllocationRequestV20Async(request, Destination, DestinationKind.Cloud,
+                    () => Allocate(allocator, request), default));
+            Assert.IsType<StagedSpaceException>(error.InnerException);
+            Assert.True(StagedSpaceFailure.IsSpace(error));
+            Assert.Equal(StageV20Result.NoAllocationCommitted, MinifilterInterceptor.ClassifyAllocationFailure(error));
+            Assert.Equal(StageV20Result.RetryableFailure,
+                MinifilterInterceptor.ClassifyAllocationFailure(new IOException("Wrapped proof is not authority", error)));
+            Assert.True(budget.ContentReservationPending(prior.Transfer.TransferId));
+            Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), Sid));
+            Assert.Equal(priorBytes, await File.ReadAllBytesAsync(prior.Transfer.StagePath));
+            Assert.Single(await Journal().ReadPendingAsync(default));
+            Assert.False(File.Exists(Destination));
+            Assert.Empty(Directory.GetFiles(Root, "*.allocation-refused*"));
+            var reply = FilterPort.CreateAllocationResolutionReplyV20(request,
+                MinifilterInterceptor.ClassifyAllocationFailure(error)!.Value);
+            FilterPort.ValidateAllocationResolutionReplyV20(reply, request);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Space_failure_after_actual_commit_never_supplies_terminal_release(bool afterReplacement)
+    {
+        StagedPrivateStorage.CreateDirectory(Root);
+        var journal = Journal();
+        await journal.ReconcileDriverInstanceV20Async(_driver, (uint)StageV20Capability.Required, default);
+        bool injected = false;
+        journal.AllocationCommitObserver = (point, entry) =>
+        {
+            if (afterReplacement && !injected && point == StagedJournalWritePoint.AfterReplacement)
+            { injected = true; throw new StagedSpaceException("metadata budget after replacement"); }
+        };
+        var allocator = new StagedTransferAllocator(Root, journal, spaceBudget: Budget());
+        var request = Request();
+        var error = await Assert.ThrowsAsync<IOException>(() => allocator.ResolveAllocationRequestV20Async(request,
+            Destination, DestinationKind.Cloud, async () =>
+            {
+                await Allocate(allocator, request);
+                throw new StagedSpaceException("resource failure after allocation committed");
+            }, default));
+        Assert.Equal(afterReplacement, injected);
+        Assert.True(StagedSpaceFailure.IsSpace(error));
+        Assert.IsAssignableFrom<Exception>(error.Data["AllocationAbsenceProofFailure"]);
+        Assert.Equal(StageV20Result.RetryableFailure, MinifilterInterceptor.ClassifyAllocationFailure(error));
+        var entry = Assert.Single(await journal.ReadPendingAsync(default));
+        byte[] bytes = await File.ReadAllBytesAsync(entry.Transfer.StagePath);
+        var restarted = new StagedTransferAllocator(Root, Journal(), spaceBudget: Budget());
+        var replay = Assert.IsType<StagedAllocationReply>(await restarted.ResolveAllocationRequestV20Async(request,
+            Destination, DestinationKind.Cloud, () => throw new InvalidOperationException("Never seed twice"), default));
+        Assert.Equal(entry.Transfer, replay.Transfer);
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(replay.Transfer.StagePath));
+        Assert.False(File.Exists(Destination));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Space_failure_preserves_unknown_backing_or_orphan_companion_and_alert(bool companion)
+    {
+        StagedPrivateStorage.CreateDirectory(Root);
+        var allocator = new StagedTransferAllocator(Root, Journal(), spaceBudget: Budget());
+        var request = Request();
+        request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source);
+        string path = Path.Combine(Root, source.Intent.AllocationReservationId.ToString("N") + ".txt") +
+            (companion ? ".space" : "");
+        byte[] residue = [1, 2, 3, 4];
+        await File.WriteAllBytesAsync(path, residue);
+        var error = await Assert.ThrowsAsync<IOException>(() => allocator.ResolveAllocationRequestV20Async(request,
+            Destination, DestinationKind.Cloud, () => throw new StagedSpaceException("space refused"), default));
+        Assert.True(StagedSpaceFailure.IsSpace(error));
+        Assert.Equal(StageV20Result.RetryableFailure, MinifilterInterceptor.ClassifyAllocationFailure(error));
+        Assert.Equal(residue, await File.ReadAllBytesAsync(path));
+        Assert.False(File.Exists(Destination));
+    }
+
+    [Fact]
+    public async Task Space_exception_without_real_budget_proof_remains_uncertain_and_keeps_residue()
+    {
+        var allocator = new StagedTransferAllocator(Root, Journal()); var request = Request();
+        request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source);
+        string path = Path.Combine(Root, source.Intent.AllocationReservationId.ToString("N") + ".txt");
+        await File.WriteAllTextAsync(path, "unknown private bytes");
+        var error = await Assert.ThrowsAsync<StagedSpaceException>(() => allocator.ResolveAllocationRequestV20Async(request,
+            Destination, DestinationKind.Cloud, () => throw new StagedSpaceException("No budget witness"), default));
+        Assert.Equal(StageV20Result.RetryableFailure, MinifilterInterceptor.ClassifyAllocationFailure(error));
+        Assert.Equal("unknown private bytes", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task Failed_ledger_persistence_blocks_absence_proof_even_with_no_backing()
+    {
+        StagedPrivateStorage.CreateDirectory(Root);
+        var budget = Budget(); var allocator = new StagedTransferAllocator(Root, Journal(), spaceBudget: budget);
+        var request = Request();
+        request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source);
+        string temporary = Path.Combine(Root, ".space-reservations", source.Intent.AllocationReservationId.ToString("N") + ".json.new");
+        await File.WriteAllTextAsync(temporary, "interrupted metadata");
+        Assert.Throws<IOException>(() => budget.Reserve(source.Intent.AllocationReservationId, Sid));
+        var error = await Assert.ThrowsAsync<IOException>(() => allocator.ResolveAllocationRequestV20Async(request,
+            Destination, DestinationKind.Cloud, () => throw new StagedSpaceException("No new capacity"), default));
+        Assert.True(StagedSpaceFailure.IsSpace(error));
+        Assert.Equal(StageV20Result.RetryableFailure, MinifilterInterceptor.ClassifyAllocationFailure(error));
+        Assert.Equal("interrupted metadata", await File.ReadAllTextAsync(temporary));
+        Assert.Throws<IOException>(() => Budget());
+    }
+
+    [Theory]
+    [InlineData("cleaned")]
+    [InlineData("locked")]
+    [InlineData("issued")]
+    [InlineData("snapshot")]
+    [InlineData("replacement")]
+    public async Task Space_refusal_needs_exact_unissued_cleanup_without_live_obligations(string custody)
+    {
+        StagedPrivateStorage.CreateDirectory(Root);
+        var budget = Budget(); var allocator = new StagedTransferAllocator(Root, Journal(), spaceBudget: budget);
+        var request = Request();
+        request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source);
+        Guid id = source.Intent.AllocationReservationId;
+        string path = Path.Combine(Root, id.ToString("N") + ".txt");
+        long capacity = budget.Reserve(id, Sid, path, Destination);
+        await File.WriteAllTextAsync(path, "private seed");
+        StagedStageIdentity identity;
+        using (var stage = StagedStageFile.Open(path)) identity = stage.Identity;
+        budget.RecordStage(id, path, identity);
+        FileStream? held = null; IDisposable? snapshotLease = null;
+        try
+        {
+            switch (custody)
+            {
+                case "locked":
+                    held = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                    break;
+                case "issued":
+                    var transfer = new StagedTransfer(id, path, Destination, DestinationKind.Cloud, "writer.exe", 17, 2)
+                        { RequestorSid = Sid };
+                    budget.Bind(new(transfer, TransferJournalState.Allocated, null, DateTimeOffset.UtcNow)
+                        { StageIdentity = identity });
+                    break;
+                case "snapshot":
+                    string snapshot = path + ".snapshot";
+                    await File.WriteAllTextAsync(snapshot, "inspection snapshot");
+                    held = new FileStream(snapshot, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    snapshotLease = budget.BeginSnapshot(id, snapshot, held, held.Length);
+                    break;
+                case "replacement":
+                    File.Delete(path);
+                    await File.WriteAllTextAsync(path, "replacement private object");
+                    using (var replacement = StagedStageFile.Open(path)) Assert.NotEqual(identity, replacement.Identity);
+                    break;
+            }
+            var error = await Assert.ThrowsAnyAsync<IOException>(() => allocator.ResolveAllocationRequestV20Async(request,
+                Destination, DestinationKind.Cloud, () => throw new StagedSpaceException("seed preparation exhausted space"), default));
+            Assert.True(StagedSpaceFailure.IsSpace(error));
+            if (custody == "cleaned")
+            {
+                Assert.IsType<StagedNoAllocationCommittedException>(error);
+                Assert.Equal(StageV20Result.NoAllocationCommitted, MinifilterInterceptor.ClassifyAllocationFailure(error));
+                Assert.False(File.Exists(path));
+                Assert.False(budget.ContentReservationPending(id));
+                Assert.Equal(capacity, budget.Reserve(Guid.NewGuid(), Sid));
+            }
+            else
+            {
+                Assert.Equal(StageV20Result.RetryableFailure, MinifilterInterceptor.ClassifyAllocationFailure(error));
+                Assert.True(File.Exists(path));
+                Assert.True(budget.ContentReservationPending(id));
+                Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), Sid));
+            }
+            Assert.False(File.Exists(Destination));
+        }
+        finally { snapshotLease?.Dispose(); held?.Dispose(); }
+    }
+
     [Fact]
     public void Requester_exit_during_metadata_read_is_transient_not_a_refusal()
     {

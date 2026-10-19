@@ -866,8 +866,11 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 }
                 catch (Exception notificationError) { _logger.LogWarning(notificationError, "Space refusal notification could not be delivered."); }
             }
-            _logger.LogWarning(ex, "Exact allocation unresolved for request {RequestId}.", request.RequestId);
             uint? resolution = ClassifyAllocationFailure(ex);
+            if (resolution == StageV20Result.NoAllocationCommitted)
+                _logger.LogInformation(ex, "Exact allocation refused before commit for request {RequestId}.", request.RequestId);
+            else
+                _logger.LogWarning(ex, "Exact allocation unresolved for request {RequestId}.", request.RequestId);
             return (resolution is null ? PortVerdict.Deny : PortVerdict.Allow, null, resolution);
         }
     }
@@ -886,6 +889,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     }
 
     internal static uint? ClassifyAllocationFailure(Exception error) =>
+        error is StagedNoAllocationCommittedException ? StageV20Result.NoAllocationCommitted :
         StagedRequestRefusal.IsPermanent(error) ? null : StageV20Result.RetryableFailure;
 
     private static TransferJournalEntry? TryReadStageEntry(StagedTransferJournal journal, Guid transferId)

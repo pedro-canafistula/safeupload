@@ -18,6 +18,21 @@ The notification failure was separate: the allocator emits `Retained + NotEnough
 
 All kernel files remain byte-identical to `45102e57`, including its security descriptor/SAL and MSVC `alloc_text` fixes. The grant shim now finds the function definition past its forward declaration and asserts the pragma precedes it; its boundaries, mutation controls and compiler warning gates are unchanged.
 
+## Proved resource refusal — 2026-10-19
+
+The [T4 smoke diagnosis](evidence/2026-10-19/t4-smoke-diagnosis.md) found resource exceptions bypassing the existing
+no-allocation proof and leaving requests retryable. The narrow agent repair has an independent
+[design review](evidence/2026-10-19/t4-resource-refusal-design-review-sol-high.md), ACCEPT WITH CONDITIONS.
+Only a direct `StagedSpaceException` from serialized preparation with a real budget enters the proof. It rereads the exact
+manifest, requires healthy accounting and the existing exact unissued cleanup, then confirms both backing and grant absence.
+Only successful proof creates the internal marker classified as the existing exact `NoAllocationCommitted` reply.
+Post-commit, unknown/locked/replacement, issued/snapshot, faulted-ledger and failed-proof cases remain held/retryable.
+Both outcomes preserve the original space-notification cause; no public mutation or negative receipt is introduced.
+The legacy null-preparation route retains its cleanup contract and additionally refuses an orphan companion.
+
+This does not change whole-SID capacity allocation, concurrent sharing, limits or product assertions. Component execution
+and protected-pair qualification remain separate requirements; the original smoke is still failed and 10k has not started.
+
 ## Test contract changes
 
 No tests were removed or skipped and no threshold was loosened. The owner-approved stateless contract replaces these obsolete expectations; exact request/reply mutation, uncertain custody and publication assertions remain.
