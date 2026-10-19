@@ -27,6 +27,7 @@ internal sealed class SpreadsheetTextReader : TextReader
 
     public SpreadsheetTextReader(Stream content, CancellationToken token)
     {
+        OpenXmlInspectionGuard.PreflightPartCount(content, token);
         _document = SpreadsheetDocument.Open(new BorrowedStream(content), isEditable: false);
         try
         {

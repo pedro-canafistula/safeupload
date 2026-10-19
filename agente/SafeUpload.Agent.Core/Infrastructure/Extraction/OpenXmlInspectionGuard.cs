@@ -100,6 +100,33 @@ internal static class OpenXmlInspectionGuard
         ChartPart or VmlDrawingPart or CoreFilePropertiesPart or ExtendedFilePropertiesPart or CustomFilePropertiesPart or
         ThemePart or ThemeOverridePart or CustomXmlPart or CustomXmlPropertiesPart;
 
+    // A valid accepted package cannot have more physical payload parts than
+    // reachable parts: Inspect below rejects every orphan and duplicate. Apply
+    // that existing ceiling before the SDK can materialize a large graph.
+    // ZipArchive still loads central-directory metadata; this is not a general
+    // parser-allocation bound, and never replaces the full inspection below.
+    public static void PreflightPartCount(Stream content, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        long position = content.Position;
+        try
+        {
+            content.Position = 0;
+            using var zip = new ZipArchive(content, ZipArchiveMode.Read, leaveOpen: true);
+            int parts = 0;
+            foreach (var entry in zip.Entries)
+            {
+                token.ThrowIfCancellationRequested();
+                string name = entry.FullName;
+                if (name.EndsWith("/", StringComparison.Ordinal) && entry.Length == 0) continue;
+                if (name == "[Content_Types].xml" || name == "_rels/.rels" ||
+                    name.Contains("/_rels/", StringComparison.Ordinal) && name.EndsWith(".rels", StringComparison.Ordinal)) continue;
+                if (++parts > MaximumParts) throw new InspectionLimitException();
+            }
+        }
+        finally { content.Position = position; }
+    }
+
     public static IReadOnlyList<OpenXmlPart> Inspect(OpenXmlPackage package, Stream content, CancellationToken cancellationToken)
     {
         var pending = new Stack<OpenXmlPartContainer>();

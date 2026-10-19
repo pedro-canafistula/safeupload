@@ -13,6 +13,7 @@ internal sealed class PresentationTextReader : TextReader
 
     public PresentationTextReader(Stream content, CancellationToken token)
     {
+        OpenXmlInspectionGuard.PreflightPartCount(content, token);
         _document = PresentationDocument.Open(new BorrowedStream(content), isEditable: false);
         try
         {

@@ -1,0 +1,5 @@
+LocalAgentCompile root=/home/victor/Work/safeupload-staging profiles=feature-debug sdk=10.0.400 work=/tmp/safeupload-agent-compile.7CyVTZ (diagnostic only; the matrix is the gate)
+LocalCompile feature-debug Service PASS
+LocalCompile feature-debug App PASS
+LocalCompile feature-debug Tests PASS
+LocalAgentCompile=PASS

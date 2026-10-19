@@ -25,6 +25,7 @@ internal sealed class WordParagraphTextReader : TextReader
 
     public WordParagraphTextReader(Stream content, CancellationToken token)
     {
+        OpenXmlInspectionGuard.PreflightPartCount(content, token);
         _document = WordprocessingDocument.Open(new BorrowedStream(content), isEditable: false);
         try
         {
