@@ -1,6 +1,6 @@
 # SafeUpload MVP status plan
 
-Updated 2026-10-17. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
+Updated 2026-10-19. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
 destination, keeping unapproved bytes private throughout. M2 is the current milestone, not the completion boundary.
 Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](POST-MVP-LOG.md), and the local WIP branch noted below.
 
@@ -11,9 +11,9 @@ Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](PO
 | M1 | T0–T3: safe to leave loaded | Complete on the recorded M1 pair |
 | **M2** | **T4–T11: everyday file work** | **Active; integrated kernel review accepted with conditions; agent repairs/build gates precede T4 qualification** |
 | M3 | T12, T14: release configuration and lifecycle | After M2 |
-| T21 | USB/removable | After M3; own design, owner decisions, Sol 6.1 xhigh design review and destination qualification |
-| T22 | SMB/UNC | After T21; own design, owner decisions, Sol 6.1 xhigh design review and destination qualification |
-| T23 | Cloud-sync folders | After T22; own design, owner decisions, Sol 6.1 xhigh design review and real-client qualification |
+| T21 | USB/removable | After M3; own design, owner decisions, Sol 6.1 high design review and destination qualification |
+| T22 | SMB/UNC | After T21; own design, owner decisions, Sol 6.1 high design review and destination qualification |
+| T23 | Cloud-sync folders | After T22; own design, owner decisions, Sol 6.1 high design review and real-client qualification |
 | M4 | T15–T19: combined qualification | Qualify local NTFS and T21–T23 together |
 | Later | T20 other Windows builds; T24 ReFS | Outside the current milestone sequence |
 | Owner-deferred | T13 production signing/Secure Boot | Test mode remains in force |
@@ -464,7 +464,8 @@ their terminal handling. Prove deliberate failure cases before the short Verifie
 
 ## Gates that stay required
 
-Four WDK builds (normal/feature × Debug/Release), PREfast and ApiValidator at **0 warnings / 0 errors**, and passing agent tests.
+Two feature WDK builds (Debug/Release), PREfast and ApiValidator at **0 warnings / 0 errors**, binary-import availability PASS,
+and the complete four-leg feature agent matrix (Debug/Release × user/SYSTEM). Compile-time staging-out profiles were retired by the owner on 2026-10-15.
 Kernel runtime changes run under Verifier. Keep every product assertion, independent raw-volume observation and **ForbiddenByteCount=0**.
 Any removed refusal needs a row proving unapproved bytes remain private. BLOCK-window tests run serially on the selected VM.
 A milestone ends with its matched pair, three-mode gate, adversarial review and separate restoration checks.
@@ -508,12 +509,13 @@ M1 passed 69/69 cells on `m1-driver21` (`498f4ed7`) plus agent `4d02039a`, with 
 
 **Next delivery checkpoint:** qualify one matched local-NTFS pair, starting with T4. Planned M2 rows remain authorized on
 win10-debug3 only (owner, 2026-10-13); no revised pair has qualified. Keep the unchanged raw-volume, Verifier, context/pool and
-separate restoration gates. Current [integration evidence](evidence/2026-10-17/m2-integration-status.md):
+separate restoration gates. Current [integration evidence](evidence/2026-10-17/m2-integration-status.md) and
+latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record retained artifacts and pending matrix/app results.
 
 | T item | Current state | Next required result |
 |---|---|---|
-| T4 | Context leases/retirement integrated at `412f05ad`; combined kernel review accepted with runtime conditions after namespace corrections `311c393e`. Immediate-reopen harness PS5.1 gate PASS. | Fresh WDK/import gates, agent matrix, 256-cycle smoke with immediate reopens, unchanged 10k cells and raw-byte rows. |
-| T5 | Native namespace corrections reviewed; all-rename cancellation authority and DOC fallback controls pass. Agent first matrix leg failed 7/2,760; focused repairs/diagnostics committed. | Passing four-leg agent matrix, forced native delete orders, clean/CPF Notepad and public operations in all three modes. |
+| T4 | Kernel WDK/import gates and immediate-reopen harness PASS; context/namespace review accepted with runtime conditions. Full feature agent matrix `m2-ux-agent-1019a` running. | Complete matrix, 256-cycle smoke with immediate reopens, unchanged 10k cells and raw-byte rows. |
+| T5 | Native namespace corrections reviewed. Agent repairs at `c1a3ba04` pass focused Windows controls 89/89; this is not the four-leg matrix. | Passing four-leg agent matrix, forced native delete orders, clean/CPF Notepad and public operations in all three modes. |
 | T6 | Copy-fallback component evidence and owner-approved folder/cross-drive metadata contract exist; merged namespace/folder source is unqualified. | Final-pair file/folder moves, idle rename and pending conflicts in all required modes. |
 | T7 | Windows-authorized read design retained. | Final-pair authorized/denied reads and exact bytes. |
 | T8 | Standard-user app dev evidence exists; final metadata implementation/qualification remains incomplete. | Eight required app workflows, matching owner/DACL/SACL/label/times/attributes/MOTW controls in all modes. |

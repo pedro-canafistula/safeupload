@@ -1,0 +1,9 @@
+{
+  "Tag": "demo1",
+  "Base": "/var/lib/libvirt/images/win10-debug3.base-20261014.qcow2",
+  "DevDisk": "/var/lib/libvirt/images/win10-debug3.safeupload-run-demo1.qcow2",
+  "BaseStatUnchanged": true,
+  "XmlMatchesRecordedDevDisk": true,
+  "NoTpm": true,
+  "RuntimeQualification": false
+}

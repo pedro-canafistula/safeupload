@@ -1,0 +1,6 @@
+5.1.19041.2673
+Update-DevPair.ps1:ParseErrors=0
+metadata-construction-native-control.ps1:ParseErrors=0
+DevPairSelfCheck=PASS Mutations=False
+T8ConstructionSignatureSelfCheck=PASS NativeCalls=False
+PS51DevAndNativeSelfChecks=PASS

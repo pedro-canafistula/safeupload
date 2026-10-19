@@ -1,0 +1,17 @@
+DevPairStaged=True RebootRequired=True Qualification=False
+{
+    "Label":  "m2dev1019a",
+    "SourceCommit":  "c1a3ba04902bd5b9bc72cd20b22518760fd8f58c",
+    "DriverSource":  "f8e99d25",
+    "OldService":  "\"C:\\Program Files\\SafeUpload\\Agent\\SafeUpload.Agent.Service.exe\" --Interception:Mode=Minifilter --Interception:StagingPrototype=true --CentroAdministracao:BaseUrl=",
+    "OldDriver":  "System32\\drivers\\SafeUpload.sys",
+    "NewService":  "\"C:\\Program Files\\SafeUpload\\Agent-m2dev1019a\\SafeUpload.Agent.Service.exe\" --Interception:Mode=Minifilter --Interception:StagingPrototype=true --CentroAdministracao:BaseUrl=",
+    "NewDriver":  "\\??\\C:\\Windows\\System32\\drivers\\SafeUpload-m2dev1019a\\SafeUpload.sys",
+    "AgentSHA256":  "F0287411619F10F7514741661A0B8439F8823ABA5EDC48FF2CE61560BF82470F",
+    "AppSHA256":  "1077A7A13A72CB58C82EDF21CD380523CE66202D5C904992B2737FC02898F3A1",
+    "DriverSHA256":  "B3830AF1D35D73CA33DD71E5417BAB3889F7260CF558AFE5BE0A44F509FD775E",
+    "OldAppBackup":  "C:\\Program Files\\SafeUpload\\App-before-m2dev1019a",
+    "RebootRequired":  true,
+    "Qualification":  false
+}
+
