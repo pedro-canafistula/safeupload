@@ -61,7 +61,9 @@ if (Test-Path -LiteralPath $appPath) { Move-Item -LiteralPath $appPath -Destinat
 Copy-Item -LiteralPath (Join-Path $agentPath 'App') -Destination $appPath -Recurse
 Assert-Hash $oldApp $manifest.Files.'App/SafeUpload.Agent.App.exe'
 $newCommand = '"' + $newService + '"' + $arguments
-$newDriver = '\??\' + $driverPath
+# BOOT_START uses a Windows-relative path, as the original installed driver did.
+# A DOS-device path is incorrectly prefixed with SystemRoot by the boot loader.
+$newDriver = 'System32\drivers\SafeUpload-' + $label + '\SafeUpload.sys'
 Set-ItemProperty -LiteralPath $serviceKey -Name ImagePath -Value $newCommand -Type ExpandString
 Set-ItemProperty -LiteralPath $driverKey -Name ImagePath -Value $newDriver -Type ExpandString
 if ((Get-ItemProperty -LiteralPath $serviceKey).ImagePath -cne $newCommand -or
