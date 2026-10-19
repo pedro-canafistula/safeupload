@@ -1,18 +1,18 @@
 import { expect, test } from '@playwright/test';
 
-test('falha ao publicar não apresenta sucesso nem permite baixar JSON', async ({ page }) => {
+test('gera e baixa JSON com IP, ação e regras selecionadas', async ({ page }) => {
   await page.route('**/api/auth/me', r => r.fulfill({ json: { idUsuario: 1, nomeCompleto: 'Teste Admin', role: 'admin' } }));
-  await page.route('**/api/endpoints*', r => r.fulfill({ json: { resumo: { total: 1, online: 1, offline: 0 }, itens: [
-    { endpointId: 'PC-A', hostname: 'PC-A', policyVersion: 1, status: 'online' }
-  ] } }));
-  await page.route('**/api/politicas', r => r.fulfill(r.request().method() === 'GET'
-    ? { json: [] } : { status: 503, json: { message: 'Servidor indisponível' } }));
   await page.goto('/politicas');
   await page.getByLabel('Nome da política').fill('Minha política');
-  await page.getByLabel('Computador que receberá a política').selectOption('PC-A');
-  await page.locator('.rule').filter({ has: page.getByText('CPF', { exact: true }) }).click();
-  await page.getByRole('button', { name: 'Publicar política' }).click();
-  await expect(page.getByRole('alert')).toHaveText('Servidor indisponível');
-  await expect(page.getByRole('button', { name: 'Baixar JSON' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Publicar política' })).toBeEnabled();
+  await page.getByLabel('IP da máquina').fill('192.168.1.20');
+  await page.locator('input[name="acao"][value="alertar"]').check();
+  await page.locator('.rule').filter({ has: page.getByText('RG', { exact: true }) }).click();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Gerar JSON da política' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('politica-safeupload.json');
+  await expect(page.getByRole('heading', { name: 'JSON gerado e baixado' })).toBeVisible();
+  await expect(page.locator('.json-result pre')).toContainText('"ip": "192.168.1.20"');
+  await expect(page.locator('.json-result pre')).toContainText('"acao": "alertar"');
+  await expect(page.locator('.json-result pre')).toContainText('"tipo": "rg"');
 });

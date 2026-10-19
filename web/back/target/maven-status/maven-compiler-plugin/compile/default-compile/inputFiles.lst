@@ -2,13 +2,16 @@
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/application/AdminService.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/application/AgentService.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/application/AuthService.java
+/home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/application/PolicyService.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/application/dto/AdminViews.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/application/dto/AgentContracts.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/application/dto/CadastroRequest.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/application/dto/LoginRequest.java
+/home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/application/dto/PolicyPublication.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/application/dto/UsuarioResponse.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/application/exception/ErroDeValidacaoException.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/domain/entity/Endpoint.java
+/home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/domain/entity/PublishedPolicy.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/domain/entity/ReceivedEvent.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/domain/entity/Sessao.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/domain/entity/Usuario.java
@@ -23,3 +26,4 @@
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/presentation/controller/AgentController.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/presentation/controller/ApiExceptionHandler.java
 /home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/presentation/controller/AuthController.java
+/home/luizrodrigues/projetos/safeupl/safeupload/web/back/src/main/java/com/safeupload/presentation/controller/PolicyController.java
