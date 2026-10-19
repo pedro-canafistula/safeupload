@@ -41,6 +41,7 @@ public static class T5Native {
     // .NET Framework SendKeys uses a journal hook that Windows refuses without UI access: set the text and post the command.
     public static void SetText(IntPtr hwnd, string text) { SendMessageW(hwnd, 0x000C /* WM_SETTEXT */, IntPtr.Zero, text); }
     public static bool PostCommand(IntPtr hwnd, int id) { return PostMessageW(hwnd, 0x0111 /* WM_COMMAND */, new IntPtr(id), IntPtr.Zero); }
+    public static bool PostButtonClick(IntPtr hwnd) { return PostMessageW(hwnd, 0x00F5 /* BM_CLICK */, IntPtr.Zero, IntPtr.Zero); }
     static int Err() { return Marshal.GetLastWin32Error(); }
     static bool Valid(IntPtr h) { return h != IntPtr.Zero && h != new IntPtr(-1); }
     static int CloseCode(IntPtr h) { return CloseHandle(h) ? 0 : Err(); }
@@ -225,7 +226,10 @@ function Invoke-NotepadSaveAs([string]$Path, [string]$Text) {
         # Commit the filename edit's focus transition before invoking the dialog.
         # UIA ValuePattern alone can leave the common dialog's cached name stale.
         $save.SetFocus()
-        $save.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+        $obs.FileNameBeforeSave = $nameBox.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+        $obs.SaveButtonName = $save.Current.Name
+        $saveHandle = [IntPtr]$save.Current.NativeWindowHandle
+        if ($saveHandle -eq [IntPtr]::Zero -or -not [T5Native]::PostButtonClick($saveHandle)) { throw 'Save button native click could not be posted' }
         Start-Sleep -Seconds 4
         $obs.WindowsAfterSave = @(Get-WindowTexts $p.Id)
         $obs.Title = (Get-Process -Id $p.Id).MainWindowTitle
