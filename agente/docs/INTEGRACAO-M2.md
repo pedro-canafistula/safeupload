@@ -1,0 +1,64 @@
+# Integrações do agente Windows na M2
+
+Atualizado em 19/10/2026. Escopo desta entrega: código do agente e seus contratos de integração. Java/backend pertence ao Luiz; alterações de backend, Angular e driver não fazem parte destes commits.
+
+## Base e fluxo Git
+
+- Base: `feat/driver-m2`, commit `407eb5a9559fe7fee53edcd02005efeb1f65000a`.
+- Branch de desenvolvimento: `feat/agent-m2-integration`.
+- Destino proposto do PR: `feat/driver-m2`, para revisar somente as adaptações do agente sobre a M2. Não integrar a branch inteira diretamente na main sem a revisão conjunta da equipe.
+- O desenvolvimento inicial ocorreu em checkout isolado com HEAD destacado. Estas alterações foram então organizadas em branch e commits próprios. A main e a branch remota da equipe não foram alteradas por esse desenvolvimento local.
+
+## Comportamento implementado
+
+1. Origem da política compartilhada entre startup, serviço e seed de boot. URL administrativa vazia seleciona política local; URL configurada seleciona provedores remotos. O instalador encaminha os mesmos argumentos ao serviço e ao seed, preservando bandeja/autostart e gates existentes.
+2. Snapshot/cache persistido para consumidores legados; decisões staged e seed exigem leitura atual estrita, sem usar cache como autorização quando essa consulta falha. Limites explícitos são preservados; campos omitidos mantêm defaults diferentes entre legado e staged da M2.
+3. Eventos e justificativas persistem localmente e são enviados pelo dispatcher. Falha de heartbeat não impede tentativa de envio; recibos incompatíveis não confirmam a fila. Preserva-se a identidade fornecida pelo serviço e a ordem auditoria antes de publicação/concessão.
+4. Leitura limitada de auditoria recente da equipe preservada, com distinção entre eventos, justificativas e registros desconhecidos.
+5. Diagnóstico local `PolicyIntegration`: snapshot disponível/origem, última leitura estrita e histórico do último aceite de escopo pelo caminho driver/BootPolicy. Falha de aplicação e encerramento invalidam o recibo atual, preservando histórico. Fingerprint distingue conteúdos sob mesma versão.
+
+Aceite de escopo, heartbeat, pedido de justificativa e readiness são fatos distintos. O diagnóstico não concede autoridade nem comprova proteção ativa. Não há novo mecanismo de atualização dinâmica do driver nem novo contrato HTTP/IPC nesta entrega. Consulte o [README do agente](../README.md) para os campos de diagnóstico e uso das ferramentas.
+
+## Divisão de responsabilidades e dependências
+
+| Frente | Dependência ou pendência |
+|---|---|
+| Agente | Apresentação local do diagnóstico, identidade estável/autenticação acordada com backend, proteção da fila e operação instalada |
+| Luiz / backend Java | Confirmar formatos monitorados e defaults da política central; distinguir versão publicada/recebida/aplicada em eventual evolução acordada do contrato; durabilidade no banco escolhido |
+| Responsável Angular | Apresentar esses estados apenas quando houver contrato acordado, sem chamar heartbeat de aplicação no driver |
+| Vitor/Pedro / driver e integração | Confirmar o par exato de artefatos e o fluxo de aplicação/atualização; preservar gates e boot policy da M2 |
+
+O agente respeita a lista explícita de extensões recebida; não acrescenta silenciosamente extensões locais. A cópia Java usada como referência ainda tem cinco formatos no default, enquanto o agente M2 inclui PowerPoint e ZIP. Essa diferença deve ser resolvida com o backend, sem migrar políticas publicadas automaticamente. Monitorar `.7z` não anuncia inspeção disponível: a recusa `archive_7z_unavailable` permanece.
+
+USB/removíveis, SMB/UNC e cloud-sync dependem dos próprios planos de suporte e qualificação. Não habilitá-los como parte desta integração. O contrato entre orçamento de inspeção e prazo do kernel continua sendo condição a conferir no par de homologação.
+
+## Validação registrada
+
+| Ensaio | Resultado e limite |
+|---|---|
+| Recorte de integração feature | 374/374 Debug e 374/374 Release, sem falhas/ignorados; preserva os 362 casos do checkpoint anterior |
+| Novos diagnósticos sem flag de evidência | 12/12 Debug; recorte, não matriz completa normal/SYSTEM |
+| Auditoria com Java real | 49 verificações: online, indisponibilidade, retomada, reenvio idempotente no cenário e reinício; dois eventos e duas justificativas |
+| Publicação/leitura com Java real | 44 verificações nas revisões 1/2/3; categorias, cache, refresh e heartbeat; sem transferência real pelo driver |
+| Angular real do ensaio anterior | Consulta dos dois eventos/justificativas e distinção entre CPF e política indisponível |
+
+Os ensaios Java/Angular usaram cópias locais e fixtures, incluindo ajustes históricos de backend/UI que **não estão nesta branch**. Não comprovam compatibilidade com qualquer backend remoto. O H2 foi configurado com WRITE_DELAY=0; a durabilidade no banco de homologação continua pendente. Não há garantia geral de exactly-once.
+
+Os hooks de diagnóstico no interceptor foram compilados e conferidos na fonte; os controles de aceite/desconexão são de componente, sem porta real. Serviço instalado, SYSTEM, identidade real no pipe, driver e VM não foram executados nesta entrega. Homologação prevista: Windows 10 22H2 build 19045.2965, com par exato aprovado e observação independente dos bytes.
+
+Para feedback local, executar a suíte de testes de acordo com o ambiente Windows preparado:
+
+```powershell
+dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj -c Debug -p:SafeUploadAdmissionEvidence=true --filter FullyQualifiedName~PolicyIntegrationDiagnosticsTests
+dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj -c Release -p:SafeUploadAdmissionEvidence=true --filter FullyQualifiedName~PolicyIntegrationDiagnosticsTests
+```
+
+Esses comandos reproduzem os 12 novos controles, não o recorte completo de 374. Não definir SAFEUPLOAD_MACHINE_TESTS=1 nem executar a matriz SYSTEM/VM sem preparar e validar o ambiente apropriado.
+
+## Evidências e entrega
+
+Relatórios, TRX, recibos e patches originais permanecem preservados no workspace de desenvolvimento, fora do código versionado. Checkpoints: auditoria-m2-atual-20261018, java-m2-atual-20261018, angular-m2-atual-20261018, contratos-restantes-m2-20261018 e diagnostico-politica-agente-20261019. O registro de entrega Git relaciona commits e hashes aos checkpoints. Dados de ensaio, bancos, runtimes, node_modules e builds locais não devem entrar no PR.
+
+Mudanças antigas em cópia Java/Angular permanecem separadas para referência; não foram incluídas nos commits do agente. Organização para commit normalizou somente linhas vazias finais em 11 arquivos, sem mudança funcional.
+
+Antes de merge/cutover: revisão da equipe, CI, matriz exigida de entrega e homologação do par. Atualizações de progresso devem comentar subtarefas existentes do ClickUp e registrar dependências; não concluir homologação com base nos recortes locais.

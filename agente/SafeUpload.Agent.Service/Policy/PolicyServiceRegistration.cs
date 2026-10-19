@@ -12,6 +12,7 @@ internal static class PolicyServiceRegistration
     internal static void AddAgentPolicies(this IServiceCollection services, IConfiguration configuration,
         string endpointId, bool includeHostedServices = true)
     {
+        services.AddSingleton<PolicyIntegrationDiagnostics>();
         string baseUrl = configuration["CentroAdministracao:BaseUrl"] ?? string.Empty;
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
@@ -35,7 +36,8 @@ internal static class PolicyServiceRegistration
             Path.Combine(AgentPaths.RootDirectory, "server-policy-cache.json")));
         services.AddSingleton(provider => new RefreshingPolicyStore(
             provider.GetRequiredService<DurableHttpPolicyStore>(), TimeSpan.FromSeconds(30),
-            provider.GetRequiredService<ILogger<RefreshingPolicyStore>>()));
+            provider.GetRequiredService<ILogger<RefreshingPolicyStore>>(),
+            provider.GetRequiredService<PolicyIntegrationDiagnostics>()));
         services.AddSingleton<IPolicyStore>(provider => provider.GetRequiredService<RefreshingPolicyStore>());
 
         if (!includeHostedServices) return;

@@ -14,17 +14,18 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
     private readonly Func<CancellationToken, Task<DomainPolicy>> _restore;
     private readonly TimeSpan _interval;
     private readonly ILogger<RefreshingPolicyStore> _logger;
+    private readonly PolicyIntegrationDiagnostics? _diagnostics;
     private readonly SemaphoreSlim _initializeGate = new(1, 1);
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private DomainPolicy? _current;
 
     public RefreshingPolicyStore(DurableHttpPolicyStore remote, TimeSpan interval,
-        ILogger<RefreshingPolicyStore> logger)
-        : this(remote, remote.LoadCachedOrDefaultAsync, interval, logger) { }
+        ILogger<RefreshingPolicyStore> logger, PolicyIntegrationDiagnostics? diagnostics = null)
+        : this(remote, remote.LoadCachedOrDefaultAsync, interval, logger, diagnostics) { }
 
     internal RefreshingPolicyStore(IPolicyStore remote,
         Func<CancellationToken, Task<DomainPolicy>> restore, TimeSpan interval,
-        ILogger<RefreshingPolicyStore> logger)
+        ILogger<RefreshingPolicyStore> logger, PolicyIntegrationDiagnostics? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(remote);
         ArgumentNullException.ThrowIfNull(restore);
@@ -34,6 +35,7 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
         _restore = restore;
         _interval = interval;
         _logger = logger;
+        _diagnostics = diagnostics;
     }
 
     public Task<DomainPolicy> LoadAsync(CancellationToken cancellationToken)
@@ -49,10 +51,21 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
     /// disk, wait for a background snapshot, or publish its fallback here.
     /// The result is not written to the legacy snapshot by this operation.
     /// </summary>
-    public Task<DomainPolicy> LoadCurrentAsync(CancellationToken cancellationToken)
+    public async Task<DomainPolicy> LoadCurrentAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return _remote.LoadCurrentAsync(cancellationToken);
+        try
+        {
+            var policy = await _remote.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
+            _diagnostics?.RecordStrictRead(policy);
+            return policy;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception error)
+        {
+            _diagnostics?.RecordStrictFailure(error);
+            throw;
+        }
     }
 
     private async Task<DomainPolicy> InitializeAsync(CancellationToken token)
@@ -65,6 +78,7 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
             restored.EnsureValid();
             Volatile.Write(ref _current, restored);
             var source = _remote is DurableHttpPolicyStore durable ? durable.LastSource : "local";
+            _diagnostics?.RecordSnapshot(restored, source ?? "unknown");
             _logger.LogInformation("Política inicial v{Version} disponível sem consulta de rede. Origem={Source}.",
                 restored.Version, source);
             return restored;
@@ -96,6 +110,8 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
             var refreshed = await _remote.LoadAsync(token).ConfigureAwait(false);
             refreshed.EnsureValid();
             Volatile.Write(ref _current, refreshed);
+            var source = _remote is DurableHttpPolicyStore durable ? durable.LastSource : "unknown";
+            _diagnostics?.RecordSnapshot(refreshed, source ?? "unknown");
             _logger.LogInformation("Política v{Version} disponível após atualização.", refreshed.Version);
         }
         finally { _refreshGate.Release(); }

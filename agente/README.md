@@ -1,5 +1,8 @@
 # SafeUpload — Agente Desktop
 
+Veja [Integrações do agente na M2](docs/INTEGRACAO-M2.md) para escopo da entrega,
+fluxo Git, validação e dependências com backend, painel e driver.
+
 Componente instalado no endpoint do usuário: intercepta operações de
 arquivo, decide localmente (CPF, CNPJ, cartão, senha, segredos), e — quando
 configurado — sincroniza política e auditoria com o Centro de
@@ -202,6 +205,22 @@ o agente passa a:
 
 Sem `BaseUrl` configurado, nada disso roda — é o padrão de segurança do
 projeto (ver `Interception:Mode` acima, mesma filosofia).
+
+**Diagnóstico local de políticas:** com logs de nível Information habilitados,
+procure `PolicyIntegration`. `SnapshotVersion`/`SnapshotSource` identificam a
+política disponível para consumidores legados (remote, memory, disk ou default).
+`StrictVersion`/`StrictFingerprint` registram a última leitura estrita bem-sucedida;
+`StrictReadError` informa o tipo da falha posterior, sem copiar URL ou mensagem da
+exceção. `LastAcceptedVersion`/`LastAcceptedFingerprint` são o histórico da política
+cujo escopo foi aceito após as operações de porta e BootPolicy retornarem.
+`DriverScopeRecorded` perde validade na falha de aplicação ou saída da conexão;
+`ApplyError` registra o tipo da falha de aplicação. Nenhum desses dados comprova
+readiness/proteção ativa. Uma nova política recebida não altera esse histórico de
+aceite. Compare fingerprints apenas de consumos equivalentes: defaults omitidos
+podem diferir entre snapshot legado e leitura estrita. Hash ausente é diagnóstico
+indisponível, nunca equivalência. Estado é somente em memória, separado de
+heartbeat, notificações da bandeja e protocolo do driver; observações idênticas
+não repetem o log. Não há atualização dinâmica do driver neste incremento.
 
 **Limitações conhecidas desta integração:** sem autenticação entre agente e
 servidor; identidade padrão do endpoint é o hostname (`Environment.MachineName`,
