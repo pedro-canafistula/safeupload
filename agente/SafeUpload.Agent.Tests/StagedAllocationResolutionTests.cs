@@ -293,15 +293,28 @@ public sealed class StagedAllocationResolutionTests : IDisposable
         };
         var allocator = new StagedTransferAllocator(Root, journal, spaceBudget: Budget());
         var request = Request();
-        var error = await Assert.ThrowsAsync<IOException>(() => allocator.ResolveAllocationRequestV20Async(request,
+        Task<StagedAllocationReply?> Attempt() => allocator.ResolveAllocationRequestV20Async(request,
             Destination, DestinationKind.Cloud, async () =>
             {
                 await Allocate(allocator, request);
                 throw new StagedSpaceException("resource failure after allocation committed");
-            }, default));
+            }, default);
+        IOException error;
+        if (afterReplacement)
+        {
+            // The journal already wraps a real replacement failure. That
+            // indirect space cause must bypass the new direct-only catch.
+            error = await Assert.ThrowsAsync<StagedJournalPersistenceException>(Attempt);
+            Assert.IsType<StagedSpaceException>(error.InnerException);
+            Assert.False(error.Data.Contains("AllocationAbsenceProofFailure"));
+        }
+        else
+        {
+            error = await Assert.ThrowsAsync<IOException>(Attempt);
+            Assert.IsAssignableFrom<Exception>(error.Data["AllocationAbsenceProofFailure"]);
+        }
         Assert.Equal(afterReplacement, injected);
         Assert.True(StagedSpaceFailure.IsSpace(error));
-        Assert.IsAssignableFrom<Exception>(error.Data["AllocationAbsenceProofFailure"]);
         Assert.Equal(StageV20Result.RetryableFailure, MinifilterInterceptor.ClassifyAllocationFailure(error));
         var entry = Assert.Single(await journal.ReadPendingAsync(default));
         byte[] bytes = await File.ReadAllBytesAsync(entry.Transfer.StagePath);
@@ -355,7 +368,8 @@ public sealed class StagedAllocationResolutionTests : IDisposable
         var request = Request();
         request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source);
         string temporary = Path.Combine(Root, ".space-reservations", source.Intent.AllocationReservationId.ToString("N") + ".json.new");
-        await File.WriteAllTextAsync(temporary, "interrupted metadata");
+        using (var partial = StagedPrivateStorage.CreateFile(temporary))
+            await partial.WriteAsync(Encoding.UTF8.GetBytes("interrupted metadata"));
         Assert.Throws<IOException>(() => budget.Reserve(source.Intent.AllocationReservationId, Sid));
         var error = await Assert.ThrowsAsync<IOException>(() => allocator.ResolveAllocationRequestV20Async(request,
             Destination, DestinationKind.Cloud, () => throw new StagedSpaceException("No new capacity"), default));
