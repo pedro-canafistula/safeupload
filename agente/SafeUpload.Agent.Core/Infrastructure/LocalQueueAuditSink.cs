@@ -44,6 +44,7 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
     // processos, mas o agente é instância única por sessão.
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly string _queueFile;
+    private readonly Action<FileStream> _flushToDisk;
 
     /// <summary>Usa o caminho padrão do agente.</summary>
     public LocalQueueAuditSink() : this(AgentPaths.QueueFile)
@@ -52,9 +53,17 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
 
     /// <summary>Usa um caminho específico. Serve aos testes.</summary>
     public LocalQueueAuditSink(string queueFile)
+        : this(queueFile, static stream => stream.Flush(flushToDisk: true))
+    {
+    }
+
+    // The fault seam is internal and never selected by configuration or IPC.
+    internal LocalQueueAuditSink(string queueFile, Action<FileStream> flushToDisk)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(queueFile);
+        ArgumentNullException.ThrowIfNull(flushToDisk);
         _queueFile = queueFile;
+        _flushToDisk = flushToDisk;
     }
 
     /// <summary>Caminho do arquivo de fila, para exibição na interface.</summary>
@@ -142,7 +151,7 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
     private async Task AppendLineAsync(string line, CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(_queueFile, FileMode.OpenOrCreate,
-            FileAccess.ReadWrite, FileShare.Read, 4096, FileOptions.Asynchronous);
+            FileAccess.ReadWrite, FileShare.Read, 4096, FileOptions.Asynchronous | FileOptions.WriteThrough);
         if (stream.Length > 0)
         {
             stream.Seek(-1, SeekOrigin.End);
@@ -153,6 +162,9 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         }
         await stream.WriteAsync(Utf8NoBom.GetBytes(line + Environment.NewLine), cancellationToken).ConfigureAwait(false);
         await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        // FlushAsync alone does not request that intermediate OS buffers reach
+        // disk. A failure here must reach the caller, never acknowledge storage.
+        _flushToDisk(stream);
     }
 
     /// <inheritdoc />
@@ -344,8 +356,13 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
             var temporary = _queueFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
-                await File.WriteAllTextAsync(temporary, builder.ToString(), Utf8NoBom, cancellationToken)
-                    .ConfigureAwait(false);
+                await using (var output = new FileStream(temporary, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous | FileOptions.WriteThrough))
+                {
+                    await output.WriteAsync(Utf8NoBom.GetBytes(builder.ToString()), cancellationToken).ConfigureAwait(false);
+                    await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    _flushToDisk(output);
+                }
                 cancellationToken.ThrowIfCancellationRequested();
                 File.Move(temporary, _queueFile, overwrite: true);
             }
