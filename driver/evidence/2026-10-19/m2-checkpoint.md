@@ -6,12 +6,16 @@ T4–T11 remain open. Focused tests, builds and dev feedback do not qualify a pr
   local raw receipt `../2026-10-17/m2-ux-agent-focus-1017c/` (TRX/build/package hashes).
 - [x] T4: two feature WDK profiles, PREfast/ApiValidator **0 warnings / 0 errors**, imports PASS at `f8e99d25`;
   [build summary](../2026-10-17/exact-m2-ux-kernel-1017c-summary.txt).
-- [ ] T4: full four-leg feature agent matrix `m2-ux-agent-1019a`, source `62127384`: **FAIL**, first leg 2,759/2,760,
+- [ ] T4 historical attempt: matrix `m2-ux-agent-1019a`, source `62127384`: **FAIL**, first leg 2,759/2,760,
   zero skipped. Office part-limit assertion received timeout; remaining legs did not run. Raw summary and TRX retained locally.
   Reviewed fix `a3ea2a48` applies the existing part ceiling before SDK graph loading; unchanged Windows coverage controls
   **204/204 passed** ([focused result](m2-openxml-focus-result.json), raw `m2-openxml-focus-1019a/`). Fresh full matrix
   `m2-ux-agent-1019b` started 11:30 BRT on builder1; Debug user **2,760/2,760** and SYSTEM **25/25 passed**, zero skipped;
-  Release legs/final structured gate pending. Smoke/10k have not started.
+  Release user **2,760/2,760** and SYSTEM **25/25** also pass, zero skipped. The first final verification rejected Framework ZIP
+  backslashes. Packager `1d9420eb` passes PS5.1/self-checks; fresh `matrixpkg1019c` repackages the retained publish output after
+  verifying every original payload hash. [Unchanged strict verification](matrixpkg1019c/verification.txt) now passes all discovery,
+  execution IDs, required cases, package members and hashes: **full matrix PASS, 5,570/5,570**. Tests/binaries were not rebuilt or
+  rerun for this package-only retry; original failure is retained.
 - [x] T5–T11 dev loop: retained Office disk base/XML/no-TPM preflight passed (`dev-disk-preflight-1019a.json`);
   started win10-debug3 with reset NVRAM. Guest is 19045.2965, interactive t5actor, tray running.
 - [x] T5–T11 dev loop: transferred package and driver hashes match the retained receipts; driver signature Valid.
@@ -26,7 +30,8 @@ T4–T11 remain open. Focused tests, builds and dev feedback do not qualify a pr
   repeated failures. No product threshold or privacy assertion changed.
 - [ ] T8: Word SaveAs2 publishes the expected clean package (13,382 bytes), but Word reports ReadOnly=True; workflow FAIL.
   [Gate analysis](word-readonly-gate-analysis-sol-high.md) ties immediate reopen refusals to pending rename, unsealed and zero
-  FileObjects; proposed exact-owner settlement wait is not implemented or independently accepted.
+  FileObjects; proposed exact-owner settlement wait is not implemented. Independent [review](word-reopen-design-review-sol-high.md) is
+  **REVISE**: zero FileObjects is insufficient progress proof; preserve sections/paging drain, exact tuple, cancellation and teardown.
 - [ ] T8: native construction feasibility first attempt `t8native1019a1` failed before structured rows;
   root fixture remained and cleanup masked the primary error. Retain failed run and fixture, instrument original/cleanup failures,
   then diagnose with a fresh label. Raw: `t8-construction-t8native1019a1/`; this is unprotected builder mechanism work.
@@ -48,5 +53,15 @@ Qualification still requires fresh disposable disks, reset EFI, no TPM, unchange
 
 - [x] T4 preparation: Office dev disk parked with both original run-state files retained under `m2t4-dev-disk-park/`;
   [receipt](m2t4-dev-disk-park/park-result.txt). Base stat and canonical XML unchanged, no TPM. Dev disk was not deleted.
-- [ ] T4 preparation: `m2t4preflight1019a` baseline check on a fresh disposable disk, before any new product row. This is
-  a baseline preflight, not a qualification/restoration claim for the retained development disk.
+- [x] T4 preparation: `m2t4preflight1019a` baseline check passed on a fresh disposable disk; EFI reset, no TPM, overlay deleted,
+  base untouched and canonical XML unchanged. This is a baseline preflight, not a qualification claim for the retained dev disk.
+- [x] T4 component checkpoint: complete four-leg matrix **5,570/5,570 PASS**, zero skips; strict [verification](matrixpkg1019c/verification.txt)
+  and [structured readout](matrixpkg1019c/root-readout.json). This does not qualify a protected pair.
+- [ ] T4: `m2t4smoke1019a` **FAIL** at attempt 9, zero complete outcomes: four immediate reopen failures, then resource-busy errors;
+  [verdict](m2t4smoke1019a-verdict.txt), [reopen receipts](m2t4smoke1019a-reopens.jsonl), [cycles](m2t4smoke1019a-cycles.jsonl).
+  Input driver `f8e99d25`, agent `a3ea2a48`, verified ZIP `6F14E6246A5203E45BF517FB48CADE926C6A8BC46E3A420A8B0C34A8B28AC875`.
+  Both builders were off/locked, immediate reopens enabled. Verifier/filter stayed active; no blocked bytes observed. Required
+  endpoint/purge/release samples are absent after early stop and remain failed, not waived. Owner approved focused diagnosis
+  after the repeated-failure stop on 2026-10-19. No 10k started.
+- [x] T4 restoration: test overlay deleted with base/XML untouched; [separate baseline/restoration](m2t4smoke1019a-independent-restoration.txt)
+  passed on another fresh overlay, also deleted. EFI reset at starts, no TPM; [final restoration receipt](m2t4smoke1019arestore-restoration.txt).

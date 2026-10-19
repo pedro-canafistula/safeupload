@@ -9,7 +9,7 @@ Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](PO
 | Order | Scope | Status |
 |---|---|---|
 | M1 | T0–T3: safe to leave loaded | Complete on the recorded M1 pair |
-| **M2** | **T4–T11: everyday file work** | **Active; integrated kernel review accepted with conditions; agent repairs/build gates precede T4 qualification** |
+| **M2** | **T4–T11: everyday file work** | **Active; integrated kernel review accepted with conditions; build gates pass; T4 smoke failed and focused diagnosis is authorized** |
 | M3 | T12, T14: release configuration and lifecycle | After M2 |
 | T21 | USB/removable | After M3; own design, owner decisions, Sol 6.1 high design review and destination qualification |
 | T22 | SMB/UNC | After T21; own design, owner decisions, Sol 6.1 high design review and destination qualification |
@@ -514,7 +514,7 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 
 | T item | Current state | Next required result |
 |---|---|---|
-| T4 | Kernel WDK/import gates and immediate-reopen harness PASS; context/namespace review accepted with runtime conditions. Fresh matrix `m2-ux-agent-1019b` running; Debug user 2,760/2,760. | Complete matrix, 256-cycle smoke with immediate reopens, unchanged 10k cells and raw-byte rows. |
+| T4 | Kernel WDK/import and full agent matrix PASS (5,570/5,570); package-only retry preserves every payload hash. `m2t4smoke1019a` failed at attempt 9 (reopens/resource busy); separate restoration PASS. | Pass smoke with immediate reopens, unchanged 10k cells and raw-byte rows; separate restoration. |
 | T5 | Native namespace corrections reviewed. Agent repairs at `c1a3ba04` pass focused Windows controls 89/89; this is not the four-leg matrix. | Passing four-leg agent matrix, forced native delete orders, clean/CPF Notepad and public operations in all three modes. |
 | T6 | Copy-fallback component evidence and owner-approved folder/cross-drive metadata contract exist; merged namespace/folder source is unqualified. | Final-pair file/folder moves, idle rename and pending conflicts in all required modes. |
 | T7 | Windows-authorized read design retained. | Final-pair authorized/denied reads and exact bytes. |
@@ -537,6 +537,8 @@ versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01
 
 Design: [stage lifetime](T4-STAGE-LIFETIME.md), [lease/retirement correction and reopen controls](UX-LEAK2.md).
 Latest [source/build/review evidence](evidence/2026-10-17/m2-integration-status.md) is component evidence; Windows qualification is open.
+[Boot-Verifier smoke](evidence/2026-10-19/m2t4smoke1019a-verdict.txt) failed after nine attempts; owner authorized focused diagnosis
+on 2026-10-19. [Separate restoration](evidence/2026-10-19/m2t4smoke1019arestore-restoration.txt) passed; 10k has not started.
 The [prior 10k contexts failure](evidence/2026-10-12/m2t4purge10ka1-verdict.txt) and
 [attribution rows](evidence/2026-10-13/t4-delete-kd-attribution-result.md) remain preserved.
 
@@ -552,7 +554,9 @@ host maintenance during timing-sensitive rows. Stop/report required failed asser
 - [x] T4: integrate context leases/retirement and immediate same-owner/child reopen controls (`412f05ad`); independent kernel review
   [accepted with conditions](evidence/2026-10-17/kernel-namespace-integration-sol-high.md), corrected WDK/import gates PASS (`f8e99d25`).
 - [x] T4: PS5.1 harness/native controls and verdict replay pass; latest [harness gate](evidence/2026-10-17/harness-windows-gate-m2-ux-harness-1017b.txt).
-- [ ] T4: pass the agent matrix and qualify V20 allocation/Prepare lost-reply cleanup under protection; exact faults remain in the lifetime design.
+- [x] T4: pass the full four-leg agent matrix (5,570/5,570); [package retry/strict verification](evidence/2026-10-19/matrixpkg1019c/verification.txt)
+  preserves the tested payload bytes. [Checkpoint](evidence/2026-10-19/m2-checkpoint.md) retains the original failed attempts.
+- [ ] T4: qualify V20 allocation/Prepare lost-reply cleanup under protection; exact faults remain in the lifetime design.
 - [ ] T4: pass 256-cycle boot-Verifier smoke, including immediate reopens, idle endpoint, purge statuses and release measurement.
 - [ ] T4: pass unchanged one-boot 10k ordinary/runtime-/boot-Verifier cells, including loaded-context and admission-recovery gates.
 - [ ] T4: run C01–C04/B01/B02/X01 with the raw-volume observer in all modes, then repeat on the final M2 pair. Sampled bytes do not replace raw observation.

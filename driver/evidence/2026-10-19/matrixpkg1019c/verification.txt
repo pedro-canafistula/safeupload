@@ -1,0 +1,3 @@
+ExactAgentMatrixGate=PASS OriginalPayloadHashesUnchanged=True TestExecutionReuse=True
+{"feature-debug": 2785, "feature-release": 2785}
+FeatureReleaseZip=/home/victor/Work/safeupload-staging/output/exact-agent-matrix/m2-ux-agent-1019b-package1/feature-release-view/stage-service-publish.zip
