@@ -74,3 +74,15 @@ Relatórios, TRX, recibos e patches originais permanecem preservados no workspac
 Mudanças antigas em cópia Java/Angular permanecem separadas para referência; não foram incluídas nos commits do agente. Organização para commit normalizou somente linhas vazias finais em 11 arquivos, sem mudança funcional.
 
 Antes de merge/cutover: revisão da equipe, CI, matriz exigida de entrega e homologação do par. Atualizações de progresso devem comentar subtarefas existentes do ClickUp e registrar dependências; não concluir homologação com base nos recortes locais.
+
+### Atribuição do usuário na auditoria staged — 19/10
+
+O identificador do endpoint continua sendo o nome da máquina, compartilhado por consulta de políticas, heartbeat, eventos e justificativas na composição atual. Não foi introduzido outro cadastro ou identificador persistente.
+
+Os resultados staged usavam o usuário do processo do serviço, que pode ser SYSTEM. Agora StagedTransferAudit encaminha para o campo existente userName o RequestorSid já capturado do token do solicitante na alocação e persistido na transferência. A recuperação do registro de uma publicação confirmada usa a mesma identidade persistida. SID ausente, inválido ou acima do limite produz Não identificado; o usuário atual da sessão não é consultado. Um SID SYSTEM efetivamente registrado como solicitante é preservado. Chamadas antigas que não passam atribuição explícita mantêm o comportamento anterior.
+
+Essa informação serve apenas à auditoria. Não muda autorização, veredito, grants, política, sessão de notificação, arquivo do journal ou contrato HTTP. Não resolve nomes de contas e não reescreve eventos antigos na fila ou no servidor. Durante atualização, conservar filas e journals; um conflito de replay de evento previamente aceito deve ser investigado, nunca corrigido apagando registros.
+
+Recortes locais finais: Release feature 146/146, Debug normal 103/103 e Release normal 103/103, sem skips. Incluem seis novos casos de atribuição com reabertura da fila e envio HTTP simulado, além de assertivas nos caminhos reais de publicação, retenção, bloqueio e recuperação em componente. A primeira execução Debug feature passou 146/146; depois de acrescentar assertivas de recuperação e compatibilidade, o Windows bloqueou o carregamento do assembly de testes por Controle de Aplicativo (0x800711C7), inclusive na única repetição sem recompilar. O perfil final Debug feature permanece pendente; nenhuma proteção do Windows foi alterada. Esse bloqueio é distinto das quatro falhas históricas de privilégio para links simbólicos.
+
+Evidências: checkpoint local auditoria-identidade-agente-20261019, com logs/TRX, fontes e hashes. Esses recortes sob o usuário local não substituem a matriz user/SYSTEM nem homologação com o driver. Driver, biblioteca de transporte, Java e Angular não receberam alterações. Comunicação futura: comentar a subtarefa existente de integração/auditoria no ClickUp e alinhar com Luiz apenas se o painel precisar exibir nome amigável em vez de SID; não criar tarefa ou anunciar homologação concluída. Nenhuma mensagem foi enviada automaticamente.

@@ -132,9 +132,10 @@ public sealed class InspectionService
         string? reason,
         CancellationToken cancellationToken,
         Guid? eventId = null,
-        string? publishedSha256Hex = null)
+        string? publishedSha256Hex = null,
+        string? auditUserName = null)
         => AuditAsync(operation, inspection with { Verdict = outcome, Reason = reason },
-            cancellationToken, eventId, publishedSha256Hex);
+            cancellationToken, eventId, publishedSha256Hex, auditUserName);
 
     public Task<InspectionResult> InspectStagedFailureAsync(FileOperation operation, CancellationToken token)
         => InspectCoreAsync(operation, true, token, forcedFailure: "not_enough_staging_space");
@@ -510,13 +511,14 @@ public sealed class InspectionService
         InspectionResult result,
         CancellationToken cancellationToken,
         Guid? eventId = null,
-        string? publishedSha256Hex = null)
+        string? publishedSha256Hex = null,
+        string? auditUserName = null)
     {
         var auditEvent = new AuditEvent(
             eventId ?? Guid.NewGuid(),
             DateTimeOffset.UtcNow,
             _endpointId,
-            _userName,
+            auditUserName ?? _userName,
             operation.FileName,
             operation.Extension,
             operation.SizeBytes,
