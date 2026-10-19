@@ -131,6 +131,7 @@ public static class T8MetadataConstructionControl {
             int status = NtCreateFile(out file, access, ref attributes, out io, IntPtr.Zero, 0x80, share, disposition,
                 options, IntPtr.Zero, 0);
             var result = new OpenResult { Status = status, File = file, Information = io.Information.ToUInt64() };
+            Log("NativeOpen=" + path + " Requested=0x" + access.ToString("X8") + " Status=0x" + status.ToString("X8") + " Information=" + result.Information);
             if (status == 0) {
                 if (io.Status != IntPtr.Zero || result.Information != (disposition == 2 ? 2UL : 1UL)) { result.Dispose(); throw new IOException("Unexpected native open result."); }
                 byte[] basic = new byte[56]; uint returned;
@@ -175,6 +176,7 @@ public static class T8MetadataConstructionControl {
         Need(!Directory.Exists(root), "Fresh fixture root required.");
         byte[] processBefore = ProcessPrivileges(); IntPtr caller = IntPtr.Zero, service = IntPtr.Zero;
         var rows = new List<Row>(); var inventory = new Dictionary<string, string>();
+        var failures = new List<Exception>();
         try {
             caller = CallerToken(callerPid, callerStarted, callerSid); service = ServiceToken();
             using (var subject = new Subject(service)) {
@@ -232,7 +234,10 @@ public static class T8MetadataConstructionControl {
                 using (var observed = Open(nativeNew, ServiceMask, 1, false)) { Need(observed.Accepted, "App-temp observation failed."); newExpected = Security(observed.File); }
                 Clone(rows, inventory, "ActualAppTempRename", nativeNew, Path.Combine(root, "apptemp.private"), newExpected);
             }
+        } catch (Exception failure) {
+            failures.Add(failure); Log("NativeFailure=" + failure);
         } finally {
+          try {
             if (service != IntPtr.Zero) {
                 using (var subject = new Subject(service)) {
                     var paths = new List<string>(inventory.Keys); paths.Sort(delegate(string a, string b) { return b.Length.CompareTo(a.Length); });
@@ -244,9 +249,15 @@ public static class T8MetadataConstructionControl {
                     Need(!Directory.Exists(root), "Fixture root remains."); Log("FixtureRemoved=True");
                 }
             }
+          } catch (Exception failure) {
+            failures.Add(failure); Log("CleanupFailure=" + failure);
+          } finally {
             if (caller != IntPtr.Zero) CloseHandle(caller); if (service != IntPtr.Zero) CloseHandle(service);
-            Need(Hex(processBefore) == Hex(ProcessPrivileges()), "Process privileges changed."); Log("ProcessPrivilegesUnchanged=True");
+          }
+          try { Need(Hex(processBefore) == Hex(ProcessPrivileges()), "Process privileges changed."); Log("ProcessPrivilegesUnchanged=True"); }
+          catch (Exception failure) { failures.Add(failure); Log("PrivilegeCheckFailure=" + failure); }
         }
+        if (failures.Count != 0) throw new AggregateException("Native construction failed; original and cleanup failures retained.", failures);
         return rows.ToArray();
     }
     static void Register(IDictionary<string, string> inventory, string path, bool directory, SafeFileHandle held) { inventory.Add(path, Id(held)); }
