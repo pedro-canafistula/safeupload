@@ -23,6 +23,13 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-19 — T4/T9 growing reservations.** Owner approved replacing the single-active-file resource allocation rule with
+reservations that grow as files grow, keeping the approved total/per-user budgets, free-space floor and large-file support.
+Replace the obsolete single-concurrent-winner strategy test with concurrent no-overspend controls; preserve all privacy,
+resource, sharing and qualification assertions. Users should be able to save Word temporary files and overlapping small files;
+real budget exhaustion still refuses the affected save. [Design](UX-LARGE-CONCURRENCY.md) and independent security/lifetime
+review precede implementation. This approves no sharing-policy change or cutover.
+
 **2026-10-17 — current goal is M2 everyday file work.** Owner supplied the M2 goal file: one matched pair, staging under runtime gates,
 interactive standard user `t5actor` on win10-debug3; real Notepad/Word/Excel/PowerPoint/PDF/ZIP and Explorer file/folder/empty workflows,
 clean exact publication and CPF/CNPJ/card block/tray/hand-back, no false Office alerts, packaged/autostart tray, corrupt-recorder recovery,
@@ -519,7 +526,7 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 | T6 | Copy-fallback component evidence and owner-approved folder/cross-drive metadata contract exist; merged namespace/folder source is unqualified. | Final-pair file/folder moves, idle rename and pending conflicts in all required modes. |
 | T7 | Windows-authorized read design retained. | Final-pair authorized/denied reads and exact bytes. |
 | T8 | Standard-user app dev evidence exists; final metadata implementation/qualification remains incomplete. | Eight required app workflows, matching owner/DACL/SACL/label/times/attributes/MOTW controls in all modes. |
-| T9 | Product-default accounted staging and large-file source integrated; complete-or-refuse inspectors implemented. | Windows budgets/upgrade, parser bounds, large-file and failure UX on the matched pair. |
+| T9 | Whole-SID allocation causes overlapping-save refusals; proved-refusal repair passes 156 focused Windows controls. Owner approved growing reservations; design review pending. | Windows budgets/upgrade, parser bounds, large-file and failure UX on the matched pair. |
 | T10 | Earlier runtime-Verifier component pass exists. | Final-pair permissions/ownership rows in all modes with metadata preservation. |
 | T11 | Epoch/archive and context retirement repairs integrated; component controls are distinct from qualification. | Final journal/recovery/lifetime gates and one adversarial review of the working M2 pair. |
 

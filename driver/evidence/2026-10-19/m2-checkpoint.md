@@ -65,3 +65,13 @@ Qualification still requires fresh disposable disks, reset EFI, no TPM, unchange
   after the repeated-failure stop on 2026-10-19. No 10k started.
 - [x] T4 restoration: test overlay deleted with base/XML untouched; [separate baseline/restoration](m2t4smoke1019a-independent-restoration.txt)
   passed on another fresh overlay, also deleted. EFI reset at starts, no TPM; [final restoration receipt](m2t4smoke1019arestore-restoration.txt).
+
+- [x] T4/T9 component repair `d45eb4c3`, fixture correction `ab81cabf`: Windows **156/156 passed**, zero skips,
+  [structured result](t4-resource-refusal-result.json). Proved space refusals now return exact no-allocation only after
+  manifest/accounting/stage/grant absence proof; ambiguous/post-commit cases stay held. Focused compilation 0/0.
+  First feedback failures and wrapper exit-capture failure remain under `m2-t4-refusal-focus1019[a-b]/` and
+  `m2-t4-refusal-feedback1019a/`; fixed native output capture uses fresh `m2-t4-refusal-feedback1019c/`.
+  Full delivery matrix for this changed agent and protected runtime qualification are still pending.
+- [x] T4/T9 owner decision: growing reservations approved with unchanged budgets and concurrent no-overspend controls.
+- [ ] T4/T9 [growth design](../../UX-LARGE-CONCURRENCY.md): independent review in progress; MM recursive resource ownership
+  and service accounting callback dependencies must be resolved before implementation. Sharing failures remain separate.
