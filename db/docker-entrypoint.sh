@@ -24,15 +24,8 @@ if [[ ! -f /run/secrets/mysql_senha_root ]]; then
     exit 1
 fi
 
-if [[ ! -f /run/secrets/mysql_senha_app ]]; then
-    echo "ERRO: Secret de senha do usuário da aplicação não encontrado."
-    exit 1
-fi
-
 MYSQL_SENHA_ROOT="$(head -n 1 /run/secrets/mysql_senha_root)"
 MYSQL_SENHA_ROOT=$(printf '%s' "$MYSQL_SENHA_ROOT" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-MYSQL_SENHA_APP="$(head -n 1 /run/secrets/mysql_senha_app)"
-MYSQL_SENHA_APP=$(printf '%s' "$MYSQL_SENHA_APP" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
 mkdir -p /var/run/mysqld
 chown -R mysql:mysql /var/run/mysqld
@@ -53,8 +46,8 @@ else
     echo "$(date '+%d-%m-%Y %H:%M:%S') Primeira Inicialização = FALSE"
 fi
 
-if [[ ( -z "$MYSQL_SENHA_ROOT" || -z "$MYSQL_SENHA_APP" ) && "$PRIMEIRA_INICIALIZACAO" = true ]]; then
-    echo "$(date '+%d-%m-%Y %H:%M:%S') ERRO: É necessário definir as senhas de root e da aplicação para inicializar o container."
+if [[ -z "$MYSQL_SENHA_ROOT" && "$PRIMEIRA_INICIALIZACAO" = true ]]; then
+    echo "$(date '+%d-%m-%Y %H:%M:%S') ERRO: É necessário definir MYSQL_SENHA_ROOT para inicializar o container."
     exit 1
 fi
 
@@ -79,18 +72,9 @@ if [[ "$PRIMEIRA_INICIALIZACAO" = true ]]; then
     else
         echo "$(date '+%d-%m-%Y %H:%M:%S') Conexão temporária realizada com êxito."
     fi
-    mysql --protocol=socket --socket="$SOCKET" -u root <<SQL
+        mysql --protocol=socket --socket="$SOCKET" -u root <<SQL
 ALTER USER 'root'@'localhost'
 IDENTIFIED BY '${MYSQL_SENHA_ROOT}';
-CREATE DATABASE IF NOT EXISTS safeupload
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_0900_ai_ci;
-CREATE USER IF NOT EXISTS 'safeupload'@'%'
-  IDENTIFIED BY '${MYSQL_SENHA_APP}';
-ALTER USER 'safeupload'@'%'
-  IDENTIFIED BY '${MYSQL_SENHA_APP}';
-GRANT ALL PRIVILEGES ON safeupload.* TO 'safeupload'@'%';
-FLUSH PRIVILEGES;
 SQL
 
     if [[ $? -ne 0 ]];then
@@ -98,7 +82,6 @@ SQL
         exit 1
     else
         echo "$(date '+%d-%m-%Y %H:%M:%S') Senha do ROOT definida com sucesso para a instância do banco de dados."
-        echo "$(date '+%d-%m-%Y %H:%M:%S') Banco e usuário da aplicação configurados com sucesso."
     fi
 
     cd "$SQLDIR"
@@ -108,6 +91,12 @@ SQL
             MYSQL_PWD="$MYSQL_SENHA_ROOT" mysql --protocol=socket --socket="$SOCKET" -u root < "$arquivo"
             echo "$(date '+%d-%m-%Y %H:%M:%S') ${arquivo##*/} executado com sucesso no banco de dados."
         done
+
+        MYSQL_PWD="$MYSQL_SENHA_ROOT" mysql --protocol=socket --socket="$SOCKET" -u root <<SQL
+CREATE USER IF NOT EXISTS 'ms_safeupload'@'%' IDENTIFIED BY 'admin123';
+GRANT ALL PRIVILEGES ON acesso.* TO 'ms_safeupload'@'%' with grant option;
+GRANT ALL PRIVILEGES ON app.* TO 'ms_safeupload'@'%' with grant option;
+SQL
     fi
 
     echo "$(date '+%d-%m-%Y %H:%M:%S') Finalizando instância temporária..."

@@ -6,7 +6,6 @@ services:
     container_name: safeupload-db 
     secrets:
       - mysql_senha_root
-      - mysql_senha_app
     ports: 
       - "3306:3306"
     volumes:
@@ -18,5 +17,3 @@ volumes:
 secrets:
   mysql_senha_root:
     file: ./secrets/MYSQL_SENHA_ROOT.txt
-  mysql_senha_app:
-    file: ./secrets/MYSQL_SENHA_APP.txt
