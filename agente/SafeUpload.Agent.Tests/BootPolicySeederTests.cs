@@ -1,6 +1,9 @@
 using System.Buffers.Binary;
+using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Service.Interception;
+using SafeUpload.Agent.Service.Policies;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -58,6 +61,84 @@ public sealed class BootPolicySeederTests
         Assert.Equal(new[] { Prefix }, committed.Prefixes);
         Assert.Equal(3u, committed.Flags);
         Assert.Equal(2, backend.Operations.Count(operation => operation == "verify-seeded"));
+    }
+
+    [Theory]
+    [InlineData("network")]
+    [InlineData("invalid")]
+    [InlineData("cancelled")]
+    public async Task Failed_current_read_does_not_reseed_from_legacy_fallback_or_modify_prior_boot_record(string failure)
+    {
+        var store = new StrictStore();
+        var backend = new RecordingBackend();
+        var writer = new BootPolicyRegistryWriter(backend);
+        await BootPolicySeeder.SeedAsync(store, writer, CancellationToken.None);
+        var previous = backend.Committed!.ToArray();
+        var operations = backend.Operations.ToArray();
+        store.Error = failure switch
+        {
+            "network" => new HttpRequestException("offline"),
+            "invalid" => new InvalidPolicyException("invalid current policy"),
+            _ => new OperationCanceledException("cancelled read")
+        };
+        await Assert.ThrowsAnyAsync<Exception>(() => BootPolicySeeder.SeedAsync(store, writer, CancellationToken.None));
+        Assert.Equal(previous, backend.Committed);
+        Assert.Equal(operations, backend.Operations);
+        Assert.Null(backend.Pending);
+        Assert.Equal(0, store.LegacyReads);
+    }
+
+    [Fact]
+    public async Task Boot_record_matches_the_same_strict_candidate_used_for_live_driver_policy()
+    {
+        var store = new StrictStore();
+        var backend = new RecordingBackend();
+        var candidate = await DriverPolicyLoader.LoadAsync(store, CancellationToken.None);
+        await BootPolicySeeder.SeedAsync(store, new BootPolicyRegistryWriter(backend), CancellationToken.None);
+        Assert.Equal(7, candidate.Policy.Version);
+        Assert.Equal(BootPolicyCodec.Encode(candidate.Message), backend.Committed);
+        var scopes = BootPolicyCodec.DecodeKnown(backend.Committed);
+        Assert.Equal([Prefix], scopes.Prefixes);
+        Assert.Equal(0u, scopes.Flags);
+        Assert.Equal(0, store.LegacyReads);
+        Assert.Equal(2, store.CurrentReads);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Invalid_or_unrepresentable_current_policy_is_refused_before_any_registry_access(bool tooManyPaths)
+    {
+        var store = new StrictStore();
+        store.Policy = tooManyPaths
+            ? store.Policy with { MonitoredScopes = store.Policy.MonitoredScopes with
+                { DestinationPaths = Enumerable.Range(0, 33).Select(i => Prefix + i).ToArray() } }
+            : store.Policy with { Version = 0 };
+        var backend = new RecordingBackend();
+        await Assert.ThrowsAnyAsync<Exception>(() => BootPolicySeeder.SeedAsync(store,
+            new BootPolicyRegistryWriter(backend), CancellationToken.None));
+        Assert.Empty(backend.Operations);
+        Assert.Null(backend.Committed);
+        Assert.Equal(0, store.LegacyReads);
+    }
+
+    private sealed class StrictStore : IPolicyStore
+    {
+        public int LegacyReads, CurrentReads;
+        public Exception? Error;
+        public Policy Policy = LocalPolicyStore.CreateDefault() with
+        {
+            Version = 7,
+            MonitoredScopes = new MonitoredScopes(new HashSet<string> { ".txt" }, [Prefix], false, false)
+        };
+        public Task<Policy> LoadAsync(CancellationToken token)
+        { LegacyReads++; return Task.FromResult(LocalPolicyStore.CreateDefault()); }
+        public Task<Policy> LoadCurrentAsync(CancellationToken token)
+        {
+            CurrentReads++;
+            token.ThrowIfCancellationRequested();
+            return Error is null ? Task.FromResult(Policy) : Task.FromException<Policy>(Error);
+        }
     }
 
     private static byte[] ExpectedRecord()

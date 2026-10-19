@@ -57,6 +57,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
         ArgumentNullException.ThrowIfNull(client);
         ArgumentException.ThrowIfNullOrWhiteSpace(endpointId);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(interval, TimeSpan.Zero);
 
         _auditSink = auditSink;
         _policyStore = policyStore;
@@ -79,8 +80,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
         {
             try
             {
-                await SendHeartbeatAsync(stoppingToken).ConfigureAwait(false);
-                await DispatchPendingAsync(stoppingToken).ConfigureAwait(false);
+                await RunCycleAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -126,16 +126,30 @@ public sealed class HttpAgentDispatcher : BackgroundService
         }
     }
 
-    private async Task DispatchPendingAsync(CancellationToken cancellationToken)
+    internal async Task RunCycleAsync(CancellationToken cancellationToken)
+    {
+        try { await SendHeartbeatAsync(cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Heartbeat falhou; o envio da auditoria será tentado independentemente.");
+        }
+        await DispatchPendingAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task DispatchPendingAsync(CancellationToken cancellationToken)
     {
         var pending = await _auditSink.ReadPendingAsync(BatchSize, cancellationToken).ConfigureAwait(false);
+        var overrides = _auditSink is IOverrideQueue queue
+            ? await queue.ReadPendingOverridesAsync(BatchSize, cancellationToken).ConfigureAwait(false)
+            : Array.Empty<AuditOverride>();
 
-        if (pending.Count == 0)
+        if (pending.Count == 0 && overrides.Count == 0)
         {
             return;
         }
 
-        var payload = new SubmitEventsRequest(pending, []);
+        var payload = new SubmitEventsRequest(pending, overrides);
 
         using var response = await _client
             .PostAsJsonAsync("events", payload, SendOptions, cancellationToken)
@@ -150,6 +164,15 @@ public sealed class HttpAgentDispatcher : BackgroundService
             return;
         }
 
+        var acknowledgement = await response.Content.ReadFromJsonAsync<SubmitResponse>(cancellationToken)
+            .ConfigureAwait(false);
+        if (acknowledgement?.AcceptedEvents != pending.Count ||
+            acknowledgement.AcceptedOverrides != overrides.Count)
+        {
+            _logger.LogWarning("Confirmação incompleta do lote. Registros continuam pendentes.");
+            return;
+        }
+
         // Só marca como entregue o que o servidor confirmou ter aceitado. Marcar
         // antes do 2xx trocaria uma falha de rede por perda silenciosa de
         // trilha, que é o erro caro: o evento sumiria da fila sem nunca ter
@@ -161,6 +184,8 @@ public sealed class HttpAgentDispatcher : BackgroundService
         }
 
         await _auditSink.MarkDispatchedAsync(dispatched, cancellationToken).ConfigureAwait(false);
+        if (_auditSink is IOverrideQueue overrideQueue)
+            await overrideQueue.MarkOverridesDispatchedAsync(overrides, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("{Count} evento(s) entregues ao Centro de Administração.", dispatched.Count);
     }
@@ -180,12 +205,11 @@ public sealed class HttpAgentDispatcher : BackgroundService
         int PolicyVersion);
 
     /// <summary>
-    /// O corpo que POST /agent/events espera. Overrides vão vazios nesta
-    /// entrega: a IAuditSink não expõe justificativas pendentes separadamente
-    /// (a linha de override do queue.jsonl sequer tem o campo dispatched), e
-    /// inventar esse controle aqui seria feature nova, não integração.
+    /// O corpo já aceito por POST /agent/events, incluindo justificativas pendentes.
     /// </summary>
     private sealed record SubmitEventsRequest(
         IReadOnlyList<AuditEvent> Events,
-        IReadOnlyList<object> Overrides);
+        IReadOnlyList<AuditOverride> Overrides);
+
+    private sealed record SubmitResponse(int AcceptedEvents, int AcceptedOverrides);
 }

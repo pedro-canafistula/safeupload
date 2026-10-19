@@ -11,8 +11,8 @@ param(
 
     # Central policy server. Empty (the default) keeps the agent autonomous: it reads C:\ProgramData\SafeUpload\policy.json.
     # appsettings.json ships a panel address, and with any address configured the agent takes its policy from the
-    # panel and falls back to a built-in default (other folder, removable and network scopes) when it cannot reach
-    # it, so the installer states the choice explicitly instead of inheriting the shipped address.
+    # panel. Legacy consumers can use a validated fallback; staged decisions and boot seed require the current
+    # policy, so the installer states the choice explicitly instead of inheriting the shipped address.
     [string] $AdminBaseUrl = '',
 
     # The staged-write driver only works with the agent in staged minifilter mode. Without these arguments the
@@ -33,7 +33,25 @@ if (-not (Test-Path -LiteralPath (Join-Path $appSource 'SafeUpload.Agent.App.exe
     throw 'Agent package is missing App\SafeUpload.Agent.App.exe.'
 }
 $quotedExecutable = '"' + $serviceExecutable + '"'
-$binaryPath = (@($quotedExecutable) + $ServiceArguments) -join ' '
+function ConvertTo-SafeUploadCommandLineArgument([AllowEmptyString()][string] $Argument) {
+    # Windows argv quoting: double backslashes before quotes and before the closing quote.
+    $escaped = [regex]::Replace($Argument, '(\\*)"', '$1$1\"')
+    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    return '"' + $escaped + '"'
+}
+
+function Get-SafeUploadInstallCommandLines([string] $Executable, [string[]] $Arguments) {
+    $configuration = @($Arguments | ForEach-Object { ConvertTo-SafeUploadCommandLineArgument $_ })
+    return [pscustomobject]@{
+        ServiceCommandLine = (@((ConvertTo-SafeUploadCommandLineArgument $Executable)) + $configuration) -join ' '
+        SeedArguments = (@('--seed-boot-policy') + $configuration) -join ' '
+    }
+}
+
+# Share the complete configuration, including an explicitly empty origin, across both processes.
+$commandLines = Get-SafeUploadInstallCommandLines $serviceExecutable $ServiceArguments
+$binaryPath = $commandLines.ServiceCommandLine
+$seedArguments = $commandLines.SeedArguments
 $agentServiceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent'
 $driverServiceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload'
 
@@ -91,7 +109,7 @@ function Set-SafeUploadAgentImagePath {
 
 function Invoke-BootPolicySeedAsSystem {
     $taskName = 'SafeUpload-BootPolicySeed-' + [guid]::NewGuid().ToString('N')
-    $action = New-ScheduledTaskAction -Execute $serviceExecutable -Argument '--seed-boot-policy'
+    $action = New-ScheduledTaskAction -Execute $serviceExecutable -Argument $seedArguments
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(2))
     $registered = $false

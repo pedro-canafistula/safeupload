@@ -85,7 +85,8 @@ internal sealed record PolicyDocument
             // Categoria desconhecida no documento é ignorada em vez de derrubar
             // o agente: um painel mais novo pode publicar uma categoria que esta
             // versão ainda não implementa. Se sobrar zero, a RN-009 pega.
-            if (Enum.TryParse<Category>(name, ignoreCase: true, out var category))
+            if (Enum.TryParse<Category>(name, ignoreCase: true, out var category) &&
+                Enum.IsDefined(category) && !int.TryParse(name, out _))
             {
                 categories.Add(category);
             }

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Service.Policies;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Minifilter;
@@ -1796,11 +1797,12 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 #endif
         try
         {
-            Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var candidate = DriverPolicyLoader.LoadAsync(_policyStore, CancellationToken.None).GetAwaiter().GetResult();
+            Policy policy = candidate.Policy;
             MonitoredScopes scopes = policy.MonitoredScopes;
             _budget = policy.InspectionTimeout;
 
-            SafeUploadPolicyMessage driverPolicy = MinifilterPolicyFactory.Build(policy);
+            SafeUploadPolicyMessage driverPolicy = candidate.Message;
             string[] candidateCoveragePrefixes = AdmissionCoverageEvaluator.GetExpectedPrefixes(driverPolicy);
             uint candidateCoveragePolicyFlags = driverPolicy.Flags;
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
