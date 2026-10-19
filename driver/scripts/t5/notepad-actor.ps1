@@ -219,8 +219,12 @@ function Invoke-NotepadSaveAs([string]$Path, [string]$Text) {
             (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::AutomationIdProperty, '1001')),
             (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit))))) }
         if ($null -eq $nameBox) { throw 'file name box not found' }
+        $nameBox.SetFocus()
         $nameBox.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($Path)
         $save = $dialog.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::AutomationIdProperty, '1')))
+        # Commit the filename edit's focus transition before invoking the dialog.
+        # UIA ValuePattern alone can leave the common dialog's cached name stale.
+        $save.SetFocus()
         $save.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
         Start-Sleep -Seconds 4
         $obs.WindowsAfterSave = @(Get-WindowTexts $p.Id)
