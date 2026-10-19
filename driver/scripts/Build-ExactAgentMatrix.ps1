@@ -48,6 +48,31 @@ function Invoke-MatrixDiagnosticStep {
     }
 }
 function Get-MatrixUserIdentity { return [Security.Principal.WindowsIdentity]::GetCurrent() }
+function New-MatrixPackage {
+    param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Destination)
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    $root = (Get-Item -LiteralPath $Directory).FullName.TrimEnd('\')
+    if ((Test-Path -LiteralPath $Destination) -or
+        [IO.Path]::GetFullPath($Destination).StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Package requires a fresh destination outside the publish tree.'
+    }
+    $items = @((Get-Item -LiteralPath $root)) + @(Get-ChildItem -LiteralPath $root -Recurse -Force)
+    if (@($items | Where-Object { ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 }).Count) {
+        throw 'Publish tree contains a reparse point.'
+    }
+    $archive = [IO.Compression.ZipFile]::Open($Destination, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($file in @($items | Where-Object { -not $_.PSIsContainer } | Sort-Object FullName)) {
+            # The builder's .NET Framework CreateFromDirectory emits backslashes.
+            # Write ZIP-standard names explicitly; the consumer stays strict.
+            $name = $file.FullName.Substring($root.Length + 1).Replace('\','/')
+            $entry = $archive.CreateEntry($name, [IO.Compression.CompressionLevel]::Optimal)
+            $input = [IO.File]::Open($file.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+            try { $output = $entry.Open(); try { $input.CopyTo($output) } finally { $output.Dispose() } }
+            finally { $input.Dispose() }
+        }
+    } finally { $archive.Dispose() }
+}
 function Invoke-DiagnosticProfile {
     param([string] $Name, [string] $Configuration, [string[]] $Common,
         [string] $ServiceProject, [string] $AppProject, [string] $TestProject, [string] $ProfileSource)
@@ -1056,7 +1081,7 @@ try {
                 } | Set-Content (Join-Path $out ($name + '-package-manifest.txt')) -Encoding UTF8
                 $summary += "$name`: package_manifest_sha256=$((Get-FileHash -LiteralPath (Join-Path $out ($name + '-package-manifest.txt')) -Algorithm SHA256).Hash)"
                 $package = Join-Path $out ($name + '-service-publish.zip')
-                [IO.Compression.ZipFile]::CreateFromDirectory($publish, $package)
+                New-MatrixPackage -Directory $publish -Destination $package
                 if ((Get-Item -LiteralPath $package).Length -le 0) { throw ('Publish package is empty: ' + $name) }
                 $summary += "$name`: package_sha256=$((Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash)"
                 $summary += "$name`: exe_sha256=$((Get-FileHash -LiteralPath $serviceExecutable -Algorithm SHA256).Hash)"

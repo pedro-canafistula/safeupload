@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($BuildScript, [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw 'Matrix script does not parse.' }
-$names = @('Get-MatrixProfiles', 'Get-MatrixCompletionRows', 'Invoke-MatrixDiagnosticStep', 'Invoke-DiagnosticProfile', 'Invoke-DotnetGate')
+$names = @('Get-MatrixProfiles', 'Get-MatrixCompletionRows', 'Invoke-MatrixDiagnosticStep', 'Invoke-DiagnosticProfile', 'Invoke-DotnetGate', 'New-MatrixPackage')
 $definitions = @($ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in $names }, $true))
 if ($definitions.Count -ne $names.Count) { throw 'Matrix self-check functions missing.' }
 $source = ($definitions | ForEach-Object { $_.Extent.Text }) -join "`n"
@@ -94,6 +94,22 @@ function Test-MatrixControls {
     Assert-Control $stopped 'Uncertain SYSTEM lifetime was swallowed.'
 }
 try {
+    $publish = Join-Path $work 'publish'
+    [void][IO.Directory]::CreateDirectory((Join-Path $publish 'App'))
+    [IO.File]::WriteAllText((Join-Path $publish 'service.txt'), 'service bytes')
+    [IO.File]::WriteAllText((Join-Path $publish 'App\tray.txt'), 'tray bytes')
+    $package = Join-Path $work 'publish.zip'
+    New-MatrixPackage -Directory $publish -Destination $package
+    $archive = [IO.Compression.ZipFile]::OpenRead($package)
+    try {
+        Assert-Control (($archive.Entries.FullName | Sort-Object) -join ',' -ceq 'App/tray.txt,service.txt') 'Nested package names must use forward slashes.'
+        $reader = [IO.StreamReader]::new($archive.GetEntry('App/tray.txt').Open())
+        try { Assert-Control ($reader.ReadToEnd() -ceq 'tray bytes') 'Nested package bytes differ.' } finally { $reader.Dispose() }
+    } finally { $archive.Dispose() }
+    $refused = $false
+    try { New-MatrixPackage -Directory $publish -Destination $package } catch { $refused = $true }
+    Assert-Control $refused 'Existing package was overwritten.'
+    'MatrixPackageSelfCheck=PASS; nested names and bytes, overwrite refusal'
     Test-MatrixControls
     $mutations = @(
         @('($Name + ''-publish'')', '($Name + ''-omitted-publish'')'),
