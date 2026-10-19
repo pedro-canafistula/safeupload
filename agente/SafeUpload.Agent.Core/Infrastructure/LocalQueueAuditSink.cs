@@ -259,10 +259,13 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         int maxEvents,
         CancellationToken cancellationToken)
     {
-        var all = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
-        var pending = all.FindAll(static e => !e.Dispatched);
-
-        return maxEvents > 0 && pending.Count > maxEvents ? pending.GetRange(0, maxEvents) : pending;
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await ReadAllUnsynchronizedAsync(cancellationToken, pendingOnly: true, maxEvents)
+                .ConfigureAwait(false);
+        }
+        finally { _writeLock.Release(); }
     }
 
     /// <summary>
@@ -429,7 +432,8 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         }
     }
 
-    private async Task<List<AuditEvent>> ReadAllUnsynchronizedAsync(CancellationToken cancellationToken)
+    private async Task<List<AuditEvent>> ReadAllUnsynchronizedAsync(CancellationToken cancellationToken,
+        bool pendingOnly = false, int maxEvents = 0)
     {
         var events = new List<AuditEvent>();
 
@@ -451,6 +455,15 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
 
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
 
+        return await ReadEventsAsync(reader, pendingOnly, maxEvents, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Retain only selected records and stop after the requested batch. A read
+    // with fewer pending records still scans to EOF; individual lines are not capped.
+    internal static async Task<List<AuditEvent>> ReadEventsAsync(TextReader reader, bool pendingOnly,
+        int maxEvents, CancellationToken cancellationToken)
+    {
+        var events = new List<AuditEvent>();
         while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
         {
             if (string.IsNullOrWhiteSpace(line))
@@ -467,10 +480,13 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
                 {
                     continue;
                 }
+                if (pendingOnly && json.RootElement.TryGetProperty("dispatched", out var sent) &&
+                    sent.ValueKind == JsonValueKind.True) continue;
                 var parsed = JsonSerializer.Deserialize<AuditEvent>(line, Options);
-                if (parsed is not null && parsed.EventId != Guid.Empty)
+                if (parsed is not null && parsed.EventId != Guid.Empty && (!pendingOnly || !parsed.Dispatched))
                 {
                     events.Add(parsed);
+                    if (maxEvents > 0 && events.Count >= maxEvents) break;
                 }
             }
             catch (JsonException)
