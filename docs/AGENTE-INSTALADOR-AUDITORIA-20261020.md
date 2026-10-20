@@ -1,5 +1,7 @@
 # Evolução: instalador 0.1.1 e envio de auditoria
 
+Registro histórico desta rodada. A correção 0.1.2 e a instalação real aprovada estão na [validação operacional posterior](VALIDACAO-INSTALADOR-20261020.md).
+
 Branch local: `feat/agente-instalador-20261020`, baseada em `main` `8ed90220e827596d25009e3c80c273f84aa12180`, conferida no remoto nesta rodada. A branch antiga de recuperação Java não foi incorporada. Driver, Java e Angular permanecem sem mudanças nesta rodada.
 
 ## Entregas desta rodada
