@@ -225,8 +225,13 @@ public sealed partial class StagedTransferAllocator
 
         bool copyExisting = disposition is 1 or 3 && sourceExists;
         if (_spaceBudget is not null) await _spaceBudget.ReconcileAsync(_journal, cancellationToken, 16, (_, _) => { }).ConfigureAwait(false);
-        long seedCapacity = _spaceBudget?.Reserve(id, requestorSid ?? throw new IOException("A capacity grant needs the exact requestor SID."), transfer.StagePath, fullDestination)
-            ?? MaximumSeedBytes;
+        long seedCapacity = MaximumSeedBytes;
+        if (_spaceBudget is { } budget)
+            seedCapacity = await budget.ReserveAfterPendingRefundsAsync(id,
+                requestorSid ?? throw new IOException("A capacity grant needs the exact requestor SID."),
+                transfer.StagePath, fullDestination,
+                pass => budget.ReconcileAsync(_journal, pass, int.MaxValue, (_, _) => { }),
+                StagedSpaceBudget.RefundGrace, cancellationToken).ConfigureAwait(false);
         using var seedDeadline = _spaceBudget is null ? null : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         seedDeadline?.CancelAfter(_spaceBudget!.SeedTimeout);
         CancellationToken seedToken = seedDeadline?.Token ?? cancellationToken;

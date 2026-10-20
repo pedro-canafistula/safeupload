@@ -61,6 +61,53 @@ public sealed class StagedLargeFileTests : IDisposable
     }
 
     [Fact]
+    public async Task A_back_to_back_save_waits_for_the_previous_refund_instead_of_being_refused()
+    {
+        var budget = Budget(); Guid previous = Guid.NewGuid();
+        budget.Reserve(previous, "one", Path.Combine(Stage, previous.ToString("N") + ".txt"));
+        int passes = 0;
+        long capacity = await budget.ReserveAfterPendingRefundsAsync(Guid.NewGuid(), "one", null, null, _ =>
+        {
+            if (++passes == 2) budget.RetireFailedAllocation(previous);
+            return Task.CompletedTask;
+        }, TimeSpan.FromSeconds(30), CancellationToken.None);
+        Assert.True(capacity >= 16 * MiB);
+        Assert.Equal(2, passes);
+    }
+
+    [Fact]
+    public async Task Genuine_exhaustion_still_fails_with_the_same_resource_error_after_the_grace()
+    {
+        var budget = Budget(); budget.Reserve(Guid.NewGuid(), "one");
+        int passes = 0;
+        await Assert.ThrowsAsync<StagedSpaceException>(() => budget.ReserveAfterPendingRefundsAsync(
+            Guid.NewGuid(), "one", null, null, _ => { ++passes; return Task.CompletedTask; },
+            TimeSpan.FromMilliseconds(200), CancellationToken.None));
+        Assert.True(passes >= 1);
+        Assert.True(budget.Reserve(Guid.NewGuid(), "two") >= 16 * MiB);
+    }
+
+    [Fact]
+    public async Task A_zero_grace_refuses_immediately_without_a_refund_pass()
+    {
+        var budget = Budget(); budget.Reserve(Guid.NewGuid(), "one");
+        int passes = 0;
+        await Assert.ThrowsAsync<StagedSpaceException>(() => budget.ReserveAfterPendingRefundsAsync(
+            Guid.NewGuid(), "one", null, null, _ => { ++passes; return Task.CompletedTask; },
+            TimeSpan.Zero, CancellationToken.None));
+        Assert.Equal(0, passes);
+    }
+
+    [Fact]
+    public async Task The_refund_grace_honors_cancellation()
+    {
+        var budget = Budget(); budget.Reserve(Guid.NewGuid(), "one");
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => budget.ReserveAfterPendingRefundsAsync(
+            Guid.NewGuid(), "one", null, null, _ => Task.CompletedTask, TimeSpan.FromSeconds(30), cancellation.Token));
+    }
+
+    [Fact]
     public void Unknown_private_objects_and_interrupted_accounting_are_never_swept_or_admitted()
     {
         var budget = Budget();

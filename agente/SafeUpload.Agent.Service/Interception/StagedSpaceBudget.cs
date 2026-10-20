@@ -231,6 +231,32 @@ public sealed partial class StagedSpaceBudget
         }
     }
 
+    /// <summary>
+    /// A save that just published stays charged until the publisher records its stage as deleted, a moment after the public
+    /// bytes appear. The capacity grant covers the user's whole remaining allowance, so a back-to-back save arriving in that
+    /// gap was refused although its predecessor's charge was already being released (T4 smoke 1020c-f: error 32 on 4 of 9
+    /// serial cycles). Retry the exact same reservation for a short, bounded time, running a full refund pass between
+    /// attempts. Genuine exhaustion fails with the same exception once the grace ends; no budget, floor or cap changes.
+    /// </summary>
+    internal static readonly TimeSpan RefundGrace = TimeSpan.FromMilliseconds(1500);
+    internal static readonly TimeSpan RefundPollInterval = TimeSpan.FromMilliseconds(25);
+
+    internal async Task<long> ReserveAfterPendingRefundsAsync(Guid id, string sid, string? stagePath, string? destinationPath,
+        Func<CancellationToken, Task> refundPass, TimeSpan grace, CancellationToken token)
+    {
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        for (;;)
+        {
+            token.ThrowIfCancellationRequested();
+            try { return Reserve(id, sid, stagePath, destinationPath); }
+            catch (StagedSpaceException) when (System.Diagnostics.Stopwatch.GetElapsedTime(started) < grace)
+            {
+                await Task.Delay(RefundPollInterval, token).ConfigureAwait(false);
+                await refundPass(token).ConfigureAwait(false);
+            }
+        }
+    }
+
     // Compatibility only: no new negative receipts are created. Even partial
     // legacy data is debited as storage, not interpreted as allocation authority.
     internal static bool IsNegativeReceiptPath(string path)
