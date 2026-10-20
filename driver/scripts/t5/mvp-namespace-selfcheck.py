@@ -205,11 +205,18 @@ class MvpNamespace(unittest.TestCase):
         self.assertNotIn('STATUS_NOT_SUPPORTED', body(source, 'StageMvpRenameNeedsCopy'))
         core = body(source, 'StageDispatchCore')
         self.assertLess(core.index('StageMvpNamespacePre('), core.index('SafeUploadPreCreate('))
-        guarded = re.findall(r'if \(KeGetCurrentIrql\(\) == PASSIVE_LEVEL\) \{([^{}]*)\}', core)
+        guarded = re.findall(
+            r'if \(KeGetCurrentIrql\(\) == PASSIVE_LEVEL(?: && StageMvpNamespaceOperation\(Data\))?\) \{([^{}]*)\}', core)
         namespace_calls = [block for block in guarded if 'StageMvpNamespacePre(' in block]
         self.assertEqual(len(namespace_calls), 2)
         for block in namespace_calls:
             self.assertLess(block.index('*CompletionContext = NULL;'), block.index('StageMvpNamespacePre('))
+        # The pageable routing function must never run for paging I/O or for operations it does not route: its own
+        # page-in would re-enter the filter until the kernel stack is exhausted (T4 smoke m2t4smoke1020h, bugcheck 0x7F).
+        self.assertIn('KeGetCurrentIrql() == PASSIVE_LEVEL && StageMvpNamespaceOperation(Data)', core)
+        operation = body(source, 'StageMvpNamespaceOperation')
+        for token in ('IRP_MJ_CREATE', 'IRP_MJ_SET_INFORMATION', 'IRP_PAGING_IO | IRP_SYNCHRONOUS_PAGING_IO'):
+            self.assertIn(token, operation)
         create = body(source, 'StageCreate')
         self.assertIn('namespaceSequence != InterlockedCompareExchange64(&StageDirectorySequence, 0, 0)', create)
         rename = body(source, 'StageRename')

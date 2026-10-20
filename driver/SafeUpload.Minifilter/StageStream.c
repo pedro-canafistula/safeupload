@@ -10220,6 +10220,17 @@ static BOOLEAN StageMvpRenameNeedsCopy(_In_ PFLT_FILE_NAME_INFORMATION Source,
 #pragma alloc_text(PAGE, StageMvpNamespacePre)
 #endif
 
+/* StageMvpNamespacePre is pageable and routes only CREATE and SET_INFORMATION. Calling it for any other operation, above all a
+ * paging read, is unsafe: when its own code page is not resident, the in-page read re-enters this filter and calls it again
+ * until the kernel stack is exhausted (T4 smoke m2t4smoke1020h: bugcheck 0x7F double fault under Verifier trimming). Decide in
+ * resident code, before the call. */
+static BOOLEAN StageMvpNamespaceOperation(_In_ PFLT_CALLBACK_DATA Data)
+{
+    UCHAR major = Data->Iopb->MajorFunction;
+    return (major == IRP_MJ_CREATE || major == IRP_MJ_SET_INFORMATION) &&
+        !FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO | IRP_SYNCHRONOUS_PAGING_IO);
+}
+
 /* Fence is already installed. Pin only one stream per RPC; no stack array or
  * unbounded allocation, and no namespace/stream resource spans the exchange. */
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -10571,7 +10582,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     {
         BOOLEAN handled = FALSE;
-        if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
+        if (KeGetCurrentIrql() == PASSIVE_LEVEL && StageMvpNamespaceOperation(Data)) {
             *CompletionContext = NULL; /* _Flt_CompletionContext_Outptr_ requires a NULL output on entry */
             result = StageMvpNamespacePre(Data, Objects, CompletionContext, &handled, AdmissionSlot);
         }
