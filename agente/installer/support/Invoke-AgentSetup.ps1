@@ -93,9 +93,9 @@ try {
         } else {
             $manifest = Test-SafeUploadPayload -Root $InstallRoot
             if (-not (Test-Path -LiteralPath $plan.Executable -PathType Leaf)) { throw 'Service executable is absent.' }
-            # Mark ownership before invoking the existing script, which can create the service before failing.
-            $createdByThisRun = $true
             if ($plan.Mode -eq 'Minifilter') {
+                # The existing script may create the service before a later step fails.
+                $createdByThisRun = $true
                 & (Join-Path $PSScriptRoot 'Install-SafeUploadAgent.ps1') -ServiceExecutablePath $plan.Executable `
                     -AdminBaseUrl $plan.AdminBaseUrl -ServiceArguments @('--Interception:Mode=Minifilter',
                     '--Interception:StagingPrototype=true', ('--CentroAdministracao:BaseUrl=' + $plan.AdminBaseUrl),
@@ -103,6 +103,8 @@ try {
             } else {
                 $newService = New-Service -Name $serviceName -DisplayName 'SafeUpload Agent' -BinaryPathName $plan.CommandLine `
                     -Description 'SafeUpload endpoint agent' -StartupType Automatic
+                # A failed New-Service must never claim an existing service for rollback.
+                $createdByThisRun = $true
                 $newService.Dispose()
                 Invoke-Sc @('sidtype', $serviceName, 'unrestricted')
             }

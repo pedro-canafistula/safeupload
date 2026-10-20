@@ -5,7 +5,7 @@
   #error ArtifactOutput is required
 #endif
 #ifndef AgentVersion
-  #define AgentVersion "0.1.0"
+  #define AgentVersion "0.1.1"
 #endif
 
 [Setup]
