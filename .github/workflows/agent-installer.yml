@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths: ['agente/**', '.github/workflows/agent-installer.yml']
   push:
-    branches: [main]
+    branches: [main, feat/agente-instalador]
     paths: ['agente/**', '.github/workflows/agent-installer.yml']
 permissions:
   contents: read
