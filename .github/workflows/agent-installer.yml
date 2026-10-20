@@ -32,9 +32,17 @@ jobs:
         run: |
           $compiler = ./agente/installer/Initialize-InnoCompiler.ps1
           ./agente/installer/Build-AgentInstaller.ps1 -CompilerPath $compiler
+      - name: Audit dispatch and queue contracts
+        shell: pwsh
+        run: |
+          $env:SAFEUPLOAD_MACHINE_TESTS = '0'
+          dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj -c Release --filter 'FullyQualifiedName~AgentAuditDispatchTests|FullyQualifiedName~DispatcherReliabilityTests|FullyQualifiedName~AuditTrailTests|FullyQualifiedName~AuditQueueOverrideTests|FullyQualifiedName~QueueEncodingTests|FullyQualifiedName~InstallSafeUploadAgentScriptTests' --logger 'trx;LogFileName=audit-installer.trx' --results-directory artifacts/installer-tests
+          if ($LASTEXITCODE -ne 0) { throw 'Audit dispatch contracts failed.' }
       - name: Install and uninstall on the disposable Windows runner
         shell: pwsh
-        run: ./agente/installer/tests/Test-InstallerSmoke.ps1 -InstallerPath artifacts/installer/SafeUploadAgent-0.1.0-win-x64-setup.exe
+        run: |
+          $build = Get-Content artifacts/installer/build-result.json -Raw | ConvertFrom-Json
+          ./agente/installer/tests/Test-InstallerSmoke.ps1 -InstallerPath $build.installer
       - name: Installer and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
