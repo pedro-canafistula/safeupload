@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+#Requires -Version 7.5
 [CmdletBinding()]
 param([string]$ResultsPath)
 $ErrorActionPreference = 'Stop'
@@ -64,10 +64,27 @@ if (-not $module.Path.StartsWith(($PSHOME + '\Modules\'),[StringComparison]::Ord
     if ($secured.exitCode -ne 0 -or $secured.stdout.Trim() -ne 'OK') {
         throw "The real setup bootstrap did not isolate built-in cmdlets: $($secured.stderr)"
     }
-    $summary=[ordered]@{passed=2;failed=0;tests=@('untrusted inherited module selected in control',
-        'actual setup bootstrap loads native Windows PowerShell Get-Acl')}
+    $smokePath=Join-Path $PSScriptRoot 'Test-InstallerSmoke.ps1'
+    $smokeAst=[Management.Automation.Language.Parser]::ParseFile($smokePath,[ref]$tokens,[ref]$errors)
+    $readFunction=$smokeAst.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Read-AuditEvents'},$true)
+    if (-not $readFunction) { throw 'The smoke audit reader is absent.' }
+    . ([scriptblock]::Create($readFunction.Extent.Text))
+    $queueFile=Join-Path $fixture 'queue.jsonl'
+    $timestamp='2026-10-20T23:43:24.750+00:00'
+    [IO.File]::WriteAllText($queueFile,
+        ('{"eventId":"50f42eb0-28f7-48dc-8c7b-c97376f0ef71","occurredAtUtc":"' + $timestamp + '"}' + "`n" + '{"eventId":'))
+    $events=@(Read-AuditEvents $queueFile)
+    if ($events.Count -ne 1) { throw 'The audit reader lost a complete event before a truncated append.' }
+    if ($events[0].occurredAtUtc -isnot [string] -or $events[0].occurredAtUtc -cne $timestamp) {
+        throw 'Audit timestamps must remain original strings, independent of PowerShell date conversion.'
+    }
+    $summary=[ordered]@{passed=4;failed=0;tests=@('untrusted inherited module selected in control',
+        'actual setup bootstrap loads native Windows PowerShell Get-Acl',
+        'actual smoke reader preserves complete records before truncated tail',
+        'actual smoke reader preserves the original timestamp without culture conversion')}
     if ($ResultsPath) { $summary | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $ResultsPath -Encoding utf8NoBOM }
-    'InstallerEnvironment: 2/2 passed'
+    'InstallerEnvironment: 4/4 passed'
 } finally {
     $full=[IO.Path]::GetFullPath($fixture)
     $temporary=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'

@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+#Requires -Version 7.5
 #Requires -RunAsAdministrator
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$InstallerPath,
@@ -31,7 +31,7 @@ function Read-AuditEvents([string]$Path) {
     try {
         while ($null -ne ($line = $reader.ReadLine())) {
             if ([string]::IsNullOrWhiteSpace($line)) { continue }
-            try { $item = $line | ConvertFrom-Json -ErrorAction Stop }
+            try { $item = $line | ConvertFrom-Json -DateKind String -ErrorAction Stop }
             catch { continue } # A concurrent append may leave the last line incomplete.
             if ($item.eventId -and -not $item.type) { $item }
         }
