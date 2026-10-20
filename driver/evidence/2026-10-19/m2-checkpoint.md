@@ -71,7 +71,14 @@ Qualification still requires fresh disposable disks, reset EFI, no TPM, unchange
   manifest/accounting/stage/grant absence proof; ambiguous/post-commit cases stay held. Focused compilation 0/0.
   First feedback failures and wrapper exit-capture failure remain under `m2-t4-refusal-focus1019[a-b]/` and
   `m2-t4-refusal-feedback1019a/`; fixed native output capture uses fresh `m2-t4-refusal-feedback1019c/`.
-  Full delivery matrix for this changed agent and protected runtime qualification are still pending.
+  Full delivery matrix `m2-t4-agent1019c`, source `ab81cabf`, started at 17:36 BRT on builder1;
+  it is still running. Protected runtime qualification remains pending.
 - [x] T4/T9 owner decision: growing reservations approved with unchanged budgets and concurrent no-overspend controls.
-- [ ] T4/T9 [growth design](../../UX-LARGE-CONCURRENCY.md): independent review in progress; MM recursive resource ownership
-  and service accounting callback dependencies must be resolved before implementation. Sharing failures remain separate.
+- [x] T4/T9: initial [growth review](t9-growing-reservations-design-review-sol-high.md) identified MM recursion, journal fencing
+  and private metadata reentry; its concrete mechanism addendum is retained. [Revised design](../../UX-LARGE-CONCURRENCY.md)
+  selects an exact private metadata route, ledger-only growth and closed-before-refund retirement; acceptance remains pending.
+- [x] T4: independent [readmission review](t4-readmit-design-review-sol-high.md) confirms a possible internal READMIT→sharing-error
+  asymmetry. Repair must rerun full current gates within one captured transaction; runtime attribution/implementation remain open.
+- [ ] T5: [real Notepad diagnostic](m2dev1019f-result.md): same actor saved exact bytes outside protection, but protected save
+  displayed resource-in-use and no public file; service logged a space refusal. Old dev pair, not new agent qualification.
+  Development disk retained/parked; [separate restoration PASS](m2dev1019f/independent-restoration.txt).

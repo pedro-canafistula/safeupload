@@ -157,6 +157,8 @@ does not silently rewrite an administrator policy or its version/fingerprint. Su
 explicit policy fields to use the new large-file limits. A 2 GiB protected save still needs **more than 8 GiB per SID**
 including metadata: the approved default budget may correctly refuse it; increase explicit budgets for that row.
 
-The conservative whole-SID capacity lease permits one active content reservation per SID; simultaneous Word/temp
-saves can refuse. Granular concurrent leases, automatic metadata retirement and lazy seeding remain follow-up work. Legacy
+The current whole-SID capacity lease permits one active content reservation per SID; simultaneous Word/temp
+saves can refuse. The owner approved replacing it with [growing reservations](UX-LARGE-CONCURRENCY.md) on
+2026-10-19, within the same budgets and stronger concurrent no-overspend controls. That design is under independent
+review and is not implemented or qualified. Automatic metadata retirement and lazy seeding remain separate work. Legacy
 upgrade accounting is implemented above; hostile/corrupt stores remain holds. This is not full T9 qualification.

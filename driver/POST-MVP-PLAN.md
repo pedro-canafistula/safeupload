@@ -1,6 +1,6 @@
 # SafeUpload MVP status plan
 
-Updated 2026-10-19. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
+Updated 2026-10-20. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
 destination, keeping unapproved bytes private throughout. M2 is the current milestone, not the completion boundary.
 Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](POST-MVP-LOG.md), and the local WIP branch noted below.
 
@@ -22,6 +22,17 @@ USB, SMB/UNC and cloud-sync are required MVP work; they are no longer deferred u
 respective support and qualification gates are met and the owner approves cutover.
 
 ## Owner decisions
+
+**2026-10-20 — complete T4 first.** Owner, in the session ("I agree. Now focus on completing T4 asap"), after the review of the
+last days and the plan proposed in it: (1) the T4 smoke's immediate-reopen probes run in sequence: the saving process finishes and
+closes both of its read and read/write opens, then the second process probes (`T4_REOPEN_ORDER=sequential`). No probe is retried
+and no assertion or threshold changes; two programs write-opening one protected file in the same instant becomes a sharing-policy
+question for T5/T8 and is not a T4 lifetime result. (2) Growing reservations stay in design review; their implementation follows
+T4 and runs in parallel only while no T4 VM row is in progress. (3) The allocation/Prepare lost-reply fault row uses a one-shot
+reply drop that exists only in a fault-test build of the same commit (no product hook); built during the 10k rows, reviewed
+before it runs. (4) Workers: at most two Sol 6.1 high fast workers at a time. T4 rows run with both builder locks held.
+Order: diagnostic smoke without reopens, harness gate, smoke with sequential reopens, unchanged 10k in ordinary, runtime-Verifier
+and boot-Verifier modes, raw-volume cells, lost-reply row, separate restoration after each row.
 
 **2026-10-19 — T4/T9 growing reservations.** Owner approved replacing the single-active-file resource allocation rule with
 reservations that grow as files grow, keeping the approved total/per-user budgets, free-space floor and large-file support.
@@ -522,11 +533,11 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 | T item | Current state | Next required result |
 |---|---|---|
 | T4 | Kernel WDK/import and full agent matrix PASS (5,570/5,570); package-only retry preserves every payload hash. `m2t4smoke1019a` failed at attempt 9 (reopens/resource busy); separate restoration PASS. | Pass smoke with immediate reopens, unchanged 10k cells and raw-byte rows; separate restoration. |
-| T5 | Native namespace corrections reviewed. Agent repairs at `c1a3ba04` pass focused Windows controls 89/89; this is not the four-leg matrix. | Passing four-leg agent matrix, forced native delete orders, clean/CPF Notepad and public operations in all three modes. |
+| T5 | Native namespace corrections reviewed. Latest [real Notepad diagnostic](evidence/2026-10-19/m2dev1019f-result.md): unprotected control passes; protected old-dev-pair save refuses for space. | Passing four-leg agent matrix, forced native delete orders, clean/CPF Notepad and public operations in all three modes. |
 | T6 | Copy-fallback component evidence and owner-approved folder/cross-drive metadata contract exist; merged namespace/folder source is unqualified. | Final-pair file/folder moves, idle rename and pending conflicts in all required modes. |
 | T7 | Windows-authorized read design retained. | Final-pair authorized/denied reads and exact bytes. |
 | T8 | Standard-user app dev evidence exists; final metadata implementation/qualification remains incomplete. | Eight required app workflows, matching owner/DACL/SACL/label/times/attributes/MOTW controls in all modes. |
-| T9 | Whole-SID allocation causes overlapping-save refusals; proved-refusal repair passes 156 focused Windows controls. Owner approved growing reservations; design review pending. | Windows budgets/upgrade, parser bounds, large-file and failure UX on the matched pair. |
+| T9 | Whole-SID allocation causes overlapping-save refusals; proved-refusal repair passes 156 focused Windows controls. Growing reservations approved; [design revised after review](UX-LARGE-CONCURRENCY.md), acceptance pending. | Windows budgets/upgrade, parser bounds, large-file and failure UX on the matched pair. |
 | T10 | Earlier runtime-Verifier component pass exists. | Final-pair permissions/ownership rows in all modes with metadata preservation. |
 | T11 | Epoch/archive and context retirement repairs integrated; component controls are distinct from qualification. | Final journal/recovery/lifetime gates and one adversarial review of the working M2 pair. |
 

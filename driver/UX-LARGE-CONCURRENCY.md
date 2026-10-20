@@ -1,6 +1,6 @@
 # T4/T9: growing reservations for ordinary overlapping saves
 
-2026-10-19. **Proposed security/lifetime design; do not implement until independent review.**
+2026-10-19. **Revised security/lifetime design; implementation remains gated on independent review.**
 Owner approved growing reservations, unchanged approved budgets, and replacing the
 single-concurrent-winner test with concurrent no-overspend controls. This approves
 neither a qualified pair nor different Windows sharing, failure or cutover policy.
@@ -60,40 +60,162 @@ reinterpret the existing v31 receipt or the 64-byte companion. Old pairs remain
 closed to the new mode. Define fixed-width C/C# layouts and contract mutation
 controls before implementation. No persisted enum is renumbered.
 
-The driver supplies request ID, driver instance, transfer, destination generation,
-full volume/file identity, old observed capacity and required aligned extent. The
-authenticated service checks these against its exact live unbound journal/ledger
-and original SID. A growth request is capacity authority only: no content verdict,
+The fixed request contains version/size, request ID, connection cookie, driver
+instance, transfer, **immutable allocation generation**, full volume/file identity,
+old observed capacity and required aligned extent. The reply echoes that complete
+tuple, required extent and request ID, and carries status/current capacity; all
+reserved bytes are zero. C/C# size/offset and mutation controls are required.
+Current destination generation is deliberately separate: private rename changes
+namespace authority, never the immutable allocation binding used for capacity.
+Bind persists this tuple, original SID, alignment and an open-growth flag in a
+new ledger format before exposing the grant. The authenticated service validates
+against that ledger, not a foreground journal read. A growth request is capacity
+authority only: no content verdict,
 destination permit, read/export grant or native mutation. Reject bound allocations,
 discarded/terminal/retiring versions, wrong identity/epoch/generation and unknown
 accounting. A duplicate/late smaller request can receive the current greater grant;
 it cannot reduce capacity or revive a retired version.
 
-Journal checks precede budget locking; do not await a journal operation under its
-monitor. Growth must not wait for publication, policy epoch drain, inspection,
-application close or the stage worker. Review whether the journal's own growth
-admission callbacks create an indirect cycle. Cleanup and growth serialize their
-ledger transition; a stale pre-lock journal read is insufficient to issue a grant
-after retirement. Specify a final journal→budget linearization, with no inverse
-budget→journal call. The current cleanup/reconcile call sites must be audited as
-part of this change.
+Before enabling growth after restart, existing startup recovery validates the
+binding against exact journal custody. Old v1 ledgers/grants keep their full debit
+and immutable behavior. Missing or ambiguous modern binding stays held.
+
+Growth reads only connection state and the ledger under the budget monitor. It
+never acquires the journal, allocator, publisher or policy loader. Terminal,
+sealing, discard, cancellation, epoch retirement and hand-back transitions take
+the existing journal serialization and durably close growth under the budget
+monitor **before** making that transition usable. Close is monotonic and refunds
+nothing. If journal persistence subsequently fails, retain closed custody and
+the full charge; recovery finishes from exact evidence. Cleanup refunds only a
+closed record's **current** capacity, with exact deletion evidence and no snapshot
+lease. A stale request cannot recreate a deleted record. Lock order is
+journal→budget; there is no budget→journal call.
+
+The receive loop must remain available while other lifecycle operations run.
+Give capacity requests a separate bounded continuation lane whose workers call
+only this ledger operation. Do not reuse `boundContinuations`, allocation workers,
+or the stage worker: those can wait for journal/publication. A saturated lane
+returns the existing resource failure; it cannot queue unbounded work or drop a
+request as approval. Connection cancellation/drain does not wait on application
+handles or public mutations.
+
+## Accounting I/O dependency fence
+
+The [independent review](evidence/2026-10-19/t9-growing-reservations-design-review-sol-high.md)
+found a real possible cycle: MM upper stream→growth→ledger rename→namespace→upper
+stream. Moving the RPC to a worker alone does not break it. The design uses a
+small, separate **connection-local private metadata capability map**. It does not
+reject policies covering the private root, introduce a SYSTEM/path-prefix bypass,
+or reuse publication records whose source-current checks take namespace locks.
+
+Before admitting growth, register held no-follow directory anchors for the exact
+existing product roots needed here: staging, its `.space-reservations` child,
+`staging-journal` and its `completed` child. Bootstrap independently checks the
+installed private-root contract, complete volume/directory IDs, fixed NTFS,
+trusted owner/protected security and no untrusted writers/reparse traversal.
+An arbitrary SYSTEM-owned directory submitted by the service is insufficient.
+Driver-held anchors exclude rename/delete/security substitution; uncertainty
+revokes admission. Root discovery, creation and ACL repair happen before growth.
+Bind anchors to the authenticated connection, original process object/token and
+instance, and retain those references through local rundown.
+
+Metadata opens use existing relative `NtCreateFile` mechanics, one validated leaf
+and the registered RelatedFileObject. Exact roles distinguish bounded ledger
+JSON (64 KiB), its replacement, companion/current replacement and the bounded
+journal inventory/query objects needed by budget callbacks. Reject ADS, traversal,
+links, reparse/TxF/by-ID/target-directory escapes and unsupported access/options.
+Existing objects require their expected full identity; new roles require
+FILE_CREATE, post-CREATE FILE_CREATED, regular/single-link/no-reparse type and
+trusted stored security before exposing a child capability. Native access checks
+still apply. The map tags only currently open original FILE_OBJECTs, not paths.
+
+Route recognized anchor-relative opens and tagged objects **before** epoch, BP,
+namespace and writer routing. Invalid operations on a matched capability fail
+there; they do not fall through to generic dispatch. Permit only role-specific
+query/read, bounded write/flush/EOF/allocation, exact delete and same-anchor
+relative replacement. Root handles admit only bounded directory/volume/security
+queries needed for that inventory. Mutations require the exact registered
+unimpersonated process/token/connection. Deny mapping, MDL/fast I/O, EA/FSCTL,
+security mutation and outgoing/absolute rename. Native post-validation uses
+lower-instance queries and short private map locks; no namespace, upper stream,
+epoch-drain, source-current check or stage-worker dependency is allowed.
+
+Metadata mutation handles are synchronous **noncached**. Sector-pad bounded
+writes, flush, then set exact logical EOF within the charged envelope. WriteThrough
+alone is insufficient: cached writes could later use an untagged system object.
+No helper may silently fall back to cached or absolute-path I/O. Reuse
+`StagedDestinationDirectory.OpenRelative` and the native relative-rename mechanics
+in `StagedHandbackCopier.RenameRelativeNoReplace`; preserve hand-back's no-replace
+contract. Replacement validates its held exact target/exclusion, not just its
+name. Native mutation success is final even if later bookkeeping fails.
+
+Remove nonowning FILE_OBJECT map keys before CLOSE/address reuse. Disconnect
+revokes mutations; cleanup/CLOSE and instance/unload rundown finish locally, with
+no service ACK. Map locks span neither lower I/O nor object dereference. Storage
+is bounded by registered roots and independently progressing open metadata
+transactions, with no durable kernel receipts or per-transfer history.
+
+Every current budget-monitor I/O holder must change before MM growth is enabled:
+
+| Current methods (`StagedSpaceBudget.cs`) | Required route |
+|---|---|
+| `Reserve`, `RecordStage`, `Bind`, `Persist`, `WriteGrant`, metadata retirement | Anchored exact metadata operations; no generic rename/query/open under `_gate`. |
+| `VerifyInventory`, `RefreshNegativeReceiptStorage`, `VerifyJournalInventory`, `RequireArchiveAdmission`, `RefreshArchiveStorage`, `RequireMetadataAdmission` | Anchored bounded directory/identity/length/security queries; startup-only legacy scans finish before enabling growth. Audit transitive `MetadataFiles`/archive callbacks too. |
+| `RetireFailedAllocation`, `RequireFailedAllocationAbsent`, `RetireUnissuedMetadata`, `BeginSnapshot`, `ReconcileAsync`, `RetireCompletedMetadata` | Move stage/snapshot identity/query/delete I/O outside `_gate` under exact cleanup/snapshot leases, retaining the full debit. Companion/ledger I/O uses metadata capabilities. |
+| `ContentReservationPending`, `EndSnapshot`, cursor/equality/accounting reads | Memory-only; never add an I/O or journal dependency. |
+
+For content cleanup, claim a per-reservation lease under `_gate`, copy exact
+custody, release the monitor, do existing exact-object work, then reacquire and
+update only still-matching custody. Reserve/RecordStage/Bind/BeginSnapshot must
+respect that lease, preventing a new seed/snapshot during cleanup. Do not merely
+check equality after deletion. Capacity may have grown: retain/refund the latest
+record, not stale capacity. Failure retains debit and evidence. Reuse current
+allocator serialization where present. Content objects gain no writable metadata
+capability and no new publication/read/export authority.
+
+Keep one bounded atomic companion replacement, rather than unbounded revision
+files. Under the ledger monitor persist a pending tuple with exact predecessor
+identity/capacity, target capacity and held replacement identity before making
+the replacement current. Use one current/replacement pair, charged inside the
+existing metadata envelope; unresolved residue holds further growth. Recovery
+accepts only those exact predecessor/replacement states at the charged capacity.
+An unknown or ahead-of-ledger companion is held. A smaller proven predecessor
+can be repaired, never refunded. Replay completes successful replacement's
+bookkeeping rather than repeating that public/native mutation. Repeated exact-fit
+growth must not hit a made-up revision-count/file-size cap.
 
 ## Kernel growth fence
 
 Only increase the in-memory capacity after an authenticated exact reply and
-revalidation of the still-live tuple. Copy identity values; retain a local stream
-pin through asynchronous work. A stale smaller reply never reduces a newer grant.
+revalidation of the still-live tuple. Copy identity values; retain callback
+ownership and a reference to the **upper FILE_OBJECT** through reply adoption.
+A backing-object reference alone does not pin the upper stream's FileObjects
+release fence. A stale smaller reply never reduces a newer grant.
 Cancellation, disconnect and mandatory teardown locally drain pins without needing
 the service. An increased service debit with no adopted reply remains charged.
 
-**No RPC while holding namespace, stream, paging, writer-registry or spin
-resources.** Existing `StageResize` is called with `Stream->Resource` held
-(`StageStream.c:4726`); putting a send there is invalid. Compute the required
-extent, release resources, reserve through a bounded PASSIVE worker, reacquire
-and revalidate, then perform the existing write/resize. Append/file-pointer
-operations recompute their actual extent after reacquisition. Recheck cancellation,
-read-only/sealing/rename and exact backing before mutation. A bounded recheck
-cannot turn timeout/conflict into capacity approval.
+Normal operations compute the required extent, drop only resources they own,
+reserve through bounded PASSIVE work, reacquire and revalidate, then perform the
+existing write/resize. Append/file-pointer operations recompute the actual extent
+after reacquisition. Recheck cancellation, read-only/sealing/rename and exact
+backing before mutation. A bounded recheck cannot imply capacity approval.
+
+**Narrow MM exception:** MM may already own the upper stream resource when it
+recursively enters EOF/section extension. Never release an unknown recursion
+count or transfer its upper-cache flush to another thread. That caller may retain
+only this upper resource while waiting for the copied-tuple capacity worker;
+namespace, paging, writer-registry and spin resources never span the wait. This
+exception is safe only after the accounting I/O fence above is implemented and
+audited. Assert actual IRQL/top-level/resource preconditions at each entry point.
+
+Worker storage is bounded nonpaged heap work with separate waiter/worker
+references. The worker uses only copied inputs, writes status/reply and signals
+the event **before** dropping its upper-file reference; final CLOSE can need
+namespace. The waiter depends only on the result event, not worker exit or pin
+cleanup. Do not reuse namespace-taking `RpcReferences`/publication-source release
+or the shared stage worker. A timeout cannot abandon stack storage a late worker
+can touch. Cancellation/disconnect/mandatory teardown complete locally, with
+exactly-once pin release, independently of service ACK or upper-resource cleanup.
 
 Cover ordinary and noncached writes, EOF/VDL/allocation, append, MDL preparation,
 cached writes and section extension. Paging writes must fit a capacity reserved
@@ -115,8 +237,10 @@ different recovery/failure behavior needs an explicit owner decision first.
 
 - [x] T4/T9: owner approved growing reservations and replacement of the
   single-winner strategy assertion with stronger concurrent accounting controls.
-- [ ] T4/T9: independent security/lifetime review, including exact journal/budget
-  linearization, every growth entry point and shutdown/cancellation drain.
+- [x] T4/T9: initial independent review identified MM recursion, ledger retirement
+  and reentrant metadata dependencies; concrete mechanism addendum retained.
+- [ ] T4/T9: accept this revision before implementation; review coherent changed
+  kernel against the conditions before its first VM boot.
 - [ ] T9: real tiny-file overlap plus seeded/large growth; exact budget/floor
   boundaries, same/different SID races and geometric fallback; no double spending.
 - [ ] T9: crash at ledger/companion/reply boundaries, late/reordered/forged replies,
