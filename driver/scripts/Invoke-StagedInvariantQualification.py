@@ -137,11 +137,12 @@ def table_rows(path):
 def build_inputs(args, commit, agent_commit, head):
     work = Path('/tmp/claude-1000/exact-' + args.driver_label)
     summary = (work / 'summary.txt').read_text('utf-8-sig')
-    for suffix, log in [('normal', 'normal-wdk.txt'), ('owned-feature', 'owned-feature-wdk.txt'),
-                        ('normal-release', 'normal-release-wdk.txt'), ('owned-feature-release', 'owned-feature-release-wdk.txt')]:
+    # The compile-time staging-out (normal) profile was retired by the owner on 2026-10-15: the delivery build is the two feature
+    # profiles. Every feature check is unchanged.
+    for suffix, log in [('owned-feature', 'owned-feature-wdk.txt'), ('owned-feature-release', 'owned-feature-release-wdk.txt')]:
         checked_gate(summary, 'driver:' + suffix, True)
         require('DriverRecommendedRules.ruleset' in read_log(work / log), 'WDK rule set evidence absent: ' + log)
-    for gate in ('inspector-normal-release', 'inspector-feature-release', 'writer-fixture'):
+    for gate in ('inspector-feature-release', 'writer-fixture'):
         checked_gate(summary, gate)
     exact_sources(work, summary, commit, ['driver/SafeUpload.Minifilter', 'driver/SafeUpload.Inspector', 'driver/SafeUpload.WriterFixture'])
     feature = work / 'SafeUpload-stage-prototype.sys'
