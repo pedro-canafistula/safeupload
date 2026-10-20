@@ -7,7 +7,8 @@ This is an additional control, not a replacement for the original T4 rows. #>
 param([Parameter(Mandatory=$true)][string]$Path,
       [Parameter(Mandatory=$true)][string]$ExpectedPath,
       [Parameter(Mandatory=$true)][string]$SignalPrefix,
-      [Parameter(Mandatory=$true)][int]$WriterPid)
+      [Parameter(Mandatory=$true)][int]$WriterPid,
+      [switch]$AfterOwner)
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System;
@@ -51,7 +52,7 @@ public static class T4Reopen {
     }
 }
 '@
-$result = [ordered]@{ WriterPid=$WriterPid; ObserverPid=$PID; Frequency=[Diagnostics.Stopwatch]::Frequency; Read=$null; ReadWrite=$null; Error=$null }
+$result = [ordered]@{ WriterPid=$WriterPid; ObserverPid=$PID; Frequency=[Diagnostics.Stopwatch]::Frequency; Sequential=[bool]$AfterOwner; Read=$null; ReadWrite=$null; Error=$null }
 try {
     if ($PID -eq $WriterPid) { throw 'reopen must run in another process' }
     $expected = [IO.File]::ReadAllBytes($ExpectedPath)
@@ -63,7 +64,16 @@ try {
         Start-Sleep -Milliseconds 1
     }
     $result.SignalSeenQpc = [Diagnostics.Stopwatch]::GetTimestamp()
-    $result.Read = [T4Reopen]::Open($Path, ([uint32]2147483648), $expected)
+    # Sequential order: the saving process finishes both of its opens (and closes them) first. Still no retry of any open.
+    if ($AfterOwner) {
+        while (-not [IO.File]::Exists($SignalPrefix + '.owner-done')) {
+            if ([IO.File]::Exists($SignalPrefix + '.abort')) { throw 'publication observation failed' }
+            if ([Diagnostics.Stopwatch]::GetTimestamp() -ge $deadline) { throw 'owner probe completion timeout' }
+            Start-Sleep -Milliseconds 1
+        }
+        $result.OwnerDoneSeenQpc = [Diagnostics.Stopwatch]::GetTimestamp()
+    }
+    $result.Read =[T4Reopen]::Open($Path, ([uint32]2147483648), $expected)
     $result.ReadWrite = [T4Reopen]::Open($Path, ([uint32]3221225472), $expected)
 } catch { $result.Error = $_.Exception.ToString() }
 [IO.File]::WriteAllText(($SignalPrefix + '.result.part'), ($result | ConvertTo-Json -Depth 6))

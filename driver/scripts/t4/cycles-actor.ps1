@@ -135,10 +135,11 @@ for (;;) {
     $observer = $null
     $result = 'ok'
     try {
-        if ($pattern.EndsWith('-reopen')) {
-            $pattern = $pattern.Substring(0, $pattern.Length - '-reopen'.Length)
+        $sequential = $pattern.EndsWith('-reopen-seq')
+        if ($sequential -or $pattern.EndsWith('-reopen')) {
+            $pattern = $pattern.Substring(0, $pattern.Length - $(if ($sequential) { '-reopen-seq'.Length } else { '-reopen'.Length }))
             $prefix = Join-Path $Control ('reopen-' + $n)
-            foreach ($suffix in @('.ready', '.go', '.abort', '.result.json', '.owner.json')) {
+            foreach ($suffix in @('.ready', '.go', '.abort', '.result.json', '.owner.json', '.owner-done')) {
                 if ([IO.File]::Exists($prefix + $suffix)) { throw 'reopen requires a fresh control directory' }
             }
             $helper = Join-Path $PSScriptRoot 'reopen-after-publication.ps1'
@@ -147,6 +148,7 @@ for (;;) {
             }
             $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $helper +
                 '" -Path "' + $target + '" -ExpectedPath "' + $parts[3] + '" -SignalPrefix "' + $prefix + '" -WriterPid ' + $PID
+            if ($sequential) { $arguments += ' -AfterOwner' }
             $observer = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $arguments -PassThru -WindowStyle Hidden
             $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 30 * [Diagnostics.Stopwatch]::Frequency
             while (-not [IO.File]::Exists($prefix + '.ready')) {
@@ -189,6 +191,8 @@ for (;;) {
             $probe.ReadWriteError = [T4Native]::ProbeOpen($target, ([uint32]3221225472))
             $probe.FinishedQpc = [Diagnostics.Stopwatch]::GetTimestamp()
         } catch { $probe.Error = $_.Exception.ToString() }
+        # Sequential order only: the child opens after this process finished (and closed) both of its own opens.
+        if ($sequential) { [IO.File]::WriteAllText(($prefix + '.owner-done'), 'done') }
         try { Stop-T4ReopenProcess $observer $prefix; $probe.TerminationConfirmed = $true }
         catch { $probe.Error = $_.Exception.ToString(); $probe.TerminationConfirmed = $false }
         finally { $observer.Dispose(); $observer = $null }

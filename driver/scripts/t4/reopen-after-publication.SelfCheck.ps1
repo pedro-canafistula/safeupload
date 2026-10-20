@@ -42,5 +42,40 @@ try {
             $child.Dispose()
         }
     }
+    # Sequential order (-AfterOwner): the child may not open anything until the saving process reports its own opens are done.
+    foreach ($abortInstead in @($false,$true)) {
+        $prefix=Join-Path $root ('sequential-' + [string]$abortInstead)
+        $arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $Worker +
+            '" -Path "' + $path + '" -ExpectedPath "' + $expected + '" -SignalPrefix "' + $prefix + '" -WriterPid ' + $PID + ' -AfterOwner'
+        $child=Start-Process (Join-Path $PSHOME 'powershell.exe') -ArgumentList $arguments -PassThru -WindowStyle Hidden
+        try {
+            $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+30*[Diagnostics.Stopwatch]::Frequency
+            while (-not [IO.File]::Exists($prefix+'.ready')) {
+                if ($child.HasExited -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $deadline) { throw 'sequential ready timeout' }
+                Start-Sleep -Milliseconds 2
+            }
+            [IO.File]::WriteAllText(($prefix+'.go'),'go')
+            Start-Sleep -Milliseconds 500
+            if ([IO.File]::Exists($prefix+'.result.json')) { throw 'sequential observer probed before the owner was done' }
+            if ($abortInstead) { [IO.File]::WriteAllText(($prefix+'.abort'),'abort') } else { [IO.File]::WriteAllText(($prefix+'.owner-done'),'done') }
+            while (-not [IO.File]::Exists($prefix+'.result.json')) {
+                if ($child.HasExited -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $deadline) { throw 'sequential result timeout' }
+                Start-Sleep -Milliseconds 2
+            }
+            $receipt=[IO.File]::ReadAllText($prefix+'.result.json')|ConvertFrom-Json
+            if (-not $receipt.Sequential) { throw 'sequential receipt not marked' }
+            if ($abortInstead) {
+                if (-not $receipt.Error -or $null -ne $receipt.Read -or $null -ne $receipt.ReadWrite) { throw 'aborted sequential observer must not open anything' }
+            } else {
+                if ($receipt.Error -or $receipt.OwnerDoneSeenQpc -lt $receipt.SignalSeenQpc) { throw 'sequential receipt invalid' }
+                foreach ($attempt in @($receipt.Read,$receipt.ReadWrite)) {
+                    if ($attempt.OpenError -ne 0 -or $attempt.CloseError -ne 0 -or $attempt.Error -or -not $attempt.BytesMatch -or -not $attempt.Identity) { throw 'sequential positive control failed' }
+                }
+            }
+        } finally {
+            if (-not $child.HasExited) { if (-not $child.WaitForExit(5000)) { $child.Kill(); if (-not $child.WaitForExit(5000)) { throw 'observer termination not confirmed' } } }
+            $child.Dispose()
+        }
+    }
     'PowerShell51ParseAndCrossProcessReopenNativeControls=PASS'
 } finally { Remove-Item -LiteralPath $root -Recurse -Force }

@@ -27,6 +27,8 @@
 # T4_PURGE_ATTRIBUTION=yes records per-window Kernel-File ETW and SUfl/SUwH timelines, then repeat/agent-stop purge controls.
 # Non-qualifying; cycles < 10000; cannot combine with hand-back, delete or volume diagnostics.
 # T4_IMMEDIATE_REOPEN=yes adds no-retry same-owner and separate-process read/RW probes after each APPROVE.
+# T4_REOPEN_ORDER=sequential (default simultaneous; needs T4_IMMEDIATE_REOPEN=yes) makes the separate process probe only after the
+# saving process finished and closed both of its own opens (owner decision 2026-10-20). No probe is retried; assertions unchanged.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; cycles="${5:-10000}"; mode="${6:-runtime-verifier}"; sample_every="${7:-500}"
@@ -36,6 +38,12 @@ dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?
 case "$mode" in ordinary|runtime-verifier|verifier-from-boot) ;; *) echo 'Unknown mode'; exit 2;; esac
 immediate_reopen=${T4_IMMEDIATE_REOPEN-no}
 case "$immediate_reopen" in no|yes) ;; *) echo 'T4_IMMEDIATE_REOPEN must be yes or no'; exit 2;; esac
+reopen_order=${T4_REOPEN_ORDER-simultaneous}
+case "$reopen_order" in
+    simultaneous) ;;
+    sequential) [ "$immediate_reopen" = yes ] || { echo 'T4_REOPEN_ORDER=sequential requires T4_IMMEDIATE_REOPEN=yes'; exit 2; } ;;
+    *) echo 'T4_REOPEN_ORDER must be simultaneous or sequential'; exit 2 ;;
+esac
 purge_attribution=${T4_PURGE_ATTRIBUTION-no}
 case "$purge_attribution" in
     no) ;;
@@ -447,13 +455,14 @@ if ('__DELETE__' -eq 'yes') { $coordinatorArgs += ' -DeleteAttribution' }
 if ('__VOLUME__' -eq 'yes') { $coordinatorArgs += ' -VolumeDiscriminator' }
 if ('__PURGEATTR__' -eq 'yes') { $coordinatorArgs += ' -PurgeAttribution' }
 if ('__REOPEN__' -eq 'yes') { $coordinatorArgs += ' -ImmediateReopen' }
+if ('__REOPENORDER__' -eq 'sequential') { $coordinatorArgs += ' -ReopenSequential' }
 $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $coordinatorArgs
 Register-ScheduledTask -TaskName 't4-coordinator' -Principal $principal -Action $coordinator -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 't4-coordinator'
 'COORDINATOR_STARTED=True'
 PS
 )
-setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}; setup_ps=${setup_ps//__HANDBACK__/$handback_diagnostic}; setup_ps=${setup_ps//__DELETE__/$delete_attribution}; setup_ps=${setup_ps//__VOLUME__/$volume_discriminator}; setup_ps=${setup_ps//__PURGEATTR__/$purge_attribution}; setup_ps=${setup_ps//__REOPEN__/$immediate_reopen}
+setup_ps=${setup_ps//__MODE__/$mode}; setup_ps=${setup_ps//__CYCLES__/$cycles}; setup_ps=${setup_ps//__SAMPLE_EVERY__/$sample_every}; setup_ps=${setup_ps//__MEMORY__/$memory_enabled}; setup_ps=${setup_ps//__HANDBACK__/$handback_diagnostic}; setup_ps=${setup_ps//__DELETE__/$delete_attribution}; setup_ps=${setup_ps//__VOLUME__/$volume_discriminator}; setup_ps=${setup_ps//__PURGEATTR__/$purge_attribution}; setup_ps=${setup_ps//__REOPEN__/$immediate_reopen}; setup_ps=${setup_ps//__REOPENORDER__/$reopen_order}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 if [ "$mode" != ordinary ]; then grep -qx 'VERIFIER_ARMED=True' "$ev/$tag-setup.txt" || { echo 'runtime Verifier not armed'; exit 21; }; fi

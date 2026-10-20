@@ -17,6 +17,9 @@ without changing the original samples or gates. It needs boot Verifier and cycle
 no memory tools; classification is non-qualifying INFO, with diskpart/fltmc scripts and receipts in the failure-evidence export.
 -ImmediateReopen adds a prestarted same-token child plus same-writer read/read-write probes, once after each APPROVE
 public-byte observation (no open retries); records C:\T4\reopens.jsonl. Requires reopen-after-publication.ps1 beside actor.
+-ReopenSequential (needs -ImmediateReopen) makes the child wait until the saving process finished and closed both of its own
+opens, instead of probing at the same instant. Owner-approved 2026-10-20: two programs write-opening one protected file in the
+same instant is a sharing-policy question for T5/T8, not a T4 lifetime result. Every probe, error and assertion is unchanged.
 Results: C:\T4\cycles.jsonl (one line per cycle), C:\T4\samples.jsonl, C:\T4\result.json.
 #>
 param(
@@ -32,7 +35,8 @@ param(
     [switch]$DeleteAttribution,
     [switch]$VolumeDiscriminator,
     [switch]$PurgeAttribution,
-    [switch]$ImmediateReopen
+    [switch]$ImmediateReopen,
+    [switch]$ReopenSequential
 )
 $ErrorActionPreference = 'Stop'
 function Read-T4ControlText([string]$Path) {
@@ -638,7 +642,7 @@ function Same([byte[]]$A, [byte[]]$B) { if ($null -eq $A -or $null -eq $B -or $A
 
 New-Item -ItemType Directory -Force -Path $out, $control | Out-Null
 Remove-Item -LiteralPath (Join-Path $out 'cycles.jsonl'), (Join-Path $out 'samples.jsonl'), (Join-Path $out 'result.json') -ErrorAction SilentlyContinue
-$result = [ordered]@{ Cycles = $Cycles; ImmediateReopen = [bool]$ImmediateReopen; Started = [DateTime]::UtcNow.ToString('o'); Completed = 0; Attempted = 0;
+$result = [ordered]@{ Cycles = $Cycles; ImmediateReopen = [bool]$ImmediateReopen; ReopenOrder = $(if (-not $ImmediateReopen) { 'none' } elseif ($ReopenSequential) { 'sequential' } else { 'simultaneous' }); Started = [DateTime]::UtcNow.ToString('o'); Completed = 0; Attempted = 0;
     Failures = @(); FailureCount = 0; FailureEvidence = @(); BlockedBytesPublished = $false;
     StopReason = 'coordinator-error'; Outcomes = [ordered]@{} }
 $failureCounts = @{}
@@ -687,7 +691,7 @@ try {
         $started = [Diagnostics.Stopwatch]::GetTimestamp()
         $command = Join-Path $control ('cmd-' + $i + '.txt')
         $staging = Join-Path $control ('next-' + $i + '.part')   # the actor only picks up cmd-*.txt
-        $actorPattern = if ($ImmediateReopen -and -not $sensitive) { $pattern + '-reopen' } else { $pattern }
+        $actorPattern = if ($ImmediateReopen -and -not $sensitive) { $pattern + $(if ($ReopenSequential) { '-reopen-seq' } else { '-reopen' }) } else { $pattern }
         Set-Content -LiteralPath $staging -Value ("$i $actorPattern $name $payload"); [IO.File]::Move($staging, $command)
         $ack = Join-Path $control ('ack-' + $i + '.txt')
         $deadline = $started + 60 * $frequency
