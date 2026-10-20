@@ -1,4 +1,4 @@
-# Instalador do agente Windows — candidato 0.1.1
+# Instalador do agente Windows — candidato 0.1.2
 
 Instalador `.exe` para Windows 10/11 x64, com serviço `SafeUploadAgent`, interface WPF na bandeja, atalho e desinstalador. Os dois executáveis são publicados com runtime .NET próprio; o computador de destino não precisa do SDK. A compilação usa Inno Setup 6.7.3, obtido de uma release oficial imutável, com SHA-256 e assinatura do editor verificados.
 
@@ -26,9 +26,9 @@ O destino é fixo: `%ProgramFiles%\SafeUpload\Agent`, separado em `service`, `ui
 Automação, também em máquina descartável:
 
 ```powershell
-.\SafeUploadAgent-0.1.1-win-x64-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /MODE=FileSystemWatcher
+.\SafeUploadAgent-0.1.2-win-x64-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /MODE=FileSystemWatcher
 # Para o driver já instalado e parado:
-.\SafeUploadAgent-0.1.1-win-x64-setup.exe /MODE=Minifilter /ADMINURL=https://servidor/agent/
+.\SafeUploadAgent-0.1.2-win-x64-setup.exe /MODE=Minifilter /ADMINURL=https://servidor/agent/
 ```
 
 No modo silencioso, ausência de `/MODE` seleciona Minifilter e mantém seus pré-requisitos. `/NORESTART` impede reinício automático, mas não dispensa o reinício necessário ao minifiltro.
@@ -54,7 +54,7 @@ $compiler = ./agente/installer/Initialize-InnoCompiler.ps1
 ./agente/installer/Build-AgentInstaller.ps1 -CompilerPath $compiler
 ```
 
-Saídas em `artifacts/installer/`: `SafeUploadAgent-0.1.1-win-x64-setup.exe`, seu `.sha256`, `build-result.json` e uma pasta de build com payload e logs. O builder cria pastas novas para cada execução e não apaga diretórios existentes. Ele não instala serviços, inicia a UI ou executa o instalador gerado.
+Saídas em `artifacts/installer/`: `SafeUploadAgent-0.1.2-win-x64-setup.exe`, seu `.sha256`, `build-result.json` e uma pasta de build com payload e logs. O builder cria pastas novas para cada execução e não apaga diretórios existentes. Ele não instala serviços, inicia a UI ou executa o instalador gerado.
 
 ## Validação e critérios de aceite
 

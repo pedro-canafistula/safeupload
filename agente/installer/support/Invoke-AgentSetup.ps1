@@ -8,6 +8,9 @@ param(
     [Parameter(Mandatory)][string]$ResultPath
 )
 $ErrorActionPreference = 'Stop'
+# Inno may inherit PowerShell 7/user module paths. Elevated setup must load
+# Windows PowerShell's built-in cmdlets, never incompatible or user modules.
+$env:PSModulePath = $PSHOME + '\Modules'
 Import-Module (Join-Path $PSScriptRoot 'SafeUpload.Setup.psm1') -Force
 $serviceName = 'SafeUploadAgent'
 $serviceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent'

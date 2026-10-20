@@ -25,6 +25,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path artifacts/installer-tests -Force | Out-Null
           ./agente/installer/tests/Test-InstallerContracts.ps1 -ResultsPath artifacts/installer-tests/pwsh.json
+          ./agente/installer/tests/Test-InstallerEnvironment.ps1 -ResultsPath artifacts/installer-tests/environment.json
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File agente/installer/tests/Test-InstallerContracts.ps1 -ResultsPath artifacts/installer-tests/ps51.json
           if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell installer contracts failed.' }
       - name: Build self-contained installer with verified compiler
