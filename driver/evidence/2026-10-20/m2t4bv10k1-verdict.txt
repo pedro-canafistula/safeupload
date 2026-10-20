@@ -1,0 +1,21 @@
+T4GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T4DriverLoaded PASS the filter is still loaded after the cycles
+T4VerifierActive PASS runtime Verifier 0x13B still verifies SafeUpload.sys
+T4CyclesCompleted FAIL 325 of 10000 cycles reached their outcome; outcomes {"resave-approve": {"Ok": 62, "Failed": 1}, "new-approve": {"Ok": 61, "Failed": 2}, "replace-approve": {"Ok": 61, "Failed": 2}, "mapped-approve": {"Ok": 61, "Failed": 1}, "resave-block": {"Ok": 20, "Failed": 0}, "new-block": {"Ok": 20, "Failed": 0}, "replace-block": {"Ok": 20, "Failed": 0}, "mapped-block": {"Ok": 20, "Failed": 0}}; error T4 stopped at cycle 331: repeated-identical-failure; actor: error Exception calling "Replace" with "3" argument(s): "CreateFile Win32=32"; first failures ['326 new-approve actor: error Exception calling "WriteAllBytes" with "2" argument(s): "The semaphore timeout period has expired. "', '327 replace-approve actor: error Exception calling "Replace" with "3" argument(s): "CreateFile Win32=32"', '328 mapped-approve actor: error Exception calling "Mapped" with "2" argument(s): "CreateFile Win32=32"', '329 resave-approve actor: error Exception calling "WriteAllBytes" with "2" argument(s): "The process cannot access the file \'C:\\Protected\\t4\\same-1.txt\' because it is being used by another process."', '330 new-approve actor: error Exception calling "WriteAllBytes" with "2" argument(s): "The process cannot access the file \'C:\\Protected\\t4\\new-330.txt\' because it is being used by another process."']
+T4ActorStopped PASS the actor acknowledged stop
+T4StopReason INFO repeated-identical-failure; attempted 331; failures 6
+T4NoBlockedBytesPublished PASS no blocked version reached its public name
+T4PoolFlat FAIL only 0 Verifier pool samples
+T4RegistryBounded FAIL 1 samples within registry capacity; idle capacity failures None; invalid samples []
+T4Memory INFO start: SUfl live 244, bytes 78952; SwUr bytes 6560096; module bytes 6594960
+T4Memory INFO last-cycle: SUfl live None, bytes None; SwUr bytes None; module bytes None
+T4Memory INFO idle: SUfl live None, bytes None; SwUr bytes None; module bytes None
+T4Memory INFO purged: SUfl live None, bytes None; SwUr bytes None; module bytes None
+T4ContextsReleased FAIL SUfl live start 244, purged None; limit start + 2048; released None of idle growth since start None; purge NTSTATUS FAIL []; purged sample missing
+T4VersionsReleased FAIL after settle: live versions None, views None, created None, released None, views released None
+T4TombstonesReleased FAIL after the actor exited: tombstones None
+T4NoCapRefusal FAIL cap refusals None, tombstone refusals None
+T4StageFilesDeleted FAIL stage files after idle None (journal manifests None, hand-backs None); driver deletes None, failures None
+T4WorkerWakes INFO {"wakeCleanup": null, "wakeClose": null, "wakeDispose": null, "wakeConnect": null, "wakeExit": null, "wakeTimer": null, "wakeInline": null, "timerArms": null, "disposeHeld": null, "disposeNotHeld": null, "disposeStale": null, "disposeDeferred": null, "passes": null}
+T4CycleTime INFO median 2268 ms, p95 3547 ms, max 6431 ms over 331 cycles
+T4Duration INFO 986 s (verifier-from-boot, 10000 cycles)

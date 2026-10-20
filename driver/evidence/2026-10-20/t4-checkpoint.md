@@ -15,6 +15,8 @@ both builder locks held, builders off, separate restoration after every row. Com
 | `m2t4smoke1020e` | no cycles | boot-time sticky Unknown (rename failure), receipt kept |
 | `m2t4smoke1020g` | 0/256 (sequential reopens) | saves succeeded; original owner's reopen PASS; second process's read/write open Win32 32 ~20 ms after the owner closed ([receipts](m2t4smoke1020g-reopens.jsonl)) |
 | `m2t4smoke1020h` | 174 healthy cycles, then bugcheck `0x7F` (8) | dump: `StageMvpNamespacePre` (pageable) called for a paging read; its code page trimmed by Verifier; the in-page read re-entered the filter and recursed until the kernel stack was exhausted ([excerpt](t4-1020h-bugcheck-excerpt.txt)) |
+| `m2t4bv10k1` (10k boot Verifier, budget on) | 325 healthy cycles, then a 5.8 s allocation reply (Win32 121) and refusals of every later save | see "10k findings" below; [verdict](m2t4bv10k1-verdict.txt), [ring](m2t4bv10k1-after.txt), [timings](m2t4bv10k1-service-events.txt) |
+| `m2t4smoke1020j` | 256/256 with 64-cycle sampling, all required lines PASS | smoke gate passed |
 | `m2t4smoke1020i` | 256/256, versions 256/256, stage files 0, worker idle, registry bounded, no cap refusal | only `T4PoolEndpoint` failed: my invocation used the default 500-cycle sampling; rerun with `sample_every=64` |
 
 ## Fixes
@@ -40,3 +42,19 @@ move to T8. Worker 1's READMIT repair (bundle `t4/readmit`) targets a different 
 
 Smoke with `sample_every=64`, 10k boot-Verifier, 10k runtime-Verifier, 10k ordinary, then C01–C04/B01/B02/X01 raw-volume cells in
 ordinary/runtime-/boot-Verifier, each with separate restoration. The lost-reply fault row (worker 2 bundle `t4/fault-row`) follows.
+
+## 10k findings (boot Verifier, `m2t4bv10k1`) — T9 accounting, not kernel lifetime
+
+1. **Allocation latency grows and has fat tails.** Slow-request log: per-allocation `journal-scan` 0.3–0.7 s early, 1.2 s near request 4,200;
+   flushes 0.3–1.4 s on this guest; one allocation took 5.8 s, past the driver's reply timeout (Win32 121). My refund-grace loop
+   (`586ae7cb`) runs full reconcile passes in that path and overshot its own 1.5 s bound; it must use bounded same-SID passes.
+2. **A lost allocation reply wedges later saves.** The driver kept opening the stranded allocation's private stage files from the
+   requester's context and its own private-namespace guard denied every attempt (ring 8–19); each later save was refused (error 32).
+   This is the V20 lost-reply recovery scenario; it does not self-heal in this build.
+3. **Completed saves keep a 1 MiB charge forever.** `RetireCompletedMetadata` retires only never-exposed discard kinds, and
+   `CompletedArchiveShape` is false for bound allocations; UX-LARGE.md lists automatic metadata retirement as separate work. With the
+   default budget on, the per-user allowance on this guest is exhausted after a few hundred completed saves, whatever the latency.
+
+None of these is a kernel context, pool or cap result. Owner decision 2026-10-20 ("I approved the change"): T4's kernel lifetime
+rows may run with `T4_STAGE_SPACE=off` (the configuration of the 2026-10-12 T4 rows), recorded in each receipt and verdict, as an
+isolation result only. The three accounting defects block M2 with the default configuration and are tracked as T9 work.

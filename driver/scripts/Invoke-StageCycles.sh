@@ -27,6 +27,9 @@
 # T4_PURGE_ATTRIBUTION=yes records per-window Kernel-File ETW and SUfl/SUwH timelines, then repeat/agent-stop purge controls.
 # Non-qualifying; cycles < 10000; cannot combine with hand-back, delete or volume diagnostics.
 # T4_IMMEDIATE_REOPEN=yes adds no-retry same-owner and separate-process read/RW probes after each APPROVE.
+# T4_STAGE_SPACE=off (default on) rewrites the installed appsettings.json so Interception:StageSpace:Enabled is false, as the 2026-10-12
+# T4 rows ran, to isolate the kernel lifetime gates from the T9 budget accounting. NOT the product default: the receipt
+# <tag>-stage-space.txt records it and the verdict gains a T4StageSpaceConfig INFO line. No gate or threshold changes.
 # T4_REOPEN_ORDER=sequential (default simultaneous; needs T4_IMMEDIATE_REOPEN=yes) makes the separate process probe only after the
 # saving process finished and closed both of its own opens (owner decision 2026-10-20). No probe is retried; assertions unchanged.
 set -uo pipefail
@@ -36,6 +39,8 @@ dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?
 [[ "$cycles" =~ ^[0-9]{1,6}$ ]] || { echo 'Invalid cycle count'; exit 2; }
 [[ "$sample_every" =~ ^[1-9][0-9]{0,5}$ ]] || { echo 'Invalid sample interval'; exit 2; }
 case "$mode" in ordinary|runtime-verifier|verifier-from-boot) ;; *) echo 'Unknown mode'; exit 2;; esac
+stage_space=${T4_STAGE_SPACE-on}
+case "$stage_space" in on|off) ;; *) echo 'T4_STAGE_SPACE must be on or off'; exit 2;; esac
 immediate_reopen=${T4_IMMEDIATE_REOPEN-no}
 case "$immediate_reopen" in no|yes) ;; *) echo 'T4_IMMEDIATE_REOPEN must be yes or no'; exit 2;; esac
 reopen_order=${T4_REOPEN_ORDER-simultaneous}
@@ -284,6 +289,18 @@ Set-Content -LiteralPath "$data\policy.json" -Value $policy -Encoding UTF8
 'INSTALL_DONE=True'
 PS
 grep -qx 'INSTALL_DONE=True' "$ev/$tag-install.txt" || { echo 'install failed'; exit 15; }
+if [ "$stage_space" = off ]; then
+    remote <<'PS' | tee "$ev/$tag-stage-space.txt"
+$ErrorActionPreference = 'Stop'
+$path = 'C:\Program Files\SafeUpload\Agent\appsettings.json'
+$json = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
+$json.Interception.StageSpace.Enabled = $false
+$text = $json | ConvertTo-Json -Depth 8
+[IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
+'STAGE_SPACE_ENABLED=' + (Get-Content -Raw -LiteralPath $path | ConvertFrom-Json).Interception.StageSpace.Enabled
+PS
+    grep -qx 'STAGE_SPACE_ENABLED=False' "$ev/$tag-stage-space.txt" || { echo 'could not disable StageSpace for the isolation row'; exit 16; }
+fi
 if [ "$memory_enabled" = yes ]; then
     scp "${opts[@]}" "$memory_tools/debuggers.zip" "$memory_tools/SafeUpload.pdb" \
         driver/scripts/t4/memory-debugger.ps1 "vika@$host:$guest/" || exit 14
@@ -786,4 +803,5 @@ PS
         stop_reason=memory-teardown-failed; exit 24;
     }
 fi
+[ "$stage_space" = off ] && echo 'T4StageSpaceConfig INFO StageSpace disabled by T4_STAGE_SPACE=off (product default is enabled): kernel lifetime isolation row, not a product-configuration result' >> "$ev/$tag-verdict.txt"
 exit "$verdict_status"

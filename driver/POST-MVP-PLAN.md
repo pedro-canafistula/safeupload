@@ -34,6 +34,12 @@ before it runs. (4) Workers: at most two Sol 6.1 high fast workers at a time. T4
 Order: diagnostic smoke without reopens, harness gate, smoke with sequential reopens, unchanged 10k in ordinary, runtime-Verifier
 and boot-Verifier modes, raw-volume cells, lost-reply row, separate restoration after each row.
 
+**2026-10-20 (later) — T4 isolation rows.** The first 10k row (boot Verifier, budget on) failed at cycle 326 on T9 accounting: allocation latency
+growth/tails, a lost allocation reply that does not self-heal, and completed saves that keep a 1 MiB charge forever (see the
+[checkpoint](evidence/2026-10-20/t4-checkpoint.md)). Owner approved running the T4 kernel-lifetime rows with the staging budget disabled
+(`T4_STAGE_SPACE=off`, the 2026-10-12 configuration): an isolation result recorded in every receipt, not a product-configuration
+qualification. The accounting defects stay open under T9 and block M2 with the default configuration.
+
 **2026-10-19 — T4/T9 growing reservations.** Owner approved replacing the single-active-file resource allocation rule with
 reservations that grow as files grow, keeping the approved total/per-user budgets, free-space floor and large-file support.
 Replace the obsolete single-concurrent-winner strategy test with concurrent no-overspend controls; preserve all privacy,
