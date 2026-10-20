@@ -36,6 +36,22 @@ public class ClipboardPolicyTests : IDisposable
         Assert.Contains("\"clipboard\"", await File.ReadAllTextAsync(_workspace.PolicyFile));
     }
 
+    /// <summary>
+    /// O WhatsApp para Windows roda como WhatsApp.Root, e a comparação de nomes é
+    /// exata: sem este nome na lista, colar no WhatsApp não contaria como saída.
+    /// </summary>
+    [Theory]
+    [InlineData("WhatsApp.Root")]
+    [InlineData("WhatsApp.Root.exe")]
+    [InlineData("ms-teams")]
+    [InlineData("msedge")]
+    public async Task Politica_padrao_trata_os_apps_conferidos_como_saida(string processo)
+    {
+        var policy = await LoadAsync();
+
+        Assert.True(policy.EffectiveClipboard.IsEgressDestination(processo));
+    }
+
     [Fact]
     public async Task Politica_antiga_sem_o_bloco_carrega_como_desligada()
     {
