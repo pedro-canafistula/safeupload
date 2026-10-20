@@ -42,6 +42,29 @@ public class ClipboardStateProtocolTests
     }
 
     [Fact]
+    public void Colagem_de_verdade_vai_e_volta_com_o_campo_attempt()
+    {
+        var linha = ClipboardProtocol.Serialize(ClipboardRequest.PasteAttempt("c1", "chrome"));
+        var lido = ClipboardProtocol.DeserializeRequest(linha);
+
+        Assert.Contains("\"attempt\":true", linha, StringComparison.Ordinal);
+        Assert.NotNull(lido);
+        Assert.True(lido.IsPasteAttempt);
+        Assert.Equal("chrome", lido.DestinationProcess);
+    }
+
+    [Fact]
+    public void Sonda_de_foco_nao_leva_o_campo_e_nao_e_colagem()
+    {
+        var linha = ClipboardProtocol.Serialize(ClipboardRequest.Paste("c1", "chrome"));
+
+        Assert.DoesNotContain("attempt", linha, StringComparison.Ordinal);
+        Assert.False(ClipboardProtocol.DeserializeRequest(linha)!.IsPasteAttempt);
+        // Pedido de um aplicativo antigo, sem o campo: continua sendo sonda.
+        Assert.False(ClipboardProtocol.DeserializeRequest("{\"type\":\"paste\",\"copyId\":\"c1\",\"destinationProcess\":\"chrome\"}")!.IsPasteAttempt);
+    }
+
+    [Fact]
     public void Resposta_antiga_sem_o_campo_continua_sendo_lida()
     {
         var lida = ClipboardProtocol.DeserializeResponse("{\"type\":\"classify\",\"copyId\":\"c1\",\"dirty\":true}");

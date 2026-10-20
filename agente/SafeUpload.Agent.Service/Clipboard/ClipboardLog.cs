@@ -52,6 +52,17 @@ public static class ClipboardLog
                     observation.Metrics.FocusOnEgressWhileDirty,
                     observation.Metrics.FocusChangesWhileDirty);
                 break;
+
+            case ClipboardObservationKind.EgressPasteWhileDirty:
+                logger.LogInformation(
+                    "Colagem em destino de saida com o clipboard sujo: {Destino} (origem {Origem}, veredito {Veredito}). " +
+                    "Bloqueadas {Bloqueadas} de {Tentativas} colagens.",
+                    observation.DestinationProcess ?? "(desconhecido)",
+                    observation.SourceProcess ?? "(desconhecida)",
+                    observation.Verdict,
+                    observation.Metrics.PastesBlocked,
+                    observation.Metrics.PasteAttemptsWhileDirty);
+                break;
         }
     }
 }

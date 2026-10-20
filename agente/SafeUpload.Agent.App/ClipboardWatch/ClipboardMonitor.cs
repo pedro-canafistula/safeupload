@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Interop;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
+using SafeUpload.Agent.Core.Domain;
 
 namespace SafeUpload.Agent.App.ClipboardWatch;
 
@@ -53,10 +54,25 @@ public sealed class ClipboardMonitor : IDisposable
     private static readonly TimeSpan CoalesceDelay = TimeSpan.FromMilliseconds(120);
 
     private readonly ClipboardPipeClient _client;
+    private readonly ClipboardPasteGuard _guard = new();
     private readonly int _ownProcessId = Environment.ProcessId;
 
     private HwndSource? _sink;
     private IntPtr _foregroundHook;
+
+    /// <summary>
+    /// Com o proxy instalado, a colagem é interceptada no Ctrl+V, e a sonda de
+    /// foco da Fase 1 ficaria duplicando o evento. Então ela só vale quando não
+    /// estamos interceptando.
+    /// </summary>
+    private bool _intercepting;
+
+    /// <summary>
+    /// Disparado quando uma colagem foi bloqueada, com o processo de destino, para
+    /// o aplicativo avisar o usuário (RN-005). Vem da STA do proxy; quem trata
+    /// marshala para a interface.
+    /// </summary>
+    public event Action<string>? PasteBlocked;
 
     /// <summary>
     /// O delegate precisa ficar em campo: o Windows guarda só o ponteiro, e o
@@ -91,6 +107,8 @@ public sealed class ClipboardMonitor : IDisposable
         {
             return;
         }
+
+        _guard.Start();
 
         _sink = new HwndSource(new HwndSourceParameters("SafeUploadClipboardSink")
         {
@@ -134,6 +152,10 @@ public sealed class ClipboardMonitor : IDisposable
             _sink.Dispose();
             _sink = null;
         }
+
+        // Devolve o conteúdo original ao clipboard antes de sair, para o usuário
+        // não perder o que copiou numa parada limpa do agente.
+        _guard.Dispose();
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -149,6 +171,14 @@ public sealed class ClipboardMonitor : IDisposable
 
     private async Task OnClipboardChangedAsync()
     {
+        // Instalar e reinstalar o proxy muda o clipboard e dispara este aviso. Se
+        // o dono é o próprio agente, foi o proxy, e não uma cópia nova: ignora,
+        // senão o agente reclassificaria o próprio aviso em laço.
+        if (_guard.OwnsClipboard())
+        {
+            return;
+        }
+
         long sequence = Interlocked.Increment(ref _sequence);
 
         // Quem copiou, lido já: o dono do clipboard muda na cópia seguinte, e
@@ -224,6 +254,61 @@ public sealed class ClipboardMonitor : IDisposable
             : null;
 
         _lastProbe = null;
+
+        // Cópia suja com o canal ligado: o agente toma a posse e passa a decidir a
+        // colagem no Ctrl+V. Qualquer outra coisa (limpa, desconhecida, canal
+        // desligado) larga a posse, e o conteúdo do usuário segue intacto.
+        bool enabled = response?.Enabled ?? true;
+
+        if (_current is { Dirty: true } dirty && enabled)
+        {
+            string copyId = dirty.CopyId;
+            var memo = new ClipboardPasteMemo();
+            _intercepting = true;
+            _guard.Install(destination => Decide(copyId, destination, memo));
+        }
+        else
+        {
+            _intercepting = false;
+            _guard.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Decide um destino de colagem. Roda na STA do proxy: pergunta ao serviço,
+    /// reaproveita a decisão para as outras leituras da mesma colagem e avisa o
+    /// aplicativo quando bloqueia.
+    /// </summary>
+    private ClipboardPasteVerdict Decide(string copyId, string? destination, ClipboardPasteMemo memo)
+    {
+        // Destino desconhecido não é saída: libera sem incomodar o serviço.
+        if (string.IsNullOrEmpty(destination))
+        {
+            return ClipboardPasteVerdict.Allow;
+        }
+
+        if (memo.TryGet(copyId, destination) is { } cached)
+        {
+            return cached;
+        }
+
+        // A pergunta também audita: o serviço registra a colagem ao decidi-la. O
+        // ConfigureAwait(false) do cliente evita que o bloqueio aqui trave a STA.
+        ClipboardResponse? response = _client
+            .SendAsync(ClipboardRequest.PasteAttempt(copyId, destination), ClipboardProtocol.PasteTimeout)
+            .ConfigureAwait(false)
+            .GetAwaiter()
+            .GetResult();
+
+        ClipboardPasteVerdict verdict = response?.Verdict ?? ClipboardPasteVerdict.Allow;
+        memo.Remember(copyId, destination, verdict);
+
+        if (verdict == ClipboardPasteVerdict.Block)
+        {
+            PasteBlocked?.Invoke(destination);
+        }
+
+        return verdict;
     }
 
     /// <summary>
@@ -263,7 +348,9 @@ public sealed class ClipboardMonitor : IDisposable
         uint eventThread,
         uint eventTime)
     {
-        if (_current is not { Dirty: true } copy)
+        // Com o proxy instalado, quem decide a colagem é o Ctrl+V, não o foco: a
+        // sonda da Fase 1 duplicaria o evento.
+        if (_intercepting || _current is not { Dirty: true } copy)
         {
             return;
         }
