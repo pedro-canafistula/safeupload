@@ -12,10 +12,11 @@ namespace SafeUpload.Agent.Core.Contracts;
 /// <list type="bullet">
 /// <item><c>classify</c>, no Ctrl+C: "este texto suja o clipboard?". Leva o
 /// texto, o tamanho real e quem copiou.</item>
-/// <item><c>paste</c>, no Ctrl+V de um clipboard sujo: "pode colar aqui?". Leva
-/// só o <see cref="CopyId"/> devolvido na classificação e o processo de
-/// destino. O texto não viaja de novo: quem guarda o estado da cópia é o
-/// serviço.</item>
+/// <item><c>paste</c>, com o clipboard sujo: "pode colar aqui?". Leva só o
+/// <see cref="CopyId"/> devolvido na classificação e o processo de destino. O
+/// texto não viaja de novo: quem guarda o estado da cópia é o serviço. Com
+/// <see cref="Attempt"/> verdadeiro é um Ctrl+V de verdade; sem ele, é a sonda
+/// de foco da Fase 1 ("o usuário foi para este processo").</item>
 /// <item><c>state</c>, antes de mandar texto: "o canal está ligado?". Não leva
 /// nada. Existe para o aplicativo não mandar o texto copiado a um serviço com o
 /// canal desligado, onde ele seria só descartado.</item>
@@ -31,7 +32,8 @@ public sealed record ClipboardRequest(
     [property: JsonPropertyName("textLength")] int TextLength = 0,
     [property: JsonPropertyName("sourceProcess")] string? SourceProcess = null,
     [property: JsonPropertyName("copyId")] string? CopyId = null,
-    [property: JsonPropertyName("destinationProcess")] string? DestinationProcess = null)
+    [property: JsonPropertyName("destinationProcess")] string? DestinationProcess = null,
+    [property: JsonPropertyName("attempt")] bool? Attempt = null)
 {
     /// <summary>Monta um pedido de classificação, cortando o texto no teto do protocolo.</summary>
     public static ClipboardRequest Classify(string text, string? sourceProcess)
@@ -48,9 +50,20 @@ public sealed record ClipboardRequest(
         return new ClipboardRequest(ClipboardProtocol.ClassifyType, sent, text.Length, sourceProcess);
     }
 
-    /// <summary>Monta um pedido de colagem.</summary>
+    /// <summary>Monta a sonda de foco: o usuário foi para este processo com o clipboard sujo.</summary>
     public static ClipboardRequest Paste(string copyId, string? destinationProcess) =>
         new(ClipboardProtocol.PasteType, CopyId: copyId, DestinationProcess: destinationProcess);
+
+    /// <summary>
+    /// Monta o pedido de um Ctrl+V de verdade. O campo <c>attempt</c> é opcional:
+    /// um serviço antigo o ignora e trata o pedido como sonda de foco, que libera.
+    /// </summary>
+    public static ClipboardRequest PasteAttempt(string copyId, string? destinationProcess) =>
+        new(ClipboardProtocol.PasteType, CopyId: copyId, DestinationProcess: destinationProcess, Attempt: true);
+
+    /// <summary>Se o pedido é um Ctrl+V de verdade, e não a sonda de foco.</summary>
+    [JsonIgnore]
+    public bool IsPasteAttempt => Type == ClipboardProtocol.PasteType && Attempt == true;
 
     /// <summary>Monta a pergunta "o canal está ligado?". Não carrega texto nenhum.</summary>
     public static ClipboardRequest State() => new(ClipboardProtocol.StateType);
@@ -101,7 +114,7 @@ public static class ClipboardProtocol
     /// <summary>Tipo do pedido feito no Ctrl+C.</summary>
     public const string ClassifyType = "classify";
 
-    /// <summary>Tipo do pedido feito no Ctrl+V.</summary>
+    /// <summary>Tipo do pedido de colagem (Ctrl+V ou sonda de foco).</summary>
     public const string PasteType = "paste";
 
     /// <summary>Tipo da pergunta "o canal está ligado?".</summary>

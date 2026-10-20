@@ -157,6 +157,27 @@ public class ClipboardPipeTests
     }
 
     [Fact]
+    public async Task Colagem_de_verdade_pelo_pipe_e_contada_e_auditada_a_parte_do_foco()
+    {
+        await using var server = new Server();
+        await server.StartAsync();
+
+        var copia = await server.PerguntarAsync(
+            ClipboardProtocol.Serialize(ClipboardRequest.Classify("CPF " + CpfValido, "notepad")) + "\n");
+
+        var colagem = await server.PerguntarAsync(
+            ClipboardProtocol.Serialize(ClipboardRequest.PasteAttempt(copia!.CopyId!, "chrome")) + "\n");
+
+        Assert.NotNull(colagem);
+        Assert.Equal(ClipboardPasteVerdict.AuditOnly, colagem.Verdict);
+        Assert.Equal(1, server.Service.Metrics.PasteAttemptsWhileDirty);
+        Assert.Equal(0, server.Service.Metrics.FocusChangesWhileDirty);
+        var audit = Assert.Single(server.Sink.Events);
+        Assert.Equal(audit.EventId.ToString(), colagem.EventId);
+        Assert.Equal(ClipboardAudit.PasteAuditOnly, audit.NotInspectedReason);
+    }
+
+    [Fact]
     public async Task Falha_ao_criar_o_pipe_nao_derruba_o_servidor_e_ele_se_recupera()
     {
         var pipeName = "SafeUpload.Test.Clipboard." + Guid.NewGuid().ToString("N");

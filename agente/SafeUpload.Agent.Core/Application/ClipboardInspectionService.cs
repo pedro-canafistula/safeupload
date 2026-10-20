@@ -13,11 +13,12 @@ namespace SafeUpload.Agent.Core.Application;
 /// (<see cref="WebInspectionService"/> no Core, a ponte no serviço), e por isso
 /// mora aqui, e não no serviço.</para>
 ///
-/// <para><b>Medir, sem interferir.</b> Hoje o canal classifica e conta, mas
-/// não grava evento de auditoria, não avisa e não bloqueia. O pedido
-/// <c>paste</c> chega como uma sonda de foco ("o usuário foi para este
-/// processo com o clipboard sujo"), e o veredito que volta não tem efeito no
-/// aplicativo.</para>
+/// <para><b>Dois tipos de <c>paste</c>.</b> A sonda de foco da Fase 1 ("o
+/// usuário foi para este processo com o clipboard sujo") conta as trocas de
+/// foco e não tem efeito no aplicativo. O Ctrl+V de verdade
+/// (<see cref="ClipboardRequest.IsPasteAttempt"/>, Fase 3) usa a mesma decisão,
+/// mas é contado à parte, e o veredito volta para o aplicativo aplicar: aviso
+/// no lugar do texto em Block, colagem normal em Audit.</para>
 ///
 /// <para><b>A falha sempre libera (RN-013).</b> Política que não carrega,
 /// cópia que o canal não conhece, canal desligado: em todos, a resposta é
@@ -158,12 +159,21 @@ public sealed class ClipboardInspectionService
             request.DestinationProcess,
             policy.EffectiveClipboard);
 
-        _metrics.RecordFocusWhileDirty(verdict);
+        bool attempt = request.IsPasteAttempt;
+
+        if (attempt)
+        {
+            _metrics.RecordPasteAttempt(verdict);
+        }
+        else
+        {
+            _metrics.RecordFocusWhileDirty(verdict);
+        }
 
         ClipboardObservation? observation = verdict == ClipboardPasteVerdict.Allow
             ? null
             : new ClipboardObservation(
-                ClipboardObservationKind.EgressFocusWhileDirty,
+                attempt ? ClipboardObservationKind.EgressPasteWhileDirty : ClipboardObservationKind.EgressFocusWhileDirty,
                 _metrics.Snapshot(),
                 SourceProcess: copy.SourceProcess,
                 DestinationProcess: request.DestinationProcess,

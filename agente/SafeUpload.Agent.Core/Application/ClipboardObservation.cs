@@ -13,7 +13,13 @@ public enum ClipboardObservationKind
     DirtyCopy,
 
     /// <summary>O foco foi para um destino de saída com o clipboard sujo.</summary>
-    EgressFocusWhileDirty
+    EgressFocusWhileDirty,
+
+    /// <summary>
+    /// Um Ctrl+V de verdade num destino de saída com o clipboard sujo, que a
+    /// política bloqueou (Block) ou deixou passar com registro (Audit).
+    /// </summary>
+    EgressPasteWhileDirty
 }
 
 /// <summary>

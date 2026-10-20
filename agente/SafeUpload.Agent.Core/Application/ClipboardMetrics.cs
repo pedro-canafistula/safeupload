@@ -10,11 +10,15 @@ namespace SafeUpload.Agent.Core.Application;
 /// Dessas, quantas foram para um destino de saída. É a estimativa de quantos
 /// bloqueios a Fase 3 faria.
 /// </param>
+/// <param name="PasteAttemptsWhileDirty">Ctrl+V de verdade com o clipboard sujo, em qualquer destino.</param>
+/// <param name="PastesBlocked">Dessas, quantas a política bloqueou.</param>
 public readonly record struct ClipboardMetricsSnapshot(
     long Copies,
     long DirtyCopies,
     long FocusChangesWhileDirty,
-    long FocusOnEgressWhileDirty);
+    long FocusOnEgressWhileDirty,
+    long PasteAttemptsWhileDirty = 0,
+    long PastesBlocked = 0);
 
 /// <summary>
 /// As duas medidas da Fase 1: quantas cópias ficam sujas e quantas vezes o foco
@@ -35,6 +39,8 @@ public sealed class ClipboardMetrics
     private long _dirtyCopies;
     private long _focusChangesWhileDirty;
     private long _focusOnEgressWhileDirty;
+    private long _pasteAttemptsWhileDirty;
+    private long _pastesBlocked;
 
     /// <summary>Uma cópia foi classificada com o canal ligado.</summary>
     public void RecordCopy(bool dirty)
@@ -62,10 +68,26 @@ public sealed class ClipboardMetrics
         }
     }
 
+    /// <summary>
+    /// Um Ctrl+V de verdade com o clipboard sujo. Separado das trocas de foco
+    /// para a medida da Fase 1 continuar significando o mesmo.
+    /// </summary>
+    public void RecordPasteAttempt(ClipboardPasteVerdict verdict)
+    {
+        Interlocked.Increment(ref _pasteAttemptsWhileDirty);
+
+        if (verdict == ClipboardPasteVerdict.Block)
+        {
+            Interlocked.Increment(ref _pastesBlocked);
+        }
+    }
+
     /// <summary>Lê os contadores.</summary>
     public ClipboardMetricsSnapshot Snapshot() => new(
         Interlocked.Read(ref _copies),
         Interlocked.Read(ref _dirtyCopies),
         Interlocked.Read(ref _focusChangesWhileDirty),
-        Interlocked.Read(ref _focusOnEgressWhileDirty));
+        Interlocked.Read(ref _focusOnEgressWhileDirty),
+        Interlocked.Read(ref _pasteAttemptsWhileDirty),
+        Interlocked.Read(ref _pastesBlocked));
 }

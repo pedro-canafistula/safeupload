@@ -91,6 +91,9 @@ public class ClipboardInspectionServiceTests
         public Task<ClipboardResponse> Foco(string copyId, string? destino, uint? sessao = 1) =>
             Pedir(ClipboardRequest.Paste(copyId, destino), sessao);
 
+        public Task<ClipboardResponse> Colar(string copyId, string? destino, uint? sessao = 1) =>
+            Pedir(ClipboardRequest.PasteAttempt(copyId, destino), sessao);
+
         public Task<ClipboardResponse> Estado(uint? sessao = 1) =>
             Pedir(ClipboardRequest.State(), sessao);
 
@@ -101,6 +104,102 @@ public class ClipboardInspectionServiceTests
             ClipboardLog.Write(Logger, resultado.Observation);
             return await ClipboardAudit.WriteAsync(resultado, Sink, Logger, userName, cancellationToken);
         }
+    }
+
+    // ------------------------------------------------- colagem de verdade (Fase 3)
+
+    [Fact]
+    public async Task Colagem_em_saida_no_modo_Block_e_bloqueada_e_auditada_como_Blocked()
+    {
+        var harness = new Harness(Politica(ClipboardMode.Block) with { Version = 4 });
+        var copy = await harness.Copiar("Cliente Joaquim: " + CpfValido, origem: "EXCEL");
+
+        var response = await harness.Pedir(ClipboardRequest.PasteAttempt(copy.CopyId!, "chrome"), 1, "DOMINIO\\usuario");
+
+        Assert.Equal(ClipboardPasteVerdict.Block, response.Verdict);
+        var audit = Assert.Single(harness.Sink.Events);
+        Assert.Equal(audit.EventId.ToString(), response.EventId);
+        Assert.Equal(AuditChannel.Clipboard, audit.Channel);
+        Assert.Equal(Verdict.Blocked, audit.Verdict);
+        Assert.Null(audit.NotInspectedReason);
+        Assert.Equal("EXCEL", audit.ProcessName);
+        Assert.Equal("chrome", audit.DestinationPath);
+        Assert.Equal(4, audit.PolicyVersion);
+        Assert.Contains(Category.Cpf, audit.Categories);
+        Assert.Empty(audit.MaskedSnippets);
+        var json = System.Text.Json.JsonSerializer.Serialize(audit);
+        Assert.DoesNotContain("Joaquim", json);
+        Assert.DoesNotContain(CpfValido, json);
+        Assert.DoesNotContain(CpfSemMascara, json);
+        Assert.Contains(harness.Logger.Lines, line => line.StartsWith("Colagem em destino de saida", StringComparison.Ordinal));
+        Assert.DoesNotContain(harness.Logger.Lines, line => line.Contains(CpfValido));
+    }
+
+    [Fact]
+    public async Task Colagem_em_saida_no_modo_Audit_passa_e_e_auditada_como_registro()
+    {
+        var harness = new Harness(Politica(ClipboardMode.Audit));
+        var copy = await harness.Copiar(CpfValido, origem: "notepad");
+
+        var response = await harness.Colar(copy.CopyId!, "WhatsApp");
+
+        Assert.Equal(ClipboardPasteVerdict.AuditOnly, response.Verdict);
+        var audit = Assert.Single(harness.Sink.Events);
+        Assert.Equal(Verdict.AllowedWithoutInspection, audit.Verdict);
+        Assert.Equal(ClipboardAudit.PasteAuditOnly, audit.NotInspectedReason);
+    }
+
+    [Theory]
+    [InlineData("WINWORD")]
+    [InlineData(null)]
+    public async Task Colagem_em_app_local_ou_destino_desconhecido_passa_sem_evento(string? destino)
+    {
+        var harness = new Harness(Politica(ClipboardMode.Block));
+        var copy = await harness.Copiar(CpfValido);
+
+        var response = await harness.Colar(copy.CopyId!, destino);
+
+        Assert.Equal(ClipboardPasteVerdict.Allow, response.Verdict);
+        Assert.Empty(harness.Sink.Events);
+    }
+
+    [Fact]
+    public async Task Colagem_de_copia_limpa_ou_desconhecida_passa()
+    {
+        var harness = new Harness(Politica(ClipboardMode.Block));
+        var limpa = await harness.Copiar("reunião às 14h");
+
+        Assert.Equal(ClipboardPasteVerdict.Allow, (await harness.Colar(limpa.CopyId!, "chrome")).Verdict);
+        Assert.Equal(ClipboardPasteVerdict.Allow, (await harness.Colar("desconhecida", "chrome")).Verdict);
+        Assert.Empty(harness.Sink.Events);
+    }
+
+    [Fact]
+    public async Task Colagem_e_contada_a_parte_das_trocas_de_foco()
+    {
+        var harness = new Harness(Politica(ClipboardMode.Block));
+        var copy = await harness.Copiar(CpfValido);
+
+        await harness.Foco(copy.CopyId!, "chrome");
+        await harness.Colar(copy.CopyId!, "chrome");
+        await harness.Colar(copy.CopyId!, "WINWORD");
+
+        var metricas = harness.Service.Metrics;
+        Assert.Equal(1, metricas.FocusChangesWhileDirty);
+        Assert.Equal(1, metricas.FocusOnEgressWhileDirty);
+        Assert.Equal(2, metricas.PasteAttemptsWhileDirty);
+        Assert.Equal(1, metricas.PastesBlocked);
+    }
+
+    [Fact]
+    public async Task Colagem_sem_politica_libera()
+    {
+        var harness = new Harness(policy: null);
+
+        var response = await harness.Colar("qualquer", "chrome");
+
+        Assert.Equal(ClipboardPasteVerdict.Allow, response.Verdict);
+        Assert.Empty(harness.Sink.Events);
     }
 
     // ---------------------------------------------------------- classificação
