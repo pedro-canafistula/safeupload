@@ -1,0 +1,15 @@
+SafeUpload Agent — candidato para validação em Windows 10/11 x64
+
+Este pacote instala o serviço Windows e a interface de bandeja. O runtime .NET acompanha os executáveis.
+
+Minifiltro: o driver deve estar instalado e parado. O instalador usa a preparação existente como SYSTEM e solicita reinicialização. Ele não inclui driver, não altera a configuração de assinatura do Windows e não carrega o filtro durante a instalação.
+
+Teste sem driver: observação de arquivos após a gravação, sem bloqueio preventivo no kernel. A instalação é recusada se houver um driver SafeUpload registrado. A inspeção TLS fica desligada nos dois modos.
+
+A URL do servidor é opcional. Sem URL, o agente usa política local. A configuração de uma URL não comprova compatibilidade com a API web; alinhe o contrato com o responsável pelo backend.
+
+Esta primeira versão aceita instalação inicial e desinstalação; atualizações de instalações existentes exigem um procedimento de manutenção separado.
+
+Ao remover, a política, o cache, a fila de auditoria e os arquivos monitorados são preservados. Se houver driver, a remoção do agente exige que ele já esteja desabilitado e parado pelo procedimento aprovado da equipe.
+
+O pacote de desenvolvimento não possui assinatura digital da equipe. Não foi validado para implantação em produção.

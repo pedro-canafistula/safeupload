@@ -588,3 +588,9 @@ Windows-driver-samples/
 # Full raw history: tag mvp-history-2026-10-08.
 /driver/evidence/*
 !/driver/evidence/README.md
+
+# Generated agent installer payloads, compiler and disposable-runner diagnostics.
+/artifacts/installer/
+/artifacts/installer-tools/
+/artifacts/installer-tests/
+/artifacts/installer-smoke/
