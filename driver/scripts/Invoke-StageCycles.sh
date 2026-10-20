@@ -4,9 +4,9 @@
 # that the driver's pool stays flat and that the event-driven stage worker goes idle.
 #
 # Usage: driver/scripts/Invoke-StageCycles.sh <debuggee domain> <tag> <driver.sys> <agent zip> [cycles=10000] [ordinary|runtime-verifier|verifier-from-boot] [sample_every=500]
-#   Installs the pair like the manual install and reboots. Runtime mode holds both services at demand start across that reboot,
-#   arms volatile Verifier while the filter is still unloaded (flags 0x13B: special pool, IRQL, pool tracking, I/O, deadlock,
-#   security checks), loads it once, starts the agent, restores product start modes, and waits for Ready. Creates a standard
+#   Installs the pair like the manual install and reboots. Runtime mode waits for Ready through the normal boot path, then adds
+#   volatile Verifier (flags 0x13B: special pool, IRQL, pool tracking, I/O, deadlock, security checks) to the running driver, as the
+#   invariant suite's runtime mode does (DriverEntry unchecked). The earlier late-load flow could never report Ready. Creates a standard
 #   user and runs t4/cycles-coordinator.ps1 as SYSTEM with
 #   t4/cycles-actor.ps1 as the standard user.
 #
@@ -319,14 +319,6 @@ if($LASTEXITCODE -ne 0){throw 'Could not enable local debugging on the run disk.
 PS
     grep -qx 'T4MemorySetup=True' "$ev/$tag-memory-setup.txt" || exit 16
 fi
-if [ "$mode" = runtime-verifier ]; then
-    remote <<'PS' | tee "$ev/$tag-demand-held.txt"
-$ErrorActionPreference = 'Stop'
-. 'C:\Users\vika\Documents\t4-runtime-verifier.ps1'
-Set-T4RuntimeDemandBeforeReboot
-PS
-    grep -qx 'RUNTIME_DEMAND_HELD=True' "$ev/$tag-demand-held.txt" || { echo 'runtime demand-start hold failed'; exit 16; }
-fi
 if [ "$mode" = verifier-from-boot ]; then
     remote <<'PS' | tee "$ev/$tag-verifier-from-boot.txt"
 $ErrorActionPreference = 'Stop'
@@ -346,21 +338,6 @@ wait_ssh || {
     echo 'guest did not return'
     capture_unreachable install-unreachable >> "$ev/$tag-install.txt"  # no pipe: the flag must reach the trap
     grep '^Unreachable' "$ev/$tag-install.txt"; exit 17; }
-if [ "$mode" = runtime-verifier ]; then
-    remote <<PS | tee "$ev/$tag-preload-verifier.txt"
-\$ErrorActionPreference = 'Stop'
-. 'C:\Users\vika\Documents\t4-runtime-verifier.ps1'
-Start-T4RuntimePairBeforeFirstLoad '$driver_sha' 'C:\Users\vika\Documents\t4-verifier'
-PS
-    for phase in before-load after-load after-agent; do
-        scp "${opts[@]}" "vika@$host:$guest/t4-verifier-$phase.txt" "$ev/$tag-verifier-$phase.txt" >/dev/null 2>&1 || true
-    done
-    grep -qx 'VERIFIER_BEFORE_FIRST_LOAD=True' "$ev/$tag-preload-verifier.txt" && \
-        grep -qx 'RUNTIME_PAIR_STARTED=True' "$ev/$tag-preload-verifier.txt" || { echo 'runtime Verifier first-load setup failed'; exit 18; }
-    for phase in before-load after-load after-agent; do
-        [ -s "$ev/$tag-verifier-$phase.txt" ] || { echo "missing runtime Verifier $phase query"; exit 18; }
-    done
-fi
 if [ "$mode" = verifier-from-boot ]; then
     remote <<PS | tee "$ev/$tag-first-load-verifier.txt"
 \$ErrorActionPreference = 'Stop'
@@ -399,6 +376,18 @@ try { $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query
 'READINESS_DIAGNOSTICS_DONE=True'
 PS
     exit 19
+fi
+if [ "$mode" = runtime-verifier ]; then
+    # Runtime Verifier as the invariant suite arms it: the boot-start pair is Ready, then 0x13B is added to the running driver.
+    phase=runtime-verifier
+    remote <<PS | tee "$ev/$tag-runtime-verifier-armed.txt"
+\$ErrorActionPreference = 'Stop'
+. 'C:\Users\vika\Documents\t4-runtime-verifier.ps1'
+Enable-T4RuntimeVerifierAfterReady '$driver_sha' 'C:\Users\vika\Documents\t4-verifier'
+PS
+    scp "${opts[@]}" "vika@$host:$guest/t4-verifier-after-ready.txt" "$ev/$tag-verifier-after-ready.txt" >/dev/null 2>&1 || true
+    grep -qx 'RUNTIME_VERIFIER_ARMED_AFTER_READY=True' "$ev/$tag-runtime-verifier-armed.txt" || { echo 'runtime Verifier arming failed'; exit 18; }
+    [ -s "$ev/$tag-verifier-after-ready.txt" ] || { echo 'missing runtime Verifier after-ready query'; exit 18; }
 fi
 if [ "$memory_enabled" = yes ]; then
     phase=memory-controls
@@ -460,7 +449,8 @@ $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hour
 Register-ScheduledTask -TaskName 't4-actor' -Action $actor -User ($env:COMPUTERNAME + '\' + $name) -Password $password -RunLevel Limited -Settings $settings -Force | Out-Null
 if ('__MODE__' -in 'runtime-verifier', 'verifier-from-boot') {
     . "$d\t4-runtime-verifier.ps1"
-    Assert-T4RuntimeVerifierState (Invoke-T4RuntimeNative 'verifier.exe' @('/query')) $true
+    if ('__MODE__' -eq 'runtime-verifier') { Assert-T4RuntimeVerifierActive (Invoke-T4RuntimeNative 'verifier.exe' @('/query')) }
+    else { Assert-T4RuntimeVerifierState (Invoke-T4RuntimeNative 'verifier.exe' @('/query')) $true }
     'VERIFIER_ARMED=True'
 }
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest

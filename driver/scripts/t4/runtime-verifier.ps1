@@ -1,7 +1,9 @@
 #requires -Version 5.1
-# T4 runtime instrumentation only. Hold both services across the install reboot,
-# enable volatile checks while the filter is unloaded, then load it exactly once.
-# The disposable run disk restores the original machine on every exit path.
+# T4 runtime instrumentation only. The disposable run disk restores the original machine on every exit path.
+# Runtime Verifier is now armed as the invariant suite arms it (Test-StagedInvariantSuite.ps1, Get-VerifierEvidence): the boot-start pair
+# reaches Ready through the normal boot path, then 0x13B is added to the RUNNING driver (DriverEntry unchecked). The earlier flow
+# (hold both services, arm while unloaded, load once with fltmc) is a late attach that can never report Ready; its functions stay
+# below only as history and no launcher mode uses them.
 function Invoke-T4RuntimeNative([string]$File, [string[]]$Arguments) {
     $text = (& $File @Arguments 2>&1 | Out-String)
     if ($LASTEXITCODE -ne 0) { throw "$File failed ($LASTEXITCODE): $text" }
@@ -49,6 +51,30 @@ function Assert-T4RuntimeUnloaded($State) {
     if ($State.FilterLoaded -or -not $State.DriverStopped -or -not $State.AgentStopped) {
         throw 'Runtime Verifier setup requires both installed services stopped and the filter unloaded.'
     }
+}
+
+# Runtime Verifier on the running boot-start driver: exactly one Verifier flags line reading 0x13B and SafeUpload.sys listed without
+# unloads (the suite's readback; no load-count assertion, because the driver was loaded before the volatile add).
+function Assert-T4RuntimeVerifierActive([string]$Text) {
+    $flags = [regex]::Matches($Text, '(?im)^\s*Verifier Flags:\s*0x0*13b\s*$')
+    $modules = [regex]::Matches($Text, '(?im)^\s*MODULE:\s*SafeUpload\.sys\s*\(load:\s*(\d+)\s*/\s*unload:\s*(\d+)\)\s*$')
+    if ($flags.Count -ne 1 -or $modules.Count -ne 1 -or [int64]$modules[0].Groups[2].Value -ne 0) {
+        throw 'Expected exact runtime Verifier flags 0x13B for SafeUpload.sys without unloads.'
+    }
+}
+
+function Enable-T4RuntimeVerifierAfterReady([string]$ExpectedDriverSha256, [string]$RawPrefix) {
+    if ($ExpectedDriverSha256 -notmatch '^[A-Fa-f0-9]{64}$') { throw 'Expected signed-driver SHA256 required.' }
+    if ((Get-T4RuntimeDriverHash) -ine $ExpectedDriverSha256) { throw 'Installed driver differs from the frozen signed artifact.' }
+    $state = Get-T4RuntimeInstallState
+    if (-not $state.FilterLoaded -or $state.DriverStopped -or $state.AgentStopped -or $state.DriverStart -ne 0) {
+        throw 'Runtime Verifier after Ready requires the running boot-start pair.'
+    }
+    'READY_PAIR_DRIVER_SHA256=' + $ExpectedDriverSha256.ToUpperInvariant()
+    # Set target and flags in the same invocation (see Start-T4RuntimePairBeforeFirstLoad); never infer activation from exit 0.
+    $null = Invoke-T4RuntimeNative 'verifier.exe' @('/volatile', '/flags', '0x13B', '/adddriver', 'SafeUpload.sys')
+    Assert-T4RuntimeVerifierActive (Save-T4RuntimeVerifierQuery ($RawPrefix + '-after-ready.txt'))
+    'RUNTIME_VERIFIER_ARMED_AFTER_READY=True'
 }
 
 function Set-T4RuntimeDemandBeforeReboot {
