@@ -1,0 +1,49 @@
+name: Windows agent installer
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths: ['agente/**', '.github/workflows/agent-installer.yml']
+  push:
+    branches: [main]
+    paths: ['agente/**', '.github/workflows/agent-installer.yml']
+permissions:
+  contents: read
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Enable long paths
+        run: git config --system core.longpaths true
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Installer contracts in PowerShell 7 and Windows PowerShell 5.1
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts/installer-tests -Force | Out-Null
+          ./agente/installer/tests/Test-InstallerContracts.ps1 -ResultsPath artifacts/installer-tests/pwsh.json
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File agente/installer/tests/Test-InstallerContracts.ps1 -ResultsPath artifacts/installer-tests/ps51.json
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell installer contracts failed.' }
+      - name: Build self-contained installer with verified compiler
+        shell: pwsh
+        run: |
+          $compiler = ./agente/installer/Initialize-InnoCompiler.ps1
+          ./agente/installer/Build-AgentInstaller.ps1 -CompilerPath $compiler
+      - name: Install and uninstall on the disposable Windows runner
+        shell: pwsh
+        run: ./agente/installer/tests/Test-InstallerSmoke.ps1 -InstallerPath artifacts/installer/SafeUploadAgent-0.1.0-win-x64-setup.exe
+      - name: Installer and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: safeupload-agent-installer
+          path: |
+            artifacts/installer/*-setup.exe
+            artifacts/installer/build-result.json
+            artifacts/installer/build-*/compiler.log
+            artifacts/installer/build-*/publish-*.log
+            artifacts/installer-tests/
+            artifacts/installer-smoke/

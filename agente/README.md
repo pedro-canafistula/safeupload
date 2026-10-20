@@ -1,5 +1,9 @@
 # SafeUpload — Agente Desktop
 
+O candidato de instalador Windows, com serviço, interface e runtime próprio, está documentado em
+[`installer/README.md`](installer/README.md). Ele preserva o script técnico de minifiltro descrito abaixo;
+instalação com driver e reinicialização ainda exigem validação em VM.
+
 Componente instalado no endpoint do usuário: intercepta operações de
 arquivo, decide localmente (CPF, CNPJ, cartão, senha, segredos), e — quando
 configurado — sincroniza política e auditoria com o Centro de
