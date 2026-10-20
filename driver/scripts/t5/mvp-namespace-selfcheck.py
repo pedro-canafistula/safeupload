@@ -34,6 +34,7 @@ SHIM = r'''
 #include <string.h>
 #define CHECK(c) do { if (!(c)) exit(97); } while(0)
 typedef int BOOLEAN;
+typedef BOOLEAN *PBOOLEAN;
 typedef int NTSTATUS;
 typedef unsigned long ULONG;
 #define TRUE 1
@@ -41,6 +42,7 @@ typedef unsigned long ULONG;
 #define NULLABLE
 #define _In_
 #define _In_opt_
+#define _Out_opt_
 #define _IRQL_requires_max_(x)
 #define _IRQL_requires_(x)
 #define PAGED_CODE() ((void)0)
@@ -135,19 +137,23 @@ int main(void) {
     target.protectedName=0;CHECK(!StageMvpRenameNeedsCopy(&source,&target));
     target.protectedName=1;source.Name="source.txt";sameScope=0;CHECK(StageMvpRenameNeedsCopy(&source,&target));
     const char *name="source.txt",*other="target.txt";STAGE_STREAM rows[3];
-    reset(rows,2);CHECK(StageMvpCancelNames((void*)1,&name,NULL,FALSE)==0);CHECK(calls==0&&queued==0);
+    reset(rows,2);CHECK(StageMvpCancelNames((void*)1,&name,NULL,FALSE,NULL)==0);CHECK(calls==0&&queued==0);
     CHECK(!rows[0].PrivateCancellationAccepted&&!rows[1].PrivateCancellationAccepted);
-    reset(rows,2);CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==0);CHECK(calls==2);
+    reset(rows,2);CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE,NULL)==0);CHECK(calls==2);
     CHECK(rows[0].RpcReferences==0&&rows[1].RpcReferences==0);
     reset(rows,2);rows[1].ShareAccess.OpenCount=1;
-    CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==-1);CHECK(calls==0);
+    CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE,NULL)==-1);CHECK(calls==0);
     reset(rows,2);rows[1].Name="target.txt";rows[1].ShareAccess.OpenCount=1;
-    CHECK(StageMvpCancelNames((void*)1,&name,&other,TRUE)==-1);CHECK(calls==0);
-    reset(rows,1);rpcFailure=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==-9);CHECK(rows[0].RpcReferences==0);
-    reset(rows,1);rows[0].Sealed=0;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==0);
+    CHECK(StageMvpCancelNames((void*)1,&name,&other,TRUE,NULL)==-1);CHECK(calls==0);
+    reset(rows,1);rpcFailure=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE,NULL)==-9);CHECK(rows[0].RpcReferences==0);
+    reset(rows,1);rows[0].Sealed=0;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE,NULL)==0);
     CHECK(rows[0].DiscardOnClose&&rows[0].DiscardDisposition&&queued==1&&calls==0);
-    reset(rows,1);rows[0].MvpPublicationObserved=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==0&&calls==0);
-    reset(rows,1);rows[0].SealRpcInFlight=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE)==-1&&calls==0);
+    reset(rows,1);rows[0].MvpPublicationObserved=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE,NULL)==0&&calls==0);
+    reset(rows,1);rows[0].SealRpcInFlight=1;CHECK(StageMvpCancelNames((void*)1,&name,NULL,TRUE,NULL)==-1&&calls==0);
+    BOOLEAN required=FALSE;
+    reset(rows,1);CHECK(StageMvpCancelNames((void*)1,&name,NULL,FALSE,&required)==0&&required);
+    reset(rows,1);rows[0].MvpPublicationObserved=1;required=TRUE;
+    CHECK(StageMvpCancelNames((void*)1,&name,NULL,FALSE,&required)==0&&!required);
     CHECK(resources==0);return 0;
 }
 '''
