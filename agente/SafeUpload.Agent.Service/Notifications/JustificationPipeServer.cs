@@ -184,8 +184,7 @@ public sealed class JustificationPipeServer : BackgroundService
         if (_staged.TryConsume(request.EventId, sessionId, clientSid, out var publish))
         {
             if (publish is null) return false;
-            await _auditSink.RecordOverrideAsync(request.EventId,
-                request.Justification, cancellationToken).ConfigureAwait(false);
+            await RecordJustificationAsync(request, clientSid, cancellationToken).ConfigureAwait(false);
             return await publish(cancellationToken).ConfigureAwait(false);
         }
 
@@ -200,10 +199,7 @@ public sealed class JustificationPipeServer : BackgroundService
 
         // Auditar ANTES de conceder. Concedendo primeiro, uma falha aqui
         // deixaria a excecao de pe sem registro nenhum de quem a pediu.
-        await _auditSink.RecordOverrideAsync(
-            request.EventId,
-            request.Justification,
-            cancellationToken).ConfigureAwait(false);
+        await RecordJustificationAsync(request, clientSid, cancellationToken).ConfigureAwait(false);
 
         _grants.Grant(pendente.ProcessId, pendente.NtPath, GrantDuration);
 
@@ -213,6 +209,11 @@ public sealed class JustificationPipeServer : BackgroundService
             pendente.ProcessId);
         return true;
     }
+
+    internal Task RecordJustificationAsync(JustificationRequest request, string? clientSid,
+        CancellationToken cancellationToken)
+        => _auditSink.RecordOverrideAsync(new AuditOverride(Guid.Parse(request.EventId), request.Justification,
+            DateTimeOffset.UtcNow, clientSid ?? "Não identificado", Environment.MachineName), cancellationToken);
 
     /// <summary>
     /// Cria o pipe. A ACL segue a do canal de notificações pelas mesmas

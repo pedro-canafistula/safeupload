@@ -66,7 +66,8 @@ public sealed class InstallSafeUploadAgentScriptTests
         // appsettings.json ships a panel address; the installer must say explicitly where the policy comes from.
         Assert.Contains("'--CentroAdministracao:BaseUrl=' + $AdminBaseUrl", script, StringComparison.Ordinal);
         Assert.Contains("[string] $AdminBaseUrl = ''", script, StringComparison.Ordinal);
-        Assert.Contains("(@($quotedExecutable) + $ServiceArguments) -join ' '", script, StringComparison.Ordinal);
+        Assert.Contains("Get-SafeUploadInstallCommandLines $serviceExecutable $ServiceArguments", script, StringComparison.Ordinal);
+        Assert.Contains("-Argument $seedArguments", script, StringComparison.Ordinal);
         Assert.Contains("Set-ItemProperty -LiteralPath $agentServiceKey -Name ImagePath", script, StringComparison.Ordinal);
         Assert.Contains("if ($written -ne $binaryPath)", script, StringComparison.Ordinal);
         Assert.True(createCall >= 0 && configureCall >= 0, "Installer must create or configure the service.");

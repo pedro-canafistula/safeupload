@@ -80,6 +80,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         if (persistent) Assert.Equal("new approved bytes", await File.ReadAllTextAsync(transfer.StagePath));
         var audit = Assert.Single(await new LocalQueueAuditSink(_workspace.QueueFile).ReadRecentAsync(10, CancellationToken.None));
         Assert.Equal(persistent ? "publication_busy" : null, audit.NotInspectedReason);
+        Assert.Equal(TestRequestorSid, audit.UserName);
     }
 
     private sealed class ContendedDestinationGate(bool persistent, Action beforeAttempt) : IStagedPublicationGate
@@ -282,6 +283,10 @@ public sealed class StagedTransferPublisherTests : IDisposable
             await File.ReadAllTextAsync(transfer.DestinationPath));
         Assert.Equal(1, gate.AuthorizeCalls);
         Assert.False(File.Exists(transfer.StagePath));
+        var recoveredAudit = Assert.Single(await new LocalQueueAuditSink(_workspace.QueueFile)
+            .ReadRecentAsync(10, CancellationToken.None));
+        Assert.Equal(transfer.TransferId, recoveredAudit.EventId);
+        Assert.Equal(TestRequestorSid, recoveredAudit.UserName);
     }
 
     [Theory]
@@ -652,6 +657,9 @@ public sealed class StagedTransferPublisherTests : IDisposable
             await DisposingPublisher(gate).PublishAsync(transfer, CancellationToken.None));
         Assert.Empty(gate.Disposals);
         Assert.True(File.Exists(transfer.StagePath));
+        var blockedAudits = await new LocalQueueAuditSink(_workspace.QueueFile).ReadRecentAsync(10, CancellationToken.None);
+        Assert.NotEmpty(blockedAudits);
+        Assert.All(blockedAudits, audit => Assert.Equal(TestRequestorSid, audit.UserName));
     }
 
     [Fact]

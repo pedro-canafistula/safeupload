@@ -5,6 +5,43 @@ using Microsoft.Extensions.Logging.Abstractions;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Service.Dispatch;
+using Microsoft.Extensions.Hosting;
+
+if (args.Length > 0 && args[0] == "--policy-publication-contract")
+{
+    await PolicyPublicationContract.RunAsync(args);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "--audit-java-contract")
+{
+    await AuditJavaContract.RunAsync(args);
+    return;
+}
+
+if (args.Length > 0 && args[0] == "--install-configuration-probe")
+{
+    var configurationArguments = args[1..];
+    bool seed = configurationArguments.Contains("--seed-boot-policy", StringComparer.OrdinalIgnoreCase);
+    if (seed)
+    {
+        if (!SafeUpload.Agent.Service.Program.TryGetBootPolicyConfigurationArguments(configurationArguments, out var parsed))
+            throw new ArgumentException("Invalid seed configuration arguments.");
+        configurationArguments = parsed;
+    }
+    var builder = seed
+        ? SafeUpload.Agent.Service.Program.CreateBootPolicyBuilder(configurationArguments)
+        : SafeUpload.Agent.Service.Program.CreateConfiguredServiceBuilder(configurationArguments);
+    Console.WriteLine(JsonSerializer.Serialize(new
+    {
+        arguments = configurationArguments,
+        baseUrl = builder.Configuration["CentroAdministracao:BaseUrl"],
+        timeout = builder.Configuration["CentroAdministracao:TimeoutSeconds"],
+        contentRoot = builder.Environment.ContentRootPath,
+        hostedServiceCount = builder.Services.Count(d => d.ServiceType == typeof(IHostedService))
+    }));
+    return;
+}
 
 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 var cancellationToken = timeout.Token;

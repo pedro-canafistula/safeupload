@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Domain;
 
@@ -17,10 +18,10 @@ namespace SafeUpload.Agent.Core.Infrastructure;
 /// único exigiria reescrever o arquivo inteiro a cada evento e poderia perder
 /// a trilha toda.
 ///
-/// Todo evento nasce com dispatched igual a falso. Quem virá a marcar
-/// verdadeiro é o despachante da HU-10, que ainda não existe.
+/// Todo evento nasce com dispatched igual a falso. O despachante marca
+/// verdadeiro depois da confirmação do servidor, preservando a trilha local.
 /// </summary>
-public sealed class LocalQueueAuditSink : IAuditSink
+public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
 {
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -43,6 +44,8 @@ public sealed class LocalQueueAuditSink : IAuditSink
     // processos, mas o agente é instância única por sessão.
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly string _queueFile;
+    private readonly Action<FileStream> _flushToDisk;
+    private readonly IAuditWriteFailureObserver? _failureObserver;
 
     /// <summary>Usa o caminho padrão do agente.</summary>
     public LocalQueueAuditSink() : this(AgentPaths.QueueFile)
@@ -51,9 +54,25 @@ public sealed class LocalQueueAuditSink : IAuditSink
 
     /// <summary>Usa um caminho específico. Serve aos testes.</summary>
     public LocalQueueAuditSink(string queueFile)
+        : this(queueFile, static stream => stream.Flush(flushToDisk: true))
+    {
+    }
+
+    // The fault seam is internal and never selected by configuration or IPC.
+    public LocalQueueAuditSink(string queueFile, IAuditWriteFailureObserver failureObserver)
+        : this(queueFile, static stream => stream.Flush(flushToDisk: true),
+            failureObserver ?? throw new ArgumentNullException(nameof(failureObserver)))
+    {
+    }
+
+    internal LocalQueueAuditSink(string queueFile, Action<FileStream> flushToDisk,
+        IAuditWriteFailureObserver? failureObserver = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(queueFile);
+        ArgumentNullException.ThrowIfNull(flushToDisk);
         _queueFile = queueFile;
+        _flushToDisk = flushToDisk;
+        _failureObserver = failureObserver;
     }
 
     /// <summary>Caminho do arquivo de fila, para exibição na interface.</summary>
@@ -65,27 +84,11 @@ public sealed class LocalQueueAuditSink : IAuditSink
         ArgumentNullException.ThrowIfNull(auditEvent);
 
         var line = JsonSerializer.Serialize(auditEvent, Options);
-
-        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var directory = Path.GetDirectoryName(_queueFile);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            await File.AppendAllTextAsync(_queueFile, line + Environment.NewLine, Utf8NoBom, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await AppendRecordAsync(line, AuditWriteKind.Event, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public async Task RecordOverrideAsync(
+    public Task RecordOverrideAsync(
         string eventId,
         string justification,
         CancellationToken cancellationToken)
@@ -97,34 +100,73 @@ public sealed class LocalQueueAuditSink : IAuditSink
         // mesmo arquivo de propósito: a ordem entre o bloqueio e a
         // justificativa é a informação que uma investigação procura, e
         // separar em dois arquivos obrigaria a reconstruí-la por horário.
+        return RecordOverrideAsync(new AuditOverride(Guid.Parse(eventId), justification,
+            DateTimeOffset.UtcNow, Environment.UserName, Environment.MachineName), cancellationToken);
+    }
+
+    public async Task RecordOverrideAsync(AuditOverride auditOverride, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(auditOverride);
+        if (auditOverride.EventId == Guid.Empty) throw new ArgumentException("Identificador de evento vazio.", nameof(auditOverride));
+        ArgumentException.ThrowIfNullOrWhiteSpace(auditOverride.Justification);
+        ArgumentException.ThrowIfNullOrWhiteSpace(auditOverride.UserName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(auditOverride.EndpointId);
         var record = new
         {
             type = "override",
-            eventId,
-            justification,
-            occurredAtUtc = DateTimeOffset.UtcNow,
-            userName = Environment.UserName,
-            endpointId = Environment.MachineName,
+            eventId = auditOverride.EventId,
+            justification = auditOverride.Justification,
+            occurredAtUtc = auditOverride.OccurredAtUtc,
+            userName = auditOverride.UserName,
+            endpointId = auditOverride.EndpointId,
         };
 
         var line = JsonSerializer.Serialize(record, Options);
+        await AppendRecordAsync(line, AuditWriteKind.Override, cancellationToken).ConfigureAwait(false);
+    }
 
-        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+    private async Task AppendRecordAsync(string line, AuditWriteKind kind, CancellationToken cancellationToken)
+    {
         try
         {
-            var directory = Path.GetDirectoryName(_queueFile);
-            if (!string.IsNullOrEmpty(directory))
+            await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                Directory.CreateDirectory(directory);
+                var directory = Path.GetDirectoryName(_queueFile);
+                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+                await AppendLineAsync(line, cancellationToken).ConfigureAwait(false);
             }
-
-            await File.AppendAllTextAsync(_queueFile, line + Environment.NewLine, Utf8NoBom, cancellationToken)
-                .ConfigureAwait(false);
+            finally { _writeLock.Release(); }
         }
-        finally
+        catch (Exception error) when (!cancellationToken.IsCancellationRequested)
         {
-            _writeLock.Release();
+            // Observe only after releasing the queue lock. A diagnostic failure
+            // must never replace the original persistence error or retry a write.
+            try { _failureObserver?.OnWriteFailure(kind, error); }
+            catch (Exception) { }
+            throw;
         }
+    }
+
+    // Uma queda pode deixar a última linha sem terminador. Se anexássemos o
+    // próximo evento diretamente, ele se perderia junto com a linha truncada.
+    private async Task AppendLineAsync(string line, CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(_queueFile, FileMode.OpenOrCreate,
+            FileAccess.ReadWrite, FileShare.Read, 4096, FileOptions.Asynchronous | FileOptions.WriteThrough);
+        if (stream.Length > 0)
+        {
+            stream.Seek(-1, SeekOrigin.End);
+            var last = stream.ReadByte();
+            stream.Seek(0, SeekOrigin.End);
+            if (last != '\n')
+                await stream.WriteAsync(Utf8NoBom.GetBytes(Environment.NewLine), cancellationToken).ConfigureAwait(false);
+        }
+        await stream.WriteAsync(Utf8NoBom.GetBytes(line + Environment.NewLine), cancellationToken).ConfigureAwait(false);
+        await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        // FlushAsync alone does not request that intermediate OS buffers reach
+        // disk. A failure here must reach the caller, never acknowledge storage.
+        _flushToDisk(stream);
     }
 
     /// <inheritdoc />
@@ -200,7 +242,13 @@ public sealed class LocalQueueAuditSink : IAuditSink
             if (string.IsNullOrWhiteSpace(line)) return;
             try
             {
-                if (JsonSerializer.Deserialize<AuditEvent>(line, Options) is { } entry) events.Add(entry);
+                using var json = JsonDocument.Parse(line);
+                if (json.RootElement.ValueKind != JsonValueKind.Object ||
+                    json.RootElement.TryGetProperty("type", out _) ||
+                    !json.RootElement.TryGetProperty("eventId", out _))
+                    return;
+                if (JsonSerializer.Deserialize<AuditEvent>(line, Options) is { } entry && entry.EventId != Guid.Empty)
+                    events.Add(entry);
             }
             catch (JsonException) { } // Same truncated/malformed-line rule as the full reader.
         }
@@ -211,10 +259,13 @@ public sealed class LocalQueueAuditSink : IAuditSink
         int maxEvents,
         CancellationToken cancellationToken)
     {
-        var all = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
-        var pending = all.FindAll(static e => !e.Dispatched);
-
-        return maxEvents > 0 && pending.Count > maxEvents ? pending.GetRange(0, maxEvents) : pending;
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await ReadAllUnsynchronizedAsync(cancellationToken, pendingOnly: true, maxEvents)
+                .ConfigureAwait(false);
+        }
+        finally { _writeLock.Release(); }
     }
 
     /// <summary>
@@ -225,13 +276,21 @@ public sealed class LocalQueueAuditSink : IAuditSink
     /// falhar no meio, a fila antiga continua íntegra. Ela só será chamada
     /// pelo despachante da HU-10.
     /// </summary>
-    public async Task MarkDispatchedAsync(
+    public Task MarkDispatchedAsync(
         IReadOnlyCollection<Guid> eventIds,
         CancellationToken cancellationToken)
+        => RewriteDispatchedAsync(eventIds, [], cancellationToken);
+
+    public Task MarkOverridesDispatchedAsync(IReadOnlyCollection<AuditOverride> records,
+        CancellationToken cancellationToken)
+        => RewriteDispatchedAsync([], records, cancellationToken);
+
+    private async Task RewriteDispatchedAsync(IReadOnlyCollection<Guid> eventIds,
+        IReadOnlyCollection<AuditOverride> overrides, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(eventIds);
 
-        if (eventIds.Count == 0)
+        if (eventIds.Count == 0 && overrides.Count == 0)
         {
             return;
         }
@@ -246,27 +305,118 @@ public sealed class LocalQueueAuditSink : IAuditSink
                 return;
             }
 
-            var events = await ReadAllUnsynchronizedAsync(cancellationToken).ConfigureAwait(false);
+            // Preserva os registros de justificativa e linhas desconhecidas: a
+            // confirmação de um lote de eventos não pode descartar outros tipos.
             var builder = new StringBuilder();
-
-            foreach (var current in events)
+            await using (var stream = new FileStream(_queueFile, FileMode.Open,
+                FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (var reader = new StreamReader(stream, Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true))
             {
-                var updated = ids.Contains(current.EventId)
-                    ? current with { Dispatched = true }
-                    : current;
-
-                builder.Append(JsonSerializer.Serialize(updated, Options)).Append(Environment.NewLine);
+                while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        builder.AppendLine(line);
+                        continue;
+                    }
+                    try
+                    {
+                        using var json = JsonDocument.Parse(line);
+                        if (json.RootElement.ValueKind != JsonValueKind.Object)
+                        {
+                            builder.AppendLine(line);
+                            continue;
+                        }
+                        bool selected;
+                        if (json.RootElement.TryGetProperty("type", out var type))
+                        {
+                            selected = type.ValueKind == JsonValueKind.String && type.GetString() == "override"
+                                && JsonSerializer.Deserialize<AuditOverride>(line, Options) is { } record
+                                && overrides.Contains(record);
+                        }
+                        else
+                        {
+                            selected = json.RootElement.TryGetProperty("eventId", out var id)
+                                && id.ValueKind == JsonValueKind.String && id.TryGetGuid(out var guid)
+                                && ids.Contains(guid);
+                        }
+                        if (!selected)
+                        {
+                            builder.AppendLine(line);
+                            continue;
+                        }
+                        var updated = JsonNode.Parse(line)!.AsObject();
+                        updated["dispatched"] = true;
+                        builder.Append(updated.ToJsonString(Options)).Append(Environment.NewLine);
+                    }
+                    catch (JsonException)
+                    {
+                        // Não converter nem apagar um registro que não entendemos.
+                        builder.AppendLine(line);
+                    }
+                }
             }
 
-            var temporary = _queueFile + ".tmp";
-            await File.WriteAllTextAsync(temporary, builder.ToString(), Utf8NoBom, cancellationToken)
-                .ConfigureAwait(false);
-            File.Move(temporary, _queueFile, overwrite: true);
+            var temporary = _queueFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                await using (var output = new FileStream(temporary, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous | FileOptions.WriteThrough))
+                {
+                    await output.WriteAsync(Utf8NoBom.GetBytes(builder.ToString()), cancellationToken).ConfigureAwait(false);
+                    await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    _flushToDisk(output);
+                }
+                cancellationToken.ThrowIfCancellationRequested();
+                File.Move(temporary, _queueFile, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
         }
         finally
         {
             _writeLock.Release();
         }
+    }
+
+    public async Task<IReadOnlyList<AuditOverride>> ReadPendingOverridesAsync(int maxEvents,
+        CancellationToken cancellationToken)
+    {
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var records = new List<AuditOverride>();
+            if (!File.Exists(_queueFile)) return records;
+            await using var stream = new FileStream(_queueFile, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream, Encoding.UTF8, true);
+            while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+            {
+                try
+                {
+                    using var json = JsonDocument.Parse(line);
+                    var root = json.RootElement;
+                    if (root.ValueKind != JsonValueKind.Object ||
+                        !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String ||
+                        type.GetString() != "override" ||
+                        (root.TryGetProperty("dispatched", out var sent) && sent.ValueKind == JsonValueKind.True))
+                        continue;
+                    var record = JsonSerializer.Deserialize<AuditOverride>(line, Options);
+                    if (record is null || record.EventId == Guid.Empty ||
+                        string.IsNullOrWhiteSpace(record.Justification) ||
+                        string.IsNullOrWhiteSpace(record.UserName) || string.IsNullOrWhiteSpace(record.EndpointId) ||
+                        record.OccurredAtUtc == default) continue;
+                    records.Add(record);
+                    if (maxEvents > 0 && records.Count >= maxEvents) break;
+                }
+                catch (JsonException) { /* Preserva linhas que não pode despachar. */ }
+            }
+            return records;
+        }
+        finally { _writeLock.Release(); }
     }
 
     private async Task<List<AuditEvent>> ReadAllAsync(CancellationToken cancellationToken)
@@ -282,7 +432,8 @@ public sealed class LocalQueueAuditSink : IAuditSink
         }
     }
 
-    private async Task<List<AuditEvent>> ReadAllUnsynchronizedAsync(CancellationToken cancellationToken)
+    private async Task<List<AuditEvent>> ReadAllUnsynchronizedAsync(CancellationToken cancellationToken,
+        bool pendingOnly = false, int maxEvents = 0)
     {
         var events = new List<AuditEvent>();
 
@@ -300,10 +451,19 @@ public sealed class LocalQueueAuditSink : IAuditSink
             _queueFile,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.ReadWrite);
+            FileShare.ReadWrite | FileShare.Delete);
 
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
 
+        return await ReadEventsAsync(reader, pendingOnly, maxEvents, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Retain only selected records and stop after the requested batch. A read
+    // with fewer pending records still scans to EOF; individual lines are not capped.
+    internal static async Task<List<AuditEvent>> ReadEventsAsync(TextReader reader, bool pendingOnly,
+        int maxEvents, CancellationToken cancellationToken)
+    {
+        var events = new List<AuditEvent>();
         while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
         {
             if (string.IsNullOrWhiteSpace(line))
@@ -313,10 +473,20 @@ public sealed class LocalQueueAuditSink : IAuditSink
 
             try
             {
+                using var json = JsonDocument.Parse(line);
+                if (json.RootElement.ValueKind != JsonValueKind.Object ||
+                    json.RootElement.TryGetProperty("type", out _) ||
+                    !json.RootElement.TryGetProperty("eventId", out _))
+                {
+                    continue;
+                }
+                if (pendingOnly && json.RootElement.TryGetProperty("dispatched", out var sent) &&
+                    sent.ValueKind == JsonValueKind.True) continue;
                 var parsed = JsonSerializer.Deserialize<AuditEvent>(line, Options);
-                if (parsed is not null)
+                if (parsed is not null && parsed.EventId != Guid.Empty && (!pendingOnly || !parsed.Dispatched))
                 {
                     events.Add(parsed);
+                    if (maxEvents > 0 && events.Count >= maxEvents) break;
                 }
             }
             catch (JsonException)

@@ -1,8 +1,9 @@
 using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Service.Policies;
 
 namespace SafeUpload.Agent.Service.Interception;
 
-/// <summary>Loads the protected local policy and commits its driver scope before boot.</summary>
+/// <summary>Loads the current configured policy and commits its driver scope before boot.</summary>
 internal static class BootPolicySeeder
 {
     internal static async Task SeedAsync(IPolicyStore policyStore,
@@ -11,7 +12,8 @@ internal static class BootPolicySeeder
         ArgumentNullException.ThrowIfNull(policyStore);
         ArgumentNullException.ThrowIfNull(registryWriter);
 
-        var policy = await policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        registryWriter.Seed(MinifilterPolicyFactory.Build(policy));
+        var loaded = await DriverPolicyLoader.LoadAsync(policyStore, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        registryWriter.Seed(loaded.Message);
     }
 }

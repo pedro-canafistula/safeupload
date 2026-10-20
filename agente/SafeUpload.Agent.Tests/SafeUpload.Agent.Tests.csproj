@@ -26,6 +26,8 @@
     <None Update="Fixtures\word-export-hybrid.pdf" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="..\SafeUpload.Agent.App\Notifications\StagedSeedBlockPresentation.cs" Link="StagedSeedBlockPresentation.cs" />
     <Compile Include="..\SafeUpload.Agent.App\Notifications\StagedPublicationPresentation.cs" Link="StagedPublicationPresentation.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\Notifications\PolicyIntegrationPresentation.cs" Link="PolicyIntegrationPresentation.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\Notifications\AuditWritePresentation.cs" Link="AuditWritePresentation.cs" />
   </ItemGroup>
 
   <ItemGroup>

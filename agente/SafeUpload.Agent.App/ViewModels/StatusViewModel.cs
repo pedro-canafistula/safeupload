@@ -3,6 +3,7 @@ using SafeUpload.Agent.App.Mvvm;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.App.Notifications;
 
 namespace SafeUpload.Agent.App.ViewModels;
 
@@ -28,6 +29,20 @@ public sealed class StatusViewModel : ObservableObject
     private string _activeCategoriesCaption = "AGUARDANDO O SERVIÇO";
     private string _monitoringState = "AGUARDANDO";
     private bool _connected;
+    private PolicyIntegrationPresentation _policyIntegration = PolicyIntegrationPresentation.Unavailable;
+    private AuditWritePresentation _auditWrites = AuditWritePresentation.Unavailable;
+
+    public AuditWritePresentation AuditWrites
+    {
+        get => _auditWrites;
+        private set => SetProperty(ref _auditWrites, value);
+    }
+
+    public PolicyIntegrationPresentation PolicyIntegration
+    {
+        get => _policyIntegration;
+        private set => SetProperty(ref _policyIntegration, value);
+    }
 
     /// <summary>Compõe a tela sobre a trilha de auditoria.</summary>
     public StatusViewModel(IAuditSink auditSink) =>
@@ -107,6 +122,9 @@ public sealed class StatusViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(status);
 
+        PolicyIntegration = PolicyIntegrationPresentation.From(status.PolicyIntegration);
+        AuditWrites = AuditWritePresentation.From(status.AuditWrites);
+
         Connected = true;
         PolicyVersion = $"v{status.PolicyVersion}";
         ActiveCategoriesCaption = $"{status.ActiveCategories} CATEGORIAS ATIVAS";
@@ -162,6 +180,8 @@ public sealed class StatusViewModel : ObservableObject
     public void SetDisconnected()
     {
         Connected = false;
+        PolicyIntegration = PolicyIntegrationPresentation.Disconnected;
+        AuditWrites = AuditWritePresentation.Disconnected;
         SecurityState = "Serviço indisponível";
         SecurityCaption = "SEM COMUNICAÇÃO COM O SERVIÇO";
         PolicyVersion = "—";

@@ -155,6 +155,46 @@
                 </Border>
             </Grid>
 
+            <Border Style="{StaticResource PanelCard}" Margin="0,20,0,0">
+                <StackPanel>
+                    <TextBlock Text="Sincronização da política" FontSize="15" FontWeight="SemiBold"
+                               Foreground="{StaticResource Text}" />
+                    <Grid Margin="0,16,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <TextBlock Text="Disponível no agente" Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding PolicyIntegration.Available}" Margin="0,5,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,16,0">
+                            <TextBlock Text="Última consulta bem-sucedida" Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding PolicyIntegration.LastRead}" Margin="0,5,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Último aceite de escopo" Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding PolicyIntegration.Accepted}" Margin="0,5,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Text="{Binding PolicyIntegration.Message}" TextWrapping="Wrap" />
+                    <TextBlock Text="Receber uma política ou ter um escopo aceito não confirma proteção ativa."
+                               Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource PanelCard}" Margin="0,20,0,0">
+                <StackPanel>
+                    <TextBlock Text="Gravação da auditoria local" FontSize="15" FontWeight="SemiBold"
+                               Foreground="{StaticResource Text}" />
+                    <TextBlock Text="{Binding AuditWrites.Summary}" Margin="0,12,0,0" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding AuditWrites.Detail}" Style="{StaticResource MutedText}"
+                               Margin="0,5,0,0" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding AuditWrites.Message}" Margin="0,8,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
             <!-- Monitoramento de Atividade -->
             <Border Style="{StaticResource PanelCard}" Margin="0,20,0,0" Padding="0">
                 <StackPanel>
