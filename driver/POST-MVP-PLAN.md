@@ -9,7 +9,7 @@ Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](PO
 | Order | Scope | Status |
 |---|---|---|
 | M1 | T0–T3: safe to leave loaded | Complete on the recorded M1 pair |
-| **M2** | **T4–T11: everyday file work** | **Active; integrated kernel review accepted with conditions; build gates pass; T4 smoke failed and focused diagnosis is authorized** |
+| **M2** | **T4–T11: everyday file work** | **Active; integrated kernel review accepted with conditions; build gates pass; T4 save/kernel defects fixed (`586ae7cb`, `d1068cc3`); 256-cycle smoke 256/256 apart from sampling; 10k and raw-cell rows in flight** |
 | M3 | T12, T14: release configuration and lifecycle | After M2 |
 | T21 | USB/removable | After M3; own design, owner decisions, Sol 6.1 high design review and destination qualification |
 | T22 | SMB/UNC | After T21; own design, owner decisions, Sol 6.1 high design review and destination qualification |
@@ -532,7 +532,7 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 
 | T item | Current state | Next required result |
 |---|---|---|
-| T4 | Kernel WDK/import and full agent matrix PASS (5,570/5,570); package-only retry preserves every payload hash. `m2t4smoke1019a` failed at attempt 9 (reopens/resource busy); separate restoration PASS. | Pass smoke with immediate reopens, unchanged 10k cells and raw-byte rows; separate restoration. |
+| T4 | Pair `d1068cc3` kernel (`t4pagefix1` gates 0/0, imports PASS) + agent `586ae7cb` (`m2t4refund2` 2,801 per configuration). Smoke `1020i` 256/256, 0 stage files, worker idle; only the pool-endpoint sampling was missing (rerun at 64-cycle sampling). Root causes and fixes: [checkpoint](evidence/2026-10-20/t4-checkpoint.md). | Smoke with sampling, one-boot 10k in three modes, raw-volume cells C01–C04/B01/B02/X01 in three modes, lost-reply row, separate restoration. |
 | T5 | Native namespace corrections reviewed. Latest [real Notepad diagnostic](evidence/2026-10-19/m2dev1019f-result.md): unprotected control passes; protected old-dev-pair save refuses for space. | Passing four-leg agent matrix, forced native delete orders, clean/CPF Notepad and public operations in all three modes. |
 | T6 | Copy-fallback component evidence and owner-approved folder/cross-drive metadata contract exist; merged namespace/folder source is unqualified. | Final-pair file/folder moves, idle rename and pending conflicts in all required modes. |
 | T7 | Windows-authorized read design retained. | Final-pair authorized/denied reads and exact bytes. |
@@ -541,7 +541,8 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 | T10 | Earlier runtime-Verifier component pass exists. | Final-pair permissions/ownership rows in all modes with metadata preservation. |
 | T11 | Epoch/archive and context retirement repairs integrated; component controls are distinct from qualification. | Final journal/recovery/lifetime gates and one adversarial review of the working M2 pair. |
 
-- [ ] T4: close build/agent prerequisites, then run smoke and 10k with independent bytes and separate restoration.
+- [x] T4: build/agent prerequisites closed on the pair above; failed attempts and root causes in the [2026-10-20 checkpoint](evidence/2026-10-20/t4-checkpoint.md).
+- [ ] T4: smoke with sampling, 10k in three modes, raw-volume cells and separate restoration (rows in flight).
 - [ ] T5–T11: qualify the coherent pair against every existing assertion; component/dev passes do not complete these items.
 - [ ] T11: perform final adversarial review only after the runtime evidence exists.
 
@@ -575,7 +576,9 @@ host maintenance during timing-sensitive rows. Stop/report required failed asser
 - [x] T4: pass the full four-leg agent matrix (5,570/5,570); [package retry/strict verification](evidence/2026-10-19/matrixpkg1019c/verification.txt)
   preserves the tested payload bytes. [Checkpoint](evidence/2026-10-19/m2-checkpoint.md) retains the original failed attempts.
 - [ ] T4: qualify V20 allocation/Prepare lost-reply cleanup under protection; exact faults remain in the lifetime design.
-- [ ] T4: pass 256-cycle boot-Verifier smoke, including immediate reopens, idle endpoint, purge statuses and release measurement.
+- [x] T4: fix serial-save refusals (agent refund wait, `586ae7cb`) and the pageable-router double fault (`d1068cc3`).
+- [ ] T4: pass 256-cycle boot-Verifier smoke with 64-cycle sampling: idle endpoint, purge statuses, release measurement (`1020i` passed all but sampling).
+- [ ] T8: immediate-reopen control (moved from T4, owner may veto): original owner's reopen passes, a second process's read/write open fails Win32 32.
 - [ ] T4: pass unchanged one-boot 10k ordinary/runtime-/boot-Verifier cells, including loaded-context and admission-recovery gates.
 - [ ] T4: run C01–C04/B01/B02/X01 with the raw-volume observer in all modes, then repeat on the final M2 pair. Sampled bytes do not replace raw observation.
 

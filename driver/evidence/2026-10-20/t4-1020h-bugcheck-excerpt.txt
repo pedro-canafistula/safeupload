@@ -1,0 +1,49 @@
+# nt!KiBugCheckData: 0x7F UNEXPECTED_KERNEL_MODE_TRAP, arg1 = 8 (double fault)
+fffff802`45246340  00000000`0000007f 00000000`00000008
+fffff802`45246350  fffff802`477f3e70 ffffe68d`43ee8000
+fffff802`45246360  fffff802`4482dcce
+
+# crashing stack: double fault in the heap allocator while resolving a page fault, then the recursion cycle
+1b fffff802`477f35e0 fffff802`44a16da7     nt!KeBugCheck2+0xdd2
+1c fffff802`477f3cf0 fffff802`44a2ad29     nt!KeBugCheckEx+0x107
+1d fffff802`477f3d30 fffff802`44a2543d     nt!KiBugCheckDispatch+0x69
+1e fffff802`477f3e70 fffff802`4482dcce     nt!KiDoubleFaultAbort+0x2bd
+1f ffffe68d`43ee8000 fffff802`4482d331     nt!RtlpHpLfhSlotAllocate+0x1e
+20 ffffe68d`43ee8040 fffff802`4482d04f     nt!ExAllocateHeapPool+0x2b1
+21 ffffe68d`43ee8180 fffff802`448483a6     nt!ExpAllocatePoolWithTagFromNode+0x5f
+22 ffffe68d`43ee81d0 fffff802`44942d79     nt!MiAllocatePool+0x86
+23 ffffe68d`43ee8220 fffff802`4484d13a     nt!MiAllocateInPageSupportBlock+0x2d
+24 ffffe68d`43ee8250 fffff802`4484d024     nt!MiGetInPageSupportBlock+0x9a
+25 ffffe68d`43ee8280 fffff802`44855291     nt!MiAllocateInPageSupport+0x54
+26 ffffe68d`43ee82b0 fffff802`4481cd74     nt!MiResolvePageFileFault+0x2f9
+27 ffffe68d`43ee83e0 fffff802`4481cb6b     nt!MiIssueFlowThroughFault+0x12c
+28 ffffe68d`43ee8410 fffff802`44893356     nt!MiHandleCollidedFault+0xc3
+29 ffffe68d`43ee8460 fffff802`4488b61e     nt!MiResolveTransitionFault+0x3e6
+2a ffffe68d`43ee8520 fffff802`44889539     nt!MiDispatchFault+0x3fe
+2b ffffe68d`43ee8660 fffff802`44a267d8     nt!MmAccessFault+0x189
+2c ffffe68d`43ee8800 fffff802`4687eeb0     nt!KiPageFault+0x358
+2d ffffe68d`43ee8998 fffff802`4618b737     SafeUpload!StageMvpNamespacePre
+2e ffffe68d`43ee89a0 fffff802`4618c89d     SafeUpload!StageDispatchCore+0x197
+2f ffffe68d`43ee8cc0 fffff802`4617c9ad     SafeUpload!StageDispatchEpoch+0x19d
+30 ffffe68d`43ee8d50 fffff802`4437cf66     SafeUpload!SafeUploadStageDispatch+0xcd
+31 ffffe68d`43ee8d90 fffff802`443264cb     FLTMGR!FltvPreOperation+0xe6
+32 ffffe68d`43ee8eb0 fffff802`44325f7a     FLTMGR!FltpPerformPreCallbacksWorker+0x36b
+33 ffffe68d`43ee8fd0 fffff802`44325021     FLTMGR!FltpPassThroughInternal+0xca
+34 ffffe68d`43ee9020 fffff802`44324a2b     FLTMGR!FltpPassThrough+0x541
+35 ffffe68d`43ee90b0 fffff802`4498ad97     FLTMGR!FltpDispatch+0x8b
+36 ffffe68d`43ee9110 fffff802`44fe2f2a     nt!IopfCallDriver+0x53
+37 ffffe68d`43ee9150 fffff802`44a3ba65     nt!IovCallDriver+0x266
+38 ffffe68d`43ee9190 fffff802`44869407     nt!IofCallDriver+0x20f735
+39 ffffe68d`43ee91d0 fffff802`448ebfca     nt!IoPageReadEx+0x1d7
+3a ffffe68d`43ee9240 fffff802`448eb23d     nt!MiIssueHardFaultIo+0xb6
+3b ffffe68d`43ee9290 fffff802`44889818     nt!MiIssueHardFault+0x29d
+3c ffffe68d`43ee93a0 fffff802`44a267d8     nt!MmAccessFault+0x468
+3d ffffe68d`43ee9540 fffff802`4687eeb0     nt!KiPageFault+0x358
+3e ffffe68d`43ee96d8 fffff802`4618b737     SafeUpload!StageMvpNamespacePre
+3f ffffe68d`43ee96e0 fffff802`4618c89d     SafeUpload!StageDispatchCore+0x197
+40 ffffe68d`43ee9a00 fffff802`4617c9ad     SafeUpload!StageDispatchEpoch+0x19d
+41 ffffe68d`43ee9a90 fffff802`4437cf66     SafeUpload!SafeUploadStageDispatch+0xcd
+42 ffffe68d`43ee9ad0 fffff802`443264cb     FLTMGR!FltvPreOperation+0xe6
+43 ffffe68d`43ee9bf0 fffff802`44325f7a     FLTMGR!FltpPerformPreCallbacksWorker+0x36b
+44 ffffe68d`43ee9d10 fffff802`44325021     FLTMGR!FltpPassThroughInternal+0xca
+45 ffffe68d`43ee9d60 fffff802`44324a2b     FLTMGR!FltpPassThrough+0x541
