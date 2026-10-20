@@ -56,9 +56,10 @@ public partial class App : System.Windows.Application
         _pipe.ConnectionChanged += OnConnectionChanged;
         _pipe.Start();
 
-        // Observa o clipboard e o foco e pergunta ao serviço. Na Fase 1 não
-        // altera nada para o usuário; com a política em "Off" (o padrão) o
-        // serviço responde "limpo" a tudo.
+        // Observa o clipboard e, no modo Block, troca a colagem de dado sensível
+        // num destino de saída por um aviso. Com a política em "Off" (o padrão) o
+        // serviço responde "limpo" a tudo e nada muda para o usuário.
+        _clipboard.PasteBlocked += OnPasteBlocked;
         _clipboard.Start();
 
         _tray.ShowBalloon("SafeUpload", "Painel do agente ativo na bandeja do sistema.");
@@ -117,6 +118,14 @@ public partial class App : System.Windows.Application
                     break;
             }
         });
+    }
+
+    private void OnPasteBlocked(string destination)
+    {
+        // Vem da STA do proxy de clipboard; o balão é da interface.
+        Current.Dispatcher.BeginInvoke(() => _tray?.ShowBalloon(
+            "SafeUpload: colagem bloqueada",
+            $"A cópia contém dado sensível e não foi colada em {destination}."));
     }
 
     private void ShowTransferNotification(TransferNotification transfer)
