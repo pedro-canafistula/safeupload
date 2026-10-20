@@ -169,11 +169,13 @@ internal sealed record ClipboardDocument
 
     // Desligado, mas preenchido: quem abrir o arquivo padrão vê o bloco e
     // o que ligar, em vez de ter de descobrir a chave no código. Os nomes
-    // de executável são exemplos e precisam ser conferidos na máquina.
+    // de executável são exemplos e precisam ser conferidos na máquina; a
+    // comparação é exata. Conferidos no Windows 11: chrome, msedge, ms-teams
+    // e WhatsApp.Root (o WhatsApp para Windows, que não casa com "WhatsApp").
     public static ClipboardDocument Default { get; } = new()
     {
         Mode = nameof(ClipboardMode.Off),
-        EgressDestinations = ["chrome", "msedge", "firefox", "brave", "opera", "WhatsApp", "Telegram", "ms-teams", "slack", "Discord", "OUTLOOK", "thunderbird"],
+        EgressDestinations = ["chrome", "msedge", "firefox", "brave", "opera", "WhatsApp", "WhatsApp.Root", "Telegram", "ms-teams", "slack", "Discord", "OUTLOOK", "thunderbird"],
         ExcludedSources = ["KeePass", "KeePassXC", "1Password", "Bitwarden"],
         MaxTextLength = ClipboardPolicy.DefaultMaxTextLength,
         OversizedTextIsDirty = true
