@@ -173,7 +173,7 @@ $functionNames = @(
     'Test-T5SameWriter', 'Test-T5SameWriterAndEpoch', 'Get-T5TombstonesForPath', 'Test-T5TerminalPrivateVersion',
     'Test-T5DirectEmptyHeldChildTerminal',
     'Get-StableJournalChildren', 'ConvertFrom-ServiceDriverEpoch', 'ConvertFrom-ServiceArchive', 'Read-T5JournalStorage', 'Read-T5StorageFile', 'Sha',
-    'Get-T5JournalLineageErrors', 'Get-T5EmptyProbeOutcome', 'Get-JournalFor'
+    'Get-T5JournalLineageErrors', 'Get-T5EmptyProbeOutcome', 'Get-JournalFor', 'Read-T5CaseInventory'
 )
 $functionAsts = @($coordinatorAst.FindAll({
     param($node)
@@ -197,6 +197,9 @@ Assert-T5 ($null -eq (Get-T5UtcValue '2026-10-11T12:00:00-03:00')) 'a local offs
 Assert-T5 (Test-T5JsonDepthBound '{"x":"{ [ text ] }","nested":{"v":[1,2]}}' 4) 'quoted brackets must not affect JSON depth'
 Assert-T5 (-not (Test-T5JsonDepthBound '{"a":{"b":{"c":{"d":1}}}}' 3)) 'over-depth JSON must be rejected'
 Assert-T5 (-not (Test-T5JsonDepthBound '{"a":1' 8)) 'unbalanced JSON must be rejected'
+$inventory = @(Read-T5CaseInventory (Join-Path $PSScriptRoot 'notepad-cases.json'))
+$inventoryLeaves = @($inventory | Where-Object { $_.Leaf -is [string] -and $_.Kind -is [string] -and $_.Op -is [string] } | ForEach-Object { $_.Leaf } | Sort-Object -Unique)
+Assert-T5 ($inventory.Count -gt 1 -and $inventoryLeaves.Count -eq $inventory.Count) 'the case inventory must load as one object per case with a distinct string leaf'
 
 $tempRoot = Join-Path $env:TEMP ('t5-coordinator-selfcheck-' + [guid]::NewGuid().ToString('N'))
 try {

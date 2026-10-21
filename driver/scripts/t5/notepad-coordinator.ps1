@@ -14,7 +14,12 @@ $ErrorActionPreference = 'Stop'
 $out = 'C:\T5'; $control = Join-Path $out 'control'; $root = 'C:\Protected\t5'
 $journalDir = 'C:\ProgramData\SafeUpload\staging-journal'
 $script:T5JournalEvidenceDirectory = Join-Path $out 'journal-evidence'
-$cases = @([IO.File]::ReadAllText($CasesPath) | ConvertFrom-Json)
+function Read-T5CaseInventory([string]$Path) {
+    # Windows PowerShell 5.1 writes a top-level JSON array as one object; assign it before enumerating (m2t5ord5).
+    $parsed = [IO.File]::ReadAllText($Path) | ConvertFrom-Json
+    @($parsed)
+}
+$cases = @(Read-T5CaseInventory $CasesPath)
 $leaves = @($cases | ForEach-Object { $_.Leaf; @($_.AuxiliaryLeaves) } | Where-Object { $_ } | Sort-Object -Unique)
 $frequency = [Diagnostics.Stopwatch]::Frequency
 $rawContext = $null; $rawBaseline = $null; $script:rawSequence = 0
