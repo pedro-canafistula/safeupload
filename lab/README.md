@@ -18,6 +18,29 @@ qualification rows still run only on `win10-debug3`; promoting an image to a bas
 (see `driver/docs/operations/LAB-WORKFLOW-DESIGN.md`, section 5). The image has no SafeUpload driver, agent, policy or
 test accounts: the row launchers install a matched pair on every disposable run disk.
 
+## Which hosts can use this
+
+The pipeline is built on QEMU/KVM and libvirt, so **the host must be Linux**. The guest is always Windows.
+
+| Colleague's machine | Build the image | Run the VM from a finished image | Run the lab harness (row launchers) |
+|---|---|---|---|
+| Linux with KVM + libvirt | yes (Packer + Ansible) | yes (Terraform) | yes (`driver/scripts/*.sh` need bash, virsh, ssh) |
+| Windows 10/11 | no (Packer's QEMU builder, `xorriso`, libvirt and Ansible's controller are Linux tools) | not with this Terraform; the qcow2 can be converted for another hypervisor, see below | no (the launchers are bash + libvirt) |
+| Windows, with WSL2 + nested virtualization | possible, untested, slow | possible, untested | untested |
+| macOS | not supported (no usable x86 KVM) | not supported | not supported |
+
+Windows colleagues have two realistic routes:
+
+1. **Use a Linux lab host** (a shared machine or a VM): they run Terraform with `libvirt_uri = "qemu+ssh://user@host/system"`
+   from any OS, or just SSH to it. This is the only route that supports the automated rows.
+2. **Local Hyper-V / VirtualBox / VMware dev box** from the finished image: `qemu-img convert -O vhdx` (Hyper-V) or `-O vmdk`.
+   Hyper-V needs a Generation 2 VM with Secure Boot **off** and no TPM; the lab-seed disk becomes a mounted ISO with label `cidata`
+   (see `terraform/main.tf` for the seed's JSON). The image boots from the Windows inbox storage drivers, but this route is
+   **not tested** and gives you a plain test machine, not the row harness. Kernel debugging over the network (KDNET) is the usual
+   way to debug a driver there.
+
+Tell me which of these your colleagues use; a Hyper-V Terraform variant is straightforward to add once the Linux image is proven.
+
 ## What you need
 
 - A Linux host with KVM (`/dev/kvm` access), libvirt, QEMU, `xorriso`, `7z`, ~70 GB free for the build.

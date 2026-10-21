@@ -18,7 +18,7 @@ Each requested stage's `git add`/`git commit` was attempted. The sandbox rejecte
 
 ## New cases and expected outcomes
 
-Sources: [T5-DELETES](../../T5-DELETES.md), especially sections 1 invariant 4, 2, 4 and 8; [decided unbound D1–D6](../../T5-UX-NAMESPACE-GAP.md#decided-unbound-design-d1d6).
+Sources: [T5-DELETES](../../docs/design/publication-and-namespace/T5-DELETES.md), especially sections 1 invariant 4, 2, 4 and 8; [decided unbound D1–D6](../../docs/design/publication-and-namespace/T5-UX-NAMESPACE-GAP.md#decided-unbound-design-d1d6).
 
 | Kind / leaf | Required observed outcome | Source |
 |---|---|---|
