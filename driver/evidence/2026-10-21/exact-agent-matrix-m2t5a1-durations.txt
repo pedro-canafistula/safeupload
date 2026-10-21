@@ -1,0 +1,17 @@
+Builder=builder1
+BuilderHost=192.168.122.210
+BuilderComputerName=DESKTOP-O1LP5DG
+ParityCheck=False
+Label=m2t5a1
+LabelKind=gate
+Notice=gate candidate
+TRX leg wall times (Times start/finish):
+feature-debug/user: 1229.462 s
+First leg: feature-debug/user: 1229.462 s
+Tests over 60 s (descending duration):
+759.478 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Ten_thousand_driver_deleted_releases_retire_the_disposal_work_set
+152.710 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.NotificationRecordTests.Two_hours_of_heartbeats_keep_a_small_hash_chained_window_across_restart
+94.265 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.AuditRecentScalingTests.Ten_thousand_repeated_saves_to_eight_names_keep_recent_outcome_work_bounded
+ERROR feature-debug/system: [Errno 2] No such file or directory: '/home/victor/Work/safeupload-staging/output/exact-agent-matrix/m2t5a1/out/feature-debug-results/agent-tests-system.trx'
+ERROR feature-release/user: [Errno 2] No such file or directory: '/home/victor/Work/safeupload-staging/output/exact-agent-matrix/m2t5a1/out/feature-release-results/agent-tests-user.trx'
+ERROR feature-release/system: [Errno 2] No such file or directory: '/home/victor/Work/safeupload-staging/output/exact-agent-matrix/m2t5a1/out/feature-release-results/agent-tests-system.trx'

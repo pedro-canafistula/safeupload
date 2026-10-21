@@ -1,0 +1,20 @@
+﻿LABEL=m2t5a2
+BUILDER=SU-BUILDER2
+SourceCommit=dc16ae12343514ac1f65f50ba800b80836b67578
+ARCHIVE_SHA256=DE83183DC550BB11BEB9AB24E74D354BCBE6E01D589EA5D5F99FA487962C8843
+AgentMatrixProfiles=feature-debug,feature-release
+AgentMatrixTestLegs=4
+Builder=builder2
+BuilderHost=192.168.122.211
+BuilderComputerName=SU-BUILDER2
+ParityCheck=False
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=SU-BUILDER2\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=1 warnings=0 errors=0
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-21T14:07:08.9227044Z

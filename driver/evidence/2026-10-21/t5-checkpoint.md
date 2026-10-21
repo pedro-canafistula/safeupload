@@ -38,6 +38,15 @@ then the 1 s idle interval. Compiled in feature Debug/Release; the new tests (`S
   journal evidence is empty and the forced-order gate cannot complete. Worker `t5/rows` ports the Phase 4 reader contract (`e7a6990a`).
 - The coordinator throws on the first failed case, so the remaining 7 cases never ran. Per-case recording is part of the same work.
 
+## Agent matrices
+
+| Label | Source | Result |
+|---|---|---|
+| `m2t5a1` | `47121503` (merged PR #38 + discard pacing) | **FAIL**, first leg (feature-debug user) 3,103/3,104, zero skipped; remaining legs did not run. Failed: `StagedTerminalArchiveTests.Ten_thousand_terminal_records_leave_constant_hot_work_and_bounded_allocate_seal_cost(sameDestination: True)`, 11,595 ms against the unchanged 1,000 ms bound. The whole leg ran 1,229 s vs 653 s in the last green matrix (`m2t4refund2`) and the same test family 3.4-4.2x slower, while a second matrix (`m2t5a2`) ran on builder2 on the same host. Hypothesis: host contention, not code; not yet shown. Receipt: [summary](exact-agent-matrix-m2t5a1-summary.txt), [durations](exact-agent-matrix-m2t5a1-durations.txt). |
+| `m2t5a2` | `dc16ae12` (+ seed-export guard) | **FAIL**, first leg 3,146/3,148: the same timing bound again (it ran beside `m2t5a1`) and `StagedHandbackTests.Blocked_same_name_resave_after_retirement_is_ordinary_and_inspected(blockAgain: True)` (see `m2t5a3`). |
+| `m2t5a3` | `d157ba3f` (final agent tree, owner option A) | **FAIL**, first leg 3,148/3,149 in 827 s (no concurrent matrix): the timing bound passed alone, which supports contention as the cause of the two earlier timing failures. The one failure is `Blocked_same_name_resave_after_retirement_is_ordinary_and_inspected(blockAgain: True)`: the seed-export guard evaluates read authority of a fixture requestor (fixed PID/creation time, not a live process) as Unproven, so the second save's hand-back is withheld. A test fixture issue, not a product regression: the test now injects an `Allowed` evaluator like the other seed tests; the Denied/Unproven outcomes stay covered in `StagedUnboundSeedExportTests`. |
+| `m2t5a4` | the commit with that test fix | pending: must run alone, all four legs. |
+
 ## Next
 
 - [ ] Seed-export guard (worker `t5/seed-export`) and the row harness (worker `t5/rows`) land; merged tree builds the four-leg agent matrix.

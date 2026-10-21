@@ -244,7 +244,11 @@ public sealed partial class StagedHandbackTests : IDisposable
         var copier = new RecordingHandbackCopier(Path.Combine(_workspace.Root, "profile"));
         var publisher = Publisher(journal, policy, new(), copier);
         Assert.Equal(StagedTransferOutcome.Blocked, await publisher.PublishAsync(first, default));
-        var allocator = new StagedTransferAllocator(_stagingRoot, journal);
+        // The second save seeds the public bytes (disposition 1). This fixture's requestor (fixed PID and creation time) is not a
+        // live process, so the real evaluator cannot prove read authority; state that this writer can read the file, as the
+        // scenario intends. The unreadable-seed outcomes are covered in StagedUnboundSeedExportTests.
+        var allocator = new StagedTransferAllocator(_stagingRoot, journal,
+            seedReadAuthority: new SeedReadEvaluator(StagedSeedAuthority.Allowed));
         await Assert.ThrowsAsync<IOException>(() => allocator.AllocateAsync(first.DestinationPath, first.Destination,
             first.ProcessName, first.ProcessId, first.SessionId, 1, first, default,
             requestorSid: first.RequestorSid, requestorProcessCreationTime: 123456));
