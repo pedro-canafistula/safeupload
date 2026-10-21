@@ -21,7 +21,7 @@ namespace SafeUpload.Agent.Core.Application;
 /// </summary>
 public interface IAuditSink
 {
-    /// <summary>Registra um evento. Nunca deve lançar no caminho da decisão.</summary>
+    /// <summary>Persiste o evento; uma falha não pode ser tratada como confirmação de auditoria.</summary>
     Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken);
 
     /// <summary>
@@ -36,6 +36,10 @@ public interface IAuditSink
     /// <param name="justification">O motivo, como o usuário escreveu.</param>
     Task RecordOverrideAsync(string eventId, string justification, CancellationToken cancellationToken);
 
+    /// <summary>Registra a identidade obtida pelo serviço a partir da conexão autenticada.</summary>
+    Task RecordOverrideAsync(AuditOverride record, CancellationToken cancellationToken)
+        => RecordOverrideAsync(record.EventId.ToString(), record.Justification, cancellationToken);
+
     /// <summary>
     /// Últimos eventos registrados, do mais recente para o mais antigo. É o que
     /// alimenta a grade do simulador.
@@ -43,14 +47,13 @@ public interface IAuditSink
     Task<IReadOnlyList<AuditEvent>> ReadRecentAsync(int maxEvents, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Eventos ainda não entregues ao servidor central. Existe para o
-    /// despachante da HU-10, que ainda não foi implementado.
+    /// Eventos ainda não entregues ao servidor central, consumidos pelo despachante.
     /// </summary>
     Task<IReadOnlyList<AuditEvent>> ReadPendingAsync(int maxEvents, CancellationToken cancellationToken);
 
     /// <summary>
     /// Marca como entregues os eventos que o servidor confirmou. Contraparte de
-    /// ReadPendingAsync, também à espera da HU-10.
+    /// ReadPendingAsync.
     /// </summary>
     Task MarkDispatchedAsync(IReadOnlyCollection<Guid> eventIds, CancellationToken cancellationToken);
 }

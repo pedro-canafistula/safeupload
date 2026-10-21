@@ -35,7 +35,7 @@ public sealed partial class StagedTransferPublisher
                 throw new IOException("No exact in-process publication receipt is available.");
         TransferJournalEntry released = await _journal.CompleteConfirmedPublicationAsync(receipt.Intent, token)
             .ConfigureAwait(false);
-        await _inspection.RecordTransferOutcomeAsync(receipt.Operation, receipt.Inspection,
+        await RecordTransferAuditAsync(released.Transfer, receipt.Operation, receipt.Inspection,
             Verdict.Approved, receipt.Justified ? "justified_version" : null,
             token, id, released.Sha256Hex).ConfigureAwait(false);
         PublishTransferNotification(released.Transfer, new TransferNotification(id,

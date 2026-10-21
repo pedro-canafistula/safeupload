@@ -37,7 +37,10 @@ public sealed record MonitoredScopes(
 /// <param name="MonitoredScopes">Destinos e extensões vigiados.</param>
 /// <param name="MaxFileSizeMb">Acima disto não se inspeciona (RN-013).</param>
 /// <param name="InspectionTimeoutSeconds">Tempo máximo de inspeção (RN-012).</param>
-/// <param name="FailOpen">Se falha libera a operação. No projeto isto é sempre verdadeiro.</param>
+/// <param name="FailOpen">
+/// Campo de compatibilidade incluído no vínculo de conteúdo da política.
+/// InspectionService escolhe as falhas pelo modo staged ou legado, não por este campo.
+/// </param>
 /// <param name="ExcludedProcesses">Processos nunca interceptados (RN-014).</param>
 /// <param name="AuditOnly">
 /// Avalia e registra, mas não nega nada. É como se implanta um DLP sem ser
@@ -86,6 +89,11 @@ public sealed record Policy(
     /// <exception cref="InvalidPolicyException">Se a política não puder ser aplicada.</exception>
     public void EnsureValid()
     {
+        if (Version <= 0)
+            throw new InvalidPolicyException("version precisa ser maior que zero.");
+        if (ActiveCategories.Any(category => !Enum.IsDefined(category)))
+            throw new InvalidPolicyException("A política contém uma categoria não reconhecida.");
+
         if (ActiveCategories.Count == 0)
         {
             throw new InvalidPolicyException(

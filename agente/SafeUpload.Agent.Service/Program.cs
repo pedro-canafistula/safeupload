@@ -9,6 +9,7 @@ using SafeUpload.Agent.Core.Infrastructure.Extraction;
 using System.Runtime.Versioning;
 using System.Security.Principal;
 using SafeUpload.Agent.Service.Diagnostics;
+using SafeUpload.Agent.Service.Policies;
 
 namespace SafeUpload.Agent.Service;
 
@@ -26,9 +27,6 @@ public static class Program
     /// <summary>Nome do serviço no gerenciador de serviços do Windows.</summary>
     public const string ServiceName = "SafeUploadAgent";
 
-    /// <summary>Cliente nomeado usado para falar com o Centro de Administração.</summary>
-    private const string HttpClientName = "CentroAdministracao";
-
     /// <summary>Monta e executa o host.</summary>
     public static async Task Main(string[] args)
     {
@@ -40,7 +38,7 @@ public static class Program
         }
         if (args.Contains("--seed-boot-policy", StringComparer.OrdinalIgnoreCase))
         {
-            if (args.Length != 1)
+            if (!TryGetBootPolicyConfigurationArguments(args, out var configurationArguments))
             {
                 Environment.ExitCode = FailSeedModeUsage();
             }
@@ -51,7 +49,7 @@ public static class Program
             }
             else
             {
-                Environment.ExitCode = await SeedBootPolicyAsync().ConfigureAwait(false);
+                Environment.ExitCode = await SeedBootPolicyAsync(configurationArguments).ConfigureAwait(false);
             }
             return;
         }
@@ -83,7 +81,14 @@ public static class Program
             return;
         }
 
-        var builder = Host.CreateApplicationBuilder(args);
+        var builder = CreateConfiguredServiceBuilder(args);
+        await builder.Build().RunAsync();
+    }
+
+    // Building the registration graph does not start the host, parser or interceptors.
+    internal static HostApplicationBuilder CreateConfiguredServiceBuilder(string[] args)
+    {
+        var builder = CreateServiceBuilder(args);
 
         builder.Services.AddWindowsService(options => options.ServiceName = ServiceName);
 
@@ -95,7 +100,11 @@ public static class Program
         // Administração configurado: é ela que deixa o endpoint continuar
         // registrando com a rede fora do ar. O envio ao painel é uma etapa
         // posterior, feita pelo HttpAgentDispatcher, e não um substituto.
-        builder.Services.AddSingleton<IAuditSink, LocalQueueAuditSink>();
+        builder.Services.AddSingleton<SafeUpload.Agent.Service.Audit.AuditWriteFailureDiagnostics>();
+        builder.Services.AddSingleton<IAuditWriteFailureObserver>(services =>
+            services.GetRequiredService<SafeUpload.Agent.Service.Audit.AuditWriteFailureDiagnostics>());
+        builder.Services.AddSingleton<IAuditSink>(services => new LocalQueueAuditSink(AgentPaths.QueueFile,
+            services.GetRequiredService<IAuditWriteFailureObserver>()));
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
         builder.Services.AddSingleton<InspectionService>(services =>
@@ -146,51 +155,7 @@ public static class Program
         // maquina que ainda nao aponta para nenhum painel precisa proteger de
         // forma autonoma, e nao ficar esperando um servidor que talvez nunca
         // seja configurado.
-        string adminBaseUrl = builder.Configuration["CentroAdministracao:BaseUrl"] ?? string.Empty;
-        string endpointId = Environment.MachineName;
-
-        if (string.IsNullOrWhiteSpace(adminBaseUrl))
-        {
-            builder.Services.AddSingleton<IPolicyStore, LocalPolicyStore>();
-        }
-        else
-        {
-            var adminUri = new Uri(adminBaseUrl.EndsWith('/') ? adminBaseUrl : adminBaseUrl + "/");
-
-            int timeoutSeconds =
-                int.TryParse(builder.Configuration["CentroAdministracao:TimeoutSeconds"], out int parsedTimeout)
-                    ? parsedTimeout
-                    : 5;
-
-            int intervalSeconds =
-                int.TryParse(builder.Configuration["CentroAdministracao:DispatchIntervalSeconds"], out int parsedInterval)
-                    ? parsedInterval
-                    : 30;
-
-            // Timeout curto de proposito: a politica e lida no caminho da
-            // decisao, e um painel lento nao pode virar uma inspecao lenta. Se
-            // estourar, a HttpPolicyStore cai no padrao embutido.
-            builder.Services
-                .AddHttpClient(HttpClientName, client =>
-                {
-                    client.BaseAddress = adminUri;
-                    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
-                });
-
-            builder.Services.AddSingleton<IPolicyStore>(provider =>
-                new HttpPolicyStore(
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
-                    endpointId));
-
-            builder.Services.AddHostedService(provider =>
-                new HttpAgentDispatcher(
-                    provider.GetRequiredService<IAuditSink>(),
-                    provider.GetRequiredService<IPolicyStore>(),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
-                    endpointId,
-                    TimeSpan.FromSeconds(intervalSeconds),
-                    provider.GetRequiredService<ILogger<HttpAgentDispatcher>>()));
-        }
+        builder.Services.AddAgentPolicies(builder.Configuration, Environment.MachineName);
 
         // O gatilho. A partir daqui a protecao existe sem interface nenhuma
         // aberta, que e o ponto de separar os dois processos.
@@ -229,6 +194,8 @@ public static class Program
 
         // A entrega das notificacoes aos aplicativos conectados.
         builder.Services.AddHostedService<NotificationPipeServer>();
+        builder.Services.AddHostedService<PolicyIntegrationStatusPublisher>();
+        builder.Services.AddHostedService<SafeUpload.Agent.Service.Audit.AuditWriteStatusPublisher>();
 
         // O caminho de volta, e o unico: recebe justificativas do aplicativo.
         // Nao altera veredito - submete um motivo para um bloqueio que este
@@ -248,17 +215,28 @@ public static class Program
             builder.Services.AddHostedService<TlsInspectionService>();
         }
 
-        await builder.Build().RunAsync();
+        return builder;
+    }
+
+    internal static HostApplicationBuilder CreateServiceBuilder(string[] args) =>
+        Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        { Args = args, ContentRootPath = AppContext.BaseDirectory });
+
+    internal static HostApplicationBuilder CreateBootPolicyBuilder(string[] configurationArguments)
+    {
+        var builder = CreateServiceBuilder(configurationArguments);
+        builder.Services.AddAgentPolicies(builder.Configuration, Environment.MachineName, includeHostedServices: false);
+        return builder;
     }
 
     private static int FailSeedModeUsage()
     {
-        Console.Error.WriteLine("--seed-boot-policy must be the only argument.");
+        Console.Error.WriteLine("Use --seed-boot-policy followed only by configuration switches (--key=value or --key value).");
         return 2;
     }
 
     [SupportedOSPlatform("windows")]
-    private static async Task<int> SeedBootPolicyAsync()
+    private static async Task<int> SeedBootPolicyAsync(string[] configurationArguments)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -275,8 +253,10 @@ public static class Program
 
         try
         {
+            var builder = CreateBootPolicyBuilder(configurationArguments);
+            using var provider = builder.Services.BuildServiceProvider();
             var writer = new BootPolicyRegistryWriter(new WindowsBootPolicyRegistryBackend());
-            await BootPolicySeeder.SeedAsync(new LocalPolicyStore(), writer,
+            await BootPolicySeeder.SeedAsync(provider.GetRequiredService<IPolicyStore>(), writer,
                 CancellationToken.None).ConfigureAwait(false);
             Console.WriteLine("BootPolicySeeded=True");
             return 0;
@@ -288,4 +268,28 @@ public static class Program
         }
     }
 
+    // The seed accepts configuration only; it never starts maintenance commands.
+    internal static bool TryGetBootPolicyConfigurationArguments(string[] args, out string[] configurationArguments)
+    {
+        configurationArguments = [];
+        if (args.Length == 0 || !string.Equals(args[0], "--seed-boot-policy", StringComparison.OrdinalIgnoreCase))
+            return false;
+        for (int index = 1; index < args.Length; index++)
+        {
+            string option = args[index];
+            if (!option.StartsWith("--", StringComparison.Ordinal) || option.Length <= 2)
+                return false;
+            string key = option[2..].Split('=', 2)[0];
+            if (string.Equals(key, "seed-boot-policy", StringComparison.OrdinalIgnoreCase)
+                || !System.Text.RegularExpressions.Regex.IsMatch(key, "^[A-Za-z][A-Za-z0-9:_-]*$"))
+                return false;
+            if (!option.Contains('='))
+            {
+                if (++index >= args.Length || args[index].StartsWith("--", StringComparison.Ordinal))
+                    return false;
+            }
+        }
+        configurationArguments = args[1..];
+        return true;
+    }
 }

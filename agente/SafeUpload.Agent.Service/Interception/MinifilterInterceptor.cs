@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Service.Policies;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Minifilter;
@@ -53,6 +54,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     private readonly DriverDiagnosticsSource _diagnostics;
     private readonly StagedJustifications _stagedJustifications;
     private readonly ILogger<MinifilterInterceptor> _logger;
+    private readonly PolicyIntegrationDiagnostics? _policyDiagnostics;
     private readonly bool _stagingEnabled;
     private readonly SemaphoreSlim _bootPolicyGate = new(1, 1);
     private StagedTransferAllocator? _stageAllocator;
@@ -108,6 +110,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
         , AdmissionEvidenceEndpoint admissionEvidence
 #endif
+        , PolicyIntegrationDiagnostics? policyDiagnostics = null
         )
     {
         _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
@@ -119,6 +122,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         _diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
         _stagedJustifications = stagedJustifications ?? throw new ArgumentNullException(nameof(stagedJustifications));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _policyDiagnostics = policyDiagnostics;
         _configuration = configuration;
         _stagingEnabled = configuration.GetValue<bool>("Interception:StagingPrototype");
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
@@ -137,7 +141,11 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         // da máquina enfileira atrás do veredito mais lento. É a limitação 3
         // do DEPLOY.md e continua verdadeira; resolvê-la é um pool sobre a
         // mesma porta, e não cabe junto da troca de gatilho.
-        var thread = new Thread(() => Run(stoppingToken))
+        var thread = new Thread(() =>
+        {
+            try { Run(stoppingToken); }
+            finally { _policyDiagnostics?.RecordDriverDisconnected(); }
+        })
         {
             IsBackground = true,
             Name = "SafeUpload.Minifilter",
@@ -1800,11 +1808,12 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 #endif
         try
         {
-            Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var candidate = DriverPolicyLoader.LoadAsync(_policyStore, CancellationToken.None).GetAwaiter().GetResult();
+            Policy policy = candidate.Policy;
             MonitoredScopes scopes = policy.MonitoredScopes;
             _budget = policy.InspectionTimeout;
 
-            SafeUploadPolicyMessage driverPolicy = MinifilterPolicyFactory.Build(policy);
+            SafeUploadPolicyMessage driverPolicy = candidate.Message;
             string[] candidateCoveragePrefixes = AdmissionCoverageEvaluator.GetExpectedPrefixes(driverPolicy);
             uint candidateCoveragePolicyFlags = driverPolicy.Flags;
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
@@ -1829,6 +1838,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             _activeCategories = policy.ActiveCategories.Count;
             _acceptedCoveragePrefixes = candidateCoveragePrefixes;
             _acceptedCoveragePolicyFlags = candidateCoveragePolicyFlags;
+            _policyDiagnostics?.RecordDriverScopeAccepted(policy);
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
             _acceptedPolicyFingerprint = candidatePolicyFingerprint;
 #endif
@@ -1859,6 +1869,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Falha ao empurrar a politica. O driver ficaria carregado sem inspecionar nada.");
+            _policyDiagnostics?.RecordApplyFailure(ex);
             return false;
         }
     }

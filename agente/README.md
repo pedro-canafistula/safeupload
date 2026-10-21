@@ -1,5 +1,8 @@
 # SafeUpload — Agente Desktop
 
+Veja [Integrações do agente na M2](docs/INTEGRACAO-M2.md) para escopo da entrega,
+fluxo Git, validação e dependências com backend, painel e driver.
+
 Componente instalado no endpoint do usuário: intercepta operações de
 arquivo, decide localmente (CPF, CNPJ, cartão, senha, segredos), e — quando
 configurado — sincroniza política e auditoria com o Centro de
@@ -8,6 +11,15 @@ Administração web.
 ---
 
 ## Visão geral
+
+O instalador encaminha os mesmos argumentos de configuração ao seed da política
+de boot e ao serviço. Com os argumentos padrão, `AdminBaseUrl` vazio seleciona
+explicitamente a política local; uma URL informada seleciona a origem remota em
+ambas as fases. `ServiceArguments` personalizados substituem o conjunto padrão
+inteiro e são usados nas duas fases; se omitirem a origem, ambas herdam sua
+configuração. O seed continua exigindo SYSTEM e não inicia o host ou interceptores.
+A configuração compartilhada não congela a revisão remota entre as fases.
+A instalação e o autostart da bandeja da M2 permanecem no mesmo fluxo.
 
 O agente é composto por **4 projetos .NET** mais um **driver de kernel
 opcional**:
@@ -151,6 +163,10 @@ A fila local de auditoria (`queue.jsonl`) ainda não é protegida por ACL.
 
 **Limitações do instalador encontradas no teste manual de 08/10/2026** (ver
 [`../driver/evidence/2026-10-08/manual-test-win10-debug/README.md`](../driver/evidence/2026-10-08/manual-test-win10-debug/README.md)):
+
+Registro histórico: os argumentos staged e o reconhecimento da saída SID foram
+corrigidos no script atual. O encaminhamento de configuração ao seed também foi
+validado localmente; a execução instalada no alvo homologado continua pendente.
 o script registra o serviço só com o caminho do executável, mas o protótipo de escrita em estágio precisa de
 `--Interception:Mode=Minifilter --Interception:StagingPrototype=true` na linha de comando do serviço (é assim que a bateria de
 testes o inicia). Sem esses argumentos o agente fica fora do modo em estágio (`admissionCoverage` `NotAvailable`) e o driver recusa
@@ -159,7 +175,7 @@ toda gravação de usuário comum na pasta protegida. A última verificação do
 
 ## Integração com o Centro de Administração (HU-10)
 
-Por padrão, o agente é **autônomo**: lê a política de
+Com `CentroAdministracao:BaseUrl` vazio, o agente é **autônomo**: lê a política de
 `%ProgramData%\SafeUpload\policy.json` e só acumula auditoria em
 `queue.jsonl`, localmente. Configurando uma URL em
 `SafeUpload.Agent.Service/appsettings.json`:
@@ -176,27 +192,68 @@ o agente passa a:
 
 - **Buscar a política do painel** (`GET /agent/policy`) em vez do arquivo
   local — mesmo formato JSON nos dois casos, então trocar a fonte não muda
-  nada no motor de inspeção. Se o painel estiver fora do ar, cai
-  automaticamente na política padrão embutida (fail-open, RN-013) — nunca
-  fica sem proteção por causa de uma falha de rede.
+  o contrato do documento. O provedor mantém cache persistido protegido para
+  consumidores legados. Decisões staged, seed e carga inicial do driver exigem
+  a política atual pela leitura estrita; falha de consulta não autoriza por cache.
 - **Mandar heartbeat periódico** (`POST /agent/heartbeat`) — aparece em
   `/admin/endpoints` no painel.
 - **Entregar os eventos de auditoria pendentes** (`POST /agent/events`) — a
   fila local continua sendo a fonte da verdade; o envio é só uma etapa a
-  mais, nunca bloqueia a decisão.
+  mais. Justificativas também são enviadas; o lote só é marcado como entregue
+  após confirmação compatível do servidor. Falha no heartbeat não impede essa
+  tentativa. A gravação da justificativa precede a publicação ou concessão.
 
 Sem `BaseUrl` configurado, nada disso roda — é o padrão de segurança do
 projeto (ver `Interception:Mode` acima, mesma filosofia).
 
-**Limitações conhecidas desta integração**, deliberadas: sem cache de
-política em disco (cada consulta é uma chamada de rede), sem autenticação
-entre agente e servidor, sem despacho de justificativas/overrides (só
-eventos de bloqueio/aprovação), identidade do endpoint é o hostname
-(`Environment.MachineName`, não um id estável).
+**Diagnóstico local de políticas:** com logs de nível Information habilitados,
+procure `PolicyIntegration`. `SnapshotVersion`/`SnapshotSource` identificam a
+política disponível para consumidores legados (remote, memory, disk ou default).
+`StrictVersion`/`StrictFingerprint` registram a última leitura estrita bem-sucedida;
+`StrictReadError` informa o tipo da falha posterior, sem copiar URL ou mensagem da
+exceção. `LastAcceptedVersion`/`LastAcceptedFingerprint` são o histórico da política
+cujo escopo foi aceito após as operações de porta e BootPolicy retornarem.
+`DriverScopeRecorded` perde validade na falha de aplicação ou saída da conexão;
+`ApplyError` registra o tipo da falha de aplicação. Nenhum desses dados comprova
+readiness/proteção ativa. Uma nova política recebida não altera esse histórico de
+aceite. Compare fingerprints apenas de consumos equivalentes: defaults omitidos
+podem diferir entre snapshot legado e leitura estrita. Hash ausente é diagnóstico
+indisponível, nunca equivalência. Estado é somente em memória, separado do
+heartbeat e protocolo do driver; observações idênticas não repetem o log.
+A bandeja recebe um resumo opcional pela mensagem de status local existente,
+sem hashes ou exceções internas. A seção Sincronização da política mostra a
+política disponível, a última consulta bem-sucedida e o último aceite de escopo.
+Um publicador separado verifica mudanças a cada dois segundos, preservando a
+gravação durável de notificações antes da entrega. Versões antigas continuam
+sem o campo opcional; a tela exibe diagnóstico indisponível. Perder a conexão
+com o serviço limpa o resumo exibido. Nada disso altera os campos de proteção
+ou introduz atualização dinâmica do driver.
+
+**Limitações conhecidas desta integração:** sem autenticação entre agente e
+servidor; identidade padrão do endpoint é o hostname (`Environment.MachineName`,
+não um id estável). As justificativas do serviço preservam o SID obtido da conexão;
+a obtenção dessa identidade no pipe real ainda depende do ensaio instalado.
+Heartbeat/refresh não comprovam aplicação dinâmica no kernel. Recibo HTTP não
+substitui a validação de durabilidade no banco utilizado.
+
+O campo `failOpen` é preservado no documento e no vínculo de conteúdo, mas não
+alterna sozinho os modos do motor: staged bloqueia inspeção incompleta; legado
+mantém `AllowedWithoutInspection` nas falhas previstas. Não alterar somente esse
+campo para anunciar mudança do comportamento legado.
 
 ---
 
 ## Estrutura
+
+`SafeUpload.Agent.ContractSmoke --policy-publication-contract <pasta-temporaria> <URL-raiz> <endpoint-sintetico> <revisao> <categorias-CSV>`
+confere as revisões 1 a 3 de um Java local. Use um endpoint exclusivo com prefixo
+`M2-POLICY-ANGULAR-` e preserve a mesma pasta/cache entre as revisões. A ferramenta
+lê a política, executa inspeção staged em amostra sintética e envia heartbeat;
+ela não publica a política administrativa nem transfere bytes pelo driver.
+Exige USB/rede desligados e clipboard Off. Para repetir, use pasta e banco novos;
+os recibos anteriores não são sobrescritos. O teste `PolicyFailureModeContractTests`
+confere que tamanho excessivo, formato sem extrator e erro de parse bloqueiam no
+staged; o modo legado mantém seu resultado atual, independentemente de `failOpen`.
 
 ```
 agente/
