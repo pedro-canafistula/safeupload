@@ -1,0 +1,314 @@
+Offline triage checks — Linux PowerShell 7.4.2 and Python 3.14.
+No Windows qualification or lab calls.
+First run used XDG_CACHE_HOME/XDG_CONFIG_HOME under /tmp, TERM=dumb, NO_COLOR=1.
+
+=== StagedInvariantBlockWindow.SelfCheck.ps1; exit=0 ===
+BlockWindowSelfCheck=PASS;Controls=112;Qualification=False
+
+=== StagedInvariantCoreVariants.SelfCheck.ps1; exit=1 ===
+Exception: /home/victor/Work/safeupload-t4cells/driver/scripts/StagedInvariantCoreVariants.SelfCheck.ps1:14
+Line |
+  14 |  … $Label){if(-not $Good){throw ('Core control failed: '+$Label)};$scrip …
+     |                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Core control failed: one target exact final names
+
+=== StagedInvariantDeniedRenameLatency.SelfCheck.ps1; exit=0 ===
+DeniedRenameLatencyPureControl=7;PASS;NativeControl=NotRun;Qualification=False
+
+=== StagedInvariantJournalStorage.SelfCheck.ps1; exit=0 ===
+JournalStorageSelfCheck=PASS;Checks=36;Qualification=False
+
+=== StagedInvariantLatency.SelfCheck.ps1; exit=0 ===
+NativeLatencyAuthoringControl=PASS;C04FunctionalPath=True;CSharpCompiled=True;NativeControl=NotRun;Qualification=False
+
+=== StagedInvariantLatencyLite.SelfCheck.ps1; exit=0 ===
+LatencyLitePureSelfCheck=68;PASS;WindowsCoordinatorControl=NotRun;Qualification=False
+
+=== StagedInvariantLiveTaint.SelfCheck.ps1; exit=0 ===
+LiveTaintSelfCheck=PASS;Checks=18
+
+=== StagedInvariantProofAdapters.SelfCheck.ps1; exit=0 ===
+ProofAdapterEvaluationChecks=452;PASS (host-safe synthetic evaluation, collector mocks and identity publication only)
+
+=== StagedInvariantR03.SelfCheck.ps1; exit=0 ===
+StagedInvariantR03SelfCheck: checks=32; PASS
+
+=== StagedInvariantRestartJustification.SelfCheck.ps1; exit=0 ===
+StagedInvariantRestartJustificationControls=112
+SelfCheck=PASS
+
+=== StagedInvariantRowsA.SelfCheck.ps1; exit=1 ===
+Write-Error: /home/victor/Work/safeupload-t4cells/driver/scripts/StagedInvariantRowsA.SelfCheck.ps1:239
+Line |
+ 239 |  }catch{Write-Error $_;exit 1}
+     |         ~~~~~~~~~~~~~~
+     | Cannot find drive. A drive with the name 'C' does not exist.
+
+=== StagedInvariantT4DeleteAttribution.SelfCheck.ps1; exit=0 ===
+T4DeleteAttributionSelfCheck=PASS;Controls=138;SyntheticKd=True;RetainedKd=m2t4delattr1,m2t4delattr2;Qualification=False
+
+=== StagedInvariantT4Holders.SelfCheck.ps1; exit=1 ===
+Join-Path: /home/victor/Work/safeupload-t4cells/driver/scripts/StagedInvariantT4Holders.SelfCheck.ps1:14
+Line |
+  14 |  $held = Join-Path $env:TEMP ('t4-holders-' + [guid]::NewGuid().ToStri …
+     |                    ~~~~~~~~~
+     | Cannot bind argument to parameter 'Path' because it is null.
+
+=== StagedInvariantT4Memory.SelfCheck.ps1; exit=1 ===
+New-T4MemoryCorpus: /home/victor/Work/safeupload-t4cells/driver/scripts/StagedInvariantT4Memory.SelfCheck.ps1:5
+Line |
+   5 |      $corpus=New-T4MemoryCorpus $root 4
+     |              ~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Exception calling "OpenAndClose" with "1" argument(s): "Value cannot be
+     | null. (Parameter 'path1')"
+
+=== StagedInvariantT4Purge.SelfCheck.ps1; exit=0 ===
+T4PurgeSignatureSelfCheck=PASS;NativeCalls=False
+
+=== StagedInvariantT4Runtime.SelfCheck.ps1; exit=1 ===
+Join-Path: /home/victor/Work/safeupload-t4cells/driver/scripts/StagedInvariantT4Runtime.SelfCheck.ps1:37
+Line |
+  37 |  $scratch = Join-Path $env:TEMP ('SafeUpload-T4RuntimeSelfCheck-' + [g …
+     |                       ~~~~~~~~~
+     | Cannot bind argument to parameter 'Path' because it is null.
+
+=== StagedInvariantT4Verifier.SelfCheck.ps1; exit=0 ===
+T4VerifierSelfCheck=PASS;Controls=11;Qualification=False
+
+=== StagedInvariantT4Volume.SelfCheck.ps1; exit=1 ===
+Join-Path: /home/victor/Work/safeupload-t4cells/driver/scripts/StagedInvariantT4Volume.SelfCheck.ps1:53
+Line |
+  53 |  $root = Join-Path $env:TEMP ('T4VolumeSelfCheck-' + [guid]::NewGuid() …
+     |                    ~~~~~~~~~
+     | Cannot bind argument to parameter 'Path' because it is null.
+
+=== StagedInvariantT5Security.SelfCheck.ps1; exit=1 ===
+Add-Type: /home/victor/Work/safeupload-t4cells/driver/scripts/t5/writer-permission-native-control.ps1:7
+Line |
+   7 |  Add-Type -TypeDefinition @'
+     |  ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | (25,17): error CS0246: The type or namespace name
+     | 'WindowsImpersonationContext' could not be found (are you missing a
+     | using directive or an assembly reference?)   IntPtr token;
+     | WindowsImpersonationContext context;                 ^
+
+=== StagedInvariantTraceWindow.SelfCheck.ps1; exit=0 ===
+TraceWindowSelfCheck=PASS;Controls=20;Qualification=False
+
+=== reopen-after-publication.SelfCheck.ps1; exit=1 ===
+Exception: /home/victor/Work/safeupload-t4cells/driver/scripts/t4/reopen-after-publication.SelfCheck.ps1:3
+Line |
+   3 |  … le.PSVersion.Minor -ne 1) { throw 'Requires Windows PowerShell 5.1' }
+     |                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Requires Windows PowerShell 5.1
+
+=== t4-verdict-selfcheck.py; exit=0 ===
+m2t4clean256b1: T4PoolEndpoint PASS driver nonpaged bytes (Verifier pool tracking) from cycle 64: 6361800; after idle 6380680; limit 6427336
+m2t4clean256b1: T4PoolSlope INFO 461.600 B/cycle (smoke row; judged only on the 10,000-cycle row)
+m2t4clean256b1: T4RegistryBounded PASS 8 samples within registry capacity; idle capacity failures 0; invalid samples []
+m2t4boot10k1011a2: T4PoolFlat PASS driver nonpaged bytes (Verifier pool tracking) from cycle 1000: 6401512 -> 6414600 at cycle 10000, after idle 6404632; slope 1.501 B/cycle (limit 4); peak 6727928
+m2t4boot10k1011a2: T4ContextsReleased FAIL SUfl live start 343, purged None; limit start + 2048; released None of idle growth since start 14553; purge NTSTATUS FAIL []; purged sample missing
+T4VerdictExitStatusControl=PASS; contexts-only failure returns 1 despite embedded PASS
+T4HandbackDiagnosticControl=PASS; labelled non-qualifying, release reported, gate lines unchanged
+T4DeleteAttributionControl=PASS; corpus/combined modes non-qualifying, missing/failed/partially successful KD remains INFO, gate lines and exit unchanged
+T4VolumeDiscriminatorControl=PASS; three classifications and missing result remain INFO, all existing lines and exit unchanged
+purge synthetic replay: T4PurgeAttributionMode INFO purge attribution diagnostic; non-qualifying
+purge synthetic replay: T4PurgeAttribution INFO exit creates 8258, top SafeUpload.Agent.Service.exe[42]=8257, System[4]=1, pass.exe[90]=0; idle creates 17528, top SafeUpload.Agent.Service.exe[42]=17527, System[4]=1, pass.exe[90]=0; purge creates 100, top SafeUpload.Agent.Service.exe[42]=99, System[4]=1, pass.exe[90]=0; SUfl live purged 2391, purged-repeat 2391, purged-agent-stopped 1191; agent stopped True, restart True, readiness True
+T4PurgeAttributionControl=PASS; present/partial/error/missing results INFO only, all existing lines and exit unchanged
+T4DeletePreflightControl=PASS; 9 offline option/dependency controls, no VM contact
+T4VolumePreflightControl=PASS; 10 offline option/dependency controls, no VM contact
+T4PurgePreflightControl=PASS; 9 offline option/combination controls, no VM contact
+T4VerdictSelfCheck=PASS; retained replay and context/registry refusal controls; Qualification=False
+
+=== Invoke-ExactAgentMatrixBuild.SelfCheck.py; exit=0 ===
+test_app_publish_must_pass_and_its_executable_hash_must_match_for_every_profile (__main__.RequiredV20MatrixControls.test_app_publish_must_pass_and_its_executable_hash_must_match_for_every_profile) ... ok
+test_complete_synthetic_matrix_binds_every_v20_case_and_result_id (__main__.RequiredV20MatrixControls.test_complete_synthetic_matrix_binds_every_v20_case_and_result_id) ... ok
+test_each_exact_epoch_theory_case_is_required_despite_consistent_discovery_and_trx_omission (__main__.RequiredV20MatrixControls.test_each_exact_epoch_theory_case_is_required_despite_consistent_discovery_and_trx_omission) ... ok
+test_each_new_required_case_is_rejected_when_consistently_omitted (__main__.RequiredV20MatrixControls.test_each_new_required_case_is_rejected_when_consistently_omitted) ... ok
+test_each_new_required_case_rejects_a_consistent_duplicate_display_row (__main__.RequiredV20MatrixControls.test_each_new_required_case_rejects_a_consistent_duplicate_display_row) ... ok
+test_each_new_required_case_rejects_a_wrong_public_argument (__main__.RequiredV20MatrixControls.test_each_new_required_case_rejects_a_wrong_public_argument) ... ok
+test_every_feature_requirement_survives (__main__.RequiredV20MatrixControls.test_every_feature_requirement_survives) ... ok
+test_every_v20_method_is_required_in_each_profile_even_when_all_discovered_cases_pass (__main__.RequiredV20MatrixControls.test_every_v20_method_is_required_in_each_profile_even_when_all_discovered_cases_pass) ... ok
+test_feature_guards_and_mutations (__main__.RequiredV20MatrixControls.test_feature_guards_and_mutations) ... ok
+test_skipped_required_case_cannot_pass_any_profile (__main__.RequiredV20MatrixControls.test_skipped_required_case_cannot_pass_any_profile) ... ok
+test_tray_and_installers_are_required_even_with_matching_manifest_and_package_hashes (__main__.RequiredV20MatrixControls.test_tray_and_installers_are_required_even_with_matching_manifest_and_package_hashes) ... ok
+test_wrong_epoch_argument_cannot_replace_the_reviewed_case (__main__.RequiredV20MatrixControls.test_wrong_epoch_argument_cannot_replace_the_reviewed_case) ... ok
+test_builder_receipt_mismatch_refuses_gate (__main__.RunnerModeControls.test_builder_receipt_mismatch_refuses_gate) ... ok
+test_default_builder_and_roles (__main__.RunnerModeControls.test_default_builder_and_roles) ... ok
+test_duration_report_fixtures_read_only_and_sorted (__main__.RunnerModeControls.test_duration_report_fixtures_read_only_and_sorted) ... ok
+test_powershell_checks_are_in_windows_gate (__main__.RunnerModeControls.test_powershell_checks_are_in_windows_gate) ... ok
+test_remote_refuses_before_caller_or_upload (__main__.RunnerModeControls.test_remote_refuses_before_caller_or_upload) ... ok
+test_selection_guard_mutations_are_caught (__main__.RunnerModeControls.test_selection_guard_mutations_are_caught) ... ok
+test_standalone_debuggee_transport_keeps_its_old_dependencies (__main__.RunnerModeControls.test_standalone_debuggee_transport_keeps_its_old_dependencies) ... ok
+test_wrapper_guard_mutations_are_caught (__main__.RunnerModeControls.test_wrapper_guard_mutations_are_caught) ... ok
+test_wrapper_modes_and_receipts_even_after_failure (__main__.RunnerModeControls.test_wrapper_modes_and_receipts_even_after_failure) ... ok
+
+----------------------------------------------------------------------
+Ran 21 tests in 1.638s
+
+OK
+
+=== suite_case_verdict.SelfCheck.py; exit=0 ===
+test_all_cases_pass (__main__.BatchWrapperControls.test_all_cases_pass) ... ok
+test_bash_syntax (__main__.BatchWrapperControls.test_bash_syntax) ... ok
+test_failed_case_captures_guest_evidence_without_changing_the_outcome (__main__.BatchWrapperControls.test_failed_case_captures_guest_evidence_without_changing_the_outcome) ... ok
+test_failed_cleanup_preserves_exit_three (__main__.BatchWrapperControls.test_failed_cleanup_preserves_exit_three) ... ok
+test_failed_verdict_discards_disk_then_stops (__main__.BatchWrapperControls.test_failed_verdict_discards_disk_then_stops) ... ok
+test_missing_or_unapproved_target_refused_before_lab_calls (__main__.BatchWrapperControls.test_missing_or_unapproved_target_refused_before_lab_calls) ... ok
+test_reused_tag_preserves_exit_six (__main__.BatchWrapperControls.test_reused_tag_preserves_exit_six) ... ok
+test_runner_exit_one_discards_disk_then_stops (__main__.BatchWrapperControls.test_runner_exit_one_discards_disk_then_stops) ... ok
+test_running_shared_address_peer_refused (__main__.BatchWrapperControls.test_running_shared_address_peer_refused) ... ok
+test_unreadable_shared_address_peer_refused (__main__.BatchWrapperControls.test_unreadable_shared_address_peer_refused) ... ok
+test_duplicate_index (__main__.CaseVerdictControls.test_duplicate_index) ... ok
+test_duplicate_json_field (__main__.CaseVerdictControls.test_duplicate_json_field) ... ok
+test_duplicate_or_truncated_restoration (__main__.CaseVerdictControls.test_duplicate_or_truncated_restoration) ... ok
+test_each_required_field_rejects_wrong_values_and_types (__main__.CaseVerdictControls.test_each_required_field_rejects_wrong_values_and_types) ... ok
+test_failed_summaries_cannot_pass (__main__.CaseVerdictControls.test_failed_summaries_cannot_pass) ... ok
+test_failed_verdict_with_pass_in_explanation (__main__.CaseVerdictControls.test_failed_verdict_with_pass_in_explanation) ... ok
+test_incomplete_or_duplicate_index_records (__main__.CaseVerdictControls.test_incomplete_or_duplicate_index_records) ... ok
+test_missing_index (__main__.CaseVerdictControls.test_missing_index) ... ok
+test_pass (__main__.CaseVerdictControls.test_pass) ... ok
+test_recovery_required_marker (__main__.CaseVerdictControls.test_recovery_required_marker) ... ok
+test_restoration_baseline_false (__main__.CaseVerdictControls.test_restoration_baseline_false) ... ok
+test_restoration_bom_and_crlf (__main__.CaseVerdictControls.test_restoration_bom_and_crlf) ... ok
+test_restoration_missing (__main__.CaseVerdictControls.test_restoration_missing) ... ok
+test_runner_exit_one_with_pass_index (__main__.CaseVerdictControls.test_runner_exit_one_with_pass_index) ... ok
+test_runner_exit_two (__main__.CaseVerdictControls.test_runner_exit_two) ... ok
+test_single_case_exit_zero_contradicts_table (__main__.CaseVerdictControls.test_single_case_exit_zero_contradicts_table) ... ok
+test_single_case_mvp_gate_failed (__main__.CaseVerdictControls.test_single_case_mvp_gate_failed) ... ok
+test_single_case_runner_exit_one_passes (__main__.CaseVerdictControls.test_single_case_runner_exit_one_passes) ... ok
+test_single_case_selected_gate_failed (__main__.CaseVerdictControls.test_single_case_selected_gate_failed) ... ok
+test_truncated_json (__main__.CaseVerdictControls.test_truncated_json) ... ok
+
+----------------------------------------------------------------------
+Ran 30 tests in 4.090s
+
+OK
+
+=== test_staged_a04_gate.py; exit=0 ===
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.007s
+
+OK
+
+=== test_staged_dedicated_latency.py; exit=0 ===
+................
+----------------------------------------------------------------------
+Ran 16 tests in 0.163s
+
+OK
+
+=== test_staged_exact_sources.py; exit=0 ===
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.481s
+
+OK
+
+=== test_staged_invariant_proof_adapters.py; exit=1 ===
+...............E....
+======================================================================
+ERROR: test_old_s00_has_no_new_proof (__main__.ProofTests.test_old_s00_has_no_new_proof)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/victor/Work/safeupload-t4cells/driver/scripts/test_staged_invariant_proof_adapters.py", line 259, in test_old_s00_has_no_new_proof
+    self.assertFalse(Q.actor_cadence_complete(json.loads(path.read_text())['Trials'][0]))
+                                                         ~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/pathlib/__init__.py", line 787, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/pathlib/__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/victor/Work/safeupload-t4cells/driver/evidence/2026-10-04/boot-start-invariant-S00-observer-control-ordinary-wp3s00g-artifacts/case.json'
+
+----------------------------------------------------------------------
+Ran 20 tests in 0.017s
+
+FAILED (errors=1)
+
+=== test_staged_mvp_gate.py; exit=0 ===
+.............
+----------------------------------------------------------------------
+Ran 13 tests in 0.005s
+
+OK
+
+=== test_staged_mvp_tiers.py; exit=0 ===
+.................
+----------------------------------------------------------------------
+Ran 17 tests in 0.003s
+
+OK
+
+=== test_staged_seed_latency.py; exit=0 ===
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.023s
+
+OK
+
+=== StagedInvariantT4Holders-temp-env.txt (retained follow-up; see worker result for setup) ===
+ParentContainsErrorRecordException: 
+Line |
+  33 |      $status = [T4Holders]::RmStartSession([ref]$handle, 0, $key)
+     |      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Exception calling "RmStartSession" with "3" argument(s): "Value cannot be null. (Parameter 'path1')"
+
+=== StagedInvariantT4Memory-temp-env.txt (retained follow-up; see worker result for setup) ===
+New-T4MemoryCorpus: /home/victor/Work/safeupload-t4cells/driver/scripts/StagedInvariantT4Memory.SelfCheck.ps1:5
+Line |
+   5 |      $corpus=New-T4MemoryCorpus $root 4
+     |              ~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Exception calling "OpenAndClose" with "1" argument(s): "Value cannot be
+     | null. (Parameter 'path1')"
+
+=== StagedInvariantT4Runtime-temp-env.txt (retained follow-up; see worker result for setup) ===
+T4RuntimeSelfCheck=PASS;Controls=35;Qualification=False
+
+=== StagedInvariantT4Volume-temp-env.txt (retained follow-up; see worker result for setup) ===
+ParentContainsErrorRecordException: /home/victor/Work/safeupload-t4cells/driver/scripts/StagedInvariantT4Volume.SelfCheck.ps1:60
+Line |
+  60 |      $id = [T4VolumeIdentity]::Read($path)
+     |      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Exception calling "Read" with "1" argument(s): "Value cannot be null.
+     | (Parameter 'path1')"
+
+=== base-StagedInvariantCoreVariants.txt (retained follow-up; see worker result for setup) ===
+Exception: /tmp/t4cells-base-checks/StagedInvariantCoreVariants.SelfCheck.ps1:14
+Line |
+  14 |  … $Label){if(-not $Good){throw ('Core control failed: '+$Label)};$scrip …
+     |                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Core control failed: one target exact final names
+
+=== base-StagedInvariantRowsA.txt (retained follow-up; see worker result for setup) ===
+Write-Error: /tmp/t4cells-base-checks/StagedInvariantRowsA.SelfCheck.ps1:239
+Line |
+ 239 |  }catch{Write-Error $_;exit 1}
+     |         ~~~~~~~~~~~~~~
+     | Cannot find drive. A drive with the name 'C' does not exist.
+
+=== test_staged_invariant_proof_adapters-fixture.txt (retained follow-up; see worker result for setup) ===
+....................
+----------------------------------------------------------------------
+Ran 20 tests in 0.022s
+
+OK
+
+=== JournalStorage-final.txt (retained follow-up; see worker result for setup) ===
+JournalStorageSelfCheck=PASS;Checks=41;Qualification=False
+
+=== JournalStorage-final43.txt (retained follow-up; see worker result for setup) ===
+JournalStorageSelfCheck=PASS;Checks=43;Qualification=False
+
+=== JournalStorage-final44.txt (retained follow-up; see worker result for setup) ===
+JournalStorageSelfCheck=PASS;Checks=44;Qualification=False
+
+=== ProofAdapters-final.txt (retained follow-up; see worker result for setup) ===
+ProofAdapterEvaluationChecks=452;PASS (host-safe synthetic evaluation, collector mocks and identity publication only)
+
+=== parse-final44.txt (retained follow-up; see worker result for setup) ===
+driver/scripts/Test-StagedInvariantSuite.ps1:ParseErrors=0
+driver/scripts/StagedInvariantJournalStorage.SelfCheck.ps1:ParseErrors=0
+Runtime=7.4.2

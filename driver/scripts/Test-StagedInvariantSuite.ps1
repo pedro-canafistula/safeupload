@@ -2298,14 +2298,129 @@ function Get-StableJournalChildren([string]$Journal) {
     $limit=[Diagnostics.Stopwatch]::GetTimestamp()+[long](5*[Diagnostics.Stopwatch]::Frequency)
     while($true) {
         $children=@(Get-ChildItem -LiteralPath $Journal -Force | Sort-Object Name)
-        $transient=@($children | Where-Object {$_.Name -match '^[0-9a-f]{32}\.json\.[0-9a-f]{32}\.tmp$'})
+        $transient=@($children | Where-Object {$_.Name -match '^(?:[0-9a-f]{32}\.json|driver-epoch\.state|segments\.state)\.[0-9a-f]{32}\.tmp$'})
         if(-not $transient.Count -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $limit){return $children}
         Start-Sleep -Milliseconds 25
     }
 }
+function Read-ServiceEvidenceRecord([string]$Path,[string]$Leaf,[int]$Maximum,$Retries,[switch]$RetryTransientJournal,[switch]$Live) {
+    $read=Invoke-LatencyJournalIo {
+        $obj=[SUProofFile]::Open($Path,$false,$true,([bool]$Live -or [bool]$RetryTransientJournal),$true)
+        try{[pscustomobject]@{Bytes=[SUProofFile]::Read($obj,$Maximum);Owner=$obj.Owner;Sddl=$obj.Sddl}}finally{$obj.Dispose()}
+    } 'SnapshotRead' $Path $Retries -Enabled:$RetryTransientJournal
+    $bytes=$read.Bytes;$copy=Join-Path $evidenceDirectory $Leaf
+    if($RetryTransientJournal -and (Test-Path -LiteralPath $copy)){throw ('Snapshot artifact already exists: '+$copy)}
+    $hash=Invoke-LatencyJournalIo {
+        $mode=if($RetryTransientJournal){[IO.FileMode]::Create}else{[IO.FileMode]::CreateNew}
+        $stream=[IO.File]::Open($copy,$mode,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+        try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+        (Get-FileHash -LiteralPath $copy -ErrorAction Stop).Hash
+    } 'SnapshotCopy' $copy $Retries -Enabled:$RetryTransientJournal
+    return [pscustomobject]@{Path=$Path;Owner=$read.Owner;Sddl=$read.Sddl;Sha256=$hash;Artifact=$copy;Length=$bytes.Length;Bytes=$bytes}
+}
+function ConvertFrom-ServiceDriverEpoch([byte[]]$Bytes) {
+    if($Bytes.Length -gt 4096){throw 'Driver epoch exceeds its product bound.'}
+    $epoch=[Text.UTF8Encoding]::new($false,$true).GetString($Bytes) | ConvertFrom-Json -ErrorAction Stop
+    foreach($field in @('DriverInstanceId','AcceptedAtUtc','DrainRequestId','DrainNonce','DrainedAtUtc')){
+        if($null -eq $epoch.PSObject.Properties[$field]){throw 'Incomplete driver epoch record.'}
+    }
+    if([guid]$epoch.DriverInstanceId -eq [guid]::Empty){throw 'Empty driver epoch identity.'}
+    $accepted=[DateTimeOffset]$epoch.AcceptedAtUtc
+    if($accepted -eq [DateTimeOffset]::MinValue -or $accepted.Offset -ne [TimeSpan]::Zero){throw 'Invalid driver epoch acceptance time.'}
+    $active=$null -eq $epoch.DrainRequestId -and $null -eq $epoch.DrainNonce -and $null -eq $epoch.DrainedAtUtc
+    if(-not $active){
+        foreach($value in @($epoch.DrainRequestId,$epoch.DrainNonce)){
+            if($null -eq $value -or $value -is [string] -or $value -is [bool] -or $value -is [double] -or $value -is [single] -or
+                [string]$value -notmatch '^\d+$' -or [decimal]$value -le 0 -or [decimal]$value -gt [uint64]::MaxValue){throw 'Unpaired driver epoch drain receipt.'}
+        }
+        if($null -eq $epoch.DrainedAtUtc){throw 'Missing driver epoch drain time.'}
+        $drained=[DateTimeOffset]$epoch.DrainedAtUtc
+        if($drained.Offset -ne [TimeSpan]::Zero -or $drained -lt $accepted){throw 'Invalid driver epoch drain time.'}
+    }
+    return $epoch
+}
+function ConvertFrom-ServiceArchive($Records,[string]$Journal) {
+    # StagedTerminalArchive.cs SUAC/SUJA v1. Decode only authenticated retained
+    # bytes. Keep 131072 bytes per manifest; the 4 MiB container bound is the
+    # product's separate segment bound, never a larger manifest allowance.
+    $inventory=@($Records | Where-Object {($_.Path -split '[\\/]')[-1] -ceq 'segments.state'})
+    if($inventory.Count -ne 1 -or $inventory[0].Bytes.Length -gt 4096){throw 'Missing/invalid completed inventory.'}
+    $head=[Text.UTF8Encoding]::new($false,$true).GetString($inventory[0].Bytes) | ConvertFrom-Json -ErrorAction Stop
+    if(($head.Version -isnot [int] -and $head.Version -isnot [long]) -or $head.Version -ne 1 -or
+        ($head.SegmentCount -isnot [int] -and $head.SegmentCount -isnot [long]) -or $head.SegmentCount -lt 0 -or $head.SegmentCount -gt [int]::MaxValue){throw 'Invalid completed inventory version/count.'}
+    $segments=@($Records | Where-Object {($_.Path -split '[\\/]')[-1] -cne 'segments.state'} | Sort-Object Path)
+    if($segments.Count -ne $head.SegmentCount){throw 'Completed inventory lost or has an uncommitted segment.'}
+    $rows=@();$seen=@{};$number=0;$sha=[Security.Cryptography.SHA256]::Create()
+    try{
+        foreach($segment in $segments){
+            $number++;$leaf=($segment.Path -split '[\\/]')[-1]
+            if($leaf -cne ($number.ToString('X8')+'.pack')){throw 'Completed segment gap or unexpected name.'}
+            [byte[]]$b=$segment.Bytes
+            if($b.Length -lt 4096 -or $b.Length -gt 4194304){throw 'Completed segment outside product bound.'}
+            $frontier=[BitConverter]::ToInt64($b,8)
+            if([BitConverter]::ToUInt32($b,0) -ne 0x43415553 -or [BitConverter]::ToInt32($b,4) -ne 1 -or
+                $frontier -ne $b.Length -or
+                [Convert]::ToBase64String($sha.ComputeHash($b,0,16)) -cne [Convert]::ToBase64String($b[16..47])){throw 'Invalid/unstable committed archive frontier.'}
+            $offset=4096
+            while($offset -lt $frontier){
+                if($frontier-$offset -lt 60 -or [BitConverter]::ToUInt32($b,$offset) -ne 0x414A5553 -or [BitConverter]::ToInt32($b,$offset+4) -ne 1){throw 'Invalid committed archive frame header.'}
+                $length=[BitConverter]::ToInt32($b,$offset+8)
+                if($length -le 0 -or $length -gt 131072 -or $length -gt $frontier-$offset-60){throw 'Invalid committed archive payload bound.'}
+                $id=[guid]::new([byte[]]$b[($offset+12)..($offset+27)])
+                if($id -eq [guid]::Empty -or $seen.ContainsKey($id)){throw 'Empty/duplicate archived transfer identity.'}
+                $seen[$id]=$true
+                [byte[]]$payload=$b[($offset+60)..($offset+59+$length)]
+                [byte[]]$digest=$sha.ComputeHash($payload)
+                if([Convert]::ToBase64String($digest) -cne [Convert]::ToBase64String($b[($offset+28)..($offset+59)])){throw 'Completed payload checksum mismatch.'}
+                # Logical identity stays the transfer filename across archival.
+                # Physical source, frame offset and full container are retained.
+                $record=[pscustomobject]@{Path=(Join-Path $Journal ($id.ToString('N')+'.json'));PhysicalPath=$segment.Path;FrameOffset=$offset;
+                    Owner=$segment.Owner;Sddl=$segment.Sddl;Artifact=$segment.Artifact;Bytes=$payload;Length=$length;Sha256=([BitConverter]::ToString($digest)).Replace('-','')}
+                $parsed=ConvertFrom-ServiceJournalRecord $record
+                if($parsed.Entry.StageDeleted -isnot [bool] -or -not $parsed.Entry.StageDeleted -or $parsed.Entry.StageCleanupStarted -isnot [bool] -or
+                    $parsed.Entry.StageCleanupStarted -or $null -ne $parsed.Entry.PendingRename -or $null -ne $parsed.Entry.BoundAllocation -or
+                    $null -ne $parsed.Entry.AllocationSecurity -or $null -ne $parsed.Entry.SeedProvenance){throw 'Archived receipt still has unfinished private/bound work.'}
+                $m=$parsed.Entry
+                $ordinary=$parsed.StateName -ceq 'Released' -and $m.HandbackState -eq 0
+                # BlockedCleanupComplete / MatchesBlockedDeletionReceipt: a
+                # justified Released receipt carries the same cleanup contract.
+                $cleanup=$parsed.StateName -cin @('Blocked','Released') -and $m.HandbackState -eq 2 -and
+                    $m.JustificationWindowClosed -is [bool] -and $m.JustificationWindowClosed -and
+                    $null -ne $m.BlockedDeletionReceipt -and $null -ne $m.StageIdentity
+                if($cleanup){
+                    $receipt=$m.BlockedDeletionReceipt;$version=$receipt.Version
+                    $renames=0;for($name=$m.NamespaceTombstones;$null -ne $name;$name=$name.Previous){$renames++}
+                    $cleanup=$null -ne $version -and $null -ne $version.StageIdentity -and
+                        [guid]$version.TransferId -eq [guid]$m.Transfer.TransferId -and $version.DestinationGeneration -eq $m.DestinationGeneration -and
+                        $null -ne $receipt.CommittedRenames -and $receipt.CommittedRenames -eq $renames -and
+                        $null -ne $receipt.Length -and $null -ne $m.SealedLength -and $receipt.Length -ge 0 -and
+                        $receipt.Length -eq $m.SealedLength -and $receipt.Sha256Hex -ceq $m.Sha256Hex
+                    foreach($value in @($version.DestinationGeneration,$receipt.CommittedRenames,$receipt.Length,$m.SealedLength)){
+                        if($null -eq $value -or $value -is [string] -or $value -is [bool] -or $value -is [double] -or $value -is [single] -or
+                            [string]$value -notmatch '^\d+$' -or [decimal]$value -gt [long]::MaxValue){$cleanup=$false}
+                    }
+                    if($receipt.Sha256Hex -isnot [string] -or $receipt.Sha256Hex -cnotmatch '^[0-9a-fA-F]{64}$'){$cleanup=$false}
+                    foreach($field in @('VolumeSerialNumber','FileIdHigh','FileIdLow')){
+                        foreach($identity in @($version.StageIdentity,$m.StageIdentity)){
+                            $value=$identity.$field
+                            if($null -eq $value -or $value -is [string] -or $value -is [bool] -or $value -is [double] -or $value -is [single] -or
+                                [string]$value -notmatch '^\d+$' -or [decimal]$value -gt [uint64]::MaxValue){$cleanup=$false}
+                        }
+                        if($version.StageIdentity.$field -ne $m.StageIdentity.$field){$cleanup=$false}
+                    }
+                }
+                # Other terminal workflows stay held for an explicit adapter;
+                # archive membership never grants publication or cleanup authority.
+                if(-not $ordinary -and -not $cleanup){throw 'Archive terminal shape needs a qualified evidence adapter.'}
+                $rows+=$record;$offset+=60+$length
+            }
+        }
+    }finally{$sha.Dispose()}
+    return ,$rows
+}
 function Get-ServiceSnapshot([string]$Tag,[switch]$JournalOnly,[switch]$RetryTransientJournal) {
     $result=[ordered]@{Status='INCONCLUSIVE';Tag=$Tag;BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();
-        Journal=@();Objects=@();Errors=@();Retries=(New-Object 'Collections.Generic.List[object]');Application=@();AgentProcesses=@(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'" | Select-Object ProcessId,CommandLine);}
+        Journal=@();JournalStorage=@();DriverEpoch=$null;Objects=@();Errors=@();Retries=(New-Object 'Collections.Generic.List[object]');Application=@();AgentProcesses=@(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'" | Select-Object ProcessId,CommandLine);}
     $held=@();$root=Split-Path -Parent $policyPath;$journal=Join-Path $root 'staging-journal'
     try {
         Initialize-ServiceEvidenceReader
@@ -2318,27 +2433,49 @@ function Get-ServiceSnapshot([string]$Tag,[switch]$JournalOnly,[switch]$RetryTra
             # Same owner rule as the agent's RequireTrustedOwner: SYSTEM or BUILTIN\Administrators (notify2: the guest journal is
             # owned by Administrators and the stricter SYSTEM-only check rejected genuine evidence).
             $obj=[SUProofFile]::Open($journal,$true,$true,$false,$true);$held+=$obj;$result.Objects+=@{Path=$journal;Owner=$obj.Owner;Sddl=$obj.Sddl}
-            foreach($file in @(Get-StableJournalChildren $journal)) {
+            # Archive first, then hot entries, then re-read archive bytes. A move
+            # between inventories must never make a transfer silently disappear.
+            $children=@(Get-StableJournalChildren $journal)
+            $archive=@($children | Where-Object Name -ceq 'completed')
+            $archiveFiles=@();$archiveRecords=@()
+            if($archive.Count){
+                $dir=[SUProofFile]::Open($archive[0].FullName,$true,$true,$false,$true);$held+=$dir
+                $result.Objects+=@{Path=$dir.Path;Owner=$dir.Owner;Sddl=$dir.Sddl}
+                $archiveFiles=@(Get-StableJournalChildren $dir.Path)
+                foreach($file in $archiveFiles){
+                    if($file.Name -cne 'segments.state' -and $file.Name -cnotmatch '^[0-9A-F]{8}\.pack$'){throw 'Unrecognized completed journal child; inventory incomplete.'}
+                    $maximum=if($file.Name -ceq 'segments.state'){4096}else{4194304}
+                    $record=Read-ServiceEvidenceRecord $file.FullName ('service-'+$Tag+'-completed-'+$file.Name) $maximum $result.Retries -RetryTransientJournal:$RetryTransientJournal -Live
+                    $archiveRecords+=$record;$result.JournalStorage+= $record
+                }
+                $result.Journal+=ConvertFrom-ServiceArchive $archiveRecords $journal
+            }
+            foreach($file in $children) {
+                if($file.Name -ceq 'completed'){continue}
+                if($file.Name -ceq 'driver-epoch.state'){
+                    $record=Read-ServiceEvidenceRecord $file.FullName ('service-'+$Tag+'-'+$file.Name) 4096 $result.Retries -RetryTransientJournal:$RetryTransientJournal -Live:$JournalOnly
+                    $result.JournalStorage+= $record
+                    $result.DriverEpoch=ConvertFrom-ServiceDriverEpoch $record.Bytes
+                    continue
+                }
                 if($file.Name -notmatch '^[0-9a-f]{32}\.json$'){throw ('Unrecognized journal child; snapshot is not complete. Name='+$file.Name+'; Attributes='+[string]$file.Attributes)}
-                $read=Invoke-LatencyJournalIo {
-                    $obj=[SUProofFile]::Open($file.FullName,$false,$true,([bool]$JournalOnly -or [bool]$RetryTransientJournal),$true)
-                    try{[pscustomobject]@{Bytes=[SUProofFile]::Read($obj,131072);Owner=$obj.Owner;Sddl=$obj.Sddl}}finally{$obj.Dispose()}
-                } 'SnapshotRead' $file.FullName $result.Retries -Enabled:$RetryTransientJournal
-                $bytes=$read.Bytes
-                $leaf='service-'+$Tag+'-'+$file.Name;$copy=Join-Path $evidenceDirectory $leaf
-                if($RetryTransientJournal -and (Test-Path -LiteralPath $copy)){throw ('Snapshot artifact already exists: '+$copy)}
-                $copyHash=Invoke-LatencyJournalIo {
-                    # Retry overwrites only this attempt's partial artifact; retain
-                    # exactly one durable copy of the same authenticated bytes.
-                    $fileMode=if($RetryTransientJournal){[IO.FileMode]::Create}else{[IO.FileMode]::CreateNew}
-                    $stream=[IO.File]::Open($copy,$fileMode,[IO.FileAccess]::Write,[IO.FileShare]::Read)
-                    try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
-                    (Get-FileHash -LiteralPath $copy -ErrorAction Stop).Hash
-                } 'SnapshotCopy' $copy $result.Retries -Enabled:$RetryTransientJournal
-                # Collection authenticates and retains ALL bytes. Schema interpretation
-                # belongs to delta evaluation; a legacy entry must not truncate inventory.
-                $result.Journal+= [pscustomobject]@{Path=$file.FullName;Owner=$read.Owner;Sddl=$read.Sddl;Sha256=$copyHash;
-                    Artifact=$copy;Length=$bytes.Length;Bytes=$bytes}
+                $record=Read-ServiceEvidenceRecord $file.FullName ('service-'+$Tag+'-'+$file.Name) 131072 $result.Retries -RetryTransientJournal:$RetryTransientJournal -Live:$JournalOnly
+                $result.JournalStorage+= $record
+                $duplicate=@($result.Journal | Where-Object Path -ieq $record.Path)
+                if($duplicate.Count){
+                    # The product permits an exact hot/archive duplicate during
+                    # consolidation; retain both physical artifacts and compare bytes.
+                    if($duplicate.Count -ne 1 -or [Convert]::ToBase64String($duplicate[0].Bytes) -cne [Convert]::ToBase64String($record.Bytes)){throw 'Hot/archive transfer receipts disagree.'}
+                }else{$result.Journal+= $record}
+            }
+            if((@(Get-StableJournalChildren $journal).Name -join '|') -cne ($children.Name -join '|')){throw 'Journal inventory changed during collection.'}
+            if($archive.Count){
+                if((@(Get-StableJournalChildren $dir.Path).Name -join '|') -cne ($archiveFiles.Name -join '|')){throw 'Completed inventory changed during collection.'}
+                foreach($record in $archiveRecords){
+                    $obj=[SUProofFile]::Open($record.Path,$false,$true,$true,$true)
+                    try{$again=[SUProofFile]::Read($obj,$(if($record.Path.EndsWith('.pack')){4194304}else{4096}))}finally{$obj.Dispose()}
+                    if([Convert]::ToBase64String($again) -cne [Convert]::ToBase64String($record.Bytes)){throw 'Completed bytes changed during hot collection; snapshot incomplete.'}
+                }
             }
         }
         $result.Status='OK'
@@ -2363,7 +2500,7 @@ function Test-ServiceJournalStateReachable([int]$State,[bool]$SealedOnce) {
     # StagedTransferJournal.IsTransitionAllowed. SealAsync has the same
     # Allocated/Unsealed -> Sealed edges; a committed sealed rename returns
     # to Sealed. Snapshots cannot attest the actual intermediate transitions.
-    $edges=@(@(0,1),@(0,8),@(8,1),@(1,2),@(1,7),@(2,3),@(2,6),@(6,2),@(2,7),@(3,7),@(3,4),@(4,5),@(4,7),@(7,2),@(2,1))
+    $edges=@(@(0,10),@(8,10),@(10,1),@(0,9),@(8,9),@(0,1),@(0,8),@(8,1),@(1,2),@(1,7),@(2,3),@(2,6),@(6,2),@(2,7),@(3,7),@(3,4),@(4,5),@(4,7),@(7,2),@(2,1))
     $pending=@(@{State=0;Sealed=$false});$seen=@{}
     while($pending.Count){
         $current=$pending[0];$pending=@($pending | Select-Object -Skip 1)
@@ -2401,7 +2538,7 @@ function ConvertFrom-ServiceJournalRecord($Record) {
         }
         if($id -eq [guid]::Empty -or $null -eq $entry.Transfer -or [guid]$entry.Transfer.TransferId -ne $id){throw 'Invalid product journal Transfer.TransferId.'}
         foreach($numeric in @(@{Name='Transfer.ProcessId';Value=$entry.Transfer.ProcessId;Min=1;Max=[int]::MaxValue},
-            @{Name='Transfer.Destination';Value=$entry.Transfer.Destination;Min=0;Max=4},@{Name='State';Value=$entry.State;Min=0;Max=8},
+            @{Name='Transfer.Destination';Value=$entry.Transfer.Destination;Min=0;Max=4},@{Name='State';Value=$entry.State;Min=0;Max=10},
             @{Name='DestinationGeneration';Value=$entry.DestinationGeneration;Min=0;Max=[long]::MaxValue},
             @{Name='LastRenameTransactionId';Value=$entry.LastRenameTransactionId;Min=0;Max=[uint64]::MaxValue})){
             if($null -eq $numeric.Value -or $numeric.Value -is [string] -or $numeric.Value -is [bool] -or $numeric.Value -is [double] -or $numeric.Value -is [single] -or
@@ -2416,13 +2553,13 @@ function ConvertFrom-ServiceJournalRecord($Record) {
         if($entry.SealedOnce -isnot [bool] -or $entry.LastRenameCommitted -isnot [bool]){throw 'Invalid journal seal/rename boolean.'}
         if(($null -ne $entry.Sha256Hex -and ($entry.Sha256Hex -isnot [string] -or $entry.Sha256Hex -cnotmatch '^[0-9a-fA-F]{64}$')) -or
             ($entry.State -in @(1,2,3,4,5,6) -and -not $entry.SealedOnce) -or
-            ($entry.State -in @(0,8) -and $entry.SealedOnce) -or ($entry.State -in @(4,5) -and $null -eq $entry.Sha256Hex)){
+            ($entry.State -in @(0,8,10) -and $entry.SealedOnce) -or ($entry.State -in @(4,5) -and $null -eq $entry.Sha256Hex)){
             throw 'Invalid product seal/publication evidence.'
         }
         if(-not (Test-ServiceJournalStateReachable $entry.State $entry.SealedOnce)){throw 'Journal state/seal cannot be reached through current agent transitions.'}
         $destinations=@(Get-ServiceDestinationPaths $entry)
         foreach($path in @($entry.Transfer.StagePath)+$destinations){Assert-ServiceManifestPath $path}
-        return [pscustomobject]@{Path=$Record.Path;Entry=$entry;StateName=@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed')[[int]$entry.State];DestinationPaths=$destinations}
+        return [pscustomobject]@{Path=$Record.Path;Entry=$entry;StateName=@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed','Discarded','SealPending')[[int]$entry.State];DestinationPaths=$destinations}
     }catch{throw ('Invalid new product journal manifest '+$Record.Path+': '+$_.Exception.Message)}
 }
 function Test-ServiceJournalDelta($Before,$After,[bool]$WindowKnown) {
@@ -2604,6 +2741,8 @@ function Assert-ActorProcess($Actor) {
 function Test-CachedJournalSequence($Transitions,[string]$Outcome,[string]$Digest,$RenameCommit=$null) {
     $assertions=@();$expected=@(if($Outcome -ceq 'APPROVE'){@('Allocated','Sealed','Inspecting','Approved','Publishing','Released')}else{@('Allocated','Sealed','Inspecting','Blocked')})
     $names=@($Transitions | ForEach-Object {$_.StateName})
+    $durable=@(if(@($Transitions).Count){$Transitions[-1].History}else{@()})
+    if($durable -ccontains 'SealPending' -or $names -ccontains 'SealPending'){$expected=@('Allocated','SealPending')+@($expected | Select-Object -Skip 1)}
     $missing=@($expected | Where-Object {$names -cnotcontains $_})
     $bad=@($names | Where-Object {$_ -cnotin $expected})
     $position=-1;$ordered=$true
@@ -2612,7 +2751,7 @@ function Test-CachedJournalSequence($Transitions,[string]$Outcome,[string]$Diges
     $history=@(if(@($Transitions).Count){$Transitions[-1].History | Where-Object {$null -ne $_}}else{@()})
     if($history.Count){
         $exact=($history -join ',') -ceq ($expected -join ',')
-        $assertions+=@{Name='C01JournalOrder';Verdict=$(if($exact){'PASS'}elseif($bad.Count -or -not $ordered -or ($expected[0..([Math]::Min($history.Count,$expected.Count)-1)] -join ',') -cne ($history[0..([Math]::Min($history.Count,$expected.Count)-1)] -join ',')){'FAIL'}else{'INCONCLUSIVE'});
+        $assertions+=@{Name='C01JournalOrder';Verdict=$(if($bad.Count -or -not $ordered){'FAIL'}elseif($exact){'PASS'}elseif($history.Count -gt $expected.Count -or $bad.Count -or -not $ordered -or ($expected[0..([Math]::Min($history.Count,$expected.Count)-1)] -join ',') -cne ($history[0..([Math]::Min($history.Count,$expected.Count)-1)] -join ',')){'FAIL'}else{'INCONCLUSIVE'});
             Reason=('Durable history='+($history -join ' -> ')+'; expected='+($expected -join ' -> ')+'; polled='+($names -join ' -> '));Transitions=$Transitions}
     }else{
     $assertions+=@{Name='C01JournalOrder';Verdict=$(if($bad.Count -or -not $ordered){'FAIL'}elseif($missing.Count){'INCONCLUSIVE'}else{'PASS'});
@@ -2672,7 +2811,7 @@ function Get-CachedJournalObservation([string]$Tag,$Actor,[string[]]$Paths=@(),[
             if($parsed.Entry.Transfer.TransferId -iin $ExcludedIds){continue}
             if(@($parsed.DestinationPaths | Where-Object {$_ -iin $paths}).Count){
                 if($parsed.Entry.Transfer.ProcessId -ne $Actor.Pid -or $parsed.Entry.Transfer.SessionId -ne $Actor.SessionId){throw 'C01 transfer writer PID/session mismatch'}
-                $historyNames=@($parsed.Entry.StateHistory | Where-Object {$null -ne $_} | ForEach-Object {@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed')[[int]$_.State]})
+                $historyNames=@($parsed.Entry.StateHistory | Where-Object {$null -ne $_} | ForEach-Object {@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed','Discarded','SealPending')[[int]$_.State]})
                 $entries+= [pscustomobject]@{StateName=$parsed.StateName;State=[int]$parsed.Entry.State;TransferId=$parsed.Entry.Transfer.TransferId;History=$historyNames;
                     SealedOnce=$parsed.Entry.SealedOnce;Sha256Hex=$parsed.Entry.Sha256Hex;DestinationGeneration=$parsed.Entry.DestinationGeneration;
                     UpdatedAtUtc=$parsed.Entry.UpdatedAtUtc;StartQpc=$snapshot.StartQpc;EndQpc=$snapshot.EndQpc;Artifact=$record.Artifact;Record=$record}
@@ -2716,9 +2855,9 @@ function ConvertFrom-LatencyManifestRecord($Record,$Actor,[string[]]$Paths,[stri
     if(-not @($parsed.DestinationPaths | Where-Object {$_ -iin $Paths}).Count){return $null}
     if($transfer.ProcessId -ne $Actor.Pid -or $transfer.SessionId -ne $Actor.SessionId -or $transfer.RequestorSid -cne $Actor.Sid){throw 'Dedicated completion actor PID/session/SID mismatch'}
     if($parsed.StateName -cin @('Blocked','Retained','Unsealed')){throw ('Dedicated expected APPROVE but observed '+$parsed.StateName)}
-    $history=@($parsed.Entry.StateHistory | Where-Object {$null -ne $_} | ForEach-Object {@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed')[[int]$_.State]})
+    $history=@($parsed.Entry.StateHistory | Where-Object {$null -ne $_} | ForEach-Object {@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed','Discarded','SealPending')[[int]$_.State]})
     if($parsed.StateName -ceq 'Released' -and (-not $parsed.Entry.SealedOnce -or $parsed.Entry.Sha256Hex -cne $Digest -or
-        ($history -join ',') -cne 'Allocated,Sealed,Inspecting,Approved,Publishing,Released')){throw 'Dedicated Released whole-image/history evidence missing'}
+        ($history -join ',') -cnotin @('Allocated,Sealed,Inspecting,Approved,Publishing,Released','Allocated,SealPending,Sealed,Inspecting,Approved,Publishing,Released'))){throw 'Dedicated Released whole-image/history evidence missing'}
     return [pscustomobject]@{StateName=$parsed.StateName;State=[int]$parsed.Entry.State;TransferId=$transfer.TransferId;History=$history;
         SealedOnce=$parsed.Entry.SealedOnce;Sha256Hex=$parsed.Entry.Sha256Hex;DestinationGeneration=$parsed.Entry.DestinationGeneration;
         UpdatedAtUtc=$parsed.Entry.UpdatedAtUtc;StartQpc=$Record.StartQpc;EndQpc=$Record.EndQpc;Artifact=$Record.Artifact;Record=$Record}
@@ -2913,7 +3052,7 @@ function Test-CachedBlockManifest($Entry,$Open,$Actor,[string]$Digest,[switch]$R
         $m.HandbackState -eq 2 -and -not [string]::IsNullOrWhiteSpace($m.HandbackPath) -and $m.HandbackPath -ceq $o.HandbackPath -and
         $null -ne $m.HandbackLength -and $m.HandbackLength -eq $o.HandbackLength -and $m.Sha256Hex -ceq $Digest -and
         $m.JustificationWindowClosed -is [bool] -and $m.StageDeleted -is [bool] -and $m.StageCleanupStarted -is [bool] -and
-        ($Entry.History -join ',') -ceq 'Allocated,Sealed,Inspecting,Blocked'
+        ($Entry.History -join ',') -cin @('Allocated,Sealed,Inspecting,Blocked','Allocated,SealPending,Sealed,Inspecting,Blocked')
     try{
         $expiry=[DateTimeOffset]::Parse([string]$o.JustificationExpiresAtUtc);$currentExpiry=[DateTimeOffset]::Parse([string]$m.JustificationExpiresAtUtc)
         $updated=[DateTimeOffset]::Parse([string]$m.UpdatedAtUtc)
@@ -2946,7 +3085,7 @@ function Get-CachedBlockJournal($Trial,$Actor,[string]$TransferId) {
         $end=[Diagnostics.Stopwatch]::GetTimestamp()
         $snapshot=[pscustomobject]@{Status='OK';Source='AuthenticatedExactTransferManifestOnly;NotWholeJournalInventory';StartQpc=$start;EndQpc=$end;BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;Journal=@($record)}
         $Trial.JournalSnapshots+=$snapshot
-        return [pscustomobject]@{StateName=$parsed.StateName;TransferId=$m.Transfer.TransferId;SealedOnce=$m.SealedOnce;Sha256Hex=$m.Sha256Hex;History=@($m.StateHistory | ForEach-Object {@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed')[[int]$_.State]});Manifest=$m;Artifact=$artifact;Record=$record;StartQpc=$start;EndQpc=$end}
+        return [pscustomobject]@{StateName=$parsed.StateName;TransferId=$m.Transfer.TransferId;SealedOnce=$m.SealedOnce;Sha256Hex=$m.Sha256Hex;History=@($m.StateHistory | ForEach-Object {@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed','Discarded','SealPending')[[int]$_.State]});Manifest=$m;Artifact=$artifact;Record=$record;StartQpc=$start;EndQpc=$end}
     }finally{if($null -ne $obj){$obj.Dispose()};foreach($handle in $held){$handle.Dispose()}}
 }
 function Get-CachedJustificationServer {
@@ -5760,8 +5899,8 @@ function Test-X01Versions($First,$Latest,[string]$DigestV1,[string]$DigestV2) {
     $assertions=@();$distinct=-not [string]::IsNullOrWhiteSpace($First.TransferId) -and -not [string]::IsNullOrWhiteSpace($Latest.TransferId) -and $First.TransferId -ine $Latest.TransferId -and $First.DestinationGeneration -gt 0 -and $Latest.DestinationGeneration -gt $First.DestinationGeneration
     $assertions+=@{Name='X01AllocationOrder';Verdict=$(if($distinct){'PASS'}else{'FAIL'});Reason='Barrier-ordered manifests require two distinct transfers with strictly increasing destination generations.'}
     $h1=@($First.History);$h2=@($Latest.History)
-    $blocked=$First.StateName -ceq 'Blocked' -and $First.SealedOnce -eq $true -and $First.Sha256Hex -ceq $DigestV1 -and ($h1 -join ',') -ceq 'Allocated,Sealed,Inspecting,Blocked'
-    $released=$Latest.StateName -ceq 'Released' -and $Latest.SealedOnce -eq $true -and $Latest.Sha256Hex -ceq $DigestV2 -and ($h2 -join ',') -ceq 'Allocated,Sealed,Inspecting,Approved,Publishing,Released'
+    $blocked=$First.StateName -ceq 'Blocked' -and $First.SealedOnce -eq $true -and $First.Sha256Hex -ceq $DigestV1 -and ($h1 -join ',') -cin @('Allocated,Sealed,Inspecting,Blocked','Allocated,SealPending,Sealed,Inspecting,Blocked')
+    $released=$Latest.StateName -ceq 'Released' -and $Latest.SealedOnce -eq $true -and $Latest.Sha256Hex -ceq $DigestV2 -and ($h2 -join ',') -cin @('Allocated,Sealed,Inspecting,Approved,Publishing,Released','Allocated,SealPending,Sealed,Inspecting,Approved,Publishing,Released')
     $assertions+=@{Name='X01SupersededVersionNeverReleased';Verdict=$(if($blocked -and $distinct){'PASS'}else{'FAIL'});Reason='The superseded v1 durable history remains exactly Allocated/Sealed/Inspecting/Blocked, without approval/publication/release.';Evidence=$First}
     $assertions+=@{Name='X01LatestReleasedOnce';Verdict=$(if($released -and $distinct){'PASS'}else{'FAIL'});Reason='Latest v2 has its exact independently supplied digest and complete history with one Released transition.';Evidence=$Latest}
     return ,$assertions
@@ -6458,9 +6597,9 @@ function Test-B02Window($Entry,$Actor,[string]$Digest) {
 function Test-B02Versions($First,$Latest,[string]$Digest1,[string]$Digest2) {
     $distinct=-not [string]::IsNullOrWhiteSpace($First.TransferId) -and -not [string]::IsNullOrWhiteSpace($Latest.TransferId) -and
         $First.TransferId -ine $Latest.TransferId -and $First.DestinationGeneration -gt 0 -and $Latest.DestinationGeneration -gt $First.DestinationGeneration -and $Digest1 -cne $Digest2
-    $old=$First.StateName -ceq 'Blocked' -and $First.SealedOnce -eq $true -and $First.Sha256Hex -ceq $Digest1 -and ($First.History -join ',') -ceq 'Allocated,Sealed,Inspecting,Blocked'
+    $old=$First.StateName -ceq 'Blocked' -and $First.SealedOnce -eq $true -and $First.Sha256Hex -ceq $Digest1 -and ($First.History -join ',') -cin @('Allocated,Sealed,Inspecting,Blocked','Allocated,SealPending,Sealed,Inspecting,Blocked')
     $new=$Latest.StateName -ceq 'Released' -and $Latest.SealedOnce -eq $true -and $Latest.Sha256Hex -ceq $Digest2 -and
-        ($Latest.History -join ',') -ceq 'Allocated,Sealed,Inspecting,Blocked,Inspecting,Approved,Publishing,Released'
+        ($Latest.History -join ',') -cin @('Allocated,Sealed,Inspecting,Blocked,Inspecting,Approved,Publishing,Released','Allocated,SealPending,Sealed,Inspecting,Blocked,Inspecting,Approved,Publishing,Released')
     return ,@(@{Name='B02DistinctLatestGeneration';Verdict=$(if($distinct){'PASS'}else{'FAIL'});Reason='v2 is a distinct later destination generation and digest.'},
         @{Name='B02StaleV1NeverPublished';Verdict=$(if($distinct -and $old){'PASS'}else{'FAIL'});Reason='v1 durable history stays exactly Blocked with its original digest; stale justification produces no inspection/approval/publication/release.';Evidence=$First},
         @{Name='B02LatestV2ReleasedOnce';Verdict=$(if($distinct -and $new){'PASS'}else{'FAIL'});Reason='Latest exact v2 traverses Blocked -> fresh Inspecting -> Approved -> Publishing -> Released exactly once.';Evidence=$Latest})
@@ -7152,7 +7291,7 @@ $value=$b.ToString().Split([char]0)[0]
             Feature=$ExpectedFeatureSha256;Inspector=$ExpectedInspectorSha256;ServicePackage=$ExpectedServicePackageSha256;ServiceTree=$ExpectedServiceTreeSha256};
         BootIds=@{Prepare=$state.PrepareBootId;Active=$state.AfterBootId;Final=(Get-BootId)};Restoration=@{GuestChecks=$true;IndependentBaseline=$null;Known=$false;
             ProcessCreationAudit=@{Original=$state.OriginalProcessCreationAudit;Final=$finalAudit;Restored=$true}};
-        AuthoritativeCaseExport=$false;Reasons=$(if($cachedCase){@('Functional/seed rows do not qualify full Phase4: lower mutation ledger, live taint and full temporal/permit evidence unavailable; C01-C05 use coordinated functional variants; safe creation receipts and unheld latency remain unqualified; C01/C02/C03/C04 BLOCK collect second-user H denial, expiry closure/cleanup and optional real-pipe late rejection')}else{$finalReasons});
+        AuthoritativeCaseExport=$false;Reasons=$(if($cachedCase){@('Functional/seed rows do not qualify full Phase4: lower mutation ledger and full temporal/permit evidence unavailable; LiveTaintFlags reports the separate live-taint result; C01-C05 use coordinated functional variants; safe creation receipts and unheld latency remain unqualified; C01/C02/C03/C04 BLOCK collect second-user H denial, expiry closure/cleanup and optional real-pipe late rejection')}else{$finalReasons});
         Load=@{ComputerSystem=(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors,TotalPhysicalMemory);Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores);Disk=(Get-Disk | Select-Object Number,FriendlyName,BusType);ObserverPriority=[string][Diagnostics.Process]::GetCurrentProcess().PriorityClass}}
     Copy-Item -LiteralPath $statePath -Destination (Join-Path $evidenceDirectory 'lifecycle.clixml')
     Copy-Item -LiteralPath $actorDirectory -Destination (Join-Path $evidenceDirectory 'actor') -Recurse
