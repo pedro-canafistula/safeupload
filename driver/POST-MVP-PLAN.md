@@ -548,7 +548,10 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 | T11 | Epoch/archive and context retirement repairs integrated; component controls are distinct from qualification. | Final journal/recovery/lifetime gates and one adversarial review of the working M2 pair. |
 
 - [x] T4: build/agent prerequisites closed on the pair above; failed attempts and root causes in the [2026-10-20 checkpoint](evidence/2026-10-20/t4-checkpoint.md).
-- [ ] T4: smoke with sampling, 10k in three modes, raw-volume cells and separate restoration (rows in flight).
+- [x] T4: smoke `1020j` 256/256; 10k isolation rows (budget disabled, owner-approved): ordinary PASS; boot Verifier functional PASS twice with the pool
+  endpoint 7-10 KB over the 64 KiB band (owner decision pending); runtime Verifier on the fixed arm-after-Ready mode in progress.
+- [ ] T4: raw-volume cells: journal reader and host validation fixed for the staged agent; C01-approve ordinary completes with zero forbidden bytes;
+  MVP-gate completeness (dedicated latency for 12 approve runs, taint-era `LiveTaintFlags` removal) pending an owner scope decision.
 - [ ] T5–T11: qualify the coherent pair against every existing assertion; component/dev passes do not complete these items.
 - [ ] T11: perform final adversarial review only after the runtime evidence exists.
 

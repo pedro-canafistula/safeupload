@@ -1,0 +1,22 @@
+T4GuestAlive PASS the guest answered through the run (a Verifier stop is a bugcheck, which looks like a hang)
+T4DriverLoaded PASS the filter is still loaded after the cycles
+T4CyclesCompleted PASS 10000 of 10000 cycles reached their outcome; outcomes {"resave-approve": {"Ok": 1875, "Failed": 0}, "new-approve": {"Ok": 1875, "Failed": 0}, "replace-approve": {"Ok": 1875, "Failed": 0}, "mapped-approve": {"Ok": 1875, "Failed": 0}, "resave-block": {"Ok": 625, "Failed": 0}, "new-block": {"Ok": 625, "Failed": 0}, "replace-block": {"Ok": 625, "Failed": 0}, "mapped-block": {"Ok": 625, "Failed": 0}}; no failures
+T4ActorStopped PASS the actor acknowledged stop
+T4StopReason INFO completed; attempted 10000; failures 0
+T4NoBlockedBytesPublished PASS no blocked version reached its public name
+T4RegistryBounded PASS 25 samples within registry capacity; idle capacity failures 0; invalid samples []
+T4Memory INFO start: SUfl live 257, bytes 81888; SwUr bytes 6600832; module bytes None
+T4Memory INFO last-cycle: SUfl live 3964, bytes 910816; SwUr bytes 6634880; module bytes None
+T4Memory INFO idle: SUfl live 3969, bytes 911696; SwUr bytes 6634880; module bytes None
+T4Memory INFO purged: SUfl live 1493, bytes 358672; SwUr bytes 6630016; module bytes None
+T4ContextsReleased PASS SUfl live start 257, purged 1493; limit start + 2048; released 2476 of idle growth since start 3712; purge NTSTATUS PASS [{"Operation": "RtlAdjustPrivilege", "Privilege": 13, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "RtlAdjustPrivilege", "Privilege": 5, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 2, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 3, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}, {"Operation": "NtSetSystemInformation", "Command": 4, "NTSTATUS": 0, "StatusHex": "0x00000000", "Succeeded": true}]; purged sample present
+T4VersionsReleased PASS after settle: live versions 0, views 0, created 10000, released 10000, views released 10000
+T4TombstonesReleased PASS after the actor exited: tombstones 0
+T4NoCapRefusal PASS cap refusals 0, tombstone refusals 0
+T4StageFilesDeleted PASS stage files after idle 0 (journal manifests 0, hand-backs 2500); driver deletes 7500, failures 0
+T4StageWorkerIdle PASS stage worker passes over 60 s with nothing waiting: 0 (timer fires 0; waiting versions 0)
+T4WorkerWakes INFO {"wakeCleanup": 10000, "wakeClose": 10000, "wakeDispose": 10000, "wakeConnect": 1, "wakeExit": 1335, "wakeTimer": 13511, "wakeInline": 42500, "timerArms": 33372, "disposeHeld": 10000, "disposeNotHeld": 8199, "disposeStale": 0, "disposeDeferred": 0, "passes": 84505}
+T4CycleTime INFO median 1179 ms, p95 1538 ms, max 12521 ms over 10000 cycles
+T4Duration INFO 11000 s (ordinary, 10000 cycles)
+T4AdmissionRecovered PASS current coverage returned to Ready after idle
+T4StageSpaceConfig INFO StageSpace disabled by T4_STAGE_SPACE=off (product default is enabled): kernel lifetime isolation row, not a product-configuration result

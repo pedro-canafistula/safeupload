@@ -1,0 +1,4 @@
+READY=False
+LAST_AGENT_FRAME={"type":"status","policyVersion":1,"activeCategories":1,"protectionActive":true,"auditOnly":false,"admissionCoverage":"Degraded","admissionCoverageReason":"WriterStateUnknown","nativePolicyGeneration":2147483647}
+READINESS_ELAPSED_MS=601437
+DRIVER_LOADED=True

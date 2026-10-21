@@ -58,3 +58,40 @@ ordinary/runtime-/boot-Verifier, each with separate restoration. The lost-reply 
 None of these is a kernel context, pool or cap result. Owner decision 2026-10-20 ("I approved the change"): T4's kernel lifetime
 rows may run with `T4_STAGE_SPACE=off` (the configuration of the 2026-10-12 T4 rows), recorded in each receipt and verdict, as an
 isolation result only. The three accounting defects block M2 with the default configuration and are tracked as T9 work.
+
+## Isolation rows (budget disabled, owner-approved) — results to 2026-10-21 03:30 BRT
+
+Pair: kernel `d1068cc3` (`t4pagefix1`), agent `586ae7cb` (`m2t4refund2`), `T4_STAGE_SPACE=off`; every receipt carries `stage-space.txt` and a
+`T4StageSpaceConfig INFO` verdict line. Isolation results, not a product-configuration qualification.
+
+| Row | Mode | Result |
+|---|---|---|
+| `m2t4ordoff1` | ordinary 10k | **PASS**, 10,000/10,000, 11,000 s ([verdict](m2t4ordoff1-verdict.txt)) |
+| `m2t4bvoff1` | boot Verifier 10k | all functional gates PASS; `T4PoolFlat` FAIL: slope 0.971 B/cycle (limit 4) but after-idle endpoint +75,200 B vs the 64 KiB band ([verdict](m2t4bvoff1-verdict.txt), [samples](m2t4bvoff1-samples.jsonl)) |
+| `m2t4bvoff2` | boot Verifier 10k rerun | same: slope -0.414 B/cycle, cycle 1000 6,606,824 -> cycle 10000 6,606,872, after idle 6,679,504 (+72,680 B) ([verdict](m2t4bvoff2-verdict.txt), [samples](m2t4bvoff2-samples.jsonl)) |
+| `m2t4rvoff1`, `m2t4rvoff1r` | runtime Verifier | never Ready (rc=19), identical instance Unknown (reason TRUST, site 6488): the old runtime mode loaded the driver late ([ready](m2t4rvoff1-ready.txt)) |
+| `m2t4rvoff2` | runtime Verifier 10k, arm after Ready | in progress (Ready, `RUNTIME_VERIFIER_ARMED_AFTER_READY=True`, cycles running) |
+
+**Pool endpoint.** The settled pool is identical across both boot-Verifier rows (6,620,768 / 6,622,232 B) and flat across 9,000 cycles; the
+writer-registry tag (`SwUr`) then steps up by about 58-60 KB in the idle window after the actor exits, in both rows. Hypothesis (not proven):
+about 24 registry entries from the agent's idle archive housekeeping (packs are bounded at 32, about 77 KB worst case), which the 64 KiB band
+(set before the archive existed) cannot accommodate. Gate untouched; owner decision requested: accept, widen to 128 KiB, or change the
+kernel/agent so the service's own private-journal writes leave no registry entries.
+
+**Runtime mode.** The cycles launcher's runtime mode (hold at demand start, arm unloaded, late `fltmc load`) can never report Ready; it passed
+on 2026-10-10 only before the Ready gate existed. It now matches the invariant suite: boot-start pair to Ready, then
+`verifier /volatile /flags 0x13B /adddriver SafeUpload.sys` on the running driver, read back exactly (`e329048f`, PowerShell 5.1 gate
+[`m2t4rvmode1`](../2026-10-21/harness-windows-gate-m2t4rvmode1.txt) PASS).
+
+## Raw-volume cells (C01-C04, B01, B02, X01 x ordinary/runtime/boot = 33 runs)
+
+First rows (`m2t4o1`, `m2t4r1`, `m2t4b1`: [index](phase4-suite-m2t4o1-index.txt)) were INCONCLUSIVE at C01-approve-absent with eight blockers.
+Offline triage (worker 3, [result](t4-cells-triage-worker-result.md)): the cell harness's journal reader expected a flat directory of per-transfer JSON,
+but the staged agent also writes `driver-epoch.state`, packs completed receipts into `completed/*.pack` segments and records `SealPending` (10).
+Taint was not the cause; no kernel/agent regression is established; all 33 runs share the mismatch. Fixes: reader patch (`e7a6990a`, 44 offline checks,
+PS 5.1 gate green) and host validation of physical journal files plus archived payload frames (`ArchivePayload` self-check, 19 controls including a replay of
+the real pack). Rerun `m2t4q1` ([index](../2026-10-21/phase4-suite-m2t4q1-index.txt)): C01-approve-absent ordinary completes, ForbiddenByteCount 0,
+restoration clean, public listing / independent reader / seal-after-close / journal order / sealed digest / released image and raw extent / metadata
+and security assertions PASS. Remaining MVP blockers: dedicated unheld-latency evidence (approve cases only, separate `--dedicated-unheld-latency` runs),
+and `LiveTaintFlags` (the taint-era check the owner directed to delete on 2026-10-15; the removal branch `wt/taint-removal` was never merged and the
+driver still has the test flag). Coverage items are the cell's own documented deferrals. Owner scope decision requested (see plan).
