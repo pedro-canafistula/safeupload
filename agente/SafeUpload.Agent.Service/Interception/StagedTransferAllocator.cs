@@ -19,17 +19,20 @@ public sealed partial class StagedTransferAllocator
     private readonly string _root;
     private readonly StagedTransferJournal _journal;
     private readonly FileSecurity? _fileSecurity;
+    private readonly IStagedSeedReadAuthorityEvaluator _seedReadAuthority;
     // Stable reservation replay must serialize the path check, backing-file
     // creation and manifest commit. Otherwise a concurrent duplicate could
     // mistake the first request's not-yet-journaled file for an orphan.
     private readonly SemaphoreSlim _v19AllocationGate = new(1, 1);
 
     public StagedTransferAllocator(string root, StagedTransferJournal journal,
-        bool requireProtectedParent = false, bool requireSystemIdentity = false, StagedSpaceBudget? spaceBudget = null)
+        bool requireProtectedParent = false, bool requireSystemIdentity = false, StagedSpaceBudget? spaceBudget = null,
+        IStagedSeedReadAuthorityEvaluator? seedReadAuthority = null)
     {
         _root = Path.GetFullPath(root);
         _spaceBudget = spaceBudget;
         _journal = journal ?? throw new ArgumentNullException(nameof(journal));
+        _seedReadAuthority = seedReadAuthority ?? new StagedSeedReadAuthorityEvaluator();
         if (_spaceBudget is not null)
         {
             _journal.PrivateTemporaryAdmission = _spaceBudget.RequireMetadataAdmission;
@@ -236,6 +239,21 @@ public sealed partial class StagedTransferAllocator
         seedDeadline?.CancelAfter(_spaceBudget!.SeedTimeout);
         CancellationToken seedToken = seedDeadline?.Token ?? cancellationToken;
         StagedStageIdentity? identity = null;
+        StagedUnboundSeedExport? seedExport = null;
+        // A private follow-up carries the original public-source receipt; its
+        // service-only stage ACL is never evidence of the writer's read rights.
+        void CaptureSeedExport(StagedStageFile heldSource)
+        {
+            if (previous is not null) return;
+            StagedSeedAuthority authority;
+            try { authority = _seedReadAuthority.Evaluate(transfer, heldSource.Stream.SafeFileHandle); }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            { authority = StagedSeedAuthority.Unproven; }
+            if (!Enum.IsDefined(authority) || (authority == StagedSeedAuthority.Allowed &&
+                (string.IsNullOrWhiteSpace(requestorSid) || requestorProcessCreationTime is not > 0)))
+                authority = StagedSeedAuthority.Unproven;
+            seedExport = new(1, heldSource.Identity, requestorSid, processId, requestorProcessCreationTime, authority);
+        }
         preparation?.Dispose();
         try
         {
@@ -249,13 +267,13 @@ public sealed partial class StagedTransferAllocator
                     {
                         identity = exact;
                         _spaceBudget.RecordStage(id, transfer.StagePath, exact);
-                    }).ConfigureAwait(false);
+                    }, sourceOpened: CaptureSeedExport).ConfigureAwait(false);
             }
             else if (copyExisting)
             {
-                await using var input = new FileStream(source ?? fullDestination,
-                    FileMode.Open, FileAccess.Read, FileShare.Read,
-                    64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                using var heldSource = StagedStageFile.Open(source ?? fullDestination);
+                CaptureSeedExport(heldSource);
+                var input = heldSource.Stream;
                 if (input.Length > seedCapacity)
                     throw new IOException("The source exceeds the qualified private-version size limit.");
                 await using var output = new FileStream(transfer.StagePath,
@@ -295,7 +313,7 @@ public sealed partial class StagedTransferAllocator
                 ? null : StagedStageFile.ReadDirectoryIdentity(Path.GetDirectoryName(fullDestination)!);
             TransferJournalEntry entry = await _journal.CreateAsync(transfer, cancellationToken, tombstoneOwner,
                 previous?.TransferId, disposition, allocationReferenceId,
-                allocationReferenceKind, driverInstanceId, parentDirectoryIdentity).ConfigureAwait(false);
+                allocationReferenceKind, driverInstanceId, parentDirectoryIdentity, seedExport).ConfigureAwait(false);
             _spaceBudget?.Bind(entry);
             return new StagedAllocation(entry, identity);
         }

@@ -11,7 +11,7 @@ using SafeUpload.Agent.Service.Notifications;
 
 namespace SafeUpload.Agent.Tests;
 
-public sealed class StagedHandbackTests : IDisposable
+public sealed partial class StagedHandbackTests : IDisposable
 {
     private const string TestRequestorSid = "S-1-5-21-111-222-333-1000";
     private readonly TestWorkspace _workspace = new();

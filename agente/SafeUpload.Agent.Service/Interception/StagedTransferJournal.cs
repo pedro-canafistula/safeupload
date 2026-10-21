@@ -342,7 +342,8 @@ public sealed partial class StagedTransferJournal
         Guid? allocationReferenceId = null,
         uint? allocationReferenceKind = null,
         Guid? driverInstanceId = null,
-        StagedStageIdentity? parentDirectoryIdentity = null)
+        StagedStageIdentity? parentDirectoryIdentity = null,
+        StagedUnboundSeedExport? unboundSeedExport = null)
     {
         ArgumentNullException.ThrowIfNull(transfer);
         if (transfer.TransferId == Guid.Empty)
@@ -430,7 +431,9 @@ public sealed partial class StagedTransferJournal
                 AllocationReferenceId = allocationReferenceId,
                 AllocationReferenceKind = allocationReferenceKind,
                 DriverInstanceId = driverInstanceId,
-                ParentDirectoryIdentity = parentDirectoryIdentity
+                ParentDirectoryIdentity = parentDirectoryIdentity,
+                UnboundSeedExport = allocationDisposition is 1 or 3 && seedParent is not null
+                    ? seedParent.UnboundSeedExport : unboundSeedExport
             };
             if (allocationDisposition is 1 or 3 && seedParent is not null &&
                 (seedParent.SeedProvenance is not null || seedParent.BoundAllocation is not null ||
@@ -1692,6 +1695,10 @@ public sealed partial class StagedTransferJournal
 #endif
         }
         entry.SeedProvenance?.Validate(entry);
+        entry.UnboundSeedExport?.Validate(transfer);
+        if (entry.UnboundSeedExport is not null && (entry.BoundAllocation is not null ||
+            entry.AllocationDisposition is not (1 or 3)))
+            throw new InvalidDataException("Unbound seed evidence requires a preserving unbound allocation.");
         if (entry.SeedCompletion is { } completion && (entry.SeedProvenance is null ||
             completion.Allocation != entry.SeedProvenance.Allocation || completion.Length < 0))
             throw new InvalidDataException("Invalid seed completion receipt.");
@@ -3670,6 +3677,8 @@ public sealed record TransferJournalEntry(
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public StagedSeedProvenance? SeedProvenance { get; init; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public StagedUnboundSeedExport? UnboundSeedExport { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public StagedSeedCompletion? SeedCompletion { get; init; }
     /// <summary>Durable attachment transaction state; None is legacy/unattached v18 data.</summary>
     public StagedAttachmentStateV20 AttachmentStateV20 { get; init; }
@@ -3729,6 +3738,7 @@ public sealed record TransferJournalEntry(
             ParentDirectoryIdentity == other.ParentDirectoryIdentity &&
             AllocationExtensionVersion == other.AllocationExtensionVersion && BoundAllocation == other.BoundAllocation &&
             AllocationSecurity == other.AllocationSecurity && SeedProvenance == other.SeedProvenance &&
+            UnboundSeedExport == other.UnboundSeedExport &&
             SeedCompletion == other.SeedCompletion &&
             AllocationDisposition == other.AllocationDisposition && DiscardReservationId == other.DiscardReservationId &&
             AttachmentStateV20 == other.AttachmentStateV20 &&
@@ -3786,6 +3796,7 @@ public sealed record TransferJournalEntry(
         hash.Add(BoundAllocation);
         hash.Add(AllocationSecurity);
         hash.Add(SeedProvenance);
+        hash.Add(UnboundSeedExport);
         hash.Add(SeedCompletion);
         hash.Add(AttachmentStateV20);
         hash.Add(AttachPrepareRequestIdV20);

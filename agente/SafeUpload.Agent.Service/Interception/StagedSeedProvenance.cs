@@ -135,6 +135,15 @@ internal static class StagedSeedExport
     internal static string? Failure(TransferJournalEntry entry, string? recipientSid = null)
     {
         var seed = entry.SeedProvenance;
+        if (entry.BoundAllocation is null && entry.UnboundSeedExport is { } unbound)
+        {
+            try { unbound.Validate(entry.Transfer); }
+            catch (InvalidDataException) { return Unproven; }
+            if (unbound.ReadAuthority == StagedSeedAuthority.Denied) return Denied;
+            if (unbound.ReadAuthority != StagedSeedAuthority.Allowed) return Unproven;
+            if (recipientSid is not null && !string.Equals(unbound.RequestorSid, recipientSid, StringComparison.OrdinalIgnoreCase))
+                return RecipientUnproven;
+        }
         if (seed is null) return entry.BoundAllocation is not null ? Unproven :
             IsFailure(entry.HandbackFailureReason) ? entry.HandbackFailureReason : null;
         try { StagedSeedCompletion.Require(entry); }

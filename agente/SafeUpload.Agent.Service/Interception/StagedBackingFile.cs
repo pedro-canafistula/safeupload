@@ -11,10 +11,11 @@ internal static class StagedBackingFile
 {
     public static async Task<StagedStageIdentity> CreateAsync(string? source, string destination, long maximumBytes,
         CancellationToken token, string? metadataSource = null, bool preserveCreation = true,
-        Action<StagedStageIdentity>? created = null)
+        Action<StagedStageIdentity>? created = null, Action<StagedStageFile>? sourceOpened = null)
     {
         token.ThrowIfCancellationRequested();
         using StagedStageFile? heldSource = source is null ? null : StagedStageFile.Open(source);
+        if (heldSource is not null) sourceOpened?.Invoke(heldSource);
         var metadata = heldSource is not null ? StagedFileMetadata.Capture(heldSource.Stream.SafeFileHandle) :
             metadataSource is null ? null : StagedFileMetadata.CapturePath(metadataSource);
         if (metadata is not null && (metadata.Attributes & 1) != 0)

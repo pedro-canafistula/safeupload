@@ -83,6 +83,8 @@ public sealed partial class StagedTransferJournal
         finally { _gate.Release(); }
     }
 
+    // UnboundSeedExport is durable history, not unfinished bound work. Keep it
+    // in terminal frames; restricted Blocked entries still fail the export guard.
     private static bool CompletedArchiveShape(TransferJournalEntry e) =>
         e.BoundAllocation is null && e.AllocationSecurity is null && e.SeedProvenance is null &&
         e.PendingRename is null && !e.StageCleanupStarted &&
