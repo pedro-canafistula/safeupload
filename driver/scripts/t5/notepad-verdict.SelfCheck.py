@@ -13,10 +13,9 @@ required = {"valid_raw_sample", "native_steps_match", "forced_order_matches"}
 functions = [node for tree in parsed for node in tree.body
              if isinstance(node, ast.FunctionDef) and node.name in required]
 assert {node.name for node in functions} == required, "Actual verdict helpers missing"
-leaf_nodes = [node for tree in parsed for node in tree.body if isinstance(node, ast.Assign)
-              and any(isinstance(target, ast.Name) and target.id == "expected_leaves" for target in node.targets)]
-assert len(leaf_nodes) == 1, "Actual destination scope missing"
-leaves = ast.literal_eval(leaf_nodes[0].value)
+import json
+leaves = {leaf.lower() for c in json.loads((launcher.parent / 't5/notepad-cases.json').read_text())
+          for leaf in [c['Leaf'], *c.get('AuxiliaryLeaves', [])]}
 scope = r"c:\protected\t5"
 environment = {"re": re, "expected_leaves": leaves, "scope_path": scope,
                "ro": {"BootId": "control-boot"},

@@ -170,6 +170,7 @@ $functionNames = @(
     'Get-JournalSchemaErrors', 'Get-T5Projection', 'Get-T5EntryVersionKey', 'Get-T5StateAtUtc',
     'Test-T5SameWriter', 'Test-T5SameWriterAndEpoch', 'Get-T5TombstonesForPath', 'Test-T5TerminalPrivateVersion',
     'Test-T5DirectEmptyHeldChildTerminal',
+    'Get-StableJournalChildren', 'ConvertFrom-ServiceDriverEpoch', 'ConvertFrom-ServiceArchive', 'Read-T5JournalStorage', 'Read-T5StorageFile', 'Sha',
     'Get-T5JournalLineageErrors', 'Get-T5EmptyProbeOutcome', 'Get-JournalFor'
 )
 $functionAsts = @($coordinatorAst.FindAll({

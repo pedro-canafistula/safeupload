@@ -1,0 +1,154 @@
+[
+  {
+    "Op": "probe-delete-before-seal",
+    "Leaf": "probe-delete.txt",
+    "Sensitive": false,
+    "Kind": "ProbeDelete"
+  },
+  {
+    "Op": "probe-delete-after-publication",
+    "Leaf": "probe-after-publication.txt",
+    "Sensitive": false,
+    "Kind": "ProbeDeleteAfterPublication"
+  },
+  {
+    "Op": "probe-delete-before-seal",
+    "Leaf": "probe-before-cpf.txt",
+    "Sensitive": true,
+    "Kind": "ProbeDeleteBeforeSealCpf"
+  },
+  {
+    "Op": "probe-delete-after-publication",
+    "Leaf": "probe-after-cpf.txt",
+    "Sensitive": true,
+    "Kind": "ProbeDeleteAfterPublicationCpf"
+  },
+  {
+    "Op": "probe-doc",
+    "Leaf": "probe-doc.txt",
+    "Sensitive": false,
+    "Kind": "ProbeDeleteOnClose"
+  },
+  {
+    "Op": "probe-onclose",
+    "Leaf": "probe-onclose.txt",
+    "Sensitive": false,
+    "Kind": "OnCloseCancellation"
+  },
+  {
+    "Op": "notepad",
+    "Leaf": "ok.txt",
+    "Sensitive": false,
+    "Kind": "NotepadApprove"
+  },
+  {
+    "Op": "notepad",
+    "Leaf": "cpf.txt",
+    "Sensitive": true,
+    "Kind": "NotepadHandBack"
+  },
+  {
+    "Kind": "ExplorerEmptyRename",
+    "Op": "explorer-empty",
+    "Leaf": "explorer-renamed.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "AuxiliaryLeaves": [
+      "explorer-new.txt"
+    ],
+    "Expected": "Empty"
+  },
+  {
+    "Kind": "EmptyCopy",
+    "Op": "empty-copy",
+    "Leaf": "empty-copy.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Empty"
+  },
+  {
+    "Kind": "EmptyMove",
+    "Op": "empty-move",
+    "Leaf": "empty-move.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Empty"
+  },
+  {
+    "Kind": "ClearExistingSave",
+    "Op": "native-clear",
+    "Leaf": "clear-existing.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Empty"
+  },
+  {
+    "Kind": "PublicDeleteRemoveItem",
+    "Op": "remove-item",
+    "Leaf": "delete-remove.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Absent",
+    "DeleteBarrier": true
+  },
+  {
+    "Kind": "PublicDeleteExplorer",
+    "Op": "shell-delete",
+    "Leaf": "delete-explorer.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Absent",
+    "DeleteBarrier": true
+  },
+  {
+    "Kind": "PublicDeleteDeniedAcl",
+    "Op": "deny-acl",
+    "Leaf": "delete-denied.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Prior"
+  },
+  {
+    "Kind": "PublicDeleteDeniedSharing",
+    "Op": "deny-share",
+    "Leaf": "delete-sharing.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Prior"
+  },
+  {
+    "Kind": "DeleteNewerWriterOpen",
+    "Op": "inflight-before",
+    "Leaf": "delete-writer.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Newer"
+  },
+  {
+    "Kind": "DeleteNewerPublished",
+    "Op": "inflight-after",
+    "Leaf": "delete-published.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Absent",
+    "DeleteBarrier": true
+  },
+  {
+    "Kind": "DeleteThenBlockedSave",
+    "Op": "delete-cpf",
+    "Leaf": "delete-then-cpf.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Absent",
+    "Handback": true
+  },
+  {
+    "Kind": "ExistingBlockedEditHandback",
+    "Op": "native-append",
+    "Leaf": "existing-blocked-edit.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Prior",
+    "Handback": true
+  }
+]

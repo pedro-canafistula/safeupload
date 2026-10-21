@@ -8,14 +8,17 @@ Results: C:\T5\result.json.
 #>
 param([string]$ActorUser = 't5actor', [string]$ActorTask = 't5-actor',
     [string]$Diagnostics = 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1',
-    [string]$ObserverModule = 'C:\Users\vika\Documents\StagedInvariantObserver.psm1')
+    [string]$ObserverModule = 'C:\Users\vika\Documents\StagedInvariantObserver.psm1',
+    [string]$CasesPath = (Join-Path $PSScriptRoot 't5-notepad-cases.json'))
 $ErrorActionPreference = 'Stop'
 $out = 'C:\T5'; $control = Join-Path $out 'control'; $root = 'C:\Protected\t5'
 $journalDir = 'C:\ProgramData\SafeUpload\staging-journal'
-$leaves = @('probe-delete.txt', 'probe-after-publication.txt', 'probe-before-cpf.txt', 'probe-after-cpf.txt',
-    'probe-doc.txt', 'probe-onclose.txt', 'ok.txt', 'cpf.txt')
+$script:T5JournalEvidenceDirectory = Join-Path $out 'journal-evidence'
+$cases = @([IO.File]::ReadAllText($CasesPath) | ConvertFrom-Json)
+$leaves = @($cases | ForEach-Object { $_.Leaf; @($_.AuxiliaryLeaves) } | Where-Object { $_ } | Sort-Object -Unique)
 $frequency = [Diagnostics.Stopwatch]::Frequency
 $rawContext = $null; $rawBaseline = $null; $script:rawSequence = 0
+$script:T5WorkflowPublicHashes = @{}
 $probeControlPhase = 'ControlProbeAfterTestCreateCloseBeforeDeleteOrSave'
 $cpfText = 'T5 notepad CPF: 529.982.247-25'
 $cpfBytes = [Text.Encoding]::ASCII.GetBytes($cpfText)
@@ -119,6 +122,8 @@ function Capture-T5Observation($Case, [string]$Phase) {
                 if ($direct.Status -cne 'OK' -or -not (Same $logical $direct.Bytes)) { $independentAgree = $false }
                 if ($Case.Sensitive -and $path -ieq $Case.Path -and $logical.Length -gt 0) { $forbidden = $true }
                 elseif ((Contains-Bytes $logical $cpfBytes) -or (Contains-Bytes $logical $cpfNumberBytes)) { $forbidden = $true }
+                if($logical.Length -gt 0 -and $script:T5WorkflowPublicHashes.ContainsKey($path) -and
+                    $script:T5WorkflowPublicHashes[$path] -cnotcontains (Sha $logical)){$forbidden=$true}
                 $readerShapeOk = ($nativeReaders.Count -eq 2 -and @($nativeReaders | Where-Object { $_.Unbuffered }).Count -eq 1)
                 if (-not $readerShapeOk) { $nativeReaderCoverageOk = $false; $independentAgree = $false }
                 foreach ($nativeReader in $nativeReaders) {
@@ -170,7 +175,7 @@ function Capture-T5Observation($Case, [string]$Phase) {
         if (-not $entry.RawComplete) { throw 'One or more raw target images or artifacts are missing/incomplete.' }
         if (-not $independentAgree -or -not $nativeReaderCoverageOk) { throw 'Raw image, buffered read, and both fresh native readers do not agree (including absence).' }
         if (-not $directoryComplete) { throw ('Raw parent index has unexpected/missing file references; unexpected=' + $unexpected.Count + '; missing=' + $missing.Count) }
-        if ($forbidden) { $Case.Leaked = $true; throw 'CPF bytes were observed in a raw public image.' }
+        if ($forbidden) { $Case.Leaked = $true; throw 'CPF or unexpected nonempty fixture bytes were observed in a raw public image.' }
         $entry.Status = 'OK'; $entry.ModuleSequence = $sample.Sequence
     } catch { $entry.Status = 'ERROR'; $entry.Error = $_.Exception.ToString() }
     $result.RawObserver.Samples += [pscustomobject]$entry
@@ -207,7 +212,7 @@ function Invoke-Actor([string]$Op, [string]$Path, [string]$Text, [scriptblock]$O
     $ready = Join-Path $control ('probe-ready-' + $script:n + '.json')
     $go = Join-Path $control ('probe-go-' + $script:n + '.json')
     $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 240 * $frequency
-    $gatedOps = @('probe-delete-before-seal', 'probe-delete-after-publication', 'probe-doc')
+    $gatedOps = @('probe-delete-before-seal', 'probe-delete-after-publication', 'probe-doc', 'inflight-before', 'inflight-after')
     $probeGateHandled = $false; $lastObserve = [long]0
     while (-not (Test-Path -LiteralPath $ack)) {
         if (-not $probeGateHandled -and $Op -cin $gatedOps -and (Test-Path -LiteralPath $ready)) {
@@ -240,7 +245,18 @@ function Invoke-Actor([string]$Op, [string]$Path, [string]$Text, [scriptblock]$O
                 $fresh = @($gateJournal.Records | Where-Object { $BaselineTransferIds -notcontains $_.TransferId })
                 $target = @($sample.CurrentImages | Where-Object { $_.Path -ieq $Path })
                 if ($target.Count -ne 1) { throw 'The forced-order gate has no unique raw destination image.' }
-                if ($Op -ceq 'probe-delete-before-seal') {
+                if($Op -cin @('inflight-before','inflight-after')) {
+                    $wantHeld=$Op -ceq 'inflight-before'
+                    if($readyRecord.WritableProbeHandleHeld -ne $wantHeld){throw 'In-flight ready handle lifetime mismatch'}
+                    $candidate=@($fresh | Where-Object { $_.IsV20 -and $_.ProcessId -eq $readyRecord.ActorPid })
+                    if($wantHeld){
+                        $candidate=@($candidate | Where-Object { $_.State -in @('0','8') -and -not $_.SealedOnce -and $null -eq $_.SealedLength })
+                    }else{
+                        $candidate=@($candidate | Where-Object { $_.State -eq '5' -and $_.Sha256Hex -ceq $CaseRecord.GateSha256 -and $_.SealedLength -eq $CaseRecord.GateLength })
+                    }
+                    $gateSatisfied=($gateSamples.Count -ge 2 -and $candidate.Count -eq 1 -and
+                        $target[0].Absent -eq $false -and $target[0].Sha256 -ceq $CaseRecord.GateSha256 -and $target[0].Length -eq $CaseRecord.GateLength)
+                } elseif ($Op -ceq 'probe-delete-before-seal') {
                     $unsealed = @($fresh | Where-Object { $_.IsV20 -and $_.State -in @('0','8') -and
                         $_.SealedOnce -eq $false -and $null -eq $_.SealedLength -and $null -eq $_.Sha256Hex })
                     $gateSatisfied = ($gateSamples.Count -ge 2 -and
@@ -391,6 +407,13 @@ function Test-T5StateTransition([int]$From, [int]$To) {
     return (@($allowed) -contains $To)
 }
 function Test-T5NormalizedPath([string]$Path) {
+    # On Linux, .NET treats C:\ as relative. Validate Windows fixture paths
+    # lexically for offline replay; Windows still uses its original native check.
+    if($env:OS -ne 'Windows_NT' -and $Path -match '^[A-Za-z]:\\') {
+        if($Path.Length -gt 511){return $false}
+        $parts=$Path.Substring(3).Split([char]'\')
+        return @($parts | Where-Object {$_ -in @('','.','..') -or $_ -match '[<>:"/|?*\x00-\x1F]'}).Count -eq 0
+    }
     if ([string]::IsNullOrWhiteSpace($Path) -or $Path.Length -gt 511 -or
         -not [IO.Path]::IsPathRooted($Path)) { return $false }
     try { return [string]::Equals([IO.Path]::GetFullPath($Path), $Path, [StringComparison]::OrdinalIgnoreCase) }
@@ -675,6 +698,14 @@ function Get-JournalSchemaErrors($Entry, [string]$ManifestPath, [switch]$Require
             ($handbackState -ne 2 -or $Entry.JustificationWindowClosed -ne $true))) {
         $errors += 'handback and cleanup fields have an invalid state combination'
     }
+    if($null -ne $Entry.UnboundCancellation){
+        $cancel=$Entry.UnboundCancellation
+        $version=[pscustomobject]@{TransferId=$Entry.Transfer.TransferId;DestinationGeneration=$Entry.DestinationGeneration;StageIdentity=$Entry.StageIdentity}
+        if($null -eq (Get-T5GuidText $cancel.OperationId) -or
+            (Get-T5VersionIdentityKey $cancel.Version) -cne (Get-T5VersionIdentityKey $version) -or
+            -not (Test-T5IntegerRange $cancel.Generation 1 ([long]::MaxValue)) -or $cancel.Generation -le $Entry.DestinationGeneration -or
+            $Entry.State -ne 7 -or $Entry.SealedOnce -ne $true -or $null -ne $Entry.PendingRename -or $null -ne $Entry.BoundAllocation){$errors+='invalid exact unbound cancellation receipt'}
+    }
     $state = if (Test-T5IntegerRange $Entry.State 0 12) { [int]$Entry.State } else { -1 }
     if ($state -in @(3, 4, 5, 6) -and $null -eq $Entry.Sha256Hex) { $errors += 'approved/publishing/released/blocked state lacks its digest' }
     if ($profileV20 -and $state -in @(1, 2, 3, 4, 5, 6) -and
@@ -902,6 +933,7 @@ function Get-T5Projection($Entry, [string]$ManifestPath) {
         BlockedInspectionFailure = $Entry.BlockedInspectionFailure; JustificationExpiresAtUtc = $Entry.JustificationExpiresAtUtc
         HandbackPath = $Entry.HandbackPath; HandbackLength = $Entry.HandbackLength
         HandbackFailureReason = $Entry.HandbackFailureReason; HandbackLastAttemptAtUtc = $Entry.HandbackLastAttemptAtUtc
+        UnboundCancellation = $Entry.UnboundCancellation;
         Manifest = $ManifestPath; SchemaProfile = $(if ($v20) { 'V20' } else { 'LegacyBaseline' }); IsV20 = $v20
     }
 }
@@ -1287,40 +1319,218 @@ function Get-T5EmptyProbeOutcome($Journal, [bool]$NativeStepsOk) {
         CleanupAcknowledged = ($privateCleanup.Count -gt 0)
     }
 }
+function Get-StableJournalChildren([string]$Journal) {
+    $limit=[Diagnostics.Stopwatch]::GetTimestamp()+[long](5*[Diagnostics.Stopwatch]::Frequency)
+    while($true) {
+        $children=@(Get-ChildItem -LiteralPath $Journal -Force | Sort-Object Name)
+        $transient=@($children | Where-Object {$_.Name -match '^(?:[0-9a-f]{32}\.json|driver-epoch\.state|segments\.state)\.[0-9a-f]{32}\.tmp$'})
+        if(-not $transient.Count -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $limit){return $children}
+        Start-Sleep -Milliseconds 25
+    }
+}
+function ConvertFrom-ServiceDriverEpoch([byte[]]$Bytes) {
+    if($Bytes.Length -gt 4096){throw 'Driver epoch exceeds its product bound.'}
+    $epoch=[Text.UTF8Encoding]::new($false,$true).GetString($Bytes) | ConvertFrom-Json -ErrorAction Stop
+    foreach($field in @('DriverInstanceId','AcceptedAtUtc','DrainRequestId','DrainNonce','DrainedAtUtc')){
+        if($null -eq $epoch.PSObject.Properties[$field]){throw 'Incomplete driver epoch record.'}
+    }
+    if([guid]$epoch.DriverInstanceId -eq [guid]::Empty){throw 'Empty driver epoch identity.'}
+    $accepted=[DateTimeOffset]$epoch.AcceptedAtUtc
+    if($accepted -eq [DateTimeOffset]::MinValue -or $accepted.Offset -ne [TimeSpan]::Zero){throw 'Invalid driver epoch acceptance time.'}
+    $active=$null -eq $epoch.DrainRequestId -and $null -eq $epoch.DrainNonce -and $null -eq $epoch.DrainedAtUtc
+    if(-not $active){
+        foreach($value in @($epoch.DrainRequestId,$epoch.DrainNonce)){
+            if($null -eq $value -or $value -is [string] -or $value -is [bool] -or $value -is [double] -or $value -is [single] -or
+                [string]$value -notmatch '^\d+$' -or [decimal]$value -le 0 -or [decimal]$value -gt [uint64]::MaxValue){throw 'Unpaired driver epoch drain receipt.'}
+        }
+        if($null -eq $epoch.DrainedAtUtc){throw 'Missing driver epoch drain time.'}
+        $drained=[DateTimeOffset]$epoch.DrainedAtUtc
+        if($drained.Offset -ne [TimeSpan]::Zero -or $drained -lt $accepted){throw 'Invalid driver epoch drain time.'}
+    }
+    return $epoch
+}
+function ConvertFrom-ServiceArchive($Records,[string]$Journal) {
+    # StagedTerminalArchive.cs SUAC/SUJA v1. Decode only authenticated retained
+    # bytes. Keep 131072 bytes per manifest; the 4 MiB container bound is the
+    # product's separate segment bound, never a larger manifest allowance.
+    $inventory=@($Records | Where-Object {($_.Path -split '[\\/]')[-1] -ceq 'segments.state'})
+    if($inventory.Count -ne 1 -or $inventory[0].Bytes.Length -gt 4096){throw 'Missing/invalid completed inventory.'}
+    $head=[Text.UTF8Encoding]::new($false,$true).GetString($inventory[0].Bytes) | ConvertFrom-Json -ErrorAction Stop
+    if(($head.Version -isnot [int] -and $head.Version -isnot [long]) -or $head.Version -ne 1 -or
+        ($head.SegmentCount -isnot [int] -and $head.SegmentCount -isnot [long]) -or $head.SegmentCount -lt 0 -or $head.SegmentCount -gt [int]::MaxValue){throw 'Invalid completed inventory version/count.'}
+    $segments=@($Records | Where-Object {($_.Path -split '[\\/]')[-1] -cne 'segments.state'} | Sort-Object Path)
+    if($segments.Count -ne $head.SegmentCount){throw 'Completed inventory lost or has an uncommitted segment.'}
+    $rows=@();$seen=@{};$number=0;$sha=[Security.Cryptography.SHA256]::Create()
+    try{
+        foreach($segment in $segments){
+            $number++;$leaf=($segment.Path -split '[\\/]')[-1]
+            if($leaf -cne ($number.ToString('X8')+'.pack')){throw 'Completed segment gap or unexpected name.'}
+            [byte[]]$b=$segment.Bytes
+            if($b.Length -lt 4096 -or $b.Length -gt 4194304){throw 'Completed segment outside product bound.'}
+            $frontier=[BitConverter]::ToInt64($b,8)
+            if([BitConverter]::ToUInt32($b,0) -ne 0x43415553 -or [BitConverter]::ToInt32($b,4) -ne 1 -or
+                $frontier -ne $b.Length -or
+                [Convert]::ToBase64String($sha.ComputeHash($b,0,16)) -cne [Convert]::ToBase64String($b[16..47])){throw 'Invalid/unstable committed archive frontier.'}
+            $offset=4096
+            while($offset -lt $frontier){
+                if($frontier-$offset -lt 60 -or [BitConverter]::ToUInt32($b,$offset) -ne 0x414A5553 -or [BitConverter]::ToInt32($b,$offset+4) -ne 1){throw 'Invalid committed archive frame header.'}
+                $length=[BitConverter]::ToInt32($b,$offset+8)
+                if($length -le 0 -or $length -gt 131072 -or $length -gt $frontier-$offset-60){throw 'Invalid committed archive payload bound.'}
+                $id=[guid]::new([byte[]]$b[($offset+12)..($offset+27)])
+                if($id -eq [guid]::Empty -or $seen.ContainsKey($id)){throw 'Empty/duplicate archived transfer identity.'}
+                $seen[$id]=$true
+                [byte[]]$payload=$b[($offset+60)..($offset+59+$length)]
+                [byte[]]$digest=$sha.ComputeHash($payload)
+                if([Convert]::ToBase64String($digest) -cne [Convert]::ToBase64String($b[($offset+28)..($offset+59)])){throw 'Completed payload checksum mismatch.'}
+                # Logical identity stays the transfer filename across archival.
+                # Physical source, frame offset and full container are retained.
+                $record=[pscustomobject]@{Path=(Join-Path $Journal ($id.ToString('N')+'.json'));PhysicalPath=$segment.Path;FrameOffset=$offset;
+                    Owner=$segment.Owner;Sddl=$segment.Sddl;Artifact=$segment.Artifact;Bytes=$payload;Length=$length;Sha256=([BitConverter]::ToString($digest)).Replace('-','')}
+                $json=[Text.UTF8Encoding]::new($false,$true).GetString($payload)
+                if(-not (Test-T5JsonDepthBound $json 32)){throw 'Archived JSON exceeds depth bound.'}
+                $m=$json | ConvertFrom-Json -ErrorAction Stop
+                $errors=@(Get-JournalSchemaErrors $m $record.Path -RequireStateHistory -RequireV20)
+                if($errors.Count){throw ('Archived manifest schema: '+($errors -join '; '))}
+                if((Get-T5GuidText $m.Transfer.TransferId) -cne $id.ToString('N')){throw 'Archive frame TransferId mismatch.'}
+                $parsed=[pscustomobject]@{Entry=$m;StateName=(Get-T5StateName ([int]$m.State))}
+                if($parsed.Entry.StageDeleted -isnot [bool] -or $parsed.Entry.StageCleanupStarted -isnot [bool] -or
+                    $parsed.Entry.StageCleanupStarted -or $null -ne $parsed.Entry.PendingRename -or $null -ne $parsed.Entry.BoundAllocation -or
+                    $null -ne $parsed.Entry.AllocationSecurity -or $null -ne $parsed.Entry.SeedProvenance){throw 'Archived receipt still has unfinished private/bound work.'}
+                $m=$parsed.Entry
+                $ordinary=$parsed.StateName -ceq 'Released' -and $m.HandbackState -eq 0 -and $m.StageDeleted
+                # BlockedCleanupComplete / MatchesBlockedDeletionReceipt: a
+                # justified Released receipt carries the same cleanup contract.
+                $cleanup=$parsed.StateName -cin @('Blocked','Released') -and $m.StageDeleted -and $m.HandbackState -eq 2 -and
+                    $m.JustificationWindowClosed -is [bool] -and $m.JustificationWindowClosed -and
+                    $null -ne $m.BlockedDeletionReceipt -and $null -ne $m.StageIdentity
+                if($cleanup){
+                    $receipt=$m.BlockedDeletionReceipt;$version=$receipt.Version
+                    $renames=0;for($name=$m.NamespaceTombstones;$null -ne $name;$name=$name.Previous){$renames++}
+                    $cleanup=$null -ne $version -and $null -ne $version.StageIdentity -and
+                        [guid]$version.TransferId -eq [guid]$m.Transfer.TransferId -and $version.DestinationGeneration -eq $m.DestinationGeneration -and
+                        $null -ne $receipt.CommittedRenames -and $receipt.CommittedRenames -eq $renames -and
+                        $null -ne $receipt.Length -and $null -ne $m.SealedLength -and $receipt.Length -ge 0 -and
+                        $receipt.Length -eq $m.SealedLength -and $receipt.Sha256Hex -ceq $m.Sha256Hex
+                    foreach($value in @($version.DestinationGeneration,$receipt.CommittedRenames,$receipt.Length,$m.SealedLength)){
+                        if($null -eq $value -or $value -is [string] -or $value -is [bool] -or $value -is [double] -or $value -is [single] -or
+                            [string]$value -notmatch '^\d+$' -or [decimal]$value -gt [long]::MaxValue){$cleanup=$false}
+                    }
+                    if($receipt.Sha256Hex -isnot [string] -or $receipt.Sha256Hex -cnotmatch '^[0-9a-fA-F]{64}$'){$cleanup=$false}
+                    foreach($field in @('VolumeSerialNumber','FileIdHigh','FileIdLow')){
+                        foreach($identity in @($version.StageIdentity,$m.StageIdentity)){
+                            $value=$identity.$field
+                            if($null -eq $value -or $value -is [string] -or $value -is [bool] -or $value -is [double] -or $value -is [single] -or
+                                [string]$value -notmatch '^\d+$' -or [decimal]$value -gt [uint64]::MaxValue){$cleanup=$false}
+                        }
+                        if($version.StageIdentity.$field -ne $m.StageIdentity.$field){$cleanup=$false}
+                    }
+                }
+                # Other terminal workflows stay held for an explicit adapter;
+                # archive membership never grants publication or cleanup authority.
+                $discard=($m.State -eq 9 -or ($m.State -eq 12 -and $null -ne (Get-T5UtcValue $m.DiscardAcknowledgedAtUtc) -and $null -ne $m.DiscardReservationId))
+                $cancel=$null -ne $m.UnboundCancellation -and $m.StageDeleted
+                if(-not $ordinary -and -not $cleanup -and -not $discard -and -not $cancel){throw 'Archive terminal shape needs a qualified evidence adapter.'}
+                if($rows.Count -ge 1024){throw 'Journal exceeds the 1024-record inspection bound.'}
+                $rows+=$record;$offset+=60+$length
+            }
+        }
+    }finally{$sha.Dispose()}
+    return ,$rows
+}
+function Read-T5JournalStorage {
+    # A content-addressed copy keeps the actual pack, not just derived JSON. Live
+    # inventory changes fail this snapshot; no missing frame becomes approval.
+    $script:T5SnapshotBytes=[long]0
+    $children=@(Get-StableJournalChildren $journalDir)
+    if($children.Count -gt 1026){throw 'Journal exceeds bounded child inventory.'}
+    $storage=@(); $archive=@(); $logical=@(); $total=[long]0
+    foreach($child in @($children | Sort-Object @{Expression={if($_.Name -ceq 'completed'){0}else{1}}},Name)) {
+        if($child.Name -ceq 'completed' -and $child.PSIsContainer) {
+            $completed=@(Get-StableJournalChildren $child.FullName)
+            if($completed.Count -gt 1025){throw 'Completed inventory exceeds bounded segment count.'}
+            foreach($item in $completed) {
+                if($item.Name -match '^(?:segments\.state)\.[0-9a-f]{32}\.tmp$'){continue}
+                if($item.PSIsContainer -or $item.Name -cnotmatch '^(?:segments\.state|[0-9A-F]{8}\.pack)$'){throw ('Unexpected completed child: '+$item.FullName)}
+                $archive+=Read-T5StorageFile $item 4194304
+            }
+            if((@(Get-StableJournalChildren $child.FullName).Name -join '|') -cne ($completed.Name -join '|')){throw 'Completed inventory changed during collection.'}
+        } elseif($child.Name -match '^(?:[0-9a-f]{32}\.json|driver-epoch\.state|segments\.state)\.[0-9a-f]{32}\.tmp$'){continue
+        } elseif(-not $child.PSIsContainer -and $child.Name -ceq 'driver-epoch.state') {
+            $epoch=Read-T5StorageFile $child 4096
+            [void](ConvertFrom-ServiceDriverEpoch $epoch.Bytes); $storage+=$epoch
+        } elseif(-not $child.PSIsContainer -and $child.Name -match '^[0-9a-f-]{32,36}\.json$') {
+            $logical+=Read-T5StorageFile $child 131072
+        } else {throw ('Unexpected journal child: '+$child.FullName)}
+    }
+    foreach($item in @($storage)+@($archive)+@($logical)){$total+=$item.Length}
+    if($total -gt 67108864){throw 'Journal exceeds the 64-MiB inspection bound.'}
+    if($archive.Count){$logical+=(ConvertFrom-ServiceArchive $archive $journalDir)}
+    $logicalIds=@{}
+    foreach($row in $logical){$logicalIds[[IO.Path]::GetFileNameWithoutExtension($row.Path).Replace('-','').ToLowerInvariant()]=$true}
+    if($logicalIds.Count -gt 1024){throw 'Journal exceeds the 1024-record inspection bound.'}
+    foreach($row in $archive){
+        $maximum=if($row.Path.EndsWith('segments.state')){4096}else{4194304}
+        $again=Read-T5StorageFile (Get-Item -LiteralPath $row.Path -Force -ErrorAction Stop) $maximum -Recheck
+        if([Convert]::ToBase64String($again.Bytes) -cne [Convert]::ToBase64String($row.Bytes)){throw 'Completed bytes changed during hot collection; snapshot incomplete.'}
+    }
+    if((@(Get-StableJournalChildren $journalDir).Name -join '|') -cne ($children.Name -join '|')){throw 'Journal inventory changed during collection.'}
+    return $logical
+}
+function Read-T5StorageFile($File,[int]$Maximum,[switch]$Recheck) {
+    if($File.Length -gt $Maximum){throw ('Storage file exceeds bound: '+$File.FullName)}
+    if(-not $Recheck){$script:T5SnapshotBytes+=[long]$File.Length}
+    if($script:T5SnapshotBytes -gt 67108864){throw 'Journal exceeds the 64-MiB inspection bound.'}
+    $stream=[IO.File]::Open($File.FullName,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+    try {
+        if($stream.Length -gt $Maximum){throw 'Storage grew beyond bound.'}
+        if(-not $Recheck){$script:T5SnapshotBytes+=$stream.Length-$File.Length}
+        if($script:T5SnapshotBytes -gt 67108864){throw 'Journal exceeds the 64-MiB inspection bound.'}
+        $bytes=New-Object byte[] ([int]$stream.Length);$offset=0
+        while($offset -lt $bytes.Length){$n=$stream.Read($bytes,$offset,$bytes.Length-$offset);if($n -le 0){throw 'Short journal storage read.'};$offset+=$n}
+        if($stream.Length -ne $bytes.Length){throw 'Storage changed length during read.'}
+    }finally{$stream.Dispose()}
+    $hash=Sha $bytes
+    $artifact=$null
+    if($script:T5JournalEvidenceDirectory){
+        [void][IO.Directory]::CreateDirectory($script:T5JournalEvidenceDirectory)
+        $artifact=Join-Path $script:T5JournalEvidenceDirectory ($hash+'.bin')
+        if(-not [IO.File]::Exists($artifact)){[IO.File]::WriteAllBytes($artifact,$bytes)}
+    }
+    return [pscustomobject]@{Path=$File.FullName;Bytes=$bytes;Length=$bytes.Length;Sha256=$hash;Artifact=$artifact;Owner=$null;Sddl=$null}
+}
 function Get-JournalFor([string]$Destination, [string[]]$BaselineTransferIds, [switch]$RequireHistoryForNewRecords) {
     $records = @(); $parseErrors = @(); $schemaErrors = @(); $allEntries = @(); $allById = @{}
-    $files = @()
-    try { $files = @(Get-ChildItem -LiteralPath $journalDir -Filter '*.json' -File -Force -ErrorAction Stop) }
+    try { $files = @(Read-T5JournalStorage) }
     catch {
         $parseErrors += [pscustomobject]@{ Path = $journalDir; Error = $_.Exception.Message }
         return [pscustomobject]@{ Records = $records; ParseErrors = $parseErrors; SchemaErrors = $schemaErrors }
     }
-    if ($files.Count -gt 1024) {
-        $parseErrors += [pscustomobject]@{ Path = $journalDir; Error = 'Journal exceeds the 1024-manifest inspection bound.' }
-        return [pscustomobject]@{ Records = $records; ParseErrors = $parseErrors; SchemaErrors = $schemaErrors }
-    }
-    $totalManifestBytes = [long]0
     foreach ($file in $files) {
         try {
-            if ($file.Length -gt 131072) { throw 'Manifest exceeds the service 128-KiB limit.' }
-            $totalManifestBytes += [long]$file.Length
-            if ($totalManifestBytes -gt 67108864) { throw 'Journal exceeds the 64-MiB inspection bound.' }
-            $json = [IO.File]::ReadAllText($file.FullName)
-            if (-not (Test-T5JsonDepthBound $json 32)) { throw 'Manifest JSON exceeds the 32-level depth bound or is unbalanced.' }
+            $json = [Text.UTF8Encoding]::new($false,$true).GetString($file.Bytes)
+            if (-not (Test-T5JsonDepthBound $json 32)) { throw 'Manifest JSON exceeds depth bound or is unbalanced.' }
             $entry = $json | ConvertFrom-Json -ErrorAction Stop
-            if (-not (Test-T5Object $entry) -or -not (Test-T5Object $entry.Transfer) -or
-                -not (Test-T5HasProperty $entry.Transfer 'DestinationPath') -or $entry.Transfer.DestinationPath -isnot [string] -or
-                [string]::IsNullOrWhiteSpace([string]$entry.Transfer.DestinationPath)) {
-                $schemaErrors += [pscustomobject]@{ Path = $file.FullName; Error = 'Cannot bind manifest to a destination; required Transfer.DestinationPath is missing or invalid.' }
-                continue
-            }
+            $errors=@(Get-JournalSchemaErrors $entry $file.Path -RequireStateHistory:($null -ne $entry.DriverInstanceId))
+            if($errors.Count){throw ('Manifest schema: '+($errors -join '; '))}
             $id = Get-T5GuidText $entry.Transfer.TransferId
-            if ($null -eq $id -or $id -cne [IO.Path]::GetFileNameWithoutExtension($file.Name).ToLowerInvariant()) {
-                $schemaErrors += [pscustomobject]@{ Path = $file.FullName; Error = 'TransferId does not bind to manifest filename.' }
+            if ($null -eq $id -or $id -cne [IO.Path]::GetFileNameWithoutExtension($file.Path).Replace('-','').ToLowerInvariant()) { throw 'TransferId does not bind to manifest filename.' }
+            if($allById.ContainsKey($id)){
+                $existing=$allById[$id]
+                # Product consolidation permits one byte-identical hot/archive
+                # pair. Preserve both artifacts; never merge conflicting records.
+                if(-not $file.PhysicalPath -or $existing.Storage.PhysicalPath -or
+                    [Convert]::ToBase64String($file.Bytes) -cne [Convert]::ToBase64String($existing.Storage.Bytes)){throw ('Conflicting/duplicate transfer storage: '+$id)}
+                $existing | Add-Member -NotePropertyName HotStorage -NotePropertyValue $existing.Storage
+                $existing.Storage=$file
                 continue
             }
-            $allById[$id] = [pscustomobject]@{ Entry = $entry; Path = $file.FullName; Id = $id }
-        } catch { $parseErrors += [pscustomobject]@{ Path = $file.FullName; Error = $_.Exception.Message } }
+            $allById[$id] = [pscustomobject]@{ Entry = $entry; Path = $file.Path; Id = $id; Storage = $file }
+        } catch { $parseErrors += [pscustomobject]@{ Path = $file.Path; Error = $_.Exception.Message } }
+    }
+    # Validate every retained record's lineage, even when querying another leaf.
+    $allLineage=@($allById.Values | ForEach-Object {Get-T5Projection $_.Entry $_.Path})
+    foreach($error in @(Get-T5JournalLineageErrors $allLineage)){
+        $schemaErrors+=[pscustomobject]@{Path=$journalDir;Error=[string]$error.Error}
     }
     $targetIds = @($allById.Values | Where-Object {
         [string]::Equals([string]$_.Entry.Transfer.DestinationPath, $Destination, [StringComparison]::OrdinalIgnoreCase)
@@ -1363,7 +1573,13 @@ function Get-JournalFor([string]$Destination, [string[]]$BaselineTransferIds, [s
             foreach ($errorText in $entryErrors) { $schemaErrors += [pscustomobject]@{ Path = $item.Path; Error = [string]$errorText } }
             continue
         }
-        $lineageEntries += Get-T5Projection $entry $item.Path
+        $projection=Get-T5Projection $entry $item.Path
+        if($item.Storage.PhysicalPath){
+            $projection | Add-Member -NotePropertyName ArchiveRecord -NotePropertyValue ([pscustomobject]@{
+                PhysicalPath=$item.Storage.PhysicalPath; FrameOffset=$item.Storage.FrameOffset; Artifact=$item.Storage.Artifact;
+                Length=$item.Storage.Length; Sha256=$item.Storage.Sha256; TransferId=$id; HotArtifact=$(if($item.HotStorage){$item.HotStorage.Artifact}else{$null}) })
+        }
+        $lineageEntries += $projection
     }
     foreach ($lineageError in @(Get-T5JournalLineageErrors $lineageEntries)) {
         $path = $null
@@ -1375,6 +1591,190 @@ function Get-JournalFor([string]$Destination, [string[]]$BaselineTransferIds, [s
         [string]::Equals([string]$_.DestinationPath, $Destination, [StringComparison]::OrdinalIgnoreCase)
     })
     return [pscustomobject]@{ Records = $records; ParseErrors = $parseErrors; SchemaErrors = $schemaErrors }
+}
+function Invoke-T5WorkflowAck($Record,[string]$Op,[string]$Path,[string]$Text,[hashtable]$Codes,[string[]]$BaselineIds) {
+    $observe={param($phase) Capture-T5Observation $Record ([string]$phase)}.GetNewClosure()
+    $ack=Invoke-Actor $Op $Path $Text $observe $BaselineIds $Record
+    $Record.WorkflowAcks+= $ack
+    $Record.Ack=$ack
+    if($ack.Error){throw ('Actor '+$Op+': '+$ack.Error+' UI='+($ack.Ui | ConvertTo-Json -Depth 8 -Compress))}
+    foreach($name in $Codes.Keys){
+        $actual=Get-NativeStepCode ([string]$ack.Steps) $name
+        if($null -eq $actual -or $actual -ne $Codes[$name]){throw ('Actor '+$Op+' '+$name+' expected='+$Codes[$name]+' actual='+$actual+' steps='+$ack.Steps)}
+    }
+    return $ack
+}
+function Wait-T5WorkflowState($Record,[string]$Path,[byte[]]$Expected,[bool]$Absent,[bool]$RequireRelease,[bool]$RequireHandback,[string]$HandbackDirectory,[string[]]$BeforeHandback,[byte[]]$HandbackBytes) {
+    $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+90*$frequency
+    do {
+        $sample=Capture-T5Observation $Record 'WorkflowSettlement'
+        $journal=Get-JournalFor -Destination $Path -BaselineTransferIds @() -RequireHistoryForNewRecords
+        $Record.Journal=$journal.Records;$Record.JournalParseErrors=$journal.ParseErrors;$Record.JournalSchemaErrors=$journal.SchemaErrors
+        if($sample.Status -cne 'OK'){throw ('Workflow raw observation failed: '+$sample.Error)}
+        $image=@($sample.CurrentImages | Where-Object {$_.Path -ieq $Path})
+        if($image.Count -ne 1){throw 'Workflow target raw image missing or duplicated'}
+        $match=if($Absent){$image[0].Absent -eq $true}else{$image[0].Absent -eq $false -and $image[0].Length -eq $Expected.Length -and $image[0].Sha256 -ceq (Sha $Expected)}
+        $release=@($journal.Records | Where-Object {$_.State -eq '5' -and $_.SealedLength -eq $Expected.Length -and $_.Sha256Hex -ceq (Sha $Expected) -and $_.StageDeleted -eq $true})
+        $blocked=@($journal.Records | Where-Object {$_.State -eq '6' -and $_.HandbackState -eq '2' -and $_.SealedLength -eq $HandbackBytes.Length -and $_.Sha256Hex -ceq (Sha $HandbackBytes)})
+        $ok=$match -and @($journal.ParseErrors).Count -eq 0 -and @($journal.SchemaErrors).Count -eq 0
+        if($RequireRelease){$ok=$ok -and $release.Count -gt 0}
+        if(-not $RequireHandback){
+            $unfinished=@($journal.Records | Where-Object {$_.IsV20 -and $_.StageDeleted -ne $true -and $null -eq $_.DiscardAcknowledgedAtUtc})
+            $ok=$ok -and $unfinished.Count -eq 0
+        }
+        if($RequireHandback){
+            $Record.Handback=Get-Handback $HandbackDirectory $BeforeHandback $HandbackBytes
+            $ok=$ok -and $blocked.Count -gt 0 -and $Record.Handback.Status -ceq 'PASS'
+        }
+        if($ok){$Record.WorkflowJournalSnapshots+=,@($journal.Records);return $sample}
+        Start-Sleep -Milliseconds 100
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    throw ('Workflow settlement timed out: path='+$Path+' absent='+$Absent+' release='+$RequireRelease+' handback='+$RequireHandback+' raw='+($image | ConvertTo-Json -Depth 8 -Compress)+' journal='+($journal | ConvertTo-Json -Depth 12 -Compress))
+}
+function Set-T5DeleteDenyFixture([string]$Path,[string]$Parent,[string]$Sid) {
+    $identity=New-Object Security.Principal.SecurityIdentifier($Sid)
+    $fileAcl=Get-Acl -LiteralPath $Path;$parentAcl=Get-Acl -LiteralPath $Parent
+    $fixture=[pscustomobject]@{Path=$Path;Parent=$Parent;Sid=$Sid;FileBefore=$fileAcl.Sddl;ParentBefore=$parentAcl.Sddl;FileDenied=$null;ParentDenied=$null;Restored=$false}
+    try {
+        $fileAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity,[Security.AccessControl.FileSystemRights]::Delete,[Security.AccessControl.AccessControlType]::Deny)))
+        $parentAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity,[Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles,[Security.AccessControl.AccessControlType]::Deny)))
+        Set-Acl -LiteralPath $Path -AclObject $fileAcl;Set-Acl -LiteralPath $Parent -AclObject $parentAcl
+        $fixture.FileDenied=(Get-Acl -LiteralPath $Path).Sddl;$fixture.ParentDenied=(Get-Acl -LiteralPath $Parent).Sddl
+        return $fixture
+    }catch{Restore-T5DeleteDenyFixture $fixture;throw}
+}
+function Restore-T5DeleteDenyFixture($Fixture) {
+    $fileAcl=Get-Acl -LiteralPath $Fixture.Path;$fileAcl.SetSecurityDescriptorSddlForm($Fixture.FileBefore);Set-Acl -LiteralPath $Fixture.Path -AclObject $fileAcl
+    $parentAcl=Get-Acl -LiteralPath $Fixture.Parent;$parentAcl.SetSecurityDescriptorSddlForm($Fixture.ParentBefore);Set-Acl -LiteralPath $Fixture.Parent -AclObject $parentAcl
+    $Fixture.Restored=((Get-Acl -LiteralPath $Fixture.Path).Sddl -ceq $Fixture.FileBefore -and (Get-Acl -LiteralPath $Fixture.Parent).Sddl -ceq $Fixture.ParentBefore)
+    if(-not $Fixture.Restored){throw 'Delete-denial fixture SDDL restoration failed'}
+}
+function Invoke-T5Workflow($Spec,$Record,[string]$HandbackDirectory,[string[]]$BeforeHandback) {
+    $Record.Workflow=$true;$Record.WorkflowAcks=@();$Record.WorkflowJournalSnapshots=@();$Record.Fixtures=@();$Record.WorkflowOutcome=$false
+    $Record.ExpectedPublicAbsent=$Spec.Expected -ceq 'Absent';$Record.DeleteBarrierRequired=[bool]$Spec.DeleteBarrier
+    $Record.DeleteBarrierVerified=$false;$Record.DeleteBarrierReason=$null
+    $prior='T5 '+$Spec.Kind+' published clean prior'
+    $newer='T5 '+$Spec.Kind+' inspected newer save'
+    $priorBytes=[Text.Encoding]::ASCII.GetBytes($prior);$newerBytes=[Text.Encoding]::ASCII.GetBytes($newer)
+    $empty=New-Object byte[] 0;$saveCodes=@{open=0;write=0;close=0}
+    $expected=$priorBytes;$handbackBytes=$cpfBytes;$path=$Record.Path
+    $seed=$Spec.Op -notin @('explorer-empty','empty-copy','empty-move')
+    if($seed){
+        [void](Invoke-T5WorkflowAck $Record 'native-create' $path $prior $saveCodes @())
+        [void](Wait-T5WorkflowState $Record $path $priorBytes $false $true $false '' @() $empty)
+        $Record.PriorPublication=@($Record.Journal | Where-Object {$_.State -eq '5' -and $_.Sha256Hex -ceq (Sha $priorBytes)})
+    }
+    $baseline=Get-JournalFor $path
+    if(@($baseline.ParseErrors).Count -or @($baseline.SchemaErrors).Count){throw 'Workflow baseline journal is invalid'}
+    $ids=@($baseline.Records | ForEach-Object TransferId);$Record.WorkflowBaseline=$baseline.Records
+    switch($Spec.Op){
+        'explorer-empty' {
+            $oldPath=Join-Path $root $Spec.AuxiliaryLeaves[0]
+            [void](Invoke-T5WorkflowAck $Record 'native-create' $oldPath '' $saveCodes @())
+            [void](Wait-T5WorkflowState $Record $oldPath $empty $false $true $false '' @() $empty)
+            [void](Invoke-T5WorkflowAck $Record 'shell-rename-empty' $path $oldPath @{'shell-rename'=0} @())
+            $child=Invoke-T5WorkflowAck $Record 'second-open-empty' $path '' @{'second-open'=0} @()
+            if($child.Child.Length -ne 0 -or $child.Child.FirstByte -ne -1 -or $child.Child.ReadWrite -ne $true){throw 'Second-process read/write open did not observe the unchanged empty file'}
+            $expected=$empty;$Record.OldPath=$oldPath;$Record.SecondProcess=$child.Child
+        }
+        'empty-copy' {[void](Invoke-T5WorkflowAck $Record 'empty-copy' $path '' @{copy=0} @());$expected=$empty}
+        'empty-move' {
+            $move=Invoke-T5WorkflowAck $Record 'empty-move' $path '' @{move=0} @()
+            if($move.SourceGone -ne $true -or (Test-Path -LiteralPath $move.Source)){throw 'Empty move left its source behind'}
+            $Record.SourceGone=$true;$expected=$empty
+        }
+        'native-clear' {
+            $Record.Method='Native TRUNCATE_EXISTING + close; real Notepad clear UI not used'
+            [void](Invoke-T5WorkflowAck $Record 'native-clear' $path '' $saveCodes $ids);$expected=$empty
+        }
+        {$_ -cin @('remove-item','shell-delete')} {
+            [void](Invoke-T5WorkflowAck $Record $Spec.Op $path '' $(if($Spec.Op -eq 'remove-item'){@{remove=0}}else{@{'shell-item-hr'=0;'shell-flags-hr'=0;'shell-delete-item-hr'=0;'shell-perform-hr'=0;'shell-abort-hr'=0;'shell-aborted'=0}}) $ids)
+        }
+        'deny-acl' {
+            $nativeParent=Join-Path $control ('native-acl-'+$script:n);[void][IO.Directory]::CreateDirectory($nativeParent)
+            $nativePath=Join-Path $nativeParent 'native.txt'
+            [void](Invoke-T5WorkflowAck $Record 'native-create' $nativePath $prior $saveCodes @())
+            $sid=(New-Object Security.Principal.NTAccount($env:COMPUTERNAME,$ActorUser)).Translate([Security.Principal.SecurityIdentifier]).Value
+            foreach($fixturePath in @($nativePath,$path)){
+                $fixture=Set-T5DeleteDenyFixture $fixturePath (Split-Path -Parent $fixturePath) $sid;$Record.Fixtures+=$fixture
+                try {
+                    $denied=Invoke-T5WorkflowAck $Record 'native-delete' $fixturePath '' @{delete=5} $ids
+                    if($fixturePath -eq $nativePath){$Record.NativeControlCode=Get-NativeStepCode $denied.Steps 'delete'}else{$Record.ProtectedDeleteCode=Get-NativeStepCode $denied.Steps 'delete'}
+                }finally{Restore-T5DeleteDenyFixture $fixture}
+            }
+        }
+        'deny-share' {
+            $nativePath=Join-Path $control ('native-share-'+$script:n+'.txt')
+            [void](Invoke-T5WorkflowAck $Record 'native-create' $nativePath $prior $saveCodes @())
+            foreach($fixturePath in @($nativePath,$path)){
+                try {
+                    [void](Invoke-T5WorkflowAck $Record 'hold-no-share-delete' $fixturePath '' @{'hold-open'=0} $ids)
+                    $denied=Invoke-T5WorkflowAck $Record 'native-delete' $fixturePath '' @{delete=32} $ids
+                    if($fixturePath -eq $nativePath){$Record.NativeControlCode=Get-NativeStepCode $denied.Steps 'delete'}else{$Record.ProtectedDeleteCode=Get-NativeStepCode $denied.Steps 'delete'}
+                }finally{[void](Invoke-T5WorkflowAck $Record 'close-held' $fixturePath '' @{'hold-close'=0} $ids)}
+            }
+        }
+        {$_ -cin @('inflight-before','inflight-after')} {
+            # T5-UX-NAMESPACE-GAP D2/D6 supersedes bound admission wording:
+            # an open newer writer refuses public delete (32), leaves P intact,
+            # then closing may publish newer clean bytes. Only a completed
+            # publication can win the opposite order; its native delete is 0,
+            # leaving absence. Pending/blocked saves never supersede a delete
+            # (T5-DELETES 1.4 / 4). No gate pauses inside the physical rename.
+            $Record.OrderingNote='Deterministic held-writer-before-seal / Released-after-commit boundaries only. Existing probe gates cannot force the interior of the short physical commit turn.'
+            if($Spec.Op -eq 'inflight-before'){$Record.GateSha256=Sha $priorBytes;$Record.GateLength=$priorBytes.Length;$code=32;$expected=$newerBytes}
+            else{$Record.GateSha256=Sha $newerBytes;$Record.GateLength=$newerBytes.Length;$code=0}
+            [void](Invoke-T5WorkflowAck $Record $Spec.Op $path $newer @{'hold-open'=0;'hold-write'=0;'hold-close'=0;delete=$code} $ids)
+        }
+        'delete-cpf' {
+            [void](Invoke-T5WorkflowAck $Record 'native-delete' $path '' @{delete=0} $ids)
+            [void](Wait-T5WorkflowState $Record $path $empty $true $false $false '' @() $empty)
+            $Record.DeleteObservedBeforeBlockedSave=$true
+            [void](Invoke-T5WorkflowAck $Record 'native-create' $path $cpfText $saveCodes $ids)
+        }
+        'native-append' {
+            $line="`r`n"+$cpfText;$handbackBytes=[Text.Encoding]::ASCII.GetBytes($prior+$line)
+            [void](Invoke-T5WorkflowAck $Record 'native-append' $path $line @{open=0;seek=0;write=0;close=0} $ids)
+        }
+        default{throw ('Unknown workflow '+$Spec.Op)}
+    }
+    $Record.ExpectedLength=$expected.Length;$Record.ExpectedSha256=Sha $expected
+    $Record.ExpectedHandbackLength=$handbackBytes.Length;$Record.ExpectedHandbackSha256=Sha $handbackBytes
+    $requireRelease=$Spec.Expected -cin @('Empty','Newer') -and $Spec.Op -cne 'explorer-empty'
+    [void](Wait-T5WorkflowState $Record $path $expected $Record.ExpectedPublicAbsent $requireRelease ([bool]$Spec.Handback) $HandbackDirectory $BeforeHandback $handbackBytes)
+    if($Spec.Op -cin @('deny-acl','deny-share','inflight-before')){
+        $canceled=@($Record.Journal | Where-Object {$null -ne $_.UnboundCancellation -or $null -ne $_.DiscardRequestedAtUtc})
+        $Record.NoPrivateCancellation=($canceled.Count -eq 0)
+        if(-not $Record.NoPrivateCancellation){throw 'Refused public delete recorded private cancellation/discard'}
+    }
+    for($i=0;$i -lt 3;$i++){[void](Capture-T5Observation $Record 'WorkflowFinalBracket')}
+    $last=$Record.RawSamples[-1];$image=@($last.CurrentImages | Where-Object {$_.Path -ieq $path})[0]
+    $final=Read-Public $path
+    $Record.FinalRawMatches=if($Record.ExpectedPublicAbsent){$image.Absent -eq $true -and $final.Status -ceq 'ABSENT'}else{$image.Absent -eq $false -and $image.Length -eq $expected.Length -and $image.Sha256 -ceq (Sha $expected) -and $final.Status -ceq 'OK' -and (Same $final.Bytes $expected)}
+    $Record.FinalLength=$final.Length;$Record.FinalSha256=$final.Sha256
+    if($Record.OldPath){
+        $old=@($last.CurrentImages | Where-Object {$_.Path -ieq $Record.OldPath})
+        $Record.OldNameAbsent=($old.Count -eq 1 -and $old[0].Absent -eq $true -and (Read-Public $Record.OldPath).Status -ceq 'ABSENT')
+        if(-not $Record.OldNameAbsent){throw 'Explorer old name survived rename'}
+    }
+    $Record.NoEmptyLeftover=$Record.FinalRawMatches
+    $Record.StageEvidence=@($Record.Journal | ForEach-Object {
+        $stage=$null
+        try{$stage=Get-Item -LiteralPath $_.StagePath -Force -ErrorAction Stop}catch{if($_.CategoryInfo.Category -ne [Management.Automation.ErrorCategory]::ObjectNotFound){throw}}
+        [pscustomobject]@{TransferId=$_.TransferId;Path=$_.StagePath;StageDeleted=$_.StageDeleted;Exists=($null -ne $stage);Length=$(if($stage){$stage.Length}else{$null});State=$_.State}
+    })
+    # Blocked full-content stages may remain for justification. Empty/private
+    # leftovers never qualify; successful clean rows require acknowledged cleanup.
+    $Record.NoStageLeftover=(@($Record.StageEvidence | Where-Object {$_.Exists -and ($_.Length -eq 0 -or -not $Spec.Handback)}).Count -eq 0)
+    if($Spec.DeleteBarrier){
+        $barriers=@() # Private discard, ancestry, and Released are not a durable PUBLIC-delete barrier.
+        $Record.DeleteBarrierVerified=($barriers.Count -gt 0);$Record.DeleteBarrierRecords=$barriers
+        $Record.DeleteBarrierReason='A Released seed is not a delete barrier. Native unbound public deletion may emit no durable barrier; absent exact journal evidence this required assertion stays unproved.'
+    }
+    $Record.HandedBack=([bool]$Spec.Handback -and $Record.Handback.Status -ceq 'PASS')
+    $Record.NativeStepsChecked=$true;$Record.NativeStepsOk=$true;$Record.NativeStepsReason='Every workflow ack checked; Win32 denial compared with an unprotected native control'
+    $Record.FinalJournalOutcomeVerified=$true;$Record.SettlementStatus='PASS';$Record.Published= -not $Record.ExpectedPublicAbsent
+    $Record.WorkflowOutcome=($Record.FinalRawMatches -and $Record.NoStageLeftover -and $Record.RawCoverageComplete -and $Record.IndependentReadersAgree -and -not $Record.Leaked)
 }
 function Get-Handback([string]$Directory, [string[]]$BeforePaths, [byte[]]$Expected) {
     $all = @(Get-ChildItem -LiteralPath $Directory -Filter '*.txt' -File -Force -ErrorAction SilentlyContinue)
@@ -1394,10 +1794,25 @@ function Get-Handback([string]$Directory, [string[]]$BeforePaths, [byte[]]$Expec
         }
     }
     $receipt.Readers = $readers
+    if($allGood){
+        $directory=Join-Path $out 'handback-evidence';[void][IO.Directory]::CreateDirectory($directory)
+        $artifact=Join-Path $directory ((Sha $direct.Bytes)+'.bin')
+        if(-not [IO.File]::Exists($artifact)){[IO.File]::WriteAllBytes($artifact,$direct.Bytes)}
+        $receipt.Artifact=$artifact
+    }
     if ($allGood) { $receipt.Status = 'PASS' } else { $receipt.Status = 'FAIL'; $receipt.Error = 'Buffered hand-back and both fresh readers must match the exact unapproved fixture.' }
     return [pscustomobject]$receipt
 }
 
+# Exact observed-image whitelist for the new workflows. This rejects arbitrary
+# clean-looking intermediate bytes as well as CPF; it is not an inspection or
+# lower-mutation ledger and cannot promote the canonical INCONCLUSIVE verdict.
+foreach($spec in @($cases | Where-Object {$_.Workflow})){
+    $hashes=@()
+    if($spec.Op -notin @('explorer-empty','empty-copy','empty-move')){$hashes+=Sha ([Text.Encoding]::ASCII.GetBytes('T5 '+$spec.Kind+' published clean prior'))}
+    if($spec.Op -cin @('inflight-before','inflight-after')){$hashes+=Sha ([Text.Encoding]::ASCII.GetBytes('T5 '+$spec.Kind+' inspected newer save'))}
+    foreach($leaf in @($spec.Leaf)+@($spec.AuxiliaryLeaves)) {if($leaf){$script:T5WorkflowPublicHashes[(Join-Path $root $leaf)]=$hashes}}
+}
 $script:n = 0
 New-Item -ItemType Directory -Force -Path $out, $control | Out-Null
 try {
@@ -1436,24 +1851,11 @@ try {
     $profile = @(Get-CimInstance Win32_UserProfile | Where-Object { $_.SID -eq $sid })
     if ($profile.Count -ne 1) { throw 'Exactly one actor profile must bind to the actor SID.' }
     $handback = Join-Path $profile[0].LocalPath 'SafeUpload\_bloqueados'
-    $cases = @(
-        @{ Op = 'probe-delete-before-seal'; Leaf = 'probe-delete.txt'; Sensitive = $false; Kind = 'ProbeDelete' },
-        @{ Op = 'probe-delete-after-publication'; Leaf = 'probe-after-publication.txt'; Sensitive = $false; Kind = 'ProbeDeleteAfterPublication' },
-        @{ Op = 'probe-delete-before-seal'; Leaf = 'probe-before-cpf.txt'; Sensitive = $true; Kind = 'ProbeDeleteBeforeSealCpf' },
-        @{ Op = 'probe-delete-after-publication'; Leaf = 'probe-after-cpf.txt'; Sensitive = $true; Kind = 'ProbeDeleteAfterPublicationCpf' },
-        @{ Op = 'probe-doc'; Leaf = 'probe-doc.txt'; Sensitive = $false; Kind = 'ProbeDeleteOnClose' },
-        @{ Op = 'probe-onclose'; Leaf = 'probe-onclose.txt'; Sensitive = $false; Kind = 'OnCloseCancellation' },
-        @{ Op = 'notepad'; Leaf = 'ok.txt'; Sensitive = $false; Kind = 'NotepadApprove' },
-        @{ Op = 'notepad'; Leaf = 'cpf.txt'; Sensitive = $true; Kind = 'NotepadHandBack' }
-    )
+    $result.HandbackDirectory=$handback;$result.ActorSid=$sid
     foreach ($case in $cases) {
         $path = Join-Path $root $case.Leaf
         $text = if ($case.Sensitive) { $cpfText } else { 'T5 ' + $case.Kind + ' clean text' }
         $bytes = [Text.Encoding]::ASCII.GetBytes($text)
-        $beforeJournal = Get-JournalFor $path
-        if (@($beforeJournal.ParseErrors).Count -gt 0 -or @($beforeJournal.SchemaErrors).Count -gt 0) { throw 'Pre-case journal parsing/schema validation failed; the case cannot bind a trustworthy baseline.' }
-        $beforeIds = @($beforeJournal.Records | ForEach-Object { $_.TransferId })
-        $beforeHandback = @(Get-ChildItem -LiteralPath $handback -Filter '*.txt' -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
         $record = [ordered]@{ Op = $case.Op; Kind = $case.Kind; Leaf = $case.Leaf; Path = $path; Sensitive = [bool]$case.Sensitive; ExpectedLength = $bytes.Length;
             ExpectedSha256 = (Sha $bytes); Ack = $null; Published = $false; HandedBack = $false; Handback = $null; Leaked = $false; FinalLength = -1;
             FinalSha256 = $null; Owner = $null; Journal = @(); JournalParseErrors = @(); JournalSchemaErrors = @(); ProbeDiscarded = $false;
@@ -1465,6 +1867,12 @@ try {
             EmptyVersionPublicationRecords = @(); EmptyRawPublicationSamples = @(); FinalJournalOutcomeVerified = $false; SettlementStatus = 'INCOMPLETE';
             NativeStepsChecked = $false; NativeStepsOk = $true; NativeStepsReason = ''; RawSamples = @(); RawCoverageComplete = $true; IndependentReadersAgree = $true;
             ProbeControlSamples = 0; ProbeControlTargetAbsentThroughout = $false; FinalRawMatches = $false; Error = $null }
+        try {
+        $beforeJournal = Get-JournalFor $path
+        if (@($beforeJournal.ParseErrors).Count -gt 0 -or @($beforeJournal.SchemaErrors).Count -gt 0) { throw 'Pre-case journal parsing/schema validation failed; the case cannot bind a trustworthy baseline.' }
+        $beforeIds = @($beforeJournal.Records | ForEach-Object { $_.TransferId })
+        $beforeHandback = @(Get-ChildItem -LiteralPath $handback -Filter '*.txt' -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+        if($case.Workflow) { Invoke-T5Workflow $case $record $handback $beforeHandback; continue }
         $observe = { param($phase) Capture-T5Observation $record ([string]$phase) }.GetNewClosure()
         $record.Ack = Invoke-Actor $case.Op $path $text $observe $beforeIds $record
         if ($record.Ack.Error) { $record.Error = [string]$record.Ack.Error }
@@ -1576,7 +1984,20 @@ try {
         elseif (-not $case.Sensitive) { $record.Published = ($final.Status -eq 'OK' -and (Same $final.Bytes $bytes)) }
         $record.RawCoverageComplete = ($record.RawCoverageComplete -and $record.RawSamples.Count -gt 0)
         $record.IndependentReadersAgree = ($record.IndependentReadersAgree -and $record.RawCoverageComplete)
-        $result.Cases += [pscustomobject]$record
+        } catch {
+            $record.Error = $_.Exception.ToString() + ' stack=' + $_.ScriptStackTrace
+            $record.SettlementStatus = 'FAIL'; $record.RawCoverageComplete = $false
+            # A failed gate is never released as if proved. The actor's own bounded
+            # gate timeout closes its handles; wait for that ack before the next case.
+            $pendingAck = Join-Path $control ('ack-' + $script:n + '.json')
+            $pendingCommand = Join-Path $control ('cmd-' + $script:n + '.json')
+            $drainDeadline = [Diagnostics.Stopwatch]::GetTimestamp() + 60 * $frequency
+            while ((Test-Path -LiteralPath $pendingCommand) -and -not (Test-Path -LiteralPath $pendingAck) -and
+                [Diagnostics.Stopwatch]::GetTimestamp() -lt $drainDeadline) { Start-Sleep -Milliseconds 50 }
+            if (Test-Path -LiteralPath $pendingAck) {
+                try { $record.FailureAck = (Read-ControlText $pendingAck) | ConvertFrom-Json } catch { $record.Error += '; failure ack: ' + $_.Exception.Message }
+            }
+        } finally { $result.Cases += [pscustomobject]$record }
     }
     try {
         $ring = @(& $Diagnostics -Query deny-ring)

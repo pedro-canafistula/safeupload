@@ -107,6 +107,7 @@ scp "${opts[@]}" "$sys" "vika@$host:$guest/SafeUpload-t5.sys" && scp "${opts[@]}
   && scp "${opts[@]}" "$code_root/agente/scripts/Get-SafeUploadDiagnostics.ps1" "vika@$host:$guest/Get-SafeUploadDiagnostics.ps1" \
   && scp "${opts[@]}" "$code_scripts/StagedInvariantObserver.psm1" "vika@$host:$guest/StagedInvariantObserver.psm1" \
   && scp "${opts[@]}" "$code_scripts/t5/notepad-actor.ps1" "vika@$host:$guest/t5-notepad-actor.ps1" \
+  && scp "${opts[@]}" "$code_scripts/t5/notepad-cases.json" "vika@$host:$guest/t5-notepad-cases.json" \
   && scp "${opts[@]}" "$code_scripts/t5/notepad-coordinator.ps1" "vika@$host:$guest/t5-notepad-coordinator.ps1" || { echo 'copy failed'; exit 14; }
 install_ps=$(cat <<'PS'
 $ErrorActionPreference = 'Stop'
@@ -270,12 +271,23 @@ Get-WinEvent -LogName Application -FilterXPath $xpath -ErrorAction SilentlyConti
     [ordered]@{ RecordId = $_.RecordId; TimeCreated = $_.TimeCreated.ToString('o'); Level = $_.Level; Message = $_.Message } | ConvertTo-Json -Compress
 }
 PS
+    # Diagnostic copies (best effort): the agent's journal and private staging root explain refused or stuck allocations.
+    remote <<'PS' > "$ev/$tag-agent-state-list.txt"
+foreach ($dir in 'C:\ProgramData\SafeUpload\staging-journal', 'C:\ProgramData\SafeUpload\staging') {
+    'DIR=' + $dir
+    Get-ChildItem -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { '{0}|{1}|{2}' -f $_.FullName, $_.Length, $_.LastWriteTimeUtc.ToString('o') }
+}
+PS
+    scp -r "${opts[@]}" "vika@$host:C:/ProgramData/SafeUpload/staging-journal" "$ev/$tag-agent-journal" >/dev/null 2>&1 || true
+    scp -r "${opts[@]}" "vika@$host:C:/ProgramData/SafeUpload/staging" "$ev/$tag-agent-staging" >/dev/null 2>&1 || true
+    scp -r "${opts[@]}" "vika@$host:C:/T5/handback-evidence" "$ev/$tag-handback-evidence" >/dev/null 2>&1 || true
+    scp -r "${opts[@]}" "vika@$host:C:/T5/journal-evidence" "$ev/$tag-journal-evidence" >/dev/null 2>&1 || true
 else
     $V screenshot "$dom" "$ev/$tag-unreachable.ppm" >/dev/null 2>&1 || true
     : > "$ev/$tag-after.txt"
 fi
 
-python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$ev/$tag-result.json" "$ev/$tag-raw" "$mode" "$alive" "$(( $(date +%s) - started ))" "${result_saved:-no}" "${raw_saved:-no}" <<'PY'
+python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$ev/$tag-result.json" "$ev/$tag-raw" "$mode" "$alive" "$(( $(date +%s) - started ))" "${result_saved:-no}" "${raw_saved:-no}" "$code_scripts/t5/notepad-cases.json" <<'PY'
 import hashlib, json, os, re, sys
 after_path, verdict_path, result_path, raw_dir, mode, alive, elapsed, result_saved, raw_saved = sys.argv[1:10]
 after = open(after_path, encoding='utf-8', errors='replace').read()
@@ -298,8 +310,9 @@ ro = (result or {}).get('RawObserver') or {}
 baseline = ro.get('Baseline') or {}
 disposal = ro.get('Disposal') or {}
 raw_samples = ro.get('Samples') or []
-expected_leaves = {'probe-delete.txt', 'probe-after-publication.txt', 'probe-before-cpf.txt', 'probe-after-cpf.txt',
-                   'probe-doc.txt', 'probe-onclose.txt', 'ok.txt', 'cpf.txt'}
+with open(sys.argv[10], encoding='utf-8') as case_stream:
+    required_cases = json.load(case_stream)
+expected_leaves = {leaf.lower() for c in required_cases for leaf in [c['Leaf'], *c.get('AuxiliaryLeaves', [])]}
 scope_path = str(ro.get('ScopePath') or '').replace('/', '\\').rstrip('\\')
 expected_paths = {scope_path + '\\' + leaf for leaf in expected_leaves}
 baseline_images = baseline.get('Images') or []
@@ -440,6 +453,54 @@ def validate_raw_artifacts(directory, observer):
         return True, f'{len(artifacts)} artifacts verified; {len(required)} logical images referenced'
     except Exception as exc:
         return False, f'raw artifact validation error: {exc}'
+def archive_payload_matches(container, record):
+    import struct
+    import uuid
+    try:
+        if len(container) < 4096 or len(container) > 4194304:
+            return False
+        magic, version, frontier = struct.unpack_from('<Iiq', container)
+        if magic != 0x43415553 or version != 1 or frontier != len(container) or hashlib.sha256(container[:16]).digest() != container[16:48]:
+            return False
+        offset = record.get('FrameOffset')
+        if type(offset) is not int or offset < 4096 or offset + 60 > frontier:
+            return False
+        magic, version, length = struct.unpack_from('<Iii', container, offset)
+        if magic != 0x414A5553 or version != 1 or not 0 < length <= 131072 or offset + 60 + length > frontier:
+            return False
+        payload = container[offset + 60:offset + 60 + length]
+        digest = hashlib.sha256(payload).digest()
+        transfer = uuid.UUID(bytes_le=bytes(container[offset + 12:offset + 28])).hex
+        return (length == record.get('Length') and digest == container[offset + 28:offset + 60] and
+                digest.hex().upper() == record.get('Sha256') and transfer == str(record.get('TransferId', '')).replace('-', '').lower() and
+                str(json.loads(payload)['Transfer']['TransferId']).replace('-', '').lower() == transfer)
+    except (ValueError, KeyError, TypeError, struct.error):
+        return False
+
+def validate_t5_archives(directory, cases):
+    import pathlib
+    try:
+        records = [j['ArchiveRecord'] for c in cases for j in [*(c.get('Journal') or []), *[r for snap in c.get('WorkflowJournalSnapshots', []) for r in snap]] if 'ArchiveRecord' in j]
+        # Include the forced-order snapshots: a probe may archive before the next snapshot.
+        records += [j['ArchiveRecord'] for c in cases for j in ((c.get('ForcedOrderProof') or {}).get('Journal') or []) if 'ArchiveRecord' in j]
+        for record in records:
+            name = str(record.get('Artifact') or '').replace('\\', '/').rsplit('/', 1)[-1]
+            if not re.fullmatch(r'[A-F0-9]{64}\.bin', name):
+                return False, 'archive container artifact missing'
+            data = pathlib.Path(directory, name).read_bytes()
+            if hashlib.sha256(data).hexdigest().upper() != name[:-4] or not archive_payload_matches(data, record):
+                return False, 'archive container/payload/transfer mismatch'
+            if record.get('HotArtifact'):
+                hot_name = str(record['HotArtifact']).replace('\\', '/').rsplit('/', 1)[-1]
+                if hot_name != record['Sha256'] + '.bin':
+                    return False, 'hot/archive artifact digest-name mismatch'
+                offset = record['FrameOffset'] + 60
+                if pathlib.Path(directory, hot_name).read_bytes() != data[offset:offset + record['Length']]:
+                    return False, 'retained hot/archive bytes disagree'
+        return True, f'{len(records)} archived payload references verified'
+    except Exception as exc:
+        return False, str(exc)
+
 def native_steps_match(case):
     expected = {
         'probe-delete-before-seal': {'test-create': 0, 'test-close': 0, 'test-delete': 0, 'save-create': 0, 'save-write': 0, 'save-close': 0},
@@ -508,6 +569,195 @@ def forced_order_matches(case, samples):
             bool(target[0].get('FileId')) and entry.get('State') == '5' and entry.get('SealedOnce') is True and
             entry.get('SealedLength') == 0 and entry.get('Sha256Hex') == empty_sha and
             0 <= steps.find('test-close=') < steps.find('test-delete='))
+def workflow_observed_bytes_match(sample):
+    allowed = {}
+    for spec in required_cases:
+        if not spec.get('Workflow'):
+            continue
+        payloads = []
+        if spec['Op'] not in ('explorer-empty', 'empty-copy', 'empty-move'):
+            payloads.append(('T5 ' + spec['Kind'] + ' published clean prior').encode('ascii'))
+        if spec['Op'] in ('inflight-before', 'inflight-after'):
+            payloads.append(('T5 ' + spec['Kind'] + ' inspected newer save').encode('ascii'))
+        hashes = {hashlib.sha256(payload).hexdigest().upper() for payload in payloads}
+        for leaf in [spec['Leaf'], *spec.get('AuxiliaryLeaves', [])]:
+            allowed[leaf.lower()] = hashes
+    for image in sample.get('CurrentImages') or []:
+        leaf = image.get('Path', '').replace('/', '\\').rsplit('\\', 1)[-1].lower()
+        if leaf in allowed and image.get('Absent') is False and image.get('Length', 0) > 0 and image.get('Sha256') not in allowed[leaf]:
+            return False
+    return True
+
+def workflow_spec(case):
+    return next((s for s in required_cases if s['Kind'] == case.get('Kind') and s.get('Workflow')), None)
+
+def workflow_expected(case):
+    spec = workflow_spec(case)
+    prior = ('T5 ' + case['Kind'] + ' published clean prior').encode('ascii')
+    newer = ('T5 ' + case['Kind'] + ' inspected newer save').encode('ascii')
+    return {'Empty': b'', 'Prior': prior, 'Newer': newer, 'Absent': None}[spec['Expected']]
+
+def workflow_steps_match(case):
+    spec = workflow_spec(case)
+    if not spec or case.get('Error') or not case.get('NativeStepsChecked') or not case.get('NativeStepsOk'):
+        return False
+    save = {'open': 0, 'write': 0, 'close': 0}
+    sequences = {
+        'explorer-empty': [('native-create', save), ('shell-rename-empty', {'shell-rename': 0}), ('second-open-empty', {'second-open': 0})],
+        'empty-copy': [('empty-copy', {'copy': 0})],
+        'empty-move': [('empty-move', {'move': 0})],
+        'native-clear': [('native-create', save), ('native-clear', save)],
+        'remove-item': [('native-create', save), ('remove-item', {'remove': 0})],
+        'shell-delete': [('native-create', save), ('shell-delete', {'shell-item-hr': 0, 'shell-flags-hr': 0, 'shell-delete-item-hr': 0, 'shell-perform-hr': 0, 'shell-abort-hr': 0, 'shell-aborted': 0})],
+        'deny-acl': [('native-create', save), ('native-create', save), ('native-delete', {'delete': 5}), ('native-delete', {'delete': 5})],
+        'deny-share': [('native-create', save), ('native-create', save)] +
+            [('hold-no-share-delete', {'hold-open': 0}), ('native-delete', {'delete': 32}), ('close-held', {'hold-close': 0})] * 2,
+        'inflight-before': [('native-create', save), ('inflight-before', {'hold-open': 0, 'hold-write': 0, 'delete': 32, 'hold-close': 0})],
+        'inflight-after': [('native-create', save), ('inflight-after', {'hold-open': 0, 'hold-write': 0, 'hold-close': 0, 'delete': 0})],
+        'delete-cpf': [('native-create', save), ('native-delete', {'delete': 0}), ('native-create', save)],
+        'native-append': [('native-create', save), ('native-append', {'open': 0, 'seek': 0, 'write': 0, 'close': 0})],
+    }
+    expected = sequences.get(spec['Op'], [])
+    acks = case.get('WorkflowAcks') or []
+    if len(acks) != len(expected) or not expected:
+        return False
+    numbers = []
+    for ack, (op, codes) in zip(acks, expected):
+        if ack.get('Op') != op or ack.get('Error') or type(ack.get('N')) is not int or not ack.get('ActorPid') or ack.get('ActorSid') == 'S-1-5-18':
+            return False
+        index = len(numbers)
+        expected_path = case['Path']
+        if spec['Op'] == 'explorer-empty' and index == 0:
+            expected_path = scope_path + '\\' + spec['AuxiliaryLeaves'][0]
+        if spec['Op'] in ('deny-acl', 'deny-share'):
+            native_indexes = (1, 2) if spec['Op'] == 'deny-acl' else (1, 2, 3, 4)
+            if index in native_indexes:
+                expected_path = acks[1].get('Path', '')
+                if not expected_path.lower().startswith('c:\\t5\\control\\native-'):
+                    return False
+        if str(ack.get('Path') or '').lower() != expected_path.lower():
+            return False
+        if ack.get('ActorSid') != (result or {}).get('ActorSid'):
+            return False
+        numbers.append(ack['N'])
+        for name, code in codes.items():
+            found = re.findall(r'(?:^|\s)' + re.escape(name) + r'=(-?[0-9]+)', str(ack.get('Steps') or ''))
+            if len(found) != 1 or int(found[0]) != code:
+                return False
+        child = ack.get('Child')
+        if op in ('native-delete', 'second-open-empty', 'inflight-before', 'inflight-after'):
+            if not isinstance(child, dict) or child.get('Error') or not child.get('Pid') or child['Pid'] == ack['ActorPid'] or child.get('Sid') != ack.get('ActorSid') or str(child.get('Path') or '').lower() != expected_path.lower():
+                return False
+        if op == 'second-open-empty' and (child.get('Length') != 0 or child.get('FirstByte') != -1 or child.get('ReadWrite') is not True):
+            return False
+        if op == 'empty-move' and ack.get('SourceGone') is not True:
+            return False
+        if op == 'empty-copy' and ack.get('SourceLength') != 0:
+            return False
+        if op in ('shell-rename-empty', 'shell-delete') and not isinstance(ack.get('Ui'), dict):
+            return False
+    return numbers == sorted(set(numbers))
+
+def workflow_order_matches(case, samples):
+    if case.get('Op') not in ('inflight-before', 'inflight-after'):
+        return True
+    proof = case.get('ForcedOrderProof') or {}
+    ready = proof.get('ActorReady') or {}
+    ack = (case.get('WorkflowAcks') or [{}])[-1]
+    before = case['Op'] == 'inflight-before'
+    seqs = proof.get('RawSequences') or []
+    by_seq = {s.get('Sequence'): s for s in samples}
+    if (proof.get('Verified') is not True or proof.get('Op') != case['Op'] or ready.get('Op') != case['Op'] or
+        ready.get('N') != ack.get('N') or ready.get('ActorPid') != ack.get('ActorPid') or ready.get('ProbeCreated') is not True or ready.get('WritableProbeHandleHeld') is not before or
+        len(seqs) < 2 or len(set(seqs)) != len(seqs) or any(seq not in by_seq for seq in seqs)):
+        return False
+    expected = ('T5 ' + case['Kind'] + (' published clean prior' if before else ' inspected newer save')).encode('ascii')
+    digest = hashlib.sha256(expected).hexdigest().upper()
+    for seq in seqs:
+        sample = by_seq[seq]
+        if (not valid_raw_sample(sample) or not workflow_observed_bytes_match(sample) or sample.get('Phase') != 'ControlProbeAfterTestCreateCloseBeforeDeleteOrSave' or
+            type(proof.get('CapturedBeforeGoQpc')) is not int or sample['End']['Qpc'] > proof['CapturedBeforeGoQpc']):
+            return False
+        images = [i for i in sample['CurrentImages'] if i['Path'].lower() == case['Path'].lower()]
+        if len(images) != 1 or images[0].get('Absent') is not False or images[0].get('Length') != len(expected) or images[0].get('Sha256') != digest:
+            return False
+    last_images = [i for i in by_seq[seqs[-1]]['CurrentImages'] if i['Path'].lower() == case['Path'].lower()]
+    if proof.get('Target') != last_images[0]:
+        return False
+    baseline_ids = {j.get('TransferId') for j in case.get('WorkflowBaseline', [])}
+    candidates = [j for j in proof.get('Journal', []) if j.get('IsV20') is True and j.get('ProcessId') == ready.get('ActorPid') and j.get('TransferId') not in baseline_ids and j.get('DestinationPath', '').lower() == case['Path'].lower()]
+    for entry in candidates:
+        identity = entry.get('StageIdentity')
+        if not entry.get('TransferId') or not entry.get('DriverInstanceId') or not isinstance(identity, dict) or any(type(identity.get(k)) is not int or not 0 <= identity[k] < 2**64 for k in ('VolumeSerialNumber', 'FileIdHigh', 'FileIdLow')):
+            return False
+    if before:
+        candidates = [j for j in candidates if j.get('State') in ('0', '8') and j.get('SealedOnce') is False and j.get('SealedLength') is None and j.get('Sha256Hex') is None]
+    else:
+        candidates = [j for j in candidates if j.get('State') == '5' and j.get('SealedOnce') is True and j.get('Sha256Hex') == digest and j.get('SealedLength') == len(expected)]
+    steps = str(ack.get('Steps', ''))
+    ordered = (steps.find('delete=') < steps.find('hold-close=')) if before else (steps.find('hold-close=') < steps.find('delete='))
+    return len(candidates) == 1 and ordered and proof.get('FinalRawSequence') == seqs[-1]
+
+def workflow_handback_matches(case, content):
+    import pathlib
+    handback = case.get('Handback') or {}
+    digest = hashlib.sha256(content).hexdigest().upper()
+    prefix = str((result or {}).get('HandbackDirectory') or '').lower().rstrip('\\') + '\\'
+    if not prefix.startswith('c:\\users\\') or not str(handback.get('Path') or '').lower().startswith(prefix):
+        return False
+    if handback.get('Length') != len(content) or handback.get('Sha256') != digest or handback.get('NewFileCount') != 1:
+        return False
+    readers = handback.get('Readers') or []
+    if len(readers) != 2 or sum(r.get('Unbuffered') is True for r in readers) != 1 or any(r.get('Status') != 'OK' or r.get('Length') != len(content) or r.get('Sha256') != digest for r in readers):
+        return False
+    name = str(handback.get('Artifact') or '').replace('\\', '/').rsplit('/', 1)[-1]
+    try:
+        return name == digest + '.bin' and pathlib.Path(raw_dir.removesuffix('-raw') + '-handback-evidence', name).read_bytes() == content
+    except OSError:
+        return False
+
+def workflow_journal_matches(case):
+    spec = workflow_spec(case)
+    records = case.get('Journal')
+    if not isinstance(records, list) or (not records and spec['Op'] != 'explorer-empty') or case.get('JournalParseErrors') != [] or case.get('JournalSchemaErrors') != []:
+        return False
+    expected = workflow_expected(case)
+    if spec.get('Handback'):
+        prior = ('T5 ' + case['Kind'] + ' published clean prior').encode('ascii')
+        content = prior + b'\r\nT5 notepad CPF: 529.982.247-25' if spec['Op'] == 'native-append' else b'T5 notepad CPF: 529.982.247-25'
+        digest = hashlib.sha256(content).hexdigest().upper()
+        if not any(j.get('State') == '6' and j.get('HandbackState') == '2' and j.get('Sha256Hex') == digest and j.get('SealedLength') == len(content) for j in records):
+            return False
+        if not workflow_handback_matches(case, content):
+            return False
+        if case.get('ExpectedHandbackLength') != len(content) or case.get('ExpectedHandbackSha256') != digest or case.get('HandedBack') is not True or (case.get('Handback') or {}).get('Status') != 'PASS':
+            return False
+    if spec['Op'] == 'explorer-empty':
+        old = (scope_path + '\\' + spec['AuxiliaryLeaves'][0]).lower()
+        seed = [j for snap in case.get('WorkflowJournalSnapshots', []) for j in snap if j.get('DestinationPath', '').lower() == old and j.get('State') == '5' and j.get('StageDeleted') is True and j.get('SealedLength') == 0 and j.get('Sha256Hex') == hashlib.sha256(b'').hexdigest().upper()]
+        if not seed:
+            return False
+    stages = case.get('StageEvidence')
+    if not isinstance(stages, list) or len(stages) != len(records) or {s.get('TransferId') for s in stages} != {j.get('TransferId') for j in records}:
+        return False
+    if any(type(s.get('Exists')) is not bool or (s['Exists'] and (not spec.get('Handback') or type(s.get('Length')) is not int or s['Length'] <= 0)) for s in stages):
+        return False
+    if expected is not None and spec['Op'] != 'explorer-empty':
+        if not any(j.get('State') == '5' and j.get('Sha256Hex') == hashlib.sha256(expected).hexdigest().upper() and j.get('SealedLength') == len(expected) for j in records):
+            return False
+    if spec['Op'] in ('deny-acl', 'deny-share', 'inflight-before'):
+        if case.get('NoPrivateCancellation') is not True or any(j.get('UnboundCancellation') is not None or j.get('DiscardRequestedAtUtc') is not None for j in records):
+            return False
+    if spec['Op'] in ('deny-acl', 'deny-share'):
+        code = 5 if spec['Op'] == 'deny-acl' else 32
+        if case.get('NativeControlCode') != code or case.get('ProtectedDeleteCode') != code:
+            return False
+    if spec['Op'] == 'deny-acl':
+        fixtures = case.get('Fixtures') or []
+        if len(fixtures) != 2 or not all(f.get('Restored') is True and f.get('FileBefore') != f.get('FileDenied') and f.get('ParentBefore') != f.get('ParentDenied') for f in fixtures):
+            return False
+    return case.get('FinalJournalOutcomeVerified') is True and case.get('SettlementStatus') == 'PASS'
+
 def raw_case_final_matches(case, samples):
     if not isinstance(samples, list) or not samples:
         return False
@@ -520,6 +770,12 @@ def raw_case_final_matches(case, samples):
     if len(images) != 1:
         return False
     image = images[0]
+    if workflow_spec(case):
+        expected = workflow_expected(case)
+        if expected is None:
+            return image.get('Absent') is True and image.get('FileId') is None and image.get('LogicalArtifact') is None
+        return (case.get('ExpectedLength') == len(expected) and case.get('ExpectedSha256') == hashlib.sha256(expected).hexdigest().upper() and
+                image.get('Absent') is False and image.get('Length') == len(expected) and image.get('Sha256') == case['ExpectedSha256'])
     if case.get('Sensitive') is True:
         return image.get('Absent') is True and image.get('FileId') is None and image.get('LogicalArtifact') is None
     expected_length = case.get('ExpectedLength')
@@ -527,9 +783,11 @@ def raw_case_final_matches(case, samples):
     return (case.get('Sensitive') is False and isinstance(expected_length, int) and expected_length > 0 and
             re.fullmatch(r'[A-Fa-f0-9]{64}', str(expected_sha or '')) is not None and image.get('Absent') is False and
             image.get('Length') == expected_length and image.get('Sha256') == expected_sha)
-raw_schema_ok = (isinstance(raw_samples, list) and len(raw_samples) > 0 and all(valid_raw_sample(s) for s in raw_samples) and
+raw_schema_ok = (isinstance(raw_samples, list) and len(raw_samples) > 0 and all(valid_raw_sample(s) and workflow_observed_bytes_match(s) for s in raw_samples) and
                  len({s.get('Sequence') for s in raw_samples if isinstance(s, dict)}) == len(raw_samples))
 cases = (result or {}).get('Cases') or []
+archive_ok, archive_reason = validate_t5_archives(raw_dir.removesuffix('-raw') + '-journal-evidence', cases)
+verdict('T5JournalArchiveEvidence', 'PASS' if archive_ok else 'FAIL', archive_reason)
 case_raw_samples = [s for c in cases for s in (c.get('RawSamples') or [])]
 case_sequence_keys = {(s.get('Sequence'), s.get('Phase')) for s in case_raw_samples if isinstance(s, dict)}
 global_sequence_keys = {(s.get('Sequence'), s.get('Phase')) for s in raw_samples if isinstance(s, dict)}
@@ -558,16 +816,7 @@ verdict('T5RawObserver', 'PASS' if raw_ok else 'FAIL',
         f"status={ro.get('Status')}; baseline={baseline.get('Status')}; samples={len(raw_samples)}; disposal={disposal.get('Status')}; schema={raw_schema_ok}; artifacts={raw_artifact_reason}")
 verdict('T5RawEvidenceRetained', 'PASS' if raw_artifacts_ok else 'FAIL',
         f"copied={raw_saved}; guest-manifest={re.search(r'^RAW_MANIFEST_PRESENT=True$', after, re.M) is not None}; {raw_artifact_reason}")
-expected_case_specs = {
-    'ProbeDelete': ('probe-delete-before-seal', 'probe-delete.txt', False),
-    'ProbeDeleteAfterPublication': ('probe-delete-after-publication', 'probe-after-publication.txt', False),
-    'ProbeDeleteBeforeSealCpf': ('probe-delete-before-seal', 'probe-before-cpf.txt', True),
-    'ProbeDeleteAfterPublicationCpf': ('probe-delete-after-publication', 'probe-after-cpf.txt', True),
-    'ProbeDeleteOnClose': ('probe-doc', 'probe-doc.txt', False),
-    'OnCloseCancellation': ('probe-onclose', 'probe-onclose.txt', False),
-    'NotepadApprove': ('notepad', 'ok.txt', False),
-    'NotepadHandBack': ('notepad', 'cpf.txt', True),
-}
+expected_case_specs = {c['Kind']: (c['Op'], c['Leaf'], c['Sensitive']) for c in required_cases}
 expected_kinds = set(expected_case_specs)
 cases_by_kind = {c.get('Kind'): c for c in cases}
 case_matrix_ok = (len(cases) == len(expected_kinds) and set(cases_by_kind) == expected_kinds and all(
@@ -581,9 +830,9 @@ for c in cases:
     windows = ui.get('WindowsAfterSave') or []
     raw_case_samples = c.get('RawSamples') or []
     raw_case_ok = (c.get('RawCoverageComplete') is True and c.get('IndependentReadersAgree') is True and
-                   len(raw_case_samples) > 0 and all(valid_raw_sample(s) for s in raw_case_samples) and
+                   len(raw_case_samples) > 0 and all(valid_raw_sample(s) and workflow_observed_bytes_match(s) for s in raw_case_samples) and
                    c.get('FinalRawMatches') is True and raw_case_final_matches(c, raw_case_samples))
-    steps_ok = native_steps_match(c)
+    steps_ok = workflow_steps_match(c) if workflow_spec(c) else native_steps_match(c)
     detail = f"native={c.get('NativeStepsReason')}; raw={raw_case_ok}; final length={c.get('FinalLength')} sha={c.get('FinalSha256')} owner={c.get('Owner')}"
     target_path = (scope_path + '\\' + str(c.get('Leaf') or '')).lower()
     empty_raw_samples = []
@@ -599,11 +848,32 @@ for c in cases:
     journal_outcome = c.get('FinalJournalOutcomeVerified') is True and c.get('SettlementStatus') == 'PASS'
     verdict(name + 'NoEmptyLeftover', 'PASS' if no_empty_leftover else 'FAIL',
             f"settlement={c.get('SettlementStatus')}; empty-records={len(c.get('EmptyVersionPublicationRecords') or [])}; raw-empty-samples={len(empty_raw_samples)}; journal-parse-errors={len(c.get('JournalParseErrors') or [])}; journal-schema-errors={len(c.get('JournalSchemaErrors') or [])}")
+    if workflow_spec(c):
+        spec = workflow_spec(c)
+        order_ok = workflow_order_matches(c, raw_case_samples)
+        journal_ok = workflow_journal_matches(c)
+        ok = (not c.get('Error') and raw_case_ok and steps_ok and no_empty_leftover and journal_ok and order_ok and
+              c.get('WorkflowOutcome') is True and c.get('NoStageLeftover') is True and c.get('Leaked') is False)
+        if spec['Op'] == 'explorer-empty':
+            old = (scope_path + '\\' + spec['AuxiliaryLeaves'][0]).lower()
+            old_images = [i for i in (raw_case_samples[-1].get('CurrentImages', []) if raw_case_samples else []) if i.get('Path', '').lower() == old]
+            ok = ok and c.get('OldNameAbsent') is True and len(old_images) == 1 and old_images[0].get('Absent') is True
+        if spec['Op'] == 'delete-cpf':
+            ok = ok and c.get('DeleteObservedBeforeBlockedSave') is True
+        if spec.get('DeleteBarrier'):
+            barrier = c.get('DeleteBarrierVerified') is True and bool(c.get('DeleteBarrierRecords'))
+            verdict(name + 'DeleteBarrier', 'PASS' if barrier else 'INCONCLUSIVE', c.get('DeleteBarrierReason') or 'Exact journal delete barrier missing')
+            ok = ok and barrier
+        if spec['Op'].startswith('inflight-'):
+            verdict(name + 'ForcedOrder', 'PASS' if order_ok else 'FAIL', c.get('OrderingNote') or 'Ordering proof missing')
+        verdict(name + 'Journal', 'PASS' if journal_ok else 'FAIL', 'Exact publication/block/denial records and native comparison')
+        verdict(name, 'PASS' if ok else 'FAIL', detail + '; error=' + str(c.get('Error')) + '; method=' + str(c.get('Method')))
+        continue
     if c.get('Sensitive'):
-        ok = raw_case_ok and steps_ok and c.get('HandedBack') is True and c.get('Leaked') is False and c.get('FinalRawMatches') is True and no_empty_leftover and journal_outcome
+        ok = not c.get('Error') and raw_case_ok and steps_ok and c.get('HandedBack') is True and c.get('Leaked') is False and c.get('FinalRawMatches') is True and no_empty_leftover and journal_outcome
         detail += f"; handback={((c.get('Handback') or {}).get('Status'))}; leaked={c.get('Leaked')}"
     else:
-        ok = raw_case_ok and steps_ok and c.get('Published') is True and c.get('FinalSha256') == c.get('ExpectedSha256') and no_empty_leftover and journal_outcome
+        ok = not c.get('Error') and raw_case_ok and steps_ok and c.get('Published') is True and c.get('FinalSha256') == c.get('ExpectedSha256') and no_empty_leftover and journal_outcome
     if c.get('Op') in ('probe-delete-before-seal', 'probe-doc'):
         ok = ok and c.get('ProbeControlSamples', 0) >= 2 and c.get('ProbeControlTargetAbsentThroughout') is True and \
              c.get('ProbeDiscarded') is True and c.get('ProbeEmptyPrivateBlocked') is False

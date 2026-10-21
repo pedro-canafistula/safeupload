@@ -13,6 +13,8 @@ checks=(t4/reopen-after-publication.SelfCheck.ps1)
 files+=(t4/reopen-after-publication.ps1)
 files+=(t5/security-descriptor-native-control.ps1 t5/security-roundtrip-native-control.SelfCheck.ps1)
 for f in "$src"/*.SelfCheck.ps1; do [[ "$(basename "$f")" == StagedInvariant*.SelfCheck.ps1 ]] && checks+=("$(basename "$f")"); done
+files+=(t5/notepad-cases.json t5/fixtures/C01-00000001.pack t5/fixtures/m2t5ord4-00000001.pack)
+checks+=(t5/notepad-coordinator.SelfCheck.ps1 t5/notepad-journal.SelfCheck.ps1 t5/notepad-native.SelfCheck.ps1 t5/notepad-actor.SelfCheck.ps1)
 selection="$(python3 "$repo/driver/scripts/approved_builders.py" --role gate --label "$label" --format fields)" || exit 2
 read -r builder_name host builder_computer builder_user parity_check <<< "$selection"
 remote_args=("$host" --role gate --label "$label")
@@ -23,7 +25,7 @@ ev="$repo/driver/evidence/$(date +%F)/harness-windows-gate-$label.txt"; mkdir -p
 [[ ! -e "$ev" ]] || { echo 'Existing gate evidence; use a fresh label'; exit 2; }
 python3 "$repo/driver/scripts/approved_builders.py" --role gate --label "$label" --format receipt > "$ev" || exit 2
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=yes)
-python3 "$repo/driver/scripts/remote_ps.py" "${remote_args[@]}" <<<"if(Test-Path -LiteralPath '$dest'){throw 'gate directory exists'}; [void](New-Item -ItemType Directory -Path '$dest/t4'); [void](New-Item -ItemType Directory -Path '$dest/t6'); [void](New-Item -ItemType Directory -Path '$dest/t10'); [void](New-Item -ItemType Directory -Path '$dest/t5')" || exit 3
+python3 "$repo/driver/scripts/remote_ps.py" "${remote_args[@]}" <<<"if(Test-Path -LiteralPath '$dest'){throw 'gate directory exists'}; [void](New-Item -ItemType Directory -Path '$dest/t4'); [void](New-Item -ItemType Directory -Path '$dest/t6'); [void](New-Item -ItemType Directory -Path '$dest/t10'); [void](New-Item -ItemType Directory -Path '$dest/t5'); [void](New-Item -ItemType Directory -Path '$dest/t5/fixtures')" || exit 3
 for f in "${files[@]}" "${checks[@]}"; do scp "${opts[@]}" "$src/$f" "$builder_user@$host:$dest/$f" || exit 3; done
 list="$(printf "'%s'," "${files[@]}" "${checks[@]}")"; checklist="$(printf "'%s'," "${checks[@]}")"
 python3 "$repo/driver/scripts/remote_ps.py" "${remote_args[@]}" >> "$ev" 2>&1 <<PS
@@ -32,7 +34,7 @@ if(\$PSVersionTable.PSVersion.Major -ne 5 -or \$PSVersionTable.PSVersion.Minor -
 \$ok=\$true
 foreach(\$f in @(${list%,})){
   \$p=Join-Path '$dest' \$f; \$t=\$null; \$e=\$null
-  if(\$f -like '*.json'){\$e=@()}else{[void][Management.Automation.Language.Parser]::ParseFile(\$p,[ref]\$t,[ref]\$e)}
+  if(\$f -like '*.json' -or \$f -like '*.pack'){\$e=@()}else{[void][Management.Automation.Language.Parser]::ParseFile(\$p,[ref]\$t,[ref]\$e)}
   \$h=(Get-FileHash -Algorithm SHA256 -LiteralPath \$p).Hash
   "\${f}:ParseErrors=\$(\$e.Count);SHA256=\$h"; if(\$e.Count -ne 0){\$ok=\$false; \$e | ForEach-Object { '  '+\$_.Extent.StartLineNumber+': '+\$_.Message }}
 }
