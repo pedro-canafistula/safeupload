@@ -612,13 +612,16 @@ if mode in ('runtime-verifier', 'verifier-from-boot') and len(cyc) >= 4:
     final = (settled.get('Verifier') or {}).get('NonPagedBytes')
     first = ys[0]
     # Before T4 every staged save kept about 4.5 KB of nonpaged pool (version plus view); flat means well under 1/1000 of that.
-    ok = slope < 4.0 and final is not None and final <= first + 65536
+    # Endpoint band 128 KiB (owner 2026-10-21, rows from then on; earlier receipts keep their 64 KiB verdicts): the after-idle
+    # level carries a constant ~24 writer-registry entries (~72-75 KB in boot-Verifier rows) that do not scale with cycles.
+    band = 131072
+    ok = slope < 4.0 and final is not None and final <= first + band
     if cycles >= 10000:
         verdict('T4PoolFlat', ok, f"driver nonpaged bytes (Verifier pool tracking) from cycle {xs[0]}: {first} -> {ys[-1]} at cycle {xs[-1]}, "
-                f"after idle {final}; slope {slope:.3f} B/cycle (limit 4); peak {(settled.get('Verifier') or {}).get('PeakNonPagedBytes')}")
+                f"after idle {final} (limit {first + band}); slope {slope:.3f} B/cycle (limit 4); peak {(settled.get('Verifier') or {}).get('PeakNonPagedBytes')}")
     else:
-        verdict('T4PoolEndpoint', final is not None and final <= first + 65536,
-                f"driver nonpaged bytes (Verifier pool tracking) from cycle {xs[0]}: {first}; after idle {final}; limit {first + 65536}")
+        verdict('T4PoolEndpoint', final is not None and final <= first + band,
+                f"driver nonpaged bytes (Verifier pool tracking) from cycle {xs[0]}: {first}; after idle {final}; limit {first + band}")
         out.append(f"T4PoolSlope INFO {slope:.3f} B/cycle (smoke row; judged only on the 10,000-cycle row)")
 elif mode in ('runtime-verifier', 'verifier-from-boot'):
     verdict('T4PoolFlat' if cycles >= 10000 else 'T4PoolEndpoint', False, f"only {len(cyc)} Verifier pool samples")

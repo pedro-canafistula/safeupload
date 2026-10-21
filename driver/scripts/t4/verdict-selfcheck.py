@@ -76,6 +76,25 @@ assert 'T4PoolEndpoint' not in long and code == 1
 for name in ('T4PoolFlat', 'T4ContextsReleased'):
     print('m2t4boot10k1011a2: ' + long[name])
 
+# Endpoint band 128 KiB (owner 2026-10-21): exactly first + 131072 passes, one byte more fails, and the slope limit is unchanged.
+warm = [s for s in long_samples if s.get('Label') == 'cycle' and s['Cycle'] >= 1000 and (s.get('Verifier') or {}).get('NonPagedBytes') is not None]
+first = warm[0]['Verifier']['NonPagedBytes']
+band_result = json.loads(re.search(r'^RESULT=(.*)$', long_after, re.M).group(1))
+for extra, status in ((131072, 'PASS'), (131073, 'FAIL')):
+    band_result['Idle']['Verifier']['NonPagedBytes'] = first + extra
+    edited = re.sub(r'^RESULT=.*$', lambda _: 'RESULT=' + json.dumps(band_result), long_after, count=1, flags=re.M)
+    lines, _ = replay(edited, long_samples, 10000)
+    require(lines, 'T4PoolFlat', status, f'(limit {first + 131072})')
+band_result['Idle']['Verifier']['NonPagedBytes'] = first
+sloped = copy.deepcopy(long_samples)
+for s in sloped:
+    if s.get('Label') == 'cycle' and s['Cycle'] >= 1000 and (s.get('Verifier') or {}).get('NonPagedBytes') is not None:
+        s['Verifier']['NonPagedBytes'] = first + 4 * (s['Cycle'] - 1000)
+edited = re.sub(r'^RESULT=.*$', lambda _: 'RESULT=' + json.dumps(band_result), long_after, count=1, flags=re.M)
+lines, _ = replay(edited, sloped, 10000)
+require(lines, 'T4PoolFlat', 'FAIL', 'slope 4.000 B/cycle')
+print('T4PoolBandControl=PASS; endpoint first+131072 PASS, +131073 FAIL, slope 4 B/cycle FAIL')
+
 # Boundary and refusal controls use copies, never modify the retained evidence.
 result_match = re.search(r'^RESULT=(.*)$', long_after, re.M)
 result = json.loads(result_match.group(1))

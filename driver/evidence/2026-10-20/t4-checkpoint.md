@@ -129,7 +129,7 @@ That is an M2 qualification work item, not a T4 kernel-lifetime result. Owner sc
 Owner: "Record, push, and close T4 for now." T4 is closed provisionally on the evidence above. Nothing was waived and no gate, threshold or
 assertion changed. Carried to the final M2 pair:
 
-- [ ] Boot-Verifier 10k pool endpoint: accept, widen the band or fix (all functional gates already PASS twice).
+- [ ] Boot-Verifier 10k on the final M2 pair under the 128 KiB endpoint band (owner chose option 2 below; future rows only).
 - [ ] 10k rows with the default staging budget, after the T9 fixes (metadata retirement, bounded allocation latency, lost-reply self-heal).
 - [ ] Raw-volume cells to MVP-gate PASS in three modes (BLOCK hand-back evidence, B01/B02 wrapper, X01 execution, dedicated latency, live-taint receipts).
 - [ ] Lost-reply fault row (harness held on `t4/fault-row`).
@@ -138,3 +138,32 @@ assertion changed. Carried to the final M2 pair:
 
 Held, unintegrated branches: `t4/readmit` (worker 1 READMIT repair; the smoke failures it targeted had other causes), `t4/fault-row`
 (worker 2), `t4/sharediag` (logging-only diagnostic driver).
+
+## Endpoint decision — 2026-10-21
+
+**What the check measures.** `T4PoolFlat` (10k) has two parts: slope <4 B/cycle from cycle 1,000 (catches per-save retention; pre-T4 each
+save kept ~4.5 KB) and an endpoint: the after-idle sample must be at most the band above the cycle-1000 sample. `T4PoolEndpoint` (smoke)
+uses the same band against its first warm sample.
+
+| Row | Saves | Baseline sample | Baseline B | After idle B | Rise | Verdict (64 KiB) |
+|---|---|---|---|---|---|---|
+| `m2t4smoke1020j` (boot) | 256 | cycle 64 | 6,662,776 | 6,681,608 | +18,832 | PASS |
+| `m2t4bvoff1` (boot) | 10,000 | cycle 1000 | 6,606,824 | 6,682,024 | +75,200 | FAIL (+9,664 over) |
+| `m2t4bvoff2` (boot) | 10,000 | cycle 1000 | 6,606,824 | 6,679,504 | +72,680 | FAIL (+7,144 over) |
+| `m2t4rvoff3` (runtime) | 10,000 | cycle 1000 | 134,240 | 143,200 | +8,960 | PASS |
+
+Runtime Verifier counts only allocations made after it is armed, hence its small absolute numbers. Findings from the retained samples:
+
+- The after-idle level is the same in every boot-Verifier row (6.65–6.68 MB) at 256 and at 10,000 saves. The smoke passed only because its
+  baseline fell on a busy sample; during a run the level swings about 25 KB between samples, so the baseline sample decides much of the margin.
+- About 96% of the rise is the writer-registry tag `SwUr` (`m2t4bvoff2`: +70,064 of +72,680). The driver's own `registryEntries` stays
+  220–233 during the run and steps to 249–253 after the actor exits, about 2–3 KB per entry; the entries remain after the memory purge.
+- In the runtime-Verifier row the step is absent (`registryEntries` 232 -> 238).
+- Not established: which files the extra entries belong to (no harness listing by name), why the step depends on the Verifier mode, and whether
+  it repeats per idle period (each row has one idle window). If it repeated, the registry would fill toward its 4,096 capacity and the driver
+  would go sticky Unknown (protected saves refused until reboot); if it is one-time, users see nothing (~75 KB of ~100 MB guest nonpaged pool).
+
+Options offered: (1) accept as recorded exception, (2) widen the band to 128 KiB, (3) widen plus a second-idle repeat check (recommended).
+**Owner: "Ok I choose 2, but only to future rows."** The launcher band is 128 KiB from this commit on (`Invoke-StageCycles.sh`, both
+`T4PoolFlat` and `T4PoolEndpoint`; the limit is now printed in the `T4PoolFlat` line); slope limit unchanged. `verdict-selfcheck.py` adds
+`T4PoolBandControl` (first+131,072 PASS, +131,073 FAIL, slope 4 B/cycle FAIL). The receipts above are not re-judged and keep their verdicts.

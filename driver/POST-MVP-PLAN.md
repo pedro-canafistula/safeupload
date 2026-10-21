@@ -23,11 +23,17 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-21 (later) — T4 pool endpoint band 128 KiB, future rows only.** Owner, in the session: "Ok I choose 2, but only to future
+rows" (option 2 of the [endpoint analysis](evidence/2026-10-20/t4-checkpoint.md#endpoint-decision--2026-10-21)). The after-idle endpoint
+band of `T4PoolFlat`/`T4PoolEndpoint` is 128 KiB for rows run from 2026-10-21 on; the slope limit (<4 B/cycle from cycle 1,000) and
+every other gate are unchanged. Earlier receipts, including `m2t4bvoff1`/`m2t4bvoff2`, keep their 64 KiB FAIL verdicts and are not
+re-judged. Not established: which files the ~24 extra writer-registry entries belong to and whether the step repeats per idle period.
+
 **2026-10-21 — T4 closed for now.** Owner, in the session: "Record, push, and close T4 for now." Closed provisionally on the pair kernel
 `d1068cc3` + agent `586ae7cb`: smoke `m2t4smoke1020j` 256/256; one-boot 10k rows with the staging budget disabled (isolation, approved
 2026-10-20): ordinary PASS (`m2t4ordoff1`), runtime Verifier PASS (`m2t4rvoff3`), boot Verifier all functional gates PASS twice with
-`T4PoolFlat` over the 64 KiB endpoint band (unresolved: accept, widen or fix); raw-volume cells with zero forbidden bytes but not MVP-gate PASS.
-No gate, threshold or assertion was changed or waived. Carried to the final M2 pair: the endpoint decision; raw-cell harness modernization
+`T4PoolFlat` over the 64 KiB endpoint band (band for future rows decided above); raw-volume cells with zero forbidden bytes but not MVP-gate PASS.
+No gate, threshold or assertion was changed or waived. Carried to the final M2 pair: a boot-Verifier 10k row under the 128 KiB band; raw-cell harness modernization
 for C01–C04/B01/B02/X01 in three modes (BLOCK hand-back evidence, B01/B02 wrapper, X01 execution, dedicated latency, live-taint receipts);
 the lost-reply fault row (harness held on `t4/fault-row`); the T9 budget-on defects (completed saves keep 1 MiB, allocation latency growth,
 lost allocation reply does not self-heal) that block M2 with the default configuration; the sticky `WriterStateUnknown` family seen in
@@ -548,7 +554,7 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 
 | T item | Current state | Next required result |
 |---|---|---|
-| T4 | **Closed for now (owner, 2026-10-21).** Pair `d1068cc3` + `586ae7cb`: smoke 256/256; 10k (budget disabled, isolation) ordinary and runtime Verifier PASS, boot Verifier functional PASS with the pool endpoint over the band; raw cells zero forbidden bytes. [Checkpoint](evidence/2026-10-20/t4-checkpoint.md). | Carried to the final M2 pair: endpoint decision, raw-cell MVP gate, lost-reply row, budget-on 10k after the T9 fixes. |
+| T4 | **Closed for now (owner, 2026-10-21).** Pair `d1068cc3` + `586ae7cb`: smoke 256/256; 10k (budget disabled, isolation) ordinary and runtime Verifier PASS, boot Verifier functional PASS with the pool endpoint over the band; raw cells zero forbidden bytes. [Checkpoint](evidence/2026-10-20/t4-checkpoint.md). | Carried to the final M2 pair: boot-Verifier 10k under the 128 KiB endpoint band (owner, future rows), raw-cell MVP gate, lost-reply row, budget-on 10k after the T9 fixes. |
 | T5 | Native namespace corrections reviewed. Latest [real Notepad diagnostic](evidence/2026-10-19/m2dev1019f-result.md): unprotected control passes; protected old-dev-pair save refuses for space. | Passing four-leg agent matrix, forced native delete orders, clean/CPF Notepad and public operations in all three modes. |
 | T6 | Copy-fallback component evidence and owner-approved folder/cross-drive metadata contract exist; merged namespace/folder source is unqualified. | Final-pair file/folder moves, idle rename and pending conflicts in all required modes. |
 | T7 | Windows-authorized read design retained. | Final-pair authorized/denied reads and exact bytes. |
@@ -559,7 +565,8 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 
 - [x] T4: build/agent prerequisites closed on the pair above; failed attempts and root causes in the [2026-10-20 checkpoint](evidence/2026-10-20/t4-checkpoint.md).
 - [x] T4: smoke `1020j` 256/256; 10k isolation rows (budget disabled, owner-approved): ordinary PASS; runtime Verifier PASS (`m2t4rvoff3`); boot Verifier
-  functional PASS twice with the pool endpoint 7-10 KB over the 64 KiB band (the post-idle level is a constant ~6.68 MB independent of cycle count; owner decision pending).
+  functional PASS twice with the pool endpoint 7-10 KB over the 64 KiB band (the post-idle level is a constant ~6.68 MB independent of cycle count; those receipts
+  stay FAIL; owner set 128 KiB for future rows, 2026-10-21).
 - [x] T4: closed for now (owner, 2026-10-21); carried items are listed in the owner decision and the checkpoint.
 - [ ] T4 (carried): raw-volume cells: journal reader and host validation fixed for the staged agent; C01-approve ordinary completes with zero forbidden bytes; the other
   ordinary cells are INCONCLUSIVE with per-family harness gaps (BLOCK hand-back evidence, B01/B02 wrapper, X01 execution, live-taint receipts).
@@ -580,8 +587,8 @@ carried to the final M2 pair, not waived. The 2026-10-19 smoke failure and its d
 The [prior 10k contexts failure](evidence/2026-10-12/m2t4purge10ka1-verdict.txt) and
 [attribution rows](evidence/2026-10-13/t4-delete-kd-attribution-result.md) remain preserved.
 
-**Unchanged owner gates (2026-10-12):** 256-cycle slope is INFO only; retain the 64 KiB idle endpoint band. Long-row slope stays
-<4 B/cycle from cycle 1,000 and the 64 KiB endpoint band. Registry occupancy must remain within capacity with zero idle capacity
+**Owner gates (2026-10-12; endpoint band changed 2026-10-21):** 256-cycle slope is INFO only. The idle endpoint band is 128 KiB for rows
+from 2026-10-21 (owner, future rows only; earlier receipts keep their 64 KiB verdicts). Long-row slope stays <4 B/cycle from cycle 1,000. Registry occupancy must remain within capacity with zero idle capacity
 failures. After idle, SYSTEM enables privileges 13/5 and runs class-80 commands 2/3/4 (empty working sets, flush modified list,
 purge standby), recording every NTSTATUS; wait 30 seconds and sample purged. Every status must succeed and 10k SUfl live allocations
 must be ≤start+2,048. Missing evidence fails. Smoke must release at least half the SUfl growth before a long run; short contexts
@@ -600,8 +607,8 @@ host maintenance during timing-sensitive rows. Stop/report required failed asser
 - [ ] T8: immediate-reopen control (moved from T4, owner may veto): original owner's reopen passes, a second process's read/write open fails Win32 32.
 - [x] T4: one-boot 10k with the budget disabled (isolation): ordinary [`m2t4ordoff1`](evidence/2026-10-20/m2t4ordoff1-verdict.txt) PASS and runtime Verifier
   [`m2t4rvoff3`](evidence/2026-10-21/m2t4rvoff3-verdict.txt) PASS (runtime mode now arms Verifier after Ready, `e329048f`).
-- [ ] T4 (carried): boot-Verifier 10k [`m2t4bvoff1`](evidence/2026-10-20/m2t4bvoff1-verdict.txt)/[`m2t4bvoff2`](evidence/2026-10-20/m2t4bvoff2-verdict.txt):
-  all functional gates PASS; `T4PoolFlat` endpoint +72–75 KB vs the 64 KiB band (constant post-idle level, not growth); owner to accept, widen or fix.
+- [ ] T4 (carried): boot-Verifier 10k on the final M2 pair under the 128 KiB endpoint band (owner, 2026-10-21). [`m2t4bvoff1`](evidence/2026-10-20/m2t4bvoff1-verdict.txt)/[`m2t4bvoff2`](evidence/2026-10-20/m2t4bvoff2-verdict.txt)
+  stay FAIL under 64 KiB: all functional gates PASS, endpoint +72–75 KB (constant post-idle level, not growth).
 - [ ] T4 (carried): rerun the 10k rows with the default staging budget once the T9 budget defects are fixed.
 - [ ] T4 (carried): run C01–C04/B01/B02/X01 with the raw-volume observer in all modes to MVP-gate PASS, then repeat on the final M2 pair. Sampled bytes do not replace raw observation.
 
