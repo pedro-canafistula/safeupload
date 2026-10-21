@@ -1,6 +1,6 @@
 # SafeUpload MVP status plan
 
-Updated 2026-10-20. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
+Updated 2026-10-21. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
 destination, keeping unapproved bytes private throughout. M2 is the current milestone, not the completion boundary.
 Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](POST-MVP-LOG.md), and the local WIP branch noted below.
 
@@ -9,7 +9,7 @@ Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](PO
 | Order | Scope | Status |
 |---|---|---|
 | M1 | T0–T3: safe to leave loaded | Complete on the recorded M1 pair |
-| **M2** | **T4–T11: everyday file work** | **Active; integrated kernel review accepted with conditions; build gates pass; T4 save/kernel defects fixed (`586ae7cb`, `d1068cc3`); 256-cycle smoke 256/256 apart from sampling; 10k and raw-cell rows in flight** |
+| **M2** | **T4–T11: everyday file work** | **Active; T4 closed for now (owner, 2026-10-21) on isolation rows with carried items; T5–T11 next** |
 | M3 | T12, T14: release configuration and lifecycle | After M2 |
 | T21 | USB/removable | After M3; own design, owner decisions, Sol 6.1 high design review and destination qualification |
 | T22 | SMB/UNC | After T21; own design, owner decisions, Sol 6.1 high design review and destination qualification |
@@ -22,6 +22,16 @@ USB, SMB/UNC and cloud-sync are required MVP work; they are no longer deferred u
 respective support and qualification gates are met and the owner approves cutover.
 
 ## Owner decisions
+
+**2026-10-21 — T4 closed for now.** Owner, in the session: "Record, push, and close T4 for now." Closed provisionally on the pair kernel
+`d1068cc3` + agent `586ae7cb`: smoke `m2t4smoke1020j` 256/256; one-boot 10k rows with the staging budget disabled (isolation, approved
+2026-10-20): ordinary PASS (`m2t4ordoff1`), runtime Verifier PASS (`m2t4rvoff3`), boot Verifier all functional gates PASS twice with
+`T4PoolFlat` over the 64 KiB endpoint band (unresolved: accept, widen or fix); raw-volume cells with zero forbidden bytes but not MVP-gate PASS.
+No gate, threshold or assertion was changed or waived. Carried to the final M2 pair: the endpoint decision; raw-cell harness modernization
+for C01–C04/B01/B02/X01 in three modes (BLOCK hand-back evidence, B01/B02 wrapper, X01 execution, dedicated latency, live-taint receipts);
+the lost-reply fault row (harness held on `t4/fault-row`); the T9 budget-on defects (completed saves keep 1 MiB, allocation latency growth,
+lost allocation reply does not self-heal) that block M2 with the default configuration; the sticky `WriterStateUnknown` family seen in
+3 of about 15 boots; the T8 immediate-reopen control. [Checkpoint](evidence/2026-10-20/t4-checkpoint.md).
 
 **2026-10-20 — complete T4 first.** Owner, in the session ("I agree. Now focus on completing T4 asap"), after the review of the
 last days and the plan proposed in it: (1) the T4 smoke's immediate-reopen probes run in sequence: the saving process finishes and
@@ -538,7 +548,7 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 
 | T item | Current state | Next required result |
 |---|---|---|
-| T4 | Pair `d1068cc3` kernel (`t4pagefix1` gates 0/0, imports PASS) + agent `586ae7cb` (`m2t4refund2` 2,801 per configuration). Smoke `1020i` 256/256, 0 stage files, worker idle; only the pool-endpoint sampling was missing (rerun at 64-cycle sampling). Root causes and fixes: [checkpoint](evidence/2026-10-20/t4-checkpoint.md). | Smoke with sampling, one-boot 10k in three modes, raw-volume cells C01–C04/B01/B02/X01 in three modes, lost-reply row, separate restoration. |
+| T4 | **Closed for now (owner, 2026-10-21).** Pair `d1068cc3` + `586ae7cb`: smoke 256/256; 10k (budget disabled, isolation) ordinary and runtime Verifier PASS, boot Verifier functional PASS with the pool endpoint over the band; raw cells zero forbidden bytes. [Checkpoint](evidence/2026-10-20/t4-checkpoint.md). | Carried to the final M2 pair: endpoint decision, raw-cell MVP gate, lost-reply row, budget-on 10k after the T9 fixes. |
 | T5 | Native namespace corrections reviewed. Latest [real Notepad diagnostic](evidence/2026-10-19/m2dev1019f-result.md): unprotected control passes; protected old-dev-pair save refuses for space. | Passing four-leg agent matrix, forced native delete orders, clean/CPF Notepad and public operations in all three modes. |
 | T6 | Copy-fallback component evidence and owner-approved folder/cross-drive metadata contract exist; merged namespace/folder source is unqualified. | Final-pair file/folder moves, idle rename and pending conflicts in all required modes. |
 | T7 | Windows-authorized read design retained. | Final-pair authorized/denied reads and exact bytes. |
@@ -550,9 +560,9 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 - [x] T4: build/agent prerequisites closed on the pair above; failed attempts and root causes in the [2026-10-20 checkpoint](evidence/2026-10-20/t4-checkpoint.md).
 - [x] T4: smoke `1020j` 256/256; 10k isolation rows (budget disabled, owner-approved): ordinary PASS; runtime Verifier PASS (`m2t4rvoff3`); boot Verifier
   functional PASS twice with the pool endpoint 7-10 KB over the 64 KiB band (the post-idle level is a constant ~6.68 MB independent of cycle count; owner decision pending).
-- [ ] T4: raw-volume cells: journal reader and host validation fixed for the staged agent; C01-approve ordinary completes with zero forbidden bytes; the other
-  ordinary cells are INCONCLUSIVE with per-family harness gaps (BLOCK hand-back evidence, B01/B02 wrapper, X01 execution, live-taint receipts); owner scope decision pending
-  (see the 2026-10-20 checkpoint update).
+- [x] T4: closed for now (owner, 2026-10-21); carried items are listed in the owner decision and the checkpoint.
+- [ ] T4 (carried): raw-volume cells: journal reader and host validation fixed for the staged agent; C01-approve ordinary completes with zero forbidden bytes; the other
+  ordinary cells are INCONCLUSIVE with per-family harness gaps (BLOCK hand-back evidence, B01/B02 wrapper, X01 execution, live-taint receipts).
 - [ ] T5–T11: qualify the coherent pair against every existing assertion; component/dev passes do not complete these items.
 - [ ] T11: perform final adversarial review only after the runtime evidence exists.
 
@@ -565,9 +575,8 @@ The superseded checkpoint narratives are in [POST-MVP-LOG.md](POST-MVP-LOG.md#ar
 versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01 pass in all three modes.
 
 Design: [stage lifetime](T4-STAGE-LIFETIME.md), [lease/retirement correction and reopen controls](UX-LEAK2.md).
-Latest [source/build/review evidence](evidence/2026-10-17/m2-integration-status.md) is component evidence; Windows qualification is open.
-[Boot-Verifier smoke](evidence/2026-10-19/m2t4smoke1019a-verdict.txt) failed after nine attempts; owner authorized focused diagnosis
-on 2026-10-19. [Separate restoration](evidence/2026-10-19/m2t4smoke1019arestore-restoration.txt) passed; 10k has not started.
+**Closed for now (owner, 2026-10-21)** on the evidence in the [checkpoint](evidence/2026-10-20/t4-checkpoint.md); the open items below are
+carried to the final M2 pair, not waived. The 2026-10-19 smoke failure and its diagnosis are retained there.
 The [prior 10k contexts failure](evidence/2026-10-12/m2t4purge10ka1-verdict.txt) and
 [attribution rows](evidence/2026-10-13/t4-delete-kd-attribution-result.md) remain preserved.
 
@@ -585,12 +594,16 @@ host maintenance during timing-sensitive rows. Stop/report required failed asser
 - [x] T4: PS5.1 harness/native controls and verdict replay pass; latest [harness gate](evidence/2026-10-17/harness-windows-gate-m2-ux-harness-1017b.txt).
 - [x] T4: pass the full four-leg agent matrix (5,570/5,570); [package retry/strict verification](evidence/2026-10-19/matrixpkg1019c/verification.txt)
   preserves the tested payload bytes. [Checkpoint](evidence/2026-10-19/m2-checkpoint.md) retains the original failed attempts.
-- [ ] T4: qualify V20 allocation/Prepare lost-reply cleanup under protection; exact faults remain in the lifetime design.
+- [ ] T4 (carried): qualify V20 allocation/Prepare lost-reply cleanup under protection; fault-test harness delivered on `t4/fault-row`, held and unrun.
 - [x] T4: fix serial-save refusals (agent refund wait, `586ae7cb`) and the pageable-router double fault (`d1068cc3`).
-- [ ] T4: pass 256-cycle boot-Verifier smoke with 64-cycle sampling: idle endpoint, purge statuses, release measurement (`1020i` passed all but sampling).
+- [x] T4: pass 256-cycle boot-Verifier smoke with 64-cycle sampling: [`m2t4smoke1020j`](evidence/2026-10-20/m2t4smoke1020j-verdict.txt) 256/256, every required line PASS.
 - [ ] T8: immediate-reopen control (moved from T4, owner may veto): original owner's reopen passes, a second process's read/write open fails Win32 32.
-- [ ] T4: pass unchanged one-boot 10k ordinary/runtime-/boot-Verifier cells, including loaded-context and admission-recovery gates.
-- [ ] T4: run C01–C04/B01/B02/X01 with the raw-volume observer in all modes, then repeat on the final M2 pair. Sampled bytes do not replace raw observation.
+- [x] T4: one-boot 10k with the budget disabled (isolation): ordinary [`m2t4ordoff1`](evidence/2026-10-20/m2t4ordoff1-verdict.txt) PASS and runtime Verifier
+  [`m2t4rvoff3`](evidence/2026-10-21/m2t4rvoff3-verdict.txt) PASS (runtime mode now arms Verifier after Ready, `e329048f`).
+- [ ] T4 (carried): boot-Verifier 10k [`m2t4bvoff1`](evidence/2026-10-20/m2t4bvoff1-verdict.txt)/[`m2t4bvoff2`](evidence/2026-10-20/m2t4bvoff2-verdict.txt):
+  all functional gates PASS; `T4PoolFlat` endpoint +72–75 KB vs the 64 KiB band (constant post-idle level, not growth); owner to accept, widen or fix.
+- [ ] T4 (carried): rerun the 10k rows with the default staging budget once the T9 budget defects are fixed.
+- [ ] T4 (carried): run C01–C04/B01/B02/X01 with the raw-volume observer in all modes to MVP-gate PASS, then repeat on the final M2 pair. Sampled bytes do not replace raw observation.
 
 
 ### T5. Empty saves, Notepad Save As and deletes

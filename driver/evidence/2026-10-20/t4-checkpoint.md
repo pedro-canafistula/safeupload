@@ -123,3 +123,18 @@ identity 5939). Fail-closed by design, driven by background writers; the T1/T18 
 
 The cell harness needs a staged-agent modernization per family (BLOCK hand-back evidence, B01/B02 wrapper, X01 execution, live-taint receipts) before 33 runs can pass.
 That is an M2 qualification work item, not a T4 kernel-lifetime result. Owner scope decision requested.
+
+## Closed for now — 2026-10-21
+
+Owner: "Record, push, and close T4 for now." T4 is closed provisionally on the evidence above. Nothing was waived and no gate, threshold or
+assertion changed. Carried to the final M2 pair:
+
+- [ ] Boot-Verifier 10k pool endpoint: accept, widen the band or fix (all functional gates already PASS twice).
+- [ ] 10k rows with the default staging budget, after the T9 fixes (metadata retirement, bounded allocation latency, lost-reply self-heal).
+- [ ] Raw-volume cells to MVP-gate PASS in three modes (BLOCK hand-back evidence, B01/B02 wrapper, X01 execution, dedicated latency, live-taint receipts).
+- [ ] Lost-reply fault row (harness held on `t4/fault-row`).
+- [ ] Sticky `WriterStateUnknown` family (3 of about 15 boots), T1/T18 area.
+- [ ] Immediate-reopen control under T8 (second process's read/write open, Win32 32).
+
+Held, unintegrated branches: `t4/readmit` (worker 1 READMIT repair; the smoke failures it targeted had other causes), `t4/fault-row`
+(worker 2), `t4/sharediag` (logging-only diagnostic driver).
