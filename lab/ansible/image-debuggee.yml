@@ -1,0 +1,10 @@
+# Run by Packer against the freshly installed debuggee (see ../packer/debuggee.pkr.hcl). Order matters: base system,
+# debuggee configuration, first-boot seed, then sanitize and the finalize script that Packer runs as its shutdown command.
+- name: SafeUpload lab debuggee image
+  hosts: all
+  gather_facts: false
+  roles:
+    - win_base
+    - debuggee
+    - lab_seed
+    - sanitize

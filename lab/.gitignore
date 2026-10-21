@@ -1,0 +1,12 @@
+# Build inputs, outputs and secrets never go in Git.
+work/
+output/
+*.qcow2
+*.iso
+*.tfstate
+*.tfstate.*
+.terraform/
+*.auto.tfvars
+secrets/
+collections/
+.venv/

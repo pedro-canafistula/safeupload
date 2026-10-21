@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars (ignored by Git) and edit.
+image_path      = "/path/to/safeupload-debuggee-19045.2965.qcow2"
+ssh_public_keys = ["ssh-ed25519 AAAA... you@host"]
+# Your own test-signing certificate (public part only), if you will install test-signed drivers:
+# trusted_certificate_files = ["/path/to/my-test-signing.cer"]
+# name = "su-lab-debuggee"
+# hostname = "SU-LAB-DEBUG"

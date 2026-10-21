@@ -15,7 +15,7 @@ What the driver is and how staged writes work.
 
 ## Operations and process
 
-Deployment, delivery gates and lab workflow.
+Deployment, delivery gates and lab workflow. The image pipeline that builds colleagues' lab VMs (Packer, Ansible, Terraform) is in [`../../lab/`](../../lab/README.md).
 
 | Document | What it covers |
 |---|---|

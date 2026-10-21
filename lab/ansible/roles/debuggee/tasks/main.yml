@@ -1,0 +1,33 @@
+# Debuggee-specific configuration. The SafeUpload driver, agent, policy and test accounts are NOT part of the image:
+# the row launchers install a matched pair on every disposable run disk and create their own actor accounts.
+- name: Driver crash dumps for diagnosis (complete memory dump, keep the file)
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: dword
+  loop:
+    - { name: CrashDumpEnabled, data: 1 }
+    - { name: AlwaysKeepMemoryDump, data: 1 }
+    - { name: AutoReboot, data: 1 }
+
+- name: Folders the harness copies into
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - C:\Users\vika\Documents
+
+- name: Disable the first-sign-in animation for new local accounts (the actor signs in interactively)
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: EnableFirstLogonAnimation
+    data: 0
+    type: dword
+
+- name: Skip the privacy-settings pages for new accounts
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\OOBE
+    name: DisablePrivacyExperience
+    data: 1
+    type: dword

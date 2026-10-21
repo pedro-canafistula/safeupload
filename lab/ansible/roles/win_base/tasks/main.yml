@@ -1,0 +1,55 @@
+# Base system for every lab Windows image: exact build, no automatic updates, no sleep, test signing.
+- name: Read the installed Windows build
+  ansible.windows.win_shell: |
+    $v = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+    "$($v.CurrentBuild).$($v.UBR)|$($v.EditionID)|$($v.DisplayVersion)"
+  args:
+    executable: powershell.exe
+  register: windows_build
+  changed_when: false
+
+- name: Require the qualified Windows build (19045.2965)
+  ansible.builtin.assert:
+    that:
+      - windows_build.stdout.strip().split('|')[0] == '19045.2965'
+    fail_msg: "Installed build is {{ windows_build.stdout.strip() }}; the lab requires 19045.2965 from the pinned May 2023 media."
+
+- name: Keep Windows Update from changing the build
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: dword
+  loop:
+    - { name: NoAutoUpdate, data: 1 }
+    - { name: AUOptions, data: 1 }
+
+- name: Do not reach Windows Update for drivers or feature upgrades
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate
+    name: "{{ item }}"
+    data: 1
+    type: dword
+  loop:
+    - ExcludeWUDriversInQualityUpdate
+    - DisableOSUpgrade
+    - DoNotConnectToWindowsUpdateInternetLocations
+
+- name: Stop and disable the Windows Update service
+  ansible.windows.win_service:
+    name: wuauserv
+    start_mode: disabled
+    state: stopped
+
+- name: No sleep, hibernation or fast startup (hiberfil.sys would also carry memory into the image)
+  ansible.windows.win_shell: |
+    powercfg.exe /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+    powercfg.exe /hibernate off
+    powercfg.exe /change standby-timeout-ac 0
+    powercfg.exe /change monitor-timeout-ac 0
+    powercfg.exe /change disk-timeout-ac 0
+  args:
+    executable: powershell.exe
+
+- name: Enable test signing (Secure Boot is off in the firmware definition)
+  ansible.windows.win_command: bcdedit.exe /set testsigning on

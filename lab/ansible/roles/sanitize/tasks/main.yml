@@ -1,0 +1,89 @@
+# Remove everything personal or secret from the image before generalizing it. The build SSH key and this machine's SSH
+# host keys are removed by safeupload-finalize.ps1, the last step (Packer's shutdown command), because this play still
+# needs the connection. Nothing below depends on the build password staying valid.
+- name: Stage the finalize script and the sysprep answer file
+  ansible.windows.win_copy:
+    src: "{{ item }}"
+    dest: "C:\\Windows\\Temp\\{{ item }}"
+  loop:
+    - safeupload-finalize.ps1
+    - safeupload-firstboot.xml
+
+- name: Remove autologon values and replace the build password with a random one nobody knows
+  ansible.windows.win_shell: |
+    $key = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    foreach ($n in 'AutoAdminLogon','DefaultUserName','DefaultDomainName','DefaultPassword','AutoLogonCount') {
+        Remove-ItemProperty -Path $key -Name $n -ErrorAction SilentlyContinue
+    }
+    Add-Type -AssemblyName System.Web
+    $random = [System.Web.Security.Membership]::GeneratePassword(40, 8)
+    Set-LocalUser -Name 'vika' -Password (ConvertTo-SecureString $random -AsPlainText -Force)
+  args:
+    executable: powershell.exe
+  no_log: true
+
+- name: Remove the cached unattend files that setup leaves behind (they held the build password)
+  ansible.windows.win_shell: |
+    $paths = 'C:\Windows\Panther\unattend.xml','C:\Windows\Panther\Unattend\unattend.xml','C:\Windows\Panther\UnattendGC',
+             'C:\Windows\System32\Sysprep\unattend.xml','C:\Windows\System32\Sysprep\Panther','C:\unattend.xml','C:\autounattend.xml'
+    foreach ($p in $paths) { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue }
+  args:
+    executable: powershell.exe
+
+- name: Remove shell history, recent items, caches and temporary files
+  ansible.windows.win_shell: |
+    foreach ($profile in Get-ChildItem 'C:\Users' -Directory -Force -ErrorAction SilentlyContinue) {
+        $u = $profile.FullName
+        Remove-Item -LiteralPath "$u\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine" -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath "$u\AppData\Roaming\Microsoft\Windows\Recent" -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath "$u\AppData\Local\Microsoft\Windows\INetCache" -Recurse -Force -ErrorAction SilentlyContinue
+        Get-ChildItem "$u\AppData\Local\Temp" -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Get-ChildItem "$u\AppData\Local\Microsoft\Windows\WER" -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Get-ChildItem 'C:\Windows\Temp' -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notin 'safeupload-finalize.ps1','safeupload-firstboot.xml' } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Get-ChildItem 'C:\ProgramData\Microsoft\Windows\WER' -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath 'C:\Windows\Prefetch\*' -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath 'C:\Windows\SoftwareDistribution\Download\*' -Recurse -Force -ErrorAction SilentlyContinue
+  args:
+    executable: powershell.exe
+
+- name: Clear stored credentials, DNS and ARP caches
+  ansible.windows.win_shell: |
+    cmdkey /list | Select-String 'Target:' | ForEach-Object { $t = ($_ -replace '.*Target:\s*', '').Trim(); cmdkey /delete:$t | Out-Null }
+    ipconfig /flushdns | Out-Null
+    arp -d * | Out-Null
+  args:
+    executable: powershell.exe
+  failed_when: false
+
+- name: Clear every event log
+  ansible.windows.win_shell: |
+    wevtutil.exe el | ForEach-Object { wevtutil.exe cl "$_" 2>$null }
+  args:
+    executable: powershell.exe
+  failed_when: false
+
+- name: Verify nothing secret remains (fails the build otherwise)
+  ansible.windows.win_shell: |
+    $problems = @()
+    $w = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    foreach ($n in 'AutoAdminLogon','DefaultPassword','DefaultUserName') { if ($null -ne $w.$n) { $problems += "Winlogon value $n present" } }
+    foreach ($p in 'C:\Windows\Panther\unattend.xml','C:\Windows\Panther\UnattendGC\unattend.xml','C:\unattend.xml','C:\autounattend.xml') {
+        if (Test-Path -LiteralPath $p) { $problems += "$p present" }
+    }
+    $history = Get-ChildItem 'C:\Users' -Recurse -Force -Filter 'ConsoleHost_history.txt' -ErrorAction SilentlyContinue
+    if ($history) { $problems += 'PowerShell history present' }
+    if ($problems) { $problems; exit 1 }
+    'SANITIZE_VERIFIED=True'
+  args:
+    executable: powershell.exe
+  register: sanitize_check
+  changed_when: false
+
+- name: Trim free space so the compressed image stays small (best effort)
+  ansible.windows.win_shell: Optimize-Volume -DriveLetter C -ReTrim -ErrorAction SilentlyContinue
+  args:
+    executable: powershell.exe
+  failed_when: false

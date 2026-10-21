@@ -23,6 +23,16 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-21 (lab images) — reproducible lab VMs for colleagues; Terraform adopted for their hosts.** Owner, in the session: asked for images of the
+lab VMs so colleagues can replicate the Windows build, preferably with Terraform and Ansible, with personal information and cached sessions removed, from a clean
+Windows 10 ISO; then "Let's not wait for the T5 checkpoint, I downloaded an ISO and I want to have the same environment as my colleagues, so I must be the first
+to set it up." This starts the Packer/Ansible work that the 2026-10-13 decision deferred until after the T5 checkpoint, and adopts Terraform for creating the
+VMs on colleagues' libvirt hosts (the earlier "Terraform is not adopted" decision concerned the lab host). Rules kept: nothing is applied to `win10-debug3`, its
+base disk, its XML or the `run-disk.sh` overlays; images are built from pinned, hash-checked media and carry no accounts, keys, certificates or caches; the image is a
+development candidate, not the qualified target (the harness keeps checking the qualified machine's name and UUID). Media: `Win10_22H2_EnglishInternational_x64v1.iso`
+(SHA-256 `edc53c5c...`, install image SP build 2965). Recipes in `lab/`; builder images and Office are later work. A first build runs only when no timing-sensitive
+matrix or row is running on the host.
+
 **2026-10-21 (T5 plan) — close T5 for now on the shipped (unbound) profile.** Owner, in the session ("I agree, go") on the T5 plan:
 (D1) T5 closes on the unbound MVP profile the pair ships; the bound-head profile (`wt/t5-batch2`, runtime NotReady) and its caller-grant /
 seed read-export / descriptor / generation-ordering item move to the post-M2 hardening list, after a no-VM source check that the shipped
