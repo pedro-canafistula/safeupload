@@ -1,0 +1,10 @@
+T5GuestAlive PASS the guest answered through the run
+T5DriverLoaded PASS the filter is still loaded after the run
+T5ResultEvidence PASS copied=yes; guest-present=True
+T5ActorTaskStart PASS the SYSTEM coordinator explicitly started the interactive actor after capturing the raw destination baseline
+T5JournalArchiveEvidence PASS 0 archived payload references verified
+T5RawObserver FAIL status=OK; baseline=OK; samples=0; disposal=OK; schema=False; artifacts=6 artifacts verified; 1 logical images referenced
+T5RawEvidenceRetained PASS copied=yes; guest-manifest=True; 6 artifacts verified; 1 logical images referenced
+T5CasesCompleted FAIL 0 of 20 required distinct cases; error Cannot convert 'System.Object[]' to the type 'System.String' required by parameter 'ChildPath'. Specified method is not supported.
+T5CanonicalNoUnapprovedByte FAIL Canonical lower-mutation proof field missing.
+T5Duration INFO 217 s (ordinary)

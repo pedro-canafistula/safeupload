@@ -1,0 +1,371 @@
+{
+    "Started":  "2026-10-21T16:12:02.4003606Z",
+    "Cases":  [
+
+              ],
+    "Error":  "Cannot convert \u0027System.Object[]\u0027 to the type \u0027System.String\u0027 required by parameter \u0027ChildPath\u0027. Specified method is not supported.",
+    "ActorTaskStartIssued":  true,
+    "RawObserver":  {
+                        "Status":  "OK",
+                        "CaseId":  "T5",
+                        "Build":  "19045.2965",
+                        "BootId":  "WIN10-DEBUGGED/2026-10-21T16:11:02.5000000Z",
+                        "ObserverPid":  6168,
+                        "ObserverSid":  "S-1-5-18",
+                        "VolumeGuid":  "\\\\?\\Volume{f58c7564-1b1d-4c24-a05a-6f58cb85ec9c}\\",
+                        "ScopePath":  "C:\\Protected\\t5",
+                        "ModuleSha256":  "48577D312B66287F432B75E0EE61CCA787A30F6E3632A1D2912085CC32070BC8",
+                        "Baseline":  {
+                                         "Status":  "OK",
+                                         "CaseId":  "T5",
+                                         "ObserverPid":  6168,
+                                         "ObserverSid":  "S-1-5-18",
+                                         "Time":  {
+                                                      "Utc":  "2026-10-21T16:12:26.2430719Z",
+                                                      "Qpc":  839570539,
+                                                      "QpcFrequency":  10000000,
+                                                      "BootId":  "WIN10-DEBUGGED/2026-10-21T16:11:02.5000000Z"
+                                                  },
+                                         "Names":  [
+                                                       "clear-existing.txt",
+                                                       "cpf.txt",
+                                                       "delete-denied.txt",
+                                                       "delete-explorer.txt",
+                                                       "delete-published.txt",
+                                                       "delete-remove.txt",
+                                                       "delete-sharing.txt",
+                                                       "delete-then-cpf.txt",
+                                                       "delete-writer.txt",
+                                                       "empty-copy.txt",
+                                                       "empty-move.txt",
+                                                       "existing-blocked-edit.txt",
+                                                       "explorer-new.txt",
+                                                       "explorer-renamed.txt",
+                                                       "ok.txt",
+                                                       "probe-after-cpf.txt",
+                                                       "probe-after-publication.txt",
+                                                       "probe-before-cpf.txt",
+                                                       "probe-delete.txt",
+                                                       "probe-doc.txt",
+                                                       "probe-onclose.txt"
+                                                   ],
+                                         "Images":  [
+                                                        {
+                                                            "Role":  "Parent",
+                                                            "Path":  "C:\\Protected\\t5",
+                                                            "Absent":  null,
+                                                            "FileId":  "1D5E030000002A000000000000000000",
+                                                            "Reference":  "11821949022068253",
+                                                            "Length":  0,
+                                                            "Sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                                                            "LogicalArtifact":  {
+                                                                                    "Path":  "C:\\T5\\raw\\logical-34dc563269a848839ac39c817eaed25f.bin",
+                                                                                    "Length":  0,
+                                                                                    "Sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                                                                                    "Kind":  "logical"
+                                                                                },
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\clear-existing.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\cpf.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\delete-denied.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\delete-explorer.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\delete-published.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\delete-remove.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\delete-sharing.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\delete-then-cpf.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\delete-writer.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\empty-copy.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\empty-move.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\existing-blocked-edit.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\explorer-new.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\explorer-renamed.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\ok.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\probe-after-cpf.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\probe-after-publication.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\probe-before-cpf.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\probe-delete.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\probe-doc.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        },
+                                                        {
+                                                            "Role":  "Current",
+                                                            "Path":  "C:\\Protected\\t5\\probe-onclose.txt",
+                                                            "Absent":  true,
+                                                            "FileId":  null,
+                                                            "Reference":  null,
+                                                            "Length":  null,
+                                                            "Sha256":  null,
+                                                            "LogicalArtifact":  null,
+                                                            "DirectoryEntries":  {
+
+                                                                                 }
+                                                        }
+                                                    ]
+                                     },
+                        "Samples":  [
+
+                                    ],
+                        "Disposal":  {
+                                         "Status":  "OK",
+                                         "Errors":  [
+
+                                                    ],
+                                         "Time":  {
+                                                      "Utc":  "2026-10-21T16:12:36.4936601Z",
+                                                      "Qpc":  942028906,
+                                                      "QpcFrequency":  10000000,
+                                                      "BootId":  "WIN10-DEBUGGED/2026-10-21T16:11:02.5000000Z"
+                                                  }
+                                     },
+                        "DisposalError":  null,
+                        "NoUnapprovedByteVerdict":  null,
+                        "NoUnapprovedByteReason":  null,
+                        "EvidenceDirectory":  "C:\\T5\\raw"
+                    },
+    "Actor":  "ACTOR_STARTED pid=9100 user=WIN10-DEBUGGED\\t5actor session=1",
+    "HandbackDirectory":  "C:\\Users\\t5actor\\SafeUpload\\_bloqueados",
+    "ActorSid":  "S-1-5-21-316478115-1595729549-2803163825-1279",
+    "ErrorScriptStackTrace":  "at \u003cScriptBlock\u003e, C:\\Users\\vika\\Documents\\t5-notepad-coordinator.ps1: line 1856",
+    "Finished":  "2026-10-21T16:12:36.5276586Z"
+}

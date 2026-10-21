@@ -45,9 +45,39 @@ then the 1 s idle interval. Compiled in feature Debug/Release; the new tests (`S
 | `m2t5a1` | `47121503` (merged PR #38 + discard pacing) | **FAIL**, first leg (feature-debug user) 3,103/3,104, zero skipped; remaining legs did not run. Failed: `StagedTerminalArchiveTests.Ten_thousand_terminal_records_leave_constant_hot_work_and_bounded_allocate_seal_cost(sameDestination: True)`, 11,595 ms against the unchanged 1,000 ms bound. The whole leg ran 1,229 s vs 653 s in the last green matrix (`m2t4refund2`) and the same test family 3.4-4.2x slower, while a second matrix (`m2t5a2`) ran on builder2 on the same host. Hypothesis: host contention, not code; not yet shown. Receipt: [summary](exact-agent-matrix-m2t5a1-summary.txt), [durations](exact-agent-matrix-m2t5a1-durations.txt). |
 | `m2t5a2` | `dc16ae12` (+ seed-export guard) | **FAIL**, first leg 3,146/3,148: the same timing bound again (it ran beside `m2t5a1`) and `StagedHandbackTests.Blocked_same_name_resave_after_retirement_is_ordinary_and_inspected(blockAgain: True)` (see `m2t5a3`). |
 | `m2t5a3` | `d157ba3f` (final agent tree, owner option A) | **FAIL**, first leg 3,148/3,149 in 827 s (no concurrent matrix): the timing bound passed alone, which supports contention as the cause of the two earlier timing failures. The one failure is `Blocked_same_name_resave_after_retirement_is_ordinary_and_inspected(blockAgain: True)`: the seed-export guard evaluates read authority of a fixture requestor (fixed PID/creation time, not a live process) as Unproven, so the second save's hand-back is withheld. A test fixture issue, not a product regression: the test now injects an `Allowed` evaluator like the other seed tests; the Denied/Unproven outcomes stay covered in `StagedUnboundSeedExportTests`. |
-| `m2t5a4` | the commit with that test fix | pending: must run alone, all four legs. |
+| `m2t5a4` | `a85ae8d4` (that test fix) | **PASS**, all four legs alone on builder1: 3,174/3,174 per profile, user and SYSTEM legs, 0 warnings / 0 errors; package `FF0C55D2…` (service exe `E3F871A8…`). [Summary](exact-agent-matrix-m2t5a4-summary.txt), [durations](exact-agent-matrix-m2t5a4-durations.txt). Component result, not row qualification. |
+
+## Harness gates (Windows PowerShell 5.1)
+
+| Label | Source | Result |
+|---|---|---|
+| `m2t5hg1` | `4a8f8c26` (row harness `53ddf152`) | **FAIL** ([receipt](harness-windows-gate-m2t5hg1.txt)): every file parses with 0 errors; 33 self-checks exit 0; `t5/notepad-actor.SelfCheck.ps1` and `t5/notepad-coordinator.SelfCheck.ps1` (both from 2026-10-11, first gated by `53ddf152`) exit 1 at line 2 — in an advanced script run with `-File`, 5.1 leaves `$PSScriptRoot` empty inside `param()` defaults. Fixed in `601cb311` (path resolved in the body; assertions unchanged). |
+| `m2t5hg3` | `0ac25de0` | **PASS** ([receipt](harness-windows-gate-m2t5hg3.txt)): 35/35, coordinator self-check 176 assertions including the case-inventory load. |
+| `m2t5hg2` | `601cb311` | **PASS** ([receipt](harness-windows-gate-m2t5hg2.txt)): all files parse with 0 errors, 35/35 self-checks exit 0 on 5.1.19041.6456 (coordinator schema 174 assertions; actor native control `NativeActorControl=PASS`, unprotected). |
+
+## Rows on the merged agent (T4 kernel `3547377A…` + `m2t5a4` agent `FF0C55D2…`, win10-debug3)
+
+| Row | Source / mode | Result |
+|---|---|---|
+| `m2t5ord5` | `601cb311`, ordinary | **FAIL**, harness ([verdict](m2t5ord5-verdict.txt), [result](m2t5ord5-result.json)): install, reboot, Ready, actor session and raw baseline all succeeded; the coordinator then ran **0 of 20** cases. Windows PowerShell 5.1 writes a top-level JSON array as one object, so `@(… \| ConvertFrom-Json)` gave a one-element case list and `Join-Path $root $case.Leaf` threw on `Object[]` (coordinator line 1856). PS 7 enumerates the array, so the offline replay never saw it. No product behaviour was exercised. Restoration: XML unchanged, run overlay deleted, base untouched. Fixed in `0ac25de0` (inventory loader plus a self-check assertion that fails on the old form). |
+| `m2t5ord6` | `0ac25de0`, ordinary | **FAIL** ([verdict](m2t5ord6-verdict.txt), [result](m2t5ord6-result.json), [journal](m2t5ord6-agent-journal)): all 20 cases ran (374 s); restoration clean. Product outcomes seen: case 1 now publishes its exact 25 bytes after the private discard (the `47121503` pacing fix), Notepad clean Save As publishes exactly 28 bytes, Notepad CPF Save As is handed back with nothing leaked. Every case still fails, on four harness defects and three findings below. |
+
+### `m2t5ord6` triage (first T5 row with the raw observer to run all cases; no T5 row has passed `T5RawObserver` since the observer was added)
+
+Harness defects, fixed together in the next commit (observer behaviours are opt-in for T5; Phase 4 is unchanged):
+
+1. **Stale raw metadata (46 of the 60 failed samples; 65 taken).** "Wrong record number/sequence or not in use", "Raw/FSCTL identity mismatch" (raw sequence 9 vs cached 14) and "Raw parent index does not identify the requested name": NTFS writes MFT records and directory indexes lazily, as Phase 4 found in `b17r1` (its `Flush-InvariantFinalVolume`). Fix: with an opt-in flush scriptblock on the context, a sample flushes the volume and captures again within the same module sample (every attempt kept).
+2. **`$observerReaderSummaries = @{}`** (a hashtable) took `+=` of objects: "A hash table can only be added to another hash table" on every sample with a present leaf (6 samples). Fix: `@()`.
+3. **Delete-pending names.** The probe gates sample while the actor holds a handle with delete set; the observer's target `Test-Path` then fails "Access is denied" (8 samples) (the filter returns STATUS_DELETE_PENDING, which Win32 reports as 5). Fix (opt-in): the name is recorded absent with `NamedLookup=DELETE_PENDING` only when the lookup's NTSTATUS is exactly 0xC0000056 **and** the raw parent index has no entry; the buffered reader must then also report DELETE_PENDING. An indexed (native) delete-pending name still fails.
+4. **Pre-case journal errors were thrown without being recorded** (3 cases). The end-of-row journal replays clean offline, so they were transient; they are now recorded in the case (no retry, so they cannot be hidden).
+
+Findings:
+
+- **On-close expectation (harness/design text).** `probe-onclose`/`probe-doc` expected Win32 303 for opens refused as delete-pending; the row observed 5. The 2026-10-11 native control shows Windows reports STATUS_DELETE_PENDING as Win32 5, and no earlier row ever recorded these steps, so 303 was never observed. The actor now records the NTSTATUS and the assertion is the exact STATUS_DELETE_PENDING plus Win32 5 (stricter than a Win32 code alone); `T5-DELETES.md` text corrected.
+- **`open=32` on a fresh create (`delete-remove.txt`).** The agent refused that `StageAllocate` after 1,528 ms with no transfer (service event 33400), the `m2t5ord4` signature. The previous case had aborted on harness defect 1 without waiting for its version to settle, so this is consistent with the known T9 same-user overlapping-save refusal; to be confirmed on the next row.
+- **Filter refused the observer's read-attributes open of the protected folder** (deny ring seq 138: STATUS_SHARING_VIOLATION, reason 17 `STAGE_CREATE_CONFLICT`, gate 1 = directory mutation active) 57 µs before the actor's move into protection returned the expected NOT_SAME_DEVICE. Any open routed to stage creation is refused while a directory mutation is active, including an attributes-only open of the folder itself. Transient; noted for T6 (the observer now retries it like defect 1).
 
 ## Next
 
-- [ ] Seed-export guard (worker `t5/seed-export`) and the row harness (worker `t5/rows`) land; merged tree builds the four-leg agent matrix.
+- [x] Seed-export guard (`dc16ae12`, `d157ba3f`) and the row harness (`53ddf152`) landed; the merged tree passes the four-leg agent matrix (`m2t5a4`).
 - [ ] Ordinary, runtime-Verifier and boot-Verifier T5 rows on that agent; restoration after each.

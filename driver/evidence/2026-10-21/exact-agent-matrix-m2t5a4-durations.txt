@@ -1,0 +1,22 @@
+Builder=builder1
+BuilderHost=192.168.122.210
+BuilderComputerName=DESKTOP-O1LP5DG
+ParityCheck=False
+Label=m2t5a4
+LabelKind=gate
+Notice=gate candidate
+TRX leg wall times (Times start/finish):
+feature-debug/user: 797.271 s
+feature-debug/system: 3.292 s
+feature-release/user: 1289.655 s
+feature-release/system: 2.710 s
+First leg: feature-debug/user: 797.271 s
+Tests over 60 s (descending duration):
+614.938 s | feature-release/user | Passed | SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Ten_thousand_driver_deleted_releases_retire_the_disposal_work_set
+403.426 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Ten_thousand_driver_deleted_releases_retire_the_disposal_work_set
+266.900 s | feature-release/user | Passed | SafeUpload.Agent.Tests.AuditRecentScalingTests.Ten_thousand_repeated_saves_to_eight_names_keep_recent_outcome_work_bounded
+170.272 s | feature-release/user | Passed | SafeUpload.Agent.Tests.NotificationRecordTests.Smaller_window_accepts_legacy_segments_and_ages_them_out_without_chain_reset
+161.065 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.AuditRecentScalingTests.Ten_thousand_repeated_saves_to_eight_names_keep_recent_outcome_work_bounded
+136.239 s | feature-release/user | Passed | SafeUpload.Agent.Tests.NotificationRecordTests.Two_hours_of_heartbeats_keep_a_small_hash_chained_window_across_restart
+115.714 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.NotificationRecordTests.Two_hours_of_heartbeats_keep_a_small_hash_chained_window_across_restart
+62.822 s | feature-release/user | Passed | SafeUpload.Agent.Tests.StagedAllocationRecoveryTests.Exact_kind5_abort_releases_sid_metadata_and_keeps_hot_or_packed_replay_accounted(packed: False)

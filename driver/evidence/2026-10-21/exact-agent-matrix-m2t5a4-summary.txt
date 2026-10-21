@@ -1,0 +1,42 @@
+﻿LABEL=m2t5a4
+BUILDER=DESKTOP-O1LP5DG
+SourceCommit=a85ae8d4b5696716d95d388ed80861771c670c53
+ARCHIVE_SHA256=4DD9C283E6BD268354661498BDE7661F9B1F8E234FC26FA994A561DEA571B410
+AgentMatrixProfiles=feature-debug,feature-release
+AgentMatrixTestLegs=4
+Builder=builder1
+BuilderHost=192.168.122.210
+BuilderComputerName=DESKTOP-O1LP5DG
+ParityCheck=False
+feature-debug: admission_evidence=true
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-app-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-debug-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-debug-tests-user: exit=0 warnings=0 errors=0
+feature-debug-tests-system-identity: S-1-5-18
+feature-debug-tests-system: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=3174
+feature-release: admission_evidence=true
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-app-build: exit=0 warnings=0 errors=0
+feature-release-test-build: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-list: exit=0 warnings=0 errors=0
+feature-release-tests-discovery-fqns: exit=0 warnings=0 errors=0
+feature-release-tests-user-identity: name=DESKTOP-O1LP5DG\vika sid=S-1-5-21-316478115-1595729549-2803163825-1001
+feature-release-tests-user: exit=0 warnings=0 errors=0
+feature-release-tests-system-identity: S-1-5-18
+feature-release-tests-system: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=3174
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release-app-publish: exit=0 warnings=0 errors=0
+feature-release: package_manifest_sha256=AEC8EC54E85F6A0F0C6E8E435575F2F4F5D18BDA5D224075A1388F1B86C05C90
+feature-release: package_sha256=FF0C55D2F289BC06B27605B7114710CD1BE843F95AD0873437D3CE17E58975A8
+feature-release: exe_sha256=E3F871A8E664C3DEF669E629B166A11861795B81B3CDB709CFF55019CB61800E
+feature-release: app_exe_sha256=2A269B7230F73D26E7D8B4E0614BF6E43A50558184CAC2603A19613629444C26
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-21T10:58:43.2756738Z

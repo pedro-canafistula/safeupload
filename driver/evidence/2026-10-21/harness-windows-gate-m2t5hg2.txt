@@ -1,0 +1,161 @@
+Builder=builder1
+BuilderHost=192.168.122.210
+BuilderComputerName=DESKTOP-O1LP5DG
+ParityCheck=False
+Test-StagedInvariantSuite.ps1:ParseErrors=0;SHA256=97BA963AEF5F6E56212B4A180DE0193915A79F35A95E0AE72F1EECC0DAF9ECA3
+StagedInvariantObserver.psm1:ParseErrors=0;SHA256=48577D312B66287F432B75E0EE61CCA787A30F6E3632A1D2912085CC32070BC8
+StagedInvariantCases.psd1:ParseErrors=0;SHA256=C7C91697B77B278C3F4F0AEC627CFCB1B3B86E06B9D05B81D4616D00062AF7B6
+Build-ExactAgent.ps1:ParseErrors=0;SHA256=873CC7AD5E0323E31EB5969553559BDD89F4FADBDB6ED2AA3B791493AFE35597
+t4/cycles-actor.ps1:ParseErrors=0;SHA256=F48B8FE9FD38B41A1FCA9BC6529CE804D68AF377199094065571AE9B97B1E3C0
+t4/cycles-coordinator.ps1:ParseErrors=0;SHA256=7855E58560E29039156F4074BE8CAD51BF711F54E2CE6447FFB2587828A61691
+t4/failure-evidence.ps1:ParseErrors=0;SHA256=C58BA95F838721C61910CA7195D35FCA0D80B2D8DFCE12841977DEA80E186E6D
+t4/cycles-progress.ps1:ParseErrors=0;SHA256=DFA5D200C5778D3025ED57E8440B400D0BFF5E6C8DE4781F22435E691AAFAF6B
+t4/agent-readiness.ps1:ParseErrors=0;SHA256=7961E1F5A8206E1AD748DCAD7DC94030B027CCE2E7738AB3579FD135443F7778
+t4/runtime-verifier.ps1:ParseErrors=0;SHA256=A35561B05138A31B540A08CC5A51277FE4A0794AAA42CEF35C9E91E37A6BFFB9
+t4/memory-debugger.ps1:ParseErrors=0;SHA256=5EC4C4691B9A4C259F3F5F482BFE8FE0CF2F3337810CB9560753E89716983757
+t4/purge-attribution.ps1:ParseErrors=0;SHA256=0B11AFC9DBC4D931FA6AB67CCFC7E375939A16FDCCA0C6078CCCDADF317B6CAD
+t6/moves-actor.ps1:ParseErrors=0;SHA256=22D427BD811C2BF396D45F8D65A1C3EF197D6FA6428B9630AEF367BDE138857A
+t6/moves-coordinator.ps1:ParseErrors=0;SHA256=5218B675460F540AC1EF077A0112EC018B5000E73DFF8F54D7ADBD729F94DF3D
+t10/permissions-actor.ps1:ParseErrors=0;SHA256=208EBD1639F30BD61CA9FAB1E8BB2A98BFDD874F1C9ECAAA42DC0CBF7A1D9CC6
+t10/permissions-coordinator.ps1:ParseErrors=0;SHA256=D916C2D18A9DA5E50441C164DF61D19BA772BF7289FA42062592BB6B487CBE48
+t5/notepad-actor.ps1:ParseErrors=0;SHA256=62BC27A72C2E9AEDAB24716A80D941B82FB6752282D900A13CABAE3FAB744A7F
+t5/notepad-coordinator.ps1:ParseErrors=0;SHA256=E25044EE85C56672E2581DFC63C2703E53B514AF28C8BECB0BD623CCD2973021
+t5/writer-permission-native-control.ps1:ParseErrors=0;SHA256=FBD427D901781D9E969835A7FF6EF5657DB81F5D8561BAEBB1669154562DBD9D
+t5/bound-publication-native-control.ps1:ParseErrors=0;SHA256=33B1D8F9AD8AB2ADA00FB5EF7CDC8E8118A1B918C52B6DAD1F18A56AC3A79D72
+t5/security-roundtrip-native-control.ps1:ParseErrors=0;SHA256=E10282987575B84481E2DC5A85686DA22EF248DA0CE7230F486A2C09C9FE1A25
+t5/Invoke-SecurityRoundTripNativeControl.ps1:ParseErrors=0;SHA256=B7B3D1AAC6AA9FD9312ECC1F4EF9F30B998953E29D2A22D67E5BF9789B43CB79
+t4/reopen-after-publication.ps1:ParseErrors=0;SHA256=A24CEECFBF3ADDDF01D59B42127EE9BD70EB5A3AF64BCE093E2D0CECFDF108BF
+t5/security-descriptor-native-control.ps1:ParseErrors=0;SHA256=129370805F2F5F703E37ACFA8A22FB1DE3D8407C0EF280AB0AD8C2186E4C972B
+t5/security-roundtrip-native-control.SelfCheck.ps1:ParseErrors=0;SHA256=89EC52E175AABD79983F89A8AAE9A4F948550A5D918937614FD79250F7A26429
+t5/notepad-cases.json:ParseErrors=0;SHA256=3775BBEAC3C4E34B4C1BCEC2E8805C56732799221830E1F03CCB115D38C0EC51
+t5/fixtures/C01-00000001.pack:ParseErrors=0;SHA256=8DE8709861A70B0EB86B65A2D64C39A7B71E5F4E96908BCD27274A97CC6B50B6
+t5/fixtures/m2t5ord4-00000001.pack:ParseErrors=0;SHA256=3777A7962DB91C952EDEF08F80A741C7280EFCD6BE1CCA411168373CB9A9B8F4
+Build-ExactAgentMatrix.ps1:ParseErrors=0;SHA256=6C8A35FB2C966A430866D4351CE0C6BAE09A86E603D6E8B8FED24DD4FC5AAA28
+Build-ExactSource.ps1:ParseErrors=0;SHA256=4C9235D9339972F9A2EC93DCEB1257224D97807ED1E1387B7828D23637C73E62
+Build-ExactSectionFault.ps1:ParseErrors=0;SHA256=8A4EE242368807DF34F8C1D9135CF3A022B64C94954ED188DB5E259E1C7288A6
+ApprovedBuilders.ps1:ParseErrors=0;SHA256=101F0894B8F95FD7102253E8A381E8B4843B0C66EC022D34EA14CE10591CDD6D
+approved-builders.json:ParseErrors=0;SHA256=91460D3DB0AAED8AB691D3859AB022FBE712CEA9DA7F4B7655A9C4B9519A9715
+t4/reopen-after-publication.SelfCheck.ps1:ParseErrors=0;SHA256=369F6ED198F63E51F975874758585ADEE36A74232E12FE799BF6CA50B7A39A3A
+StagedInvariantActivationDuplicate.SelfCheck.ps1:ParseErrors=0;SHA256=56F10E03983BB996D851584C6604554FEE1762C115535A4D2ED005CA50EA15E8
+StagedInvariantBlockWindow.SelfCheck.ps1:ParseErrors=0;SHA256=4F25DDE8342906DCE67227FEC8FCD154B1F4793377C18F0BE262CC15D828F893
+StagedInvariantCoreVariants.SelfCheck.ps1:ParseErrors=0;SHA256=5A2C2E365A20E566EB1FB395CC3DF537CC630D9B28DBD545FD1098421BA9C990
+StagedInvariantDeniedRenameLatency.SelfCheck.ps1:ParseErrors=0;SHA256=9D55EC0AE3AD55FFAB0CF1C992715F6E903DEA43C1820B71CDCBEA334ECB6FB5
+StagedInvariantJournalStorage.SelfCheck.ps1:ParseErrors=0;SHA256=53D13A7298A179267945E8D7A083F2D2DF0B59934C91480DC482E2A93EA3B95E
+StagedInvariantLatencyLite.SelfCheck.ps1:ParseErrors=0;SHA256=A91B37BEB4F5D137D604F4BBDAB928A68C72B72B5E8D527EE6C3F698D595DC1E
+StagedInvariantLatency.SelfCheck.ps1:ParseErrors=0;SHA256=344E33ACF1036757B2C5284E67179D26B96681A5B4BF19C6609AD5C9600F9C86
+StagedInvariantLiveTaint.SelfCheck.ps1:ParseErrors=0;SHA256=967B8E791BC9C26A4E992CD33582519556E251D10690BB3F48DEB8EB0530017D
+StagedInvariantObserver.SelfCheck.ps1:ParseErrors=0;SHA256=8CD16C071114D2E2D93CF1594AE27B61F6D7672C45D73CB42BBE7FA850DE49E1
+StagedInvariantProofAdapters.SelfCheck.ps1:ParseErrors=0;SHA256=2DD78B9DCD6F21AB0220C983CA1924B1440C26FC9670BC3EF927CE5EA227E764
+StagedInvariantR03.SelfCheck.ps1:ParseErrors=0;SHA256=91620BC811B38A8EF0E26E7F41C459EEA61A9B0D8D66019FDB584B9CF644E40E
+StagedInvariantRestartJustification.SelfCheck.ps1:ParseErrors=0;SHA256=6418ED356B1BCB80B24C449DA431069BA7D30A9DB26489C43789726C7A9E9715
+StagedInvariantRobustness.SelfCheck.ps1:ParseErrors=0;SHA256=D3EA4D476A766A8F0DC5D9B70713EB3C671B81C770472C836C3AAEE21739D41E
+StagedInvariantRowsA.SelfCheck.ps1:ParseErrors=0;SHA256=D23D22E48E24433A94B98B8789BACD1E548CCF516DBBB3E80D8C1B2C2070033B
+StagedInvariantT4DeleteAttribution.SelfCheck.ps1:ParseErrors=0;SHA256=1B716C755A08D6C279C555AF98EC102B7FE8F25CB3E65079CA1B2A012B96803D
+StagedInvariantT4Failure.SelfCheck.ps1:ParseErrors=0;SHA256=4445D4BA0AC9F5F9AE52D7C984C4E16B642C916AFFF0276FEAB8B3E7766A2AEE
+StagedInvariantT4Holders.SelfCheck.ps1:ParseErrors=0;SHA256=84CA3424586F89B37B07840C7DF8DB0B3660FEF99F3E079EAB8FF851FC65841F
+StagedInvariantT4Ipc.SelfCheck.ps1:ParseErrors=0;SHA256=E0E809FD84E6EF73FB00DF2547B4124BD53E42C5D1C54D9B48D79850D7A4205E
+StagedInvariantT4Memory.SelfCheck.ps1:ParseErrors=0;SHA256=9B55D4621B38A9D657CA7F99EC9987ECE9FEFCB369A7DC160BEA8723714E1E5C
+StagedInvariantT4PurgeAttribution.SelfCheck.ps1:ParseErrors=0;SHA256=2C2F6962F44E00E224F4670588490CB6AB2F46E070C45BBAE3985197A3ECD6D5
+StagedInvariantT4Purge.SelfCheck.ps1:ParseErrors=0;SHA256=BF411DFAC128B27DF49FAA2CFF98322A5B60BC218456BD9EBBB7342D51D72967
+StagedInvariantT4Runtime.SelfCheck.ps1:ParseErrors=0;SHA256=0E6598EB65C44E8C4E5AEAC97F92C5B28FDD2DE648C0FF4284EE6962069E712D
+StagedInvariantT4Verifier.SelfCheck.ps1:ParseErrors=0;SHA256=A0282AE55B388DC19DB5E3976D773FAEB06992026B0ADE17CEBF9D118454F02C
+StagedInvariantT4Volume.SelfCheck.ps1:ParseErrors=0;SHA256=5F1E8752F4D52512E248DC7C0B46AB9114624CC25D401320A17348BE028B5355
+StagedInvariantT5Security.SelfCheck.ps1:ParseErrors=0;SHA256=C997E326C2D27B132CB7EF846CECB62AFF42A51B36A276A2199ECF9E4B0A7BC3
+StagedInvariantTraceWindow.SelfCheck.ps1:ParseErrors=0;SHA256=B1911961AD0ED225C6BA2AE02A19D5DE08256AA6C326981C1FD8AFD65C54844D
+t5/notepad-coordinator.SelfCheck.ps1:ParseErrors=0;SHA256=3E57EDAD5C0B2EC25C864AF1F698A08BD46E2BCC96D1523C5DE47C7BB8BA9B89
+t5/notepad-journal.SelfCheck.ps1:ParseErrors=0;SHA256=2CAD2F90B01672FA71496E132E32E24A9112FBA41FB87F283750B57C2CF365FB
+t5/notepad-native.SelfCheck.ps1:ParseErrors=0;SHA256=A32709F92767F7AA669E98D128B8390E52B6CBBFB20C1692293FB7B3D06BFA7B
+t5/notepad-actor.SelfCheck.ps1:ParseErrors=0;SHA256=56D8A5FCF7811F642513FA781D0305C2A16D13BD823B5C2C193B33FD6C8E0FA1
+Build-ExactAgentMatrix.SelfCheck.ps1:ParseErrors=0;SHA256=2957D7E4E86A39E00517FC2D23E899B0EEFB8C5D3FD8DF0D3A74AFD06E267303
+ApprovedBuilders.SelfCheck.ps1:ParseErrors=0;SHA256=4EE333880167BA34844FD71B4B03E19418B7F269990891905D6D7E8924A8AA33
+Build-ExactSource.SelfCheck.ps1:ParseErrors=0;SHA256=29F18F235C85CA73862E335357B2A386E3A9C9026693B1C9F926363F594E9992
+Build-ExactAgent.SelfCheck.ps1:ParseErrors=0;SHA256=BEAC5D907C762458AA5725039A08EF26E67996EADAF68FDD045FFA7FEA3707C6
+  t4/reopen-after-publication.SelfCheck.ps1> PowerShell51ParseAndCrossProcessReopenNativeControls=PASS
+t4/reopen-after-publication.SelfCheck.ps1:Exit=0
+  StagedInvariantActivationDuplicate.SelfCheck.ps1> NativeSectionProbeControls=PASS;ViewAndSection=PASS;SameNativeIdentity=PASS;WritableSource=PASS;CheckedClose=PASS;NoReadOnlyFallback=PASS;RetainedMappingWrite=PASS;Qualification=False
+  StagedInvariantActivationDuplicate.SelfCheck.ps1> NativeDuplicateControl=PASS;ParentPid=4240;ChildPid=2420;TrustedPhysicalObject=PASS;SeparateOpensRejected=PASS;SameFileObjectTwoWayPosition=PASS;ParentCloseChildWrite=PASS;WholeImage=PASS;OwnedHeldWrite=PASS;Qualification=False
+StagedInvariantActivationDuplicate.SelfCheck.ps1:Exit=0
+  StagedInvariantBlockWindow.SelfCheck.ps1> BlockWindowSelfCheck=PASS;Controls=112;Qualification=False
+StagedInvariantBlockWindow.SelfCheck.ps1:Exit=0
+  StagedInvariantCoreVariants.SelfCheck.ps1> CoreVariantsSelfCheck=PASS;Controls=65;Qualification=False
+StagedInvariantCoreVariants.SelfCheck.ps1:Exit=0
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1> DeniedRenameNativeControl=PASS;Rounds=101;PureControls=7;Qualification=False
+StagedInvariantDeniedRenameLatency.SelfCheck.ps1:Exit=0
+  StagedInvariantJournalStorage.SelfCheck.ps1> JournalStorageSelfCheck=PASS;Checks=44;Qualification=False
+StagedInvariantJournalStorage.SelfCheck.ps1:Exit=0
+  StagedInvariantLatencyLite.SelfCheck.ps1> LatencyLiteSelfCheck=2310;PASS;Qualification=False
+StagedInvariantLatencyLite.SelfCheck.ps1:Exit=0
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulus=overwrite;CompleteRounds=101;PASS;Qualification=False
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulus=replacement;CompleteRounds=101;PASS;Qualification=False
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulusGate=PASS;Qualification=False
+StagedInvariantLatency.SelfCheck.ps1:Exit=0
+  StagedInvariantLiveTaint.SelfCheck.ps1> LiveTaintSelfCheck=PASS;Checks=18
+StagedInvariantLiveTaint.SelfCheck.ps1:Exit=0
+  StagedInvariantObserver.SelfCheck.ps1> IO_PredicateDirectoryReadWindowRejectsAheadRaw=synthetic;PASS
+  StagedInvariantObserver.SelfCheck.ps1> IO_PredicateDirectoryReadWindowRejectsNoPolicy=synthetic;PASS
+  StagedInvariantObserver.SelfCheck.ps1> IO_Summary=passed:121;failed:0
+StagedInvariantObserver.SelfCheck.ps1:Exit=0
+  StagedInvariantProofAdapters.SelfCheck.ps1> ProofAdapterEvaluationChecks=455;PASS (host-safe synthetic evaluation, collector mocks and identity publication only)
+StagedInvariantProofAdapters.SelfCheck.ps1:Exit=0
+  StagedInvariantR03.SelfCheck.ps1> StagedInvariantR03SelfCheck: checks=32; PASS
+StagedInvariantR03.SelfCheck.ps1:Exit=0
+  StagedInvariantRestartJustification.SelfCheck.ps1> StagedInvariantRestartJustificationControls=112
+  StagedInvariantRestartJustification.SelfCheck.ps1> SelfCheck=PASS
+StagedInvariantRestartJustification.SelfCheck.ps1:Exit=0
+  StagedInvariantRobustness.SelfCheck.ps1> RobustnessSelfCheck=PASS;Checks=100
+StagedInvariantRobustness.SelfCheck.ps1:Exit=0
+  StagedInvariantRowsA.SelfCheck.ps1> StagedInvariantRowsASelfCheck: checks=130; PASS
+StagedInvariantRowsA.SelfCheck.ps1:Exit=0
+  StagedInvariantT4DeleteAttribution.SelfCheck.ps1> T4DeleteAttributionSelfCheck=PASS;Controls=146;SyntheticKd=True;RetainedKd=m2t4delattr1,m2t4delattr2;Qualification=False
+StagedInvariantT4DeleteAttribution.SelfCheck.ps1:Exit=0
+  StagedInvariantT4Failure.SelfCheck.ps1> T4FailureControlInventory={"Kind":"stage","Path":"C:\\Users\\vika\\AppData\\Local\\Temp\\safeupload-t4-failure-1fc7dc8aeb0544028369132ab8325bf9\\stage\\fixture.stage","Qpc":233346695086,"Before":{"VolumeSerial":"4AD66344D6632F7F","FileId128":"A9ED0D00000027000000000000000000","CreationTime":134370869147841449,"LastWriteTime":134370869147841449,"ChangeTime":134370869147841449,"Attributes":32},"LengthBefore":37,"Sddl":"O:BAG:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;S-1-5-21-316478115-1595729549-2803163825-1002)(A;ID;0x1301bf;;;S-1-5-21-3440636532-278530972-2793062911-4166640019)(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;FA;;;S-1-5-21-316478115-1595729549-2803163825-1001)","After":{"VolumeSerial":"4AD66344D6632F7F","FileId128":"A9ED0D00000027000000000000000000","CreationTime":134370869147841449,"LastWriteTime":134370869147841449,"ChangeTime":134370869147841449,"Attributes":32},"LengthAfter":37,"UnchangedDuringRead":true}
+  StagedInvariantT4Failure.SelfCheck.ps1> T4FailureControlErrorReceipt={"Cycle":3,"Target":"C:\\Users\\vika\\AppData\\Local\\Temp\\safeupload-t4-failure-1fc7dc8aeb0544028369132ab8325bf9\\public\\held.txt","Qpc":233347089025,"PointInTimeOnly":true,"AtomicSnapshot":false,"ProductAuthority":false,"JournalCopied":0,"StageObserved":1,"Errors":["C:\\Users\\vika\\AppData\\Local\\Temp\\safeupload-t4-failure-1fc7dc8aeb0544028369132ab8325bf9\\journal\\fixture.json: Exception calling \".ctor\" with \"4\" argument(s): \"The process cannot access the file \u0027C:\\Users\\vika\\AppData\\Local\\Temp\\safeupload-t4-failure-1fc7dc8aeb0544028369132ab8325bf9\\journal\\fixture.json\u0027 because it is being used by another process.\""]}
+  StagedInvariantT4Failure.SelfCheck.ps1> T4FailureSelfCheck=PASS;Controls=27;NativeActor=True;ProductQualified=False
+StagedInvariantT4Failure.SelfCheck.ps1:Exit=0
+  StagedInvariantT4Holders.SelfCheck.ps1> T4HoldersSelfCheck=PASS;OwnHandleReported=True;UnheldFileClear=True
+StagedInvariantT4Holders.SelfCheck.ps1:Exit=0
+  StagedInvariantT4Ipc.SelfCheck.ps1> T4IpcSelfCheck=PASS;Controls=28;Qualification=False
+StagedInvariantT4Ipc.SelfCheck.ps1:Exit=0
+  StagedInvariantT4Memory.SelfCheck.ps1> ReplacementIdentityRefused=PASS
+  StagedInvariantT4Memory.SelfCheck.ps1> ContentUnchanged=PASS
+  StagedInvariantT4Memory.SelfCheck.ps1> T4MemorySelfCheck=PASS
+StagedInvariantT4Memory.SelfCheck.ps1:Exit=0
+  StagedInvariantT4PurgeAttribution.SelfCheck.ps1> T4PurgeAttributionSelfCheck=PASS;Controls=35;Qualification=False
+StagedInvariantT4PurgeAttribution.SelfCheck.ps1:Exit=0
+  StagedInvariantT4Purge.SelfCheck.ps1> T4PurgeSignatureSelfCheck=PASS;NativeCalls=False
+StagedInvariantT4Purge.SelfCheck.ps1:Exit=0
+  StagedInvariantT4Runtime.SelfCheck.ps1> T4RuntimeSelfCheck=PASS;Controls=35;Qualification=False
+StagedInvariantT4Runtime.SelfCheck.ps1:Exit=0
+  StagedInvariantT4Verifier.SelfCheck.ps1> T4VerifierSelfCheck=PASS;Controls=11;Qualification=False
+StagedInvariantT4Verifier.SelfCheck.ps1:Exit=0
+  StagedInvariantT4Volume.SelfCheck.ps1> T4VolumeSelfCheck=PASS;Controls=19;Qualification=False
+StagedInvariantT4Volume.SelfCheck.ps1:Exit=0
+  StagedInvariantT5Security.SelfCheck.ps1> FullDescriptorComparatorSelfCheck=PASS Bytes=64 MarkerUnmasked=True NativeCalls=False
+  StagedInvariantT5Security.SelfCheck.ps1> DescriptorSwitchForwardingSelfCheck=PASS Combinations=16 Candidate1NeverImplicit=True NativeCalls=False
+  StagedInvariantT5Security.SelfCheck.ps1> SecurityRoundTripSignatureSelfCheck=PASS NativeCalls=False
+StagedInvariantT5Security.SelfCheck.ps1:Exit=0
+  StagedInvariantTraceWindow.SelfCheck.ps1> TraceWindowSelfCheck=PASS;Controls=20;Qualification=False
+StagedInvariantTraceWindow.SelfCheck.ps1:Exit=0
+  t5/notepad-coordinator.SelfCheck.ps1> T5 coordinator schema self-check PASS (174 assertions).
+t5/notepad-coordinator.SelfCheck.ps1:Exit=0
+  t5/notepad-journal.SelfCheck.ps1> T5JournalStorageSelfCheck=PASS;Assertions=40;ProductQualified=False
+t5/notepad-journal.SelfCheck.ps1:Exit=0
+  t5/notepad-native.SelfCheck.ps1> T5NativeDeclarationSelfCheck=PASS;Blocks=1;NativeCallsExecuted=False;ProductQualified=False
+t5/notepad-native.SelfCheck.ps1:Exit=0
+  t5/notepad-actor.SelfCheck.ps1> VisibleEmptyDeleteAfterClose=PASS; observedIdentity=4AD66344D6632F7F:0000000000000000:00570000000DED96; test-create=0 test-close=0 test-delete=0 save-create=0 save-write=0 save-close=0
+  t5/notepad-actor.SelfCheck.ps1> HeldFailedCreatePreservesIdentity=PASS; test-create=80 test-delete=skipped-create-failed save-create=0 save-write=0 save-close=0
+  t5/notepad-actor.SelfCheck.ps1> NativeActorControl=PASS; ProductQualified=False; ProtectedDestination=False
+t5/notepad-actor.SelfCheck.ps1:Exit=0
+  Build-ExactAgentMatrix.SelfCheck.ps1> MatrixPackageSelfCheck=PASS; nested names and bytes, overwrite refusal
+  Build-ExactAgentMatrix.SelfCheck.ps1> BuildExactAgentMatrixSelfCheck=PASS; controls=fail-fast,all-four-feature-legs,non-gates,lifetime-stop; mutations=14
+Build-ExactAgentMatrix.SelfCheck.ps1:Exit=0
+  ApprovedBuilders.SelfCheck.ps1> ApprovedBuildersSelfCheck=PASS; controls=default,unknown,role,parity,name,uuid,mac,receipts; mutations=10
+ApprovedBuilders.SelfCheck.ps1:Exit=0
+  Build-ExactSource.SelfCheck.ps1> BuildExactSourceSelfCheck=PASS; controls=parameter-sets,two-feature-builds,analysis,Inspector,profile-receipt; mutations=8
+Build-ExactSource.SelfCheck.ps1:Exit=0
+  Build-ExactAgent.SelfCheck.ps1> BuildExactAgentSelfCheck=PASS; controls=required-commit,invalid-commit,no-source-manifest
+Build-ExactAgent.SelfCheck.ps1:Exit=0
+PSVersion=5.1.19041.6456
+HarnessWindowsGate=PASS
+#< CLIXML
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>
