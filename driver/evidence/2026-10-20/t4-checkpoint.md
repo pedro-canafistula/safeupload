@@ -70,7 +70,8 @@ Pair: kernel `d1068cc3` (`t4pagefix1`), agent `586ae7cb` (`m2t4refund2`), `T4_ST
 | `m2t4bvoff1` | boot Verifier 10k | all functional gates PASS; `T4PoolFlat` FAIL: slope 0.971 B/cycle (limit 4) but after-idle endpoint +75,200 B vs the 64 KiB band ([verdict](m2t4bvoff1-verdict.txt), [samples](m2t4bvoff1-samples.jsonl)) |
 | `m2t4bvoff2` | boot Verifier 10k rerun | same: slope -0.414 B/cycle, cycle 1000 6,606,824 -> cycle 10000 6,606,872, after idle 6,679,504 (+72,680 B) ([verdict](m2t4bvoff2-verdict.txt), [samples](m2t4bvoff2-samples.jsonl)) |
 | `m2t4rvoff1`, `m2t4rvoff1r` | runtime Verifier | never Ready (rc=19), identical instance Unknown (reason TRUST, site 6488): the old runtime mode loaded the driver late ([ready](m2t4rvoff1-ready.txt)) |
-| `m2t4rvoff2` | runtime Verifier 10k, arm after Ready | in progress (Ready, `RUNTIME_VERIFIER_ARMED_AFTER_READY=True`, cycles running) |
+| `m2t4rvoff2` | runtime Verifier 10k, arm after Ready | stopped at cycle 21: the driver entered sticky instance Unknown (reason IDENTITY, site `StageWriters.c:5939`, alias/scope classification of an activating writer failed) about 2.5 min in; every later protected create, including the agent's own publication, was refused by the legacy create gate (fail-closed by design) |
+| `m2t4rvoff3` | runtime Verifier 10k repeat | **PASS**, 10,000/10,000, 10,999 s, `T4PoolFlat` PASS: slope 0.587 B/cycle, 134,240 -> 131,936 at cycle 10000, after idle 143,200 ([verdict](../2026-10-21/m2t4rvoff3-verdict.txt)); the first failure was a chance sticky-Unknown event |
 
 **Pool endpoint.** The settled pool is identical across both boot-Verifier rows (6,620,768 / 6,622,232 B) and flat across 9,000 cycles; the
 writer-registry tag (`SwUr`) then steps up by about 58-60 KB in the idle window after the actor exits, in both rows. Hypothesis (not proven):
@@ -95,3 +96,30 @@ restoration clean, public listing / independent reader / seal-after-close / jour
 and security assertions PASS. Remaining MVP blockers: dedicated unheld-latency evidence (approve cases only, separate `--dedicated-unheld-latency` runs),
 and `LiveTaintFlags` (the taint-era check the owner directed to delete on 2026-10-15; the removal branch `wt/taint-removal` was never merged and the
 driver still has the test flag). Coverage items are the cell's own documented deferrals. Owner scope decision requested (see plan).
+
+## Update 2026-10-21 (to 07:45 BRT)
+
+**All three 10k modes now have a result:** ordinary PASS, runtime Verifier PASS (`m2t4rvoff3`), boot Verifier functional PASS twice with the pool endpoint over the band.
+
+**Pool endpoint is a constant, not a leak.** Driver nonpaged bytes after idle (Verifier pool tracking, boot Verifier): 256-cycle smokes 6,681,608 and 6,654,224;
+10k rows 6,682,024 and 6,679,504. The idle level does not depend on the number of cycles; the gate's baseline (the cycle-1000 sample, 6,606,824 B) sits about
+72 KB below it. The hypothesis "archive packs" is not supported (the step is the same with one pack and with about two dozen). Owner decision still requested:
+accept, widen the band (recommended 128 KiB), or change the kernel/agent.
+
+**Sticky Unknown family.** 3 of about 15 boots/rows today ended in sticky `WriterStateUnknown` with a different reason and site each time (rename 2069, trust 6488,
+identity 5939). Fail-closed by design, driven by background writers; the T1/T18 area, tracked separately from T4's lifetime gates.
+
+**Raw-volume cells, ordinary-mode survey** (`m2t4s*`; each completed with ForbiddenByteCount 0 and clean restoration where it ran to the end):
+
+| Cell | Result | Remaining blockers |
+|---|---|---|
+| C01-approve-absent (`m2t4q1`) | completes; product assertions PASS | dedicated unheld latency, `LiveTaintFlags` (receipts incomplete: the Inspector cannot read live policy while the agent is up), deferred coverage items |
+| C01-block-absent | INCONCLUSIVE | ActualServiceTimelines, C01Execution, C01HandBackWindowClosureAndRestart |
+| C02-block-absent | INCONCLUSIVE | + Missing C02HandBackSafeRelativeCreation / SecondUserAccess |
+| C03-block-existing | INCONCLUSIVE | C03Execution, hand-back window closure and restart |
+| C04-block | INCONCLUSIVE | C04Execution, hand-back window closure and restart, LiveTaintFlags |
+| B01, B02 | wrapper failed at the lab level in about 3 minutes | evidence retained under `boot-start-invariant-B0*-ordinary-m2t4s[56]1` |
+| X01 | INCONCLUSIVE | X01Execution |
+
+The cell harness needs a staged-agent modernization per family (BLOCK hand-back evidence, B01/B02 wrapper, X01 execution, live-taint receipts) before 33 runs can pass.
+That is an M2 qualification work item, not a T4 kernel-lifetime result. Owner scope decision requested.
