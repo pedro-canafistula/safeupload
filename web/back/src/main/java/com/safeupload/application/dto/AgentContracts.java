@@ -80,6 +80,21 @@ public final class AgentContracts {
         String mensagem
     ){}
 
+    public record TicketsRequest(
+        Integer fk_id_usuario_so,
+        Integer fk_id_empresa_designada,
+        Integer fk_id_admin_designado,
+        String descricao
+    ){}
 
+    public record TicketsResponse (
+        HttpStatus status,
+        String mensagem
+    ){}
+
+    public record ListEmpresaResponse(
+        Integer id_empresa,
+        String razao_social
+    ){}
     
 }
