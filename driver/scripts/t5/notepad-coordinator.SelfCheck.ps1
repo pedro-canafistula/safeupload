@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param([string]$CoordinatorPath = (Join-Path $PSScriptRoot 'notepad-coordinator.ps1'))
+param([string]$CoordinatorPath)
+# Windows PowerShell 5.1 leaves $PSScriptRoot empty in an advanced script's param() defaults under -File.
+if (-not $CoordinatorPath) { $CoordinatorPath = Join-Path $PSScriptRoot 'notepad-coordinator.ps1' }
 
 $ErrorActionPreference = 'Stop'
 $script:assertions = 0

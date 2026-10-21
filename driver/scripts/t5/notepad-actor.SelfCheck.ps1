@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param([string]$ActorPath = (Join-Path $PSScriptRoot 'notepad-actor.ps1'))
+param([string]$ActorPath)
+# Windows PowerShell 5.1 leaves $PSScriptRoot empty in an advanced script's param() defaults under -File.
+if (-not $ActorPath) { $ActorPath = Join-Path $PSScriptRoot 'notepad-actor.ps1' }
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) {
     throw 'This actor gate requires Windows PowerShell 5.1.'
