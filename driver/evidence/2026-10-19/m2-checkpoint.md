@@ -75,7 +75,7 @@ Qualification still requires fresh disposable disks, reset EFI, no TPM, unchange
   it is still running. Protected runtime qualification remains pending.
 - [x] T4/T9 owner decision: growing reservations approved with unchanged budgets and concurrent no-overspend controls.
 - [x] T4/T9: initial [growth review](t9-growing-reservations-design-review-sol-high.md) identified MM recursion, journal fencing
-  and private metadata reentry; its concrete mechanism addendum is retained. [Revised design](../../UX-LARGE-CONCURRENCY.md)
+  and private metadata reentry; its concrete mechanism addendum is retained. [Revised design](../../docs/design/large-files/UX-LARGE-CONCURRENCY.md)
   selects an exact private metadata route, ledger-only growth and closed-before-refund retirement; acceptance remains pending.
 - [x] T4: independent [readmission review](t4-readmit-design-review-sol-high.md) confirms a possible internal READMIT→sharing-error
   asymmetry. Repair must rerun full current gates within one captured transaction; runtime attribution/implementation remain open.

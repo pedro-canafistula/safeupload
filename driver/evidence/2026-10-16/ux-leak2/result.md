@@ -9,7 +9,7 @@ Outcome: remove the previous fix's per-context post-CREATE event wait, preserve
 bounded retirement through pre-prune leases, add same-owner and independent
 process immediate reopen controls and exact sharing-gate diagnostics. **The
 actual Word cause and successful native remediation remain unconfirmed.**
-See [design and limits](../../../UX-LEAK2.md).
+See [design and limits](../../../docs/design/lifetime/UX-LEAK2.md).
 
 Host verification: 21 Python control scripts were executed. The initial run had
 one source-literal failure after diagnostics expanded the delete-pending block;

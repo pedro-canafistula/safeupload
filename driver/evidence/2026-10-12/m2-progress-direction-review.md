@@ -47,7 +47,7 @@ Flat pool and clean restoration do not make the failed product row pass. Sampled
   native lifecycle controls per feature profile. Original NTFS operations are forwarded once; recorded results cannot authorize a retry.
 - [ ] No protected FilterPort/Verifier run qualifies this pair. Bound-head readiness remains false
   (`MinifilterBoundAllocation.cs:14,23,45`); the existing publisher refuses bound entries (`StagedTransferPublisher.cs:81–82`).
-  - [x] The [corrected bound-publication design](../../T5-BOUND-PUBLICATION.md) has Luna READY WITH CORRECTIONS: complete authenticated
+  - [x] The [corrected bound-publication design](../../docs/design/publication-and-namespace/T5-BOUND-PUBLICATION.md) has Luna READY WITH CORRECTIONS: complete authenticated
     execution-facts replay, a one-way temporary-write fence with admitted-I/O drain and actual rename-time target identity checks.
     Feature-only wire/client code and 34 client controls pass on `a15fc758`; the kernel producer/fence/name gate remains unimplemented.
   - [x] [Unprotected native control](bound-publication-native-ab6dc0b9.txt) passes PowerShell 5.1 parsing/self-checks and actual
@@ -57,14 +57,14 @@ Flat pool and clean restoration do not make the failed product row pass. Sampled
   shared head, startup activation, resolving directory events and complete teardown remain on the same integration critical path.
   - [ ] The latest Luna writer-authority review is REVISE: every writer needs its original subject/inputs, exact disposition checks
     and share lifetime, fully assigned descriptor transport, and coherent seed/read provenance. Corrections are recorded in the
-    [existing design](../../T5-NATIVE-PUBLIC-OPENS.md#kernel-permission-and-identity-capture--required-integration-corrections);
+    [existing design](../../docs/design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md#kernel-permission-and-identity-capture--required-integration-corrections);
     they are prerequisites, not a READY or runtime claim, and introduce no new owner policy.
-  - [ ] The [unreadable-seeded-bytes hand-back choice](../../T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes)
+  - [ ] The [unreadable-seeded-bytes hand-back choice](../../docs/design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md#owner-choice-pending--unreadable-seeded-bytes)
     awaits the owner. Neither policy option is approved; full-file hand-back must not disclose prior bytes without read authority.
 
 The subsequent native writer controls settle 980 tested rights/share/grant comparisons on builder **19045.6466**, not the
 qualification VM. The later zero-access revalidation candidate failed; the separate nine supplied-descriptor cases completed.
-The [existing writer design](../../T5-NATIVE-PUBLIC-OPENS.md#kernel-permission-and-identity-capture--required-integration-corrections)
+The [existing writer design](../../docs/design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md#kernel-permission-and-identity-capture--required-integration-corrections)
 records both outcomes and Luna's retained-object correction. Its verdict remains REVISE, and none of these controls is a protected
 runtime pass. Further controls should resolve those finite implementation prerequisites, not become another component milestone.
 

@@ -3,7 +3,7 @@
 These are opt-in, unprotected NTFS mechanism measurements under SYSTEM. They do not approve a descriptor exception, change
 the exact stored-security contract, enable publication, qualify the protected pair, or cover non-SYSTEM subjects. Explorer display
 is out of scope. The decision context is the [2026-10-15 memo](../../evidence/2026-10-15/t5-descriptor-decision-sol61.md) and
-[native publication security control](../../T5-NATIVE-PUBLIC-OPENS.md#native-publication-security-control-2026-10-13).
+[native publication security control](../../docs/design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md#native-publication-security-control-2026-10-13).
 
 Use a fresh label for every invocation and run serially on an authorized Windows machine. The wrapper runs Windows PowerShell
 as SYSTEM with the existing scheduled-task/worker cleanup and 180-second Stopwatch deadline. Do not run the rejected

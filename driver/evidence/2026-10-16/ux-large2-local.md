@@ -1,7 +1,7 @@
 # Large-mode integration local receipt
 
 2026-10-16. `ux/large` (`7edba345`) merged with `demo/apps` (`667a2652`).
-[Integration design](../../UX-LARGE-INTEGRATION.md), [review](ux-large2-review-sol61.md),
+[Integration design](../../docs/design/large-files/UX-LARGE-INTEGRATION.md), [review](ux-large2-review-sol61.md),
 [counts, raw receipt locations and local assembly hashes](ux-large2-local.json).
 
 Large mode remains opt-in/default-off. Normal metadata seals, failure-only v31,

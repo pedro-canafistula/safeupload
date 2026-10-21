@@ -3,7 +3,7 @@
 Independent reviewer: **Sol 6.1, xhigh** (`gpt-6.1-sol`, `reasoning_effort=xhigh`),
 agent `/root/dirs_review`, 2026-10-16. Base `demo/apps` / `ux/dirs` `8925d1cf`.
 Reviewed the working diff in `Filter.h`, `Policy.c`, `StageStream.c` and the
-small [F1–F4 design/test list](../../UX-DIRECTORIES.md). No build, VM or network
+small [F1–F4 design/test list](../../docs/design/publication-and-namespace/UX-DIRECTORIES.md). No build, VM or network
 operation was performed by the reviewer.
 
 **ACCEPT WITH CONDITIONS.** No remaining code blocker in the requested unbound

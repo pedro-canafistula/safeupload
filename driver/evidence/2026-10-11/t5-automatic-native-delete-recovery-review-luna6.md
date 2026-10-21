@@ -5,7 +5,7 @@ Scope: owner's conditional accepted/unresolved recovery and corrected native-ope
 qualification. This records the reviewer's returned findings; it supersedes the pending-policy verdict in the earlier native follow-up.
 
 **Verdict: READY WITH CORRECTIONS.** Automatic service-start and last-handle recovery is feasible with the existing destination
-journal and one appended `AcceptedUnresolved` state. The reviewed construction is [T5-NATIVE-PUBLIC-OPENS.md](../../T5-NATIVE-PUBLIC-OPENS.md).
+journal and one appended `AcceptedUnresolved` state. The reviewed construction is [T5-NATIVE-PUBLIC-OPENS.md](../../docs/design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md).
 
 - Persist accepted/unresolved conservatively before forwarding native CREATE. Reconcile destination heads before physical publication
   admission on startup; the current `MinifilterInterceptor.cs:1313` recovery only handles transfer entries and is not sufficient yet.

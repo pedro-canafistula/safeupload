@@ -26,7 +26,7 @@ the scheduled-delete ordering and failure-policy choice require resolution befor
 
 ## Evidence and primary contracts
 
-- [Accepted transaction note](../../T5-DELETES.md), sections 3 and 4.1–4.2.
+- [Accepted transaction note](../../docs/design/publication-and-namespace/T5-DELETES.md), sections 3 and 4.1–4.2.
 - [Native disposition control](t5-ntfs-disposition-control-1011.txt): native CREATE delete-on-close opens succeed before creator close
   and fail with Win32 5 afterward; Ex on-close returns Win32 50.
 - Checked backend factory: `driver/SafeUpload.Minifilter/StagePublic.c:357`, source `3be0fe71`.

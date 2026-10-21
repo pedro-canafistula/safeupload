@@ -14,7 +14,7 @@ Changes:
   DDIs, no new allocations/imports/lock-spanning waits.
 - Existing changed-SOP retirement is retained and tested against original Ended
   evidence and all unresolved obligations; no replacement-SOP MM inference or
-  forced context deletion. [Lifetime reasoning](../../../T11-SOP-LIFETIME.md).
+  forced context deletion. [Lifetime reasoning](../../../docs/design/lifetime/T11-SOP-LIFETIME.md).
 - Hot unbound live-epoch receipts and unfinished disposal/cleanup records survive
   compaction. Missing durable epoch cannot rebootstrap over retained receipts via
   either entry point. Pending delete's forward CREATE_AFTER successor joins exact
@@ -22,7 +22,7 @@ Changes:
 - Fourteen new agent cases also cover registered-segment failed-flush reflush,
   second-segment inventory pre/post replacement, cancellation and fresh index use.
   Archive observer hooks expose ordering without changing the durability boundary.
-- [Final review checklist](../../../M2-REVIEW-CONDITIONS.md) inventories 80 retained
+- [Final review checklist](../../../docs/reviews/M2-REVIEW-CONDITIONS.md) inventories 80 retained
   review reports plus current UX/design conditions, maps each to tested source or
   exact unrun rows, and explicitly parks bound/V30 work under the evening scope.
 
@@ -50,7 +50,7 @@ assertion, threshold, capability or readiness gate was weakened or removed.
 
 All Windows tests are **UNRUN here**. Use the exact G01–G04, T11-S01–S04,
 T11-J01–J05, T4-F01/Q01/Q02 and carried T5–T10/UX rows in the
-[checklist](../../../M2-REVIEW-CONDITIONS.md#exact-windows-execution-rows-claude-all-unrun-here).
+[checklist](../../../docs/reviews/M2-REVIEW-CONDITIONS.md#exact-windows-execution-rows-claude-all-unrun-here).
 Claude runs protected rows as **t5actor**, win10-debug3/19045.2965 only, serially in
 ordinary/runtime-Verifier/boot-Verifier, with matched hashes, independent bytes and
 separate restoration. Feature kernel Debug/Release WDK/PREfast/ApiValidator/import

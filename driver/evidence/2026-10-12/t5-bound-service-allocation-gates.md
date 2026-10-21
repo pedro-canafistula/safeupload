@@ -28,7 +28,7 @@ local transaction rundown completes. `fe1c9738`/`f5cff550` fix field width and d
 two compiler attempts; the final four raw WDK logs independently pass 0/0 with PREfast/ApiValidator. No assertion was relaxed.
 Raw capture logs remain local under `output/exact-driver/t5-writer-capture3/out/`. Writer-backend integration remains open.
 
-The [corrected publication contract](../../T5-BOUND-PUBLICATION.md) received READY WITH CORRECTIONS from Luna 6 max before code.
+The [corrected publication contract](../../docs/design/publication-and-namespace/T5-BOUND-PUBLICATION.md) received READY WITH CORRECTIONS from Luna 6 max before code.
 `a15fc758` adds matching feature-only C/managed v26 layouts and a FilterPort client, preserving core v18 and all existing layouts.
 The client rejects changed authority, result-only renewal, short/nonzero-status transport, incomplete/stale/duplicate replay,
 unfenced or in-flight renames, changed target/source identity, pending native results and cleanup after accepted rename.

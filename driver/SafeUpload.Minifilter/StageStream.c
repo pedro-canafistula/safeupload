@@ -2904,7 +2904,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
             transaction->WriterLease = NULL;
         }
 #endif
-        /* T5: delete-on-close of the owner's private version discards it at the last cleanup (driver/T5-DELETES.md R3). */
+        /* T5: delete-on-close of the owner's private version discards it at the last cleanup (driver/docs/design/publication-and-namespace/T5-DELETES.md R3). */
         handle->DeleteOnClose = BooleanFlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE);
         if (handle->DeleteOnClose) {
             ++stream->DeleteOnCloseCount;
@@ -5285,7 +5285,7 @@ static VOID StageWaitHandleReceiptSettled(PSTAGE_STREAM Stream, BOOLEAN Namespac
 }
 #endif
 
-/* T5 (driver/T5-DELETES.md R3): a delete of the owner's own private version discards it at the last cleanup; it is never sealed,
+/* T5 (driver/docs/design/publication-and-namespace/T5-DELETES.md R3): a delete of the owner's own private version discards it at the last cleanup; it is never sealed,
  * inspected or published, and the public name, if any, is untouched. FILE_DISPOSITION_ON_CLOSE sets or clears the handle's
  * delete-on-close instead, as on NTFS. The bound sealed branch first durably
  * cancels its exact generation; legacy sealed-handle behavior stays below. */
@@ -6283,7 +6283,7 @@ static BOOLEAN StageRetireDeletedStream(PSTAGE_STREAM Stream)
     return retired;
 }
 
-/* ---- T4: the stage worker runs on events, not on a 250 ms poll (driver/T4-STAGE-LIFETIME.md) ---- */
+/* ---- T4: the stage worker runs on events, not on a 250 ms poll (driver/docs/design/lifetime/T4-STAGE-LIFETIME.md) ---- */
 
 _IRQL_requires_(DISPATCH_LEVEL)
 static BOOLEAN StageQueueLocked(PSTAGE_STREAM Stream)
@@ -6305,7 +6305,7 @@ static VOID StageQueueStream(PSTAGE_STREAM Stream, volatile UINT64 *Reason)
     KeSetEvent(&StageWorkEvent, IO_NO_INCREMENT, FALSE);
 }
 
-/* Caller owns NamespaceResource. T5 (driver/T5-DELETES.md R3): the owner deleted this never-sealed version. Once the service has
+/* Caller owns NamespaceResource. T5 (driver/docs/design/publication-and-namespace/T5-DELETES.md R3): the owner deleted this never-sealed version. Once the service has
  * journaled it Discarded (and removed the stage), the version is terminal like a sealed one but never inspected or published: it
  * leaves the owner's namespace and is released when nothing holds it. The public name, if any, is untouched. */
 static VOID StageDiscardVersion(PSTAGE_STREAM Stream)
@@ -9429,7 +9429,7 @@ Readmit:
         writer = FALSE;
     }
     /* T5: FILE_DELETE_ON_CLOSE counts as writer access (writerAccess above), so a protected name opened with it is staged: the
-     * version is discarded at its last cleanup and the physical file is never touched (driver/T5-DELETES.md R3). */
+     * version is discarded at its last cleanup and the physical file is never touched (driver/docs/design/publication-and-namespace/T5-DELETES.md R3). */
 #endif
     Data->IoStatus.Information = 0;
 #if SAFEUPLOAD_STAGING_PROTOTYPE

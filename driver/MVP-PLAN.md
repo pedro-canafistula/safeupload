@@ -178,7 +178,7 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
 - 2026-10-11: empty files are ordinary content: seal, inspect (trivially clean at a freshly verified stable zero length), and publish
   them normally. This replaces the 2026-10-10 EmptyHeld decision and removes EmptySavePrivate notices. Public deletes are part of M2;
   Windows checks the caller's DELETE authority against the real public file. Private deletes free the name at last close while exact
-  cleanup proceeds asynchronously. See [T5-DELETES.md](T5-DELETES.md) for generation ordering, cleanup, and legacy-journal handling.
+  cleanup proceeds asynchronously. See [T5-DELETES.md](docs/design/publication-and-namespace/T5-DELETES.md) for generation ordering, cleanup, and legacy-journal handling.
   Replace only the no-empty-publication test: no uninspected nonempty bytes may reach the public name; clean saves finish with the saved
   bytes, CPF saves to new names leave no file, and CPF saves to existing names retain prior contents, with no empty leftover. All other
   assertions remain required, including independent byte observation, Verifier, and verified VM restoration. Design review precedes code.
@@ -198,7 +198,7 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
   until exact reconciliation establishes absence or the original pre-open file; then the recovery hold ends automatically. Reuse
   durable pre-CREATE intent and existing startup recovery, adding only accepted/unresolved state. An undecidable result keeps the hold
   with a named-file, actionable tray notice and diagnostics. Fault-injection rows must prove release after close and restart.
-  If the automatic guarantee cannot be met, return to the owner before implementation; see [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md).
+  If the automatic guarantee cannot be met, return to the owner before implementation; see [T5-NATIVE-PUBLIC-OPENS.md](docs/design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md).
 
 ## Remaining MVP work
 

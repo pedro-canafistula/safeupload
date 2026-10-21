@@ -2,7 +2,7 @@
 
 2026-10-16. Base `2a2a2b8973bcb30dadbea7a0ec4b669448bbed78`, branch `ux/journal`.
 Commits are delivered in `.scratch/ux/journal.bundle`; original Git is read-only.
-[Design and limits](../../T11-UNBOUND-JOURNAL-SCALING.md).
+[Design and limits](../../docs/design/lifetime/T11-UNBOUND-JOURNAL-SCALING.md).
 
 Completed unbound transfers leave the active directory and polling scans, with full
 exact receipts packed into bounded segments. Selected generation claims include

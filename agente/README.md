@@ -43,8 +43,8 @@ em [INSPECTION-COVERAGE.md](docs/INSPECTION-COVERAGE.md).
 Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
 lógica) — e `driver/` na raiz do repositório, o driver de kernel
 (minifiltro) opcional, com documentação própria em
-[`../driver/ARQUITETURA.md`](../driver/ARQUITETURA.md) e
-[`../driver/DEPLOY.md`](../driver/DEPLOY.md).
+[`../driver/docs/architecture/ARQUITETURA.md`](../driver/docs/architecture/ARQUITETURA.md) e
+[`../driver/docs/operations/DEPLOY.md`](../driver/docs/operations/DEPLOY.md).
 
 ### Duas formas de interceptar
 

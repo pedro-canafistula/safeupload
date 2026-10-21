@@ -1,6 +1,6 @@
 # T8 native security construction feasibility control
 
-Standalone increment-1 mechanism experiment for [the integration proposal](../../T8-METADATA-INTEGRATION.md).
+Standalone increment-1 mechanism experiment for [the integration proposal](../../docs/design/metadata/T8-METADATA-INTEGRATION.md).
 It changes only fresh unprotected NTFS fixtures, not product driver/agent behavior.
 The integration proposal remains REVISE for implementation; this control does not
 establish commit exclusion, metadata operation classification or MOTW support.

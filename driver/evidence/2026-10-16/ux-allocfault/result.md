@@ -55,7 +55,7 @@ refusals; and two committed/permitted negative controls. Independent source revi
 
 - Matched feature Debug/Release WDK, PREfast and ApiValidator at 0/0; both delivered binary import gates; Windows feature agent
   Debug/Release × user/SYSTEM matrix. No local shim result substitutes for these.
-- All [allocation-reply fault row variants](../../../T4-STAGE-LIFETIME.md#121-v20-allocationprepare-reply-recovery--2026-10-16)
+- All [allocation-reply fault row variants](../../../docs/design/lifetime/T4-STAGE-LIFETIME.md#121-v20-allocationprepare-reply-recovery--2026-10-16)
   on `win10-debug3` in ordinary/runtime-Verifier/boot-Verifier modes, with independent byte observations, exact journal/kernel
   disposition counts, successful later open, zero residual allocations and separate restoration. Include sharing failure and
   reconnect/stale reply negatives; commit/op15 ambiguity retains its existing hold.

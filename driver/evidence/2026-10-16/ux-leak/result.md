@@ -94,7 +94,7 @@ before alloc_text and definition. Spin-lock helpers remain resident. There is
 no wait/I/O/allocation/Filter Manager call under either retirement lock, no new
 timer, no history list and no change to policy/capability/Ready/Unknown gates.
 
-Design/interleavings: [UX-LEAK](../../../UX-LEAK.md).
+Design/interleavings: [UX-LEAK](../../../docs/design/lifetime/UX-LEAK.md).
 Fresh Sol 6.1 xhigh [advisory review](review-sol61-advisory.md) found no remaining
 source blocker after single-deleter/diagnostic races were repaired. Repository
 policy's formal Claude-launched pre-boot review and native conditions remain.

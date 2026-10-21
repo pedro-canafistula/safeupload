@@ -1,6 +1,6 @@
 # T5 pre-boot lifetime review — Sol 6.1 xhigh (2026-10-13)
 
-Reviewer: `gpt-6.1-sol`, `reasoning_effort=xhigh`, read-only, web search enabled. Input: commit `a27defd8` (detached checkout), [package](../../T5-PREBOOT-REVIEW-PACKAGE.md), kernel delta `9e86822f^..a27defd8`. Brief: increments 2–10 lifetime, lock order, teardown, fail-closed, bounds, pre-boot readiness. Verbatim final report below; checkout paths shortened.
+Reviewer: `gpt-6.1-sol`, `reasoning_effort=xhigh`, read-only, web search enabled. Input: commit `a27defd8` (detached checkout), [package](../../docs/reviews/T5-PREBOOT-REVIEW-PACKAGE.md), kernel delta `9e86822f^..a27defd8`. Brief: increments 2–10 lifetime, lock order, teardown, fail-closed, bounds, pre-boot readiness. Verbatim final report below; checkout paths shortened.
 
 **Verdict: REJECT for the first Verifier boot of `a27defd8`.**
 

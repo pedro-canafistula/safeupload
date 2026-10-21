@@ -6,9 +6,9 @@ Original Git refs/index and `.ai-memory.toml` were not edited; source commits ar
 The bundle delivery receipt identifies the resulting commit/hash. Local builds used the modified worktree before that source commit;
 Windows exact-source gates must use the bundle commit.
 
-The [design](../../../UX-LARGE.md) describes configurable per-SID/total/floor reservations, exact identity-bound capacity grants,
+The [design](../../../docs/design/large-files/UX-LARGE.md) describes configurable per-SID/total/floor reservations, exact identity-bound capacity grants,
 durable content/metadata accounting, restart/orphan holds, failed-prefix refusal, owner notifications, parser processes and streaming ZIP text.
-The [Windows list](../../../UX-LARGE-VM.md) gives T9L01–T9L21 and pre-boot/native/matched-pair/restoration conditions.
+The [Windows list](../../../docs/design/large-files/UX-LARGE-VM.md) gives T9L01–T9L21 and pre-boot/native/matched-pair/restoration conditions.
 
 ## Local verification
 

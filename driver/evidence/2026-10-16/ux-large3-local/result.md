@@ -44,7 +44,7 @@ updated exact default-policy test; all three Windows-path tests remain in the re
 Both are closed in the [implementation ACCEPT WITH CONDITIONS](implementation-review-sol61.md), including auxiliary security accounting and
 failed-initialization retry review. Acceptance is source review, separate from component gates and native qualification.
 
-See [current design](../../../UX-LARGE.md) and [Windows handoff](../../../UX-LARGE-VM.md) for defaults, migration, cold/hot history,
+See [current design](../../../docs/design/large-files/UX-LARGE.md) and [Windows handoff](../../../docs/design/large-files/UX-LARGE-VM.md) for defaults, migration, cold/hot history,
 legacy writer guard, low-space, per-SID isolation, failure/reconnect, explicit overrides and three-mode byte-observation cases.
 Windows actors remain standard user `t5actor`. Full-SID leases/concurrent-save refusals, synchronous seeding cost, retained metadata,
 unsupported older-binary downgrade and final T9/pair qualification remain open. Runtime readiness and v31 capability gates remain in force.

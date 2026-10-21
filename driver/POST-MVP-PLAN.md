@@ -2,7 +2,7 @@
 
 Updated 2026-10-21. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
 destination, keeping unapproved bytes private throughout. M2 is the current milestone, not the completion boundary.
-Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](POST-MVP-LOG.md), and the local WIP branch noted below.
+Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](docs/history/POST-MVP-LOG.md), and the local WIP branch noted below.
 
 ## Milestone order
 
@@ -72,7 +72,7 @@ qualification. The accounting defects stay open under T9 and block M2 with the d
 reservations that grow as files grow, keeping the approved total/per-user budgets, free-space floor and large-file support.
 Replace the obsolete single-concurrent-winner strategy test with concurrent no-overspend controls; preserve all privacy,
 resource, sharing and qualification assertions. Users should be able to save Word temporary files and overlapping small files;
-real budget exhaustion still refuses the affected save. [Design](UX-LARGE-CONCURRENCY.md) and independent security/lifetime
+real budget exhaustion still refuses the affected save. [Design](docs/design/large-files/UX-LARGE-CONCURRENCY.md) and independent security/lifetime
 review precede implementation. This approves no sharing-policy change or cutover.
 
 **2026-10-17 — current goal is M2 everyday file work.** Owner supplied the M2 goal file: one matched pair, staging under runtime gates,
@@ -111,7 +111,7 @@ fails closed with a "not enough staging space" reason and alert, without affecti
   [evidence](evidence/2026-10-16/demo1/) `test-ux-k8-*.txt`. Windows agent matrix `ux-m5-diag` 2,604/2,604 + 25/25 both. Merged branches:
   ux/kernel (native namespace ops), ux/dirs (folders), ux/outside (outside refusals), ux/activating (writer promotion liveness),
   ux/fix1, ux/allocfault (lost allocation replies), ux/journal (archive scaling, read-free terminal recovery), ux/meta + ux/meta2
-  (metadata, partial), ux/large (opt-in), ux/t11 (SOP startup proof, compaction retention, [review checklist](M2-REVIEW-CONDITIONS.md)
+  (metadata, partial), ux/large (opt-in), ux/t11 (SOP startup proof, compaction retention, [review checklist](docs/reviews/M2-REVIEW-CONDITIONS.md)
   once merged to this branch). T4 `uxk5t4ord2` stopped at cycle 548 (journal scan O(n) -> reply timeout -> stranded name; receipt kept);
   rerun `uxk8t4ord` in progress. Dev-disk shutdown freeze = OneDrive DebugBreak into the absent kernel debugger (not SafeUpload).
 
@@ -119,7 +119,7 @@ fails closed with a "not enough staging space" reason and alert, without affecti
 available space), per-user min(8 GiB, total/4), free-space floor max(1 GiB, 5% of volume); resource refusal is fail closed
 with a staging-space alert, isolated per SID, with no fixed per-file staging cap. Follow-up authorizes `StageSpace.Enabled`
 to default true, runtime formulas with explicit overrides, a measured parser memory default, suitable inspection defaults
-and safe existing-install migration. `ux/large` implementation on base `a2b67984`: [design](UX-LARGE.md),
+and safe existing-install migration. `ux/large` implementation on base `a2b67984`: [design](docs/design/large-files/UX-LARGE.md),
 [local receipt](evidence/2026-10-16/ux-large3-local/result.md). Pending legacy stages are charged under their original guard;
 completed history stays compatible. Runtime readiness gates and Windows/pair qualification remain required.
 
@@ -305,7 +305,7 @@ cutover.
   Only when neither does, and the sole difference is expected `SE_DACL_AUTO_INHERITED` (`0x0400`) set / stored clear with every
   other byte equal (owner, group, ACL bytes, ACE flags/order, label, SACL `0x0800`, protection and request bits), is the result
   equivalent. No other difference is accepted; no repair, privileged post-set or AccessState injection. Evidence:
-  [controls](T5-NATIVE-PUBLIC-OPENS.md#descriptor-candidate-controls-2026-10-15) (equal access in all 30 rows; Windows re-marks it on
+  [controls](docs/design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md#descriptor-candidate-controls-2026-10-15) (equal access in all 30 rows; Windows re-marks it on
   the next inheritance operation). Note: the moved file's entries keep their old-folder `INHERITED_ACE` marks in both versions.
 - **Receipt slots: commercial pattern approved, ceiling 256.** Owner proposed 256 per in-flight family, asked what a robust
   commercial DLP would choose, and on the answer: "The behaviour of this commercial pattern sound perfect". The pattern:
@@ -338,7 +338,7 @@ cutover.
 
 **2026-10-14 (evening) — retained residue and the test base.** Owner, in the session:
 - **Retained never-exposed residue: exception accepted.** Proved service-owned residue (exact custody, charged storage, ancestry and
-  nonpublication obligations, as specified in [T5-RECOVERY-HOLDS.md](T5-RECOVERY-HOLDS.md)) does not veto voluntary unload; the
+  nonpublication obligations, as specified in [T5-RECOVERY-HOLDS.md](docs/design/publication-and-namespace/T5-RECOVERY-HOLDS.md)) does not veto voluntary unload; the
   bytes stay private and keep their storage charge. Residue without that proof still vetoes. This replaces the conservative default.
 - **Edge self-update on the test base: approved to disable** to improve measurements. A new base layer on win10-debug3 disables
   the Edge Update services and scheduled tasks; the previous base stays untouched underneath as its backing file (rollback:
@@ -414,7 +414,7 @@ changes; the owner's direction below accepts the review with specific changes.
   `unsupported_format` (staged Blocked) for embedded files, PDF attachments, XFA forms and any other payload the readers cannot consume.
   Office acceptance becomes an allowlist of part types the readers consume or that carry no user text; any other reachable part is
   refused, so an unknown part fails closed. Refusing every chart would block many ordinary spreadsheets. This is component work.
-- **Unreadable seeded bytes: option 1** in [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md#owner-choice--unreadable-seeded-bytes):
+- **Unreadable seeded bytes: option 1** in [T5-NATIVE-PUBLIC-OPENS.md](docs/design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md#owner-choice--unreadable-seeded-bytes):
   preserve native write-only editing; a blocked version containing prior bytes without read/export authority stays service-private with
   a named reason, and no full-file hand-back or justification is offered until that authority exists.
 - **Lab tooling now:** only make [Invoke-StagedSuiteBatch.sh](scripts/Invoke-StagedSuiteBatch.sh) fail on any failed or missing case and
@@ -438,7 +438,7 @@ changes; the owner's direction below accepts the review with specific changes.
   (Ansible, Packer and related tooling), T21 USB/removable and T22 SMB/UNC. Designs only: no implementation, no host-wide or
   qualified-baseline change, and USB/SMB stay disabled until their owner decisions, Sol 6.1 xhigh design reviews and gates.
   This replaces the earlier "defer the tooling" bullet for design work only; tooling implementation still waits for the T5 checkpoint.
-  Drafts: [LAB-WORKFLOW-DESIGN.md](LAB-WORKFLOW-DESIGN.md), [T21](T21-USB-REMOVABLE-DESIGN.md), [T22](T22-SMB-UNC-DESIGN.md); all decisions pending.
+  Drafts: [LAB-WORKFLOW-DESIGN.md](docs/operations/LAB-WORKFLOW-DESIGN.md), [T21](docs/design/destinations/T21-USB-REMOVABLE-DESIGN.md), [T22](docs/design/destinations/T22-SMB-UNC-DESIGN.md); all decisions pending.
 
 **2026-10-11 — destinations and completion.** Follow the order above. M4 covers local NTFS, USB including surprise removal,
 UNC/SMB, and a real sync client with independent destination-byte observers. Both mapping leaks need their repros rerun and closed.
@@ -450,7 +450,7 @@ compile staging out, and unsupported capabilities stay disabled until the owner 
 **2026-10-11 — empty files and deletes.** Empty files are ordinary content: seal, verify stable length, inspect trivially clean,
 and publish normally. This reverses the 2026-10-10 EmptyHeld decision. Public deletes are in M2 and Windows decides the caller's
 delete authority on the real public file. A newer save cancels a delete only if that save has already published. Allocated, unsealed,
-sealed, inspecting or blocked successors do not cancel it; older versions cannot publish after deletion. See [T5-DELETES.md](T5-DELETES.md).
+sealed, inspecting or blocked successors do not cancel it; older versions cannot publish after deletion. See [T5-DELETES.md](docs/design/publication-and-namespace/T5-DELETES.md).
 Only the old no-empty-publication assertion changes; every other product assertion remains required.
 
 **2026-10-11 — accepted native-delete tracking failure.** The owner approves preserving NTFS's accepted result only with automatic
@@ -459,7 +459,7 @@ establish that it is gone or still the original pre-open file, then release the 
 pre-CREATE intent and existing startup recovery; add no protocol states beyond **accepted, unresolved**. If exact reconciliation
 cannot decide, retain the hold, name the file and an actionable next step in the tray, and record diagnostics. Fault-injection rows
 must prove automatic hold release after handle close and service restart. If that automatic guarantee cannot be met, ask the owner
-before implementation. See [T5-NATIVE-PUBLIC-OPENS.md](T5-NATIVE-PUBLIC-OPENS.md). Ordinary mounted-instance recovery has a corrected
+before implementation. See [T5-NATIVE-PUBLIC-OPENS.md](docs/design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md). Ordinary mounted-instance recovery has a corrected
 design; the approved fixed-NTFS exception below covers forced instance teardown. Protected fault-injection qualification remains open.
 
 **2026-10-11 — forced-teardown recovery scope.** For **M2 local fixed NTFS only**, the owner approves holding the affected name
@@ -525,7 +525,7 @@ A milestone ends with its matched pair, three-mode gate, adversarial review and 
 ## M1 — completed component baseline
 
 M1 passed 69/69 cells on `m1-driver21` (`498f4ed7`) plus agent `4d02039a`, with U01 and installer workloads recorded in
-[POST-MVP-LOG.md](POST-MVP-LOG.md). These results do not qualify later changed pairs.
+[POST-MVP-LOG.md](docs/history/POST-MVP-LOG.md). These results do not qualify later changed pairs.
 
 ### T0. Field diagnostics and installer fixes
 
@@ -571,7 +571,7 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 | T6 | Copy-fallback component evidence and owner-approved folder/cross-drive metadata contract exist; merged namespace/folder source is unqualified. | Final-pair file/folder moves, idle rename and pending conflicts in all required modes. |
 | T7 | Windows-authorized read design retained. | Final-pair authorized/denied reads and exact bytes. |
 | T8 | Standard-user app dev evidence exists; final metadata implementation/qualification remains incomplete. | Eight required app workflows, matching owner/DACL/SACL/label/times/attributes/MOTW controls in all modes. |
-| T9 | Whole-SID allocation causes overlapping-save refusals; proved-refusal repair passes 156 focused Windows controls. Growing reservations approved; [design revised after review](UX-LARGE-CONCURRENCY.md), acceptance pending. | Windows budgets/upgrade, parser bounds, large-file and failure UX on the matched pair. |
+| T9 | Whole-SID allocation causes overlapping-save refusals; proved-refusal repair passes 156 focused Windows controls. Growing reservations approved; [design revised after review](docs/design/large-files/UX-LARGE-CONCURRENCY.md), acceptance pending. | Windows budgets/upgrade, parser bounds, large-file and failure UX on the matched pair. |
 | T10 | Earlier runtime-Verifier component pass exists. | Final-pair permissions/ownership rows in all modes with metadata preservation. |
 | T11 | Epoch/archive and context retirement repairs integrated; component controls are distinct from qualification. | Final journal/recovery/lifetime gates and one adversarial review of the working M2 pair. |
 
@@ -585,7 +585,7 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 - [ ] T5–T11: qualify the coherent pair against every existing assertion; component/dev passes do not complete these items.
 - [ ] T11: perform final adversarial review only after the runtime evidence exists.
 
-The superseded checkpoint narratives are in [POST-MVP-LOG.md](POST-MVP-LOG.md#archived-m2-checkpoint-narrative--replaced-2026-10-17).
+The superseded checkpoint narratives are in [POST-MVP-LOG.md](docs/history/POST-MVP-LOG.md#archived-m2-checkpoint-narrative--replaced-2026-10-17).
 
 ### T4. Remove the 128-saves-per-boot ceiling
 
@@ -593,7 +593,7 @@ The superseded checkpoint narratives are in [POST-MVP-LOG.md](POST-MVP-LOG.md#ar
 **Done when:** 10,000 mixed approve/block saves in one boot pass with flat nonpaged pool, no Verifier hit, no cap refusal, zero residual
 versions/views/tombstones/stages and an idle worker; C01–C04, B01, B02 and X01 pass in all three modes.
 
-Design: [stage lifetime](T4-STAGE-LIFETIME.md), [lease/retirement correction and reopen controls](UX-LEAK2.md).
+Design: [stage lifetime](docs/design/lifetime/T4-STAGE-LIFETIME.md), [lease/retirement correction and reopen controls](docs/design/lifetime/UX-LEAK2.md).
 **Closed for now (owner, 2026-10-21)** on the evidence in the [checkpoint](evidence/2026-10-20/t4-checkpoint.md); the open items below are
 carried to the final M2 pair, not waived. The 2026-10-19 smoke failure and its diagnosis are retained there.
 The [prior 10k contexts failure](evidence/2026-10-12/m2t4purge10ka1-verdict.txt) and
@@ -632,8 +632,8 @@ zero-byte file operations and added a successor protocol. Empty is ordinary cont
 **Done when:** clean saves publish exactly their bytes; CPF saves hand back and leave new names absent or existing prior bytes intact;
 no empty probe is left behind; no uninspected nonempty byte reaches the public name. All existing other assertions pass in three modes.
 
-Designs: [deletes/teardown](T5-DELETES.md), [native public opens](T5-NATIVE-PUBLIC-OPENS.md),
-[bound publication/recovery](T5-BOUND-PUBLICATION.md), [current MVP namespace correction](T5-UX-NAMESPACE-GAP.md).
+Designs: [deletes/teardown](docs/design/publication-and-namespace/T5-DELETES.md), [native public opens](docs/design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md),
+[bound publication/recovery](docs/design/publication-and-namespace/T5-BOUND-PUBLICATION.md), [current MVP namespace correction](docs/design/publication-and-namespace/T5-UX-NAMESPACE-GAP.md).
 Latest [integration status](evidence/2026-10-17/m2-integration-status.md) and
 [pre-boot review](evidence/2026-10-17/kernel-namespace-integration-sol-high.md) do not qualify the protected pair.
 Detailed historical implementations, failed runs and prior component gates are retained in POST-MVP-LOG.md and Git history.
@@ -670,7 +670,7 @@ and never publish uninspected bytes; C05 reflects inspection rather than blanket
 - [x] Copy fallback via STATUS_NOT_SAME_DEVICE (`baec933f`); runtime row `m2t6rv4` passed 28/28 on its component pair.
 - [ ] Rerun ordinary, runtime and boot-Verifier on the final pair, including empty files and real Explorer drag.
 - [ ] Directory moves (owner 2026-10-16: like copies; idle renames inside protection): design note (RCA `driver/evidence/2026-10-16/t6-dirmove-rca-sol61.md`),
-  review, implementation, native caller traces, then D-rows in all three modes. The small unbound MVP [directory UX change](UX-DIRECTORIES.md) has local controls and Sol 6.1 xhigh acceptance with conditions; WDK/native three-mode qualification remains open.
+  review, implementation, native caller traces, then D-rows in all three modes. The small unbound MVP [directory UX change](docs/design/publication-and-namespace/UX-DIRECTORIES.md) has local controls and Sol 6.1 xhigh acceptance with conditions; WDK/native three-mode qualification remains open.
   - [x] Design `driver/T6-DIRECTORY-MOVES.md` (`wt/t6-dirs` `82da3a06`): [review](evidence/2026-10-16/t6-design-review-sol61.md) REVISE, then
     [re-review](evidence/2026-10-16/t6-design-rereview-sol61.md) **ACCEPT WITH CONDITIONS** (idle census proof, lock/rundown rules, checked
     ancestry for every live T5 consumer, native traces first, separate gates).
@@ -703,9 +703,9 @@ the publishing application can reopen the file and agreed metadata is preserved.
   for unbounded header/dictionary allocation ([assessment](../agente/docs/T9-ARCHIVE-INSPECTION.md)); owner choice pending.
 - [ ] Implement and test the metadata contract decided 2026-10-16 (native owner/DACL/SACL/label, timestamps, attributes; Zone.Identifier
   carried with its file; other ADS, EAs, EFS, offline, reparse points and hard links refused).
-  - [ ] Unbound `ux/meta` [basic metadata increment](UX-METADATA.md): exact sealed dates/ordinary attributes and unsupported-storage checks;
+  - [ ] Unbound `ux/meta` [basic metadata increment](docs/design/metadata/UX-METADATA.md): exact sealed dates/ordinary attributes and unsupported-storage checks;
     native descriptor construction, public metadata serialization and inspected atomic MOTW remain unfinished. No T8 completion or VM qualification.
-  - [ ] `ux/meta2` [round-2 prerequisite checkpoint](UX-METADATA-ROUND2.md): strict native absence/query validation and dormant descriptor/MOTW controls; whole-version producer, native construction and commit fence remain blocked/open. No T8 completion.
+  - [ ] `ux/meta2` [round-2 prerequisite checkpoint](docs/design/metadata/UX-METADATA-ROUND2.md): strict native absence/query validation and dormant descriptor/MOTW controls; whole-version producer, native construction and commit fence remain blocked/open. No T8 completion.
 - [ ] Qualify application rows under the matched pair with independent byte observation and restoration.
 
 ### T9. Large files and complete inspection
@@ -714,8 +714,8 @@ the publishing application can reopen the file and agreed metadata is preserved.
 **Done when:** no fixed driver size cap; per-user/total stage budgets fail closed without harming other users; full-content inspection
 uses bounded memory; incomplete inspection is Blocked with hand-back and policy-authorized justification; runtime rows prove privacy.
 
-Design/qualification: [large-file budgets and upgrade](UX-LARGE.md), [Windows rows](UX-LARGE-VM.md),
-[recovery](UX-LARGE-RECOVERY.md), [inspection coverage](../agente/docs/INSPECTION-COVERAGE.md).
+Design/qualification: [large-file budgets and upgrade](docs/design/large-files/UX-LARGE.md), [Windows rows](docs/design/large-files/UX-LARGE-VM.md),
+[recovery](docs/design/large-files/UX-LARGE-RECOVERY.md), [inspection coverage](../agente/docs/INSPECTION-COVERAGE.md).
 Owner-approved runtime budget/default formulas are in Owner decisions. Bounded scanner scratch does not prove bounded parser/capture memory.
 
 - [x] T9: complete-or-refuse Office/PDF coverage implementation and independent fixtures (`a46124c7`, `52fbb7cb`); prior component matrices
@@ -753,7 +753,7 @@ cannot publish unapproved bytes, proven by the observer.
 **Problem:** remaining locking, generation, section-lifetime and journal-scaling findings need closure.
 **Done when:** every finding has a tested change or row and the M2 adversarial review closes the working system.
 
-Design: [unbound journal scaling](T11-UNBOUND-JOURNAL-SCALING.md); [review conditions](M2-REVIEW-CONDITIONS.md).
+Design: [unbound journal scaling](docs/design/lifetime/T11-UNBOUND-JOURNAL-SCALING.md); [review conditions](docs/reviews/M2-REVIEW-CONDITIONS.md).
 Latest [integration evidence](evidence/2026-10-17/m2-integration-status.md) distinguishes source acceptance from qualification.
 
 - [x] T11: nested sealed-stage guard (`203d31e9`), serial generation arithmetic (`b8394357`), cache eviction (`cb1d0930`) and bounded index/closure controls implemented.
@@ -794,7 +794,7 @@ change the file. Prove that lifetime boundary and validate the returning volume/
 not an acceptable removable-media recovery remedy; the M2 fixed-NTFS exception does not extend here. Do not implement this in M2.
 
 - [ ] Complete the dedicated USB/removable design before implementation.
-  - [x] [Design draft](T21-USB-REMOVABLE-DESIGN.md) (2026-10-13, Astra): NTFS-first envelope, local private staging, two lifetime proofs
+  - [x] [Design draft](docs/design/destinations/T21-USB-REMOVABLE-DESIGN.md) (2026-10-13, Astra): NTFS-first envelope, local private staging, two lifetime proofs
     for surprise removal, automatic remount reconciliation, decisions D1–D7 and native controls.
     [Independent Sol 6.1 xhigh review](evidence/2026-10-13/t21-design-review-sol61.md): REVISE — select a routing owner that survives
     removal for live upper streams; couple each external-copy exposure to current shared-head eligibility. Revised (StageFs routing
@@ -815,7 +815,7 @@ not an acceptable removable-media recovery remedy; the M2 fixed-NTFS exception d
 has independent server-side destination-byte run evidence, and is ready for combined M4 qualification.
 
 - [ ] Complete the dedicated SMB/UNC design before implementation.
-  - [x] [Design draft](T22-SMB-UNC-DESIGN.md) (2026-10-13, Astra): local fixed-NTFS stage, enrolled UNC identity, Kerberos caller
+  - [x] [Design draft](docs/design/destinations/T22-SMB-UNC-DESIGN.md) (2026-10-13, Astra): local fixed-NTFS stage, enrolled UNC identity, Kerberos caller
     authority, remote replacement gap and commit options, decisions D1–D13 and native controls.
     [Independent Sol 6.1 xhigh review](evidence/2026-10-13/t22-design-review-sol61.md): ACCEPT WITH CONDITIONS — forced-teardown
     coverage-loss gate, corrected cross-volume retargeting rationale, enumerated diagnostic candidates. Revised; [re-review](evidence/2026-10-13/t22-design-rereview-sol61.md):
@@ -877,7 +877,7 @@ has independent server-side destination-byte run evidence, and is ready for comb
 - [ ] Stop false Degraded notices (owner direction 2026-10-13): retry an `ERROR_RETRY` coverage answer briefly before reporting
   Degraded; T4 short rows log 12–21 `CoverageQueryFailed` notices each ([analysis](evidence/2026-10-12/t4-coverage-retry-analysis.md)).
   Sol design review first; admission authority, Unknown and real query failures are unchanged.
-  - [x] [Design](T18-COVERAGE-RETRY.md): up to three retries (10/20/40 ms) of exactly `0x800704D5` within one poll; nothing held or synthesized.
+  - [x] [Design](docs/design/admission/T18-COVERAGE-RETRY.md): up to three retries (10/20/40 ms) of exactly `0x800704D5` within one poll; nothing held or synthesized.
   - [x] [Sol 6.1 xhigh review](evidence/2026-10-13/t18-coverage-retry-review-sol61.md): ACCEPT WITH CONDITIONS; conditions folded into the design.
   - [x] Implementation (Sol worker, integrated here): `AdmissionCoverageRetry` retries only `Win32Exception.NativeErrorCode == 0x800704D5`
     with 10/20/40 ms delays; startup flags applied after the final receipt; retry/exhaustion counters in diagnostics; 31 controls.

@@ -3,6 +3,7 @@
 ## Start here
 
 - Read [driver/POST-MVP-PLAN.md](driver/POST-MVP-PLAN.md) for current scope, owner decisions, stops and qualification status. Read the relevant T-item design before changing its implementation.
+- Doc map: [driver/README.md](driver/README.md) lists the layout, and [driver/docs/README.md](driver/docs/README.md) indexes the designs, reviews, operations notes and history (with the former path of every moved file).
 - [driver/M2-COMPLETION-PLAN.md](driver/M2-COMPLETION-PLAN.md) contains the 2026-10-13 review and proposed execution order. Recommendations there are not approval of pending product choices or VM runs.
 - [driver/MVP-PLAN.md](driver/MVP-PLAN.md) records the historical component baseline. Old logs, source comments and memory summaries do not override current decisions.
 - Inspect `git status` before editing. Preserve unrelated work, local evidence and the user's `.ai-memory.toml`. Treat memory as historical evidence; verify it against source and current decisions.
@@ -46,7 +47,7 @@ Use committed source and fresh labels with the existing runners. Record the Git 
 
 | Work | Verification |
 |---|---|
-| Documentation only | Check diffs, links and consistency with current evidence; no product VM boot required |
+| Documentation only | Check diffs, links (`python3 driver/scripts/check-doc-links.py`) and consistency with current evidence; no product VM boot required |
 | Agent component | Focused relevant controls for feedback; feature Debug/Release matrix with user + SYSTEM legs (4 legs) for the delivery checkpoint |
 | Kernel | Two feature Debug/Release WDK builds, PREfast and ApiValidator, all at 0 warnings / 0 errors, with import availability PASS over both; required Verifier rows |
 | Harness | Windows PowerShell **5.1** parse/native signature checks, relevant self-checks, then an authorized real run |

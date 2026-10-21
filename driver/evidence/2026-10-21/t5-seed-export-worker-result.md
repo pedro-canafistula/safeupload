@@ -2,7 +2,7 @@
 
 Branch `t5/seed-export`, base `6aef8cf65ea9f04afa80cae9e806c354abcd0302`.
 Commit preparation was blocked by the sandbox: `fatal: Unable to create '/home/victor/Work/safeupload-t5seed/.git/index.lock': Read-only file system`. Changes and this note remain in the working tree; no commit/push is claimed.
-Agent-only implementation of owner option 1 from [T5 native public opens](../../T5-NATIVE-PUBLIC-OPENS.md#owner-choice--unreadable-seeded-bytes), within the worker brief's explicit process-primary scope. No kernel or status-plan changes; no network, VM, builder, SSH or libvirt activity. No binaries/packages delivered. The compile helper deletes its successful temporary output; this is source delivery, not an artifact or Windows gate result.
+Agent-only implementation of owner option 1 from [T5 native public opens](../../docs/design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md#owner-choice--unreadable-seeded-bytes), within the worker brief's explicit process-primary scope. No kernel or status-plan changes; no network, VM, builder, SSH or libvirt activity. No binaries/packages delivered. The compile helper deletes its successful temporary output; this is source delivery, not an artifact or Windows gate result.
 
 ## Receipt and evaluation
 
