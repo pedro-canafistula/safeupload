@@ -1,0 +1,12 @@
+T5GuestAlive PASS the guest answered through the run
+T5DriverLoaded PASS the filter is still loaded after the run
+T5ResultEvidence PASS copied=yes; guest-present=True
+T5ActorTaskStart PASS the SYSTEM coordinator explicitly started the interactive actor after capturing the raw destination baseline
+T5RawObserver FAIL status=OK; baseline=OK; samples=159; disposal=OK; schema=False; artifacts=323 artifacts verified; 1 logical images referenced
+T5RawEvidenceRetained PASS copied=yes; guest-manifest=True; 323 artifacts verified; 1 logical images referenced
+T5CasesCompleted FAIL 1 of 8 required distinct cases; error The forced-order gate lacks a complete independent raw observation.
+T5ProbeDeleteNoEmptyLeftover FAIL settlement=TIMEOUT; empty-records=0; raw-empty-samples=0; journal-parse-errors=0; journal-schema-errors=0
+T5ProbeDeleteForcedOrder FAIL native steps and independent raw/journal evidence precede the actor release
+T5ProbeDelete FAIL native=missing=save-write,save-close; mismatch=save-create=32 expected=0; raw=False; final length=-1 sha=None owner=None; control-window-samples=2; control-target-absent=True; discarded=False
+T5CanonicalNoUnapprovedByte FAIL Canonical lower-mutation proof field missing.
+T5Duration INFO 239 s (ordinary)

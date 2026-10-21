@@ -1,0 +1,14 @@
+UPLOAD_DRIVER_SHA256=3547377ADC04D3047B4A9297C856C6A1F65356D08ED803765AF31EC66566F352
+UPLOAD_AGENT_ZIP_SHA256=1EA4A2E12823C9765B8D4B05EB29B82322A4A3E8C223004763F0534C22C77DC4
+INSTALLED_DRIVER_SHA256=3547377ADC04D3047B4A9297C856C6A1F65356D08ED803765AF31EC66566F352
+EXTRACTED_SERVICE_EXE_SHA256=9B85FBE040E7C19559CCEE1F31E6F8918A3B21A6F1CDB4ECBBFADFDA63C7EB85
+PolicyAclApplied=True
+Directory=C:\ProgramData\SafeUpload
+File=C:\ProgramData\SafeUpload\policy.json
+[SC] ChangeServiceConfig SUCCESS
+SYSTEM boot-policy seed failed (task result 2).
+At C:\Users\vika\Documents\Install-SafeUploadAgent.ps1:127 char:21
++ ...             throw "SYSTEM boot-policy seed failed (task result $($inf ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (SYSTEM boot-pol...task result 2).:String) [], RuntimeException
+    + FullyQualifiedErrorId : SYSTEM boot-policy seed failed (task result 2).

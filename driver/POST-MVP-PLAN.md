@@ -23,6 +23,15 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-21 (T5 plan) — close T5 for now on the shipped (unbound) profile.** Owner, in the session ("I agree, go") on the T5 plan:
+(D1) T5 closes on the unbound MVP profile the pair ships; the bound-head profile (`wt/t5-batch2`, runtime NotReady) and its caller-grant /
+seed read-export / descriptor / generation-ordering item move to the post-M2 hardening list, after a no-VM source check that the shipped
+profile keeps the caller's grants and never hands back unreadable seeded bytes. (D2) One extended T5 row (`Invoke-StageNotepad.sh`) in
+ordinary, runtime-Verifier and boot-Verifier modes; Explorer cases drive the shell file operations, real Notepad stays UI-driven, and the
+owner's hands-on Notepad/Word/Explorer test covers the UI gap. (D3) Carried to the final M2 pair: service-independent unload/teardown
+qualification, the Word rows (with T8), and the `T5-UX-NAMESPACE-GAP.md` D1–D6 edge-case matrix beyond the everyday subset. The row runs on
+the T4 pair (`d1068cc3` + `586ae7cb`) with product defaults (staging budget on); no gate, threshold or assertion changes.
+
 **2026-10-21 (later) — T4 pool endpoint band 128 KiB, future rows only.** Owner, in the session: "Ok I choose 2, but only to future
 rows" (option 2 of the [endpoint analysis](evidence/2026-10-20/t4-checkpoint.md#endpoint-decision--2026-10-21)). The after-idle endpoint
 band of `T4PoolFlat`/`T4PoolEndpoint` is 128 KiB for rows run from 2026-10-21 on; the slope limit (<4 B/cycle from cycle 1,000) and

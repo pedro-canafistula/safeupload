@@ -1,0 +1,16 @@
+{
+ "Error": "The forced-order gate lacks a complete independent raw observation.",
+ "Cases": [
+  {
+   "Kind": "ProbeDelete",
+   "Op": "probe-delete-before-seal",
+   "Ack": {
+    "N": 1,
+    "Op": "probe-delete-before-seal",
+    "Steps": "test-create=0 test-delete=0 test-close=0 save-create=32",
+    "ForcedOrder": "DeleteBeforeSeal"
+   },
+   "SettlementStatus": "TIMEOUT"
+  }
+ ]
+}

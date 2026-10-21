@@ -1,0 +1,9 @@
+DIR=C:\ProgramData\SafeUpload\staging-journal
+C:\ProgramData\SafeUpload\staging-journal\completed|1|2026-10-21T09:31:49.2391869Z
+C:\ProgramData\SafeUpload\staging-journal\driver-epoch.state|192|2026-10-21T09:31:18.5591890Z
+C:\ProgramData\SafeUpload\staging-journal\completed\00000001.pack|9351|2026-10-21T09:33:20.8118691Z
+C:\ProgramData\SafeUpload\staging-journal\completed\segments.state|30|2026-10-21T09:31:49.2351882Z
+DIR=C:\ProgramData\SafeUpload\staging
+C:\ProgramData\SafeUpload\staging\.space-reservations|1|2026-10-21T09:33:21.4044541Z
+C:\ProgramData\SafeUpload\staging\.space-reservations\18e7f292cd3211f1a0a5c4ef23e86b67.json|401|2026-10-21T09:31:50.2451890Z
+C:\ProgramData\SafeUpload\staging\.space-reservations\18e7f319cd3211f1a0a5c4ef23e86b67.json|401|2026-10-21T09:33:21.4024561Z

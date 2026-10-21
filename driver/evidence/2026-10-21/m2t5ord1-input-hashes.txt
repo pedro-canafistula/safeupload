@@ -1,0 +1,10 @@
+RunTag=m2t5ord1
+Mode=ordinary
+RequestedDomain=win10-debug3
+ExpectedGuestUUID=FFCB9530-146B-43B1-8AF7-2B5CC8EDE2E3
+LocalDriverSys=driver/evidence/2026-10-20/m2t4-pagefix-candidate/driver.sys
+LocalDriverSysSHA256=3547377ADC04D3047B4A9297C856C6A1F65356D08ED803765AF31EC66566F352
+LocalAgentZip=driver/evidence/2026-10-20/exact-agent-matrix-m2t4refund2-feature-release-service-publish.zip
+LocalAgentZipSHA256=1EA4A2E12823C9765B8D4B05EB29B82322A4A3E8C223004763F0534C22C77DC4
+LocalAgentServiceEntry=SafeUpload.Agent.Service.exe
+ExpectedExtractedServiceSHA256=9B85FBE040E7C19559CCEE1F31E6F8918A3B21A6F1CDB4ECBBFADFDA63C7EB85

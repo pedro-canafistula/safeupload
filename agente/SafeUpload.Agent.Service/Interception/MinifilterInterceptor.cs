@@ -82,6 +82,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     private long _overBudget;
     private long _answered;
     private int _discardCleanupCursor;
+    private readonly StagedDiscardCleanupSchedule _discardCleanupSchedule = new();
     private bool _overrideAllowed;
     private bool _auditOnly;
     private int _policyVersion;
@@ -1430,6 +1431,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 CancellationToken.None, request.RequestorProcessId == 0 ? null :
                     checked((int)request.RequestorProcessId),
                 activeDriverInstanceId).GetAwaiter().GetResult();
+            // The exact delete runs on the background loop; wake it now instead of waiting out its idle interval.
+            if (status != StagedDiscardStatus.Acknowledged) _discardCleanupSchedule.Notify();
             return (PortVerdict.Allow, status == StagedDiscardStatus.Acknowledged
                 ? StageV19Result.DiscardAcknowledged : StageV19Result.DiscardPending);
         }
@@ -1620,10 +1623,12 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
                 continue;
             }
+            bool pendingRemained = false;
             if (pending.Count > 0)
             {
                 int start = _discardCleanupCursor % pending.Count;
                 int count = Math.Min(MaximumItemsPerPass, pending.Count);
+                pendingRemained = pending.Count > count;
                 for (int offset = 0; offset < count; offset++)
                 {
                     StagedDiscardRequest request = pending[(start + offset) % pending.Count];
@@ -1645,7 +1650,11 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                                     cancellationToken).ConfigureAwait(false);
                                 child = await _stageJournal.ReadAsync(request.ReservationId,
                                     cancellationToken).ConfigureAwait(false);
-                                if (!child.StageDeleted) continue;
+                                if (!child.StageDeleted)
+                                {
+                                    pendingRemained = true;
+                                    continue;
+                                }
                             }
                         }
                         await _stageJournal.CompleteDiscardAsync(request, cancellationToken)
@@ -1662,13 +1671,15 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     {
                         // A locked/replaced stage remains private and pending.
                         // Another pass retries the exact durable tuple.
+                        pendingRemained = true;
                         _logger.LogDebug(ex, "Exact private-stage cleanup remains pending for {TransferId}.",
                             request.Version.TransferId);
                     }
                 }
                 _discardCleanupCursor = (start + count) % Math.Max(1, pending.Count);
             }
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+            await _discardCleanupSchedule.WaitAsync(_discardCleanupSchedule.NextDelay(pendingRemained),
+                cancellationToken).ConfigureAwait(false);
         }
     }
 
