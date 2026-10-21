@@ -915,7 +915,7 @@ function Assert-IOParentMatch($Image, $Parent, [string] $Leaf) {
     $names = @($Image.FileNames | Where-Object { $_.Name -ceq $Leaf -and $_.Parent -eq $Parent.Identity.Reference -and $_.Namespace -ne 2 })
     if ($names.Count -ne 1) { throw 'Raw FILE_NAME parent/name does not match parent index.' }
 }
-function Get-IOPath($Context, [string] $Name, [switch]$SkipTargetMetadata) {
+function Get-IOPath($Context, [string] $Name, [switch]$SkipTargetMetadata, $TargetMetadataDeferred) {
     if ([string]::IsNullOrWhiteSpace($Name) -or [IO.Path]::IsPathRooted($Name) -or $Name.Contains(':')) { throw 'Destination must be a nonempty relative path without ADS.' }
     $path = [IO.Path]::GetFullPath((Join-Path $Context.ScopePath $Name))
     if (-not $path.StartsWith($Context.ScopePath + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Destination escapes scope.' }
@@ -923,7 +923,15 @@ function Get-IOPath($Context, [string] $Name, [switch]$SkipTargetMetadata) {
     $parent = $path
     if($SkipTargetMetadata){$parent=[IO.Path]::GetDirectoryName($path)}
     while ($parent.Length -ge $Context.ScopePath.Length) {
-        if (Test-Path -LiteralPath $parent) {
+        if ($parent -eq $path -and $TargetMetadataDeferred -is [ref]) {
+            # Opt-in caller: a delete-pending target fails this probe; the caller's native lookup and raw index decide instead.
+            $exists = $false
+            try { $exists = Test-Path -LiteralPath $parent -ErrorAction Stop } catch { $TargetMetadataDeferred.Value = $_.Exception }
+            if ($exists) {
+                $item = Get-Item -LiteralPath $parent -Force
+                if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Reparse fixture ancestor.' }
+            }
+        } elseif (Test-Path -LiteralPath $parent) {
             $item = Get-Item -LiteralPath $parent -Force
             if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Reparse fixture ancestor.' }
         }
@@ -1014,9 +1022,12 @@ function Save-IOPinnedImage($Context,$Image,[string]$Path,[string]$Role) {
 function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained, [switch]$PinnedExtents) {
     $images = @(); $parents = @{}; $readers = @(); $diagnostics=@(); $held = @(); $lookups = @(); $before=$null; $path=$null; $currentLookup=$false
     try {
+        $deletePendingOptIn = ($null -ne $Context.PSObject.Properties['DeletePendingAbsentByRawIndex'] -and $Context.DeletePendingAbsentByRawIndex -eq $true)
         foreach ($name in $Names) {
-            $before=$null; $currentLookup=$true
-            $path = Get-IOPath $Context $name -SkipTargetMetadata:$PinnedExtents; $parentPath = [IO.Path]::GetDirectoryName($path)
+            $before=$null; $currentLookup=$true; $deferred=$null
+            if ($deletePendingOptIn -and -not $PinnedExtents) { $path = Get-IOPath $Context $name -TargetMetadataDeferred ([ref]$deferred) }
+            else { $path = Get-IOPath $Context $name -SkipTargetMetadata:$PinnedExtents }
+            $parentPath = [IO.Path]::GetDirectoryName($path)
             if (-not $parents.ContainsKey($parentPath)) {
                 $ph = [StagedInvariant.Native]::Open($parentPath, $false, $true)
                 $held += $ph
@@ -1040,10 +1051,17 @@ function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained, [switch]
             try { $h = if($null -ne $Context.PSObject.Properties['NamedOpenAttributesOnly'] -and $Context.NamedOpenAttributesOnly -eq $true){[StagedInvariant.Native]::OpenAttributes($path)}else{[StagedInvariant.Native]::Open($path, $false, $false)} }
             catch {
                 $err = New-IOError 'Lookup' $_.Exception
-                if ($err.NativeCode -ne 2) { throw }
-                if (@($parent.Names | Where-Object { $_.Name -ieq [IO.Path]::GetFileName($path) }).Count -ne 0) { throw 'Missing lookup but present raw index entry.' }
-                $images += New-IORecord 'StorageImage' @{ Path = $path; Role = 'Current'; Absent = $true; ParentReference = $parent.Identity.Reference }
+                $indexed = @($parent.Names | Where-Object { $_.Name -ieq [IO.Path]::GetFileName($path) }).Count
+                if ($err.NativeCode -eq 2) {
+                    if ($indexed -ne 0) { throw 'Missing lookup but present raw index entry.' }
+                    $images += New-IORecord 'StorageImage' @{ Path = $path; Role = 'Current'; Absent = $true; ParentReference = $parent.Identity.Reference }
+                } elseif ($deletePendingOptIn -and $err.NativeNtStatus -ceq '0xC0000056' -and $indexed -eq 0) {
+                    # Opt-in: the filter reports the name delete-pending, but the raw parent index has no entry, so no public file exists.
+                    # A delete-pending name that IS indexed (native NTFS) stays unsupported and fails below.
+                    $images += New-IORecord 'StorageImage' @{ Path = $path; Role = 'Current'; Absent = $true; NamedLookup = 'DELETE_PENDING'; ParentReference = $parent.Identity.Reference }
+                } else { throw }
             }
+            if ($null -ne $h -and $null -ne $deferred) { throw 'Target metadata probe failed, yet the named lookup succeeded.' }
             if ($null -ne $h) {
                 $held += $h
                 $before = [StagedInvariant.Native]::Capture($Context.Volume, $h)
@@ -1303,6 +1321,18 @@ function Open-InvariantActivationReader {
         End=(Get-IOTime $Context);Error=(New-IOError 'ActivationReaderRebind' $_.Exception)}}
     finally{if($null -ne $handle -and -not $keep){$handle.Dispose()}}
 }
+function Test-IOStaleMetadataRetry($Context, $CaptureError) {
+    # Opt-in only (the context carries a flush scriptblock): NTFS writes MFT records and directory indexes lazily, so the raw
+    # copy can lag the cached one (m2t5ord6). Flushing and capturing again can only make the raw check stricter; every
+    # attempt stays in the sample record. A filter refusal of the observer's own open (Win32 32) is retried the same way.
+    if ($null -eq $Context.PSObject.Properties['StaleMetadataFlush'] -or $Context.StaleMetadataFlush -isnot [scriptblock] -or $null -eq $CaptureError) { return $false }
+    if ($CaptureError.NativePhase -ceq 'Record' -or $CaptureError.NativePhase -ceq 'FileRecord') { return $true }
+    if ($CaptureError.NativePhase -ceq 'CreateFileW' -and $CaptureError.NativeCode -eq 32) { return $true }
+    foreach ($node in @($CaptureError.Chain)) {
+        if ([string]$node.Message -match '^Raw parent index does not identify the requested name/file reference\.$|^Raw FILE_NAME parent/name does not match parent index\.$') { return $true }
+    }
+    return $false
+}
 function Capture-InvariantSample {
     [CmdletBinding()] param([Parameter(Mandatory=$true)] $Context, [Parameter(Mandatory=$true)] $Baseline,
         [Parameter(Mandatory=$true)][string] $Phase, [Parameter(Mandatory=$true)][long] $OperationSequence)
@@ -1321,7 +1351,10 @@ function Capture-InvariantSample {
             $captures += $capture
             $attempts += [pscustomobject]@{ Attempt = $i + 1; StartQpc = $begin; EndQpc = [Diagnostics.Stopwatch]::GetTimestamp(); Status = $capture.Status; Error = $capture.Error }
             if ($capture.Status -eq 'OK') { break }
-            if ($capture.Error.NativePhase -ne 'Stability') { break }
+            if ($capture.Error.NativePhase -ne 'Stability') {
+                if (-not (Test-IOStaleMetadataRetry $Context $capture.Error)) { break }
+                & $Context.StaleMetadataFlush
+            }
         }
         if ($capture.Status -eq 'OK') {
             foreach ($image in @($capture.Images | Where-Object { $_.Role -eq 'Current' -and -not $_.Absent })) {

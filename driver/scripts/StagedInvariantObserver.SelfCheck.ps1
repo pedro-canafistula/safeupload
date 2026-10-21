@@ -67,6 +67,27 @@ if ($PSBoundParameters.ContainsKey('Live') -and [string]::IsNullOrWhiteSpace($Li
 }
 try { Import-Module (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') -Force -DisableNameChecking -ErrorAction Stop }
 catch { Report-IO 'Import' $false $_.Exception.ToString(); Write-Output ('IO_Summary=passed:' + $script:Passed + ';failed:' + $script:Failed); exit 1 }
+# Opt-in stale-metadata retry (T5, m2t5ord6): never without the context's flush scriptblock; with it, only lagging
+# raw/cached metadata and a refused observer open (Win32 32) retry.
+$retryCases = @(
+    @($false, 'FileRecord', $null, 'x', $false),
+    @($true, 'FileRecord', $null, 'x', $true),
+    @($true, 'Record', $null, 'x', $true),
+    @($true, $null, $null, 'Raw parent index does not identify the requested name/file reference.', $true),
+    @($true, $null, $null, 'Raw FILE_NAME parent/name does not match parent index.', $true),
+    @($true, 'CreateFileW', 32, 'x', $true),
+    @($true, 'CreateFileW', 5, 'x', $false),
+    @($true, 'Lookup', 2, 'x', $false),
+    @($true, $null, $null, 'Raw parent index does not identify the requested name/file reference. Other', $false)
+)
+$retryMismatches = 0
+foreach ($c in $retryCases) {
+    $retryContext = if ($c[0]) { [pscustomobject]@{ Status = 'OK'; StaleMetadataFlush = {} } } else { [pscustomobject]@{ Status = 'OK' } }
+    $retryError = [pscustomobject]@{ NativePhase = $c[1]; NativeCode = $c[2]; Chain = @([pscustomobject]@{ Message = $c[3] }) }
+    $retry = [bool](& (Get-Module StagedInvariantObserver) { param($x, $y) Test-IOStaleMetadataRetry $x $y } $retryContext $retryError)
+    if ($retry -ne $c[4]) { $retryMismatches++ }
+}
+Report-IO 'StaleMetadataRetryOptIn' ($retryMismatches -eq 0) ('cases:' + $retryCases.Count + ';mismatches:' + $retryMismatches)
 # Real checked handle-disposal controls on a disposable builder file. These do
 # not pretend that a constructed pin qualifies raw-volume capture or rebind.
 $readerFixture=Join-Path $env:TEMP ('safeupload-observer-reader-'+[guid]::NewGuid().ToString('N')+'.txt')

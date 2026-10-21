@@ -392,7 +392,9 @@ def valid_raw_sample(s):
     for leaf, image in image_by_leaf.items():
         reader = public_by_leaf[leaf]
         if image.get('Absent') is True:
-            if reader.get('Status') != 'ABSENT':
+            # A raw-absent name the filter reports delete-pending (probe gates) must read delete-pending too.
+            if image.get('NamedLookup') not in (None, 'DELETE_PENDING') or \
+               reader.get('Status') != ('DELETE_PENDING' if image.get('NamedLookup') == 'DELETE_PENDING' else 'ABSENT'):
                 return False
             if any(r.get('Path', '').replace('/', '\\').rsplit('\\', 1)[-1].lower() == leaf for r in native if isinstance(r, dict)):
                 return False
@@ -505,9 +507,10 @@ def native_steps_match(case):
     expected = {
         'probe-delete-before-seal': {'test-create': 0, 'test-close': 0, 'test-delete': 0, 'save-create': 0, 'save-write': 0, 'save-close': 0},
         'probe-delete-after-publication': {'test-create': 0, 'test-close': 0, 'test-delete': 0, 'save-create': 0, 'save-write': 0, 'save-close': 0},
-        'probe-doc': {'test-create': 0, 'open-after-doc-flag': 303, 'test-close': 0, 'save-create': 0, 'save-write': 0, 'save-close': 0},
-        'probe-onclose': {'first-create': 0, 'second-open': 0, 'first-on-close-delete': 0, 'open-after-first-flag': 303,
-                          'second-on-close-delete': 0, 'first-on-close-clear': 0, 'open-after-first-clear': 303,
+        # STATUS_DELETE_PENDING (-1073741738 = 0xC0000056) for the private view's refused opens; Win32 reports it as 5.
+        'probe-doc': {'test-create': 0, 'open-after-doc-flag': 5, 'open-after-doc-flag-nt': -1073741738, 'test-close': 0, 'save-create': 0, 'save-write': 0, 'save-close': 0},
+        'probe-onclose': {'first-create': 0, 'second-open': 0, 'first-on-close-delete': 0, 'open-after-first-flag': 5, 'open-after-first-flag-nt': -1073741738,
+                          'second-on-close-delete': 0, 'first-on-close-clear': 0, 'open-after-first-clear': 5, 'open-after-first-clear-nt': -1073741738,
                           'second-on-close-clear': 0, 'open-after-both-clear': 0, 'save-write': 0, 'save-close': 0,
                           'first-close': 0, 'second-close': 0},
     }.get(case.get('Op'))

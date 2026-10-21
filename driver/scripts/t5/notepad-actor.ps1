@@ -42,6 +42,9 @@ public static class T5Native {
     public static void SetText(IntPtr hwnd, string text) { SendMessageW(hwnd, 0x000C /* WM_SETTEXT */, IntPtr.Zero, text); }
     public static bool PostCommand(IntPtr hwnd, int id) { return PostMessageW(hwnd, 0x0111 /* WM_COMMAND */, new IntPtr(id), IntPtr.Zero); }
     static int Err() { return Marshal.GetLastWin32Error(); }
+    // A refused open's NTSTATUS: Win32 reports STATUS_DELETE_PENDING as 5, like any access denial (2026-10-11 native control).
+    [DllImport("ntdll.dll")] static extern int RtlGetLastNtStatus();
+    static T5Native() { RtlGetLastNtStatus(); } // bind the stub before any probe so the first read is not a loader status
     static bool Valid(IntPtr h) { return h != IntPtr.Zero && h != new IntPtr(-1); }
     static int CloseCode(IntPtr h) { return CloseHandle(h) ? 0 : Err(); }
     static int SetDispositionCode(IntPtr h, uint flags) {
@@ -94,8 +97,9 @@ public static class T5Native {
         log.Append("test-create=" + (h == new IntPtr(-1) ? Err() : 0));
         if (Valid(h) && deleteOnClose) {
             IntPtr probe = OpenProbe(path, 0x40000000u, shareAll, 3 /* OPEN_EXISTING */, 0x80);
+            int pendingNt = Valid(probe) ? 0 : RtlGetLastNtStatus();
             int pending = Valid(probe) ? 0 : Err();
-            log.Append(" open-after-doc-flag=" + pending);
+            log.Append(" open-after-doc-flag=" + pending + " open-after-doc-flag-nt=" + pendingNt);
             if (Valid(probe)) log.Append(" unexpected-close=" + CloseCode(probe));
         }
         bool created = Valid(h);
@@ -162,14 +166,16 @@ public static class T5Native {
             if (!Valid(second)) return log.ToString();
             log.Append(" first-on-close-delete=" + SetDispositionCode(first, 0x00000009u /* DELETE|ON_CLOSE */));
             unexpected = OpenProbe(path, 0x40000000u, shareAll, 3 /* OPEN_EXISTING */, 0x80);
+            int firstPendingNt = Valid(unexpected) ? 0 : RtlGetLastNtStatus();
             int firstPending = Valid(unexpected) ? 0 : Err();
-            log.Append(" open-after-first-flag=" + firstPending);
+            log.Append(" open-after-first-flag=" + firstPending + " open-after-first-flag-nt=" + firstPendingNt);
             if (Valid(unexpected)) { log.Append(" unexpected-close=" + CloseCode(unexpected)); unexpected = IntPtr.Zero; }
             log.Append(" second-on-close-delete=" + SetDispositionCode(second, 0x00000009u));
             log.Append(" first-on-close-clear=" + SetDispositionCode(first, 0x00000008u /* ON_CLOSE, clear DELETE */));
             unexpected = OpenProbe(path, 0x40000000u, shareAll, 3 /* OPEN_EXISTING */, 0x80);
+            int secondPendingNt = Valid(unexpected) ? 0 : RtlGetLastNtStatus();
             int secondPending = Valid(unexpected) ? 0 : Err();
-            log.Append(" open-after-first-clear=" + secondPending);
+            log.Append(" open-after-first-clear=" + secondPending + " open-after-first-clear-nt=" + secondPendingNt);
             if (Valid(unexpected)) { log.Append(" unexpected-close=" + CloseCode(unexpected)); unexpected = IntPtr.Zero; }
             log.Append(" second-on-close-clear=" + SetDispositionCode(second, 0x00000008u));
             afterClear = OpenProbe(path, 0x40000000u, shareAll, 3 /* OPEN_EXISTING */, 0x80);

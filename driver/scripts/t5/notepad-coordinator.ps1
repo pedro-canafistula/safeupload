@@ -55,6 +55,13 @@ function Read-Public([string]$Path) {
         } finally { $stream.Dispose() }
     } catch [IO.FileNotFoundException] { return [pscustomobject]@{ Status = 'ABSENT'; Bytes = $null; Length = $null; Sha256 = $null; Error = $null } }
       catch [IO.DirectoryNotFoundException] { return [pscustomobject]@{ Status = 'ABSENT'; Bytes = $null; Length = $null; Sha256 = $null; Error = $null } }
+      catch [UnauthorizedAccessException] {
+        # .NET drops the NTSTATUS; a native attributes open reports whether the name is delete-pending (m2t5ord6).
+        $first = $_.Exception.ToString(); $nt = $null; $h = $null
+        try { $h = [StagedInvariant.Native]::OpenAttributes($Path) } catch { $nt = $_.Exception.InnerException.NativeNtStatus; if ($null -eq $nt) { $nt = $_.Exception.NativeNtStatus } } finally { if ($null -ne $h) { $h.Dispose() } }
+        $status = if ($nt -ceq '0xC0000056') { 'DELETE_PENDING' } else { 'ERROR' }
+        return [pscustomobject]@{ Status = $status; Bytes = $null; Length = $null; Sha256 = $null; Error = ($first + '; native NTSTATUS=' + $nt) }
+      }
       catch { return [pscustomobject]@{ Status = 'ERROR'; Bytes = $null; Length = $null; Sha256 = $null; Error = $_.Exception.ToString() } }
 }
 function Same([byte[]]$A, [byte[]]$B) {
@@ -114,7 +121,7 @@ function Capture-T5Observation($Case, [string]$Phase) {
         if ($entry.ParentFileId -cne $script:baselineParentFileId -or $entry.ParentReference -cne $script:baselineParentReference) {
             throw 'Raw sample parent FileId/reference differs from the independently captured baseline parent.'
         }
-        $imageSummaries = @(); $readerSummaries = @(); $observerReaderSummaries = @{}
+        $imageSummaries = @(); $readerSummaries = @(); $observerReaderSummaries = @()
         $allArtifactReadsOk = $true; $independentAgree = $true; $forbidden = $false; $nativeReaderCoverageOk = $true
         foreach ($leaf in $leaves) {
             $path = Join-Path $root $leaf; $image = Get-CurrentRawImage $sample $path
@@ -122,7 +129,9 @@ function Capture-T5Observation($Case, [string]$Phase) {
             try { $logical = Get-RawImageBytes $image } catch { $allArtifactReadsOk = $false; $imageError = $_.Exception.Message }
             $nativeReaders = @($sample.Readers | Where-Object { $_.Path -ieq $path })
             if ($image.Absent -eq $true) {
-                if ($direct.Status -cne 'ABSENT' -or $nativeReaders.Count -ne 0) { $independentAgree = $false }
+                # A raw-absent name the filter reports delete-pending must read as delete-pending to the buffered reader too.
+                $expectedDirect = if ($image.NamedLookup -ceq 'DELETE_PENDING') { 'DELETE_PENDING' } else { 'ABSENT' }
+                if ($direct.Status -cne $expectedDirect -or $nativeReaders.Count -ne 0) { $independentAgree = $false }
             } elseif ($image.Absent -eq $false -and $null -ne $logical) {
                 if ($direct.Status -cne 'OK' -or -not (Same $logical $direct.Bytes)) { $independentAgree = $false }
                 if ($Case.Sensitive -and $path -ieq $Case.Path -and $logical.Length -gt 0) { $forbidden = $true }
@@ -149,7 +158,7 @@ function Capture-T5Observation($Case, [string]$Phase) {
             } else { $independentAgree = $false }
             if ($direct.Status -eq 'ERROR') { $independentAgree = $false }
             $readerSummaries += [pscustomobject]@{ Path = $path; Status = $direct.Status; Length = $direct.Length; Sha256 = $direct.Sha256; Error = $direct.Error }
-            $imageSummaries += [pscustomobject]@{ Path = $path; Absent = [bool]$image.Absent; FileId = $(if ($image.Identity) { $image.Identity.FileId } else { $null });
+            $imageSummaries += [pscustomobject]@{ Path = $path; Absent = [bool]$image.Absent; NamedLookup = $image.NamedLookup; FileId = $(if ($image.Identity) { $image.Identity.FileId } else { $null });
                 Reference = $(if ($image.Identity) { $image.Identity.Reference } else { $null }); Length = $image.Length; Sha256 = $image.Sha256;
                 LogicalArtifact = $image.LogicalArtifact; FileNames = @($image.FileNames | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Namespace = $_.Namespace; Reference = $_.Reference; Parent = $_.Parent } }); Error = $imageError }
         }
@@ -1825,6 +1834,12 @@ try {
     $rawContext = Open-InvariantObserver ([StagedInvariant.Native]::ResolveGuid($root)) $root (Join-Path $out 'raw') 'T5'
     if ($rawContext.Status -cne 'OK') { throw ('Raw observer open failed: ' + ($rawContext.Error | ConvertTo-Json -Depth 12 -Compress)) }
     $rawContext | Add-Member -NotePropertyName NamedOpenAttributesOnly -NotePropertyValue $true
+    # m2t5ord6: the raw MFT/index copy lags NTFS's cache after the cases' deletes and recreates, and the probe gates sample
+    # names that are delete-pending in the filter's view. Both observer behaviours are opt-in for this row only.
+    $script:T5FlushVolume = @(Get-Volume -FilePath $root -ErrorAction Stop)
+    if ($script:T5FlushVolume.Count -ne 1 -or $script:T5FlushVolume[0].FileSystem -ine 'NTFS' -or $script:T5FlushVolume[0].DriveType -ine 'Fixed') { throw 'The raw flush requires the exact fixed NTFS volume.' }
+    $rawContext | Add-Member -NotePropertyName StaleMetadataFlush -NotePropertyValue { $script:T5FlushVolume[0] | Write-VolumeCache -ErrorAction Stop | Out-Null }
+    $rawContext | Add-Member -NotePropertyName DeletePendingAbsentByRawIndex -NotePropertyValue $true
     $observerProcess = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)
     $observerOwner = Invoke-CimMethod -InputObject $observerProcess -MethodName GetOwnerSid
     if ($observerOwner.ReturnValue -ne 0 -or $observerOwner.Sid -cne 'S-1-5-18' -or $rawContext.ObserverSid -cne 'S-1-5-18') { throw 'Raw observer is not the independent SYSTEM process.' }
@@ -1874,7 +1889,10 @@ try {
             ProbeControlSamples = 0; ProbeControlTargetAbsentThroughout = $false; FinalRawMatches = $false; Error = $null }
         try {
         $beforeJournal = Get-JournalFor $path
-        if (@($beforeJournal.ParseErrors).Count -gt 0 -or @($beforeJournal.SchemaErrors).Count -gt 0) { throw 'Pre-case journal parsing/schema validation failed; the case cannot bind a trustworthy baseline.' }
+        if (@($beforeJournal.ParseErrors).Count -gt 0 -or @($beforeJournal.SchemaErrors).Count -gt 0) {
+            $record.JournalParseErrors = @($beforeJournal.ParseErrors); $record.JournalSchemaErrors = @($beforeJournal.SchemaErrors)
+            throw 'Pre-case journal parsing/schema validation failed; the case cannot bind a trustworthy baseline.'
+        }
         $beforeIds = @($beforeJournal.Records | ForEach-Object { $_.TransferId })
         $beforeHandback = @(Get-ChildItem -LiteralPath $handback -Filter '*.txt' -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
         if($case.Workflow) { Invoke-T5Workflow $case $record $handback $beforeHandback; continue }
@@ -1956,7 +1974,8 @@ try {
             $names = @('test-create', 'test-close', 'save-create', 'save-write', 'save-close')
             $expectedCodes = @{ 'test-create' = 0; 'test-close' = 0; 'save-create' = 0; 'save-write' = 0; 'save-close' = 0 }
             if ($case.Op -cne 'probe-doc') { $names += 'test-delete'; $expectedCodes['test-delete'] = 0 }
-            else { $names += 'open-after-doc-flag'; $expectedCodes['open-after-doc-flag'] = 303 }
+            # The private view refuses with STATUS_DELETE_PENDING (T5-DELETES); Win32 reports it as 5, never 303 (m2t5ord6).
+            else { $names += @('open-after-doc-flag', 'open-after-doc-flag-nt'); $expectedCodes['open-after-doc-flag'] = 5; $expectedCodes['open-after-doc-flag-nt'] = -1073741738 }
             Test-NativeSteps $record $names $expectedCodes
             $probeOutcome = Get-T5EmptyProbeOutcome $newJournal $record.NativeStepsOk
             $record.ProbeEmptyPrivateOutcome = ($probeOutcome.Verified -and $probeOutcome.EmptyHeldRecords.Count -eq 0)
@@ -1973,10 +1992,11 @@ try {
             # A published probe is an ordinary public-delete case, never an EmptyHeld/private outcome.
             $record.ProbeDiscarded = $record.ProbeEmptyPrivateOutcome
         } elseif ($case.Op -ceq 'probe-onclose') {
-            $names = @('first-create','second-open','first-on-close-delete','open-after-first-flag','second-on-close-delete',
-                'first-on-close-clear','open-after-first-clear','second-on-close-clear','open-after-both-clear','save-write','save-close','first-close','second-close')
-            $expectedCodes = @{ 'first-create' = 0; 'second-open' = 0; 'first-on-close-delete' = 0; 'open-after-first-flag' = 303;
-                'second-on-close-delete' = 0; 'first-on-close-clear' = 0; 'open-after-first-clear' = 303; 'second-on-close-clear' = 0;
+            $names = @('first-create','second-open','first-on-close-delete','open-after-first-flag','open-after-first-flag-nt','second-on-close-delete',
+                'first-on-close-clear','open-after-first-clear','open-after-first-clear-nt','second-on-close-clear','open-after-both-clear','save-write','save-close','first-close','second-close')
+            # STATUS_DELETE_PENDING (0xC0000056) as a signed Int32, reported by Win32 as 5.
+            $expectedCodes = @{ 'first-create' = 0; 'second-open' = 0; 'first-on-close-delete' = 0; 'open-after-first-flag' = 5; 'open-after-first-flag-nt' = -1073741738;
+                'second-on-close-delete' = 0; 'first-on-close-clear' = 0; 'open-after-first-clear' = 5; 'open-after-first-clear-nt' = -1073741738; 'second-on-close-clear' = 0;
                 'open-after-both-clear' = 0; 'save-write' = 0; 'save-close' = 0; 'first-close' = 0; 'second-close' = 0 }
             Test-NativeSteps $record $names $expectedCodes
         }

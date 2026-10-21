@@ -77,7 +77,7 @@ DELETE-authorized handle can clear it, as verified on real NTFS both before and 
 do not invent a per-handle ordinary-delete guarantee. FILE_DELETE_ON_CLOSE and supported FILE_DISPOSITION_ON_CLOSE state remain
 per handle. Preserve the existing private-view admission contract: scheduled on-close requests contribute to its aggregate pending
 state, and new private opens/renames receive STATUS_DELETE_PENDING until the requests are cleared or the version is retired. The
-existing probe-doc and probe-onclose assertions, including Win32 303 before private cleanup, stay unchanged. This existing private
+existing probe-doc and probe-onclose assertions, including STATUS_DELETE_PENDING before private cleanup, stay unchanged (Win32 reports that status as 5 on the target build, as the native control shows; the harness's earlier Win32 303 expectation was never observed and was corrected to the exact NTSTATUS after `m2t5ord6`). This existing private
 contract is stricter than the native public-file CREATE delete-on-close control, which allowed opens before creator cleanup and
 became pending afterward; that native timing governs the new public backend in section 4, not a waiver of private-row assertions.
 Cleanup folds an effective on-close request into persistent disposition; last-cleanup admission and
