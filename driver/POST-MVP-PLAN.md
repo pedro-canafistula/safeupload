@@ -10,10 +10,10 @@ Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](do
 |---|---|---|
 | M1 | T0–T3: safe to leave loaded | Complete on the recorded M1 pair |
 | **M2** | **T4–T11: everyday file work** | **Active; T4 closed for now (owner, 2026-10-21) on isolation rows with carried items; T5–T11 next** |
-| M3 | T12, T14: release configuration and lifecycle | After M2 |
-| T21 | USB/removable | After M3; own design, owner decisions, Sol 6.1 high design review and destination qualification |
-| T22 | SMB/UNC | After T21; own design, owner decisions, Sol 6.1 high design review and destination qualification |
-| T23 | Cloud-sync folders | After T22; own design, owner decisions, Sol 6.1 high design review and real-client qualification |
+| T21 | USB/removable | After M2, before M3 (owner, 2026-10-21); own design, owner decisions, Sol 6.1 high design review and destination qualification |
+| T22 | SMB/UNC | After T21, before M3 (owner, 2026-10-21); own design, owner decisions, Sol 6.1 high design review and destination qualification |
+| M3 | T12, T14: release configuration and lifecycle | After T22 |
+| T23 | Cloud-sync folders | After M3; own design, owner decisions, Sol 6.1 high design review and real-client qualification |
 | M4 | T15–T19: combined qualification | Qualify local NTFS and T21–T23 together |
 | Later | T20 other Windows builds; T24 ReFS | Outside the current milestone sequence |
 | Owner-deferred | T13 production signing/Secure Boot | Test mode remains in force |
@@ -22,6 +22,12 @@ USB, SMB/UNC and cloud-sync are required MVP work; they are no longer deferred u
 respective support and qualification gates are met and the owner approves cutover.
 
 ## Owner decisions
+
+**2026-10-21 (order) — T21 and T22 before M3.** Owner, in the session: "I want them done before M3." The order is now M2 → T21 (USB/removable)
+→ T22 (SMB/UNC) → M3 → T23 → M4; T23 keeps its place after M3. Gates, scope and the "do not implement in M2" rule for T21 are unchanged.
+Consequences: both accepted designs build on the T5 bound-head profile and on service-independent mandatory teardown, so the items the T5
+plan (D1, D3) moved after M2 become T21/T22 prerequisites; T21 needs owner decisions D1–D8 and T22 needs D16 before implementation; the
+release configuration and install/upgrade qualification (M3) come later.
 
 **2026-10-21 (lab images) — reproducible lab VMs for colleagues; Terraform adopted for their hosts.** Owner, in the session: asked for images of the
 lab VMs so colleagues can replicate the Windows build, preferably with Terraform and Ansible, with personal information and cached sessions removed, from a clean
@@ -780,7 +786,7 @@ Latest [integration evidence](evidence/2026-10-17/m2-integration-status.md) dist
 - [ ] T11: close every M2 review condition against the final matched pair, then obtain one adversarial review of the working milestone.
 
 
-## M3 — after M2
+## M3 — after T21 and T22 (owner, 2026-10-21)
 
 ### T12. Release configuration
 
@@ -798,7 +804,7 @@ Latest [integration evidence](evidence/2026-10-17/m2-integration-status.md) dist
 - [ ] Qualify INF/boot-policy seeding/reboot, protocol negotiation and old/new version combinations.
 - [ ] Qualify uninstall and residue removal; apply the reviewed voluntary/mandatory teardown policy.
 
-## New destinations — after M3, before M4
+## New destinations — T21 and T22 after M2 and before M3; T23 after M3, before M4
 
 ### T21. USB and removable media
 
