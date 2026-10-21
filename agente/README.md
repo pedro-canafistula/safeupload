@@ -1,5 +1,9 @@
 # SafeUpload — Agente Desktop
 
+O candidato de instalador Windows, com serviço, interface e runtime próprio, está documentado em
+[`installer/README.md`](installer/README.md). Ele preserva o script técnico de minifiltro descrito abaixo;
+instalação com driver e reinicialização ainda exigem validação em VM.
+
 Componente instalado no endpoint do usuário: intercepta operações de
 arquivo, decide localmente (CPF, CNPJ, cartão, senha, segredos), e — quando
 configurado — sincroniza política e auditoria com o Centro de
@@ -167,25 +171,32 @@ Por padrão, o agente é **autônomo**: lê a política de
 
 o agente passa a:
 
-- **Buscar a política do painel** (`GET /agent/policy`) em vez do arquivo
-  local — mesmo formato JSON nos dois casos, então trocar a fonte não muda
-  nada no motor de inspeção. Se o painel estiver fora do ar, cai
-  automaticamente na política padrão embutida (fail-open, RN-013) — nunca
-  fica sem proteção por causa de uma falha de rede.
+- **Buscar a política do painel** (`GET /agent/policy?endpointId=...`) em
+  segundo plano. O motor usa o último snapshot validado; o cache protegido
+  `server-policy-cache.json` permite reutilizar a última política válida
+  após reiniciar offline. A política padrão é o fallback quando não há
+  versão remota ou cache válido.
 - **Mandar heartbeat periódico** (`POST /agent/heartbeat`) — aparece em
   `/admin/endpoints` no painel.
-- **Entregar os eventos de auditoria pendentes** (`POST /agent/events`) — a
-  fila local continua sendo a fonte da verdade; o envio é só uma etapa a
-  mais, nunca bloqueia a decisão.
+- **Entregar eventos e justificativas pendentes** (`POST /agent/events`) —
+  a fila local continua sendo a fonte da verdade; a decisão não espera a
+  rede. O lote leva host e versão do agente, sem trechos inspecionados nem
+  bytes do arquivo. A confirmação exige as duas contagens completas.
 
 Sem `BaseUrl` configurado, nada disso roda — é o padrão de segurança do
 projeto (ver `Interception:Mode` acima, mesma filosofia).
 
-**Limitações conhecidas desta integração**, deliberadas: sem cache de
-política em disco (cada consulta é uma chamada de rede), sem autenticação
-entre agente e servidor, sem despacho de justificativas/overrides (só
-eventos de bloqueio/aprovação), identidade do endpoint é o hostname
-(`Environment.MachineName`, não um id estável).
+Essas são as rotas consumidas pelo agente; o aceite e a persistência na API
+Java atual precisam ser validados com Thiago. Consulte o
+[contrato de auditoria](../docs/CONTRATO-AUDITORIA-AGENTE.md) para os campos,
+deduplicação, privacidade e critérios de teste conjunto.
+
+**Limitações conhecidas:** sem autenticação entre agente e servidor,
+identidade do endpoint baseada no hostname (`Environment.MachineName`,
+sem identificador persistente), sem retenção/compactação da fila. A entrega
+é pelo menos uma vez e exige deduplicação no backend. O instalador deixa
+URL vazia para uso local, mesmo que as configurações de desenvolvimento
+apontem para loopback.
 
 ---
 

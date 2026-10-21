@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -29,9 +30,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
 
     private static readonly JsonSerializerOptions SendOptions = new()
     {
-        // Mesmas opções que a LocalQueueAuditSink usa para gravar o
-        // queue.jsonl: o corpo do POST é o mesmo objeto, no mesmo formato que o
-        // Centro de Administração já espera receber.
+        // Preserva os nomes e enums do contrato, com projeção explícita de saída.
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Converters = { new JsonStringEnumConverter() }
     };
@@ -149,7 +148,9 @@ public sealed class HttpAgentDispatcher : BackgroundService
             return;
         }
 
-        var payload = new SubmitEventsRequest(pending, overrides);
+        var payload = new AgentAuditPayload(1, Environment.MachineName, AgentVersion,
+            pending.Select(AgentAuditEvent.FromLocal).ToArray(),
+            overrides.Select(AgentAuditOverride.FromLocal).ToArray());
 
         using var response = await _client
             .PostAsJsonAsync("events", payload, SendOptions, cancellationToken)
@@ -191,11 +192,12 @@ public sealed class HttpAgentDispatcher : BackgroundService
     }
 
     /// <summary>
-    /// Versão informada no heartbeat. Constante por enquanto: o agente ainda não
-    /// carrega versão de assembly própria, e inventar uma leitura de metadado
-    /// aqui esconderia que este número não é mantido em lugar nenhum ainda.
+    /// Versão do assembly do serviço, preenchida por -p:Version no instalador.
     /// </summary>
-    private const string AgentVersion = "1.0.0";
+    private static readonly string AgentVersion = typeof(HttpAgentDispatcher).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? typeof(HttpAgentDispatcher).Assembly.GetName().Version?.ToString()
+        ?? "unknown";
 
     private sealed record HeartbeatRequest(
         string EndpointId,
@@ -204,12 +206,6 @@ public sealed class HttpAgentDispatcher : BackgroundService
         string AgentVersion,
         int PolicyVersion);
 
-    /// <summary>
-    /// O corpo já aceito por POST /agent/events, incluindo justificativas pendentes.
-    /// </summary>
-    private sealed record SubmitEventsRequest(
-        IReadOnlyList<AuditEvent> Events,
-        IReadOnlyList<AuditOverride> Overrides);
-
-    private sealed record SubmitResponse(int AcceptedEvents, int AcceptedOverrides);
+    // Missing counts must not become zero and acknowledge an override-only batch.
+    private sealed record SubmitResponse(int? AcceptedEvents, int? AcceptedOverrides);
 }
