@@ -23,6 +23,14 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-21 (M2 scope) — five items postponed out of M2.** Owner, in the session: "Ok, I agree with the suggested postponements."
+(1) T6 directory moves into protection → after M2; meanwhile such a move is refused, while folder copies and single-file moves work (the
+existing MVP limit). (2) `.7z` inspection → after M2; `.7z` files saved into protection stay blocked as uninspectable. (3) T9 cold/warm
+throughput and latency measurement → M4; hostile-input peak-memory and capture/storage/parser bounds stay M2 requirements. (4) T11 journal
+packing/compaction beyond what the protected 10k workload needs → after M2 (as the 2026-10-17 rule); crash recovery and its barriers stay.
+(5) The T5 D1–D6 namespace edge-case matrix beyond the everyday cases (D3 above) → M4. Not postponed: raw-volume byte proof, the three
+Verifier modes, the T9 budget fixes, the T8 metadata/MOTW contract and the final adversarial review. No gate or assertion changes.
+
 **2026-10-21 (order) — T21 and T22 before M3.** Owner, in the session: "I want them done before M3." The order is now M2 → T21 (USB/removable)
 → T22 (SMB/UNC) → M3 → T23 → M4; T23 keeps its place after M3. Gates, scope and the "do not implement in M2" rule for T21 are unchanged.
 Consequences: both accepted designs build on the T5 bound-head profile and on service-independent mandatory teardown, so the items the T5
@@ -692,7 +700,7 @@ and never publish uninspected bytes; C05 reflects inspection rather than blanket
 
 - [x] Copy fallback via STATUS_NOT_SAME_DEVICE (`baec933f`); runtime row `m2t6rv4` passed 28/28 on its component pair.
 - [ ] Rerun ordinary, runtime and boot-Verifier on the final pair, including empty files and real Explorer drag.
-- [ ] Directory moves (owner 2026-10-16: like copies; idle renames inside protection): design note (RCA `driver/evidence/2026-10-16/t6-dirmove-rca-sol61.md`),
+- [ ] Directory moves (owner 2026-10-16: like copies; idle renames inside protection; **postponed after M2**, owner 2026-10-21): design note (RCA `driver/evidence/2026-10-16/t6-dirmove-rca-sol61.md`),
   review, implementation, native caller traces, then D-rows in all three modes. The small unbound MVP [directory UX change](docs/design/publication-and-namespace/UX-DIRECTORIES.md) has local controls and Sol 6.1 xhigh acceptance with conditions; WDK/native three-mode qualification remains open.
   - [x] Design `driver/T6-DIRECTORY-MOVES.md` (`wt/t6-dirs` `82da3a06`): [review](evidence/2026-10-16/t6-design-review-sol61.md) REVISE, then
     [re-review](evidence/2026-10-16/t6-design-rereview-sol61.md) **ACCEPT WITH CONDITIONS** (idle census proof, lock/rundown rules, checked
@@ -723,7 +731,7 @@ the publishing application can reopen the file and agreed metadata is preserved.
   ZIP inspection and the default monitored extensions (agent and backend) `5c9bb10b`/`9561825a` merged, matrix
   [`t9-archives2`](evidence/2026-10-16/exact-agent-matrix-t9-archives2-summary.txt) ExactAgentMatrixGate=PASS (2,360 user + 25 SYSTEM; `t9-archives1`
   failed on an obsolete `.zip` test example, receipt kept). `.7z` is refused (`archive_7z_unavailable`): SharpCompress was rejected
-  for unbounded header/dictionary allocation ([assessment](../agente/docs/T9-ARCHIVE-INSPECTION.md)); owner choice pending.
+  for unbounded header/dictionary allocation ([assessment](../agente/docs/T9-ARCHIVE-INSPECTION.md)); `.7z` support is **postponed after M2** (owner 2026-10-21) and stays refused.
 - [ ] Implement and test the metadata contract decided 2026-10-16 (native owner/DACL/SACL/label, timestamps, attributes; Zone.Identifier
   carried with its file; other ADS, EAs, EFS, offline, reparse points and hard links refused).
   - [ ] Unbound `ux/meta` [basic metadata increment](docs/design/metadata/UX-METADATA.md): exact sealed dates/ordinary attributes and unsupported-storage checks;
@@ -752,7 +760,7 @@ Owner-approved runtime budget/default formulas are in Owner decisions. Bounded s
   - [ ] Include Office auxiliary/drawing/chart/VML/external/member payloads and PDF fields/annotations/metadata; inspect completely or refuse.
   - [ ] Keep corrupt/encrypted/password-protected/unsupported/incomplete content blocked; images remain refused except the exact approved thumbnail.
 - [ ] T9: qualify policy-load/snapshot/parser/extraction-limit/timeout/disk-full failures, actionable UI, exact hand-back/digest and policy-bound justification.
-- [ ] T9: measure cold/warm end-to-end throughput/latency and hostile-input process peak memory, including publisher and concurrent/seed UX.
+- [ ] T9: measure cold/warm end-to-end throughput/latency (**postponed to M4**, owner 2026-10-21) and hostile-input process peak memory (M2), including publisher and concurrent/seed UX.
   Prior single warm scanner measurements do not close these gates.
 - [ ] T9: pass large clean/EOF-CPF and failure rows on the matched protected pair, with independent bytes, Verifier and separate restoration.
 
@@ -781,7 +789,7 @@ Latest [integration evidence](evidence/2026-10-17/m2-integration-status.md) dist
 
 - [x] T11: nested sealed-stage guard (`203d31e9`), serial generation arithmetic (`b8394357`), cache eviction (`cb1d0930`) and bounded index/closure controls implemented.
 - [ ] T11: qualify SOP startup/lifetime and exact context retirement on the final pair; the integrated pre-boot review is accepted with runtime conditions.
-- [ ] T11: finish/qualify journal packing/compaction and crash recovery without losing full-identity generation barriers, unresolved cleanup, live-epoch replay or ancestry obligations.
+- [ ] T11: finish/qualify journal packing/compaction (beyond the 10k workload's needs **postponed after M2**, owner 2026-10-21) and crash recovery without losing full-identity generation barriers, unresolved cleanup, live-epoch replay or ancestry obligations.
 - [ ] T11: prove bounded hot-set/end-to-end behavior through the protected 10k workload; component index timings do not close durable I/O scaling.
 - [ ] T11: close every M2 review condition against the final matched pair, then obtain one adversarial review of the working milestone.
 
