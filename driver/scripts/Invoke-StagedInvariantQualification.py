@@ -24,6 +24,7 @@ import math
 import os
 import re
 import shutil
+import struct
 import subprocess
 import tempfile
 import zipfile
@@ -426,6 +427,31 @@ def validate_raw_artifacts(destination, guest_root, required=('raw',)):
                     'Copied raw artifact hash/length mismatch')
 
 
+ARCHIVE_FRAME_MAGIC = 0x414A5553  # 'SUJA', StagedTerminalArchive.cs frame v1
+ARCHIVE_FRAME_HEADER = 60
+
+
+def archive_payload_matches(container, record):
+    # A derived record presents one archived transfer under its logical identity while Artifact stays the whole
+    # retained pack. Decode the frame inside the verified container: header magic/version, the payload length and
+    # the header's SHA-256 must equal the record, and the retained bytes (when present) must equal the payload.
+    offset = record.get('FrameOffset')
+    if type(offset) is not int or offset < 4096 or offset + ARCHIVE_FRAME_HEADER > len(container):
+        return False
+    magic, version, length = struct.unpack_from('<Iii', container, offset)
+    if magic != ARCHIVE_FRAME_MAGIC or version != 1 or length <= 0 or length > 131072 or \
+            offset + ARCHIVE_FRAME_HEADER + length > len(container) or record.get('Length') != length:
+        return False
+    payload = container[offset + ARCHIVE_FRAME_HEADER:offset + ARCHIVE_FRAME_HEADER + length]
+    digest = hashlib.sha256(payload).digest()
+    if digest != container[offset + 28:offset + ARCHIVE_FRAME_HEADER] or digest.hex().upper() != str(record.get('Sha256')).upper():
+        return False
+    if 'Bytes' in record and not (isinstance(record['Bytes'], list) and
+                                  all(type(b) is int and 0 <= b <= 255 for b in record['Bytes']) and bytes(record['Bytes']) == payload):
+        return False
+    return True
+
+
 def validate_service_artifacts(result, destination, guest_root):
     for trial in result.get('Trials', []):
         for snapshot in [trial.get('ServiceBefore') or {}, trial.get('ServiceAfter') or {},
@@ -434,13 +460,22 @@ def validate_service_artifacts(result, destination, guest_root):
                           if (trial.get('DuplicateSetup') or {}).get('PhysicalObjectArtifact') else []},
                          {'Journal': [r['Terminal']['Record'] for r in (trial.get('DedicatedLatency') or {}).get('Rounds', [])
                                       if r.get('Terminal') and r['Terminal'].get('Record')]}]:
-            records = list(snapshot.get('Journal', [])) + list((snapshot.get('Notifications') or {}).get('Artifacts', []))
+            # JournalStorage holds the physical files (completed packs, inventory, epoch sidecar): each is a whole-file record.
+            physical = list(snapshot.get('JournalStorage') or [])
+            physical_paths = {entry['Artifact'] for entry in physical}
+            records = list(snapshot.get('Journal', [])) + physical + list((snapshot.get('Notifications') or {}).get('Artifacts', []))
             for record in records:
                 path = record['Artifact']
                 require(path.startswith(guest_root), 'Service evidence outside owned guest evidence root')
                 relative = path[len(guest_root):].replace('\\', '/')
                 require('..' not in relative.split('/') and not relative.startswith('/'), 'Invalid service artifact path')
                 artifact = destination / relative
+                if 'FrameOffset' in record:
+                    require(path in physical_paths and 'PhysicalPath' in record,
+                            'Archived payload has no retained physical container')
+                    require(archive_payload_matches(artifact.read_bytes(), record),
+                            'Archived payload differs from its retained container frame')
+                    continue
                 require(artifact.stat().st_size == record['Length'] and sha(artifact) == record['Sha256'],
                         'Copied authenticated service evidence hash/length mismatch')
                 if 'Bytes' in record:
