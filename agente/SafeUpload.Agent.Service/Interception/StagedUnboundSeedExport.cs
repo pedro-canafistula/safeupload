@@ -96,7 +96,10 @@ internal sealed class StagedSeedReadAuthorityEvaluator : IStagedSeedReadAuthorit
                     // unfiltered primary is the supported affirmative envelope.
                     // Traversal must be independently satisfied: file-only
                     // AccessCheck cannot prove denied ancestor traversal.
-                    return ExportEnvelopePermitsProof(descriptor, identity.User!, tokenIntegrity,
+                    // Read access that Windows grants through a group (Users,
+                    // Authenticated Users, ...) counts: the account could already
+                    // read and copy those bytes (owner decision 2026-10-21, option A).
+                    return ExportEnvelopePermitsProof(tokenIntegrity,
                         ReadTokenInteger(primary, 18), ReadTokenInteger(primary, 20), ReadTokenInteger(primary, 21),
                         HasTraversalBypass(primary)) ? StagedSeedAuthority.Allowed : StagedSeedAuthority.Unproven;
                 }
@@ -105,10 +108,9 @@ internal sealed class StagedSeedReadAuthorityEvaluator : IStagedSeedReadAuthorit
         }
     }
 
-    internal static bool ExportEnvelopePermitsProof(RawSecurityDescriptor descriptor, SecurityIdentifier account,
+    internal static bool ExportEnvelopePermitsProof(
         int integrity, int elevationType, int elevated, int restrictions, bool traversalBypass) =>
-        integrity == 0x2000 && elevationType == 1 && elevated == 0 && restrictions == 0 && traversalBypass &&
-        AccountGrantPermitsExport(descriptor, account);
+        integrity == 0x2000 && elevationType == 1 && elevated == 0 && restrictions == 0 && traversalBypass;
 
     internal static StagedSeedAuthority CheckReadData(IntPtr descriptor, SafeAccessTokenHandle subject)
     {
@@ -122,24 +124,6 @@ internal sealed class StagedSeedReadAuthorityEvaluator : IStagedSeedReadAuthorit
             return allowed && (granted & 1) != 0 ? StagedSeedAuthority.Allowed : StagedSeedAuthority.Denied;
         }
         finally { Marshal.FreeHGlobal(privileges); }
-    }
-
-    private static bool AccountGrantPermitsExport(RawSecurityDescriptor descriptor, SecurityIdentifier account)
-    {
-        // The copier grants the account SID, not a logon/group SID. Do not turn
-        // a group-only grant or a token-specific absence of a deny group into a
-        // broader account grant on the returned file. Null DACL allows everyone.
-        if (descriptor.DiscretionaryAcl is not { } dacl) return true;
-        bool granted = false;
-        foreach (GenericAce ace in dacl)
-        {
-            if ((ace.AceFlags & AceFlags.InheritOnly) != 0) continue;
-            if (ace is not KnownAce known) return false;
-            if ((known.AccessMask & 1) == 0) continue;
-            if ((byte)ace.AceType == 1) return false;
-            if ((byte)ace.AceType == 0 && known.SecurityIdentifier == account) granted = true;
-        }
-        return granted;
     }
 
     internal static bool LabelPermitsProof(RawSecurityDescriptor descriptor, int tokenIntegrity)

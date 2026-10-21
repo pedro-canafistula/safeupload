@@ -128,3 +128,12 @@ LocalCompile feature-release App PASS
 LocalCompile feature-release Tests PASS
 LocalAgentCompile=PASS
 ```
+
+## Update 2026-10-21 (orchestrator): owner chose option A for group-granted read access
+
+The worker's first version also required a direct read ACE for the account SID (`AccountGrantPermitsExport`), so read access held only through a group
+(`Users`, `Authenticated Users`, `Everyone`) stayed `Unproven`. The owner chose **option A**: the verdict is the real process-primary token's `AccessCheck`
+for FILE_READ_DATA on the held source's descriptor, plus the unchanged envelope (medium integrity, default elevation, unrestricted token, traversal privilege,
+label proof, PID/creation-time/SID/session match and recipient match). The direct-ACE rule and its two tests were removed; `Native_AccessCheck_read_data_...`
+now also covers group-only allow (`WD`, `AU`), an applicable group deny, and a grant only to another SID. Statements above about "direct effective account-SID
+read grant" and `Export_envelope_does_not_broaden_group_only_or_deny_conditional_read_grants` describe the superseded first version.

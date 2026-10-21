@@ -54,16 +54,23 @@ public sealed class StagedSeedReadAuthorityNativeTests
         finally { Marshal.FreeHGlobal(buffer); }
     }
 
+    // Owner decision 2026-10-21 (option A): read access Windows grants through a group counts as read authority, so the
+    // verdict is the real token's AccessCheck on the descriptor: own SID or a group the token holds (Everyone, Authenticated
+    // Users) allow; any applicable deny, or a grant only to some other SID, does not.
     [Theory]
-    [InlineData(false, StagedSeedAuthority.Allowed)]
-    [InlineData(true, StagedSeedAuthority.Denied)]
-    public void Native_AccessCheck_read_data_uses_the_supplied_token_and_descriptor(bool deny, StagedSeedAuthority expected)
+    [InlineData("(A;;0x1;;;{sid})", StagedSeedAuthority.Allowed)]
+    [InlineData("(A;;0x1;;;WD)", StagedSeedAuthority.Allowed)]
+    [InlineData("(A;;0x1;;;AU)", StagedSeedAuthority.Allowed)]
+    [InlineData("(D;;0x1;;;{sid})(A;;0x1;;;{sid})", StagedSeedAuthority.Denied)]
+    [InlineData("(D;;0x1;;;WD)(A;;0x1;;;{sid})", StagedSeedAuthority.Denied)]
+    [InlineData("(A;;0x1;;;S-1-5-21-111-222-333-1000)", StagedSeedAuthority.Denied)]
+    [InlineData("(A;;0x2;;;WD)", StagedSeedAuthority.Denied)]
+    public void Native_AccessCheck_read_data_uses_the_supplied_token_and_descriptor(string dacl, StagedSeedAuthority expected)
     {
         if (!OperatingSystem.IsWindows()) return;
         using var identity = WindowsIdentity.GetCurrent();
         string sid = identity.User!.Value;
-        var descriptor = new RawSecurityDescriptor("O:SYG:SYD:" +
-            (deny ? $"(D;;0x1;;;{sid})" : "") + $"(A;;0x1;;;{sid})");
+        var descriptor = new RawSecurityDescriptor("O:SYG:SYD:" + dacl.Replace("{sid}", sid));
         byte[] bytes = new byte[descriptor.BinaryLength]; descriptor.GetBinaryForm(bytes, 0);
         Assert.True(DuplicateToken(identity.AccessToken, 2, out var subject));
         using (subject)
@@ -86,24 +93,8 @@ public sealed class StagedSeedReadAuthorityNativeTests
     public void Export_envelope_keeps_unsupported_primary_subjects_unproven(
         int integrity, int elevationType, int elevated, int restrictions, bool traverse, bool expected)
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var sid = new SecurityIdentifier("S-1-5-21-111-222-333-1000");
-        var descriptor = new RawSecurityDescriptor($"O:SYG:SYD:(A;;0x1;;;{sid.Value})");
         Assert.Equal(expected, StagedSeedReadAuthorityEvaluator.ExportEnvelopePermitsProof(
-            descriptor, sid, integrity, elevationType, elevated, restrictions, traverse));
-    }
-
-    [Theory]
-    [InlineData("(A;;0x1;;;S-1-5-21-111-222-333-1000)", true)]
-    [InlineData("(A;;0x1;;;BU)", false)]
-    [InlineData("(D;;0x1;;;BA)(A;;0x1;;;S-1-5-21-111-222-333-1000)", false)]
-    [InlineData("(A;IO;0x1;;;S-1-5-21-111-222-333-1000)", false)]
-    public void Export_envelope_does_not_broaden_group_only_or_deny_conditional_read_grants(string dacl, bool expected)
-    {
-        if (!OperatingSystem.IsWindows()) return;
-        var sid = new SecurityIdentifier("S-1-5-21-111-222-333-1000");
-        Assert.Equal(expected, StagedSeedReadAuthorityEvaluator.ExportEnvelopePermitsProof(
-            new RawSecurityDescriptor("O:SYG:SYD:" + dacl), sid, 0x2000, 1, 0, 0, true));
+            integrity, elevationType, elevated, restrictions, traverse));
     }
 
     private static StagedTransfer CurrentRequestor(string path)

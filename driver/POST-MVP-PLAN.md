@@ -31,6 +31,9 @@ ordinary, runtime-Verifier and boot-Verifier modes; Explorer cases drive the she
 owner's hands-on Notepad/Word/Explorer test covers the UI gap. (D3) Carried to the final M2 pair: service-independent unload/teardown
 qualification, the Word rows (with T8), and the `T5-UX-NAMESPACE-GAP.md` D1–D6 edge-case matrix beyond the everyday subset. The row runs on
 the T4 pair (`d1068cc3` + `586ae7cb`) with product defaults (staging budget on); no gate, threshold or assertion changes.
+(D1 follow-up, owner 2026-10-21, option A) The unreadable-seed check on the shipped path accepts read access Windows grants through a group: the verdict is the
+process-primary token's AccessCheck on the held source plus the medium-integrity / unelevated / unrestricted / recipient checks; a writer without proved read access still
+gets no hand-back of the old bytes. The stricter direct-account-ACE rule was dropped.
 
 **2026-10-21 (later) — T4 pool endpoint band 128 KiB, future rows only.** Owner, in the session: "Ok I choose 2, but only to future
 rows" (option 2 of the [endpoint analysis](evidence/2026-10-20/t4-checkpoint.md#endpoint-decision--2026-10-21)). The after-idle endpoint
