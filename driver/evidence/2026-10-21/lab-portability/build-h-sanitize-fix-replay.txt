@@ -1,0 +1,5 @@
+TASK Remove the cached unattend files that setup leaves behind (they held the build password) exit 0
+CACHED_ANSWER_FILES_REMOVED=True
+TASK Verify nothing secret remains (fails the build otherwise) exit 0
+CONTENT_SCAN_FILES=49
+SANITIZE_VERIFIED=True

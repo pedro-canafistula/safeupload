@@ -1,0 +1,231 @@
+data.external.qemu_identity: Reading...
+random_password.admin: Refreshing state... [id=none]
+data.external.qemu_identity: Read complete after 0s [id=-]
+libvirt_pool.lab: Refreshing state... [id=08f7001b-6d93-47c0-9cac-25344e004bfa]
+libvirt_volume.base: Refreshing state... [id=/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/safeupload-debuggee-base.qcow2]
+libvirt_cloudinit_disk.seed: Refreshing state... [id=/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/su-lab-hvhost1021k-seed.iso;867a6c64-5d37-4f63-8e84-9ac690a902db]
+libvirt_volume.disk: Refreshing state... [id=/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/su-lab-hvhost1021k.qcow2]
+libvirt_domain.debuggee: Refreshing state... [id=7efaa71c-46b5-43c0-8ddc-5ec0d73ceff2]
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  - destroy
+
+Terraform will perform the following actions:
+
+  # libvirt_cloudinit_disk.seed will be destroyed
+  - resource "libvirt_cloudinit_disk" "seed" {
+      - id             = "/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/su-lab-hvhost1021k-seed.iso;867a6c64-5d37-4f63-8e84-9ac690a902db" -> null
+      - meta_data      = jsonencode(
+            {
+              - instance-id    = "su-lab-hvhost1021k"
+              - local-hostname = "SU-LAB-HVHOST"
+            }
+        ) -> null
+      - name           = "su-lab-hvhost1021k-seed.iso" -> null
+      - pool           = "su-lab-hvhost1021k" -> null
+      - user_data      = (sensitive value) -> null
+        # (1 unchanged attribute hidden)
+    }
+
+  # libvirt_domain.debuggee will be destroyed
+  - resource "libvirt_domain" "debuggee" {
+      - arch        = "x86_64" -> null
+      - autostart   = false -> null
+      - cloudinit   = "/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/su-lab-hvhost1021k-seed.iso;867a6c64-5d37-4f63-8e84-9ac690a902db" -> null
+      - cmdline     = [] -> null
+      - emulator    = "/usr/bin/qemu-system-x86_64" -> null
+      - firmware    = "/usr/share/edk2/x64/OVMF_CODE.4m.fd" -> null
+      - fw_cfg_name = "opt/com.coreos/config" -> null
+      - id          = "7efaa71c-46b5-43c0-8ddc-5ec0d73ceff2" -> null
+      - machine     = "q35" -> null
+      - memory      = 6144 -> null
+      - name        = "su-lab-hvhost1021k" -> null
+      - qemu_agent  = false -> null
+      - running     = true -> null
+      - type        = "kvm" -> null
+      - vcpu        = 4 -> null
+        # (3 unchanged attributes hidden)
+
+      - cpu {
+          - mode = "host-passthrough" -> null
+        }
+
+      - disk {
+          - scsi         = false -> null
+          - volume_id    = "/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/su-lab-hvhost1021k.qcow2" -> null
+            # (4 unchanged attributes hidden)
+        }
+
+      - graphics {
+          - autoport       = true -> null
+          - listen_address = "127.0.0.1" -> null
+          - listen_type    = "address" -> null
+          - type           = "spice" -> null
+          - websocket      = 0 -> null
+        }
+
+      - network_interface {
+          - addresses      = [] -> null
+          - mac            = "52:54:00:1E:1A:2F" -> null
+          - network_id     = "9425f21c-7e4d-455c-bd70-aca5a9bd768a" -> null
+          - network_name   = "default" -> null
+          - wait_for_lease = false -> null
+            # (6 unchanged attributes hidden)
+        }
+
+      - nvram {
+          - file     = "/var/lib/libvirt/qemu/nvram/su-lab-hvhost1021k_VARS.fd" -> null
+          - template = "/usr/share/edk2/x64/OVMF_VARS.4m.fd" -> null
+        }
+
+      - xml {
+          - xslt = <<-EOT
+                <?xml version="1.0"?>
+                <!-- Hardware tweaks the libvirt provider cannot express: e1000e NIC and a standard VGA adapter, because the lab image
+                     ships no NetKVM or display driver (win10-debug3 uses the same two devices). -->
+                <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+                  <xsl:output method="xml" indent="yes"/>
+                
+                  <xsl:template match="@*|node()">
+                    <xsl:copy><xsl:apply-templates select="@*|node()"/></xsl:copy>
+                  </xsl:template>
+                
+                  <xsl:template match="interface[@type='network']/model"/>
+                  <xsl:template match="interface[@type='network']">
+                    <xsl:copy>
+                      <xsl:apply-templates select="@*|node()"/>
+                      <model type="e1000e"/>
+                    </xsl:copy>
+                  </xsl:template>
+                
+                  <xsl:template match="devices/video"/>
+                  <!-- The pinned provider attaches cloudinit media as IDE. Q35 uses SATA/AHCI for optical media. -->
+                  <xsl:template match="devices/controller[@type='ide']"/>
+                  <xsl:template match="devices/disk[@device='cdrom']/address"/>
+                  <xsl:template match="devices/disk[@device='cdrom']/target">
+                    <target dev="sda" bus="sata"/>
+                  </xsl:template>
+                  <xsl:template match="devices">
+                    <xsl:copy>
+                      <xsl:apply-templates select="@*|node()"/>
+                      <video><model type="vga" vram="16384" heads="1" primary="yes"/></video>
+                    </xsl:copy>
+                  </xsl:template>
+                
+                  <!-- Windows client supports at most two sockets; expose all vCPUs as cores in one socket. -->
+                  <xsl:template match="cpu/topology"/>
+                  <xsl:template match="cpu">
+                    <xsl:copy>
+                      <xsl:apply-templates select="@*|node()"/>
+                      <topology sockets="1" cores="{../vcpu}" threads="1"/>
+                    </xsl:copy>
+                  </xsl:template>
+                </xsl:stylesheet>
+            EOT -> null
+        }
+    }
+
+  # libvirt_pool.lab will be destroyed
+  - resource "libvirt_pool" "lab" {
+      - allocation = 820157706240 -> null
+      - available  = 163191640064 -> null
+      - capacity   = 983349346304 -> null
+      - id         = "08f7001b-6d93-47c0-9cac-25344e004bfa" -> null
+      - name       = "su-lab-hvhost1021k" -> null
+      - type       = "dir" -> null
+
+      - target {
+          - path = "/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k" -> null
+        }
+
+      - xml {
+          - xslt = <<-EOT
+                <?xml version="1.0"?>
+                <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+                  <xsl:output method="xml" omit-xml-declaration="yes"/>
+                  <xsl:template match="@*|node()">
+                    <xsl:copy><xsl:apply-templates select="@*|node()"/></xsl:copy>
+                  </xsl:template>
+                  <xsl:template match="/pool/target">
+                    <xsl:copy>
+                      <xsl:apply-templates select="@*|node()[not(self::permissions)]"/>
+                      <permissions><mode>0700</mode><owner>958</owner><group>958</group></permissions>
+                    </xsl:copy>
+                  </xsl:template>
+                </xsl:stylesheet>
+            EOT -> null
+        }
+    }
+
+  # libvirt_volume.base will be destroyed
+  - resource "libvirt_volume" "base" {
+      - format = "qcow2" -> null
+      - id     = "/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/safeupload-debuggee-base.qcow2" -> null
+      - name   = "safeupload-debuggee-base.qcow2" -> null
+      - pool   = "su-lab-hvhost1021k" -> null
+      - size   = 68719476736 -> null
+      - source = "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021k/safeupload-debuggee-19045.2965.qcow2" -> null
+    }
+
+  # libvirt_volume.disk will be destroyed
+  - resource "libvirt_volume" "disk" {
+      - base_volume_id = "/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/safeupload-debuggee-base.qcow2" -> null
+      - format         = "qcow2" -> null
+      - id             = "/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/su-lab-hvhost1021k.qcow2" -> null
+      - name           = "su-lab-hvhost1021k.qcow2" -> null
+      - pool           = "su-lab-hvhost1021k" -> null
+      - size           = 68719476736 -> null
+    }
+
+  # random_password.admin will be destroyed
+  - resource "random_password" "admin" {
+      - bcrypt_hash      = (sensitive value) -> null
+      - id               = "none" -> null
+      - length           = 24 -> null
+      - lower            = true -> null
+      - min_lower        = 0 -> null
+      - min_numeric      = 0 -> null
+      - min_special      = 0 -> null
+      - min_upper        = 0 -> null
+      - number           = true -> null
+      - numeric          = true -> null
+      - override_special = "!@#%^*-_=+" -> null
+      - result           = (sensitive value) -> null
+      - special          = true -> null
+      - upper            = true -> null
+    }
+
+Plan: 0 to add, 0 to change, 6 to destroy.
+
+Changes to Outputs:
+  - admin_password = (sensitive value) -> null
+  - admin_user     = "vika" -> null
+  - connect        = "virsh -c qemu:///system domifaddr su-lab-hvhost1021k   # then: ssh vika@<address>" -> null
+  - domain         = "su-lab-hvhost1021k" -> null
+
+─────────────────────────────────────────────────────────────────────────────
+
+Saved the plan to: destroy.tfplan
+
+To perform exactly these actions, run the following command to apply:
+    terraform apply "destroy.tfplan"
+
+ScopedPlan={"libvirt_cloudinit_disk.seed": ["delete"], "libvirt_domain.debuggee": ["delete"], "libvirt_pool.lab": ["delete"], "libvirt_volume.base": ["delete"], "libvirt_volume.disk": ["delete"], "random_password.admin": ["delete"]}
+libvirt_domain.debuggee: Destroying... [id=7efaa71c-46b5-43c0-8ddc-5ec0d73ceff2]
+libvirt_domain.debuggee: Destruction complete after 0s
+libvirt_volume.disk: Destroying... [id=/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/su-lab-hvhost1021k.qcow2]
+libvirt_cloudinit_disk.seed: Destroying... [id=/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/su-lab-hvhost1021k-seed.iso;867a6c64-5d37-4f63-8e84-9ac690a902db]
+libvirt_cloudinit_disk.seed: Destruction complete after 0s
+random_password.admin: Destroying... [id=none]
+random_password.admin: Destruction complete after 0s
+libvirt_volume.disk: Destruction complete after 0s
+libvirt_volume.base: Destroying... [id=/mnt/storage/safeupload-lab/pools/su-lab-hvhost1021k/safeupload-debuggee-base.qcow2]
+libvirt_volume.base: Destruction complete after 0s
+libvirt_pool.lab: Destroying... [id=08f7001b-6d93-47c0-9cac-25344e004bfa]
+libvirt_pool.lab: Destruction complete after 1s
+
+Apply complete! Resources: 0 added, 0 changed, 6 destroyed.
+
+L1Cleanup=PASS;SharedSourceUnchanged=True
+exit=0

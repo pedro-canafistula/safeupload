@@ -1,0 +1,2 @@
+ansible-core==2.19.3
+pywinrm==0.5.0

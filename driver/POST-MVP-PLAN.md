@@ -33,6 +33,13 @@ development candidate, not the qualified target (the harness keeps checking the 
 (SHA-256 `edc53c5c...`, install image SP build 2965). Recipes in `lab/`; builder images and Office are later work. A first build runs only when no timing-sensitive
 matrix or row is running on the host.
 
+**2026-10-21 (lab portability) — Linux testing and local Hyper-V for Windows colleagues.** Owner selected local Hyper-V;
+no Hyper-V test host is available. After the repeated Public-profile stop, owner approved the candidate-only fix and fresh
+runs ("Yes I mean"). Build K passed the full Linux build and Terraform first-boot/acceptance/reboot/destroy lifecycle after
+fixes to OOBE account handling, secret cleanup, seed certificate import and guest acceptance. Owner then postponed the
+Hyper-V part; its VHDX is exported and byte-verified but never booted. `win10-debug3` remains off with unchanged inactive XML.
+[Results and remaining checks](../lab/VALIDATION.md).
+
 **2026-10-21 (T5 plan) — close T5 for now on the shipped (unbound) profile.** Owner, in the session ("I agree, go") on the T5 plan:
 (D1) T5 closes on the unbound MVP profile the pair ships; the bound-head profile (`wt/t5-batch2`, runtime NotReady) and its caller-grant /
 seed read-export / descriptor / generation-ordering item move to the post-M2 hardening list, after a no-VM source check that the shipped

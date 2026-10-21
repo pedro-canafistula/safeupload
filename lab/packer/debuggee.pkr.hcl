@@ -8,11 +8,11 @@ packer {
   required_plugins {
     qemu = {
       source  = "github.com/hashicorp/qemu"
-      version = "~> 1.1"
+      version = "= 1.1.7"
     }
     ansible = {
       source  = "github.com/hashicorp/ansible"
-      version = "~> 1.1"
+      version = "= 1.1.6"
     }
   }
 }
@@ -32,6 +32,16 @@ variable "config_dir" {
 variable "build_private_key" {
   type      = string
   sensitive = true
+}
+variable "build_password" {
+  type      = string
+  sensitive = true
+}
+variable "build_uuid" {
+  type = string
+}
+variable "winrm_host_port" {
+  type = number
 }
 variable "output_dir" {
   type    = string
@@ -64,10 +74,7 @@ variable "ovmf_vars" {
 }
 
 locals {
-  # Never stored in the image: the sanitize role removes autologon, sysprep keeps only the account, and first boot
-  # sets the real password from the seed disk.
-  build_password = "B${substr(replace(uuidv4(), "-", ""), 0, 20)}!a"
-  admin_user     = "vika"
+  admin_user = "vika"
 }
 
 source "qemu" "debuggee" {
@@ -87,13 +94,19 @@ source "qemu" "debuggee" {
   cpus             = 4
   memory           = 4096
   cpu_model        = "host"
+  # Windows client supports only two sockets; QEMU's default can hide half the CPUs.
+  qemuargs = [
+    ["-smp", "4,sockets=1,cores=4,threads=1"],
+    ["-uuid", var.build_uuid],
+    ["-netdev", "user,id=user.0,hostfwd=tcp:127.0.0.1:{{ .SSHHostPort }}-:22,hostfwd=tcp:127.0.0.1:${var.winrm_host_port}-:5986"],
+  ]
 
   efi_boot          = true
   efi_firmware_code = var.ovmf_code
   efi_firmware_vars = var.ovmf_vars
 
   cd_label = "SULABCFG"
-  cd_files = ["${var.config_dir}/drivers", "${var.config_dir}/build_key.pub", "answer/enable-openssh.ps1"]
+  cd_files = ["${var.config_dir}/drivers", "${var.config_dir}/build_key.pub", "answer/enable-openssh.ps1", "answer/enable-winrm.ps1"]
   cd_content = {
     "autounattend.xml" = templatefile("answer/autounattend.pkrtpl.xml", {
       ui_language    = var.locale
@@ -104,41 +117,44 @@ source "qemu" "debuggee" {
       image_name     = var.image_name
       product_key    = var.product_key
       admin_user     = local.admin_user
-      build_password = local.build_password
+      build_password = var.build_password
     })
   }
 
-  # UEFI shows "Press any key to boot from CD or DVD" for a few seconds.
-  boot_wait    = "3s"
-  boot_command = ["<spacebar><wait1><spacebar><wait1><spacebar><wait1><spacebar>"]
+  # OVMF/CD startup latency varies with host load. Cover the prompt instead of assuming it appears in 3 seconds.
+  boot_wait    = "1s"
+  boot_command = [for i in range(30) : "<spacebar><wait1>"]
 
   headless         = true
   vnc_bind_address = "127.0.0.1"
 
-  communicator         = "ssh"
-  ssh_username         = local.admin_user
-  ssh_private_key_file = var.build_private_key
-  ssh_timeout          = "2h"
+  communicator             = "ssh"
+  ssh_username             = local.admin_user
+  ssh_private_key_file     = var.build_private_key
+  ssh_timeout              = "2h"
+  ssh_file_transfer_method = "sftp"
 
   # The playbook stages C:\Windows\Temp\safeupload-finalize.ps1. Run over the last SSH session, it removes the build
   # key and the SSH host keys, then starts sysprep /generalize /oobe /shutdown; Packer waits for the power-off.
-  shutdown_command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\safeupload-finalize.ps1"
+  shutdown_command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\safeupload-finalize.ps1"
   shutdown_timeout = "45m"
 }
 
 build {
   sources = ["source.qemu.debuggee"]
 
+  provisioner "file" {
+    direction   = "download"
+    source      = "C:/ProgramData/SafeUploadLabBootstrap/winrm.pem"
+    destination = "${var.config_dir}/winrm.pem"
+  }
+
   provisioner "ansible" {
     playbook_file = "../ansible/image-debuggee.yml"
     user          = local.admin_user
     use_proxy     = false
-    extra_arguments = [
-      "-e", "ansible_connection=ssh",
-      "-e", "ansible_shell_type=cmd",
-      "-e", "ansible_ssh_private_key_file=${var.build_private_key}",
-      "-e", "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'",
-    ]
+    # Credentials stay in a private file, never in process arguments. HTTPS certificate validation is enabled.
+    extra_arguments  = ["-e", "@${var.config_dir}/ansible-vars.json"]
     ansible_env_vars = ["ANSIBLE_CONFIG=../ansible/ansible.cfg"]
   }
 

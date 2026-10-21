@@ -1,0 +1,40 @@
+b822143ca2032259d6ea31dde6ea9cf2c3f48d2e
+ M lab/.gitignore
+ M lab/README.md
+ M lab/ansible/image-debuggee.yml
+ M lab/ansible/requirements.yml
+ M lab/ansible/roles/lab_seed/files/lab-seed.ps1
+ M lab/ansible/roles/lab_seed/tasks/main.yml
+ M lab/ansible/roles/sanitize/files/safeupload-finalize.ps1
+ M lab/ansible/roles/sanitize/files/safeupload-firstboot.xml
+ M lab/ansible/roles/sanitize/tasks/main.yml
+ M lab/ansible/roles/win_base/tasks/main.yml
+ M lab/build-debuggee.sh
+ M lab/packer/answer/autounattend.pkrtpl.xml
+ M lab/packer/answer/enable-openssh.ps1
+ M lab/packer/debuggee.pkr.hcl
+ M lab/terraform/.terraform.lock.hcl
+ M lab/terraform/hardware.xsl
+ M lab/terraform/main.tf
+ M lab/terraform/outputs.tf
+ M lab/terraform/terraform.tfvars.example
+ M lab/terraform/variables.tf
+ M lab/terraform/versions.tf
+?? lab/Test-LabGuest.ps1
+?? lab/Test-LabScripts.ps1
+?? lab/VALIDATION.md
+?? lab/ansible/files/
+?? lab/ansible/roles/lab_seed/files/Complete-Oobe.ps1
+?? lab/ansible/roles/lab_seed/files/New-OobeAnswer.ps1
+?? lab/ansible/roles/lab_seed/files/Prepare-Oobe.ps1
+?? lab/bin/
+?? lab/export-hyperv.sh
+?? lab/hyperv/
+?? lab/packer/answer/enable-winrm.ps1
+?? lab/packer/viostor.sha256
+?? lab/requirements.txt
+?? lab/selfcheck.py
+?? lab/terraform.sh
+?? lab/terraform/pool.xsl
+?? lab/terraform/qemu-identity.py
+?? lab/terraform/tests/

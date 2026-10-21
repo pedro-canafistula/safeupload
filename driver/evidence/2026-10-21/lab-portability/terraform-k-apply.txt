@@ -1,0 +1,25 @@
+ScopedPlan={"libvirt_cloudinit_disk.seed": ["create"], "libvirt_domain.debuggee": ["create"], "libvirt_pool.lab": ["create"], "libvirt_volume.base": ["create"], "libvirt_volume.disk": ["create"], "random_password.admin": ["create"]}
+random_password.admin: Creating...
+libvirt_pool.lab: Creating...
+random_password.admin: Creation complete after 0s [id=none]
+libvirt_pool.lab: Creation complete after 1s [id=edf36c79-f0c1-47fd-a23f-c04abbd49a8d]
+libvirt_cloudinit_disk.seed: Creating...
+libvirt_cloudinit_disk.seed: Creation complete after 0s [id=/var/lib/libvirt/images/safeupload-lab/su-lab-port1021k/su-lab-port1021k-seed.iso;350d0566-c57c-4ad5-9e02-81ceb500c04c]
+libvirt_volume.base: Creating...
+libvirt_volume.base: Still creating... [00m10s elapsed]
+libvirt_volume.base: Creation complete after 12s [id=/var/lib/libvirt/images/safeupload-lab/su-lab-port1021k/safeupload-debuggee-base.qcow2]
+libvirt_volume.disk: Creating...
+libvirt_volume.disk: Creation complete after 0s [id=/var/lib/libvirt/images/safeupload-lab/su-lab-port1021k/su-lab-port1021k.qcow2]
+libvirt_domain.debuggee: Creating...
+libvirt_domain.debuggee: Creation complete after 0s [id=f0f80a92-3a28-4ec6-91d8-eab67e07805b]
+
+Apply complete! Resources: 6 added, 0 changed, 0 destroyed.
+
+Outputs:
+
+admin_password = <sensitive>
+admin_user = "vika"
+connect = "virsh -c qemu:///system domifaddr su-lab-port1021k   # then: ssh vika@<address>"
+domain = "su-lab-port1021k"
+
+PrivatePool=PASS;Mode=0700;Owner=958:958

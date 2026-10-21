@@ -17,10 +17,25 @@
   </xsl:template>
 
   <xsl:template match="devices/video"/>
+  <!-- The pinned provider attaches cloudinit media as IDE. Q35 uses SATA/AHCI for optical media. -->
+  <xsl:template match="devices/controller[@type='ide']"/>
+  <xsl:template match="devices/disk[@device='cdrom']/address"/>
+  <xsl:template match="devices/disk[@device='cdrom']/target">
+    <target dev="sda" bus="sata"/>
+  </xsl:template>
   <xsl:template match="devices">
     <xsl:copy>
       <xsl:apply-templates select="@*|node()"/>
       <video><model type="vga" vram="16384" heads="1" primary="yes"/></video>
+    </xsl:copy>
+  </xsl:template>
+
+  <!-- Windows client supports at most two sockets; expose all vCPUs as cores in one socket. -->
+  <xsl:template match="cpu/topology"/>
+  <xsl:template match="cpu">
+    <xsl:copy>
+      <xsl:apply-templates select="@*|node()"/>
+      <topology sockets="1" cores="{../vcpu}" threads="1"/>
     </xsl:copy>
   </xsl:template>
 </xsl:stylesheet>

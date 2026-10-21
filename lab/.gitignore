@@ -10,3 +10,8 @@ output/
 secrets/
 collections/
 .venv/
+terraform.tfvars
+*.vhdx
+# This is source, unlike generated .NET bin/ trees ignored at the repository root.
+!bin/
+!bin/mkisofs

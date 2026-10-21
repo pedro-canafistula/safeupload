@@ -1,0 +1,188 @@
+{
+ "date": "2026-10-21",
+ "owner_instruction": "Clean the disk",
+ "reason": "Superseded/failed lab image attempts A-J and the superseded I export; failures are recorded in receipts and screenshots. /tmp/packer* are leftover Packer config CDs holding dead build passwords.",
+ "retained": [
+  "lab/output/linux-portability-1021k (delivered candidate K)",
+  "/mnt/storage/safeupload-lab/export-1021k (K VHDX)",
+  "driver/evidence/2026-10-21/lab-portability (all receipts)",
+  "lab/work (logs, F diagnostic extracts, Terraform work dirs)"
+ ],
+ "removed": [
+  {
+   "path": "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021a",
+   "bytes": 11653234688,
+   "files": 2,
+   "mtime": "2026-10-21T11:31:33"
+  },
+  {
+   "path": "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021b",
+   "bytes": 738304,
+   "files": 2,
+   "mtime": "2026-10-21T11:48:17"
+  },
+  {
+   "path": "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021c",
+   "bytes": 12903399424,
+   "files": 2,
+   "mtime": "2026-10-21T11:52:36"
+  },
+  {
+   "path": "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021d",
+   "bytes": 3351265280,
+   "files": 2,
+   "mtime": "2026-10-21T12:36:20"
+  },
+  {
+   "path": "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021e",
+   "bytes": 12283297792,
+   "files": 2,
+   "mtime": "2026-10-21T12:37:36"
+  },
+  {
+   "path": "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021f",
+   "bytes": 12269862912,
+   "files": 2,
+   "mtime": "2026-10-21T12:55:08"
+  },
+  {
+   "path": "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021f2-diagnostic",
+   "bytes": 6041895015,
+   "files": 2,
+   "mtime": "2026-10-21T13:58:37"
+  },
+  {
+   "path": "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021g",
+   "bytes": 12421185536,
+   "files": 2,
+   "mtime": "2026-10-21T14:36:08"
+  },
+  {
+   "path": "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021h",
+   "bytes": 12438028288,
+   "files": 2,
+   "mtime": "2026-10-21T14:50:39"
+  },
+  {
+   "path": "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021i",
+   "bytes": 6102467369,
+   "files": 4,
+   "mtime": "2026-10-21T15:33:52"
+  },
+  {
+   "path": "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021j",
+   "bytes": 9071509504,
+   "files": 2,
+   "mtime": "2026-10-21T16:13:13"
+  },
+  {
+   "path": "/mnt/storage/safeupload-lab/export-1021i",
+   "bytes": 12440305766,
+   "files": 2,
+   "mtime": "2026-10-21T15:38:38"
+  },
+  {
+   "path": "/tmp/packer-log2302184365",
+   "bytes": 33098,
+   "files": 1,
+   "mtime": "2026-10-21T14:42:22"
+  },
+  {
+   "path": "/tmp/packer1143949029.iso",
+   "bytes": 479232,
+   "files": 1,
+   "mtime": "2026-10-21T12:36:20"
+  },
+  {
+   "path": "/tmp/packer1272262485.iso",
+   "bytes": 479232,
+   "files": 1,
+   "mtime": "2026-10-21T14:36:08"
+  },
+  {
+   "path": "/tmp/packer1943938510.iso",
+   "bytes": 471040,
+   "files": 1,
+   "mtime": "2026-10-21T11:31:32"
+  },
+  {
+   "path": "/tmp/packer2811352577.iso",
+   "bytes": 479232,
+   "files": 1,
+   "mtime": "2026-10-21T14:50:39"
+  },
+  {
+   "path": "/tmp/packer4046881545.iso",
+   "bytes": 479232,
+   "files": 1,
+   "mtime": "2026-10-21T12:37:36"
+  },
+  {
+   "path": "/tmp/packer4235781870.iso",
+   "bytes": 479232,
+   "files": 1,
+   "mtime": "2026-10-21T12:55:08"
+  },
+  {
+   "path": "/tmp/packer484952735.iso",
+   "bytes": 471040,
+   "files": 1,
+   "mtime": "2026-10-21T11:52:36"
+  },
+  {
+   "path": "/tmp/packer614250505.iso",
+   "bytes": 471040,
+   "files": 1,
+   "mtime": "2026-10-21T11:48:17"
+  },
+  {
+   "path": "/tmp/packer_to_cdrom1759351279",
+   "bytes": 89946,
+   "files": 6,
+   "mtime": "2026-10-21T11:48:17"
+  },
+  {
+   "path": "/tmp/packer_to_cdrom1765655551",
+   "bytes": 94674,
+   "files": 7,
+   "mtime": "2026-10-21T14:36:08"
+  },
+  {
+   "path": "/tmp/packer_to_cdrom1950041864",
+   "bytes": 89946,
+   "files": 6,
+   "mtime": "2026-10-21T11:31:32"
+  },
+  {
+   "path": "/tmp/packer_to_cdrom2445496498",
+   "bytes": 94610,
+   "files": 7,
+   "mtime": "2026-10-21T12:36:20"
+  },
+  {
+   "path": "/tmp/packer_to_cdrom2918192694",
+   "bytes": 89946,
+   "files": 6,
+   "mtime": "2026-10-21T11:52:36"
+  },
+  {
+   "path": "/tmp/packer_to_cdrom3420554724",
+   "bytes": 94674,
+   "files": 7,
+   "mtime": "2026-10-21T12:55:08"
+  },
+  {
+   "path": "/tmp/packer_to_cdrom786191251",
+   "bytes": 94610,
+   "files": 7,
+   "mtime": "2026-10-21T12:37:36"
+  },
+  {
+   "path": "/tmp/packer_to_cdrom794433945",
+   "bytes": 94674,
+   "files": 7,
+   "mtime": "2026-10-21T14:50:39"
+  }
+ ],
+ "total_bytes": 110981775336
+}

@@ -1,0 +1,8 @@
+test_conversion_and_refusals (__main__.LabControls.test_conversion_and_refusals) ... ok
+test_missing_argument (__main__.LabControls.test_missing_argument) ... ok
+test_provider_seed_iso_and_hardware (__main__.LabControls.test_provider_seed_iso_and_hardware) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.252s
+
+OK

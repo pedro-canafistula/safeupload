@@ -1,0 +1,204 @@
+data.external.qemu_identity: Reading...
+data.external.qemu_identity: Read complete after 0s [id=-]
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  + create
+
+Terraform will perform the following actions:
+
+  # libvirt_cloudinit_disk.seed will be created
+  + resource "libvirt_cloudinit_disk" "seed" {
+      + id        = (known after apply)
+      + meta_data = jsonencode(
+            {
+              + instance-id    = "su-lab-port1021k"
+              + local-hostname = "SU-LAB-PORT1"
+            }
+        )
+      + name      = "su-lab-port1021k-seed.iso"
+      + pool      = "su-lab-port1021k"
+      + user_data = (sensitive value)
+    }
+
+  # libvirt_domain.debuggee will be created
+  + resource "libvirt_domain" "debuggee" {
+      + arch        = (known after apply)
+      + autostart   = (known after apply)
+      + cloudinit   = (known after apply)
+      + emulator    = (known after apply)
+      + firmware    = "/usr/share/edk2/x64/OVMF_CODE.4m.fd"
+      + fw_cfg_name = "opt/com.coreos/config"
+      + id          = (known after apply)
+      + machine     = "q35"
+      + memory      = 4096
+      + name        = "su-lab-port1021k"
+      + qemu_agent  = false
+      + running     = true
+      + type        = "kvm"
+      + vcpu        = 4
+
+      + cpu {
+          + mode = "host-passthrough"
+        }
+
+      + disk {
+          + scsi      = false
+          + volume_id = (known after apply)
+          + wwn       = (known after apply)
+        }
+
+      + graphics {
+          + autoport       = true
+          + listen_address = "127.0.0.1"
+          + listen_type    = "address"
+          + type           = "spice"
+        }
+
+      + network_interface {
+          + addresses      = (known after apply)
+          + hostname       = (known after apply)
+          + mac            = (known after apply)
+          + network_id     = (known after apply)
+          + network_name   = "default"
+          + wait_for_lease = false
+        }
+
+      + nvram {
+          + file     = "/var/lib/libvirt/qemu/nvram/su-lab-port1021k_VARS.fd"
+          + template = "/usr/share/edk2/x64/OVMF_VARS.4m.fd"
+        }
+
+      + xml {
+          + xslt = <<-EOT
+                <?xml version="1.0"?>
+                <!-- Hardware tweaks the libvirt provider cannot express: e1000e NIC and a standard VGA adapter, because the lab image
+                     ships no NetKVM or display driver (win10-debug3 uses the same two devices). -->
+                <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+                  <xsl:output method="xml" indent="yes"/>
+                
+                  <xsl:template match="@*|node()">
+                    <xsl:copy><xsl:apply-templates select="@*|node()"/></xsl:copy>
+                  </xsl:template>
+                
+                  <xsl:template match="interface[@type='network']/model"/>
+                  <xsl:template match="interface[@type='network']">
+                    <xsl:copy>
+                      <xsl:apply-templates select="@*|node()"/>
+                      <model type="e1000e"/>
+                    </xsl:copy>
+                  </xsl:template>
+                
+                  <xsl:template match="devices/video"/>
+                  <!-- The pinned provider attaches cloudinit media as IDE. Q35 uses SATA/AHCI for optical media. -->
+                  <xsl:template match="devices/controller[@type='ide']"/>
+                  <xsl:template match="devices/disk[@device='cdrom']/address"/>
+                  <xsl:template match="devices/disk[@device='cdrom']/target">
+                    <target dev="sda" bus="sata"/>
+                  </xsl:template>
+                  <xsl:template match="devices">
+                    <xsl:copy>
+                      <xsl:apply-templates select="@*|node()"/>
+                      <video><model type="vga" vram="16384" heads="1" primary="yes"/></video>
+                    </xsl:copy>
+                  </xsl:template>
+                
+                  <!-- Windows client supports at most two sockets; expose all vCPUs as cores in one socket. -->
+                  <xsl:template match="cpu/topology"/>
+                  <xsl:template match="cpu">
+                    <xsl:copy>
+                      <xsl:apply-templates select="@*|node()"/>
+                      <topology sockets="1" cores="{../vcpu}" threads="1"/>
+                    </xsl:copy>
+                  </xsl:template>
+                </xsl:stylesheet>
+            EOT
+        }
+    }
+
+  # libvirt_pool.lab will be created
+  + resource "libvirt_pool" "lab" {
+      + allocation = (known after apply)
+      + available  = (known after apply)
+      + capacity   = (known after apply)
+      + id         = (known after apply)
+      + name       = "su-lab-port1021k"
+      + type       = "dir"
+
+      + target {
+          + path = "/var/lib/libvirt/images/safeupload-lab/su-lab-port1021k"
+        }
+
+      + xml {
+          + xslt = <<-EOT
+                <?xml version="1.0"?>
+                <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+                  <xsl:output method="xml" omit-xml-declaration="yes"/>
+                  <xsl:template match="@*|node()">
+                    <xsl:copy><xsl:apply-templates select="@*|node()"/></xsl:copy>
+                  </xsl:template>
+                  <xsl:template match="/pool/target">
+                    <xsl:copy>
+                      <xsl:apply-templates select="@*|node()[not(self::permissions)]"/>
+                      <permissions><mode>0700</mode><owner>958</owner><group>958</group></permissions>
+                    </xsl:copy>
+                  </xsl:template>
+                </xsl:stylesheet>
+            EOT
+        }
+    }
+
+  # libvirt_volume.base will be created
+  + resource "libvirt_volume" "base" {
+      + format = "qcow2"
+      + id     = (known after apply)
+      + name   = "safeupload-debuggee-base.qcow2"
+      + pool   = "su-lab-port1021k"
+      + size   = (known after apply)
+      + source = "/home/victor/Work/safeupload-staging/lab/output/linux-portability-1021k/safeupload-debuggee-19045.2965.qcow2"
+    }
+
+  # libvirt_volume.disk will be created
+  + resource "libvirt_volume" "disk" {
+      + base_volume_id = (known after apply)
+      + format         = "qcow2"
+      + id             = (known after apply)
+      + name           = "su-lab-port1021k.qcow2"
+      + pool           = "su-lab-port1021k"
+      + size           = 68719476736
+    }
+
+  # random_password.admin will be created
+  + resource "random_password" "admin" {
+      + bcrypt_hash      = (sensitive value)
+      + id               = (known after apply)
+      + length           = 24
+      + lower            = true
+      + min_lower        = 0
+      + min_numeric      = 0
+      + min_special      = 0
+      + min_upper        = 0
+      + number           = true
+      + numeric          = true
+      + override_special = "!@#%^*-_=+"
+      + result           = (sensitive value)
+      + special          = true
+      + upper            = true
+    }
+
+Plan: 6 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + admin_password = (sensitive value)
+  + admin_user     = "vika"
+  + connect        = "virsh -c qemu:///system domifaddr su-lab-port1021k   # then: ssh vika@<address>"
+  + domain         = "su-lab-port1021k"
+
+─────────────────────────────────────────────────────────────────────────────
+
+Saved the plan to: candidate.tfplan
+
+To perform exactly these actions, run the following command to apply:
+    terraform apply "candidate.tfplan"
+
+ScopedPlan={"libvirt_cloudinit_disk.seed": ["create"], "libvirt_domain.debuggee": ["create"], "libvirt_pool.lab": ["create"], "libvirt_volume.base": ["create"], "libvirt_volume.disk": ["create"], "random_password.admin": ["create"]}

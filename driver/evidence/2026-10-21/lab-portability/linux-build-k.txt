@@ -1,0 +1,146 @@
+ISO verified: edc53c5c5fe6926dea23fc3e884fbcf78cc2b9e76364be968f806fc6d42b59d2
+virtio storage driver:
+viostor.inf: OK
+viostor.sys: OK
+viostor.cat: OK
+The configuration is valid.
+[1;32mqemu.debuggee: output will be in this color.[0m
+
+[1;32m==> qemu.debuggee: Retrieving ISO[0m
+[1;32m==> qemu.debuggee: Trying /home/victor/Downloads/Win10_22H2_EnglishInternational_x64v1.iso[0m
+[1;32m==> qemu.debuggee: Trying /home/victor/Downloads/Win10_22H2_EnglishInternational_x64v1.iso?checksum=sha256%3Aedc53c5c5fe6926dea23fc3e884fbcf78cc2b9e76364be968f806fc6d42b59d2[0m
+[1;32m==> qemu.debuggee: /home/victor/Downloads/Win10_22H2_EnglishInternational_x64v1.iso?checksum=sha256%3Aedc53c5c5fe6926dea23fc3e884fbcf78cc2b9e76364be968f806fc6d42b59d2 => /home/victor/Downloads/Win10_22H2_EnglishInternational_x64v1.iso[0m
+[1;32m==> qemu.debuggee: Creating CD disk...[0m
+[1;32m==> qemu.debuggee: xorriso 1.5.8.pl02 : RockRidge filesystem manipulator, libburnia project.[0m
+[1;32m==> qemu.debuggee: Drive current: -outdev 'stdio:/home/victor/Work/safeupload-staging/lab/work/debuggee.Q2EW6z9U/tmp/packer3349490307.iso'[0m
+[1;32m==> qemu.debuggee: Media current: stdio file, overwriteable[0m
+[1;32m==> qemu.debuggee: Media status : is blank[0m
+[1;32m==> qemu.debuggee: Media summary: 0 sessions, 0 data blocks, 0 data, 30.4g free[0m
+[1;32m==> qemu.debuggee: Added to ISO image: directory '/'='/home/victor/Work/safeupload-staging/lab/work/debuggee.Q2EW6z9U/tmp/packer_to_cdrom2277985872'[0m
+[1;32m==> qemu.debuggee: xorriso : UPDATE :       9 files added in 1 seconds[0m
+[1;32m==> qemu.debuggee: xorriso : UPDATE :       9 files added in 1 seconds[0m
+[1;32m==> qemu.debuggee: ISO image produced: 234 sectors[0m
+[1;32m==> qemu.debuggee: Written to medium : 234 sectors at LBA 0[0m
+[1;32m==> qemu.debuggee: Writing to 'stdio:/home/victor/Work/safeupload-staging/lab/work/debuggee.Q2EW6z9U/tmp/packer3349490307.iso' completed successfully.[0m
+[1;32m==> qemu.debuggee: Done copying paths from CD_dirs[0m
+[1;32m==> qemu.debuggee: Found port for communicator (SSH, WinRM, etc): 2666.[0m
+[1;32m==> qemu.debuggee: Using existing SSH private key[0m
+[1;32m==> qemu.debuggee: Looking for available port between 5900 and 6000 on 127.0.0.1[0m
+[1;32m==> qemu.debuggee: Starting VM, booting from CD-ROM[0m
+[1;32m==> qemu.debuggee: The VM will be run headless, without a GUI. If you want to
+==> qemu.debuggee: view the screen of the VM, connect via VNC without a password to
+==> qemu.debuggee: vnc://127.0.0.1:5909[0m
+[1;32m==> qemu.debuggee: Overriding default Qemu arguments with qemuargs template option...[0m
+[1;32m==> qemu.debuggee: Waiting 1s for boot...[0m
+[1;32m==> qemu.debuggee: Connecting to VM via VNC (127.0.0.1:5909)[0m
+[1;32m==> qemu.debuggee: Typing the boot commands over VNC...[0m
+[1;32m==> qemu.debuggee: Not using a NetBridge -- skipping StepWaitGuestAddress[0m
+[1;32m==> qemu.debuggee: Using SSH communicator to connect: 127.0.0.1[0m
+[1;32m==> qemu.debuggee: Waiting for SSH to become available...[0m
+[1;32m==> qemu.debuggee: Connected to SSH![0m
+[1;32m==> qemu.debuggee: Downloading C:/ProgramData/SafeUploadLabBootstrap/winrm.pem => /home/victor/Work/safeupload-staging/lab/work/debuggee.Q2EW6z9U/winrm.pem[0m
+[1;32m==> qemu.debuggee: Provisioning with Ansible...[0m
+[1;32m==> qemu.debuggee: Not using Proxy adapter for Ansible run:
+==> qemu.debuggee: 	Using ssh keys from Packer communicator...[0m
+[1;32m==> qemu.debuggee: Executing Ansible: ansible-playbook -e packer_build_name="debuggee" -e packer_builder_type=qemu -e packer_http_addr=10.0.2.2:0 --ssh-extra-args '-o IdentitiesOnly=yes' -e @/home/victor/Work/safeupload-staging/lab/work/debuggee.Q2EW6z9U/ansible-vars.json -e ansible_ssh_private_key_file=<sensitive> -i /home/victor/Work/safeupload-staging/lab/work/debuggee.Q2EW6z9U/tmp/packer-provisioner-ansible1551102899 /home/victor/Work/safeupload-staging/lab/ansible/image-debuggee.yml[0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: PLAY [SafeUpload lab debuggee image] *******************************************[0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [Refuse existing lab machines before applying image configuration] ********[0m
+[1;32m==> qemu.debuggee: ok: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [win_base : Read the installed Windows build] *****************************[0m
+[1;32m==> qemu.debuggee: ok: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [win_base : Require the qualified Windows build (19045.2965)] *************[0m
+[1;32m==> qemu.debuggee: ok: [default] =>[0m
+[1;32m==> qemu.debuggee:     changed: false[0m
+[1;32m==> qemu.debuggee:     msg: All assertions passed[0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [win_base : Keep Windows Update from changing the build] ******************[0m
+[1;32m==> qemu.debuggee: ok: [default] => (item={'name': 'NoAutoUpdate', 'data': 1})[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item={'name': 'AUOptions', 'data': 1})[0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [win_base : Do not reach Windows Update for drivers or feature upgrades] ***[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item=ExcludeWUDriversInQualityUpdate)[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item=DisableOSUpgrade)[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item=DoNotConnectToWindowsUpdateInternetLocations)[0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [win_base : Stop and disable the Windows Update service] ******************[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [win_base : No sleep, hibernation or fast startup (hiberfil.sys would also carry memory into the image)] ***[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [win_base : Enable test signing (Secure Boot is off in the firmware definition)] ***[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [debuggee : Driver crash dumps for diagnosis (complete memory dump, keep the file)] ***[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item={'name': 'CrashDumpEnabled', 'data': 1})[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item={'name': 'AlwaysKeepMemoryDump', 'data': 1})[0m
+[1;32m==> qemu.debuggee: ok: [default] => (item={'name': 'AutoReboot', 'data': 1})[0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [debuggee : Folders the harness copies into] ******************************[0m
+[1;32m==> qemu.debuggee: ok: [default] => (item=C:\Users\vika\Documents)[0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [debuggee : Disable the first-sign-in animation for new local accounts (the actor signs in interactively)] ***[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [debuggee : Skip the privacy-settings pages for new accounts] *************[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [lab_seed : Seed script directory (SYSTEM and Administrators only)] *******[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [lab_seed : Install the seed script] **************************************[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item=lab-seed.ps1)[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item=Prepare-Oobe.ps1)[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item=New-OobeAnswer.ps1)[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item=Complete-Oobe.ps1)[0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [lab_seed : Run the seed at every startup as SYSTEM] **********************[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [sanitize : Stage the finalize script and the sysprep answer file] ********[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item=safeupload-finalize.ps1)[0m
+[1;32m==> qemu.debuggee: changed: [default] => (item=safeupload-firstboot.xml)[0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [sanitize : Remove autologon values (the build password is rotated by finalize after the last WinRM operation)] ***[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [sanitize : Remove the cached unattend files that setup leaves behind (they held the build password)] ***[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [sanitize : Remove shell history, recent items, caches and temporary files] ***[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [sanitize : Clear stored credentials, DNS and ARP caches] *****************[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [sanitize : Clear every event log] ****************************************[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [sanitize : Verify nothing secret remains (fails the build otherwise)] ****[0m
+[1;32m==> qemu.debuggee: ok: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: TASK [sanitize : Trim free space so the compressed image stays small (best effort)] ***[0m
+[1;32m==> qemu.debuggee: changed: [default][0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: PLAY RECAP *********************************************************************[0m
+[1;32m==> qemu.debuggee: default                    : ok=23   changed=18   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0[0m
+[1;32m==> qemu.debuggee:[0m
+[1;32m==> qemu.debuggee: Gracefully halting virtual machine...[0m
+[1;32m==> qemu.debuggee: GENERALIZE_WORKER_QUEUED=True[0m
+[1;32m==> qemu.debuggee: Converting hard drive...[0m
+[1;32m==> qemu.debuggee: Running post-processor:  (type manifest)[0m
+[1;32mBuild 'qemu.debuggee' finished after 26 minutes 58 seconds.[0m
+
+==> Wait completed after 26 minutes 58 seconds
+
+==> Builds finished. The artifacts of successful builds are:
+--> qemu.debuggee: VM files in directory: /home/victor/Work/safeupload-staging/lab/output/linux-portability-1021k
+--> qemu.debuggee: VM files in directory: /home/victor/Work/safeupload-staging/lab/output/linux-portability-1021k
+image: /home/victor/Work/safeupload-staging/lab/output/linux-portability-1021k/safeupload-debuggee-19045.2965.qcow2
+81a9715fd5f4f934d606078e11ee9d86bb2fe18e54577d165039aff55aec5c88  safeupload-debuggee-19045.2965.qcow2
+build log: /home/victor/Work/safeupload-staging/lab/work/debuggee.Q2EW6z9U/packer.log
+exit=0

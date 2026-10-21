@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Sysprep answer file for the generalized lab image: unattended OOBE that keeps the existing admin account (whose
-     password first boot replaces from the seed disk), keeps the virtio storage driver, and creates no account and no
-     password. The machine name is random until the seed renames it. -->
+<!-- Shared Sysprep answer: preserves storage drivers and prepares a private per-instance OOBE answer during specialize.
+     No password or added account is in this template. The machine name is random until the seed renames it. -->
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <settings pass="generalize">
     <component name="Microsoft-Windows-PnpSysprep" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
@@ -9,6 +8,15 @@
     </component>
   </settings>
   <settings pass="specialize">
+    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+        <RunSynchronousCommand xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" wcm:action="add">
+          <Order>1</Order>
+          <Path>powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\ProgramData\SafeUploadLab\Prepare-Oobe.ps1</Path>
+          <Description>Prepare private per-instance lab setup</Description>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
     <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <ComputerName>*</ComputerName>
       <TimeZone>UTC</TimeZone>

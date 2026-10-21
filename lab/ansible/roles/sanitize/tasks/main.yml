@@ -1,6 +1,6 @@
 # Remove everything personal or secret from the image before generalizing it. The build SSH key and this machine's SSH
 # host keys are removed by safeupload-finalize.ps1, the last step (Packer's shutdown command), because this play still
-# needs the connection. Nothing below depends on the build password staying valid.
+# needs the connection. Keep the build password valid through the last WinRM task; finalize then rotates it over SSH.
 - name: Stage the finalize script and the sysprep answer file
   ansible.windows.win_copy:
     src: "{{ item }}"
@@ -9,26 +9,32 @@
     - safeupload-finalize.ps1
     - safeupload-firstboot.xml
 
-- name: Remove autologon values and replace the build password with a random one nobody knows
+- name: Remove autologon values (the build password is rotated by finalize after the last WinRM operation)
   ansible.windows.win_shell: |
     $key = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    $values = Get-ItemProperty -Path $key
     foreach ($n in 'AutoAdminLogon','DefaultUserName','DefaultDomainName','DefaultPassword','AutoLogonCount') {
-        Remove-ItemProperty -Path $key -Name $n -ErrorAction SilentlyContinue
+        if ($null -ne $values.PSObject.Properties[$n]) { Remove-ItemProperty -Path $key -Name $n -ErrorAction Stop }
     }
-    Add-Type -AssemblyName System.Web
-    $random = [System.Web.Security.Membership]::GeneratePassword(40, 8)
-    Set-LocalUser -Name 'vika' -Password (ConvertTo-SecureString $random -AsPlainText -Force)
+    'AUTOLOGON_REMOVED=True'
   args:
-    executable: powershell.exe
+    executable: powershell
   no_log: true
 
 - name: Remove the cached unattend files that setup leaves behind (they held the build password)
   ansible.windows.win_shell: |
-    $paths = 'C:\Windows\Panther\unattend.xml','C:\Windows\Panther\Unattend\unattend.xml','C:\Windows\Panther\UnattendGC',
+    $paths = 'C:\Windows\Panther\unattend.xml','C:\Windows\Panther\Unattend\unattend.xml','C:\Windows\Panther\UnattendGC\unattend.xml',
              'C:\Windows\System32\Sysprep\unattend.xml','C:\Windows\System32\Sysprep\Panther','C:\unattend.xml','C:\autounattend.xml'
-    foreach ($p in $paths) { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue }
+    foreach ($p in $paths) {
+        if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction Stop }
+    }
+    # The signed-in build session (taskhostw, CloudExperienceHostBroker) keeps the Setup logs in UnattendGC open. They are
+    # logs, not answer files; the verification below scans every remaining Setup file for the build password.
+    Get-ChildItem -LiteralPath 'C:\Windows\Panther\UnattendGC' -Force -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    'CACHED_ANSWER_FILES_REMOVED=True'
   args:
-    executable: powershell.exe
+    executable: powershell
 
 - name: Remove shell history, recent items, caches and temporary files
   ansible.windows.win_shell: |
@@ -44,10 +50,12 @@
         Where-Object { $_.Name -notin 'safeupload-finalize.ps1','safeupload-firstboot.xml' } |
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     Get-ChildItem 'C:\ProgramData\Microsoft\Windows\WER' -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath 'C:\Windows\Prefetch\*' -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath 'C:\Windows\SoftwareDistribution\Download\*' -Recurse -Force -ErrorAction SilentlyContinue
+    Get-ChildItem 'C:\Windows\Prefetch' -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    Get-ChildItem 'C:\Windows\SoftwareDistribution\Download' -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    # Active temp/cache files can be locked. Secret-bearing answer files above and history below are checked strictly.
+    'BEST_EFFORT_CACHE_CLEANUP_COMPLETE=True'
   args:
-    executable: powershell.exe
+    executable: powershell
 
 - name: Clear stored credentials, DNS and ARP caches
   ansible.windows.win_shell: |
@@ -55,14 +63,14 @@
     ipconfig /flushdns | Out-Null
     arp -d * | Out-Null
   args:
-    executable: powershell.exe
+    executable: powershell
   failed_when: false
 
 - name: Clear every event log
   ansible.windows.win_shell: |
     wevtutil.exe el | ForEach-Object { wevtutil.exe cl "$_" 2>$null }
   args:
-    executable: powershell.exe
+    executable: powershell
   failed_when: false
 
 - name: Verify nothing secret remains (fails the build otherwise)
@@ -70,20 +78,48 @@
     $problems = @()
     $w = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
     foreach ($n in 'AutoAdminLogon','DefaultPassword','DefaultUserName') { if ($null -ne $w.$n) { $problems += "Winlogon value $n present" } }
-    foreach ($p in 'C:\Windows\Panther\unattend.xml','C:\Windows\Panther\UnattendGC\unattend.xml','C:\unattend.xml','C:\autounattend.xml') {
+    foreach ($p in 'C:\Windows\Panther\unattend.xml','C:\Windows\Panther\Unattend\unattend.xml',
+        'C:\Windows\Panther\UnattendGC\unattend.xml','C:\Windows\System32\Sysprep\unattend.xml','C:\unattend.xml','C:\autounattend.xml') {
         if (Test-Path -LiteralPath $p) { $problems += "$p present" }
     }
     $history = Get-ChildItem 'C:\Users' -Recurse -Force -Filter 'ConsoleHost_history.txt' -ErrorAction SilentlyContinue
     if ($history) { $problems += 'PowerShell history present' }
+    # Content check, not only known paths: no remaining Setup, Sysprep, temp or seed file may hold the build password.
+    # A planted control file proves the scan detects it in both encodings Setup writes.
+    $secret = $env:LAB_BUILD_SECRET
+    if (-not $secret -or $secret.Length -lt 20) { $problems += 'build password unavailable for the content scan' } else {
+        $control = 'C:\Windows\Temp\safeupload-scan-control.txt'
+        [IO.File]::WriteAllText($control, 'x' + $secret + 'x', [Text.Encoding]::Unicode)
+        $hits = @(); $scanned = 0
+        foreach ($root in 'C:\Windows\Panther','C:\Windows\System32\Sysprep','C:\Windows\Temp','C:\ProgramData\SafeUploadLab') {
+            foreach ($f in Get-ChildItem -LiteralPath $root -Recurse -Force -File -ErrorAction Stop) {
+                $scanned++
+                try {
+                    $stream = [IO.File]::Open($f.FullName, 'Open', 'Read', 'ReadWrite,Delete')
+                    try { $copy = New-Object IO.MemoryStream; $stream.CopyTo($copy); $bytes = $copy.ToArray() } finally { $stream.Dispose() }
+                } catch { $problems += "unreadable during the content scan: $($f.FullName)"; continue }
+                foreach ($encoding in [Text.Encoding]::UTF8, [Text.Encoding]::Unicode) {
+                    if ($encoding.GetString($bytes).Contains($secret)) { $hits += $f.FullName; break }
+                }
+            }
+        }
+        Remove-Item -LiteralPath $control -Force
+        if ($hits -notcontains $control) { $problems += 'content scan missed its positive control' }
+        $problems += @($hits | Where-Object { $_ -ne $control } | ForEach-Object { "build password found in $_" })
+        "CONTENT_SCAN_FILES=$scanned"
+    }
     if ($problems) { $problems; exit 1 }
     'SANITIZE_VERIFIED=True'
   args:
-    executable: powershell.exe
+    executable: powershell
+  environment:
+    LAB_BUILD_SECRET: "{{ ansible_password }}"
   register: sanitize_check
   changed_when: false
 
 - name: Trim free space so the compressed image stays small (best effort)
+  tags: [image_trim]
   ansible.windows.win_shell: Optimize-Volume -DriveLetter C -ReTrim -ErrorAction SilentlyContinue
   args:
-    executable: powershell.exe
+    executable: powershell
   failed_when: false

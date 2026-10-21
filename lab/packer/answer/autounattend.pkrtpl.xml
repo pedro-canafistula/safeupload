@@ -103,7 +103,7 @@
       <FirstLogonCommands>
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>
-          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "foreach ($d in (Get-PSDrive -PSProvider FileSystem)) { $p = Join-Path $d.Root 'enable-openssh.ps1'; if (Test-Path $p) { &amp; $p -ConfigRoot $d.Root; break } }"</CommandLine>
+          <CommandLine>powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "foreach ($d in (Get-PSDrive -PSProvider FileSystem)) { $p = Join-Path $d.Root 'enable-openssh.ps1'; if (Test-Path $p) { &amp; $p -ConfigRoot $d.Root; break } }"</CommandLine>
           <Description>Enable OpenSSH with the build's throwaway key</Description>
         </SynchronousCommand>
       </FirstLogonCommands>

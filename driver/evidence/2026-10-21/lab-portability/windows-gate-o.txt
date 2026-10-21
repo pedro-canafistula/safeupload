@@ -1,0 +1,24 @@
+Builder=builder1;Host=192.168.122.210;Label=labport1021o
+#< CLIXML
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><Obj S="progress" RefId="1"><TNRef RefId="0" /><MS><I64 N="SourceId">2</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><Obj S="progress" RefId="2"><TNRef RefId="0" /><MS><I64 N="SourceId">2</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><Obj S="progress" RefId="3"><TNRef RefId="0" /><MS><I64 N="SourceId">3</I64><PR N="Record"><AV>Get-NetAdapter | Where-Object {$_.MacAddress -ieq '52-54-00-63-87-7A'}).Count){throw 'Wrong builder; delivery refused.'}</AV><AI>66181424</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="4"><TNRef RefId="0" /><MS><I64 N="SourceId">2</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>#< CLIXML
+Test-LabScripts.ps1:ParseErrors=0;SHA256=47E04D1D3F04B2E6DE8EB117DC02C5807ED5889AE9DF5168B6A2B951D8B2F089
+Test-LabGuest.ps1:ParseErrors=0;SHA256=E22CC8BAE71A98FE7DF0D0D450981CD257768D80E805D5FB19E7212947CE0C2A
+hyperv\New-LabVM.ps1:ParseErrors=0;SHA256=2793C0484D680D5753F2294C326513B3FE48D8E6999D038A6F17005A0F7E2B29
+hyperv\New-LabVM.SelfCheck.ps1:ParseErrors=0;SHA256=36C99B33CB399AB87032969BC32288F3B66040E62982A573EA6EB377863CA8D3
+packer\answer\enable-openssh.ps1:ParseErrors=0;SHA256=7EE10BB7772DB1C5A8EF81F1E04D765AB14E9545080C8B7A6EF52FB966885E19
+packer\answer\enable-winrm.ps1:ParseErrors=0;SHA256=9B06C68CB62FFAA76C9BF7305F69486C184116ED59AB48D4FE85456CE6150E5D
+ansible\files\Assert-ImageBuildHost.ps1:ParseErrors=0;SHA256=22B04754B66168C2A6A82D6961F1738E1ECBF6330EC5C89A5C37A05AAB9F9A5C
+ansible\roles\lab_seed\files\lab-seed.ps1:ParseErrors=0;SHA256=6915745C2478EAB6F42688C85245AFAFB0D71852530716B3C2060D3C4C3B30BB
+ansible\roles\lab_seed\files\Prepare-Oobe.ps1:ParseErrors=0;SHA256=C5E8FA2FF74A339478E96839312E593AF41EFE849D29B843D8421B65941FFAB7
+ansible\roles\lab_seed\files\New-OobeAnswer.ps1:ParseErrors=0;SHA256=E4CB0E3CF4C9741BBCF8C6CDFB2D00E44B6BDD22847A26DDBAE3F02A40B4A68E
+ansible\roles\lab_seed\files\Complete-Oobe.ps1:ParseErrors=0;SHA256=CC495DBC22EAF44C737AD31569407E832879849D9EE67FC456F9C81CEE86A853
+ansible\roles\sanitize\files\safeupload-finalize.ps1:ParseErrors=0;SHA256=0F89C1CCA1BF125498BD1DB4B26B0D0BCFF9E4EDCD9BCFB6F42C25BAC24E33A8
+NativeFirewallSignature=PASS
+EmbeddedPowerShellParse=PASS;Count=11
+OobeAnswer=PASS
+HyperVContractChecks=PASS; NativeHyperVRun=NOT_RUN
+ImageHostGuard=REFUSED_NON_BUILD_HOST
+OobeGuard=REFUSED_NON_SETUP_HOST
+PSVersion=5.1.19041.6456
+LabPowerShellGate=PASS
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><Obj S="progress" RefId="1"><TNRef RefId="0" /><MS><I64 N="SourceId">2</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><Obj S="progress" RefId="2"><TNRef RefId="0" /><MS><I64 N="SourceId">2</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><Obj S="progress" RefId="3"><TNRef RefId="0" /><MS><I64 N="SourceId">3</I64><PR N="Record"><AV>Get-NetAdapter | Where-Object {$_.MacAddress -ieq '52-54-00-63-87-7A'}).Count){throw 'Wrong builder; delivery refused.'}</AV><AI>1578908302</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj></Objs>

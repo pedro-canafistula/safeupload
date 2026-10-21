@@ -3,6 +3,13 @@
 - name: SafeUpload lab debuggee image
   hosts: all
   gather_facts: false
+  pre_tasks:
+    - name: Refuse existing lab machines before applying image configuration
+      ansible.windows.win_powershell:
+        script: "{{ lookup('ansible.builtin.file', 'files/Assert-ImageBuildHost.ps1') }}"
+        parameters:
+          ExpectedUuid: "{{ image_build_uuid }}"
+      changed_when: false
   roles:
     - win_base
     - debuggee

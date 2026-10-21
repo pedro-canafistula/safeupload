@@ -13,11 +13,19 @@ locals {
   trusted_certificates = [for f in var.trusted_certificate_files : filebase64(f)]
 }
 
+data "external" "qemu_identity" {
+  program = ["python3", "${path.module}/qemu-identity.py"]
+  query   = { uri = var.libvirt_uri }
+}
+
 resource "libvirt_pool" "lab" {
-  name = "safeupload-lab"
+  name = var.name
   type = "dir"
   target {
-    path = var.pool_path
+    path = "${var.pool_path}/${var.name}"
+  }
+  xml {
+    xslt = templatefile("${path.module}/pool.xsl", data.external.qemu_identity.result)
   }
 }
 
@@ -26,6 +34,12 @@ resource "libvirt_volume" "base" {
   pool   = libvirt_pool.lab.name
   source = var.image_path
   format = "qcow2"
+  lifecycle {
+    precondition {
+      condition     = filesha256(var.image_path) == lower(var.image_sha256)
+      error_message = "The image does not match the shared SHA-256 receipt."
+    }
+  }
 }
 
 resource "libvirt_volume" "disk" {
@@ -72,9 +86,8 @@ resource "libvirt_domain" "debuggee" {
     volume_id = libvirt_volume.disk.id
   }
 
-  disk {
-    volume_id = libvirt_cloudinit_disk.seed.id
-  }
+  # The cloudinit resource has a composite id; the dedicated attribute resolves it and attaches a CD-ROM.
+  cloudinit = libvirt_cloudinit_disk.seed.id
 
   network_interface {
     network_name   = var.network_name
@@ -82,8 +95,9 @@ resource "libvirt_domain" "debuggee" {
   }
 
   graphics {
-    type        = "spice"
-    listen_type = "address"
+    type           = "spice"
+    listen_type    = "address"
+    listen_address = "127.0.0.1"
   }
 
   # The image has no NetKVM or display drivers: e1000e (inbox driver) and a standard VGA adapter, as on win10-debug3.

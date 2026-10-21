@@ -13,5 +13,5 @@ output "admin_password" {
 
 output "connect" {
   value       = "virsh -c ${var.libvirt_uri} domifaddr ${libvirt_domain.debuggee.name}   # then: ssh ${var.admin_user}@<address>"
-  description = "The VM takes a DHCP address from the libvirt network; SSH works once first boot has applied your key (about a minute)."
+  description = "The VM takes a DHCP address from the libvirt network; SSH works once first boot has applied your key and restarted (several minutes)."
 }

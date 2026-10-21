@@ -4,7 +4,7 @@
     $v = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
     "$($v.CurrentBuild).$($v.UBR)|$($v.EditionID)|$($v.DisplayVersion)"
   args:
-    executable: powershell.exe
+    executable: powershell
   register: windows_build
   changed_when: false
 
@@ -49,7 +49,7 @@
     powercfg.exe /change monitor-timeout-ac 0
     powercfg.exe /change disk-timeout-ac 0
   args:
-    executable: powershell.exe
+    executable: powershell
 
 - name: Enable test signing (Secure Boot is off in the firmware definition)
   ansible.windows.win_command: bcdedit.exe /set testsigning on

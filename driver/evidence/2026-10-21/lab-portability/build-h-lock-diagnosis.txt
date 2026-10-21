@@ -1,0 +1,30 @@
+0
+diagerr.xml 5700 2026-10-21T17:56:07.9352204Z holders=[3100:Host Process for Windows Tasks:, 4252:CloudExperienceHost Broker:]
+diagwrn.xml 6940 2026-10-21T17:56:07.9508405Z holders=[3100:Host Process for Windows Tasks:, 4252:CloudExperienceHost Broker:]
+setupact.log 69031 2026-10-21T17:58:22.7977191Z holders=[3100:Host Process for Windows Tasks:, 4252:CloudExperienceHost Broker:]
+setuperr.log 0 2026-10-21T16:54:54.1377452Z holders=[3100:Host Process for Windows Tasks:, 4252:CloudExperienceHost Broker:]
+Process 3100 taskhostw.exe started=2026-10-21T17:56:07.6895520Z cmd=taskhostw.exe
+Process 4252 CloudExperienceHostBroker.exe started=2026-10-21T17:56:29.5259550Z cmd=C:\Windows\System32\CloudExperienceHostBroker.exe -Embedding
+Now=2026-10-21T18:04:47.6563095Z Boot=2026-10-21T17:55:55.3780340Z
+Panther: actionqueue
+Panther: setup.exe
+Panther: UnattendGC
+Panther: cbs.log
+Panther: cbs_unattend.log
+Panther: Contents0.dir
+Panther: Contents1.dir
+Panther: DDACLSys.log
+Panther: diagerr.xml
+Panther: diagwrn.xml
+Panther: MainQueueOnline0.que
+Panther: MainQueueOnline1.que
+Panther: setup.etl
+Panther: setupact.log
+Panther: setuperr.log
+Panther: setupinfo
+Panther: _s_3C10.tmp
+Panther: _s_3D78.tmp
+Panther: _s_3ED1.tmp
+
+#< CLIXML
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><Obj S="progress" RefId="1"><TNRef RefId="0" /><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><Obj S="progress" RefId="2"><TNRef RefId="0" /><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>

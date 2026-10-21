@@ -1,0 +1,4 @@
+DER:ContentType=Cert;Thumbprint=True;HasPrivateKey=False
+PEM:ContentType=Cert;Thumbprint=True;HasPrivateKey=False
+PFX:ContentType=Pfx;Refused=True
+PS=5.1.19041.6456;CLR=4.0.30319.42000

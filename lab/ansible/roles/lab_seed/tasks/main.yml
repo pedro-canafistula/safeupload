@@ -6,12 +6,17 @@
     New-Item -ItemType Directory -Force -Path $d | Out-Null
     & icacls.exe $d /inheritance:r /grant 'SYSTEM:(OI)(CI)F' /grant '*S-1-5-32-544:(OI)(CI)F' | Out-Null
   args:
-    executable: powershell.exe
+    executable: powershell
 
 - name: Install the seed script
   ansible.windows.win_copy:
-    src: lab-seed.ps1
-    dest: C:\ProgramData\SafeUploadLab\lab-seed.ps1
+    src: "{{ item }}"
+    dest: "C:\\ProgramData\\SafeUploadLab\\{{ item }}"
+  loop:
+    - lab-seed.ps1
+    - Prepare-Oobe.ps1
+    - New-OobeAnswer.ps1
+    - Complete-Oobe.ps1
 
 - name: Run the seed at every startup as SYSTEM
   ansible.windows.win_shell: |
@@ -21,4 +26,4 @@
     $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -StartWhenAvailable
     Register-ScheduledTask -TaskName 'SafeUploadLabSeed' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
   args:
-    executable: powershell.exe
+    executable: powershell
