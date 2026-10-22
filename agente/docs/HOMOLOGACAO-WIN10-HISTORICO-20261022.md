@@ -323,7 +323,8 @@ os testes C# e de instalador do CI anterior não foram reexecutados.
 - [x] Não observar alerta antigo ao abrir o painel após o login desta rodada.
 - [x] Reconectar serviço com UI aberta: sete eventos únicos, dados preservados e nenhum alerta antigo observado nesta rodada.
 - [x] Criar novo arquivo sintético com a interface aberta; detecção de CPF, alerta e histórico atualizados.
-- [ ] Adequar textos de envio/bloqueio ao modo de auditoria por watcher.
+- [x] Adequar textos e confirmação de movimentação no código; prévias e testes locais em TEXTOS-AUDITORIA-20261022.md.
+- [ ] Instalar e conferir o candidato 0.1.6 na VM; resultados de startup/reconexão acima continuam sendo da versão 0.1.5.
 - [x] Histórico preservado na abertura manual após reinício relatado da VM; sete registros visíveis.
 - [x] Repetir a investigação de startup: UI iniciada automaticamente nesta rodada; falha anterior não reproduzida.
 - [x] Confirmar serviço, bandeja automática e estado após reinício e login real do Windows 10.

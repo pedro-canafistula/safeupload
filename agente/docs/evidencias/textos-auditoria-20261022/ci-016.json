@@ -1,0 +1,70 @@
+{
+  "runId": 39802402784,
+  "url": "https://github.com/pedro-canafistula/safeupload/actions/runs/39802402784",
+  "sourceCommit": "0e9e05d1562f64d3b384a2426307d3644c9340f3",
+  "sourceDirty": false,
+  "allThreeJobs": "success",
+  "installerVersion": "0.1.6",
+  "installerSha256": "44D7A2751696F6B873CD50D15F1343829E268BCCF153677D744FD67521C6499C",
+  "installerBytes": 84024610,
+  "payloadFiles": 724,
+  "signed": false,
+  "csharp": [
+    {
+      "configuration": "Debug",
+      "passed": 749,
+      "failed": 0,
+      "total": 753,
+      "existingSkips": 4
+    },
+    {
+      "configuration": "Release",
+      "passed": 749,
+      "failed": 0,
+      "total": 753,
+      "existingSkips": 4
+    }
+  ],
+  "powershell": [
+    {
+      "passed": 39,
+      "failed": 0,
+      "total": 39,
+      "edition": "ps7"
+    },
+    {
+      "passed": 39,
+      "failed": 0,
+      "total": 39,
+      "edition": "ps51"
+    }
+  ],
+  "environment": {
+    "passed": 4,
+    "failed": 0,
+    "tests": [
+      "untrusted inherited module selected in control",
+      "actual setup bootstrap loads native Windows PowerShell Get-Acl",
+      "actual smoke reader preserves complete records before truncated tail",
+      "actual smoke reader preserves the original timestamp without culture conversion"
+    ]
+  },
+  "artifacts": [
+    {
+      "sha256": "83ee13b8590a611eeee868650517055c8242f7a904d960c3662bc3d920d7326a",
+      "id": 12436950526,
+      "name": "homologacao-agente-instalador"
+    },
+    {
+      "sha256": "7805a7c4bec9bc82f3f1fdce82039d1d28d2100f0260d7b5bea15c624a6f8a21",
+      "id": 12436137331,
+      "name": "csharp-Debug"
+    },
+    {
+      "sha256": "87b2dce06a0ccceba295d0e5b4970b3fb8d71786b6e0cc1acf7d12220fd0645c",
+      "id": 12435888179,
+      "name": "csharp-Release"
+    }
+  ],
+  "win10CandidateInstalled": false
+}
