@@ -113,8 +113,8 @@ fonte limpa `3fa6986b938903f9abbafc0f696f1a043124672d`.
   Todos baixados e confrontados; EXE conferido com build-result e recibo estático.
 
 Evidências brutas locais do novo CI em `outputs/homologacao-historico-20261022/`.
-O candidato exato está preparado para repetição no clone, ainda sem aprovação
-visual da correção no Windows 10. O roteiro local confere identidade do clone,
+O candidato exato foi preparado para repetição no clone. O resultado visual
+posterior está registrado abaixo. O roteiro local confere identidade do clone,
 proveniência do 0.1.4 e hash do novo EXE; coleta o resultado anterior, desinstala
 o 0.1.4 preservando hashes da política/fila e instala o 0.1.5 sobre os dados
 preservados. Em seguida consulta o pipe e exige o EventId original uma única vez.
@@ -122,13 +122,44 @@ Esse roteiro é restrito a este laboratório e requer elevação local; não é 
 implementação nem homologação geral de upgrade. A interface deve ser reaberta
 normalmente pelo usuário para concluir o aceite visual.
 
+## Confirmação visual do histórico 0.1.5
+
+A transferência do EXE 0.1.5 passou com hash conferido dentro do convidado.
+Uma execução posterior do roteiro foi recusada antes de remover qualquer coisa:
+ele esperava 0.1.4, mas a consulta somente de leitura revelou que o 0.1.5 já
+estava instalado. `installation.json` e manifesto informam versão 0.1.5,
+commit `3fa6986b938903f9abbafc0f696f1a043124672d`, modo FileSystemWatcher,
+sem API configurada; serviço Running como LocalSystem. A recusa não é prova de
+falha da instalação 0.1.5. O resultado falho dessa repetição também não comprova
+os passos anteriores de desinstalação/reinstalação: preservar essa distinção.
+
+O resultado bruto do ensaio 0.1.4 foi coletado e confirma o EventId
+`a8c6552d-dca9-41eb-9bff-b1782480d158`, arquivo
+`win10-synthetic-028b0d23bd61480ea2833c9f817416ca.txt`, 29 bytes,
+`2026-10-22T12:09:36.3064497+00:00`, CPF com trecho mascarado terminado em 25.
+Resultado e diagnóstico ficam em `resultado-014-coletado.json` e
+`diagnostico-instalacao.json`, no diretório local do laboratório.
+
+Após orientação para abrir normalmente pelo Explorador, o usuário enviou a
+captura do Histórico já preenchido. Ela mostra uma linha com o prefixo do mesmo
+arquivo sintético, 29 B, 22/10/2026 09:09:36 (São Paulo), categoria CPF e trecho
+mascarado terminado em 25. É confirmação visual de recuperação do evento
+anterior no novo painel; o EventId completo não é exibido na grade.
+
+Captura local `evidencias-ui/historico-015-evento-anterior.png`, SHA-256
+`58EEC0142C8870852925E4B625C887F65973414FA8112325A7DC959CB80CD466`.
+Há uma linha visível, mas isso não substitui o ensaio de reconexão/reabertura.
+Permanece a distinção entre a classificação de auditoria Blocked e bloqueio
+preventivo de uma operação. Não foi necessário alterar ACLs ou o backend.
+
 ## Aceite ainda necessário
 
 - [x] Instalação inicial 0.1.4 em Windows 10 sem .NET global; evidência manual.
 - [x] Abertura da interface pela sessão comum; status e política recebidos.
-- [ ] Coletar resultado e logs brutos da VM, sem coletar senha.
-- [ ] Repetir no Windows 10 com o EXE 0.1.5 exato, após CI aprovado e hash conferido.
-- [ ] Ver evento já persistido no Histórico ao abrir a interface como usuário comum.
+- [x] Coletar resultado bruto 0.1.4 e diagnóstico da instalação 0.1.5, sem salvar senha.
+- [ ] Coletar logs completos do ensaio de troca entre versões.
+- [x] Confirmar 0.1.5 no Windows 10 após CI aprovado e transferência com hash conferido.
+- [x] Ver evento já persistido no Histórico após abertura normal orientada ao usuário; evidência manual.
 - [ ] Reabrir interface/reconectar serviço sem duplicar evento nem alerta antigo.
 - [ ] Criar novo arquivo sintético com a interface aberta e verificar atualização.
 - [ ] Reiniciar Windows e verificar startup/serviço/estado, distinguindo de Restart-Service.
