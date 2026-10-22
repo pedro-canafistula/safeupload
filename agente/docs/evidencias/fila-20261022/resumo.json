@@ -1,0 +1,39 @@
+{
+  "result": "passed-bounded-probe-not-long-term-qualification",
+  "probeCommit": "6eed4f98ae354793080eb0e6c5e6df13e899ee31",
+  "productSourceUnchangedFrom": "54f7ff044cc44fbf1200240e248af99e5c8ee952",
+  "localTests": {
+    "Release": {
+      "passed": 54,
+      "failed": 0
+    },
+    "Debug": {
+      "passed": 3,
+      "failed": 0
+    }
+  },
+  "developmentNote": "Primeira execucao Release: 2/3; o teste de substituicao bloqueada esperava IOException, mas o Windows retornou UnauthorizedAccessException. A assercao final exige recusa de filesystem, fila com hash identico, limpeza do temporario e recuperacao; nenhuma mudanca no produto.",
+  "files": [
+    {
+      "file": "fila-debug.trx",
+      "bytes": 6791,
+      "sha256": "A173E2C5375BF224A5382E7B7A498D4107F044A7DBEDD2396E737ACD3BD74675"
+    },
+    {
+      "file": "fila-regressao-release.trx",
+      "bytes": 91887,
+      "sha256": "04D90ED048006FD9139D123307E551FA5AA1D31F3B139F7CCD409484023CDF00"
+    },
+    {
+      "file": "medicao.json",
+      "bytes": 7201,
+      "sha256": "55BC25CA816C8D43995C38DFFD193785CC7D679CB137BBDC0CCE982AAEA7141B"
+    },
+    {
+      "file": "ci.json",
+      "bytes": 6592,
+      "sha256": "19294a8ddc4b966e1a63dfb4946b28f0c3e8a7b710d12e23c5d4a05f258d9bb4"
+    }
+  ],
+  "ciRunId": 39862472507
+}
