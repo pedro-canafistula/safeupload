@@ -397,6 +397,22 @@ try {
     $blocked.StageDeleted = $true
     Assert-T5 ((Get-T5FixtureErrors $blocked -RequireV20).Count -eq 0) 'verified blocked handback evidence must validate'
 
+    # D8 (m2t5ord16): the service's completed cleanup of a cancelled unbound version has StageDeleted without a release or hand-back.
+    $stageDeletedMessage = 'StageDeleted has no service-authorized release or verified-handback state'
+    $cancelledDone = New-T5Entry 7 'cancelled-cleanup' $driver $basePath
+    $cancelledDone | Add-Member -NotePropertyName UnboundCancellation -NotePropertyValue ([pscustomobject]@{
+        OperationId = [guid]::NewGuid().ToString()
+        Version = [pscustomobject]@{ TransferId = $cancelledDone.Transfer.TransferId; DestinationGeneration = $cancelledDone.DestinationGeneration; StageIdentity = $cancelledDone.StageIdentity }
+        Generation = [long]($cancelledDone.DestinationGeneration + 1) }) -Force
+    $cancelledDone.StageDeleted = $true
+    Assert-T5 (@(Get-T5FixtureErrors $cancelledDone -RequireV20) -notcontains $stageDeletedMessage) 'a cancelled unbound version whose stage the service deleted has an authorized StageDeleted'
+    $noReceipt = $cancelledDone.PSObject.Copy()
+    $noReceipt.UnboundCancellation = $null
+    Assert-T5 (@(Get-T5FixtureErrors $noReceipt -RequireV20) -contains $stageDeletedMessage) 'StageDeleted on a Retained entry without the cancellation receipt stays refused'
+    $cancelledCleanupStarted = $cancelledDone.PSObject.Copy()
+    $cancelledCleanupStarted.StageCleanupStarted = $true
+    Assert-T5 (@(Get-T5FixtureErrors $cancelledCleanupStarted -RequireV20) -contains $stageDeletedMessage) 'a cancelled entry with a started blocked-stage cleanup is not the completed cancellation cleanup'
+
     $held = New-T5Entry 11 'held-outcome' $driver $basePath
     $heldProjection = Get-T5Projection $held 'unused-held.json'
     $heldOutcome = Get-T5EmptyProbeOutcome @($heldProjection) $true

@@ -243,12 +243,17 @@ function Get-WindowTexts([int]$ProcessId) {
     $root = [Windows.Automation.AutomationElement]::RootElement
     $cond = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty, $ProcessId)
     $texts = @()
+    # m2t5ord16: a window that closes while it is being read (Notepad's Save As dialog right after the save) raises
+    # ElementNotAvailableException; that window is simply gone, so it is skipped, and the enumeration of the rest goes on.
     foreach ($w in $root.FindAll([Windows.Automation.TreeScope]::Children, $cond)) {
-        $parts = @($w.Current.Name)
-        foreach ($e in $w.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)) {
-            if ($e.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and $e.Current.Name) { $parts += $e.Current.Name }
-        }
-        $texts += ($parts -join ' | ')
+        try {
+            $parts = @($w.Current.Name)
+            foreach ($e in $w.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)) {
+                try { if ($e.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and $e.Current.Name) { $parts += $e.Current.Name } }
+                catch [Windows.Automation.ElementNotAvailableException] { }
+            }
+            $texts += ($parts -join ' | ')
+        } catch [Windows.Automation.ElementNotAvailableException] { }
     }
     $texts
 }

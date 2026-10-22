@@ -831,7 +831,11 @@ function Get-JournalSchemaErrors($Entry, [string]$ManifestPath, [switch]$Require
         -not (Test-T5IntegerRange $Entry.BlockedInspectionFailure 0 3)) {
         $errors += 'BlockedInspectionFailure is outside the inspection failure enum'
     }
-    if ($Entry.StageDeleted -eq $true -and -not (
+    # D8: the service's completed cleanup of an irrevocably cancelled unbound version (the receipt above is validated exactly): the
+    # exact stage is deleted and nothing was released or handed back. The agent's own terminal-archive rule is the same shape.
+    $cancelledCleanup = ($null -ne $Entry.UnboundCancellation -and $state -eq 7 -and $Entry.SealedOnce -eq $true -and
+        $handbackState -eq 0 -and $Entry.StageCleanupStarted -eq $false)
+    if ($Entry.StageDeleted -eq $true -and -not ($cancelledCleanup -or
             ($state -eq 5 -and $Entry.SealedOnce -eq $true -and
                 (Test-T5IntegerRange $Entry.SealedLength 0 ([long]::MaxValue)) -and
                 $null -ne $Entry.Sha256Hex -and $handbackState -eq 0 -and
