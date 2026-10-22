@@ -43,7 +43,8 @@ static int PendingCancellation, NativeReplaceChecks;
 static PVOID SecurityEvidence=(PVOID)(uintptr_t)73;
 static BOOLEAN SafeUploadStageProtocolNativeForwardAllowed(int a,int b){(void)a;(void)b;return FALSE;}
 static PVOID FltGetRequestorProcess(PFLT_CALLBACK_DATA d){(void)d;return (PVOID)(uintptr_t)100;}
-static PVOID StageFindView(PVOID owner,PUNICODE_STRING name){(void)owner;(void)name;return NULL;}
+static int PrivateView;
+static PVOID StageFindView(PVOID owner,PUNICODE_STRING name){(void)owner;(void)name;return PrivateView?(PVOID)(uintptr_t)200:NULL;}
 static BOOLEAN StageHiddenName(PVOID owner,PUNICODE_STRING name){(void)owner;(void)name;return FALSE;}
 static BOOLEAN SafeUploadStageProtectedName(PFLT_FILE_NAME_INFORMATION n,int kind)
 { return SafeUploadPolicyMatchesCurrentOrPendingDestination(kind,&n->Name,FALSE); }
@@ -51,8 +52,23 @@ static BOOLEAN SafeUploadPolicySameProtectedScope(PUNICODE_STRING a,PUNICODE_STR
 { return SafeUploadPolicyMatchesCurrentOrPendingDestination(1,a,FALSE)&&SafeUploadPolicyMatchesCurrentOrPendingDestination(1,b,FALSE); }
 static BOOLEAN SafeUploadPolicyMatchesExtension(PUNICODE_STRING n)
 { UNICODE_STRING ext=u(L".txt"),suffix=*n;if(n->Length<ext.Length)return FALSE;suffix.Buffer+=n->Length/2-ext.Length/2;suffix.Length=ext.Length;return RtlEqualUnicodeString(&suffix,&ext,TRUE); }
+static int LegacyPreComplete;
 static FLT_PREOP_CALLBACK_STATUS SafeUploadPreCreate(PFLT_CALLBACK_DATA d,PCFLT_RELATED_OBJECTS o,PVOID *ctx)
-{ (void)d;(void)o;LegacyPreCalls++;*ctx=(PVOID)(uintptr_t)32;return FLT_PREOP_SUCCESS_WITH_CALLBACK; }
+{ (void)o;LegacyPreCalls++;if(LegacyPreComplete){d->IoStatus.Status=STATUS_ACCESS_DENIED;*ctx=NULL;return FLT_PREOP_COMPLETE;}
+  *ctx=(PVOID)(uintptr_t)32;return FLT_PREOP_SUCCESS_WITH_CALLBACK; }
+/* D7 edges: pool, list, unload gate and mandatory teardown. */
+#define STAGE_TAG 0x55537467u
+#define POOL_FLAG_NON_PAGED 0x40
+#define FILE_READ_DATA 0x1
+#define STATUS_STOPPED_ON_SYMLINK -45
+static volatile LONG StageUnloadAdmissionClosed;
+static int MandatoryTeardown, AllocFail, Allocs, Frees;
+static BOOLEAN SafeUploadStageMandatoryTeardownActive(void){return (BOOLEAN)MandatoryTeardown;}
+static PVOID ExAllocatePool2(int flags,size_t size,ULONG tag)
+{ assert(flags==POOL_FLAG_NON_PAGED&&tag==STAGE_TAG&&!NamespaceDepth);if(AllocFail)return NULL;Allocs++;return calloc(1,size); }
+static VOID ExFreePoolWithTag(PVOID p,ULONG tag){assert(p&&tag==STAGE_TAG);Frees++;free(p);}
+static VOID InsertTailList(PLIST_ENTRY h,PLIST_ENTRY e){assert(SpinDepth==1);e->Flink=h;e->Blink=h->Blink;h->Blink->Flink=e;h->Blink=e;}
+static BOOLEAN RemoveEntryList(PLIST_ENTRY e){assert(SpinDepth==1);PLIST_ENTRY b=e->Blink,f=e->Flink;b->Flink=f;f->Blink=b;return f==b;}
 static int SafeUploadPostCreate(PFLT_CALLBACK_DATA d,PCFLT_RELATED_OBJECTS o,PVOID ctx,FLT_POST_OPERATION_FLAGS flags)
 { (void)o;assert(ctx==(PVOID)(uintptr_t)32);LegacyPostCalls++;if(LegacyDenied&&!flags)d->IoStatus.Status=STATUS_ACCESS_DENIED;return 0; }
 static VOID FltCancelFileOpen(PFLT_INSTANCE i,PFILE_OBJECT o){(void)i;(void)o;assert(!NamespaceDepth);CancelOpenCalls++;}
@@ -130,6 +146,25 @@ static VOID directory_interleaving(void)
  LookupHook=NULL;UNICODE_STRING folder=u(L"\\Device\\V\\Protected\\folder");
  STAGE_ADMISSION_TOKEN_SLOT b=slot();assert(StageDirectoryBeginMutation(&folder,NULL,&b)==0);StageDirectoryEndMutation(FALSE);
 }
+static VOID d7_reset(void)
+{
+ namespace_reset();head(&StageMvpReparseOpens);StageUnloadAdmissionClosed=0;
+ MandatoryTeardown=AllocFail=Allocs=Frees=LegacyPreComplete=PrivateView=0;TagAttributes=0;
+}
+/* No context leaked, no list residue, and the fenced singleton never touched (namespace_reset asserts it). */
+static VOID d7_done(void){assert(Allocs==Frees&&StageMvpReparseOpens.Flink==&StageMvpReparseOpens&&!StageDirectoryMutationActive);}
+/* Admit a D7 CREATE and return its context exactly as StagePostOperationCore would find it. */
+static PSTAGE_MVP_REPARSE_OPEN d7_admit(PFLT_CALLBACK_DATA data,PCFLT_RELATED_OBJECTS objects)
+{
+ PVOID ctx=NULL;BOOLEAN handled=FALSE;STAGE_ADMISSION_TOKEN_SLOT token=slot();
+ assert(StageMvpNamespacePre(data,objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_WITH_CALLBACK&&handled);
+ assert(ctx&&ctx!=&StageMvpNamespaceCompletionTag&&LegacyPreCalls==1&&!StageDirectoryMutationActive&&!CancelCalls&&!PreflightCalls);
+ PSTAGE_MVP_REPARSE_OPEN open=StageMvpReparseOpenTake(ctx);assert(open==ctx&&!StageMvpReparseOpenTake(ctx));
+ assert(!StageMvpReparseOpenTake((PVOID)(uintptr_t)32)); /* foreign contexts are never dereferenced or matched */
+ return open;
+}
+static VOID d7_post(PFLT_CALLBACK_DATA data,PCFLT_RELATED_OBJECTS objects,PSTAGE_MVP_REPARSE_OPEN open,NTSTATUS status,uintptr_t info,int flags)
+{ data->IoStatus.Status=status;data->IoStatus.Information=info;StageMvpReparseOpenPost(data,objects,open,flags); }
 static VOID namespace_tests(void)
 {
  (void)&InterlockedCompareExchange64;
@@ -175,12 +210,17 @@ static VOID namespace_tests(void)
  assert(requester_without_view(writer,&privateHandled)==STATUS_ACCESS_DENIED&&privateHandled);
  assert(otherOwnerSealed); /* no legacy public CREATE or cancellation ran */
  assert(!CancelCalls&&!PreflightCalls&&!LegacyPreCalls&&!StageDirectoryMutationActive);
- /* Metadata-only opens excluded from native routing must also keep ordinary
-  * admission, even when they carry no DOC bit. */
+ /* D7 (owner 2026-10-21): without DOC, a DELETE/WRITE_ATTRIBUTES-only OPEN_REPARSE_POINT open is a native-route
+  * request and is demoted like any namespace-only open; content-writing or DELETE_CHILD variants keep writer intent. */
  io.Parameters.Create.Options&=~FILE_DELETE_ON_CLOSE;
  security.DesiredAccess=FILE_WRITE_ATTRIBUTES;
- assert(classified_writer(&data,&objects,TRUE));
- assert(readmitted_writer(&data,&objects,TRUE,FALSE));
+ assert(StageMvpNamespaceReparseOpen(&data)&&StageMvpNamespaceCreateEligible(&data,&objects));
+ assert(!classified_writer(&data,&objects,TRUE));
+ assert(!readmitted_writer(&data,&objects,TRUE,FALSE));
+ security.DesiredAccess=FILE_WRITE_ATTRIBUTES|FILE_DELETE_CHILD;
+ assert(!StageMvpNamespaceReparseOpen(&data)&&classified_writer(&data,&objects,TRUE));
+ security.DesiredAccess=FILE_WRITE_ATTRIBUTES|FILE_WRITE_DATA;
+ assert(!StageMvpNamespaceReparseOpen(&data)&&classified_writer(&data,&objects,TRUE));
  io.Parameters.Create.Options|=FILE_DELETE_ON_CLOSE;
  security.DesiredAccess=DELETE|FILE_READ_ATTRIBUTES;
  io.Parameters.Create.Options&=~FILE_OPEN_REPARSE_POINT;
@@ -275,5 +315,113 @@ static VOID namespace_tests(void)
  assert(SubjectChecks==2&&DestinationChecks==1&&!CancelCalls);
  DestinationAccessStatus=0;assert(StageRenameAuthorizeReplacement(&data,&stream,&target,&Destination.Name,TRUE)==0);
  assert(SubjectChecks==3&&DestinationChecks==2&&!CancelCalls);
- puts("native namespace production pre/post: denied CREATE/replacement, bindings, both generation races, registry ownership PASS");
+ /* D7 (owner 2026-10-21): OPEN_REPARSE_POINT opens of regular files take the native route. */
+ io.MajorFunction=IRP_MJ_CREATE;io.Parameters.Create.SecurityContext=&security;file.FsContext=(PVOID)1;
+ Source.Stream=(UNICODE_STRING){0};
+ ACCESS_MASK d7access[]={DELETE|FILE_READ_ATTRIBUTES|SYNCHRONIZE,FILE_WRITE_ATTRIBUTES|SYNCHRONIZE,
+  DELETE|FILE_WRITE_ATTRIBUTES,DELETE|FILE_READ_DATA};
+ /* 1. DELETE / WRITE_ATTRIBUTES / READ_DATA variants: native, demoted, no allocation of a version, no cancellation. */
+ for(unsigned a=0;a<sizeof(d7access)/sizeof(d7access[0]);a++){
+  d7_reset();io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_OPEN_REPARSE_POINT;security.DesiredAccess=d7access[a];
+  assert(StageMvpNamespaceReparseOpen(&data)&&StageMvpNamespaceCreateEligible(&data,&objects)&&!classified_writer(&data,&objects,TRUE));
+  PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
+  assert(data.IoStatus.Status==STATUS_SUCCESS&&!CancelOpenCalls&&!CancelCalls&&LegacyPostCalls==1);d7_done();
+ }
+ security.DesiredAccess=DELETE|FILE_READ_ATTRIBUTES|SYNCHRONIZE;
+ /* OPEN_IF is narrowed to OPEN before the lower CREATE. */
+ d7_reset();io.Parameters.Create.Options=(FILE_OPEN_IF<<24)|FILE_OPEN_REPARSE_POINT;
+ {PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);assert((io.Parameters.Create.Options>>24)==FILE_OPEN);
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);assert(data.IoStatus.Status==STATUS_SUCCESS);d7_done();}
+ io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_OPEN_REPARSE_POINT;
+ /* 2. A reparse point seen only in post is cancelled; a symlink the pre lookup stops on is refused in pre. */
+ d7_reset();{PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);TagAttributes=FILE_ATTRIBUTE_REPARSE_POINT;
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
+  assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&!LegacyPostCalls&&!CancelCalls);d7_done();}
+ d7_reset();IdentityStatus=STATUS_STOPPED_ON_SYMLINK;token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled);
+ assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&!ctx&&!LegacyPreCalls&&!Allocs&&!CancelCalls);d7_done();
+ /* 3. Query faults, short replies and a substituted regular object all cancel; missing object evidence is refused
+  * without object calls; informational and oplock-break success with FILE_OPENED still validates and passes. */
+ for(int fault=0;fault<5;fault++){
+  d7_reset();PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+  if(fault==0)TagStatus=STATUS_ACCESS_DENIED;else if(fault==1)TagShort=1;else if(fault==2)IdQueryStatus=STATUS_ACCESS_DENIED;
+  else if(fault==3)IdShort=1;else SourceId=9;
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
+  assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&!LegacyPostCalls&&!CancelCalls);d7_done();
+ }
+ d7_reset();{PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);file.FsContext=NULL;
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);file.FsContext=(PVOID)1;
+  assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&!CancelOpenCalls&&!LegacyPostCalls);d7_done();}
+ NTSTATUS d7success[]={0x40000000,STATUS_OPLOCK_BREAK_IN_PROGRESS};
+ for(unsigned k=0;k<2;k++){d7_reset();PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+  d7_post(&data,&objects,open,d7success[k],FILE_OPENED,0);
+  assert(data.IoStatus.Status==d7success[k]&&!CancelOpenCalls&&LegacyPostCalls==1);d7_done();}
+ /* 4. A failed or reparsed lower CREATE validates nothing and keeps the legacy post; a legacy-post denial is a single refusal. */
+ NTSTATUS d7nonopen[]={STATUS_ACCESS_DENIED,STATUS_OBJECT_NAME_NOT_FOUND,STATUS_REPARSE};
+ for(unsigned k=0;k<3;k++){d7_reset();PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+  d7_post(&data,&objects,open,d7nonopen[k],FILE_OPENED,0);
+  assert(data.IoStatus.Status==d7nonopen[k]&&!CancelOpenCalls&&LegacyPostCalls==1);d7_done();}
+ d7_reset();{PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);LegacyDenied=1;
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
+  assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&!CancelOpenCalls&&LegacyPostCalls==1);d7_done();}
+ /* 5. Every pre refusal frees its context; a draining post only frees it. */
+ for(int refusal=0;refusal<4;refusal++){
+  d7_reset();if(refusal==0)StageUnloadAdmissionClosed=1;else if(refusal==1)MandatoryTeardown=1;
+  else if(refusal==2)AllocFail=1;else LegacyPreComplete=1;
+  token=slot();ctx=NULL;
+  assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&!ctx);
+  assert(data.IoStatus.Status==(refusal<2?STATUS_DEVICE_NOT_READY:STATUS_ACCESS_DENIED));
+  assert(LegacyPreCalls==(refusal==3)&&Allocs==(refusal==3)&&!CancelCalls);d7_done();
+ }
+ d7_reset();{PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);TagAttributes=FILE_ATTRIBUTE_REPARSE_POINT;
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,FLTFL_POST_OPERATION_DRAINING);
+  assert(data.IoStatus.Status==STATUS_SUCCESS&&!CancelOpenCalls&&!LegacyPostCalls);d7_done();}
+ /* 6. DOC, DELETE_CHILD and content-writing reparse opens stay excluded (writer, staged or refused as before). */
+ d7_reset();io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_OPEN_REPARSE_POINT|FILE_DELETE_ON_CLOSE;
+ assert(!StageMvpNamespaceReparseOpen(&data)&&!StageMvpNamespaceCreateEligible(&data,&objects)&&classified_writer(&data,&objects,TRUE));
+ token=slot();ctx=NULL;assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_NO_CALLBACK&&!handled);
+ assert(!Allocs&&!LegacyPreCalls&&!CancelCalls);d7_done();
+ io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_OPEN_REPARSE_POINT;
+ security.DesiredAccess=DELETE|FILE_DELETE_CHILD;assert(!StageMvpNamespaceCreateEligible(&data,&objects)&&classified_writer(&data,&objects,TRUE));
+ security.DesiredAccess=DELETE|FILE_WRITE_DATA;assert(!StageMvpNamespaceCreateEligible(&data,&objects)&&classified_writer(&data,&objects,TRUE));
+ security.DesiredAccess=DELETE|FILE_READ_ATTRIBUTES|SYNCHRONIZE;
+ /* Declines after eligibility refuse: unresolved name, stream name, non-absent lookup failure. Unprotected names
+  * and genuine private views keep their existing routes. A proved-absent name opens natively with a zero identity. */
+ d7_reset();NameStatus=STATUS_ACCESS_DENIED;token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&data.IoStatus.Status==STATUS_ACCESS_DENIED);
+ assert(!LegacyPreCalls&&!Allocs);NameStatus=0;d7_done();
+ d7_reset();Source.Stream=u(L":s");token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&data.IoStatus.Status==STATUS_ACCESS_DENIED);
+ Source.Stream=(UNICODE_STRING){0};assert(!LegacyPreCalls&&!Allocs);d7_done();
+ d7_reset();Source.Name=u(L"\\Device\\V\\Elsewhere\\file.txt");token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_NO_CALLBACK&&!handled&&!Allocs);d7_done();
+ d7_reset();PrivateView=1;token=slot();ctx=NULL; /* 8. private route, unchanged */
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_NO_CALLBACK&&!handled&&!Allocs&&!LegacyPreCalls);d7_done();
+ for(int raced=0;raced<2;raced++){
+  d7_reset();IdentityStatus=STATUS_OBJECT_NAME_NOT_FOUND;PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+  assert(open->Identity.FileId==0&&open->Identity.VolumeSerialNumber==0);
+  d7_post(&data,&objects,open,raced?STATUS_SUCCESS:STATUS_OBJECT_NAME_NOT_FOUND,FILE_OPENED,0);
+  assert(CancelOpenCalls==raced&&data.IoStatus.Status==(raced?STATUS_ACCESS_DENIED:STATUS_OBJECT_NAME_NOT_FOUND));d7_done();
+ }
+ /* 9. Unexpected successful outcomes for this OPEN-only route and STATUS_PENDING are refused, never passed on. */
+ uintptr_t d7infos[]={FILE_CREATED,FILE_OVERWRITTEN,FILE_SUPERSEDED,FILE_EXISTS,7};
+ for(unsigned k=0;k<5;k++){d7_reset();PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+  d7_post(&data,&objects,open,STATUS_SUCCESS,d7infos[k],0);
+  assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&!LegacyPostCalls);d7_done();}
+ d7_reset();{PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+  d7_post(&data,&objects,open,STATUS_PENDING,FILE_OPENED,0);
+  assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&!CancelOpenCalls&&!LegacyPostCalls);d7_done();}
+ /* 7. A reparse attribute on an open handle refuses a native disposition before any cancellation. */
+ d7_reset();FILE_DISPOSITION_INFORMATION dispose={.DeleteFile=TRUE};
+ io.MajorFunction=IRP_MJ_SET_INFORMATION;io.Parameters.SetFileInformation.FileInformationClass=FileDispositionInformation;
+ io.Parameters.SetFileInformation.InfoBuffer=&dispose;io.Parameters.SetFileInformation.Length=sizeof(dispose);
+ file.DeleteAccess=TRUE;file.WriteAccess=FALSE;TagAttributes=FILE_ATTRIBUTE_REPARSE_POINT;token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&data.IoStatus.Status==STATUS_ACCESS_DENIED);
+ assert(!CancelCalls&&!PreflightCalls&&!MutatingOwners&&!CancelOpenCalls);StageDirectoryEndMutation(FALSE);d7_done();
+ d7_reset();TagAttributes=0;token=slot();ctx=NULL; /* the same disposition on a regular file still takes the fenced D2 path */
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SYNCHRONIZE&&handled&&ctx==&StageMvpNamespaceCompletionTag);
+ assert(PreflightCalls==1&&CancelCalls==1);data.IoStatus.Status=0;StageMvpNamespacePost(&data,&objects,0);StageDirectoryEndMutation(FALSE);
+ io.MajorFunction=IRP_MJ_CREATE;
+ puts("native namespace production pre/post: denied CREATE/replacement, bindings, both generation races, registry ownership, D7 reparse-flag opens PASS");
 }

@@ -374,6 +374,16 @@ static FILE_ID_INFORMATION StageMvpNamespaceCreateIdentity;
 static PVOID StageMvpNamespaceRegistryContext;
 static BOOLEAN StageMvpNamespaceCreateCallback;
 static PVOID StageMvpNamespaceCreateContext; /* Single fenced native CREATE; legacy read/taint post context. */
+/* D7 (T5-UX-NAMESPACE-GAP): one per admitted unfenced OPEN_REPARSE_POINT namespace CREATE, owned by that CREATE's
+ * admission-epoch post. Never the fenced singleton above. Membership in StageMvpReparseOpens (StageListLock) is how a
+ * post recognises it, so no foreign completion context is ever dereferenced. */
+typedef struct _STAGE_MVP_REPARSE_OPEN {
+    LIST_ENTRY Link;
+    FILE_ID_INFORMATION Identity; /* captured in pre; zero when the name was proved absent */
+    PVOID LegacyContext;
+    BOOLEAN LegacyCallback;
+} STAGE_MVP_REPARSE_OPEN, *PSTAGE_MVP_REPARSE_OPEN;
+static LIST_ENTRY StageMvpReparseOpens;
 #endif
 static BOOLEAN StageStopping;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -465,6 +475,40 @@ __declspec(noinline) static VOID StageStreamReleaseSpinLock(
 {
     KeReleaseSpinLock(Lock, OldIrql);
 }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* D7 context list. Resident helpers keep the spin lock out of the pageable pre/post paths. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_same_
+__declspec(noinline) static VOID StageMvpReparseOpenTrack(_Inout_ PSTAGE_MVP_REPARSE_OPEN Open)
+{
+    KIRQL irql = PASSIVE_LEVEL;
+    StageStreamAcquireSpinLock(&StageListLock, &irql);
+    InsertTailList(&StageMvpReparseOpens, &Open->Link);
+    StageStreamReleaseSpinLock(&StageListLock, irql);
+}
+
+/* Exact membership: returns and unlinks the context only if this pointer is a tracked D7 context. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_same_
+__declspec(noinline) static PSTAGE_MVP_REPARSE_OPEN StageMvpReparseOpenTake(_In_opt_ PVOID Context)
+{
+    PLIST_ENTRY link;
+    PSTAGE_MVP_REPARSE_OPEN found = NULL;
+    KIRQL irql = PASSIVE_LEVEL;
+    if (Context == NULL) return NULL;
+    StageStreamAcquireSpinLock(&StageListLock, &irql);
+    for (link = StageMvpReparseOpens.Flink; link != &StageMvpReparseOpens; link = link->Flink) {
+        if ((PVOID)CONTAINING_RECORD(link, STAGE_MVP_REPARSE_OPEN, Link) == Context) {
+            RemoveEntryList(link);
+            found = (PSTAGE_MVP_REPARSE_OPEN)Context;
+            break;
+        }
+    }
+    StageStreamReleaseSpinLock(&StageListLock, irql);
+    return found;
+}
+#endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 /* Serialize attach admission closure with the active-count publication in
@@ -7779,6 +7823,9 @@ NTSTATUS SafeUploadStageInitialize(VOID)
     InitializeListHead(&StageWorkQueue);
     InitializeListHead(&StageTombstones);
     InitializeListHead(&StageAllocationReservations);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    InitializeListHead(&StageMvpReparseOpens);
+#endif
     KeInitializeSpinLock(&StageListLock);
     KeInitializeEvent(&StageWorkerStop, NotificationEvent, FALSE);
     KeInitializeEvent(&StageWorkEvent, SynchronizationEvent, FALSE);
@@ -9041,12 +9088,15 @@ Exit:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 _IRQL_requires_max_(APC_LEVEL)
 static BOOLEAN StageMvpNamespaceOpen(_In_ PFLT_CALLBACK_DATA Data);
+_IRQL_requires_max_(APC_LEVEL)
+static BOOLEAN StageMvpNamespaceReparseOpen(_In_ PFLT_CALLBACK_DATA Data);
 _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageMvpNamespaceCreateEligible(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects);
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, StageMvpNamespaceCreateEligible)
 #pragma alloc_text(PAGE, StageMvpNamespaceOpen)
+#pragma alloc_text(PAGE, StageMvpNamespaceReparseOpen)
 #endif
 _Use_decl_annotations_
 static BOOLEAN StageMvpNamespaceOpen(PFLT_CALLBACK_DATA Data)
@@ -9057,6 +9107,20 @@ static BOOLEAN StageMvpNamespaceOpen(PFLT_CALLBACK_DATA Data)
     return security != NULL && (disposition == FILE_OPEN || disposition == FILE_OPEN_IF) &&
         !FlagOn(security->DesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
             GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED);
+}
+
+/* D7: the OPEN_REPARSE_POINT opens DeleteFileW and MoveFileExW's source use. Writer intent comes only from DELETE and/or
+ * FILE_WRITE_ATTRIBUTES; never delete-on-close (a cancelled DOC CREATE cannot prove a link intact) or content writing. */
+_Use_decl_annotations_
+static BOOLEAN StageMvpNamespaceReparseOpen(PFLT_CALLBACK_DATA Data)
+{
+    PIO_SECURITY_CONTEXT security = Data->Iopb->Parameters.Create.SecurityContext;
+    PAGED_CODE();
+    return Data->Iopb->MajorFunction == IRP_MJ_CREATE && StageMvpNamespaceOpen(Data) &&
+        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_REPARSE_POINT) &&
+        !FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&
+        !FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&
+        FlagOn(security->DesiredAccess, DELETE | FILE_WRITE_ATTRIBUTES);
 }
 
 /* Eligibility permits a routing attempt, not authority to forward a mutation.
@@ -9073,8 +9137,9 @@ static BOOLEAN StageMvpNamespaceCreateEligible(_In_ PFLT_CALLBACK_DATA Data,
         !SafeUploadStageProtocolNativeForwardAllowed(0, 0) &&
         !(SafeUploadIsAuthenticatedClient() && FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId) &&
         StageMvpNamespaceOpen(Data) &&
-        !FlagOn(Data->Iopb->Parameters.Create.Options,
-            FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID | FILE_OPEN_REPARSE_POINT) &&
+        !FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID) &&
+        /* Every other OPEN_REPARSE_POINT open, DOC included, keeps writer classification (round-1 item 2). */
+        (!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_REPARSE_POINT) || StageMvpNamespaceReparseOpen(Data)) &&
         !FlagOn(Data->Iopb->OperationFlags, SL_OPEN_TARGET_DIRECTORY) &&
         NT_SUCCESS(FltGetFileSystemType(Objects->Instance, &fs)) && fs == FLT_FSTYPE_NTFS;
 }
@@ -10292,6 +10357,105 @@ static BOOLEAN StageMvpRenameNeedsCopy(_In_ PFLT_FILE_NAME_INFORMATION Source,
          (!SafeUploadPolicyMatchesExtension(&Source->Name) && SafeUploadPolicyMatchesExtension(&Target->Name)));
 }
 
+/* D7: the opened object must be a regular file. A failed or short query, or any reparse attribute (no tag allow-list),
+ * fails closed. PASSIVE, no resource held; proves the final object's attribute only (bindings stay where they are). */
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageMvpRequireRegularObject(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT File);
+_IRQL_requires_(PASSIVE_LEVEL)
+static FLT_PREOP_CALLBACK_STATUS StageMvpReparseOpenPre(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _In_ const FILE_ID_INFORMATION *Identity,
+    _Flt_CompletionContext_Outptr_ PVOID *CompletionContext);
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageMvpReparseOpenPost(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
+    _In_ PSTAGE_MVP_REPARSE_OPEN Open, _In_ FLT_POST_OPERATION_FLAGS Flags);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageMvpRequireRegularObject)
+#pragma alloc_text(PAGE, StageMvpReparseOpenPre)
+#pragma alloc_text(PAGE, StageMvpReparseOpenPost)
+#endif
+_Use_decl_annotations_
+static NTSTATUS StageMvpRequireRegularObject(PFLT_INSTANCE Instance, PFILE_OBJECT File)
+{
+    FILE_ATTRIBUTE_TAG_INFORMATION tag = {0};
+    ULONG returned = 0;
+    NTSTATUS status;
+    PAGED_CODE();
+    status = FltQueryInformationFile(Instance, File, &tag, sizeof(tag), FileAttributeTagInformation, &returned);
+    if (!NT_SUCCESS(status) || returned != sizeof(tag) || FlagOn(tag.FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT))
+        return STATUS_ACCESS_DENIED;
+    return STATUS_SUCCESS;
+}
+
+/* D7 pre, after eligibility, protected-name and identity checks. The CREATE already holds an admission epoch
+ * (DELETE and FILE_WRITE_ATTRIBUTES are epoch operations). Unload closes admission before its zero-callback
+ * snapshot, so either that snapshot sees this callback and unload vetoes, or this read sees the closed gate. */
+_Use_decl_annotations_
+static FLT_PREOP_CALLBACK_STATUS StageMvpReparseOpenPre(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
+    const FILE_ID_INFORMATION *Identity, PVOID *CompletionContext)
+{
+    PSTAGE_MVP_REPARSE_OPEN open;
+    FLT_PREOP_CALLBACK_STATUS legacy;
+    PAGED_CODE();
+    *CompletionContext = NULL;
+    if (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 || SafeUploadStageMandatoryTeardownActive()) {
+        Data->IoStatus.Status = STATUS_DEVICE_NOT_READY;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
+    open = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*open), STAGE_TAG);
+    if (open == NULL) {
+        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
+    open->Identity = *Identity;
+    legacy = SafeUploadPreCreate(Data, Objects, &open->LegacyContext);
+    if (legacy == FLT_PREOP_COMPLETE) {
+        ExFreePoolWithTag(open, STAGE_TAG);
+        return legacy;
+    }
+    open->LegacyCallback = legacy == FLT_PREOP_SUCCESS_WITH_CALLBACK;
+    StageMvpReparseOpenTrack(open);
+    *CompletionContext = open;
+    return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+}
+
+/* D7 post, before the legacy post, any cancellation or handle exposure. Draining is cleanup on copied callback data,
+ * never enforcement: mandatory teardown keeps the existing coverage-loss rules. */
+_Use_decl_annotations_
+static VOID StageMvpReparseOpenPost(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
+    PSTAGE_MVP_REPARSE_OPEN Open, FLT_POST_OPERATION_FLAGS Flags)
+{
+    FILE_ID_INFORMATION identity = {0};
+    ULONG returned = 0;
+    PFILE_OBJECT file = Objects->FileObject;
+    NTSTATUS status = Data->IoStatus.Status;
+    PAGED_CODE();
+    if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) goto Free;
+    /* Genuine non-open: nothing was opened, so the legacy post runs as today. */
+    if (!NT_SUCCESS(status) || status == STATUS_REPARSE) {
+        if (Open->LegacyCallback) (VOID)SafeUploadPostCreate(Data, Objects, Open->LegacyContext, Flags);
+        goto Free;
+    }
+    if (status == STATUS_PENDING) goto Deny; /* not a completed outcome */
+    if (Data->IoStatus.Information != FILE_OPENED) goto Cancel; /* this OPEN-only route never creates or overwrites */
+    if (file == NULL || file->FsContext == NULL) goto Deny; /* no object call on missing evidence */
+    if (!NT_SUCCESS(StageMvpRequireRegularObject(Objects->Instance, file))) goto Cancel;
+    status = FltQueryInformationFile(Objects->Instance, file, &identity, sizeof(identity), FileIdInformation, &returned);
+    if (!NT_SUCCESS(status) || returned != sizeof(identity) ||
+        !RtlEqualMemory(&identity, &Open->Identity, sizeof(identity))) goto Cancel; /* substituted object */
+    /* A legacy-post denial cancels the open itself; D7 cancels nothing further. */
+    if (Open->LegacyCallback) (VOID)SafeUploadPostCreate(Data, Objects, Open->LegacyContext, Flags);
+    goto Free;
+Cancel:
+    if (file != NULL && file->FsContext != NULL) FltCancelFileOpen(Objects->Instance, file);
+Deny:
+    Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+    Data->IoStatus.Information = 0;
+Free:
+    ExFreePoolWithTag(Open, STAGE_TAG);
+}
+
 /* Native original-object path for the unbound local NTFS profile. No handle
  * export, second open, flag translation or synthetic FILE_OBJECT. NTFS checks
  * the original grant and all native sharing/image/read-only/flag semantics. */
@@ -10307,7 +10471,8 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
     PFILE_RENAME_INFORMATION rename = NULL;
     FILE_STANDARD_INFORMATION standard = {0};
     FLT_FILESYSTEM_TYPE fs = FLT_FSTYPE_UNKNOWN;
-    BOOLEAN mutation = FALSE, replace = FALSE;
+    BOOLEAN mutation = FALSE, replace = FALSE, reparseOpen = FALSE;
+    FILE_ID_INFORMATION identity = {0};
     PVOID mutatingIoContext = NULL, registryRenameContext = NULL;
     BOOLEAN trackedWriter = FALSE;
     STAGE_NAMESPACE_BINDINGS bindings = {0};
@@ -10325,6 +10490,7 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
     if (major == IRP_MJ_CREATE) {
         if (!StageMvpNamespaceCreateEligible(Data, Objects)) return result;
         mutation = BooleanFlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE);
+        reparseOpen = StageMvpNamespaceReparseOpen(Data);
     } else if (major == IRP_MJ_SET_INFORMATION) {
         ULONG length = Data->Iopb->Parameters.SetFileInformation.Length;
         PVOID buffer = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
@@ -10348,10 +10514,15 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
     if (!NT_SUCCESS(FltGetFileSystemType(Objects->Instance, &fs)) || fs != FLT_FSTYPE_NTFS) return result;
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_FILESYSTEM_ONLY |
             FLT_FILE_NAME_REQUEST_FROM_CURRENT_PROVIDER, &source);
-    if (!NT_SUCCESS(status) || !NT_SUCCESS(FltParseFileNameInformation(source))) goto Exit;
-    if (source->Stream.Length != 0 || !SafeUploadStageProtectedName(source, SafeUploadVolumeFixed)) goto Exit;
+    if (!NT_SUCCESS(status) || !NT_SUCCESS(FltParseFileNameInformation(source))) {
+        /* D7: an unresolved name may be protected; never leave a demoted writer to an unguarded legacy CREATE. */
+        if (reparseOpen) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; }
+        goto Exit;
+    }
+    if (source->Stream.Length != 0 && !reparseOpen) goto Exit;
+    if (!SafeUploadStageProtectedName(source, SafeUploadVolumeFixed)) goto Exit;
+    if (source->Stream.Length != 0) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; } /* D7 */
     if (major == IRP_MJ_CREATE) {
-        FILE_ID_INFORMATION identity = {0};
         BOOLEAN privateName;
         StageAcquire(&StageNamespaceResource);
         privateName = StageFindView(FltGetRequestorProcess(Data), &source->Name) != NULL ||
@@ -10367,7 +10538,11 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
                 *Handled = TRUE;
                 goto Refuse;
             }
-            goto Exit;
+            if (!reparseOpen) goto Exit;
+            /* D7: a proved-absent name opens natively with a zero identity, so a file appearing before the lower
+             * CREATE fails the identity check in post; any other lookup failure (a symlink included) refuses. */
+            if (!StageNameLookupProvesAbsent(status)) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; }
+            RtlZeroMemory(&identity, sizeof(identity));
         }
         /* OPEN_IF may use this route only as OPEN_EXISTING. The native open
          * still checks existence and authority; a racing unlink cannot create
@@ -10401,7 +10576,9 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
         }
     }
     if (!mutation) {
-        if (major == IRP_MJ_CREATE) result = SafeUploadPreCreate(Data, Objects, CompletionContext);
+        if (major == IRP_MJ_CREATE)
+            result = reparseOpen ? StageMvpReparseOpenPre(Data, Objects, &identity, CompletionContext) :
+                SafeUploadPreCreate(Data, Objects, CompletionContext);
         goto Exit;
     }
     status = StageNamespaceBeginMutation(Slot);
@@ -10412,6 +10589,10 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
     if (!NT_SUCCESS(status)) goto Refuse;
     if (major != IRP_MJ_CREATE) {
         BOOLEAN cancellationRequired = FALSE;
+        /* D7: a reparse point can be set on an open file. Refuse this SET (its handle stays open) before any
+         * pending-version cancellation; never FltCancelFileOpen from a pre-SET path. */
+        status = StageMvpRequireRegularObject(Objects->Instance, file);
+        if (!NT_SUCCESS(status)) goto Refuse;
         (VOID)SafeUploadStageWritersBeginMutatingIo(Data, Objects->Instance, file,
             &mutatingIoContext, &trackedWriter);
         if (rename != NULL) {
@@ -11163,6 +11344,15 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
 #endif
     if (Data->Iopb->MajorFunction == IRP_MJ_CREATE) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* D7 before every other CREATE post. Encoded legacy scalars are never looked up. */
+        {
+            PSTAGE_MVP_REPARSE_OPEN reparseOpen = (ULONG_PTR)CompletionContext >= 0x10000 ?
+                StageMvpReparseOpenTake(CompletionContext) : NULL;
+            if (reparseOpen != NULL) {
+                StageMvpReparseOpenPost(Data, Objects, reparseOpen, Flags);
+                return FLT_POSTOP_FINISHED_PROCESSING;
+            }
+        }
         if (SafeUploadStageNativePostCreate(Data, Objects, CompletionContext, Flags))
             return FLT_POSTOP_FINISHED_PROCESSING;
         if (SafeUploadStageWritersIsReservation(CompletionContext)) {

@@ -159,6 +159,8 @@ static BOOLEAN RtlPrefixUnicodeString(PCUNICODE_STRING prefix, PCUNICODE_STRING 
 static BOOLEAN RtlEqualUnicodeString(PCUNICODE_STRING a,PCUNICODE_STRING b,BOOLEAN ignore)
 { return a->Length==b->Length && RtlPrefixUnicodeString(a,b,ignore); }
 static int SourceId=1, NamedId=1, ParentId=2, TargetId=3, TargetExists;
+/* Injectable attribute-tag and file-ID replies (D7 controls); the defaults keep the folder cases unchanged. */
+static ULONG TagAttributes=FILE_ATTRIBUTE_DIRECTORY;static NTSTATUS TagStatus, IdQueryStatus;static int TagShort, IdShort;
 static NTSTATUS IdentityStatus;
 static NTSTATUS SafeUploadStageQueryIdentity(PFLT_INSTANCE i,PUNICODE_STRING n,BOOLEAN dir,FILE_ID_INFORMATION *id)
 { (void)i;assert(!NamespaceDepth&&Irql==0);memset(id,0,sizeof(*id));id->VolumeSerialNumber=1;
@@ -211,7 +213,12 @@ static NTSTATUS FltCreateFileEx(PVOID f,PFLT_INSTANCE i,HANDLE *h,PFILE_OBJECT *
 static NTSTATUS FltCreateFileEx2(PVOID f,PFLT_INSTANCE i,PHANDLE h,PFILE_OBJECT *o,ACCESS_MASK access,OBJECT_ATTRIBUTES *a,IO_STATUS_BLOCK *io,PVOID size,ULONG attr,ULONG share,ULONG disp,ULONG options,PVOID ea,ULONG bytes,ULONG flags,PVOID ctx)
 { (void)f;(void)i;(void)a;(void)io;(void)size;(void)attr;(void)ctx;assert(!NamespaceDepth&&Irql==0);assert(access==FILE_READ_ATTRIBUTES&&share==(FILE_SHARE_READ|FILE_SHARE_WRITE)&&disp==FILE_OPEN&&flags==0&&!ea&&!bytes);assert((options&(FILE_DIRECTORY_FILE|FILE_OPEN_REPARSE_POINT))==(FILE_DIRECTORY_FILE|FILE_OPEN_REPARSE_POINT));assert(StageDirectoryCollisionHolds>0);++ProbeCalls;if(ProbeStatus)return ProbeStatus;*h=&ProbeObject;*o=&ProbeObject;ProbeRefs=2;return 0; }
 static NTSTATUS FltQueryInformationFile(PFLT_INSTANCE i,PFILE_OBJECT o,PVOID info,ULONG bytes,FILE_INFORMATION_CLASS c,PULONG returned)
-{ (void)i;(void)o;assert(!NamespaceDepth&&Irql==0);if(c==FileIdInformation){assert(bytes==sizeof(FILE_ID_INFORMATION));FILE_ID_INFORMATION *id=info;memset(id,0,sizeof(*id));id->VolumeSerialNumber=1;id->FileId=(uint64_t)SourceId;}else if(c==FileStandardInformation){assert(bytes==sizeof(FILE_STANDARD_INFORMATION));((FILE_STANDARD_INFORMATION *)info)->Directory=(BOOLEAN)NativeDirectory;}else{assert(c==FileAttributeTagInformation&&bytes==sizeof(FILE_ATTRIBUTE_TAG_INFORMATION));((FILE_ATTRIBUTE_TAG_INFORMATION *)info)->FileAttributes=FILE_ATTRIBUTE_DIRECTORY;}if(returned)*returned=bytes;return 0; }
+{ (void)i;(void)o;assert(!NamespaceDepth&&Irql==0);ULONG reply=bytes;
+  if(c==FileIdInformation){assert(bytes==sizeof(FILE_ID_INFORMATION));if(IdQueryStatus)return IdQueryStatus;FILE_ID_INFORMATION *id=info;memset(id,0,sizeof(*id));id->VolumeSerialNumber=1;id->FileId=(uint64_t)SourceId;if(IdShort)reply--;}
+  else if(c==FileStandardInformation){assert(bytes==sizeof(FILE_STANDARD_INFORMATION));((FILE_STANDARD_INFORMATION *)info)->Directory=(BOOLEAN)NativeDirectory;}
+  else{assert(c==FileAttributeTagInformation&&bytes==sizeof(FILE_ATTRIBUTE_TAG_INFORMATION));if(TagStatus)return TagStatus;((FILE_ATTRIBUTE_TAG_INFORMATION *)info)->FileAttributes=TagAttributes;if(TagShort)reply--;}
+  if(returned){*returned=reply;}
+  return 0; }
 static VOID ObDereferenceObject(PFILE_OBJECT o) { assert(o==&ProbeObject&&ProbeRefs>0);--ProbeRefs; }
 static VOID FltClose(HANDLE h) { assert(h==&ProbeObject&&ProbeRefs>0);--ProbeRefs; }
 static VOID FltSetCallbackDataDirty(PFLT_CALLBACK_DATA d) { (void)d;++Dirty; }
@@ -224,6 +231,7 @@ static SAFEUPLOAD_POLICY Policy, Pending;
 static void reset(void)
 {
  Irql=NamespaceDepth=StageDirectoryMutationActive=StageStopping=SafeUploadBootScopesActive=0;
+ TagAttributes=FILE_ATTRIBUTE_DIRECTORY;TagStatus=IdQueryStatus=0;TagShort=IdShort=0;
  StageDirectorySequence=0; StageDirectoryCollisionHolds=0; SourceId=NamedId=1;ParentId=2;TargetId=3;TargetExists=IdentityStatus=0;Kind=SafeUploadVolumeFixed;Fs=FLT_FSTYPE_NTFS;MayMatch=NativeDirectory=1;Auth=PrepareCalls=Dirty=ProbeRefs=ProbeCalls=0;
  CurrentSourceName=NULL;NameStatus=ParseStatus=DestinationStatus=ProbeStatus=0;head(&StageStreams);head(&StageAllocationReservations);
  memset(&SafeUploadBootScopes,0,sizeof(SafeUploadBootScopes));memset(&Policy,0,sizeof(Policy));memset(&Pending,0,sizeof(Pending));

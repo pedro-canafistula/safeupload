@@ -30,7 +30,9 @@ def program(stream):
              'StageNativeDirectoryInformation', 'StageExternalRename')
     helpers = ''.join(d.function(stream, name) for name in names)
     native = ''.join(d.function(stream, name) for name in (
-        'StageMvpNamespaceOpen', 'StageMvpNamespaceCreateEligible', 'StageNamespacePostStatus',
+        'StageMvpReparseOpenTrack', 'StageMvpReparseOpenTake', 'StageMvpNamespaceOpen', 'StageMvpNamespaceReparseOpen',
+        'StageMvpNamespaceCreateEligible', 'StageNamespacePostStatus', 'StageMvpRequireRegularObject',
+        'StageMvpReparseOpenPre', 'StageMvpReparseOpenPost',
         'StageMvpNamespaceCreateOpened', 'StageInstallRenameExchange', 'StageMvpRenameNeedsCopy', 'StageRenameAuthorizeReplacement',
         'StageMvpNamespacePre', 'StageMvpNamespacePostCreate', 'StageMvpNamespacePost'))
     types = stream[stream.index('typedef struct _STAGE_NAMESPACE_BINDINGS {'):stream.index(
@@ -49,6 +51,9 @@ def program(stream):
     fixture = (HERE / 'directory_ux_fixture.c').read_text()
     extra = (HERE / 'namespace_ux_fixture.c').read_text()
     globals_, rest = extra.split('/* GLOBALS */')[1].split('/* STUBS */')
+    first = stream.index('typedef struct _STAGE_MVP_REPARSE_OPEN {')
+    last = stream.index('static LIST_ENTRY StageMvpReparseOpens;', first) + len('static LIST_ENTRY StageMvpReparseOpens;')
+    globals_ = stream[first:last] + '\n' + globals_
     stubs, tests = rest.split('/* TESTS */')
     return (fixture.replace('/* PRODUCTION_NAMESPACE_TYPES */', types)
             .replace('/* PRODUCTION_POLICY */', policies).replace('/* PRODUCTION_DIRECTORY */', helpers)
@@ -104,7 +109,26 @@ class NamespaceUx(unittest.TestCase):
             ('!RtlEqualMemory(&current.Parent, &Bindings->Parent, sizeof(current.Parent))', 'FALSE'),
             ('StageMvpNamespaceCreateOpened(Data, Objects)) {\n        if (name != NULL', 'TRUE) {\n        if (name != NULL'),
             ('return NT_SUCCESS(Data->IoStatus.Status) && Data->IoStatus.Status != STATUS_REPARSE', 'return Data->IoStatus.Status == STATUS_SUCCESS && Data->IoStatus.Status != STATUS_REPARSE'),
-            ('FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID | FILE_OPEN_REPARSE_POINT) &&', 'FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID) &&'),
+            # D7: every OPEN_REPARSE_POINT open other than a D7 request (DOC included) stays excluded.
+            ('(!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_REPARSE_POINT) || StageMvpNamespaceReparseOpen(Data)) &&', 'TRUE &&'),
+            ('!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&\n        !FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&', '!FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&'),
+            ('!FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&\n        FlagOn(security->DesiredAccess, DELETE | FILE_WRITE_ATTRIBUTES);', 'FlagOn(security->DesiredAccess, DELETE | FILE_WRITE_ATTRIBUTES);'),
+            # D7 pre: unload recheck, refusals of declines, absent-name zero identity.
+            ('if (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 || SafeUploadStageMandatoryTeardownActive()) {', 'if (FALSE && (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 || SafeUploadStageMandatoryTeardownActive())) {'),
+            ('if (reparseOpen) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; }\n        goto Exit;', 'goto Exit;'),
+            ('if (source->Stream.Length != 0) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; } /* D7 */', '/* D7 */'),
+            ('if (!StageNameLookupProvesAbsent(status)) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; }', 'if (FALSE) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; }'),
+            ('RtlZeroMemory(&identity, sizeof(identity));\n        }', 'identity.FileId = 1; identity.VolumeSerialNumber = 1;\n        }'),
+            # D7 post: every outcome class and both object checks.
+            ('if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) goto Free;', 'if (FALSE) goto Free;'),
+            ('if (status == STATUS_PENDING) goto Deny; /* not a completed outcome */', '/* pending */'),
+            ('if (Data->IoStatus.Information != FILE_OPENED) goto Cancel;', 'if (FALSE) goto Cancel;'),
+            ('if (file == NULL || file->FsContext == NULL) goto Deny;', 'if (file == NULL) goto Deny;'),
+            ('if (!NT_SUCCESS(StageMvpRequireRegularObject(Objects->Instance, file))) goto Cancel;', '(void)&StageMvpRequireRegularObject;'),
+            ('!RtlEqualMemory(&identity, &Open->Identity, sizeof(identity))) goto Cancel; /* substituted object */', 'FALSE) goto Cancel; /* substituted object */'),
+            ('if (!NT_SUCCESS(status) || returned != sizeof(tag) || FlagOn(tag.FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT))', 'if (!NT_SUCCESS(status) || FlagOn(tag.FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT))'),
+            # D7 SET: the regular-object check precedes cancellation.
+            ('status = StageMvpRequireRegularObject(Objects->Instance, file);\n        if (!NT_SUCCESS(status)) goto Refuse;', 'status = STATUS_SUCCESS;'),
             ('StageMvpNamespaceCreateEligible(Data, Objects)) writer = FALSE;', 'StageMvpNamespaceOpen(Data)) writer = FALSE;'),
             ('!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&\n        StageMvpNamespaceCreateEligible', 'StageMvpNamespaceCreateEligible'),
             ('writer = requestedWriter;', '(void)requestedWriter;'),
