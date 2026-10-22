@@ -326,12 +326,14 @@ Independent review remains an orchestrator obligation before a revised VM boot.
 This implementation task runs local diagnostic checks only; no WDK, PREfast,
 ApiValidator, Windows PowerShell gate or protected runtime qualification is implied.
 
-### D7 — OPEN_REPARSE_POINT opens of regular files take the native route (owner 2026-10-21; revision 3)
+### D7 — OPEN_REPARSE_POINT opens of regular files take the native route (owner 2026-10-21; revision 3, design ACCEPTED)
 
 Reviews: [revision 0](../../../evidence/2026-10-21/t5-d7-review-sol61.md) REVISE; revision 1 re-review REVISE
 ([evidence](../../../evidence/2026-10-21/t5-d7-rereview-sol61.md)): findings 1 and 3 resolved; revision 2 re-review REVISE
 ([evidence](../../../evidence/2026-10-21/t5-d7-rereview2-sol61.md)): findings 1, 2, 3, 5, 6 resolved. Revision 3 answers its blocking
-finding 8 (unload race) and conditions 4 and 7.
+finding 8 (unload race) and conditions 4 and 7. Revision 3 re-review: **ACCEPT, design only**
+([evidence](../../../evidence/2026-10-21/t5-d7-rereview3-sol61.md)); host controls, an implementation review, WDK/PREfast/ApiValidator/
+import gates and Windows rows remain required before qualification.
 
 **Evidence and diagnosis (finding 1).** Row `m2t5ord8` ([T5 checkpoint](../../../evidence/2026-10-21/t5-checkpoint.md)): `DeleteFileW` of a
 published protected file returned 5. `DeleteFileW` opens with DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE and FILE_OPEN_REPARSE_POINT,
