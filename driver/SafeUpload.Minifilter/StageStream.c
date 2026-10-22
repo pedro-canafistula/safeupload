@@ -10409,6 +10409,8 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpReparseOpenPre(PFLT_CALLBACK_DATA Data,
         return FLT_PREOP_COMPLETE;
     }
     open->Identity = *Identity;
+    open->LegacyContext = NULL; /* _Flt_CompletionContext_Outptr_ requires a NULL output on entry */
+    open->LegacyCallback = FALSE;
     legacy = SafeUploadPreCreate(Data, Objects, &open->LegacyContext);
     if (legacy == FLT_PREOP_COMPLETE) {
         ExFreePoolWithTag(open, STAGE_TAG);
