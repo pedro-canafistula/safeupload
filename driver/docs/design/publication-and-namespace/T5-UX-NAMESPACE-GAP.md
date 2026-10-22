@@ -326,10 +326,11 @@ Independent review remains an orchestrator obligation before a revised VM boot.
 This implementation task runs local diagnostic checks only; no WDK, PREfast,
 ApiValidator, Windows PowerShell gate or protected runtime qualification is implied.
 
-### D7 — OPEN_REPARSE_POINT opens of regular files take the native route (owner 2026-10-21; revision 1 after Sol 6.1 high REVISE)
+### D7 — OPEN_REPARSE_POINT opens of regular files take the native route (owner 2026-10-21; revision 2)
 
-Review: [revision 0 review](../../../evidence/2026-10-21/t5-d7-review-sol61.md) (REVISE; diagnosis confirmed). This revision answers
-its findings 1–7 in order.
+Reviews: [revision 0](../../../evidence/2026-10-21/t5-d7-review-sol61.md) REVISE; revision 1 re-review REVISE
+([evidence](../../../evidence/2026-10-21/t5-d7-rereview-sol61.md)): findings 1 and 3 resolved; this revision answers its
+blocking findings 4 and 8 and conditions 2, 5, 6 and 7.
 
 **Evidence and diagnosis (finding 1).** Row `m2t5ord8` ([T5 checkpoint](../../../evidence/2026-10-21/t5-checkpoint.md)): `DeleteFileW` of a
 published protected file returned 5. `DeleteFileW` opens with DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE and FILE_OPEN_REPARSE_POINT,
@@ -341,59 +342,81 @@ exists publicly (`StageStream.c` ~5330; sealed versions take the separate cancel
 109–112 of the full row result (kept locally; the tracked verdict retains entries from 113). `del`, `Remove-Item` and Explorer's
 permanent delete of a published file therefore fail; recycling is a rename and works. T5 requires both `DeleteFileW` calls to succeed.
 
-**Scope.** D7 covers a CREATE that (a) carries FILE_OPEN_REPARSE_POINT, (b) is FILE_OPEN (FILE_OPEN_IF is narrowed to FILE_OPEN as for
-D1), (c) does **not** carry FILE_DELETE_ON_CLOSE, and (d) requests no content access (the existing `StageMvpNamespaceOpen` access mask),
-so its writer classification comes only from DELETE and/or FILE_WRITE_ATTRIBUTES. Directory, by-file-ID and SL_OPEN_TARGET_DIRECTORY
-opens stay excluded. **FILE_DELETE_ON_CLOSE | FILE_OPEN_REPARSE_POINT stays excluded exactly as today** (staged admission or refusal):
-a cancelled delete-on-close CREATE can still apply NTFS delete effects during cleanup (round-1 control note above), so a post check
-cannot prove a link intact (finding 3). `DeleteFileW` and `MoveFileExW` source opens do not use delete-on-close.
+**Scope.** A *D7 request* is a CREATE that (a) carries FILE_OPEN_REPARSE_POINT, (b) is FILE_OPEN or FILE_OPEN_IF (narrowed to
+FILE_OPEN as for D1), (c) does **not** carry FILE_DELETE_ON_CLOSE, (d) requests no content-writing access (the access mask
+`StageMvpNamespaceOpen` already excludes; FILE_READ_DATA is permitted as for D1), and (e) whose writer classification comes only from
+DELETE and/or FILE_WRITE_ATTRIBUTES. Directory, by-file-ID and SL_OPEN_TARGET_DIRECTORY opens stay excluded. **FILE_DELETE_ON_CLOSE |
+FILE_OPEN_REPARSE_POINT stays excluded in the shared routing/demotion predicate** (today's staged admission or refusal): a cancelled
+delete-on-close CREATE can still apply NTFS delete effects during cleanup, so a post check cannot prove a link intact. The predicate
+change is exactly "a D7 request is eligible", never a bare removal of the reparse exclusion.
 
-**Validation ownership (findings 2, 4, 5).** Every D7-scoped CREATE that the native route admits owns its own completion: a small
-nonpaged per-CREATE context (not the fenced singleton `StageMvpNamespaceCreate*` state, which stays reserved for fenced mutations),
-allocated in pre and freed in post on every outcome, including draining and failure. Such a CREATE acquires no fence and cancels
-nothing. In post, before legacy post inspection, before any cancellation and before the handle is exposed:
+**Classification and declines (condition 2).** The D7 request is classified from the CREATE parameters first, independently of the
+rest of eligibility. The existing service early returns (authenticated inspector, protocol native forward) and the transaction /
+top-level-IRP / non-fixed-volume returns keep today's handling for this flag (staged admission or refusal), never an unguarded legacy
+CREATE. Once a D7 request names a protected fixed-NTFS path, every later decline (identity query failure, unresolved name, non-NTFS,
+binding failure, completion-context allocation failure) completes STATUS_ACCESS_DENIED in pre. The only exception is genuine
+private-view routing (`StageFindView`/hidden name), which keeps its private route; this newly admits such reopens to the existing
+bounded D4 receipt wait, which retains its explicit pin and drops resources before waiting (no new wait or timer).
 
-- If the lower CREATE did not open an object (`StageMvpNamespaceCreateOpened` false), nothing else runs; the context is freed.
-- On an opened object, query FileAttributeTagInformation on the opened FILE_OBJECT, synchronously at PASSIVE with no resource held.
-  Only a successful, complete response with FILE_ATTRIBUTE_REPARSE_POINT clear passes. A query failure, short reply, missing object or
-  **any** reparse attribute (no tag allow-list) cancels the open (FltCancelFileOpen) and completes STATUS_ACCESS_DENIED. A draining
-  post cancels the same way without querying (fail closed).
-- Only after a pass does the existing legacy post (read inspection/taint) run with its own context.
+**Completion ownership (condition 5, blocking finding 8).** An admitted D7 request allocates a small nonpaged per-CREATE context in
+pre holding the identity captured in pre (FileIdInformation from the existing `SafeUploadStageQueryIdentity`), the legacy completion
+context and the legacy callback-required flag. It never touches the fenced singleton `StageMvpNamespaceCreate*` state and acquires no
+namespace fence. Pre returns FLT_PREOP_SUCCESS_WITH_CALLBACK through the existing admission-epoch wrapper, so the context is the epoch
+token's inner completion context: the epoch is released only after this post ran, and voluntary teardown, which drains admission
+epochs, therefore waits for the normal, non-draining post and its validation. `StagePostOperationCore` recognises the context by its own
+tag before generic legacy CREATE processing. Pre frees the context itself on every refusal or allocation failure, where no post follows.
+**A draining post** (mandatory teardown) frees the context, leaves the status unchanged and claims no refusal: draining is cleanup on
+copied callback data, not enforcement. Mandatory teardown follows the existing coverage-loss rules (the namespace latch stays closed until
+reboot; the fixed-NTFS forced-teardown exception); D7 adds nothing there.
 
-This proves the final object's attribute only. Name, parent and no-follow bindings stay where they are today (T5-DELETES; the identity
-helper's IO_STOP_ON_SYMLINK lookup is not replaced by this check).
+**Post validation (blocking finding 4).** In a non-draining post, before the legacy post, any cancellation, or handle exposure:
 
-**Declines (finding 2).** For a D7-scoped CREATE, any decline after eligibility (identity query failure, unresolved name, non-NTFS,
-binding failure) refuses STATUS_ACCESS_DENIED instead of falling back to staged admission or an unguarded legacy CREATE. Genuine
-private-view routing (`StageFindView`/hidden name → private route) is unchanged; removing the exclusion newly admits such private
-reopens to the existing bounded D4 receipt wait, which is accepted (no new wait or timer).
+1. *Genuine non-open:* the lower CREATE failed (`!NT_SUCCESS`) or returned a non-open outcome (STATUS_REPARSE, STATUS_PENDING, any
+   information other than FILE_OPENED). Free the context and run the legacy post as today; nothing else.
+2. *Opened outcome with invalid object evidence:* NT_SUCCESS (including informational/oplock-break-in-progress success) with
+   FILE_OPENED but no FILE_OBJECT or no FsContext. Fail closed: set STATUS_ACCESS_DENIED / Information 0 and call no object-dependent API
+   on invalid pointers (FltCancelFileOpen only when a FILE_OBJECT with FsContext exists, which is not this case). Skip the legacy post.
+3. *Opened object:* query FileAttributeTagInformation and FileIdInformation on the opened FILE_OBJECT, synchronously, at PASSIVE, outside
+   every resource. Pass only if both succeed with complete replies, FILE_ATTRIBUTE_REPARSE_POINT is clear (no tag allow-list) and the
+   file ID equals the pre-captured identity (a different regular object substituted between pre and post fails). Otherwise
+   FltCancelFileOpen, STATUS_ACCESS_DENIED, and skip the legacy post. On a pass, run the legacy post with the stored context and flag; a
+   legacy-post denial cancels the open itself, and D7 cancels nothing further (no double cancel).
 
-**Mutations stay on the existing D2/D3 path (findings 5, 6).** The D7 CREATE itself cancels nothing. A later disposition or rename on the
-validated native handle takes the existing `StageMvpNamespacePre` SET_INFORMATION path (fence, fresh bindings, V28 cancellation of
-pending versions, original NTFS operation), which additionally re-queries FileAttributeTagInformation on the handle under the same
-rules before any cancellation, because a reparse point can be set on an open file. Published-only successor suppression (T5-DELETES)
-and D3 rename flags, NOT_SAME_DEVICE copy fallback and hard-link gates are unchanged; deleting one hard link affects only that link.
-Informational/oplock CREATE success keeps `StageMvpNamespaceCreateOpened` semantics. No new lock, wait or RPC under a resource; no new
+This proves the final object's attribute and identity only; name/parent/no-follow bindings stay as today. The pre identity lookup
+(`StageSecurity.c` IO_STOP_ON_SYMLINK) already refuses symlinks and directories before post; post validation covers a reparse point or
+substitution that the pre lookup did not see.
+
+**Mutations stay on the fenced D2/D3 path (condition 6).** A D7 CREATE cancels nothing; a MoveFileExW source open validates without
+cancelling, and the later rename owns cancellation. In the `StageMvpNamespacePre` SET_INFORMATION branch, at PASSIVE, after
+`StageNamespaceBeginMutation` and `StageNamespaceCaptureBindings`, outside every resource and before the first `StageMvpCancelNames`
+call, the handle's FileAttributeTagInformation is queried; failure, a short reply or a reparse attribute refuses the SET_INFORMATION with
+STATUS_ACCESS_DENIED (no FltCancelFileOpen in a pre-SET path). Published-only successor suppression, D3 rename flags, NOT_SAME_DEVICE
+copy fallback and hard-link gates are unchanged; deleting one hard link affects only that link. No new lock, RPC under a resource or
 retirement path.
 
-**Controls before the first boot (finding 7).** Host/source controls, each with a negative mutation that removes the guard or moves
-cancellation before validation and must fail:
+**Controls before the first boot (condition 7).** Host/source controls, each with a negative mutation (guard removed, cancellation moved
+before validation, identity comparison dropped, or context leaked) that must fail:
 
-1. DELETE-only and DELETE | WRITE_ATTRIBUTES OPEN_REPARSE_POINT CREATE of a published regular file: native open, post validation passes,
-   no allocation, no cancellation at CREATE; disposition and MoveFileExW rename then take the fenced D2/D3 path.
-2. The same opens on a symlink and on a junction: cancelled ACCESS_DENIED after the tag query; the other owner's pending save untouched.
-3. Tag query failure, short reply, missing object, injected reparse attribute, object substitution between pre and post: cancelled, nothing
-   cancelled elsewhere.
-4. WRITE_ATTRIBUTES without DELETE; OPEN_IF narrowing; caller DELETE/share denial by NTFS (no cancellation, no validation side effect);
-   informational and oplock-break-in-progress success; failed lower CREATE; draining post (cancelled, context freed).
-5. Concurrent D7 opens and fenced mutations: per-CREATE contexts never touch the singleton state; no context leak on any outcome.
-6. DELETE_ON_CLOSE | OPEN_REPARSE_POINT: still excluded (today's result). Rewrite the round-1 cross-owner control: an authorized
-   regular-file delete-on-close CREATE (no reparse flag) still reaches fenced cancellation; real reparse, denied or uncertain D7 opens leave
-   the other owner's save untouched.
-7. Reparse attribute set on an already-open validated handle before SET_INFORMATION disposition: refused before cancellation.
+1. DELETE-only and DELETE | WRITE_ATTRIBUTES D7 CREATE of a published regular file: native open, post passes, no allocation, no
+   cancellation at CREATE; a later disposition and a MoveFileExW rename take the fenced D2/D3 path.
+2. Pre identity lookup refusing a symlink or directory (refused in pre, no post) kept distinct from an injected reparse attribute or
+   substitution seen only in post (cancelled after the query); the other owner's pending save untouched in both.
+3. Tag or ID query failure and short replies; a different regular object substituted between pre and post (refused by identity);
+   NT_SUCCESS/FILE_OPENED without FILE_OBJECT or FsContext (refused without object calls); informational and oplock-break success.
+4. WRITE_ATTRIBUTES without DELETE; FILE_READ_DATA with DELETE; OPEN_IF narrowing; NTFS caller DELETE/share denial (no validation side
+   effect, no cancellation); failed lower CREATE; legacy-post denial (single cancel).
+5. Pre refusal and context-allocation failure free the context; concurrent D7 opens and fenced mutations never share state; a draining
+   post frees the context without changing status; the epoch is released only after the post.
+6. DELETE_ON_CLOSE | OPEN_REPARSE_POINT still excluded; the round-1 cross-owner control rewritten so an authorized regular-file
+   delete-on-close CREATE (no reparse flag) still reaches fenced cancellation while real-reparse, denied or uncertain D7 opens leave the
+   other owner's save untouched.
+7. A reparse attribute set on a validated open handle before SET_INFORMATION disposition: refused before any cancellation.
+8. Private-view reopen of a D7 request: private route and bounded receipt wait/readmission unchanged.
 
-Then WDK feature Debug/Release, PREfast, ApiValidator and import gates over both builds, and the T5 row's public-delete cases in all
-three modes. Host controls do not establish NTFS cleanup behaviour or qualification.
+Native evidence to record in the T5 row (not a substitute for the controls): the actual access and options of `DeleteFileW` and of
+`MoveFileExW`'s source open, from the driver's admission trace. Then WDK feature Debug/Release, PREfast, ApiValidator and import gates over
+both builds, and the T5 row's public-delete cases in all three modes. Host controls do not establish NTFS cleanup behaviour or
+qualification.
 
 ## Round 2 implementation and verification
 
