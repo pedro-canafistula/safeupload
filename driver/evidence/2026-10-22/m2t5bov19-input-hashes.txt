@@ -1,0 +1,11 @@
+RunTag=m2t5bov19
+Mode=boot-verifier
+RequestedDomain=win10-debug3
+ExpectedGuestUUID=FFCB9530-146B-43B1-8AF7-2B5CC8EDE2E3
+LocalDriverSys=driver/evidence/2026-10-22/m2t5d7k6-candidate/driver.sys
+LocalDriverSysSHA256=29D6130EF869A79E8CB64A1FB6468CCF100EC4F760E3F8201F1C6206EE2572CD
+LocalAgentZip=output/exact-agent-matrix/m2t5a5/feature-release-view/stage-service-publish.zip
+LocalAgentZipSHA256=192E2923515B495C984C4632A5F8D1250CCD284693ECE466DE2270AA5F4348BC
+LocalAgentServiceEntry=SafeUpload.Agent.Service.exe
+ExpectedExtractedServiceSHA256=FB181402947E3B5A2A529B2A5B2BFF11DF54FC065C4D412C84F4FC8A2A4D16D7
+StageSpace=off

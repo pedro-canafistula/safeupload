@@ -9,7 +9,7 @@ Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](do
 | Order | Scope | Status |
 |---|---|---|
 | M1 | T0–T3: safe to leave loaded | Complete on the recorded M1 pair |
-| **M2** | **T4–T11: everyday file work** | **Active; T4 closed for now (owner, 2026-10-21) on isolation rows with carried items; T5–T11 next** |
+| **M2** | **T4–T11: everyday file work** | **Active; T4 and T5 closed for now (owner, 2026-10-21 plan D1–D3; T5 rows 2026-10-22) on isolation rows with carried items; T6–T11 next** |
 | T21 | USB/removable | After M2, before M3 (owner, 2026-10-21); own design, owner decisions, Sol 6.1 high design review and destination qualification |
 | T22 | SMB/UNC | After T21, before M3 (owner, 2026-10-21); own design, owner decisions, Sol 6.1 high design review and destination qualification |
 | M3 | T12, T14: release configuration and lifecycle | After T22 |
@@ -22,6 +22,17 @@ USB, SMB/UNC and cloud-sync are required MVP work; they are no longer deferred u
 respective support and qualification gates are met and the owner approves cutover.
 
 ## Owner decisions
+
+**2026-10-22 (T5 raw samples) — a racing ERROR sample is superseded by the next valid sample.** Owner, in the session, on `m2t5ord10`–`m2t5bov18`
+([T5 checkpoint](evidence/2026-10-21/t5-checkpoint.md)): about 5% of raw samples taken while the actor or the agent is mid-operation fail because a name
+appeared or vanished between the independent reads or the raw metadata lagged, so no row could pass by chance. Chosen, in three steps: (1) an ERROR sample is
+accepted when the very next sample of the same case is fully valid; (2) the successor may be in the next phase of the same case; (3) a deny-list: in `ActorRunning`,
+`WorkflowSettlement` and `AfterActorAcknowledgementSettlement` any ERROR sample is accepted that way unless it carries forbidden bytes, a baseline or parent identity
+mismatch, unexpected directory entries, incomplete artifacts or a module FAIL/VIOLATION verdict; the control gates and the final `AfterActorOutcomeSettlement`
+bracket stay fatal. Every ERROR sample stays in the result and `T5RawErrorsSuperseded` counts them. No byte, privacy or identity assertion changed.
+
+**2026-10-22 (process) — push each commit.** Owner: "Don't keep commits local, keep pushing." `feat/driver-m2` is pushed fast-forward after every commit; a pending
+review gates the VM boot, not the push.
 
 **2026-10-21 (T5 deletes and samples) — native DeleteFileW for regular files; bracket reads.** Owner, in the session, chose both
 recommended options after `m2t5ord8` ([T5 checkpoint](evidence/2026-10-21/t5-checkpoint.md)). (1) `DeleteFileW` opens with
@@ -691,11 +702,15 @@ Detailed historical implementations, failed runs and prior component gates are r
 - [ ] T5: finish/verify coherent caller grants, seed read/export policy, exact security/metadata, generation ordering and automatic accepted/unresolved recovery.
   - [ ] Preserve original checked authority, exact destination/object/generation/policy; only a newer **published** successor cancels a delete.
   - [ ] Keep uncertain publication/cleanup held with named-file owner-session diagnostics; retry bookkeeping, never a completed public mutation.
-- [ ] T5: pass the complete four-leg feature agent matrix and deliver the reviewed matched driver/agent pair; two feature WDK profiles, PREfast/ApiValidator/import gates remain mandatory.
-- [ ] T5: qualify native delete before seal and after independently observed publication; both DeleteFileW calls succeed, with failed-CREATE identity intact.
-- [ ] T5: qualify real Notepad clean/CPF Save As in ordinary/runtime-/boot-Verifier modes with independent destination bytes and separate restoration.
-- [ ] T5: qualify Explorer New Text Document → rename → another-process Notepad open; empty copy/move; clear-and-save; DELETE-authorized/refused public deletion;
-  delete during a newer in-flight save; delete then blocked CPF save with no empty leftover.
+- [x] T5: four-leg feature agent matrix `m2t5a5` (`bd1cae84`) 3,179/3,179 per leg, and the matched driver `m2t5d7k6` (`29D6130E…`; both WDK profiles 0/0, PREfast, ApiValidator, imports 248/247). Reviewed
+  as D7 rev 5 (`3a16ec0f`) and D8 (`13ea6fbf`), both Sol 6.1 high ACCEPT WITH CONDITIONS; no separate adversarial review of the pair as a milestone.
+  See the [T5 checkpoint](evidence/2026-10-21/t5-checkpoint.md).
+- [x] T5: native delete before seal and after independently observed publication; both DeleteFileW calls succeed, with failed-CREATE identity intact (rows `m2t5ord19`/`rtv19`/`bov19`, budget off).
+- [x] T5: real Notepad clean/CPF Save As in ordinary/runtime-/boot-Verifier modes, independent destination bytes, separate restoration (run disk deleted, base untouched, XML unchanged, EFI reset each row).
+  Isolation rows: StageSpace off until the T9 growing-reservation fix (owner, 2026-10-21); the budget-on T5 rows are carried.
+- [ ] T5: Explorer New Text Document → rename → another-process Notepad open; empty copy/move; clear-and-save; DELETE-authorized/refused public deletion; delete during a newer in-flight save;
+  delete then blocked CPF save: every case PASS in all three modes (70 PASS / 0 FAIL lines per row, registry Known, staging and hot journal empty after the run), but the public-delete cases'
+  durable `DeleteBarrier` stays INCONCLUSIVE (the unbound route writes none) and `T5CanonicalNoUnapprovedByte` INCONCLUSIVE (no lower-mutation ledger in the T5 adapter): carried (D1).
 - [ ] T5: fault rows prove holds end automatically at original-handle close and service restart. The approved fixed-NTFS forced-teardown exception may require Restart;
   unresolved identity stays held. T21 must reconcile at remount instead of requiring Windows restart.
 - [ ] T5: qualify voluntary unload veto, exact cleanup ACKs and service-independent mandatory teardown/shutdown; startup recovery retains unresolved private objects.

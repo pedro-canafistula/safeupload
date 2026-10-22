@@ -69,6 +69,17 @@ then the 1 s idle interval. Compiled in feature Debug/Release; the new tests (`S
 | `m2t5ord11` | gate `m2t5hg8`, harness fixes A | Probe, Notepad-approve, empty copy/move and several workflow cases PASS; remaining FAILs are observation races and two product/harness items (below). |
 | `m2t5ord12`–`m2t5ord15` | gates `m2t5hg9`–`hg12`, harness fixes B–D | Race handling and gate fixes; `ord14` lost 30 minutes to a harness fault and left the registry Unknown once (below); `ord15` is the first row with a valid raw schema (all 167 samples accepted, 5 superseded) and a Known registry. |
 
+| `m2t5ord19` | harness gate `m2t5hg17`, pair `m2t5d7k6` `29D6130E…` + `m2t5a5` `192E2923…`, ordinary, budget off | **70 PASS / 0 FAIL lines** ([verdict](../2026-10-22/m2t5ord19-verdict.txt), 429 s): 20/20 cases, registry Known, staging and hot journal empty after the run; INCONCLUSIVE only the three public-delete `DeleteBarrier` lines and `T5CanonicalNoUnapprovedByte`. Restoration: run disk deleted, base untouched, XML unchanged, EFI reset ([state](../2026-10-22/m2t5ord19-final-restored-state.txt)). 6 racing ERROR samples superseded. |
+| `m2t5rtv19` | same, runtime Verifier (flags `0x13b`, armed) | **70 PASS / 0 FAIL** ([verdict](../2026-10-22/m2t5rtv19-verdict.txt), 562 s); same INCONCLUSIVE set; restoration clean ([state](../2026-10-22/m2t5rtv19-final-restored-state.txt)); 5 superseded. |
+| `m2t5bov19` | same, boot Verifier (flags `0x1209bb`, one boot) | **70 PASS / 0 FAIL** ([verdict](../2026-10-22/m2t5bov19-verdict.txt), 835 s); same INCONCLUSIVE set; restoration clean ([state](../2026-10-22/m2t5bov19-final-restored-state.txt)); 11 superseded. |
+| `m2t5ord17`/`rtv17`/`bov17`, `ord18`/`rtv18`/`bov18` | harness rules A–C | Each closed one more race class; `bov17` also held one existing-file CPF edit fail-closed with `seed_export_unproven` (stage and journal entry left, diagnostics named) which did not recur in `bov18`/`bov19`. |
+
+**T5 is closed for now (owner plan D1–D3, 2026-10-21) on the unbound profile.** This is rows on one matched pair with isolation settings (StageSpace off), not
+product qualification. Carried: the public-delete `DeleteBarrier` (the unbound route writes none) and the lower-mutation ledger for `T5CanonicalNoUnapprovedByte`; budget-on
+rows after the T9 growing-reservation fix; the D1–D6 edge matrix (M4); Word (with T8); unload veto / mandatory teardown rows; the `ord14` one-off registry Unknown (entry `IDENTITY`,
+`StageRegistryAssociateSectionPointer`) and the `bov17` one-off `seed_export_unproven`, neither reproduced in the later 12 rows; the optional production-registry host fixture
+(Sol 6.1 high: not required for the first boot, no coverage of successful insertion or exact-object cleanup).
+
 ### `m2t5ord10`–`m2t5ord15` triage
 
 Product: (1) **D7 rev 5 works**: the registry stays Known in `ord10`–`ord13` and `ord15`, the public `DeleteFileW` cases return success, publications are not refused.

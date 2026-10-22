@@ -1,0 +1,5 @@
+RunDiskXmlUnchanged=True
+2026-10-22T19:21:45Z run-disk win10-debug3: deleted /var/lib/libvirt/images/win10-debug3.safeupload-run-m2t5bov19.qcow2
+RunDiskOverlayDeleted=True
+RunDiskBaseUntouched=True
+2026-10-22T19:21:45Z run-disk win10-debug3: run m2t5bov19 ended; the domain is shut off on /var/lib/libvirt/images/win10-debug3.base-20261014.qcow2
