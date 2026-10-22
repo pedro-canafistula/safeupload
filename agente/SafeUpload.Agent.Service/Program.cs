@@ -109,6 +109,7 @@ public static class Program
             }
         });
         builder.Services.AddSingleton<NotificationHub>();
+        builder.Services.AddSingleton<AuditHistoryReader>();
         builder.Services.AddSingleton<PendingOverrides>();
         builder.Services.AddSingleton<StagedJustifications>();
         builder.Services.AddSingleton<OverrideGrantDispatcher>();

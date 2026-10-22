@@ -1,5 +1,4 @@
 using System.Windows.Controls;
-using SafeUpload.Agent.App.ViewModels;
 
 namespace SafeUpload.Agent.App.Views;
 
@@ -11,15 +10,7 @@ public partial class StatusView : UserControl
     {
         InitializeComponent();
 
-        // A tela é recriada a cada troca de aba pelo DataTemplate, então ela
-        // recarrega ao aparecer. Assim, voltar para o Status depois de olhar o
-        // histórico mostra o estado de agora, e não o de quando o painel abriu.
-        Loaded += async (_, _) =>
-        {
-            if (DataContext is StatusViewModel viewModel)
-            {
-                await viewModel.LoadAsync();
-            }
-        };
+        // The shared view model is updated by the service pipe, including
+        // while this view is hidden. Navigation never reads private files.
     }
 }

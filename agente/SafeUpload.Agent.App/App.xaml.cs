@@ -6,7 +6,6 @@ using SafeUpload.Agent.App.ViewModels;
 using SafeUpload.Agent.App.Views;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
-using SafeUpload.Agent.Core.Infrastructure;
 
 namespace SafeUpload.Agent.App;
 
@@ -25,7 +24,6 @@ namespace SafeUpload.Agent.App;
 /// </summary>
 public partial class App : System.Windows.Application
 {
-    private readonly LocalQueueAuditSink _auditSink = new();
     private readonly PipeClient _pipe = new();
     private readonly ClipboardMonitor _clipboard = new(new ClipboardPipeClient());
 
@@ -40,15 +38,13 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
 
         _agentViewModel = new AgentViewModel(
-            new StatusViewModel(_auditSink),
-            new HistoryViewModel(_auditSink));
+            new StatusViewModel(),
+            new HistoryViewModel());
 
         // O painel é construído no arranque e mantido oculto. O modelo de visão
         // precisa existir desde já para acumular o que o serviço anunciar
         // enquanto a janela estiver fechada.
         _panel = new AgentWindow(_agentViewModel);
-
-        _ = _agentViewModel.LoadAsync();
 
         _tray = new TrayIconHost(OpenPanel, ExitAgent);
 
@@ -102,15 +98,19 @@ public partial class App : System.Windows.Application
 
                 case EventNotification evento:
                     _agentViewModel.Status.PrependActivity(evento.Event);
-                    _agentViewModel.History.Prepend(evento.Event);
+                    bool added = _agentViewModel.History.Prepend(evento.Event);
 
                     // RN-005 — todo bloqueio notifica, com o painel aberto ou
                     // fechado.
-                    if (evento.Event.Verdict == Verdict.Blocked)
+                    if (added && evento.Event.Verdict == Verdict.Blocked)
                     {
                         ShowBlockNotification(evento);
                     }
 
+                    break;
+
+                case HistoryNotification history:
+                    _agentViewModel.ApplyHistory(history);
                     break;
 
                 case TransferNotification transfer:
@@ -190,7 +190,11 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        Current.Dispatcher.Invoke(() => _agentViewModel?.Status.SetDisconnected());
+        Current.Dispatcher.Invoke(() =>
+        {
+            _agentViewModel?.Status.SetDisconnected();
+            _agentViewModel?.History.SetUnavailable();
+        });
     }
 
     /// <summary>

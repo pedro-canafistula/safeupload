@@ -29,6 +29,31 @@ public sealed class NotificationRecordTests : IDisposable
             : []).ToList();
 
     [Fact]
+    public void Private_history_is_recorded_without_broadcast_and_record_survives_reopen()
+    {
+        using (var record = Record())
+        {
+            var hub = Hub(record);
+            using var other = hub.Subscribe(9);
+            Assert.True(hub.RecordHistory(new HistoryNotification([]), 4));
+            Assert.False(other.Reader.TryRead(out _));
+            Assert.Equal("History", Entries()[^1].Kind);
+            Assert.Equal((uint)4, Entries()[^1].TargetSessionId);
+        }
+        using var reopened = Record();
+        Assert.Contains(Entries(), e => e.Kind == "History");
+    }
+
+    [Fact]
+    public void Private_history_is_suppressed_when_durable_record_fails()
+    {
+        using var record = Record();
+        var hub = Hub(record);
+        Directory.CreateDirectory(Path.Combine(DirectoryPath, "head.tmp"));
+        Assert.False(hub.RecordHistory(new HistoryNotification([]), 4));
+    }
+
+    [Fact]
     public void Record_is_flushed_before_queue_and_retained_state_are_changed()
     {
         using var record = Record();

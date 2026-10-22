@@ -17,6 +17,7 @@ public sealed class ActivityRowViewModel
     public ActivityRowViewModel(AuditEvent auditEvent)
     {
         ArgumentNullException.ThrowIfNull(auditEvent);
+        EventId = auditEvent.EventId;
 
         Description = Describe(auditEvent);
         IconKey = IconFor(auditEvent.Verdict);
@@ -26,6 +27,7 @@ public sealed class ActivityRowViewModel
 
     /// <summary>Frase da operação, como "Upload bloqueado: clientes.xlsx".</summary>
     public string Description { get; }
+    public Guid EventId { get; }
 
     /// <summary>Chave do ícone da linha.</summary>
     public string IconKey { get; }
