@@ -152,6 +152,38 @@ Há uma linha visível, mas isso não substitui o ensaio de reconexão/reabertur
 Permanece a distinção entre a classificação de auditoria Blocked e bloqueio
 preventivo de uma operação. Não foi necessário alterar ACLs ou o backend.
 
+## Reabertura e novos eventos com o painel aberto
+
+O usuário informou que o histórico continuou igual após sair pela bandeja e
+reabrir normalmente. Isso confirma a manutenção da linha anterior nessa
+reabertura, por relato manual; a ausência de alerta antigo não foi confirmada
+explicitamente. Reconexão por reinício do serviço com UI aberta ainda pendente.
+
+As primeiras capturas seguintes mostraram criação/renomeação de arquivos vazios,
+0 B, classificados como permitidos. Isso comprovou atualização do painel, mas
+não inspeção de conteúdo sensível. Os registros vazios não precisam ser alterados
+retroativamente quando uma gravação posterior produz outra operação auditada.
+
+A captura final mostra novos eventos com 27 B: `.txt` às 11:03:46 e
+`cpf-teste.txt.txt` às **11:05:02 de 22/10/2026, horário de São Paulo**, ambos
+classificados Blocked, categoria CPF e trecho mascarado terminado em 25. O
+arquivo `cpf-teste.txt.txt` também tem registro anterior de 0 B às 11:04:12;
+são operações em horários/tamanhos distintos, não prova de duplicação de EventId.
+O evento original de 09:09:36 permanece na mesma grade. O usuário enviou também
+captura do alerta de CPF. Assim, detecção do novo conteúdo, mascaramento,
+notificação e atualização do histórico com o painel aberto têm evidência manual.
+
+Captura `evidencias-ui/historico-cpf-novo-015.png`, SHA-256
+`23BFB16837EC2D6D3044F383D10DB98548EA87509084A8E160F95F3C7E14EA0D`;
+alerta `evidencias-ui/alerta-cpf-015.png`, SHA-256
+`66D59525F81F47FB5E601356CC49EF34BC623DE481DE3BF468BAA7E0317606EB`.
+Hashes das capturas intermediárias também preservados no laboratório.
+
+Os textos da atividade/alerta ainda usam termos como "Arquivo enviado" e
+"Envio bloqueado" embora o status seja auditoria por watcher. Esta rodada
+comprova classificação/alerta, não upload nem impedimento preventivo de gravação;
+adequação desses textos ao modo operacional fica registrada como pendência.
+
 ## Aceite ainda necessário
 
 - [x] Instalação inicial 0.1.4 em Windows 10 sem .NET global; evidência manual.
@@ -160,8 +192,10 @@ preventivo de uma operação. Não foi necessário alterar ACLs ou o backend.
 - [ ] Coletar logs completos do ensaio de troca entre versões.
 - [x] Confirmar 0.1.5 no Windows 10 após CI aprovado e transferência com hash conferido.
 - [x] Ver evento já persistido no Histórico após abertura normal orientada ao usuário; evidência manual.
-- [ ] Reabrir interface/reconectar serviço sem duplicar evento nem alerta antigo.
-- [ ] Criar novo arquivo sintético com a interface aberta e verificar atualização.
+- [x] Reabrir a interface mantendo o histórico sem nova linha, segundo relato do usuário.
+- [ ] Confirmar ausência de alerta antigo e reconectar serviço sem duplicar evento.
+- [x] Criar novo arquivo sintético com a interface aberta; detecção de CPF, alerta e histórico atualizados.
+- [ ] Adequar textos de envio/bloqueio ao modo de auditoria por watcher.
 - [ ] Reiniciar Windows e verificar startup/serviço/estado, distinguindo de Restart-Service.
 - [ ] Desinstalar e conferir preservação de política e fila.
 - [ ] Windows 11, assinatura da equipe, upgrade/repair/rollback e integração com API/driver.
