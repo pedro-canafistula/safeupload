@@ -29,6 +29,13 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Compilar diagnóstico isolado da fila
+        shell: pwsh
+        env:
+          BUILD_CONFIGURATION: ${{ matrix.configuration }}
+        run: |
+          dotnet build agente/tools/QueueProbe/QueueProbe.csproj -c $env:BUILD_CONFIGURATION
+          if ($LASTEXITCODE -ne 0) { throw 'O diagnostico de fila nao compilou.' }
       - name: Executar suíte C# completa sem filtro
         shell: pwsh
         env:
