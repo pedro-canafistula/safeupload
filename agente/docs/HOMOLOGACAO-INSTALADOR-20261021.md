@@ -2,6 +2,8 @@
 
 ## Resultado e escopo
 
+Status de integração do PR: [o workflow Functional web continua falhando, com as mesmas etapas já reprovadas na main](DIAGNOSTICO-FUNCTIONAL-WEB-20261021.md). A aprovação abaixo pertence ao ensaio isolado do agente e não significa que todos os checks do PR passaram.
+
 **Aprovada a instalação inicial, inspeção sintética, reinício do serviço e remoção do candidato 0.1.4 em Windows Server 2025 descartável, sem driver.** A execução também aprovou a suíte C# completa em Debug e Release no runner, sem falhas. Windows 10/11, UI interativa e o par protegido agente/driver continuam pendentes; esta é a primeira etapa operacional da macro, não liberação geral de produção.
 
 Execução: [39710172814](https://github.com/pedro-canafistula/safeupload/actions/runs/39710172814), conclusão `success`. Fonte exata testada: `24f39c2818bb48a908ef4dfa26789519db9e1bc0`, branch `tarefa/consolidar-base-agente-windows`.
