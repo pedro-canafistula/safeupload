@@ -326,6 +326,39 @@ Independent review remains an orchestrator obligation before a revised VM boot.
 This implementation task runs local diagnostic checks only; no WDK, PREfast,
 ApiValidator, Windows PowerShell gate or protected runtime qualification is implied.
 
+### D7 — OPEN_REPARSE_POINT opens of regular files take the native route (owner 2026-10-21; design delta, review pending)
+
+**Evidence.** Row `m2t5ord8` ([T5 checkpoint](../../../evidence/2026-10-21/t5-checkpoint.md)): `DeleteFileW` of a
+published protected file returned 5. `DeleteFileW` opens with DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE and
+FILE_OPEN_REPARSE_POINT (so that deleting a link deletes the link), then sets FileDispositionInformationEx and falls back to
+FileDispositionInformation. `StageMvpNamespaceCreateEligible` excludes FILE_OPEN_REPARSE_POINT (item 2 of the round-1 review
+below), so the open keeps writer classification (DELETE is writer access) and takes staged admission. That allocates a seeded
+private version (journal: allocation 34–87 ms before each refusal), and the disposition on the staged handle is refused
+STATUS_ACCESS_DENIED (deny ring). Operations on a staged FILE_OBJECT are routed before the native namespace path, so nothing after
+the open can make the delete native. `del`, `Remove-Item` and Explorer's permanent delete of a published file therefore fail on
+the shipped profile; recycling is a rename and works. T5 requires both `DeleteFileW` calls to succeed.
+
+**Rule.** FILE_OPEN_REPARSE_POINT no longer makes an open ineligible. Directory, by-file-ID and SL_OPEN_TARGET_DIRECTORY opens stay
+excluded, and the predicate stays shared by native routing and writer demotion (item 2's consistency is kept). On the native route,
+a CREATE that carries FILE_OPEN_REPARSE_POINT and requested writer access (DELETE, FILE_DELETE_ON_CLOSE or any other writer bit that
+the route admits) is checked in post, on the opened FILE_OBJECT and before any pending-version cancellation or handle exposure: if
+FileAttributeTagInformation reports FILE_ATTRIBUTE_REPARSE_POINT, the open is cancelled (FltCancelFileOpen) and fails
+STATUS_ACCESS_DENIED, which is what such an open receives today. A regular file opened this way is the same object NTFS opens without
+the flag, so D1–D3 apply unchanged: DELETE-only opens are namespace-only (no rotation), disposition goes to NTFS on the original
+handle, and pending versions are cancelled through the existing V28 receipt. Non-writer opens are unchanged (legacy read path).
+
+**Effects to check.** `MoveFileExW`/`MoveFileWithProgressW` also open the source with FILE_OPEN_REPARSE_POINT and DELETE; a same-scope
+rename of a published file now takes the native D3 path (NOT_SAME_DEVICE for unmonitored-to-monitored stays). A writer that holds a
+private version of the name still refuses the delete with a sharing violation (D2). The open's identity binding (FileIdInformation in
+post) is unchanged.
+
+**Controls before the first boot.** Native-route unit/static controls for: DeleteFileW of a published regular file (open native,
+disposition native, no allocation); the same open on a symlink and on a junction inside protection (cancelled, ACCESS_DENIED, link
+intact, nothing cancelled); DELETE_ON_CLOSE | OPEN_REPARSE_POINT on a regular file (native, cancellation after the reparse check) and on
+a reparse point (refused before cancellation); MoveFileExW rename within scope (native) and unmonitored-to-monitored (NOT_SAME_DEVICE);
+the round-1 cross-owner control with the new predicate. Then WDK feature Debug/Release, PREfast, ApiValidator and import gates, and
+the T5 row's public-delete cases.
+
 ## Round 2 implementation and verification
 
 D1–D3 route by-name, non-content-writing native opens, metadata changes,
