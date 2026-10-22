@@ -34,7 +34,7 @@ typedef int FLT_POST_OPERATION_FLAGS;
 #define BooleanFlagOn(a,b) (!!FlagOn(a,b))
 static PFLT_FILE_NAME_INFORMATION StageMvpNamespaceCreateName;
 static FILE_ID_INFORMATION StageMvpNamespaceCreateIdentity;
-static PVOID StageMvpNamespaceRegistryContext, StageMvpNamespaceCreateContext;
+static PVOID StageMvpNamespaceRegistryContext, StageMvpNamespaceCreateContext, StageMvpNamespaceCreateReservation;
 static BOOLEAN StageMvpNamespaceCreateCallback;
 static unsigned char StageMvpNamespaceCompletionTag;
 static int CancelCalls, PreflightCalls, CancelStatus, PrivateOpen, LegacyPostCalls, LegacyDenied, LegacyPreCalls;
@@ -53,11 +53,51 @@ static BOOLEAN SafeUploadPolicySameProtectedScope(PUNICODE_STRING a,PUNICODE_STR
 { return SafeUploadPolicyMatchesCurrentOrPendingDestination(1,a,FALSE)&&SafeUploadPolicyMatchesCurrentOrPendingDestination(1,b,FALSE); }
 static BOOLEAN SafeUploadPolicyMatchesExtension(PUNICODE_STRING n)
 { UNICODE_STRING ext=u(L".txt"),suffix=*n;if(n->Length<ext.Length)return FALSE;suffix.Buffer+=n->Length/2-ext.Length/2;suffix.Length=ext.Length;return RtlEqualUnicodeString(&suffix,&ext,TRUE); }
+static VOID tr(char c);
 static int LegacyPreComplete, LegacyPreNoCallback;
 static FLT_PREOP_CALLBACK_STATUS SafeUploadPreCreate(PFLT_CALLBACK_DATA d,PCFLT_RELATED_OBJECTS o,PVOID *ctx)
-{ (void)o;assert(*ctx==NULL);LegacyPreCalls++;if(LegacyPreComplete){d->IoStatus.Status=STATUS_ACCESS_DENIED;*ctx=NULL;return FLT_PREOP_COMPLETE;}
+{ (void)o;assert(*ctx==NULL);LegacyPreCalls++;tr('L');if(LegacyPreComplete){d->IoStatus.Status=STATUS_ACCESS_DENIED;*ctx=NULL;return FLT_PREOP_COMPLETE;}
   if(LegacyPreNoCallback){*ctx=NULL;return FLT_PREOP_SUCCESS_NO_CALLBACK;} /* the real metadata-only path */
   *ctx=(PVOID)(uintptr_t)32;return FLT_PREOP_SUCCESS_WITH_CALLBACK; }
+/* Call trace of the CREATE path: L legacy pre, R registry reserve, P registry post, p legacy post, X cancel open, N cancel names. */
+static char Trace[32];
+static int TraceLen;
+static VOID tr(char c){assert(TraceLen<(int)sizeof(Trace)-1);Trace[TraceLen++]=c;Trace[TraceLen]=0;}
+/* Writer registry boundary (D7 rev 4). The classifier is the production StageWriterCreateCanMutate; the modes below are the
+ * reserve outcomes StageWriters.c can produce: 0 reservation, 1 required but none (capacity/allocation), 2 failure with a partial
+ * reservation, 3 failure without one, 4 not required (already Unknown, excluded, out of scope). A reservation is consumed exactly
+ * once, by the registry post or by a cancel. */
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION 7
+#define STATUS_UNSUCCESSFUL -15
+#define STATUS_INSUFFICIENT_RESOURCES -16
+BOOLEAN SafeUploadStageWritersWantPostCreate(PFLT_CALLBACK_DATA Data);
+static int RegMode, ReserveCalls, RegPostCalls, RegCancelCalls, RegRegistered, RegReleased, RegDrained, TrackLostCalls, LiveReservations;
+static int RegPostStatus, RegPostFlags;
+typedef struct { int Live; } RESERVATION;
+static RESERVATION ReservationPool[8];
+static int ReservationNext;
+static RESERVATION *reservation_new(void){assert(ReservationNext<8);RESERVATION *r=&ReservationPool[ReservationNext++];r->Live=1;LiveReservations++;return r;}
+static NTSTATUS SafeUploadStageWritersReserveCreate(PFLT_CALLBACK_DATA d,PCFLT_RELATED_OBJECTS o,PVOID *out,PBOOLEAN required,const void *alias)
+{ (void)o;assert(alias==NULL&&!NamespaceDepth&&Irql==0);*out=NULL;*required=FALSE;ReserveCalls++;tr('R');
+  if(!SafeUploadStageWritersWantPostCreate(d)||RegMode==4)return 0;
+  if(RegMode==3)return STATUS_INSUFFICIENT_RESOURCES;
+  if(RegMode==2){*out=reservation_new();return STATUS_INSUFFICIENT_RESOURCES;}
+  *required=TRUE;if(RegMode==1)return 0;
+  *out=reservation_new();return 0; }
+static VOID SafeUploadStageWritersCancelReservation(PVOID r)
+{ if(!r)return;assert(((RESERVATION*)r)->Live);((RESERVATION*)r)->Live=0;LiveReservations--;RegCancelCalls++; }
+#define SafeUploadStageWritersTrackingLost(i,r) do{(void)(i);assert((r)==SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);TrackLostCalls++;}while(0)
+/* The production registry post: consumes the reservation on every branch; draining fails; a failed lower CREATE (or a status
+ * the caller set to refuse) releases it without tracking; success registers the handle. */
+static NTSTATUS SafeUploadStageWritersPostCreate(PFLT_CALLBACK_DATA d,PCFLT_RELATED_OBJECTS o,FLT_POST_OPERATION_FLAGS flags,
+ PVOID r,PVOID *legacyCtx,PBOOLEAN legacyCb)
+{ (void)o;assert(r&&((RESERVATION*)r)->Live&&!NamespaceDepth&&Irql==0);RegPostCalls++;tr('P');RegPostStatus=d->IoStatus.Status;RegPostFlags=flags;
+  if(legacyCtx){*legacyCtx=NULL;}
+  if(legacyCb){*legacyCb=FALSE;}
+  ((RESERVATION*)r)->Live=0;LiveReservations--;
+  if(flags&FLTFL_POST_OPERATION_DRAINING){RegDrained++;return STATUS_UNSUCCESSFUL;}
+  if(!NT_SUCCESS(d->IoStatus.Status)||d->IoStatus.Status==STATUS_REPARSE){RegReleased++;return 0;}
+  RegRegistered++;return 0; }
 /* D7 edges: pool, list, unload gate and mandatory teardown. */
 #define STAGE_TAG 0x55537467u
 #define POOL_FLAG_NON_PAGED 0x40
@@ -74,13 +114,13 @@ static BOOLEAN RemoveEntryList(PLIST_ENTRY e){assert(SpinDepth==1);PLIST_ENTRY b
 static VOID FltCancelFileOpen(PFLT_INSTANCE i,PFILE_OBJECT o);
 /* A legacy-post denial cancels the open itself, like the real post-create. */
 static int SafeUploadPostCreate(PFLT_CALLBACK_DATA d,PCFLT_RELATED_OBJECTS o,PVOID ctx,FLT_POST_OPERATION_FLAGS flags)
-{ assert(ctx==(PVOID)(uintptr_t)32);LegacyPostCalls++;
+{ assert(ctx==(PVOID)(uintptr_t)32);LegacyPostCalls++;tr('p');
   if(LegacyDenied&&!flags){FltCancelFileOpen(o->Instance,o->FileObject);d->IoStatus.Status=STATUS_ACCESS_DENIED;}return 0; }
-static VOID FltCancelFileOpen(PFLT_INSTANCE i,PFILE_OBJECT o){(void)i;(void)o;assert(!NamespaceDepth);CancelOpenCalls++;}
+static VOID FltCancelFileOpen(PFLT_INSTANCE i,PFILE_OBJECT o){(void)i;(void)o;assert(!NamespaceDepth);CancelOpenCalls++;tr('X');}
 static NTSTATUS StageMvpCancelNames(PFLT_INSTANCE i,PUNICODE_STRING s,PUNICODE_STRING t,BOOLEAN cancel,PBOOLEAN required)
 { (void)i;(void)s;(void)t;assert(StageDirectoryMutationActive&&!NamespaceDepth&&Irql==0);
  if(required)*required=(BOOLEAN)PendingCancellation;
- if(!cancel){PreflightCalls++;return PrivateOpen?STATUS_SHARING_VIOLATION:0;}CancelCalls++;return CancelStatus; }
+ if(!cancel){PreflightCalls++;return PrivateOpen?STATUS_SHARING_VIOLATION:0;}CancelCalls++;tr('N');return CancelStatus; }
 static BOOLEAN SafeUploadStageWritersBeginMutatingIo(PFLT_CALLBACK_DATA d,PFLT_INSTANCE i,PFILE_OBJECT f,PVOID *ctx,PBOOLEAN tracked)
 { (void)d;(void)i;(void)f;assert(!NamespaceDepth);MutatingOwners++;*ctx=(PVOID)(uintptr_t)24;*tracked=FALSE;return TRUE; }
 static VOID SafeUploadStageWritersAttachMutatingIo(PVOID rename,PVOID *io)
@@ -137,7 +177,9 @@ static VOID namespace_reset(void)
  MutatingOwners=RenameOwnsMutation=RenameCompleteCalls=CompletedSuccess=CompletedDraining=0;
  SubjectChecks=DestinationChecks=SubjectStatus=DestinationAccessStatus=CancelOpenCalls=0;LookupHook=NULL;
  PendingCancellation=NativeReplaceChecks=0;
- assert(!StageMvpNamespaceCreateName&&!StageMvpNamespaceRegistryContext&&!StageMvpNamespaceCreateContext);
+ RegMode=ReserveCalls=RegPostCalls=RegCancelCalls=RegRegistered=RegReleased=RegDrained=TrackLostCalls=LiveReservations=0;
+ RegPostStatus=RegPostFlags=0;ReservationNext=0;TraceLen=0;Trace[0]=0;
+ assert(!StageMvpNamespaceCreateName&&!StageMvpNamespaceRegistryContext&&!StageMvpNamespaceCreateContext&&!StageMvpNamespaceCreateReservation);
  Source.Name=u(L"\\Device\\V\\Protected\\file.txt");Destination.Name=u(L"\\Device\\V\\Protected\\new.txt");
 }
 static VOID moved_out_and_back(void)
@@ -158,13 +200,13 @@ static VOID d7_reset(void)
 }
 static VOID d7_close_unload(void){StageUnloadAdmissionClosed=1;}
 /* No context leaked, no list residue, and the fenced singleton never touched (namespace_reset asserts it). */
-static VOID d7_done(void){assert(Allocs==Frees&&StageMvpReparseOpens.Flink==&StageMvpReparseOpens&&!StageDirectoryMutationActive);}
+static VOID d7_done(void){assert(Allocs==Frees&&StageMvpReparseOpens.Flink==&StageMvpReparseOpens&&!StageDirectoryMutationActive&&!LiveReservations);}
 /* Admit a D7 CREATE; the returned completion context is what the epoch token carries to the post dispatch. */
 static PVOID d7_admit(PFLT_CALLBACK_DATA data,PCFLT_RELATED_OBJECTS objects)
 {
  PVOID ctx=NULL;BOOLEAN handled=FALSE;STAGE_ADMISSION_TOKEN_SLOT token=slot();int before=LegacyPreCalls;
  assert(StageMvpNamespacePre(data,objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_WITH_CALLBACK&&handled);
- assert(ctx&&ctx!=&StageMvpNamespaceCompletionTag&&LegacyPreCalls==before+1&&!StageDirectoryMutationActive&&!CancelCalls&&!PreflightCalls);
+ assert(ctx&&(uintptr_t)ctx>=0x10000&&ctx!=&StageMvpNamespaceCompletionTag&&LegacyPreCalls==before+1&&!StageDirectoryMutationActive&&!CancelCalls&&!PreflightCalls);
  return ctx;
 }
 /* The real CREATE post dispatch: foreign contexts (encoded scalars, other tags, NULL) are never matched. */
@@ -467,5 +509,140 @@ static VOID namespace_tests(void)
  assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SYNCHRONIZE&&handled&&ctx==&StageMvpNamespaceCompletionTag);
  assert(PreflightCalls==1&&CancelCalls==1);data.IoStatus.Status=0;StageMvpNamespacePost(&data,&objects,0);StageDirectoryEndMutation(FALSE);
  io.MajorFunction=IRP_MJ_CREATE;
+ /* D7 rev 4 (m2t5ord9): every native-route CREATE the registry classifies as a writer takes the writer-registry reservation
+  * after the legacy pre and before the lower CREATE, and the registry post consumes it exactly once. */
+#define TRACE_IS(t) assert(strcmp(Trace,(t))==0)
+ file.DeleteAccess=TRUE;file.WriteAccess=FALSE;file.FsContext=(PVOID)1;TagAttributes=0;io.OperationFlags=0;
+ io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_OPEN_REPARSE_POINT;security.DesiredAccess=DELETE|FILE_READ_ATTRIBUTES|SYNCHRONIZE;
+ /* D7 success: reserve after the legacy pre (before the lower CREATE), registry post first, then the legacy post. */
+ d7_reset();{PVOID open=d7_admit(&data,&objects);
+  TRACE_IS("LR");assert(ReserveCalls==1&&LiveReservations==1&&((PSTAGE_MVP_REPARSE_OPEN)open)->WriterReservation);
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
+  TRACE_IS("LRPp");assert(RegPostCalls==1&&RegRegistered==1&&!RegReleased&&RegPostStatus==STATUS_SUCCESS&&!RegPostFlags&&!TrackLostCalls);d7_done();}
+ /* Every D7 refusal sets the failure status (and cancels where it did) BEFORE the registry post, which then releases the
+  * reservation without tracking; no legacy post runs. */
+ {uintptr_t info[]={FILE_CREATED,FILE_OPENED,FILE_OPENED,FILE_OPENED};NTSTATUS st[]={STATUS_SUCCESS,STATUS_SUCCESS,STATUS_SUCCESS,STATUS_PENDING};
+  for(int refusal=0;refusal<5;refusal++){
+   d7_reset();PVOID open=d7_admit(&data,&objects);
+   if(refusal==1)TagAttributes=FILE_ATTRIBUTE_REPARSE_POINT;
+   if(refusal==2)file.FsContext=NULL;
+   if(refusal==4)SourceId=9; /* substituted object: identity query disagrees with the identity captured in pre */
+   d7_post(&data,&objects,open,refusal==4?STATUS_SUCCESS:st[refusal<4?refusal:0],refusal==4?FILE_OPENED:info[refusal<4?refusal:0],0);
+   file.FsContext=(PVOID)1;TagAttributes=0;SourceId=1;
+   assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&RegPostStatus==STATUS_ACCESS_DENIED);
+   assert(RegPostCalls==1&&RegReleased==1&&!RegRegistered&&!LegacyPostCalls&&LiveReservations==0);
+   if(refusal==2||refusal==3){assert(!CancelOpenCalls);TRACE_IS("LRP");}else{assert(CancelOpenCalls==1);TRACE_IS("LRXP");}
+   d7_done();
+  }}
+ /* A lower failure or reparse is a genuine non-open: the registry releases without tracking, then the legacy post runs. */
+ {NTSTATUS lower[]={STATUS_ACCESS_DENIED,STATUS_OBJECT_NAME_NOT_FOUND,STATUS_REPARSE};
+  for(unsigned k=0;k<3;k++){d7_reset();PVOID open=d7_admit(&data,&objects);
+   d7_post(&data,&objects,open,lower[k],FILE_OPENED,0);
+   TRACE_IS("LRPp");assert(RegReleased==1&&!RegRegistered&&RegPostStatus==lower[k]&&data.IoStatus.Status==lower[k]&&!CancelOpenCalls);d7_done();}}
+ /* Draining: the registry post records teardown and fails, so the legacy post is skipped; nothing is cancelled. */
+ d7_reset();{PVOID open=d7_admit(&data,&objects);
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,FLTFL_POST_OPERATION_DRAINING);
+  TRACE_IS("LRP");assert(RegDrained==1&&RegPostFlags==FLTFL_POST_OPERATION_DRAINING&&!RegRegistered&&!LegacyPostCalls&&!CancelOpenCalls);d7_done();}
+ /* A legacy-post denial follows the registry post, exactly as in the generic CREATE post. */
+ d7_reset();{PVOID open=d7_admit(&data,&objects);LegacyDenied=1;
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
+  TRACE_IS("LRPpX");assert(RegRegistered==1&&CancelOpenCalls==1&&data.IoStatus.Status==STATUS_ACCESS_DENIED);d7_done();}
+ /* Reserve outcomes: a required reservation that could not be made records tracking lost (the ledger never refuses a create);
+  * a failure with a partial reservation cancels it; an out-of-scope or already-Unknown instance reserves nothing. */
+ for(int mode=1;mode<=4;mode++){
+  d7_reset();RegMode=mode;PVOID open=d7_admit(&data,&objects);
+  assert(((PSTAGE_MVP_REPARSE_OPEN)open)->WriterReservation==NULL&&LiveReservations==0&&ReserveCalls==1);
+  assert(TrackLostCalls==(mode<=3?1:0)&&RegCancelCalls==(mode==2?1:0));
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
+  TRACE_IS("LRp");assert(!RegPostCalls&&LegacyPostCalls==1&&data.IoStatus.Status==STATUS_SUCCESS);d7_done();
+  d7_reset();RegMode=mode;open=d7_admit(&data,&objects);
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,FLTFL_POST_OPERATION_DRAINING);
+  TRACE_IS("LR");assert(!RegPostCalls&&!LegacyPostCalls);d7_done(); /* no reservation: draining only frees the D7 context */
+ }
+ /* Several contexts at once, each with its own reservation, posted out of order. */
+ d7_reset();{PVOID a=d7_admit(&data,&objects),b=d7_admit(&data,&objects),c=d7_admit(&data,&objects);
+  assert(LiveReservations==3&&ReserveCalls==3);
+  d7_post(&data,&objects,c,STATUS_SUCCESS,FILE_OPENED,0);assert(LiveReservations==2);
+  d7_post(&data,&objects,a,STATUS_ACCESS_DENIED,FILE_OPENED,0);assert(LiveReservations==1);
+  d7_post(&data,&objects,b,STATUS_SUCCESS,FILE_OPENED,0);
+  assert(RegPostCalls==3&&RegRegistered==2&&RegReleased==1&&LegacyPostCalls==3);d7_done();}
+ /* D1: a writer-classified native open without OPEN_REPARSE_POINT gets the same per-CREATE owner and reservation, but no D7
+  * object validation (a reparse attribute is not cancelled); a non-writer D1 open keeps the bare legacy context. */
+ io.Parameters.Create.Options=(FILE_OPEN<<24);
+ assert(!StageMvpNamespaceReparseOpen(&data)&&StageMvpNamespaceCreateEligible(&data,&objects)&&SafeUploadStageWritersWantPostCreate(&data));
+ d7_reset();{PVOID open=d7_admit(&data,&objects);
+  assert(!((PSTAGE_MVP_REPARSE_OPEN)open)->Reparse&&((PSTAGE_MVP_REPARSE_OPEN)open)->WriterReservation&&LiveReservations==1);
+  TagAttributes=FILE_ATTRIBUTE_REPARSE_POINT;d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_CREATED,0);TagAttributes=0;
+  TRACE_IS("LRPp");assert(RegRegistered==1&&!CancelOpenCalls&&data.IoStatus.Status==STATUS_SUCCESS);d7_done();}
+ d7_reset();{PVOID open=d7_admit(&data,&objects);
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,FLTFL_POST_OPERATION_DRAINING);
+  TRACE_IS("LRP");assert(RegDrained==1&&!LegacyPostCalls);d7_done();}
+ d7_reset();RegMode=1;{PVOID open=d7_admit(&data,&objects);assert(TrackLostCalls==1);
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);TRACE_IS("LRp");d7_done();}
+ security.DesiredAccess=FILE_READ_ATTRIBUTES|SYNCHRONIZE;
+ assert(StageMvpNamespaceCreateEligible(&data,&objects)&&!SafeUploadStageWritersWantPostCreate(&data));
+ d7_reset();token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_WITH_CALLBACK&&handled);
+ assert(ctx==(PVOID)(uintptr_t)32&&!Allocs&&!ReserveCalls&&StageMvpReparseOpens.Flink==&StageMvpReparseOpens);TRACE_IS("L");d7_done();
+ /* The unload / mandatory-teardown recheck covers D1 writer opens before any name or identity I/O, not non-writers. */
+ security.DesiredAccess=DELETE|FILE_READ_ATTRIBUTES|SYNCHRONIZE;
+ for(int refusal=0;refusal<2;refusal++){
+  d7_reset();if(refusal==0)StageUnloadAdmissionClosed=1;else MandatoryTeardown=1;
+  token=slot();ctx=NULL;
+  assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&!ctx);
+  assert(data.IoStatus.Status==STATUS_DEVICE_NOT_READY&&!NameQueryCalls&&!IdentityProbeCalls&&!LegacyPreCalls&&!ReserveCalls&&!Allocs);d7_done();
+ }
+ d7_reset();LookupHook=d7_close_unload;{PVOID open=d7_admit(&data,&objects);LookupHook=NULL;
+  assert(StageUnloadAdmissionClosed&&LiveReservations==1);
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);TRACE_IS("LRPp");d7_done();}
+ /* Fenced native DOC: reservation after the legacy pre and nothing refuses after it; the registry post consumes it first,
+  * then the legacy post, then identity validation and the single pending-version cancellation. */
+ io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_DELETE_ON_CLOSE;
+ for(int variant=0;variant<7;variant++){
+  namespace_reset();StageUnloadAdmissionClosed=0;MandatoryTeardown=0;token=slot();ctx=NULL;
+  if(variant==5)RegMode=1;
+  assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_WITH_CALLBACK&&handled);
+  TRACE_IS("LR");assert(ReserveCalls==1&&(variant==5?!StageMvpNamespaceCreateReservation&&TrackLostCalls==1:
+   StageMvpNamespaceCreateReservation!=NULL&&LiveReservations==1)&&!CancelCalls);
+  data.IoStatus.Information=FILE_OPENED;data.IoStatus.Status=variant==1?STATUS_ACCESS_DENIED:STATUS_SUCCESS;
+  if(variant==2)LegacyDenied=1;
+  if(variant==3)SourceId=9;
+  StageMvpNamespacePost(&data,&objects,variant==4?FLTFL_POST_OPERATION_DRAINING:0);
+  SourceId=1;
+  assert(!StageMvpNamespaceCreateReservation&&LiveReservations==0&&!StageMvpNamespaceCreateName);
+  switch(variant){
+  case 0: TRACE_IS("LRPpN");assert(RegRegistered==1&&CancelCalls==1&&!CancelOpenCalls);break;
+  case 1: TRACE_IS("LRPp");assert(RegReleased==1&&!RegRegistered&&!CancelCalls&&!CancelOpenCalls);break; /* lower failure */
+  case 2: TRACE_IS("LRPpX");assert(CancelOpenCalls==1&&!CancelCalls);break; /* legacy denial: one cancellation, no pending-save cancel */
+  case 3: TRACE_IS("LRPpX");assert(CancelOpenCalls==1&&!CancelCalls&&data.IoStatus.Status==STATUS_SHARING_VIOLATION);break;
+  case 4: TRACE_IS("LRP");assert(RegDrained==1&&!LegacyPostCalls&&!CancelCalls&&!CancelOpenCalls);break; /* draining: legacy skipped */
+  case 5: TRACE_IS("LRpN");assert(!RegPostCalls&&LegacyPostCalls==1&&CancelCalls==1);break; /* no reservation: legacy and cancel unchanged */
+  default: break;
+  }
+  if(variant<6)StageDirectoryEndMutation(variant==4);
+  if(variant==6){ /* the draining post without a reservation still runs the legacy post exactly as before */
+   namespace_reset();RegMode=4;token=slot();ctx=NULL;
+   assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_WITH_CALLBACK);
+   data.IoStatus.Status=STATUS_SUCCESS;StageMvpNamespacePost(&data,&objects,FLTFL_POST_OPERATION_DRAINING);
+   TRACE_IS("LRp");assert(!RegPostCalls&&!TrackLostCalls&&LegacyPostCalls==1);StageDirectoryEndMutation(TRUE);
+  }
+ }
+ /* A legacy COMPLETE reserves nothing (the reservation is taken after it), and a partial-reservation failure is cancelled. */
+ namespace_reset();LegacyPreComplete=1;token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled);
+ assert(!ReserveCalls&&!LiveReservations&&!StageMvpNamespaceCreateReservation);TRACE_IS("L");StageDirectoryEndMutation(FALSE);
+ namespace_reset();LegacyPreComplete=0;RegMode=2;token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_WITH_CALLBACK);
+ assert(!StageMvpNamespaceCreateReservation&&LiveReservations==0&&RegCancelCalls==1&&TrackLostCalls==1);
+ data.IoStatus.Status=STATUS_SUCCESS;data.IoStatus.Information=FILE_OPENED;StageMvpNamespacePost(&data,&objects,0);
+ TRACE_IS("LRpN");StageDirectoryEndMutation(FALSE);
+ /* Native SET_INFORMATION (rename, disposition) is not a CREATE and never reserves. */
+ namespace_reset();io.MajorFunction=IRP_MJ_SET_INFORMATION;io.Parameters.SetFileInformation.FileInformationClass=FileDispositionInformation;
+ io.Parameters.SetFileInformation.InfoBuffer=&dispose;io.Parameters.SetFileInformation.Length=sizeof(dispose);
+ token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SYNCHRONIZE&&handled&&!ReserveCalls);
+ data.IoStatus.Status=0;StageMvpNamespacePost(&data,&objects,0);StageDirectoryEndMutation(FALSE);assert(!ReserveCalls&&!RegPostCalls);
+ io.MajorFunction=IRP_MJ_CREATE;
+#undef TRACE_IS
  puts("native namespace production pre/post: denied CREATE/replacement, bindings, both generation races, registry ownership, D7 reparse-flag opens PASS");
 }

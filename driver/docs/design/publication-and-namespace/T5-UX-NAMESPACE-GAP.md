@@ -443,41 +443,80 @@ Native evidence to record in the T5 row (not a substitute for the controls): the
 both builds, and the T5 row's public-delete cases in all three modes. Host controls do not establish NTFS cleanup behaviour or
 qualification.
 
-### D7 revision 4 — native-route writers take the writer-registry reservation (2026-10-22; review pending)
+### D7 revision 5 — native-route writers take the writer-registry reservation (2026-10-22; review pending)
+
+Revision 4 (`42769931`) drew a Sol 6.1 high REVISE ([review](../../../evidence/2026-10-22/t5-d7-rev4-review-sol61.md)): an unload guard for D1,
+the nullable-reservation contract, explicit DOC post ordering, and stronger controls. This revision answers each item and is reviewed
+together with its implementation.
 
 **Evidence.** Row `m2t5ord9` ([T5 checkpoint](../../../evidence/2026-10-21/t5-checkpoint.md)) on the accepted D7 implementation
-(`9eb46e87`, signed `26075F68…`): after the first native D7 `DeleteFileW`, the agent logged "Admission coverage Degraded:
+(`9eb46e87`, signed `26075F68…`): after the first native D7 `DeleteFileW` the agent logged "Admission coverage Degraded:
 WriterStateUnknown", and from then on the legacy create gate refused every approved publication (fail-closed held: refused, not
-exposed). The writer registry classifies DELETE and FILE_WRITE_ATTRIBUTES opens as writers (`StageWriterCreateCanMutate`) and expects
-a reservation, which only the generic CREATE path takes (`SafeUploadStageWritersReserveCreate` in `StageDispatchCore`). The native
-namespace route returns before that point, so at the handle's cleanup the registry finds no stream context on a trusted instance and
-marks `SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP`, sticky until reboot. The same bypass exists for the pre-existing D1 non-mutation route and
-the native delete-on-close route whenever their open is writer-classified; D7 made it common.
+exposed). The bypass is confirmed in source: the registry classifies DELETE and FILE_WRITE_ATTRIBUTES opens as writers
+(`StageWriterCreateCanMutate`) and expects a reservation, which only the generic CREATE path takes
+(`SafeUploadStageWritersReserveCreate` in `StageDispatchCore`); the native namespace route returns before that point. The registry's
+cleanup marks `SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP` both for a writer handle with no stream context and for a context lacking that
+exact node, so the unmatched cleanup of a D7 handle explains the Unknown. That it was the *first* Unknown in the row is strongly
+supported but not proved: the event reports only `WriterStateUnknown`, not the origin, and the row did not capture the reason mask.
+The next row therefore records the registry's Unknown reasons and cleanup counters before and after (Controls). The same bypass
+exists for the pre-existing D1 non-mutation route and the native delete-on-close (DOC) route whenever their open is writer-classified;
+D7 made it common.
 
 **Rule.** Every CREATE that the native namespace route admits and that `StageWriterCreateCanMutate` classifies as a writer takes the
-writer-registry reservation exactly as the generic path does, and its post-create registers or releases it:
+writer-registry reservation as the generic path does, and its post consumes it:
 
-1. In pre, after the legacy pre-create (`SafeUploadPreCreate`) and before the lower CREATE: `SafeUploadStageWritersReserveCreate`
-   (alias proof NULL: the native route has none). A reserve failure cancels any partial reservation and records
-   `SafeUploadStageWritersTrackingLost(ALLOCATION)`, as the generic path does; a required reservation that could not be made does the
-   same. On success the reservation records the legacy completion context and callback flag (`SafeUploadStageWritersSetCompletion`).
-2. The reservation is carried by the existing completion owner: the D7 per-CREATE context for D7 and D1 non-mutation writer opens
-   (D1 opens skip D7's reparse/identity validation), and the fenced singleton for the native delete-on-close CREATE.
-3. In post, D7 validation runs first. A refusal sets the failure status (and cancels the open where D7 already does) **before** the
-   registry post-create, which then releases the reservation without tracking; no legacy post runs. On a pass, or for a D1 open, the
-   registry post-create registers the handle and returns the legacy context and flag, and the legacy post runs from those. A draining
-   post calls the registry post-create, which records teardown Unknown and releases the reservation, as it does for every generic
-   writer under drain.
-4. Pre refusals after a reservation (allocation failure, legacy pre COMPLETE) cancel the reservation.
+1. *Unload / teardown guard.* A native CREATE that will own a reservation (any writer-classified open: D7, D1, DOC) repeats the
+   post-epoch recheck of `StageUnloadAdmissionClosed` and mandatory teardown before any name, identity or reservation I/O, as D7 does.
+   Epoch acquisition still admits a callback after unload's last zero-count snapshot, so either the snapshot sees this callback and
+   unload vetoes, or this read sees the closed gate. Non-writer D1 opens keep the bare legacy context and no recheck.
+2. *Where the reservation is taken.* After the legacy pre-create (`SafeUploadPreCreate`), so a legacy COMPLETE never leaves one, and
+   before the lower CREATE. The call is `SafeUploadStageWritersReserveCreate` with a NULL alias proof (the native route has none; a NULL
+   proof cannot manufacture an outside-scope classification). A failure cancels any partial reservation and records
+   `SafeUploadStageWritersTrackingLost(ALLOCATION)`; a required reservation that could not be made does the same. Reserve may also
+   succeed with no reservation (not a writer, excluded, out of scope, instance already Unknown); that is not an error and nothing is
+   recorded. Nothing after the reservation can refuse the CREATE (DOC: the fenced singleton is stored and the callback returned).
+3. *Ownership.* The legacy completion context and callback flag stay in the existing owner independently of the reservation: the
+   per-CREATE context (D7 and D1 writer opens) or the fenced singleton (DOC), with the reservation as a separate nullable field. Neither
+   uses `SafeUploadStageWritersSetCompletion`. The registry post is never called without a reservation. A reservation is consumed by
+   exactly one registry post (or one cancel) and the owner's field is cleared before that call.
+4. *Post ordering.* Draining, a lower failure and a refusal are all decided before the registry post, which reads the final status.
+   - **D7:** validation first; a refusal cancels the open where it did and sets `STATUS_ACCESS_DENIED` **before** the registry post,
+     which then releases the reservation without tracking; no legacy post runs. A pass or a genuine non-open continues to the
+     registry post, then the legacy post. Draining: registry post (records teardown Unknown, releases, fails) and no legacy post
+     (unchanged from the accepted rev 3, which skipped it even without a reservation).
+   - **D1 writer open:** no object validation; registry post, then legacy post; draining skips the legacy post when the registry post
+     failed.
+   - **Fenced DOC:** registry post first, then the legacy post, then identity validation and the single pending-version
+     cancellation, all before the fence and epoch are released. A legacy denial cancels the open and sets the failure status, which the
+     identity step then sees as not opened, so the pending save is cancelled at most once and never for a denied open. A draining
+     registry post skips the legacy post (generic parity); a DOC with no reservation behaves exactly as before, legacy post included.
+   - The registry post returns success for tracking loss (the loss is recorded inside) and failure only when draining; the callers
+     neither treat success as proof of tracking nor re-record the loss.
+5. *Cancelled-after-registered.* As in the generic path, a legacy-post denial (and, for DOC, an identity or cancellation failure)
+   cancels an open the registry may already have registered. This revision keeps that ordering for parity and does not claim to solve
+   it; whether `FltCancelFileOpen` delivers a cleanup to the caller's own instance is not decided here, and the fail-closed outcome is
+   an entry- or instance-level Unknown, never an exposure. The next row's reason capture would show it.
 
-Non-writer native opens (read/attribute-only) are unchanged. No new lock, wait or retirement path; the registry's own lock order and
-the post-before-epoch-release ordering are unchanged.
+No new lock order or retirement protocol. The reserve and post calls run at PASSIVE, after `StageListLock` and the namespace resource
+are released, and the registry post finishes before the fence and epoch release. They do add existing blocking work to these paths: a
+name query and the registry push lock; for DOC they run under the directory-mutation fence (a flag and the epoch, no resource). The
+reviewer is asked to confirm that no path holds the registry lock while waiting for that fence.
 
-**Controls.** Host fixture with registry stubs that record reserve/post/cancel: every admitted writer-classified native CREATE (D7,
-D1 non-mutation, native DOC) reserves before the lower CREATE and is registered on success; every D7 refusal releases without
-registering; draining releases; pre refusals cancel; non-writers never reserve; negative mutations removing the reserve or the post
-must fail. On Windows, the next T5 row also captures the driver's registry Unknown reasons, and a public-delete case must leave the
-registry Known.
+**Controls.** Host fixture `namespace_ux_fixture.c` compiles the production pre/post paths and the production writer classifier against
+a registry boundary that models the API contract (reserve outcomes 0-4, consume-once, draining failure, release on failure status,
+register on success) and records a call trace. It asserts: reserve after the legacy pre and before the lower CREATE (trace `LR`); the
+registry post before the legacy post (`LRPp`); every D7 refusal class sets the failure status before the registry post and runs no legacy
+post (`LRXP` / `LRP`); lower failures and `STATUS_REPARSE` release without tracking and still run the legacy post; draining; the legacy-denial
+ordering (`LRPpX`); all four reserve outcomes with and without a reservation, including cancel of a partial one and tracking-lost
+recording; several concurrent contexts posted out of order; D1 writer versus non-writer owners; the unload and mandatory-teardown recheck
+for D1 writers, before any name or identity I/O and with unload closing after the recheck; DOC variants (success, lower failure, legacy
+denial, identity substitution, draining, no reservation, legacy COMPLETE, partial reservation) with one pending-version cancellation;
+native SET_INFORMATION never reserves; no live reservation, context or singleton remains. 51 negative mutations are each killed by an
+intended assertion ([receipts](../../../evidence/2026-10-22/t5-d7-rev4-host-mutants.json)).
+The host controls do not compile `StageWriters.c`: the registry's own post and cleanup logic is unchanged by this delta and is
+exercised only on Windows. The next T5 row therefore captures the driver's registry Unknown masks and origins and its cleanup counters
+before and after the public-delete cases, requires the registry to stay Known across them, and requires a later approved publication to
+succeed.
 
 ## Round 2 implementation and verification
 

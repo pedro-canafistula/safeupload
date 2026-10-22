@@ -374,14 +374,18 @@ static FILE_ID_INFORMATION StageMvpNamespaceCreateIdentity;
 static PVOID StageMvpNamespaceRegistryContext;
 static BOOLEAN StageMvpNamespaceCreateCallback;
 static PVOID StageMvpNamespaceCreateContext; /* Single fenced native CREATE; legacy read/taint post context. */
-/* D7 (T5-UX-NAMESPACE-GAP): one per admitted unfenced OPEN_REPARSE_POINT namespace CREATE, owned by that CREATE's
- * admission-epoch post. Never the fenced singleton above. Membership in StageMvpReparseOpens (StageListLock) is how a
- * post recognises it, so no foreign completion context is ever dereferenced. */
+static PVOID StageMvpNamespaceCreateReservation; /* Single fenced native CREATE; writer-registry reservation or NULL. */
+/* D7 (T5-UX-NAMESPACE-GAP): one per admitted unfenced native CREATE that needs a per-CREATE owner (an OPEN_REPARSE_POINT
+ * open, or a writer-classified open of any kind), owned by that CREATE's admission-epoch post. Never the fenced singleton
+ * above. Membership in StageMvpReparseOpens (StageListLock) is how a post recognises it, so no foreign completion context is
+ * ever dereferenced. */
 typedef struct _STAGE_MVP_REPARSE_OPEN {
     LIST_ENTRY Link;
     FILE_ID_INFORMATION Identity; /* captured in pre; zero when the name was proved absent */
     PVOID LegacyContext;
+    PVOID WriterReservation;      /* writer-registry reservation (D7 rev 4); NULL when none was made or after it is consumed */
     BOOLEAN LegacyCallback;
+    BOOLEAN Reparse;              /* a D7 request: the post validates the opened object; D1 writer opens do not */
 } STAGE_MVP_REPARSE_OPEN, *PSTAGE_MVP_REPARSE_OPEN;
 static LIST_ENTRY StageMvpReparseOpens;
 #endif
@@ -10369,14 +10373,21 @@ static BOOLEAN StageMvpRenameNeedsCopy(_In_ PFLT_FILE_NAME_INFORMATION Source,
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageMvpRequireRegularObject(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT File);
 _IRQL_requires_(PASSIVE_LEVEL)
+static PVOID StageMvpWriterReserve(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects);
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageMvpWriterPost(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
+    _In_ FLT_POST_OPERATION_FLAGS Flags, _In_opt_ PVOID Reservation);
+_IRQL_requires_(PASSIVE_LEVEL)
 static FLT_PREOP_CALLBACK_STATUS StageMvpReparseOpenPre(_Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS Objects, _In_ const FILE_ID_INFORMATION *Identity,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _In_ const FILE_ID_INFORMATION *Identity, _In_ BOOLEAN Reparse,
     _Flt_CompletionContext_Outptr_ PVOID *CompletionContext);
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID StageMvpReparseOpenPost(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
     _In_ PSTAGE_MVP_REPARSE_OPEN Open, _In_ FLT_POST_OPERATION_FLAGS Flags);
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, StageMvpRequireRegularObject)
+#pragma alloc_text(PAGE, StageMvpWriterReserve)
+#pragma alloc_text(PAGE, StageMvpWriterPost)
 #pragma alloc_text(PAGE, StageMvpReparseOpenPre)
 #pragma alloc_text(PAGE, StageMvpReparseOpenPost)
 #endif
@@ -10393,10 +10404,47 @@ static NTSTATUS StageMvpRequireRegularObject(PFLT_INSTANCE Instance, PFILE_OBJEC
     return STATUS_SUCCESS;
 }
 
-/* D7 pre, after the unload recheck, eligibility, protected-name and identity checks in StageMvpNamespacePre. */
+/* D7 rev 4: the writer-registry reservation a generic writer CREATE takes in StageDispatchCore, taken here for a native-route
+ * CREATE that the registry classifies as a writer (DELETE, FILE_WRITE_ATTRIBUTES, DELETE_ON_CLOSE, write access). Called after
+ * the legacy pre-create, so a legacy COMPLETE never leaves a reservation. NULL when the registry made none: not a writer,
+ * excluded, out of scope, or already Unknown. A failed or missing required reservation records tracking lost, as the generic
+ * path does; the ledger never refuses a create. */
+_Use_decl_annotations_
+static PVOID StageMvpWriterReserve(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects)
+{
+    PVOID reservation = NULL;
+    BOOLEAN required = FALSE;
+    NTSTATUS status;
+    PAGED_CODE();
+    status = SafeUploadStageWritersReserveCreate(Data, Objects, &reservation, &required, NULL);
+    if (!NT_SUCCESS(status)) {
+        if (reservation != NULL) SafeUploadStageWritersCancelReservation(reservation);
+        SafeUploadStageWritersTrackingLost(Objects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);
+        return NULL;
+    }
+    if (required && reservation == NULL)
+        SafeUploadStageWritersTrackingLost(Objects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);
+    return reservation;
+}
+
+/* Consumes the reservation on every branch (it is freed or becomes the exact cleanup node): never call it twice for one
+ * reservation. FALSE when the registry post failed (a draining post), which skips the legacy post as the generic path does. With no
+ * reservation there is nothing to consume and the legacy post is unaffected. The registry post reads the final status, so a
+ * refusal that the caller set first releases the reservation without tracking. */
+_Use_decl_annotations_
+static BOOLEAN StageMvpWriterPost(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
+    FLT_POST_OPERATION_FLAGS Flags, PVOID Reservation)
+{
+    PAGED_CODE();
+    if (Reservation == NULL) return TRUE;
+    return NT_SUCCESS(SafeUploadStageWritersPostCreate(Data, Objects, Flags, Reservation, NULL, NULL));
+}
+
+/* D7 pre, after the unload recheck, eligibility, protected-name and identity checks in StageMvpNamespacePre. Also the owner of
+ * D1 writer opens, which need the same per-CREATE context for their registry reservation (Reparse FALSE: no object validation). */
 _Use_decl_annotations_
 static FLT_PREOP_CALLBACK_STATUS StageMvpReparseOpenPre(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
-    const FILE_ID_INFORMATION *Identity, PVOID *CompletionContext)
+    const FILE_ID_INFORMATION *Identity, BOOLEAN Reparse, PVOID *CompletionContext)
 {
     PSTAGE_MVP_REPARSE_OPEN open;
     FLT_PREOP_CALLBACK_STATUS legacy;
@@ -10411,19 +10459,24 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpReparseOpenPre(PFLT_CALLBACK_DATA Data,
     open->Identity = *Identity;
     open->LegacyContext = NULL; /* _Flt_CompletionContext_Outptr_ requires a NULL output on entry */
     open->LegacyCallback = FALSE;
+    open->WriterReservation = NULL;
+    open->Reparse = Reparse;
     legacy = SafeUploadPreCreate(Data, Objects, &open->LegacyContext);
     if (legacy == FLT_PREOP_COMPLETE) {
         ExFreePoolWithTag(open, STAGE_TAG);
         return legacy;
     }
     open->LegacyCallback = legacy == FLT_PREOP_SUCCESS_WITH_CALLBACK;
+    open->WriterReservation = StageMvpWriterReserve(Data, Objects);
     StageMvpReparseOpenTrack(open);
     *CompletionContext = open;
     return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 }
 
-/* D7 post, before the legacy post, any cancellation or handle exposure. Draining is cleanup on copied callback data,
- * never enforcement: mandatory teardown keeps the existing coverage-loss rules. */
+/* D7 post, before the registry post, the legacy post, any cancellation or handle exposure. A refusal sets the failure status
+ * (and cancels the open) first, so the registry post then releases the reservation without tracking the rejected object and no
+ * legacy post runs. Draining is cleanup on copied callback data, never enforcement: mandatory teardown keeps the existing
+ * coverage-loss rules, and the registry post records teardown Unknown for a reserved writer. */
 _Use_decl_annotations_
 static VOID StageMvpReparseOpenPost(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
     PSTAGE_MVP_REPARSE_OPEN Open, FLT_POST_OPERATION_FLAGS Flags)
@@ -10432,13 +10485,14 @@ static VOID StageMvpReparseOpenPost(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJEC
     ULONG returned = 0;
     PFILE_OBJECT file = Objects->FileObject;
     NTSTATUS status = Data->IoStatus.Status;
+    PVOID reservation = Open->WriterReservation;
+    BOOLEAN legacyPost = TRUE;
     PAGED_CODE();
-    if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) goto Free;
+    Open->WriterReservation = NULL; /* consumed exactly once, below */
+    if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) { legacyPost = FALSE; goto Registry; }
     /* Genuine non-open: nothing was opened, so the legacy post runs as today. */
-    if (!NT_SUCCESS(status) || status == STATUS_REPARSE) {
-        if (Open->LegacyCallback) (VOID)SafeUploadPostCreate(Data, Objects, Open->LegacyContext, Flags);
-        goto Free;
-    }
+    if (!NT_SUCCESS(status) || status == STATUS_REPARSE) goto Registry;
+    if (!Open->Reparse) goto Registry; /* D1 writer open: no D7 object validation */
     if (status == STATUS_PENDING) goto Deny; /* not a completed outcome */
     if (Data->IoStatus.Information != FILE_OPENED) goto Cancel; /* this OPEN-only route never creates or overwrites */
     if (file == NULL || file->FsContext == NULL) goto Deny; /* no object call on missing evidence */
@@ -10446,15 +10500,18 @@ static VOID StageMvpReparseOpenPost(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJEC
     status = FltQueryInformationFile(Objects->Instance, file, &identity, sizeof(identity), FileIdInformation, &returned);
     if (!NT_SUCCESS(status) || returned != sizeof(identity) ||
         !RtlEqualMemory(&identity, &Open->Identity, sizeof(identity))) goto Cancel; /* substituted object */
-    /* A legacy-post denial cancels the open itself; D7 cancels nothing further. */
-    if (Open->LegacyCallback) (VOID)SafeUploadPostCreate(Data, Objects, Open->LegacyContext, Flags);
-    goto Free;
+    goto Registry;
 Cancel:
     if (file != NULL && file->FsContext != NULL) FltCancelFileOpen(Objects->Instance, file);
 Deny:
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
-Free:
+    legacyPost = FALSE;
+Registry:
+    /* A legacy-post denial cancels the open itself; D7 cancels nothing further. A failing registry post is a draining one,
+     * which already cleared legacyPost above. */
+    (VOID)StageMvpWriterPost(Data, Objects, Flags, reservation);
+    if (legacyPost && Open->LegacyCallback) (VOID)SafeUploadPostCreate(Data, Objects, Open->LegacyContext, Flags);
     ExFreePoolWithTag(Open, STAGE_TAG);
 }
 
@@ -10486,7 +10543,7 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
     PFILE_RENAME_INFORMATION rename = NULL;
     FILE_STANDARD_INFORMATION standard = {0};
     FLT_FILESYSTEM_TYPE fs = FLT_FSTYPE_UNKNOWN;
-    BOOLEAN mutation = FALSE, replace = FALSE, reparseOpen = FALSE;
+    BOOLEAN mutation = FALSE, replace = FALSE, reparseOpen = FALSE, writerCreate = FALSE;
     FILE_ID_INFORMATION identity = {0};
     PVOID mutatingIoContext = NULL, registryRenameContext = NULL;
     BOOLEAN trackedWriter = FALSE;
@@ -10506,10 +10563,12 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
         if (!StageMvpNamespaceCreateEligible(Data, Objects)) return result;
         mutation = BooleanFlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE);
         reparseOpen = StageMvpNamespaceReparseOpen(Data);
+        writerCreate = SafeUploadStageWritersWantPostCreate(Data);
         /* D7: this CREATE already holds an admission epoch (DELETE and FILE_WRITE_ATTRIBUTES are epoch
          * operations). Unload closes admission before its zero-callback snapshot, so either that snapshot
-         * sees this callback and unload vetoes, or this read sees the closed gate before any name/identity I/O. */
-        if (reparseOpen && (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 ||
+         * sees this callback and unload vetoes, or this read sees the closed gate before any name/identity I/O.
+         * Rev 4: a writer-classified open takes a registry reservation and a per-CREATE owner too, so it gets the same recheck. */
+        if ((reparseOpen || writerCreate) && (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 ||
             SafeUploadStageMandatoryTeardownActive())) {
             *Handled = TRUE; status = STATUS_DEVICE_NOT_READY; goto Refuse;
         }
@@ -10602,7 +10661,8 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
     }
     if (!mutation) {
         if (major == IRP_MJ_CREATE)
-            result = reparseOpen ? StageMvpReparseOpenPre(Data, Objects, &identity, CompletionContext) :
+            result = reparseOpen || writerCreate ?
+                StageMvpReparseOpenPre(Data, Objects, &identity, reparseOpen, CompletionContext) :
                 SafeUploadPreCreate(Data, Objects, CompletionContext);
         goto Exit;
     }
@@ -10652,6 +10712,8 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
         StageMvpNamespaceCreateIdentity = bindings.Source;
         StageMvpNamespaceCreateContext = legacyContext;
         StageMvpNamespaceCreateCallback = result == FLT_PREOP_SUCCESS_WITH_CALLBACK;
+        /* D7 rev 4: after the legacy pre, so a legacy COMPLETE reserves nothing; nothing below can refuse. */
+        StageMvpNamespaceCreateReservation = StageMvpWriterReserve(Data, Objects);
     }
     StageMvpNamespaceRegistryContext = registryRenameContext != NULL ? registryRenameContext : mutatingIoContext;
     registryRenameContext = mutatingIoContext = NULL;
@@ -10688,14 +10750,14 @@ static BOOLEAN StageMvpNamespaceCreateOpened(_In_ PFLT_CALLBACK_DATA Data,
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID StageMvpNamespacePostCreate(_Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects, _In_opt_ PVOID LegacyContext,
-    _In_ BOOLEAN LegacyCallback, _In_ FLT_POST_OPERATION_FLAGS Flags);
+    _In_ BOOLEAN LegacyCallback, _In_opt_ PVOID WriterReservation, _In_ FLT_POST_OPERATION_FLAGS Flags);
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, StageMvpNamespacePostCreate)
 #endif
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID StageMvpNamespacePostCreate(_Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects, _In_opt_ PVOID LegacyContext,
-    _In_ BOOLEAN LegacyCallback, _In_ FLT_POST_OPERATION_FLAGS Flags)
+    _In_ BOOLEAN LegacyCallback, _In_opt_ PVOID WriterReservation, _In_ FLT_POST_OPERATION_FLAGS Flags)
 {
     PFLT_FILE_NAME_INFORMATION name = StageMvpNamespaceCreateName;
     FILE_ID_INFORMATION identity = {0};
@@ -10703,7 +10765,10 @@ static VOID StageMvpNamespacePostCreate(_Inout_ PFLT_CALLBACK_DATA Data,
     NTSTATUS status = STATUS_ACCESS_DENIED;
     PAGED_CODE();
     StageMvpNamespaceCreateName = NULL;
-    if (LegacyCallback) (VOID)SafeUploadPostCreate(Data, Objects, LegacyContext, Flags);
+    /* D7 rev 4: the registry post consumes the reservation first, as in the generic CREATE post; a failed (draining) registry
+     * post skips the legacy post. The DOC identity check and pending-version cancellation below keep their order after it. */
+    if (StageMvpWriterPost(Data, Objects, Flags, WriterReservation) && LegacyCallback)
+        (VOID)SafeUploadPostCreate(Data, Objects, LegacyContext, Flags);
     /* CREATE post is PASSIVE even on drain. A denied lower CREATE
      * must never cancel a pending save. No lock spans the V28 RPC. */
     if (!FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) && StageMvpNamespaceCreateOpened(Data, Objects)) {
@@ -10735,11 +10800,13 @@ static VOID StageMvpNamespacePost(_Inout_ PFLT_CALLBACK_DATA Data,
     PVOID legacyContext = StageMvpNamespaceCreateContext;
     BOOLEAN legacyCallback = StageMvpNamespaceCreateCallback;
     PVOID registryContext = StageMvpNamespaceRegistryContext;
+    PVOID writerReservation = StageMvpNamespaceCreateReservation;
     StageMvpNamespaceCreateContext = NULL;
     StageMvpNamespaceCreateCallback = FALSE;
     StageMvpNamespaceRegistryContext = NULL;
+    StageMvpNamespaceCreateReservation = NULL;
     if (Data->Iopb->MajorFunction == IRP_MJ_CREATE) {
-        StageMvpNamespacePostCreate(Data, Objects, legacyContext, legacyCallback, Flags);
+        StageMvpNamespacePostCreate(Data, Objects, legacyContext, legacyCallback, writerReservation, Flags);
     } else {
         SafeUploadStageWritersSetMutatingIoCompletion(registryContext, Data, Flags);
         if (SafeUploadStageWritersIsRenameContext(registryContext))
