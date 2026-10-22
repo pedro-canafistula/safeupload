@@ -63,6 +63,25 @@ then the 1 s idle interval. Compiled in feature Debug/Release; the new tests (`S
 | `m2t5ord5` | `601cb311`, ordinary | **FAIL**, harness ([verdict](m2t5ord5-verdict.txt), [result](m2t5ord5-result.json)): install, reboot, Ready, actor session and raw baseline all succeeded; the coordinator then ran **0 of 20** cases. Windows PowerShell 5.1 writes a top-level JSON array as one object, so `@(… \| ConvertFrom-Json)` gave a one-element case list and `Join-Path $root $case.Leaf` threw on `Object[]` (coordinator line 1856). PS 7 enumerates the array, so the offline replay never saw it. No product behaviour was exercised. Restoration: XML unchanged, run overlay deleted, base untouched. Fixed in `0ac25de0` (inventory loader plus a self-check assertion that fails on the old form). |
 | `m2t5ord6` | `0ac25de0`, ordinary | **FAIL** ([verdict](m2t5ord6-verdict.txt), [result](m2t5ord6-result.json), [journal](m2t5ord6-agent-journal)): all 20 cases ran (374 s); restoration clean. Product outcomes seen: case 1 now publishes its exact 25 bytes after the private discard (the `47121503` pacing fix), Notepad clean Save As publishes exactly 28 bytes, Notepad CPF Save As is handed back with nothing leaked. Every case still fails, on four harness defects and three findings below. |
 | `m2t5ord7` | `98964002`, ordinary | **FAIL** ([verdict](m2t5ord7-verdict.txt), [result](m2t5ord7-result.json)): 20/20 cases, 186 samples (470 s); restoration clean. The on-close case's native steps now match exactly (STATUS_DELETE_PENDING / Win32 5). Remaining failures below. |
+| `m2t5ord8` | `eadb2a58`, ordinary, **budget off** (owner) | **FAIL** ([verdict](m2t5ord8-verdict.txt), [setting](m2t5ord8-stage-space.txt); the 26 MB result stays local): 20/20 cases, 171 samples (437 s); restoration clean. The first eight cases now have all or nearly all raw samples OK (ProbeDelete 8/8, CPF delete-before-seal 9/9 with hand-back and private discard, delete-on-close 9/9, on-close 6/6, Notepad clean 11/11 and CPF 10/10). With the budget off the save after the test-file delete succeeds, confirming the T9 diagnosis. |
+
+### `m2t5ord8` triage
+
+- **Product (kernel, design gap): `DeleteFileW` of a published protected file is refused.** Both after-publication probes: a new
+  private version is allocated 34–87 ms before the refusal (journal: allocation 02:42.333, deny 02:42.367; 02:56.839 / 02:56.926), and
+  the disposition on that staged handle is refused `STATUS_ACCESS_DENIED` (deny ring 109–112). `DeleteFileW` opens with
+  DELETE | READ_ATTRIBUTES and `FILE_OPEN_REPARSE_POINT`; `StageMvpNamespaceCreateEligible` excludes that flag, so the open keeps writer
+  classification (DELETE is writer access) and takes staged admission, as `T5-UX-NAMESPACE-GAP.md` item 2 specifies
+  ("OPEN|DELETE_ON_CLOSE|OPEN_REPARSE_POINT … must take ordinary staged admission or refuse"). Consequence: `del`, `Remove-Item` and
+  Explorer's permanent delete of a published file fail "Access denied" on the shipped profile (recycling is a rename and is native).
+  This contradicts T5's requirement that both `DeleteFileW` calls succeed. Fix needs a design delta and an independent review before
+  kernel code. The earlier "own view lingers" hypothesis is superseded: the process's own view is not required.
+- **Harness: Explorer rename produced `explorer-renamed.txt.txt`** (FolderItem.Name with hidden extensions takes the base name); the
+  stray file failed every later raw sample's directory check (22 samples), and the second-process open reported 5377
+  (`0x80131501`, a PowerShell wrapper) for a missing file. Fixed in `b5bbeb97`.
+- **Harness: unsynchronised "actor running" samples can straddle a publication** (3 samples): the raw capture saw the name absent and
+  the buffered read a moment later found the newly published file (0 or 45 bytes). Accepting such a transition would change a verdict
+  rule, so it is for the owner; not changed.
 
 ### `m2t5ord7` triage
 
