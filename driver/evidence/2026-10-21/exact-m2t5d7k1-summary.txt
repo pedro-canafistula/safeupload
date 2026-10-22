@@ -1,0 +1,15 @@
+﻿LABEL=m2t5d7k1
+ARCHIVE_SHA256=1DD7C2FF6665AA63B370F05286925D27053E9A5EF3CA58C67523FE4551F7DDEE
+SOURCE_COMMIT=eb42b0fbf1cf3b7d3bd41e8a50d579f61bf85584
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-22T01:44:24.9682727Z
+KernelBuildProfiles=owned-feature,owned-feature-release
+Builder=builder1
+BuilderHost=192.168.122.210
+BuilderComputerName=DESKTOP-O1LP5DG
+ParityCheck=False
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=1 succeeded=False warnings=0 errors=1 apivalidator=True prefast=True artifact_sha256=NONE
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=1 succeeded=False warnings=0 errors=1 apivalidator=True prefast=True artifact_sha256=NONE
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=C8D898079F102BD99044F04F63175EABDC93B96F4E4AFCE31E6B214921E7BF40
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=6B8FA18EBC47F47FDAC6A278A98D2EBC86229896B77993668E761597CF3BADB1
+sign : SKIPPED (no feature Debug SYS)

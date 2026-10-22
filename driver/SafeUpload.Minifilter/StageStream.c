@@ -9119,6 +9119,10 @@ static BOOLEAN StageMvpNamespaceReparseOpen(PFLT_CALLBACK_DATA Data)
     return Data->Iopb->MajorFunction == IRP_MJ_CREATE && StageMvpNamespaceOpen(Data) &&
         FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_REPARSE_POINT) &&
         !FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&
+        /* The same parameter-level exclusions as eligibility: this classifier also sets admission's refusal
+         * obligation, which a by-ID or directory open proved outside protection must not inherit. */
+        !FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID) &&
+        !FlagOn(Data->Iopb->OperationFlags, SL_OPEN_TARGET_DIRECTORY) &&
         !FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&
         FlagOn(security->DesiredAccess, DELETE | FILE_WRITE_ATTRIBUTES);
 }

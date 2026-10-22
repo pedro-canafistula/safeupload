@@ -421,6 +421,15 @@ static VOID namespace_tests(void)
  security.DesiredAccess=DELETE|FILE_DELETE_CHILD;assert(!StageMvpNamespaceCreateEligible(&data,&objects)&&classified_writer(&data,&objects,TRUE));
  security.DesiredAccess=DELETE|FILE_WRITE_DATA;assert(!StageMvpNamespaceCreateEligible(&data,&objects)&&classified_writer(&data,&objects,TRUE));
  security.DesiredAccess=DELETE|FILE_READ_ATTRIBUTES|SYNCHRONIZE;
+ /* By-ID, directory and target-directory opens are never D7 requests, so admission's refusal obligation (which uses
+  * this classifier) is not set for them: one proved outside protection proceeds exactly as before D7. */
+ io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_OPEN_REPARSE_POINT|FILE_OPEN_BY_FILE_ID;
+ assert(!StageMvpNamespaceReparseOpen(&data)&&!StageMvpNamespaceCreateEligible(&data,&objects)&&classified_writer(&data,&objects,TRUE));
+ io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_OPEN_REPARSE_POINT|FILE_DIRECTORY_FILE;
+ assert(!StageMvpNamespaceReparseOpen(&data)&&!StageMvpNamespaceCreateEligible(&data,&objects));
+ io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_OPEN_REPARSE_POINT;io.OperationFlags=SL_OPEN_TARGET_DIRECTORY;
+ assert(!StageMvpNamespaceReparseOpen(&data)&&!StageMvpNamespaceCreateEligible(&data,&objects));
+ io.OperationFlags=0;assert(StageMvpNamespaceReparseOpen(&data));
  /* Declines after eligibility refuse: unresolved name, stream name, non-absent lookup failure. Unprotected names
   * and genuine private views keep their existing routes. A proved-absent name opens natively with a zero identity. */
  d7_reset();NameStatus=STATUS_ACCESS_DENIED;token=slot();ctx=NULL;

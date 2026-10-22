@@ -1,0 +1,15 @@
+﻿LABEL=m2t5d7k2
+ARCHIVE_SHA256=1EC5B06FC3A0B740B97179AB74563E8AE0D2601DA6F6BFC6E4B07F807616377E
+SOURCE_COMMIT=35d2df1dc7d07373e68f51421356fbd5dcd705f8
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-22T01:46:49.9367968Z
+KernelBuildProfiles=owned-feature,owned-feature-release
+Builder=builder1
+BuilderHost=192.168.122.210
+BuilderComputerName=DESKTOP-O1LP5DG
+ParityCheck=False
+driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=DBDCFB33F1135DB5CC719FDDDF97E811B0D5DDE7319822ABF7456678BC2162D0
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=05691B02040766A610F9CC6AB25C13C43E2615952574CC50EF3A7E8B25BFFF92
+inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=76FA712A9BC81D92083BF80A57F662AC7801782351779B092E20C25F680D5BEC
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=7AFD49F88E79924E9C7B6ED84E8D297B2A93D48ACFEF8F04085C18EB6DA2511B
+sign : exit=1 unsigned_sha256=DBDCFB33F1135DB5CC719FDDDF97E811B0D5DDE7319822ABF7456678BC2162D0 signing_copy_sha256=DBDCFB33F1135DB5CC719FDDDF97E811B0D5DDE7319822ABF7456678BC2162D0 unsigned_unchanged=True store=CurrentUser output_sha256=DBDCFB33F1135DB5CC719FDDDF97E811B0D5DDE7319822ABF7456678BC2162D0 signed_sha256=NONE signature_valid=False signer=220DD82C37FCF36048D59E4F10113185D81D5DC7

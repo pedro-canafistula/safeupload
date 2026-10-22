@@ -111,8 +111,9 @@ class NamespaceUx(unittest.TestCase):
             ('return NT_SUCCESS(Data->IoStatus.Status) && Data->IoStatus.Status != STATUS_REPARSE', 'return Data->IoStatus.Status == STATUS_SUCCESS && Data->IoStatus.Status != STATUS_REPARSE'),
             # D7: every OPEN_REPARSE_POINT open other than a D7 request (DOC included) stays excluded.
             ('(!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_REPARSE_POINT) || StageMvpNamespaceReparseOpen(Data)) &&', 'TRUE &&'),
-            ('!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&\n        !FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&', '!FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&'),
+            ('!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&\n        /* The same parameter-level exclusions', '/* The same parameter-level exclusions'),
             ('!FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&\n        FlagOn(security->DesiredAccess, DELETE | FILE_WRITE_ATTRIBUTES);', 'FlagOn(security->DesiredAccess, DELETE | FILE_WRITE_ATTRIBUTES);'),
+            ('!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID) &&\n        !FlagOn(Data->Iopb->OperationFlags, SL_OPEN_TARGET_DIRECTORY) &&\n        !FlagOn(security->DesiredAccess, FILE_DELETE_CHILD)', '!FlagOn(security->DesiredAccess, FILE_DELETE_CHILD)'),
             # D7 pre: unload recheck, refusals of declines, absent-name zero identity.
             ('if (reparseOpen && (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 ||', 'if (FALSE && (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 ||'),
             ('if (reparseOpen) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; } /* D7 late decline */', '/* D7 late decline */'),
