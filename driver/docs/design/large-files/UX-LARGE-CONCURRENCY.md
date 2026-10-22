@@ -1,7 +1,8 @@
 # T4/T9: growing reservations for ordinary overlapping saves
 
-2026-10-19; revision 3 2026-10-22. **Revised security/lifetime design; implementation remains gated on independent review.**
-Revision 3 answers the [second independent review](../../../evidence/2026-10-22/t9-growing-rev2-review-sol-high.md) (REVISE) and the product evidence
+2026-10-19; revision 3 and 4 2026-10-22. **Revised security/lifetime design; implementation remains gated on independent review.**
+Revision 4 answers the [third review](../../../evidence/2026-10-22/t9-growing-rev3-review-sol-high.md) (REVISE; R3.1 and the R3.4 matrix accepted) and supersedes R3.2, R3.3(c),
+R3.5 and R3.6 where they conflict. Revision 3 answered the [second independent review](../../../evidence/2026-10-22/t9-growing-rev2-review-sol-high.md) (REVISE) and the product evidence
 [discovery 1 F5](../../../evidence/2026-10-22/t8-discovery-1.md): see "Revision 3" before "Controls and delivery".
 Owner approved growing reservations, unchanged approved budgets, and replacing the
 single-concurrent-winner test with concurrent no-overspend controls. This approves
@@ -301,6 +302,81 @@ growth lane, then the rest. Audit of every budget-held metadata operation includ
 | repair interrupted again | same table again, idempotent |
 | reconnect vs driver restart | durable: ledger, companion, immutable allocation tuple; per-connection: cookie, anchors, pins; old-cookie work fails; reconnect never reopens closed growth |
 | closure racing growth, then journal persistence failure | closed custody stays charged; replay cannot revive it; late success cannot clear sticky failed-space/nonpublishable state |
+
+## Revision 4 (2026-10-22)
+
+Preserved from revision 3: the initial-grant formula (R3.1) and the compatibility matrix (R3.4), including NotReady for old/new mixes and v1 immutable behaviour. The
+legacy/v1 path keeps its reconciliation and refund-grace branch behind an explicit mode; an exact replay of a committed allocation bypasses fresh sizing and admission and
+returns the persisted object, generation and capacity even if free space has since fallen (it completes pending companion bookkeeping, never resets capacity to the initial
+window, never reseeds or double-charges, never reopens closed growth, and never retries attachment of a CREATE already returned as failed).
+
+### R4.1 Retained charge bounds physical storage (review finding 2)
+
+`RetainedCharge` is not computed from the sealed length. The retirement receipt (R4.2) carries, for the version and for every retained object of the transfer (stage, snapshot,
+hand-back copy, reader-pinned deletion-pending object), the **measured** `AllocationSize` and `EndOfFile`. `RetainedCharge = metadata + CopyCount × max over retained objects of
+AlignUp(AllocationSize, granularity)` — four simultaneous copy slots, each at the largest retained allocation, so a tiny EOF with a large preallocation cannot undercharge. Seal
+normalizes allocation to EOF where the filesystem allows it, *before* the receipt is produced; if normalization fails the receipt reports the real allocation and the charge stays
+high (or the full debit is retained). Consumers (snapshot, publication, hand-back) must reserve beyond the reduced envelope before use; they never take `AuthorizedCapacity` as their
+ceiling after the reduction. Empty sealed files report their residual allocation. A reader that keeps a deletion-pending object alive keeps its allocation in the inventory until the
+object is observed deleted.
+
+### R4.2 The retirement receipt (finding 3)
+
+The driver proof is the existing boundary, extended: successful `StageDrain` plus, under the stream exclusion, closing the writable backing and setting irreversible `ReadOnly` in
+`StageDrainAndSeal` (`StageStream.c:6276`, `:6419`), preceded by: fresh writable opens, section creation and growth adoption excluded; zero upper handle/share and FILE_OBJECT custody;
+cache and sections drained and purged; paging rundown complete; flush results checked; queued and in-flight growth requests and their reply adoption resolved so no late grant can
+restore mutation authority. "No outstanding grant" means no remaining ability to consume or adopt authority (historical grants exist). The driver then sends an authenticated,
+exact-tuple (transfer, driver instance, allocation generation, destination generation) **WriteRetirementReceipt** with the measurements of R4.1. The agent persists the accepted
+transition in the ledger **before** reducing any charge. Delivery or persistence failure, a stale or duplicated receipt, or any uncertainty retains the full debit; replay of an accepted
+receipt changes nothing. Accounting *Retired-proven* is a different state from the driver's `Retired` (deleted backing custody); a later read-only reader may retain storage without
+undoing a proved write retirement. `CLEANUP`, zero user handles, "growth closed", a length query or a queued seal request are each insufficient.
+
+### R4.3 Allocation deadline, history-independent admission, failure contract (finding 4)
+
+- **Deadline.** The roughly 3 s the driver waits is `SafeUploadPolicyVerdictTimeout` of the shared exchange (`Communication.c:1731`), not an allocation constant; seeding has its own 120 s
+  (`StagedSpaceBudget.SeedTimeout`). A small initial window completes in milliseconds, but a seed of a large existing file cannot. Staged allocation gets its own **monotonic overall
+  deadline** (queueing + preparation + seeding + persistence), not restarted by retries and separate from the inspection timeout. A seed larger than the fast path uses a bounded
+  pending/completion exchange; the opener waits up to the declared bound. **Owner decision needed (below)** on that bound and the user-visible failure.
+- **On expiry** the save/create fails after the declared bound with a diagnostic that distinguishes *timeout* from *space exhausted*; the destination stays protected; a late committed
+  allocation stays charged until exact resolution and cleanup; recovery releases the stranded name automatically when proved safe, without attaching the failed CREATE or requiring the
+  original process to exit; the reply never claims `NoAllocationCommitted` while a duplicate may still commit elsewhere.
+- **History-independent admission.** `Reserve` currently sums every reservation (`StagedSpaceBudget.cs:206`). Keep maintained running totals (global and per SID) updated under `_gate` on
+  every charge, growth, retirement and refund, rebuilt at startup from the ledger and checked against inventory; admission reads totals, never the history. Completed ordinary saves move
+  to reconstructible shared accounting that preserves their storage debit, replay evidence and generation barriers (R3.3 (a)).
+
+### R4.4 Ordering across lanes (finding 5)
+
+Dispatch-only receive does not give request-order processing, so ordering is by state, not arrival: (1) allocation: duplicate preparation/resolution of one intent serializes; binding and
+grant persistence precede any dependent growth or lifecycle use. (2) growth versus closure linearizes through the ledger: growth committed first stays charged, closure committed first
+rejects growth, a late reply cannot undo closure, retirement or sticky failure. (3) lifecycle and namespace keep their attachment/cleanup/seal/discard ordering and destination-generation and
+rename barriers; worker scheduling never decides semantic order. (4) connection identity is captured at dispatch and revalidated before authority-changing work; a drain revokes admission
+before draining dependent work; an old worker cannot publish readiness or mutate through a replacement connection. (5) replies correlate exactly; reply completion may reorder where the state
+machine permits. Short state transitions only: a per-transfer lock across lifecycle I/O would recreate the MM→growth dependency. A negotiated mode stays attached to each allocation
+(reconnect or capability loss never converts growable custody into a v1 window). A saturated lane returns a valid failure and does not claim non-commitment while a duplicate may commit.
+
+### R4.5 Startup algorithm (finding 6)
+
+Order: (1) validate trusted storage; (2) classify supported schemas and **recognized** residue (replacement companion, `.new` ledger, pending tuple) before the blanket rejection of unknown
+objects; (3) reconstruct conservative charges and exact bindings; (4) resolve permitted transactions; (5) verify inventory; (6) enable admission. Added states: replacement current without
+predecessor residue (finish bookkeeping); predecessor current with replacement absent, incomplete or fully prepared (an unperformed replacement needs the native step, a performed one only
+bookkeeping); committed Retired-proven records, interrupted reduction and retained snapshot/reader/copy custody; missing ledger with a modern companion or content (hold, never reinterpret as
+legacy); v1 `LegacyGuard`, `ContentReleased`, legacy upgrade and shared completed-history accounting preserved. "Ledger current, companion at ledger capacity" requires no unresolved
+transaction and matching format, identity and binding, not numerical equality alone. Modern records use a **new schema version that old readers reject**; adding fields to version 1 would
+not enforce downgrade refusal.
+
+### R4.6 Added controls (finding 7)
+
+Tiny EOF with large preallocation and zero-length retained custody, with physical allocation observed across reduction and restart; retirement receipt lost, duplicated, stale, or racing the
+irreversible boundary; read-only readers retaining objects afterwards; deliberately reordered allocation/growth/lifecycle work and epoch drain with queued work in every lane; allocation
+deadline expiry during queueing, seeding and post-commit reply delivery, with late completion, automatic name recovery and the application-visible diagnostic; exact replay after capacity
+growth with available budget fallen; admission measured against increasing completed history (queue time and end-to-end); v1 grace/replay preservation and unsupported downgrade with modern
+retained accounting; concurrent policy/namespace/publication stress; the budget-on T5 reruns carried by the status plan. F3/F4 publication-window failures stay separate from F5 results.
+
+### Owner decision needed
+
+Opening a large existing file for editing needs its seed copy: should the opener **wait up to 120 s** (the existing `SeedTimeout`) with the application showing its normal "opening" state and then fail
+with a clear "not enough time / space" message, or fail sooner? Recommendation: wait up to 120 s (a 200 MB document copies in seconds on SSD; 120 s covers a slow disk), diagnostic distinguishes
+timeout from space. Small saves are unaffected (initial window, milliseconds).
 
 ## Controls and delivery
 
