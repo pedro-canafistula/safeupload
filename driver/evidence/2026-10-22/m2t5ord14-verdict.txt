@@ -1,0 +1,15 @@
+T5GuestAlive PASS the guest answered through the run
+T5DriverLoaded PASS the filter is still loaded after the run
+T5ResultEvidence FAIL copied=no; guest-present=False
+T5ActorTaskStart FAIL the SYSTEM coordinator explicitly started the interactive actor after capturing the raw destination baseline
+T5JournalArchiveEvidence PASS 0 archived payload references verified
+T5RawObserver FAIL status=None; baseline=None; samples=0; disposal=None; schema=False; artifacts=raw directory or result copy missing
+T5RawErrorsSuperseded INFO 0 transient observation error sample(s) superseded by the next valid sample of the same case (owner 2026-10-22); all stay in the result
+T5RawEvidenceRetained FAIL copied=yes; guest-manifest=True; raw directory or result copy missing
+T5CasesCompleted FAIL 0 of 20 required distinct cases; error None
+T5CanonicalNoUnapprovedByte FAIL Canonical lower-mutation proof field missing.
+T5WriterRegistryKnown FAIL unknownReasons=68 instanceUnknown=1 sopUnknownCount=0 globalFirst={"reason": 0, "site": 0} entryFirst={"reason": 4, "site": 3007} sopFirst={"reason": 0, "site": 0} cleanupUnmatched=28391 untrackedCreates=0
+T5StagingEmptyAfterRun PASS the staging directory is empty after the run (independent listing)
+T5JournalSettledAfterRun PASS the hot journal is empty after the run (every transfer completed and archived)
+T5StageSpaceConfig INFO StageSpace disabled by T5_STAGE_SPACE=off (product default is enabled): isolation row from the T9 reservation defect, not a product-configuration result
+T5Duration INFO 2069 s (ordinary)

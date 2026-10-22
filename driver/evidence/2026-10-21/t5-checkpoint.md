@@ -65,6 +65,36 @@ then the 1 s idle interval. Compiled in feature Debug/Release; the new tests (`S
 | `m2t5ord7` | `98964002`, ordinary | **FAIL** ([verdict](m2t5ord7-verdict.txt), [result](m2t5ord7-result.json)): 20/20 cases, 186 samples (470 s); restoration clean. The on-close case's native steps now match exactly (STATUS_DELETE_PENDING / Win32 5). Remaining failures below. |
 | `m2t5ord8` | `eadb2a58`, ordinary, **budget off** (owner) | **FAIL** ([verdict](m2t5ord8-verdict.txt), [setting](m2t5ord8-stage-space.txt); the 26 MB result stays local): 20/20 cases, 171 samples (437 s); restoration clean. The first eight cases now have all or nearly all raw samples OK (ProbeDelete 8/8, CPF delete-before-seal 9/9 with hand-back and private discard, delete-on-close 9/9, on-close 6/6, Notepad clean 11/11 and CPF 10/10). With the budget off the save after the test-file delete succeeds, confirming the T9 diagnosis. |
 | `m2t5ord9` | `b8cb3e49`, ordinary, budget off, **D7 driver** `26075F68…` | **FAIL, product regression** ([verdict](m2t5ord9-verdict.txt), [agent events](m2t5ord9-service-events.txt); 181 MB result kept local): after the first native D7 `DeleteFileW`, the agent logged "Admission coverage Degraded: WriterStateUnknown" and from then on the driver's legacy create gate refused every approved publication ("Could not create approved publication file … Access is denied"; deny ring: service process, reason `legacyCreateGate`), so most cases timed out (1,830 s). Root cause below. |
+| `m2t5ord10` | `86f582c1` (D7 rev 5 accepted), ordinary, budget off, **D7 rev 5 driver** `29D6130E…` | Product fix confirmed, row not clean ([verdict](../2026-10-22/m2t5ord10-verdict.txt)): the six native probe sequences (both `DeleteFileW` orders) and the Notepad saves succeed, `T5WriterRegistryKnown` PASS (every Unknown mask/origin 0, `cleanupUnmatched` 0), 368 s. Harness defects hid the rest (below). |
+| `m2t5ord11` | gate `m2t5hg8`, harness fixes A | Probe, Notepad-approve, empty copy/move and several workflow cases PASS; remaining FAILs are observation races and two product/harness items (below). |
+| `m2t5ord12`–`m2t5ord15` | gates `m2t5hg9`–`hg12`, harness fixes B–D | Race handling and gate fixes; `ord14` lost 30 minutes to a harness fault and left the registry Unknown once (below); `ord15` is the first row with a valid raw schema (all 167 samples accepted, 5 superseded) and a Known registry. |
+
+### `m2t5ord10`–`m2t5ord15` triage
+
+Product: (1) **D7 rev 5 works**: the registry stays Known in `ord10`–`ord13` and `ord15`, the public `DeleteFileW` cases return success, publications are not refused.
+(2) **Notepad's empty Save As probe stays "Retained" for ever** (journal `0,10,1,7`, `UnboundCancellation`): the driver frees a cancelled
+detached stream at once, so the service's disposal call after the exact stage deletion is answered `Held = 0` (`disposeNotHeld` 59) and
+recovery treated that as "acknowledgement pending" (a warning every ~6 s). Fixed in the agent as **D8** (Sol 6.1 high: accept with
+conditions; wording and two more negative controls done; agent tests compile locally, the Windows matrix `m2t5a5` is running). The
+new required line `T5JournalSettledAfterRun` fails in `ord10`–`ord15` until the D8 agent is in.
+(3) `ord14`: the registry became Unknown (entry `IDENTITY`, `StageWriters.c` site 3007 = `StageRegistryAssociateSectionPointer` refused, then
+28,391 unmatched cleanups after the instance was Unknown) while the actor had died; **not reproduced in `ord10`–`ord13`, `ord15`** and not
+yet explained. The association refuses on several conditions (section-pointer reuse against an unresolved old incarnation, a retired
+entry, a lifetime that ended); watch for it and capture the entry if it recurs.
+
+Harness (all mine; PS 5.1 gates `m2t5hg8`–`hg13` PASS): absent images carried one all-null file name (PowerShell runs `ForEach-Object` once for
+`$null`); `Get-IOCapture`'s catch read an unset `$key` and hid the real exception; the SYSTEM coordinator cannot look inside the private
+staging namespace (the driver refuses everyone but the service), so stage existence comes from the journal plus the launcher's own post-run
+listing (`T5StagingEmptyAfterRun`; a blocked stage reports the journal's sealed length); the settlement wait threw on the first racing
+sample; the in-flight gate counted a sample that still showed the prior content; the gate threw on a hot-journal collection race; the actor
+died on a sharing violation reading `cmd-3.json` (`ord14` hung 1800 s); the baseline's empty directory-entry list serializes as `{}` on 5.1
+(every row since `ord8` failed `T5RawObserver` on it). Owner-approved rule (2026-10-22): a racing ERROR sample is accepted when the very
+next sample of the same case is fully valid (known race messages only, `ActorRunning`/`WorkflowSettlement`, no forbidden bytes; every
+ERROR sample stays in the result and `T5RawErrorsSuperseded` counts them). Stale MFT reads and a name appearing mid-capture retry inside
+the sample (attempts kept).
+
+Still open after `ord15` (known): the public-delete cases' `DeleteBarrier` is INCONCLUSIVE (the unbound route writes no durable delete
+barrier; carried under D1), `T5CanonicalNoUnapprovedByte` INCONCLUSIVE (the T5 adapter has no lower-mutation ledger).
 
 ### `m2t5ord9` triage — D7 opens bypass the writer registry
 
