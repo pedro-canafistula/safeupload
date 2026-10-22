@@ -184,6 +184,23 @@ Os textos da atividade/alerta ainda usam termos como "Arquivo enviado" e
 comprova classificação/alerta, não upload nem impedimento preventivo de gravação;
 adequação desses textos ao modo operacional fica registrada como pendência.
 
+## Reinício do Windows: histórico preservado, abertura automática reprovada
+
+Após a orientação para reiniciar apenas a VM, o usuário enviou nova captura do
+Histórico com os mesmos sete registros e horários, incluindo os CPFs de 27 B e
+o evento original de 29 B. Em seguida esclareceu que precisou abrir o aplicativo
+manualmente e que o Status continuava igual. Isso confirma a persistência visual
+do histórico após a retomada, mas **reprova a inicialização automática da interface**.
+Não considerar esse aceite aprovado pelo simples fato de a chave Run ter sido
+conferida no ensaio do instalador.
+
+Investigação em andamento: consulta somente de leitura às entradas Run nas duas
+visões do registro, aprovação de startup para máquina/usuário, políticas de
+execução dessas entradas, boot, processos e erros do aplicativo. Não foi feita
+mudança especulativa no mecanismo de startup nem ampliação de privilégios.
+O manifesto da UI pede `asInvoker`; a causa concreta depende do diagnóstico do
+Windows convidado. Consulta restrita ao clone e com senha digitada localmente.
+
 ## Aceite ainda necessário
 
 - [x] Instalação inicial 0.1.4 em Windows 10 sem .NET global; evidência manual.
@@ -196,7 +213,9 @@ adequação desses textos ao modo operacional fica registrada como pendência.
 - [ ] Confirmar ausência de alerta antigo e reconectar serviço sem duplicar evento.
 - [x] Criar novo arquivo sintético com a interface aberta; detecção de CPF, alerta e histórico atualizados.
 - [ ] Adequar textos de envio/bloqueio ao modo de auditoria por watcher.
-- [ ] Reiniciar Windows e verificar startup/serviço/estado, distinguindo de Restart-Service.
+- [x] Histórico preservado na abertura manual após reinício relatado da VM; sete registros visíveis.
+- [ ] Corrigir/investigar inicialização automática da interface, reprovada pelo usuário após reinício.
+- [ ] Confirmar serviço, bandeja automática e estado após novo reinício real do Windows.
 - [ ] Desinstalar e conferir preservação de política e fila.
 - [ ] Windows 11, assinatura da equipe, upgrade/repair/rollback e integração com API/driver.
 
