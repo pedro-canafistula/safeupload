@@ -9,6 +9,11 @@ O código de produção permanece igual ao anterior. O instalador homologado no
 Windows 10 continua sendo o candidato da fonte `0e9e05d1`; um novo artifact de CI
 com outro commit não herda automaticamente aquela homologação de cliente.
 
+Atualização posterior: a sinalização de falhas de acesso à fila foi implementada
+no serviço do candidato 0.1.7 e validada no runner. Ver
+[observabilidade](OBSERVABILIDADE-FILA-20261022.md). O diagnóstico de corrupção
+de linhas e os demais aceites prolongados continuam pendentes.
+
 ## O que foi executado
 
 - Diagnóstico `agente/tools/QueueProbe`, referenciando o `LocalQueueAuditSink`
