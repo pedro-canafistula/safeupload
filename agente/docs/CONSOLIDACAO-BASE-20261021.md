@@ -2,6 +2,8 @@
 
 Data da inspeção: 21/10/2026. Candidato local, sem publicação e sem merge.
 
+Continuação: [validação com HTTP real em loopback](VALIDACAO-HTTP-LOOPBACK-20261021.md), com dois novos testes, 49/49 controles focados e atualização das dependências. Os resultados abaixo preservam o checkpoint inicial.
+
 ## Escopo e proveniência
 
 Alterações limitadas a `agente/`: C#/.NET, instalador PowerShell/Inno Setup, testes e documentação do agente. Java, Angular, banco, driver e workflows não são alterados. Arquivos sincronizados em `sources/` permanecem preservados.
