@@ -10375,7 +10375,7 @@ static NTSTATUS StageMvpRequireRegularObject(_In_ PFLT_INSTANCE Instance, _In_ P
 _IRQL_requires_(PASSIVE_LEVEL)
 static PVOID StageMvpWriterReserve(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects);
 _IRQL_requires_(PASSIVE_LEVEL)
-static BOOLEAN StageMvpWriterPost(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
+static VOID StageMvpWriterPost(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
     _In_ FLT_POST_OPERATION_FLAGS Flags, _In_opt_ PVOID Reservation);
 _IRQL_requires_(PASSIVE_LEVEL)
 static FLT_PREOP_CALLBACK_STATUS StageMvpReparseOpenPre(_Inout_ PFLT_CALLBACK_DATA Data,
@@ -10428,16 +10428,18 @@ static PVOID StageMvpWriterReserve(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECT
 }
 
 /* Consumes the reservation on every branch (it is freed or becomes the exact cleanup node): never call it twice for one
- * reservation. FALSE when the registry post failed (a draining post), which skips the legacy post as the generic path does. With no
- * reservation there is nothing to consume and the legacy post is unaffected. The registry post reads the final status, so a
- * refusal that the caller set first releases the reservation without tracking. */
+ * reservation, never with NULL. It is the LAST step of a native CREATE post, after every step that can cancel or deny the open
+ * (D7 validation, the legacy post, DOC identity and pending-version cancellation): FltCancelFileOpen delivers its cleanup below the
+ * caller's instance only, so a node registered before a later cancel would never be retired. The registry post reads the final
+ * status, so any refusal releases the reservation without tracking. It fails only when draining, which never changes the caller's
+ * order of work. */
 _Use_decl_annotations_
-static BOOLEAN StageMvpWriterPost(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
+static VOID StageMvpWriterPost(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
     FLT_POST_OPERATION_FLAGS Flags, PVOID Reservation)
 {
     PAGED_CODE();
-    if (Reservation == NULL) return TRUE;
-    return NT_SUCCESS(SafeUploadStageWritersPostCreate(Data, Objects, Flags, Reservation, NULL, NULL));
+    if (Reservation == NULL) return;
+    (VOID)SafeUploadStageWritersPostCreate(Data, Objects, Flags, Reservation, NULL, NULL);
 }
 
 /* D7 pre, after the unload recheck, eligibility, protected-name and identity checks in StageMvpNamespacePre. Also the owner of
@@ -10473,10 +10475,11 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpReparseOpenPre(PFLT_CALLBACK_DATA Data,
     return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 }
 
-/* D7 post, before the registry post, the legacy post, any cancellation or handle exposure. A refusal sets the failure status
- * (and cancels the open) first, so the registry post then releases the reservation without tracking the rejected object and no
- * legacy post runs. Draining is cleanup on copied callback data, never enforcement: mandatory teardown keeps the existing
- * coverage-loss rules, and the registry post records teardown Unknown for a reserved writer. */
+/* D7 post, before the legacy post, any cancellation or handle exposure. A refusal sets the failure status (and cancels the open)
+ * and runs no legacy post. The registry post is last, after every step that can deny or cancel the open, so it sees the final
+ * status: a refused or cancelled open is never registered, and a passed one is registered as a generic writer is. Draining is
+ * cleanup on copied callback data, never enforcement: mandatory teardown keeps the existing coverage-loss rules, the legacy post is
+ * skipped as before, and the registry post records teardown Unknown for a reserved writer. */
 _Use_decl_annotations_
 static VOID StageMvpReparseOpenPost(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
     PSTAGE_MVP_REPARSE_OPEN Open, FLT_POST_OPERATION_FLAGS Flags)
@@ -10491,8 +10494,8 @@ static VOID StageMvpReparseOpenPost(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJEC
     Open->WriterReservation = NULL; /* consumed exactly once, below */
     if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) { legacyPost = FALSE; goto Registry; }
     /* Genuine non-open: nothing was opened, so the legacy post runs as today. */
-    if (!NT_SUCCESS(status) || status == STATUS_REPARSE) goto Registry;
-    if (!Open->Reparse) goto Registry; /* D1 writer open: no D7 object validation */
+    if (!NT_SUCCESS(status) || status == STATUS_REPARSE) goto Legacy;
+    if (!Open->Reparse) goto Legacy; /* D1 writer open: no D7 object validation */
     if (status == STATUS_PENDING) goto Deny; /* not a completed outcome */
     if (Data->IoStatus.Information != FILE_OPENED) goto Cancel; /* this OPEN-only route never creates or overwrites */
     if (file == NULL || file->FsContext == NULL) goto Deny; /* no object call on missing evidence */
@@ -10500,18 +10503,18 @@ static VOID StageMvpReparseOpenPost(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJEC
     status = FltQueryInformationFile(Objects->Instance, file, &identity, sizeof(identity), FileIdInformation, &returned);
     if (!NT_SUCCESS(status) || returned != sizeof(identity) ||
         !RtlEqualMemory(&identity, &Open->Identity, sizeof(identity))) goto Cancel; /* substituted object */
-    goto Registry;
+    goto Legacy;
 Cancel:
     if (file != NULL && file->FsContext != NULL) FltCancelFileOpen(Objects->Instance, file);
 Deny:
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
     legacyPost = FALSE;
-Registry:
-    /* A legacy-post denial cancels the open itself; D7 cancels nothing further. A failing registry post is a draining one,
-     * which already cleared legacyPost above. */
-    (VOID)StageMvpWriterPost(Data, Objects, Flags, reservation);
+Legacy:
+    /* A legacy-post denial cancels the open itself; D7 cancels nothing further. */
     if (legacyPost && Open->LegacyCallback) (VOID)SafeUploadPostCreate(Data, Objects, Open->LegacyContext, Flags);
+Registry:
+    StageMvpWriterPost(Data, Objects, Flags, reservation);
     ExFreePoolWithTag(Open, STAGE_TAG);
 }
 
@@ -10765,10 +10768,7 @@ static VOID StageMvpNamespacePostCreate(_Inout_ PFLT_CALLBACK_DATA Data,
     NTSTATUS status = STATUS_ACCESS_DENIED;
     PAGED_CODE();
     StageMvpNamespaceCreateName = NULL;
-    /* D7 rev 4: the registry post consumes the reservation first, as in the generic CREATE post; a failed (draining) registry
-     * post skips the legacy post. The DOC identity check and pending-version cancellation below keep their order after it. */
-    if (StageMvpWriterPost(Data, Objects, Flags, WriterReservation) && LegacyCallback)
-        (VOID)SafeUploadPostCreate(Data, Objects, LegacyContext, Flags);
+    if (LegacyCallback) (VOID)SafeUploadPostCreate(Data, Objects, LegacyContext, Flags);
     /* CREATE post is PASSIVE even on drain. A denied lower CREATE
      * must never cancel a pending save. No lock spans the V28 RPC. */
     if (!FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) && StageMvpNamespaceCreateOpened(Data, Objects)) {
@@ -10787,6 +10787,9 @@ static VOID StageMvpNamespacePostCreate(_Inout_ PFLT_CALLBACK_DATA Data,
             Data->IoStatus.Information = 0;
         }
     }
+    /* D7 rev 5: last, after the legacy post and the identity check and cancellation above, so the registry sees the final status
+     * and never registers an open this filter cancelled. */
+    StageMvpWriterPost(Data, Objects, Flags, WriterReservation);
     if (name != NULL) FltReleaseFileNameInformation(name);
 }
 

@@ -140,12 +140,15 @@ class NamespaceUx(unittest.TestCase):
             ('open->WriterReservation = StageMvpWriterReserve(Data, Objects);', 'open->WriterReservation = NULL;'),
             ('open->WriterReservation = StageMvpWriterReserve(Data, Objects);', 'open->WriterReservation = StageMvpWriterReserve(Data, Objects); (VOID)StageMvpWriterReserve(Data, Objects);'),
             ('legacy = SafeUploadPreCreate(Data, Objects, &open->LegacyContext);\n    if (legacy == FLT_PREOP_COMPLETE) {', '(VOID)StageMvpWriterReserve(Data, Objects);\n    legacy = SafeUploadPreCreate(Data, Objects, &open->LegacyContext);\n    if (legacy == FLT_PREOP_COMPLETE) {'),
-            ('return NT_SUCCESS(SafeUploadStageWritersPostCreate(Data, Objects, Flags, Reservation, NULL, NULL));', '(VOID)Data; (VOID)Objects; (VOID)Flags; (VOID)&SafeUploadStageWritersPostCreate; return TRUE;'),
-            ('if (Reservation == NULL) return TRUE;\n    return NT_SUCCESS(SafeUploadStageWritersPostCreate(Data, Objects, Flags, Reservation, NULL, NULL));', 'return NT_SUCCESS(SafeUploadStageWritersPostCreate(Data, Objects, Flags, Reservation, NULL, NULL));'),
-            ('(VOID)StageMvpWriterPost(Data, Objects, Flags, reservation);\n    if (legacyPost && Open->LegacyCallback)', '(VOID)reservation;\n    if (legacyPost && Open->LegacyCallback)'),
-            ('Deny:\n    Data->IoStatus.Status = STATUS_ACCESS_DENIED;\n    Data->IoStatus.Information = 0;\n    legacyPost = FALSE;\nRegistry:', 'Deny:\n    legacyPost = FALSE;\n    (VOID)StageMvpWriterPost(Data, Objects, Flags, reservation); reservation = NULL;\n    Data->IoStatus.Status = STATUS_ACCESS_DENIED;\n    Data->IoStatus.Information = 0;\nRegistry:'),
-            ('    legacyPost = FALSE;\nRegistry:', '    legacyPost = TRUE;\nRegistry:'),
-            ('if (!Open->Reparse) goto Registry; /* D1 writer open: no D7 object validation */', '/* D1 validated like D7 */'),
+            ('(VOID)SafeUploadStageWritersPostCreate(Data, Objects, Flags, Reservation, NULL, NULL);', '(VOID)Data; (VOID)Objects; (VOID)Flags; (VOID)&SafeUploadStageWritersPostCreate;'),
+            ('if (Reservation == NULL) return;\n    (VOID)SafeUploadStageWritersPostCreate(Data, Objects, Flags, Reservation, NULL, NULL);', '(VOID)SafeUploadStageWritersPostCreate(Data, Objects, Flags, Reservation, NULL, NULL);'),
+            ('Registry:\n    StageMvpWriterPost(Data, Objects, Flags, reservation);', 'Registry:\n    (VOID)reservation;'),
+            # registry post BEFORE the legacy post / before the deny status: the cancelled-after-registered defect.
+            ('Legacy:\n    /* A legacy-post denial cancels the open itself; D7 cancels nothing further. */\n    if (legacyPost && Open->LegacyCallback)', 'Legacy:\n    StageMvpWriterPost(Data, Objects, Flags, reservation); reservation = NULL;\n    if (legacyPost && Open->LegacyCallback)'),
+            ('Deny:\n    Data->IoStatus.Status = STATUS_ACCESS_DENIED;\n    Data->IoStatus.Information = 0;\n    legacyPost = FALSE;\nLegacy:', 'Deny:\n    StageMvpWriterPost(Data, Objects, Flags, reservation); reservation = NULL;\n    Data->IoStatus.Status = STATUS_ACCESS_DENIED;\n    Data->IoStatus.Information = 0;\n    legacyPost = FALSE;\nLegacy:'),
+            ('    legacyPost = FALSE;\nLegacy:', '    legacyPost = TRUE;\nLegacy:'),
+            ('if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) { legacyPost = FALSE; goto Registry; }', 'if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) { legacyPost = FALSE; reservation = NULL; goto Registry; }'),
+            ('if (!Open->Reparse) goto Legacy; /* D1 writer open: no D7 object validation */', '/* D1 validated like D7 */'),
             ('open->Reparse = Reparse;', '(VOID)Reparse; open->Reparse = TRUE;'),
             ('writerCreate = SafeUploadStageWritersWantPostCreate(Data);', 'writerCreate = FALSE;'),
             ('result = reparseOpen || writerCreate ?', 'result = reparseOpen ?'),
@@ -153,8 +156,9 @@ class NamespaceUx(unittest.TestCase):
             ('if (required && reservation == NULL)\n        SafeUploadStageWritersTrackingLost(Objects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);\n    return reservation;', 'return reservation;'),
             ('StageMvpNamespaceCreateReservation = StageMvpWriterReserve(Data, Objects);', '(VOID)StageMvpWriterReserve(Data, Objects);'),
             ('StageMvpNamespaceCreateReservation = NULL;\n    if (Data->Iopb->MajorFunction == IRP_MJ_CREATE) {', 'if (Data->Iopb->MajorFunction == IRP_MJ_CREATE) {'),
-            ('if (StageMvpWriterPost(Data, Objects, Flags, WriterReservation) && LegacyCallback)', '(VOID)WriterReservation;\n    if (LegacyCallback)'),
-            ('if (StageMvpWriterPost(Data, Objects, Flags, WriterReservation) && LegacyCallback)\n        (VOID)SafeUploadPostCreate(Data, Objects, LegacyContext, Flags);', '(VOID)StageMvpWriterPost(Data, Objects, Flags, WriterReservation);\n    if (LegacyCallback)\n        (VOID)SafeUploadPostCreate(Data, Objects, LegacyContext, Flags);'),
+            ('    StageMvpWriterPost(Data, Objects, Flags, WriterReservation);\n    if (name != NULL) FltReleaseFileNameInformation(name);', '    (VOID)WriterReservation;\n    if (name != NULL) FltReleaseFileNameInformation(name);'),
+            # DOC: registry post before the legacy post and the identity/cancellation steps registers an open this filter later cancels.
+            ('    if (LegacyCallback) (VOID)SafeUploadPostCreate(Data, Objects, LegacyContext, Flags);\n', '    StageMvpWriterPost(Data, Objects, Flags, WriterReservation); WriterReservation = NULL;\n    if (LegacyCallback) (VOID)SafeUploadPostCreate(Data, Objects, LegacyContext, Flags);\n'),
             ('StageMvpNamespaceCreateEligible(Data, Objects)) writer = FALSE;', 'StageMvpNamespaceOpen(Data)) writer = FALSE;'),
             ('!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&\n        StageMvpNamespaceCreateEligible', 'StageMvpNamespaceCreateEligible'),
             ('writer = requestedWriter;', '(void)requestedWriter;'),
@@ -255,21 +259,28 @@ class NamespaceUx(unittest.TestCase):
         tail = native[reserve:native.index('goto Exit;', reserve)]
         self.assertNotIn('goto Refuse', tail)
         self.assertNotIn('return', tail)
-        # D7 refusals set the failure status before the registry post, and the registry post precedes the legacy post.
+        # D7 refusals set the failure status, then the legacy post, then the registry post last with the final status.
         post = d.function(source, 'StageMvpReparseOpenPost')
-        self.assertLess(post.index('Data->IoStatus.Status = STATUS_ACCESS_DENIED;'),
-                        post.index('StageMvpWriterPost(Data, Objects, Flags, reservation)'))
-        self.assertLess(post.index('StageMvpWriterPost(Data, Objects, Flags, reservation)'),
-                        post.index('SafeUploadPostCreate(Data, Objects, Open->LegacyContext, Flags)'))
-        # Fenced DOC: registry post, then legacy post, then identity validation and the single pending-version cancellation.
+        deny = post.index('Data->IoStatus.Status = STATUS_ACCESS_DENIED;')
+        legacy_post = post.index('SafeUploadPostCreate(Data, Objects, Open->LegacyContext, Flags)')
+        registry_post = post.index('StageMvpWriterPost(Data, Objects, Flags, reservation)')
+        self.assertLess(deny, legacy_post)
+        self.assertLess(legacy_post, registry_post)
+        self.assertLess(post.index('FltCancelFileOpen(Objects->Instance, file)'), registry_post)
+        # Fenced DOC: legacy post, identity validation and the single pending-version cancellation, then the registry post last.
         doc = d.function(source, 'StageMvpNamespacePostCreate')
-        self.assertLess(doc.index('StageMvpWriterPost(Data, Objects, Flags, WriterReservation)'),
-                        doc.index('SafeUploadPostCreate(Data, Objects, LegacyContext, Flags)'))
-        self.assertLess(doc.index('SafeUploadPostCreate(Data, Objects, LegacyContext, Flags)'),
-                        doc.index('StageMvpCancelNames(Objects->Instance, &name->Name, NULL, TRUE, NULL)'))
+        legacy_doc = doc.index('SafeUploadPostCreate(Data, Objects, LegacyContext, Flags)')
+        cancel_names = doc.index('StageMvpCancelNames(Objects->Instance, &name->Name, NULL, TRUE, NULL)')
+        cancel_open = doc.index('FltCancelFileOpen(Objects->Instance, Objects->FileObject)')
+        registry_doc = doc.index('StageMvpWriterPost(Data, Objects, Flags, WriterReservation)')
+        self.assertLess(legacy_doc, cancel_names)
+        self.assertLess(cancel_names, registry_doc)
+        self.assertLess(cancel_open, registry_doc)
+        self.assertEqual(doc.count('StageMvpWriterPost('), 1)
+        self.assertEqual(post.count('StageMvpWriterPost('), 1)
         # The registry post is called only with a reservation and the registry is never given an alias proof here.
         writer_post = d.function(source, 'StageMvpWriterPost')
-        self.assertLess(writer_post.index('if (Reservation == NULL) return TRUE;'), writer_post.index('SafeUploadStageWritersPostCreate('))
+        self.assertLess(writer_post.index('if (Reservation == NULL) return;'), writer_post.index('SafeUploadStageWritersPostCreate('))
         self.assertIn('&required, NULL)', d.function(source, 'StageMvpWriterReserve'))
         for name in ('StageMvpWriterReserve', 'StageMvpWriterPost'):
             self.assertIn('#pragma alloc_text(PAGE, ' + name + ')', source)

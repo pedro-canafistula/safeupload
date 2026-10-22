@@ -509,18 +509,19 @@ static VOID namespace_tests(void)
  assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SYNCHRONIZE&&handled&&ctx==&StageMvpNamespaceCompletionTag);
  assert(PreflightCalls==1&&CancelCalls==1);data.IoStatus.Status=0;StageMvpNamespacePost(&data,&objects,0);StageDirectoryEndMutation(FALSE);
  io.MajorFunction=IRP_MJ_CREATE;
- /* D7 rev 4 (m2t5ord9): every native-route CREATE the registry classifies as a writer takes the writer-registry reservation
-  * after the legacy pre and before the lower CREATE, and the registry post consumes it exactly once. */
+ /* D7 rev 5 (m2t5ord9): every native-route CREATE the registry classifies as a writer takes the writer-registry reservation
+  * after the legacy pre and before the lower CREATE, and the registry post consumes it exactly once, LAST: after the D7
+  * validation, the legacy post and any DOC cancellation, so a refused or cancelled open is never registered. */
 #define TRACE_IS(t) assert(strcmp(Trace,(t))==0)
  file.DeleteAccess=TRUE;file.WriteAccess=FALSE;file.FsContext=(PVOID)1;TagAttributes=0;io.OperationFlags=0;
  io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_OPEN_REPARSE_POINT;security.DesiredAccess=DELETE|FILE_READ_ATTRIBUTES|SYNCHRONIZE;
- /* D7 success: reserve after the legacy pre (before the lower CREATE), registry post first, then the legacy post. */
+ /* D7 success: reserve after the legacy pre (before the lower CREATE), then the legacy post, then the registry post. */
  d7_reset();{PVOID open=d7_admit(&data,&objects);
   TRACE_IS("LR");assert(ReserveCalls==1&&LiveReservations==1&&((PSTAGE_MVP_REPARSE_OPEN)open)->WriterReservation);
   d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
-  TRACE_IS("LRPp");assert(RegPostCalls==1&&RegRegistered==1&&!RegReleased&&RegPostStatus==STATUS_SUCCESS&&!RegPostFlags&&!TrackLostCalls);d7_done();}
- /* Every D7 refusal sets the failure status (and cancels where it did) BEFORE the registry post, which then releases the
-  * reservation without tracking; no legacy post runs. */
+  TRACE_IS("LRpP");assert(RegPostCalls==1&&RegRegistered==1&&!RegReleased&&RegPostStatus==STATUS_SUCCESS&&!RegPostFlags&&!TrackLostCalls);d7_done();}
+ /* Every D7 refusal sets the failure status (and cancels where it did) before the registry post, which then releases the
+  * reservation without tracking; no legacy post runs, and no node is ever registered for a cancelled open. */
  {uintptr_t info[]={FILE_CREATED,FILE_OPENED,FILE_OPENED,FILE_OPENED};NTSTATUS st[]={STATUS_SUCCESS,STATUS_SUCCESS,STATUS_SUCCESS,STATUS_PENDING};
   for(int refusal=0;refusal<5;refusal++){
    d7_reset();PVOID open=d7_admit(&data,&objects);
@@ -538,15 +539,16 @@ static VOID namespace_tests(void)
  {NTSTATUS lower[]={STATUS_ACCESS_DENIED,STATUS_OBJECT_NAME_NOT_FOUND,STATUS_REPARSE};
   for(unsigned k=0;k<3;k++){d7_reset();PVOID open=d7_admit(&data,&objects);
    d7_post(&data,&objects,open,lower[k],FILE_OPENED,0);
-   TRACE_IS("LRPp");assert(RegReleased==1&&!RegRegistered&&RegPostStatus==lower[k]&&data.IoStatus.Status==lower[k]&&!CancelOpenCalls);d7_done();}}
+   TRACE_IS("LRpP");assert(RegReleased==1&&!RegRegistered&&RegPostStatus==lower[k]&&data.IoStatus.Status==lower[k]&&!CancelOpenCalls);d7_done();}}
  /* Draining: the registry post records teardown and fails, so the legacy post is skipped; nothing is cancelled. */
  d7_reset();{PVOID open=d7_admit(&data,&objects);
   d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,FLTFL_POST_OPERATION_DRAINING);
   TRACE_IS("LRP");assert(RegDrained==1&&RegPostFlags==FLTFL_POST_OPERATION_DRAINING&&!RegRegistered&&!LegacyPostCalls&&!CancelOpenCalls);d7_done();}
- /* A legacy-post denial follows the registry post, exactly as in the generic CREATE post. */
+ /* A legacy-post denial cancels the open before the registry post, which sees the denied status: no node is registered for the
+  * cancelled open (FltCancelFileOpen delivers no cleanup to this instance, so a registered node could never be retired). */
  d7_reset();{PVOID open=d7_admit(&data,&objects);LegacyDenied=1;
   d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
-  TRACE_IS("LRPpX");assert(RegRegistered==1&&CancelOpenCalls==1&&data.IoStatus.Status==STATUS_ACCESS_DENIED);d7_done();}
+  TRACE_IS("LRpXP");assert(!RegRegistered&&RegReleased==1&&RegPostStatus==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&data.IoStatus.Status==STATUS_ACCESS_DENIED);d7_done();}
  /* Reserve outcomes: a required reservation that could not be made records tracking lost (the ledger never refuses a create);
   * a failure with a partial reservation cancels it; an out-of-scope or already-Unknown instance reserves nothing. */
  for(int mode=1;mode<=4;mode++){
@@ -573,7 +575,7 @@ static VOID namespace_tests(void)
  d7_reset();{PVOID open=d7_admit(&data,&objects);
   assert(!((PSTAGE_MVP_REPARSE_OPEN)open)->Reparse&&((PSTAGE_MVP_REPARSE_OPEN)open)->WriterReservation&&LiveReservations==1);
   TagAttributes=FILE_ATTRIBUTE_REPARSE_POINT;d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_CREATED,0);TagAttributes=0;
-  TRACE_IS("LRPp");assert(RegRegistered==1&&!CancelOpenCalls&&data.IoStatus.Status==STATUS_SUCCESS);d7_done();}
+  TRACE_IS("LRpP");assert(RegRegistered==1&&!CancelOpenCalls&&data.IoStatus.Status==STATUS_SUCCESS);d7_done();}
  d7_reset();{PVOID open=d7_admit(&data,&objects);
   d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,FLTFL_POST_OPERATION_DRAINING);
   TRACE_IS("LRP");assert(RegDrained==1&&!LegacyPostCalls);d7_done();}
@@ -594,9 +596,9 @@ static VOID namespace_tests(void)
  }
  d7_reset();LookupHook=d7_close_unload;{PVOID open=d7_admit(&data,&objects);LookupHook=NULL;
   assert(StageUnloadAdmissionClosed&&LiveReservations==1);
-  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);TRACE_IS("LRPp");d7_done();}
- /* Fenced native DOC: reservation after the legacy pre and nothing refuses after it; the registry post consumes it first,
-  * then the legacy post, then identity validation and the single pending-version cancellation. */
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);TRACE_IS("LRpP");d7_done();}
+ /* Fenced native DOC: reservation after the legacy pre and nothing refuses after it; the legacy post, identity validation and
+  * the single pending-version cancellation come first, and the registry post consumes the reservation last with the final status. */
  io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_DELETE_ON_CLOSE;
  for(int variant=0;variant<7;variant++){
   namespace_reset();StageUnloadAdmissionClosed=0;MandatoryTeardown=0;token=slot();ctx=NULL;
@@ -611,11 +613,11 @@ static VOID namespace_tests(void)
   SourceId=1;
   assert(!StageMvpNamespaceCreateReservation&&LiveReservations==0&&!StageMvpNamespaceCreateName);
   switch(variant){
-  case 0: TRACE_IS("LRPpN");assert(RegRegistered==1&&CancelCalls==1&&!CancelOpenCalls);break;
-  case 1: TRACE_IS("LRPp");assert(RegReleased==1&&!RegRegistered&&!CancelCalls&&!CancelOpenCalls);break; /* lower failure */
-  case 2: TRACE_IS("LRPpX");assert(CancelOpenCalls==1&&!CancelCalls);break; /* legacy denial: one cancellation, no pending-save cancel */
-  case 3: TRACE_IS("LRPpX");assert(CancelOpenCalls==1&&!CancelCalls&&data.IoStatus.Status==STATUS_SHARING_VIOLATION);break;
-  case 4: TRACE_IS("LRP");assert(RegDrained==1&&!LegacyPostCalls&&!CancelCalls&&!CancelOpenCalls);break; /* draining: legacy skipped */
+  case 0: TRACE_IS("LRpNP");assert(RegRegistered==1&&CancelCalls==1&&!CancelOpenCalls&&RegPostStatus==STATUS_SUCCESS);break;
+  case 1: TRACE_IS("LRpP");assert(RegReleased==1&&!RegRegistered&&!CancelCalls&&!CancelOpenCalls);break; /* lower failure */
+  case 2: TRACE_IS("LRpXP");assert(CancelOpenCalls==1&&!CancelCalls&&!RegRegistered&&RegReleased==1);break; /* legacy denial: one cancellation, no pending-save cancel, no node */
+  case 3: TRACE_IS("LRpXP");assert(CancelOpenCalls==1&&!CancelCalls&&!RegRegistered&&RegReleased==1&&RegPostStatus==STATUS_SHARING_VIOLATION&&data.IoStatus.Status==STATUS_SHARING_VIOLATION);break;
+  case 4: TRACE_IS("LRpP");assert(RegDrained==1&&LegacyPostCalls==1&&!CancelCalls&&!CancelOpenCalls&&!RegRegistered);break; /* draining: legacy as before, registry records teardown */
   case 5: TRACE_IS("LRpN");assert(!RegPostCalls&&LegacyPostCalls==1&&CancelCalls==1);break; /* no reservation: legacy and cancel unchanged */
   default: break;
   }
