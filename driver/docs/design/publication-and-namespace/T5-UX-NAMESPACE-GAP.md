@@ -326,38 +326,74 @@ Independent review remains an orchestrator obligation before a revised VM boot.
 This implementation task runs local diagnostic checks only; no WDK, PREfast,
 ApiValidator, Windows PowerShell gate or protected runtime qualification is implied.
 
-### D7 — OPEN_REPARSE_POINT opens of regular files take the native route (owner 2026-10-21; design delta, review pending)
+### D7 — OPEN_REPARSE_POINT opens of regular files take the native route (owner 2026-10-21; revision 1 after Sol 6.1 high REVISE)
 
-**Evidence.** Row `m2t5ord8` ([T5 checkpoint](../../../evidence/2026-10-21/t5-checkpoint.md)): `DeleteFileW` of a
-published protected file returned 5. `DeleteFileW` opens with DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE and
-FILE_OPEN_REPARSE_POINT (so that deleting a link deletes the link), then sets FileDispositionInformationEx and falls back to
-FileDispositionInformation. `StageMvpNamespaceCreateEligible` excludes FILE_OPEN_REPARSE_POINT (item 2 of the round-1 review
-below), so the open keeps writer classification (DELETE is writer access) and takes staged admission. That allocates a seeded
-private version (journal: allocation 34–87 ms before each refusal), and the disposition on the staged handle is refused
-STATUS_ACCESS_DENIED (deny ring). Operations on a staged FILE_OBJECT are routed before the native namespace path, so nothing after
-the open can make the delete native. `del`, `Remove-Item` and Explorer's permanent delete of a published file therefore fail on
-the shipped profile; recycling is a rename and works. T5 requires both `DeleteFileW` calls to succeed.
+Review: [revision 0 review](../../../evidence/2026-10-21/t5-d7-review-sol61.md) (REVISE; diagnosis confirmed). This revision answers
+its findings 1–7 in order.
 
-**Rule.** FILE_OPEN_REPARSE_POINT no longer makes an open ineligible. Directory, by-file-ID and SL_OPEN_TARGET_DIRECTORY opens stay
-excluded, and the predicate stays shared by native routing and writer demotion (item 2's consistency is kept). On the native route,
-a CREATE that carries FILE_OPEN_REPARSE_POINT and requested writer access (DELETE, FILE_DELETE_ON_CLOSE or any other writer bit that
-the route admits) is checked in post, on the opened FILE_OBJECT and before any pending-version cancellation or handle exposure: if
-FileAttributeTagInformation reports FILE_ATTRIBUTE_REPARSE_POINT, the open is cancelled (FltCancelFileOpen) and fails
-STATUS_ACCESS_DENIED, which is what such an open receives today. A regular file opened this way is the same object NTFS opens without
-the flag, so D1–D3 apply unchanged: DELETE-only opens are namespace-only (no rotation), disposition goes to NTFS on the original
-handle, and pending versions are cancelled through the existing V28 receipt. Non-writer opens are unchanged (legacy read path).
+**Evidence and diagnosis (finding 1).** Row `m2t5ord8` ([T5 checkpoint](../../../evidence/2026-10-21/t5-checkpoint.md)): `DeleteFileW` of a
+published protected file returned 5. `DeleteFileW` opens with DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE and FILE_OPEN_REPARSE_POINT,
+then sets FileDispositionInformationEx and falls back to FileDispositionInformation. `StageMvpNamespaceCreateEligible` excludes
+FILE_OPEN_REPARSE_POINT (round-1 item 2 below), so the open keeps writer classification (DELETE is writer access) and is staged as a
+seeded private version (journal: allocation 34–87 ms before each refusal). Owned-stream routing precedes native namespace routing
+(`StageDispatchCore`), and for that unsealed staged handle the disposition reaches `StagePublicNameFree`, which refuses a name that
+exists publicly (`StageStream.c` ~5330; sealed versions take the separate cancellation branch ~5314). The deny-ring records are entries
+109–112 of the full row result (kept locally; the tracked verdict retains entries from 113). `del`, `Remove-Item` and Explorer's
+permanent delete of a published file therefore fail; recycling is a rename and works. T5 requires both `DeleteFileW` calls to succeed.
 
-**Effects to check.** `MoveFileExW`/`MoveFileWithProgressW` also open the source with FILE_OPEN_REPARSE_POINT and DELETE; a same-scope
-rename of a published file now takes the native D3 path (NOT_SAME_DEVICE for unmonitored-to-monitored stays). A writer that holds a
-private version of the name still refuses the delete with a sharing violation (D2). The open's identity binding (FileIdInformation in
-post) is unchanged.
+**Scope.** D7 covers a CREATE that (a) carries FILE_OPEN_REPARSE_POINT, (b) is FILE_OPEN (FILE_OPEN_IF is narrowed to FILE_OPEN as for
+D1), (c) does **not** carry FILE_DELETE_ON_CLOSE, and (d) requests no content access (the existing `StageMvpNamespaceOpen` access mask),
+so its writer classification comes only from DELETE and/or FILE_WRITE_ATTRIBUTES. Directory, by-file-ID and SL_OPEN_TARGET_DIRECTORY
+opens stay excluded. **FILE_DELETE_ON_CLOSE | FILE_OPEN_REPARSE_POINT stays excluded exactly as today** (staged admission or refusal):
+a cancelled delete-on-close CREATE can still apply NTFS delete effects during cleanup (round-1 control note above), so a post check
+cannot prove a link intact (finding 3). `DeleteFileW` and `MoveFileExW` source opens do not use delete-on-close.
 
-**Controls before the first boot.** Native-route unit/static controls for: DeleteFileW of a published regular file (open native,
-disposition native, no allocation); the same open on a symlink and on a junction inside protection (cancelled, ACCESS_DENIED, link
-intact, nothing cancelled); DELETE_ON_CLOSE | OPEN_REPARSE_POINT on a regular file (native, cancellation after the reparse check) and on
-a reparse point (refused before cancellation); MoveFileExW rename within scope (native) and unmonitored-to-monitored (NOT_SAME_DEVICE);
-the round-1 cross-owner control with the new predicate. Then WDK feature Debug/Release, PREfast, ApiValidator and import gates, and
-the T5 row's public-delete cases.
+**Validation ownership (findings 2, 4, 5).** Every D7-scoped CREATE that the native route admits owns its own completion: a small
+nonpaged per-CREATE context (not the fenced singleton `StageMvpNamespaceCreate*` state, which stays reserved for fenced mutations),
+allocated in pre and freed in post on every outcome, including draining and failure. Such a CREATE acquires no fence and cancels
+nothing. In post, before legacy post inspection, before any cancellation and before the handle is exposed:
+
+- If the lower CREATE did not open an object (`StageMvpNamespaceCreateOpened` false), nothing else runs; the context is freed.
+- On an opened object, query FileAttributeTagInformation on the opened FILE_OBJECT, synchronously at PASSIVE with no resource held.
+  Only a successful, complete response with FILE_ATTRIBUTE_REPARSE_POINT clear passes. A query failure, short reply, missing object or
+  **any** reparse attribute (no tag allow-list) cancels the open (FltCancelFileOpen) and completes STATUS_ACCESS_DENIED. A draining
+  post cancels the same way without querying (fail closed).
+- Only after a pass does the existing legacy post (read inspection/taint) run with its own context.
+
+This proves the final object's attribute only. Name, parent and no-follow bindings stay where they are today (T5-DELETES; the identity
+helper's IO_STOP_ON_SYMLINK lookup is not replaced by this check).
+
+**Declines (finding 2).** For a D7-scoped CREATE, any decline after eligibility (identity query failure, unresolved name, non-NTFS,
+binding failure) refuses STATUS_ACCESS_DENIED instead of falling back to staged admission or an unguarded legacy CREATE. Genuine
+private-view routing (`StageFindView`/hidden name → private route) is unchanged; removing the exclusion newly admits such private
+reopens to the existing bounded D4 receipt wait, which is accepted (no new wait or timer).
+
+**Mutations stay on the existing D2/D3 path (findings 5, 6).** The D7 CREATE itself cancels nothing. A later disposition or rename on the
+validated native handle takes the existing `StageMvpNamespacePre` SET_INFORMATION path (fence, fresh bindings, V28 cancellation of
+pending versions, original NTFS operation), which additionally re-queries FileAttributeTagInformation on the handle under the same
+rules before any cancellation, because a reparse point can be set on an open file. Published-only successor suppression (T5-DELETES)
+and D3 rename flags, NOT_SAME_DEVICE copy fallback and hard-link gates are unchanged; deleting one hard link affects only that link.
+Informational/oplock CREATE success keeps `StageMvpNamespaceCreateOpened` semantics. No new lock, wait or RPC under a resource; no new
+retirement path.
+
+**Controls before the first boot (finding 7).** Host/source controls, each with a negative mutation that removes the guard or moves
+cancellation before validation and must fail:
+
+1. DELETE-only and DELETE | WRITE_ATTRIBUTES OPEN_REPARSE_POINT CREATE of a published regular file: native open, post validation passes,
+   no allocation, no cancellation at CREATE; disposition and MoveFileExW rename then take the fenced D2/D3 path.
+2. The same opens on a symlink and on a junction: cancelled ACCESS_DENIED after the tag query; the other owner's pending save untouched.
+3. Tag query failure, short reply, missing object, injected reparse attribute, object substitution between pre and post: cancelled, nothing
+   cancelled elsewhere.
+4. WRITE_ATTRIBUTES without DELETE; OPEN_IF narrowing; caller DELETE/share denial by NTFS (no cancellation, no validation side effect);
+   informational and oplock-break-in-progress success; failed lower CREATE; draining post (cancelled, context freed).
+5. Concurrent D7 opens and fenced mutations: per-CREATE contexts never touch the singleton state; no context leak on any outcome.
+6. DELETE_ON_CLOSE | OPEN_REPARSE_POINT: still excluded (today's result). Rewrite the round-1 cross-owner control: an authorized
+   regular-file delete-on-close CREATE (no reparse flag) still reaches fenced cancellation; real reparse, denied or uncertain D7 opens leave
+   the other owner's save untouched.
+7. Reparse attribute set on an already-open validated handle before SET_INFORMATION disposition: refused before cancellation.
+
+Then WDK feature Debug/Release, PREfast, ApiValidator and import gates over both builds, and the T5 row's public-delete cases in all
+three modes. Host controls do not establish NTFS cleanup behaviour or qualification.
 
 ## Round 2 implementation and verification
 
