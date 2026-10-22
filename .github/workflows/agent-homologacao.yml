@@ -1,0 +1,97 @@
+name: Homologação do agente Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [tarefa/consolidar-base-agente-windows]
+    paths:
+      - 'agente/**'
+      - '!agente/docs/**'
+      - '!agente/**/README.md'
+      - '.github/workflows/agent-homologacao.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  componentes:
+    name: Componentes C# ${{ matrix.configuration }}
+    runs-on: windows-2025
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+    steps:
+      - name: Habilitar caminhos longos
+        run: git config --system core.longpaths true
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Executar suíte C# completa sem filtro
+        shell: pwsh
+        env:
+          BUILD_CONFIGURATION: ${{ matrix.configuration }}
+        run: |
+          New-Item -ItemType Directory -Path artifacts/csharp -Force | Out-Null
+          whoami /all > artifacts/csharp/identity.txt
+          dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj -c $env:BUILD_CONFIGURATION --logger 'trx;LogFileName=agente.trx' --results-directory artifacts/csharp *> artifacts/csharp/test.log
+          $testExit = $LASTEXITCODE
+          Get-Content artifacts/csharp/test.log -Tail 35
+          if ($testExit -ne 0) { throw "A suíte C# completa falhou: $testExit. Preservar TRX e log." }
+      - name: Preservar resultados completos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: csharp-${{ matrix.configuration }}
+          path: artifacts/csharp/
+
+  instalacao:
+    name: Instalação real em Windows descartável
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - name: Habilitar caminhos longos
+        run: git config --system core.longpaths true
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Contratos PowerShell e ambiente
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts/installer-tests -Force | Out-Null
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber,OSArchitecture | ConvertTo-Json | Set-Content artifacts/installer-tests/os.json
+          ./agente/installer/tests/Test-InstallerContracts.ps1 -ResultsPath artifacts/installer-tests/ps7.json
+          ./agente/installer/tests/Test-InstallerEnvironment.ps1 -ResultsPath artifacts/installer-tests/environment.json
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -ExecutionPolicy Bypass -File agente/installer/tests/Test-InstallerContracts.ps1 -ResultsPath artifacts/installer-tests/ps51.json
+          if ($LASTEXITCODE -ne 0) { throw 'Os contratos Windows PowerShell 5.1 falharam.' }
+      - name: Gerar candidato 0.1.4 com compilador verificado
+        shell: pwsh
+        run: |
+          $compiler = ./agente/installer/Initialize-InnoCompiler.ps1
+          ./agente/installer/Build-AgentInstaller.ps1 -Version 0.1.4 -CompilerPath $compiler
+      - name: Conferir o artefato antes da instalação
+        shell: pwsh
+        run: |
+          ./agente/installer/tests/Test-InstallerArtifact.ps1 -BuildResultPath artifacts/installer/build-result.json -ResultsPath artifacts/installer-tests/artifact-validation.json
+      - name: Instalar, inspecionar, reiniciar e desinstalar
+        shell: pwsh
+        run: |
+          $build = Get-Content artifacts/installer/build-result.json -Raw | ConvertFrom-Json
+          ./agente/installer/tests/Test-InstallerSmoke.ps1 -InstallerPath $build.installer
+      - name: Preservar instalador e evidências inclusive em falha
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homologacao-agente-instalador
+          path: |
+            artifacts/installer/*-setup.exe
+            artifacts/installer/*.sha256
+            artifacts/installer/build-result.json
+            artifacts/installer/build-*/compiler.log
+            artifacts/installer/build-*/publish-*.log
+            artifacts/installer/build-*/payload/payload-manifest.json
+            artifacts/installer-tests/
+            artifacts/installer-smoke/
