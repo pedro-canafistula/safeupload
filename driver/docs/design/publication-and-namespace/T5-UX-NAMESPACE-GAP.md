@@ -526,7 +526,7 @@ of an open nothing will cancel, so its node insertion, `H`/reference accounting 
 exercised on Windows. The next T5 row therefore captures the driver's registry Unknown masks and first-Unknown origins after the
 public-delete cases (`T5WriterRegistryKnown`, required: all zero) and requires a later approved publication to succeed.
 
-### D8 — a cancelled private version the driver already released (2026-10-22; review pending)
+### D8 — a cancelled private version the driver already released (2026-10-22; accepted with conditions)
 
 **Evidence.** Rows `m2t5ord10` and `m2t5ord11` (D7 revision 5 driver): Notepad's Save As probe leaves an empty private version that is
 sealed and then cancelled by a native operation (journal history `0,10,1,7`, `UnboundCancellation` generation 2). The service deletes
@@ -543,15 +543,26 @@ answers `Held = 0`. `RecoverPendingTransferAsync` treats `Held = 0` as "acknowle
 is nothing left to acknowledge. The older flows only completed when the service happened to win the race.
 
 **Rule.** In the unbound-cancellation branch of recovery, once the exact stage is confirmed absent (`TryDeleteExactAndConfirmAbsent`,
-unchanged), both answers of the disposal call complete the cleanup: `Held = 1` (the driver still held the version and accepted the
-disposal) and `Held = 0` (the driver holds no version of this transfer, so no reference to the stage remains in it). A refused or
-malformed call (an exception) still keeps the obligation pending and diagnosed. Nothing else changes: the Released and Blocked paths
-keep their exact receipts, `Held = 0` is not accepted as proof that a stage was deleted (the proof is the service's own exact
-identity delete and absence check), and no path completes on it without the journaled cancellation receipt, which already blocks
-inspection, justification and any final publication of that version.
+unchanged: exact-identity deletion or an already absent stage, access and identity failures retained), both answers of the disposal
+call complete the cleanup: `Held = 1` (the responding driver still lists a matching transfer; this includes stale and deferred
+disposals) and `Held = 0` (no matching version remains in the responding driver's live transfer list). A refused or malformed call
+(an exception) still keeps the obligation pending and diagnosed. What completion records is the **service's cleanup of an irrevocably
+cancelled unbound version**, supported by the validated durable cancellation receipt, the exact stage deletion, a structurally valid
+disposal exchange and the fresh cancellation-receipt and absence checks before the journal completes. `Held` is not a deletion or
+lifetime receipt: it is never used as proof that a stage was deleted or that a driver's lifetime ended, no timer, digest or counter
+supplies authority, a new driver instance's `Held = 0` certifies nothing about an older instance, and none of this applies to the
+Released, Blocked or BOUND receipts, which keep their exact evidence. The cancellation receipt already blocks inspection, justification
+and any final publication of that version, and a later save of the same name is a separate transfer.
 
-**Controls.** Agent tests: held, not held, and a refused call (stays pending with no completion receipt, one disposal attempt). Row
-requirement (new, `T5JournalSettledAfterRun`): after the run the hot journal holds no entry, so no Notepad probe stays Retained.
+**Review.** Sol 6.1 high, `13ea6fbf`: [ACCEPT WITH CONDITIONS](../../../evidence/2026-10-22/t5-d8-review-sol61.md). The cause is supported by the
+journals, the counters and the code (`StageStream.c`: accepted cancellation detaches the view, `StageTryRelease` unlinks the stream);
+conditions: the wording above, two more recovery negative controls, then the four-leg agent matrix and a matched Windows row.
+
+**Controls.** Agent tests (`StagedUnboundNamespaceTests`): held, not held, a disposal call that fails after it is sent (stays pending, no
+completion receipt), a different object at the saved stage path (preserved, no disposal call, pending), and an interruption between the
+driver call and the completion receipt (a restarted journal replays once and completes once, cancellation preserved, nothing
+published); the gate asserts the transfer id, the CleanedUp outcome and the committed-rename count. Row requirement (new,
+`T5JournalSettledAfterRun`, required): after the run the hot journal holds no entry, so no Notepad probe stays Retained.
 
 ## Round 2 implementation and verification
 

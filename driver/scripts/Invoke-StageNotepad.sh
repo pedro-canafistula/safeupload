@@ -468,7 +468,7 @@ def transient_observation_error(s):
     return any(known in text for known in T5_TRANSIENT_ERRORS)
 def raw_samples_accepted(samples):
     # (accepted, superseded): every sample of one case is valid, or a transient observation error whose very next sample of the same
-    # phase is valid. The superseded errors stay in the result and are counted in the verdict.
+    # case (any phase; owner 2026-10-22) is valid. The superseded errors stay in the result and are counted in the verdict.
     superseded = 0
     if not isinstance(samples, list) or not samples:
         return False, 0
@@ -477,7 +477,7 @@ def raw_samples_accepted(samples):
             continue
         following = samples[index + 1] if index + 1 < len(samples) else None
         if transient_observation_error(sample) and isinstance(following, dict) and isinstance(sample.get('Sequence'), int) and \
-           following.get('Phase') == sample.get('Phase') and following.get('Sequence') == sample['Sequence'] + 1 and \
+           following.get('Sequence') == sample['Sequence'] + 1 and \
            valid_raw_sample(following) and workflow_observed_bytes_match(following):
             superseded += 1
             continue
@@ -680,6 +680,27 @@ def staging_empty_verdict(listing_text):
     if files:
         return 'FAIL', '%d stage file(s) remain after the run: %s' % (len(files), '; '.join(files[:5]))
     return 'PASS', 'the staging directory is empty after the run (independent listing)'
+def journal_settled_verdict(listing_text):
+    # D8 (m2t5ord10/11): a Notepad probe stayed Retained for ever, so the hot journal still held its entry after the run. Completed
+    # transfers live under completed\\ (archived); a *.json directly under staging-journal is an unfinished obligation.
+    inside = False
+    seen = False
+    hot = []
+    for line in listing_text.splitlines():
+        if line.startswith('DIR='):
+            inside = line[4:].strip().rstrip('\\').lower().endswith('\\programdata\\safeupload\\staging-journal')
+            seen = seen or inside
+        elif inside and '|' in line:
+            path = line.split('|', 1)[0].strip()
+            leaf = path.rsplit('\\', 1)[-1]
+            parent = path.rsplit('\\', 1)[0].lower()
+            if parent.endswith('\\staging-journal') and leaf.lower().endswith('.json'):
+                hot.append(leaf)
+    if not seen:
+        return 'INCONCLUSIVE', 'the post-run journal listing was not captured'
+    if hot:
+        return 'FAIL', '%d unfinished journal entr%s remain after the run: %s' % (len(hot), 'y' if len(hot) == 1 else 'ies', '; '.join(hot[:5]))
+    return 'PASS', 'the hot journal is empty after the run (every transfer completed and archived)'
 def approved_public_hash_map():
     approved = {}
     for spec in required_cases:
@@ -943,7 +964,7 @@ raw_ok = (ro.get('Status') == 'OK' and ro.get('CaseId') == 'T5' and ro.get('Obse
           disposal.get('Status') == 'OK' and raw_schema_ok and raw_artifacts_ok)
 verdict('T5RawObserver', 'PASS' if raw_ok else 'FAIL',
         f"status={ro.get('Status')}; baseline={baseline.get('Status')}; samples={len(raw_samples)}; disposal={disposal.get('Status')}; schema={raw_schema_ok}; artifacts={raw_artifact_reason}")
-out.append(f"T5RawErrorsSuperseded INFO {superseded_errors} transient observation error sample(s) superseded by the next valid sample of the same case and phase (owner 2026-10-22); all stay in the result")
+out.append(f"T5RawErrorsSuperseded INFO {superseded_errors} transient observation error sample(s) superseded by the next valid sample of the same case (owner 2026-10-22); all stay in the result")
 verdict('T5RawEvidenceRetained', 'PASS' if raw_artifacts_ok else 'FAIL',
         f"copied={raw_saved}; guest-manifest={re.search(r'^RAW_MANIFEST_PRESENT=True$', after, re.M) is not None}; {raw_artifact_reason}")
 expected_case_specs = {c['Kind']: (c['Op'], c['Leaf'], c['Sensitive']) for c in required_cases}
@@ -1026,6 +1047,8 @@ try: staging_listing = open(sys.argv[11], encoding='utf-8', errors='replace').re
 except Exception: staging_listing = ''
 staging_outcome, staging_detail = staging_empty_verdict(staging_listing)
 verdict('T5StagingEmptyAfterRun', staging_outcome, staging_detail)
+journal_outcome_after, journal_detail_after = journal_settled_verdict(staging_listing)
+verdict('T5JournalSettledAfterRun', journal_outcome_after, journal_detail_after)
 for r in ((result or {}).get('Ring') or [])[-25:]:
     out.append(f"T5DenyRing INFO {r[:400]}")
 if os.environ.get('T5_STAGE_SPACE_EFFECTIVE') == 'off':

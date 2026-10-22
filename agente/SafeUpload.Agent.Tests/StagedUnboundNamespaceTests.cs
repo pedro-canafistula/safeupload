@@ -131,7 +131,7 @@ public sealed partial class StagedAttachmentV20Tests
         Assert.False(File.Exists(f.Transfer.DestinationPath));
     }
 
-    private sealed class CancelledStageGate(bool held, bool refuse = false) : IStagedPublicationGate
+    private sealed class CancelledStageGate(Guid expectedId, bool held, bool failAfterTheCall = false) : IStagedPublicationGate
     {
         internal int Disposals;
         public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest) =>
@@ -139,20 +139,24 @@ public sealed partial class StagedAttachmentV20Tests
         public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames)
         {
             Disposals++;
-            if (refuse) throw new IOException("The driver refused the stage disposal.");
+            Assert.Equal(expectedId, transferId);
+            Assert.Equal(SafeUpload.Agent.Minifilter.StageDisposeOutcome.CleanedUp, outcome);
+            Assert.Equal(0u, committedRenames);
+            if (failAfterTheCall) throw new IOException("The driver disposal call was interrupted after it was sent.");
             return held;
         }
     }
 
-    private StagedTransferPublisher RecoveryPublisher(Fixture f, IStagedPublicationGate gate) =>
+    private StagedTransferPublisher RecoveryPublisher(Fixture f, IStagedPublicationGate gate, StagedTransferJournal? journal = null) =>
         new(new InspectionService(new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
                 ExtractorRegistry.CreateDefault(), new VerdictCache()),
-            NotificationTestHub.Create(), f.Journal, Path.GetDirectoryName(f.Transfer.StagePath)!, gate,
+            NotificationTestHub.Create(), journal ?? f.Journal, Path.GetDirectoryName(f.Transfer.StagePath)!, gate,
             sessionUserSidResolver: _ => RequestorSid);
 
     // m2t5ord10/11: the driver releases a cancelled private version as soon as its detached view has no handle, so by the time the
-    // service has deleted the exact stage and reports the disposal the driver usually holds nothing (Held = false). That is a
-    // finished cleanup, not a pending acknowledgement; Notepad's empty probe used to stay Retained for ever.
+    // service has deleted the exact stage and reports the disposal the driver usually holds nothing (Held = false). That records the
+    // service's finished cleanup of an irrevocably cancelled version, not a pending acknowledgement; Notepad's empty probe used to
+    // stay Retained for ever. Held is not a deletion or lifetime receipt and is never used as one.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -160,7 +164,7 @@ public sealed partial class StagedAttachmentV20Tests
     {
         var f = await UnboundSealedAsync();
         await CancelUnboundAsync(f, Guid.NewGuid());
-        var gate = new CancelledStageGate(held);
+        var gate = new CancelledStageGate(f.Transfer.TransferId, held);
         var entry = await f.Journal.ReadAsync(f.Transfer.TransferId, default);
         Assert.True(StagedTransferJournal.PendingDispatchRequired(entry));
         await RecoveryPublisher(f, gate).RecoverPendingTransferAsync(entry, default);
@@ -178,7 +182,7 @@ public sealed partial class StagedAttachmentV20Tests
     {
         var f = await UnboundSealedAsync();
         await CancelUnboundAsync(f, Guid.NewGuid());
-        var gate = new CancelledStageGate(held: false, refuse: true);
+        var gate = new CancelledStageGate(f.Transfer.TransferId, held: false, failAfterTheCall: true);
         var entry = await f.Journal.ReadAsync(f.Transfer.TransferId, default);
         await RecoveryPublisher(f, gate).RecoverPendingTransferAsync(entry, default);
         Assert.Equal(1, gate.Disposals);
@@ -187,6 +191,54 @@ public sealed partial class StagedAttachmentV20Tests
         Assert.NotNull(pending.UnboundCancellation);
         Assert.True(StagedTransferJournal.PendingDispatchRequired(pending));
         Assert.Single(await f.Journal.ReadPendingAsync(default));
+    }
+
+    // A different object at the saved stage path is never deleted and never reported as disposed: the exact-identity deletion refuses
+    // first, so the driver call is not made and the obligation stays pending.
+    [Fact]
+    public async Task Unbound_cancelled_recovery_never_touches_or_disposes_a_different_object_at_the_stage_path()
+    {
+        var f = await UnboundSealedAsync();
+        await CancelUnboundAsync(f, Guid.NewGuid());
+        File.Delete(f.Transfer.StagePath);
+        await File.WriteAllTextAsync(f.Transfer.StagePath, "an unrelated object that replaced the stage");
+        var gate = new CancelledStageGate(f.Transfer.TransferId, held: false);
+        var entry = await f.Journal.ReadAsync(f.Transfer.TransferId, default);
+        await RecoveryPublisher(f, gate).RecoverPendingTransferAsync(entry, default);
+        Assert.Equal(0, gate.Disposals);
+        Assert.Equal("an unrelated object that replaced the stage", await File.ReadAllTextAsync(f.Transfer.StagePath));
+        var pending = await f.Journal.ReadAsync(f.Transfer.TransferId, default);
+        Assert.False(pending.StageDeleted);
+        Assert.NotNull(pending.UnboundCancellation);
+        Assert.Single(await f.Journal.ReadPendingAsync(default));
+        Assert.False(File.Exists(f.Transfer.DestinationPath));
+    }
+
+    // Interruption between the driver call and the completion receipt: after a restart the replay finds the stage absent, gets any
+    // answer, and completes exactly once without publishing anything.
+    [Fact]
+    public async Task Unbound_cancelled_recovery_replays_after_an_interruption_between_the_driver_call_and_completion()
+    {
+        var f = await UnboundSealedAsync();
+        await CancelUnboundAsync(f, Guid.NewGuid());
+        var interrupted = new CancelledStageGate(f.Transfer.TransferId, held: true, failAfterTheCall: true);
+        await RecoveryPublisher(f, interrupted).RecoverPendingTransferAsync(
+            await f.Journal.ReadAsync(f.Transfer.TransferId, default), default);
+        Assert.Equal(1, interrupted.Disposals);
+        Assert.False(File.Exists(f.Transfer.StagePath)); // the exact stage was already removed before the interrupted call
+        Assert.False((await f.Journal.ReadAsync(f.Transfer.TransferId, default)).StageDeleted);
+
+        var restarted = new StagedTransferJournal(f.JournalDirectory);
+        var replay = new CancelledStageGate(f.Transfer.TransferId, held: false);
+        await RecoveryPublisher(f, replay, restarted).RecoverPendingTransferAsync(
+            await restarted.ReadAsync(f.Transfer.TransferId, default), default);
+        Assert.Equal(1, replay.Disposals);
+        Assert.Empty(await restarted.ReadPendingAsync(default));
+        var finished = await restarted.ReadAsync(f.Transfer.TransferId, default);
+        Assert.True(finished.StageDeleted);
+        Assert.NotNull(finished.UnboundCancellation);
+        Assert.False(File.Exists(f.Transfer.DestinationPath));
+        Assert.False(File.Exists(f.Transfer.StagePath));
     }
 
     [Theory]

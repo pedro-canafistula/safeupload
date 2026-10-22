@@ -10,7 +10,7 @@ launcher = pathlib.Path(__file__).resolve().parents[1] / "Invoke-StageNotepad.sh
 blocks = re.findall(r"<<'PY'\n(.*?)\nPY\n", launcher.read_text(), re.S)
 parsed = [ast.parse(block) for block in blocks]
 required = {"valid_raw_sample", "native_steps_match", "forced_order_matches", "approved_public_hash_map", "writer_registry_verdict", "staging_empty_verdict",
-            "transient_observation_error", "raw_samples_accepted", "workflow_observed_bytes_match"}
+            "transient_observation_error", "raw_samples_accepted", "workflow_observed_bytes_match", "journal_settled_verdict"}
 constants = {"T5_TRANSIENT_PHASES", "T5_TRANSIENT_ERRORS"}
 functions = [node for tree in parsed for node in tree.body
              if (isinstance(node, ast.FunctionDef) and node.name in required) or
@@ -198,7 +198,8 @@ check(accepted([ok_sample(1), error_sample(2), ok_sample(3)]) == (True, 1), "A r
 check(accepted([ok_sample(1), error_sample(2)])[0] is False, "A trailing race error with no successor fails")
 check(accepted([error_sample(1), error_sample(2), ok_sample(3)])[0] is False, "Two consecutive race errors fail: only the next sample may supersede")
 check(accepted([error_sample(1, "WorkflowSettlement"), ok_sample(2, "WorkflowSettlement")]) == (True, 1), "WorkflowSettlement race errors are superseded too")
-check(accepted([error_sample(1), ok_sample(2, "WorkflowSettlement")])[0] is False, "The successor must be in the same phase")
+check(accepted([error_sample(1), ok_sample(2, "WorkflowSettlement")]) == (True, 1), "The successor may be in the next phase of the same case (owner 2026-10-22)")
+check(accepted([error_sample(1), ok_sample(2, "ControlProbeAfterTestCreateCloseBeforeDeleteOrSave")]) == (True, 1), "A control-gate successor supersedes too")
 check(accepted([error_sample(1), ok_sample(3)])[0] is False, "The successor must be the very next sequence")
 check(accepted([error_sample(1, "AfterActorOutcomeSettlement"), ok_sample(2, "AfterActorOutcomeSettlement")])[0] is False, "Only ActorRunning and WorkflowSettlement qualify")
 check(accepted([error_sample(1, ForbiddenBytesObserved=True), ok_sample(2)])[0] is False, "A sample with forbidden bytes never qualifies")
@@ -211,4 +212,12 @@ invalid_ok = ok_sample(2)
 invalid_ok["IndependentReadersAgree"] = False
 check(accepted([error_sample(1), invalid_ok])[0] is False, "A successor that is itself invalid does not supersede")
 check(accepted([])[0] is False, "No samples are never accepted")
+# D8: no unfinished journal entry may remain after the run.
+settled = environment["journal_settled_verdict"]
+journal_dir = "C:\\ProgramData\\SafeUpload\\staging-journal"
+clean_listing = f"DIR={journal_dir}\n{journal_dir}\\completed|1|2026\n{journal_dir}\\driver-epoch.state|192|2026\n{journal_dir}\\completed\\00000001.pack|9|2026\nDIR=C:\\ProgramData\\SafeUpload\\staging\n"
+check(settled(clean_listing)[0] == "PASS", "Archived packs and the epoch state are not unfinished entries")
+stuck_listing = clean_listing.replace("DIR=C:\\ProgramData\\SafeUpload\\staging\n", f"{journal_dir}\\e8bc5d9dce0211f1a0a580fd768e5436.json|2853|2026\nDIR=C:\\ProgramData\\SafeUpload\\staging\n")
+check(settled(stuck_listing)[0] == "FAIL" and "e8bc5d9d" in settled(stuck_listing)[1], "A hot journal entry fails and is named")
+check(settled("")[0] == "INCONCLUSIVE" and settled("DIR=C:\\ProgramData\\SafeUpload\\staging\n")[0] == "INCONCLUSIVE", "A missing journal listing is INCONCLUSIVE")
 print(f"T5HostVerdictSelfCheck=PASS;Assertions={checks};ProductQualified=False")

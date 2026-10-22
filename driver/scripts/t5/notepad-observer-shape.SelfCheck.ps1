@@ -30,7 +30,7 @@ Assert-T5 ($coordinator.Contains('[Management.Automation.ErrorCategory]::Permiss
 
 # Owner 2026-10-22: a raw sample that failed an observation race is superseded by the next valid sample of the same case and phase.
 Assert-T5 ($coordinator.Contains("function Test-T5TransientObservationError(`$Sample)")) 'the coordinator classifies transient observation errors'
-Assert-T5 ($coordinator.Contains("`$previous.Phase -ceq `$Phase -and `$previous.Sequence -eq (`$object.Sequence - 1)")) 'supersession needs the same phase and the very next sequence'
+Assert-T5 ($coordinator.Contains("`$previous.Sequence -eq (`$object.Sequence - 1)") -and -not $coordinator.Contains("`$previous.Phase -ceq `$Phase")) 'supersession needs the very next sequence of the same case, in any phase'
 Assert-T5 ($coordinator.Contains("`$previous | Add-Member -NotePropertyName SupersededBySequence")) 'a superseded sample is marked, never removed'
 Assert-T5 ($coordinator.Contains("`$result.RawObserver.Samples += `$object") -and $coordinator.Contains("`$Case.RawSamples += `$object")) 'both sample lists hold the same object so a mark is seen by both'
 Assert-T5 ($coordinator.Contains('if (-not (Test-T5TransientObservationError $sample)){throw') -or $coordinator.Contains('if(-not (Test-T5TransientObservationError $sample)){throw')) 'the settlement wait retries only transient errors'

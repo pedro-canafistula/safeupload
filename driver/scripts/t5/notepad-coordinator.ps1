@@ -117,7 +117,8 @@ function Test-T5ApprovedPublicRead([string]$Path, $Read) {
 }
 # Owner 2026-10-22: a raw sample taken while the actor or the agent is mid-operation may fail because a name appeared or vanished
 # between its independent reads. Such an ERROR sample stays in the result; it only stops counting against the row when the very next
-# sample of the same case and phase is fully valid. Only these observation-race messages qualify, never leaked bytes or a bad parent.
+# sample of the same case (any phase: owner 2026-10-22, since the last ActorRunning sample is followed by the next phase) is fully valid.
+# Only these observation-race messages in these phases qualify, never leaked bytes or a bad parent.
 $script:T5TransientObservationPhases = @('ActorRunning', 'WorkflowSettlement')
 $script:T5TransientObservationErrors = @(
     'Raw image, buffered read, and both fresh native readers do not agree',
@@ -245,7 +246,7 @@ function Capture-T5Observation($Case, [string]$Phase) {
     $previous = if (@($Case.RawSamples).Count) { @($Case.RawSamples)[-1] } else { $null }
     $result.RawObserver.Samples += $object
     $Case.RawSamples += $object
-    if ($object.Status -ceq 'OK' -and $null -ne $previous -and $previous.Phase -ceq $Phase -and $previous.Sequence -eq ($object.Sequence - 1) -and
+    if ($object.Status -ceq 'OK' -and $null -ne $previous -and $previous.Sequence -eq ($object.Sequence - 1) -and
         (Test-T5TransientObservationError $previous)) {
         $previous | Add-Member -NotePropertyName SupersededBySequence -NotePropertyValue $object.Sequence
     }
@@ -325,8 +326,11 @@ function Invoke-Actor([string]$Op, [string]$Path, [string]$Text, [scriptblock]$O
                     }else{
                         $candidate=@($candidate | Where-Object { $_.State -eq '5' -and $_.Sha256Hex -ceq $CaseRecord.GateSha256 -and $_.SealedLength -eq $CaseRecord.GateLength })
                     }
-                    $gateSatisfied=($gateSamples.Count -ge 2 -and $candidate.Count -eq 1 -and
-                        $target[0].Absent -eq $false -and $target[0].Sha256 -ceq $CaseRecord.GateSha256 -and $target[0].Length -eq $CaseRecord.GateLength)
+                    # The verdict requires every gate sample to show the exact gate content, so only consecutive samples that do count (m2t5ord12:
+                    # the first of two samples still showed the prior content while the publication was landing).
+                    $targetMatches=($target[0].Absent -eq $false -and $target[0].Sha256 -ceq $CaseRecord.GateSha256 -and $target[0].Length -eq $CaseRecord.GateLength)
+                    if(-not $targetMatches){$gateSamples=@()}
+                    $gateSatisfied=($gateSamples.Count -ge 2 -and $candidate.Count -eq 1 -and $targetMatches)
                 } elseif ($Op -ceq 'probe-delete-before-seal') {
                     $unsealed = @($fresh | Where-Object { $_.IsV20 -and $_.State -in @('0','8') -and
                         $_.SealedOnce -eq $false -and $null -eq $_.SealedLength -and $null -eq $_.Sha256Hex })
