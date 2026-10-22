@@ -135,6 +135,7 @@ clang 23 (`-Wunused-but-set-global` in the untouched registry and context-retire
 | `m2t5d7k3` | `e41913c4` | **PASS**: both profiles 0/0, PREfast, ApiValidator, imports 248/247, A6D6 signature valid (`1D2F56FC…`). Superseded by `9eb46e87`. [Summary](exact-m2t5d7k3-summary.txt) |
 | `m2t5d7k4` | `9eb46e87` (implementation accepted) | **PASS**: both profiles 0/0, PREfast, ApiValidator, imports 248/247, A6D6 signature valid; signed driver `26075F68…` (kept locally in `m2t5d7k4-candidate/`). [Summary](exact-m2t5d7k4-summary.txt). This is the driver for the T5 rows. |
 | `m2t5d7k5` | `b3c87c70` (D7 rev 5: writer-registry reservation; review pending) | **PASS**: both profiles 0/0, PREfast, ApiValidator, imports 248/247, A6D6 signature valid; signed driver `AC998FD6…` (kept locally in `../2026-10-22/m2t5d7k5-candidate/`). [Summary](../2026-10-22/exact-m2t5d7k5-summary.txt). Build gates only; no Windows result. |
+| `m2t5d7k6` | `3a16ec0f` (D7 rev 5 with the registry post last; second review pending) | **PASS**: both profiles 0/0, PREfast, ApiValidator, imports 248/247, A6D6 signature valid; signed driver `29D6130E…` (kept locally in `../2026-10-22/m2t5d7k6-candidate/`). [Summary](../2026-10-22/exact-m2t5d7k6-summary.txt). Supersedes `m2t5d7k5` (registry post before the legacy post; review REVISE). Build gates only; no Windows result. |
 
 ## Next
 
