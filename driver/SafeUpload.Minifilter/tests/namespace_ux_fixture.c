@@ -4,6 +4,7 @@
 static void (*LookupHook)(void);
 /* STUBS */
 typedef unsigned char UCHAR;
+typedef uintptr_t ULONG_PTR;
 typedef int KIRQL;
 #define __declspec(x)
 static int StageListLock,SpinDepth;
@@ -52,9 +53,10 @@ static BOOLEAN SafeUploadPolicySameProtectedScope(PUNICODE_STRING a,PUNICODE_STR
 { return SafeUploadPolicyMatchesCurrentOrPendingDestination(1,a,FALSE)&&SafeUploadPolicyMatchesCurrentOrPendingDestination(1,b,FALSE); }
 static BOOLEAN SafeUploadPolicyMatchesExtension(PUNICODE_STRING n)
 { UNICODE_STRING ext=u(L".txt"),suffix=*n;if(n->Length<ext.Length)return FALSE;suffix.Buffer+=n->Length/2-ext.Length/2;suffix.Length=ext.Length;return RtlEqualUnicodeString(&suffix,&ext,TRUE); }
-static int LegacyPreComplete;
+static int LegacyPreComplete, LegacyPreNoCallback;
 static FLT_PREOP_CALLBACK_STATUS SafeUploadPreCreate(PFLT_CALLBACK_DATA d,PCFLT_RELATED_OBJECTS o,PVOID *ctx)
-{ (void)o;LegacyPreCalls++;if(LegacyPreComplete){d->IoStatus.Status=STATUS_ACCESS_DENIED;*ctx=NULL;return FLT_PREOP_COMPLETE;}
+{ (void)o;assert(*ctx==NULL);LegacyPreCalls++;if(LegacyPreComplete){d->IoStatus.Status=STATUS_ACCESS_DENIED;*ctx=NULL;return FLT_PREOP_COMPLETE;}
+  if(LegacyPreNoCallback){*ctx=NULL;return FLT_PREOP_SUCCESS_NO_CALLBACK;} /* the real metadata-only path */
   *ctx=(PVOID)(uintptr_t)32;return FLT_PREOP_SUCCESS_WITH_CALLBACK; }
 /* D7 edges: pool, list, unload gate and mandatory teardown. */
 #define STAGE_TAG 0x55537467u
@@ -69,8 +71,11 @@ static PVOID ExAllocatePool2(int flags,size_t size,ULONG tag)
 static VOID ExFreePoolWithTag(PVOID p,ULONG tag){assert(p&&tag==STAGE_TAG);Frees++;free(p);}
 static VOID InsertTailList(PLIST_ENTRY h,PLIST_ENTRY e){assert(SpinDepth==1);e->Flink=h;e->Blink=h->Blink;h->Blink->Flink=e;h->Blink=e;}
 static BOOLEAN RemoveEntryList(PLIST_ENTRY e){assert(SpinDepth==1);PLIST_ENTRY b=e->Blink,f=e->Flink;b->Flink=f;f->Blink=b;return f==b;}
+static VOID FltCancelFileOpen(PFLT_INSTANCE i,PFILE_OBJECT o);
+/* A legacy-post denial cancels the open itself, like the real post-create. */
 static int SafeUploadPostCreate(PFLT_CALLBACK_DATA d,PCFLT_RELATED_OBJECTS o,PVOID ctx,FLT_POST_OPERATION_FLAGS flags)
-{ (void)o;assert(ctx==(PVOID)(uintptr_t)32);LegacyPostCalls++;if(LegacyDenied&&!flags)d->IoStatus.Status=STATUS_ACCESS_DENIED;return 0; }
+{ assert(ctx==(PVOID)(uintptr_t)32);LegacyPostCalls++;
+  if(LegacyDenied&&!flags){FltCancelFileOpen(o->Instance,o->FileObject);d->IoStatus.Status=STATUS_ACCESS_DENIED;}return 0; }
 static VOID FltCancelFileOpen(PFLT_INSTANCE i,PFILE_OBJECT o){(void)i;(void)o;assert(!NamespaceDepth);CancelOpenCalls++;}
 static NTSTATUS StageMvpCancelNames(PFLT_INSTANCE i,PUNICODE_STRING s,PUNICODE_STRING t,BOOLEAN cancel,PBOOLEAN required)
 { (void)i;(void)s;(void)t;assert(StageDirectoryMutationActive&&!NamespaceDepth&&Irql==0);
@@ -149,22 +154,29 @@ static VOID directory_interleaving(void)
 static VOID d7_reset(void)
 {
  namespace_reset();head(&StageMvpReparseOpens);StageUnloadAdmissionClosed=0;
- MandatoryTeardown=AllocFail=Allocs=Frees=LegacyPreComplete=PrivateView=0;TagAttributes=0;
+ MandatoryTeardown=AllocFail=Allocs=Frees=LegacyPreComplete=LegacyPreNoCallback=PrivateView=0;TagAttributes=0;
 }
+static VOID d7_close_unload(void){StageUnloadAdmissionClosed=1;}
 /* No context leaked, no list residue, and the fenced singleton never touched (namespace_reset asserts it). */
 static VOID d7_done(void){assert(Allocs==Frees&&StageMvpReparseOpens.Flink==&StageMvpReparseOpens&&!StageDirectoryMutationActive);}
-/* Admit a D7 CREATE and return its context exactly as StagePostOperationCore would find it. */
-static PSTAGE_MVP_REPARSE_OPEN d7_admit(PFLT_CALLBACK_DATA data,PCFLT_RELATED_OBJECTS objects)
+/* Admit a D7 CREATE; the returned completion context is what the epoch token carries to the post dispatch. */
+static PVOID d7_admit(PFLT_CALLBACK_DATA data,PCFLT_RELATED_OBJECTS objects)
 {
- PVOID ctx=NULL;BOOLEAN handled=FALSE;STAGE_ADMISSION_TOKEN_SLOT token=slot();
+ PVOID ctx=NULL;BOOLEAN handled=FALSE;STAGE_ADMISSION_TOKEN_SLOT token=slot();int before=LegacyPreCalls;
  assert(StageMvpNamespacePre(data,objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_WITH_CALLBACK&&handled);
- assert(ctx&&ctx!=&StageMvpNamespaceCompletionTag&&LegacyPreCalls==1&&!StageDirectoryMutationActive&&!CancelCalls&&!PreflightCalls);
- PSTAGE_MVP_REPARSE_OPEN open=StageMvpReparseOpenTake(ctx);assert(open==ctx&&!StageMvpReparseOpenTake(ctx));
- assert(!StageMvpReparseOpenTake((PVOID)(uintptr_t)32)); /* foreign contexts are never dereferenced or matched */
- return open;
+ assert(ctx&&ctx!=&StageMvpNamespaceCompletionTag&&LegacyPreCalls==before+1&&!StageDirectoryMutationActive&&!CancelCalls&&!PreflightCalls);
+ return ctx;
 }
-static VOID d7_post(PFLT_CALLBACK_DATA data,PCFLT_RELATED_OBJECTS objects,PSTAGE_MVP_REPARSE_OPEN open,NTSTATUS status,uintptr_t info,int flags)
-{ data->IoStatus.Status=status;data->IoStatus.Information=info;StageMvpReparseOpenPost(data,objects,open,flags); }
+/* The real CREATE post dispatch: foreign contexts (encoded scalars, other tags, NULL) are never matched. */
+static VOID d7_post(PFLT_CALLBACK_DATA data,PCFLT_RELATED_OBJECTS objects,PVOID ctx,NTSTATUS status,uintptr_t info,int flags)
+{
+ assert(!StageMvpReparseOpenDispatchPost(data,objects,(PVOID)(uintptr_t)32,flags));
+ assert(!StageMvpReparseOpenDispatchPost(data,objects,NULL,flags));
+ assert(!StageMvpReparseOpenDispatchPost(data,objects,&StageMvpNamespaceCompletionTag,flags));
+ data->IoStatus.Status=status;data->IoStatus.Information=info;
+ assert(StageMvpReparseOpenDispatchPost(data,objects,ctx,flags));
+ assert(!StageMvpReparseOpenDispatchPost(data,objects,ctx,flags)); /* consumed exactly once */
+}
 static VOID namespace_tests(void)
 {
  (void)&InterlockedCompareExchange64;
@@ -324,18 +336,18 @@ static VOID namespace_tests(void)
  for(unsigned a=0;a<sizeof(d7access)/sizeof(d7access[0]);a++){
   d7_reset();io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_OPEN_REPARSE_POINT;security.DesiredAccess=d7access[a];
   assert(StageMvpNamespaceReparseOpen(&data)&&StageMvpNamespaceCreateEligible(&data,&objects)&&!classified_writer(&data,&objects,TRUE));
-  PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+  PVOID open=d7_admit(&data,&objects);
   d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
   assert(data.IoStatus.Status==STATUS_SUCCESS&&!CancelOpenCalls&&!CancelCalls&&LegacyPostCalls==1);d7_done();
  }
  security.DesiredAccess=DELETE|FILE_READ_ATTRIBUTES|SYNCHRONIZE;
  /* OPEN_IF is narrowed to OPEN before the lower CREATE. */
  d7_reset();io.Parameters.Create.Options=(FILE_OPEN_IF<<24)|FILE_OPEN_REPARSE_POINT;
- {PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);assert((io.Parameters.Create.Options>>24)==FILE_OPEN);
+ {PVOID open=d7_admit(&data,&objects);assert((io.Parameters.Create.Options>>24)==FILE_OPEN);
   d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);assert(data.IoStatus.Status==STATUS_SUCCESS);d7_done();}
  io.Parameters.Create.Options=(FILE_OPEN<<24)|FILE_OPEN_REPARSE_POINT;
  /* 2. A reparse point seen only in post is cancelled; a symlink the pre lookup stops on is refused in pre. */
- d7_reset();{PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);TagAttributes=FILE_ATTRIBUTE_REPARSE_POINT;
+ d7_reset();{PVOID open=d7_admit(&data,&objects);TagAttributes=FILE_ATTRIBUTE_REPARSE_POINT;
   d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
   assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&!LegacyPostCalls&&!CancelCalls);d7_done();}
  d7_reset();IdentityStatus=STATUS_STOPPED_ON_SYMLINK;token=slot();ctx=NULL;
@@ -344,27 +356,39 @@ static VOID namespace_tests(void)
  /* 3. Query faults, short replies and a substituted regular object all cancel; missing object evidence is refused
   * without object calls; informational and oplock-break success with FILE_OPENED still validates and passes. */
  for(int fault=0;fault<5;fault++){
-  d7_reset();PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+  d7_reset();PVOID open=d7_admit(&data,&objects);
   if(fault==0)TagStatus=STATUS_ACCESS_DENIED;else if(fault==1)TagShort=1;else if(fault==2)IdQueryStatus=STATUS_ACCESS_DENIED;
   else if(fault==3)IdShort=1;else SourceId=9;
   d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
   assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&!LegacyPostCalls&&!CancelCalls);d7_done();
  }
- d7_reset();{PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);file.FsContext=NULL;
+ d7_reset();{PVOID open=d7_admit(&data,&objects);file.FsContext=NULL;
   d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);file.FsContext=(PVOID)1;
   assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&!CancelOpenCalls&&!LegacyPostCalls);d7_done();}
  NTSTATUS d7success[]={0x40000000,STATUS_OPLOCK_BREAK_IN_PROGRESS};
- for(unsigned k=0;k<2;k++){d7_reset();PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+ for(unsigned k=0;k<2;k++){d7_reset();PVOID open=d7_admit(&data,&objects);
   d7_post(&data,&objects,open,d7success[k],FILE_OPENED,0);
   assert(data.IoStatus.Status==d7success[k]&&!CancelOpenCalls&&LegacyPostCalls==1);d7_done();}
  /* 4. A failed or reparsed lower CREATE validates nothing and keeps the legacy post; a legacy-post denial is a single refusal. */
  NTSTATUS d7nonopen[]={STATUS_ACCESS_DENIED,STATUS_OBJECT_NAME_NOT_FOUND,STATUS_REPARSE};
- for(unsigned k=0;k<3;k++){d7_reset();PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+ for(unsigned k=0;k<3;k++){d7_reset();PVOID open=d7_admit(&data,&objects);
   d7_post(&data,&objects,open,d7nonopen[k],FILE_OPENED,0);
   assert(data.IoStatus.Status==d7nonopen[k]&&!CancelOpenCalls&&LegacyPostCalls==1);d7_done();}
- d7_reset();{PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);LegacyDenied=1;
+ d7_reset();{PVOID open=d7_admit(&data,&objects);LegacyDenied=1;
   d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
-  assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&!CancelOpenCalls&&LegacyPostCalls==1);d7_done();}
+  assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&LegacyPostCalls==1);d7_done();}
+ /* The real metadata-only legacy path requests no callback: the D7 post validates and never calls a legacy post. */
+ d7_reset();LegacyPreNoCallback=1;{PVOID open=d7_admit(&data,&objects);
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
+  assert(data.IoStatus.Status==STATUS_SUCCESS&&!LegacyPostCalls&&!CancelOpenCalls);d7_done();}
+ d7_reset();LegacyPreNoCallback=1;{PVOID open=d7_admit(&data,&objects);TagAttributes=FILE_ATTRIBUTE_REPARSE_POINT;
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);
+  assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&!LegacyPostCalls&&CancelOpenCalls==1);d7_done();}
+ /* Several D7 CREATEs tracked at once; posts arrive out of order and each finds exactly its own context. */
+ d7_reset();{PVOID a=d7_admit(&data,&objects),b=d7_admit(&data,&objects),c=d7_admit(&data,&objects);
+  assert(a!=b&&b!=c&&a!=c&&Allocs==3);
+  d7_post(&data,&objects,b,STATUS_SUCCESS,FILE_OPENED,0);d7_post(&data,&objects,c,STATUS_SUCCESS,FILE_OPENED,0);
+  d7_post(&data,&objects,a,STATUS_SUCCESS,FILE_OPENED,0);assert(LegacyPostCalls==3&&!CancelOpenCalls);d7_done();}
  /* 5. Every pre refusal frees its context; a draining post only frees it. */
  for(int refusal=0;refusal<4;refusal++){
   d7_reset();if(refusal==0)StageUnloadAdmissionClosed=1;else if(refusal==1)MandatoryTeardown=1;
@@ -372,9 +396,20 @@ static VOID namespace_tests(void)
   token=slot();ctx=NULL;
   assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&!ctx);
   assert(data.IoStatus.Status==(refusal<2?STATUS_DEVICE_NOT_READY:STATUS_ACCESS_DENIED));
-  assert(LegacyPreCalls==(refusal==3)&&Allocs==(refusal==3)&&!CancelCalls);d7_done();
+  assert(LegacyPreCalls==(refusal==3)&&Allocs==(refusal==3)&&!CancelCalls);
+  if(refusal<2)assert(!NameQueryCalls&&!IdentityProbeCalls); /* before any D7 name/identity I/O (eligibility only asked the volume type) */
+  d7_done();
  }
- d7_reset();{PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);TagAttributes=FILE_ATTRIBUTE_REPARSE_POINT;
+ /* Unload closing AFTER the recheck: the CREATE is admitted with its context live (its epoch callback is what unload's
+  * zero-callback snapshot then sees and vetoes); it completes normally. */
+ d7_reset();LookupHook=d7_close_unload;{PVOID open=d7_admit(&data,&objects);LookupHook=NULL;
+  assert(StageUnloadAdmissionClosed&&StageMvpReparseOpens.Flink!=&StageMvpReparseOpens);
+  d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,0);assert(data.IoStatus.Status==STATUS_SUCCESS);d7_done();}
+ /* A demotion that succeeded (eligibility) followed by a late filesystem-query failure in native routing refuses. */
+ d7_reset();assert(!classified_writer(&data,&objects,TRUE));FsQueryCalls=0;FsFailOnCall=2;token=slot();ctx=NULL;
+ assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&data.IoStatus.Status==STATUS_ACCESS_DENIED);
+ assert(FsQueryCalls==2&&!LegacyPreCalls&&!Allocs&&!IdentityProbeCalls);d7_done();
+ d7_reset();{PVOID open=d7_admit(&data,&objects);TagAttributes=FILE_ATTRIBUTE_REPARSE_POINT;
   d7_post(&data,&objects,open,STATUS_SUCCESS,FILE_OPENED,FLTFL_POST_OPERATION_DRAINING);
   assert(data.IoStatus.Status==STATUS_SUCCESS&&!CancelOpenCalls&&!LegacyPostCalls);d7_done();}
  /* 6. DOC, DELETE_CHILD and content-writing reparse opens stay excluded (writer, staged or refused as before). */
@@ -399,17 +434,17 @@ static VOID namespace_tests(void)
  d7_reset();PrivateView=1;token=slot();ctx=NULL; /* 8. private route, unchanged */
  assert(StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_NO_CALLBACK&&!handled&&!Allocs&&!LegacyPreCalls);d7_done();
  for(int raced=0;raced<2;raced++){
-  d7_reset();IdentityStatus=STATUS_OBJECT_NAME_NOT_FOUND;PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
-  assert(open->Identity.FileId==0&&open->Identity.VolumeSerialNumber==0);
+  d7_reset();IdentityStatus=STATUS_OBJECT_NAME_NOT_FOUND;PVOID open=d7_admit(&data,&objects);
+  assert(((PSTAGE_MVP_REPARSE_OPEN)open)->Identity.FileId==0&&((PSTAGE_MVP_REPARSE_OPEN)open)->Identity.VolumeSerialNumber==0);
   d7_post(&data,&objects,open,raced?STATUS_SUCCESS:STATUS_OBJECT_NAME_NOT_FOUND,FILE_OPENED,0);
   assert(CancelOpenCalls==raced&&data.IoStatus.Status==(raced?STATUS_ACCESS_DENIED:STATUS_OBJECT_NAME_NOT_FOUND));d7_done();
  }
  /* 9. Unexpected successful outcomes for this OPEN-only route and STATUS_PENDING are refused, never passed on. */
  uintptr_t d7infos[]={FILE_CREATED,FILE_OVERWRITTEN,FILE_SUPERSEDED,FILE_EXISTS,7};
- for(unsigned k=0;k<5;k++){d7_reset();PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+ for(unsigned k=0;k<5;k++){d7_reset();PVOID open=d7_admit(&data,&objects);
   d7_post(&data,&objects,open,STATUS_SUCCESS,d7infos[k],0);
   assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&!LegacyPostCalls);d7_done();}
- d7_reset();{PSTAGE_MVP_REPARSE_OPEN open=d7_admit(&data,&objects);
+ d7_reset();{PVOID open=d7_admit(&data,&objects);
   d7_post(&data,&objects,open,STATUS_PENDING,FILE_OPENED,0);
   assert(data.IoStatus.Status==STATUS_ACCESS_DENIED&&!CancelOpenCalls&&!LegacyPostCalls);d7_done();}
  /* 7. A reparse attribute on an open handle refuses a native disposition before any cancellation. */

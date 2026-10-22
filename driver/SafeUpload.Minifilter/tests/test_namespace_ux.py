@@ -32,7 +32,7 @@ def program(stream):
     native = ''.join(d.function(stream, name) for name in (
         'StageMvpReparseOpenTrack', 'StageMvpReparseOpenTake', 'StageMvpNamespaceOpen', 'StageMvpNamespaceReparseOpen',
         'StageMvpNamespaceCreateEligible', 'StageNamespacePostStatus', 'StageMvpRequireRegularObject',
-        'StageMvpReparseOpenPre', 'StageMvpReparseOpenPost',
+        'StageMvpReparseOpenPre', 'StageMvpReparseOpenPost', 'StageMvpReparseOpenDispatchPost',
         'StageMvpNamespaceCreateOpened', 'StageInstallRenameExchange', 'StageMvpRenameNeedsCopy', 'StageRenameAuthorizeReplacement',
         'StageMvpNamespacePre', 'StageMvpNamespacePostCreate', 'StageMvpNamespacePost'))
     types = stream[stream.index('typedef struct _STAGE_NAMESPACE_BINDINGS {'):stream.index(
@@ -114,7 +114,9 @@ class NamespaceUx(unittest.TestCase):
             ('!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&\n        !FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&', '!FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&'),
             ('!FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&\n        FlagOn(security->DesiredAccess, DELETE | FILE_WRITE_ATTRIBUTES);', 'FlagOn(security->DesiredAccess, DELETE | FILE_WRITE_ATTRIBUTES);'),
             # D7 pre: unload recheck, refusals of declines, absent-name zero identity.
-            ('if (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 || SafeUploadStageMandatoryTeardownActive()) {', 'if (FALSE && (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 || SafeUploadStageMandatoryTeardownActive())) {'),
+            ('if (reparseOpen && (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 ||', 'if (FALSE && (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 ||'),
+            ('if (reparseOpen) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; } /* D7 late decline */', '/* D7 late decline */'),
+            ('StageMvpReparseOpenTake(CompletionContext) : NULL;\n    if (open == NULL) return FALSE;', 'StageMvpReparseOpenTake(CompletionContext) : NULL;\n    if (open != NULL) { open->Link.Flink = NULL; ExFreePoolWithTag(open, STAGE_TAG); } return FALSE;'),
             ('if (reparseOpen) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; }\n        goto Exit;', 'goto Exit;'),
             ('if (source->Stream.Length != 0) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; } /* D7 */', '/* D7 */'),
             ('if (!StageNameLookupProvesAbsent(status)) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; }', 'if (FALSE) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; }'),
@@ -137,11 +139,19 @@ class NamespaceUx(unittest.TestCase):
             ('status = SafeUploadStageCheckSubjectAccess(Data, Target->Security, DELETE);', 'status = STATUS_SUCCESS; (void)&SafeUploadStageCheckSubjectAccess; (void)Target;'),
             ('StageMvpNamespaceRegistryContext = registryRenameContext != NULL ? registryRenameContext : mutatingIoContext;', 'StageMvpNamespaceRegistryContext = NULL;'),
         )
+        receipts = []
         for old, new in mutations:
             with self.subTest(mutation=old):
                 self.assertIn(old, source)
                 result = run(source.replace(old, new), 'cc')
+                killed = [line for line in result.stderr.splitlines() if 'Assertion' in line or 'runtime error' in line]
+                receipts.append({'mutation': old.splitlines()[0][:120], 'returncode': result.returncode,
+                                 'killed_by': killed[-1][-220:] if killed else result.stderr.strip()[-220:]})
                 self.assertNotEqual(result.returncode, 0, result.stdout)
+        # Per-mutant receipt: which assertion killed each mutant (build failures raise in run() and never count).
+        receipt = Path(os.environ.get('TMPDIR', ROOT / '.scratch')) / 'namespace-ux-mutants.json'
+        receipt.parent.mkdir(parents=True, exist_ok=True)
+        receipt.write_text(__import__('json').dumps(receipts, indent=1))
 
     def test_registry_completion_keeps_renamed_unknown_held(self):
         source = (HERE.parent / 'StageWriters.c').read_text()
@@ -175,6 +185,35 @@ class NamespaceUx(unittest.TestCase):
         epoch = d.function(source, 'StageDispatchEpoch')
         self.assertIn('return StageNamespacePostStatus(Data->Iopb->MajorFunction, slot.DirectoryMutation, result);', epoch)
         self.assertLess(epoch.index('token->DirectoryMutation = slot.DirectoryMutation;'), epoch.index('return StageNamespacePostStatus('))
+
+    def test_d7_integration_wiring(self):
+        source = d.STREAM.read_text()
+        admit = d.function(source, 'StageAdmit')
+        start = admit.index('*NativeMutationRequired = !service &&')
+        obligation = admit[start:admit.index(';', start)]
+        # A D7 request keeps the DOC refusal obligation until native, private or outside-scope handling owns it.
+        self.assertIn('StageMvpNamespaceReparseOpen(Data)', obligation)
+        self.assertIn('FILE_DELETE_ON_CLOSE', obligation)
+        dispatch = d.function(source, 'StageDispatchCore')
+        self.assertLess(dispatch.index('if (nativeMutationRequired) return StageCompleteAccessDenied(Data);'),
+                        dispatch.index('result = SafeUploadPreCreate(Data, Objects, &legacyCompletionContext);'))
+        core = source[source.index('static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore('):]
+        create = core[core.index('if (Data->Iopb->MajorFunction == IRP_MJ_CREATE) {'):]
+        self.assertLess(create.index('StageMvpReparseOpenDispatchPost(Data, Objects, CompletionContext, Flags)'),
+                        create.index('SafeUploadStageNativePostCreate(Data, Objects, CompletionContext, Flags)'))
+        post = source[source.index('FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,'):]
+        inner = post.index('result = StagePostOperationCore(Data, Objects, token->InnerCompletionContext, Flags);')
+        self.assertLess(inner, post.index('SafeUploadPolicyAdmissionRelease(token);\n            return result;'))
+        epoch = d.function(source, 'StageDispatchEpoch')
+        self.assertLess(epoch.index('status = SafeUploadPolicyAdmissionAcquire(&token);'),
+                        epoch.index('result = StageDispatchCore(Data, Objects, &innerContext, &slot);'))
+        unload = d.function(source, 'SafeUploadStagePrepareUnload')
+        self.assertLess(unload.index('StageSetUnloadAdmissionClosed(TRUE);'), unload.index('SafeUploadPolicyPublicationQuiescent()'))
+        native = d.function(source, 'StageMvpNamespacePre')
+        recheck = native.index('if (reparseOpen && (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 ||')
+        self.assertLess(recheck, native.index('FltGetFileNameInformation(Data,'))
+        self.assertLess(recheck, native.index('SafeUploadStageQueryIdentity('))
+        self.assertNotIn('StageUnloadAdmissionClosed', d.function(source, 'StageMvpReparseOpenPre'))
 
     def test_private_authority_precedes_cancel_and_retains_evidence(self):
         source = d.STREAM.read_text()

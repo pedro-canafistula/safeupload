@@ -1,0 +1,157 @@
+[
+ {
+  "mutation": "Slot->DirectorySequence == InterlockedCompareExchange64(&StageDirectorySequence, 0, 0)",
+  "returncode": 97,
+  "killed_by": "line 1415: StageDirectoryBeginMutation(&root,NULL,&token)==STATUS_SHARING_VIOLATION"
+ },
+ {
+  "mutation": "!RtlEqualMemory(&objectIdentity, &Bindings->Source, sizeof(objectIdentity))",
+  "returncode": 97,
+  "killed_by": "line 1468: StageNamespaceCaptureBindings(&data,&objects,&Source,&Destination,&invalid)==STATUS_SHARING_VIOLATION"
+ },
+ {
+  "mutation": "!RtlEqualUnicodeString(&current->Name, &Source->Name, TRUE)",
+  "returncode": 97,
+  "killed_by": "line 1467: StageNamespaceRevalidateBindings(&data,&objects,&Source,&Destination,&bindings)==STATUS_SHARING_VIOLATION"
+ },
+ {
+  "mutation": "!RtlEqualMemory(&current.Parent, &Bindings->Parent, sizeof(current.Parent))",
+  "returncode": 97,
+  "killed_by": "line 1469: StageNamespaceRevalidateBindings(&data,&objects,&Source,&Destination,&bindings)==STATUS_SHARING_VIOLATION"
+ },
+ {
+  "mutation": "StageMvpNamespaceCreateOpened(Data, Objects)) {",
+  "returncode": 97,
+  "killed_by": "line 1582: CancelCalls==0&&LegacyPostCalls==1"
+ },
+ {
+  "mutation": "return NT_SUCCESS(Data->IoStatus.Status) && Data->IoStatus.Status != STATUS_REPARSE",
+  "returncode": 97,
+  "killed_by": "line 1648: CancelCalls==!substitute&&CancelOpenCalls==substitute&&StageDirectoryMutationActive"
+ },
+ {
+  "mutation": "(!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_REPARSE_POINT) || StageMvpNamespaceReparseOpen(Data)) &&",
+  "returncode": 97,
+  "killed_by": "line 1603: StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_NO_CALLBACK&&!handled"
+ },
+ {
+  "mutation": "!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&",
+  "returncode": 97,
+  "killed_by": "line 1602: StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_SUCCESS_NO_CALLBACK&&!handled"
+ },
+ {
+  "mutation": "!FlagOn(security->DesiredAccess, FILE_DELETE_CHILD) &&",
+  "returncode": 97,
+  "killed_by": "line 1617: !StageMvpNamespaceReparseOpen(&data)&&classified_writer(&data,&objects,TRUE)"
+ },
+ {
+  "mutation": "if (reparseOpen && (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 ||",
+  "returncode": 97,
+  "killed_by": "line 1782: StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&!ctx"
+ },
+ {
+  "mutation": "if (reparseOpen) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; } /* D7 late decline */",
+  "returncode": 97,
+  "killed_by": "line 1795: StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&data.IoStatus.Status==STATUS_ACCESS_DENIED"
+ },
+ {
+  "mutation": "StageMvpReparseOpenTake(CompletionContext) : NULL;",
+  "returncode": 97,
+  "killed_by": "line 1562: StageMvpReparseOpenDispatchPost(data,objects,ctx,flags)"
+ },
+ {
+  "mutation": "if (reparseOpen) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; }",
+  "returncode": 97,
+  "killed_by": "line 1811: StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&data.IoStatus.Status==STATUS_ACCESS_DENIED"
+ },
+ {
+  "mutation": "if (source->Stream.Length != 0) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; } /* D7 */",
+  "returncode": 97,
+  "killed_by": "line 1815: StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&data.IoStatus.Status==STATUS_ACCESS_DENIED"
+ },
+ {
+  "mutation": "if (!StageNameLookupProvesAbsent(status)) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; }",
+  "returncode": 97,
+  "killed_by": "line 1739: StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled"
+ },
+ {
+  "mutation": "RtlZeroMemory(&identity, sizeof(identity));",
+  "returncode": 97,
+  "killed_by": "line 1823: ((PSTAGE_MVP_REPARSE_OPEN)open)->Identity.FileId==0&&((PSTAGE_MVP_REPARSE_OPEN)open)->Identity.VolumeSerialNumber==0"
+ },
+ {
+  "mutation": "if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) goto Free;",
+  "returncode": 97,
+  "killed_by": "line 1799: data.IoStatus.Status==STATUS_SUCCESS&&!CancelOpenCalls&&!LegacyPostCalls"
+ },
+ {
+  "mutation": "if (status == STATUS_PENDING) goto Deny; /* not a completed outcome */",
+  "returncode": 97,
+  "killed_by": "line 1834: data.IoStatus.Status==STATUS_ACCESS_DENIED&&!CancelOpenCalls&&!LegacyPostCalls"
+ },
+ {
+  "mutation": "if (Data->IoStatus.Information != FILE_OPENED) goto Cancel;",
+  "returncode": 97,
+  "killed_by": "line 1831: data.IoStatus.Status==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&!LegacyPostCalls"
+ },
+ {
+  "mutation": "if (file == NULL || file->FsContext == NULL) goto Deny;",
+  "returncode": 97,
+  "killed_by": "line 1752: data.IoStatus.Status==STATUS_ACCESS_DENIED&&!CancelOpenCalls&&!LegacyPostCalls"
+ },
+ {
+  "mutation": "if (!NT_SUCCESS(StageMvpRequireRegularObject(Objects->Instance, file))) goto Cancel;",
+  "returncode": 97,
+  "killed_by": "line 1737: data.IoStatus.Status==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&!LegacyPostCalls&&!CancelCalls"
+ },
+ {
+  "mutation": "!RtlEqualMemory(&identity, &Open->Identity, sizeof(identity))) goto Cancel; /* substituted object */",
+  "returncode": 97,
+  "killed_by": "line 1748: data.IoStatus.Status==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&!LegacyPostCalls&&!CancelCalls"
+ },
+ {
+  "mutation": "if (!NT_SUCCESS(status) || returned != sizeof(tag) || FlagOn(tag.FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT))",
+  "returncode": 97,
+  "killed_by": "line 1748: data.IoStatus.Status==STATUS_ACCESS_DENIED&&CancelOpenCalls==1&&!LegacyPostCalls&&!CancelCalls"
+ },
+ {
+  "mutation": "status = StageMvpRequireRegularObject(Objects->Instance, file);",
+  "returncode": 97,
+  "killed_by": "line 1839: StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled&&data.IoStatus.Status==STATUS_ACCESS_DENIED"
+ },
+ {
+  "mutation": "StageMvpNamespaceCreateEligible(Data, Objects)) writer = FALSE;",
+  "returncode": 97,
+  "killed_by": "line 1618: !StageMvpNamespaceReparseOpen(&data)&&classified_writer(&data,&objects,TRUE)"
+ },
+ {
+  "mutation": "!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&",
+  "returncode": 97,
+  "killed_by": "line 1630: writer"
+ },
+ {
+  "mutation": "writer = requestedWriter;",
+  "returncode": 97,
+  "killed_by": "line 1636: readmitted_writer(&data,&objects,TRUE,FALSE)"
+ },
+ {
+  "mutation": "if (mutation && !StageNameLookupProvesAbsent(status)) {",
+  "returncode": 97,
+  "killed_by": "line 1628: StageMvpNamespacePre(&data,&objects,&ctx,&handled,&token)==FLT_PREOP_COMPLETE&&handled"
+ },
+ {
+  "mutation": "(MajorFunction == IRP_MJ_SET_INFORMATION && Mutation)",
+  "returncode": 97,
+  "killed_by": "line 1665: StageNamespacePostStatus(IRP_MJ_SET_INFORMATION,TRUE,r)==FLT_PREOP_SYNCHRONIZE"
+ },
+ {
+  "mutation": "status = SafeUploadStageCheckSubjectAccess(Data, Target->Security, DELETE);",
+  "returncode": 97,
+  "killed_by": "line 1708: StageRenameAuthorizeReplacement(&data,&stream,&target,&Destination.Name,TRUE)==STATUS_ACCESS_DENIED"
+ },
+ {
+  "mutation": "StageMvpNamespaceRegistryContext = registryRenameContext != NULL ? registryRenameContext : mutatingIoContext;",
+  "returncode": 97,
+  "killed_by": "line 1687: RenameCompleteCalls==1&&!MutatingOwners&&!RenameOwnsMutation&&CompletedSuccess==(completion==0)&&CompletedDraining==(completion==2)"
+ }
+]

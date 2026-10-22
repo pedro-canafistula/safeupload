@@ -9173,9 +9173,12 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     NTSTATUS denyAux = STATUS_SUCCESS;
     *DirectoryCollisionHold = NULL;
     /* Until a resolved, alias-checked outside name proves otherwise, a DOC
-     * declined by both staging routes must not reach legacy CREATE. */
+     * declined by both staging routes must not reach legacy CREATE. A D7
+     * OPEN_REPARSE_POINT request is classified independently of eligibility
+     * and carries the same obligation (T5-UX-NAMESPACE-GAP D7). */
     *NativeMutationRequired = !service &&
-        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) &&
+        (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) ||
+         (KeGetCurrentIrql() == PASSIVE_LEVEL && StageMvpNamespaceReparseOpen(Data))) &&
         !FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE) &&
         SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     UNREFERENCED_PARAMETER(AliasProof);   /* only the prototype's writer registry consumes it */
@@ -10386,9 +10389,7 @@ static NTSTATUS StageMvpRequireRegularObject(PFLT_INSTANCE Instance, PFILE_OBJEC
     return STATUS_SUCCESS;
 }
 
-/* D7 pre, after eligibility, protected-name and identity checks. The CREATE already holds an admission epoch
- * (DELETE and FILE_WRITE_ATTRIBUTES are epoch operations). Unload closes admission before its zero-callback
- * snapshot, so either that snapshot sees this callback and unload vetoes, or this read sees the closed gate. */
+/* D7 pre, after the unload recheck, eligibility, protected-name and identity checks in StageMvpNamespacePre. */
 _Use_decl_annotations_
 static FLT_PREOP_CALLBACK_STATUS StageMvpReparseOpenPre(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
     const FILE_ID_INFORMATION *Identity, PVOID *CompletionContext)
@@ -10397,11 +10398,6 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpReparseOpenPre(PFLT_CALLBACK_DATA Data,
     FLT_PREOP_CALLBACK_STATUS legacy;
     PAGED_CODE();
     *CompletionContext = NULL;
-    if (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 || SafeUploadStageMandatoryTeardownActive()) {
-        Data->IoStatus.Status = STATUS_DEVICE_NOT_READY;
-        Data->IoStatus.Information = 0;
-        return FLT_PREOP_COMPLETE;
-    }
     open = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*open), STAGE_TAG);
     if (open == NULL) {
         Data->IoStatus.Status = STATUS_ACCESS_DENIED;
@@ -10458,6 +10454,19 @@ Free:
     ExFreePoolWithTag(Open, STAGE_TAG);
 }
 
+/* CREATE post dispatch for D7: exact list membership, so an encoded legacy scalar or another path's context is never
+ * matched or dereferenced. TRUE when the context was a D7 context (now validated and freed). */
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageMvpReparseOpenDispatchPost(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
+    _In_opt_ PVOID CompletionContext, _In_ FLT_POST_OPERATION_FLAGS Flags)
+{
+    PSTAGE_MVP_REPARSE_OPEN open = (ULONG_PTR)CompletionContext >= 0x10000 ?
+        StageMvpReparseOpenTake(CompletionContext) : NULL;
+    if (open == NULL) return FALSE;
+    StageMvpReparseOpenPost(Data, Objects, open, Flags);
+    return TRUE;
+}
+
 /* Native original-object path for the unbound local NTFS profile. No handle
  * export, second open, flag translation or synthetic FILE_OBJECT. NTFS checks
  * the original grant and all native sharing/image/read-only/flag semantics. */
@@ -10493,6 +10502,13 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
         if (!StageMvpNamespaceCreateEligible(Data, Objects)) return result;
         mutation = BooleanFlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE);
         reparseOpen = StageMvpNamespaceReparseOpen(Data);
+        /* D7: this CREATE already holds an admission epoch (DELETE and FILE_WRITE_ATTRIBUTES are epoch
+         * operations). Unload closes admission before its zero-callback snapshot, so either that snapshot
+         * sees this callback and unload vetoes, or this read sees the closed gate before any name/identity I/O. */
+        if (reparseOpen && (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 ||
+            SafeUploadStageMandatoryTeardownActive())) {
+            *Handled = TRUE; status = STATUS_DEVICE_NOT_READY; goto Refuse;
+        }
     } else if (major == IRP_MJ_SET_INFORMATION) {
         ULONG length = Data->Iopb->Parameters.SetFileInformation.Length;
         PVOID buffer = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
@@ -10513,7 +10529,10 @@ static FLT_PREOP_CALLBACK_STATUS StageMvpNamespacePre(_Inout_ PFLT_CALLBACK_DATA
                 BooleanFlagOn(*(PULONG)buffer, FILE_DISPOSITION_DELETE);
         } else if (cls != FileBasicInformation) return result;
     } else return result;
-    if (!NT_SUCCESS(FltGetFileSystemType(Objects->Instance, &fs)) || fs != FLT_FSTYPE_NTFS) return result;
+    if (!NT_SUCCESS(FltGetFileSystemType(Objects->Instance, &fs)) || fs != FLT_FSTYPE_NTFS) {
+        if (reparseOpen) { *Handled = TRUE; status = STATUS_ACCESS_DENIED; goto Refuse; } /* D7 late decline */
+        return result;
+    }
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_FILESYSTEM_ONLY |
             FLT_FILE_NAME_REQUEST_FROM_CURRENT_PROVIDER, &source);
     if (!NT_SUCCESS(status) || !NT_SUCCESS(FltParseFileNameInformation(source))) {
@@ -11346,15 +11365,9 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
 #endif
     if (Data->Iopb->MajorFunction == IRP_MJ_CREATE) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        /* D7 before every other CREATE post. Encoded legacy scalars are never looked up. */
-        {
-            PSTAGE_MVP_REPARSE_OPEN reparseOpen = (ULONG_PTR)CompletionContext >= 0x10000 ?
-                StageMvpReparseOpenTake(CompletionContext) : NULL;
-            if (reparseOpen != NULL) {
-                StageMvpReparseOpenPost(Data, Objects, reparseOpen, Flags);
-                return FLT_POSTOP_FINISHED_PROCESSING;
-            }
-        }
+        /* D7 before every other CREATE post. */
+        if (StageMvpReparseOpenDispatchPost(Data, Objects, CompletionContext, Flags))
+            return FLT_POSTOP_FINISHED_PROCESSING;
         if (SafeUploadStageNativePostCreate(Data, Objects, CompletionContext, Flags))
             return FLT_POSTOP_FINISHED_PROCESSING;
         if (SafeUploadStageWritersIsReservation(CompletionContext)) {
