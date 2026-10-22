@@ -23,6 +23,15 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-21 (T5 deletes and samples) — native DeleteFileW for regular files; bracket reads.** Owner, in the session, chose both
+recommended options after `m2t5ord8` ([T5 checkpoint](evidence/2026-10-21/t5-checkpoint.md)). (1) `DeleteFileW` opens with
+`FILE_OPEN_REPARSE_POINT`, which `T5-UX-NAMESPACE-GAP.md` item 2 keeps on staged admission, so `del`, `Remove-Item` and Explorer's
+permanent delete of a published protected file fail "Access denied". Such an open takes the native NTFS route when the opened object is
+not a reparse point; a real reparse point is closed and refused as today. Design delta and Sol 6.1 high review precede kernel code;
+T5's "both DeleteFileW calls succeed" requirement stands. (2) Raw samples taken while the actor runs bracket the capture with public
+reads before and after; the raw image must match one of them and any change between them must be known approved bytes. Gated samples
+keep the strict rule; every read is retained; unapproved bytes in a raw image still fail.
+
 **2026-10-21 (T5 rows) — budget-off isolation rows until the T9 fix.** Owner, in the session, chose the recommended option: T5 rows run with
 the staging budget disabled as isolation rows, as T4 did, because a save right after the file dialog deletes its test file can be refused
 by the known T9 whole-allowance reservation defect ([T5 checkpoint](evidence/2026-10-21/t5-checkpoint.md), `m2t5ord7`). The budget-on T5
