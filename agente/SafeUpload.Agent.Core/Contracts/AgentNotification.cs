@@ -122,6 +122,7 @@ public sealed record EventNotification(
     AuditEvent Event,
     IReadOnlyList<Finding> Findings,
     bool OverrideAllowed = false,
+    // Confirma movimentação concluída; o veredito Blocked sozinho não basta.
     bool Quarantined = false) : AgentNotification
 {
     /// <summary>Discriminador desta mensagem no NDJSON.</summary>

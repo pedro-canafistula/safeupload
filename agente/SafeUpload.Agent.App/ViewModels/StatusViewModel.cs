@@ -109,7 +109,7 @@ public sealed class StatusViewModel : ObservableObject
         if (status.ProtectionActive && status.AuditOnly)
         {
             SecurityState = "Em auditoria";
-            SecurityCaption = "MONITORANDO SEM BLOQUEIO";
+            SecurityCaption = "SEM BLOQUEIO PREVENTIVO DE ARQUIVOS";
             MonitoringState = "AUDITANDO";
         }
         else if (status.ProtectionActive && status.AdmissionCoverage == AdmissionCoverageStatus.Pending)

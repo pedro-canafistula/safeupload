@@ -5,7 +5,7 @@
         mc:Ignorable="d"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        Title="Envio bloqueado pelo SafeUpload"
+        Title="Restrição detectada pelo SafeUpload"
         Width="380"
         SizeToContent="Height"
         WindowStyle="None"
@@ -49,7 +49,7 @@
                     CornerRadius="9,9,0,0"
                     Padding="16,12">
                 <StackPanel>
-                    <TextBlock Text="Envio bloqueado pelo SafeUpload"
+                    <TextBlock Text="Restrição detectada pelo SafeUpload"
                                FontFamily="{StaticResource UiFont}"
                                FontSize="15"
                                FontWeight="SemiBold"
@@ -107,7 +107,7 @@
 
                 <TextBlock Style="{StaticResource BodyText}"
                            Foreground="{StaticResource TextMuted}"
-                           Text="Revise o arquivo, remova ou anonimize as informações e tente novamente."
+                           Text="Revise o conteúdo e remova ou anonimize as informações antes de tentar novamente."
                            Margin="0,0,0,10" />
 
                 <!--
@@ -118,7 +118,7 @@
                 -->
                 <TextBlock x:Name="QuarantineText"
                            Style="{StaticResource MutedText}"
-                           Text="O arquivo foi retirado da pasta monitorada e guardado em SafeUpload\_bloqueados na sua pasta de usuário."
+                           Visibility="Collapsed"
                            TextWrapping="Wrap"
                            Margin="0,0,0,16" />
 

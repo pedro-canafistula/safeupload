@@ -164,7 +164,7 @@
                                    FontSize="15"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource Text}" />
-                        <TextBlock Text="Intercepções e operações recentes"
+                        <TextBlock Text="Resultados recentes de inspeção"
                                    Style="{StaticResource MutedText}"
                                    Margin="0,3,0,0" />
                     </StackPanel>
@@ -182,10 +182,10 @@
 
                             <TextBlock Grid.Column="0"
                                        Style="{StaticResource ColumnHeader}"
-                                       Text="OPERAÇÃO DE ARQUIVO" />
+                                       Text="CONTEÚDO" />
                             <TextBlock Grid.Column="1"
                                        Style="{StaticResource ColumnHeader}"
-                                       Text="STATUS" />
+                                       Text="INSPEÇÃO" />
                         </Grid>
                     </Border>
 
@@ -243,7 +243,7 @@
                     <!-- Tabela sem eventos: uma linha discreta, nunca um vazio. -->
                     <Border Padding="20,16"
                             Visibility="{Binding HasNoActivity, Converter={StaticResource BoolToVisibility}}">
-                        <TextBlock Text="Nenhuma operação interceptada até agora"
+                        <TextBlock Text="Nenhuma inspeção registrada até agora"
                                    Style="{StaticResource MutedText}" />
                     </Border>
 

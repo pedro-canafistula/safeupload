@@ -56,7 +56,7 @@
                         <DataGridTextColumn Header="Processo" Binding="{Binding Process}" Width="110" />
 
                         <!-- O mesmo rótulo do status, para o resultado ser reconhecível nas duas telas. -->
-                        <DataGridTemplateColumn Header="Resultado" Width="150">
+                        <DataGridTemplateColumn Header="Inspeção" Width="150">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type vm:HistoryRowViewModel}">
                                     <TextBlock Text="{Binding Status.Text}"
