@@ -6,6 +6,8 @@ Instalador `.exe` para Windows 10/11 x64, com serviço `SafeUploadAgent`, interf
 
 Checkpoint posterior: [pacote candidato 0.1.3 e validação estática](../docs/VALIDACAO-PACOTE-AGENTE-20261021.md). Os exemplos abaixo usam a versão padrão do builder; informar `-Version 0.1.3` para reproduzir esse candidato.
 
+Homologação operacional posterior: [candidato 0.1.4 aprovado em Windows Server 2025 descartável, sem driver](../docs/HOMOLOGACAO-INSTALADOR-20261021.md). A instalação inicial, inspeção sintética, reinício do serviço e remoção foram executados; Windows 10/11 e UI em sessão comum continuam pendentes.
+
 ## Escopo e divisão da equipe
 
 Este trabalho é somente do agente Windows. Não altera o backend Java, seus endpoints ou o painel Angular. A URL escolhida precisa apontar para uma API compatível, definida com Thiago. O pacote não inclui as propostas locais de correção Java da recuperação anterior.

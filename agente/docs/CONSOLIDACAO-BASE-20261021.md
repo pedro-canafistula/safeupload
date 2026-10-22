@@ -2,6 +2,8 @@
 
 Data da inspeção: 21/10/2026. Candidato local, sem publicação e sem merge.
 
+Este é o checkpoint inicial. Estado posterior: [homologação operacional e publicação em rascunho](HOMOLOGACAO-INSTALADOR-20261021.md), com PR #49, atividades #43–#48 e evidências reais do candidato 0.1.4. As limitações e resultados iniciais abaixo permanecem como histórico.
+
 Continuação: [validação com HTTP real em loopback](VALIDACAO-HTTP-LOOPBACK-20261021.md), com dois novos testes, 49/49 controles focados e atualização das dependências. Os resultados abaixo preservam o checkpoint inicial.
 
 ## Escopo e proveniência
