@@ -274,6 +274,7 @@ $ErrorActionPreference = 'Continue'
 'DRIVER_LOADED=' + [bool](fltmc.exe filters | Select-String SafeUpload)
 'VERIFIER=' + ((& verifier.exe /query | Out-String) -replace '\s+', ' ')
 try { $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query deny-ring); 'RING_TOTAL=' + $ring.Count; foreach ($e in $ring | Select-Object -Last 60) { 'RING=' + ($e | ConvertTo-Json -Compress) } } catch { 'RING_ERROR=' + $_.Exception.Message }
+try { $counters = & 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query counters; 'WRITER_STATE=' + ($counters.writerState | ConvertTo-Json -Depth 6 -Compress) } catch { 'WRITER_STATE_ERROR=' + $_.Exception.Message }
 'AFTER_DONE=True'
 PS
     result_saved=no; raw_saved=no
@@ -617,6 +618,25 @@ def forced_order_matches(case, samples):
             bool(target[0].get('FileId')) and entry.get('State') == '5' and entry.get('SealedOnce') is True and
             entry.get('SealedLength') == 0 and entry.get('Sha256Hex') == empty_sha and
             0 <= steps.find('test-close=') < steps.find('test-delete='))
+def writer_registry_verdict(after_text):
+    # D7 rev 5 control (m2t5ord9): the driver's writer registry must stay Known across the row. Missing diagnostics are
+    # INCONCLUSIVE, never PASS; the reasons and first-Unknown origins are in the line so a failure is triaged from it.
+    found = re.search(r'^WRITER_STATE=(\{.*\})\s*$', after_text, re.M)
+    if found is None:
+        error = re.search(r'^WRITER_STATE_ERROR=(.*)$', after_text, re.M)
+        return 'INCONCLUSIVE', 'driver writer-registry diagnostics were not captured: ' + (error.group(1).strip()[:200] if error else 'no WRITER_STATE line')
+    try:
+        state = json.loads(found.group(1))
+        origins = {k: state[k] for k in ('writerGlobalFirstUnknown', 'writerEntryFirstUnknown', 'writerSopFirstUnknown')}
+        mask, instance, sop = state['registryUnknownReasons'], state['registryInstanceUnknown'], state['writerSopUnknownCount']
+        reasons = [o['reason'] for o in origins.values()]
+        assert all(isinstance(v, int) for v in (mask, instance, sop, *reasons))
+    except Exception as exc:
+        return 'INCONCLUSIVE', 'driver writer-registry diagnostics were unusable: ' + type(exc).__name__ + ' ' + str(exc)[:120]
+    detail = ('unknownReasons=%d instanceUnknown=%d sopUnknownCount=%d globalFirst=%s entryFirst=%s sopFirst=%s cleanupUnmatched=%s untrackedCreates=%s' %
+              (mask, instance, sop, json.dumps(origins['writerGlobalFirstUnknown']), json.dumps(origins['writerEntryFirstUnknown']),
+               json.dumps(origins['writerSopFirstUnknown']), state.get('cleanupUnmatched'), state.get('untrackedCreates')))
+    return ('PASS' if mask == 0 and instance == 0 and sop == 0 and not any(reasons) else 'FAIL'), detail
 def approved_public_hash_map():
     approved = {}
     for spec in required_cases:
@@ -954,6 +974,8 @@ for c in cases:
 raw_verdict = ro.get('NoUnapprovedByteVerdict')
 verdict('T5CanonicalNoUnapprovedByte', 'PASS' if raw_verdict == 'PASS' else ('INCONCLUSIVE' if raw_verdict == 'INCONCLUSIVE' else 'FAIL'),
         ro.get('NoUnapprovedByteReason') or 'Canonical lower-mutation proof field missing.')
+registry_outcome, registry_detail = writer_registry_verdict(after)
+verdict('T5WriterRegistryKnown', registry_outcome, registry_detail)
 for r in ((result or {}).get('Ring') or [])[-25:]:
     out.append(f"T5DenyRing INFO {r[:400]}")
 if os.environ.get('T5_STAGE_SPACE_EFFECTIVE') == 'off':

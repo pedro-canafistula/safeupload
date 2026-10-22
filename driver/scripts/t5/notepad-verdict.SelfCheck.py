@@ -9,7 +9,7 @@ import re
 launcher = pathlib.Path(__file__).resolve().parents[1] / "Invoke-StageNotepad.sh"
 blocks = re.findall(r"<<'PY'\n(.*?)\nPY\n", launcher.read_text(), re.S)
 parsed = [ast.parse(block) for block in blocks]
-required = {"valid_raw_sample", "native_steps_match", "forced_order_matches", "approved_public_hash_map"}
+required = {"valid_raw_sample", "native_steps_match", "forced_order_matches", "approved_public_hash_map", "writer_registry_verdict"}
 functions = [node for tree in parsed for node in tree.body
              if isinstance(node, ast.FunctionDef) and node.name in required]
 assert {node.name for node in functions} == required, "Actual verdict helpers missing"
@@ -17,7 +17,7 @@ import json
 required_cases = json.loads((launcher.parent / 't5/notepad-cases.json').read_text())
 leaves = {leaf.lower() for c in required_cases for leaf in [c['Leaf'], *c.get('AuxiliaryLeaves', [])]}
 scope = r"c:\protected\t5"
-environment = {"re": re, "hashlib": hashlib, "required_cases": required_cases, "expected_leaves": leaves, "scope_path": scope,
+environment = {"re": re, "json": json, "hashlib": hashlib, "required_cases": required_cases, "expected_leaves": leaves, "scope_path": scope,
                "ro": {"BootId": "control-boot"},
                "baseline_parent": [{"FileId": "parent-full-id", "Reference": "parent-reference"}]}
 exec(compile(ast.Module(body=functions, type_ignores=[]), str(launcher), "exec"), environment)
@@ -146,4 +146,27 @@ check(valid_raw(straddle("OK", b"T5 ProbeDeleteAfterPublication clean text")), "
 check(not valid_raw(straddle("OK", b"T5 notepad CPF: 529.982.247-25")), "A straddle onto unapproved bytes must fail")
 check(not valid_raw(straddle("OK", b"", phase="AfterActorOutcomeSettlement")), "Bracketed reads outside ActorRunning must fail")
 check(not valid_raw(straddle("OK", b"", before_present=True)), "A raw image matching neither public read must fail")
+# D7 rev 5 (m2t5ord9): the row records the driver's writer registry and requires it to stay Known; missing evidence is never PASS.
+registry = environment["writer_registry_verdict"]
+def writer_state(**changes):
+    state = {"registryUnknownReasons": 0, "registryInstanceUnknown": 0, "writerSopUnknownCount": 0, "cleanupUnmatched": 0,
+             "untrackedCreates": 0, "writerGlobalFirstUnknown": {"reason": 0, "site": 0},
+             "writerEntryFirstUnknown": {"reason": 0, "site": 0}, "writerSopFirstUnknown": {"reason": 0, "site": 0}}
+    state.update(changes)
+    return "AFTER_DONE=False\nWRITER_STATE=" + json.dumps(state, separators=(",", ":")) + "\nAFTER_DONE=True\n"
+check(registry(writer_state())[0] == "PASS", "A Known registry must pass")
+check(registry(writer_state(registryUnknownReasons=64))[0] == "FAIL", "A sticky Unknown mask must fail")
+check(registry(writer_state(registryInstanceUnknown=1))[0] == "FAIL", "An Unknown instance must fail")
+check(registry(writer_state(writerSopUnknownCount=1))[0] == "FAIL", "An Unknown section pointer must fail")
+check(registry(writer_state(writerGlobalFirstUnknown={"reason": 6, "site": 3141}))[0] == "FAIL", "A recorded first-Unknown origin must fail")
+check(registry(writer_state(writerEntryFirstUnknown={"reason": 2, "site": 9}))[0] == "FAIL", "An entry-level Unknown origin must fail")
+failed = registry(writer_state(registryUnknownReasons=64, writerGlobalFirstUnknown={"reason": 6, "site": 3141}))[1]
+check("globalFirst={\"reason\": 6, \"site\": 3141}" in failed and "unknownReasons=64" in failed, "The failure line carries the reasons and origins")
+check(registry("AFTER_DONE=True\n")[0] == "INCONCLUSIVE", "Missing diagnostics are INCONCLUSIVE, never PASS")
+check(registry("WRITER_STATE_ERROR=pipe closed\n")[0] == "INCONCLUSIVE" and "pipe closed" in registry("WRITER_STATE_ERROR=pipe closed\n")[1],
+      "A diagnostics error is INCONCLUSIVE and reported")
+check(registry("WRITER_STATE={\"registryUnknownReasons\":0}\n")[0] == "INCONCLUSIVE", "A partial state is INCONCLUSIVE")
+check(registry("WRITER_STATE={\"registryUnknownReasons\":\"0\",\"registryInstanceUnknown\":0,\"writerSopUnknownCount\":0,"
+               "\"writerGlobalFirstUnknown\":{\"reason\":0},\"writerEntryFirstUnknown\":{\"reason\":0},\"writerSopFirstUnknown\":{\"reason\":0}}\n")[0] == "INCONCLUSIVE",
+      "A non-numeric field is INCONCLUSIVE")
 print(f"T5HostVerdictSelfCheck=PASS;Assertions={checks};ProductQualified=False")
