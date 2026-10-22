@@ -14,7 +14,7 @@ files+=(t4/reopen-after-publication.ps1)
 files+=(t5/security-descriptor-native-control.ps1 t5/security-roundtrip-native-control.SelfCheck.ps1)
 for f in "$src"/*.SelfCheck.ps1; do [[ "$(basename "$f")" == StagedInvariant*.SelfCheck.ps1 ]] && checks+=("$(basename "$f")"); done
 files+=(t5/notepad-cases.json t5/fixtures/C01-00000001.pack t5/fixtures/m2t5ord4-00000001.pack)
-checks+=(t5/notepad-coordinator.SelfCheck.ps1 t5/notepad-journal.SelfCheck.ps1 t5/notepad-native.SelfCheck.ps1 t5/notepad-actor.SelfCheck.ps1)
+checks+=(t5/notepad-coordinator.SelfCheck.ps1 t5/notepad-journal.SelfCheck.ps1 t5/notepad-native.SelfCheck.ps1 t5/notepad-actor.SelfCheck.ps1 t5/notepad-observer-shape.SelfCheck.ps1)
 selection="$(python3 "$repo/driver/scripts/approved_builders.py" --role gate --label "$label" --format fields)" || exit 2
 read -r builder_name host builder_computer builder_user parity_check <<< "$selection"
 remote_args=("$host" --role gate --label "$label")

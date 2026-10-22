@@ -1020,7 +1020,7 @@ function Save-IOPinnedImage($Context,$Image,[string]$Path,[string]$Role) {
     return $saved
 }
 function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained, [switch]$PinnedExtents) {
-    $images = @(); $parents = @{}; $readers = @(); $diagnostics=@(); $held = @(); $lookups = @(); $before=$null; $path=$null; $currentLookup=$false
+    $images = @(); $parents = @{}; $readers = @(); $diagnostics=@(); $held = @(); $lookups = @(); $before=$null; $path=$null; $currentLookup=$false; $key=$null; $entry=$null
     try {
         $deletePendingOptIn = ($null -ne $Context.PSObject.Properties['DeletePendingAbsentByRawIndex'] -and $Context.DeletePendingAbsentByRawIndex -eq $true)
         foreach ($name in $Names) {

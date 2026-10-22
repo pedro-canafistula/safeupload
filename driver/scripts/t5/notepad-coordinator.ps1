@@ -186,7 +186,7 @@ function Capture-T5Observation($Case, [string]$Phase) {
             $readerSummaries += [pscustomobject]@{ Path = $path; Status = $direct.Status; Length = $direct.Length; Sha256 = $direct.Sha256; Error = $direct.Error }
             $imageSummaries += [pscustomobject]@{ Path = $path; Absent = [bool]$image.Absent; NamedLookup = $image.NamedLookup; FileId = $(if ($image.Identity) { $image.Identity.FileId } else { $null });
                 Reference = $(if ($image.Identity) { $image.Identity.Reference } else { $null }); Length = $image.Length; Sha256 = $image.Sha256;
-                LogicalArtifact = $image.LogicalArtifact; FileNames = @($image.FileNames | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Namespace = $_.Namespace; Reference = $_.Reference; Parent = $_.Parent } }); Error = $imageError }
+                LogicalArtifact = $image.LogicalArtifact; FileNames = @(foreach ($imageFileName in @($image.FileNames)) { if ($null -ne $imageFileName) { [pscustomobject]@{ Name = $imageFileName.Name; Namespace = $imageFileName.Namespace; Reference = $imageFileName.Reference; Parent = $imageFileName.Parent } } }); Error = $imageError }
         }
         $entries = @($parent.DirectoryEntries)
         $expectedEntryKeys = @{}; $actualEntryKeys = @{}; $unexpected = @(); $missing = @()
@@ -1800,9 +1800,15 @@ function Invoke-T5Workflow($Spec,$Record,[string]$HandbackDirectory,[string[]]$B
     }
     $Record.NoEmptyLeftover=$Record.FinalRawMatches
     $Record.StageEvidence=@($Record.Journal | ForEach-Object {
-        $stage=$null
-        try{$stage=Get-Item -LiteralPath $_.StagePath -Force -ErrorAction Stop}catch{if($_.CategoryInfo.Category -ne [Management.Automation.ErrorCategory]::ObjectNotFound){throw}}
-        [pscustomobject]@{TransferId=$_.TransferId;Path=$_.StagePath;StageDeleted=$_.StageDeleted;Exists=($null -ne $stage);Length=$(if($stage){$stage.Length}else{$null});State=$_.State}
+        $stage=$null;$guarded=$false
+        # The driver hides the private staging namespace from every process but the service: a lookup there is refused (deny ring reason
+        # privateNamespace) whether or not the file exists. Then only the service's journal can say; a journal that does not record the
+        # stage as deleted counts as an existing stage (Length unknown, so a clean case fails), and the launcher independently lists the
+        # staging directory after the run (T5StagingEmptyAfterRun).
+        try{$stage=Get-Item -LiteralPath $_.StagePath -Force -ErrorAction Stop}catch{
+            if($_.CategoryInfo.Category -eq [Management.Automation.ErrorCategory]::PermissionDenied -or $_.Exception -is [UnauthorizedAccessException]){$guarded=$true}
+            elseif($_.CategoryInfo.Category -ne [Management.Automation.ErrorCategory]::ObjectNotFound){throw}}
+        [pscustomobject]@{TransferId=$_.TransferId;Path=$_.StagePath;StageDeleted=$_.StageDeleted;Exists=$(if($guarded){$_.StageDeleted -ne $true}else{$null -ne $stage});Length=$(if($stage){$stage.Length}else{$null});State=$_.State;Probe=$(if($guarded){'PrivateNamespaceGuard'}else{'Direct'})}
     })
     # Blocked full-content stages may remain for justification. Empty/private
     # leftovers never qualify; successful clean rows require acknowledged cleanup.

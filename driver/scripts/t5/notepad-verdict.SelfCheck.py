@@ -9,7 +9,7 @@ import re
 launcher = pathlib.Path(__file__).resolve().parents[1] / "Invoke-StageNotepad.sh"
 blocks = re.findall(r"<<'PY'\n(.*?)\nPY\n", launcher.read_text(), re.S)
 parsed = [ast.parse(block) for block in blocks]
-required = {"valid_raw_sample", "native_steps_match", "forced_order_matches", "approved_public_hash_map", "writer_registry_verdict"}
+required = {"valid_raw_sample", "native_steps_match", "forced_order_matches", "approved_public_hash_map", "writer_registry_verdict", "staging_empty_verdict"}
 functions = [node for tree in parsed for node in tree.body
              if isinstance(node, ast.FunctionDef) and node.name in required]
 assert {node.name for node in functions} == required, "Actual verdict helpers missing"
@@ -169,4 +169,11 @@ check(registry("WRITER_STATE={\"registryUnknownReasons\":0}\n")[0] == "INCONCLUS
 check(registry("WRITER_STATE={\"registryUnknownReasons\":\"0\",\"registryInstanceUnknown\":0,\"writerSopUnknownCount\":0,"
                "\"writerGlobalFirstUnknown\":{\"reason\":0},\"writerEntryFirstUnknown\":{\"reason\":0},\"writerSopFirstUnknown\":{\"reason\":0}}\n")[0] == "INCONCLUSIVE",
       "A non-numeric field is INCONCLUSIVE")
+# m2t5ord10: the coordinator cannot see the private staging namespace; the launcher's post-run listing is the leftover proof.
+staging = environment["staging_empty_verdict"]
+empty_listing = "DIR=C:\\ProgramData\\SafeUpload\\staging-journal\nC:\\ProgramData\\SafeUpload\\staging-journal\\completed|1|2026\nDIR=C:\\ProgramData\\SafeUpload\\staging\n"
+check(staging(empty_listing)[0] == "PASS", "An empty staging directory passes; journal files are not stage files")
+leftover = empty_listing + "C:\\ProgramData\\SafeUpload\\staging\\e8bc.txt|0|2026\n"
+check(staging(leftover)[0] == "FAIL" and "e8bc.txt" in staging(leftover)[1], "A remaining stage file fails and is named")
+check(staging("")[0] == "INCONCLUSIVE" and staging("DIR=C:\\ProgramData\\SafeUpload\\staging-journal\n")[0] == "INCONCLUSIVE", "A missing staging listing is INCONCLUSIVE, never PASS")
 print(f"T5HostVerdictSelfCheck=PASS;Assertions={checks};ProductQualified=False")

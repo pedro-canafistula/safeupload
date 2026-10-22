@@ -274,7 +274,7 @@ $ErrorActionPreference = 'Continue'
 'DRIVER_LOADED=' + [bool](fltmc.exe filters | Select-String SafeUpload)
 'VERIFIER=' + ((& verifier.exe /query | Out-String) -replace '\s+', ' ')
 try { $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query deny-ring); 'RING_TOTAL=' + $ring.Count; foreach ($e in $ring | Select-Object -Last 60) { 'RING=' + ($e | ConvertTo-Json -Compress) } } catch { 'RING_ERROR=' + $_.Exception.Message }
-try { $counters = & 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query counters; 'WRITER_STATE=' + ($counters.writerState | ConvertTo-Json -Depth 6 -Compress) } catch { 'WRITER_STATE_ERROR=' + $_.Exception.Message }
+try { $counters = & 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query counters; 'WRITER_STATE=' + ($counters.writerState | ConvertTo-Json -Depth 6 -Compress); 'COUNTERS_AFTER=' + ($counters | ConvertTo-Json -Depth 6 -Compress) } catch { 'WRITER_STATE_ERROR=' + $_.Exception.Message }
 'AFTER_DONE=True'
 PS
     result_saved=no; raw_saved=no
@@ -306,7 +306,7 @@ else
     : > "$ev/$tag-after.txt"
 fi
 
-T5_STAGE_SPACE_EFFECTIVE="$stage_space" python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$ev/$tag-result.json" "$ev/$tag-raw" "$mode" "$alive" "$(( $(date +%s) - started ))" "${result_saved:-no}" "${raw_saved:-no}" "$code_scripts/t5/notepad-cases.json" <<'PY'
+T5_STAGE_SPACE_EFFECTIVE="$stage_space" python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$ev/$tag-result.json" "$ev/$tag-raw" "$mode" "$alive" "$(( $(date +%s) - started ))" "${result_saved:-no}" "${raw_saved:-no}" "$code_scripts/t5/notepad-cases.json" "$ev/$tag-agent-state-list.txt" <<'PY'
 import hashlib, json, os, re, sys
 after_path, verdict_path, result_path, raw_dir, mode, alive, elapsed, result_saved, raw_saved = sys.argv[1:10]
 after = open(after_path, encoding='utf-8', errors='replace').read()
@@ -637,6 +637,21 @@ def writer_registry_verdict(after_text):
               (mask, instance, sop, json.dumps(origins['writerGlobalFirstUnknown']), json.dumps(origins['writerEntryFirstUnknown']),
                json.dumps(origins['writerSopFirstUnknown']), state.get('cleanupUnmatched'), state.get('untrackedCreates')))
     return ('PASS' if mask == 0 and instance == 0 and sop == 0 and not any(reasons) else 'FAIL'), detail
+def staging_empty_verdict(listing_text):
+    # The SYSTEM coordinator cannot look inside the private staging namespace (the driver refuses every process but the service),
+    # so the launcher's own listing of the staging directory after the run is the independent leftover proof.
+    section = None
+    files = []
+    for line in listing_text.splitlines():
+        if line.startswith('DIR='):
+            section = line[4:].strip().rstrip('\\').lower()
+        elif section is not None and section.endswith('\\programdata\\safeupload\\staging') and '|' in line:
+            files.append(line.split('|', 1)[0].strip())
+    if not any(l.startswith('DIR=') and l[4:].strip().rstrip('\\').lower().endswith('\\programdata\\safeupload\\staging') for l in listing_text.splitlines()):
+        return 'INCONCLUSIVE', 'the post-run staging directory listing was not captured'
+    if files:
+        return 'FAIL', '%d stage file(s) remain after the run: %s' % (len(files), '; '.join(files[:5]))
+    return 'PASS', 'the staging directory is empty after the run (independent listing)'
 def approved_public_hash_map():
     approved = {}
     for spec in required_cases:
@@ -976,6 +991,10 @@ verdict('T5CanonicalNoUnapprovedByte', 'PASS' if raw_verdict == 'PASS' else ('IN
         ro.get('NoUnapprovedByteReason') or 'Canonical lower-mutation proof field missing.')
 registry_outcome, registry_detail = writer_registry_verdict(after)
 verdict('T5WriterRegistryKnown', registry_outcome, registry_detail)
+try: staging_listing = open(sys.argv[11], encoding='utf-8', errors='replace').read()
+except Exception: staging_listing = ''
+staging_outcome, staging_detail = staging_empty_verdict(staging_listing)
+verdict('T5StagingEmptyAfterRun', staging_outcome, staging_detail)
 for r in ((result or {}).get('Ring') or [])[-25:]:
     out.append(f"T5DenyRing INFO {r[:400]}")
 if os.environ.get('T5_STAGE_SPACE_EFFECTIVE') == 'off':
