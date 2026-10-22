@@ -1,7 +1,7 @@
 # Homologação do candidato 0.1.6 no Windows 10 — 22/10/2026
 
-**Resultado: instalação, dados preservados, startup observado e interface
-aprovados nesta rodada no clone isolado.** O teste usa FileSystemWatcher,
+**Resultado: instalação, dados preservados, startup, interface, reconexão e
+desinstalação aprovados nesta rodada no clone isolado.** O teste usa FileSystemWatcher,
 sem API externa e sem driver. Não comprova bloqueio preventivo.
 
 ## Pacote e troca de versão
@@ -78,14 +78,62 @@ conferida separadamente e registrada neste relatório e no resumo.
 - Falha de movimentação foi coberta nos testes C# do candidato, não provocada
   nesta rodada na VM. As capturas são observações pontuais, sem medir
   continuamente a latência.
-- Desinstalação do **0.1.5** no Windows 10 com dados preservados foi aprovada.
-  Desinstalação do **0.1.6** no cliente ainda não foi executada; passou no runner.
-- Reconexão do serviço com painel aberto foi aprovada no 0.1.5, não repetida
-  neste novo boot do 0.1.6.
+- Desinstalações do **0.1.5** e do **0.1.6** com dados preservados foram aprovadas
+  no Windows 10; reconexão com painel aberto foi aprovada nas duas versões.
 - Windows 11, assinatura da equipe, upgrade/repair/rollback, integração com API
   real, par exato do driver e longevidade da fila permanecem pendentes.
 
-O clone foi deixado com 0.1.6 instalado para os próximos ensaios. A sessão com
+O clone foi deixado **sem o agente instalado**, com política, fila e quarentena
+preservadas após o ensaio final abaixo. A sessão com
 credencial em memória foi encerrada. PR #49 e PR #42 continuam em rascunho,
 sem merge. Esta entrega acrescenta apenas roteiro/evidências/documentação;
 o CI de produto aprovado continua sendo o da fonte 0e9e05d1.
+
+## Reconexão e desinstalação final do 0.1.6
+
+Ensaio entre **21:15:58 e 21:17:11 UTC** (18:15:58–18:17:11 em Brasília),
+com confirmação local da elevação pelo usuário. O roteiro verificou novamente
+UUID do clone, versão/commit, modo sem API, ausência do driver, serviço
+LocalSystem e uma única UI no caminho instalado. Uma etapa de espera cancelaria
+a remoção se a conferência do painel não fosse recebida em até 180 segundos.
+
+- Serviço parado às 21:15:58.731Z; painel mostrou “Serviço indisponível”, política
+  desconhecida e “SEM SERVIÇO”, mantendo as atividades recentes.
+- Serviço voltou Running às 21:16:32.071Z, PID **2900 → 5708**. A UI continuou
+  PID **6504**, mesma data de criação; recuperou auditoria, política v1 e cinco
+  categorias sem ser reaberta. Nenhum alerta antigo foi observado.
+- Pipe consultado sem elevação retornou os mesmos **nove EventIds únicos**;
+  o conjunto foi comparado ao recibo anterior. Histórico visual com nove linhas.
+- Depois dessa conferência, o desinstalador retornou **0**. Serviço e seu registro,
+  entrada HKLM Run, UI e executáveis instalados ficaram ausentes. Consulta
+  independente sem elevação confirmou ausência do serviço, startup e processo.
+- Política, fila e arquivo sintético em quarentena conservaram seus SHA-256.
+  A fila continuou com os mesmos nove eventos. As ACLs não foram ampliadas:
+  uma consulta adicional sem elevação aos dados protegidos recebeu acesso negado;
+  a comprovação dos hashes vem do roteiro elevado, não dessa consulta.
+
+| Dado preservado | SHA-256 antes/depois |
+| --- | --- |
+| Política | 16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F |
+| Fila | CFCAE771B1ACC370A10850853FF18103C780C3A2D69512253D4832C87C09C9EB |
+| CPF sintético em quarentena | 605A58E33E73F44BEC1E10A8B7C842A4805BB353A2544005FAFC53F2445A2E81 |
+
+O log bruto contém 778 linhas e foi inspecionado antes da publicação. Registra
+uma tentativa de remover diretório ocupado (145), seguida por “Removed all? Yes”,
+sucesso e nenhuma necessidade de reinício; as verificações finais acima passaram.
+Não houve remoção manual de diretórios. A VM original permaneceu desligada.
+
+Evidências adicionais na mesma pasta: `vm-encerramento-016.json`,
+`vm-pipe-reconexao-016.json`, `vm-apos-remocao-016.json`,
+`Validar-Encerramento-016.ps1`, `vm-uninstall-016-final.log` e
+`resumo-encerramento.json` com hashes dos arquivos desta entrega.
+O transporte do recibo do pipe trouxe U+0007 em trechos mascarados. Esses
+caracteres de controle foram apenas escapados como `\u0007` para JSON válido;
+EventIds e valores foram preservados. O resumo inclui também o hash do recibo
+original, mantido no laboratório local. O log bruto não foi normalizado.
+
+![Estado durante a parada](evidencias/homologacao-win10-016-20261022/016-servico-indisponivel.jpg)
+
+![Estado após a reconexão](evidencias/homologacao-win10-016-20261022/016-servico-reconectado.jpg)
+
+![Histórico após a reconexão](evidencias/homologacao-win10-016-20261022/016-historico-reconectado.jpg)

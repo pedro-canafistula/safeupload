@@ -1,0 +1,59 @@
+{
+    "result":  "reconnection-and-uninstall-passed",
+    "vmUuid":  "3A9992DB-4644-405C-B642-9766EDD10650",
+    "version":  "0.1.6",
+    "commit":  "0e9e05d1562f64d3b384a2426307d3644c9340f3",
+    "startedAtUtc":  "2026-10-22T21:15:58.2318642Z",
+    "servicePidBefore":  2900,
+    "uiBefore":  [
+                     {
+                         "ProcessId":  6504,
+                         "SessionId":  1,
+                         "CreationDate":  "\/Date(1792702401542)\/"
+                     }
+                 ],
+    "uiObservation":  "host-confirmed-history-nine-no-duplicates-and-no-old-popup",
+    "uninstallStatus":  "passed-service-startup-ui-executables-absent-data-preserved",
+    "policyHashBefore":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "quarantineHashBefore":  "605A58E33E73F44BEC1E10A8B7C842A4805BB353A2544005FAFC53F2445A2E81",
+    "stoppedAtUtc":  "2026-10-22T21:15:58.7317827Z",
+    "queueHashBefore":  "CFCAE771B1ACC370A10850853FF18103C780C3A2D69512253D4832C87C09C9EB",
+    "eventIdsBefore":  [
+                           "a8c6552d-dca9-41eb-9bff-b1782480d158",
+                           "23ab57ce-ebf7-4d12-830c-13ccc8c80319",
+                           "42c3dfc9-841b-4a28-b6d6-d113541a0603",
+                           "5eefda87-50ee-47a3-af57-09546d01cca7",
+                           "0f4144fd-4d31-4e67-91c2-3770cc514f53",
+                           "deb57a31-e063-4b4d-bd82-fd7799f2adf3",
+                           "a25bd1fd-60bc-460c-8fb1-470359c3bba4",
+                           "87c07ef8-c76d-42b9-a740-90a313d6d174",
+                           "301c1d10-1551-46ab-81cb-4e489846d564"
+                       ],
+    "runningAtUtc":  "2026-10-22T21:16:32.0713392Z",
+    "servicePidAfter":  5708,
+    "uiAfter":  [
+                    {
+                        "ProcessId":  6504,
+                        "SessionId":  1,
+                        "CreationDate":  "\/Date(1792702401542)\/"
+                    }
+                ],
+    "queueHashAfterReconnect":  "CFCAE771B1ACC370A10850853FF18103C780C3A2D69512253D4832C87C09C9EB",
+    "policyHashAfterReconnect":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "uninstallExitCode":  0,
+    "queueHashAfterUninstall":  "CFCAE771B1ACC370A10850853FF18103C780C3A2D69512253D4832C87C09C9EB",
+    "policyHashAfterUninstall":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "quarantineHashAfterUninstall":  "605A58E33E73F44BEC1E10A8B7C842A4805BB353A2544005FAFC53F2445A2E81",
+    "eventIdsAfter":  [
+                          "a8c6552d-dca9-41eb-9bff-b1782480d158",
+                          "23ab57ce-ebf7-4d12-830c-13ccc8c80319",
+                          "42c3dfc9-841b-4a28-b6d6-d113541a0603",
+                          "5eefda87-50ee-47a3-af57-09546d01cca7",
+                          "0f4144fd-4d31-4e67-91c2-3770cc514f53",
+                          "deb57a31-e063-4b4d-bd82-fd7799f2adf3",
+                          "a25bd1fd-60bc-460c-8fb1-470359c3bba4",
+                          "87c07ef8-c76d-42b9-a740-90a313d6d174",
+                          "301c1d10-1551-46ab-81cb-4e489846d564"
+                      ],
+    "finishedAtUtc":  "2026-10-22T21:17:11.2501191Z"
+}
