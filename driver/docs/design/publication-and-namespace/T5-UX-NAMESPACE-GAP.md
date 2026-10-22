@@ -526,6 +526,33 @@ of an open nothing will cancel, so its node insertion, `H`/reference accounting 
 exercised on Windows. The next T5 row therefore captures the driver's registry Unknown masks and first-Unknown origins after the
 public-delete cases (`T5WriterRegistryKnown`, required: all zero) and requires a later approved publication to succeed.
 
+### D8 — a cancelled private version the driver already released (2026-10-22; review pending)
+
+**Evidence.** Rows `m2t5ord10` and `m2t5ord11` (D7 revision 5 driver): Notepad's Save As probe leaves an empty private version that is
+sealed and then cancelled by a native operation (journal history `0,10,1,7`, `UnboundCancellation` generation 2). The service deletes
+its exact stage (the staging directory is empty after the run), yet for the rest of the run the agent logs "Staged recovery holds …
+state Retained … recovery_evidence_unavailable … Cancelled stage disposal acknowledgement is pending" about every 6 s and the journal
+entry never completes (`ok.txt`, `cpf.txt`; with `ord8`'s older driver the same probe was discarded before sealing and left nothing).
+The row's counters show `disposeNotHeld` 59 against `disposeHeld` 25.
+
+**Cause.** The driver accepts a cancellation (`StageCancelSealedPrivate`) by marking the stream's view detached. `StageTryRelease`
+frees a detached, sealed stream that has no handle, section, RPC or receipt without waiting for any service disposal, so it normally
+disappears within the worker pass that follows the accepted cancel. The service's cleanup for an unbound cancellation deletes the exact
+stage and then reports the disposal (`StageDispose`, outcome CleanedUp); by then no stream with that transfer id exists and the driver
+answers `Held = 0`. `RecoverPendingTransferAsync` treats `Held = 0` as "acknowledgement pending" and retries for ever, although there
+is nothing left to acknowledge. The older flows only completed when the service happened to win the race.
+
+**Rule.** In the unbound-cancellation branch of recovery, once the exact stage is confirmed absent (`TryDeleteExactAndConfirmAbsent`,
+unchanged), both answers of the disposal call complete the cleanup: `Held = 1` (the driver still held the version and accepted the
+disposal) and `Held = 0` (the driver holds no version of this transfer, so no reference to the stage remains in it). A refused or
+malformed call (an exception) still keeps the obligation pending and diagnosed. Nothing else changes: the Released and Blocked paths
+keep their exact receipts, `Held = 0` is not accepted as proof that a stage was deleted (the proof is the service's own exact
+identity delete and absence check), and no path completes on it without the journaled cancellation receipt, which already blocks
+inspection, justification and any final publication of that version.
+
+**Controls.** Agent tests: held, not held, and a refused call (stays pending with no completion receipt, one disposal attempt). Row
+requirement (new, `T5JournalSettledAfterRun`): after the run the hot journal holds no entry, so no Notepad probe stays Retained.
+
 ## Round 2 implementation and verification
 
 D1–D3 route by-name, non-content-writing native opens, metadata changes,

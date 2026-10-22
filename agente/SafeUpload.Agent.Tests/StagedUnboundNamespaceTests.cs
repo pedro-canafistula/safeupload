@@ -1,4 +1,8 @@
+using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Core.Infrastructure;
+using SafeUpload.Agent.Core.Infrastructure.Extraction;
 using SafeUpload.Agent.Service.Interception;
+using SafeUpload.Agent.Service.Notifications;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -125,6 +129,64 @@ public sealed partial class StagedAttachmentV20Tests
         Assert.NotNull(cleaned.UnboundCancellation);
         Assert.False(StagedTransferJournal.PendingDispatchRequired(cleaned));
         Assert.False(File.Exists(f.Transfer.DestinationPath));
+    }
+
+    private sealed class CancelledStageGate(bool held, bool refuse = false) : IStagedPublicationGate
+    {
+        internal int Disposals;
+        public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest) =>
+            throw new Xunit.Sdk.XunitException("Cancelled-stage cleanup must never authorize a public mutation.");
+        public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames)
+        {
+            Disposals++;
+            if (refuse) throw new IOException("The driver refused the stage disposal.");
+            return held;
+        }
+    }
+
+    private StagedTransferPublisher RecoveryPublisher(Fixture f, IStagedPublicationGate gate) =>
+        new(new InspectionService(new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
+                ExtractorRegistry.CreateDefault(), new VerdictCache()),
+            NotificationTestHub.Create(), f.Journal, Path.GetDirectoryName(f.Transfer.StagePath)!, gate,
+            sessionUserSidResolver: _ => RequestorSid);
+
+    // m2t5ord10/11: the driver releases a cancelled private version as soon as its detached view has no handle, so by the time the
+    // service has deleted the exact stage and reports the disposal the driver usually holds nothing (Held = false). That is a
+    // finished cleanup, not a pending acknowledgement; Notepad's empty probe used to stay Retained for ever.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Unbound_cancelled_recovery_completes_after_exact_stage_deletion_whether_or_not_the_driver_still_holds_it(bool held)
+    {
+        var f = await UnboundSealedAsync();
+        await CancelUnboundAsync(f, Guid.NewGuid());
+        var gate = new CancelledStageGate(held);
+        var entry = await f.Journal.ReadAsync(f.Transfer.TransferId, default);
+        Assert.True(StagedTransferJournal.PendingDispatchRequired(entry));
+        await RecoveryPublisher(f, gate).RecoverPendingTransferAsync(entry, default);
+        Assert.Equal(1, gate.Disposals);
+        Assert.False(File.Exists(f.Transfer.StagePath));
+        Assert.False(File.Exists(f.Transfer.DestinationPath));
+        Assert.Empty(await f.Journal.ReadPendingAsync(default));
+        var finished = await f.Journal.ReadAsync(f.Transfer.TransferId, default);
+        Assert.True(finished.StageDeleted);
+        Assert.NotNull(finished.UnboundCancellation);
+    }
+
+    [Fact]
+    public async Task Unbound_cancelled_recovery_stays_pending_when_the_driver_disposal_call_fails()
+    {
+        var f = await UnboundSealedAsync();
+        await CancelUnboundAsync(f, Guid.NewGuid());
+        var gate = new CancelledStageGate(held: false, refuse: true);
+        var entry = await f.Journal.ReadAsync(f.Transfer.TransferId, default);
+        await RecoveryPublisher(f, gate).RecoverPendingTransferAsync(entry, default);
+        Assert.Equal(1, gate.Disposals);
+        var pending = await f.Journal.ReadAsync(f.Transfer.TransferId, default);
+        Assert.False(pending.StageDeleted); // no completion receipt without the driver call
+        Assert.NotNull(pending.UnboundCancellation);
+        Assert.True(StagedTransferJournal.PendingDispatchRequired(pending));
+        Assert.Single(await f.Journal.ReadPendingAsync(default));
     }
 
     [Theory]

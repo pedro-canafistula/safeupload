@@ -150,8 +150,13 @@ public sealed partial class StagedTransferPublisher
                 if (!StagedDiscardCleanup.TryDeleteExactAndConfirmAbsent(entry.Transfer.StagePath,
                     entry.StageIdentity, out Exception? failure))
                     throw new IOException("Cancelled stage cleanup is waiting for its exact handles.", failure);
-                if (!_publicationGate.DisposeStage(id, SafeUpload.Agent.Minifilter.StageDisposeOutcome.CleanedUp,
-                    CommittedRenames(entry))) throw new IOException("Cancelled stage disposal acknowledgement is pending.");
+                // The exact stage is confirmed absent above. True: the driver still held the cancelled version and accepted its
+                // disposal. False: the driver holds no version of this transfer any more, which is the normal outcome here, because
+                // it releases a cancelled version as soon as its detached view has no handle, usually before the service gets here
+                // (m2t5ord10/11: Notepad's empty probe stayed "Retained" for ever). Nothing is left to acknowledge in either case. A
+                // refused or malformed disposal call throws instead and keeps the obligation for the next attempt.
+                _ = _publicationGate.DisposeStage(id, SafeUpload.Agent.Minifilter.StageDisposeOutcome.CleanedUp,
+                    CommittedRenames(entry));
                 await _journal.CompleteUnboundCancellationCleanupAsync(entry, token).ConfigureAwait(false);
                 await _journal.ArchiveCompletedAsync(await _journal.ReadAsync(id, token).ConfigureAwait(false), token).ConfigureAwait(false);
                 return;
