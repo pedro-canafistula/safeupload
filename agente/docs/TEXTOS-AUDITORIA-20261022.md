@@ -71,15 +71,18 @@ igual ao recibo de build e à validação estática do runner.
 Recibos: [CI e hashes](evidencias/textos-auditoria-20261022/ci-016.json),
 [instalação real no runner](evidencias/textos-auditoria-20261022/instalacao-runner.json)
 e [validação estática](evidencias/textos-auditoria-20261022/validacao-pacote-runner.json).
-Fonte limpa, sem mudanças locais no build. A VM continua com 0.1.5; as evidências
-anteriores de startup e reconexão pertencem a essa versão.
+Fonte limpa, sem mudanças locais no build. O clone agora está com 0.1.6:
+[homologação ao vivo](HOMOLOGACAO-WIN10-016-20261022.md). As evidências anteriores
+de reconexão pertencem ao 0.1.5; o novo relatório registra instalação, startup
+observado, arquivo limpo, CPF e nove eventos preservados no Histórico.
 
 - [x] Corrigir linguagem e confirmação de movimentação no código do agente.
 - [x] Compilar WPF e passar testes direcionados em Debug/Release.
 - [x] Revisar prévias renderizadas de Status, Histórico e avisos.
 - [x] Concluir CI completo e verificar o artefato 0.1.6.
-- [ ] Instalar o artefato conferido no clone e validar os textos ao vivo.
-- [ ] Validar desinstalação no Windows 10 preservando política e fila.
+- [x] Instalar o artefato conferido no clone e validar os textos ao vivo.
+- [x] Remover 0.1.5 no Windows 10 preservando política e fila; logs coletados.
+- [ ] Validar a desinstalação do 0.1.6 no Windows 10 preservando política e fila.
 
 API de política, Windows 11, assinatura, upgrade/repair/rollback e driver real
 continuam pendentes. PRs #49 e #42 permanecem em rascunho, sem merge.

@@ -1,0 +1,31 @@
+{
+    "collectedAtUtc":  "2026-10-22T20:54:12.7447165Z",
+    "boot":  "\/Date(1792702367500)\/",
+    "processes":  [
+                      {
+                          "Name":  "SafeUpload.Agent.Service.exe",
+                          "ProcessId":  2900,
+                          "ParentProcessId":  672,
+                          "SessionId":  0,
+                          "CreationDate":  "\/Date(1792702384495)\/",
+                          "ExecutablePath":  null
+                      },
+                      {
+                          "Name":  "explorer.exe",
+                          "ProcessId":  4448,
+                          "ParentProcessId":  4344,
+                          "SessionId":  1,
+                          "CreationDate":  "\/Date(1792702386283)\/",
+                          "ExecutablePath":  "C:\\Windows\\Explorer.EXE"
+                      },
+                      {
+                          "Name":  "SafeUpload.Agent.App.exe",
+                          "ProcessId":  6504,
+                          "ParentProcessId":  4448,
+                          "SessionId":  1,
+                          "CreationDate":  "\/Date(1792702401542)\/",
+                          "ExecutablePath":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\SafeUpload.Agent.App.exe"
+                      }
+                  ],
+    "startup":  "\"C:\\Program Files\\SafeUpload\\Agent\\ui\\SafeUpload.Agent.App.exe\""
+}

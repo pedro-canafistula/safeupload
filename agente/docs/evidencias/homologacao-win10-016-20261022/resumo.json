@@ -1,0 +1,101 @@
+{
+  "result": "passed-in-this-win10-round",
+  "version": "0.1.6",
+  "sourceCommit": "0e9e05d1562f64d3b384a2426307d3644c9340f3",
+  "installerSha256": "44D7A2751696F6B873CD50D15F1343829E268BCCF153677D744FD67521C6499C",
+  "installedFilesChecked": 724,
+  "previousVersion": "0.1.5",
+  "uninstallThenReinstall": true,
+  "upgradeTested": false,
+  "rollbackTested": false,
+  "policyHashPreserved": true,
+  "queueHashPreserved": true,
+  "bootAtUtc": "2026-10-22T20:52:47.5Z",
+  "uiPid": 6504,
+  "uiParentPid": 4448,
+  "explorerPid": 4448,
+  "uiCreatedAfterExplorerSeconds": 15.259,
+  "historyBefore": 7,
+  "historyAfter": 9,
+  "uniqueEvents": 9,
+  "originalEventOnce": true,
+  "cleanEventId": "87c07ef8-c76d-42b9-a740-90a313d6d174",
+  "cleanVerdict": "Approved",
+  "cleanQuarantined": false,
+  "cpfEventId": "301c1d10-1551-46ab-81cb-4e489846d564",
+  "cpfVerdict": "Blocked",
+  "cpfQuarantined": true,
+  "cpfSourceExists": false,
+  "cpfQuarantinedBytes": 28,
+  "pipeWithoutElevation": true,
+  "uiObservations": [
+    "Painel aberto pelo icone existente; politica v1 e textos 0.1.6",
+    "Arquivo limpo apareceu como Inspecao aprovada/APROVADO",
+    "CPF gerou Restricao pela politica/RESTRITO e popup com trecho mascarado",
+    "Popup indicou C:\\SafeUpload\\_bloqueados e movimentacao apos inspecao",
+    "Historico exibiu nove linhas; sete eventos anteriores preservados"
+  ],
+  "limits": [
+    "Watcher observa apos gravacao; nao comprova bloqueio preventivo",
+    "Falha de movimentacao coberta por testes C#, nao provocada na VM nesta rodada",
+    "Desinstalacao 0.1.6 ainda nao executada na VM; ensaio de remocao foi do 0.1.5",
+    "Inspecao visual pontual; sem medicao continua de latencia"
+  ],
+  "files": [
+    {
+      "file": "016-alerta-cpf.jpg",
+      "sha256": "CF7D2CD2D700840C5DFED72C90B506D4A20B2C23531AC8F2B3F058DCA62DCC2A",
+      "bytes": 137006
+    },
+    {
+      "file": "016-arquivo-limpo.jpg",
+      "sha256": "02771ED1BB3CD8AC46595B540F5DDA938C1AB08A17BA7446A10FC40F57F53835",
+      "bytes": 116921
+    },
+    {
+      "file": "016-historico-final.jpg",
+      "sha256": "E7297E0343D501A86301EFDA3054D247D3BE29EF67C60909F837F359673CF881",
+      "bytes": 127508
+    },
+    {
+      "file": "Instalar-Validar-016.ps1",
+      "sha256": "A15AE1439DE5925534498ADE6E05B3917DB8168E96E53B8639B7C0DC27C039ED",
+      "bytes": 7317
+    },
+    {
+      "file": "Testar-Arquivo-016.ps1",
+      "sha256": "1E3C8624548CB19D68C0125FAE9D81317CED41FA6D0177C624C010FB16F37D70",
+      "bytes": 3976
+    },
+    {
+      "file": "vm-clean-016.json",
+      "sha256": "8312357C8E59D10AAEFCA247E0528EC736296013B94C4AAC79AA7AFEF3E33DDB",
+      "bytes": 1995
+    },
+    {
+      "file": "vm-cpf-016.json",
+      "sha256": "7CBDC47E2A4EC87C22B408AC32D625F9EE15AA5B65ED9AAF194194B34B797B28",
+      "bytes": 2686
+    },
+    {
+      "file": "vm-install-016.json",
+      "sha256": "4347F5418C24F67522ACFBAF13055B696314BD1DA692C652A9F6657063EC79E8",
+      "bytes": 1334
+    },
+    {
+      "file": "vm-install-016.log",
+      "sha256": "3F2C673FC486E978E1B092D4A1DE1EE55F47B03583E325103006525158BF5A68",
+      "bytes": 252064
+    },
+    {
+      "file": "vm-startup-016.json",
+      "sha256": "91968F331B27407515B53CA40B36F8A77C0751C185495459C4CDFCA94D63F0B0",
+      "bytes": 1425
+    },
+    {
+      "file": "vm-uninstall-015.log",
+      "sha256": "7D58E7AD16FCBB72DD74BB2E44CF6A6703D1CE389D411806985594E475CD708F",
+      "bytes": 87160
+    }
+  ]
+}

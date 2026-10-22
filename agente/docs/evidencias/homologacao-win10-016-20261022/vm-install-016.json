@@ -1,0 +1,25 @@
+{
+    "result":  "installation-and-data-preservation-passed-ui-pending",
+    "vmUuid":  "3A9992DB-4644-405C-B642-9766EDD10650",
+    "startedAtUtc":  "2026-10-22T15:28:51.7105361Z",
+    "previousVersion":  "0.1.5",
+    "candidateVersion":  "0.1.6",
+    "candidateCommit":  "0e9e05d1562f64d3b384a2426307d3644c9340f3",
+    "uiStatus":  "pending",
+    "steps":  [
+                  "0.1.5 removed; service/startup absent and queue/policy hashes preserved",
+                  "0.1.6 installed; payload hashes matched and queue/policy unchanged"
+              ],
+    "queueHashBefore":  "58A27AB6E5CE8CD888BE4ABD494AC1A7A9894197494DA5E6026584EA5FCABBDE",
+    "policyHashBefore":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "stoppedUiPids":  [
+                          6012
+                      ],
+    "queueHashAfterUninstall":  "58A27AB6E5CE8CD888BE4ABD494AC1A7A9894197494DA5E6026584EA5FCABBDE",
+    "policyHashAfterUninstall":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "installedFilesChecked":  724,
+    "queueHashAfterInstall":  "58A27AB6E5CE8CD888BE4ABD494AC1A7A9894197494DA5E6026584EA5FCABBDE",
+    "policyHashAfterInstall":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "servicePid":  760,
+    "finishedAtUtc":  "2026-10-22T15:29:24.9763363Z"
+}

@@ -316,7 +316,7 @@ os testes C# e de instalador do CI anterior não foram reexecutados.
 - [x] Instalação inicial 0.1.4 em Windows 10 sem .NET global; evidência manual.
 - [x] Abertura da interface pela sessão comum; status e política recebidos.
 - [x] Coletar resultado bruto 0.1.4 e diagnóstico da instalação 0.1.5, sem salvar senha.
-- [ ] Coletar logs completos do ensaio de troca entre versões.
+- [x] Coletar logs completos da troca 0.1.5 para 0.1.6; ver HOMOLOGACAO-WIN10-016-20261022.md. Logs completos da troca anterior 0.1.4 para 0.1.5 seguem indisponíveis.
 - [x] Confirmar 0.1.5 no Windows 10 após CI aprovado e transferência com hash conferido.
 - [x] Ver evento já persistido no Histórico após abertura normal orientada ao usuário; evidência manual.
 - [x] Reabrir a interface mantendo o histórico sem nova linha, segundo relato do usuário.
@@ -324,11 +324,12 @@ os testes C# e de instalador do CI anterior não foram reexecutados.
 - [x] Reconectar serviço com UI aberta: sete eventos únicos, dados preservados e nenhum alerta antigo observado nesta rodada.
 - [x] Criar novo arquivo sintético com a interface aberta; detecção de CPF, alerta e histórico atualizados.
 - [x] Adequar textos e confirmação de movimentação no código; prévias e testes locais em TEXTOS-AUDITORIA-20261022.md.
-- [ ] Instalar e conferir o candidato 0.1.6 na VM; resultados de startup/reconexão acima continuam sendo da versão 0.1.5.
+- [x] Instalar e conferir 0.1.6 na VM, com novos textos e dois arquivos sintéticos; resultado em HOMOLOGACAO-WIN10-016-20261022.md. A reconexão acima continua sendo do 0.1.5.
 - [x] Histórico preservado na abertura manual após reinício relatado da VM; sete registros visíveis.
 - [x] Repetir a investigação de startup: UI iniciada automaticamente nesta rodada; falha anterior não reproduzida.
 - [x] Confirmar serviço, bandeja automática e estado após reinício e login real do Windows 10.
-- [ ] Desinstalar e conferir preservação de política e fila.
+- [x] Desinstalar 0.1.5 e conferir preservação de política e fila antes de instalar 0.1.6.
+- [ ] Desinstalar 0.1.6 e conferir preservação de política e fila.
 - [ ] Windows 11, assinatura da equipe, upgrade/repair/rollback e integração com API/driver.
 
 PR #49 e PR #42 permanecem em rascunho, sem merge. A reprovação de Functional web
