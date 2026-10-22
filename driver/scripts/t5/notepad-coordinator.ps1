@@ -119,11 +119,16 @@ function Test-T5ApprovedPublicRead([string]$Path, $Read) {
 # between its independent reads. Such an ERROR sample stays in the result; it only stops counting against the row when the very next
 # sample of the same case (any phase: owner 2026-10-22, since the last ActorRunning sample is followed by the next phase) is fully valid.
 # Only these observation-race messages in these phases qualify, never leaked bytes or a bad parent.
-$script:T5TransientObservationPhases = @('ActorRunning', 'WorkflowSettlement')
+$script:T5TransientObservationPhases = @('ActorRunning', 'WorkflowSettlement', 'AfterActorAcknowledgementSettlement')
 $script:T5TransientObservationErrors = @(
     'Raw image, buffered read, and both fresh native readers do not agree',
     'Missing lookup but present raw index entry',
     'Target metadata probe failed, yet the named lookup succeeded',
+    # Owner 2026-10-22 (second widening): a name that is being deleted refuses Test-Path with Access is denied; the raw MFT record or the
+    # parent index has not caught up with a just-created or just-removed name (boot-Verifier rows are slow enough to show it).
+    'at Microsoft.PowerShell.Commands.FileSystemProvider.ItemExists',
+    'Wrong record number/sequence or not in use',
+    'Raw parent index does not identify the requested name/file reference',
     'Exception calling "OpenAttributes" with "1" argument(s): "The system cannot find the file specified')
 function Test-T5TransientObservationError($Sample) {
     if ($Sample.Status -ceq 'OK' -or $Sample.ForbiddenBytesObserved -or $Sample.Phase -cnotin $script:T5TransientObservationPhases) { return $false }

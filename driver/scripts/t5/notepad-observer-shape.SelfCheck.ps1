@@ -43,8 +43,11 @@ Assert-T5 ($actor.Contains('-notin @(32,33)')) 'the actor retries only ERROR_SHA
 Assert-T5 ($actor.Contains('catch [Windows.Automation.ElementNotAvailableException] { }') -and ([regex]::Matches($actor, 'catch \[Windows\.Automation\.ElementNotAvailableException\]')).Count -ge 2) 'the actor skips a window or element that closes while its text is read'
 Assert-T5 ($coordinator.Contains('$cancelledCleanup') -and $coordinator.Contains('-eq 7 -and $Entry.SealedOnce -eq $true -and')) 'the journal schema accepts the completed cleanup of a cancelled unbound version'
 
+Assert-T5 ($coordinator.Contains("'at Microsoft.PowerShell.Commands.FileSystemProvider.ItemExists'") -and $coordinator.Contains("'Wrong record number/sequence or not in use'") -and $coordinator.Contains("'AfterActorAcknowledgementSettlement')")) 'the widened superseded classes and the acknowledgement settlement phase are in the coordinator list'
+Assert-T5 (-not ($coordinator -match "T5TransientObservationPhases = @\([^)]*AfterActorOutcomeSettlement")) 'the final outcome bracket is never a superseded phase'
+
 $observer = [IO.File]::ReadAllText($ObserverPath)
-Assert-T5 ($observer.Contains('Requested record=\d+; Bad signature') -and $observer.Contains('Target metadata probe failed, yet the named lookup succeeded')) 'the in-sample stale-metadata retry covers a lagging MFT record and a name that appeared mid-capture'
+Assert-T5 ($observer.Contains('Requested record=\d+; (Bad signature|Wrong record number/sequence or not in use)') -and $observer.Contains('Target metadata probe failed, yet the named lookup succeeded')) 'the in-sample stale-metadata retry covers a lagging MFT record and a name that appeared mid-capture'
 Assert-T5 ($coordinator.Contains("Completed bytes changed during hot collection*") -and $coordinator.Contains('Start-Sleep -Milliseconds 100; continue }')) 'the forced-order gate retries a hot-journal collection race and keeps every other journal error fatal'
 $head = $observer.IndexOf('function Get-IOCapture(')
 Assert-T5 ($head -ge 0) 'Get-IOCapture exists'
