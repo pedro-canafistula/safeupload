@@ -4,6 +4,8 @@ Instalador `.exe` para Windows 10/11 x64, com serviço `SafeUploadAgent`, interf
 
 **Estado:** candidato de desenvolvimento sem assinatura da equipe. Compilar o pacote e aprovar testes de contrato não substitui executar instalação, reinício e remoção em uma VM descartável. O driver não acompanha este pacote. Esta versão não faz atualização automática de instalações existentes.
 
+Checkpoint posterior: [pacote candidato 0.1.3 e validação estática](../docs/VALIDACAO-PACOTE-AGENTE-20261021.md). Os exemplos abaixo usam a versão padrão do builder; informar `-Version 0.1.3` para reproduzir esse candidato.
+
 ## Escopo e divisão da equipe
 
 Este trabalho é somente do agente Windows. Não altera o backend Java, seus endpoints ou o painel Angular. A URL escolhida precisa apontar para uma API compatível, definida com Thiago. O pacote não inclui as propostas locais de correção Java da recuperação anterior.
@@ -52,9 +54,12 @@ Na máquina de desenvolvimento: Windows x64, .NET 10 SDK, PowerShell 7, Git e ac
 $compiler = ./agente/installer/Initialize-InnoCompiler.ps1
 ./agente/installer/tests/Test-InstallerContracts.ps1
 ./agente/installer/Build-AgentInstaller.ps1 -CompilerPath $compiler
+./agente/installer/tests/Test-InstallerArtifact.ps1 -BuildResultPath ./artifacts/installer/build-result.json -ResultsPath ./artifacts/installer/artifact-validation.json
 ```
 
 Saídas em `artifacts/installer/`: `SafeUploadAgent-0.1.2-win-x64-setup.exe`, seu `.sha256`, `build-result.json` e uma pasta de build com payload e logs. O builder cria pastas novas para cada execução e não apaga diretórios existentes. Ele não instala serviços, inicia a UI ou executa o instalador gerado.
+
+`Test-InstallerArtifact.ps1` exige PowerShell 7 e fonte sem alterações locais no registro do build. Confere o hash do instalador, todos os hashes do manifesto, arquivos ausentes/não listados, runtime próprio de serviço/UI, versão e commit publicados. Também informa a assinatura do EXE. Um resultado aprovado é somente verificação estática do pacote: não aprova distribuição sem assinatura nem comprova funcionamento sem runtime global instalado. O script não inicia executáveis nem instala serviços.
 
 ## Validação e critérios de aceite
 
