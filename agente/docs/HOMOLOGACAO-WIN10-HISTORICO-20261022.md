@@ -236,6 +236,43 @@ aberta até repetição nessas condições. A sessão de testes usada nesta roda
 foi encerrada e a credencial em memória descartada; não foi feito autologon nem
 alteração de configuração de startup. VM original permaneceu desligada.
 
+## Repetição após login: startup aprovado nesta rodada
+
+O usuário concluiu o login após a orientação para não abrir o SafeUpload. A
+consulta seguinte encontrou uma única UI, iniciada antes das consultas desta
+rodada, com Explorer como processo pai. Nenhum comando de lançamento do agente
+foi executado pelo assistente nessa observação:
+
+| Processo | PID | Sessão | Criação UTC |
+| --- | ---: | ---: | --- |
+| Serviço | 2880 | 0 | 22/10/2026 14:24:25.058 |
+| Explorer | 1536 | 1 | 22/10/2026 14:32:51.876 |
+| UI | 6012 | 1 | 22/10/2026 14:33:04.464 |
+
+A UI iniciou **12,588 segundos após o Explorer**. O serviço permaneceu Running,
+Auto, LocalSystem. O ícone estava na área de ícones ocultos da bandeja; o
+assistente abriu esse menu e o painel pelo ícone existente, usando controle
+visual do VirtualBox. Status exibiu auditoria e política v1; Histórico mostrou
+os mesmos sete registros, sem alerta antigo ao abrir o painel observado.
+
+Uma segunda leitura do pipe, às 14:36:52 UTC, com token **sem elevação** na sessão
+1, recebeu status com `policyVersion=1`, cinco categorias, `protectionActive=true`
+e `auditOnly=true`; histórico disponível com sete eventos, sete EventIds únicos
+e o EventId original exatamente uma vez. A validação do pipe terminou como
+`passed`. Os JSON brutos foram preservados no laboratório.
+
+Evidências curadas para revisão:
+[recibo com horários e asserções](evidencias/homologacao-win10-20261022/startup-apos-login.json)
+e [captura do histórico após autostart](evidencias/homologacao-win10-20261022/historico-apos-autostart-015.jpg).
+SHA-256 da captura:
+`DFB95BBD5FF24C018183DF6D9593A22500D162B8E397AE03E468EE209CA55395`.
+
+**Resultado:** startup, bandeja, estado e recuperação de histórico aprovados
+nesta repetição no Windows 10. A falha inicial relatada não se reproduziu; sua
+causa não foi demonstrada e não se presume erro do usuário. Não houve alteração
+do mecanismo Run, das ACLs ou do instalador para obter esse resultado. A sessão
+com credencial em memória foi encerrada após as consultas.
+
 ## Aceite ainda necessário
 
 - [x] Instalação inicial 0.1.4 em Windows 10 sem .NET global; evidência manual.
@@ -245,12 +282,13 @@ alteração de configuração de startup. VM original permaneceu desligada.
 - [x] Confirmar 0.1.5 no Windows 10 após CI aprovado e transferência com hash conferido.
 - [x] Ver evento já persistido no Histórico após abertura normal orientada ao usuário; evidência manual.
 - [x] Reabrir a interface mantendo o histórico sem nova linha, segundo relato do usuário.
-- [ ] Confirmar ausência de alerta antigo e reconectar serviço sem duplicar evento.
+- [x] Não observar alerta antigo ao abrir o painel após o login desta rodada.
+- [ ] Reconectar serviço com UI aberta sem duplicar evento nem gerar alerta antigo.
 - [x] Criar novo arquivo sintético com a interface aberta; detecção de CPF, alerta e histórico atualizados.
 - [ ] Adequar textos de envio/bloqueio ao modo de auditoria por watcher.
 - [x] Histórico preservado na abertura manual após reinício relatado da VM; sete registros visíveis.
-- [ ] Corrigir/investigar inicialização automática da interface, reprovada pelo usuário após reinício.
-- [ ] Confirmar serviço, bandeja automática e estado após novo reinício real do Windows.
+- [x] Repetir a investigação de startup: UI iniciada automaticamente nesta rodada; falha anterior não reproduzida.
+- [x] Confirmar serviço, bandeja automática e estado após reinício e login real do Windows 10.
 - [ ] Desinstalar e conferir preservação de política e fila.
 - [ ] Windows 11, assinatura da equipe, upgrade/repair/rollback e integração com API/driver.
 
