@@ -62,6 +62,9 @@ namespace StagedInvariant {
   public Handle Raw; public Geometry Geometry; public Run[] MftRuns; public Container[] BootstrapContainers;
   public List<MftRefresh> MftRefreshes=new List<MftRefresh>();
   public Exception MftMapFailure;
+  // Opt-in (T5, m2t5ord16): a refresh whose rebuilt map keeps the cached prefix but does not yet cover the requested record (the on-disk
+  // record 0 lags the MFT growth) leaves the verified old map in use and is retried by the next capture, instead of ending the run.
+  public bool RetryStaleMftRefresh;
   public void Dispose() { if (Raw!=null) Raw.Dispose(); }
  }
  public static class Native {
@@ -387,12 +390,12 @@ namespace StagedInvariant {
     Require(allowRefresh,"Map","Truncated run mapping while resolving MFT bootstrap; requested record="+number);
     MftRefresh refresh=new MftRefresh { RequestedRecord=number,OldRuns=v.MftRuns,NewRuns=new Run[0],Status="ERROR",
      StartQpc=Stopwatch.GetTimestamp(),QpcFrequency=Stopwatch.Frequency };
-    List<Container> evidence=new List<Container>(); v.MftRefreshes.Add(refresh);
+    List<Container> evidence=new List<Container>(); v.MftRefreshes.Add(refresh); bool prefixPreserved=false;
     try {
-     refresh.NewRuns=rebuild(evidence); ValidateMftPrefix(v,refresh.OldRuns,refresh.NewRuns);
+     refresh.NewRuns=rebuild(evidence); ValidateMftPrefix(v,refresh.OldRuns,refresh.NewRuns); prefixPreserved=true;
      Require(end<=MftMappedEnd(v,refresh.NewRuns),"MftRefresh","Still-truncated MFT map after one refresh; requested record="+number+"; mappedEnd="+MftMappedEnd(v,refresh.NewRuns));
      v.MftRuns=refresh.NewRuns; refresh.Status="OK"; refresh.Reason="Cached MFT prefix preserved; requested record covered.";
-    } catch(Exception e) { refresh.Reason=e.Message; v.MftMapFailure=e; throw; }
+    } catch(Exception e) { refresh.Reason=e.Message; if(!(prefixPreserved && v.RetryStaleMftRefresh)) v.MftMapFailure=e; throw; }
     finally { refresh.EndQpc=Stopwatch.GetTimestamp(); refresh.Containers=evidence.ToArray(); }
    }
    return capture();
@@ -1333,6 +1336,9 @@ function Test-IOStaleMetadataRetry($Context, $CaptureError) {
         # m2t5ord13: a lagging MFT record read ("Requested record=N; Bad signature") and a name that appeared between the metadata probe
         # and the named lookup are the same class of capture race; a fresh flushed capture settles them or fails again, attempts kept.
         if ([string]$node.Message -match 'Requested record=\d+; Bad signature|^Target metadata probe failed, yet the named lookup succeeded\.$') { return $true }
+        # m2t5ord16 (boot-Verifier): the on-disk MFT record 0 lagged an MFT growth, so the one refresh did not cover the record. With the
+        # opt-in Volume.RetryStaleMftRefresh the verified old map stays in use and a later capture refreshes again.
+        if ([string]$node.Message -match 'Still-truncated MFT map after one refresh') { return $true }
     }
     return $false
 }
@@ -1359,6 +1365,7 @@ function Capture-InvariantSample {
             if ($capture.Status -eq 'OK') { break }
             if ($capture.Error.NativePhase -ne 'Stability') {
                 if (-not (Test-IOStaleMetadataRetry $Context $capture.Error)) { break }
+                Start-Sleep -Milliseconds 100 # the flushed metadata needs a moment to reach the raw copy
             }
         }
         if ($capture.Status -eq 'OK') {

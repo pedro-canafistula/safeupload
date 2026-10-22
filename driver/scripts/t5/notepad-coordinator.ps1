@@ -1922,6 +1922,9 @@ try {
     if ($script:T5FlushVolume.Count -ne 1 -or $script:T5FlushVolume[0].FileSystem -ine 'NTFS' -or $script:T5FlushVolume[0].DriveType -ine 'Fixed') { throw 'The raw flush requires the exact fixed NTFS volume.' }
     $rawContext | Add-Member -NotePropertyName StaleMetadataFlush -NotePropertyValue { $script:T5FlushVolume[0] | Write-VolumeCache -ErrorAction Stop | Out-Null }
     $rawContext | Add-Member -NotePropertyName DeletePendingAbsentByRawIndex -NotePropertyValue $true
+    # m2t5ord16: the boot-Verifier boot is slow enough that the on-disk MFT record 0 lags the growth the cases cause; keep the verified map
+    # and refresh again instead of ending the observer for the rest of the run (a changed or shrunk prefix stays fatal).
+    $rawContext.Volume.RetryStaleMftRefresh = $true
     $observerProcess = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)
     $observerOwner = Invoke-CimMethod -InputObject $observerProcess -MethodName GetOwnerSid
     if ($observerOwner.ReturnValue -ne 0 -or $observerOwner.Sid -cne 'S-1-5-18' -or $rawContext.ObserverSid -cne 'S-1-5-18') { throw 'Raw observer is not the independent SYSTEM process.' }

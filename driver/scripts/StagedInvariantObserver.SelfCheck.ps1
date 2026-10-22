@@ -204,6 +204,22 @@ Check-IO 'MftStillTruncatedRejected' {
     try{$null=[StagedInvariant.Native]::SelfCheckMftRefresh($v,4,$short,$mftTarget)}catch{$rejected=$_.Exception.InnerException.Message -like 'Still-truncated MFT map after one refresh*'}
     $rejected -and [object]::ReferenceEquals($old,$v.MftRuns) -and $v.MftRefreshes.Count -eq 1 -and $v.MftRefreshes[0].Status -ceq 'ERROR'
 }
+Check-IO 'MftStillTruncatedStaysRetryableWhenOptedIn' {
+    # T5 opt-in: the verified prefix is kept, the failure is not sticky, and the next capture refreshes again and succeeds.
+    $v=MftFixtureVolume;$v.RetryStaleMftRefresh=$true;$old=$v.MftRuns;$short=MftFixtureRecord ([byte[]]@(0x11,2,10,0x11,2,10,0)) 4
+    $rejected=$false
+    try{$null=[StagedInvariant.Native]::SelfCheckMftRefresh($v,4,$short,$mftTarget)}catch{$rejected=$_.Exception.InnerException.Message -like 'Still-truncated MFT map after one refresh*'}
+    $stillUsable=$rejected -and [object]::ReferenceEquals($old,$v.MftRuns) -and $null -eq $v.MftMapFailure
+    $r=[StagedInvariant.Native]::SelfCheckMftRefresh($v,4,$mftGrowth,$mftTarget)
+    $stillUsable -and $r.Number -eq 4 -and $v.MftRefreshes.Count -eq 2 -and $v.MftRefreshes[0].Status -ceq 'ERROR' -and $v.MftRefreshes[1].Status -ceq 'OK'
+}
+Check-IO 'MftChangedPrefixStaysStickyWhenOptedIn' {
+    $v=MftFixtureVolume;$v.RetryStaleMftRefresh=$true;$bad=MftFixtureRecord ([byte[]]@(0x11,2,10,0x11,4,11,0)) 6
+    try{$null=[StagedInvariant.Native]::SelfCheckMftRefresh($v,4,$bad,$mftTarget)}catch{}
+    $target=TinyRecord $false;Put32 $target 44 3;$rejected=$false
+    try{$null=[StagedInvariant.Native]::SelfCheckMftRefresh($v,3,$mftGrowth,$target)}catch{$rejected=$_.Exception.InnerException.Message -like 'Prior MFT refresh rejected*'}
+    $rejected -and $null -ne $v.MftMapFailure
+}
 Check-IO 'MftRefreshCorruptFixupRejected' {
     $v=MftFixtureVolume;$old=$v.MftRuns;$bad=[byte[]]$mftGrowth.Clone();Put16 $bad 1022 0x1234
     $rejected=$false
