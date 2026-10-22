@@ -92,9 +92,35 @@ Uma tentativa intermediária de Release misturava recuperação saudável e falh
 deliberada no mesmo teste; esses cenários foram separados e ambos passaram no
 lote final. Os resultados intermediários não são a aprovação final.
 
-O resultado do CI será registrado separadamente.
-O runner executará a suíte C# completa sem filtros e instalação/reinício/remoção
-do novo candidato, com os mesmos controles de proteção anteriores.
+CI aprovado: [execução 39778539274](https://github.com/pedro-canafistula/safeupload/actions/runs/39778539274),
+fonte limpa `3fa6986b938903f9abbafc0f696f1a043124672d`.
+
+- Suíte C# completa sem filtros: **747 aprovados, zero falhas, quatro ignorados,
+  total 751**, em cada configuração Debug e Release. Os nove casos novos e os
+  dois testes de links falhos no host constam como Passed nos dois TRX do runner.
+- PowerShell 7: 39/39; Windows PowerShell 5.1: 39/39; ambiente: 4/4.
+- Validação estática e instalação/reinício/recusa de sobrescrita/remoção reais
+  aprovados em Windows Server 2025 descartável. Política e fila preservadas.
+- EXE 0.1.5: SHA-256
+  `38FB0F7D9665B9E15E90D7F91A1B536D558EF38CD96D34B35071B2E38598BADB`,
+  84.039.990 bytes, 724 arquivos de payload, sem assinatura da equipe.
+- ZIP do instalador: artifact `12425996640`, SHA-256
+  `3b41c38476e3ff1673b364a761adce6068c9e1128734be5ef7b3c28c8c73ab21`.
+  ZIP Debug `12426200433`, SHA-256
+  `41f4d7fee2c543f3274dd2182b61bed556ad1f80e7bda01b6cec64fdb2fb0835`;
+  ZIP Release `12426021318`, SHA-256
+  `293cb9b14b4584263054a4a492715589fa9aa625fa677672fa229e74b08f2c2a`.
+  Todos baixados e confrontados; EXE conferido com build-result e recibo estático.
+
+Evidências brutas locais do novo CI em `outputs/homologacao-historico-20261022/`.
+O candidato exato está preparado para repetição no clone, ainda sem aprovação
+visual da correção no Windows 10. O roteiro local confere identidade do clone,
+proveniência do 0.1.4 e hash do novo EXE; coleta o resultado anterior, desinstala
+o 0.1.4 preservando hashes da política/fila e instala o 0.1.5 sobre os dados
+preservados. Em seguida consulta o pipe e exige o EventId original uma única vez.
+Esse roteiro é restrito a este laboratório e requer elevação local; não é uma
+implementação nem homologação geral de upgrade. A interface deve ser reaberta
+normalmente pelo usuário para concluir o aceite visual.
 
 ## Aceite ainda necessário
 
