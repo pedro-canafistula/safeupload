@@ -70,6 +70,14 @@ function Invoke-Cmd([string]$CommandLine, [int[]]$Allowed = @(0)) {
 }
 
 # The unprotected source/scratch folders are shared by both sides: start each side from an empty one.
+# Diagnostic only: forces the memory manager to trim cached sections, which retires versions whose upper FILE_OBJECT it still references.
+function Invoke-MemoryPressure([int]$Megabytes = 2800) {
+    $list = New-Object Collections.ArrayList
+    try { for ($i = 0; $i -lt [int]($Megabytes / 100); $i++) { $b = New-Object byte[] (100MB); for ($j = 0; $j -lt $b.Length; $j += 4096) { $b[$j] = 1 }; [void]$list.Add($b) } } catch { }
+    $list.Clear(); [GC]::Collect()
+    return ('allocated ' + ($list.Count * 100))
+}
+
 function Reset-Dir([string]$Path) {
     if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop }
     [void](New-Item -ItemType Directory -Path $Path)

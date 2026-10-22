@@ -24,6 +24,7 @@ $Cases = @(
     @{ Name = 'word-saveas-edit';   Fn = 'Case-WordSaveAsEdit';    Deterministic = $false }
     @{ Name = 'word-inplace';       Fn = 'Case-WordInPlace';       Deterministic = $false }
     @{ Name = 'word-overwrite';     Fn = 'Case-WordOverwrite';     Deterministic = $false }
+    @{ Name = 'word-overwrite-trim'; Fn = 'Case-WordOverwriteTrim'; Deterministic = $false; Diagnostic = $true }
     @{ Name = 'word-reopen-loop';   Fn = 'Case-WordReopenLoop';    Deterministic = $false }
     @{ Name = 'word-locked-open';   Fn = 'Case-WordLockedOpen';    Deterministic = $false }
     @{ Name = 'word-pdf';           Fn = 'Case-WordPdf';           Deterministic = $false }
@@ -252,6 +253,19 @@ function Case-WordOverwrite([string]$d, [string]$src) {
     try {
         $w = New-WordApp
         Invoke-Step 'first-save' { $doc = $w.Documents.Add(); $doc.Content.Text = 'First.'; $doc.SaveAs2($p); $doc.Close(0); $true } | Out-Null
+        Start-Sleep -Seconds 3
+        Invoke-Step 'saveas-over-existing' { $doc = $w.Documents.Add(); $doc.Content.Text = 'Second, replaces the first.'; $doc.SaveAs2($p); $r = Get-WordState $doc; $doc.Close(0); $r } | Out-Null
+        Invoke-Step 'reopen-text' { $doc = $w.Documents.Open($p, $false, $true); try { $doc.Content.Text.Trim() } finally { $doc.Close(0) } } | Out-Null
+    } finally { Close-WordApp $w }
+}
+
+# Diagnostic: the same as word-overwrite, with the memory manager forced to trim cached sections between the two saves.
+function Case-WordOverwriteTrim([string]$d, [string]$src) {
+    $p = P $d 'w3t.docx'; $w = $null
+    try {
+        $w = New-WordApp
+        Invoke-Step 'first-save' { $doc = $w.Documents.Add(); $doc.Content.Text = 'First.'; $doc.SaveAs2($p); $doc.Close(0); $true } | Out-Null
+        Invoke-Step 'memory-pressure' { Invoke-MemoryPressure } -Info | Out-Null
         Start-Sleep -Seconds 3
         Invoke-Step 'saveas-over-existing' { $doc = $w.Documents.Add(); $doc.Content.Text = 'Second, replaces the first.'; $doc.SaveAs2($p); $r = Get-WordState $doc; $doc.Close(0); $r } | Out-Null
         Invoke-Step 'reopen-text' { $doc = $w.Documents.Open($p, $false, $true); try { $doc.Content.Text.Trim() } finally { $doc.Close(0) } } | Out-Null

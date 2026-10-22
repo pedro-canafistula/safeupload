@@ -1,6 +1,8 @@
 # T4/T9: growing reservations for ordinary overlapping saves
 
-2026-10-19. **Revised security/lifetime design; implementation remains gated on independent review.**
+2026-10-19; revision 3 2026-10-22. **Revised security/lifetime design; implementation remains gated on independent review.**
+Revision 3 answers the [second independent review](../../../evidence/2026-10-22/t9-growing-rev2-review-sol-high.md) (REVISE) and the product evidence
+[discovery 1 F5](../../../evidence/2026-10-22/t8-discovery-1.md): see "Revision 3" before "Controls and delivery".
 Owner approved growing reservations, unchanged approved budgets, and replacing the
 single-concurrent-winner test with concurrent no-overspend controls. This approves
 neither a qualified pair nor different Windows sharing, failure or cutover policy.
@@ -233,14 +235,90 @@ existing sticky failed-space/nonpublishable behavior and owner diagnostics. An
 uncertain growth retains its debit and cannot authorize additional bytes. Any
 different recovery/failure behavior needs an explicit owner decision first.
 
+## Revision 3 (2026-10-22)
+
+Evidence: with the budget on and a clean state, every `StageAllocate` takes 1.51–1.59 s, Word/Excel saves fail, and one-line text files can fail. The 1.5 s is
+`StagedSpaceBudget.RefundGrace`: the grant is the whole remaining allowance, so the second allocation of an overlapping save waits the grace and fails.
+
+### R3.1 Initial grant and admission (review finding 1)
+
+For a newly negotiated growable allocation: `initial = AlignUp(max(16 MiB, checked seed requirement), max(stage granularity, destination allocation unit))`, never
+the remaining allowance. An unseeded file gets 16 MiB; a seeded file gets its checked requirement before copying; every later byte needs growth. This creates no
+per-file cap: a file may grow to the remaining approved budget. Admission is **immediate** when the small reservation fits the unchanged total/per-SID/floor
+formulas: no grace delay and no full-history reconciliation pass in the foreground. `ReserveAfterPendingRefundsAsync` and its 1500 ms grace are removed for growable
+allocations; a refused reservation keeps today's refusal and diagnostics, and any refund retry is bounded work off the receive path. One active small version costs
+four copies of 16 MiB plus metadata, about 65 MiB; concurrency stays budget-limited (a guest with 0.7 GiB per user holds about ten overlapping versions).
+
+### R3.2 Retained and held custody (finding 2)
+
+Capacity stays monotonic while a version can still write. Add one durable transition **Retired-proven** after the driver has proved write authority ended (no handle,
+no writable section, no outstanding growth grant, paging rundown released; a file-length query is never proof). The record then keeps two numbers: `AuthorizedCapacity`
+(history, never reduced) and `RetainedCharge = CopyCount × AlignUp(sealed length, granularity) + metadata`, which conservatively covers rounding, every retained object
+and the permitted snapshot, publication and hand-back copies, preserving the approved four-copy envelope. Every consumer respects the reduced envelope or reserves
+more first. Ambiguous or still-live custody keeps its full charge; v1 immutable grants keep their original accounting. Crash contract: the ledger write of the
+transition precedes any use of the reduced charge; replay of a finished transition changes nothing; a failed transition keeps the full charge.
+
+### R3.3 Dependencies of the F5 fix (finding 3)
+
+Delivery order inside T9, each a separate coherent change that must land before any claim that default-budget saving works: (a) completed ordinary saves must not keep
+their per-SID metadata charge (retirement covers only selected discard kinds today, `StagedSpaceBudget.cs:655`); (b) a lost **initial allocation reply** must self-heal
+(growth replay does not cover it); (c) allocation latency: no work proportional to history in the foreground; (d) growth as designed above.
+
+### R3.4 Smallest increment and compatibility (finding 4)
+
+Increment 1: exact initial-window allocation with the existing kernel fast path below the window and the growth exchange only past it. Mapped, EOF and allocation
+boundary crossings need the full growth protocol; until it is complete growable admission stays NotReady (it cannot qualify with a 16 MiB ceiling). One monotonic
+reservation per version; no shared SID pool.
+
+| Driver / agent | Behaviour |
+|---|---|
+| new / new | small initial grants only after exact growth negotiation and recovery readiness |
+| old / new | immutable v1 behaviour, including its limit, or growable admission NotReady; never a new 16 MiB immutable grant |
+| new / old | immutable v1 behaviour; growth authority is never inferred from driver capability alone |
+| old agent, modern persisted accounting | refuse the downgrade safely; no reinterpretation, deletion or accounting-disabled fallback |
+
+Existing v1 grants are never converted to small windows or refunded as growable records (`StageStream.c:1762` reads the companion once into an immutable capacity).
+
+### R3.5 Receive and completion progress (finding 5)
+
+The receive loop (`MinifilterInterceptor.cs:418`, `:458`) currently runs allocation, lifecycle, rename and epoch-drain handlers inline, so a separate growth lane would
+not help a request that has not been received. Change: the receive loop only dequeues, validates the header and hands the message to a bounded lane; it never runs a
+handler inline. Lanes: **growth** (workers call only the ledger operation; own bounded queue and reply path), **allocation**, **lifecycle/rename/drain**. A saturated lane
+returns the existing resource failure. Connection cancellation and revocation release growth waiters **before** any drain that could depend on them; shutdown orders
+growth lane, then the rest. Audit of every budget-held metadata operation includes transitive free-space, alignment and security queries and error cleanup.
+
+### R3.6 Startup recovery state table (finding 6)
+
+| Observed at start | Action |
+|---|---|
+| ledger current, companion at ledger capacity | normal |
+| ledger ahead, companion smaller proven predecessor | repair companion monotonically; no refund |
+| companion ahead of ledger, or unknown object | hold; reject; diagnose |
+| pending tuple with exact predecessor still current | finish replacement bookkeeping, never repeat a successful native replace |
+| exact replacement already current, predecessor residue | delete residue after identity proof; finish ledger |
+| `.new` ledger residue / torn pending write | classify by pending tuple before the blanket "unknown residue" rejection; hold if ambiguous |
+| initial bind/companion missing or created before identity capture | separate path from replacement; hold unless exact evidence |
+| repair interrupted again | same table again, idempotent |
+| reconnect vs driver restart | durable: ledger, companion, immutable allocation tuple; per-connection: cookie, anchors, pins; old-cookie work fails; reconnect never reopens closed growth |
+| closure racing growth, then journal persistence failure | closed custody stays charged; replay cannot revive it; late success cannot clear sticky failed-space/nonpublishable state |
+
 ## Controls and delivery
 
 - [x] T4/T9: owner approved growing reservations and replacement of the
   single-winner strategy assertion with stronger concurrent accounting controls.
 - [x] T4/T9: initial independent review identified MM recursion, ledger retirement
   and reentrant metadata dependencies; concrete mechanism addendum retained.
-- [ ] T4/T9: accept this revision before implementation; review coherent changed
+- [ ] T4/T9: accept this revision (3) before implementation; review coherent changed
   kernel against the conditions before its first VM boot.
+- [ ] T9 F5 regression: fresh budget-on state; overlapping distinct-name one-line files, Word temp/target saves, Excel SaveAs/edit/reopen, repetition with retained state;
+  successful exact reservations without the 1500 ms grace; record backend cause and application result.
+- [ ] T9 held/completed accounting: charge before and after proven retirement, retained oversized grants, shrink/truncate, live mappings and readers, copying hand-back,
+  repeated restart, enough completed saves to expose cumulative metadata debt.
+- [ ] T9 progress: cached/noncached/append/MDL/EOF/allocation/section crossings; all lane slots occupied; timeout, disconnect, mandatory teardown; exact pin release.
+- [ ] T9 capability confinement: private roots covered by policy, wrong process/token/connection, impersonation, root/target substitution, links/reparse/ADS/by-ID,
+  unsupported operations, noncached alignment, revocation, FILE_OBJECT address reuse.
+- [ ] T9 crash/replay: every row of R3.6, lost initial-allocation replies separate from growth replies, mixed versions, exact-fit growth by many small increments, no
+  duplicate debit or refund, no successful-prefix publication.
 - [ ] T9: real tiny-file overlap plus seeded/large growth; exact budget/floor
   boundaries, same/different SID races and geometric fallback; no double spending.
 - [ ] T9: crash at ledger/companion/reply boundaries, late/reordered/forged replies,
