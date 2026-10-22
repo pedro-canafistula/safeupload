@@ -198,8 +198,25 @@ Investigação em andamento: consulta somente de leitura às entradas Run nas du
 visões do registro, aprovação de startup para máquina/usuário, políticas de
 execução dessas entradas, boot, processos e erros do aplicativo. Não foi feita
 mudança especulativa no mecanismo de startup nem ampliação de privilégios.
-O manifesto da UI pede `asInvoker`; a causa concreta depende do diagnóstico do
-Windows convidado. Consulta restrita ao clone e com senha digitada localmente.
+O manifesto da UI pede `asInvoker`. Consulta restrita ao clone e com senha
+digitada localmente.
+
+O diagnóstico coletado às 14:15:57 UTC encontrou a entrada Run de máquina na
+visão 64 bits, com o caminho esperado entre aspas. Não encontrou entrada
+duplicada na visão 32 bits/usuário, aprovação de startup desativada para esse
+nome ou as políticas consultadas desabilitando Run. Serviço Running, StartMode
+Auto, LocalSystem. O log Application não tinha eventos correspondentes aos
+IDs/provedores consultados para a UI; isso não prova ausência de toda falha
+possível de inicialização. Boot às 14:10:16 UTC, Explorer às 14:10:23, único
+processo da UI às 14:11:38, coerente com a abertura manual relatada.
+
+As DLLs efetivamente instaladas do serviço e da UI foram comparadas com os
+hashes do manifesto do artifact 0.1.5 aprovado e coincidem. Não há evidência
+nessa consulta de pacote divergente. A causa do autostart permanece em aberto.
+Foi preparado monitor somente de leitura, com janela limitada e amostras após
+um novo boot sem abrir o painel manualmente. Ele preserva senha apenas em
+memória durante o ensaio e não altera registro, serviços ou arquivos na VM.
+Não se substituiu a entrada Run por outro mecanismo sem observar o próximo boot.
 
 ## Aceite ainda necessário
 
