@@ -1,0 +1,11 @@
+RunTag=m2t5ord9
+Mode=ordinary
+RequestedDomain=win10-debug3
+ExpectedGuestUUID=FFCB9530-146B-43B1-8AF7-2B5CC8EDE2E3
+LocalDriverSys=driver/evidence/2026-10-21/m2t5d7k4-candidate/driver.sys
+LocalDriverSysSHA256=26075F6852507565302B53C20E829C7A807CFEF4C7A448B10D9A9688F8682048
+LocalAgentZip=output/exact-agent-matrix/m2t5a4/feature-release-view/stage-service-publish.zip
+LocalAgentZipSHA256=FF0C55D2F289BC06B27605B7114710CD1BE843F95AD0873437D3CE17E58975A8
+LocalAgentServiceEntry=SafeUpload.Agent.Service.exe
+ExpectedExtractedServiceSHA256=E3F871A8E664C3DEF669E629B166A11861795B81B3CDB709CFF55019CB61800E
+StageSpace=off

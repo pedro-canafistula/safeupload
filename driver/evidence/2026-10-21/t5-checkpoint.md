@@ -64,6 +64,20 @@ then the 1 s idle interval. Compiled in feature Debug/Release; the new tests (`S
 | `m2t5ord6` | `0ac25de0`, ordinary | **FAIL** ([verdict](m2t5ord6-verdict.txt), [result](m2t5ord6-result.json), [journal](m2t5ord6-agent-journal)): all 20 cases ran (374 s); restoration clean. Product outcomes seen: case 1 now publishes its exact 25 bytes after the private discard (the `47121503` pacing fix), Notepad clean Save As publishes exactly 28 bytes, Notepad CPF Save As is handed back with nothing leaked. Every case still fails, on four harness defects and three findings below. |
 | `m2t5ord7` | `98964002`, ordinary | **FAIL** ([verdict](m2t5ord7-verdict.txt), [result](m2t5ord7-result.json)): 20/20 cases, 186 samples (470 s); restoration clean. The on-close case's native steps now match exactly (STATUS_DELETE_PENDING / Win32 5). Remaining failures below. |
 | `m2t5ord8` | `eadb2a58`, ordinary, **budget off** (owner) | **FAIL** ([verdict](m2t5ord8-verdict.txt), [setting](m2t5ord8-stage-space.txt); the 26 MB result stays local): 20/20 cases, 171 samples (437 s); restoration clean. The first eight cases now have all or nearly all raw samples OK (ProbeDelete 8/8, CPF delete-before-seal 9/9 with hand-back and private discard, delete-on-close 9/9, on-close 6/6, Notepad clean 11/11 and CPF 10/10). With the budget off the save after the test-file delete succeeds, confirming the T9 diagnosis. |
+| `m2t5ord9` | `b8cb3e49`, ordinary, budget off, **D7 driver** `26075F68…` | **FAIL, product regression** ([verdict](m2t5ord9-verdict.txt), [agent events](m2t5ord9-service-events.txt); 181 MB result kept local): after the first native D7 `DeleteFileW`, the agent logged "Admission coverage Degraded: WriterStateUnknown" and from then on the driver's legacy create gate refused every approved publication ("Could not create approved publication file … Access is denied"; deny ring: service process, reason `legacyCreateGate`), so most cases timed out (1,830 s). Root cause below. |
+
+### `m2t5ord9` triage — D7 opens bypass the writer registry
+
+The writer registry treats DELETE and FILE_WRITE_ATTRIBUTES opens as writers that need a reservation (`StageWriterCreateCanMutate`);
+the generic CREATE path reserves them (`SafeUploadStageWritersReserveCreate` in `StageDispatchCore`), but the native namespace route
+returns before that point. When such a handle closes, the registry's cleanup finds no stream context on a trusted instance and marks
+`SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP` (`StageWriters.c` cleanup), which is sticky until reboot. Writer state Unknown degrades admission
+coverage, the instance trust gate is no longer satisfied, and the legacy create gate refuses protected creates, including the agent's
+publications. The pre-existing D1 non-mutation route and the native delete-on-close route have the same bypass for writer-classified
+opens; D7 made it common (`DeleteFileW`, `MoveFileExW`). Not caught before boot: the host fixture does not compile the registry or the
+cleanup path, and neither review traced registry ownership of native-route handles. Fail-closed held: no forbidden bytes; publications
+were refused, not exposed. Next: D7 revision 4 — native-route writer-classified opens take the writer-registry reservation and its
+post-create — then review, build and rows; the next row also captures the driver's registry Unknown reasons.
 
 ### `m2t5ord8` triage
 
