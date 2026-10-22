@@ -218,6 +218,24 @@ um novo boot sem abrir o painel manualmente. Ele preserva senha apenas em
 memória durante o ensaio e não altera registro, serviços ou arquivos na VM.
 Não se substituiu a entrada Run por outro mecanismo sem observar o próximo boot.
 
+O usuário posteriormente autorizou o uso direto da credencial do laboratório.
+Foi estabelecida sessão autenticada via VirtualBox, com SecureString em memória
+e senha passada por stdin, sem arquivo de senha ou senha nos argumentos.
+Foi solicitado reinício apenas do clone. Novo boot detectado às
+`2026-10-22T14:24:19.5Z`, mas as 17 amostras seguintes não tinham usuário
+interativo logado. A VM permaneceu na tela de entrada; tentativas de entrada
+visual pelo controle do VirtualBox não concluíram o login.
+
+Portanto, o retorno bruto `completed-no-app-process-observed` desse monitor
+**não é reprovação adicional do autostart**: sem login não houve o gatilho Run
+do usuário. Interpretação local registrada como
+`inconclusive-no-interactive-login` em `monitor-startup-interpretacao.json`.
+O monitor foi ajustado para iniciar a janela de observação somente após detectar
+login interativo em novo boot. A falha inicial relatada pelo usuário continua
+aberta até repetição nessas condições. A sessão de testes usada nesta rodada
+foi encerrada e a credencial em memória descartada; não foi feito autologon nem
+alteração de configuração de startup. VM original permaneceu desligada.
+
 ## Aceite ainda necessário
 
 - [x] Instalação inicial 0.1.4 em Windows 10 sem .NET global; evidência manual.
