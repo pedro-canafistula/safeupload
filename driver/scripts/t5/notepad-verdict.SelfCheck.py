@@ -9,18 +9,19 @@ import re
 launcher = pathlib.Path(__file__).resolve().parents[1] / "Invoke-StageNotepad.sh"
 blocks = re.findall(r"<<'PY'\n(.*?)\nPY\n", launcher.read_text(), re.S)
 parsed = [ast.parse(block) for block in blocks]
-required = {"valid_raw_sample", "native_steps_match", "forced_order_matches"}
+required = {"valid_raw_sample", "native_steps_match", "forced_order_matches", "approved_public_hash_map"}
 functions = [node for tree in parsed for node in tree.body
              if isinstance(node, ast.FunctionDef) and node.name in required]
 assert {node.name for node in functions} == required, "Actual verdict helpers missing"
 import json
-leaves = {leaf.lower() for c in json.loads((launcher.parent / 't5/notepad-cases.json').read_text())
-          for leaf in [c['Leaf'], *c.get('AuxiliaryLeaves', [])]}
+required_cases = json.loads((launcher.parent / 't5/notepad-cases.json').read_text())
+leaves = {leaf.lower() for c in required_cases for leaf in [c['Leaf'], *c.get('AuxiliaryLeaves', [])]}
 scope = r"c:\protected\t5"
-environment = {"re": re, "expected_leaves": leaves, "scope_path": scope,
+environment = {"re": re, "hashlib": hashlib, "required_cases": required_cases, "expected_leaves": leaves, "scope_path": scope,
                "ro": {"BootId": "control-boot"},
                "baseline_parent": [{"FileId": "parent-full-id", "Reference": "parent-reference"}]}
 exec(compile(ast.Module(body=functions, type_ignores=[]), str(launcher), "exec"), environment)
+environment["approved_public_hashes"] = environment["approved_public_hash_map"]()
 checks = 0
 
 
@@ -127,4 +128,22 @@ check(not valid_order(after, bad_samples), "Forbidden bytes invalidate the raw o
 bad = copy.deepcopy(after)
 bad["Ack"]["Steps"] = bad["Ack"]["Steps"].replace("test-delete=0", "test-delete=5")
 check(not valid_steps(bad), "A failed DeleteFileW is never a native control pass")
+
+# Owner 2026-10-21: an ActorRunning sample may straddle a publication; the raw image must match the before or the after read,
+# and a change between them must be approved bytes. Other phases stay strict.
+def straddle(after_status, after_bytes, phase="ActorRunning", before_present=False):
+    leaf = "probe-after-publication.txt"
+    s = sample(3, leaf, False)
+    s["Phase"] = phase
+    s["PublicReadersBefore"] = copy.deepcopy(s["PublicReaders"])
+    path = scope + "\\" + leaf
+    for reader in s["PublicReaders"] + (s["PublicReadersBefore"] if before_present else []):
+        if reader["Path"] == path:
+            reader.update(Status=after_status, Length=len(after_bytes), Sha256=hashlib.sha256(after_bytes).hexdigest().upper())
+    return s
+check(valid_raw(straddle("OK", b"")), "A raw-absent capture before an approved empty publication must validate")
+check(valid_raw(straddle("OK", b"T5 ProbeDeleteAfterPublication clean text")), "A straddled publication of the case's clean text must validate")
+check(not valid_raw(straddle("OK", b"T5 notepad CPF: 529.982.247-25")), "A straddle onto unapproved bytes must fail")
+check(not valid_raw(straddle("OK", b"", phase="AfterActorOutcomeSettlement")), "Bracketed reads outside ActorRunning must fail")
+check(not valid_raw(straddle("OK", b"", before_present=True)), "A raw image matching neither public read must fail")
 print(f"T5HostVerdictSelfCheck=PASS;Assertions={checks};ProductQualified=False")

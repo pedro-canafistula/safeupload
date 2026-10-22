@@ -103,12 +103,28 @@ function Get-DirectoryImage($Sample) {
     if ($parents.Count -ne 1) { throw ('Expected one raw parent-directory image; found ' + $parents.Count) }
     return $parents[0]
 }
+function Test-T5SamePublicRead($A, $B) { return ($A.Status -ceq $B.Status -and $A.Sha256 -ceq $B.Sha256) }
+function Test-T5ApprovedPublicRead([string]$Path, $Read) {
+    # A state this row may legitimately make public: absent, delete-pending, empty, a workflow's approved bytes, or a non-sensitive
+    # case's clean text. CPF or any other bytes are never approved.
+    if ($Read.Status -ceq 'ABSENT' -or $Read.Status -ceq 'DELETE_PENDING') { return $true }
+    if ($Read.Status -cne 'OK') { return $false }
+    if ($Read.Length -eq 0) { return $true }
+    if ($script:T5WorkflowPublicHashes.ContainsKey($Path) -and $script:T5WorkflowPublicHashes[$Path] -ccontains $Read.Sha256) { return $true }
+    $owners = @($cases | Where-Object { -not $_.Workflow -and -not $_.Sensitive -and (Join-Path $root $_.Leaf) -ieq $Path })
+    foreach ($owner in $owners) { if ((Sha ([Text.Encoding]::ASCII.GetBytes('T5 ' + $owner.Kind + ' clean text'))) -ceq $Read.Sha256) { return $true } }
+    return $false
+}
 function Capture-T5Observation($Case, [string]$Phase) {
     $script:rawSequence++
     $entry = [ordered]@{ Phase = $Phase; Sequence = $script:rawSequence; Status = 'ERROR'; Start = $null; End = $null
         CurrentImages = @(); ParentFileId = $null; ParentReference = $null; DirectoryEntries = @(); PublicReaders = @(); RawComplete = $false; IndependentReadersAgree = $false
         DirectoryComplete = $false; ForbiddenBytesObserved = $false; TargetAbsent = $false; Error = $null }
     try {
+        # Owner 2026-10-21: a sample taken while the actor runs is bracketed by public reads before and after the raw capture; the
+        # raw image must match one of them, and a change between them must be approved bytes. Every other phase stays strict.
+        $bracketed = ($Phase -ceq 'ActorRunning'); $before = @{}
+        if ($bracketed) { foreach ($leaf in $leaves) { $p = Join-Path $root $leaf; $before[$p] = Read-Public $p } }
         $sample = Capture-InvariantSample $rawContext $rawBaseline $Phase $script:rawSequence
         $entry.Status = $sample.Status; $entry.Start = $sample.Start; $entry.End = $sample.End
         if ($sample.Status -cne 'OK') { throw ('Raw sample status=' + $sample.Status + '; ' + ($sample.Error | ConvertTo-Json -Depth 8 -Compress)) }
@@ -121,19 +137,23 @@ function Capture-T5Observation($Case, [string]$Phase) {
         if ($entry.ParentFileId -cne $script:baselineParentFileId -or $entry.ParentReference -cne $script:baselineParentReference) {
             throw 'Raw sample parent FileId/reference differs from the independently captured baseline parent.'
         }
-        $imageSummaries = @(); $readerSummaries = @(); $observerReaderSummaries = @()
+        $imageSummaries = @(); $readerSummaries = @(); $beforeSummaries = @(); $observerReaderSummaries = @()
         $allArtifactReadsOk = $true; $independentAgree = $true; $forbidden = $false; $nativeReaderCoverageOk = $true
         foreach ($leaf in $leaves) {
             $path = Join-Path $root $leaf; $image = Get-CurrentRawImage $sample $path
             $direct = Read-Public $path; $logical = $null; $imageError = $null
             try { $logical = Get-RawImageBytes $image } catch { $allArtifactReadsOk = $false; $imageError = $_.Exception.Message }
             $nativeReaders = @($sample.Readers | Where-Object { $_.Path -ieq $path })
+            $pre = if ($bracketed) { $before[$path] } else { $null }
             if ($image.Absent -eq $true) {
                 # A raw-absent name the filter reports delete-pending must read as delete-pending to the buffered reader too.
                 $expectedDirect = if ($image.NamedLookup -ceq 'DELETE_PENDING') { 'DELETE_PENDING' } else { 'ABSENT' }
-                if ($direct.Status -cne $expectedDirect -or $nativeReaders.Count -ne 0) { $independentAgree = $false }
+                $publicAgrees = ($direct.Status -ceq $expectedDirect -or ($null -ne $pre -and $pre.Status -ceq $expectedDirect))
+                if (-not $publicAgrees -or $nativeReaders.Count -ne 0) { $independentAgree = $false }
             } elseif ($image.Absent -eq $false -and $null -ne $logical) {
-                if ($direct.Status -cne 'OK' -or -not (Same $logical $direct.Bytes)) { $independentAgree = $false }
+                $publicAgrees = (($direct.Status -ceq 'OK' -and (Same $logical $direct.Bytes)) -or
+                    ($null -ne $pre -and $pre.Status -ceq 'OK' -and (Same $logical $pre.Bytes)))
+                if (-not $publicAgrees) { $independentAgree = $false }
                 if ($Case.Sensitive -and $path -ieq $Case.Path -and $logical.Length -gt 0) { $forbidden = $true }
                 elseif ((Contains-Bytes $logical $cpfBytes) -or (Contains-Bytes $logical $cpfNumberBytes)) { $forbidden = $true }
                 if($logical.Length -gt 0 -and $script:T5WorkflowPublicHashes.ContainsKey($path) -and
@@ -157,6 +177,12 @@ function Capture-T5Observation($Case, [string]$Phase) {
                 }
             } else { $independentAgree = $false }
             if ($direct.Status -eq 'ERROR') { $independentAgree = $false }
+            if ($null -ne $pre) {
+                if ($pre.Status -eq 'ERROR') { $independentAgree = $false }
+                if (-not (Test-T5SamePublicRead $pre $direct) -and
+                    (-not (Test-T5ApprovedPublicRead $path $pre) -or -not (Test-T5ApprovedPublicRead $path $direct))) { $independentAgree = $false }
+                $beforeSummaries += [pscustomobject]@{ Path = $path; Status = $pre.Status; Length = $pre.Length; Sha256 = $pre.Sha256; Error = $pre.Error }
+            }
             $readerSummaries += [pscustomobject]@{ Path = $path; Status = $direct.Status; Length = $direct.Length; Sha256 = $direct.Sha256; Error = $direct.Error }
             $imageSummaries += [pscustomobject]@{ Path = $path; Absent = [bool]$image.Absent; NamedLookup = $image.NamedLookup; FileId = $(if ($image.Identity) { $image.Identity.FileId } else { $null });
                 Reference = $(if ($image.Identity) { $image.Identity.Reference } else { $null }); Length = $image.Length; Sha256 = $image.Sha256;
@@ -179,6 +205,7 @@ function Capture-T5Observation($Case, [string]$Phase) {
         $directoryComplete = ($unexpected.Count -eq 0 -and $missing.Count -eq 0 -and $actualEntryKeys.Count -eq $expectedEntryKeys.Count)
         $entry.DirectoryEntries = @($entries | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Namespace = $_.Namespace; Reference = $_.Reference; Eof = $_.Eof; Attributes = $_.Attributes } })
         $entry.CurrentImages = $imageSummaries; $entry.PublicReaders = $readerSummaries; $entry.ObserverReaders = $observerReaderSummaries
+        if ($bracketed) { $entry.PublicReadersBefore = $beforeSummaries }
         $entry.RawComplete = ($sample.Status -ceq 'OK' -and $imageSummaries.Count -eq $leaves.Count -and $allArtifactReadsOk)
         $entry.NativeReaderCoverageComplete = $nativeReaderCoverageOk
         $entry.IndependentReadersAgree = ($independentAgree -and $nativeReaderCoverageOk)

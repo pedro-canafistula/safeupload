@@ -407,17 +407,44 @@ def valid_raw_sample(s):
     actual_entries = [directory_key(d) for d in s.get('DirectoryEntries')]
     if len(actual_entries) != len(set(actual_entries)) or set(actual_entries) != set(expected_entries) or len(actual_entries) != len(expected_entries):
         return False
+    # Owner 2026-10-21: a sample taken while the actor runs carries public reads from before the raw capture too; the raw image must
+    # match one of the two reads, and a change between them must be approved bytes. Every other phase stays strict.
+    before = s.get('PublicReadersBefore')
+    before_by_leaf = {}
+    if s.get('Phase') == 'ActorRunning' and before is not None:
+        if not isinstance(before, list) or len(before) != len(expected_leaves):
+            return False
+        for reader in before:
+            if not isinstance(reader, dict) or not reader.get('Path'):
+                return False
+            before_by_leaf[reader['Path'].replace('/', '\\').rsplit('\\', 1)[-1].lower()] = reader
+        if set(before_by_leaf) != set(image_by_leaf):
+            return False
+    elif before is not None:
+        return False
+    def approved_read(leaf, reader):
+        if reader.get('Status') in ('ABSENT', 'DELETE_PENDING'):
+            return True
+        return reader.get('Status') == 'OK' and (reader.get('Length') == 0 or reader.get('Sha256') in approved_public_hashes.get(leaf, set()))
     for leaf, image in image_by_leaf.items():
         reader = public_by_leaf[leaf]
+        earlier = before_by_leaf.get(leaf)
+        readers = [reader] + ([earlier] if earlier is not None else [])
+        if earlier is not None:
+            if earlier.get('Status') == 'ERROR':
+                return False
+            if (earlier.get('Status'), earlier.get('Sha256')) != (reader.get('Status'), reader.get('Sha256')) and \
+               not (approved_read(leaf, earlier) and approved_read(leaf, reader)):
+                return False
         if image.get('Absent') is True:
             # A raw-absent name the filter reports delete-pending (probe gates) must read delete-pending too.
-            if image.get('NamedLookup') not in (None, 'DELETE_PENDING') or \
-               reader.get('Status') != ('DELETE_PENDING' if image.get('NamedLookup') == 'DELETE_PENDING' else 'ABSENT'):
+            expected_status = 'DELETE_PENDING' if image.get('NamedLookup') == 'DELETE_PENDING' else 'ABSENT'
+            if image.get('NamedLookup') not in (None, 'DELETE_PENDING') or not any(r.get('Status') == expected_status for r in readers):
                 return False
             if any(r.get('Path', '').replace('/', '\\').rsplit('\\', 1)[-1].lower() == leaf for r in native if isinstance(r, dict)):
                 return False
         else:
-            if reader.get('Status') != 'OK' or reader.get('Length') != image.get('Length') or reader.get('Sha256') != image.get('Sha256'):
+            if not any(r.get('Status') == 'OK' and r.get('Length') == image.get('Length') and r.get('Sha256') == image.get('Sha256') for r in readers):
                 return False
             matches = [r for r in native if isinstance(r, dict) and r.get('Path', '').replace('/', '\\').rsplit('\\', 1)[-1].lower() == leaf]
             if len(matches) != 2 or sum(r.get('Unbuffered') is True for r in matches) != 1:
@@ -590,6 +617,21 @@ def forced_order_matches(case, samples):
             bool(target[0].get('FileId')) and entry.get('State') == '5' and entry.get('SealedOnce') is True and
             entry.get('SealedLength') == 0 and entry.get('Sha256Hex') == empty_sha and
             0 <= steps.find('test-close=') < steps.find('test-delete='))
+def approved_public_hash_map():
+    approved = {}
+    for spec in required_cases:
+        payloads = []
+        if spec.get('Workflow'):
+            if spec['Op'] not in ('explorer-empty', 'empty-copy', 'empty-move'):
+                payloads.append(('T5 ' + spec['Kind'] + ' published clean prior').encode('ascii'))
+            if spec['Op'] in ('inflight-before', 'inflight-after'):
+                payloads.append(('T5 ' + spec['Kind'] + ' inspected newer save').encode('ascii'))
+        elif not spec.get('Sensitive'):
+            payloads.append(('T5 ' + spec['Kind'] + ' clean text').encode('ascii'))
+        for leaf in [spec['Leaf'], *spec.get('AuxiliaryLeaves', [])]:
+            approved.setdefault(leaf.lower(), set()).update(hashlib.sha256(p).hexdigest().upper() for p in payloads)
+    return approved
+
 def workflow_observed_bytes_match(sample):
     allowed = {}
     for spec in required_cases:
@@ -804,6 +846,7 @@ def raw_case_final_matches(case, samples):
     return (case.get('Sensitive') is False and isinstance(expected_length, int) and expected_length > 0 and
             re.fullmatch(r'[A-Fa-f0-9]{64}', str(expected_sha or '')) is not None and image.get('Absent') is False and
             image.get('Length') == expected_length and image.get('Sha256') == expected_sha)
+approved_public_hashes = approved_public_hash_map()
 raw_schema_ok = (isinstance(raw_samples, list) and len(raw_samples) > 0 and all(valid_raw_sample(s) and workflow_observed_bytes_match(s) for s in raw_samples) and
                  len({s.get('Sequence') for s in raw_samples if isinstance(s, dict)}) == len(raw_samples))
 cases = (result or {}).get('Cases') or []
