@@ -23,6 +23,11 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-21 (T5 rows) — budget-off isolation rows until the T9 fix.** Owner, in the session, chose the recommended option: T5 rows run with
+the staging budget disabled as isolation rows, as T4 did, because a save right after the file dialog deletes its test file can be refused
+by the known T9 whole-allowance reservation defect ([T5 checkpoint](evidence/2026-10-21/t5-checkpoint.md), `m2t5ord7`). The budget-on T5
+rows are rerun after the T9 fix. No gate, threshold or assertion changes; this amends the "product defaults" clause of D2 above.
+
 **2026-10-21 (M2 scope) — five items postponed out of M2.** Owner, in the session: "Ok, I agree with the suggested postponements."
 (1) T6 directory moves into protection → after M2; meanwhile such a move is refused, while folder copies and single-file moves work (the
 existing MVP limit). (2) `.7z` inspection → after M2; `.7z` files saved into protection stay blocked as uninspectable. (3) T9 cold/warm

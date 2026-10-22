@@ -1344,6 +1344,9 @@ function Capture-InvariantSample {
         $start = Get-IOTime $Context; $attempts = @(); $captures = @(); $watch = [Diagnostics.Stopwatch]::StartNew()
         for ($i = 0; $i -lt 10 -and $watch.ElapsedMilliseconds -lt 2000; $i++) {
             $begin = [Diagnostics.Stopwatch]::GetTimestamp()
+            # Opt-in (T5): flush before every attempt, so a needed MFT map refresh reads a current record 0 (m2t5ord7: the one
+            # allowed refresh read a stale one and the map stayed unusable for the rest of the run).
+            if ($null -ne $Context.PSObject.Properties['StaleMetadataFlush'] -and $Context.StaleMetadataFlush -is [scriptblock]) { & $Context.StaleMetadataFlush }
             # A04 pins its baseline for the checked reader close/rebind, but its last sample follows the approved publication, which REPLACES the
             # pinned file (CapturePinned: 'FILE_NAME binding changed'); the suite sets PinnedExtentsDisabled for that sample only.
             $pinnedNow=[StagedInvariant.Native]::UsesPinnedExtents($Context.CaseId) -and -not ($null -ne $Context.PSObject.Properties['PinnedExtentsDisabled'] -and $Context.PinnedExtentsDisabled -eq $true)
@@ -1353,7 +1356,6 @@ function Capture-InvariantSample {
             if ($capture.Status -eq 'OK') { break }
             if ($capture.Error.NativePhase -ne 'Stability') {
                 if (-not (Test-IOStaleMetadataRetry $Context $capture.Error)) { break }
-                & $Context.StaleMetadataFlush
             }
         }
         if ($capture.Status -eq 'OK') {

@@ -9,6 +9,9 @@
 # deny ring. The independent raw artifacts and result are copied off before the run disk is discarded.
 #
 # Usage: driver/scripts/Invoke-StageNotepad.sh <debuggee domain> <tag> <driver.sys> <agent zip> [ordinary|runtime-verifier|boot-verifier]
+# T5_STAGE_SPACE=off (default on) sets Interception:StageSpace:Enabled=false in the installed appsettings.json, as T4_STAGE_SPACE=off
+# does: an isolation row from the T9 whole-allowance reservation defect (owner 2026-10-21). NOT the product default: <tag>-stage-space.txt
+# records it and the verdict gains a T5StageSpaceConfig INFO line. No gate, threshold or assertion changes.
 #
 # Evidence: driver/evidence/<day>/<tag>-*; the verdict is <tag>-verdict.txt; the exit status is 0 only when every required line passes.
 set -uo pipefail
@@ -19,6 +22,8 @@ cd "$workspace_root"
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; mode="${5:-runtime-verifier}"
 [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{2,29}$ ]] || { echo 'Invalid tag'; exit 2; }
 case "$mode" in ordinary|runtime-verifier|boot-verifier) ;; *) echo 'Unknown mode'; exit 2;; esac
+stage_space=${T5_STAGE_SPACE-on}
+case "$stage_space" in on|off) ;; *) echo 'T5_STAGE_SPACE must be on or off'; exit 2;; esac
 [ -f "$sys" ] && [ -f "$zip" ] || { echo 'needs the signed driver and the agent zip'; exit 2; }
 case "$dom" in
     win10-debug) expected_guest_uuid='9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D' ;;
@@ -55,6 +60,7 @@ fi
     printf 'LocalDriverSys=%s\nLocalDriverSysSHA256=%s\n' "$sys" "$driver_sha"
     printf 'LocalAgentZip=%s\nLocalAgentZipSHA256=%s\n' "$zip" "$agent_zip_sha"
     printf 'LocalAgentServiceEntry=SafeUpload.Agent.Service.exe\nExpectedExtractedServiceSHA256=%s\n' "$agent_service_sha"
+    printf 'StageSpace=%s\n' "$stage_space"
 } > "$ev/$tag-input-hashes.txt"
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
 guest='C:/Users/vika/Documents'
@@ -162,6 +168,18 @@ install_ps=${install_ps//__T5_EXPECTED_AGENT_ZIP_SHA__/$agent_zip_sha}
 install_ps=${install_ps//__T5_EXPECTED_SERVICE_SHA__/$agent_service_sha}
 printf '%s\n' "$install_ps" | remote | tee "$ev/$tag-install.txt"
 grep -qx 'INSTALL_DONE=True' "$ev/$tag-install.txt" || { echo 'install failed'; exit 15; }
+if [ "$stage_space" = off ]; then
+    remote <<'PS' | tee "$ev/$tag-stage-space.txt"
+$ErrorActionPreference = 'Stop'
+$path = 'C:\Program Files\SafeUpload\Agent\appsettings.json'
+$json = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
+$json.Interception.StageSpace.Enabled = $false
+$text = $json | ConvertTo-Json -Depth 8
+[IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
+'STAGE_SPACE_ENABLED=' + (Get-Content -Raw -LiteralPath $path | ConvertFrom-Json).Interception.StageSpace.Enabled
+PS
+    grep -qx 'STAGE_SPACE_ENABLED=False' "$ev/$tag-stage-space.txt" || { echo 'could not disable StageSpace for the isolation row'; exit 23; }
+fi
 case "$mode" in
 boot-verifier)
     remote <<'PS' | tee "$ev/$tag-boot-verifier.txt"
@@ -287,7 +305,7 @@ else
     : > "$ev/$tag-after.txt"
 fi
 
-python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$ev/$tag-result.json" "$ev/$tag-raw" "$mode" "$alive" "$(( $(date +%s) - started ))" "${result_saved:-no}" "${raw_saved:-no}" "$code_scripts/t5/notepad-cases.json" <<'PY'
+T5_STAGE_SPACE_EFFECTIVE="$stage_space" python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$ev/$tag-result.json" "$ev/$tag-raw" "$mode" "$alive" "$(( $(date +%s) - started ))" "${result_saved:-no}" "${raw_saved:-no}" "$code_scripts/t5/notepad-cases.json" <<'PY'
 import hashlib, json, os, re, sys
 after_path, verdict_path, result_path, raw_dir, mode, alive, elapsed, result_saved, raw_saved = sys.argv[1:10]
 after = open(after_path, encoding='utf-8', errors='replace').read()
@@ -895,6 +913,8 @@ verdict('T5CanonicalNoUnapprovedByte', 'PASS' if raw_verdict == 'PASS' else ('IN
         ro.get('NoUnapprovedByteReason') or 'Canonical lower-mutation proof field missing.')
 for r in ((result or {}).get('Ring') or [])[-25:]:
     out.append(f"T5DenyRing INFO {r[:400]}")
+if os.environ.get('T5_STAGE_SPACE_EFFECTIVE') == 'off':
+    out.append('T5StageSpaceConfig INFO StageSpace disabled by T5_STAGE_SPACE=off (product default is enabled): isolation row from the T9 reservation defect, not a product-configuration result')
 out.append(f"T5Duration INFO {elapsed} s ({mode})")
 open(verdict_path, 'w').write('\n'.join(out) + '\n')
 print('\n'.join(out))
