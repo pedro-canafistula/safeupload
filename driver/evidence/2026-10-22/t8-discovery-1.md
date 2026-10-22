@@ -55,3 +55,18 @@ by save). Browser download, robocopy `/MOV`, 7-Zip, Excel in-place under load an
    .docx ones".
 2. **Folders in M2.** Recommended: pull rename and delete of a folder inside the protected folder (and the Recycle Bin move) into M2; keep moving a whole folder in from outside
    as copy-and-inspect (the earlier T6 decision). The alternative (postpone all folder work) leaves Explorer's rename, delete and Delete key broken in the protected folder.
+
+## Owner answers (2026-10-22, same session)
+
+1. Publication-window wait: **Yes** (bounded, proposed 10 s) — design in [T8-PUBLICATION-WINDOW.md](../../docs/design/publication-and-namespace/T8-PUBLICATION-WINDOW.md).
+2. Folder rename/delete and the Recycle Bin move in M2: **not now** (T6 stays postponed; F7 and F8 are recorded known limits).
+
+## Addendum: follow-up measurements (same day)
+
+- **Windows Search is a large share of F3/F4.** With the `WSearch` service stopped (`t8sweep-v2nowsearch`, budget off), `word-inplace`, `word-saveas-edit` and `txt-lifecycle` pass
+  every step; with it running they fail. The indexer opens each new file and a counted `FileObject` keeps the rename exchange from committing. `word-overwrite` still fails without
+  it (gate 6 on a document closed 4-8 s earlier); Restart Manager shows no handle holder 1.6 s after the close, and the stage worker keeps one extra live version and view for
+  more than 10 s, so a lingering upper object is the likely holder there (not resolved).
+- **F5 holds from a clean state.** `t8sweep-v2budgetonclean` (budget on, staging and journal set aside, rebooted): Word first saves fail, Excel `SaveAs` fails, `big.bin` fails; every
+  `StageAllocate` event takes 1.51-1.59 s, equal to `StagedSpaceBudget.RefundGrace` (1500 ms). Cause in `StagedSpaceBudget.Reserve`: the grant is the whole remaining allowance, so a
+  second concurrent allocation waits the grace and fails. Retained transfers (from the F4 failures) additionally keep their full charge and lock the user out.

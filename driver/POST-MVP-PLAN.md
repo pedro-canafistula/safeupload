@@ -23,6 +23,11 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-22 (T8 discovery 1) — publication-window wait yes, folders not now.** Owner, in the session, on [discovery 1](evidence/2026-10-22/t8-discovery-1.md): (1) an operation on a name whose
+publication is in flight waits (bounded, proposed 10 s) and then proceeds instead of failing; design [T8-PUBLICATION-WINDOW.md](docs/design/publication-and-namespace/T8-PUBLICATION-WINDOW.md),
+independent review before its first boot; (2) folder rename/delete and the Recycle Bin move are not in M2 now (T6 stays postponed; the parity catalog records them as known limits). Work order:
+T9 allocation/growing reservations first, then the wait rule, then the metadata contract. No gate or assertion changes.
+
 **2026-10-22 (T8 closure plan) — native-parity bar, Office base image, order and budget.** Owner, in the session ("Agreed") on the recommendations of the
 [T8 closure plan](docs/design/T8-CLOSURE-PLAN.md): (1) one new Office base image is derived from the current `win10-debug3` baseline (Microsoft 365 Apps,
 7-Zip, Edge settings; the owner signs in to Office once; the existing base stays untouched; every row takes a fresh disposable overlay with the usual
