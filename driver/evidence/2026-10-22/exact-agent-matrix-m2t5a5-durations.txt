@@ -1,0 +1,19 @@
+Builder=builder1
+BuilderHost=192.168.122.210
+BuilderComputerName=DESKTOP-O1LP5DG
+ParityCheck=False
+Label=m2t5a5
+LabelKind=gate
+Notice=gate candidate
+TRX leg wall times (Times start/finish):
+feature-debug/user: 772.300 s
+feature-debug/system: 2.268 s
+feature-release/user: 563.593 s
+feature-release/system: 2.300 s
+First leg: feature-debug/user: 772.300 s
+Tests over 60 s (descending duration):
+434.643 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Ten_thousand_driver_deleted_releases_retire_the_disposal_work_set
+343.821 s | feature-release/user | Passed | SafeUpload.Agent.Tests.StagedTerminalArchiveTests.Ten_thousand_driver_deleted_releases_retire_the_disposal_work_set
+121.055 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.NotificationRecordTests.Two_hours_of_heartbeats_keep_a_small_hash_chained_window_across_restart
+109.547 s | feature-release/user | Passed | SafeUpload.Agent.Tests.NotificationRecordTests.Two_hours_of_heartbeats_keep_a_small_hash_chained_window_across_restart
+106.354 s | feature-debug/user | Passed | SafeUpload.Agent.Tests.AuditRecentScalingTests.Ten_thousand_repeated_saves_to_eight_names_keep_recent_outcome_work_bounded
