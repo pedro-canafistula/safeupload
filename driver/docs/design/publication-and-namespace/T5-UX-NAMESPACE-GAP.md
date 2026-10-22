@@ -443,14 +443,14 @@ Native evidence to record in the T5 row (not a substitute for the controls): the
 both builds, and the T5 row's public-delete cases in all three modes. Host controls do not establish NTFS cleanup behaviour or
 qualification.
 
-### D7 revision 5 — native-route writers take the writer-registry reservation (2026-10-22; review pending)
+### D7 revision 5 — native-route writers take the writer-registry reservation (2026-10-22; accepted with conditions)
 
 Revision 4 (`42769931`) drew a Sol 6.1 high REVISE ([review](../../../evidence/2026-10-22/t5-d7-rev4-review-sol61.md)): an unload guard for D1,
 the nullable-reservation contract, explicit DOC post ordering, and stronger controls. The first implementation of revision 5
 (`b3c87c70`, registry post before the legacy post as in the generic path) drew a second REVISE
 ([review](../../../evidence/2026-10-22/t5-d7-rev5-review-sol61.md)): a node registered before a later cancellation is never retired, because
 `FltCancelFileOpen` delivers its cleanup below the supplied instance only, so the registry post must be last. This text is the corrected
-revision; it is reviewed together with its implementation.
+revision; its re-review at `3a16ec0f` is **ACCEPT WITH CONDITIONS** ([review](../../../evidence/2026-10-22/t5-d7-rev5-rereview-sol61.md)): no source blocker to the first boot after the build gates; qualification needs zero Unknown masks/origins (`T5WriterRegistryKnown`) and a later approved publication, and those observations are not exhaustive proof of registry accounting.
 
 **Evidence.** Row `m2t5ord9` ([T5 checkpoint](../../../evidence/2026-10-21/t5-checkpoint.md)) on the accepted D7 implementation
 (`9eb46e87`, signed `26075F68…`): after the first native D7 `DeleteFileW` the agent logged "Admission coverage Degraded:
