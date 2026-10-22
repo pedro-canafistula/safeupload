@@ -9,10 +9,14 @@ import re
 launcher = pathlib.Path(__file__).resolve().parents[1] / "Invoke-StageNotepad.sh"
 blocks = re.findall(r"<<'PY'\n(.*?)\nPY\n", launcher.read_text(), re.S)
 parsed = [ast.parse(block) for block in blocks]
-required = {"valid_raw_sample", "native_steps_match", "forced_order_matches", "approved_public_hash_map", "writer_registry_verdict", "staging_empty_verdict"}
+required = {"valid_raw_sample", "native_steps_match", "forced_order_matches", "approved_public_hash_map", "writer_registry_verdict", "staging_empty_verdict",
+            "transient_observation_error", "raw_samples_accepted", "workflow_observed_bytes_match"}
+constants = {"T5_TRANSIENT_PHASES", "T5_TRANSIENT_ERRORS"}
 functions = [node for tree in parsed for node in tree.body
-             if isinstance(node, ast.FunctionDef) and node.name in required]
-assert {node.name for node in functions} == required, "Actual verdict helpers missing"
+             if (isinstance(node, ast.FunctionDef) and node.name in required) or
+             (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id in constants for t in node.targets))]
+assert {node.name for node in functions if isinstance(node, ast.FunctionDef)} == required, "Actual verdict helpers missing"
+assert sum(isinstance(node, ast.Assign) for node in functions) == len(constants), "Transient error constants missing"
 import json
 required_cases = json.loads((launcher.parent / 't5/notepad-cases.json').read_text())
 leaves = {leaf.lower() for c in required_cases for leaf in [c['Leaf'], *c.get('AuxiliaryLeaves', [])]}
@@ -176,4 +180,35 @@ check(staging(empty_listing)[0] == "PASS", "An empty staging directory passes; j
 leftover = empty_listing + "C:\\ProgramData\\SafeUpload\\staging\\e8bc.txt|0|2026\n"
 check(staging(leftover)[0] == "FAIL" and "e8bc.txt" in staging(leftover)[1], "A remaining stage file fails and is named")
 check(staging("")[0] == "INCONCLUSIVE" and staging("DIR=C:\\ProgramData\\SafeUpload\\staging-journal\n")[0] == "INCONCLUSIVE", "A missing staging listing is INCONCLUSIVE, never PASS")
+# Owner 2026-10-22: an ERROR sample from an observation race stops counting only when the very next sample of the same phase is valid.
+accepted = environment["raw_samples_accepted"]
+RACE = "System.Management.Automation.RuntimeException: Raw image, buffered read, and both fresh native readers do not agree (including absence)."
+def error_sample(sequence, phase="ActorRunning", error=RACE, **changes):
+    value = {"Sequence": sequence, "ModuleSequence": sequence, "Phase": phase, "Status": "ERROR", "Error": error,
+             "ForbiddenBytesObserved": False, "CurrentImages": [], "PublicReaders": []}
+    value.update(changes)
+    return value
+def ok_sample(sequence, phase="ActorRunning"):
+    value = sample(sequence, "probe-delete.txt", False)
+    value["Phase"] = phase
+    return value
+check(accepted([ok_sample(1), ok_sample(2)]) == (True, 0), "All-valid samples are accepted with no supersession")
+check(accepted([error_sample(1), ok_sample(2)]) == (True, 1), "A race error followed by a valid sample of the same phase is superseded")
+check(accepted([ok_sample(1), error_sample(2), ok_sample(3)]) == (True, 1), "A race error between valid samples is superseded")
+check(accepted([ok_sample(1), error_sample(2)])[0] is False, "A trailing race error with no successor fails")
+check(accepted([error_sample(1), error_sample(2), ok_sample(3)])[0] is False, "Two consecutive race errors fail: only the next sample may supersede")
+check(accepted([error_sample(1, "WorkflowSettlement"), ok_sample(2, "WorkflowSettlement")]) == (True, 1), "WorkflowSettlement race errors are superseded too")
+check(accepted([error_sample(1), ok_sample(2, "WorkflowSettlement")])[0] is False, "The successor must be in the same phase")
+check(accepted([error_sample(1), ok_sample(3)])[0] is False, "The successor must be the very next sequence")
+check(accepted([error_sample(1, "AfterActorOutcomeSettlement"), ok_sample(2, "AfterActorOutcomeSettlement")])[0] is False, "Only ActorRunning and WorkflowSettlement qualify")
+check(accepted([error_sample(1, ForbiddenBytesObserved=True), ok_sample(2)])[0] is False, "A sample with forbidden bytes never qualifies")
+check(accepted([error_sample(1, error="CPF or unexpected nonempty fixture bytes were observed in a raw public image."), ok_sample(2)])[0] is False, "Only the known observation-race messages qualify")
+check(accepted([error_sample(1, error="Raw sample parent FileId/reference differs from the independently captured baseline parent."), ok_sample(2)])[0] is False, "A parent mismatch is not a race")
+lookup = 'Exception calling \\"OpenAttributes\\" with \\"1\\" argument(s): \\"The system cannot find the file specified; Win32=2'
+check(accepted([error_sample(1, error=lookup), ok_sample(2)]) == (True, 1), "A name that vanished before the attributes open is a race (serialized quotes)")
+check(accepted([error_sample(1, error="Missing lookup but present raw index entry."), ok_sample(2)]) == (True, 1), "A lookup/index disagreement is a race")
+invalid_ok = ok_sample(2)
+invalid_ok["IndependentReadersAgree"] = False
+check(accepted([error_sample(1), invalid_ok])[0] is False, "A successor that is itself invalid does not supersede")
+check(accepted([])[0] is False, "No samples are never accepted")
 print(f"T5HostVerdictSelfCheck=PASS;Assertions={checks};ProductQualified=False")

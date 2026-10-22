@@ -115,6 +115,27 @@ function Test-T5ApprovedPublicRead([string]$Path, $Read) {
     foreach ($owner in $owners) { if ((Sha ([Text.Encoding]::ASCII.GetBytes('T5 ' + $owner.Kind + ' clean text'))) -ceq $Read.Sha256) { return $true } }
     return $false
 }
+# Owner 2026-10-22: a raw sample taken while the actor or the agent is mid-operation may fail because a name appeared or vanished
+# between its independent reads. Such an ERROR sample stays in the result; it only stops counting against the row when the very next
+# sample of the same case and phase is fully valid. Only these observation-race messages qualify, never leaked bytes or a bad parent.
+$script:T5TransientObservationPhases = @('ActorRunning', 'WorkflowSettlement')
+$script:T5TransientObservationErrors = @(
+    'Raw image, buffered read, and both fresh native readers do not agree',
+    'Missing lookup but present raw index entry',
+    'Exception calling "OpenAttributes" with "1" argument(s): "The system cannot find the file specified')
+function Test-T5TransientObservationError($Sample) {
+    if ($Sample.Status -ceq 'OK' -or $Sample.ForbiddenBytesObserved -or $Sample.Phase -cnotin $script:T5TransientObservationPhases) { return $false }
+    $text = [string]$Sample.Error
+    foreach ($known in $script:T5TransientObservationErrors) {
+        # The error text is JSON in places: compare with the quotes of a serialized message unescaped.
+        if ($text.Replace('\"', '"').Contains($known)) { return $true }
+    }
+    return $false
+}
+function Test-T5SampleSuperseded($Sample) { return ($null -ne $Sample.PSObject.Properties['SupersededBySequence']) }
+function Get-T5UnresolvedRawSamples($Case) {
+    return @($Case.RawSamples | Where-Object { $_.Status -cne 'OK' -and -not (Test-T5SampleSuperseded $_) })
+}
 function Capture-T5Observation($Case, [string]$Phase) {
     $script:rawSequence++
     $entry = [ordered]@{ Phase = $Phase; Sequence = $script:rawSequence; Status = 'ERROR'; Start = $null; End = $null
@@ -127,6 +148,7 @@ function Capture-T5Observation($Case, [string]$Phase) {
         if ($bracketed) { foreach ($leaf in $leaves) { $p = Join-Path $root $leaf; $before[$p] = Read-Public $p } }
         $sample = Capture-InvariantSample $rawContext $rawBaseline $Phase $script:rawSequence
         $entry.Status = $sample.Status; $entry.Start = $sample.Start; $entry.End = $sample.End
+        if ($sample.Sequence -is [int] -or $sample.Sequence -is [long]) { $entry.ModuleSequence = $sample.Sequence }
         if ($sample.Status -cne 'OK') { throw ('Raw sample status=' + $sample.Status + '; ' + ($sample.Error | ConvertTo-Json -Depth 8 -Compress)) }
         $parent = Get-DirectoryImage $sample
         $entry.ParentFileId = [string]$parent.Identity.FileId
@@ -219,11 +241,19 @@ function Capture-T5Observation($Case, [string]$Phase) {
         if ($forbidden) { $Case.Leaked = $true; throw 'CPF or unexpected nonempty fixture bytes were observed in a raw public image.' }
         $entry.Status = 'OK'; $entry.ModuleSequence = $sample.Sequence
     } catch { $entry.Status = 'ERROR'; $entry.Error = $_.Exception.ToString() }
-    $result.RawObserver.Samples += [pscustomobject]$entry
-    $Case.RawSamples += [pscustomobject]$entry
-    if ($entry.Status -cne 'OK') { $Case.RawCoverageComplete = $false; $Case.IndependentReadersAgree = $false }
-    if ($entry.ForbiddenBytesObserved) { $Case.Leaked = $true }
-    return [pscustomobject]$entry
+    $object = [pscustomobject]$entry
+    $previous = if (@($Case.RawSamples).Count) { @($Case.RawSamples)[-1] } else { $null }
+    $result.RawObserver.Samples += $object
+    $Case.RawSamples += $object
+    if ($object.Status -ceq 'OK' -and $null -ne $previous -and $previous.Phase -ceq $Phase -and $previous.Sequence -eq ($object.Sequence - 1) -and
+        (Test-T5TransientObservationError $previous)) {
+        $previous | Add-Member -NotePropertyName SupersededBySequence -NotePropertyValue $object.Sequence
+    }
+    # A transient observation error may still be superseded by the next sample; the case flags are settled from the unresolved
+    # errors when the case or its workflow ends. Every other failure lowers them at once.
+    if ($object.Status -cne 'OK' -and -not (Test-T5TransientObservationError $object)) { $Case.RawCoverageComplete = $false; $Case.IndependentReadersAgree = $false }
+    if ($object.ForbiddenBytesObserved) { $Case.Leaked = $true }
+    return $object
 }
 function Get-NativeStepCode([string]$Text, [string]$Name) {
     if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
@@ -1647,11 +1677,16 @@ function Invoke-T5WorkflowAck($Record,[string]$Op,[string]$Path,[string]$Text,[h
 }
 function Wait-T5WorkflowState($Record,[string]$Path,[byte[]]$Expected,[bool]$Absent,[bool]$RequireRelease,[bool]$RequireHandback,[string]$HandbackDirectory,[string[]]$BeforeHandback,[byte[]]$HandbackBytes) {
     $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+90*$frequency
+    $image=$null;$journal=$null;$lastTransient=$null
     do {
         $sample=Capture-T5Observation $Record 'WorkflowSettlement'
         $journal=Get-JournalFor -Destination $Path -BaselineTransferIds @() -RequireHistoryForNewRecords
         $Record.Journal=$journal.Records;$Record.JournalParseErrors=$journal.ParseErrors;$Record.JournalSchemaErrors=$journal.SchemaErrors
-        if($sample.Status -cne 'OK'){throw ('Workflow raw observation failed: '+$sample.Error)}
+        if($sample.Status -cne 'OK'){
+            # A sample that straddled the agent's publication or cleanup is recorded and retried; only the deadline fails the wait.
+            if(-not (Test-T5TransientObservationError $sample)){throw ('Workflow raw observation failed: '+$sample.Error)}
+            $lastTransient=$sample.Error;Start-Sleep -Milliseconds 100;continue
+        }
         $image=@($sample.CurrentImages | Where-Object {$_.Path -ieq $Path})
         if($image.Count -ne 1){throw 'Workflow target raw image missing or duplicated'}
         $match=if($Absent){$image[0].Absent -eq $true}else{$image[0].Absent -eq $false -and $image[0].Length -eq $Expected.Length -and $image[0].Sha256 -ceq (Sha $Expected)}
@@ -1670,7 +1705,7 @@ function Wait-T5WorkflowState($Record,[string]$Path,[byte[]]$Expected,[bool]$Abs
         if($ok){$Record.WorkflowJournalSnapshots+=,@($journal.Records);return $sample}
         Start-Sleep -Milliseconds 100
     }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
-    throw ('Workflow settlement timed out: path='+$Path+' absent='+$Absent+' release='+$RequireRelease+' handback='+$RequireHandback+' raw='+($image | ConvertTo-Json -Depth 8 -Compress)+' journal='+($journal | ConvertTo-Json -Depth 12 -Compress))
+    throw ('Workflow settlement timed out: path='+$Path+' absent='+$Absent+' release='+$RequireRelease+' handback='+$RequireHandback+' lastTransientSampleError='+$lastTransient+' raw='+($image | ConvertTo-Json -Depth 8 -Compress)+' journal='+($journal | ConvertTo-Json -Depth 12 -Compress))
 }
 function Set-T5DeleteDenyFixture([string]$Path,[string]$Parent,[string]$Sid) {
     $identity=New-Object Security.Principal.SecurityIdentifier($Sid)
@@ -1969,8 +2004,8 @@ try {
         if (-not $settled -and $record.SettlementStatus -eq 'INCOMPLETE') { $record.SettlementStatus = 'TIMEOUT' }
         # A final three-sample bracket binds the result to the settled public generation.
         for ($i = 0; $i -lt 3; ++$i) { [void](Capture-T5Observation $record 'AfterActorOutcomeSettlement'); Start-Sleep -Milliseconds 150 }
-        if (@($record.RawSamples).Count -eq 0 -or @($record.RawSamples | Where-Object { $_.Status -cne 'OK' }).Count -gt 0) { $record.RawCoverageComplete = $false }
-        if (@($record.RawSamples | Where-Object { -not $_.IndependentReadersAgree }).Count -gt 0) { $record.IndependentReadersAgree = $false }
+        if (@($record.RawSamples).Count -eq 0 -or @(Get-T5UnresolvedRawSamples $record).Count -gt 0) { $record.RawCoverageComplete = $false }
+        if (@($record.RawSamples | Where-Object { -not $_.IndependentReadersAgree -and -not (Test-T5SampleSuperseded $_) }).Count -gt 0) { $record.IndependentReadersAgree = $false }
         $targetRows = @($record.RawSamples | ForEach-Object { @($_.CurrentImages | Where-Object { $_.Path -ieq $path }) } | Where-Object { $null -ne $_ })
         $lastTarget = if ($targetRows.Count) { $targetRows[-1] } else { $null }
         if ($null -ne $lastTarget -and -not $case.Sensitive) {

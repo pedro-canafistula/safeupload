@@ -28,6 +28,14 @@ Assert-T5 (-not $coordinator.Contains('FileNames = @($image.FileNames | ForEach-
 Assert-T5 ($coordinator.Contains("Probe=`$(if(`$guarded){'PrivateNamespaceGuard'}")) 'a guarded stage lookup is recorded as such'
 Assert-T5 ($coordinator.Contains('[Management.Automation.ErrorCategory]::PermissionDenied')) 'the stage lookup tolerates the private-namespace guard only by its permission-denied category'
 
+# Owner 2026-10-22: a raw sample that failed an observation race is superseded by the next valid sample of the same case and phase.
+Assert-T5 ($coordinator.Contains("function Test-T5TransientObservationError(`$Sample)")) 'the coordinator classifies transient observation errors'
+Assert-T5 ($coordinator.Contains("`$previous.Phase -ceq `$Phase -and `$previous.Sequence -eq (`$object.Sequence - 1)")) 'supersession needs the same phase and the very next sequence'
+Assert-T5 ($coordinator.Contains("`$previous | Add-Member -NotePropertyName SupersededBySequence")) 'a superseded sample is marked, never removed'
+Assert-T5 ($coordinator.Contains("`$result.RawObserver.Samples += `$object") -and $coordinator.Contains("`$Case.RawSamples += `$object")) 'both sample lists hold the same object so a mark is seen by both'
+Assert-T5 ($coordinator.Contains('if (-not (Test-T5TransientObservationError $sample)){throw') -or $coordinator.Contains('if(-not (Test-T5TransientObservationError $sample)){throw')) 'the settlement wait retries only transient errors'
+Assert-T5 ($coordinator.Contains('$entry.ModuleSequence = $sample.Sequence }')) 'an ERROR sample keeps its module sequence'
+
 $observer = [IO.File]::ReadAllText($ObserverPath)
 $head = $observer.IndexOf('function Get-IOCapture(')
 Assert-T5 ($head -ge 0) 'Get-IOCapture exists'

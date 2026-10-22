@@ -455,6 +455,34 @@ def valid_raw_sample(s):
                    r.get('BeforeFileId') != image.get('FileId') or r.get('AfterFileId') != image.get('FileId'):
                     return False
     return True
+T5_TRANSIENT_PHASES = ('ActorRunning', 'WorkflowSettlement')
+T5_TRANSIENT_ERRORS = ('Raw image, buffered read, and both fresh native readers do not agree',
+                       'Missing lookup but present raw index entry',
+                       'Exception calling "OpenAttributes" with "1" argument(s): "The system cannot find the file specified')
+def transient_observation_error(s):
+    # Owner 2026-10-22: a sample taken while the actor or the agent is mid-operation may fail because a name appeared or vanished
+    # between its independent reads. Only these observation races qualify, never leaked bytes, a bad parent or another phase.
+    if not isinstance(s, dict) or s.get('Status') == 'OK' or s.get('ForbiddenBytesObserved') is not False or s.get('Phase') not in T5_TRANSIENT_PHASES:
+        return False
+    text = str(s.get('Error') or '').replace('\\"', '"')
+    return any(known in text for known in T5_TRANSIENT_ERRORS)
+def raw_samples_accepted(samples):
+    # (accepted, superseded): every sample of one case is valid, or a transient observation error whose very next sample of the same
+    # phase is valid. The superseded errors stay in the result and are counted in the verdict.
+    superseded = 0
+    if not isinstance(samples, list) or not samples:
+        return False, 0
+    for index, sample in enumerate(samples):
+        if valid_raw_sample(sample) and workflow_observed_bytes_match(sample):
+            continue
+        following = samples[index + 1] if index + 1 < len(samples) else None
+        if transient_observation_error(sample) and isinstance(following, dict) and isinstance(sample.get('Sequence'), int) and \
+           following.get('Phase') == sample.get('Phase') and following.get('Sequence') == sample['Sequence'] + 1 and \
+           valid_raw_sample(following) and workflow_observed_bytes_match(following):
+            superseded += 1
+            continue
+        return False, superseded
+    return True, superseded
 def validate_raw_artifacts(directory, observer):
     manifests = []
     for base, _, names in os.walk(directory):
@@ -882,9 +910,11 @@ def raw_case_final_matches(case, samples):
             re.fullmatch(r'[A-Fa-f0-9]{64}', str(expected_sha or '')) is not None and image.get('Absent') is False and
             image.get('Length') == expected_length and image.get('Sha256') == expected_sha)
 approved_public_hashes = approved_public_hash_map()
-raw_schema_ok = (isinstance(raw_samples, list) and len(raw_samples) > 0 and all(valid_raw_sample(s) and workflow_observed_bytes_match(s) for s in raw_samples) and
-                 len({s.get('Sequence') for s in raw_samples if isinstance(s, dict)}) == len(raw_samples))
 cases = (result or {}).get('Cases') or []
+case_acceptance = [raw_samples_accepted(c.get('RawSamples') or []) for c in cases]
+superseded_errors = sum(count for _, count in case_acceptance)
+raw_schema_ok = (isinstance(raw_samples, list) and len(raw_samples) > 0 and bool(cases) and all(accepted for accepted, _ in case_acceptance) and
+                 len({s.get('Sequence') for s in raw_samples if isinstance(s, dict)}) == len(raw_samples))
 archive_ok, archive_reason = validate_t5_archives(raw_dir.removesuffix('-raw') + '-journal-evidence', cases)
 verdict('T5JournalArchiveEvidence', 'PASS' if archive_ok else 'FAIL', archive_reason)
 case_raw_samples = [s for c in cases for s in (c.get('RawSamples') or [])]
@@ -913,6 +943,7 @@ raw_ok = (ro.get('Status') == 'OK' and ro.get('CaseId') == 'T5' and ro.get('Obse
           disposal.get('Status') == 'OK' and raw_schema_ok and raw_artifacts_ok)
 verdict('T5RawObserver', 'PASS' if raw_ok else 'FAIL',
         f"status={ro.get('Status')}; baseline={baseline.get('Status')}; samples={len(raw_samples)}; disposal={disposal.get('Status')}; schema={raw_schema_ok}; artifacts={raw_artifact_reason}")
+out.append(f"T5RawErrorsSuperseded INFO {superseded_errors} transient observation error sample(s) superseded by the next valid sample of the same case and phase (owner 2026-10-22); all stay in the result")
 verdict('T5RawEvidenceRetained', 'PASS' if raw_artifacts_ok else 'FAIL',
         f"copied={raw_saved}; guest-manifest={re.search(r'^RAW_MANIFEST_PRESENT=True$', after, re.M) is not None}; {raw_artifact_reason}")
 expected_case_specs = {c['Kind']: (c['Op'], c['Leaf'], c['Sensitive']) for c in required_cases}
@@ -929,7 +960,7 @@ for c in cases:
     windows = ui.get('WindowsAfterSave') or []
     raw_case_samples = c.get('RawSamples') or []
     raw_case_ok = (c.get('RawCoverageComplete') is True and c.get('IndependentReadersAgree') is True and
-                   len(raw_case_samples) > 0 and all(valid_raw_sample(s) and workflow_observed_bytes_match(s) for s in raw_case_samples) and
+                   len(raw_case_samples) > 0 and raw_samples_accepted(raw_case_samples)[0] and
                    c.get('FinalRawMatches') is True and raw_case_final_matches(c, raw_case_samples))
     steps_ok = workflow_steps_match(c) if workflow_spec(c) else native_steps_match(c)
     detail = f"native={c.get('NativeStepsReason')}; raw={raw_case_ok}; final length={c.get('FinalLength')} sha={c.get('FinalSha256')} owner={c.get('Owner')}"
