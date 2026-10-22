@@ -1,7 +1,8 @@
 # T4/T9: growing reservations for ordinary overlapping saves
 
-2026-10-19; revision 3 and 4 2026-10-22. **Revised security/lifetime design; implementation remains gated on independent review.**
-Revision 4 answers the [third review](../../../evidence/2026-10-22/t9-growing-rev3-review-sol-high.md) (REVISE; R3.1 and the R3.4 matrix accepted) and supersedes R3.2, R3.3(c),
+2026-10-19; revisions 3, 4 and 5 2026-10-22. **Revised security/lifetime design; implementation remains gated on independent review.**
+Revision 5 answers the [fourth review](../../../evidence/2026-10-22/t9-growing-rev4-review-sol-high.md) (REVISE; R4.4 ordering and R4.5 startup accepted with conditions) and supersedes R4.1-R4.3
+where they conflict. Revision 4 answers the [third review](../../../evidence/2026-10-22/t9-growing-rev3-review-sol-high.md) (REVISE; R3.1 and the R3.4 matrix accepted) and supersedes R3.2, R3.3(c),
 R3.5 and R3.6 where they conflict. Revision 3 answered the [second independent review](../../../evidence/2026-10-22/t9-growing-rev2-review-sol-high.md) (REVISE) and the product evidence
 [discovery 1 F5](../../../evidence/2026-10-22/t8-discovery-1.md): see "Revision 3" before "Controls and delivery".
 Owner approved growing reservations, unchanged approved budgets, and replacing the
@@ -377,6 +378,64 @@ retained accounting; concurrent policy/namespace/publication stress; the budget-
 Opening a large existing file for editing needs its seed copy: should the opener **wait up to 120 s** (the existing `SeedTimeout`) with the application showing its normal "opening" state and then fail
 with a clear "not enough time / space" message, or fail sooner? Recommendation: wait up to 120 s (a 200 MB document copies in seconds on SSD; 120 s covers a slow disk), diagnostic distinguishes
 timeout from space. Small saves are unaffected (initial window, milliseconds).
+
+## Revision 5 (2026-10-22)
+
+Accepted and unchanged: R3.1 initial window, R3.4 compatibility matrix, R4.4 ordering guarantees (implement as claim → capture exact state and generation → release serialization for lifecycle
+I/O → complete only the still-matching transition; journal→budget order preserved; growth never takes lifecycle/journal serialization nor waits for content-I/O leases; revocation releases growth
+waiters before dependent drains) and R4.5 startup algorithm (it changes the startup entry path: the budget constructor today rejects non-JSON residue and every version but 1 before any recovery
+runs, `StagedSpaceBudget.cs:84`, constructed in `MinifilterInterceptor.cs:1714`; classification and the new schema version must precede that rejection, and an old reader must still meet a
+rejected format or marker wherever modern semantics remain; tests cover budget-enabled and accounting-disabled startup).
+
+### R5.1 Custody and lease protocol for service-owned storage (finding 1)
+
+The ledger record of a transfer carries a **custody inventory**: one slot per charged content object (stage, inspection snapshot, hand-back temporary, reader-pinned deletion-pending object),
+at most four occupied simultaneously, each with its exact identity (volume serial, file ID, generation), role, and `ReservedMax` allocation. Rules:
+
+- **Mutable copy lease.** A snapshot or hand-back temporary is registered with a lease holding `ReservedMax = AlignUp(expected length, granularity)` (or the full slot until its length is known).
+  While a lease is open its slot keeps `ReservedMax`, never its momentary allocation. A snapshot registered at zero allocation and still being copied therefore cannot lower the envelope.
+  Closing the lease (copy complete, flushed, identity re-read) records the measured allocation; abandonment keeps `ReservedMax` until the object's exact deletion is proved.
+- **Reduction waits for or retains leases.** Reduction of a transfer's charge is computed from the inventory only when no mutable lease is open; otherwise the open slots count at `ReservedMax` or the
+  transfer keeps its full debit. No lease is ever opened above the reduced envelope: opening one is an admission (reserve first, then create).
+- **Deletion-pending readers.** A slot is released only on **exact storage-release evidence** (the object's final close observed by the owner of the handle, or an exact-identity absence
+  confirmed after the last handle closed); a path or directory entry disappearing alone never frees a slot. Without that proof the slot stays charged conservatively.
+- **All content gone.** When every slot is released and no lease is open, the transfer is metadata-only accounting (`metadata` debit only); this is an explicit state, not a zero-slot special case.
+- Persisted with every transition: object identities, occupied slots, open leases and pending obligations.
+
+### R5.2 Separated proofs and the reduction transaction (finding 2)
+
+Three pieces, accepted together only against still-current accounting state:
+
+1. **Driver receipt (stage write retirement).** The R4.2 boundary (successful `StageDrain`, writable backing closed, irreversible `ReadOnly`, growth adoption excluded and drained, queued growth
+   resolved). The receipt binds: transfer id, driver instance id, allocation generation, destination generation, **complete stage volume serial and file ID**, the authenticated connection
+   identity/cookie current at send, and a monotonic receipt sequence. It carries stage `EndOfFile` and measured `AllocationSize`. Replay rule: an exact duplicate of an accepted receipt is a
+   no-op, including after restart (no second refund, no restoration of the full debit); a receipt for another connection, tuple or identity, or one that conflicts with an accepted
+   measurement, grants nothing.
+2. **Agent custody evidence (R5.1)** for every other slot.
+3. **Reduction transaction.** The agent validates the receipt against the current ledger state and the custody inventory, then writes **one durable transition** holding the accepted
+   receipt, the inventory, the closed-growth state and the resulting debit, then updates memory. Before durable acceptance the old charge stays; after acceptance but before memory is updated,
+   restart reconstructs the committed debit; an ambiguous persistence fault faults admission instead of allowing competing accounting.
+
+### R5.3 Maintained accounting covers the metadata callbacks; allocation deadline contract (finding 3)
+
+Maintained running totals replace more than `Reserve`'s summation. Metadata admission also enumerates the journal directory (`StagedSpaceBudget.cs:419`) and journal-growth admission rebuilds
+hot allocation bytes through `MetadataFiles` (`:346`); routing them through anchored capabilities fixes routing but not their duration under `_gate`. Rule: maintained **hot** and **shared**
+physical totals plus bounded per-transfer metadata lookup; full reconstruction only at startup or maintenance; debit before write and conservative failure handling preserved; the whole
+allocation path (not only `Reserve`) is measured against growing retained history, with queue time and end-to-end time recorded.
+
+The monotonic **allocation deadline** originates when the driver issues the allocation request (carried in the request, remaining time preserved across retries) and ends when the driver
+adopts the reply (queueing, preparation, seeding, persistence and reply delivery included). Pending-operation bound: at most a fixed number of in-flight pending allocations per
+connection and per SID; cancellation or connection loss abandons the driver side only. Abandonment/resolution evidence for automatic name recovery: the exact allocation intent and
+identity from the ledger plus a proof that no CREATE can still adopt it; expiry may end the CREATE promptly while the cleanup stays charged, and it never releases a possibly committed name.
+"Small saves finish in milliseconds" is a measurement to record, not an assumption. The **120 s bound is an owner decision** (see revision 4), not implied by the seed timeout.
+
+### R5.4 Added controls (finding 6)
+
+Snapshot/hand-back creation and copying racing reduction (including an object registered at zero allocation before its first write); four occupied slots plus an attempted fifth, a
+deletion-pending reader preventing premature slot reuse; allocation-normalization failure, empty files with residual allocation, differing allocation units; crashes before acceptance
+persistence, after durable acceptance and before in-memory totals change, duplicate delivery and conflicting same-version measurements; forged or substituted object identities and
+stale-connection receipts; completed-history latency through the metadata callbacks; downgrade attempts after modern accounting moved to shared/completed storage, with budget-enabled and
+accounting-disabled startup.
 
 ## Controls and delivery
 
