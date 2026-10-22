@@ -97,13 +97,15 @@ public sealed class DiagnosticsPipeServer : BackgroundService
             {
                 case "counters":
                     return Ok(query, _source.ReadCounters());
+                case "stage-streams":
+                    return Ok(query, _source.ReadStageStreams());
                 case "deny-ring":
                     ulong after = request["after"]?.GetValue<ulong>() ?? 0;
                     return Ok(query, _source.ReadDenyRing(after));
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "help"),
+                        ["queries"] = new JsonArray("counters", "deny-ring", "stage-streams", "help"),
                         ["denyRingCursor"] = "pass the previous reply's nextSequence minus one as after; 0 reads from the start",
                         ["connected"] = _source.IsConnected,
                     });

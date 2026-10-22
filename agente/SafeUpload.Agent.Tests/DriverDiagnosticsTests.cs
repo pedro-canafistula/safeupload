@@ -202,6 +202,33 @@ public sealed class DriverDiagnosticsTests
         Assert.False(source.IsConnected);
         Assert.Throws<InvalidOperationException>(() => source.ReadCounters());
         Assert.Throws<InvalidOperationException>(() => source.ReadDenyRing(0));
+        Assert.Throws<InvalidOperationException>(() => source.ReadStageStreams());
+    }
+
+    [Fact]
+    public void Stage_stream_snapshot_layout_is_exact()
+    {
+        Assert.Equal(160, Marshal.SizeOf<SafeUploadStageStreamRecord>());
+        Assert.Equal(160, DiagnosticsContract.StageStreamRecordSize);
+        Assert.Equal(16 + 16 * 160, Marshal.SizeOf<SafeUploadStageStreams>());
+        (string Field, int Offset)[] expected =
+        {
+            (nameof(SafeUploadStageStreamRecord.TransferId), 0),
+            (nameof(SafeUploadStageStreamRecord.Flags), 16),
+            (nameof(SafeUploadStageStreamRecord.FileObjects), 20),
+            (nameof(SafeUploadStageStreamRecord.ShareOpenCount), 24),
+            (nameof(SafeUploadStageStreamRecord.RpcReferences), 28),
+            (nameof(SafeUploadStageStreamRecord.OwnerProcessId), 32),
+            (nameof(SafeUploadStageStreamRecord.Wait), 36),
+            (nameof(SafeUploadStageStreamRecord.SectionBits), 40),
+            (nameof(SafeUploadStageStreamRecord.DestinationGeneration), 48),
+            (nameof(SafeUploadStageStreamRecord.NameChars), 56),
+            (nameof(SafeUploadStageStreamRecord.Name), 64),
+        };
+        foreach (var (field, offset) in expected)
+            Assert.Equal(offset, Marshal.OffsetOf<SafeUploadStageStreamRecord>(field).ToInt32());
+        Assert.Equal(16, Marshal.OffsetOf<SafeUploadStageStreams>(nameof(SafeUploadStageStreams.Entries)).ToInt32());
+        Assert.Equal(29u, DiagnosticsCommand.StageStreams);
     }
 
     [Fact]
@@ -217,10 +244,15 @@ public sealed class DriverDiagnosticsTests
             Assert.True(help["ok"]!.GetValue<bool>());
             Assert.False(help["data"]!["connected"]!.GetValue<bool>());
             Assert.Contains(help["data"]!["queries"]!.AsArray(), node => node!.GetValue<string>() == "deny-ring");
+            Assert.Contains(help["data"]!["queries"]!.AsArray(), node => node!.GetValue<string>() == "stage-streams");
 
             JsonObject counters = await ExchangeAsync(pipeName, "{\"query\":\"counters\"}");
             Assert.False(counters["ok"]!.GetValue<bool>());
             Assert.Contains("not connected", counters["error"]!.GetValue<string>());
+
+            JsonObject streams = await ExchangeAsync(pipeName, "{\"query\":\"stage-streams\"}");
+            Assert.False(streams["ok"]!.GetValue<bool>());
+            Assert.Contains("not connected", streams["error"]!.GetValue<string>());
 
             JsonObject unknown = await ExchangeAsync(pipeName, "{\"query\":\"nope\"}");
             Assert.False(unknown["ok"]!.GetValue<bool>());

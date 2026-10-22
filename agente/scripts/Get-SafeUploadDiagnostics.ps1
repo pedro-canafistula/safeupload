@@ -12,6 +12,8 @@ driver while the product runs. The service relays two read-only queries over the
   counters   refusal counters, how often a path that could not resolve a name answered "the whole volume may be in
              scope", and the writer-state status (registry entries and capacity, reclaim-worker passes, sections,
              stage streams).
+  stage-streams  a read-only snapshot of up to 16 live stage versions: flags, FileObjects, open handles, section
+             pointers, pins and the view owner (why a version is still live).
   deny-ring  the most recent operations the driver completed with an error status: status, operation, requesting
              process, flags, and the tail of the requested path or rename target. siteOffset is relative to the
              driver image base; resolve it against SafeUpload.pdb to name the refusing code.
@@ -24,7 +26,7 @@ driver while the product runs. The service relays two read-only queries over the
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('counters', 'deny-ring', 'help')]
+    [ValidateSet('counters', 'deny-ring', 'stage-streams', 'help')]
     [string] $Query = 'counters',
 
     # deny-ring: return records with a sequence greater than this value.
@@ -60,6 +62,7 @@ function Invoke-DiagnosticsQuery([hashtable] $Request) {
 switch ($Query) {
     'counters' { Invoke-DiagnosticsQuery @{ query = 'counters' } }
     'help' { Invoke-DiagnosticsQuery @{ query = 'help' } }
+    'stage-streams' { Invoke-DiagnosticsQuery @{ query = 'stage-streams' } }
     'deny-ring' {
         $cursor = $After
         for (;;) {

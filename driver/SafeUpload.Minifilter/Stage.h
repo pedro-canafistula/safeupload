@@ -195,6 +195,8 @@ BOOLEAN SafeUploadStageAttachInstanceRetiring(_In_ PFLT_INSTANCE Instance);
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStageAttachInstanceTeardownComplete(_In_ PFLT_INSTANCE Instance);
 VOID SafeUploadStageGetLifetimeCounters(_Out_ PSAFEUPLOAD_STAGE_LIFETIME_COUNTERS Counters);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageGetStreamSnapshot(_Out_ PSAFEUPLOAD_STAGE_STREAMS Snapshot);
 
 /* DenyRing.c: always-on record of operations completed with an error status. */
 VOID SafeUploadDenyRingInitialize(VOID);

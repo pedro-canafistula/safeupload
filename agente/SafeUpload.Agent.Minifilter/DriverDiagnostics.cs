@@ -11,6 +11,7 @@ public static class DiagnosticsCommand
     public const uint WriterStateStatus = 12;
     public const uint DenyRingRead = 27;
     public const uint DiagCounters = 28;
+    public const uint StageStreams = 29;
 }
 
 public static class DiagnosticsContract
@@ -23,6 +24,10 @@ public static class DiagnosticsContract
     public const int DiagCountersSize = 296;
     public const int StageLifetimeCountersSize = 176;
     public const int WriterStateStatusSize = 304;
+    public const int StageStreamEntries = 16;
+    public const int StageStreamNameChars = 48;
+    public const int StageStreamRecordSize = 160;
+    public const int StageStreamsSize = 16 + StageStreamEntries * StageStreamRecordSize;
 
     // Deny record flags (SAFEUPLOAD_DENY_FLAG_*).
     public const uint FlagTopLevelIrp = 0x001;
@@ -49,6 +54,10 @@ public static class DiagnosticsContract
         Check(sizeof(SafeUploadDiagCounters), DiagCountersSize, nameof(SafeUploadDiagCounters));
         Check(sizeof(SafeUploadStageLifetimeCounters), StageLifetimeCountersSize, nameof(SafeUploadStageLifetimeCounters));
         Check(sizeof(SafeUploadWriterStateStatus), WriterStateStatusSize, nameof(SafeUploadWriterStateStatus));
+        Check(sizeof(SafeUploadStageStreamRecord), StageStreamRecordSize, nameof(SafeUploadStageStreamRecord));
+        Check(sizeof(SafeUploadStageStreams), StageStreamsSize, nameof(SafeUploadStageStreams));
+        Check(Marshal.OffsetOf<SafeUploadStageStreamRecord>(nameof(SafeUploadStageStreamRecord.DestinationGeneration)).ToInt32(), 48,
+            $"{nameof(SafeUploadStageStreamRecord)}.{nameof(SafeUploadStageStreamRecord.DestinationGeneration)} offset");
         CheckWriterOffset(nameof(SafeUploadWriterStateStatus.Reserved2), 260);
         CheckWriterOffset(nameof(SafeUploadWriterStateStatus.WriterGlobalFirstUnknown), 288);
         CheckWriterOffset(nameof(SafeUploadWriterStateStatus.WriterEntryFirstUnknown), 292);
@@ -135,6 +144,46 @@ public struct SafeUploadDiagCounters
     public ulong ReclaimWakeupsSkipped;
     public SafeUploadStageLifetimeCounters Stage;
 }
+
+/// <summary>SAFEUPLOAD_STAGE_STREAM_RECORD (160 bytes): one live stage version in the read-only snapshot (T8 increment 0).</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public unsafe struct SafeUploadStageStreamRecord
+{
+    public Guid TransferId;
+    public uint Flags;
+    public uint FileObjects;
+    public uint ShareOpenCount;
+    public uint RpcReferences;
+    public uint OwnerProcessId;
+    public uint Wait;
+    public uint SectionBits;
+    public uint Reserved0;
+    public ulong DestinationGeneration;
+    public uint NameChars;
+    public uint Reserved1;
+    public fixed char Name[DiagnosticsContract.StageStreamNameChars];
+
+    public string ReadName()
+    {
+        uint chars = Math.Min(NameChars, (uint)DiagnosticsContract.StageStreamNameChars);
+        fixed (char* value = Name) return new string(value, 0, (int)chars);
+    }
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public unsafe struct SafeUploadStageStreams
+{
+    public uint StructSize;
+    public uint ProtocolVersion;
+    public uint Count;
+    public uint Total;
+    public fixed byte Entries[DiagnosticsContract.StageStreamEntries * DiagnosticsContract.StageStreamRecordSize];
+}
+
+public sealed record StageStreamRecord(Guid TransferId, uint Flags, uint FileObjects, uint ShareOpenCount, uint RpcReferences,
+    uint OwnerProcessId, uint Wait, uint SectionBits, ulong DestinationGeneration, string Name);
+
+public sealed record StageStreamSnapshot(IReadOnlyList<StageStreamRecord> Streams, uint Total);
 
 /// <summary>SAFEUPLOAD_STAGE_LIFETIME_COUNTERS (176 bytes): stage-version lifetime and stage-worker wakes (T4).</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
@@ -298,6 +347,25 @@ public sealed partial class FilterPort
         if (counters.StructSize != sizeof(SafeUploadDiagCounters) || counters.ProtocolVersion != Contract.Version)
             throw new InvalidDataException("Diagnostic counters response does not match Protocol.h.");
         return counters;
+    }
+
+    /// <summary>Read-only snapshot of up to 16 live stage versions: flags, counts and section pointers (T8 increment 0).</summary>
+    public unsafe StageStreamSnapshot ReadStageStreams()
+    {
+        SafeUploadStageStreams batch = default;
+        QueryControl(DiagnosticsCommand.StageStreams, (IntPtr)(&batch), (uint)sizeof(SafeUploadStageStreams));
+        if (batch.StructSize != sizeof(SafeUploadStageStreams) || batch.ProtocolVersion != Contract.Version ||
+            batch.Count > DiagnosticsContract.StageStreamEntries || batch.Count > batch.Total)
+            throw new InvalidDataException("Stage streams response does not match Protocol.h.");
+        var records = new List<StageStreamRecord>((int)batch.Count);
+        SafeUploadStageStreamRecord* entries = (SafeUploadStageStreamRecord*)batch.Entries;
+        for (int index = 0; index < batch.Count; ++index)
+        {
+            SafeUploadStageStreamRecord* e = &entries[index];
+            records.Add(new StageStreamRecord(e->TransferId, e->Flags, e->FileObjects, e->ShareOpenCount, e->RpcReferences,
+                e->OwnerProcessId, e->Wait, e->SectionBits, e->DestinationGeneration, e->ReadName()));
+        }
+        return new StageStreamSnapshot(records, batch.Total);
     }
 
     public unsafe SafeUploadWriterStateStatus ReadWriterStateStatus()

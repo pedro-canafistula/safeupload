@@ -564,6 +564,7 @@ typedef struct _SAFEUPLOAD_STAGE_ALLOCATION_RESOLUTION_REPLY_V20 {
  * read them while the service runs). Both are read-only. */
 #define SAFEUPLOAD_CONTROL_DENY_RING_READ                   ((UINT32) 27)
 #define SAFEUPLOAD_CONTROL_DIAG_COUNTERS                    ((UINT32) 28)
+#define SAFEUPLOAD_CONTROL_STAGE_STREAMS                    ((UINT32) 29)
 #define SAFEUPLOAD_ADMISSION_COVERAGE_MAX_SCOPES \
     ((UINT32)(SAFEUPLOAD_MAX_PREFIXES + SAFEUPLOAD_MAX_PREFIXES + SAFEUPLOAD_BOOT_SCOPE_MAX_PREFIXES + 2))
 #define SAFEUPLOAD_ADMISSION_COVERAGE_MAX_INSTANCES         ((UINT32) 128)
@@ -1504,6 +1505,65 @@ C_ASSERT(sizeof(SAFEUPLOAD_DENY_RING_BATCH) == 32 + 16 * 192);
 C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_DENY_RING_BATCH, Entries) == 32);
 C_ASSERT(sizeof(SAFEUPLOAD_STAGE_LIFETIME_COUNTERS) == 176);
 C_ASSERT(sizeof(SAFEUPLOAD_DIAG_COUNTERS) == 296);
+
+/* Read-only snapshot of the live stage versions (T8 increment 0): why a version is still live, which flags and counts it holds.
+ * A diagnostic: it grants nothing and changes nothing; fields are read without the stream resource and may be momentarily
+ * inconsistent. At most SAFEUPLOAD_STAGE_STREAM_ENTRIES versions are returned; Total is the live count. */
+#define SAFEUPLOAD_STAGE_STREAM_ENTRIES     ((UINT32) 16)
+#define SAFEUPLOAD_STAGE_STREAM_NAME_CHARS  ((UINT32) 48)
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_SEALED                 0x00000001u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_READONLY               0x00000002u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_RETIRED                0x00000004u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_DISCARD_ON_CLOSE       0x00000008u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_DISCARDED              0x00000010u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_DISPOSED               0x00000020u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_DISPOSE_DEFERRED       0x00000040u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_RENAME_EXCHANGE        0x00000080u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_PUBLICATION_OBSERVED   0x00000100u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_CANCELLATION_ACCEPTED  0x00000200u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_WORK_QUEUED            0x00000400u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_VIEW_PRESENT           0x00000800u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_VIEW_DETACHED          0x00001000u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_OWNER_EXITED           0x00002000u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_RECEIPT_PENDING        0x00004000u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_RECEIPT_IN_FLIGHT      0x00008000u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_CLEANUP_OBSERVED       0x00010000u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_RECEIPT_ACKNOWLEDGED   0x00020000u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_RENAME_RPC_PENDING     0x00040000u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_SEAL_RPC_PENDING       0x00080000u
+#define SAFEUPLOAD_STAGE_STREAM_FLAG_SPACE_FAILED           0x00100000u
+#define SAFEUPLOAD_STAGE_STREAM_SECTION_DATA                0x00000001u
+#define SAFEUPLOAD_STAGE_STREAM_SECTION_IMAGE               0x00000002u
+#define SAFEUPLOAD_STAGE_STREAM_SECTION_CACHE               0x00000004u
+
+typedef struct _SAFEUPLOAD_STAGE_STREAM_RECORD {
+    GUID TransferId;
+    UINT32 Flags;                   // SAFEUPLOAD_STAGE_STREAM_FLAG_*
+    UINT32 FileObjects;             // upper FILE_OBJECTs created and not yet closed
+    UINT32 ShareOpenCount;          // open handles in the version's share access
+    UINT32 RpcReferences;           // pins held by the stage worker / waiters
+    UINT32 OwnerProcessId;          // the view's original requestor, 0 without a view
+    UINT32 Wait;                    // STAGE_WAIT_* (0 = nothing the retry timer covers)
+    UINT32 SectionBits;             // SAFEUPLOAD_STAGE_STREAM_SECTION_*
+    UINT32 Reserved0;
+    UINT64 DestinationGeneration;
+    UINT32 NameChars;
+    UINT32 Reserved1;
+    WCHAR Name[SAFEUPLOAD_STAGE_STREAM_NAME_CHARS];   // the tail of the version's name
+} SAFEUPLOAD_STAGE_STREAM_RECORD, *PSAFEUPLOAD_STAGE_STREAM_RECORD;
+
+typedef struct _SAFEUPLOAD_STAGE_STREAMS {
+    UINT32 StructSize;
+    UINT32 ProtocolVersion;
+    UINT32 Count;                   // valid entries
+    UINT32 Total;                   // live versions (Count < Total when the snapshot was truncated)
+    SAFEUPLOAD_STAGE_STREAM_RECORD Entries[SAFEUPLOAD_STAGE_STREAM_ENTRIES];
+} SAFEUPLOAD_STAGE_STREAMS, *PSAFEUPLOAD_STAGE_STREAMS;
+C_ASSERT(sizeof(SAFEUPLOAD_STAGE_STREAM_RECORD) == 160);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_STAGE_STREAM_RECORD, DestinationGeneration) == 48);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_STAGE_STREAM_RECORD, Name) == 64);
+C_ASSERT(sizeof(SAFEUPLOAD_STAGE_STREAMS) == 16 + 16 * 160);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_STAGE_STREAMS, Entries) == 16);
 #endif
 
 /* A probe entry's AdmissionRecordState carries H(F) of the probed stream; this bit marks a lower bound. */

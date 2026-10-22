@@ -2832,6 +2832,29 @@ Return Value:
             leave;
         }
 
+        if (command == SAFEUPLOAD_CONTROL_STAGE_STREAMS) {
+            PSAFEUPLOAD_STAGE_STREAMS streams = (PSAFEUPLOAD_STAGE_STREAMS)policy;
+
+            C_ASSERT( sizeof( SAFEUPLOAD_STAGE_STREAMS ) <= sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );
+            if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL ) ||
+                OutputBuffer == NULL || OutputBufferLength != sizeof( SAFEUPLOAD_STAGE_STREAMS )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||
+                controlHeader.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite( OutputBuffer, sizeof( SAFEUPLOAD_STAGE_STREAMS ), __alignof( SAFEUPLOAD_STAGE_STREAMS ) );
+            SafeUploadStageGetStreamSnapshot( streams );
+            RtlCopyMemory( OutputBuffer, streams, sizeof( *streams ) );
+            *ReturnOutputBufferLength = sizeof( *streams );
+            leave;
+        }
+
         if (command == SAFEUPLOAD_CONTROL_DIAG_COUNTERS) {
             PSAFEUPLOAD_DIAG_COUNTERS diagCounters = (PSAFEUPLOAD_DIAG_COUNTERS)policy;
 

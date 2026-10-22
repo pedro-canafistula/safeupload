@@ -7787,6 +7787,74 @@ VOID SafeUploadStageGetLifetimeCounters(_Out_ PSAFEUPLOAD_STAGE_LIFETIME_COUNTER
     Counters->Tombstones = StageTombstoneCount;
 }
 
+/* T8 increment 0: a read-only snapshot of the live versions. NamespaceResource serializes the list and the flags below; the stream
+ * resource is not taken (a diagnostic never waits on a stuck stream), so a record can be momentarily inconsistent. */
+_Use_decl_annotations_
+VOID SafeUploadStageGetStreamSnapshot(PSAFEUPLOAD_STAGE_STREAMS Snapshot)
+{
+    PLIST_ENTRY link;
+    UINT32 count = 0, total = 0;
+    PAGED_CODE();
+    RtlZeroMemory(Snapshot, sizeof(*Snapshot));
+    Snapshot->StructSize = sizeof(*Snapshot);
+    Snapshot->ProtocolVersion = SAFEUPLOAD_PROTOCOL_VERSION;
+    StageAcquire(&StageNamespaceResource);
+    for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
+        PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
+        PSAFEUPLOAD_STAGE_STREAM_RECORD record;
+        UINT32 flags = 0, sections = 0;
+        USHORT chars, skip;
+        ++total;
+        if (count >= SAFEUPLOAD_STAGE_STREAM_ENTRIES) continue;
+        record = &Snapshot->Entries[count++];
+        if (stream->HasTransferId) record->TransferId = stream->TransferId;
+        if (stream->Sealed) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_SEALED;
+        if (stream->ReadOnly) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_READONLY;
+        if (stream->Retired) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_RETIRED;
+        if (stream->DiscardOnClose) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_DISCARD_ON_CLOSE;
+        if (stream->Discarded) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_DISCARDED;
+        if (stream->Disposed) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_DISPOSED;
+        if (stream->DisposeDeferred) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_DISPOSE_DEFERRED;
+        if (stream->RenameExchange != NULL) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_RENAME_EXCHANGE;
+        if (stream->WorkQueued) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_WORK_QUEUED;
+        if (stream->SpaceFailed != 0) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_SPACE_FAILED;
+        if (stream->View != NULL) {
+            flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_VIEW_PRESENT;
+            if (stream->View->Detached) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_VIEW_DETACHED;
+            record->OwnerProcessId = stream->View->OwnerProcessId;
+        }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (stream->MvpPublicationObserved) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_PUBLICATION_OBSERVED;
+        if (stream->PrivateCancellationAccepted) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_CANCELLATION_ACCEPTED;
+        if (stream->OwnerExited) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_OWNER_EXITED;
+        if (stream->HandleReceiptPending) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_RECEIPT_PENDING;
+        if (stream->HandleReceiptInFlight) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_RECEIPT_IN_FLIGHT;
+        if (stream->AnyHandleCleanupObserved) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_CLEANUP_OBSERVED;
+        if (stream->HandleReceiptAcknowledged) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_RECEIPT_ACKNOWLEDGED;
+        if (stream->RenameRpcPending) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_RENAME_RPC_PENDING;
+        if (stream->SealRpcPending) flags |= SAFEUPLOAD_STAGE_STREAM_FLAG_SEAL_RPC_PENDING;
+        record->DestinationGeneration = stream->DestinationGeneration;
+#endif
+        record->Flags = flags;
+        record->FileObjects = (UINT32)InterlockedCompareExchange(&stream->FileObjects, 0, 0);
+        record->ShareOpenCount = stream->ShareAccess.OpenCount;
+        record->RpcReferences = (UINT32)InterlockedCompareExchange(&stream->RpcReferences, 0, 0);
+        record->Wait = stream->Wait;
+        if (stream->Sections.DataSectionObject != NULL) sections |= SAFEUPLOAD_STAGE_STREAM_SECTION_DATA;
+        if (stream->Sections.ImageSectionObject != NULL) sections |= SAFEUPLOAD_STAGE_STREAM_SECTION_IMAGE;
+        if (stream->Sections.SharedCacheMap != NULL) sections |= SAFEUPLOAD_STAGE_STREAM_SECTION_CACHE;
+        record->SectionBits = sections;
+        chars = stream->Name.Length / sizeof(WCHAR);
+        skip = chars > SAFEUPLOAD_STAGE_STREAM_NAME_CHARS ? (USHORT)(chars - SAFEUPLOAD_STAGE_STREAM_NAME_CHARS) : 0;
+        record->NameChars = (UINT32)(chars - skip);
+        if (stream->Name.Buffer != NULL && record->NameChars != 0)
+            RtlCopyMemory(record->Name, stream->Name.Buffer + skip, record->NameChars * sizeof(WCHAR));
+    }
+    StageRelease(&StageNamespaceResource);
+    Snapshot->Count = count;
+    Snapshot->Total = total;
+}
+
 /* Phase 3 admission no longer consumes StageFence's directory scan, scan-built SOP fence,
  * quarantine/retry table, or policy refresh mutex. The bounded writer registry and active SOP map
  * replace enumeration and scan-built paging/read denial; targeted file-ID probes replace broad

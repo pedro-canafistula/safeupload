@@ -161,6 +161,49 @@ public sealed class DriverDiagnosticsSource
         ["instanceTeardownsOther"] = writer.InstanceTeardownsOther,
     };
 
+    private static readonly (uint Bit, string Name)[] StageStreamFlagNames =
+    {
+        (0x1, "Sealed"), (0x2, "ReadOnly"), (0x4, "Retired"), (0x8, "DiscardOnClose"), (0x10, "Discarded"), (0x20, "Disposed"),
+        (0x40, "DisposeDeferred"), (0x80, "RenameExchange"), (0x100, "PublicationObserved"), (0x200, "CancellationAccepted"),
+        (0x400, "WorkQueued"), (0x800, "ViewPresent"), (0x1000, "ViewDetached"), (0x2000, "OwnerExited"),
+        (0x4000, "ReceiptPending"), (0x8000, "ReceiptInFlight"), (0x10000, "CleanupObserved"), (0x20000, "ReceiptAcknowledged"),
+        (0x40000, "RenameRpcPending"), (0x80000, "SealRpcPending"), (0x100000, "SpaceFailed"),
+    };
+
+    /// <summary>Read-only snapshot of the live stage versions (T8 increment 0): why a version is still live.</summary>
+    public JsonObject ReadStageStreams()
+    {
+        return WithPort(port =>
+        {
+            StageStreamSnapshot snapshot = port.ReadStageStreams();
+            var streams = new JsonArray();
+            foreach (StageStreamRecord record in snapshot.Streams)
+            {
+                var flags = new JsonArray();
+                foreach (var (bit, name) in StageStreamFlagNames)
+                    if ((record.Flags & bit) != 0) flags.Add(name);
+                var sections = new JsonArray();
+                if ((record.SectionBits & 1) != 0) sections.Add("Data");
+                if ((record.SectionBits & 2) != 0) sections.Add("Image");
+                if ((record.SectionBits & 4) != 0) sections.Add("Cache");
+                streams.Add(new JsonObject
+                {
+                    ["transferId"] = record.TransferId.ToString("N"),
+                    ["name"] = record.Name,
+                    ["flags"] = flags,
+                    ["fileObjects"] = record.FileObjects,
+                    ["shareOpenCount"] = record.ShareOpenCount,
+                    ["rpcReferences"] = record.RpcReferences,
+                    ["ownerProcessId"] = record.OwnerProcessId,
+                    ["wait"] = record.Wait,
+                    ["sections"] = sections,
+                    ["destinationGeneration"] = record.DestinationGeneration,
+                });
+            }
+            return new JsonObject { ["streams"] = streams, ["total"] = snapshot.Total, ["truncated"] = snapshot.Total > snapshot.Streams.Count };
+        });
+    }
+
     /// <summary>One page of the deny ring. The caller repeats with <c>nextSequence</c> until it equals its cursor.</summary>
     public JsonObject ReadDenyRing(ulong afterSequence)
     {
