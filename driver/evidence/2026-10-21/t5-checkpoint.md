@@ -105,6 +105,22 @@ Findings:
 - **`open=32` on a fresh create (`delete-remove.txt`).** The agent refused that `StageAllocate` after 1,528 ms with no transfer (service event 33400), the `m2t5ord4` signature. The previous case had aborted on harness defect 1 without waiting for its version to settle, so this is consistent with the known T9 same-user overlapping-save refusal; to be confirmed on the next row.
 - **Filter refused the observer's read-attributes open of the protected folder** (deny ring seq 138: STATUS_SHARING_VIOLATION, reason 17 `STAGE_CREATE_CONFLICT`, gate 1 = directory mutation active) 57 µs before the actor's move into protection returned the expected NOT_SAME_DEVICE. Any open routed to stage creation is refused while a directory mutation is active, including an attributes-only open of the folder itself. Transient; noted for T6 (the observer now retries it like defect 1).
 
+## D7: native DeleteFileW / MoveFileExW source opens (owner 2026-10-21)
+
+Design delta D7 in `T5-UX-NAMESPACE-GAP.md`: Sol 6.1 high reviews [rev 0 REVISE](t5-d7-review-sol61.md),
+[rev 1 REVISE](t5-d7-rereview-sol61.md), [rev 2 REVISE](t5-d7-rereview2-sol61.md), [rev 3 ACCEPT (design)](t5-d7-rereview3-sol61.md).
+Implementation (`StageStream.c` + host controls in `namespace_ux_fixture.c`): [review of eb42b0fb REVISE](t5-d7-impl-review-sol61.md),
+[e41913c4 REVISE](t5-d7-impl-rereview-sol61.md), [9eb46e87 ACCEPT](t5-d7-impl-rereview2-sol61.md). Host controls pass on cc and clang; 32/32
+negative mutations killed by the intended assertions ([receipts](t5-d7-host-mutants.json)). Two host modules still fail on this host's
+clang 23 (`-Wunused-but-set-global` in the untouched registry and context-retirement fixtures): failing checks, unrelated to D7.
+
+| Build | Source | Result |
+|---|---|---|
+| `m2t5d7k1` | `eb42b0fb` | **FAIL**: PREfast C6388 (legacy completion context not NULL before `SafeUploadPreCreate`); fixed `35d2df1d`. [Summary](exact-m2t5d7k1-summary.txt) |
+| `m2t5d7k2` | `35d2df1d` | Both profiles 0/0, PREfast, ApiValidator, imports PASS; **signing FAIL** (script default signer `220DD…` absent; the current test signer is `A6D6…`, LocalMachine). [Summary](exact-m2t5d7k2-summary.txt) |
+| `m2t5d7k3` | `e41913c4` | **PASS**: both profiles 0/0, PREfast, ApiValidator, imports 248/247, A6D6 signature valid (`1D2F56FC…`). Superseded by `9eb46e87`. [Summary](exact-m2t5d7k3-summary.txt) |
+| `m2t5d7k4` | `9eb46e87` (implementation accepted) | **PASS**: both profiles 0/0, PREfast, ApiValidator, imports 248/247, A6D6 signature valid; signed driver `26075F68…` (kept locally in `m2t5d7k4-candidate/`). [Summary](exact-m2t5d7k4-summary.txt). This is the driver for the T5 rows. |
+
 ## Next
 
 - [x] Seed-export guard (`dc16ae12`, `d157ba3f`) and the row harness (`53ddf152`) landed; the merged tree passes the four-leg agent matrix (`m2t5a4`).
