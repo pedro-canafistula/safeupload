@@ -443,8 +443,10 @@ accounting-disabled startup.
   single-winner strategy assertion with stronger concurrent accounting controls.
 - [x] T4/T9: initial independent review identified MM recursion, ledger retirement
   and reentrant metadata dependencies; concrete mechanism addendum retained.
-- [ ] T4/T9: accept this revision (3) before implementation; review coherent changed
-  kernel against the conditions before its first VM boot.
+- [x] T4/T9: design accepted with conditions at revision 5 ([review](../../../evidence/2026-10-22/t9-growing-rev5-review-sol-high.md), four reviews 2026-10-22).
+  Before implementation: fixed-width wire layouts, schema and state transitions, slot incarnation and pending-creation representation, exact release/adoption evidence,
+  maintained-total update rules, concrete pending bounds and the monotonic clock representation; the owner's seed-wait decision for that dependent behaviour.
+  Review the coherent changed kernel against the conditions before its first VM boot.
 - [ ] T9 F5 regression: fresh budget-on state; overlapping distinct-name one-line files, Word temp/target saves, Excel SaveAs/edit/reopen, repetition with retained state;
   successful exact reservations without the 1500 ms grace; record backend cause and application result.
 - [ ] T9 held/completed accounting: charge before and after proven retirement, retained oversized grants, shrink/truncate, live mappings and readers, copying hand-back,

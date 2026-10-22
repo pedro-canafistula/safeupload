@@ -798,6 +798,8 @@ Owner-approved runtime budget/default formulas are in Owner decisions. Bounded s
 - [x] T9: implement failure classes, bounded worker concurrency, notifications, single-handle snapshot and scanner-integrity controls;
   [component evidence](evidence/2026-10-10/m2-agent-component-gates.json).
 - [x] T9: owner resolves all-zero card and exact PANOSE/Office-owner-file/PowerPoint-thumbnail choices; preserve the remaining content refusals.
+- [x] T9 growing reservations: design accepted with conditions at revision 5 (2026-10-22; initial window, retirement receipt, custody leases, maintained totals, lane ordering, startup table;
+  [design](docs/design/large-files/UX-LARGE-CONCURRENCY.md)). **Owner decision pending: the opener of a large existing file waits up to 120 s for its seed copy (recommended).** Implementation not started.
 - [ ] T9: qualify integrated identity-bound capacity grants, per-SID/total/free-space budgets, exact snapshot/orphan accounting, failed-prefix refusal,
   legacy upgrade and startup recovery; [latest local source receipt](evidence/2026-10-16/ux-large5-local/result.md) is not Windows pair qualification.
 - [ ] T9: finish/qualify whole-file streaming, all required format/encoding/extraction coverage, seeding cost and capture/storage/parser bounds.
