@@ -344,9 +344,15 @@ function Invoke-T5ShellRename([string]$Path,[string]$OldPath,$Observation) {
         $Observation.ExplorerWindows=@($shell.Windows() | ForEach-Object {try{$_.LocationName}catch{'unavailable'}})
         if($null -eq $item){throw 'Shell rename: old item missing'}
         $Observation.ItemBefore=[string]$item.Name;$Observation.ItemPathBefore=[string]$item.Path
-        $item.Name=(Split-Path -Leaf $Path)
+        # Type what a user types in Explorer's rename box: with known extensions hidden (the default) the box shows and
+        # takes the base name, and a full name there becomes '<name>.txt.txt' (m2t5ord8).
+        $hidden=([string]$item.Name -ceq [IO.Path]::GetFileNameWithoutExtension($OldPath))
+        $Observation.ExtensionHidden=$hidden
+        $item.Name=$(if($hidden){[IO.Path]::GetFileNameWithoutExtension($Path)}else{Split-Path -Leaf $Path})
         $Observation.ItemAfter=[string]$item.Name;$Observation.ItemPathAfter=[string]$item.Path
         $Observation.WindowsAfter=@(Get-T5DesktopWindows)
+        # The setter reports no status; the rename succeeded only if exactly the new name now exists and the old one is gone.
+        return $(if((Test-Path -LiteralPath $Path) -and -not (Test-Path -LiteralPath $OldPath)){0}else{2})
     } finally {foreach($com in @($item,$folder,$shell)){if($null -ne $com){[void][Runtime.InteropServices.Marshal]::ReleaseComObject($com)}}}
 }
 function Invoke-T5ShellDelete([string]$Path,$Observation) {
@@ -371,7 +377,11 @@ if($ChildOperation) {
             $stream=[IO.File]::Open($ChildPath,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]'ReadWrite, Delete')
             try {$receipt.Length=$stream.Length;$receipt.FirstByte=$stream.ReadByte();$receipt.Code=0;$receipt.ReadWrite=$true}finally{$stream.Dispose()}
         }else{throw ('Unknown child operation '+$ChildOperation)}
-    }catch{$receipt.Error=$_.Exception.ToString();$receipt.Code=$_.Exception.HResult -band 0xffff}
+    }catch{
+        # PowerShell wraps .NET call failures; report the underlying Win32 code (m2t5ord8 showed 0x1501 for a missing file).
+        $failure=$_.Exception; while($failure -is [Management.Automation.MethodInvocationException] -and $null -ne $failure.InnerException){$failure=$failure.InnerException}
+        $receipt.Error=$_.Exception.ToString();$receipt.Code=$failure.HResult -band 0xffff
+    }
     [IO.File]::WriteAllText($ChildResult,($receipt | ConvertTo-Json -Depth 8));exit 0
 }
 $script:workflowHeld=$null
@@ -476,7 +486,7 @@ for (;;) {
                 $result.Method='MoveFileExW(MOVEFILE_COPY_ALLOWED)';$result.Steps='move='+[T5Native]::Move($source,$c.Path)
                 $result.Source=$source;$result.SourceGone=-not (Test-Path -LiteralPath $source)
             }
-            'shell-rename-empty' { $result.Ui=[ordered]@{};Invoke-T5ShellRename $c.Path ([string]$c.Text) $result.Ui;$result.Steps='shell-rename=0' }
+            'shell-rename-empty' { $result.Ui=[ordered]@{};$renameCode=Invoke-T5ShellRename $c.Path ([string]$c.Text) $result.Ui;$result.Steps='shell-rename='+$renameCode }
             'remove-item' {Remove-Item -LiteralPath $c.Path -ErrorAction Stop;$result.Steps='remove=0'}
             'shell-delete' {$result.Ui=[ordered]@{};$result.Steps=Invoke-T5ShellDelete $c.Path $result.Ui}
             'probe-onclose'  { $result.Steps = [T5Native]::ProbeOnCloseCancellation($c.Path, $bytes) }
