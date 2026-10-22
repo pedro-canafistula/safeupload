@@ -35,6 +35,12 @@ Stage versions, contexts, the stage worker and the journal (T4, T11).
 | [UX-LEAK.md](design/lifetime/UX-LEAK.md) — T4: disposal completion and inert stream-context retirement | Disposal completion and stream-context retirement; the event-wait protocol is historical. |
 | [UX-LEAK2.md](design/lifetime/UX-LEAK2.md) — Retirement follow-up: CREATE leases and immediate reopen controls | CREATE leases and immediate-reopen controls that followed UX-LEAK. |
 
+## Design: applications (T8)
+
+| Document | What it covers |
+|---|---|
+| [T8-CLOSURE-PLAN.md](design/T8-CLOSURE-PLAN.md) — T8 closure plan | Native-parity catalog for Office/Explorer/Edge/robocopy/7-Zip, fix order, metadata/MOTW, qualification and owner decisions. |
+
 ## Design: publication, deletes and namespace
 
 Seal, publish, delete, rename, folders and outside-scope behavior (T5, T6).

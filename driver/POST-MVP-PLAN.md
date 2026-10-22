@@ -750,6 +750,7 @@ and never publish uninspected bytes; C05 reflects inspection rather than blanket
 ### T8. Office/common apps and metadata
 
 **Problem:** real application save/replace/delete sequences and publication metadata need qualification.
+Proposed [closure plan](docs/design/T8-CLOSURE-PLAN.md) (2026-10-22, awaiting owner decisions): native-parity catalog with zero unexplained refusals, then metadata/MOTW.
 **Done when:** Word, Excel, PowerPoint, WordPad, Explorer replace, browser download, robocopy and 7-Zip rows pass all three modes (Paint moved
 after M2 with image OCR, owner 2026-10-16);
 the publishing application can reopen the file and agreed metadata is preserved.
