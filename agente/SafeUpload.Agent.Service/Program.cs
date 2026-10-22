@@ -90,7 +90,11 @@ public static class Program
         // Administração configurado: é ela que deixa o endpoint continuar
         // registrando com a rede fora do ar. O envio ao painel é uma etapa
         // posterior, feita pelo HttpAgentDispatcher, e não um substituto.
-        builder.Services.AddSingleton<IAuditSink, LocalQueueAuditSink>();
+        builder.Services.AddSingleton<LocalQueueAuditSink>();
+        builder.Services.AddSingleton<AuditQueueHealth>();
+        builder.Services.AddSingleton<IAuditSink>(services => new MonitoredAuditSink(
+            services.GetRequiredService<LocalQueueAuditSink>(), services.GetRequiredService<AuditQueueHealth>(),
+            services.GetRequiredService<ILogger<MonitoredAuditSink>>()));
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
         builder.Services.AddSingleton<InspectionService>();
@@ -222,15 +226,14 @@ public static class Program
         if (string.Equals(mode, "Minifilter", StringComparison.OrdinalIgnoreCase))
         {
             builder.Services.AddHostedService<MinifilterInterceptor>();
-
-            // Administrator-only field diagnostics relayed over the interceptor's own filter-port connection
-            // (the port accepts a single client, so no other tool can read the driver while the service runs).
-            builder.Services.AddHostedService<DiagnosticsPipeServer>();
         }
         else
         {
             builder.Services.AddHostedService<FileSystemInterceptor>();
         }
+
+        // Read-only admin diagnostics also expose audit-health without a driver.
+        builder.Services.AddHostedService<DiagnosticsPipeServer>();
 
         // A entrega das notificacoes aos aplicativos conectados.
         builder.Services.AddHostedService<NotificationPipeServer>();
