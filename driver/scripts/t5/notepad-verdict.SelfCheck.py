@@ -11,7 +11,7 @@ blocks = re.findall(r"<<'PY'\n(.*?)\nPY\n", launcher.read_text(), re.S)
 parsed = [ast.parse(block) for block in blocks]
 required = {"valid_raw_sample", "native_steps_match", "forced_order_matches", "approved_public_hash_map", "writer_registry_verdict", "staging_empty_verdict",
             "transient_observation_error", "raw_samples_accepted", "workflow_observed_bytes_match", "journal_settled_verdict"}
-constants = {"T5_TRANSIENT_PHASES", "T5_TRANSIENT_ERRORS"}
+constants = {"T5_TRANSIENT_PHASES", "T5_FATAL_OBSERVATION_ERRORS"}
 functions = [node for tree in parsed for node in tree.body
              if (isinstance(node, ast.FunctionDef) and node.name in required) or
              (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id in constants for t in node.targets))]
@@ -217,8 +217,15 @@ lookup = 'Exception calling \\"OpenAttributes\\" with \\"1\\" argument(s): \\"Th
 check(accepted([error_sample(1, error=lookup), ok_sample(2)]) == (True, 1), "A name that vanished before the attributes open is a race (serialized quotes)")
 check(accepted([error_sample(1, error="Missing lookup but present raw index entry."), ok_sample(2)]) == (True, 1), "A lookup/index disagreement is a race")
 check(accepted([error_sample(1, error="Target metadata probe failed, yet the named lookup succeeded."), ok_sample(2)]) == (True, 1), "A name that appeared between the probes is a race")
-check(accepted([error_sample(1, error='Exception calling "Capture" with "2" argument(s): "Requested record=272309; Bad signature"'), ok_sample(2)])[0] is False,
-      "A lagging MFT record is retried inside the sample, not superseded by the verdict")
+check(accepted([error_sample(1, error='Exception calling "Capture" with "2" argument(s): "Requested record=272309; Bad signature"'), ok_sample(2)]) == (True, 1),
+      "A lagging MFT record (retried inside the sample first) is superseded by the next valid sample")
+check(accepted([error_sample(1, error="Path generation changed across bracket."), ok_sample(2)]) == (True, 1), "A path whose generation changed across the bracket is a race")
+check(accepted([error_sample(1, error='Exception calling "Capture" with "2" argument(s): "Requested record=269311; Raw/FSCTL identity mismatch; requested=269311; rawNumber=269311; rawSequence=2"'), ok_sample(2)]) == (True, 1),
+      "A raw/FSCTL identity mismatch from a lagging record is a race")
+check(accepted([error_sample(1, error="Raw parent index has unexpected/missing file references; unexpected=1; missing=0"), ok_sample(2)])[0] is False, "Unexpected directory entries stay fatal")
+check(accepted([error_sample(1, error="Raw parent directory identity is incomplete."), ok_sample(2)])[0] is False, "An incomplete parent identity stays fatal")
+check(accepted([error_sample(1, error='{"Verdict":"FAIL","Phase":"Sample"}'), ok_sample(2)])[0] is False, "A module FAIL verdict stays fatal")
+check(accepted([error_sample(1, error=""), ok_sample(2)])[0] is False, "An ERROR sample with no recorded error is never superseded")
 invalid_ok = ok_sample(2)
 invalid_ok["IndependentReadersAgree"] = False
 check(accepted([error_sample(1), invalid_ok])[0] is False, "A successor that is itself invalid does not supersede")

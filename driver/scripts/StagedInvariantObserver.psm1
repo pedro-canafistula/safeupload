@@ -1335,7 +1335,7 @@ function Test-IOStaleMetadataRetry($Context, $CaptureError) {
         if ([string]$node.Message -match '^Raw parent index does not identify the requested name/file reference\.$|^Raw FILE_NAME parent/name does not match parent index\.$') { return $true }
         # m2t5ord13: a lagging MFT record read ("Requested record=N; Bad signature") and a name that appeared between the metadata probe
         # and the named lookup are the same class of capture race; a fresh flushed capture settles them or fails again, attempts kept.
-        if ([string]$node.Message -match 'Requested record=\d+; (Bad signature|Wrong record number/sequence or not in use)|^Target metadata probe failed, yet the named lookup succeeded\.$') { return $true }
+        if ([string]$node.Message -match 'Requested record=\d+; (Bad signature|Wrong record number/sequence or not in use|Raw/FSCTL identity mismatch)|^Target metadata probe failed, yet the named lookup succeeded\.$') { return $true }
         # m2t5ord16 (boot-Verifier): the on-disk MFT record 0 lagged an MFT growth, so the one refresh did not cover the record. With the
         # opt-in Volume.RetryStaleMftRefresh the verified old map stays in use and a later capture refreshes again.
         if ([string]$node.Message -match 'Still-truncated MFT map after one refresh') { return $true }

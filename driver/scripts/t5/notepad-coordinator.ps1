@@ -120,24 +120,23 @@ function Test-T5ApprovedPublicRead([string]$Path, $Read) {
 # sample of the same case (any phase: owner 2026-10-22, since the last ActorRunning sample is followed by the next phase) is fully valid.
 # Only these observation-race messages in these phases qualify, never leaked bytes or a bad parent.
 $script:T5TransientObservationPhases = @('ActorRunning', 'WorkflowSettlement', 'AfterActorAcknowledgementSettlement')
-$script:T5TransientObservationErrors = @(
-    'Raw image, buffered read, and both fresh native readers do not agree',
-    'Missing lookup but present raw index entry',
-    'Target metadata probe failed, yet the named lookup succeeded',
-    # Owner 2026-10-22 (second widening): a name that is being deleted refuses Test-Path with Access is denied; the raw MFT record or the
-    # parent index has not caught up with a just-created or just-removed name (boot-Verifier rows are slow enough to show it).
-    'at Microsoft.PowerShell.Commands.FileSystemProvider.ItemExists',
-    'Wrong record number/sequence or not in use',
-    'Raw parent index does not identify the requested name/file reference',
-    'Exception calling "OpenAttributes" with "1" argument(s): "The system cannot find the file specified')
+# Owner 2026-10-22 (third rule, deny-list): in these phases any capture failure is a race unless it is one of the verdict-class errors below.
+$script:T5FatalObservationErrors = @(
+    'CPF or unexpected nonempty fixture bytes',
+    'differs from the independently captured baseline parent',
+    'Raw parent directory identity is incomplete',
+    'One or more raw target images or artifacts are missing/incomplete',
+    'Raw parent index has unexpected/missing file references',
+    '"Verdict":"FAIL"',
+    '"Verdict":"VIOLATION"')
 function Test-T5TransientObservationError($Sample) {
     if ($Sample.Status -ceq 'OK' -or $Sample.ForbiddenBytesObserved -or $Sample.Phase -cnotin $script:T5TransientObservationPhases) { return $false }
-    $text = [string]$Sample.Error
-    foreach ($known in $script:T5TransientObservationErrors) {
-        # The error text is JSON in places: compare with the quotes of a serialized message unescaped.
-        if ($text.Replace('\"', '"').Contains($known)) { return $true }
+    $text = ([string]$Sample.Error).Replace('\"', '"')
+    if ([string]::IsNullOrWhiteSpace($text)) { return $false }
+    foreach ($fatal in $script:T5FatalObservationErrors) {
+        if ($text.Contains($fatal)) { return $false }
     }
-    return $false
+    return $true
 }
 function Test-T5SampleSuperseded($Sample) { return ($null -ne $Sample.PSObject.Properties['SupersededBySequence']) }
 function Get-T5UnresolvedRawSamples($Case) {

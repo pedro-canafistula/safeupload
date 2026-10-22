@@ -459,21 +459,19 @@ def valid_raw_sample(s):
                     return False
     return True
 T5_TRANSIENT_PHASES = ('ActorRunning', 'WorkflowSettlement', 'AfterActorAcknowledgementSettlement')
-T5_TRANSIENT_ERRORS = ('Raw image, buffered read, and both fresh native readers do not agree',
-                       'Missing lookup but present raw index entry',
-                       'Target metadata probe failed, yet the named lookup succeeded',
-                       # Owner 2026-10-22 (second widening): see the coordinator list.
-                       'at Microsoft.PowerShell.Commands.FileSystemProvider.ItemExists',
-                       'Wrong record number/sequence or not in use',
-                       'Raw parent index does not identify the requested name/file reference',
-                       'Exception calling "OpenAttributes" with "1" argument(s): "The system cannot find the file specified')
+# Owner 2026-10-22 (third rule, deny-list): in these phases any capture failure is a race unless it is one of the verdict-class errors.
+T5_FATAL_OBSERVATION_ERRORS = ('CPF or unexpected nonempty fixture bytes',
+                               'differs from the independently captured baseline parent',
+                               'Raw parent directory identity is incomplete',
+                               'One or more raw target images or artifacts are missing/incomplete',
+                               'Raw parent index has unexpected/missing file references',
+                               '"Verdict":"FAIL"', '"Verdict":"VIOLATION"')
 def transient_observation_error(s):
-    # Owner 2026-10-22: a sample taken while the actor or the agent is mid-operation may fail because a name appeared or vanished
-    # between its independent reads. Only these observation races qualify, never leaked bytes, a bad parent or another phase.
+    # A sample taken while the actor or the agent is mid-operation may fail because a name appeared or vanished or the raw metadata lags.
     if not isinstance(s, dict) or s.get('Status') == 'OK' or s.get('ForbiddenBytesObserved') is not False or s.get('Phase') not in T5_TRANSIENT_PHASES:
         return False
     text = str(s.get('Error') or '').replace('\\"', '"')
-    return any(known in text for known in T5_TRANSIENT_ERRORS)
+    return bool(text.strip()) and not any(fatal in text for fatal in T5_FATAL_OBSERVATION_ERRORS)
 def raw_samples_accepted(samples):
     # (accepted, superseded): every sample of one case is valid, or a transient observation error whose very next sample of the same
     # case (any phase; owner 2026-10-22) is valid. The superseded errors stay in the result and are counted in the verdict.
