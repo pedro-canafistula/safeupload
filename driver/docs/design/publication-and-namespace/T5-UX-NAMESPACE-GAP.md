@@ -326,11 +326,12 @@ Independent review remains an orchestrator obligation before a revised VM boot.
 This implementation task runs local diagnostic checks only; no WDK, PREfast,
 ApiValidator, Windows PowerShell gate or protected runtime qualification is implied.
 
-### D7 — OPEN_REPARSE_POINT opens of regular files take the native route (owner 2026-10-21; revision 2)
+### D7 — OPEN_REPARSE_POINT opens of regular files take the native route (owner 2026-10-21; revision 3)
 
 Reviews: [revision 0](../../../evidence/2026-10-21/t5-d7-review-sol61.md) REVISE; revision 1 re-review REVISE
-([evidence](../../../evidence/2026-10-21/t5-d7-rereview-sol61.md)): findings 1 and 3 resolved; this revision answers its
-blocking findings 4 and 8 and conditions 2, 5, 6 and 7.
+([evidence](../../../evidence/2026-10-21/t5-d7-rereview-sol61.md)): findings 1 and 3 resolved; revision 2 re-review REVISE
+([evidence](../../../evidence/2026-10-21/t5-d7-rereview2-sol61.md)): findings 1, 2, 3, 5, 6 resolved. Revision 3 answers its blocking
+finding 8 (unload race) and conditions 4 and 7.
 
 **Evidence and diagnosis (finding 1).** Row `m2t5ord8` ([T5 checkpoint](../../../evidence/2026-10-21/t5-checkpoint.md)): `DeleteFileW` of a
 published protected file returned 5. `DeleteFileW` opens with DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE and FILE_OPEN_REPARSE_POINT,
@@ -362,21 +363,37 @@ bounded D4 receipt wait, which retains its explicit pin and drops resources befo
 pre holding the identity captured in pre (FileIdInformation from the existing `SafeUploadStageQueryIdentity`), the legacy completion
 context and the legacy callback-required flag. It never touches the fenced singleton `StageMvpNamespaceCreate*` state and acquires no
 namespace fence. Pre returns FLT_PREOP_SUCCESS_WITH_CALLBACK through the existing admission-epoch wrapper, so the context is the epoch
-token's inner completion context: the epoch is released only after this post ran, and voluntary teardown, which drains admission
-epochs, therefore waits for the normal, non-draining post and its validation. `StagePostOperationCore` recognises the context by its own
-tag before generic legacy CREATE processing. Pre frees the context itself on every refusal or allocation failure, where no post follows.
+token's inner completion context, and the epoch is released only after this post ran. `StagePostOperationCore` recognises the context
+by its own tag before generic legacy CREATE processing.
+
+**Voluntary unload (blocking finding 8).** Voluntary unload does not wait for epochs: it closes admission
+(`StageSetUnloadAdmissionClosed(TRUE)`) and then takes zero-count snapshots (`SafeUploadPolicyPublicationQuiescent`, before and after
+quarantine), vetoing while any epoch callback is active. A CREATE can pass the initial unload-admission gate in the pre-operation entry,
+pause before `SafeUploadPolicyAdmissionAcquire`, and resume after the last snapshot; the unfenced namespace path has no later gate. So a D7
+request, after its epoch is acquired and before any lower I/O, re-reads `StageUnloadAdmissionClosed` and
+`SafeUploadStageMandatoryTeardownActive()` with interlocked reads; if either is set it completes STATUS_DEVICE_NOT_READY in pre, as the
+initial gate does, and frees its context. Ordering: unload's interlocked close precedes its snapshot taken under `SafeUploadEpochLock`;
+the CREATE's epoch acquisition (ActiveCallbacks increment under the same lock) precedes its interlocked read. One of the two always
+observes the other, so either the snapshot sees the active callback and unload vetoes, or the CREATE sees the closed gate and refuses.
+Voluntary unload is therefore **vetoed while a D7 validation is outstanding**; it never proceeds past one, and no lower CREATE of a D7
+request starts after unload committed. Pre frees the context itself on every refusal or allocation failure, where no post follows.
 **A draining post** (mandatory teardown) frees the context, leaves the status unchanged and claims no refusal: draining is cleanup on
 copied callback data, not enforcement. Mandatory teardown follows the existing coverage-loss rules (the namespace latch stays closed until
 reboot; the fixed-NTFS forced-teardown exception); D7 adds nothing there.
 
 **Post validation (blocking finding 4).** In a non-draining post, before the legacy post, any cancellation, or handle exposure:
 
-1. *Genuine non-open:* the lower CREATE failed (`!NT_SUCCESS`) or returned a non-open outcome (STATUS_REPARSE, STATUS_PENDING, any
-   information other than FILE_OPENED). Free the context and run the legacy post as today; nothing else.
-2. *Opened outcome with invalid object evidence:* NT_SUCCESS (including informational/oplock-break-in-progress success) with
+1. *Genuine non-open:* the lower CREATE failed (`!NT_SUCCESS`) or returned STATUS_REPARSE. Free the context and run the legacy post as
+   today; nothing else.
+2. *STATUS_PENDING in post* (not a completed outcome): fail closed with STATUS_ACCESS_DENIED / Information 0; never forwarded to legacy
+   processing.
+3. *Unexpected successful outcome for this OPEN-only route:* NT_SUCCESS with any information other than FILE_OPENED (FILE_CREATED,
+   FILE_OVERWRITTEN, FILE_SUPERSEDED, FILE_EXISTS or another value). Refused, not passed through: FltCancelFileOpen when a FILE_OBJECT with
+   FsContext exists, STATUS_ACCESS_DENIED, legacy post skipped.
+4. *Opened outcome with invalid object evidence:* NT_SUCCESS (including informational/oplock-break-in-progress success) with
    FILE_OPENED but no FILE_OBJECT or no FsContext. Fail closed: set STATUS_ACCESS_DENIED / Information 0 and call no object-dependent API
-   on invalid pointers (FltCancelFileOpen only when a FILE_OBJECT with FsContext exists, which is not this case). Skip the legacy post.
-3. *Opened object:* query FileAttributeTagInformation and FileIdInformation on the opened FILE_OBJECT, synchronously, at PASSIVE, outside
+   on invalid pointers. Skip the legacy post.
+5. *Opened object:* query FileAttributeTagInformation and FileIdInformation on the opened FILE_OBJECT, synchronously, at PASSIVE, outside
    every resource. Pass only if both succeed with complete replies, FILE_ATTRIBUTE_REPARSE_POINT is clear (no tag allow-list) and the
    file ID equals the pre-captured identity (a different regular object substituted between pre and post fails). Otherwise
    FltCancelFileOpen, STATUS_ACCESS_DENIED, and skip the legacy post. On a pass, run the legacy post with the stored context and flag; a
@@ -412,6 +429,12 @@ before validation, identity comparison dropped, or context leaked) that must fai
    other owner's save untouched.
 7. A reparse attribute set on a validated open handle before SET_INFORMATION disposition: refused before any cancellation.
 8. Private-view reopen of a D7 request: private route and bounded receipt wait/readmission unchanged.
+9. Unexpected successful outcomes (FILE_CREATED, FILE_OVERWRITTEN, FILE_SUPERSEDED, FILE_EXISTS, unknown) and STATUS_PENDING in post:
+   refused, never passed to the legacy post.
+10. Unload race: a D7 CREATE paused between the initial unload-admission gate and epoch acquisition, with unload closing admission and
+    snapshotting in between, in both interleavings: either unload vetoes on the active callback or the CREATE refuses
+    STATUS_DEVICE_NOT_READY before any lower CREATE; no lower CREATE occurs after unload committed. Mandatory teardown active at the
+    recheck: refused.
 
 Native evidence to record in the T5 row (not a substitute for the controls): the actual access and options of `DeleteFileW` and of
 `MoveFileExW`'s source open, from the driver's admission trace. Then WDK feature Debug/Release, PREfast, ApiValidator and import gates over
