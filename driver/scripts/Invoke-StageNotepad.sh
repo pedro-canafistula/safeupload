@@ -936,7 +936,7 @@ def raw_case_final_matches(case, samples):
             image.get('Length') == expected_length and image.get('Sha256') == expected_sha)
 approved_public_hashes = approved_public_hash_map()
 cases = (result or {}).get('Cases') or []
-case_acceptance = [raw_samples_accepted(c.get('RawSamples') or []) for c in cases]
+case_acceptance = [raw_samples_accepted(c['RawSamples']) for c in cases if c.get('RawSamples')]  # a case with no samples fails on its own line
 superseded_errors = sum(count for _, count in case_acceptance)
 raw_schema_ok = (isinstance(raw_samples, list) and len(raw_samples) > 0 and bool(cases) and all(accepted for accepted, _ in case_acceptance) and
                  len({s.get('Sequence') for s in raw_samples if isinstance(s, dict)}) == len(raw_samples))
