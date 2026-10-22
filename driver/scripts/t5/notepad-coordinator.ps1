@@ -123,6 +123,7 @@ $script:T5TransientObservationPhases = @('ActorRunning', 'WorkflowSettlement')
 $script:T5TransientObservationErrors = @(
     'Raw image, buffered read, and both fresh native readers do not agree',
     'Missing lookup but present raw index entry',
+    'Target metadata probe failed, yet the named lookup succeeded',
     'Exception calling "OpenAttributes" with "1" argument(s): "The system cannot find the file specified')
 function Test-T5TransientObservationError($Sample) {
     if ($Sample.Status -ceq 'OK' -or $Sample.ForbiddenBytesObserved -or $Sample.Phase -cnotin $script:T5TransientObservationPhases) { return $false }
@@ -311,9 +312,13 @@ function Invoke-Actor([string]$Op, [string]$Path, [string]$Text, [scriptblock]$O
                 }
                 $gateSamples += $sample
                 $gateJournal = Get-JournalFor -Destination $Path -BaselineTransferIds $BaselineTransferIds -RequireHistoryForNewRecords
-                if (@($gateJournal.ParseErrors).Count -gt 0 -or @($gateJournal.SchemaErrors).Count -gt 0) {
+                # Reading the hot journal while the agent archives can fail once ('Completed bytes changed during hot collection');
+                # that is retried like any other not-yet-settled gate. A schema error or any other parse error stays fatal.
+                if (@($gateJournal.SchemaErrors).Count -gt 0 -or
+                    @($gateJournal.ParseErrors | Where-Object { [string]$_.Error -notlike 'Completed bytes changed during hot collection*' }).Count -gt 0) {
                     throw 'The forced-order gate has invalid journal evidence.'
                 }
+                if (@($gateJournal.ParseErrors).Count -gt 0) { Start-Sleep -Milliseconds 100; continue }
                 $fresh = @($gateJournal.Records | Where-Object { $BaselineTransferIds -notcontains $_.TransferId })
                 $target = @($sample.CurrentImages | Where-Object { $_.Path -ieq $Path })
                 if ($target.Count -ne 1) { throw 'The forced-order gate has no unique raw destination image.' }

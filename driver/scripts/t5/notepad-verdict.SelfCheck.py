@@ -208,6 +208,9 @@ check(accepted([error_sample(1, error="Raw sample parent FileId/reference differ
 lookup = 'Exception calling \\"OpenAttributes\\" with \\"1\\" argument(s): \\"The system cannot find the file specified; Win32=2'
 check(accepted([error_sample(1, error=lookup), ok_sample(2)]) == (True, 1), "A name that vanished before the attributes open is a race (serialized quotes)")
 check(accepted([error_sample(1, error="Missing lookup but present raw index entry."), ok_sample(2)]) == (True, 1), "A lookup/index disagreement is a race")
+check(accepted([error_sample(1, error="Target metadata probe failed, yet the named lookup succeeded."), ok_sample(2)]) == (True, 1), "A name that appeared between the probes is a race")
+check(accepted([error_sample(1, error='Exception calling "Capture" with "2" argument(s): "Requested record=272309; Bad signature"'), ok_sample(2)])[0] is False,
+      "A lagging MFT record is retried inside the sample, not superseded by the verdict")
 invalid_ok = ok_sample(2)
 invalid_ok["IndependentReadersAgree"] = False
 check(accepted([error_sample(1), invalid_ok])[0] is False, "A successor that is itself invalid does not supersede")

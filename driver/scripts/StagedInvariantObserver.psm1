@@ -1330,6 +1330,9 @@ function Test-IOStaleMetadataRetry($Context, $CaptureError) {
     if ($CaptureError.NativePhase -ceq 'CreateFileW' -and $CaptureError.NativeCode -eq 32) { return $true }
     foreach ($node in @($CaptureError.Chain)) {
         if ([string]$node.Message -match '^Raw parent index does not identify the requested name/file reference\.$|^Raw FILE_NAME parent/name does not match parent index\.$') { return $true }
+        # m2t5ord13: a lagging MFT record read ("Requested record=N; Bad signature") and a name that appeared between the metadata probe
+        # and the named lookup are the same class of capture race; a fresh flushed capture settles them or fails again, attempts kept.
+        if ([string]$node.Message -match 'Requested record=\d+; Bad signature|^Target metadata probe failed, yet the named lookup succeeded\.$') { return $true }
     }
     return $false
 }

@@ -458,6 +458,7 @@ def valid_raw_sample(s):
 T5_TRANSIENT_PHASES = ('ActorRunning', 'WorkflowSettlement')
 T5_TRANSIENT_ERRORS = ('Raw image, buffered read, and both fresh native readers do not agree',
                        'Missing lookup but present raw index entry',
+                       'Target metadata probe failed, yet the named lookup succeeded',
                        'Exception calling "OpenAttributes" with "1" argument(s): "The system cannot find the file specified')
 def transient_observation_error(s):
     # Owner 2026-10-22: a sample taken while the actor or the agent is mid-operation may fail because a name appeared or vanished

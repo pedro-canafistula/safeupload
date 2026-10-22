@@ -37,6 +37,8 @@ Assert-T5 ($coordinator.Contains('if (-not (Test-T5TransientObservationError $sa
 Assert-T5 ($coordinator.Contains('$entry.ModuleSequence = $sample.Sequence }')) 'an ERROR sample keeps its module sequence'
 
 $observer = [IO.File]::ReadAllText($ObserverPath)
+Assert-T5 ($observer.Contains('Requested record=\d+; Bad signature') -and $observer.Contains('Target metadata probe failed, yet the named lookup succeeded')) 'the in-sample stale-metadata retry covers a lagging MFT record and a name that appeared mid-capture'
+Assert-T5 ($coordinator.Contains("Completed bytes changed during hot collection*") -and $coordinator.Contains('Start-Sleep -Milliseconds 100; continue }')) 'the forced-order gate retries a hot-journal collection race and keeps every other journal error fatal'
 $head = $observer.IndexOf('function Get-IOCapture(')
 Assert-T5 ($head -ge 0) 'Get-IOCapture exists'
 $body = $observer.Substring($head, 600)
