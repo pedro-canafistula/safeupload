@@ -9,3 +9,7 @@ obj/
 *.suo
 .vs/
 *.binlog
+
+# Saídas do instalador e dos testes locais
+artifacts/
+TestResults/
