@@ -1,0 +1,32 @@
+FAIL     excel-saveas-edit      deltas= 4 refusals=  9 unexplained=  9 settle c/p=0.1/0
+           - STEP saveas: control ok, protected FAIL hr:0x800A03EC Microsoft Excel cannot access the file '<D>\BE960000'. There are several possible reasons: • The file name or path does not exist. • The file is being used by another program. 
+           - STEP reopen-edit-save: control ok, protected FAIL hr:0x800A03EC Sorry, we couldn't find <D>\x1.xlsx. Is it possible it was moved, renamed or deleted?
+           - STEP reopen-values: control ok, protected FAIL hr:0x800A03EC Sorry, we couldn't find <D>\x1.xlsx. Is it possible it was moved, renamed or deleted?
+           - ENTRY only in control: x1.xlsx
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10080 reason= s\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10000 reason= s\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 1x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+FAIL     large-file             deltas= 4 refusals=  0 unexplained=  0 settle c/p=0.1/0.1
+           - STEP write-64MiB: control ok, protected FAIL win32:32 Exception calling "Open" with "4" argument(s): "The process cannot access the file '<D>\big.bin' because it is being used by another process."
+           - STEP read-back-hash: control ok, protected FAIL hr:0x80131501 Cannot find path '<D>\big.bin' because it does not exist.
+           - STEP copy-large-out: control ok, protected FAIL hr:0x80131501 Cannot find path '<D>\big.bin' because it does not exist.
+           - ENTRY only in control: big.bin
+FAIL     txt-lifecycle          deltas=11 refusals=  0 unexplained=  0 settle c/p=0.2/0
+           - STEP create: control ok, protected FAIL win32:32 The process cannot access the file '<D>\lc.txt' because it is being used by another process.
+           - STEP read-immediately: control ok, protected FAIL hr:0x80131501 Cannot find path '<D>\lc.txt' because it does not exist.
+           - STEP append: control ok, protected FAIL win32:32 The process cannot access the file '<D>\lc.txt' because it is being used by another process.
+           - STEP read-after-append: control ok, protected FAIL hr:0x80131501 Cannot find path '<D>\lc.txt' because it does not exist.
+           - STEP stream-write-share-read: control ok, protected FAIL win32:2 Exception calling "Open" with "4" argument(s): "Could not find file '<D>\lc.txt'."
+           - STEP rename: control ok, protected FAIL hr:0x80131509 Cannot rename because item at '<D>\lc.txt' does not exist.
+           - STEP copy-within: control ok, protected FAIL hr:0x80131501 Cannot find path '<D>\lc2.txt' because it does not exist.
+           - STEP delete-original: control ok, protected FAIL hr:0x80131501 Cannot find path '<D>\lc2.txt' because it does not exist.
+FAIL     word-overwrite         deltas= 4 refusals= 11 unexplained= 11 settle c/p=0.2/0.1
+           - STEP first-save: control ok, protected FAIL hr:0x800A1424 Word cannot save or create this file. Make sure that the disk you want to save the file on is not full, write-protected, or damaged. (<D>\w3.docx)
+           - STEP saveas-over-existing: control ok, protected FAIL hr:0x800A1424 Word cannot save or create this file. Make sure that the disk you want to save the file on is not full, write-protected, or damaged. (<D>\w3.docx)
+           - STEP reopen-text: control ok, protected FAIL hr:0x800A1436 Sorry, we couldn't find your file. Was it moved, renamed, or deleted? (<D>\w3.docx)
+           - ENTRY only in control: w3.docx
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10080 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10000 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 2x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+           ! 1x CREATE STATUS_ACCESS_DENIED code/access=0x100100 reason=byIdHighHalf ????????
+PARITY cases=4 not-clean=4

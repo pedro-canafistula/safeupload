@@ -116,3 +116,12 @@ that T9's growing reservations land during C (T8 cannot qualify with the product
 5. **Browser and Explorer Mark of the Web** (only if the spike finds no transparent completion witness). The choice will be among
    behaviors the user sees, for example refusing a download straight into a protected folder with a clear message (save elsewhere,
    then copy), or a SafeUpload-provided download/copy path. Recommendation deferred until the spike's native traces exist.
+
+## 7. Discovery 1 result (2026-10-22)
+
+The harness exists (`driver/scripts/t8/`, `parity-lib/cases/case/run.ps1`, `parity-verdict.py`) and the first sweeps on the current pair are in
+[t8-discovery-1.md](../../evidence/2026-10-22/t8-discovery-1.md): 22 of 24 cases differ from the control folder, grouped into eleven defects. The order in section 4
+changes: (1) T9 allocation and budget first, because the default configuration cannot save a text file on the dev guest; (2) one publication-window rule in the
+driver (operations on a name with an in-flight publication wait, bounded, instead of failing; it covers Word's failed in-place saves and read-only reopen, other
+processes seeing "file not found", and the Recycle Bin move), reviewed once before its first boot; (3) the metadata contract (owner/group are SYSTEM today); (4) folder
+rename/delete and the Recycle Bin (T6 pulled into M2); then re-run the whole catalog. Section 6 decisions 1-4 stand; two new owner decisions are listed in the discovery note.

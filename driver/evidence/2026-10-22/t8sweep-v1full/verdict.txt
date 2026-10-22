@@ -1,0 +1,248 @@
+FAIL     excel-inplace          deltas= 3 refusals= 63 unexplained= 63 settle c/p=0.2/0.1
+           - META x2.xlsx attributes control [Archive] protected [Archive, NotContentIndexed]
+           - META x2.xlsx owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META x2.xlsx sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;;B
+           ! 21x CREATE STATUS_SHARING_VIOLATION code/access=0x120089 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 7x CREATE STATUS_SHARING_VIOLATION code/access=0x80 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10080 reason= s\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10000 reason= s\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 4x CREATE STATUS_DELETE_PENDING code/access=0x100100 reason= \Protected\*
+           ! 3x FILE_SYSTEM_CONTROL STATUS_NOT_SUPPORTED code/access=0x9C040 reason= \Protected\*
+FAIL     excel-saveas-edit      deltas= 3 refusals= 41 unexplained= 41 settle c/p=0.2/0.9
+           - META x1.xlsx attributes control [Archive] protected [Archive, NotContentIndexed]
+           - META x1.xlsx owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META x1.xlsx sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;;B
+           ! 14x CREATE STATUS_SHARING_VIOLATION code/access=0x120089 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 6x CREATE STATUS_SHARING_VIOLATION code/access=0x80 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10080 reason= s\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10000 reason= s\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 3x CREATE STATUS_DELETE_PENDING code/access=0x100100 reason= \Protected\*
+           ! 2x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+FAIL     folder-copy-move       deltas=19 refusals= 35 unexplained= 35 settle c/p=0.4/1
+           - STEP move-folder-in-from-outside: control ok, protected FAIL hr:0x80131620 Access to the path '<D>\fm-move' is denied.
+           - ENTRY only in control: fm-copy-215425\b.docx
+           - ENTRY only in control: fm-in-215425\b.docx
+           - ENTRY only in control: fm-moved-215425
+           - ENTRY only in control: fm-moved-215425\m.txt
+           - ENTRY only in control: fm-dir-215425\b.docx
+           - META fm-copy-215425\sub\c.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META fm-copy-215425\sub\c.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:A
+           ! 6x CREATE STATUS_ACCESS_DENIED code/access=0x100100 reason= \Protected\fm-copy-215425\*
+           ! 6x CREATE STATUS_ACCESS_DENIED code/access=0x100100 reason= \Protected\fm-dir-215425\*
+           ! 6x CREATE STATUS_ACCESS_DENIED code/access=0x100100 reason= \Protected\fm-in-215425\*
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\fm-copy-215425\*
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\fm-copy-215425\sub\*
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\fm-in-215425\*
+FAIL     folder-create          deltas= 5 refusals= 15 unexplained= 15 settle c/p=0.2/2.2
+           - META fc-dir-215229\a.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META fc-dir-215229\a.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;I
+           - META fc-dir-215229\sub\c.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META fc-dir-215229\sub\c.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI
+           - CLEANUP protected could not remove: fc-dir-215229 win32:87
+           ! 6x CREATE STATUS_ACCESS_DENIED code/access=0x100100 reason= \Protected\fc-dir-215229\*
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\fc-dir-215229\sub\*
+           ! 2x QUERY_SECURITY STATUS_NOT_SUPPORTED code/access=0x0 reason= \Protected\fc-dir-215229\sub\*
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x16 reason= \Protected\fc-dir-215229\sub\*
+           ! 1x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\fc-dir-215229\*
+           ! 1x QUERY_SECURITY STATUS_NOT_SUPPORTED code/access=0x0 reason= \Protected\fc-dir-215229\*
+FAIL     folder-delete          deltas= 6 refusals=  7 unexplained=  7 settle c/p=0.1/0.2
+           - STEP delete-folder-recursive: control ok, protected FAIL win32:87 Access to the path is denied.
+           - STEP gone-after-delete: value control [[false]] protected [[true]]
+           - ENTRY only in protected: fd-dir-215345\sub
+           - ENTRY only in protected: fd-dir-215345
+           - ENTRY only in protected: fd-dir-215345\a.txt
+           - CLEANUP protected could not remove: fd-dir-215345 win32:87
+           ! 7x CREATE STATUS_ACCESS_DENIED code/access=0x100100 reason= \Protected\fd-dir-215345\*
+FAIL     folder-rename          deltas=12 refusals=  7 unexplained=  7 settle c/p=2.9/0.1
+           - STEP rename-folder: control ok, protected FAIL hr:0x80131620 Access to the path '<D>\fr-dir-215305' is denied.
+           - STEP children-after-rename: control ok, protected FAIL hr:0x80131501 Cannot find path '<D>\fr-dir2-215305' because it does not exist.
+           - ENTRY only in control: fr-dir2-215305\sub\c.txt
+           - ENTRY only in control: fr-dir2-215305\sub
+           - ENTRY only in control: fr-dir2-215305
+           - ENTRY only in control: fr-dir2-215305\a.txt
+           - ENTRY only in control: fr-dir2-215305\b.docx
+           - ENTRY only in protected: fr-dir-215305\sub
+           ! 6x CREATE STATUS_ACCESS_DENIED code/access=0x100100 reason= \Protected\fr-dir-215305\*
+           ! 1x CREATE STATUS_ACCESS_DENIED code/access=0x110080 reason= \Protected\*
+FAIL     large-file             deltas= 3 refusals= 13 unexplained= 13 settle c/p=0.1/2.3
+           - STEP write-64MiB: control ok, protected FAIL win32:112 Exception calling "Write" with "3" argument(s): "There is not enough space on the disk. "
+           - STEP read-back-hash: value control [6DF40325B72C623BFAC5054534F083BD7000EEA6C3A1FC6B8779950EBD7F89C6] protected [7D685668F2B2E43256633CED219DBDBDFB3A6AF631316AF09F1049B2C3DB1686]
+           - ENTRY only in control: big.bin
+           ! 4x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x16 reason= \Protected\*
+           ! 3x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\*
+           ! 3x QUERY_SECURITY STATUS_NOT_SUPPORTED code/access=0x0 reason= \Protected\*
+           ! 1x WRITE  code/access=0x100000 reason= \Protected\*
+           ! 1x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x7 reason= \Protected\*
+           ! 1x CREATE STATUS_SHARING_VIOLATION code/access=0x80 reason= \Protected\*
+FAIL     ppt-saveas-reopen      deltas= 2 refusals= 40 unexplained= 40 settle c/p=0.2/0.2
+           - STEP reopen-edit-save: control ok, protected FAIL hr:0x80004005 Presentation.Save : An error occurred while PowerPoint was saving the file.
+           - ENTRY only in control: p1.pptx
+           ! 10x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+           ! 8x CREATE STATUS_SHARING_VIOLATION code/access=0x120089 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 6x FILE_SYSTEM_CONTROL STATUS_NOT_SUPPORTED code/access=0x900C0 reason= \Protected\*
+           ! 3x CREATE STATUS_DELETE_PENDING code/access=0x80 reason= \Protected\*
+           ! 2x FILE_SYSTEM_CONTROL STATUS_NOT_SUPPORTED code/access=0x9C040 reason= \Protected\*
+           ! 2x QUERY_SECURITY STATUS_NOT_SUPPORTED code/access=0x0 reason= \Protected\*
+FAIL     robocopy               deltas=11 refusals= 21 unexplained= 21 settle c/p=0.2/1.7
+           - STEP robocopy-rerun-nothing-to-do: value control [[0]] protected [[1]]
+           - STEP robocopy-mirror-after-source-delete: value control [[2]] protected [[1]]
+           - STEP robocopy-out-to-source: value control [[1,"r1.txt,r3.txt,r4.txt"]] protected [[1,"r2.txt"]]
+           - ENTRY only in protected: rb-dst-215458\r2.txt
+           - META rb-dst-215458\sub\r3.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META rb-dst-215458\sub\r3.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:A
+           - META rb-dst-215458\r1.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META rb-dst-215458\r1.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;
+           ! 6x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\rb-dst-215458\*
+           ! 6x SET_INFORMATION STATUS_SHARING_VIOLATION code/access=0x40 reason= \Protected\rb-dst-215458\sub\*
+           ! 6x SET_INFORMATION STATUS_SHARING_VIOLATION code/access=0xD reason= \Protected\rb-dst-215458\sub\*
+           ! 3x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\rb-dst-215458\sub\*
+FAIL     shell-copy-in-out      deltas= 2 refusals= 11 unexplained= 11 settle c/p=0.1/0.1
+           - META sc-in.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META sc-in.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf
+           ! 9x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\*
+PASS     shell-move-in-out      deltas= 0 refusals= 14 unexplained= 14 settle c/p=0/0.1
+           ! 3x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\*
+           ! 2x SET_INFORMATION STATUS_SHARING_VIOLATION code/access=0xA reason= \??\C:\T8Src\sm-out\*
+           ! 2x CREATE STATUS_SHARING_VIOLATION code/access=0x110080 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 1x SET_INFORMATION STATUS_NOT_SAME_DEVICE code/access=0xA reason= \??\C:\Protected\*
+           ! 1x CREATE STATUS_SHARING_VIOLATION code/access=0x80 reason= \Protected\*
+FAIL     shell-recycle          deltas= 2 refusals=  7 unexplained=  7 settle c/p=0/0
+           - STEP delete-to-recycle-bin: control ok, protected FAIL win32:14007 Exception calling "DeleteFile" with "3" argument(s): "The system call level is not correct"
+           - STEP restore-from-recycle-bin: control ok, protected FAIL hr:0x80131501 item not found in the recycle bin
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\*
+           ! 2x QUERY_SECURITY STATUS_NOT_SUPPORTED code/access=0x0 reason= \Protected\*
+           ! 2x SET_INFORMATION STATUS_SHARING_VIOLATION code/access=0xA reason= BIN\S-1-5-21-316478115-1595729549-2803163825-1279\*
+           ! 1x CREATE STATUS_SHARING_VIOLATION code/access=0x110080 reason=17 \Device\HarddiskVolume3\Protected\*
+FAIL     txt-acl                deltas= 4 refusals=  5 unexplained=  5 settle c/p=0.2/0.2
+           - STEP icacls-grant-read-everyone: control ok, protected FAIL hr:0x80131501 <D>\ac.txt: The system cannot find the file specified.
+           - STEP icacls-deny-write-guests: control ok, protected FAIL hr:0x80131501 <D>\ac.txt: The system cannot find the file specified.
+           - META ac.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META ac.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(D;;0x100116;;;BG)(A;;FR;;;WD)(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\*
+           ! 2x QUERY_SECURITY STATUS_NOT_SUPPORTED code/access=0x0 reason= \Protected\*
+           ! 1x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x16 reason= \Protected\*
+FAIL     txt-attributes         deltas= 6 refusals=  3 unexplained=  3 settle c/p=0.2/0.5
+           - STEP write-readonly: control FAIL win32:5, protected ok
+           - STEP delete-readonly: control FAIL hr:0x80131620, protected ok
+           - STEP delete-after-clear: control ok, protected FAIL hr:0x80131501 Cannot find path '<D>\at.txt' because it does not exist.
+           - META at2.txt attributes control [ReadOnly, Archive] protected [Archive]
+           - META at2.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META at2.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;
+           ! 1x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\*
+           ! 1x QUERY_SECURITY STATUS_NOT_SUPPORTED code/access=0x0 reason= \Protected\*
+           ! 1x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x16 reason= \Protected\*
+FAIL     txt-cmd-ops            deltas=10 refusals=  8 unexplained=  8 settle c/p=0.2/2
+           - STEP cmd-type: value control [alpha|beta] protected [beta]
+           - STEP cmd-copy: control ok, protected FAIL win32:1 cmd exit 1: The process cannot access the file because it is being used by another process.
+           - STEP cmd-ren: control ok, protected FAIL win32:1 cmd exit 1: The system cannot find the file specified.
+           - STEP cmd-move: control ok, protected FAIL win32:1 cmd exit 1: The system cannot find the file specified.
+           - STEP cmd-del: value control [] protected [<D>\c1.txt The process cannot access the file because it is being used by another process.]
+           - ENTRY only in control: c4.txt
+           - ENTRY only in protected: c2.txt
+           - META xc.txt attributes control [Archive] protected [Archive, NotContentIndexed]
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\*
+           ! 2x CREATE STATUS_SHARING_VIOLATION code/access=0x10000 reason= \Protected\*
+           ! 2x SET_INFORMATION STATUS_SHARING_VIOLATION code/access=0x40 reason= \Protected\*
+           ! 2x SET_INFORMATION STATUS_SHARING_VIOLATION code/access=0xD reason= \Protected\*
+FAIL     txt-lifecycle          deltas= 5 refusals=256 unexplained=256 settle c/p=0.1/0.6
+           - STEP copy-within: control ok, protected FAIL hr:0x80131501 Cannot find path '<D>\lc2.txt' because it does not exist.
+           - STEP delete-original: control ok, protected FAIL hr:0x80131501 Cannot find path '<D>\lc2.txt' because it does not exist.
+           - ENTRY only in protected: lc2.txt
+           - META lc3.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META lc3.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;
+           ! 31x CREATE STATUS_SHARING_VIOLATION code/access=0x120089 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 20x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+           ! 15x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \Protected\*
+           ! 15x CREATE STATUS_OBJECT_NAME_NOT_FOUND code/access=0x80 reason= \Protected\*
+           ! 15x CREATE STATUS_OBJECT_NAME_NOT_FOUND code/access=0x120089 reason= \Protected\*
+           ! 13x QUERY_SECURITY STATUS_NOT_SUPPORTED code/access=0x0 reason= \Protected\*
+FAIL     txt-times              deltas= 6 refusals= 10 unexplained= 10 settle c/p=0.2/1.7
+           - META tm3.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META tm3.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;
+           - META tm.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META tm.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;;
+           - META tm2.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META tm2.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;
+           ! 4x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\*
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x16 reason= \Protected\*
+           ! 2x QUERY_SECURITY STATUS_NOT_SUPPORTED code/access=0x0 reason= \Protected\*
+           ! 1x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x7 reason= \Protected\*
+           ! 1x CREATE STATUS_SHARING_VIOLATION code/access=0x80 reason= \Protected\*
+FAIL     word-inplace           deltas= 7 refusals=114 unexplained=114 settle c/p=0.2/0.1
+           - STEP open-edit-save-1: control ok, protected FAIL hr:0x800A156F Word cannot complete the save due to a file permission error. (<D>\w2.docx)
+           - STEP open-edit-save-2: control ok, protected FAIL hr:0x800A1436 Sorry, we couldn't find your file. Was it moved, renamed, or deleted? (<D>\w2.docx)
+           - STEP open-edit-save-3: control ok, protected FAIL hr:0x800A1436 Sorry, we couldn't find your file. Was it moved, renamed, or deleted? (<D>\w2.docx)
+           - STEP final-text: control ok, protected FAIL hr:0x800A1436 Sorry, we couldn't find your file. Was it moved, renamed, or deleted? (<D>\w2.docx)
+           - META w2.docx owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META w2.docx sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;;B
+           - BYTES w2.docx package parts differ
+           ! 23x CREATE STATUS_OBJECT_NAME_NOT_FOUND code/access=0x80 reason= \Protected\*
+           ! 15x CREATE STATUS_OBJECT_NAME_NOT_FOUND code/access=0x120089 reason= \Protected\*
+           ! 14x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+           ! 7x CREATE STATUS_SHARING_VIOLATION code/access=0x120089 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 7x DIRECTORY_CONTROL STATUS_NO_SUCH_FILE code/access=0x0 reason= \*
+           ! 7x CREATE STATUS_OBJECT_NAME_NOT_FOUND code/access=0x100080 reason= \Protected\*
+PASS     word-locked-open       deltas= 0 refusals= 46 unexplained= 46 settle c/p=0/0.1
+           ! 14x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+           ! 6x CREATE STATUS_SHARING_VIOLATION code/access=0x120089 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 6x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \Protected\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10080 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10000 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 4x FILE_SYSTEM_CONTROL STATUS_NOT_SUPPORTED code/access=0x900C0 reason= \Protected\*
+FAIL     word-overwrite         deltas= 6 refusals= 44 unexplained= 44 settle c/p=0.2/0.8
+           - STEP saveas-over-existing: control ok, protected FAIL hr:0x800A156F Word cannot complete the save due to a file permission error. (<D>\w3.docx)
+           - STEP reopen-text: control ok, protected FAIL hr:0x800A1436 Sorry, we couldn't find your file. Was it moved, renamed, or deleted? (<D>\w3.docx)
+           - ENTRY only in protected: ~$w3.docx
+           - META w3.docx owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META w3.docx sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;
+           - BYTES w3.docx package parts differ
+           ! 11x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+           ! 5x CREATE STATUS_SHARING_VIOLATION code/access=0x120089 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 5x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \Protected\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10080 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10000 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 3x CREATE STATUS_OBJECT_NAME_NOT_FOUND code/access=0x80 reason= \Protected\*
+FAIL     word-pdf               deltas= 2 refusals=  8 unexplained=  8 settle c/p=0.2/0.1
+           - META w6.pdf owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META w6.pdf sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;;
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10080 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10000 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+FAIL     word-reopen-loop       deltas= 2 refusals= 77 unexplained= 77 settle c/p=0.1/0.8
+           - META w4.docx owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META w4.docx sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;
+           ! 38x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+           ! 14x CREATE STATUS_SHARING_VIOLATION code/access=0x120089 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 12x FILE_SYSTEM_CONTROL STATUS_NOT_SUPPORTED code/access=0x900C0 reason= \Protected\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10080 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10000 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 1x FILE_SYSTEM_CONTROL STATUS_NOT_SUPPORTED code/access=0x9C040 reason= \Protected\*
+FAIL     word-saveas-edit       deltas= 5 refusals= 87 unexplained= 87 settle c/p=0.2/0.1
+           - STEP edit-and-save: control ok, protected FAIL hr:0x800A156F Word cannot complete the save due to a file permission error. (<D>\w1.docx)
+           - STEP reopen: value control [saved=True readOnly=False name=w1.docx text=T8 parity hello. Nothing sensitive here. Second edit. ui=OpusApp=w1 - Word] protected [saved=True readOnly=True name=w1.docx text=T8 parity hello. Nothing sen
+           - ENTRY only in protected: ~$w1.docx
+           - META w1.docx owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META w1.docx sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;ID;0x1301bf;;;B
+           ! 15x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \*
+           ! 15x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \Protected\*
+           ! 13x CREATE STATUS_SHARING_VIOLATION code/access=0x120089 reason=17 \Device\HarddiskVolume3\Protected\*
+           ! 7x CREATE STATUS_DELETE_PENDING code/access=0x80 reason= \Protected\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10080 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+           ! 4x CREATE STATUS_ACCESS_DENIED code/access=0x10000 reason= rs\t5actor\AppData\Local\Microsoft\Schemas\*
+FAIL     zip-roundtrip          deltas=13 refusals= 42 unexplained= 42 settle c/p=0.2/1.9
+           - META zp-ex-215524\z1.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META zp-ex-215524\z1.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;I
+           - META zp-ex2-215524\z1.txt attributes control [Normal] protected [Archive]
+           - META zp-ex2-215524\z1.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META zp-ex2-215524\z1.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;
+           - META zp-ex2-215524\z2.txt attributes control [Normal] protected [Archive]
+           - META zp-ex2-215524\z2.txt owner control WIN10-DEBUGGED\t5actor protected NT AUTHORITY\SYSTEM
+           - META zp-ex2-215524\z2.txt sddl control O:S-1-5-21-316478115-1595729549-2803163825-1279G:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;BU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1301bf;;;AU) protected O:SYG:SYD:AI(A;
+           ! 12x CREATE STATUS_ACCESS_DENIED code/access=0x100100 reason= \Protected\*
+           ! 6x QUERY_SECURITY STATUS_NOT_SUPPORTED code/access=0x0 reason= \Protected\*
+           ! 4x DEVICE_CONTROL STATUS_NOT_SUPPORTED code/access=0x0 reason= \Protected\*
+           ! 4x FILE_SYSTEM_CONTROL STATUS_NOT_SUPPORTED code/access=0x900A8 reason= \Protected\zp.zip\
+           ! 2x FILE_SYSTEM_CONTROL STATUS_ACCESS_DENIED code/access=0x900C0 reason= \Protected\*
+           ! 2x QUERY_INFORMATION STATUS_NOT_SUPPORTED code/access=0x37 reason= \Protected\zp-ex-215524\*
+PARITY cases=24 not-clean=24
