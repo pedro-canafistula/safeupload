@@ -23,6 +23,15 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-22 (T8 closure plan) — native-parity bar, Office base image, order and budget.** Owner, in the session ("Agreed") on the recommendations of the
+[T8 closure plan](docs/design/T8-CLOSURE-PLAN.md): (1) one new Office base image is derived from the current `win10-debug3` baseline (Microsoft 365 Apps,
+7-Zip, Edge settings; the owner signs in to Office once; the existing base stays untouched; every row takes a fresh disposable overlay with the usual
+restoration); (2) T8's "done when" adds the native-parity bar: the same standard user, operation and application-visible state as in an unprotected control
+folder on the same volume, the agreed metadata, and zero unexplained deny-ring refusals, with every found bug kept as a permanent catalog case;
+(3) order: everyday parity (harness, discovery sweep, fixes) first, metadata/Mark of the Web in parallel without blocking it, both required for M2;
+(4) discovery runs with the product-default budget on and off, qualification waits for T9's growing reservations. Decision 5 of the plan (browser/Explorer
+Mark of the Web user-visible behavior) stays open until the native spike shows whether a transparent completion witness exists.
+
 **2026-10-22 (T5 raw samples) — a racing ERROR sample is superseded by the next valid sample.** Owner, in the session, on `m2t5ord10`–`m2t5bov18`
 ([T5 checkpoint](evidence/2026-10-21/t5-checkpoint.md)): about 5% of raw samples taken while the actor or the agent is mid-operation fail because a name
 appeared or vanished between the independent reads or the raw metadata lagged, so no row could pass by chance. Chosen, in three steps: (1) an ERROR sample is

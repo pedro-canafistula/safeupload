@@ -1,6 +1,6 @@
 # T8 closure plan — Office and everyday apps behave as without SafeUpload
 
-2026-10-22. **Plan for the owner's decision; no implementation, review or qualification claim.** Scope and status remain in
+2026-10-22. **Owner agreed to the recommendations of section 6 (decisions 1–4) on 2026-10-22; decision 5 stays open. No implementation, review or qualification claim yet.** Scope and status remain in
 [`POST-MVP-PLAN.md`](../../POST-MVP-PLAN.md) (T8 section and the 2026-10-16 owner decisions); the metadata/MOTW mechanism is
 [`T8-METADATA-INTEGRATION.md`](metadata/T8-METADATA-INTEGRATION.md) with its [review](../../evidence/2026-10-19/t8-design-review-sol-high.md)
 (REVISE) and [concrete analysis](../../evidence/2026-10-19/t8-concrete-design-analysis-sol-high.md).
