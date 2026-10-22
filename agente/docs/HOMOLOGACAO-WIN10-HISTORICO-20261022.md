@@ -273,6 +273,44 @@ causa não foi demonstrada e não se presume erro do usuário. Não houve altera
 do mecanismo Run, das ACLs ou do instalador para obter esse resultado. A sessão
 com credencial em memória foi encerrada após as consultas.
 
+## Reconexão com painel aberto: aprovada nesta rodada
+
+O instalador 0.1.5 permaneceu no clone isolado, com fonte
+`3fa6986b938903f9abbafc0f696f1a043124672d`, FileSystemWatcher e sem driver.
+O usuário confirmou a elevação local. O roteiro de laboratório verificou UUID,
+versão, origem, caminho do serviço LocalSystem e uma única UI antes de parar o
+serviço. Não houve reinstalação nem alteração das ACLs ou do startup.
+
+- Serviço parado às **14:57:28.958 UTC** e Running às **14:58:16.114 UTC**;
+  PID mudou de 2880 para 6300. O roteiro aguardou 45 segundos antes de religá-lo.
+- O painel mostrou **Serviço indisponível**, política desconhecida e Sem serviço.
+  Após o retorno, recuperou automaticamente **Em auditoria**, política v1 e cinco
+  categorias, sem fechar nem relançar a UI: PID 6012 e criação preservados.
+- Hashes SHA-256 da política e da fila permaneceram idênticos. Leitura do pipe
+  após a reconexão, sem elevação, recebeu os mesmos sete EventIds únicos da
+  leitura anterior, incluindo o evento original uma única vez.
+- Status e Histórico exibiram sete linhas. Nenhum alerta antigo foi observado
+  nos pontos de inspeção visual. Não foi medida continuamente a latência da UI.
+
+As duas primeiras invocações não reiniciaram o serviço nem produziram recibo:
+a política efetiva de scripts era Restricted e o roteiro inicial não tratava
+corretamente a contagem de um único objeto no PowerShell 5.1. O roteiro foi
+corrigido com arrays explícitos e suas condições iniciais foram verificadas
+antes da nova elevação. A execução final usou RemoteSigned somente no processo
+de teste; nenhuma política permanente do Windows foi alterada. Essas tentativas
+não contam como aprovação ou falha do agente.
+
+Evidências: [resumo e hashes das capturas](evidencias/homologacao-win10-20261022/reconexao-resumo.json),
+[recibo bruto do serviço](evidencias/homologacao-win10-20261022/reconexao-recibo-servico.json),
+[roteiro restrito ao clone](evidencias/homologacao-win10-20261022/Testar-Reconexao-015.ps1),
+[indisponibilidade](evidencias/homologacao-win10-20261022/reconexao-servico-indisponivel.jpg),
+[estado restabelecido](evidencias/homologacao-win10-20261022/reconexao-status-restabelecido.jpg)
+e [histórico preservado](evidencias/homologacao-win10-20261022/reconexao-historico-preservado.jpg).
+O recibo bruto deixa a observação visual como pendente, pois ela foi feita
+separadamente pelo assistente e registrada no resumo. A sessão com a credencial
+em memória foi encerrada após as consultas. Esta entrega acrescenta evidências;
+os testes C# e de instalador do CI anterior não foram reexecutados.
+
 ## Aceite ainda necessário
 
 - [x] Instalação inicial 0.1.4 em Windows 10 sem .NET global; evidência manual.
@@ -283,7 +321,7 @@ com credencial em memória foi encerrada após as consultas.
 - [x] Ver evento já persistido no Histórico após abertura normal orientada ao usuário; evidência manual.
 - [x] Reabrir a interface mantendo o histórico sem nova linha, segundo relato do usuário.
 - [x] Não observar alerta antigo ao abrir o painel após o login desta rodada.
-- [ ] Reconectar serviço com UI aberta sem duplicar evento nem gerar alerta antigo.
+- [x] Reconectar serviço com UI aberta: sete eventos únicos, dados preservados e nenhum alerta antigo observado nesta rodada.
 - [x] Criar novo arquivo sintético com a interface aberta; detecção de CPF, alerta e histórico atualizados.
 - [ ] Adequar textos de envio/bloqueio ao modo de auditoria por watcher.
 - [x] Histórico preservado na abertura manual após reinício relatado da VM; sete registros visíveis.
