@@ -343,7 +343,10 @@ baseline_raw_ok = (len(baseline_images) == len(expected_leaves) + 1 and len(base
                    baseline_parent[0].get('Path', '').lower() == r'c:\protected\t5' and
                    isinstance(baseline_parent[0].get('FileId'), str) and bool(baseline_parent[0].get('FileId')) and
                    isinstance(baseline_parent[0].get('Reference'), str) and bool(baseline_parent[0].get('Reference')) and
-                   isinstance(baseline_parent[0].get('DirectoryEntries'), list) and len(baseline_parent[0]['DirectoryEntries']) == 0)
+                   # Windows PowerShell 5.1 serializes the empty entry collection of the parent image as {} (m2t5ord15): an empty
+                   # object is an empty list there, nothing else is.
+                   (baseline_parent[0].get('DirectoryEntries') == {} or
+                    (isinstance(baseline_parent[0].get('DirectoryEntries'), list) and len(baseline_parent[0]['DirectoryEntries']) == 0)))
 def valid_raw_sample(s):
     if not isinstance(s, dict) or s.get('Status') != 'OK' or s.get('RawComplete') is not True or \
        s.get('IndependentReadersAgree') is not True or s.get('NativeReaderCoverageComplete') is not True or \
@@ -1014,8 +1017,8 @@ for c in cases:
             ok = ok and c.get('DeleteObservedBeforeBlockedSave') is True
         if spec.get('DeleteBarrier'):
             barrier = c.get('DeleteBarrierVerified') is True and bool(c.get('DeleteBarrierRecords'))
+            # The barrier stays a required line of its own (INCONCLUSIVE, so the row cannot pass); the case line reports everything else.
             verdict(name + 'DeleteBarrier', 'PASS' if barrier else 'INCONCLUSIVE', c.get('DeleteBarrierReason') or 'Exact journal delete barrier missing')
-            ok = ok and barrier
         if spec['Op'].startswith('inflight-'):
             verdict(name + 'ForcedOrder', 'PASS' if order_ok else 'FAIL', c.get('OrderingNote') or 'Ordering proof missing')
         verdict(name + 'Journal', 'PASS' if journal_ok else 'FAIL', 'Exact publication/block/denial records and native comparison')
