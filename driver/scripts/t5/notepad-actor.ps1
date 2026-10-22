@@ -321,6 +321,23 @@ function Invoke-NotepadSaveAs([string]$Path, [string]$Text, $obs) {
     }
     $obs
 }
+# m2t5ord14: another process briefly held the coordinator's freshly moved cmd-3.json open and a plain ReadAllText died with a
+# sharing violation, which ended the actor and hung the row. Retry only sharing/lock violations, for a bounded time.
+function Read-ActorControlText([string]$Path) {
+    $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 5 * [Diagnostics.Stopwatch]::Frequency
+    for (;;) {
+        try {
+            $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite, 4096, [IO.FileOptions]::None)
+            try { $reader = [IO.StreamReader]::new($stream); try { return $reader.ReadToEnd() } finally { $reader.Dispose() } }
+            finally { $stream.Dispose() }
+        } catch [IO.IOException] {
+            $ioFailure = $_.Exception
+            while ($ioFailure.InnerException) { $ioFailure = $ioFailure.InnerException }
+            if (($ioFailure.HResult -band 0xffff) -notin @(32,33) -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $deadline) { throw }
+            Start-Sleep -Milliseconds 5
+        }
+    }
+}
 function Invoke-T5Child([string]$Operation,[string]$Path) {
     $receipt=Join-Path $Control ('child-'+[guid]::NewGuid().ToString('N')+'.json')
     $args='-NoProfile -STA -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -ChildOperation '+$Operation+' -ChildPath "'+$Path+'" -ChildResult "'+$receipt+'"'
@@ -328,7 +345,7 @@ function Invoke-T5Child([string]$Operation,[string]$Path) {
     try {
         if(-not $child.WaitForExit(30000)){throw 'Second-process native operation timed out'}
         if($child.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $receipt)){throw ('Second process failed; pid='+$child.Id+' exit='+$child.ExitCode)}
-        return ([IO.File]::ReadAllText($receipt) | ConvertFrom-Json)
+        return ((Read-ActorControlText $receipt) | ConvertFrom-Json)
     } finally {if(-not $child.HasExited){Stop-Process -Id $child.Id -Force}}
 }
 function Invoke-T5ShellRename([string]$Path,[string]$OldPath,$Observation) {
@@ -391,7 +408,7 @@ try {
 for (;;) {
     $command = Get-ChildItem -LiteralPath $Control -Filter 'cmd-*.json' -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $command) { Start-Sleep -Milliseconds 20; continue }
-    $c = [IO.File]::ReadAllText($command.FullName) | ConvertFrom-Json
+    $c = (Read-ActorControlText $command.FullName) | ConvertFrom-Json
     if ($c.Op -eq 'stop') { Remove-Item -LiteralPath $command.FullName -Force; break }
     $result = [ordered]@{ N = $c.N; Op = $c.Op; Path=$c.Path; ActorPid=$PID; ActorSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value; SessionId=[Diagnostics.Process]::GetCurrentProcess().SessionId }
     try {

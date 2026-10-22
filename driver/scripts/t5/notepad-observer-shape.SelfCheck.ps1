@@ -36,6 +36,10 @@ Assert-T5 ($coordinator.Contains("`$result.RawObserver.Samples += `$object") -an
 Assert-T5 ($coordinator.Contains('if (-not (Test-T5TransientObservationError $sample)){throw') -or $coordinator.Contains('if(-not (Test-T5TransientObservationError $sample)){throw')) 'the settlement wait retries only transient errors'
 Assert-T5 ($coordinator.Contains('$entry.ModuleSequence = $sample.Sequence }')) 'an ERROR sample keeps its module sequence'
 
+$actor = [IO.File]::ReadAllText((Join-Path (Split-Path -Parent $CoordinatorPath) 'notepad-actor.ps1'))
+Assert-T5 ($actor.Contains('function Read-ActorControlText') -and -not $actor.Contains('[IO.File]::ReadAllText($command.FullName)')) 'the actor reads its command with a bounded sharing-violation retry'
+Assert-T5 ($actor.Contains('-notin @(32,33)')) 'the actor retries only ERROR_SHARING_VIOLATION and ERROR_LOCK_VIOLATION'
+
 $observer = [IO.File]::ReadAllText($ObserverPath)
 Assert-T5 ($observer.Contains('Requested record=\d+; Bad signature') -and $observer.Contains('Target metadata probe failed, yet the named lookup succeeded')) 'the in-sample stale-metadata retry covers a lagging MFT record and a name that appeared mid-capture'
 Assert-T5 ($coordinator.Contains("Completed bytes changed during hot collection*") -and $coordinator.Contains('Start-Sleep -Milliseconds 100; continue }')) 'the forced-order gate retries a hot-journal collection race and keeps every other journal error fatal'
