@@ -7789,6 +7789,9 @@ VOID SafeUploadStageGetLifetimeCounters(_Out_ PSAFEUPLOAD_STAGE_LIFETIME_COUNTER
 
 /* T8 increment 0: a read-only snapshot of the live versions. NamespaceResource serializes the list and the flags below; the stream
  * resource is not taken (a diagnostic never waits on a stuck stream), so a record can be momentarily inconsistent. */
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, SafeUploadStageGetStreamSnapshot)
+#endif
 _Use_decl_annotations_
 VOID SafeUploadStageGetStreamSnapshot(PSAFEUPLOAD_STAGE_STREAMS Snapshot)
 {
