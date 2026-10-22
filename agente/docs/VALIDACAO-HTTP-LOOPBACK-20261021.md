@@ -2,6 +2,8 @@
 
 Continuação da macro **Consolidar a base do agente Windows**, sobre o candidato local `1771442db3ecc7529266f859fee61633ef5201cd`.
 
+Atualização posterior: [verificação das rotas no repositório](VERIFICACAO-ROTAS-POLITICA-20261021.md). A orientação atual é verificar o código e aguardar a disponibilização da integração; as perguntas ao final deste checkpoint são históricas e não devem ser enviadas como pedido de confirmação de existência.
+
 ## Entrega
 
 Dois testes de integração do agente usam `HttpClient` real, sockets TCP em loopback e fila/cache em diretórios temporários. A fixture é exclusiva da suíte; não é um novo servidor do produto. Escuta apenas em `127.0.0.1` com porta alocada pelo sistema, sem reserva HTTP.sys, serviço, registro ou driver. Suporta o corpo chunked emitido pelo cliente JSON e limita cabeçalhos/corpos. Não usa proxy nem segue redirecionamentos.

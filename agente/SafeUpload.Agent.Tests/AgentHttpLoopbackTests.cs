@@ -98,6 +98,50 @@ public sealed class AgentHttpLoopbackTests
         Assert.Equal(requests[0].Body, requests[1].Body);
     }
 
+    [Theory]
+    [InlineData(401, "{}")]
+    [InlineData(403, "{}")]
+    [InlineData(200, "invalid JSON")]
+    [InlineData(200, "{\"acceptedEvents\":1}")]
+    public async Task Http_real_recusado_ou_recibo_invalido_preserva_lote_ate_confirmacao_completa(int status, string body)
+    {
+        using var workspace = new TestWorkspace();
+        var attempts = 0;
+        await using var api = new LoopbackHttpFixture(request =>
+        {
+            Assert.Equal("POST", request.Method);
+            Assert.Equal("/agent/events", request.Target);
+            return Interlocked.Increment(ref attempts) == 1 ? new(status, body) : new(200, Receipt);
+        });
+        using var client = api.CreateClient();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var token = timeout.Token;
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        var audit = Event();
+        await SeedAsync(sink, audit, token);
+        using (var dispatcher = Dispatcher(sink, LocalPolicyStore.CreateDefault(), client))
+        {
+            if (body == "invalid JSON")
+                await Assert.ThrowsAsync<JsonException>(() => dispatcher.DispatchPendingAsync(token));
+            else
+                await dispatcher.DispatchPendingAsync(token);
+        }
+
+        var reopened = new LocalQueueAuditSink(workspace.QueueFile);
+        var pending = Assert.Single(await reopened.ReadPendingAsync(100, token));
+        Assert.Equal(audit.EventId, pending.EventId);
+        Assert.Equal(audit.OccurredAtUtc, pending.OccurredAtUtc);
+        Assert.Single(await reopened.ReadPendingOverridesAsync(100, token));
+        using (var dispatcher = Dispatcher(reopened, LocalPolicyStore.CreateDefault(), client))
+            await dispatcher.DispatchPendingAsync(token);
+
+        Assert.Empty(await reopened.ReadPendingAsync(100, token));
+        Assert.Empty(await reopened.ReadPendingOverridesAsync(100, token));
+        var requests = api.Requests.ToArray();
+        Assert.Equal(2, requests.Length);
+        Assert.Equal(requests[0].Body, requests[1].Body);
+    }
+
     private static AuditEvent Event() => new(Guid.NewGuid(),
         new DateTimeOffset(2026, 10, 21, 12, 0, 0, TimeSpan.FromHours(-3)),
         "PC SINTETICO/01", "usuario-sintetico", "arquivo-sintetico.txt", ".txt", 42,
