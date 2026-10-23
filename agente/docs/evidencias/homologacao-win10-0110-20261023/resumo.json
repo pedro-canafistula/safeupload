@@ -1,0 +1,154 @@
+{
+  "version": "0.1.10",
+  "sourceCommit": "135369df7ddabbbc0902658029021dc63724a307",
+  "result": "passed-in-isolated-windows10-clone",
+  "installerSha256": "2C63EC1A2BF984AB126E160428682F573BD371045AEBC7C3F19DD494D47DEDE0",
+  "payloadFiles": 724,
+  "initialEvents": 13,
+  "finalEvents": 15,
+  "uninstallResult": "boot-diagnostics-and-uninstall-passed",
+  "uninstallExitCode": 0,
+  "rawReceiptFiles": [
+    "vm-install-original.json",
+    "vm-restart-original.json",
+    "vm-final-original.json"
+  ],
+  "transportNote": "As saídas via guestcontrol de boot/clean/cpf contêm controles BEL literais nos trechos mascarados. Os .txt preservam a saída recebida; os -derived.json escapam esses controles sem mudar valores. Recibos originais de instalação/reinício/remoção copiados diretamente da VM.",
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 73,
+      "sha256": "961C31F7B5F9637C8362D4E2EC71D7202F068CB91ACEBA8DDF76FB71B1E610DC"
+    },
+    {
+      "file": "Finalizar-0110.ps1",
+      "bytes": 6694,
+      "sha256": "C9AD0185F0E3C3EE9D69C933CC8FC726889EA03F1D1EADD1AEA0767274683192"
+    },
+    {
+      "file": "Ler-Boot-0110.ps1",
+      "bytes": 2985,
+      "sha256": "090D7F94909DE4A82A55E7B6935039170ED35BB1E58E78A9A1651F023D98D72F"
+    },
+    {
+      "file": "Recuperar-Instalar-0110.ps1",
+      "bytes": 8998,
+      "sha256": "B7EDDACA96DD163ED8989C3E4BC5F597CBA97851254E5372573C1759A76915AB"
+    },
+    {
+      "file": "Reiniciar-Validar-0110.ps1",
+      "bytes": 6103,
+      "sha256": "11D0D086B98307FD8DCF97B4C46608EB5A251C02A66FB8E33DC57FBC71C26BDF"
+    },
+    {
+      "file": "Testar-Arquivo-0110.ps1",
+      "bytes": 3985,
+      "sha256": "761D327078673746ADBD07257E535EACB48075513D4DDC4DA5EE9DD81BA4CF12"
+    },
+    {
+      "file": "conferencia-ui.json",
+      "bytes": 1158,
+      "sha256": "42042AB4AF7163D759C292B52532EAC231AE160E7F3B67314500AF290A3133EE"
+    },
+    {
+      "file": "estado-final-derivado.json",
+      "bytes": 526,
+      "sha256": "86C8B2641C1F433867012BC817522A9AD80A22FFC0859F813A003D0B8E15AAED"
+    },
+    {
+      "file": "install-0110.log",
+      "bytes": 251989,
+      "sha256": "B1402AEA7E63FDEE2966B375C3283DEBCF5D1BD6D4901C6F687B1A285851FE54"
+    },
+    {
+      "file": "ui-apos-boot-0110.jpg",
+      "bytes": 145179,
+      "sha256": "EFDDC30E9AEDADBA580BB221C462581EC4C2682BE4847C012BEA9C8A5B024F03"
+    },
+    {
+      "file": "ui-cpf-0110.jpg",
+      "bytes": 152086,
+      "sha256": "9B1A53707E6DCCA1B535E1B8574CB8EBC8988799D9F86421920EFD736192E60D"
+    },
+    {
+      "file": "ui-historico-0110.jpg",
+      "bytes": 169595,
+      "sha256": "C0A0E3F9104CCFCEEF074D79C9DB91CC9116E25DFE82A3A6B4FF7EBD6C981613"
+    },
+    {
+      "file": "ui-reconectada-0110.jpg",
+      "bytes": 131842,
+      "sha256": "E7B4E3EC84E9E2C04810835F014CECDE9B19921D3BE222FDD12CA26396CFE1FF"
+    },
+    {
+      "file": "ui-servico-parado-0110.jpg",
+      "bytes": 132860,
+      "sha256": "9DBC660F0BA6559D79F2FF93C4F0C5A57265D30B3DEC139928A08BF6F8C58C67"
+    },
+    {
+      "file": "uninstall-0110.log",
+      "bytes": 86927,
+      "sha256": "1A2213FEA5739C9BC94699ABEE48ECDD726738F4B18C69442A0A5A64E6480317"
+    },
+    {
+      "file": "vm-boot-derived.json",
+      "bytes": 12590,
+      "sha256": "ACAB657D2066DF0AC53552AAF10DE5D2EFFC95DD581D8F5988080C431BB76470"
+    },
+    {
+      "file": "vm-boot-transport.txt",
+      "bytes": 25445,
+      "sha256": "BA29D3F334623482CC0C36AE700DC30A31E7277900432D5AECDB84680F62469B"
+    },
+    {
+      "file": "vm-clean-derived.json",
+      "bytes": 1183,
+      "sha256": "046911A31D71ADAE45A115DEACF1C078DEF1CE38C6119751B80AA2F3DF687056"
+    },
+    {
+      "file": "vm-clean-transport.txt",
+      "bytes": 2046,
+      "sha256": "2B7D33C2044C23F3844AB9B04B1AB8B5B96D3CB7FF07141BEAB4049FF7BFF87D"
+    },
+    {
+      "file": "vm-cpf-derived.json",
+      "bytes": 1651,
+      "sha256": "1B0E7829047F59A4A11DB8B7C666403CD96C94B901F1D509778591219B0D050A"
+    },
+    {
+      "file": "vm-cpf-transport.txt",
+      "bytes": 2746,
+      "sha256": "B24357AC5A732F2FA7B6F8563999E3309655059D00C1A7136E39D840AD65D343"
+    },
+    {
+      "file": "vm-final-original.json",
+      "bytes": 9807,
+      "sha256": "F5751EB9B3DAE8159CCA6988E42537BC8C1C1C2B82C1FD50C346BE01F9CBE5E6"
+    },
+    {
+      "file": "vm-install-original.json",
+      "bytes": 5833,
+      "sha256": "BDEAE7C3FF76F22F901D16B37A81919C95CB51DC048E52AD39BCFA877DE93D46"
+    },
+    {
+      "file": "vm-package-preflight.json",
+      "bytes": 138,
+      "sha256": "D5F5FDC63DC9EB2B1150B17B237C7408C7FC8ECD055B656EBF01B70D23D34FC4"
+    },
+    {
+      "file": "vm-post-uninstall-confirmation.json",
+      "bytes": 256,
+      "sha256": "9297337BC996BC5CA4999F544B3933FAABA6A76EACDAF0B0ACBD4F665780E48C"
+    },
+    {
+      "file": "vm-restart-original.json",
+      "bytes": 4245,
+      "sha256": "E3CBA9A18387A89C9594E208AE9B054CCAD32194463999B33242467042049387"
+    },
+    {
+      "file": "vm-resume-state.json",
+      "bytes": 256,
+      "sha256": "BE0418C73ED792759A441B45E1F8BF47F44FD7B1B4D413FB958F84ACD93B483B"
+    }
+  ]
+}

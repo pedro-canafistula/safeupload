@@ -1,0 +1,38 @@
+{
+  "result": "fixture-and-notification-passed-ui-observation-pending",
+  "collectedAtUtc": "2026-10-23T17:57:23.4344976Z",
+  "testKind": "Clean",
+  "administrator": false,
+  "processSession": 1,
+  "initialHistoryCount": 13,
+  "fileName": "homologacao-0110-clean-18af578993ee4518915bb0f2c2e58cd5.txt",
+  "event": {
+    "type": "event",
+    "event": {
+      "eventId": "32f2a969-7a3f-407a-9913-36a306509732",
+      "occurredAtUtc": "2026-10-23T17:57:23.3981459+00:00",
+      "endpointId": "DESKTOP-NJN62UI",
+      "userName": "DESKTOP-NJN62UI$",
+      "fileName": "homologacao-0110-clean-18af578993ee4518915bb0f2c2e58cd5.txt",
+      "extension": ".txt",
+      "sizeBytes": 39,
+      "verdict": "Approved",
+      "categories": [],
+      "maskedSnippets": [],
+      "processName": "desconhecido",
+      "processId": 0,
+      "destinationPath": "C:\\SafeUpload\\Escopo Monitorado",
+      "notInspectedReason": null,
+      "policyVersion": 1,
+      "elapsedMs": 26,
+      "dispatched": false,
+      "publishedSha256Hex": null,
+      "channel": "File"
+    },
+    "findings": [],
+    "overrideAllowed": false,
+    "quarantined": false
+  },
+  "sourceExists": true,
+  "quarantinedFile": []
+}

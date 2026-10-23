@@ -1,0 +1,13 @@
+{
+  "observedAtUtc": "2026-10-23T18:15:55.765Z",
+  "cloneUuid": "3a9992db-4644-405c-b642-9766edd10650",
+  "cloneState": "poweroff",
+  "originalUuid": "05e087d7-f74d-48f6-804e-474da84e0a9c",
+  "originalState": "poweroff",
+  "cloneNics": "none (1–8)",
+  "clipboard": "disabled",
+  "dragAndDrop": "disabled",
+  "agentRemoved": true,
+  "scope": "Somente clone; consulta do estado da VM original.",
+  "source": "VBoxManage showvminfo após Stop-Computer no clone; conferência independente vm-post-uninstall-confirmation.json"
+}

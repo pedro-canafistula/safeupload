@@ -1,6 +1,6 @@
 # Encerramento da interface ao desinstalar — 23/10/2026
 
-**Correção aprovada no CI; homologação do candidato corrigido na VM ainda pendente.** Fonte `135369df7ddabbbc0902658029021dc63724a307`, candidato 0.1.10, atividade [#50](https://github.com/pedro-canafistula/safeupload/issues/50), PR #49 em rascunho. Java, Angular, banco e driver não foram editados.
+**Correção aprovada no CI e homologada no clone Windows 10 com UI interativa aberta.** Fonte `135369df7ddabbbc0902658029021dc63724a307`, candidato 0.1.10, atividade [#50](https://github.com/pedro-canafistula/safeupload/issues/50), PR #49 em rascunho. Java, Angular, banco e driver não foram editados.
 
 ## Falha encontrada na homologação
 
@@ -24,13 +24,17 @@ EXE **0.1.10**, fonte limpa acima, self-contained, 724 arquivos, **84.062.842 by
 
 O módulo separado para recuperação foi reconstruído da fonte rastreada com CRLF e seu SHA-256 coincidiu exatamente com a entrada do manifesto CI: `B765D443CDEDD3DC7F7353DEB360FB679B349F30AD5D90261049DB07E957E8AB`. Isso permite verificar os bytes antes da importação no roteiro restrito ao clone; não foi executado instalador no host.
 
-## Aceite restante
+## Aceite
 
 - [x] Reproduzir falha com UI aberta e conservar log/recibo reprovado.
 - [x] Encerrar somente UI do caminho instalado; provar preservação de processo homônimo externo.
 - [x] Smoke do CI com UI real aberta, saída confirmada e executáveis ausentes.
-- [ ] Reconferir estado atual do clone e recuperar somente resíduos correspondentes ao manifesto 0.1.9, preservando dados; recuperação não transforma a remoção original em aprovada.
-- [ ] Instalar/conferir 0.1.10 no clone e validar a remoção com a UI interativa aberta.
-- [ ] Registrar os resultados finais e encerrar #50 somente após aceite completo.
+- [x] Reconferir estado atual do clone e recuperar somente resíduos correspondentes ao manifesto 0.1.9, preservando dados; recuperação não transforma a remoção original em aprovada.
+- [x] Instalar/conferir 0.1.10 no clone e validar a remoção com a UI interativa aberta.
+- [x] Registrar os resultados finais para encerramento de #50 após o aceite completo.
 
 [Functional web 39981289742](https://github.com/pedro-canafistula/safeupload/actions/runs/39981289742) segue reprovado: backend não iniciou/encerrou antes de iniciar; migration sem EmpresaRepository. Logs conferidos, sem alteração de backend e sem afirmar ponta a ponta. #48 permanece aberta para durabilidade, dias de carga, retenção e temporários. PR #42/#49 sem merge. [Evidências e hashes](evidencias/desinstalacao-ui-20261023/).
+
+## Resultado do candidato 0.1.10 no clone
+
+[Homologação completa](HOMOLOGACAO-WIN10-0110-20261023.md): recuperação controlada de 77 resíduos do 0.1.9, instalação/724 arquivos, dois novos eventos (13 → 15), diagnósticos, reconexão com mesma UI e inicialização pelo Explorer após login aprovados. Remoção com painel aberto encerrou a UI, eliminou pasta instalada/serviço/startup e preservou política, 15 eventos, três quarentenas, dois temporários e junction. Saída zero acompanhada de Removed all? Yes e sem reinício necessário. Clone desligado normalmente ao final; reprovação original do 0.1.9 mantida. Aceite restrito ao EXE/fonte/Windows 10 identificados; demais dependências continuam abertas.
