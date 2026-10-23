@@ -135,7 +135,10 @@ try {
     } else {
         Assert-SafeUploadMachineState -State $state -Mode Minifilter -Operation Uninstall
         Assert-OwnedService
-        if ($Action -eq 'Uninstall') { Remove-OwnedService; Remove-OwnedStartup }
+        if ($Action -eq 'Uninstall') {
+            $null = Stop-SafeUploadInstalledUi -ExecutablePath (Join-Path $InstallRoot 'ui\SafeUpload.Agent.App.exe')
+            Remove-OwnedService; Remove-OwnedStartup
+        }
     }
     [IO.File]::WriteAllText($ResultPath, 'OK', [Text.UTF8Encoding]::new($false))
     exit 0

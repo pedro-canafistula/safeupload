@@ -204,10 +204,20 @@ try {
     $sentinel = Join-Path $dataRoot 'installer-preservation-test.txt'
     [IO.File]::WriteAllText($sentinel, 'synthetic data to preserve')
     $queueHash = (Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash
+    $uiExecutable = Join-Path $installRoot 'ui\SafeUpload.Agent.App.exe'
+    $installedUi = Start-Process $uiExecutable -WindowStyle Hidden -PassThru
+    Start-Sleep -Seconds 3
+    Require (-not $installedUi.HasExited -and $installedUi.MainModule.FileName -eq $uiExecutable) 'Installed UI did not stay running before removal.'
+    $result.uninstallUi = [ordered]@{processId=$installedUi.Id;runningBefore=$true;exitedAfter=$false}
     $uninstaller = Join-Path $installRoot 'unins000.exe'
     $process = Start-Process $uninstaller -WindowStyle Hidden -PassThru -Wait -ArgumentList @(
         '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="' + (Join-Path $ResultsDirectory 'uninstall.log') + '"'))
     Require ($process.ExitCode -eq 0) 'Uninstall failed.'
+    Require ($installedUi.WaitForExit(10000)) 'Uninstall left the installed UI running.'
+    $result.uninstallUi.exitedAfter = $true
+    Require (-not (Test-Path -LiteralPath $uiExecutable) -and
+        -not (Test-Path -LiteralPath (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe'))) 'Installed executables remain after removal.'
+    $installedUi.Dispose()
     Require (-not (Test-Path -LiteralPath $serviceKey)) 'Agent service remains registered.'
     Require (-not (Get-ItemProperty -LiteralPath $startupKey -Name SafeUploadAgentConsole -ErrorAction SilentlyContinue)) 'UI startup entry remains.'
     Require ((Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash -eq $policyHash) 'Uninstall changed the policy.'

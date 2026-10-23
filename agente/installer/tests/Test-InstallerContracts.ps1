@@ -102,6 +102,36 @@ try {
     New-Item -ItemType Junction -Path $junction -Target $target | Out-Null
     Test-Case 'Junction ancestors are refused before privileged file operations' { Assert-Rejected { Assert-SafeUploadDirectory -Path $junction -ExpectedPath $junction } }
     Remove-Item -LiteralPath $junction -Force
+    Test-Case 'UI termination refuses relative or different executable names' {
+        Assert-Rejected { Stop-SafeUploadInstalledUi 'SafeUpload.Agent.App.exe' }
+        Assert-Rejected { Stop-SafeUploadInstalledUi (Join-Path $fixture 'other.exe') }
+    }
+    Test-Case 'UI termination stops only the exact executable and leaves the same name elsewhere running' {
+        $ownedRoot = Join-Path $fixture 'owned'; $foreignRoot = Join-Path $fixture 'foreign'
+        New-Item -ItemType Directory -Path $ownedRoot,$foreignRoot | Out-Null
+        $ownedExe = Join-Path $ownedRoot 'SafeUpload.Agent.App.exe'
+        $foreignExe = Join-Path $foreignRoot 'SafeUpload.Agent.App.exe'
+        $escapedOutput = $ownedExe.Replace("'", "''")
+        $compile = "Add-Type -TypeDefinition 'public class UiProcessFixture { public static void Main() { System.Threading.Thread.Sleep(-1); } }' -OutputAssembly '$escapedOutput' -OutputType ConsoleApplication"
+        & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -EncodedCommand ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($compile)))
+        if ($LASTEXITCODE -ne 0) { throw 'Synthetic .NET Framework process did not compile.' }
+        Copy-Item -LiteralPath $ownedExe -Destination $foreignExe
+        $owned = $null; $foreign = $null
+        try {
+            $owned = Start-Process $ownedExe -WindowStyle Hidden -PassThru
+            $foreign = Start-Process $foreignExe -WindowStyle Hidden -PassThru
+            Start-Sleep -Milliseconds 400
+            Assert-True (-not $owned.HasExited -and -not $foreign.HasExited)
+            Assert-True ((Stop-SafeUploadInstalledUi $ownedExe) -eq 1)
+            Assert-True ($owned.WaitForExit(5000) -and -not $foreign.HasExited)
+            Assert-True ((Stop-SafeUploadInstalledUi $ownedExe) -eq 0 -and -not $foreign.HasExited)
+        } finally {
+            # Only the two process objects created by this test may be cleaned up.
+            foreach ($created in @($owned,$foreign)) {
+                if ($created) { try { if (-not $created.HasExited) { $created.Kill(); $null=$created.WaitForExit(5000) } } finally { $created.Dispose() } }
+            }
+        }
+    }
     $failed=@($results | Where-Object { -not $_.passed })
     $summary=[ordered]@{powershell=$PSVersionTable.PSVersion.ToString();total=$results.Count;passed=$results.Count-$failed.Count;failed=$failed.Count;tests=@($results)}
     if ($ResultsPath) { $summary | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $ResultsPath -Encoding UTF8 }

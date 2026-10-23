@@ -123,4 +123,37 @@ function Test-SafeUploadPayload {
     return $manifest
 }
 
-Export-ModuleMember -Function ConvertTo-SafeUploadAdminUrl, Assert-SafeUploadDirectory, New-SafeUploadInstallPlan, Assert-SafeUploadMachineState, Test-SafeUploadPayload, Assert-SafeUploadInstallAcl
+function Stop-SafeUploadInstalledUi {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ExecutablePath)
+    if (-not [IO.Path]::IsPathRooted($ExecutablePath) -or
+        [IO.Path]::GetFileName($ExecutablePath) -ne 'SafeUpload.Agent.App.exe') {
+        throw 'Expected an absolute installed UI executable path.'
+    }
+    # The caller validates the protected installation root/ACL first. A matching
+    # process name alone never authorizes termination. Keep the Process handle
+    # open while checking the module and terminating that exact process.
+    $expected = [IO.Path]::GetFullPath($ExecutablePath)
+    $stopped = 0
+    foreach ($process in @(Get-Process -Name SafeUpload.Agent.App -ErrorAction SilentlyContinue)) {
+        try {
+            if ($process.HasExited) { continue }
+            try {
+                $null = $process.Handle
+                $actual = $process.MainModule.FileName
+            } catch {
+                if ($process.HasExited) { continue }
+                throw 'Cannot verify the executable of a running agent UI; removal refused.'
+            }
+            if ([string]::IsNullOrEmpty($actual)) { throw 'Cannot verify the running UI executable.' }
+            if (-not [IO.Path]::GetFullPath($actual).Equals($expected, [StringComparison]::OrdinalIgnoreCase)) { continue }
+            # Closing a WPF panel can hide it in the tray instead of exiting.
+            $process.Kill()
+            if (-not $process.WaitForExit(10000)) { throw 'The installed UI did not exit; removal refused.' }
+            $stopped++
+        } finally { $process.Dispose() }
+    }
+    return $stopped
+}
+
+Export-ModuleMember -Function Stop-SafeUploadInstalledUi, ConvertTo-SafeUploadAdminUrl, Assert-SafeUploadDirectory, New-SafeUploadInstallPlan, Assert-SafeUploadMachineState, Test-SafeUploadPayload, Assert-SafeUploadInstallAcl
