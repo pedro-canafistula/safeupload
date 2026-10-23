@@ -1,0 +1,5 @@
+select disk 1
+create partition primary
+format fs=ntfs quick label=SUQa47c9c49604b
+assign letter=P
+exit

@@ -1,0 +1,17 @@
+{
+  "result": "passed",
+  "context": "GitHubHosted",
+  "startedAtUtc": "2026-10-23T19:41:16.3106291Z",
+  "nonce": "80c06f189e624757bb16dd0cad6993eb",
+  "vhd": "D:\\a\\safeupload\\safeupload\\artifacts\\queue-full\\volume-80c06f189e624757bb16dd0cad6993eb\\owned-64mb.vhd",
+  "maximumMiB": 64,
+  "probeSha256": "5A68A8E049ACB2E2008D2623DBF6D0B59E46EA1AC6808617D6DAF2016B276361",
+  "probeSource": "3697d1513fd59e7af286d16b0b5f81bdc94535a6",
+  "detached": true,
+  "diskNumber": 2,
+  "driveLetter": "P",
+  "volumeId": "\\\\?\\Volume{536cafe0-0000-0000-0000-010000000000}\\",
+  "volumeBytes": 65990656,
+  "probeExitCode": 0,
+  "finishedAtUtc": "2026-10-23T19:41:23.4669923Z"
+}

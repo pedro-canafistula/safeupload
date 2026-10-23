@@ -1,0 +1,105 @@
+﻿{
+    "result":  "full-volume-probe-and-baseline-preservation-passed",
+    "startedAtUtc":  "2026-10-23T19:57:38.9537407Z",
+    "probeSource":  "8689572dc1b60cf3da3ed7e2783ef8d65a424949",
+    "probeSha256":  "C4A77B513765826A11D3BBB801D2E33AAEE6DFEDF80798B0DA8717A82DADBB74",
+    "preservedFiles":  [
+                           {
+                               "path":  "C:\\ProgramData\\SafeUpload\\policy.json",
+                               "sha256":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+                               "bytes":  1122
+                           },
+                           {
+                               "path":  "C:\\ProgramData\\SafeUpload\\queue.jsonl",
+                               "sha256":  "64A3D85FD9B5091B11D88D6D32614D7EB2F7898686F01D9AC1F5B28947C8BA6A",
+                               "bytes":  9514
+                           },
+                           {
+                               "path":  "C:\\ProgramData\\SafeUpload\\queue.jsonl.7267f6b95304461399d4349aede1ee86.tmp",
+                               "sha256":  "903470CAE4653AC80282FA92A88764AB0DF90EFC98669A26B2261D9A9A6D0B9C",
+                               "bytes":  25
+                           },
+                           {
+                               "path":  "C:\\ProgramData\\SafeUpload\\queue.jsonl.5712c7835b0043008c54d97aae555cd8.tmp",
+                               "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+                               "bytes":  0
+                           },
+                           {
+                               "path":  "C:\\SafeUpload\\_bloqueados\\homologacao-017-cpf-cf8e763a48d74744ac9c7549d8f2a699-20261022-194911.txt",
+                               "sha256":  "605A58E33E73F44BEC1E10A8B7C842A4805BB353A2544005FAFC53F2445A2E81",
+                               "bytes":  28
+                           },
+                           {
+                               "path":  "C:\\SafeUpload\\_bloqueados\\homologacao-019-cpf-430a6ec8513347bfaac70eae9697903a-20261023-122450.txt",
+                               "sha256":  "605A58E33E73F44BEC1E10A8B7C842A4805BB353A2544005FAFC53F2445A2E81",
+                               "bytes":  28
+                           },
+                           {
+                               "path":  "C:\\SafeUpload\\_bloqueados\\homologacao-0110-cpf-a74e5d1b293d44bb968a2c2e7bc394e9-20261023-145743.txt",
+                               "sha256":  "605A58E33E73F44BEC1E10A8B7C842A4805BB353A2544005FAFC53F2445A2E81",
+                               "bytes":  28
+                           },
+                           {
+                               "path":  "C:\\SafeUpload\\_bloqueados\\homologacao-0111-cpf-e4ba96760a994a23a9bd42d553c253fd-20261023-161005.txt",
+                               "sha256":  "605A58E33E73F44BEC1E10A8B7C842A4805BB353A2544005FAFC53F2445A2E81",
+                               "bytes":  28
+                           }
+                       ],
+    "baselineEventIds":  [
+                             "a8c6552d-dca9-41eb-9bff-b1782480d158",
+                             "23ab57ce-ebf7-4d12-830c-13ccc8c80319",
+                             "42c3dfc9-841b-4a28-b6d6-d113541a0603",
+                             "5eefda87-50ee-47a3-af57-09546d01cca7",
+                             "0f4144fd-4d31-4e67-91c2-3770cc514f53",
+                             "deb57a31-e063-4b4d-bd82-fd7799f2adf3",
+                             "a25bd1fd-60bc-460c-8fb1-470359c3bba4",
+                             "87c07ef8-c76d-42b9-a740-90a313d6d174",
+                             "301c1d10-1551-46ab-81cb-4e489846d564",
+                             "30bf77d2-726c-4530-85b9-8b10d3cf51fc",
+                             "fbd99c6c-ae8f-46d7-8416-a69d87ac96a8",
+                             "60ecb404-802b-4323-9c45-7ac0043bb104",
+                             "177c5481-862b-42f2-91d4-1df2a988c4ca",
+                             "32f2a969-7a3f-407a-9913-36a306509732",
+                             "fd8da655-d482-4665-b002-906df10793b5",
+                             "d57403fd-16f2-41ac-bc0d-6df3a4766786",
+                             "6307f1de-b252-4b88-bdd8-9a15a0e70eb6"
+                         ],
+    "systemDriveFreeBytesBefore":  83349266432,
+    "baselinePreserved":  true,
+    "junctionPreserved":  true,
+    "wrapperPath":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\wrapper-result.json",
+    "wrapper":  {
+                    "result":  "passed",
+                    "context":  "Clone",
+                    "startedAtUtc":  "2026-10-23T19:57:39.1727242Z",
+                    "nonce":  "a47c9c49604b48cf99165cbd6267a1f7",
+                    "vhd":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\owned-64mb.vhd",
+                    "maximumMiB":  64,
+                    "probeSha256":  "C4A77B513765826A11D3BBB801D2E33AAEE6DFEDF80798B0DA8717A82DADBB74",
+                    "probeSource":  "8689572dc1b60cf3da3ed7e2783ef8d65a424949",
+                    "detached":  true,
+                    "create-attachExitCode":  0,
+                    "partition-formatExitCode":  0,
+                    "diskNumber":  1,
+                    "driveLetter":  "P",
+                    "volumeId":  "\\\\?\\Volume{bf3e3f53-0000-0000-0000-010000000000}\\",
+                    "volumeBytes":  65990656,
+                    "probeExitCode":  0,
+                    "finishedAtUtc":  "2026-10-23T19:57:45.6003128Z"
+                },
+    "systemDriveFreeBytesAfter":  83279527936,
+    "images":  [
+                   {
+                       "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\owned-64mb.vhd",
+                       "attached":  false
+                   },
+                   {
+                       "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-af4a0dc2df7c41b7952c8e8055961f4d\\owned-64mb.vhd",
+                       "attached":  false
+                   }
+               ],
+    "agentRootPresent":  false,
+    "agentServicePresent":  false,
+    "agentUiCount":  0,
+    "finishedAtUtc":  "2026-10-23T19:57:45.7380768Z"
+}
