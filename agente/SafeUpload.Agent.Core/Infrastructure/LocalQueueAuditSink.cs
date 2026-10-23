@@ -13,15 +13,16 @@ namespace SafeUpload.Agent.Core.Infrastructure;
 ///
 /// O formato JSON Lines foi escolhido por ser append-only. Registrar um evento
 /// é acrescentar uma linha, sem reescrever nem reserializar o que já está lá,
-/// o que significa que uma queda de energia no meio da gravação corrompe no
-/// máximo a última linha, e a leitura simplesmente a descarta. Um array JSON
+/// permitindo continuar após uma linha inválida. Uma escrita interrompida
+/// pode deixar a última linha truncada; ela permanece no arquivo e pode ser
+/// diagnosticada por InspectIntegrityAsync. Um array JSON
 /// único exigiria reescrever o arquivo inteiro a cada evento e poderia perder
 /// a trilha toda.
 ///
 /// Todo evento nasce com dispatched igual a falso. O despachante marca
 /// verdadeiro depois da confirmação do servidor, preservando a trilha local.
 /// </summary>
-public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
+public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
 {
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -384,9 +385,9 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
             }
             catch (JsonException)
             {
-                // Linha truncada por queda no meio da gravação. É a razão de ser
-                // do formato: descartamos a linha e mantemos toda a trilha
-                // anterior, em vez de perder o arquivo inteiro.
+                // A projeção continua sem este registro, mas os bytes permanecem
+                // no arquivo. InspectIntegrityAsync permite localizar a linha
+                // incompatível sem expor seu conteúdo ou tentar repará-la.
             }
         }
 

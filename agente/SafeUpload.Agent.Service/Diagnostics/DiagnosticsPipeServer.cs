@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using SafeUpload.Agent.Service.Notifications;
+using SafeUpload.Agent.Core.Infrastructure;
 
 namespace SafeUpload.Agent.Service.Diagnostics;
 
@@ -32,15 +33,17 @@ public sealed class DiagnosticsPipeServer : BackgroundService
     private readonly ILogger<DiagnosticsPipeServer> _logger;
     private readonly string _pipeName;
     private readonly AuditQueueHealth? _auditHealth;
+    private readonly LocalQueueAuditSink? _auditQueue;
 
     /// <param name="pipeName">Only tests pass a name; the service always uses <see cref="PipeName"/>.</param>
     public DiagnosticsPipeServer(DriverDiagnosticsSource source, ILogger<DiagnosticsPipeServer> logger,
-        string pipeName = PipeName, AuditQueueHealth? auditHealth = null)
+        string pipeName = PipeName, AuditQueueHealth? auditHealth = null, LocalQueueAuditSink? auditQueue = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipeName = pipeName;
         _auditHealth = auditHealth;
+        _auditQueue = auditQueue;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -81,13 +84,13 @@ public sealed class DiagnosticsPipeServer : BackgroundService
             bufferSize: 1024, leaveOpen: true);
         string? line = await BoundedPipeLine.ReadAsync(reader, deadline.Token).ConfigureAwait(false);
 
-        JsonObject reply = Handle(line);
+        JsonObject reply = await HandleAsync(line, deadline.Token).ConfigureAwait(false);
         byte[] payload = Utf8.GetBytes(reply.ToJsonString() + "\n");
         await pipe.WriteAsync(payload, deadline.Token).ConfigureAwait(false);
         await pipe.FlushAsync(deadline.Token).ConfigureAwait(false);
     }
 
-    private JsonObject Handle(string? line)
+    private async Task<JsonObject> HandleAsync(string? line, CancellationToken cancellationToken)
     {
         string query = "";
         try
@@ -98,6 +101,20 @@ public sealed class DiagnosticsPipeServer : BackgroundService
 
             switch (query)
             {
+                case "audit-integrity":
+                    if (_auditQueue is null) return Error(query, "Audit storage is unavailable.");
+                    try
+                    {
+                        var integrity = await _auditQueue.InspectIntegrityAsync(cancellationToken).ConfigureAwait(false);
+                        return Ok(query, JsonSerializer.SerializeToNode(integrity, new JsonSerializerOptions
+                        { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                    catch (Exception exception)
+                    {
+                        // A queue exception can contain a path or record content. Never relay it.
+                        return Error(query, "Audit integrity scan failed (" + AuditQueueHealth.Classify(exception) + ").");
+                    }
                 case "audit-health":
                     return _auditHealth is null ? Error(query, "Audit monitoring is unavailable.") :
                         Ok(query, JsonSerializer.SerializeToNode(_auditHealth.Read(), new JsonSerializerOptions
@@ -110,7 +127,7 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "audit-health", "help"),
+                        ["queries"] = new JsonArray("counters", "deny-ring", "audit-health", "audit-integrity", "help"),
                         ["denyRingCursor"] = "pass the previous reply's nextSequence minus one as after; 0 reads from the start",
                         ["connected"] = _source.IsConnected,
                     });

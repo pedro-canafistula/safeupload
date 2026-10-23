@@ -37,11 +37,11 @@ function Read-AuditEvents([string]$Path) {
         }
     } finally { $reader.Dispose() }
 }
-function Read-AuditHealth {
+function Read-AuditHealth([string]$Query = 'audit-health') {
     $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', 'SafeUpload.Agent.Diagnostics', [IO.Pipes.PipeDirection]::InOut, [IO.Pipes.PipeOptions]::Asynchronous)
     try {
         $pipe.Connect(5000)
-        $payload = [Text.Encoding]::UTF8.GetBytes('{"query":"audit-health"}' + "`n")
+        $payload = [Text.Encoding]::UTF8.GetBytes((@{query=$Query} | ConvertTo-Json -Compress) + "`n")
         $pipe.Write($payload, 0, $payload.Length)
         $pipe.Flush()
         $reader = [IO.StreamReader]::new($pipe, [Text.Encoding]::UTF8, $false, 1024, $true)
@@ -142,9 +142,28 @@ try {
     $result.auditHealth = [ordered]@{initial=$initialHealth;degraded=$degradedHealth;resumed=$resumedHealth;
         logEvents=@($healthLogs | Select-Object Id,Message)}
     $result.steps += 'audit-health diagnosed a real write refusal without driver, resumed with counters retained and emitted sanitized Windows logs'
+    $cleanIntegrity = Read-AuditHealth 'audit-integrity'
+    Require ($cleanIntegrity.fileExists -and -not $cleanIntegrity.requiresAttention -and
+        $cleanIntegrity.validEvents -ge 2) 'Installed service failed the clean integrity scan.'
+    # Only synthetic runner data: preserve both malformed and forward-version records.
+    [IO.File]::AppendAllText($queue, '{SYNTHETIC_PRIVATE_CONTENT' + "`n" +
+        '{"type":"future-runner-record","payload":"SYNTHETIC_PRIVATE_CONTENT"}' + "`n", [Text.UTF8Encoding]::new($false))
+    $integrityHash = (Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash
+    $damagedIntegrity = Read-AuditHealth 'audit-integrity'
+    Require ($damagedIntegrity.requiresAttention -and $damagedIntegrity.invalidLines -eq 1 -and
+        $damagedIntegrity.unknownRecords -eq 1 -and $damagedIntegrity.validEvents -eq $cleanIntegrity.validEvents -and
+        @($damagedIntegrity.issues).Count -eq 2) 'Installed integrity scan missed malformed or unknown records.'
+    $integrityJson = $damagedIntegrity | ConvertTo-Json -Depth 8
+    Require (-not $integrityJson.Contains('SYNTHETIC_PRIVATE_CONTENT') -and
+        -not $integrityJson.Contains($dataRoot)) 'Integrity diagnostics disclosed queue contents or path.'
+    Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $integrityHash) 'Integrity scan modified queue bytes.'
+    $result.auditIntegrity = [ordered]@{clean=$cleanIntegrity;damaged=$damagedIntegrity;queueHash=$integrityHash}
+    $result.steps += 'audit-integrity distinguished malformed and unknown lines without changing queue bytes or disclosing contents'
     Restart-Service -Name SafeUploadAgent -ErrorAction Stop
     Start-Sleep -Seconds 3
     Require ((Get-Service SafeUploadAgent).Status -eq 'Running') 'The installed service did not survive restart.'
+    $integrityAfterRestart = Read-AuditHealth 'audit-integrity'
+    Require ($integrityAfterRestart.invalidLines -eq 1 -and $integrityAfterRestart.unknownRecords -eq 1) 'Restart lost integrity diagnostics.'
     $retained = @(Read-AuditEvents $queue | Where-Object eventId -eq $audit.eventId)
     Require ($retained.Count -eq 1 -and $retained[0].occurredAtUtc -eq $audit.occurredAtUtc -and
         -not $retained[0].dispatched) 'Restart lost, changed or duplicated the pending event.'
