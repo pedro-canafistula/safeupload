@@ -100,6 +100,22 @@ jobs:
         run: |
           $compiler = ./agente/installer/Initialize-InnoCompiler.ps1
           ./agente/installer/Build-AgentInstaller.ps1 -Version 0.1.11 -CompilerPath $compiler
+      - name: Publicar ferramenta isolada e testar volume descartável cheio
+        shell: pwsh
+        run: |
+          ./agente/tools/QueueFullVolumeProbe/Publish-Probe.ps1 -OutputDirectory artifacts/queue-full-tool
+          ./agente/scripts/Test-QueueFullVolume.ps1 -Context GitHubHosted -OutputParent artifacts/queue-full -ProbePath artifacts/queue-full-tool/publish/QueueFullVolumeProbe.exe -ManifestPath artifacts/queue-full-tool/probe-manifest.json
+      - name: Preservar ferramenta e recibos de disco cheio sem imagem virtual
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fila-volume-cheio
+          path: |
+            artifacts/queue-full-tool/
+            artifacts/queue-full/**/wrapper-result.json
+            artifacts/queue-full/**/probe-results/*.json
+            artifacts/queue-full/**/*.log
+            artifacts/queue-full/**/*.txt
       - name: Conferir o artefato antes da instalação
         shell: pwsh
         run: |
