@@ -1,0 +1,6 @@
+Diagnostic directory: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\leitura-fila-20261023\depois\queue-probe-182feba445944e5c91828fcf8cb67902
+Scale 1000: 514890 bytes; integrity passed.
+Scale 10000: 5158890 bytes; integrity passed.
+Scale 50000: 25838890 bytes; integrity passed.
+{"requestedSeconds":10,"elapsedSeconds":10.2993411,"cycles":52,"events":10039,"confirmed":5200,"pending":4839,"fileBytes":5199853,"rewriteDestinationBytes":269311231,"sha256":"F2E2F68810815539148B4054976707F3526806279EA9644BA3C6550FA16DA165","integrity":"passed-after-reopening"}
+PASS: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\leitura-fila-20261023\depois\queue-probe-182feba445944e5c91828fcf8cb67902\result.json

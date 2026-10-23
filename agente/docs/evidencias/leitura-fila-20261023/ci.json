@@ -1,0 +1,363 @@
+{
+  "source": "42e34afd73b9e7fe8d183a032a3bcf9abc13f282",
+  "run": 40003228220,
+  "jobs": [
+    {
+      "id": 120584465599,
+      "name": "Componentes C# Debug",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 40003228220,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Compilar diagnóstico isolado da fila",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Executar suíte C# completa sem filtro",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Interromper processos isolados de fila sintética",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Preservar recibos de interrupção sem filas grandes",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Preservar resultados completos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19
+        }
+      ]
+    },
+    {
+      "id": 120584465962,
+      "name": "Instalação real em Windows descartável",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 40003228220,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Contratos PowerShell e ambiente",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Gerar candidato 0.1.11 com compilador verificado",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Conferir o artefato antes da instalação",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Instalar, inspecionar, reiniciar e desinstalar",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Preservar instalador e evidências inclusive em falha",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19
+        }
+      ]
+    },
+    {
+      "id": 120584466288,
+      "name": "Componentes C# Release",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 40003228220,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Compilar diagnóstico isolado da fila",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Executar suíte C# completa sem filtro",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Interromper processos isolados de fila sintética",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Preservar recibos de interrupção sem filas grandes",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Preservar resultados completos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19
+        }
+      ]
+    }
+  ],
+  "logAssertions": [
+    {
+      "job": 120584465599,
+      "lines": [
+        "2026-10-23T18:27:42.5663336Z Passed!  - Failed:     0, Passed:   801, Skipped:     4, Total:   805, Duration: 27 s - SafeUpload.Agent.Tests.dll (net10.0)"
+      ]
+    },
+    {
+      "job": 120584466288,
+      "lines": [
+        "2026-10-23T18:28:06.8866070Z Passed!  - Failed:     0, Passed:   801, Skipped:     4, Total:   805, Duration: 44 s - SafeUpload.Agent.Tests.dll (net10.0)"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 12523635668,
+      "name": "homologacao-agente-instalador",
+      "size_in_bytes": 83609056,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12523635668",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12523635668/zip",
+      "expired": false,
+      "created_at": "2026-10-23T18:29:03Z",
+      "expires_at": "2027-01-21T18:26:01Z",
+      "updated_at": "2026-10-23T18:29:03Z",
+      "digest": "sha256:6926a29fe3549578f901f08651cd6869b5c9f8ce70bc09018c5b9544155ee547",
+      "workflow_run": {
+        "id": 40003228220,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "42e34afd73b9e7fe8d183a032a3bcf9abc13f282"
+      }
+    },
+    {
+      "id": 12523590943,
+      "name": "interrupcao-fila-Debug",
+      "size_in_bytes": 2555,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12523590943",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12523590943/zip",
+      "expired": false,
+      "created_at": "2026-10-23T18:28:29Z",
+      "expires_at": "2027-01-21T18:26:01Z",
+      "updated_at": "2026-10-23T18:28:29Z",
+      "digest": "sha256:79d765ebea17a60f02479a93b4f3c9689c93a110efe660806c44baf6cfd65e89",
+      "workflow_run": {
+        "id": 40003228220,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "42e34afd73b9e7fe8d183a032a3bcf9abc13f282"
+      }
+    },
+    {
+      "id": 12522513719,
+      "name": "interrupcao-fila-Release",
+      "size_in_bytes": 2559,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12522513719",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12522513719/zip",
+      "expired": false,
+      "created_at": "2026-10-23T18:28:51Z",
+      "expires_at": "2027-01-21T18:26:01Z",
+      "updated_at": "2026-10-23T18:28:51Z",
+      "digest": "sha256:00d14dc9f053577b4bd451af13112dd9ae1eb5a0d3420b84482cf4dee4890da2",
+      "workflow_run": {
+        "id": 40003228220,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "42e34afd73b9e7fe8d183a032a3bcf9abc13f282"
+      }
+    },
+    {
+      "id": 12522234241,
+      "name": "csharp-Debug",
+      "size_in_bytes": 206476,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12522234241",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12522234241/zip",
+      "expired": false,
+      "created_at": "2026-10-23T18:28:30Z",
+      "expires_at": "2027-01-21T18:26:01Z",
+      "updated_at": "2026-10-23T18:28:30Z",
+      "digest": "sha256:cbe9f4d00206a84724b73fbb47ee70624159df42c795ae3f7bb4db3b41b00565",
+      "workflow_run": {
+        "id": 40003228220,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "42e34afd73b9e7fe8d183a032a3bcf9abc13f282"
+      }
+    },
+    {
+      "id": 12522154295,
+      "name": "csharp-Release",
+      "size_in_bytes": 206112,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12522154295",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12522154295/zip",
+      "expired": false,
+      "created_at": "2026-10-23T18:28:52Z",
+      "expires_at": "2027-01-21T18:26:01Z",
+      "updated_at": "2026-10-23T18:28:52Z",
+      "digest": "sha256:784ebf35e51f93015eaf2d7fd3b49f796986393f352fec915a3976765aa518de",
+      "workflow_run": {
+        "id": 40003228220,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "42e34afd73b9e7fe8d183a032a3bcf9abc13f282"
+      }
+    }
+  ]
+}

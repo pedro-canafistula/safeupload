@@ -33,7 +33,7 @@ Consulta adicional recusou um ancestral junction criado no laboratório. Também
 - [x] Diferenciar resultado completo/incompleto e limitar o trabalho por quantidade de entradas.
 - [x] Validar cancelamento, limites, erro sanitizado e temporários de interrupção real.
 - [x] Conferir serviço SYSTEM instalado, junction, reinício e preservação após remoção no CI desta fonte.
-- [ ] Homologação completa do 0.1.9: [tentativa reprovada na remoção com UI aberta](HOMOLOGACAO-WIN10-019-20261023.md), apesar dos diagnósticos/inspeção/reconexão/boot aprovados. [Correção 0.1.10](DESINSTALACAO-UI-20261023.md) com aceite próprio da VM pendente.
+- [ ] Homologação completa do 0.1.9: [tentativa reprovada na remoção com UI aberta](HOMOLOGACAO-WIN10-019-20261023.md), apesar dos diagnósticos/inspeção/reconexão/boot aprovados. [Correção 0.1.10](DESINSTALACAO-UI-20261023.md) com [aceite próprio concluído no clone Windows 10](HOMOLOGACAO-WIN10-0110-20261023.md); a tentativa original do 0.1.9 permanece reprovada.
 - [ ] Definir tratamento/limpeza segura com regra explícita; nenhum candidato é descartável apenas por nome, idade ou tamanho.
 
 A #48 permanece aberta para append efetivamente interrompido, energia, volume descartável cheio, dias de carga, orçamento de recursos, segmentos/checkpoints e retenção. API real, autenticação de máquina e idempotência continuam dependências da equipe. O 0.1.9 não herda a homologação Windows 10 do 0.1.7. Nenhum merge realizado.

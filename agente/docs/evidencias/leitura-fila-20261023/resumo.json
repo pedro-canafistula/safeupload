@@ -1,0 +1,161 @@
+{
+  "source": "42e34afd73b9e7fe8d183a032a3bcf9abc13f282",
+  "issue": 51,
+  "result": "implementation-ci-and-synthetic-comparison-passed; clone-homologation-pending",
+  "beforeSource": "43d13c55b574512605f62b917dc787777e8eb65d",
+  "ci": {
+    "run": 40003228220,
+    "passed": 801,
+    "failed": 0,
+    "skipped": 4,
+    "total": 805,
+    "configurations": [
+      "Debug",
+      "Release"
+    ]
+  },
+  "localFullSuites": {
+    "passed": 794,
+    "failed": 7,
+    "skipped": 4,
+    "total": 805,
+    "limitations": "5 symbolic-link privilege failures; 2 owner/SID failures; see complete TRX"
+  },
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 55,
+      "sha256": "307F82B22ED52CAD1224332181D51FCDF020C0EA3D405CF1B48C8FA606183A87"
+    },
+    {
+      "file": "agente-debug.trx",
+      "bytes": 1348410,
+      "sha256": "B6F6FDCF40DA35CC57627358B415C93EA76043408AE22D0E1153E9FE1D0436E3"
+    },
+    {
+      "file": "agente-release.trx",
+      "bytes": 1352468,
+      "sha256": "C9ED32C59820A1AAC6BFC218846A9699566BB99D9B019008D3FD9BF9EC5CEECA"
+    },
+    {
+      "file": "candidato.json",
+      "bytes": 806,
+      "sha256": "F590D3E2B95713C27744DCDA3BAA6E6A1D697D6AAA1D26F798CB4442EA0FB77D"
+    },
+    {
+      "file": "ci-artifact-validation.json",
+      "bytes": 1232,
+      "sha256": "5D04C594D4EA76220C39C04580F1D51800554E487245496D33DF1BF42250D8FB"
+    },
+    {
+      "file": "ci-build-result.json",
+      "bytes": 460,
+      "sha256": "60FECAF2BE25275D46F21638C350571FA6929DAE95290F76441C7F2A2FF6F585"
+    },
+    {
+      "file": "ci-environment.json",
+      "bytes": 347,
+      "sha256": "4D0F6A7413177E99FEE4C0DC324F2E4FDBEF9F2799E996BC791434361B9B952F"
+    },
+    {
+      "file": "ci-installed-smoke.json",
+      "bytes": 10813,
+      "sha256": "A0F8A9C28BA58C3961A6DAF1661C034B2A404D6FD8FA2E7E8248BCF4D10A9318"
+    },
+    {
+      "file": "ci-os.json",
+      "bytes": 149,
+      "sha256": "5087196810A3A17AAE8DB532A81CE0C189318AC5BDB446AF944EEEC459231D5A"
+    },
+    {
+      "file": "ci-ps51.json",
+      "bytes": 8309,
+      "sha256": "7207D1A6E77D8B4499B09A8CABDF2EF8C8468C5B7BE39B3D2FCEFB1F848347B0"
+    },
+    {
+      "file": "ci-ps7.json",
+      "bytes": 5030,
+      "sha256": "89EBFE591170CE8CB636F4DE25678079D577793D4BB477F19AC4F39CC0CA3806"
+    },
+    {
+      "file": "ci.json",
+      "bytes": 11404,
+      "sha256": "EA82E8C2C471786F1063CCCBCC64B082C85FD767CA276FC47DED7C6DF14DC15F"
+    },
+    {
+      "file": "comparacao.json",
+      "bytes": 2943,
+      "sha256": "121FFFD758CCA31AF3C8EDCB62FB66E895C8556E1FA232DE1E3C0FFA9288B176"
+    },
+    {
+      "file": "environment.json",
+      "bytes": 347,
+      "sha256": "4D0F6A7413177E99FEE4C0DC324F2E4FDBEF9F2799E996BC791434361B9B952F"
+    },
+    {
+      "file": "functional-web.json",
+      "bytes": 8390,
+      "sha256": "35704E3CF11369E60524F108BB4A53EAB74AB7FE7564B18549CF148E01FBB155"
+    },
+    {
+      "file": "leitura-debug.trx",
+      "bytes": 26964,
+      "sha256": "15EF6616C20B3EC0C83A79A4E363BA2E51AA8C1DF1C7B0E0B6ACD644A3B2F2BB"
+    },
+    {
+      "file": "payload-manifest.json",
+      "bytes": 112235,
+      "sha256": "1D9C2D15EA3E26A60480CEB0D853AF5320D19B7CD143056DCEC57C1B90D71990"
+    },
+    {
+      "file": "probe-antes.json",
+      "bytes": 6922,
+      "sha256": "A710BD069D8B799E4CF2C99345EA2B03BC0CE0B403C674811D6B70F7369E15B5"
+    },
+    {
+      "file": "probe-antes.log",
+      "bytes": 779,
+      "sha256": "EA5A1965AA5321470D3331BD0112B35CB726BE45EB82E904602D1B6FB7388E46"
+    },
+    {
+      "file": "probe-depois.json",
+      "bytes": 6867,
+      "sha256": "530D25FAF9DCC5A651664E47B6960A10F74CBEB64FA67EEEDDB28BE7E01F64DD"
+    },
+    {
+      "file": "probe-depois.log",
+      "bytes": 781,
+      "sha256": "3FF61C0728997EB20C56523B4C55B9D4AB793BD14FDBEADDA37A3C69D5C1DDC9"
+    },
+    {
+      "file": "ps51.json",
+      "bytes": 8308,
+      "sha256": "F934615C3E8DE191D2B556B788BE93E854911E95EF750D8092084B243A7554A3"
+    },
+    {
+      "file": "ps7.json",
+      "bytes": 5030,
+      "sha256": "A93CBA7DCA1EE20B7A9EA8CBD3441C5DF2542D2D01D3948DC9BE703D390BF5CC"
+    },
+    {
+      "file": "test-debug.log",
+      "bytes": 2172,
+      "sha256": "E8ED78BC2A44039837CFF0A2FD3E4468F573E9070C9AF65FC0584A6A27D67FDF"
+    },
+    {
+      "file": "test-full-debug.log",
+      "bytes": 14514,
+      "sha256": "90A80F6930FD83CF1B9FDBE6AE5CBCD80F2E458A9F6F92EAE657084A7DBB04FC"
+    },
+    {
+      "file": "test-release.log",
+      "bytes": 15019,
+      "sha256": "BF6B3FF557531A52CA270F6C04FAAEF5C96D6507CEF1081B1DF9839A9A08EE1C"
+    },
+    {
+      "file": "validacao-local.json",
+      "bytes": 862,
+      "sha256": "34D1951CEB98D32B828FD695539F935889002192CC2011564466A706FC9A5C2E"
+    }
+  ]
+}
