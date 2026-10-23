@@ -1,0 +1,388 @@
+[
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\Accessibility.dll",
+        "bytes":  20776,
+        "sha256":  "582684C68564516AD2ECDFE14534B2FF80FCE67BBA55C554F1B65BE69E4E9360"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\clrjit.dll",
+        "bytes":  2095912,
+        "sha256":  "2A2332C3C0CB023E71DEB356B5FB85CE9045FB8434734DCFE9A7529E427DC858"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\coreclr.dll",
+        "bytes":  4613416,
+        "sha256":  "18EED8C40D05FC455BE95D12CC77EACF379265063B15CA84BD7A11CF29078A22"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\D3DCompiler_47_cor3.dll",
+        "bytes":  4741488,
+        "sha256":  "A05F99734F7C4822FEFC12B367AF21FD0976ED6608752FB1E1E80B6ECE7ECBBB"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\DirectWriteForwarder.dll",
+        "bytes":  509736,
+        "sha256":  "AEC60CD1A89ECE8F998DD7029BA9E4FD51211A20DB1A6F940B16E5AED39CECD7"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\hostfxr.dll",
+        "bytes":  379728,
+        "sha256":  "2E6BF792D54303A54467102FD873A7D7A993F828E8D19C040E13E428E5F2D9C8"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\hostpolicy.dll",
+        "bytes":  378704,
+        "sha256":  "90F9826F48E6416902199DEE0FA1954536FE4C5191F5FD44B1BC6DE623EB99C8"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\Microsoft.Win32.Primitives.dll",
+        "bytes":  15656,
+        "sha256":  "56B957B1DB34E280CFDBAA9097776934286C79F8C1E07BA3449C3DCA75862325"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\Microsoft.Win32.Registry.dll",
+        "bytes":  116560,
+        "sha256":  "BE7FDC5568ECB28E23B31115017CFD05D236D28983FCA712C3EBC47ED6132B8D"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\Microsoft.Win32.SystemEvents.dll",
+        "bytes":  116560,
+        "sha256":  "E1B423C4EAEECC431FC84E7E6D9D475AD09D3673BF4D0B998A57CEA94DB90402"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\PresentationCore.dll",
+        "bytes":  8324904,
+        "sha256":  "0E605CCC78D7929EB8DA4473CDCB6D7EF79DB07B3F69E780745AE1F2AA5A6E31"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\PresentationFramework-SystemXml.dll",
+        "bytes":  34640,
+        "sha256":  "F7B734DB7BCE3EF278B2AEB8B4D9624ECF243C6B0DB91073FCE38DFA6F28B680"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\PresentationFramework.Aero2.dll",
+        "bytes":  444200,
+        "sha256":  "77BD49AE59A3AF3B3DD67927A44C8CC180C42F65DE03EF4B7A4CDF7E1239C73D"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\PresentationFramework.dll",
+        "bytes":  15824720,
+        "sha256":  "C6950A0D6ADDFB7A365C11FE0AA82A4677043A263102F1779AA9BE8FD3624019"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\PresentationNative_cor3.dll",
+        "bytes":  1235240,
+        "sha256":  "091609705A031D5832F21548291C2670F06EADD781D465D3E1A5FAD3772ADC91"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\SafeUpload.Agent.App.dll",
+        "bytes":  102400,
+        "sha256":  "DF73F4C73080ADBB66803F683CB52102FEC001E8DEB97B81CE383B817C7591E1"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\SafeUpload.Agent.App.exe",
+        "bytes":  163328,
+        "sha256":  "D70E3DB46362DE68909DD6E4495A3B3F6C269D8603CC3DC45B08DB2AA3ECDB8D"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\SafeUpload.Agent.Core.dll",
+        "bytes":  224256,
+        "sha256":  "FAAFA4EE19730C668E59AC4025DCDA65712FBED774A0922250B26D6756322661"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Collections.Concurrent.dll",
+        "bytes":  231248,
+        "sha256":  "A94B9FC813235087390540793E0D92DCD86362C26768144CD1EF8AA37B34C66A"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Collections.dll",
+        "bytes":  296784,
+        "sha256":  "CCF9EC3D536D6241C54A874833BF7D2329B9ECC5B8D4298C27AF271F0E91B223"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Collections.NonGeneric.dll",
+        "bytes":  104272,
+        "sha256":  "A13E2D330938C175D92BF7EF09A39C669C3DFF4629319B4366CA71A52ED0DC8B"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Collections.Specialized.dll",
+        "bytes":  104232,
+        "sha256":  "1B19D86241BB7A033F30946D4556440258D2D88793A26465BCCCED7D2B44B93C"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.ComponentModel.dll",
+        "bytes":  30544,
+        "sha256":  "98646C7833634BF7ED89CFB44C05701B2965461DB8494F46FF7AB6CFAA731763"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.ComponentModel.EventBasedAsync.dll",
+        "bytes":  46888,
+        "sha256":  "52B6D020341114450DC3CFA0D5218F8CF841D40E0F729FFC5D5D0164832B0350"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.ComponentModel.Primitives.dll",
+        "bytes":  79656,
+        "sha256":  "079CF4A6A2C9EC77B9E03F0222740F9EAF9F5E7359A16FBF3450AD7BC44DE321"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.ComponentModel.TypeConverter.dll",
+        "bytes":  767824,
+        "sha256":  "DC3EC71D1711A23F54A6457EE471693DB1D39C400F9F2B2B7D82595D70936DD9"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Configuration.ConfigurationManager.dll",
+        "bytes":  1046312,
+        "sha256":  "AE965D351F1BFEF8D57D9FE34DF6614CFCC693034B7412EAC5BFDDBF605A07BA"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Diagnostics.Debug.dll",
+        "bytes":  15656,
+        "sha256":  "C2CB62B25D91119705029C8E7ADBAC2AAD4EC4123C0C31799C44FAAB51DAEB2C"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Diagnostics.Process.dll",
+        "bytes":  329552,
+        "sha256":  "0A616A3B22F0EC2E8C1CCF6E42FF6ACC6F91DBD2CFA5274F0B230D04F1363D5C"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Diagnostics.TraceSource.dll",
+        "bytes":  141096,
+        "sha256":  "644956324ADD90895E75E0F6874BEEAC35713C62BEB0BB5C0ABB31D4CDE7DC76"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Drawing.Common.dll",
+        "bytes":  923432,
+        "sha256":  "34BCF5B207E6DE21DAE14B7062DFFDB0AFCF820302352F2838438AAD3231D927"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Drawing.Primitives.dll",
+        "bytes":  132904,
+        "sha256":  "4E50080F27EF47FEC351E69A013C352BD0807A84E7FE4E069E2CD9D7B55D8AD1"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.IO.Packaging.dll",
+        "bytes":  321320,
+        "sha256":  "9668CF642FF3E60ED9D3CDD3021017A68A8F6A4A4E405F74D4BECB814C994396"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.IO.Pipes.dll",
+        "bytes":  165672,
+        "sha256":  "9FA574F006F09FF3864023E0D791E1965A843F734018276BD9DDEB8D1ABB6069"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Linq.dll",
+        "bytes":  698152,
+        "sha256":  "079E0935F903F9E2076225D7BAD46518C5B47AC5C0DEF9643273575D0062F2BD"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Memory.dll",
+        "bytes":  161576,
+        "sha256":  "5316822E28D6269071AA58E752C8B12F242B2ABED0BBC0D0D2E63AF6935FCD87"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Net.Primitives.dll",
+        "bytes":  210728,
+        "sha256":  "FB9F4515C2731F94694BA47517A5DF344C233B1CEB6DBEEFD373AEB032E78EDE"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Net.Requests.dll",
+        "bytes":  374568,
+        "sha256":  "657761DDB1D4169B958CD83E1BBDBC6481C0A5D20BF91B5F4832500FC7E0D04D"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Net.WebClient.dll",
+        "bytes":  165672,
+        "sha256":  "1222DCFA31F149796CC0BDC73004E29E3B57DD7EAA11133E5E214EAC606BFC9A"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Net.WebHeaderCollection.dll",
+        "bytes":  63272,
+        "sha256":  "441BA7F9EAA01D69DCFC3BA13AE8A23D76586387D5D19E30CE0B607404B365B4"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Numerics.Vectors.dll",
+        "bytes":  15656,
+        "sha256":  "6A672AAFAA521341B1F0897FD82C596A2A77DA3F93D06F1D723BE7506B18A829"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.ObjectModel.dll",
+        "bytes":  79656,
+        "sha256":  "99C6AA46D55E7387AA666D875A1F7137AFFF2D61D0CB5D8E58E4EBB2223849BB"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Private.CoreLib.dll",
+        "bytes":  16033576,
+        "sha256":  "0A175CDD09067C52F8B2477CFCEBF894B2F926D7302E55AE76FC921529662C7B"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Private.Uri.dll",
+        "bytes":  255824,
+        "sha256":  "DE8A09A693727E8B326103BCA2F6B3DD70E13A0CA0EF954AA2D9E060EC4952E0"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Private.Windows.Core.dll",
+        "bytes":  1906472,
+        "sha256":  "927C704B7DEF9EA848A09168E29C1DC837E36BAD1D14D456484198C8A3780D75"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Private.Windows.GdiPlus.dll",
+        "bytes":  427816,
+        "sha256":  "DC55C31027F8CD5B034D50A7C6D64F57BBE6E182234C9C60253F99B598C6CB3B"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Private.Xml.dll",
+        "bytes":  7788368,
+        "sha256":  "724BF135D0C0FDEEFCBC01E8A38BC74E8532BF87A5DBBD67E57FAEB666D9AA9A"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Reflection.Emit.ILGeneration.dll",
+        "bytes":  15656,
+        "sha256":  "43D006580A2A67F00D608E09685C25B93B471F6ADAFE925EEB0662E5449BB3CA"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Reflection.Emit.Lightweight.dll",
+        "bytes":  15656,
+        "sha256":  "9F3116A7E4BDCC0EF134DA1699EB03458802DD22BBE79A15C3095E2658B30C27"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Reflection.Primitives.dll",
+        "bytes":  15696,
+        "sha256":  "DC7C8CE0276371CC4B8FFD7B819A43AA45AE7D624A113AF2C68C430980FA1BA4"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Runtime.CompilerServices.VisualC.dll",
+        "bytes":  30544,
+        "sha256":  "5FF614D288B708B70E43E4774A66982E17531FEE96C758397CFD1627A06D7CA6"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Runtime.dll",
+        "bytes":  44840,
+        "sha256":  "DC17D00429E6C256E6EEB0140FA9294D819FB6E13C24542FB01C2C3B424DFF63"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Runtime.Extensions.dll",
+        "bytes":  17704,
+        "sha256":  "2ACB1FAF01E3061BBF84CF60B4DE8116A821084D480E568FCBF337CDDAD44946"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Runtime.InteropServices.dll",
+        "bytes":  112424,
+        "sha256":  "664D77CC2163F40E80AC0E1EE4ED84B3A5C21C580A277DD63FDD4E448E55A3F7"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Runtime.Loader.dll",
+        "bytes":  15656,
+        "sha256":  "20D4D8620DB219098A552524303ECF32D0F24AB342E691886C2DDF2D72691114"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Security.AccessControl.dll",
+        "bytes":  227112,
+        "sha256":  "1D6691EEE72AB1BD3924D8BC2ECE16FF4F7AA1C2CC946D9B01344B55BFF9538A"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Security.Principal.Windows.dll",
+        "bytes":  178000,
+        "sha256":  "B1982EC754B81E7A114ADAE32378C943F6EEC1CD87F0571F84F8ACB94069A49D"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Text.Encoding.Extensions.dll",
+        "bytes":  15696,
+        "sha256":  "3AD82156D0EA9FCCC99D4D1E66C6CC1B76521E2B0CCE5BEBE1DA103A5B295D47"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Text.Encodings.Web.dll",
+        "bytes":  124712,
+        "sha256":  "A2C7EF05ABC665DE9C07DCB600914889D501C8CFA13973BBE3C60C45367BC291"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Text.Json.dll",
+        "bytes":  1890088,
+        "sha256":  "9F4FD55056A3CCD6AA5F204933F9B8E3DA412B060238CBEB8BB2BE2FE4046F2A"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Text.RegularExpressions.dll",
+        "bytes":  1034024,
+        "sha256":  "320FD9A1CC67028D9E736661764680BE4C8FEDC4157395A02B4EC02765DE0E5B"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Threading.dll",
+        "bytes":  83752,
+        "sha256":  "3BB4D100413FF281EA8A70A22216D8D17D4BCB21610BE258D948DE4CE6B1A8E5"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Threading.Overlapped.dll",
+        "bytes":  15656,
+        "sha256":  "F33ABAF654C04273FF14A54253B5FEE66334432318EBBE2CD6A8C97817CFBB84"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Threading.Thread.dll",
+        "bytes":  15696,
+        "sha256":  "96E44539C17FF7578083B2E54A9C735374B0DA4341B770B5808655A777668024"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Threading.ThreadPool.dll",
+        "bytes":  15656,
+        "sha256":  "9EC37CB7C00B2AA3B6FF51C5B0BBF9CC3C8EFC4236A0E8CD859A76C52B8F2037"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Windows.Extensions.dll",
+        "bytes":  120656,
+        "sha256":  "499A724073B153254A9E371F94577588FC6A8C7A12622BFF2A5AF0F355A99505"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Windows.Forms.dll",
+        "bytes":  13715240,
+        "sha256":  "5C43A5B5B9E4C3C3055A86487CDCB545AC6CA26940ED0BC21940C5615ED1726A"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Windows.Forms.Primitives.dll",
+        "bytes":  3622736,
+        "sha256":  "B0A2882DA1816F0314082064B2CF5972C0D00BA8B6118E44C8E15827A9136D59"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Xaml.dll",
+        "bytes":  1394512,
+        "sha256":  "1C226A7F8139A5F1FD3160DE173244E54D881A7BF41227060605CA27214A1908"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\System.Xml.ReaderWriter.dll",
+        "bytes":  21800,
+        "sha256":  "14ED0E4A1832A085EB655A6725F2DC841B53A08396979609F0814578896857D7"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\UIAutomationProvider.dll",
+        "bytes":  63272,
+        "sha256":  "F99DE1CC9A0F1A3968E3F2BE115B0E1A393C01BE3318F1413E14928EBB6B79AE"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\UIAutomationTypes.dll",
+        "bytes":  296784,
+        "sha256":  "C3D11D351FF9EC736E611FA9AAC7074AF459BCE9F9AC6F139C7F82356F3BF214"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\WindowsBase.dll",
+        "bytes":  2176848,
+        "sha256":  "1569EAFC8370E8F6AD29087BEDA0430EC04C08A339862341E20DAEDF9632A6AE"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\wpfgfx_cor3.dll",
+        "bytes":  1956648,
+        "sha256":  "AD1C9DBBC2FCC2B274145727E8F04D5ADF49A0C9AE4D1A3C33EC969FCD5B4BF1"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\pt-BR\\PresentationCore.resources.dll",
+        "bytes":  108368,
+        "sha256":  "BBBA86AAB6979998E32FE8FA447CEBE16A8B9F98392B1999FA0A9F09193E33AD"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\pt-BR\\PresentationFramework.resources.dll",
+        "bytes":  201512,
+        "sha256":  "5179EC749CBCEF79369E575036DDD6245757682115931D4E91FB026A19F37B93"
+    },
+    {
+        "path":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\pt-BR\\System.Windows.Forms.resources.dll",
+        "bytes":  363816,
+        "sha256":  "F6F64C28B8DD3C2AC5DCC7EEC1050FF3FFF1C1B5F3D453E16FB246778D5219BE"
+    }
+]
+

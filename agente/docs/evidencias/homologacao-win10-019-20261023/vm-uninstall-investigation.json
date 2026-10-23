@@ -1,0 +1,17 @@
+{
+    "collectedAtUtc":  "2026-10-23T15:42:34.0034694Z",
+    "ui":  [
+               {
+                   "ProcessId":  3792,
+                   "ExecutablePath":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\SafeUpload.Agent.App.exe",
+                   "SessionId":  1,
+                   "CreationDate":  "\/Date(1792769907621)\/",
+                   "ParentProcessId":  3752
+               }
+           ],
+    "servicePresent":  false,
+    "serviceExeExists":  false,
+    "uiExeExists":  true,
+    "uninstallerExists":  false
+}
+
