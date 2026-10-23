@@ -93,7 +93,11 @@ executada; o ensaio de escala confirmou apenas 300 eventos por tamanho.
 3. O temporário e a substituição protegem o arquivo anterior nas falhas de I/O
    exercitadas, mas `FlushAsync` não demonstra persistência física após energia
    perdida. Encerramento abrupto durante gravação/substituição ainda precisa de
-   ensaio próprio. Não confundir a linha truncada sintética com essa prova.
+   ensaio próprio. O [ensaio posterior](INTERRUPCAO-FILA-20261023.md) interrompeu
+   a reescrita de confirmações em processos reais e preservou a fila original,
+   deixando temporários incompletos. Appends terminaram antes do Kill; append
+   em curso, energia e volume cheio continuam pendentes. Não confundir a linha
+   truncada sintética com essas provas.
 4. Sem retenção/compactação: confirmar entrega não reduz o arquivo. Não há
    orçamento de disco ou limite operacional validado para dias de uso.
 5. Disco cheio real e acesso negado por ACL não foram simulados nesta rodada;
