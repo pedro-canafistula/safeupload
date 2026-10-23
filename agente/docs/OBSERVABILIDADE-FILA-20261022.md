@@ -81,15 +81,17 @@ sobrescrita e remoção com dados preservados. Resultado final e evidências em
 O recibo instalado confirmou `degraded: false → true → false`, com
 `failedWriteAttempts: 0 → 1 → 1`, HRESULT -2147024864 (compartilhamento recusado)
 e eventos 3101/3102 reais no Application log. O ZIP do artifact foi baixado e
-seu SHA-256 confrontado com o digest informado pelo GitHub. Não foi instalado
-na VM do usuário. O resumo de evidências contém os hashes dos recibos.
+seu SHA-256 confrontado com o digest informado pelo GitHub. Naquela etapa, não havia sido instalado
+na VM do usuário; a homologação posterior está documentada abaixo. O resumo de evidências contém os hashes dos recibos.
 
 A classificação `disk_full` foi exercitada com HRESULT sintético, não com volume
 real cheio. Não se alterou o espaço disponível do disco do usuário. Corrupção
 silenciosa de linhas, queda de processo/energia, vários dias de operação e
 retenção/compactação continuam pendentes em #48. O histórico anterior de teste
-0.1.6 continua válido para aquele pacote; este 0.1.7 ainda exige homologação no
-clone Windows 10. Não houve instalação desta versão na VM original ou no host.
+0.1.6 continua válido para aquele pacote; o 0.1.7 passou posteriormente no
+clone Windows 10: [relatório de homologação](HOMOLOGACAO-WIN10-017-20261022.md),
+com instalação, falha/retomada da fila, CPF, reconexão, início após login e remoção
+preservando dados. Não houve instalação desta versão na VM original ou no host.
 
 O PR #49 permanece em rascunho e sem merge. Não foram editados Java, Angular,
 banco ou driver.

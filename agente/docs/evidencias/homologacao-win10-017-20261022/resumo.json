@@ -1,0 +1,26 @@
+{
+  "candidate": "0.1.7",
+  "commit": "39290c98609d154488d368dbf85b92f6744774e6",
+  "installerSha256": "663B0FF9AD31A1DF0DF6896A2598E16C00C9C545B8D6F6FEAA1EF1A49347E756",
+  "result": "installation-health-reconnection-boot-uninstall-passed",
+  "hashes": {
+    "vm-health-017.json": "5ab4204895bd4db4d2febf7ed7b5ef078b6b4b08edce6aa2c4c64f37497788c3",
+    "vm-cpf-017.json": "4d41308cb8c2064c4d10258f268b329d017d94c76af1b63ccf4485a58568721d",
+    "vm-restart-017.json": "a5e8588f1a26c9ccb7aed02bda75bdcbb5ef2f467fa68ac643d94024f4903d50",
+    "vm-boot-017.json": "33f52e313886473f414a69dcd918e46595e4f9a03a163383264aad651dda8fcd",
+    "vm-pipe-boot.json": "f570251bcb08b938e8624f538c4a008b94b4b395a58a674de4b7a35f5bf055c8",
+    "vm-pipe-final.json": "21cde4bd836a22b4d5eb20923ca057abfe14ff0be030ca383fd487e777c52994",
+    "vm-uninstall-017.json": "a137ecfbc4bb72dbd6c87c7b1c0b4cea14b6dbb786e18a0dc4cac49e286ae7fe",
+    "conferencia-ui.json": "4699145cf3e6b602098455cc58b1464457665d147a303a9656915539e3c83f95",
+    "install-017.log": "962cce89c5ec7987a90588d03096d6d8def75c0d5047ff61a7c513963a991aa6",
+    "uninstall-017.log": "4269121878487865285e34fc8fec81f6cec8af5e34b057c114d86bb380e9fec3",
+    "Instalar-Testar-017.ps1": "2e2bc28634e580ef867b7d12827b385d2e1ce8a6d76ef4a2dea7584b52ef39f3",
+    "Retomar-Testes-017.ps1": "d33fe9fbe37291209c4d90160a5e3afcda092d13307386583617d7f4c5ee956f",
+    "Testar-Arquivo-017.ps1": "0428f7bdd497bea597593e10e1d3786c8b7d0873c829f6d3a14089df1b1b6f0c",
+    "Validar-Encerramento-017.ps1": "44f3b508ab48a44c156f8ec22eb49700418fbc31ed576108adcadcf513eac6f8",
+    "cpf-e-historico-11.jpg": "0a64e5d6feb56cbeb1db9d5aa2f7b6fe8b0a0b3d09b186e36f4b1864447265ec",
+    "servico-indisponivel.jpg": "7637d8c1cb2818dd9227d3230891571207c737a563cf530b18dff0bad7205ac3",
+    "servico-reconectado.jpg": "d12dfc3d97c74da11713b15702f4296105669ccdebb6f6ea58effb10fc7af827",
+    "historico-11-apos-boot.jpg": "6010008064f655ba9efdd51fb207286ce37a1a5c13f1cf5694a19abc44a2f090"
+  }
+}

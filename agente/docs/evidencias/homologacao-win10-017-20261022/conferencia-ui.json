@@ -1,0 +1,25 @@
+{
+  "version": "0.1.7",
+  "sourceCommit": "39290c98609d154488d368dbf85b92f6744774e6",
+  "installation": "passed-724-files",
+  "queueRefusal": "degraded-counter-1-original-queue-unchanged",
+  "queueRecovery": "healthy-counter-retained-1",
+  "cpf": "notification-quarantine-28-bytes-passed",
+  "uiConnection": "unavailable-while-stopped-reconnected-automatically",
+  "uiPid": 1152,
+  "servicePidBefore": 4212,
+  "servicePidAfter": 2516,
+  "historyCount": 11,
+  "uniqueEventIds": 11,
+  "originalNinePreserved": true,
+  "queueHash": "DFD11C3D42F5D236E7248B267F0383BE4B84ACD90B4C12CD17B15C61143F4AAF",
+  "policyHash": "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+  "startupAfterBoot": "passed-explorer-4460-ui-6476-delay-14978ms-service-system-2904-history11",
+  "uninstall": "passed-service-startup-ui-executables-absent-data-preserved",
+  "scope": "FileSystemWatcher; sem driver e sem API real",
+  "screenshots": [
+    "cpf-e-historico-11.jpg",
+    "servico-indisponivel.jpg",
+    "servico-reconectado.jpg"
+  ]
+}

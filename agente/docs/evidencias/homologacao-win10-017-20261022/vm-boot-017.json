@@ -1,0 +1,22 @@
+﻿{
+    "collectedAtUtc":  "2026-10-22T22:52:08.4820350Z",
+    "lastBoot":  "\/Date(1792709493500)\/",
+    "ui":  {
+               "ProcessId":  6476,
+               "ParentProcessId":  4460,
+               "SessionId":  1,
+               "CreationDate":  "\/Date(1792709524011)\/",
+               "ExecutablePath":  "C:\\Program Files\\SafeUpload\\Agent\\ui\\SafeUpload.Agent.App.exe"
+           },
+    "explorer":  {
+                     "ProcessId":  4460,
+                     "SessionId":  1,
+                     "CreationDate":  "\/Date(1792709509033)\/"
+                 },
+    "service":  {
+                    "State":  "Running",
+                    "StartName":  "LocalSystem",
+                    "ProcessId":  2904
+                },
+    "startup":  "\"C:\\Program Files\\SafeUpload\\Agent\\ui\\SafeUpload.Agent.App.exe\""
+}
