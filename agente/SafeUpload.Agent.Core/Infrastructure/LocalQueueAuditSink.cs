@@ -161,12 +161,12 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         int maxEvents,
         CancellationToken cancellationToken)
     {
-        var all = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
+        var all = await ReadEventsAsync(maxEvents, pendingOnly: false, cancellationToken).ConfigureAwait(false);
 
         // Do mais recente para o mais antigo, que é a ordem em que a grade do
         // simulador mostra a fila.
         all.Reverse();
-        return maxEvents > 0 && all.Count > maxEvents ? all.GetRange(0, maxEvents) : all;
+        return all;
     }
 
     /// <inheritdoc />
@@ -174,10 +174,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         int maxEvents,
         CancellationToken cancellationToken)
     {
-        var all = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
-        var pending = all.FindAll(static e => !e.Dispatched);
-
-        return maxEvents > 0 && pending.Count > maxEvents ? pending.GetRange(0, maxEvents) : pending;
+        return await ReadEventsAsync(maxEvents, pendingOnly: true, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -326,12 +323,13 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         finally { _writeLock.Release(); }
     }
 
-    private async Task<List<AuditEvent>> ReadAllAsync(CancellationToken cancellationToken)
+    private async Task<List<AuditEvent>> ReadEventsAsync(
+        int maxEvents, bool pendingOnly, CancellationToken cancellationToken)
     {
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await ReadAllUnsynchronizedAsync(cancellationToken).ConfigureAwait(false);
+            return await ReadEventsUnsynchronizedAsync(maxEvents, pendingOnly, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -339,9 +337,14 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         }
     }
 
-    private async Task<List<AuditEvent>> ReadAllUnsynchronizedAsync(CancellationToken cancellationToken)
+    private async Task<List<AuditEvent>> ReadEventsUnsynchronizedAsync(
+        int maxEvents, bool pendingOnly, CancellationToken cancellationToken)
     {
         var events = new List<AuditEvent>();
+        // Histórico limitado retém somente os últimos N registros na ordem do
+        // arquivo. Não ordenar por horário nem deduplicar: isso muda o contrato.
+        // Limites não positivos preservam a consulta completa legada.
+        Queue<AuditEvent>? recent = !pendingOnly && maxEvents > 0 ? new() : null;
 
         if (!File.Exists(_queueFile))
         {
@@ -378,9 +381,21 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
                     continue;
                 }
                 var parsed = JsonSerializer.Deserialize<AuditEvent>(line, Options);
-                if (parsed is not null && parsed.EventId != Guid.Empty)
+                if (parsed is not null && parsed.EventId != Guid.Empty &&
+                    (!pendingOnly || !parsed.Dispatched))
                 {
-                    events.Add(parsed);
+                    if (recent is not null)
+                    {
+                        if (recent.Count == maxEvents) recent.Dequeue();
+                        recent.Enqueue(parsed);
+                    }
+                    else
+                    {
+                        events.Add(parsed);
+                        // O lote pendente é um prefixo dos eventos elegíveis.
+                        // Não é necessário ler o restante para enviá-lo.
+                        if (pendingOnly && maxEvents > 0 && events.Count >= maxEvents) break;
+                    }
                 }
             }
             catch (JsonException)
@@ -391,6 +406,6 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
             }
         }
 
-        return events;
+        return recent is null ? events : recent.ToList();
     }
 }
