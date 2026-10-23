@@ -104,7 +104,8 @@ jobs:
         shell: pwsh
         run: |
           ./agente/tools/QueueFullVolumeProbe/Publish-Probe.ps1 -OutputDirectory artifacts/queue-full-tool
-          ./agente/scripts/Test-QueueFullVolume.ps1 -Context GitHubHosted -OutputParent artifacts/queue-full -ProbePath artifacts/queue-full-tool/publish/QueueFullVolumeProbe.exe -ManifestPath artifacts/queue-full-tool/probe-manifest.json
+          & powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File ./agente/scripts/Test-QueueFullVolume.ps1 -Context GitHubHosted -OutputParent artifacts/queue-full -ProbePath artifacts/queue-full-tool/publish/QueueFullVolumeProbe.exe -ManifestPath artifacts/queue-full-tool/probe-manifest.json
+          if ($LASTEXITCODE -ne 0) { throw 'Ensaio de volume cheio falhou no Windows PowerShell 5.1.' }
       - name: Preservar ferramenta e recibos de disco cheio sem imagem virtual
         if: always()
         uses: actions/upload-artifact@v4

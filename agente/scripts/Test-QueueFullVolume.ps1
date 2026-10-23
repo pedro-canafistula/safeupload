@@ -32,12 +32,29 @@ New-Item -ItemType Directory -Path $lab -Force|Out-Null
 $vhd=Join-Path $lab 'owned-64mb.vhd'
 $state=[ordered]@{result='running';context=$Context;startedAtUtc=[DateTime]::UtcNow.ToString('o');nonce=$nonce;vhd=$vhd;maximumMiB=64;probeSha256=$manifest.sha256;probeSource=$manifest.commit;detached=$false}
 function Save-State{$state|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $lab 'wrapper-result.json') -Encoding UTF8}
+function Invoke-CapturedProcess([string]$File,[string]$Arguments,[string]$Name,[int]$TimeoutMs){
+    # Own the Process handle from Start through ExitCode; Windows PowerShell 5.1
+    # Start-Process -PassThru can lose the exit code of an already-exited child.
+    $child=[Diagnostics.Process]::new()
+    $child.StartInfo.FileName=$File;$child.StartInfo.Arguments=$Arguments
+    $child.StartInfo.UseShellExecute=$false;$child.StartInfo.CreateNoWindow=$true
+    $child.StartInfo.RedirectStandardOutput=$true;$child.StartInfo.RedirectStandardError=$true
+    try{
+        Require ($child.Start()) 'Processo nao iniciou.'
+        $stdout=$child.StandardOutput.ReadToEndAsync();$stderr=$child.StandardError.ReadToEndAsync()
+        if(-not $child.WaitForExit($TimeoutMs)){$child.Kill();$child.WaitForExit();throw 'Processo excedeu o tempo; preservar VHD e recibos.'}
+        $exitCode=$child.ExitCode
+        [IO.File]::WriteAllText((Join-Path $lab ($Name+'.log')),$stdout.GetAwaiter().GetResult(),[Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText((Join-Path $lab ($Name+'.err.log')),$stderr.GetAwaiter().GetResult(),[Text.UTF8Encoding]::new($false))
+        return $exitCode
+    }finally{$child.Dispose()}
+}
 function Invoke-OwnedDiskPart([string]$Name,[string[]]$Lines){
     $scriptFile=Join-Path $lab ($Name+'.txt');$log=Join-Path $lab ($Name+'.log')
     $Lines|Set-Content -LiteralPath $scriptFile -Encoding ASCII
-    $process=Start-Process (Join-Path $env:SystemRoot 'System32\diskpart.exe') -WindowStyle Hidden -PassThru -ArgumentList @('/s',('"'+$scriptFile+'"')) -RedirectStandardOutput $log -RedirectStandardError (Join-Path $lab ($Name+'.err.log'))
-    if(-not $process.WaitForExit(60000)){$process.Kill();throw 'DiskPart excedeu o tempo; preservar VHD e recibos.'}
-    Require ($process.ExitCode -eq 0) 'DiskPart falhou; preservar log.'
+    $exitCode=Invoke-CapturedProcess (Join-Path $env:SystemRoot 'System32\diskpart.exe') ('/s "'+$scriptFile+'"') $Name 60000
+    $state[($Name+'ExitCode')]=$exitCode
+    Require ($exitCode -eq 0) 'DiskPart falhou; preservar log.'
 }
 try{
     Require (-not(Test-Path $vhd)) 'Imagem existente; recusar criacao.'
@@ -63,10 +80,8 @@ try{
     $state.diskNumber=$disk.Number;$state.driveLetter=$letter;$state.volumeId=$volumeId;$state.volumeBytes=$volume.Size
     Save-State
     $results=Join-Path $lab 'probe-results'
-    $process=Start-Process $probe.FullName -WindowStyle Hidden -PassThru -ArgumentList @($root,$nonce,$volumeId,('"'+$results+'"')) -RedirectStandardOutput (Join-Path $lab 'probe.log') -RedirectStandardError (Join-Path $lab 'probe.err.log')
-    if(-not $process.WaitForExit(240000)){$process.Kill();throw 'Ferramenta excedeu o tempo; preservar VHD.'}
-    $state.probeExitCode=$process.ExitCode
-    Require ($process.ExitCode -eq 0) 'Ensaio falhou; consultar failure.json e logs.'
+    $state.probeExitCode=Invoke-CapturedProcess $probe.FullName ($root+' '+$nonce+' '+$volumeId+' "'+$results+'"') 'probe' 240000
+    Require ($state.probeExitCode -eq 0) 'Ensaio falhou; consultar failure.json e logs.'
     $receipt=Get-Content (Join-Path $results 'result.json') -Raw|ConvertFrom-Json
     Require ($receipt.result -eq 'passed' -and @($receipt.phases).Count -eq 4) 'Recibo de quatro operacoes ausente.'
     $state.result='passed'
