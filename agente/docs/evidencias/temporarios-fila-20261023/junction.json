@@ -1,0 +1,12 @@
+{
+  "DirectoryExists": true,
+  "EntriesExamined": 0,
+  "CandidateFiles": 0,
+  "TotalBytes": 0,
+  "UnreadableCandidates": 0,
+  "SkippedReparsePoints": 0,
+  "ScanLimitReached": false,
+  "DirectoryTraversalBlocked": true,
+  "Complete": false,
+  "RequiresAttention": true
+}

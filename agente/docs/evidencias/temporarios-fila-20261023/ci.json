@@ -1,0 +1,229 @@
+{
+  "source": "8801944cdcd9a245a3eb02107305771c85b91a3a",
+  "run": {
+    "id": 39972212330,
+    "url": "https://github.com/pedro-canafistula/safeupload/actions/runs/39972212330",
+    "status": "completed",
+    "conclusion": "success"
+  },
+  "jobs": [
+    {
+      "id": 120477552838,
+      "name": "Instalação real em Windows descartável",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Contratos PowerShell e ambiente",
+          "conclusion": "success"
+        },
+        {
+          "name": "Gerar candidato 0.1.9 com compilador verificado",
+          "conclusion": "success"
+        },
+        {
+          "name": "Conferir o artefato antes da instalação",
+          "conclusion": "success"
+        },
+        {
+          "name": "Instalar, inspecionar, reiniciar e desinstalar",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preservar instalador e evidências inclusive em falha",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 120477553188,
+      "name": "Componentes C# Debug",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compilar diagnóstico isolado da fila",
+          "conclusion": "success"
+        },
+        {
+          "name": "Executar suíte C# completa sem filtro",
+          "conclusion": "success"
+        },
+        {
+          "name": "Interromper processos isolados de fila sintética",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preservar recibos de interrupção sem filas grandes",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preservar resultados completos",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 120477553263,
+      "name": "Componentes C# Release",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compilar diagnóstico isolado da fila",
+          "conclusion": "success"
+        },
+        {
+          "name": "Executar suíte C# completa sem filtro",
+          "conclusion": "success"
+        },
+        {
+          "name": "Interromper processos isolados de fila sintética",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preservar recibos de interrupção sem filas grandes",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preservar resultados completos",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "csharpPerConfiguration": {
+    "passed": 786,
+    "failed": 0,
+    "skipped": 4,
+    "total": 790,
+    "configurations": [
+      "Debug",
+      "Release"
+    ],
+    "evidence": "Workflow job logs 120477553188 and 120477553263"
+  },
+  "powershell": {
+    "ps7Passed": 39,
+    "ps51Passed": 39,
+    "environmentPassed": 4
+  },
+  "functionalWeb": {
+    "id": 39972222258,
+    "jobs": [
+      {
+        "id": 120477588124,
+        "name": "migration",
+        "conclusion": "failure"
+      },
+      {
+        "id": 120477588579,
+        "name": "agent-contract",
+        "conclusion": "failure"
+      },
+      {
+        "id": 120477588780,
+        "name": "installed-service",
+        "conclusion": "failure"
+      }
+    ],
+    "causes": [
+      "migration: missing EmpresaRepository",
+      "agent-contract: Backend não iniciou.",
+      "installed-service: Backend encerrou antes de iniciar."
+    ]
+  },
+  "download": {
+    "artifactId": 12509248753,
+    "bytes": 83607873,
+    "sha256": "FB235C3BCAC9584006C8D0060D37C08C29607AFAD8476FA20D13D1CCCE96DBFB"
+  },
+  "installer": {
+    "version": "0.1.9",
+    "sha256": "03FBC7F0372E7B6CEF5B56D32C3CEDEAC431DBB2A18CA59E01F717753E06196F",
+    "bytes": 84058879,
+    "payloadFiles": 724,
+    "signed": false
+  }
+}

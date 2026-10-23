@@ -97,7 +97,9 @@ executada; o ensaio de escala confirmou apenas 300 eventos por tamanho.
    a reescrita de confirmações em processos reais e preservou a fila original,
    deixando temporários incompletos. Appends terminaram antes do Kill; append
    em curso, energia e volume cheio continuam pendentes. Não confundir a linha
-   truncada sintética com essas provas.
+   truncada sintética com essas provas. O [candidato 0.1.9](TEMPORARIOS-FILA-20261023.md)
+   acrescenta inventário administrativo limitado dos temporários, sem promoção
+   ou limpeza automática; tratamento seguro e orçamento continuam pendentes.
 4. Sem retenção/compactação: confirmar entrega não reduz o arquivo. Não há
    orçamento de disco ou limite operacional validado para dias de uso.
 5. Disco cheio real e acesso negado por ACL não foram simulados nesta rodada;
