@@ -1,4 +1,4 @@
 *.json -text -diff
 *.log -text -diff
-*.ps1 -text
+*.ps1 -text -diff
 *.txt -text -diff
