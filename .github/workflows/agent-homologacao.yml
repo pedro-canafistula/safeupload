@@ -47,6 +47,27 @@ jobs:
           $testExit = $LASTEXITCODE
           Get-Content artifacts/csharp/test.log -Tail 35
           if ($testExit -ne 0) { throw "A suíte C# completa falhou: $testExit. Preservar TRX e log." }
+      - name: Interromper processos isolados de fila sintética
+        shell: pwsh
+        env:
+          BUILD_CONFIGURATION: ${{ matrix.configuration }}
+        run: |
+          New-Item -ItemType Directory -Path artifacts/queue-crash -Force | Out-Null
+          dotnet build agente/tools/QueueCrashProbe/QueueCrashProbe.csproj -c $env:BUILD_CONFIGURATION
+          if ($LASTEXITCODE -ne 0) { throw 'O ensaio de interrupcao nao compilou.' }
+          dotnet "agente/tools/QueueCrashProbe/bin/$env:BUILD_CONFIGURATION/net10.0/QueueCrashProbe.dll" artifacts/queue-crash 3 *> artifacts/queue-crash.log
+          $probeExit = $LASTEXITCODE
+          Get-Content artifacts/queue-crash.log -Tail 20
+          if ($probeExit -ne 0) { throw 'Ensaio de interrupcao falhou; preservar recibos.' }
+      - name: Preservar recibos de interrupção sem filas grandes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interrupcao-fila-${{ matrix.configuration }}
+          path: |
+            artifacts/queue-crash/**/result.json
+            artifacts/queue-crash/**/failure.json
+            artifacts/queue-crash.log
       - name: Preservar resultados completos
         if: always()
         uses: actions/upload-artifact@v4
