@@ -1,0 +1,22 @@
+{
+  "observedAtUtc": "2026-10-23T19:19:19.9493060Z",
+  "clone": [
+    "name=\"SafeUpload-Homologacao-Win10-20261021\"",
+    "VMState=\"poweroff\"",
+    "nic1=\"none\"",
+    "nic2=\"none\"",
+    "nic3=\"none\"",
+    "nic4=\"none\"",
+    "nic5=\"none\"",
+    "nic6=\"none\"",
+    "nic7=\"none\"",
+    "nic8=\"none\"",
+    "clipboard=\"disabled\"",
+    "draganddrop=\"disabled\""
+  ],
+  "original": [
+    "name=\"SafeUpload-Win10-Lab\"",
+    "VMState=\"poweroff\""
+  ],
+  "source": "VBoxManage showvminfo depois de Stop-Computer no clone; VM original somente consultada"
+}

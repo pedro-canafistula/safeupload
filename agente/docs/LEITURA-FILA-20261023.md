@@ -45,7 +45,7 @@ EXE **0.1.11**, 84.060.450 bytes, SHA-256 **`66BA476103B5F9F32FAB0126F979CE60B1F
 
 [Functional web 40003237451](https://github.com/pedro-canafistula/safeupload/actions/runs/40003237451) reprovado nos três jobs: migration sem EmpresaRepository; agent-contract com backend não iniciado; installed-service com backend encerrado antes de iniciar. Logs conferidos; C# do agent-contract passou com 801/805 e quatro skips. Sem edição de backend, nem afirmação de ponta a ponta/PR inteiramente verde.
 
-O candidato 0.1.11 requer homologação própria na VM: não herda o aceite do EXE 0.1.10, que permanece documentado separadamente. Nenhum instalador foi executado no host ou clone nesta etapa.
+Atualização posterior: o mesmo EXE 0.1.11 recebeu [homologação própria no clone Windows 10](HOMOLOGACAO-WIN10-0111-20261023.md): instalação/724 arquivos, inspeções, 17 eventos, reconexão, boot e remoção com UI aberta aprovados, dados preservados. O ciclo da VM usa 17 eventos; não repete a medição de escala acima. Nenhum instalador foi executado no host; o aceite do pacote 0.1.10 permanece documentado separadamente.
 
 ## Pendências
 
