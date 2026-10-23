@@ -159,11 +159,38 @@ try {
     Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $integrityHash) 'Integrity scan modified queue bytes.'
     $result.auditIntegrity = [ordered]@{clean=$cleanIntegrity;damaged=$damagedIntegrity;queueHash=$integrityHash}
     $result.steps += 'audit-integrity distinguished malformed and unknown lines without changing queue bytes or disclosing contents'
+    $emptyTemporaries = Read-AuditHealth 'audit-temporaries'
+    Require ($emptyTemporaries.complete -and $emptyTemporaries.candidateFiles -eq 0) 'Unexpected initial temporary candidates.'
+    $temporary = $queue + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    [IO.File]::WriteAllText($temporary, 'SYNTHETIC_PRIVATE_CONTENT', [Text.UTF8Encoding]::new($false))
+    $temporaryHash = (Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash
+    $temporaryBytes = (Get-Item -LiteralPath $temporary).Length
+    # A junction with a matching name must be counted as skipped, never traversed.
+    $linkTarget = Join-Path $dataRoot ('runner-link-target-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $linkTarget | Out-Null
+    $temporaryLink = $queue + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    New-Item -ItemType Junction -Path $temporaryLink -Target $linkTarget | Out-Null
+    $temporaries = Read-AuditHealth 'audit-temporaries'
+    Require ($temporaries.requiresAttention -and -not $temporaries.complete -and
+        $temporaries.candidateFiles -eq 1 -and $temporaries.totalBytes -eq $temporaryBytes -and
+        $temporaries.skippedReparsePoints -eq 1 -and $temporaries.unreadableCandidates -eq 0 -and
+        -not $temporaries.scanLimitReached) 'Installed temporary inventory failed or traversed a junction.'
+    $temporaryJson = $temporaries | ConvertTo-Json -Depth 5
+    Require (-not $temporaryJson.Contains('SYNTHETIC_PRIVATE_CONTENT') -and
+        -not $temporaryJson.Contains($dataRoot) -and -not $temporaryJson.Contains([IO.Path]::GetFileName($temporary))) 'Temporary inventory disclosed private details.'
+    Require ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash -eq $temporaryHash -and
+        (Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $integrityHash) 'Temporary inventory changed file bytes.'
+    $result.auditTemporaries = [ordered]@{initial=$emptyTemporaries;inventory=$temporaries;temporaryHash=$temporaryHash;temporaryBytes=$temporaryBytes}
+    $result.steps += 'audit-temporaries counted metadata without reading contents, skipped a junction and preserved queue and candidate bytes'
     Restart-Service -Name SafeUploadAgent -ErrorAction Stop
     Start-Sleep -Seconds 3
     Require ((Get-Service SafeUploadAgent).Status -eq 'Running') 'The installed service did not survive restart.'
     $integrityAfterRestart = Read-AuditHealth 'audit-integrity'
     Require ($integrityAfterRestart.invalidLines -eq 1 -and $integrityAfterRestart.unknownRecords -eq 1) 'Restart lost integrity diagnostics.'
+    $temporariesAfterRestart = Read-AuditHealth 'audit-temporaries'
+    Require ($temporariesAfterRestart.candidateFiles -eq 1 -and $temporariesAfterRestart.totalBytes -eq $temporaryBytes -and
+        $temporariesAfterRestart.skippedReparsePoints -eq 1) 'Restart lost temporary inventory.'
+    $result.auditTemporaries.afterRestart = $temporariesAfterRestart
     $retained = @(Read-AuditEvents $queue | Where-Object eventId -eq $audit.eventId)
     Require ($retained.Count -eq 1 -and $retained[0].occurredAtUtc -eq $audit.occurredAtUtc -and
         -not $retained[0].dispatched) 'Restart lost, changed or duplicated the pending event.'
@@ -186,6 +213,8 @@ try {
     Require ((Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash -eq $policyHash) 'Uninstall changed the policy.'
     Require ([IO.File]::ReadAllText($sentinel) -eq 'synthetic data to preserve') 'Uninstall removed retained endpoint data.'
     Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $queueHash) 'Uninstall removed or changed the audit queue.'
+    Require ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash -eq $temporaryHash) 'Uninstall removed or changed a temporary candidate.'
+    Require ((Get-Item -LiteralPath $temporaryLink).Attributes -band [IO.FileAttributes]::ReparsePoint) 'Uninstall removed a preserved junction.'
     $result.steps += 'service and startup removed; endpoint policy and data preserved'
     $result.status='passed'
 } catch {

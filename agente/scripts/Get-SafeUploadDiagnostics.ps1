@@ -14,6 +14,9 @@ driver while the product runs. The service relays read-only queries over the SYS
   audit-integrity  read-only scan of the current queue, including invalid lines and unknown record types.
                   Returns counts and at most 20 line numbers/reason codes, never record contents.
                   Shares the queue lock; a large scan can delay writes or exceed the service's five-second deadline.
+  audit-temporaries  metadata-only inventory of queue-name.GUID.tmp candidates, without content or filenames.
+                     Reports bytes, unreadable candidates, skipped links and completeness; maximum 10000 entries.
+                     Does not prove abandonment, delete files or recover incomplete confirmations.
 
   counters   refusal counters, how often a path that could not resolve a name answered "the whole volume may be in
              scope", and the writer-state status (registry entries and capacity, reclaim-worker passes, sections,
@@ -30,7 +33,7 @@ driver while the product runs. The service relays read-only queries over the SYS
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('counters', 'deny-ring', 'audit-health', 'audit-integrity', 'help')]
+    [ValidateSet('counters', 'deny-ring', 'audit-health', 'audit-integrity', 'audit-temporaries', 'help')]
     [string] $Query = 'counters',
 
     # deny-ring: return records with a sequence greater than this value.
@@ -68,6 +71,7 @@ switch ($Query) {
     'help' { Invoke-DiagnosticsQuery @{ query = 'help' } }
     'audit-health' { Invoke-DiagnosticsQuery @{ query = 'audit-health' } }
     'audit-integrity' { Invoke-DiagnosticsQuery @{ query = 'audit-integrity' } }
+    'audit-temporaries' { Invoke-DiagnosticsQuery @{ query = 'audit-temporaries' } }
     'deny-ring' {
         $cursor = $After
         for (;;) {

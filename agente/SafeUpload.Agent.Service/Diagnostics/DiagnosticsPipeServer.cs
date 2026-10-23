@@ -102,10 +102,13 @@ public sealed class DiagnosticsPipeServer : BackgroundService
             switch (query)
             {
                 case "audit-integrity":
+                case "audit-temporaries":
                     if (_auditQueue is null) return Error(query, "Audit storage is unavailable.");
                     try
                     {
-                        var integrity = await _auditQueue.InspectIntegrityAsync(cancellationToken).ConfigureAwait(false);
+                        object integrity = query == "audit-temporaries"
+                            ? await _auditQueue.InspectTemporaryFilesAsync(cancellationToken).ConfigureAwait(false)
+                            : await _auditQueue.InspectIntegrityAsync(cancellationToken).ConfigureAwait(false);
                         return Ok(query, JsonSerializer.SerializeToNode(integrity, new JsonSerializerOptions
                         { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
                     }
@@ -113,7 +116,7 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                     catch (Exception exception)
                     {
                         // A queue exception can contain a path or record content. Never relay it.
-                        return Error(query, "Audit integrity scan failed (" + AuditQueueHealth.Classify(exception) + ").");
+                        return Error(query, "Audit scan failed (" + AuditQueueHealth.Classify(exception) + ").");
                     }
                 case "audit-health":
                     return _auditHealth is null ? Error(query, "Audit monitoring is unavailable.") :
@@ -127,7 +130,7 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "audit-health", "audit-integrity", "help"),
+                        ["queries"] = new JsonArray("counters", "deny-ring", "audit-health", "audit-integrity", "audit-temporaries", "help"),
                         ["denyRingCursor"] = "pass the previous reply's nextSequence minus one as after; 0 reads from the start",
                         ["connected"] = _source.IsConnected,
                     });
