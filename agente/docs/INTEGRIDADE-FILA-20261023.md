@@ -75,7 +75,30 @@ hash inalterado pela consulta e mesmos diagnósticos após reinício. Mantém os
 anteriores e remoção preservando o arquivo. Restrição a runner Windows descartável
 permanece; não foi instalado no host nem na VM nesta entrega.
 
-CI completo e artefato 0.1.8 ainda precisam de conferência. A homologação Windows 10
+[CI 39958856933](https://github.com/pedro-canafistula/safeupload/actions/runs/39958856933)
+aprovado nos três jobs, fonte limpa `26b81db139ac7b5717de19bac884677d58b03b0b`.
+Suíte completa: **780 aprovados, zero falhas e quatro skips em 784**, tanto Debug
+quanto Release. PS7/PS5.1 **39/39** cada e ambiente **4/4** no runner. Recibo real
+LocalSystem: duas linhas de eventos válidos na fila limpa; depois, quatro linhas
+com dois eventos válidos, uma linha inválida (3) e um tipo desconhecido (4), sem
+conteúdo/caminho na resposta e hash inalterado pela consulta. Reinício, recusa de
+sobrescrita e remoção com política/fila preservadas passaram.
+
+O ZIP do artifact foi baixado e seu digest SHA-256 verificado contra o GitHub;
+o EXE também foi conferido: **84.035.084 bytes**, SHA-256
+`83F1EAFB05DC18883259CF4B0ADB2EC428EAB952E6D9DA7527FC36F0E70C542A`,
+724 arquivos de payload, sem assinatura. Recibos locais/runner e resumo com hashes
+em [evidencias/integridade-fila-20261023](evidencias/integridade-fila-20261023/).
+Os TRX completos do CI permanecem nos artifacts daquela execução; os recortes
+locais e contagens verificadas foram incluídos no repositório.
+
+O [Functional web 39958863677](https://github.com/pedro-canafistula/safeupload/actions/runs/39958863677)
+continua reprovado: migration sem EmpresaRepository; agent-contract passou os
+780 testes C# e falhou esperando o backend iniciar; installed-service encerrou
+antes de iniciar o backend. Não foi corrigido fora do escopo. O sucesso do
+workflow do agente não equivale a integração ponta a ponta ou PR todo verde.
+
+A homologação Windows 10
 anterior é do 0.1.7 e não se transfere automaticamente. #48 continua aberta para
 queda de processo/energia, volume cheio real, operação por dias, durabilidade,
 memória limitada e retenção. API e driver reais continuam dependências da equipe.

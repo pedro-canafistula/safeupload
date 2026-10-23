@@ -1,0 +1,48 @@
+{
+  "runId": 39958856933,
+  "sourceCommit": "26b81db139ac7b5717de19bac884677d58b03b0b",
+  "candidate": "0.1.8",
+  "jobs": [
+    {
+      "id": 120431445377,
+      "name": "Componentes C# Release",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120431445623,
+      "name": "Instalação real em Windows descartável",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120431445760,
+      "name": "Componentes C# Debug",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "csharp": [
+    {
+      "configuration": "Debug",
+      "total": 784,
+      "passed": 780,
+      "failed": 0,
+      "skipped": 4
+    },
+    {
+      "configuration": "Release",
+      "total": 784,
+      "passed": 780,
+      "failed": 0,
+      "skipped": 4
+    }
+  ],
+  "installerSha256": "83F1EAFB05DC18883259CF4B0ADB2EC428EAB952E6D9DA7527FC36F0E70C542A",
+  "installerBytes": 84035084,
+  "artifactDigest": "sha256:48dc3296845b295299edcd644c33fd13d84b3249066306a9f3f34aa799f83898",
+  "artifactDigestVerified": true,
+  "installerDigestVerified": true,
+  "windows10CloneTested": false,
+  "driverTested": false
+}

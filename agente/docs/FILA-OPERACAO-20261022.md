@@ -85,9 +85,11 @@ executada; o ensaio de escala confirmou apenas 300 eventos por tamanho.
    do sink; não comprovam alerta ao operador. Próxima mudança deve tornar a
    degradação observável por canal independente da própria fila, com metadados
    mínimos e sem conteúdo sensível, preservando a regra atual de decisão.
-2. Linhas malformadas são ignoradas na leitura e preservadas na regravação,
-   sem contador/diagnóstico de corrupção. Preservar linhas não significa que
-   seu conteúdo possa ser recuperado ou despachado.
+2. Na medição original, linhas malformadas eram ignoradas na leitura e
+   preservadas na regravação sem diagnóstico. O candidato 0.1.8 acrescenta
+   [consulta administrativa sob demanda](INTEGRIDADE-FILA-20261023.md), com
+   contagem e localização sem expor conteúdo. Não altera a leitura/despacho,
+   não repara registros e não substitui os ensaios de queda/disco cheio.
 3. O temporário e a substituição protegem o arquivo anterior nas falhas de I/O
    exercitadas, mas `FlushAsync` não demonstra persistência física após energia
    perdida. Encerramento abrupto durante gravação/substituição ainda precisa de

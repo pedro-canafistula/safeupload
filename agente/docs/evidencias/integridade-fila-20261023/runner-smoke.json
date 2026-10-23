@@ -1,0 +1,301 @@
+{
+  "status": "passed",
+  "steps": [
+    "unsafe URL and missing driver rejected before service creation",
+    "self-contained service and UI installed; SCM identity, arguments, SID and startup verified",
+    "installed LocalSystem service classified a synthetic file and persisted a pending audit event",
+    "audit-health diagnosed a real write refusal without driver, resumed with counters retained and emitted sanitized Windows logs",
+    "audit-integrity distinguished malformed and unknown lines without changing queue bytes or disclosing contents",
+    "service restart preserved the pending event ID, timestamp and policy",
+    "existing installation refused without changing service or policy",
+    "service and startup removed; endpoint policy and data preserved"
+  ],
+  "audit": {
+    "eventId": "0fe4ab23-69ad-4ffe-a4b1-438e4ffb4de6",
+    "fileName": "installer-synthetic-0996155c19e744689e374a0b0700c650.txt",
+    "occurredAtUtc": "2026-10-23T13:12:35.4332467+00:00",
+    "endpointId": "runnervmdaln5",
+    "userName": "runnervmdaln5$",
+    "policyVersion": 1,
+    "verdict": "Blocked"
+  },
+  "auditHealth": {
+    "initial": {
+      "sinceUtc": "2026-10-23T13:12:28.630442+00:00",
+      "degraded": false,
+      "failedWriteAttempts": 0,
+      "operations": [
+        {
+          "operation": "WriteEvent",
+          "degraded": false,
+          "failures": 0,
+          "successes": 1,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": "2026-10-23T13:12:35.4787229+00:00",
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "WriteOverride",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ReadRecent",
+          "degraded": false,
+          "failures": 0,
+          "successes": 1,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": "2026-10-23T13:12:35.5038502+00:00",
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ReadPending",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ReadPendingOverrides",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ConfirmEvents",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ConfirmOverrides",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        }
+      ]
+    },
+    "degraded": {
+      "sinceUtc": "2026-10-23T13:12:28.630442+00:00",
+      "degraded": true,
+      "failedWriteAttempts": 1,
+      "operations": [
+        {
+          "operation": "WriteEvent",
+          "degraded": true,
+          "failures": 1,
+          "successes": 1,
+          "lastFailureUtc": "2026-10-23T13:12:36.0061695+00:00",
+          "lastSuccessUtc": "2026-10-23T13:12:35.4787229+00:00",
+          "failureKind": "io_error",
+          "failureHResult": -2147024864
+        },
+        {
+          "operation": "WriteOverride",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ReadRecent",
+          "degraded": false,
+          "failures": 0,
+          "successes": 2,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": "2026-10-23T13:12:36.0505044+00:00",
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ReadPending",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ReadPendingOverrides",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ConfirmEvents",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ConfirmOverrides",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        }
+      ]
+    },
+    "resumed": {
+      "sinceUtc": "2026-10-23T13:12:28.630442+00:00",
+      "degraded": false,
+      "failedWriteAttempts": 1,
+      "operations": [
+        {
+          "operation": "WriteEvent",
+          "degraded": false,
+          "failures": 1,
+          "successes": 2,
+          "lastFailureUtc": "2026-10-23T13:12:36.0061695+00:00",
+          "lastSuccessUtc": "2026-10-23T13:12:36.3161843+00:00",
+          "failureKind": "io_error",
+          "failureHResult": -2147024864
+        },
+        {
+          "operation": "WriteOverride",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ReadRecent",
+          "degraded": false,
+          "failures": 0,
+          "successes": 3,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": "2026-10-23T13:12:36.3172192+00:00",
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ReadPending",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ReadPendingOverrides",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ConfirmEvents",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        },
+        {
+          "operation": "ConfirmOverrides",
+          "degraded": false,
+          "failures": 0,
+          "successes": 0,
+          "lastFailureUtc": null,
+          "lastSuccessUtc": null,
+          "failureKind": null,
+          "failureHResult": null
+        }
+      ]
+    },
+    "logEvents": [
+      {
+        "Id": 3102,
+        "Message": "Category: SafeUpload.Agent.Service.Diagnostics.MonitoredAuditSink\r\nEventId: 3102\r\n\r\nAudit queue operation WriteEvent resumed. Earlier failed attempts remain in audit-health counters; no lost-event recovery is implied.\r\n"
+      },
+      {
+        "Id": 3101,
+        "Message": "Category: SafeUpload.Agent.Service.Diagnostics.MonitoredAuditSink\r\nEventId: 3101\r\n\r\nAudit queue operation WriteEvent failed (io_error, HRESULT -2147024864). Inspect audit-health; counters are since service start.\r\n"
+      }
+    ]
+  },
+  "auditIntegrity": {
+    "clean": {
+      "fileExists": true,
+      "linesScanned": 2,
+      "validEvents": 2,
+      "validOverrides": 0,
+      "invalidLines": 0,
+      "unknownRecords": 0,
+      "blankLines": 0,
+      "issues": [],
+      "issuesTruncated": false,
+      "requiresAttention": false
+    },
+    "damaged": {
+      "fileExists": true,
+      "linesScanned": 4,
+      "validEvents": 2,
+      "validOverrides": 0,
+      "invalidLines": 1,
+      "unknownRecords": 1,
+      "blankLines": 0,
+      "issues": [
+        {
+          "lineNumber": 3,
+          "reason": "invalid_json_or_fields"
+        },
+        {
+          "lineNumber": 4,
+          "reason": "unknown_record_type"
+        }
+      ],
+      "issuesTruncated": false,
+      "requiresAttention": true
+    },
+    "queueHash": "7FF1D155CBF8A3BCFE9883E3E1518974FBDE816089D3BBF2C2F8664EA6EA45DE"
+  }
+}
