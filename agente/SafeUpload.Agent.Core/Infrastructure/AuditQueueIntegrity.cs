@@ -9,6 +9,15 @@ public sealed record AuditQueueIntegritySnapshot(bool FileExists, long LinesScan
     long ValidEvents, long ValidOverrides, long InvalidLines, long UnknownRecords, long BlankLines,
     IReadOnlyList<AuditQueueLineIssue> Issues, bool IssuesTruncated)
 {
+    // Counts refer to valid lines, including duplicate IDs, not unique events.
+    public long QueueBytes { get; init; }
+    public long PendingEvents { get; init; }
+    public long DispatchedEvents { get; init; }
+    public long PendingOverrides { get; init; }
+    public long DispatchedOverrides { get; init; }
+    public DateTimeOffset? OldestPendingUtc { get; init; }
+    public long PendingWithoutTimestamp { get; init; }
+
     // Unknown record types can belong to a newer writer; do not call them corruption.
     public bool RequiresAttention => InvalidLines > 0 || UnknownRecords > 0;
 }
@@ -39,6 +48,17 @@ public sealed partial class LocalQueueAuditSink
             using (var reader = new StreamReader(stream, Encoding.UTF8, true))
             {
                 long lines = 0, events = 0, overrides = 0, invalid = 0, unknown = 0, blanks = 0;
+                long pendingEvents = 0, dispatchedEvents = 0, pendingOverrides = 0, dispatchedOverrides = 0,
+                    pendingWithoutTimestamp = 0;
+                DateTimeOffset? oldestPending = null;
+                // Same open handle and process-local lock as the scan. External writers are not locked.
+                long queueBytes = stream.Length;
+                void ObservePending(DateTimeOffset timestamp)
+                {
+                    if (timestamp == default) { pendingWithoutTimestamp++; return; }
+                    var utc = timestamp.ToUniversalTime();
+                    if (oldestPending is null || utc < oldestPending) oldestPending = utc;
+                }
                 var issues = new List<AuditQueueLineIssue>();
                 while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
                 {
@@ -69,7 +89,13 @@ public sealed partial class LocalQueueAuditSink
                                     (root.TryGetProperty("dispatched", out var sent) &&
                                      sent.ValueKind is not (JsonValueKind.True or JsonValueKind.False)))
                                     reason = "invalid_override";
-                                else overrides++;
+                                else
+                                {
+                                    overrides++;
+                                    if (root.TryGetProperty("dispatched", out var dispatched) &&
+                                        dispatched.ValueKind == JsonValueKind.True) dispatchedOverrides++;
+                                    else { pendingOverrides++; ObservePending(record.OccurredAtUtc); }
+                                }
                             }
                         }
                         else if (!root.TryGetProperty("eventId", out _)) reason = "missing_event_id";
@@ -77,7 +103,12 @@ public sealed partial class LocalQueueAuditSink
                         {
                             var record = JsonSerializer.Deserialize<AuditEvent>(line, Options);
                             if (record is null || record.EventId == Guid.Empty) reason = "invalid_event";
-                            else events++;
+                            else
+                            {
+                                events++;
+                                if (record.Dispatched) dispatchedEvents++;
+                                else { pendingEvents++; ObservePending(record.OccurredAtUtc); }
+                            }
                         }
                     }
                     catch (JsonException) { reason = "invalid_json_or_fields"; }
@@ -88,7 +119,12 @@ public sealed partial class LocalQueueAuditSink
                     }
                 }
                 return new(true, lines, events, overrides, invalid, unknown, blanks,
-                    issues.ToArray(), invalid + unknown > issues.Count);
+                    issues.ToArray(), invalid + unknown > issues.Count)
+                {
+                    QueueBytes = queueBytes, PendingEvents = pendingEvents, DispatchedEvents = dispatchedEvents,
+                    PendingOverrides = pendingOverrides, DispatchedOverrides = dispatchedOverrides,
+                    OldestPendingUtc = oldestPending, PendingWithoutTimestamp = pendingWithoutTimestamp
+                };
             }
         }
         finally { _writeLock.Release(); }

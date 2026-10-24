@@ -12,6 +12,75 @@ namespace SafeUpload.Agent.Tests;
 public sealed class AuditQueueIntegrityTests
 {
     [Fact]
+    public async Task Inventario_conta_linhas_e_bytes_sem_descartar_duplicatas_ou_conteudo_desconhecido()
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        var older = Event() with { OccurredAtUtc = DateTimeOffset.Parse("2020-01-01T12:00:00+03:00") };
+        var confirmed = Event() with { Dispatched = true, OccurredAtUtc = older.OccurredAtUtc.AddDays(-2) };
+        await sink.WriteAsync(older, CancellationToken.None);
+        await sink.WriteAsync(older, CancellationToken.None);
+        await sink.WriteAsync(confirmed, CancellationToken.None);
+        await sink.WriteAsync(Event() with { OccurredAtUtc = default }, CancellationToken.None);
+        await sink.RecordOverrideAsync(older.EventId.ToString(), "JUSTIFICATIVA_ç", CancellationToken.None);
+        await File.AppendAllTextAsync(workspace.QueueFile, "{\"type\":\"future\"}\n{INVALIDO\n  \n");
+        var before = await File.ReadAllBytesAsync(workspace.QueueFile);
+        var scan = await sink.InspectIntegrityAsync(CancellationToken.None);
+        Assert.Equal(before.LongLength, scan.QueueBytes);
+        Assert.Equal(3, scan.PendingEvents); Assert.Equal(1, scan.DispatchedEvents);
+        Assert.Equal(1, scan.PendingOverrides); Assert.Equal(0, scan.DispatchedOverrides);
+        Assert.Equal(older.OccurredAtUtc.ToUniversalTime(), scan.OldestPendingUtc);
+        Assert.Equal(TimeSpan.Zero, scan.OldestPendingUtc!.Value.Offset);
+        Assert.Equal(1, scan.PendingWithoutTimestamp);
+        Assert.Equal(1, scan.UnknownRecords); Assert.Equal(1, scan.InvalidLines); Assert.Equal(1, scan.BlankLines);
+        Assert.Equal(before, await File.ReadAllBytesAsync(workspace.QueueFile));
+        Assert.DoesNotContain("JUSTIFICATIVA", JsonSerializer.Serialize(scan));
+
+        var pendingOverrides = await sink.ReadPendingOverridesAsync(100, CancellationToken.None);
+        await sink.MarkOverridesDispatchedAsync(pendingOverrides, CancellationToken.None);
+        await sink.MarkDispatchedAsync(new[] { older.EventId }, CancellationToken.None);
+        var after = await new LocalQueueAuditSink(workspace.QueueFile).InspectIntegrityAsync(CancellationToken.None);
+        Assert.Equal(1, after.PendingEvents); Assert.Equal(3, after.DispatchedEvents);
+        Assert.Equal(0, after.PendingOverrides); Assert.Equal(1, after.DispatchedOverrides);
+        Assert.Null(after.OldestPendingUtc); Assert.Equal(1, after.PendingWithoutTimestamp);
+        Assert.Equal(4, after.ValidEvents); Assert.Equal(1, after.ValidOverrides);
+    }
+
+    [Fact]
+    public async Task Inventario_ausente_vazio_e_confirmado_nao_inventa_pendente_ou_data()
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        var missing = await sink.InspectIntegrityAsync(CancellationToken.None);
+        Assert.False(missing.FileExists); Assert.Equal(0, missing.QueueBytes); Assert.Null(missing.OldestPendingUtc);
+        Assert.False(File.Exists(workspace.QueueFile));
+        await File.WriteAllTextAsync(workspace.QueueFile, "", new UTF8Encoding(false));
+        var empty = await sink.InspectIntegrityAsync(CancellationToken.None);
+        Assert.True(empty.FileExists); Assert.Equal(0, empty.QueueBytes); Assert.Equal(0, empty.PendingEvents);
+        await sink.WriteAsync(Event() with { Dispatched = true }, CancellationToken.None);
+        var confirmed = await sink.InspectIntegrityAsync(CancellationToken.None);
+        Assert.Equal(0, confirmed.PendingEvents); Assert.Equal(1, confirmed.DispatchedEvents);
+        Assert.Null(confirmed.OldestPendingUtc); Assert.Equal(0, confirmed.PendingWithoutTimestamp);
+    }
+
+    [Fact]
+    public async Task Data_mais_antiga_inclui_justificativa_pendente_e_ignora_a_confirmada()
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        var old = new AuditOverride(Guid.NewGuid(), "sintetica", DateTimeOffset.Parse("2019-01-01T10:00:00-03:00"), "user", "endpoint");
+        await sink.RecordOverrideAsync(old, CancellationToken.None);
+        var recent = Event() with { OccurredAtUtc = old.OccurredAtUtc.AddDays(10) };
+        await sink.WriteAsync(recent, CancellationToken.None);
+        var before = await sink.InspectIntegrityAsync(CancellationToken.None);
+        Assert.Equal(old.OccurredAtUtc.ToUniversalTime(), before.OldestPendingUtc);
+        await sink.MarkOverridesDispatchedAsync(new[] { old }, CancellationToken.None);
+        var after = await sink.InspectIntegrityAsync(CancellationToken.None);
+        Assert.Equal(recent.OccurredAtUtc.ToUniversalTime(), after.OldestPendingUtc);
+        Assert.Equal(0, after.PendingOverrides); Assert.Equal(1, after.DispatchedOverrides);
+    }
+
+    [Fact]
     public async Task Diagnostico_preserva_bytes_e_eventos_validos_antes_e_depois_da_linha_invalida()
     {
         using var workspace = new TestWorkspace();
@@ -137,7 +206,14 @@ public sealed class AuditQueueIntegrityTests
             Assert.DoesNotContain(workspace.Root, response);
             using var json = JsonDocument.Parse(response);
             Assert.Equal(!locked, json.RootElement.GetProperty("ok").GetBoolean());
-            if (!locked) Assert.Equal(1, json.RootElement.GetProperty("data").GetProperty("invalidLines").GetInt64());
+            if (!locked)
+            {
+                var data = json.RootElement.GetProperty("data");
+                Assert.Equal(1, data.GetProperty("invalidLines").GetInt64());
+                Assert.Equal(new FileInfo(workspace.QueueFile).Length, data.GetProperty("queueBytes").GetInt64());
+                Assert.Equal(0, data.GetProperty("pendingEvents").GetInt64());
+                Assert.Equal(JsonValueKind.Null, data.GetProperty("oldestPendingUtc").ValueKind);
+            }
             else Assert.Contains("io_error", json.RootElement.GetProperty("error").GetString());
         }
         finally { await server.StopAsync(CancellationToken.None); }

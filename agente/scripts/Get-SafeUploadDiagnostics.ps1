@@ -13,7 +13,11 @@ driver while the product runs. The service relays read-only queries over the SYS
                 No event contents, paths or exception messages. Successful retries do not restore lost events.
   audit-integrity  read-only scan of the current queue, including invalid lines and unknown record types.
                   Returns counts and at most 20 line numbers/reason codes, never record contents.
+                  queueBytes samples file length before scanning. Pending/dispatched counts are valid lines,
+                  including duplicates, not unique IDs; oldestPendingUtc excludes missing timestamps reported
+                  in pendingWithoutTimestamp. Unknown/invalid lines are counted separately, never assumed sent.
                   Shares the queue lock; a large scan can delay writes or exceed the service's five-second deadline.
+                  External writers are not locked. No automatic scan, retention or deletion is performed.
   audit-temporaries  metadata-only inventory of queue-name.GUID.tmp candidates, without content or filenames.
                      Reports bytes, unreadable candidates, skipped links and completeness; maximum 10000 entries.
                      Does not prove abandonment, delete files or recover incomplete confirmations.
