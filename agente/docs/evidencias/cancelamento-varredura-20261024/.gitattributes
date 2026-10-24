@@ -1,0 +1,3 @@
+*.json -text -diff
+*.log -text -diff
+.gitattributes -text -diff

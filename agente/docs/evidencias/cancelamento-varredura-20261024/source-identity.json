@@ -1,0 +1,9 @@
+{
+  "issue": 58,
+  "commit": "6c2bba11ffaa7acf1dd9805104d9a490ce28f7ef",
+  "programSha256": "C0059F2CEB42947BB77E04E9E2AF34D6791712112032303AFD5784EBE1BA6B48",
+  "configuration": "Release",
+  "localTrials": 6,
+  "result": "passed",
+  "sourceCoreSha256": "4A49DCA086F7662B9B3B0651932B3A263068EF95ED11C872A16B247AFC8706D9"
+}

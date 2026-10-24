@@ -1,0 +1,98 @@
+[
+  {
+    "artifactConfiguration": "Debug",
+    "originalRelativePath": "queue-scan-cancel.log",
+    "publishedFile": "ci-Debug-probe.log",
+    "sha256": "AFA3E7F4DFEF9625BA726B85001CED2DEB80AB2B2E205E3A2B8914AEA99B2887"
+  },
+  {
+    "artifactConfiguration": "Debug",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-a63e9cb062a0459f8f0c95cbd7b3ee99\\result.json",
+    "publishedFile": "ci-Debug-result.json",
+    "sha256": "A020EC29E22CCD196E7564068D6BB35C6810821603E0DAA5A63CA6743184AA67"
+  },
+  {
+    "artifactConfiguration": "Debug",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-a63e9cb062a0459f8f0c95cbd7b3ee99\\integrity-1\\result.json",
+    "publishedFile": "ci-Debug-integrity-1.json",
+    "sha256": "AE8906FD6E6B6BD7FB78BB7FE4326BA6BE4BC6A622454F9409E3E01124AB850B"
+  },
+  {
+    "artifactConfiguration": "Debug",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-a63e9cb062a0459f8f0c95cbd7b3ee99\\integrity-2\\result.json",
+    "publishedFile": "ci-Debug-integrity-2.json",
+    "sha256": "F4D65E17D0D992872A948C2081E037A8BAFE8D902211A266013B5BBD6CE77B49"
+  },
+  {
+    "artifactConfiguration": "Debug",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-a63e9cb062a0459f8f0c95cbd7b3ee99\\integrity-3\\result.json",
+    "publishedFile": "ci-Debug-integrity-3.json",
+    "sha256": "4BA5814F0DE97A115FB653436F6A2817CD102A690D8C76E90B70E36BC74A05E8"
+  },
+  {
+    "artifactConfiguration": "Debug",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-a63e9cb062a0459f8f0c95cbd7b3ee99\\preview-1\\result.json",
+    "publishedFile": "ci-Debug-preview-1.json",
+    "sha256": "A9EEAEBBF536591F427697D822E084A1FE03C4570C9D132F321927492EE498C0"
+  },
+  {
+    "artifactConfiguration": "Debug",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-a63e9cb062a0459f8f0c95cbd7b3ee99\\preview-2\\result.json",
+    "publishedFile": "ci-Debug-preview-2.json",
+    "sha256": "ECFF9AD20ADE1838566467508CA4E58BE62301B4A3991F759A53BB747FD5F215"
+  },
+  {
+    "artifactConfiguration": "Debug",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-a63e9cb062a0459f8f0c95cbd7b3ee99\\preview-3\\result.json",
+    "publishedFile": "ci-Debug-preview-3.json",
+    "sha256": "AB986293693FDA61B489D1B9EE8BE8CCBECBE7F48D1D4BF1561805BFADB80EDC"
+  },
+  {
+    "artifactConfiguration": "Release",
+    "originalRelativePath": "queue-scan-cancel.log",
+    "publishedFile": "ci-Release-probe.log",
+    "sha256": "0B54DEF5E8A8ECC7651E4412A261C8895C0D68CCB348D70E8E8BEE66B14B1A40"
+  },
+  {
+    "artifactConfiguration": "Release",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-68b96ee5e0124c478ff13cf15e00e733\\result.json",
+    "publishedFile": "ci-Release-result.json",
+    "sha256": "BB103A37AD754989CFBA51EE6EFF65C385ECA8821D772B829DC992C0E94C4162"
+  },
+  {
+    "artifactConfiguration": "Release",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-68b96ee5e0124c478ff13cf15e00e733\\integrity-1\\result.json",
+    "publishedFile": "ci-Release-integrity-1.json",
+    "sha256": "CEC3A99775BF8E479EA873FEB467006EE8523D4B59DDF47473778A152165C228"
+  },
+  {
+    "artifactConfiguration": "Release",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-68b96ee5e0124c478ff13cf15e00e733\\integrity-2\\result.json",
+    "publishedFile": "ci-Release-integrity-2.json",
+    "sha256": "AF66E7506F2C51868B5DF529676EEABAA01B9E05D55DCEBB0AE743F34C696333"
+  },
+  {
+    "artifactConfiguration": "Release",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-68b96ee5e0124c478ff13cf15e00e733\\integrity-3\\result.json",
+    "publishedFile": "ci-Release-integrity-3.json",
+    "sha256": "8BF12B146A6919FB1773A460CF786C752FBFDA45D9AE1B3FFA0AE0FE519B77A3"
+  },
+  {
+    "artifactConfiguration": "Release",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-68b96ee5e0124c478ff13cf15e00e733\\preview-1\\result.json",
+    "publishedFile": "ci-Release-preview-1.json",
+    "sha256": "C471204C5AD15D9BAA104F73A0B7F28F8B224E71ADD51D30B310F763737B0CDB"
+  },
+  {
+    "artifactConfiguration": "Release",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-68b96ee5e0124c478ff13cf15e00e733\\preview-2\\result.json",
+    "publishedFile": "ci-Release-preview-2.json",
+    "sha256": "AE3A19122E6B6E2E28612AFB14747103E2C7B5F4BDD96B11C1F967DDECBA136B"
+  },
+  {
+    "artifactConfiguration": "Release",
+    "originalRelativePath": "queue-scan-cancel\\scan-cancel-68b96ee5e0124c478ff13cf15e00e733\\preview-3\\result.json",
+    "publishedFile": "ci-Release-preview-3.json",
+    "sha256": "734A9B5FB0C85D456D3C3DA8AABF22B3017630332D083FCE987B47FF1FF54E9D"
+  }
+]
