@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Globalization;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
@@ -103,12 +104,19 @@ public sealed class DiagnosticsPipeServer : BackgroundService
             {
                 case "audit-integrity":
                 case "audit-temporaries":
+                case "audit-retention-preview":
                     if (_auditQueue is null) return Error(query, "Audit storage is unavailable.");
+                    DateTimeOffset cutoff = default;
+                    if (query == "audit-retention-preview" && !TryReadCutoff(request, out cutoff))
+                        return Error(query, "occurredBeforeUtc must be an explicit ISO 8601 UTC timestamp, excluding the default date.");
                     try
                     {
-                        object integrity = query == "audit-temporaries"
-                            ? await _auditQueue.InspectTemporaryFilesAsync(cancellationToken).ConfigureAwait(false)
-                            : await _auditQueue.InspectIntegrityAsync(cancellationToken).ConfigureAwait(false);
+                        object integrity = query switch
+                        {
+                            "audit-temporaries" => await _auditQueue.InspectTemporaryFilesAsync(cancellationToken).ConfigureAwait(false),
+                            "audit-retention-preview" => await _auditQueue.PreviewRetentionAsync(cutoff, cancellationToken).ConfigureAwait(false),
+                            _ => await _auditQueue.InspectIntegrityAsync(cancellationToken).ConfigureAwait(false)
+                        };
                         return Ok(query, JsonSerializer.SerializeToNode(integrity, new JsonSerializerOptions
                         { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
                     }
@@ -130,7 +138,8 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "audit-health", "audit-integrity", "audit-temporaries", "help"),
+                        ["queries"] = new JsonArray("counters", "deny-ring", "audit-health", "audit-integrity", "audit-temporaries", "audit-retention-preview", "help"),
+                        ["retentionPreview"] = "requires occurredBeforeUtc in UTC; occurrence-age counts only, never deletion eligibility",
                         ["denyRingCursor"] = "pass the previous reply's nextSequence minus one as after; 0 reads from the start",
                         ["connected"] = _source.IsConnected,
                     });
@@ -146,6 +155,17 @@ public sealed class DiagnosticsPipeServer : BackgroundService
         {
             return Error(query, ex.Message);
         }
+    }
+
+    private static bool TryReadCutoff(JsonObject request, out DateTimeOffset cutoff)
+    {
+        cutoff = default;
+        return request["occurredBeforeUtc"] is JsonValue value && value.TryGetValue<string>(out var text) &&
+            DateTimeOffset.TryParseExact(text,
+                ["yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'",
+                 "yyyy-MM-dd'T'HH:mm:sszzz", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFFzzz"],
+                CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out cutoff) &&
+            cutoff.Offset == TimeSpan.Zero && cutoff != default;
     }
 
     private static JsonObject Ok(string query, JsonNode data) =>

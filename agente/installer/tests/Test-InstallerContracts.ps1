@@ -132,6 +132,32 @@ try {
             }
         }
     }
+    Test-Case 'Retention preview client requires explicit UTC and rejects culture-dependent or missing cutoffs' {
+        $client = Join-Path $PSScriptRoot '../../scripts/Get-SafeUploadDiagnostics.ps1'
+        $tokens = $null; $parseErrors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $client), [ref]$tokens, [ref]$parseErrors)
+        Assert-True ($parseErrors.Count -eq 0)
+        $validation = @($ast.FindAll({param($node)
+            $node -is [Management.Automation.Language.IfStatementAst] -and
+                $node.Extent.Text.StartsWith("if (`$Query -eq 'audit-retention-preview')")
+        }, $true))
+        Assert-True ($validation.Count -eq 1)
+        # Execute the client's real validation, without elevation or opening its pipe.
+        $block = [scriptblock]::Create($validation[0].Extent.Text)
+        foreach ($value in @('2020-01-01T00:00:00Z','2020-01-01T00:00:00.1234567Z','2020-01-01T00:00:00.0000000+00:00')) {
+            & { param($text,$validationBlock)
+                $Query = 'audit-retention-preview'; $OccurredBeforeUtc = $text; $cutoff = [DateTimeOffset]::MinValue
+                . $validationBlock
+                Assert-True ($cutoff.Offset -eq [TimeSpan]::Zero -and $cutoff.Year -eq 2020)
+            } $value $block
+        }
+        foreach ($value in @('', 'SENSIVEL', '01/02/2020', '2020-01-01T00:00:00', '2020-01-01T00:00:00-03:00', '0001-01-01T00:00:00Z')) {
+            Assert-Rejected {
+                $Query = 'audit-retention-preview'; $OccurredBeforeUtc = $value; $cutoff = [DateTimeOffset]::MinValue
+                . $block
+            }
+        }
+    }
     $failed=@($results | Where-Object { -not $_.passed })
     $summary=[ordered]@{powershell=$PSVersionTable.PSVersion.ToString();total=$results.Count;passed=$results.Count-$failed.Count;failed=$failed.Count;tests=@($results)}
     if ($ResultsPath) { $summary | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $ResultsPath -Encoding UTF8 }

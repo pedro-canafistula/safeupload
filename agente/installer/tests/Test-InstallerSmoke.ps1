@@ -37,11 +37,13 @@ function Read-AuditEvents([string]$Path) {
         }
     } finally { $reader.Dispose() }
 }
-function Read-AuditHealth([string]$Query = 'audit-health') {
+function Read-AuditHealth([string]$Query = 'audit-health', [string]$OccurredBeforeUtc) {
     $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', 'SafeUpload.Agent.Diagnostics', [IO.Pipes.PipeDirection]::InOut, [IO.Pipes.PipeOptions]::Asynchronous)
     try {
         $pipe.Connect(5000)
-        $payload = [Text.Encoding]::UTF8.GetBytes((@{query=$Query} | ConvertTo-Json -Compress) + "`n")
+        $request = @{query=$Query}
+        if ($OccurredBeforeUtc) { $request.occurredBeforeUtc = $OccurredBeforeUtc }
+        $payload = [Text.Encoding]::UTF8.GetBytes(($request | ConvertTo-Json -Compress) + "`n")
         $pipe.Write($payload, 0, $payload.Length)
         $pipe.Flush()
         $reader = [IO.StreamReader]::new($pipe, [Text.Encoding]::UTF8, $false, 1024, $true)
@@ -149,6 +151,15 @@ try {
         $cleanIntegrity.pendingEvents -eq $cleanIntegrity.validEvents -and $cleanIntegrity.dispatchedEvents -eq 0 -and
         $cleanIntegrity.pendingOverrides -eq 0 -and $cleanIntegrity.dispatchedOverrides -eq 0 -and
         $null -ne $cleanIntegrity.oldestPendingUtc -and $cleanIntegrity.pendingWithoutTimestamp -eq 0) 'Installed service did not expose the synthetic offline backlog.'
+    $previewCutoff = '2030-01-01T00:00:00Z'
+    $cleanPreviewHash = (Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash
+    $cleanPreview = & (Join-Path $PSScriptRoot '../../scripts/Get-SafeUploadDiagnostics.ps1') -Query audit-retention-preview -OccurredBeforeUtc $previewCutoff
+    Require ($cleanPreview.previewOnly -and -not $cleanPreview.deletionSupported -and
+        $cleanPreview.timestampBasis -eq 'record-occurrence-time' -and
+        $cleanPreview.confirmedEventsBeforeCutoff -eq 0 -and $cleanPreview.confirmedOverridesBeforeCutoff -eq 0 -and
+        $cleanPreview.confirmedWithoutTimestamp -eq 0 -and
+        $cleanPreview.integrity.pendingEvents -eq $cleanIntegrity.pendingEvents) 'Installed preview classified offline pending data as confirmed.'
+    Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $cleanPreviewHash) 'Preview modified the queue.'
     # Only synthetic runner data: preserve both malformed and forward-version records.
     [IO.File]::AppendAllText($queue, '{SYNTHETIC_PRIVATE_CONTENT' + "`n" +
         '{"type":"future-runner-record","payload":"SYNTHETIC_PRIVATE_CONTENT"}' + "`n", [Text.UTF8Encoding]::new($false))
@@ -166,6 +177,12 @@ try {
         $damagedIntegrity.pendingEvents -eq $cleanIntegrity.pendingEvents -and
         $damagedIntegrity.oldestPendingUtc -eq $cleanIntegrity.oldestPendingUtc) 'Unknown or malformed lines distorted the pending inventory.'
     $result.auditIntegrity = [ordered]@{clean=$cleanIntegrity;damaged=$damagedIntegrity;queueHash=$integrityHash}
+    $damagedPreview = Read-AuditHealth 'audit-retention-preview' $previewCutoff
+    Require ($damagedPreview.integrity.invalidLines -eq 1 -and $damagedPreview.integrity.unknownRecords -eq 1 -and
+        $damagedPreview.confirmedEventsBeforeCutoff -eq 0 -and $damagedPreview.integrity.pendingEvents -eq $cleanIntegrity.pendingEvents -and
+        $damagedPreview.previewOnly -and -not $damagedPreview.deletionSupported) 'Preview hid incompatible lines or implied removal.'
+    Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $integrityHash) 'Damaged preview modified the queue.'
+    $result.auditRetentionPreview = [ordered]@{clean=$cleanPreview;damaged=$damagedPreview;queueHash=$integrityHash}
     $result.steps += 'audit-integrity distinguished malformed and unknown lines without changing queue bytes or disclosing contents'
     $emptyTemporaries = Read-AuditHealth 'audit-temporaries'
     Require ($emptyTemporaries.complete -and $emptyTemporaries.candidateFiles -eq 0) 'Unexpected initial temporary candidates.'
@@ -199,6 +216,11 @@ try {
         $integrityAfterRestart.pendingEvents -eq $damagedIntegrity.pendingEvents -and
         $integrityAfterRestart.oldestPendingUtc -eq $damagedIntegrity.oldestPendingUtc) 'Restart changed the read-only backlog inventory.'
     $result.auditIntegrity.afterRestart = $integrityAfterRestart
+    $previewAfterRestart = Read-AuditHealth 'audit-retention-preview' $previewCutoff
+    Require ($previewAfterRestart.integrity.queueBytes -eq $damagedPreview.integrity.queueBytes -and
+        $previewAfterRestart.integrity.pendingEvents -eq $damagedPreview.integrity.pendingEvents -and
+        $previewAfterRestart.confirmedEventsBeforeCutoff -eq 0 -and -not $previewAfterRestart.deletionSupported) 'Restart changed the read-only preview.'
+    $result.auditRetentionPreview.afterRestart = $previewAfterRestart
     $temporariesAfterRestart = Read-AuditHealth 'audit-temporaries'
     Require ($temporariesAfterRestart.candidateFiles -eq 1 -and $temporariesAfterRestart.totalBytes -eq $temporaryBytes -and
         $temporariesAfterRestart.skippedReparsePoints -eq 1) 'Restart lost temporary inventory.'
