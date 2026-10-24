@@ -1,0 +1,222 @@
+[
+  {
+    "configuration": "Debug",
+    "artifactId": 12570065826,
+    "digest": "sha256:b88d1e79779c0668a32fdf5ca4e8de4e51cdf3be42a14feec08bba27378eb1fe",
+    "bytes": 223169,
+    "trxSha256": "36E09E4A42894969F6CAC0C8934F2EB16218150379CB028384324A63FC866D56",
+    "counters": "<Counters total=\"862\" executed=\"858\" passed=\"858\" failed=\"0\" error=\"0\" timeout=\"0\" aborted=\"0\" inconclusive=\"0\" passedButRunAborted=\"0\" notRunnable=\"0\" notExecuted=\"0\" disconnected=\"0\" warning=\"0\" completed=\"0\" inProgress=\"0\" pending=\"0\" xmlns=\"http://microsoft.com/schemas/VisualStudio/TeamTest/2010\" />",
+    "cases": [
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Comprimento_recebido_incorreto_recusado(length: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000179"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Capacidade_maxima_e_nomes_de_48_unidades_sem_terminador",
+        "outcome": "Passed",
+        "duration": "00:00:00.0005821"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Comprimento_recebido_incorreto_recusado(length: 2575)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0005316"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Contagem_fora_do_buffer_ou_maior_que_total_recusada(count: 1, total: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0005295"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Contagem_fora_do_buffer_ou_maior_que_total_recusada(count: 4294967295, total: 4294967295)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000257"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Nome_fora_do_registro_recusado_sem_expor_conteudo(chars: 4294967295)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002592"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Nome_fora_do_registro_recusado_sem_expor_conteudo(chars: 49)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0005528"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Header_vazio_aceito_sem_ler_slots_nao_declarados",
+        "outcome": "Passed",
+        "duration": "00:00:00.0006842"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Resposta_original_nao_alterada_e_nome_vazio_aceito",
+        "outcome": "Passed",
+        "duration": "00:00:00.0008770"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Versao_diferente_do_layout_18_recusada(version: 19)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004914"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Versao_diferente_do_layout_18_recusada(version: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000246"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Tamanho_declarado_incorreto_recusado(size: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000172"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Contagem_fora_do_buffer_ou_maior_que_total_recusada(count: 17, total: 17)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0003095"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Tamanho_declarado_incorreto_recusado(size: 16)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0003448"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Tamanho_declarado_incorreto_recusado(size: 4294967295)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000211"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Tamanho_declarado_incorreto_recusado(size: 2575)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0008095"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Versao_diferente_do_layout_18_recusada(version: 17)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002685"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Registro_nativo_tem_offsets_GUID_UTF16_e_bits_futuros_preservados",
+        "outcome": "Passed",
+        "duration": "00:00:00.0116740"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Comprimento_recebido_incorreto_recusado(length: 2577)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002649"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Comprimento_recebido_incorreto_recusado(length: 15)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000263"
+      }
+    ]
+  },
+  {
+    "configuration": "Release",
+    "artifactId": 12570065823,
+    "digest": "sha256:c1deefc302c7fbfa7af790918df5eb614754455ac1399fd86829fa1137942c0f",
+    "bytes": 223384,
+    "trxSha256": "7CA26662312D106BE70B6FF7DB3CC051D088168CAE684626BE1C6D9146320177",
+    "counters": "<Counters total=\"862\" executed=\"858\" passed=\"858\" failed=\"0\" error=\"0\" timeout=\"0\" aborted=\"0\" inconclusive=\"0\" passedButRunAborted=\"0\" notRunnable=\"0\" notExecuted=\"0\" disconnected=\"0\" warning=\"0\" completed=\"0\" inProgress=\"0\" pending=\"0\" xmlns=\"http://microsoft.com/schemas/VisualStudio/TeamTest/2010\" />",
+    "cases": [
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Header_vazio_aceito_sem_ler_slots_nao_declarados",
+        "outcome": "Passed",
+        "duration": "00:00:00.0012578"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Comprimento_recebido_incorreto_recusado(length: 2575)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004018"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Tamanho_declarado_incorreto_recusado(size: 4294967295)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000276"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Versao_diferente_do_layout_18_recusada(version: 19)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0003684"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Comprimento_recebido_incorreto_recusado(length: 2577)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002663"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Tamanho_declarado_incorreto_recusado(size: 2575)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004244"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Capacidade_maxima_e_nomes_de_48_unidades_sem_terminador",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004213"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Comprimento_recebido_incorreto_recusado(length: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000118"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Versao_diferente_do_layout_18_recusada(version: 17)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002755"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Contagem_fora_do_buffer_ou_maior_que_total_recusada(count: 17, total: 17)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0005113"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Contagem_fora_do_buffer_ou_maior_que_total_recusada(count: 1, total: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0003509"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Comprimento_recebido_incorreto_recusado(length: 15)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000243"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Registro_nativo_tem_offsets_GUID_UTF16_e_bits_futuros_preservados",
+        "outcome": "Passed",
+        "duration": "00:00:00.0113338"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Tamanho_declarado_incorreto_recusado(size: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000262"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Tamanho_declarado_incorreto_recusado(size: 16)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0003283"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Nome_fora_do_registro_recusado_sem_expor_conteudo(chars: 49)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0003853"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Versao_diferente_do_layout_18_recusada(version: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000326"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Resposta_original_nao_alterada_e_nome_vazio_aceito",
+        "outcome": "Passed",
+        "duration": "00:00:00.0008062"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Contagem_fora_do_buffer_ou_maior_que_total_recusada(count: 4294967295, total: 4294967295)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000216"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.StageStreamDiagnosticsContractTests.Nome_fora_do_registro_recusado_sem_expor_conteudo(chars: 4294967295)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002720"
+      }
+    ]
+  }
+]

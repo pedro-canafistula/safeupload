@@ -1,0 +1,84 @@
+[
+  {
+    "sourceLog": "functional-migration.log",
+    "fullLogSha256": "3A7DE71FB8A8E9150BC2FD67F2B61F8BBDDBF022A1AB28E624DD81E595799751",
+    "selectedOriginalLines": [
+      {
+        "lineNumber": 304,
+        "text": "2026-10-24T17:38:36.4708743Z 2026-10-24T17:38:36.408Z  WARN 2433 --- [safeupload-backend] [           main] o.s.w.c.s.GenericWebApplicationContext   : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}"
+      },
+      {
+        "lineNumber": 316,
+        "text": "2026-10-24T17:38:36.4811526Z Parameter 1 of constructor in com.safeupload.presentation.controller.AgentController required a bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' that could not be found."
+      },
+      {
+        "lineNumber": 321,
+        "text": "2026-10-24T17:38:36.4814852Z Consider defining a bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' in your configuration."
+      },
+      {
+        "lineNumber": 433,
+        "text": "2026-10-24T17:38:36.5416887Z Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}"
+      },
+      {
+        "lineNumber": 460,
+        "text": "2026-10-24T17:38:36.5488406Z Caused by: org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}"
+      },
+      {
+        "lineNumber": 957,
+        "text": "2026-10-24T17:38:36.6986617Z Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}"
+      },
+      {
+        "lineNumber": 984,
+        "text": "2026-10-24T17:38:36.7016533Z Caused by: org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}"
+      },
+      {
+        "lineNumber": 1149,
+        "text": "2026-10-24T17:38:36.7724549Z ##[error]Process completed with exit code 1."
+      }
+    ]
+  },
+  {
+    "sourceLog": "functional-installed.log",
+    "fullLogSha256": "76836737572D47729D0EFAF914DA17C15E0A0986A98F4BD9083277EF036FD800",
+    "selectedOriginalLines": [
+      {
+        "lineNumber": 1452,
+        "text": "2026-10-24T17:40:01.0459587Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m  57 | \u001b[0m … f ($process.HasExited) { \u001b[36;1mthrow 'Backend encerrou antes de iniciar.'\u001b[0m }\u001b[0m"
+      },
+      {
+        "lineNumber": 1454,
+        "text": "2026-10-24T17:40:01.0461453Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[31;1m\u001b[31;1m\u001b[36;1m     | \u001b[31;1mBackend encerrou antes de iniciar.\u001b[0m"
+      },
+      {
+        "lineNumber": 1455,
+        "text": "2026-10-24T17:40:01.0833907Z ##[error]Process completed with exit code 1."
+      }
+    ]
+  },
+  {
+    "sourceLog": "functional-contract.log",
+    "fullLogSha256": "62C991550D14449A8F7B946E91ACFFE3EEA0FF53FB840222CE3C04E8F097C995",
+    "selectedOriginalLines": [
+      {
+        "lineNumber": 299,
+        "text": "2026-10-24T17:39:52.8535498Z Passed!  - Failed:     0, Passed:   858, Skipped:     4, Total:   862, Duration: 34 s - SafeUpload.Agent.Tests.dll (net10.0)"
+      },
+      {
+        "lineNumber": 1501,
+        "text": "2026-10-24T17:40:34.1242489Z \u001b[36;1m  if (-not $ready) { throw 'Backend não iniciou.' }\u001b[0m"
+      },
+      {
+        "lineNumber": 1516,
+        "text": "2026-10-24T17:42:05.5071028Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m  12 | \u001b[0m   if (-not $ready) { \u001b[36;1mthrow 'Backend não iniciou.'\u001b[0m }\u001b[0m"
+      },
+      {
+        "lineNumber": 1518,
+        "text": "2026-10-24T17:42:05.5072514Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[31;1m\u001b[31;1m\u001b[36;1m     | \u001b[31;1mBackend não iniciou.\u001b[0m"
+      },
+      {
+        "lineNumber": 1519,
+        "text": "2026-10-24T17:42:05.5308329Z ##[error]Process completed with exit code 1."
+      }
+    ]
+  }
+]

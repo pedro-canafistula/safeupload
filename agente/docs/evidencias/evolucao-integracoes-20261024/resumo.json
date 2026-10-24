@@ -1,0 +1,116 @@
+{
+  "issue": 59,
+  "source": "cc41f9dd5e07b6eacb0b7b908166fc1d1c457747",
+  "mainChanged": false,
+  "localDefaultPassed": 47,
+  "localFeaturePassed": 47,
+  "ciRun": 40117002930,
+  "ciResult": "success",
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 86,
+      "sha256": "2CD8D6C2F1D76EC60B9E30C27DAFCE65FDEC62B397C9AF3F0922537BEE8AD5A7"
+    },
+    {
+      "file": "artifacts-progress.json",
+      "bytes": 6497,
+      "sha256": "F8311D1672D36888A34DDD60FFD97F2E5AF2077DD87EF877F6FBF06513522093"
+    },
+    {
+      "file": "checks-final.json",
+      "bytes": 31649,
+      "sha256": "6A5C5370A6DC629EE9FE3DE4F37EE558E39451F7BB151231B0490E0E0220258B"
+    },
+    {
+      "file": "ci-artifact-verification.json",
+      "bytes": 10495,
+      "sha256": "46F531D59DC2DC9B6153B17C885E27CD1B9B9B70008D93AE3964375B2022BD82"
+    },
+    {
+      "file": "ci-debug.log",
+      "bytes": 38297,
+      "sha256": "557CD839D8E4DC99284F3754DF3A3C7FB3FA6E2FB7407487C7EF481EE6405680"
+    },
+    {
+      "file": "ci-Debug.trx",
+      "bytes": 1250192,
+      "sha256": "36E09E4A42894969F6CAC0C8934F2EB16218150379CB028384324A63FC866D56"
+    },
+    {
+      "file": "ci-install.log",
+      "bytes": 33353,
+      "sha256": "893650E5BA6515176948AEAC39993C14D2DE0B52F2379DC03501906C515B2FAD"
+    },
+    {
+      "file": "ci-release.log",
+      "bytes": 38291,
+      "sha256": "BE15353681A680B449E6CDDAA5911EDC4740E98A70738121817C1B02C0B1B2BA"
+    },
+    {
+      "file": "ci-Release.trx",
+      "bytes": 1253640,
+      "sha256": "7CA26662312D106BE70B6FF7DB3CC051D088168CAE684626BE1C6D9146320177"
+    },
+    {
+      "file": "ci-run.json",
+      "bytes": 15486,
+      "sha256": "307114CBA80613BE57A7377183D24AD8F550CDEC73E670BF31E097D27DD9FF2F"
+    },
+    {
+      "file": "functional-excerpts.json",
+      "bytes": 5440,
+      "sha256": "1BDB38846A17F790F17D38D4517CA2DA315171F797DC23AD7CEDB766CE257923"
+    },
+    {
+      "file": "functional-run.json",
+      "bytes": 15478,
+      "sha256": "87A40A93185B82023960A5556D19337A5F101EA5D6E350AA1C0C76AF768A2949"
+    },
+    {
+      "file": "github-main-compare.json",
+      "bytes": 885,
+      "sha256": "9199B43A9ED7B3A08B215926FF1A3CBD669F21D940C83A66F9E554947F72E190"
+    },
+    {
+      "file": "local-default.trx",
+      "bytes": 79993,
+      "sha256": "4C71BAAB856B968E64AA005FE0A84D565C41DA9ABF76E8B0D4B0F56C49BC2767"
+    },
+    {
+      "file": "local-feature-release.log",
+      "bytes": 2457,
+      "sha256": "7FC758F229D64EDBC03466B0CEB51A6EC7A79422EF961E03CD8C365844E7F172"
+    },
+    {
+      "file": "local-feature.trx",
+      "bytes": 79993,
+      "sha256": "C45DC67E7305E4229526DD0D371E5718F3C3714E856499D49FB4DC291FBD37F0"
+    },
+    {
+      "file": "local-release.log",
+      "bytes": 2441,
+      "sha256": "2175C429447EBB98D81D99C6172A7306375F118D181AFAEE8213830F0B946EF6"
+    },
+    {
+      "file": "native-contract-reference.json",
+      "bytes": 7174,
+      "sha256": "25C5DB2D05FE460C525667C3F05AA3E458B8EE5EE9C8591072433DAF26E2F84A"
+    },
+    {
+      "file": "older-integration-ancestry.json",
+      "bytes": 168,
+      "sha256": "3E71693A8992F4270AD6B48C1D2270A668E83129781CD79205EE77E6C77BA0E4"
+    },
+    {
+      "file": "reference-review.json",
+      "bytes": 1049,
+      "sha256": "2DAC87BEB788B390BD71407674F196948610BE6AA456A5ACB5414AC583C4862E"
+    },
+    {
+      "file": "source-identity.json",
+      "bytes": 481,
+      "sha256": "1D969A561101B81B0105AE279BFF9264FF7277D5A490CE305E07D28400E2EEC0"
+    }
+  ]
+}
