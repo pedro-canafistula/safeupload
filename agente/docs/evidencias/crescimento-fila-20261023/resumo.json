@@ -10,7 +10,7 @@
     "skipped": 4
   },
   "localFocusedRelease": 31,
-  "vmHomologation": "pending",
+  "vmHomologation": "passed-own-windows10-clone",
   "files": [
     {
       "file": ".gitattributes",
@@ -142,5 +142,6 @@
       "bytes": 218,
       "sha256": "C5874E3B6508D2CB6E79274AC9DB68D3E49F5449663B5370ED1C26C708DDF199"
     }
-  ]
+  ],
+  "vmHomologationReport": "../../HOMOLOGACAO-WIN10-0113-20261023.md"
 }

@@ -1,0 +1,185 @@
+{
+  "source": "008b4e367a1269bbc3b9d003e62bc1419ca0ef40",
+  "issue": 54,
+  "installerVersion": "0.1.13",
+  "installerSha256": "775A61F3BEF61BDDC84233551C343371AD9A6AAC7FC88453847B0D1ED7D8588D",
+  "vmUuid": "3a9992db-4644-405c-b642-9766edd10650",
+  "result": "boot-diagnostics-and-uninstall-passed",
+  "events": 21,
+  "queueBytes": 11820,
+  "preservedFiles": 10,
+  "realApiTested": false,
+  "driverTested": false,
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 83,
+      "sha256": "7269154D1A1F11EE7114873E1740811EFD0A826291FEA79CB2D9D4A50312C134"
+    },
+    {
+      "file": "Finalizar-0113.ps1",
+      "bytes": 7696,
+      "sha256": "650A824466B84DA33D0F7C60399F9F0BB0703A04EA6E09CA4EDFD5E7AC0D9BEA"
+    },
+    {
+      "file": "Instalar-Testar-0113.ps1",
+      "bytes": 7567,
+      "sha256": "50E4DE1AC17320CC7C5CC429038A76F8AAA857720E7F1C607BD95A26BD2F7D2D"
+    },
+    {
+      "file": "install-0113.log",
+      "bytes": 251989,
+      "sha256": "94D0C5AB0A32D5888C3F49BE43EDC07E58DCB0EA1158EB9D1731E6E6A09866D1"
+    },
+    {
+      "file": "Ler-Boot-0113.ps1",
+      "bytes": 2982,
+      "sha256": "D098EEEAC16E5BCF6475ADC6E8BE1FEB233B4B9D9A2C18A3B6620C8C5963E709"
+    },
+    {
+      "file": "Reiniciar-Validar-0113.ps1",
+      "bytes": 7100,
+      "sha256": "1A6C4D1D7D9F7E269A6CC9C784ABAE513D120D28139BC635C99293671F690CD5"
+    },
+    {
+      "file": "Testar-Arquivo-0113.ps1",
+      "bytes": 3982,
+      "sha256": "D4750BCFB2760AA78898B0292ABD35B0507B10C7F924615F5E357EC58EF1D548"
+    },
+    {
+      "file": "ui-after-uninstall.jpg",
+      "bytes": 132391,
+      "sha256": "E855EAB027E29C9C94D67A8D9C5B609ED791BCE993AD55C3E628C1A3267DFB97"
+    },
+    {
+      "file": "ui-boot-observations.json",
+      "bytes": 229,
+      "sha256": "94AC20C56BF3F4FB2FE29CEC167EB18CAD0E4EF299F87ACA4DC843E1EEBD272B"
+    },
+    {
+      "file": "ui-clean-live.jpg",
+      "bytes": 132391,
+      "sha256": "E855EAB027E29C9C94D67A8D9C5B609ED791BCE993AD55C3E628C1A3267DFB97"
+    },
+    {
+      "file": "ui-cpf-live-masked.jpg",
+      "bytes": 132391,
+      "sha256": "E855EAB027E29C9C94D67A8D9C5B609ED791BCE993AD55C3E628C1A3267DFB97"
+    },
+    {
+      "file": "ui-history-21-after-boot.jpg",
+      "bytes": 132391,
+      "sha256": "E855EAB027E29C9C94D67A8D9C5B609ED791BCE993AD55C3E628C1A3267DFB97"
+    },
+    {
+      "file": "ui-history-21-before-restart.jpg",
+      "bytes": 132391,
+      "sha256": "E855EAB027E29C9C94D67A8D9C5B609ED791BCE993AD55C3E628C1A3267DFB97"
+    },
+    {
+      "file": "ui-initial-observations.json",
+      "bytes": 196,
+      "sha256": "7E49A0E2E3C5C49CF7FAEE860C696B180A0875C5345E362EF81382CC17DFDA63"
+    },
+    {
+      "file": "ui-service-reconnected.jpg",
+      "bytes": 132391,
+      "sha256": "E855EAB027E29C9C94D67A8D9C5B609ED791BCE993AD55C3E628C1A3267DFB97"
+    },
+    {
+      "file": "ui-service-stopped.jpg",
+      "bytes": 132391,
+      "sha256": "E855EAB027E29C9C94D67A8D9C5B609ED791BCE993AD55C3E628C1A3267DFB97"
+    },
+    {
+      "file": "ui-status-after-boot.jpg",
+      "bytes": 132391,
+      "sha256": "E855EAB027E29C9C94D67A8D9C5B609ED791BCE993AD55C3E628C1A3267DFB97"
+    },
+    {
+      "file": "uninstall-0113.log",
+      "bytes": 86927,
+      "sha256": "0FB3F77A4A3F7200B18E91599F90EC5E8F17F9830CBB1AA5DDE27345FCB526C8"
+    },
+    {
+      "file": "vm-boot-user.json",
+      "bytes": 35200,
+      "sha256": "90C7C1CB4105A7538084559EC63AE8C6AC06BA355DEE8F201BA2480F22A1C23A"
+    },
+    {
+      "file": "vm-final-original.json",
+      "bytes": 11641,
+      "sha256": "0AD4A7462DA56C65E72BE90ED7E75CD10A5DF92B0F5D8D8EC3D1EE7839C2516E"
+    },
+    {
+      "file": "vm-fixture-clean.json",
+      "bytes": 2046,
+      "sha256": "F0B340839E1A3314739589AD88FBE0D8CF7194C474F003350FF5763BA568C83A"
+    },
+    {
+      "file": "vm-fixture-cpf.json",
+      "bytes": 2746,
+      "sha256": "D1CE89C88F11F15E160ACBAA64AD3217D7001E20C21279665EDF2C6BBA4CBE73"
+    },
+    {
+      "file": "vm-initial-state.json",
+      "bytes": 170,
+      "sha256": "651589047AC680B992B2883FAA3451D9779C8C35132571B56F41C28F198328E0"
+    },
+    {
+      "file": "vm-install-final-original.json",
+      "bytes": 7668,
+      "sha256": "3F719390C93D56D60630D1EC172EB0E0476881C3918C6934C4E8D53E89D9E84B"
+    },
+    {
+      "file": "vm-install-original.json",
+      "bytes": 7613,
+      "sha256": "B3575C97CD03233C23E59A262980CE287DA3FDF653367AA3C46821555C37E81A"
+    },
+    {
+      "file": "vm-package-preflight.json",
+      "bytes": 138,
+      "sha256": "173C866DAB12A056D10B582C5621B15CEE9544446CE82C285803BFA825740AE5"
+    },
+    {
+      "file": "vm-post-uninstall-confirmation.json",
+      "bytes": 256,
+      "sha256": "542BC58E94F3CA05E3C4282C9823C063132635A5EF89B86D0BDA3DE7914E7B47"
+    },
+    {
+      "file": "vm-raw-inventory.json",
+      "bytes": 918,
+      "sha256": "A15DD053FBFC0B30BDFFACAF72984EC6473E9654A379A3BAE0FEC4D15C9FA2CC"
+    },
+    {
+      "file": "vm-restart-original.json",
+      "bytes": 4989,
+      "sha256": "3ECEC35EEAEC345BAEF1FB90C4AE7662E39CE69A136DC3BEBEC948D82D96F607"
+    },
+    {
+      "file": "vm-restart-reconnected.json",
+      "bytes": 4940,
+      "sha256": "E6ECBCAD1B0EBD1BB86CDA0CF322036DC48312CE936667B5D783D75837299EFE"
+    },
+    {
+      "file": "vm-restart-stopped.json",
+      "bytes": 3064,
+      "sha256": "6DFF918661370E222C07A70B07FB3B8A1AB5A2DFD32641079531DA7F652F8607"
+    },
+    {
+      "file": "vm-script-syntax.json",
+      "bytes": 94,
+      "sha256": "A3B53D58B4A80652CE457E0D02977C4C03A3941F1ED7105A1D211CBDF0C8E84D"
+    },
+    {
+      "file": "vm-scripts-hashes.json",
+      "bytes": 735,
+      "sha256": "F9AA3C9B520C24C9C72D93D6AE81EB267BB6327470DF36B8392A6955DE4831CC"
+    },
+    {
+      "file": "vms-final.json",
+      "bytes": 183,
+      "sha256": "2EC5C3E875AC5BD104A4F40FEC192AA155A26CC6CA32A25FB45CF700A4DE18B1"
+    }
+  ]
+}
