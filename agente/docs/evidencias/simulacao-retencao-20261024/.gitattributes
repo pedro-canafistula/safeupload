@@ -1,0 +1,4 @@
+*.json -text -diff
+*.log -text -diff
+*.trx -text -diff
+.gitattributes -text -diff

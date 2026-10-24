@@ -1,0 +1,10 @@
+{
+  "passed": 4,
+  "failed": 0,
+  "tests": [
+    "untrusted inherited module selected in control",
+    "actual setup bootstrap loads native Windows PowerShell Get-Acl",
+    "actual smoke reader preserves complete records before truncated tail",
+    "actual smoke reader preserves the original timestamp without culture conversion"
+  ]
+}

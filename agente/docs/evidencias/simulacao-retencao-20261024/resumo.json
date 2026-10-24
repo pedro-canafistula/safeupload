@@ -1,0 +1,146 @@
+{
+  "source": "887abf8dd85830e554bd4c190562cd380644df47",
+  "issue": 55,
+  "ciRun": 40111656699,
+  "ciResult": "passed",
+  "csharpPerConfiguration": {
+    "failed": 0,
+    "total": 839,
+    "passed": 835,
+    "skipped": 4
+  },
+  "localFocusedRelease": 39,
+  "vmHomologation": "in-progress",
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 83,
+      "sha256": "21E8F2CF54BEA20EB4632A15512FA6EFA71DF76CA56BDA1091A199A98439D749"
+    },
+    {
+      "file": "artifacts.json",
+      "bytes": 5573,
+      "sha256": "DAF2A382CCAF5620E24F0C321B5B4BE7358C1D5B8878CCC57976471935A60963"
+    },
+    {
+      "file": "ci-artifact-validation.json",
+      "bytes": 1232,
+      "sha256": "61E98D41149498EAD8FEEBE98348720D40915EEE4107EFAEAA57FB8C5681B842"
+    },
+    {
+      "file": "ci-debug.log",
+      "bytes": 32534,
+      "sha256": "F92D181358BA7EAB98F7C23C0DB7EF6748A4A6FC951A66DEA8C93ADBDF364309"
+    },
+    {
+      "file": "ci-environment.json",
+      "bytes": 347,
+      "sha256": "4D0F6A7413177E99FEE4C0DC324F2E4FDBEF9F2799E996BC791434361B9B952F"
+    },
+    {
+      "file": "ci-installed-result.json",
+      "bytes": 15329,
+      "sha256": "F37A15E7BD48709F34C477272428B8A9E576226271A0E3C0CD3FD17CDAB5FD5D"
+    },
+    {
+      "file": "ci-installed.log",
+      "bytes": 32826,
+      "sha256": "8FA0C82B1E2E71D398D93838CAE3649E4B7CF5D4A63A72BE48ADA8A7A39F6825"
+    },
+    {
+      "file": "ci-os.json",
+      "bytes": 149,
+      "sha256": "5087196810A3A17AAE8DB532A81CE0C189318AC5BDB446AF944EEEC459231D5A"
+    },
+    {
+      "file": "ci-ps51.json",
+      "bytes": 8561,
+      "sha256": "A818341FCAA32694C957C2C10E7384380574E89EEA6AE7E2AACF60A87A03A982"
+    },
+    {
+      "file": "ci-ps7.json",
+      "bytes": 5203,
+      "sha256": "C8698D6E244A6146A56E68B982DAE0DE2B3BA4BF87C392B42F3AD261F54FD852"
+    },
+    {
+      "file": "ci-release.log",
+      "bytes": 33089,
+      "sha256": "D0F98689AA70AE063DA9389BA553CBC2FF72FB391D2A37B00B2D872CA6B48BFC"
+    },
+    {
+      "file": "ci-run.json",
+      "bytes": 15516,
+      "sha256": "D3DB6BE6BE924F2C2C80AFA84A5C587D3386948CD36C52E842E01B5EEED1FAC8"
+    },
+    {
+      "file": "environment.json",
+      "bytes": 347,
+      "sha256": "4D0F6A7413177E99FEE4C0DC324F2E4FDBEF9F2799E996BC791434361B9B952F"
+    },
+    {
+      "file": "environment.log",
+      "bytes": 34,
+      "sha256": "5EB9376B31A324ADF99E225AE944DA88B220DB9EAD7F7DBF74E8DF3AF8F0642F"
+    },
+    {
+      "file": "focused.log",
+      "bytes": 2432,
+      "sha256": "F808849EA71B223056AFEEA1A119C8AE51D32F69D57B7039D2F515C1985F214F"
+    },
+    {
+      "file": "focused.trx",
+      "bytes": 70142,
+      "sha256": "AE9B488110C943AB0515D5A338C34B775FED90C8C2E27D6EE2409AC12B19E867"
+    },
+    {
+      "file": "functional-contract-excerpt.log",
+      "bytes": 522,
+      "sha256": "2D0DBFE00A0B463111BF5ED134F1BBA1B3A983DDD4342CB96566556244320562"
+    },
+    {
+      "file": "functional-installed-excerpt.log",
+      "bytes": 307,
+      "sha256": "8EA8983BA31F33C52FA08588E324685B23C16CE8DCF512F9939CFC051499AF17"
+    },
+    {
+      "file": "functional-migration-excerpt.log",
+      "bytes": 2559,
+      "sha256": "EF75F449BC0B84644232BD400FD8F8F76D2B0EBA9507E88E11F66073022CAB81"
+    },
+    {
+      "file": "functional-run.json",
+      "bytes": 15493,
+      "sha256": "03AA48200F62B6581D4F765F97C029A2BD4EE9E567F7E2C6DB61CA7F0618D7A9"
+    },
+    {
+      "file": "package-identity.json",
+      "bytes": 557,
+      "sha256": "B82105E2213B6DA26DEB37C57074EB1DA317711E9EC3BBE666137977B00A6995"
+    },
+    {
+      "file": "ps51.json",
+      "bytes": 8560,
+      "sha256": "8622EE73483550999F0E744D0A6D9D4DB5D3CC0D8FD0E7F704096D80A28A01C3"
+    },
+    {
+      "file": "ps51.log",
+      "bytes": 62,
+      "sha256": "1571DFE3C4CCE7D26A0345BF240A58A8F197B87437823E5B2C4540F15218252E"
+    },
+    {
+      "file": "ps7.json",
+      "bytes": 5203,
+      "sha256": "F9615D72A60C7FFEE6EF05462AA1DCAD85567AFD4AB36E4CA25B4CB46962F93F"
+    },
+    {
+      "file": "ps7.log",
+      "bytes": 53,
+      "sha256": "86521BD6A72DCE22028603C446F8FCC5547A321D7EA448CC42E4CAC6C8D3A346"
+    },
+    {
+      "file": "smoke-syntax.json",
+      "bytes": 157,
+      "sha256": "63CCAD85239ABEC620CC87C339B592AA98CD1761799C31B828F20FB5A4DF1965"
+    }
+  ]
+}
