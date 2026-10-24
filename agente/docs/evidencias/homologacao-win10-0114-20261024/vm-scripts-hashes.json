@@ -1,0 +1,23 @@
+[
+    {
+        "name":  "Finalizar-0114.ps1",
+        "sha256":  "A6E74F283F887020766FC092F43249CDB797F13B20713CB9EA852AC480AE85CA"
+    },
+    {
+        "name":  "Instalar-Testar-0114.ps1",
+        "sha256":  "FFC05D3DD885ADAC6DD811BE32EF87A66F54071A8CEB5358888441AF94C64135"
+    },
+    {
+        "name":  "Ler-Boot-0114.ps1",
+        "sha256":  "E0D067A9B730A0F87429A8812971E0C2EF2EF76DE2D10DB6EDAE06F5A5472749"
+    },
+    {
+        "name":  "Reiniciar-Validar-0114.ps1",
+        "sha256":  "923F9CE59F62C28E8F2B4AE1993B6C739AF62D5E5D4C77DFA2C017DDB8A972E2"
+    },
+    {
+        "name":  "Testar-Arquivo-0114.ps1",
+        "sha256":  "F2D608C3A5DB4DA2F375187FA432679586D97F17C319BD8751DF492236C159C9"
+    }
+]
+

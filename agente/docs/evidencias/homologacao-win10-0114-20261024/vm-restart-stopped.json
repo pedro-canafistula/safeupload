@@ -1,0 +1,57 @@
+﻿{
+    "result":  "service-stopped-awaiting-observation",
+    "version":  "0.1.14",
+    "commit":  "887abf8dd85830e554bd4c190562cd380644df47",
+    "startedAtUtc":  "2026-10-24T16:37:58.0809325Z",
+    "stoppedUiObserved":  false,
+    "reconnectedUiObserved":  false,
+    "bootStatus":  "pending",
+    "uiBefore":  [
+                     {
+                         "ProcessId":  4416,
+                         "SessionId":  1,
+                         "CreationDate":  "\/Date(1792859753815)\/"
+                     }
+                 ],
+    "serviceBefore":  {
+                          "State":  "Running",
+                          "StartName":  "LocalSystem",
+                          "ProcessId":  3604
+                      },
+    "queueHash":  "426F7E2F5E08ED03C4627B567BBB7BD8E072C222CFBBEB61CDCFA706036E0807",
+    "policyHash":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "eventIds":  [
+                     "a8c6552d-dca9-41eb-9bff-b1782480d158",
+                     "23ab57ce-ebf7-4d12-830c-13ccc8c80319",
+                     "42c3dfc9-841b-4a28-b6d6-d113541a0603",
+                     "5eefda87-50ee-47a3-af57-09546d01cca7",
+                     "0f4144fd-4d31-4e67-91c2-3770cc514f53",
+                     "deb57a31-e063-4b4d-bd82-fd7799f2adf3",
+                     "a25bd1fd-60bc-460c-8fb1-470359c3bba4",
+                     "87c07ef8-c76d-42b9-a740-90a313d6d174",
+                     "301c1d10-1551-46ab-81cb-4e489846d564",
+                     "30bf77d2-726c-4530-85b9-8b10d3cf51fc",
+                     "fbd99c6c-ae8f-46d7-8416-a69d87ac96a8",
+                     "60ecb404-802b-4323-9c45-7ac0043bb104",
+                     "177c5481-862b-42f2-91d4-1df2a988c4ca",
+                     "32f2a969-7a3f-407a-9913-36a306509732",
+                     "fd8da655-d482-4665-b002-906df10793b5",
+                     "d57403fd-16f2-41ac-bc0d-6df3a4766786",
+                     "6307f1de-b252-4b88-bdd8-9a15a0e70eb6",
+                     "55aac927-bc60-4652-b949-9cad32aabbf7",
+                     "2846a267-a476-4fb9-b988-16871d28e809",
+                     "bd0f0ea7-9469-4884-9d83-5593750d208b",
+                     "5ec51996-e0df-4190-9391-63b2b5c903c2",
+                     "6e8bc2ae-b483-4f93-938b-879027e6e0db",
+                     "d0761f89-ea4c-4aa6-ae8a-cf01c4720f29"
+                 ],
+    "bootBefore":  "\/Date(1792859464500)\/",
+    "fixtures":  {
+                     "candidate":  "C:\\ProgramData\\SafeUpload\\queue.jsonl.7267f6b95304461399d4349aede1ee86.tmp",
+                     "emptyCandidate":  "C:\\ProgramData\\SafeUpload\\queue.jsonl.5712c7835b0043008c54d97aae555cd8.tmp",
+                     "junction":  "C:\\ProgramData\\SafeUpload\\queue.jsonl.3b02cd4738904c24b71970010537bb42.tmp",
+                     "target":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\019\\alvo-junction-sintetico",
+                     "candidateHash":  "903470CAE4653AC80282FA92A88764AB0DF90EFC98669A26B2261D9A9A6D0B9C",
+                     "emptyCandidateHash":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+                 }
+}

@@ -10,7 +10,7 @@
     "skipped": 4
   },
   "localFocusedRelease": 39,
-  "vmHomologation": "in-progress",
+  "vmHomologation": "passed-0.1.14-see-homologacao-win10-0114-20261024",
   "files": [
     {
       "file": ".gitattributes",
