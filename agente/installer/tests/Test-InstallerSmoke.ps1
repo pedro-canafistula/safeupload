@@ -145,6 +145,11 @@ try {
     $cleanIntegrity = Read-AuditHealth 'audit-integrity'
     Require ($cleanIntegrity.fileExists -and -not $cleanIntegrity.requiresAttention -and
         $cleanIntegrity.validEvents -ge 2) 'Installed service failed the clean integrity scan.'
+    Require ($cleanIntegrity.queueBytes -eq (Get-Item -LiteralPath $queue).Length -and
+        $cleanIntegrity.pendingEvents -eq $cleanIntegrity.validEvents -and $cleanIntegrity.dispatchedEvents -eq 0 -and
+        $cleanIntegrity.pendingOverrides -eq 0 -and $cleanIntegrity.dispatchedOverrides -eq 0 -and
+        $null -ne $cleanIntegrity.oldestPendingUtc -and $cleanIntegrity.pendingWithoutTimestamp -eq 0)
+        'Installed service did not expose the synthetic offline backlog.'
     # Only synthetic runner data: preserve both malformed and forward-version records.
     [IO.File]::AppendAllText($queue, '{SYNTHETIC_PRIVATE_CONTENT' + "`n" +
         '{"type":"future-runner-record","payload":"SYNTHETIC_PRIVATE_CONTENT"}' + "`n", [Text.UTF8Encoding]::new($false))
@@ -157,6 +162,11 @@ try {
     Require (-not $integrityJson.Contains('SYNTHETIC_PRIVATE_CONTENT') -and
         -not $integrityJson.Contains($dataRoot)) 'Integrity diagnostics disclosed queue contents or path.'
     Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $integrityHash) 'Integrity scan modified queue bytes.'
+    Require ($damagedIntegrity.queueBytes -eq (Get-Item -LiteralPath $queue).Length -and
+        $damagedIntegrity.queueBytes -gt $cleanIntegrity.queueBytes -and
+        $damagedIntegrity.pendingEvents -eq $cleanIntegrity.pendingEvents -and
+        $damagedIntegrity.oldestPendingUtc -eq $cleanIntegrity.oldestPendingUtc)
+        'Unknown or malformed lines distorted the pending inventory.'
     $result.auditIntegrity = [ordered]@{clean=$cleanIntegrity;damaged=$damagedIntegrity;queueHash=$integrityHash}
     $result.steps += 'audit-integrity distinguished malformed and unknown lines without changing queue bytes or disclosing contents'
     $emptyTemporaries = Read-AuditHealth 'audit-temporaries'
@@ -187,6 +197,11 @@ try {
     Require ((Get-Service SafeUploadAgent).Status -eq 'Running') 'The installed service did not survive restart.'
     $integrityAfterRestart = Read-AuditHealth 'audit-integrity'
     Require ($integrityAfterRestart.invalidLines -eq 1 -and $integrityAfterRestart.unknownRecords -eq 1) 'Restart lost integrity diagnostics.'
+    Require ($integrityAfterRestart.queueBytes -eq $damagedIntegrity.queueBytes -and
+        $integrityAfterRestart.pendingEvents -eq $damagedIntegrity.pendingEvents -and
+        $integrityAfterRestart.oldestPendingUtc -eq $damagedIntegrity.oldestPendingUtc)
+        'Restart changed the read-only backlog inventory.'
+    $result.auditIntegrity.afterRestart = $integrityAfterRestart
     $temporariesAfterRestart = Read-AuditHealth 'audit-temporaries'
     Require ($temporariesAfterRestart.candidateFiles -eq 1 -and $temporariesAfterRestart.totalBytes -eq $temporaryBytes -and
         $temporariesAfterRestart.skippedReparsePoints -eq 1) 'Restart lost temporary inventory.'
