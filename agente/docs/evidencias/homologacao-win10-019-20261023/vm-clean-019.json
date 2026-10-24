@@ -1,0 +1,47 @@
+{
+    "result":  "fixture-and-notification-passed-ui-observation-pending",
+    "collectedAtUtc":  "2026-10-23T15:24:19.2984612Z",
+    "testKind":  "Clean",
+    "administrator":  false,
+    "processSession":  1,
+    "initialHistoryCount":  11,
+    "fileName":  "homologacao-019-clean-81a3adac2b0e4211a9cd3b4fd682fdfa.txt",
+    "event":  {
+                  "type":  "event",
+                  "event":  {
+                                "eventId":  "60ecb404-802b-4323-9c45-7ac0043bb104",
+                                "occurredAtUtc":  "2026-10-23T15:24:19.2578629+00:00",
+                                "endpointId":  "DESKTOP-NJN62UI",
+                                "userName":  "DESKTOP-NJN62UI$",
+                                "fileName":  "homologacao-019-clean-81a3adac2b0e4211a9cd3b4fd682fdfa.txt",
+                                "extension":  ".txt",
+                                "sizeBytes":  39,
+                                "verdict":  "Approved",
+                                "categories":  [
+
+                                               ],
+                                "maskedSnippets":  [
+
+                                                   ],
+                                "processName":  "desconhecido",
+                                "processId":  0,
+                                "destinationPath":  "C:\\SafeUpload\\Escopo Monitorado",
+                                "notInspectedReason":  null,
+                                "policyVersion":  1,
+                                "elapsedMs":  24,
+                                "dispatched":  false,
+                                "publishedSha256Hex":  null,
+                                "channel":  "File"
+                            },
+                  "findings":  [
+
+                               ],
+                  "overrideAllowed":  false,
+                  "quarantined":  false
+              },
+    "sourceExists":  true,
+    "quarantinedFile":  [
+
+                        ]
+}
+

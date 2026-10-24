@@ -1,0 +1,218 @@
+﻿{
+    "powershell":  "5.1.26100.33648",
+    "total":  42,
+    "passed":  42,
+    "failed":  0,
+    "tests":  [
+                  {
+                      "name":  "Empty URL explicitly selects local operation",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "HTTPS URL is normalized",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Local HTTP can be used by the contract runner",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Reject unsafe URL: 3",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Reject unsafe URL: 4",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Reject unsafe URL: 5",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Reject unsafe URL: 6",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Reject unsafe URL: 7",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Reject unsafe URL: 8",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Reject unsafe URL: 9",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Reject unsafe URL: 10",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Reject unsafe URL: 11",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "A path containing spaces remains one quoted service executable",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Test mode is explicit and has no staged-driver flag",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Different target directory is refused",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Expected ordinary target directory is accepted",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Users may read and execute installed programs",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Untrusted owner is refused even when the current DACL is read-only",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "A users-writable binary directory is refused",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Inherited-only CREATOR OWNER ACE is allowed on a trusted-owned parent",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Fresh test mode needs no driver",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Missing driver blocks minifilter installation",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Stopped preinstalled driver permits the existing seeding procedure",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Registered driver blocks driver-free mode",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Demand-start driver blocks removal of the agent",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Loaded driver blocks removal even when disabled for the next boot",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Loaded driver blocks policy seeding at install",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Disabled and stopped driver permits removal of the agent",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Existing service is never overwritten by the initial installer",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Payload hashes are verified on real isolated files",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Tampered payload is refused",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Missing payload file is refused",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Empty payload manifest is refused",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Unsafe manifest path is refused: ../outside.dll",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Unsafe manifest path is refused: C:\\outside.dll",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Unsafe manifest path is refused: sample.dll:stream",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Duplicate Windows path is refused",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Malformed digest is refused",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Junction ancestors are refused before privileged file operations",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "UI termination refuses relative or different executable names",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "UI termination stops only the exact executable and leaves the same name elsewhere running",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Retention preview client requires explicit UTC and rejects culture-dependent or missing cutoffs",
+                      "passed":  true,
+                      "error":  null
+                  }
+              ]
+}

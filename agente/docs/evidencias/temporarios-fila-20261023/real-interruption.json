@@ -1,0 +1,50 @@
+[
+  {
+    "scenario": "confirm-events-1",
+    "snapshot": {
+      "DirectoryExists": true,
+      "EntriesExamined": 3,
+      "CandidateFiles": 1,
+      "TotalBytes": 4415488,
+      "UnreadableCandidates": 0,
+      "SkippedReparsePoints": 0,
+      "ScanLimitReached": false,
+      "DirectoryTraversalBlocked": false,
+      "Complete": true,
+      "RequiresAttention": true
+    },
+    "hashesBefore": [
+      "7068E54F984BF598545EC0CB9DA316B5A1124FB4CAD7D518752ED979DFC76E53",
+      "707B2231C4C45F5BFE71BE6A706026E0B2C7E8C93FFB4BD5F6CB38D0E04756E3"
+    ],
+    "hashesAfter": [
+      "7068E54F984BF598545EC0CB9DA316B5A1124FB4CAD7D518752ED979DFC76E53",
+      "707B2231C4C45F5BFE71BE6A706026E0B2C7E8C93FFB4BD5F6CB38D0E04756E3"
+    ],
+    "bytesPreserved": true
+  },
+  {
+    "scenario": "confirm-overrides-1",
+    "snapshot": {
+      "DirectoryExists": true,
+      "EntriesExamined": 3,
+      "CandidateFiles": 1,
+      "TotalBytes": 3940352,
+      "UnreadableCandidates": 0,
+      "SkippedReparsePoints": 0,
+      "ScanLimitReached": false,
+      "DirectoryTraversalBlocked": false,
+      "Complete": true,
+      "RequiresAttention": true
+    },
+    "hashesBefore": [
+      "761B0690DD8AD392870032830F948FC7561B2D30AB4F77CC783D6EA22DF03621",
+      "B643EA7E1CB4BB9B4A78198782ACD5F3A0DF1967D64F732DCEDC5A6FD71CF568"
+    ],
+    "hashesAfter": [
+      "761B0690DD8AD392870032830F948FC7561B2D30AB4F77CC783D6EA22DF03621",
+      "B643EA7E1CB4BB9B4A78198782ACD5F3A0DF1967D64F732DCEDC5A6FD71CF568"
+    ],
+    "bytesPreserved": true
+  }
+]

@@ -1,0 +1,28 @@
+[
+    {
+        "relative":  "resultado\\result.json",
+        "sha256":  "3F719390C93D56D60630D1EC172EB0E0476881C3918C6934C4E8D53E89D9E84B",
+        "bytes":  7668
+    },
+    {
+        "relative":  "reinicio-0113\\result.json",
+        "sha256":  "3ECEC35EEAEC345BAEF1FB90C4AE7662E39CE69A136DC3BEBEC948D82D96F607",
+        "bytes":  4989
+    },
+    {
+        "relative":  "encerramento-0113\\result.json",
+        "sha256":  "0AD4A7462DA56C65E72BE90ED7E75CD10A5DF92B0F5D8D8EC3D1EE7839C2516E",
+        "bytes":  11641
+    },
+    {
+        "relative":  "resultado\\install-0113.log",
+        "sha256":  "94D0C5AB0A32D5888C3F49BE43EDC07E58DCB0EA1158EB9D1731E6E6A09866D1",
+        "bytes":  251989
+    },
+    {
+        "relative":  "encerramento-0113\\uninstall-0113.log",
+        "sha256":  "0FB3F77A4A3F7200B18E91599F90EC5E8F17F9830CBB1AA5DDE27345FCB526C8",
+        "bytes":  86927
+    }
+]
+

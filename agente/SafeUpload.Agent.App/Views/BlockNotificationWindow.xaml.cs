@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using SafeUpload.Agent.App.Notifications;
 using SafeUpload.Agent.App.ViewModels;
 using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Core.Infrastructure;
 
 namespace SafeUpload.Agent.App.Views;
 
@@ -97,7 +98,7 @@ public partial class BlockNotificationWindow : Window
 
         SummaryText.Text = _fileNames.Count == 1
             ? _fileNames[0]
-            : $"{_fileNames.Count} arquivos bloqueados";
+            : $"{_fileNames.Count} ocorrências com restrição";
 
         // A notificação agrega vários bloqueios. A justificativa sempre
         // nomeia o evento mais recente para não conceder uma exceção a um
@@ -109,7 +110,7 @@ public partial class BlockNotificationWindow : Window
             ? handbackVerified == true && !string.IsNullOrWhiteSpace(handbackPath)
                 ? $"Devolvido para: {handbackPath}\nSHA-256: {snapshotSha256Hex ?? "indisponível"}"
                 : "Não foi possível devolver o arquivo com segurança. A versão permanece no staging protegido do SafeUpload e não foi enviada ao destino."
-            : "O arquivo foi retirado da pasta monitorada e guardado em SafeUpload\\_bloqueados na sua pasta de usuário.";
+            : $"Arquivo da ocorrência mais recente movido após a inspeção para: {AgentPaths.QuarantineFolder}. Isso não comprova bloqueio de envio anterior.";
         JustificationPanel.Visibility = justificationEventId is null
             ? Visibility.Collapsed
             : Visibility.Visible;

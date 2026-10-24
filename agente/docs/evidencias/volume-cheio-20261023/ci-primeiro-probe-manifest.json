@@ -1,0 +1,26 @@
+{
+  "tool": "QueueFullVolumeProbe",
+  "commit": "3697d1513fd59e7af286d16b0b5f81bdc94535a6",
+  "sourceDirty": false,
+  "sha256": "5A68A8E049ACB2E2008D2623DBF6D0B59E46EA1AC6808617D6DAF2016B276361",
+  "bytes": 89514791,
+  "selfContained": true,
+  "runtime": "win-x64",
+  "files": [
+    {
+      "name": "appsettings.json",
+      "bytes": 576,
+      "sha256": "5B4A9D31DFEF74B7E911025CD1537D01DD77155AA53A3221FE189DF7712216F0"
+    },
+    {
+      "name": "QueueFullVolumeProbe.exe",
+      "bytes": 89514791,
+      "sha256": "5A68A8E049ACB2E2008D2623DBF6D0B59E46EA1AC6808617D6DAF2016B276361"
+    },
+    {
+      "name": "SafeUpload.Agent.Service.runtimeconfig.json",
+      "bytes": 431,
+      "sha256": "861CB3DB4336469588CB90F8B8FCB5611A44AB95E2A1628493F34E37CE3CF8B3"
+    }
+  ]
+}

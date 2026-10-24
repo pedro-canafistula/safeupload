@@ -1,0 +1,55 @@
+{
+  "source": "135369df7ddabbbc0902658029021dc63724a307",
+  "files": [
+    {
+      "file": "artifact-validation.json",
+      "bytes": 1232,
+      "sha256": "9995F4D8E21D6B86FE0276147E56815A532310262473A154F8DE6FA407F4A1E0"
+    },
+    {
+      "file": "build-result.json",
+      "bytes": 460,
+      "sha256": "5668A24B17D05BB059B70D1763168AD5611C0E28958B2493F189FF2A0400BAFE"
+    },
+    {
+      "file": "candidato.json",
+      "bytes": 454,
+      "sha256": "FD29BE08818360F6C1C801D8A81AA54AB3410E8382CA4E6621DC78293141A80A"
+    },
+    {
+      "file": "ci.json",
+      "bytes": 5824,
+      "sha256": "AD706C042103DA3D5DF02C172EC7368AF2A180FF7692D92D5057199CDC720EE1"
+    },
+    {
+      "file": "local-ps51.json",
+      "bytes": 8308,
+      "sha256": "F934615C3E8DE191D2B556B788BE93E854911E95EF750D8092084B243A7554A3"
+    },
+    {
+      "file": "local-ps7.json",
+      "bytes": 5030,
+      "sha256": "A93CBA7DCA1EE20B7A9EA8CBD3441C5DF2542D2D01D3948DC9BE703D390BF5CC"
+    },
+    {
+      "file": "runner-environment.json",
+      "bytes": 347,
+      "sha256": "4D0F6A7413177E99FEE4C0DC324F2E4FDBEF9F2799E996BC791434361B9B952F"
+    },
+    {
+      "file": "runner-installed.json",
+      "bytes": 10813,
+      "sha256": "B7BA712674197BCC16570941711F735FF1F5311F0252AA8E30CCA341CF9AFE33"
+    },
+    {
+      "file": "runner-ps51.json",
+      "bytes": 8309,
+      "sha256": "7207D1A6E77D8B4499B09A8CABDF2EF8C8468C5B7BE39B3D2FCEFB1F848347B0"
+    },
+    {
+      "file": "runner-ps7.json",
+      "bytes": 5030,
+      "sha256": "89EBFE591170CE8CB636F4DE25678079D577793D4BB477F19AC4F39CC0CA3806"
+    }
+  ]
+}

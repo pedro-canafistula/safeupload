@@ -1,0 +1,11 @@
+{
+  "observedAtUtc": "2026-10-24T16:48:02.928Z",
+  "policyVersion": 1,
+  "securityStatus": "Em auditoria",
+  "monitoring": "AUDITANDO",
+  "historyRows": 23,
+  "cpfMasked": true,
+  "shownThroughExistingTray": true,
+  "manuallyStartedAfterLogin": false,
+  "panelLeftOpenForUninstall": true
+}

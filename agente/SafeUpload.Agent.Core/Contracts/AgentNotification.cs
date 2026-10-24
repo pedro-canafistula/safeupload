@@ -18,7 +18,18 @@ namespace SafeUpload.Agent.Core.Contracts;
 [JsonDerivedType(typeof(StatusNotification), StatusNotification.TypeName)]
 [JsonDerivedType(typeof(EventNotification), EventNotification.TypeName)]
 [JsonDerivedType(typeof(TransferNotification), TransferNotification.TypeName)]
+[JsonDerivedType(typeof(HistoryNotification), HistoryNotification.TypeName)]
 public abstract record AgentNotification;
+
+/// <summary>
+/// Read-only recent history, newest first, delivered on every pipe connection.
+/// Historical events never authorize overrides or raise new block alerts.
+/// </summary>
+public sealed record HistoryNotification(IReadOnlyList<AuditEvent> Events, bool Available = true) : AgentNotification
+{
+    public const string TypeName = "history";
+    public const int MaximumEvents = 500;
+}
 
 /// <summary>Progress of a file held locally before release to a protected destination.</summary>
 public enum TransferPhase
@@ -111,6 +122,7 @@ public sealed record EventNotification(
     AuditEvent Event,
     IReadOnlyList<Finding> Findings,
     bool OverrideAllowed = false,
+    // Confirma movimentação concluída; o veredito Blocked sozinho não basta.
     bool Quarantined = false) : AgentNotification
 {
     /// <summary>Discriminador desta mensagem no NDJSON.</summary>

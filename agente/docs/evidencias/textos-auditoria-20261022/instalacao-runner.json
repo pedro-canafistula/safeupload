@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "steps": [
+    "unsafe URL and missing driver rejected before service creation",
+    "self-contained service and UI installed; SCM identity, arguments, SID and startup verified",
+    "installed LocalSystem service classified a synthetic file and persisted a pending audit event",
+    "service restart preserved the pending event ID, timestamp and policy",
+    "existing installation refused without changing service or policy",
+    "service and startup removed; endpoint policy and data preserved"
+  ],
+  "audit": {
+    "eventId": "505a97c4-9ca9-450a-a883-d754304b4cf8",
+    "fileName": "installer-synthetic-6978d9d6f90e44f882a97e25da207a26.txt",
+    "occurredAtUtc": "2026-10-22T15:14:44.923397+00:00",
+    "endpointId": "runnervm0xl3a",
+    "userName": "runnervm0xl3a$",
+    "policyVersion": 1,
+    "verdict": "Blocked"
+  }
+}

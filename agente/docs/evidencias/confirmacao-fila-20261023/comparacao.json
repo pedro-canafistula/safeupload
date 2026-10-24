@@ -1,0 +1,65 @@
+[
+  {
+    "experiment": "antes",
+    "events": 1000,
+    "medianMs": 16.4313,
+    "allocatedMedianBytes": 3957016,
+    "peakWorkingSetBytes": 266743808
+  },
+  {
+    "experiment": "antes",
+    "events": 10000,
+    "medianMs": 51.6109,
+    "allocatedMedianBytes": 33581424,
+    "peakWorkingSetBytes": 266743808
+  },
+  {
+    "experiment": "antes",
+    "events": 50000,
+    "medianMs": 171.7669,
+    "allocatedMedianBytes": 165546784,
+    "peakWorkingSetBytes": 266743808
+  },
+  {
+    "experiment": "depois",
+    "events": 1000,
+    "medianMs": 19.952,
+    "allocatedMedianBytes": 1898648,
+    "peakWorkingSetBytes": 143474688
+  },
+  {
+    "experiment": "depois",
+    "events": 10000,
+    "medianMs": 64.5874,
+    "allocatedMedianBytes": 13249464,
+    "peakWorkingSetBytes": 143474688
+  },
+  {
+    "experiment": "depois",
+    "events": 50000,
+    "medianMs": 295.6615,
+    "allocatedMedianBytes": 63715040,
+    "peakWorkingSetBytes": 143474688
+  },
+  {
+    "experiment": "depois-buffer",
+    "events": 1000,
+    "medianMs": 15.8781,
+    "allocatedMedianBytes": 2180920,
+    "peakWorkingSetBytes": 131297280
+  },
+  {
+    "experiment": "depois-buffer",
+    "events": 10000,
+    "medianMs": 31.5734,
+    "allocatedMedianBytes": 13236368,
+    "peakWorkingSetBytes": 131297280
+  },
+  {
+    "experiment": "depois-buffer",
+    "events": 50000,
+    "medianMs": 127.7709,
+    "allocatedMedianBytes": 62375232,
+    "peakWorkingSetBytes": 131297280
+  }
+]

@@ -1,0 +1,2 @@
+*.trx -text -diff
+*.json -text -diff

@@ -25,7 +25,7 @@
                        FontSize="15"
                        FontWeight="SemiBold"
                        Foreground="{StaticResource Text}" />
-            <TextBlock Text="Todas as operações registradas neste endpoint, da mais recente para a mais antiga."
+            <TextBlock Text="Eventos recentes disponíveis para esta sessão, da mais recente para a mais antiga."
                        Style="{StaticResource MutedText}"
                        Margin="0,3,0,0" />
         </StackPanel>
@@ -56,7 +56,7 @@
                         <DataGridTextColumn Header="Processo" Binding="{Binding Process}" Width="110" />
 
                         <!-- O mesmo rótulo do status, para o resultado ser reconhecível nas duas telas. -->
-                        <DataGridTemplateColumn Header="Resultado" Width="150">
+                        <DataGridTemplateColumn Header="Inspeção" Width="150">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type vm:HistoryRowViewModel}">
                                     <TextBlock Text="{Binding Status.Text}"
@@ -85,7 +85,7 @@
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <TextBlock Text="Nenhuma operação registrada até agora"
+                <TextBlock Text="{Binding EmptyMessage}"
                            Style="{StaticResource MutedText}"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"

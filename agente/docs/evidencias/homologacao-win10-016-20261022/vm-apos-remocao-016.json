@@ -1,0 +1,8 @@
+{
+    "collectedAtUtc":  "2026-10-22T21:18:13.4656635Z",
+    "serviceAbsent":  true,
+    "uiCount":  0,
+    "startupAbsent":  true,
+    "serviceExeAbsent":  true,
+    "dataValidation":  "hashes-confirmed-by-elevated-test-not-readable-by-common-user"
+}

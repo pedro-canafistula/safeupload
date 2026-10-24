@@ -1,0 +1,237 @@
+{
+  "driverCommit": "e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+  "path": "driver/SafeUpload.Minifilter/Protocol.h",
+  "blob": "c0b5dbb691d8909cda3e7462db52bdf93943efb2",
+  "selectedLines": [
+    {
+      "lineNumber": 1512,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_ENTRIES     ((UINT32) 16)"
+    },
+    {
+      "lineNumber": 1513,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_NAME_CHARS  ((UINT32) 48)"
+    },
+    {
+      "lineNumber": 1514,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_SEALED                 0x00000001u"
+    },
+    {
+      "lineNumber": 1515,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_READONLY               0x00000002u"
+    },
+    {
+      "lineNumber": 1516,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_RETIRED                0x00000004u"
+    },
+    {
+      "lineNumber": 1517,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_DISCARD_ON_CLOSE       0x00000008u"
+    },
+    {
+      "lineNumber": 1518,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_DISCARDED              0x00000010u"
+    },
+    {
+      "lineNumber": 1519,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_DISPOSED               0x00000020u"
+    },
+    {
+      "lineNumber": 1520,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_DISPOSE_DEFERRED       0x00000040u"
+    },
+    {
+      "lineNumber": 1521,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_RENAME_EXCHANGE        0x00000080u"
+    },
+    {
+      "lineNumber": 1522,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_PUBLICATION_OBSERVED   0x00000100u"
+    },
+    {
+      "lineNumber": 1523,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_CANCELLATION_ACCEPTED  0x00000200u"
+    },
+    {
+      "lineNumber": 1524,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_WORK_QUEUED            0x00000400u"
+    },
+    {
+      "lineNumber": 1525,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_VIEW_PRESENT           0x00000800u"
+    },
+    {
+      "lineNumber": 1526,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_VIEW_DETACHED          0x00001000u"
+    },
+    {
+      "lineNumber": 1527,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_OWNER_EXITED           0x00002000u"
+    },
+    {
+      "lineNumber": 1528,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_RECEIPT_PENDING        0x00004000u"
+    },
+    {
+      "lineNumber": 1529,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_RECEIPT_IN_FLIGHT      0x00008000u"
+    },
+    {
+      "lineNumber": 1530,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_CLEANUP_OBSERVED       0x00010000u"
+    },
+    {
+      "lineNumber": 1531,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_RECEIPT_ACKNOWLEDGED   0x00020000u"
+    },
+    {
+      "lineNumber": 1532,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_RENAME_RPC_PENDING     0x00040000u"
+    },
+    {
+      "lineNumber": 1533,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_SEAL_RPC_PENDING       0x00080000u"
+    },
+    {
+      "lineNumber": 1534,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_FLAG_SPACE_FAILED           0x00100000u"
+    },
+    {
+      "lineNumber": 1535,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_SECTION_DATA                0x00000001u"
+    },
+    {
+      "lineNumber": 1536,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_SECTION_IMAGE               0x00000002u"
+    },
+    {
+      "lineNumber": 1537,
+      "text": "#define SAFEUPLOAD_STAGE_STREAM_SECTION_CACHE               0x00000004u"
+    },
+    {
+      "lineNumber": 1538,
+      "text": ""
+    },
+    {
+      "lineNumber": 1539,
+      "text": "typedef struct _SAFEUPLOAD_STAGE_STREAM_RECORD {"
+    },
+    {
+      "lineNumber": 1540,
+      "text": "    GUID TransferId;"
+    },
+    {
+      "lineNumber": 1541,
+      "text": "    UINT32 Flags;                   // SAFEUPLOAD_STAGE_STREAM_FLAG_*"
+    },
+    {
+      "lineNumber": 1542,
+      "text": "    UINT32 FileObjects;             // upper FILE_OBJECTs created and not yet closed"
+    },
+    {
+      "lineNumber": 1543,
+      "text": "    UINT32 ShareOpenCount;          // open handles in the version's share access"
+    },
+    {
+      "lineNumber": 1544,
+      "text": "    UINT32 RpcReferences;           // pins held by the stage worker / waiters"
+    },
+    {
+      "lineNumber": 1545,
+      "text": "    UINT32 OwnerProcessId;          // the view's original requestor, 0 without a view"
+    },
+    {
+      "lineNumber": 1546,
+      "text": "    UINT32 Wait;                    // STAGE_WAIT_* (0 = nothing the retry timer covers)"
+    },
+    {
+      "lineNumber": 1547,
+      "text": "    UINT32 SectionBits;             // SAFEUPLOAD_STAGE_STREAM_SECTION_*"
+    },
+    {
+      "lineNumber": 1548,
+      "text": "    UINT32 Reserved0;"
+    },
+    {
+      "lineNumber": 1549,
+      "text": "    UINT64 DestinationGeneration;"
+    },
+    {
+      "lineNumber": 1550,
+      "text": "    UINT32 NameChars;"
+    },
+    {
+      "lineNumber": 1551,
+      "text": "    UINT32 Reserved1;"
+    },
+    {
+      "lineNumber": 1552,
+      "text": "    WCHAR Name[SAFEUPLOAD_STAGE_STREAM_NAME_CHARS];   // the tail of the version's name"
+    },
+    {
+      "lineNumber": 1553,
+      "text": "} SAFEUPLOAD_STAGE_STREAM_RECORD, *PSAFEUPLOAD_STAGE_STREAM_RECORD;"
+    },
+    {
+      "lineNumber": 1554,
+      "text": ""
+    },
+    {
+      "lineNumber": 1555,
+      "text": "typedef struct _SAFEUPLOAD_STAGE_STREAMS {"
+    },
+    {
+      "lineNumber": 1556,
+      "text": "    UINT32 StructSize;"
+    },
+    {
+      "lineNumber": 1557,
+      "text": "    UINT32 ProtocolVersion;"
+    },
+    {
+      "lineNumber": 1558,
+      "text": "    UINT32 Count;                   // valid entries"
+    },
+    {
+      "lineNumber": 1559,
+      "text": "    UINT32 Total;                   // live versions (Count < Total when the snapshot was truncated)"
+    },
+    {
+      "lineNumber": 1560,
+      "text": "    SAFEUPLOAD_STAGE_STREAM_RECORD Entries[SAFEUPLOAD_STAGE_STREAM_ENTRIES];"
+    },
+    {
+      "lineNumber": 1561,
+      "text": "} SAFEUPLOAD_STAGE_STREAMS, *PSAFEUPLOAD_STAGE_STREAMS;"
+    },
+    {
+      "lineNumber": 1562,
+      "text": "C_ASSERT(sizeof(SAFEUPLOAD_STAGE_STREAM_RECORD) == 160);"
+    },
+    {
+      "lineNumber": 1563,
+      "text": "C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_STAGE_STREAM_RECORD, DestinationGeneration) == 48);"
+    },
+    {
+      "lineNumber": 1564,
+      "text": "C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_STAGE_STREAM_RECORD, Name) == 64);"
+    },
+    {
+      "lineNumber": 1565,
+      "text": "C_ASSERT(sizeof(SAFEUPLOAD_STAGE_STREAMS) == 16 + 16 * 160);"
+    },
+    {
+      "lineNumber": 1566,
+      "text": "C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_STAGE_STREAMS, Entries) == 16);"
+    }
+  ],
+  "protocolAndCommand": [
+    {
+      "lineNumber": 55,
+      "text": "#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 18)"
+    },
+    {
+      "lineNumber": 567,
+      "text": "#define SAFEUPLOAD_CONTROL_STAGE_STREAMS                    ((UINT32) 29)"
+    }
+  ]
+}

@@ -1,0 +1,249 @@
+{
+    "result":  "passed",
+    "collectedAtUtc":  "2026-10-22T21:16:41.4969298Z",
+    "account":  "DESKTOP-NJN62UI\\safeuploadlab",
+    "administrator":  false,
+    "processSession":  1,
+    "historyCount":  9,
+    "status":  {
+                   "type":  "status",
+                   "policyVersion":  1,
+                   "activeCategories":  5,
+                   "protectionActive":  true,
+                   "auditOnly":  true,
+                   "admissionCoverage":  "NotAvailable",
+                   "admissionCoverageReason":  null,
+                   "nativePolicyGeneration":  null
+               },
+    "history":  {
+                    "type":  "history",
+                    "events":  [
+                                   {
+                                       "eventId":  "301c1d10-1551-46ab-81cb-4e489846d564",
+                                       "occurredAtUtc":  "2026-10-22T20:55:54.0664428+00:00",
+                                       "endpointId":  "DESKTOP-NJN62UI",
+                                       "userName":  "DESKTOP-NJN62UI$",
+                                       "fileName":  "homologacao-016-cpf-675cf1a3220c4b53a7d86021d17acc5d.txt",
+                                       "extension":  ".txt",
+                                       "sizeBytes":  28,
+                                       "verdict":  "Blocked",
+                                       "categories":  [
+                                                          "Cpf"
+                                                      ],
+                                       "maskedSnippets":  [
+                                                              "\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u000725"
+                                                          ],
+                                       "processName":  "desconhecido",
+                                       "processId":  0,
+                                       "destinationPath":  "C:\\SafeUpload\\Escopo Monitorado",
+                                       "notInspectedReason":  null,
+                                       "policyVersion":  1,
+                                       "elapsedMs":  5,
+                                       "dispatched":  false,
+                                       "publishedSha256Hex":  null,
+                                       "channel":  "File"
+                                   },
+                                   {
+                                       "eventId":  "87c07ef8-c76d-42b9-a740-90a313d6d174",
+                                       "occurredAtUtc":  "2026-10-22T20:55:31.6785608+00:00",
+                                       "endpointId":  "DESKTOP-NJN62UI",
+                                       "userName":  "DESKTOP-NJN62UI$",
+                                       "fileName":  "homologacao-016-clean-253f88bae86b4f39a3f2361141cd0270.txt",
+                                       "extension":  ".txt",
+                                       "sizeBytes":  39,
+                                       "verdict":  "Approved",
+                                       "categories":  [
+
+                                                      ],
+                                       "maskedSnippets":  [
+
+                                                          ],
+                                       "processName":  "desconhecido",
+                                       "processId":  0,
+                                       "destinationPath":  "C:\\SafeUpload\\Escopo Monitorado",
+                                       "notInspectedReason":  null,
+                                       "policyVersion":  1,
+                                       "elapsedMs":  30,
+                                       "dispatched":  false,
+                                       "publishedSha256Hex":  null,
+                                       "channel":  "File"
+                                   },
+                                   {
+                                       "eventId":  "a25bd1fd-60bc-460c-8fb1-470359c3bba4",
+                                       "occurredAtUtc":  "2026-10-22T14:05:02.4645445+00:00",
+                                       "endpointId":  "DESKTOP-NJN62UI",
+                                       "userName":  "DESKTOP-NJN62UI$",
+                                       "fileName":  "cpf-teste.txt.txt",
+                                       "extension":  ".txt",
+                                       "sizeBytes":  27,
+                                       "verdict":  "Blocked",
+                                       "categories":  [
+                                                          "Cpf"
+                                                      ],
+                                       "maskedSnippets":  [
+                                                              "\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u000725"
+                                                          ],
+                                       "processName":  "desconhecido",
+                                       "processId":  0,
+                                       "destinationPath":  "C:\\SafeUpload\\Escopo Monitorado",
+                                       "notInspectedReason":  null,
+                                       "policyVersion":  1,
+                                       "elapsedMs":  1,
+                                       "dispatched":  false,
+                                       "publishedSha256Hex":  null,
+                                       "channel":  "File"
+                                   },
+                                   {
+                                       "eventId":  "deb57a31-e063-4b4d-bd82-fd7799f2adf3",
+                                       "occurredAtUtc":  "2026-10-22T14:04:12.980877+00:00",
+                                       "endpointId":  "DESKTOP-NJN62UI",
+                                       "userName":  "DESKTOP-NJN62UI$",
+                                       "fileName":  "cpf-teste.txt.txt",
+                                       "extension":  ".txt",
+                                       "sizeBytes":  0,
+                                       "verdict":  "Approved",
+                                       "categories":  [
+
+                                                      ],
+                                       "maskedSnippets":  [
+
+                                                          ],
+                                       "processName":  "desconhecido",
+                                       "processId":  0,
+                                       "destinationPath":  "C:\\SafeUpload\\Escopo Monitorado",
+                                       "notInspectedReason":  null,
+                                       "policyVersion":  1,
+                                       "elapsedMs":  0,
+                                       "dispatched":  false,
+                                       "publishedSha256Hex":  null,
+                                       "channel":  "File"
+                                   },
+                                   {
+                                       "eventId":  "0f4144fd-4d31-4e67-91c2-3770cc514f53",
+                                       "occurredAtUtc":  "2026-10-22T14:04:04.5239652+00:00",
+                                       "endpointId":  "DESKTOP-NJN62UI",
+                                       "userName":  "DESKTOP-NJN62UI$",
+                                       "fileName":  "Novo Documento de Texto.txt",
+                                       "extension":  ".txt",
+                                       "sizeBytes":  0,
+                                       "verdict":  "Approved",
+                                       "categories":  [
+
+                                                      ],
+                                       "maskedSnippets":  [
+
+                                                          ],
+                                       "processName":  "desconhecido",
+                                       "processId":  0,
+                                       "destinationPath":  "C:\\SafeUpload\\Escopo Monitorado",
+                                       "notInspectedReason":  null,
+                                       "policyVersion":  1,
+                                       "elapsedMs":  0,
+                                       "dispatched":  false,
+                                       "publishedSha256Hex":  null,
+                                       "channel":  "File"
+                                   },
+                                   {
+                                       "eventId":  "5eefda87-50ee-47a3-af57-09546d01cca7",
+                                       "occurredAtUtc":  "2026-10-22T14:03:46.0877131+00:00",
+                                       "endpointId":  "DESKTOP-NJN62UI",
+                                       "userName":  "DESKTOP-NJN62UI$",
+                                       "fileName":  "..txt",
+                                       "extension":  ".txt",
+                                       "sizeBytes":  27,
+                                       "verdict":  "Blocked",
+                                       "categories":  [
+                                                          "Cpf"
+                                                      ],
+                                       "maskedSnippets":  [
+                                                              "\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u000725"
+                                                          ],
+                                       "processName":  "desconhecido",
+                                       "processId":  0,
+                                       "destinationPath":  "C:\\SafeUpload\\Escopo Monitorado",
+                                       "notInspectedReason":  null,
+                                       "policyVersion":  1,
+                                       "elapsedMs":  48,
+                                       "dispatched":  false,
+                                       "publishedSha256Hex":  null,
+                                       "channel":  "File"
+                                   },
+                                   {
+                                       "eventId":  "42c3dfc9-841b-4a28-b6d6-d113541a0603",
+                                       "occurredAtUtc":  "2026-10-22T13:59:41.3162596+00:00",
+                                       "endpointId":  "DESKTOP-NJN62UI",
+                                       "userName":  "DESKTOP-NJN62UI$",
+                                       "fileName":  "teste-cpf-02.txt",
+                                       "extension":  ".txt",
+                                       "sizeBytes":  0,
+                                       "verdict":  "Approved",
+                                       "categories":  [
+
+                                                      ],
+                                       "maskedSnippets":  [
+
+                                                          ],
+                                       "processName":  "desconhecido",
+                                       "processId":  0,
+                                       "destinationPath":  "C:\\SafeUpload\\Escopo Monitorado",
+                                       "notInspectedReason":  null,
+                                       "policyVersion":  1,
+                                       "elapsedMs":  1,
+                                       "dispatched":  false,
+                                       "publishedSha256Hex":  null,
+                                       "channel":  "File"
+                                   },
+                                   {
+                                       "eventId":  "23ab57ce-ebf7-4d12-830c-13ccc8c80319",
+                                       "occurredAtUtc":  "2026-10-22T13:59:33.3077719+00:00",
+                                       "endpointId":  "DESKTOP-NJN62UI",
+                                       "userName":  "DESKTOP-NJN62UI$",
+                                       "fileName":  "Novo Documento de Texto.txt",
+                                       "extension":  ".txt",
+                                       "sizeBytes":  0,
+                                       "verdict":  "Approved",
+                                       "categories":  [
+
+                                                      ],
+                                       "maskedSnippets":  [
+
+                                                          ],
+                                       "processName":  "desconhecido",
+                                       "processId":  0,
+                                       "destinationPath":  "C:\\SafeUpload\\Escopo Monitorado",
+                                       "notInspectedReason":  null,
+                                       "policyVersion":  1,
+                                       "elapsedMs":  10,
+                                       "dispatched":  false,
+                                       "publishedSha256Hex":  null,
+                                       "channel":  "File"
+                                   },
+                                   {
+                                       "eventId":  "a8c6552d-dca9-41eb-9bff-b1782480d158",
+                                       "occurredAtUtc":  "2026-10-22T12:09:36.3064497+00:00",
+                                       "endpointId":  "DESKTOP-NJN62UI",
+                                       "userName":  "DESKTOP-NJN62UI$",
+                                       "fileName":  "win10-synthetic-028b0d23bd61480ea2833c9f817416ca.txt",
+                                       "extension":  ".txt",
+                                       "sizeBytes":  29,
+                                       "verdict":  "Blocked",
+                                       "categories":  [
+                                                          "Cpf"
+                                                      ],
+                                       "maskedSnippets":  [
+                                                              "\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u000725"
+                                                          ],
+                                       "processName":  "desconhecido",
+                                       "processId":  0,
+                                       "destinationPath":  "C:\\SafeUpload\\Escopo Monitorado",
+                                       "notInspectedReason":  null,
+                                       "policyVersion":  1,
+                                       "elapsedMs":  28,
+                                       "dispatched":  false,
+                                       "publishedSha256Hex":  null,
+                                       "channel":  "File"
+                                   }
+                               ],
+                    "available":  true
+                }
+}

@@ -1,0 +1,14 @@
+{
+  "issue": 59,
+  "commit": "cc41f9dd5e07b6eacb0b7b908166fc1d1c457747",
+  "preparedContractSha256": "276BCAF7C631E63D27CB0B2F1FB65016B9CE4DCDB4748A35AAF0250E5B05BEC8",
+  "testSourceSha256": "BE6D1A7FF5FE58AF1C73546CC30C5BF3F8DE1C124D4F5786D7AE6257A9616E8B",
+  "localDefaultPassed": 47,
+  "localFeaturePassed": 47,
+  "failed": 0,
+  "skipped": 0,
+  "configuration": "Release",
+  "runtimeWiringChanged": false,
+  "driverLoaded": false,
+  "mainRebasedOrMerged": false
+}

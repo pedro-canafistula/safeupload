@@ -1,0 +1,36 @@
+{
+  "sourceCommit": "0e9e05d1562f64d3b384a2426307d3644c9340f3",
+  "images": [
+    {
+      "sha256": "BE880EB73300FA0354BA2812531728B32E6077BE5E3A468D749DE07C6748869E",
+      "file": "aviso-movido.png"
+    },
+    {
+      "sha256": "049155B08C0ACAF83EFF40C0EB5DC219C5EB8F328FF2B3F0F21D1E14EC70B69E",
+      "file": "aviso-sem-confirmacao.png"
+    },
+    {
+      "sha256": "9CD6FC283D0617253A6F208C6DF44F05FB8CF33DCE403C1A3869555C06A8A28F",
+      "file": "historico.png"
+    },
+    {
+      "sha256": "E3E592EC6E9807A6EB316DE1D61865FA2B95C16A0B558DD660CAA74FB8BFA1FA",
+      "file": "status.png"
+    }
+  ],
+  "preview": "Renderizacao WPF com dados sinteticos; sem pipes, clipboard ou servico. Nao e homologacao da VM.",
+  "localTests": [
+    {
+      "total": 24,
+      "passed": 24,
+      "configuration": "debug",
+      "failed": 0
+    },
+    {
+      "total": 24,
+      "passed": 24,
+      "configuration": "release",
+      "failed": 0
+    }
+  ]
+}

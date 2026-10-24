@@ -1,0 +1,200 @@
+{
+  "issue": 58,
+  "source": "6c2bba11ffaa7acf1dd9805104d9a490ce28f7ef",
+  "localTrials": 6,
+  "localResult": "passed",
+  "ciRun": 40115466589,
+  "ciResult": "success",
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 67,
+      "sha256": "CF352DA3DF31B9DEA60706F26C593FD0C68AFA892E8DD5E37D748FCE87C37482"
+    },
+    {
+      "file": "artifacts.json",
+      "bytes": 6497,
+      "sha256": "9D5D2340A281EE0A67076E17A09E809F4D320D28E1E91BC4DD5BDDC016B55D18"
+    },
+    {
+      "file": "checks-final.json",
+      "bytes": 31649,
+      "sha256": "2EEB4355A4CAF61C983400E3F373D93F1DE537AB4E08DBDCECC92699A1EFC30E"
+    },
+    {
+      "file": "ci-artifact-verification.json",
+      "bytes": 11819,
+      "sha256": "B7CB1C0D4BC169CAF6F6720939B45E552F121482D24C340ADC203EE7F129A5A2"
+    },
+    {
+      "file": "ci-Debug-integrity-1.json",
+      "bytes": 779,
+      "sha256": "AE8906FD6E6B6BD7FB78BB7FE4326BA6BE4BC6A622454F9409E3E01124AB850B"
+    },
+    {
+      "file": "ci-Debug-integrity-2.json",
+      "bytes": 779,
+      "sha256": "F4D65E17D0D992872A948C2081E037A8BAFE8D902211A266013B5BBD6CE77B49"
+    },
+    {
+      "file": "ci-Debug-integrity-3.json",
+      "bytes": 779,
+      "sha256": "4BA5814F0DE97A115FB653436F6A2817CD102A690D8C76E90B70E36BC74A05E8"
+    },
+    {
+      "file": "ci-Debug-preview-1.json",
+      "bytes": 777,
+      "sha256": "A9EEAEBBF536591F427697D822E084A1FE03C4570C9D132F321927492EE498C0"
+    },
+    {
+      "file": "ci-Debug-preview-2.json",
+      "bytes": 777,
+      "sha256": "ECFF9AD20ADE1838566467508CA4E58BE62301B4A3991F759A53BB747FD5F215"
+    },
+    {
+      "file": "ci-Debug-preview-3.json",
+      "bytes": 777,
+      "sha256": "AB986293693FDA61B489D1B9EE8BE8CCBECBE7F48D1D4BF1561805BFADB80EDC"
+    },
+    {
+      "file": "ci-Debug-probe.log",
+      "bytes": 242,
+      "sha256": "AFA3E7F4DFEF9625BA726B85001CED2DEB80AB2B2E205E3A2B8914AEA99B2887"
+    },
+    {
+      "file": "ci-Debug-result.json",
+      "bytes": 5878,
+      "sha256": "A020EC29E22CCD196E7564068D6BB35C6810821603E0DAA5A63CA6743184AA67"
+    },
+    {
+      "file": "ci-debug.log",
+      "bytes": 37851,
+      "sha256": "643E9CBFDA7F80C9C451DE45E07C942B2B50FE3B5D09521FCBAE8EDA1FC9FEC9"
+    },
+    {
+      "file": "ci-install.log",
+      "bytes": 33227,
+      "sha256": "AC732046670D76E7D537460E6223A2871FD36D2FC3EC11A5B659B749B7EB8349"
+    },
+    {
+      "file": "ci-path-mapping.json",
+      "bytes": 4707,
+      "sha256": "9B24543DE2B21BE153F6805AE3FB3C854B5419C3EDD9BB21EF2D8E0FCD167BEA"
+    },
+    {
+      "file": "ci-Release-integrity-1.json",
+      "bytes": 779,
+      "sha256": "CEC3A99775BF8E479EA873FEB467006EE8523D4B59DDF47473778A152165C228"
+    },
+    {
+      "file": "ci-Release-integrity-2.json",
+      "bytes": 779,
+      "sha256": "AF66E7506F2C51868B5DF529676EEABAA01B9E05D55DCEBB0AE743F34C696333"
+    },
+    {
+      "file": "ci-Release-integrity-3.json",
+      "bytes": 778,
+      "sha256": "8BF12B146A6919FB1773A460CF786C752FBFDA45D9AE1B3FFA0AE0FE519B77A3"
+    },
+    {
+      "file": "ci-Release-preview-1.json",
+      "bytes": 776,
+      "sha256": "C471204C5AD15D9BAA104F73A0B7F28F8B224E71ADD51D30B310F763737B0CDB"
+    },
+    {
+      "file": "ci-Release-preview-2.json",
+      "bytes": 775,
+      "sha256": "AE3A19122E6B6E2E28612AFB14747103E2C7B5F4BDD96B11C1F967DDECBA136B"
+    },
+    {
+      "file": "ci-Release-preview-3.json",
+      "bytes": 777,
+      "sha256": "734A9B5FB0C85D456D3C3DA8AABF22B3017630332D083FCE987B47FF1FF54E9D"
+    },
+    {
+      "file": "ci-Release-probe.log",
+      "bytes": 242,
+      "sha256": "0B54DEF5E8A8ECC7651E4412A261C8895C0D68CCB348D70E8E8BEE66B14B1A40"
+    },
+    {
+      "file": "ci-Release-result.json",
+      "bytes": 5874,
+      "sha256": "BB103A37AD754989CFBA51EE6EFF65C385ECA8821D772B829DC992C0E94C4162"
+    },
+    {
+      "file": "ci-release.log",
+      "bytes": 38295,
+      "sha256": "FC9CF6EB361D1BBB2CD746116DF42FC7D366856EC0DCC40C235A47B0E68266B6"
+    },
+    {
+      "file": "ci-run.json",
+      "bytes": 15494,
+      "sha256": "E2673E4E22F642C4897775CF7710F4C528279434C317872209FB5A636E45E7C4"
+    },
+    {
+      "file": "functional-excerpts.json",
+      "bytes": 5440,
+      "sha256": "448CBBD5E54C6466D51A8B003ABF168DF182B3ECE2CA3D5FEC199FF70A578795"
+    },
+    {
+      "file": "functional-run.json",
+      "bytes": 15482,
+      "sha256": "5129D31E51349F699516E85FF29ECD2044AE1D2F93DC1AF809619B6D15F6FA2E"
+    },
+    {
+      "file": "guard-installed.log",
+      "bytes": 847,
+      "sha256": "31317CD136C1F4105F662CC2643FA67E230A39021506276C0742EB5AA7EC6B23"
+    },
+    {
+      "file": "guard-result.json",
+      "bytes": 141,
+      "sha256": "202777C4628A067CA30AF81C4A5CB0435B6E7659B34F0CDF781B77B417197A48"
+    },
+    {
+      "file": "local-final-release.log",
+      "bytes": 390,
+      "sha256": "CFBEC352C99ACE85481E2B6B48EA9859840708145EA11366368973A857912614"
+    },
+    {
+      "file": "local-integrity-1.json",
+      "bytes": 780,
+      "sha256": "CD67EAA663DD19A0C5DA3B7D30BB5006E799D881C788AE197858793FA85C5BF5"
+    },
+    {
+      "file": "local-integrity-2.json",
+      "bytes": 780,
+      "sha256": "833FAE785E5833FF5B45699D4CCB62B0D3C2542F81AE8604315D44960C657266"
+    },
+    {
+      "file": "local-integrity-3.json",
+      "bytes": 780,
+      "sha256": "2D530A974BCEC0F034D19B1CFE12CC79ADC0E59E9378CEC1487F35054931F221"
+    },
+    {
+      "file": "local-preview-1.json",
+      "bytes": 777,
+      "sha256": "19109B27BB34DBE602917A7CC8C27C6793DF18DEE7E0FE777436511D7E48F278"
+    },
+    {
+      "file": "local-preview-2.json",
+      "bytes": 778,
+      "sha256": "637A1E08CBE2D0525012B022EEF2F6B0CC6F8D4901C47E0AB502453662551A22"
+    },
+    {
+      "file": "local-preview-3.json",
+      "bytes": 778,
+      "sha256": "B58B4819D63B47EEAF379560FC42D7A319B9794E5CE3425EDCCFE3764945BF64"
+    },
+    {
+      "file": "local-result-original.json",
+      "bytes": 5883,
+      "sha256": "E3046B8AD61317CDF2435C1E5A50FACB64F95F8B497A56EB63E02F146835B7FD"
+    },
+    {
+      "file": "source-identity.json",
+      "bytes": 332,
+      "sha256": "4283669B76BC2E769873E6A515D24BC9C0CFFFB95DF8906BC81FA7DCC77FD440"
+    }
+  ]
+}

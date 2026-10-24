@@ -1,0 +1,133 @@
+{
+  "source": "8801944cdcd9a245a3eb02107305771c85b91a3a",
+  "version": "0.1.9",
+  "result": "uninstall-failed-ui-remains",
+  "issue": 50,
+  "files": [
+    {
+      "file": "Preflight-019.ps1",
+      "bytes": 2712,
+      "sha256": "51ACB6BD286AB33708476681A7143CA92A5EE00248E7BEC872FF12916061FA13"
+    },
+    {
+      "file": "Instalar-Testar-019.ps1",
+      "bytes": 6594,
+      "sha256": "3A56DB2903F37EFA7E26AF7FBFCE9780F29EF8C12A45317FA67E19A4B9C64ECF"
+    },
+    {
+      "file": "Testar-Arquivo-019.ps1",
+      "bytes": 3981,
+      "sha256": "8D0ECB979F06549639A738A299A5F6757260633005A9576F839A3319F4DBF74D"
+    },
+    {
+      "file": "Reiniciar-Validar-019.ps1",
+      "bytes": 6087,
+      "sha256": "AC6D0924E7338AC4F250430E66971395DAA394FCAB1BD444497CEE92DE890B86"
+    },
+    {
+      "file": "Ler-Boot-019.ps1",
+      "bytes": 2982,
+      "sha256": "9BF1EDB4E1E86C2E31F584CC9AAFF001A4B624AE796F232F2FF3FF38611EE628"
+    },
+    {
+      "file": "Finalizar-019.ps1",
+      "bytes": 6611,
+      "sha256": "09E39649A968DB3BF05391A1977E43801B690B52D413C1C9BC4F6F2E0BD50987"
+    },
+    {
+      "file": "vm-install-original.json",
+      "bytes": 10495,
+      "sha256": "AF3BE0CAB5ED040682383E80D7FD47B5B175ADC147B67E0D513741C795FD1B1C"
+    },
+    {
+      "file": "vm-restart-original.json",
+      "bytes": 4125,
+      "sha256": "FC21FE7A5FBD200EFCEE257453C44EB4FF3E42D1FAB114E03A8D7567113B7AF3"
+    },
+    {
+      "file": "vm-final-original.json",
+      "bytes": 9320,
+      "sha256": "A5AB471144C2D9B521D411B400BBBDA6AD0E2239E6384E5C80559F67F1A6765D"
+    },
+    {
+      "file": "vm-boot-019.json",
+      "bytes": 22208,
+      "sha256": "86FA59F9927F23CE4D9ACFF0784F41E2C99935069EFB6DD9886503F75041258D"
+    },
+    {
+      "file": "vm-clean-019.json",
+      "bytes": 2044,
+      "sha256": "D25FB105C87ECF5780266316E68582366EBBBB1D058612D01CE3C89C990C621D"
+    },
+    {
+      "file": "vm-cpf-019.json",
+      "bytes": 2742,
+      "sha256": "6432C2061ACE20F8BB9106C0C1F1173F24EB8A7D76F354964717EDF7AB57FA90"
+    },
+    {
+      "file": "vm-admin-access.json",
+      "bytes": 90,
+      "sha256": "D3C8E079EA2E87FADBC6165CD361526A0064AB2891EA23F0738059FFB2F5BD30"
+    },
+    {
+      "file": "vm-uninstall-investigation.json",
+      "bytes": 548,
+      "sha256": "5BF6395989577C5162D152D50E362597F868B516D6F1C1AFC5DB8B3FF45C9A4A"
+    },
+    {
+      "file": "vm-remnants-019.json",
+      "bytes": 16973,
+      "sha256": "1F3B9D9C826A316218EAE6704EAEEFCE73C70AC4B9A9CD11798F6A6F2D26338A"
+    },
+    {
+      "file": "boot-cross-check.json",
+      "bytes": 112,
+      "sha256": "5EA00F5E721FFA956DECDFD8309B5634E3A43261CB275873DB79DD541F4C0394"
+    },
+    {
+      "file": "conferencia-ui.json",
+      "bytes": 1063,
+      "sha256": "467C7C1FABA8F2287FE357323F3A89FDC535A7C004C8DC1B38915AAE25440CD3"
+    },
+    {
+      "file": "vm-isolation.txt",
+      "bytes": 260,
+      "sha256": "9D64427F24722890B54DED7EAA569F6F49449643F44F636F38D4E2BCC903CAA5"
+    },
+    {
+      "file": "install-019.log",
+      "bytes": 252058,
+      "sha256": "B62D9E94AA2486BFFA11ACB2AA9B6BEF5FCF9B24FA4C7800FED81D4957F4A753"
+    },
+    {
+      "file": "uninstall-019.log",
+      "bytes": 93580,
+      "sha256": "C68DC7DDD1732A25C075505870D9626287D520DF78E8F1FE803DAB42D8F4A266"
+    },
+    {
+      "file": "01-aviso-cpf.jpg",
+      "bytes": 146510,
+      "sha256": "2E02C3EE554AC19CAD3FD9D734F2820E22F144336D2E2DFDE5491BA7EA0D2FEF"
+    },
+    {
+      "file": "02-historico.jpg",
+      "bytes": 154763,
+      "sha256": "777E6DD9C796488E2EC6D087700D370608136504FBB661C5EAADE1292435F552"
+    },
+    {
+      "file": "03-servico-indisponivel.jpg",
+      "bytes": 127064,
+      "sha256": "F97824D8416C909EFA112A7BF3F2B115CD89C92558841B4889A02116081458BB"
+    },
+    {
+      "file": "04-reconectado.jpg",
+      "bytes": 125949,
+      "sha256": "1D21FEFBD819FA5C43E4DA16CE2C9A5909C83BC00E6B26873D17ABFC9867D364"
+    },
+    {
+      "file": "05-painel-apos-boot.jpg",
+      "bytes": 135772,
+      "sha256": "C5FEF4E5F4574833591821C9040BA3AAA0006685EFEB0F2DAD50D0CF0876C0FB"
+    }
+  ]
+}

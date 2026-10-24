@@ -1,0 +1,52 @@
+{
+  "result": "reconnection-and-uninstall-passed",
+  "version": "0.1.6",
+  "sourceCommit": "0e9e05d1562f64d3b384a2426307d3644c9340f3",
+  "historyCount": 9,
+  "visualObservation": "disconnect-reconnect-history-nine-no-old-popup-observed",
+  "cloneAgentInstalled": false,
+  "files": [
+    {
+      "file": "Validar-Encerramento-016.ps1",
+      "bytes": 8390,
+      "sha256": "3bd4284e14d715230bcca5a61a08d8c4e562ec590ffd397ba33a634bbcea01f2"
+    },
+    {
+      "file": "vm-encerramento-016.json",
+      "bytes": 3225,
+      "sha256": "03b5cff91cea617b551eb335c4ac2ef3e31132bf8fa714e16585ef1d5499d1fc"
+    },
+    {
+      "file": "vm-pipe-reconexao-016.json",
+      "bytes": 15046,
+      "sha256": "25756b3e0330fb7362f0de618fe52000e7c0e8c1b9ea44d94b4ddf130772d3cd"
+    },
+    {
+      "file": "vm-apos-remocao-016.json",
+      "bytes": 252,
+      "sha256": "3ab3d12103e396f68c1ee63626bbd61337fd63b45a9998ee356328c4026497ec"
+    },
+    {
+      "file": "vm-uninstall-016-final.log",
+      "bytes": 87149,
+      "sha256": "b241fea31ef91d7da068c2dea4d0d72353f548b4c89c9ee4ae60d334d0e692b9"
+    },
+    {
+      "file": "016-servico-indisponivel.jpg",
+      "bytes": 118086,
+      "sha256": "c00bd4fb907ace7b32ddb5fbd5ac5bb84e5b3a0b3e696c20b0cf577875eab4d2"
+    },
+    {
+      "file": "016-servico-reconectado.jpg",
+      "bytes": 116626,
+      "sha256": "281befa78eb0e88b35c62fc693138e4b53782876123c8d1e491fce166caee144"
+    },
+    {
+      "file": "016-historico-reconectado.jpg",
+      "bytes": 127245,
+      "sha256": "845bb9511920a3d8628f9acba356b90df73c50af003bcd7a73be0c1a981e7872"
+    }
+  ],
+  "pipeReceiptNormalization": "Literal U+0007 control characters received in maskedSnippets escaped as JSON \\u0007; no event IDs or values replaced.",
+  "originalPipeReceiptSha256": "0905979ef56ee58beeaa2c9f84b13fbb284bb3069528cb98f21014e7da8665d8"
+}

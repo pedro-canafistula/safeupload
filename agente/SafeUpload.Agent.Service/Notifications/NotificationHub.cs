@@ -23,7 +23,7 @@ public sealed class NotificationHub
     /// Cobre a janela em que o usuário fecha o aplicativo, um arquivo é
     /// bloqueado, e ele reabre a interface: sem isso, o bloqueio teria
     /// acontecido sem deixar rastro na tela. Não é histórico — histórico é o
-    /// <c>queue.jsonl</c>, que guarda tudo e é lido pela tela de histórico.
+    /// <c>queue.jsonl</c>, cuja projeção autorizada o serviço entrega ao painel.
     /// </summary>
     public static readonly TimeSpan ReplayWindow = TimeSpan.FromSeconds(60);
 
@@ -172,6 +172,12 @@ public sealed class NotificationHub
         {
             return _currentStatus is { } status && TryRecord(status, null) ? status : null;
         }
+    }
+
+    /// <summary>Record a private history response without broadcasting or buffering it.</summary>
+    public bool RecordHistory(HistoryNotification history, uint? sessionId)
+    {
+        lock (_gate) { return TryRecord(history, sessionId); }
     }
 
     private bool TryRecord(AgentNotification notification, uint? targetSessionId)

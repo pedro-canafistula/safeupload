@@ -1,0 +1,71 @@
+{
+  "source": "8801944cdcd9a245a3eb02107305771c85b91a3a",
+  "ci": 39972212330,
+  "files": [
+    {
+      "file": "artifact-validation.json",
+      "bytes": 1228,
+      "sha256": "599257939406241718E2B017548E5559C6D9802199FBB6460A3E766C9934470C"
+    },
+    {
+      "file": "build-result.json",
+      "bytes": 458,
+      "sha256": "7424C4CFAFB4A0162506BFF1245BA2ADC33196EBBA568EE9297A7CD9D4975BC6"
+    },
+    {
+      "file": "ci.json",
+      "bytes": 5805,
+      "sha256": "A2651CCF10219F36CE91C5C2477D2BEE7979904D6E84EFDFF8AC4F523B50D214"
+    },
+    {
+      "file": "junction.json",
+      "bytes": 282,
+      "sha256": "688D90814EF9984E30EA897CA427C77B86205315325EAF05C1D3F9DE37B42D8E"
+    },
+    {
+      "file": "ps51.json",
+      "bytes": 7844,
+      "sha256": "32876B6A95B8B6C49307FC4E9DAC86BE258DE79AF0201FFE4A615734B720727D"
+    },
+    {
+      "file": "ps7.json",
+      "bytes": 4724,
+      "sha256": "DF155EFF47D2D4FDF7ACEC4FDF3CC285CA26FE9A430BDB689740F77EFF968CDA"
+    },
+    {
+      "file": "real-interruption.json",
+      "bytes": 1576,
+      "sha256": "D54E3DC2DBC6ACC79347A854197CD889F1CB5A53D73BCE7A270339B772E7F33A"
+    },
+    {
+      "file": "runner-environment.json",
+      "bytes": 347,
+      "sha256": "4D0F6A7413177E99FEE4C0DC324F2E4FDBEF9F2799E996BC791434361B9B952F"
+    },
+    {
+      "file": "runner-installed.json",
+      "bytes": 10708,
+      "sha256": "38802E6AF4CA3382568DF9ADA454A0B547C1EA8B3F3FF4E7C4424C7A44C4E103"
+    },
+    {
+      "file": "runner-ps51.json",
+      "bytes": 7845,
+      "sha256": "52F3BFBCB0BB1A0110477829C7FC71F6AFB635EF8741BC59FB595D9A966639C0"
+    },
+    {
+      "file": "runner-ps7.json",
+      "bytes": 4724,
+      "sha256": "0264FFD6110A7D68634A3FE0B77209BBBC9ABFCC86FDC8749917D4592F2828D7"
+    },
+    {
+      "file": "temporarios-debug.trx",
+      "bytes": 39533,
+      "sha256": "81F6122C09344BE96E6806C32571235E9345A113BDFF0D05809E6B6126DDCCEA"
+    },
+    {
+      "file": "temporarios-release.trx",
+      "bytes": 59953,
+      "sha256": "349C72C359380C9A9F95BAD450C6DA9FC9188BD563CDB1F0C96A40F4F8F33A6F"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+2026-10-24T16:29:37.0829765Z Passed!  - Failed:     0, Passed:   835, Skipped:     4, Total:   839, Duration: 38 s - SafeUpload.Agent.Tests.dll (net10.0)
+2026-10-24T16:30:27.2183361Z [36;1m  if (-not $ready) { throw 'Backend não iniciou.' }[0m
+2026-10-24T16:31:58.5201763Z [31;1m[0m[36;1m[36;1m  12 | [0m   if (-not $ready) { [36;1mthrow 'Backend não iniciou.'[0m }[0m
+2026-10-24T16:31:58.5203616Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mBackend não iniciou.[0m

@@ -1,0 +1,35 @@
+{
+  "collectedAtUtc": "2026-10-23T17:59:33.115Z",
+  "version": "0.1.10",
+  "sourceCommit": "135369df7ddabbbc0902658029021dc63724a307",
+  "initialUiStartedManually": true,
+  "cleanAutomaticActivityObserved": true,
+  "cpfAutomaticActivityObserved": true,
+  "cpfMaskedPopupObserved": true,
+  "historyRowsObserved": 15,
+  "serviceUnavailableObserved": true,
+  "automaticReconnectObserved": true,
+  "uiPidBeforeAndAfter": 764,
+  "servicePidBefore": 848,
+  "servicePidAfter": 932,
+  "bootObservation": "passed",
+  "uninstallObservation": "receipt-passed; independent confirmation and log collected",
+  "screenshots": [
+    "ui-cpf-0110.jpg",
+    "ui-historico-0110.jpg",
+    "ui-servico-parado-0110.jpg",
+    "ui-reconectada-0110.jpg",
+    "ui-apos-boot-0110.jpg"
+  ],
+  "limitations": [
+    "FileSystemWatcher no clone isolado; sem driver e sem API real.",
+    "Remocao apos inspecao nao comprova bloqueio preventivo de envio."
+  ],
+  "bootUiStartedManually": false,
+  "bootUiPid": 5652,
+  "bootServicePid": 2844,
+  "bootParentExplorerPid": 780,
+  "bootUiDelayAfterExplorerMs": 13275.722,
+  "bootHistoryIdsPreserved": true,
+  "oldPopupObservedAfterBoot": false
+}

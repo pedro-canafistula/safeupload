@@ -1,0 +1,31 @@
+{
+    "result":  "service-restarted-data-and-ui-process-preserved-ui-observation-pending",
+    "vmUuid":  "3A9992DB-4644-405C-B642-9766EDD10650",
+    "version":  "0.1.5",
+    "commit":  "3fa6986b938903f9abbafc0f696f1a043124672d",
+    "startedAtUtc":  "2026-10-22T14:57:28.6302803Z",
+    "servicePidBefore":  2880,
+    "uiBefore":  [
+                     {
+                         "ProcessId":  6012,
+                         "SessionId":  1,
+                         "CreationDate":  "\/Date(1792679584464)\/"
+                     }
+                 ],
+    "uiObservation":  "pending",
+    "policyHashBefore":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "stoppedAtUtc":  "2026-10-22T14:57:28.9585027Z",
+    "queueHashStopped":  "58A27AB6E5CE8CD888BE4ABD494AC1A7A9894197494DA5E6026584EA5FCABBDE",
+    "runningAtUtc":  "2026-10-22T14:58:16.1146290Z",
+    "queueHashAfter":  "58A27AB6E5CE8CD888BE4ABD494AC1A7A9894197494DA5E6026584EA5FCABBDE",
+    "policyHashAfter":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "uiAfter":  [
+                    {
+                        "ProcessId":  6012,
+                        "SessionId":  1,
+                        "CreationDate":  "\/Date(1792679584464)\/"
+                    }
+                ],
+    "servicePidAfter":  6300,
+    "finishedAtUtc":  "2026-10-22T14:58:24.2708904Z"
+}

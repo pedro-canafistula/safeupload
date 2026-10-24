@@ -1,0 +1,6 @@
+{
+  "case": "installed-data-path",
+  "expected": "refused-before-directory-creation",
+  "exitCode": -532462766,
+  "result": "passed"
+}

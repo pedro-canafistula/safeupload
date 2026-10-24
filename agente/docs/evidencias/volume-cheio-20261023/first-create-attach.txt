@@ -1,0 +1,4 @@
+create vdisk file="C:\Users\safeuploadlab\Desktop\Homologacao-SafeUpload-016\disk-full\volume-af4a0dc2df7c41b7952c8e8055961f4d\owned-64mb.vhd" maximum=64 type=expandable
+select vdisk file="C:\Users\safeuploadlab\Desktop\Homologacao-SafeUpload-016\disk-full\volume-af4a0dc2df7c41b7952c8e8055961f4d\owned-64mb.vhd"
+attach vdisk
+exit

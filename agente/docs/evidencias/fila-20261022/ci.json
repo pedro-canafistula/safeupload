@@ -1,0 +1,257 @@
+{
+  "result": "success",
+  "runId": 39862472507,
+  "url": "https://github.com/pedro-canafistula/safeupload/actions/runs/39862472507",
+  "sourceCommit": "6eed4f98ae354793080eb0e6c5e6df13e899ee31",
+  "jobs": [
+    {
+      "id": 120116344369,
+      "name": "Instalação real em Windows descartável",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 39862472507,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Contratos PowerShell e ambiente",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Gerar candidato 0.1.6 com compilador verificado",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Conferir o artefato antes da instalação",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Instalar, inspecionar, reiniciar e desinstalar",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Preservar instalador e evidências inclusive em falha",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19
+        }
+      ]
+    },
+    {
+      "id": 120116344664,
+      "name": "Componentes C# Debug",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 39862472507,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Compilar diagnóstico isolado da fila",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Executar suíte C# completa sem filtro",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Preservar resultados completos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15
+        }
+      ]
+    },
+    {
+      "id": 120116344724,
+      "name": "Componentes C# Release",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 39862472507,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Compilar diagnóstico isolado da fila",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Executar suíte C# completa sem filtro",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Preservar resultados completos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15
+        }
+      ]
+    }
+  ],
+  "tests": {
+    "Debug": {
+      "failed": 0,
+      "passed": 752,
+      "skipped": 4,
+      "total": 756
+    },
+    "Release": {
+      "failed": 0,
+      "passed": 752,
+      "skipped": 4,
+      "total": 756
+    }
+  },
+  "powerShell7": {
+    "passed": 39,
+    "total": 39
+  },
+  "powerShell51": {
+    "passed": 39,
+    "total": 39
+  },
+  "environment": {
+    "passed": 4,
+    "total": 4
+  },
+  "installerClientQualification": "New CI artifact not installed in Windows 10 clone; prior 0e9e05d1 candidate remains the client qualification baseline."
+}

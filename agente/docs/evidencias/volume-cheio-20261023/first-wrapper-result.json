@@ -1,0 +1,13 @@
+﻿{
+    "result":  "failed",
+    "context":  "Clone",
+    "startedAtUtc":  "2026-10-23T19:46:28.3972739Z",
+    "nonce":  "af4a0dc2df7c41b7952c8e8055961f4d",
+    "vhd":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-af4a0dc2df7c41b7952c8e8055961f4d\\owned-64mb.vhd",
+    "maximumMiB":  64,
+    "probeSha256":  "5A68A8E049ACB2E2008D2623DBF6D0B59E46EA1AC6808617D6DAF2016B276361",
+    "probeSource":  "3697d1513fd59e7af286d16b0b5f81bdc94535a6",
+    "detached":  true,
+    "error":  "DiskPart falhou; preservar log.",
+    "finishedAtUtc":  "2026-10-23T19:46:32.1619873Z"
+}

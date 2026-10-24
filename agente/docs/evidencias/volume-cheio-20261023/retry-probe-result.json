@@ -1,0 +1,899 @@
+{
+  "result": "passed",
+  "startedAtUtc": "2026-10-23T19:57:44.7739957+00:00",
+  "finishedAtUtc": "2026-10-23T19:57:45.4677133+00:00",
+  "framework": ".NET 10.0.13",
+  "os": "Microsoft Windows 10.0.19045",
+  "administrator": true,
+  "isSystem": false,
+  "coreVersion": "1.0.0\u002B8689572dc1b60cf3da3ed7e2783ef8d65a424949",
+  "serviceVersion": "1.0.0\u002B8689572dc1b60cf3da3ed7e2783ef8d65a424949",
+  "volumeBytes": 65990656,
+  "phases": [
+    {
+      "operation": "WriteEvent",
+      "result": "passed",
+      "fillerBytes": 53620736,
+      "availableAtFailure": 0,
+      "failureType": "IOException",
+      "failureHResult": -2147024784,
+      "failedHealth": {
+        "SinceUtc": "2026-10-23T19:57:44.8958036+00:00",
+        "Degraded": true,
+        "FailedWriteAttempts": 1,
+        "Operations": [
+          {
+            "Operation": "WriteEvent",
+            "Degraded": true,
+            "Failures": 1,
+            "Successes": 0,
+            "LastFailureUtc": "2026-10-23T19:57:45.0561599+00:00",
+            "LastSuccessUtc": null,
+            "FailureKind": "disk_full",
+            "FailureHResult": -2147024784
+          },
+          {
+            "Operation": "WriteOverride",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadRecent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPending",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPendingOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmEvents",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          }
+        ]
+      },
+      "recoveredHealth": {
+        "SinceUtc": "2026-10-23T19:57:44.8958036+00:00",
+        "Degraded": false,
+        "FailedWriteAttempts": 1,
+        "Operations": [
+          {
+            "Operation": "WriteEvent",
+            "Degraded": false,
+            "Failures": 1,
+            "Successes": 1,
+            "LastFailureUtc": "2026-10-23T19:57:45.0561599+00:00",
+            "LastSuccessUtc": "2026-10-23T19:57:45.0943514+00:00",
+            "FailureKind": "disk_full",
+            "FailureHResult": -2147024784
+          },
+          {
+            "Operation": "WriteOverride",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadRecent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPending",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPendingOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmEvents",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          }
+        ]
+      },
+      "beforeSha256": "E489FBCB35F775E58F156E947DA91BBB3E9425A4DAC044408466C7F983301CF9",
+      "afterFailureSha256": "E489FBCB35F775E58F156E947DA91BBB3E9425A4DAC044408466C7F983301CF9",
+      "originalPrefixPreserved": true,
+      "originalEventIds": [
+        "574a1731-d52c-4039-a061-1fad282cda37",
+        "904b44a6-2fbe-4f81-8369-1187018f2099",
+        "aec81313-7119-47a5-8b7d-30c5c4d9c446"
+      ],
+      "failedIntegrity": {
+        "FileExists": true,
+        "LinesScanned": 4,
+        "ValidEvents": 3,
+        "ValidOverrides": 1,
+        "InvalidLines": 0,
+        "UnknownRecords": 0,
+        "BlankLines": 0,
+        "Issues": [],
+        "IssuesTruncated": false,
+        "RequiresAttention": false
+      },
+      "recoveredIntegrity": {
+        "FileExists": true,
+        "LinesScanned": 5,
+        "ValidEvents": 4,
+        "ValidOverrides": 1,
+        "InvalidLines": 0,
+        "UnknownRecords": 0,
+        "BlankLines": 0,
+        "Issues": [],
+        "IssuesTruncated": false,
+        "RequiresAttention": false
+      },
+      "failedEventPresent": false,
+      "failedOverridePresent": false,
+      "failedAppendNote": "A refused append may leave a tail or even an observable record; no failed attempt is automatically recovered. Recovery uses a NEW event/override; confirmations retry original identities.",
+      "logs": [
+        {
+          "Id": 3101,
+          "Text": "Audit queue operation WriteEvent failed (disk_full, HRESULT -2147024784). Inspect audit-health; counters are since service start.",
+          "AttachedException": false
+        },
+        {
+          "Id": 3102,
+          "Text": "Audit queue operation WriteEvent resumed. Earlier failed attempts remain in audit-health counters; no lost-event recovery is implied.",
+          "AttachedException": false
+        }
+      ],
+      "temporaries": {
+        "DirectoryExists": true,
+        "EntriesExamined": 1,
+        "CandidateFiles": 0,
+        "TotalBytes": 0,
+        "UnreadableCandidates": 0,
+        "SkippedReparsePoints": 0,
+        "ScanLimitReached": false,
+        "DirectoryTraversalBlocked": false,
+        "Complete": true,
+        "RequiresAttention": false
+      }
+    },
+    {
+      "operation": "WriteOverride",
+      "result": "passed",
+      "fillerBytes": 53616640,
+      "availableAtFailure": 0,
+      "failureType": "IOException",
+      "failureHResult": -2147024784,
+      "failedHealth": {
+        "SinceUtc": "2026-10-23T19:57:45.1537686+00:00",
+        "Degraded": true,
+        "FailedWriteAttempts": 1,
+        "Operations": [
+          {
+            "Operation": "WriteEvent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "WriteOverride",
+            "Degraded": true,
+            "Failures": 1,
+            "Successes": 0,
+            "LastFailureUtc": "2026-10-23T19:57:45.2404482+00:00",
+            "LastSuccessUtc": null,
+            "FailureKind": "disk_full",
+            "FailureHResult": -2147024784
+          },
+          {
+            "Operation": "ReadRecent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPending",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPendingOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmEvents",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          }
+        ]
+      },
+      "recoveredHealth": {
+        "SinceUtc": "2026-10-23T19:57:45.1537686+00:00",
+        "Degraded": false,
+        "FailedWriteAttempts": 1,
+        "Operations": [
+          {
+            "Operation": "WriteEvent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "WriteOverride",
+            "Degraded": false,
+            "Failures": 1,
+            "Successes": 1,
+            "LastFailureUtc": "2026-10-23T19:57:45.2404482+00:00",
+            "LastSuccessUtc": "2026-10-23T19:57:45.2461222+00:00",
+            "FailureKind": "disk_full",
+            "FailureHResult": -2147024784
+          },
+          {
+            "Operation": "ReadRecent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPending",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPendingOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmEvents",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          }
+        ]
+      },
+      "beforeSha256": "DD7A624463557A2691374ABE1970CB7A32FCF19BEF9667052DC03F23489D58CC",
+      "afterFailureSha256": "DD7A624463557A2691374ABE1970CB7A32FCF19BEF9667052DC03F23489D58CC",
+      "originalPrefixPreserved": true,
+      "originalEventIds": [
+        "d16f8db5-1655-41dc-9b2e-2446f2bd67e0",
+        "8a12b4ff-5508-4ddf-b843-1c395597889f",
+        "efc15275-601a-49ff-b8e4-87730b6b5362"
+      ],
+      "failedIntegrity": {
+        "FileExists": true,
+        "LinesScanned": 4,
+        "ValidEvents": 3,
+        "ValidOverrides": 1,
+        "InvalidLines": 0,
+        "UnknownRecords": 0,
+        "BlankLines": 0,
+        "Issues": [],
+        "IssuesTruncated": false,
+        "RequiresAttention": false
+      },
+      "recoveredIntegrity": {
+        "FileExists": true,
+        "LinesScanned": 5,
+        "ValidEvents": 3,
+        "ValidOverrides": 2,
+        "InvalidLines": 0,
+        "UnknownRecords": 0,
+        "BlankLines": 0,
+        "Issues": [],
+        "IssuesTruncated": false,
+        "RequiresAttention": false
+      },
+      "failedEventPresent": false,
+      "failedOverridePresent": false,
+      "failedAppendNote": "A refused append may leave a tail or even an observable record; no failed attempt is automatically recovered. Recovery uses a NEW event/override; confirmations retry original identities.",
+      "logs": [
+        {
+          "Id": 3101,
+          "Text": "Audit queue operation WriteOverride failed (disk_full, HRESULT -2147024784). Inspect audit-health; counters are since service start.",
+          "AttachedException": false
+        },
+        {
+          "Id": 3102,
+          "Text": "Audit queue operation WriteOverride resumed. Earlier failed attempts remain in audit-health counters; no lost-event recovery is implied.",
+          "AttachedException": false
+        }
+      ],
+      "temporaries": {
+        "DirectoryExists": true,
+        "EntriesExamined": 1,
+        "CandidateFiles": 0,
+        "TotalBytes": 0,
+        "UnreadableCandidates": 0,
+        "SkippedReparsePoints": 0,
+        "ScanLimitReached": false,
+        "DirectoryTraversalBlocked": false,
+        "Complete": true,
+        "RequiresAttention": false
+      }
+    },
+    {
+      "operation": "ConfirmEvents",
+      "result": "passed",
+      "fillerBytes": 53612544,
+      "availableAtFailure": 0,
+      "failureType": "IOException",
+      "failureHResult": -2147024784,
+      "failedHealth": {
+        "SinceUtc": "2026-10-23T19:57:45.2623605+00:00",
+        "Degraded": true,
+        "FailedWriteAttempts": 0,
+        "Operations": [
+          {
+            "Operation": "WriteEvent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "WriteOverride",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadRecent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPending",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPendingOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmEvents",
+            "Degraded": true,
+            "Failures": 1,
+            "Successes": 0,
+            "LastFailureUtc": "2026-10-23T19:57:45.3477144+00:00",
+            "LastSuccessUtc": null,
+            "FailureKind": "disk_full",
+            "FailureHResult": -2147024784
+          },
+          {
+            "Operation": "ConfirmOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          }
+        ]
+      },
+      "recoveredHealth": {
+        "SinceUtc": "2026-10-23T19:57:45.2623605+00:00",
+        "Degraded": false,
+        "FailedWriteAttempts": 0,
+        "Operations": [
+          {
+            "Operation": "WriteEvent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "WriteOverride",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadRecent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPending",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPendingOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmEvents",
+            "Degraded": false,
+            "Failures": 1,
+            "Successes": 1,
+            "LastFailureUtc": "2026-10-23T19:57:45.3477144+00:00",
+            "LastSuccessUtc": "2026-10-23T19:57:45.3540349+00:00",
+            "FailureKind": "disk_full",
+            "FailureHResult": -2147024784
+          },
+          {
+            "Operation": "ConfirmOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          }
+        ]
+      },
+      "beforeSha256": "14A122466FAA4C1B4C2799E7F4303B28D014E51E1F6A0EAA156F1F1DEC8B2B29",
+      "afterFailureSha256": "14A122466FAA4C1B4C2799E7F4303B28D014E51E1F6A0EAA156F1F1DEC8B2B29",
+      "originalPrefixPreserved": true,
+      "originalEventIds": [
+        "02ee5bf3-8ef9-4c85-bad5-a68a8b19e3de",
+        "423ab22f-1a4f-4c2d-bead-5cc854a11ce1",
+        "9361d8f3-d19d-4ec9-8496-72690ebed709"
+      ],
+      "failedIntegrity": {
+        "FileExists": true,
+        "LinesScanned": 4,
+        "ValidEvents": 3,
+        "ValidOverrides": 1,
+        "InvalidLines": 0,
+        "UnknownRecords": 0,
+        "BlankLines": 0,
+        "Issues": [],
+        "IssuesTruncated": false,
+        "RequiresAttention": false
+      },
+      "recoveredIntegrity": {
+        "FileExists": true,
+        "LinesScanned": 4,
+        "ValidEvents": 3,
+        "ValidOverrides": 1,
+        "InvalidLines": 0,
+        "UnknownRecords": 0,
+        "BlankLines": 0,
+        "Issues": [],
+        "IssuesTruncated": false,
+        "RequiresAttention": false
+      },
+      "failedEventPresent": false,
+      "failedOverridePresent": false,
+      "failedAppendNote": "A refused append may leave a tail or even an observable record; no failed attempt is automatically recovered. Recovery uses a NEW event/override; confirmations retry original identities.",
+      "logs": [
+        {
+          "Id": 3101,
+          "Text": "Audit queue operation ConfirmEvents failed (disk_full, HRESULT -2147024784). Inspect audit-health; counters are since service start.",
+          "AttachedException": false
+        },
+        {
+          "Id": 3102,
+          "Text": "Audit queue operation ConfirmEvents resumed. Earlier failed attempts remain in audit-health counters; no lost-event recovery is implied.",
+          "AttachedException": false
+        }
+      ],
+      "temporaries": {
+        "DirectoryExists": true,
+        "EntriesExamined": 1,
+        "CandidateFiles": 0,
+        "TotalBytes": 0,
+        "UnreadableCandidates": 0,
+        "SkippedReparsePoints": 0,
+        "ScanLimitReached": false,
+        "DirectoryTraversalBlocked": false,
+        "Complete": true,
+        "RequiresAttention": false
+      }
+    },
+    {
+      "operation": "ConfirmOverrides",
+      "result": "passed",
+      "fillerBytes": 53608448,
+      "availableAtFailure": 0,
+      "failureType": "IOException",
+      "failureHResult": -2147024784,
+      "failedHealth": {
+        "SinceUtc": "2026-10-23T19:57:45.3706336+00:00",
+        "Degraded": true,
+        "FailedWriteAttempts": 0,
+        "Operations": [
+          {
+            "Operation": "WriteEvent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "WriteOverride",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadRecent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPending",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPendingOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmEvents",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmOverrides",
+            "Degraded": true,
+            "Failures": 1,
+            "Successes": 0,
+            "LastFailureUtc": "2026-10-23T19:57:45.4540207+00:00",
+            "LastSuccessUtc": null,
+            "FailureKind": "disk_full",
+            "FailureHResult": -2147024784
+          }
+        ]
+      },
+      "recoveredHealth": {
+        "SinceUtc": "2026-10-23T19:57:45.3706336+00:00",
+        "Degraded": false,
+        "FailedWriteAttempts": 0,
+        "Operations": [
+          {
+            "Operation": "WriteEvent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "WriteOverride",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadRecent",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPending",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ReadPendingOverrides",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmEvents",
+            "Degraded": false,
+            "Failures": 0,
+            "Successes": 0,
+            "LastFailureUtc": null,
+            "LastSuccessUtc": null,
+            "FailureKind": null,
+            "FailureHResult": null
+          },
+          {
+            "Operation": "ConfirmOverrides",
+            "Degraded": false,
+            "Failures": 1,
+            "Successes": 1,
+            "LastFailureUtc": "2026-10-23T19:57:45.4540207+00:00",
+            "LastSuccessUtc": "2026-10-23T19:57:45.4618758+00:00",
+            "FailureKind": "disk_full",
+            "FailureHResult": -2147024784
+          }
+        ]
+      },
+      "beforeSha256": "CC539ACFEDB16C9AAFC376C1421B264488B403C85E4970D26CC3936AC0C503AE",
+      "afterFailureSha256": "CC539ACFEDB16C9AAFC376C1421B264488B403C85E4970D26CC3936AC0C503AE",
+      "originalPrefixPreserved": true,
+      "originalEventIds": [
+        "bec852fe-12a5-4d93-93ac-e902060a7e5e",
+        "6db1e74e-63eb-4f3c-ad42-dcedbab14561",
+        "6ddbf073-2d49-426e-ae4f-4aa00fc672ae"
+      ],
+      "failedIntegrity": {
+        "FileExists": true,
+        "LinesScanned": 4,
+        "ValidEvents": 3,
+        "ValidOverrides": 1,
+        "InvalidLines": 0,
+        "UnknownRecords": 0,
+        "BlankLines": 0,
+        "Issues": [],
+        "IssuesTruncated": false,
+        "RequiresAttention": false
+      },
+      "recoveredIntegrity": {
+        "FileExists": true,
+        "LinesScanned": 4,
+        "ValidEvents": 3,
+        "ValidOverrides": 1,
+        "InvalidLines": 0,
+        "UnknownRecords": 0,
+        "BlankLines": 0,
+        "Issues": [],
+        "IssuesTruncated": false,
+        "RequiresAttention": false
+      },
+      "failedEventPresent": false,
+      "failedOverridePresent": false,
+      "failedAppendNote": "A refused append may leave a tail or even an observable record; no failed attempt is automatically recovered. Recovery uses a NEW event/override; confirmations retry original identities.",
+      "logs": [
+        {
+          "Id": 3101,
+          "Text": "Audit queue operation ConfirmOverrides failed (disk_full, HRESULT -2147024784). Inspect audit-health; counters are since service start.",
+          "AttachedException": false
+        },
+        {
+          "Id": 3102,
+          "Text": "Audit queue operation ConfirmOverrides resumed. Earlier failed attempts remain in audit-health counters; no lost-event recovery is implied.",
+          "AttachedException": false
+        }
+      ],
+      "temporaries": {
+        "DirectoryExists": true,
+        "EntriesExamined": 1,
+        "CandidateFiles": 0,
+        "TotalBytes": 0,
+        "UnreadableCandidates": 0,
+        "SkippedReparsePoints": 0,
+        "ScanLimitReached": false,
+        "DirectoryTraversalBlocked": false,
+        "Complete": true,
+        "RequiresAttention": false
+      }
+    }
+  ],
+  "note": "Real NTFS disk-full on an owned small virtual volume. Real Core queue and service monitor, not installed SCM service/pipe, not the production queue. No power-loss, physical durability, network, driver, lost-event repair or long-run claim."
+}

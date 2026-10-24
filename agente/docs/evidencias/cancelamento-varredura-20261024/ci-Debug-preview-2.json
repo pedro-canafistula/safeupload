@@ -1,0 +1,19 @@
+{
+  "result": "passed",
+  "query": "preview",
+  "ownedWorkerPid": 9584,
+  "observedReadBytes": 331776,
+  "observationMs": 19.0856,
+  "queueReaderObserved": true,
+  "operationPendingAtObservation": true,
+  "cancellationObserved": true,
+  "queueBytesBefore": 67109625,
+  "queueSha256Before": "7B44AAF849CF3AA91C49A463BE7DFFCD7E833E7E496027EBBA9D4EA6EA1B2D7C",
+  "queueSha256AfterCancellation": "7B44AAF849CF3AA91C49A463BE7DFFCD7E833E7E496027EBBA9D4EA6EA1B2D7C",
+  "validLinesAfterRecovery": 140251,
+  "pendingAfterRecovery": 70126,
+  "confirmedAfterRecovery": 70125,
+  "recoveryEventId": "98559b43-2bca-41f1-bbad-62ba93cc281d",
+  "queueSha256AfterRecovery": "1743E7D2EB906A681F903F02FBDB18F2E01C5E8D8E9417E378E501819357F921",
+  "peakWorkingSetBytes": 71368704
+}

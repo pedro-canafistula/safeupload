@@ -1,0 +1,19 @@
+{
+  "version": "0.1.11",
+  "commit": "42e34afd73b9e7fe8d183a032a3bcf9abc13f282",
+  "sourceDirty": false,
+  "payloadFiles": 724,
+  "signed": false,
+  "selfContained": true,
+  "installerBytes": 84060450,
+  "installerSha256": "66BA476103B5F9F32FAB0126F979CE60B1F85A04172EDA5BAA6C4494F951C671",
+  "manifestSha256": "1D9C2D15EA3E26A60480CEB0D853AF5320D19B7CD143056DCEC57C1B90D71990",
+  "artifactId": 12523635668,
+  "artifactBytes": 83609056,
+  "artifactSha256": "6926A29FE3549578F901F08651CD6869B5C9F8CE70BC09018C5B9544155EE547",
+  "downloadedAndHashesVerified": true,
+  "installedInHost": false,
+  "installedInClone": false,
+  "runnerInstallationAndRemoval": "passed; interactive application PID 2884 runningBefore=true/exitedAfter=true",
+  "cloneHomologation": "pending; does not inherit 0.1.10 acceptance"
+}

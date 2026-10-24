@@ -1,0 +1,10 @@
+{
+  "installer": "D:\\a\\safeupload\\safeupload\\artifacts\\installer\\SafeUploadAgent-0.1.6-win-x64-setup.exe",
+  "sha256": "44D7A2751696F6B873CD50D15F1343829E268BCCF153677D744FD67521C6499C",
+  "version": "0.1.6",
+  "commit": "0e9e05d1562f64d3b384a2426307d3644c9340f3",
+  "sourceDirty": false,
+  "buildRoot": "D:\\a\\safeupload\\safeupload\\artifacts\\installer\\build-d0537b7019124ddfbff6e6bfa822c33e",
+  "payloadFiles": 724,
+  "signed": false
+}

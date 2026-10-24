@@ -1,0 +1,16 @@
+  Determinando os projetos a serem restaurados...
+  C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj restaurado (em 1,31 seg).
+  C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\tools\QueueFullVolumeProbe\QueueFullVolumeProbe.csproj restaurado (em 1,34 seg).
+  5 de 7 projetos estão atualizados para restauração.
+  SafeUpload.Agent.Minifilter -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Minifilter\bin\Debug\net10.0-windows\SafeUpload.Agent.Minifilter.dll
+  SafeUpload.Agent.Network -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Network\bin\Debug\net10.0-windows\SafeUpload.Agent.Network.dll
+  SafeUpload.Agent.Core -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Core\bin\Debug\net10.0\SafeUpload.Agent.Core.dll
+  SafeUpload.Agent.Service -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\bin\Debug\net10.0-windows\SafeUpload.Agent.Service.dll
+  SafeUpload.Agent.App -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.App\bin\Debug\net10.0-windows\SafeUpload.Agent.App.dll
+  QueueFullVolumeProbe -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\tools\QueueFullVolumeProbe\bin\Debug\net10.0-windows\QueueFullVolumeProbe.dll
+  SafeUpload.Agent.Tests -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll
+Execução de teste para C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll (.NETCoreApp,Version=v10.0)
+1 arquivos de teste no total corresponderam ao padrão especificado.
+Arquivo de resultados: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\volume-cheio-20261023\guard-debug.trx
+
+Aprovado!  – Com falha:     0, Aprovado:    11, Ignorado:     0, Total:    11, Duração: 573 ms - SafeUpload.Agent.Tests.dll (net10.0)

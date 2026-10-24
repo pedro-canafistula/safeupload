@@ -1,0 +1,184 @@
+﻿{
+    "result":  "installation-diagnostics-passed-ui-pending",
+    "startedAtUtc":  "2026-10-23T15:21:36.9984896Z",
+    "version":  "0.1.9",
+    "commit":  "8801944cdcd9a245a3eb02107305771c85b91a3a",
+    "vmUuid":  "3A9992DB-4644-405C-B642-9766EDD10650",
+    "baseline":  {
+                     "result":  "preflight-passed",
+                     "collectedAtUtc":  "2026-10-23T15:21:36.9634276Z",
+                     "vmUuid":  "3A9992DB-4644-405C-B642-9766EDD10650",
+                     "windowsBuild":  "19045.3803",
+                     "policyHash":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+                     "queueHash":  "DFD11C3D42F5D236E7248B267F0383BE4B84ACD90B4C12CD17B15C61143F4AAF",
+                     "quarantineHash":  "605A58E33E73F44BEC1E10A8B7C842A4805BB353A2544005FAFC53F2445A2E81",
+                     "eventCount":  11,
+                     "eventIds":  [
+                                      "a8c6552d-dca9-41eb-9bff-b1782480d158",
+                                      "23ab57ce-ebf7-4d12-830c-13ccc8c80319",
+                                      "42c3dfc9-841b-4a28-b6d6-d113541a0603",
+                                      "5eefda87-50ee-47a3-af57-09546d01cca7",
+                                      "0f4144fd-4d31-4e67-91c2-3770cc514f53",
+                                      "deb57a31-e063-4b4d-bd82-fd7799f2adf3",
+                                      "a25bd1fd-60bc-460c-8fb1-470359c3bba4",
+                                      "87c07ef8-c76d-42b9-a740-90a313d6d174",
+                                      "301c1d10-1551-46ab-81cb-4e489846d564",
+                                      "30bf77d2-726c-4530-85b9-8b10d3cf51fc",
+                                      "fbd99c6c-ae8f-46d7-8416-a69d87ac96a8"
+                                  ],
+                     "administrator":  true,
+                     "session":  1,
+                     "dataEntries":  [
+                                         {
+                                             "Name":  "notifications",
+                                             "Length":  null,
+                                             "Attributes":  8208
+                                         },
+                                         {
+                                             "Name":  "policy.json",
+                                             "Length":  1122,
+                                             "Attributes":  8224
+                                         },
+                                         {
+                                             "Name":  "queue.jsonl",
+                                             "Length":  6057,
+                                             "Attributes":  8224
+                                         }
+                                     ]
+                 },
+    "uiObservation":  "pending",
+    "bootStatus":  "pending",
+    "uninstallStatus":  "pending",
+    "checkedPayloadFiles":  724,
+    "service":  {
+                    "Name":  "SafeUploadAgent",
+                    "State":  "Running",
+                    "StartName":  "LocalSystem",
+                    "ProcessId":  3900,
+                    "PathName":  "\"C:\\Program Files\\SafeUpload\\Agent\\service\\SafeUpload.Agent.Service.exe\" --Interception:Mode=FileSystemWatcher --CentroAdministracao:BaseUrl= --InspecaoTls:Habilitada=false"
+                },
+    "health":  {
+                   "sinceUtc":  "2026-10-23T15:22:05.9409966+00:00",
+                   "degraded":  false,
+                   "failedWriteAttempts":  0,
+                   "operations":  [
+                                      {
+                                          "operation":  "WriteEvent",
+                                          "degraded":  false,
+                                          "failures":  0,
+                                          "successes":  0,
+                                          "lastFailureUtc":  null,
+                                          "lastSuccessUtc":  null,
+                                          "failureKind":  null,
+                                          "failureHResult":  null
+                                      },
+                                      {
+                                          "operation":  "WriteOverride",
+                                          "degraded":  false,
+                                          "failures":  0,
+                                          "successes":  0,
+                                          "lastFailureUtc":  null,
+                                          "lastSuccessUtc":  null,
+                                          "failureKind":  null,
+                                          "failureHResult":  null
+                                      },
+                                      {
+                                          "operation":  "ReadRecent",
+                                          "degraded":  false,
+                                          "failures":  0,
+                                          "successes":  0,
+                                          "lastFailureUtc":  null,
+                                          "lastSuccessUtc":  null,
+                                          "failureKind":  null,
+                                          "failureHResult":  null
+                                      },
+                                      {
+                                          "operation":  "ReadPending",
+                                          "degraded":  false,
+                                          "failures":  0,
+                                          "successes":  0,
+                                          "lastFailureUtc":  null,
+                                          "lastSuccessUtc":  null,
+                                          "failureKind":  null,
+                                          "failureHResult":  null
+                                      },
+                                      {
+                                          "operation":  "ReadPendingOverrides",
+                                          "degraded":  false,
+                                          "failures":  0,
+                                          "successes":  0,
+                                          "lastFailureUtc":  null,
+                                          "lastSuccessUtc":  null,
+                                          "failureKind":  null,
+                                          "failureHResult":  null
+                                      },
+                                      {
+                                          "operation":  "ConfirmEvents",
+                                          "degraded":  false,
+                                          "failures":  0,
+                                          "successes":  0,
+                                          "lastFailureUtc":  null,
+                                          "lastSuccessUtc":  null,
+                                          "failureKind":  null,
+                                          "failureHResult":  null
+                                      },
+                                      {
+                                          "operation":  "ConfirmOverrides",
+                                          "degraded":  false,
+                                          "failures":  0,
+                                          "successes":  0,
+                                          "lastFailureUtc":  null,
+                                          "lastSuccessUtc":  null,
+                                          "failureKind":  null,
+                                          "failureHResult":  null
+                                      }
+                                  ]
+               },
+    "integrity":  {
+                      "fileExists":  true,
+                      "linesScanned":  11,
+                      "validEvents":  11,
+                      "validOverrides":  0,
+                      "invalidLines":  0,
+                      "unknownRecords":  0,
+                      "blankLines":  0,
+                      "issues":  [
+
+                                 ],
+                      "issuesTruncated":  false,
+                      "requiresAttention":  false
+                  },
+    "initialTemporaries":  {
+                               "directoryExists":  true,
+                               "entriesExamined":  3,
+                               "candidateFiles":  0,
+                               "totalBytes":  0,
+                               "unreadableCandidates":  0,
+                               "skippedReparsePoints":  0,
+                               "scanLimitReached":  false,
+                               "directoryTraversalBlocked":  false,
+                               "complete":  true,
+                               "requiresAttention":  false
+                           },
+    "fixtures":  {
+                     "candidate":  "C:\\ProgramData\\SafeUpload\\queue.jsonl.7267f6b95304461399d4349aede1ee86.tmp",
+                     "emptyCandidate":  "C:\\ProgramData\\SafeUpload\\queue.jsonl.5712c7835b0043008c54d97aae555cd8.tmp",
+                     "junction":  "C:\\ProgramData\\SafeUpload\\queue.jsonl.3b02cd4738904c24b71970010537bb42.tmp",
+                     "target":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\019\\alvo-junction-sintetico",
+                     "candidateHash":  "903470CAE4653AC80282FA92A88764AB0DF90EFC98669A26B2261D9A9A6D0B9C",
+                     "emptyCandidateHash":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+                 },
+    "temporaries":  {
+                        "directoryExists":  true,
+                        "entriesExamined":  6,
+                        "candidateFiles":  2,
+                        "totalBytes":  25,
+                        "unreadableCandidates":  0,
+                        "skippedReparsePoints":  1,
+                        "scanLimitReached":  false,
+                        "directoryTraversalBlocked":  false,
+                        "complete":  false,
+                        "requiresAttention":  true
+                    },
+    "finishedAtUtc":  "2026-10-23T15:22:13.5937328Z"
+}

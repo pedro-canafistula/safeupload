@@ -1,0 +1,34 @@
+{
+  "run": 40014423114,
+  "jobs": [
+    {
+      "job_id": 120622707827,
+      "lines": [
+        "2026-10-23T19:51:30.8655048Z Passed!  - Failed:     0, Passed:   812, Skipped:     4, Total:   816, Duration: 39 s - SafeUpload.Agent.Tests.dll (net10.0)\r",
+        "2026-10-23T19:52:07.3844777Z \u001b[36;1m  if (-not $ready) { throw 'Backend não iniciou.' }\u001b[0m\r",
+        "2026-10-23T19:53:38.6410913Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m  12 | \u001b[0m   if (-not $ready) { \u001b[36;1mthrow 'Backend não iniciou.'\u001b[0m }\u001b[0m\r",
+        "2026-10-23T19:53:38.6413904Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[31;1m\u001b[31;1m\u001b[36;1m     | \u001b[31;1mBackend não iniciou.\u001b[0m\r"
+      ]
+    },
+    {
+      "job_id": 120622708009,
+      "lines": [
+        "2026-10-23T19:51:33.8144691Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m  57 | \u001b[0m … f ($process.HasExited) { \u001b[36;1mthrow 'Backend encerrou antes de iniciar.'\u001b[0m }\u001b[0m\r",
+        "2026-10-23T19:51:33.8146230Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[31;1m\u001b[31;1m\u001b[36;1m     | \u001b[31;1mBackend encerrou antes de iniciar.\u001b[0m\r"
+      ]
+    },
+    {
+      "job_id": 120622708130,
+      "lines": [
+        "2026-10-23T19:49:49.8164827Z 2026-10-23T19:49:49.783Z  WARN 2255 --- [safeupload-backend] [           main] o.s.w.c.s.GenericWebApplicationContext   : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}",
+        "2026-10-23T19:49:49.8197842Z APPLICATION FAILED TO START",
+        "2026-10-23T19:49:49.8200021Z Parameter 1 of constructor in com.safeupload.presentation.controller.AgentController required a bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' that could not be found.",
+        "2026-10-23T19:49:49.8202990Z Consider defining a bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' in your configuration.",
+        "2026-10-23T19:49:49.8397723Z Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}",
+        "2026-10-23T19:49:49.8447569Z Caused by: org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}",
+        "2026-10-23T19:49:49.9555542Z Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}",
+        "2026-10-23T19:49:49.9585205Z Caused by: org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}"
+      ]
+    }
+  ]
+}

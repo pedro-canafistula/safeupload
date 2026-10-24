@@ -1,0 +1,81 @@
+{
+  "issue": 57,
+  "source": "3ab7fd7426478e6b00b4385d4261a917a7b97a39",
+  "localPassed": 36,
+  "localFailed": 0,
+  "newCases": 3,
+  "ciRun": 40114562559,
+  "ciResult": "success",
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 86,
+      "sha256": "2CD8D6C2F1D76EC60B9E30C27DAFCE65FDEC62B397C9AF3F0922537BEE8AD5A7"
+    },
+    {
+      "file": "artifacts.json",
+      "bytes": 4641,
+      "sha256": "687F2FA95F82078E436DA8A8267379DCFE0AD0E7774081D75C5F2FAB9B173824"
+    },
+    {
+      "file": "checks-final.json",
+      "bytes": 31586,
+      "sha256": "9DE2044AB4C4ED02CE8DCECFC2D1091DC346D3ECB37E552F3B22ABF9DF6486FA"
+    },
+    {
+      "file": "ci-debug.log",
+      "bytes": 32722,
+      "sha256": "6DBA5CCA6A0941FB095B0D3CD39AFC703AB9A6814A208D8B8432F038A2CE4E28"
+    },
+    {
+      "file": "ci-Debug.trx",
+      "bytes": 1221267,
+      "sha256": "A74AC15E5293C82B476101384F4989E2D8B74872D3579117702CBF83F6B17E6D"
+    },
+    {
+      "file": "ci-install.log",
+      "bytes": 33299,
+      "sha256": "3E59907B649BD355A1100780DFE32B8F15FB1C7FFA80A8428C441268C1674407"
+    },
+    {
+      "file": "ci-release.log",
+      "bytes": 33092,
+      "sha256": "3E350861482FC615996B09D9842CF079C4F9BBEA79E322BB2E52182E27040980"
+    },
+    {
+      "file": "ci-Release.trx",
+      "bytes": 1224635,
+      "sha256": "5BC0B26A27C74B82363D67945310BCB1B2E60B03EC92B45FB7A3C20DFB2DD8A4"
+    },
+    {
+      "file": "ci-run.json",
+      "bytes": 15494,
+      "sha256": "F5E89DF65BC6524E4B7EC16DA4A24F08BD198E0A465390AB7CCF5FAA4CB873D6"
+    },
+    {
+      "file": "ci-trx-verification.json",
+      "bytes": 2961,
+      "sha256": "5FA467A6D81B7EBA29F65C4D6530189C1788F2F930A9AD4F21AC24B57E30A14C"
+    },
+    {
+      "file": "concorrencia-regressoes.trx",
+      "bytes": 64989,
+      "sha256": "CA86D33E7F68E706BF2EDE69C98EE5CF1E3A63B89D2427B71FFEF15F2B75AF0F"
+    },
+    {
+      "file": "functional-run.json",
+      "bytes": 15479,
+      "sha256": "317B22BFC9FFDCF3E66413228508F4E17888D6115319FF3872F0570CD743BC75"
+    },
+    {
+      "file": "local-final-release.log",
+      "bytes": 2459,
+      "sha256": "31A3EE1F19F254CE7FD38598A08FCE28C0599947AAA246F98C4A21EC13F91CF4"
+    },
+    {
+      "file": "source-identity.json",
+      "bytes": 375,
+      "sha256": "C9D05D572BC522EACD264550B78AFB3AC2639FF0650973245F0D64F0DE681542"
+    }
+  ]
+}

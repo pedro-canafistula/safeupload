@@ -13,15 +13,16 @@ namespace SafeUpload.Agent.Core.Infrastructure;
 ///
 /// O formato JSON Lines foi escolhido por ser append-only. Registrar um evento
 /// é acrescentar uma linha, sem reescrever nem reserializar o que já está lá,
-/// o que significa que uma queda de energia no meio da gravação corrompe no
-/// máximo a última linha, e a leitura simplesmente a descarta. Um array JSON
+/// permitindo continuar após uma linha inválida. Uma escrita interrompida
+/// pode deixar a última linha truncada; ela permanece no arquivo e pode ser
+/// diagnosticada por InspectIntegrityAsync. Um array JSON
 /// único exigiria reescrever o arquivo inteiro a cada evento e poderia perder
 /// a trilha toda.
 ///
 /// Todo evento nasce com dispatched igual a falso. O despachante marca
 /// verdadeiro depois da confirmação do servidor, preservando a trilha local.
 /// </summary>
-public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
+public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
 {
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -160,12 +161,12 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         int maxEvents,
         CancellationToken cancellationToken)
     {
-        var all = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
+        var all = await ReadEventsAsync(maxEvents, pendingOnly: false, cancellationToken).ConfigureAwait(false);
 
         // Do mais recente para o mais antigo, que é a ordem em que a grade do
         // simulador mostra a fila.
         all.Reverse();
-        return maxEvents > 0 && all.Count > maxEvents ? all.GetRange(0, maxEvents) : all;
+        return all;
     }
 
     /// <inheritdoc />
@@ -173,10 +174,7 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         int maxEvents,
         CancellationToken cancellationToken)
     {
-        var all = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
-        var pending = all.FindAll(static e => !e.Dispatched);
-
-        return maxEvents > 0 && pending.Count > maxEvents ? pending.GetRange(0, maxEvents) : pending;
+        return await ReadEventsAsync(maxEvents, pendingOnly: true, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -200,91 +198,79 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         IReadOnlyCollection<AuditOverride> overrides, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(eventIds);
-
-        if (eventIds.Count == 0 && overrides.Count == 0)
-        {
-            return;
-        }
+        if (eventIds.Count == 0 && overrides.Count == 0) return;
 
         var ids = eventIds.ToHashSet();
-
+        var selectedOverrides = overrides.ToHashSet();
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!File.Exists(_queueFile))
-            {
-                return;
-            }
-
-            // Preserva os registros de justificativa e linhas desconhecidas: a
-            // confirmação de um lote de eventos não pode descartar outros tipos.
-            var builder = new StringBuilder();
-            await using (var stream = new FileStream(_queueFile, FileMode.Open,
-                FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-            using (var reader = new StreamReader(stream, Encoding.UTF8,
-                detectEncodingFromByteOrderMarks: true))
-            {
-                while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
-                {
-                    if (string.IsNullOrWhiteSpace(line))
-                    {
-                        builder.AppendLine(line);
-                        continue;
-                    }
-                    try
-                    {
-                        using var json = JsonDocument.Parse(line);
-                        if (json.RootElement.ValueKind != JsonValueKind.Object)
-                        {
-                            builder.AppendLine(line);
-                            continue;
-                        }
-                        bool selected;
-                        if (json.RootElement.TryGetProperty("type", out var type))
-                        {
-                            selected = type.ValueKind == JsonValueKind.String && type.GetString() == "override"
-                                && JsonSerializer.Deserialize<AuditOverride>(line, Options) is { } record
-                                && overrides.Contains(record);
-                        }
-                        else
-                        {
-                            selected = json.RootElement.TryGetProperty("eventId", out var id)
-                                && id.ValueKind == JsonValueKind.String && id.TryGetGuid(out var guid)
-                                && ids.Contains(guid);
-                        }
-                        if (!selected)
-                        {
-                            builder.AppendLine(line);
-                            continue;
-                        }
-                        var updated = JsonNode.Parse(line)!.AsObject();
-                        updated["dispatched"] = true;
-                        builder.Append(updated.ToJsonString(Options)).Append(Environment.NewLine);
-                    }
-                    catch (JsonException)
-                    {
-                        // Não converter nem apagar um registro que não entendemos.
-                        builder.AppendLine(line);
-                    }
-                }
-            }
-
+            if (!File.Exists(_queueFile)) return;
             var temporary = _queueFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            var created = false;
             try
             {
-                await File.WriteAllTextAsync(temporary, builder.ToString(), Utf8NoBom, cancellationToken)
-                    .ConfigureAwait(false);
+                // A cópia é produzida linha a linha: memória proporcional ao lote
+                // e à maior linha, sem reter o texto completo da fila. A leitura e
+                // a escrita ainda percorrem o arquivo inteiro; não é compactação.
+                await using (var output = new FileStream(temporary, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous))
+                {
+                    created = true;
+                    await using var writer = new StreamWriter(output, Utf8NoBom, bufferSize: 65536);
+                    await using var stream = new FileStream(_queueFile, FileMode.Open,
+                        FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    using var reader = new StreamReader(stream, Encoding.UTF8,
+                        detectEncodingFromByteOrderMarks: true);
+                    while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+                    {
+                        var updated = MarkSelectedLine(line, ids, selectedOverrides);
+                        await writer.WriteLineAsync(updated.AsMemory(), cancellationToken).ConfigureAwait(false);
+                    }
+                    await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+                // Não publicar antes de fechar todos os streams nem após cancelar.
                 cancellationToken.ThrowIfCancellationRequested();
                 File.Move(temporary, _queueFile, overwrite: true);
             }
             finally
             {
-                if (File.Exists(temporary)) File.Delete(temporary);
+                if (created && File.Exists(temporary)) File.Delete(temporary);
             }
         }
-        finally
+        finally { _writeLock.Release(); }
+    }
+
+    private static string MarkSelectedLine(string line, HashSet<Guid> ids,
+        HashSet<AuditOverride> overrides)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return line;
+        try
         {
-            _writeLock.Release();
+            using var json = JsonDocument.Parse(line);
+            if (json.RootElement.ValueKind != JsonValueKind.Object) return line;
+            bool selected;
+            if (json.RootElement.TryGetProperty("type", out var type))
+            {
+                selected = type.ValueKind == JsonValueKind.String && type.GetString() == "override"
+                    && JsonSerializer.Deserialize<AuditOverride>(line, Options) is { } record
+                    && overrides.Contains(record);
+            }
+            else
+            {
+                selected = json.RootElement.TryGetProperty("eventId", out var id)
+                    && id.ValueKind == JsonValueKind.String && id.TryGetGuid(out var guid)
+                    && ids.Contains(guid);
+            }
+            if (!selected) return line;
+            var updated = JsonNode.Parse(line)!.AsObject();
+            updated["dispatched"] = true;
+            return updated.ToJsonString(Options);
+        }
+        catch (JsonException)
+        {
+            // Não converter nem apagar um registro que não entendemos.
+            return line;
         }
     }
 
@@ -325,12 +311,13 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         finally { _writeLock.Release(); }
     }
 
-    private async Task<List<AuditEvent>> ReadAllAsync(CancellationToken cancellationToken)
+    private async Task<List<AuditEvent>> ReadEventsAsync(
+        int maxEvents, bool pendingOnly, CancellationToken cancellationToken)
     {
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await ReadAllUnsynchronizedAsync(cancellationToken).ConfigureAwait(false);
+            return await ReadEventsUnsynchronizedAsync(maxEvents, pendingOnly, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -338,9 +325,14 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         }
     }
 
-    private async Task<List<AuditEvent>> ReadAllUnsynchronizedAsync(CancellationToken cancellationToken)
+    private async Task<List<AuditEvent>> ReadEventsUnsynchronizedAsync(
+        int maxEvents, bool pendingOnly, CancellationToken cancellationToken)
     {
         var events = new List<AuditEvent>();
+        // Histórico limitado retém somente os últimos N registros na ordem do
+        // arquivo. Não ordenar por horário nem deduplicar: isso muda o contrato.
+        // Limites não positivos preservam a consulta completa legada.
+        Queue<AuditEvent>? recent = !pendingOnly && maxEvents > 0 ? new() : null;
 
         if (!File.Exists(_queueFile))
         {
@@ -377,19 +369,31 @@ public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
                     continue;
                 }
                 var parsed = JsonSerializer.Deserialize<AuditEvent>(line, Options);
-                if (parsed is not null && parsed.EventId != Guid.Empty)
+                if (parsed is not null && parsed.EventId != Guid.Empty &&
+                    (!pendingOnly || !parsed.Dispatched))
                 {
-                    events.Add(parsed);
+                    if (recent is not null)
+                    {
+                        if (recent.Count == maxEvents) recent.Dequeue();
+                        recent.Enqueue(parsed);
+                    }
+                    else
+                    {
+                        events.Add(parsed);
+                        // O lote pendente é um prefixo dos eventos elegíveis.
+                        // Não é necessário ler o restante para enviá-lo.
+                        if (pendingOnly && maxEvents > 0 && events.Count >= maxEvents) break;
+                    }
                 }
             }
             catch (JsonException)
             {
-                // Linha truncada por queda no meio da gravação. É a razão de ser
-                // do formato: descartamos a linha e mantemos toda a trilha
-                // anterior, em vez de perder o arquivo inteiro.
+                // A projeção continua sem este registro, mas os bytes permanecem
+                // no arquivo. InspectIntegrityAsync permite localizar a linha
+                // incompatível sem expor seu conteúdo ou tentar repará-la.
             }
         }
 
-        return events;
+        return recent is null ? events : recent.ToList();
     }
 }

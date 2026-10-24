@@ -1,0 +1,3 @@
+*.trx -text -diff
+*.json -text
+medicao.json -diff

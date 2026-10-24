@@ -1,0 +1,10 @@
+{
+  "issue": 57,
+  "commit": "3ab7fd7426478e6b00b4385d4261a917a7b97a39",
+  "testSourceSha256": "C3BC32052B995E0CFA9AD71E4DDC39B5E9C5220AC806660EC06500922B9B0822",
+  "configuration": "Release",
+  "localPassed": 36,
+  "localFailed": 0,
+  "localSkipped": 0,
+  "filter": "AuditQueueDiagnosticConcurrencyTests|AuditQueueRetentionPreviewTests|AuditQueueIntegrityTests"
+}

@@ -1,0 +1,2 @@
+2026-10-24T01:09:54.4279371Z [31;1m[0m[36;1m[36;1m  57 | [0m … f ($process.HasExited) { [36;1mthrow 'Backend encerrou antes de iniciar.'[0m }[0m
+2026-10-24T01:09:54.4280688Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mBackend encerrou antes de iniciar.[0m

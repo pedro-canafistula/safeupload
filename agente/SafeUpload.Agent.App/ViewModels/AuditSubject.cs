@@ -24,7 +24,7 @@ public static class AuditSubject
         string site = Site(auditEvent.DestinationPath);
 
         return string.IsNullOrEmpty(auditEvent.FileName)
-            ? $"texto enviado a {site}"
+            ? $"texto destinado a {site}"
             : $"{auditEvent.FileName} para {site}";
     }
 

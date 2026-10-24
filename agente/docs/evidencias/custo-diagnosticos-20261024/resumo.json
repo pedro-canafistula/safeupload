@@ -1,0 +1,64 @@
+{
+  "issue": 56,
+  "source": "6ae2a6f35adc154cc9ae6e9198ee8a152c3a31bd",
+  "localResult": "passed",
+  "ciRun": 40113824955,
+  "ciResult": "success",
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 67,
+      "sha256": "CF352DA3DF31B9DEA60706F26C593FD0C68AFA892E8DD5E37D748FCE87C37482"
+    },
+    {
+      "file": "checks-final.json",
+      "bytes": 31649,
+      "sha256": "0D75D8AC75BE34723E74685FADCEC051EFF7397BC83C9252A9F6BC4102783D29"
+    },
+    {
+      "file": "ci-debug.log",
+      "bytes": 32658,
+      "sha256": "EBD2E2B7610D38A31E5842EA0278D1ED6D04E50EB4B3AC67B176E8043DD9D94D"
+    },
+    {
+      "file": "ci-install.log",
+      "bytes": 32899,
+      "sha256": "3F3DB29F4B71275051168B379776F6AA74133A7030B121FC7215CF3CA70311EE"
+    },
+    {
+      "file": "ci-release.log",
+      "bytes": 32771,
+      "sha256": "49E13833C48362E4A295E85AE589A78C2756F8173446CEA5569BE7B8F1FB9CDA"
+    },
+    {
+      "file": "ci-run.json",
+      "bytes": 15496,
+      "sha256": "3CF2E2144FF9DD495EBD23895824C81E954A8F556B18876B16AD2010253A394A"
+    },
+    {
+      "file": "execution.log",
+      "bytes": 785,
+      "sha256": "B55E1B99A8BCE541CDB321A1797A14D6D0C4530E7BD92D28925C0847A7CA9844"
+    },
+    {
+      "file": "functional-excerpts.json",
+      "bytes": 5440,
+      "sha256": "437B9A9A05CFB39B18BA1E3FF20DAFEF0B09EF39063428827D620E6143F2B6DA"
+    },
+    {
+      "file": "measurement-summary.json",
+      "bytes": 1815,
+      "sha256": "405829E7F6A12E4F452014F5E686616E00A68E40521ADD0DC4D1305C190DCC30"
+    },
+    {
+      "file": "result-original.json",
+      "bytes": 13135,
+      "sha256": "E3A2637DE64D48FC875A9BD6AF7BAB64396541BCA279F5E2BE98AEDB7F17AE7C"
+    },
+    {
+      "file": "source-identity.json",
+      "bytes": 430,
+      "sha256": "3267156588F3A4DDB928629FBB3FAF5F4770A07C73A9D3521DFCC63DD5DDD255"
+    }
+  ]
+}

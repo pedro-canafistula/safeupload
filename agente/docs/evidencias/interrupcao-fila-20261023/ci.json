@@ -1,0 +1,63 @@
+{
+  "sourceCommit": "50d887b12453edc07c9b955c55da012553fbe308",
+  "ciRun": 39967578641,
+  "jobs": [
+    {
+      "id": 120461379460,
+      "name": "Componentes C# Release",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120461379475,
+      "name": "Instalação real em Windows descartável",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120461379653,
+      "name": "Componentes C# Debug",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "csharp": {
+    "Debug": {
+      "passed": 780,
+      "failed": 0,
+      "skipped": 4,
+      "total": 784
+    },
+    "Release": {
+      "passed": 780,
+      "failed": 0,
+      "skipped": 4,
+      "total": 784
+    }
+  },
+  "powershell": {
+    "ps7": "39/39",
+    "ps51": "39/39",
+    "environment": "4/4"
+  },
+  "crashTrials": 24,
+  "interruptedConfirmationsWithPartialTemporary": 12,
+  "completedAppendsBeforeKill": 12,
+  "partialAppendObserved": false,
+  "productionCodeChanged": false,
+  "installedServiceOrVmModified": false,
+  "artifactDigests": [
+    {
+      "name": "interrupcao-fila-Debug",
+      "digest": "sha256:546050ad4697b868a7db7153cab07e1d9d939cb3b16431fd14e910dcfd9a0808",
+      "verified": true
+    },
+    {
+      "name": "interrupcao-fila-Release",
+      "digest": "sha256:d504cd84012af6cda79b3d8077d11173d4cf215af59cd4cb54504dd8ac667e7a",
+      "verified": true
+    }
+  ],
+  "integrationRun": 39967588809,
+  "integrationResult": "failed-backend-startup"
+}

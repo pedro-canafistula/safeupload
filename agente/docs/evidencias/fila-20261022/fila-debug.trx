@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="e8f9fb0e-5f6e-4790-a1fd-430a16f9bafa" name="lucas@COMPUTADOR-LUCA 2026-10-22 19:05:21" runUser="COMPUTADOR-LUCA\lucas" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-22T19:05:21.5323334-03:00" queuing="2026-10-22T19:05:21.5323339-03:00" start="2026-10-22T19:05:14.3875080-03:00" finish="2026-10-22T19:05:21.6058903-03:00" />
+  <TestSettings name="default" id="b0c53689-2a47-4fdd-a4e0-6a9203a6fcb9">
+    <Deployment runDeploymentRoot="lucas_COMPUTADOR-LUCA_2026-10-22_19_05_21" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="76e404b6-620e-4d5e-b0c2-5ab5ad04a45d" testId="caae0997-f923-26d9-e876-d1a1b0695591" testName="SafeUpload.Agent.Tests.QueueLongevityTests.Falha_de_gravacao_por_arquivo_ocupado_e_observavel_preserva_fila_e_permite_retomada" computerName="COMPUTADOR-LUCA" duration="00:00:00.0087042" startTime="2026-10-22T19:05:21.5155537-03:00" endTime="2026-10-22T19:05:21.5239459-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="76e404b6-620e-4d5e-b0c2-5ab5ad04a45d" />
+    <UnitTestResult executionId="d8d67323-5d8e-49eb-b5d3-c6ff88cbc30e" testId="8534323a-c738-eed2-03e3-b274be836788" testName="SafeUpload.Agent.Tests.QueueLongevityTests.Backlog_em_varios_lotes_sobrevive_a_resposta_perdida_503_e_reabertura_sem_trocar_ids" computerName="COMPUTADOR-LUCA" duration="00:00:02.1299935" startTime="2026-10-22T19:05:19.3741277-03:00" endTime="2026-10-22T19:05:21.4917088-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d8d67323-5d8e-49eb-b5d3-c6ff88cbc30e" />
+    <UnitTestResult executionId="cc259fcb-e3fa-4df3-8832-18d6693ec538" testId="8fd50f8b-465a-e325-4f7e-22ab70eedcae" testName="SafeUpload.Agent.Tests.QueueLongevityTests.Falha_na_substituicao_atomica_preserva_pendentes_e_limpa_temporario_sem_apagar_linhas_desconhecidas" computerName="COMPUTADOR-LUCA" duration="00:00:00.0201696" startTime="2026-10-22T19:05:21.5133089-03:00" endTime="2026-10-22T19:05:21.5147226-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="cc259fcb-e3fa-4df3-8832-18d6693ec538" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SafeUpload.Agent.Tests.QueueLongevityTests.Backlog_em_varios_lotes_sobrevive_a_resposta_perdida_503_e_reabertura_sem_trocar_ids" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\debug\net10.0-windows\safeupload.agent.tests.dll" id="8534323a-c738-eed2-03e3-b274be836788">
+      <Execution id="d8d67323-5d8e-49eb-b5d3-c6ff88cbc30e" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.QueueLongevityTests" name="Backlog_em_varios_lotes_sobrevive_a_resposta_perdida_503_e_reabertura_sem_trocar_ids" />
+    </UnitTest>
+    <UnitTest name="SafeUpload.Agent.Tests.QueueLongevityTests.Falha_de_gravacao_por_arquivo_ocupado_e_observavel_preserva_fila_e_permite_retomada" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\debug\net10.0-windows\safeupload.agent.tests.dll" id="caae0997-f923-26d9-e876-d1a1b0695591">
+      <Execution id="76e404b6-620e-4d5e-b0c2-5ab5ad04a45d" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.QueueLongevityTests" name="Falha_de_gravacao_por_arquivo_ocupado_e_observavel_preserva_fila_e_permite_retomada" />
+    </UnitTest>
+    <UnitTest name="SafeUpload.Agent.Tests.QueueLongevityTests.Falha_na_substituicao_atomica_preserva_pendentes_e_limpa_temporario_sem_apagar_linhas_desconhecidas" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\debug\net10.0-windows\safeupload.agent.tests.dll" id="8fd50f8b-465a-e325-4f7e-22ab70eedcae">
+      <Execution id="cc259fcb-e3fa-4df3-8832-18d6693ec538" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.QueueLongevityTests" name="Falha_na_substituicao_atomica_preserva_pendentes_e_limpa_temporario_sem_apagar_linhas_desconhecidas" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="caae0997-f923-26d9-e876-d1a1b0695591" executionId="76e404b6-620e-4d5e-b0c2-5ab5ad04a45d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="8534323a-c738-eed2-03e3-b274be836788" executionId="d8d67323-5d8e-49eb-b5d3-c6ff88cbc30e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="8fd50f8b-465a-e325-4f7e-22ab70eedcae" executionId="cc259fcb-e3fa-4df3-8832-18d6693ec538" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Resultados que não estão em uma lista" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="Todos os resultados carregados" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="3" executed="3" passed="3" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.4+50e68bbb8b (64-bit .NET 10.0.13)&#xD;
+[xUnit.net 00:00:03.76]   Discovering: SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:03.92]   Discovered:  SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:03.95]   Starting:    SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:06.15]   Finished:    SafeUpload.Agent.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

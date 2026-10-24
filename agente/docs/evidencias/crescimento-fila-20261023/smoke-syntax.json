@@ -1,0 +1,7 @@
+{
+  "missingArguments": 0,
+  "parserErrors": 0,
+  "requireCalls": 59,
+  "file": "agente/installer/tests/Test-InstallerSmoke.ps1",
+  "sha256": "3A3B523DD1E63FCBB2171B25EC84ABC35A7FBDEB5ECC3198E02D5FD692551E21"
+}

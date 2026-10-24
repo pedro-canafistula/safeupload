@@ -135,6 +135,8 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                     TransferNotification t => ("Transfer", (Guid?)t.TransferId, (Guid?)null, t.Phase.ToString()),
                     EventNotification e => ("Event", (Guid?)null, (Guid?)e.Event.EventId, e.Event.Verdict.ToString()),
                     StatusNotification => ("Status", (Guid?)null, (Guid?)null, (string?)null),
+                    HistoryNotification h => ("History", (Guid?)null, (Guid?)null,
+                        h.Available ? h.Events.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) : "Unavailable"),
                     _ => throw new InvalidDataException("Unknown notification kind.")
                 };
                 Write(kind, transferId, eventId, phase, targetSessionId, contentDigest, handBackPath);
@@ -287,7 +289,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 entry.DroppedThroughSequence >= entry.Sequence || string.IsNullOrWhiteSpace(entry.BootId) ||
                 !Guid.TryParse(entry.InstanceId, out var instance) || instance == Guid.Empty || entry.Utc == default || entry.Utc.Offset != TimeSpan.Zero || entry.Qpc < 0 || entry.QpcFrequency <= 0 ||
                 entry.PreviousSha256.Length != 64 || !entry.PreviousSha256.All(Uri.IsHexDigit) ||
-                entry.Kind is not ("Start" or "Heartbeat" or "Stop" or "Rotation" or "Transfer" or "Event" or "Status"))
+                entry.Kind is not ("Start" or "Heartbeat" or "Stop" or "Rotation" or "Transfer" or "Event" or "Status" or "History"))
                 throw new InvalidDataException("Invalid notification record fields.");
             if ((entry.Kind == "Transfer" && (entry.TransferId is null || entry.TransferId == Guid.Empty ||
                     entry.Phase is not ("Analyzing" or "Released" or "Blocked" or "Retained"))) ||

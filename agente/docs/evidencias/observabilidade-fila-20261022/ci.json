@@ -1,0 +1,251 @@
+{
+  "result": "success",
+  "runId": 39864662531,
+  "url": "https://github.com/pedro-canafistula/safeupload/actions/runs/39864662531",
+  "sourceCommit": "39290c98609d154488d368dbf85b92f6744774e6",
+  "version": "0.1.7",
+  "tests": {
+    "Debug": {
+      "passed": 764,
+      "failed": 0,
+      "skipped": 4,
+      "total": 768
+    },
+    "Release": {
+      "passed": 764,
+      "failed": 0,
+      "skipped": 4,
+      "total": 768
+    }
+  },
+  "jobs": [
+    {
+      "id": 120123728898,
+      "name": "Componentes C# Release",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 39864662531,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Compilar diagnóstico isolado da fila",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Executar suíte C# completa sem filtro",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Preservar resultados completos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15
+        }
+      ]
+    },
+    {
+      "id": 120123729237,
+      "name": "Componentes C# Debug",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 39864662531,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Compilar diagnóstico isolado da fila",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Executar suíte C# completa sem filtro",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Preservar resultados completos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15
+        }
+      ]
+    },
+    {
+      "id": 120123729243,
+      "name": "Instalação real em Windows descartável",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 39864662531,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Habilitar caminhos longos",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Contratos PowerShell e ambiente",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Gerar candidato 0.1.7 com compilador verificado",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Conferir o artefato antes da instalação",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Instalar, inspecionar, reiniciar e desinstalar",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Preservar instalador e evidências inclusive em falha",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19
+        }
+      ]
+    }
+  ],
+  "installerArtifact": {
+    "id": 12464075583,
+    "zipSha256": "7d2b9680db8b210e62ec7381ca8a7f45b5cd326337123eb10bc56406764cc21a",
+    "digestCheckedAfterDownload": true
+  },
+  "qualification": "Runner installed LocalSystem service; Windows 10 clone qualification of 0.1.7 remains pending."
+}

@@ -1,0 +1,27 @@
+{
+  "inspectedAt": "2026-10-24T14:35:04.8406805-03:00",
+  "main": "efe93cf75aa668f2870c0951b48b3ef2c6332226",
+  "previousMain": "efe93cf75aa668f2870c0951b48b3ef2c6332226",
+  "mainChanged": false,
+  "driverCachedBefore": "06bafa7d3892bdec2db545841f556bb662b59420",
+  "driverCurrent": "e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+  "driverInitialBaseline": "688c61af6fa80a4560a8816008eeb21e374cf6e8",
+  "policyBranch": "e8afeb4d84df5a5e14f57c9392438e7eec7073a0",
+  "heartbeatBranch": "7766bb3cc262609cb999f77fd3bf1befe0d34ff3",
+  "agentM2Branch": "ebb3b5341f0e1c71ce7c78aded7939d0bf0fcfc7",
+  "nativeProtocolBlob": "c0b5dbb691d8909cda3e7462db52bdf93943efb2",
+  "currentAgentDiagnosticCountersBytes": 120,
+  "currentAgentWriterStateBytes": 288,
+  "m2DiagnosticCountersBytes": 296,
+  "m2WriterStateBytes": 304,
+  "preparedCommand": 29,
+  "preparedProtocol": 18,
+  "preparedSnapshotBytes": 2576,
+  "preparedRecordBytes": 160,
+  "preparedCapacity": 16,
+  "preparedNameCodeUnits": 48,
+  "openPullRequests": [
+    42,
+    49
+  ]
+}

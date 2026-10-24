@@ -1,0 +1,382 @@
+﻿{
+    "result":  "installation-health-and-service-restart-passed-ui-final-check-pending",
+    "version":  "0.1.7",
+    "commit":  "39290c98609d154488d368dbf85b92f6744774e6",
+    "vmUuid":  "3A9992DB-4644-405C-B642-9766EDD10650",
+    "startedAtUtc":  "2026-10-22T22:40:33.9122894Z",
+    "uiObservation":  "pending",
+    "uninstallStatus":  "pending",
+    "startupAfterBoot":  "pending",
+    "policyHashBefore":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "queueHashBefore":  "CFCAE771B1ACC370A10850853FF18103C780C3A2D69512253D4832C87C09C9EB",
+    "originalEventIds":  [
+                             "a8c6552d-dca9-41eb-9bff-b1782480d158",
+                             "23ab57ce-ebf7-4d12-830c-13ccc8c80319",
+                             "42c3dfc9-841b-4a28-b6d6-d113541a0603",
+                             "5eefda87-50ee-47a3-af57-09546d01cca7",
+                             "0f4144fd-4d31-4e67-91c2-3770cc514f53",
+                             "deb57a31-e063-4b4d-bd82-fd7799f2adf3",
+                             "a25bd1fd-60bc-460c-8fb1-470359c3bba4",
+                             "87c07ef8-c76d-42b9-a740-90a313d6d174",
+                             "301c1d10-1551-46ab-81cb-4e489846d564"
+                         ],
+    "installedFilesChecked":  724,
+    "policyHashAfterInstall":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "queueHashAfterInstall":  "CFCAE771B1ACC370A10850853FF18103C780C3A2D69512253D4832C87C09C9EB",
+    "healthInitial":  {
+                          "sinceUtc":  "2026-10-22T22:40:59.8227371+00:00",
+                          "degraded":  false,
+                          "failedWriteAttempts":  0,
+                          "operations":  [
+                                             {
+                                                 "operation":  "WriteEvent",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             },
+                                             {
+                                                 "operation":  "WriteOverride",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             },
+                                             {
+                                                 "operation":  "ReadRecent",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             },
+                                             {
+                                                 "operation":  "ReadPending",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             },
+                                             {
+                                                 "operation":  "ReadPendingOverrides",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             },
+                                             {
+                                                 "operation":  "ConfirmEvents",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             },
+                                             {
+                                                 "operation":  "ConfirmOverrides",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             }
+                                         ]
+                      },
+    "resumedAtUtc":  "2026-10-22T22:48:26.5524921Z",
+    "uiBefore":  {
+                     "ProcessId":  1152,
+                     "SessionId":  1,
+                     "CreationDate":  "\/Date(1792708959949)\/"
+                 },
+    "failedFixtureName":  "homologacao-017-failure-776a5367ae3d4c40bdb9c9ec3f613728.txt",
+    "healthDegraded":  {
+                           "sinceUtc":  "2026-10-22T22:40:59.8227371+00:00",
+                           "degraded":  true,
+                           "failedWriteAttempts":  1,
+                           "operations":  [
+                                              {
+                                                  "operation":  "WriteEvent",
+                                                  "degraded":  true,
+                                                  "failures":  1,
+                                                  "successes":  0,
+                                                  "lastFailureUtc":  "2026-10-22T22:48:26.7420996+00:00",
+                                                  "lastSuccessUtc":  null,
+                                                  "failureKind":  "io_error",
+                                                  "failureHResult":  -2147024864
+                                              },
+                                              {
+                                                  "operation":  "WriteOverride",
+                                                  "degraded":  false,
+                                                  "failures":  0,
+                                                  "successes":  0,
+                                                  "lastFailureUtc":  null,
+                                                  "lastSuccessUtc":  null,
+                                                  "failureKind":  null,
+                                                  "failureHResult":  null
+                                              },
+                                              {
+                                                  "operation":  "ReadRecent",
+                                                  "degraded":  false,
+                                                  "failures":  0,
+                                                  "successes":  2,
+                                                  "lastFailureUtc":  null,
+                                                  "lastSuccessUtc":  "2026-10-22T22:42:41.7482535+00:00",
+                                                  "failureKind":  null,
+                                                  "failureHResult":  null
+                                              },
+                                              {
+                                                  "operation":  "ReadPending",
+                                                  "degraded":  false,
+                                                  "failures":  0,
+                                                  "successes":  0,
+                                                  "lastFailureUtc":  null,
+                                                  "lastSuccessUtc":  null,
+                                                  "failureKind":  null,
+                                                  "failureHResult":  null
+                                              },
+                                              {
+                                                  "operation":  "ReadPendingOverrides",
+                                                  "degraded":  false,
+                                                  "failures":  0,
+                                                  "successes":  0,
+                                                  "lastFailureUtc":  null,
+                                                  "lastSuccessUtc":  null,
+                                                  "failureKind":  null,
+                                                  "failureHResult":  null
+                                              },
+                                              {
+                                                  "operation":  "ConfirmEvents",
+                                                  "degraded":  false,
+                                                  "failures":  0,
+                                                  "successes":  0,
+                                                  "lastFailureUtc":  null,
+                                                  "lastSuccessUtc":  null,
+                                                  "failureKind":  null,
+                                                  "failureHResult":  null
+                                              },
+                                              {
+                                                  "operation":  "ConfirmOverrides",
+                                                  "degraded":  false,
+                                                  "failures":  0,
+                                                  "successes":  0,
+                                                  "lastFailureUtc":  null,
+                                                  "lastSuccessUtc":  null,
+                                                  "failureKind":  null,
+                                                  "failureHResult":  null
+                                              }
+                                          ]
+                       },
+    "queueHashAfterRefusal":  "CFCAE771B1ACC370A10850853FF18103C780C3A2D69512253D4832C87C09C9EB",
+    "recoveryFixtureName":  "homologacao-017-recovery-b63efb4495034b888369b779574ba77e.txt",
+    "healthResumed":  {
+                          "sinceUtc":  "2026-10-22T22:40:59.8227371+00:00",
+                          "degraded":  false,
+                          "failedWriteAttempts":  1,
+                          "operations":  [
+                                             {
+                                                 "operation":  "WriteEvent",
+                                                 "degraded":  false,
+                                                 "failures":  1,
+                                                 "successes":  1,
+                                                 "lastFailureUtc":  "2026-10-22T22:48:26.7420996+00:00",
+                                                 "lastSuccessUtc":  "2026-10-22T22:48:27.1380443+00:00",
+                                                 "failureKind":  "io_error",
+                                                 "failureHResult":  -2147024864
+                                             },
+                                             {
+                                                 "operation":  "WriteOverride",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             },
+                                             {
+                                                 "operation":  "ReadRecent",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  4,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  "2026-10-22T22:48:27.140462+00:00",
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             },
+                                             {
+                                                 "operation":  "ReadPending",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             },
+                                             {
+                                                 "operation":  "ReadPendingOverrides",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             },
+                                             {
+                                                 "operation":  "ConfirmEvents",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             },
+                                             {
+                                                 "operation":  "ConfirmOverrides",
+                                                 "degraded":  false,
+                                                 "failures":  0,
+                                                 "successes":  0,
+                                                 "lastFailureUtc":  null,
+                                                 "lastSuccessUtc":  null,
+                                                 "failureKind":  null,
+                                                 "failureHResult":  null
+                                             }
+                                         ]
+                      },
+    "recoveryEventId":  "30bf77d2-726c-4530-85b9-8b10d3cf51fc",
+    "healthLogs":  [
+                       {
+                           "Id":  3102,
+                           "Message":  "Category: SafeUpload.Agent.Service.Diagnostics.MonitoredAuditSink\r\nEventId: 3102\r\n\r\nAudit queue operation WriteEvent resumed. Earlier failed attempts remain in audit-health counters; no lost-event recovery is implied.\r\n"
+                       },
+                       {
+                           "Id":  3101,
+                           "Message":  "Category: SafeUpload.Agent.Service.Diagnostics.MonitoredAuditSink\r\nEventId: 3101\r\n\r\nAudit queue operation WriteEvent failed (io_error, HRESULT -2147024864). Inspect audit-health; counters are since service start.\r\n"
+                       }
+                   ],
+    "eventIdsBeforeRestart":  [
+                                  "a8c6552d-dca9-41eb-9bff-b1782480d158",
+                                  "23ab57ce-ebf7-4d12-830c-13ccc8c80319",
+                                  "42c3dfc9-841b-4a28-b6d6-d113541a0603",
+                                  "5eefda87-50ee-47a3-af57-09546d01cca7",
+                                  "0f4144fd-4d31-4e67-91c2-3770cc514f53",
+                                  "deb57a31-e063-4b4d-bd82-fd7799f2adf3",
+                                  "a25bd1fd-60bc-460c-8fb1-470359c3bba4",
+                                  "87c07ef8-c76d-42b9-a740-90a313d6d174",
+                                  "301c1d10-1551-46ab-81cb-4e489846d564",
+                                  "30bf77d2-726c-4530-85b9-8b10d3cf51fc",
+                                  "fbd99c6c-ae8f-46d7-8416-a69d87ac96a8"
+                              ],
+    "queueHashBeforeRestart":  "DFD11C3D42F5D236E7248B267F0383BE4B84ACD90B4C12CD17B15C61143F4AAF",
+    "servicePidBeforeRestart":  4212,
+    "stoppedAtUtc":  "2026-10-22T22:49:36.3575348Z",
+    "runningAtUtc":  "2026-10-22T22:49:46.8190292Z",
+    "servicePidAfterRestart":  2516,
+    "uiAfter":  [
+                    {
+                        "ProcessId":  1152,
+                        "SessionId":  1,
+                        "CreationDate":  "\/Date(1792708959949)\/"
+                    }
+                ],
+    "queueHashAfterRestart":  "DFD11C3D42F5D236E7248B267F0383BE4B84ACD90B4C12CD17B15C61143F4AAF",
+    "policyHashAfterRestart":  "16979B6447FE37E98270729DEEAAFC5BA741AC4509BEF9730B2F11FFB093D90F",
+    "healthAfterRestart":  {
+                               "sinceUtc":  "2026-10-22T22:49:46.6182396+00:00",
+                               "degraded":  false,
+                               "failedWriteAttempts":  0,
+                               "operations":  [
+                                                  {
+                                                      "operation":  "WriteEvent",
+                                                      "degraded":  false,
+                                                      "failures":  0,
+                                                      "successes":  0,
+                                                      "lastFailureUtc":  null,
+                                                      "lastSuccessUtc":  null,
+                                                      "failureKind":  null,
+                                                      "failureHResult":  null
+                                                  },
+                                                  {
+                                                      "operation":  "WriteOverride",
+                                                      "degraded":  false,
+                                                      "failures":  0,
+                                                      "successes":  0,
+                                                      "lastFailureUtc":  null,
+                                                      "lastSuccessUtc":  null,
+                                                      "failureKind":  null,
+                                                      "failureHResult":  null
+                                                  },
+                                                  {
+                                                      "operation":  "ReadRecent",
+                                                      "degraded":  false,
+                                                      "failures":  0,
+                                                      "successes":  1,
+                                                      "lastFailureUtc":  null,
+                                                      "lastSuccessUtc":  "2026-10-22T22:49:47.1005145+00:00",
+                                                      "failureKind":  null,
+                                                      "failureHResult":  null
+                                                  },
+                                                  {
+                                                      "operation":  "ReadPending",
+                                                      "degraded":  false,
+                                                      "failures":  0,
+                                                      "successes":  0,
+                                                      "lastFailureUtc":  null,
+                                                      "lastSuccessUtc":  null,
+                                                      "failureKind":  null,
+                                                      "failureHResult":  null
+                                                  },
+                                                  {
+                                                      "operation":  "ReadPendingOverrides",
+                                                      "degraded":  false,
+                                                      "failures":  0,
+                                                      "successes":  0,
+                                                      "lastFailureUtc":  null,
+                                                      "lastSuccessUtc":  null,
+                                                      "failureKind":  null,
+                                                      "failureHResult":  null
+                                                  },
+                                                  {
+                                                      "operation":  "ConfirmEvents",
+                                                      "degraded":  false,
+                                                      "failures":  0,
+                                                      "successes":  0,
+                                                      "lastFailureUtc":  null,
+                                                      "lastSuccessUtc":  null,
+                                                      "failureKind":  null,
+                                                      "failureHResult":  null
+                                                  },
+                                                  {
+                                                      "operation":  "ConfirmOverrides",
+                                                      "degraded":  false,
+                                                      "failures":  0,
+                                                      "successes":  0,
+                                                      "lastFailureUtc":  null,
+                                                      "lastSuccessUtc":  null,
+                                                      "failureKind":  null,
+                                                      "failureHResult":  null
+                                                  }
+                                              ]
+                           },
+    "finishedAtUtc":  "2026-10-22T22:49:53.6879158Z"
+}

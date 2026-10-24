@@ -1,0 +1,35 @@
+{
+  "version": "0.1.11",
+  "commit": "42e34afd73b9e7fe8d183a032a3bcf9abc13f282",
+  "collectedAtUtc": "2026-10-23T19:11:38.632Z",
+  "initialUiStartedExplicitly": true,
+  "cleanActivityVisibleAfterShowingPanel": true,
+  "cpfLiveActivityObserved": true,
+  "cpfMaskedPopupObserved": true,
+  "historyRowsObserved": 17,
+  "serviceUnavailableObserved": true,
+  "automaticReconnectObserved": true,
+  "boot": "passed",
+  "uninstall": "passed; original receipt and independent confirmation collected",
+  "screenshots": [
+    "ui-cpf-0111.jpg",
+    "ui-historico-0111.jpg",
+    "ui-servico-parado-0111.jpg",
+    "ui-reconectada-0111.jpg",
+    "ui-apos-boot-0111.jpg"
+  ],
+  "limits": [
+    "FileSystemWatcher inspeciona após escrita; quarentena não demonstra bloqueio preventivo de envio.",
+    "Sem driver ou API real; janela de 500/filas grandes validada separadamente em testes/medição, não neste histórico de 17."
+  ],
+  "uiPidBeforeAndAfter": 5268,
+  "servicePidBefore": 5208,
+  "servicePidAfter": 6008,
+  "bootUiStartedManually": false,
+  "bootUiPid": 2352,
+  "bootServicePid": 2856,
+  "parentExplorerPid": 1816,
+  "uiDelayAfterExplorerMs": 14231.825,
+  "bootHistoryIdsPreserved": true,
+  "oldPopupObservedAfterBoot": false
+}

@@ -1,0 +1,97 @@
+{
+  "beforeCommit": "43d13c55b574512605f62b917dc787777e8eb65d",
+  "afterCommit": "42e34afd73b9e7fe8d183a032a3bcf9abc13f282",
+  "note": "Mesmo QueueProbe e ambiente, rodadas consecutivas, cache aquecido, sem isolamento; não são limites de latência/heap nem comparação de hash das filas aleatórias. Medições de pending-100 ocorrem antes das confirmações, com pendentes no início. Histórico ainda desserializa toda a fila. Confirmação sem mudança.",
+  "samples": [
+    {
+      "events": 1000,
+      "operation": "pending-100",
+      "samplesBefore": 5,
+      "samplesAfter": 5,
+      "beforeMedianMs": 20.6543,
+      "afterMedianMs": 3.024,
+      "beforeMedianAllocatedBytes": 2740048,
+      "afterMedianAllocatedBytes": 280864
+    },
+    {
+      "events": 1000,
+      "operation": "recent-500",
+      "samplesBefore": 5,
+      "samplesAfter": 5,
+      "beforeMedianMs": 19.5808,
+      "afterMedianMs": 23.3228,
+      "beforeMedianAllocatedBytes": 2720072,
+      "afterMedianAllocatedBytes": 2716288
+    },
+    {
+      "events": 1000,
+      "operation": "ack-100",
+      "samplesBefore": 3,
+      "samplesAfter": 3,
+      "beforeMedianMs": 15.3834,
+      "afterMedianMs": 16.3753,
+      "beforeMedianAllocatedBytes": 3957008,
+      "afterMedianAllocatedBytes": 3957120
+    },
+    {
+      "events": 10000,
+      "operation": "pending-100",
+      "samplesBefore": 5,
+      "samplesAfter": 5,
+      "beforeMedianMs": 126.1169,
+      "afterMedianMs": 0.8691,
+      "beforeMedianAllocatedBytes": 27581056,
+      "afterMedianAllocatedBytes": 280040
+    },
+    {
+      "events": 10000,
+      "operation": "recent-500",
+      "samplesBefore": 5,
+      "samplesAfter": 5,
+      "beforeMedianMs": 119.1156,
+      "afterMedianMs": 58.2301,
+      "beforeMedianAllocatedBytes": 27324528,
+      "afterMedianAllocatedBytes": 27071936
+    },
+    {
+      "events": 10000,
+      "operation": "ack-100",
+      "samplesBefore": 3,
+      "samplesAfter": 3,
+      "beforeMedianMs": 41.8879,
+      "afterMedianMs": 42.8035,
+      "beforeMedianAllocatedBytes": 33584144,
+      "afterMedianAllocatedBytes": 33578768
+    },
+    {
+      "events": 50000,
+      "operation": "pending-100",
+      "samplesBefore": 5,
+      "samplesAfter": 5,
+      "beforeMedianMs": 274.523,
+      "afterMedianMs": 0.6401,
+      "beforeMedianAllocatedBytes": 137412720,
+      "afterMedianAllocatedBytes": 280040
+    },
+    {
+      "events": 50000,
+      "operation": "recent-500",
+      "samplesBefore": 5,
+      "samplesAfter": 5,
+      "beforeMedianMs": 272.8519,
+      "afterMedianMs": 189.5783,
+      "beforeMedianAllocatedBytes": 136361696,
+      "afterMedianAllocatedBytes": 135322128
+    },
+    {
+      "events": 50000,
+      "operation": "ack-100",
+      "samplesBefore": 3,
+      "samplesAfter": 3,
+      "beforeMedianMs": 212.8559,
+      "afterMedianMs": 190.345,
+      "beforeMedianAllocatedBytes": 165575448,
+      "afterMedianAllocatedBytes": 165555144
+    }
+  ]
+}

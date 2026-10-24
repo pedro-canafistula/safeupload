@@ -1,0 +1,40 @@
+{
+  "source": "42e34afd73b9e7fe8d183a032a3bcf9abc13f282",
+  "newCases": {
+    "passed": 15,
+    "failed": 0,
+    "skipped": 0
+  },
+  "fullDebug": {
+    "passed": 794,
+    "failed": 7,
+    "skipped": 4,
+    "total": 805
+  },
+  "fullRelease": {
+    "passed": 794,
+    "failed": 7,
+    "skipped": 4,
+    "total": 805
+  },
+  "hostLimitations": {
+    "symbolicLinkCreationFailures": 5,
+    "ownerSidAssignmentFailures": 2,
+    "permissionsChanged": false
+  },
+  "powershell7": {
+    "passed": 41,
+    "failed": 0
+  },
+  "powershell51": {
+    "passed": 41,
+    "failed": 0,
+    "initialAttempt": "blocked-by-default-execution-policy",
+    "successfulRetry": "RemoteSigned restricted to test process"
+  },
+  "environment": {
+    "passed": 4,
+    "failed": 0
+  },
+  "testFiltering": "Full suites retained without excluding failing cases; new-case Debug run separate."
+}

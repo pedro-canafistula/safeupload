@@ -1,0 +1,19 @@
+﻿{
+    "result":  "passed",
+    "context":  "Clone",
+    "startedAtUtc":  "2026-10-23T19:57:39.1727242Z",
+    "nonce":  "a47c9c49604b48cf99165cbd6267a1f7",
+    "vhd":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\owned-64mb.vhd",
+    "maximumMiB":  64,
+    "probeSha256":  "C4A77B513765826A11D3BBB801D2E33AAEE6DFEDF80798B0DA8717A82DADBB74",
+    "probeSource":  "8689572dc1b60cf3da3ed7e2783ef8d65a424949",
+    "detached":  true,
+    "create-attachExitCode":  0,
+    "partition-formatExitCode":  0,
+    "diskNumber":  1,
+    "driveLetter":  "P",
+    "volumeId":  "\\\\?\\Volume{bf3e3f53-0000-0000-0000-010000000000}\\",
+    "volumeBytes":  65990656,
+    "probeExitCode":  0,
+    "finishedAtUtc":  "2026-10-23T19:57:45.6003128Z"
+}

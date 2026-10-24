@@ -1,0 +1,17 @@
+{
+  "candidate": "0.1.8",
+  "sourceCommit": "26b81db139ac7b5717de19bac884677d58b03b0b",
+  "ciRun": 39958856933,
+  "hashes": {
+    "ci-resumo.json": "42a50461a9c92833981454f7674bad10a3eb94e4ed80aaba95874f696b6aa80d",
+    "local-debug.trx": "99ccde1dbb75b620e40f176ab5f4c17c6618f0fc44b3899868ea31886dc2fbc6",
+    "local-release.trx": "cb087765a3d0b673d3ddd1cfb29648484dfe12fe5ca055f4bc071911fbbe47b3",
+    "ps51.json": "32876b6a95b8b6c49307fc4e9dac86be258de79af0201ffe4a615734b720727d",
+    "ps7.json": "df155eff47d2d4fdf7acec4fdf3cc285ca26fe9a430bdb689740f77eff968cda",
+    "runner-artifact-validation.json": "f7937e505bbf71ebdc1728c9b6884f381f2fb423949d258eb891dfb4c2a8031b",
+    "runner-environment.json": "4d0f6a7413177e99fee4c0dc324f2e4fdbef9f2799e996bc791434361b9b952f",
+    "runner-ps51.json": "52f3bfbcb0bb1a0110477829c7fc71f6afb635ef8741bc59fb595d9a966639c0",
+    "runner-ps7.json": "0264ffd6110a7d68634a3fe0b77209bbbc9abfcc86fdc8749917d4592f2828d7",
+    "runner-smoke.json": "a1ec38eb2ceb3f59d0c367c0e57737cfac4eed7954c2e4e41e26eb539dbb5fa4"
+  }
+}

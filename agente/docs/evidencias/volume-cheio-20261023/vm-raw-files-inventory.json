@@ -1,0 +1,68 @@
+[
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\clone-result-retry.json",
+        "bytes":  6460,
+        "sha256":  "B7E64FF50B6D037C5F36E70F82CB7E273E07B3112E82A92868F1323933F34BEB"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\clone-test-retry.log",
+        "bytes":  272,
+        "sha256":  "05046DB2818DFFDDDDA52B74D51C076B9710B97ACFCECBB2AF11814DC9AD7BB5"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\create-attach.err.log",
+        "bytes":  0,
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\create-attach.log",
+        "bytes":  411,
+        "sha256":  "84EDFA2A9A98A7313938C11F528AE761F757270AB5AB2E93D36502654BEEC098"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\create-attach.txt",
+        "bytes":  335,
+        "sha256":  "F0D492ADC1AB880E57C8C790ABC81993F7E90D44A3691A9A1DA73CBF5F3C8BA7"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\partition-format.err.log",
+        "bytes":  0,
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\partition-format.log",
+        "bytes":  413,
+        "sha256":  "274F870AC4B43C44203FCAE354507ACEE23EF5EC852120441542A230D753898E"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\partition-format.txt",
+        "bytes":  108,
+        "sha256":  "9AACF53EFA27F6F1D0D62AE02BA6DF8C80D458DE00F0DB4E4D35F5A9931F4A1F"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\probe.err.log",
+        "bytes":  0,
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\probe.log",
+        "bytes":  51,
+        "sha256":  "40ED9D377B08A12D5E981D6CC8722D4128317E490D9C7CDA52C134900173A2B9"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\wrapper-result.json",
+        "bytes":  820,
+        "sha256":  "01A3C5B92F828FE1AEAD479026683917DF70962AAE3020B793FAE8F3342A64DE"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\probe-results\\progress.json",
+        "bytes":  28903,
+        "sha256":  "B82693208E228FFB5419FA0E1D9CF0F3450082202A37D72781DF73999C4A212E"
+    },
+    {
+        "path":  "C:\\Users\\safeuploadlab\\Desktop\\Homologacao-SafeUpload-016\\disk-full\\volume-a47c9c49604b48cf99165cbd6267a1f7\\probe-results\\result.json",
+        "bytes":  29566,
+        "sha256":  "53CDF4383EFEEC7C4A5EF8F36B36088438CDEF8A247BAFA0CBBBB71158626401"
+    }
+]
+

@@ -1,5 +1,6 @@
 using System.Reflection;
 using SafeUpload.Agent.App.Mvvm;
+using SafeUpload.Agent.Core.Contracts;
 
 namespace SafeUpload.Agent.App.ViewModels;
 
@@ -41,17 +42,13 @@ public sealed class AgentViewModel : ObservableObject
     public HistoryViewModel History { get; }
 
     /// <summary>
-    /// Carrega as duas telas.
-    ///
-    /// Chamado no arranque, com o painel ainda oculto, para que o agente já
-    /// tenha o estado em mãos quando o usuário abrir a janela pela primeira
-    /// vez — e para que o histórico esteja pronto para receber interceptações
-    /// antes de qualquer tela ter sido exibida.
+    /// Aplica a projeção recebida do serviço a cada conexão, antes dos eventos
+    /// em tempo real. Não lê arquivos nem produz alertas de bloqueio antigos.
     /// </summary>
-    public async Task LoadAsync()
+    public void ApplyHistory(HistoryNotification history)
     {
-        await Status.LoadAsync().ConfigureAwait(true);
-        await History.LoadAsync().ConfigureAwait(true);
+        Status.ApplyHistory(history.Events);
+        History.ApplyHistory(history);
     }
 
     /// <summary>Os dois itens de navegação da barra lateral.</summary>

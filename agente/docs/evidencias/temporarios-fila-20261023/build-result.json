@@ -1,0 +1,10 @@
+{
+  "installer": "D:\\a\\safeupload\\safeupload\\artifacts\\installer\\SafeUploadAgent-0.1.9-win-x64-setup.exe",
+  "sha256": "03FBC7F0372E7B6CEF5B56D32C3CEDEAC431DBB2A18CA59E01F717753E06196F",
+  "version": "0.1.9",
+  "commit": "8801944cdcd9a245a3eb02107305771c85b91a3a",
+  "sourceDirty": false,
+  "buildRoot": "D:\\a\\safeupload\\safeupload\\artifacts\\installer\\build-20717efe3a4d4b1db6bacfdef3ea7c23",
+  "payloadFiles": 724,
+  "signed": false
+}

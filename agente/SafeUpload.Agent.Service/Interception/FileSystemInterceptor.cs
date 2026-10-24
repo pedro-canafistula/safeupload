@@ -376,10 +376,7 @@ public sealed class FileSystemInterceptor : BackgroundService
 
         var result = await _inspection.InspectAsync(operation, _stopping).ConfigureAwait(false);
 
-        if (result.IsBlocked)
-        {
-            Quarantine(path);
-        }
+        bool quarantined = result.IsBlocked && FileQuarantine.TryMove(path, AgentPaths.QuarantineFolder, _logger);
 
         if (!result.InScope)
         {
@@ -398,7 +395,7 @@ public sealed class FileSystemInterceptor : BackgroundService
             var sessionId = SessionResolver.TryGetSessionId(operation.ProcessId);
 
             _hub.Publish(new EventNotification(
-                auditEvent, result.Findings, Quarantined: result.IsBlocked), sessionId);
+                auditEvent, result.Findings, Quarantined: quarantined), sessionId);
         }
 
         _logger.LogInformation(
@@ -406,41 +403,6 @@ public sealed class FileSystemInterceptor : BackgroundService
             result.Verdict,
             operation.FileName,
             result.ElapsedMs);
-    }
-
-    /// <summary>
-    /// Move o arquivo bloqueado para a quarentena.
-    ///
-    /// Mover, e não apagar: o arquivo é do usuário, e o agente não tem mandato
-    /// para destruí-lo. Ele sai do destino monitorado, que é o que a política
-    /// exige, e continua recuperável.
-    /// </summary>
-    private void Quarantine(string path)
-    {
-        try
-        {
-            var name = Path.GetFileNameWithoutExtension(path);
-            var extension = Path.GetExtension(path);
-            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            var target = Path.Combine(AgentPaths.QuarantineFolder, $"{name}-{stamp}{extension}");
-
-            // Nomes iguais no mesmo segundo: um sufixo numérico resolve sem
-            // sobrescrever o arquivo que já está na quarentena.
-            var attempt = 1;
-            while (File.Exists(target))
-            {
-                target = Path.Combine(AgentPaths.QuarantineFolder, $"{name}-{stamp}-{attempt}{extension}");
-                attempt++;
-            }
-
-            File.Move(path, target);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // O veredito continua valendo e o evento continua sendo auditado;
-            // só o arquivo permanece onde está.
-            _logger.LogWarning(ex, "Nao foi possivel mover {Arquivo} para a quarentena", Path.GetFileName(path));
-        }
     }
 
     /// <summary>

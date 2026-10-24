@@ -1,0 +1,55 @@
+{
+  "result": "passed",
+  "version": "0.1.7",
+  "sourceCommit": "39290c98609d154488d368dbf85b92f6744774e6",
+  "ciRunId": 39864662531,
+  "localDebugPassed": 138,
+  "localReleasePassed": 42,
+  "files": [
+    {
+      "file": "ci.json",
+      "bytes": 6579,
+      "sha256": "763a0383309b43a0567b2bb243ff94556d312f0cdea46d44a53e2e3f65ff920f"
+    },
+    {
+      "file": "debug.trx",
+      "bytes": 229248,
+      "sha256": "f9fcd3c8199e3cceb61685020c8d81335586c609a12309ffa6c492f4079aa33c"
+    },
+    {
+      "file": "ps51.json",
+      "bytes": 7844,
+      "sha256": "32876b6a95b8b6c49307fc4e9dac86be258de79af0201ffe4a615734b720727d"
+    },
+    {
+      "file": "ps7.json",
+      "bytes": 4724,
+      "sha256": "df155eff47d2d4fdf7acec4fdf3cc285ca26fe9a430bdb689740f77eff968cda"
+    },
+    {
+      "file": "release.trx",
+      "bytes": 72453,
+      "sha256": "45471e8bb374814a83e46ddb08ec57bf792d64666c355bc91da1689559c36fee"
+    },
+    {
+      "file": "runner-artifact-validation.json",
+      "bytes": 1228,
+      "sha256": "04db720f05613986c8733494cdef0f649fb8c4c1880e09d355dbb9146f7dda1a"
+    },
+    {
+      "file": "runner-ps51.json",
+      "bytes": 7845,
+      "sha256": "576baeee62e68e28441d2c1239c0a641fdcbb3df214341fd4d6f50052403d29f"
+    },
+    {
+      "file": "runner-ps7.json",
+      "bytes": 4724,
+      "sha256": "85ba86d6ef5003addc17c2854f0d11c5bd63f2b3fbf3dfd5110141ff8a2b1dd7"
+    },
+    {
+      "file": "smoke-instalado.json",
+      "bytes": 8374,
+      "sha256": "045208fffa1523470e0fab07dcbba05b871fefda9d089a4f39a499a71a532ed6"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+# Preserve os bytes e os hashes dos logs originais, inclusive CRLF e espacos finais.
+*.log -text -diff
