@@ -1,0 +1,103 @@
+  Determinando os projetos a serem restaurados...
+  Todos os projetos estão atualizados para restauração.
+  SafeUpload.Agent.Minifilter -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Minifilter\bin\Debug\net10.0-windows\SafeUpload.Agent.Minifilter.dll
+  SafeUpload.Agent.Network -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Network\bin\Debug\net10.0-windows\SafeUpload.Agent.Network.dll
+  SafeUpload.Agent.Core -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Core\bin\Debug\net10.0\SafeUpload.Agent.Core.dll
+  SafeUpload.Agent.Service -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\bin\Debug\net10.0-windows\SafeUpload.Agent.Service.dll
+  QueueFullVolumeProbe -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\tools\QueueFullVolumeProbe\bin\Debug\net10.0-windows\QueueFullVolumeProbe.dll
+  SafeUpload.Agent.App -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.App\bin\Debug\net10.0-windows\SafeUpload.Agent.App.dll
+  SafeUpload.Agent.Tests -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll
+Execução de teste para C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll (.NETCoreApp,Version=v10.0)
+1 arquivos de teste no total corresponderam ao padrão especificado.
+[xUnit.net 00:00:02.20]     SafeUpload.Agent.Tests.NotificationRecordTests.Reparse_and_hard_link_files_are_refused(hardLink: False) [FAIL]
+  Com falha SafeUpload.Agent.Tests.NotificationRecordTests.Reparse_and_hard_link_files_are_refused(hardLink: False) [31 ms]
+  Mensagem de erro:
+   System.IO.IOException : O cliente não tem o privilégio necessário. : 'C:\Users\lucas\AppData\Local\Temp\su-notify-3c7b247e47ae4e36b4c48503a63ad734\notifications\emissions.jsonl'.
+  Rastreamento de pilha:
+     at Interop.Kernel32.CreateSymbolicLink(String symlinkFileName, String targetFileName, Boolean isDirectory)
+   at System.IO.File.CreateSymbolicLink(String path, String pathToTarget)
+   at SafeUpload.Agent.Tests.NotificationRecordTests.Reparse_and_hard_link_files_are_refused(Boolean hardLink) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\NotificationRecordTests.cs:line 262
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+[xUnit.net 00:00:02.30]     SafeUpload.Agent.Tests.TrafficDiversionTests.Politicas_dos_navegadores_sao_aplicadas_e_removidas [SKIP]
+[xUnit.net 00:00:02.30]     SafeUpload.Agent.Tests.TrafficDiversionTests.Filtro_bloqueia_saida_direta_do_navegador_e_some_ao_descartar [SKIP]
+[xUnit.net 00:00:02.30]     SafeUpload.Agent.Tests.TrafficDiversionTests.Executaveis_inexistentes_sao_ignorados [SKIP]
+  Ignorado SafeUpload.Agent.Tests.TrafficDiversionTests.Politicas_dos_navegadores_sao_aplicadas_e_removidas [1 ms]
+  Ignorado SafeUpload.Agent.Tests.TrafficDiversionTests.Filtro_bloqueia_saida_direta_do_navegador_e_some_ao_descartar [1 ms]
+  Ignorado SafeUpload.Agent.Tests.TrafficDiversionTests.Executaveis_inexistentes_sao_ignorados [1 ms]
+[xUnit.net 00:00:02.30]     SafeUpload.Agent.Tests.MachineCertificateAuthorityTests.CA_da_maquina_e_aceita_pela_validacao_padrao_e_some_ao_remover [SKIP]
+  Ignorado SafeUpload.Agent.Tests.MachineCertificateAuthorityTests.CA_da_maquina_e_aceita_pela_validacao_padrao_e_some_ao_remover [1 ms]
+[xUnit.net 00:00:02.51]     SafeUpload.Agent.Tests.NotificationRecordTests.Reparse_directory_is_refused [FAIL]
+  Com falha SafeUpload.Agent.Tests.NotificationRecordTests.Reparse_directory_is_refused [2 ms]
+  Mensagem de erro:
+   System.IO.IOException : O cliente não tem o privilégio necessário. : 'C:\Users\lucas\AppData\Local\Temp\su-notify-7093504ddef642e9bcb87fc84ac9e17d\notifications'.
+  Rastreamento de pilha:
+     at Interop.Kernel32.CreateSymbolicLink(String symlinkFileName, String targetFileName, Boolean isDirectory)
+   at System.IO.Directory.CreateSymbolicLink(String path, String pathToTarget)
+   at SafeUpload.Agent.Tests.NotificationRecordTests.Reparse_directory_is_refused() in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\NotificationRecordTests.cs:line 272
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:03.48]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(hardLink: False, restart: False) [FAIL]
+  Com falha SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(hardLink: False, restart: False) [147 ms]
+  Mensagem de erro:
+   System.IO.IOException : O cliente não tem o privilégio necessário. : 'C:\Users\lucas\AppData\Local\Temp\safeupload-testes\097deb69cf654d5f857e3bb988370c26\journal\33bdc91f60a84440a18f70155edcc0a7.json'.
+  Rastreamento de pilha:
+     at Interop.Kernel32.CreateSymbolicLink(String symlinkFileName, String targetFileName, Boolean isDirectory)
+   at System.IO.File.CreateSymbolicLink(String path, String pathToTarget)
+   at SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(Boolean hardLink, Boolean restart) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 59
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:03.52]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(hardLink: False, restart: True) [FAIL]
+  Com falha SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(hardLink: False, restart: True) [18 ms]
+  Mensagem de erro:
+   System.IO.IOException : O cliente não tem o privilégio necessário. : 'C:\Users\lucas\AppData\Local\Temp\safeupload-testes\5d002413662546a9886eeb1ef56492c9\journal\ba1673dad1154fda984e0347278739df.json'.
+  Rastreamento de pilha:
+     at Interop.Kernel32.CreateSymbolicLink(String symlinkFileName, String targetFileName, Boolean isDirectory)
+   at System.IO.File.CreateSymbolicLink(String path, String pathToTarget)
+   at SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(Boolean hardLink, Boolean restart) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 59
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:03.76]     SafeUpload.Agent.Tests.StagedHandbackTests.Failed_copy_removes_its_uncommitted_temp_by_handle [FAIL]
+  Com falha SafeUpload.Agent.Tests.StagedHandbackTests.Failed_copy_removes_its_uncommitted_temp_by_handle [53 ms]
+  Mensagem de erro:
+   Assert.ThrowsAny() Failure: Exception type was not compatible
+Expected: typeof(System.OperationCanceledException)
+Actual:   typeof(System.IO.IOException)
+---- System.IO.IOException : Could not create a user hand-back directory.
+-------- System.ComponentModel.Win32Exception : Não é possível atribuir esta identificação de segurança como proprietário do objeto.
+  Rastreamento de pilha:
+     at SafeUpload.Agent.Tests.StagedHandbackTests.Failed_copy_removes_its_uncommitted_temp_by_handle() in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\StagedHandbackTests.cs:line 264
+   at SafeUpload.Agent.Tests.StagedHandbackTests.Failed_copy_removes_its_uncommitted_temp_by_handle() in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\StagedHandbackTests.cs:line 269
+--- End of stack trace from previous location ---
+----- Inner Stack Trace -----
+   at SafeUpload.Agent.Service.Interception.StagedHandbackCopier.CreateRelativeDirectory(SafeFileHandle parent, String name, IntPtr securityDescriptor) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Interception\StagedHandbackCopier.cs:line 640
+   at SafeUpload.Agent.Service.Interception.StagedHandbackCopier.OpenOrCreatePrivateDirectory(SafeFileHandle parent, String component, SecurityIdentifier userSid) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Interception\StagedHandbackCopier.cs:line 569
+   at SafeUpload.Agent.Service.Interception.StagedHandbackCopier.OpenBlockedDirectory(String profile, SecurityIdentifier userSid, Boolean createDirectories) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Interception\StagedHandbackCopier.cs:line 525
+   at SafeUpload.Agent.Service.Interception.StagedHandbackCopier.CopyVerifiedAsync(StagedTransfer transfer, FileStream sealedSnapshot, Int64 length, String sha256Hex, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Interception\StagedHandbackCopier.cs:line 120
+----- Inner Stack Trace -----
+
+[xUnit.net 00:00:03.96]     SafeUpload.Agent.Tests.StagedHandbackTests.Existing_handback_name_is_verified_read_only_and_never_overwritten [FAIL]
+  Com falha SafeUpload.Agent.Tests.StagedHandbackTests.Existing_handback_name_is_verified_read_only_and_never_overwritten [36 ms]
+  Mensagem de erro:
+   System.IO.IOException : Could not create a user hand-back directory.
+---- System.ComponentModel.Win32Exception : Não é possível atribuir esta identificação de segurança como proprietário do objeto.
+  Rastreamento de pilha:
+     at SafeUpload.Agent.Service.Interception.StagedHandbackCopier.CreateRelativeDirectory(SafeFileHandle parent, String name, IntPtr securityDescriptor) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Interception\StagedHandbackCopier.cs:line 640
+   at SafeUpload.Agent.Service.Interception.StagedHandbackCopier.OpenOrCreatePrivateDirectory(SafeFileHandle parent, String component, SecurityIdentifier userSid) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Interception\StagedHandbackCopier.cs:line 569
+   at SafeUpload.Agent.Service.Interception.StagedHandbackCopier.OpenBlockedDirectory(String profile, SecurityIdentifier userSid, Boolean createDirectories) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Interception\StagedHandbackCopier.cs:line 525
+   at SafeUpload.Agent.Service.Interception.StagedHandbackCopier.CopyVerifiedAsync(StagedTransfer transfer, FileStream sealedSnapshot, Int64 length, String sha256Hex, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Interception\StagedHandbackCopier.cs:line 120
+   at SafeUpload.Agent.Tests.StagedHandbackTests.Existing_handback_name_is_verified_read_only_and_never_overwritten() in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\StagedHandbackTests.cs:line 409
+   at SafeUpload.Agent.Tests.StagedHandbackTests.Existing_handback_name_is_verified_read_only_and_never_overwritten() in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\StagedHandbackTests.cs:line 411
+--- End of stack trace from previous location ---
+----- Inner Stack Trace -----
+
+[xUnit.net 00:00:04.28]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Recovery_rejects_unexpected_directory_without_changing_external_acl(link: True) [FAIL]
+  Com falha SafeUpload.Agent.Tests.StagedTransferJournalTests.Recovery_rejects_unexpected_directory_without_changing_external_acl(link: True) [8 ms]
+  Mensagem de erro:
+   System.IO.IOException : O cliente não tem o privilégio necessário. : 'C:\Users\lucas\AppData\Local\Temp\safeupload-testes\f41712715d634fd583a9919503a4c643\journal\unexpected'.
+  Rastreamento de pilha:
+     at Interop.Kernel32.CreateSymbolicLink(String symlinkFileName, String targetFileName, Boolean isDirectory)
+   at System.IO.Directory.CreateSymbolicLink(String path, String pathToTarget)
+   at SafeUpload.Agent.Tests.StagedTransferJournalTests.Recovery_rejects_unexpected_directory_without_changing_external_acl(Boolean link) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 138
+--- End of stack trace from previous location ---
+Arquivo de resultados: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\confirmacao-fila-20261023\completo-debug.trx
+
+Com falha! – Com falha:     7, Aprovado:   810, Ignorado:     4, Total:   821, Duração: 7 s - SafeUpload.Agent.Tests.dll (net10.0)

@@ -1,0 +1,284 @@
+{
+  "result": "passed",
+  "startedAtUtc": "2026-10-24T00:06:36.3616332+00:00",
+  "finishedAtUtc": "2026-10-24T00:07:16.076368+00:00",
+  "framework": ".NET 10.0.13",
+  "os": "Microsoft Windows 10.0.26300",
+  "architecture": "X64",
+  "logicalProcessors": 16,
+  "coreAssemblySha256": "6C6AF93BB7A4F2CA175E422996BB053C043A7617594BDABEB09681E8D92A0226",
+  "peakWorkingSetBytes": 143474688,
+  "freeDiskBytesAtEnd": 557094178816,
+  "measurementNote": "Warm OS cache; five reads and three acknowledgements per size. Process-wide allocation deltas, not live heap or latency guarantees. Rewrite bytes are destination-length estimates, not physical disk writes. No crash, power-loss or full-disk simulation.",
+  "stages": [
+    {
+      "events": 1000,
+      "bytesBeforeAcknowledgement": 514890,
+      "seedMs": 375.6668,
+      "acknowledged": 300,
+      "sha256": "900E88DCB52174AF4B119A67E64FF3D87B1896D14F9C6FEB03BE987C4A253E48"
+    },
+    {
+      "events": 10000,
+      "bytesBeforeAcknowledgement": 5158890,
+      "seedMs": 3512.262,
+      "acknowledged": 300,
+      "sha256": "ED20FE06AC0BD834C9B1A536F94D16D5A675C89378F1F95CF42907B0DBE3FBE0"
+    },
+    {
+      "events": 50000,
+      "bytesBeforeAcknowledgement": 25838890,
+      "seedMs": 19135.6012,
+      "acknowledged": 300,
+      "sha256": "88D7B2BFFC0BFB94D8A9B046CA8B7BC23333E52F11336D3E33EAE96BF45F9EB3"
+    }
+  ],
+  "samples": [
+    {
+      "Operation": "pending-100",
+      "Events": 1000,
+      "Milliseconds": 4.4347,
+      "AllocatedBytes": 289696
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 1000,
+      "Milliseconds": 27.2566,
+      "AllocatedBytes": 2730536
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 1000,
+      "Milliseconds": 2.8374,
+      "AllocatedBytes": 284984
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 1000,
+      "Milliseconds": 25.2989,
+      "AllocatedBytes": 2721232
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 1000,
+      "Milliseconds": 5.1801,
+      "AllocatedBytes": 282856
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 1000,
+      "Milliseconds": 23.3482,
+      "AllocatedBytes": 2718360
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 1000,
+      "Milliseconds": 2.6003,
+      "AllocatedBytes": 279816
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 1000,
+      "Milliseconds": 23.6499,
+      "AllocatedBytes": 2716064
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 1000,
+      "Milliseconds": 2.707,
+      "AllocatedBytes": 279816
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 1000,
+      "Milliseconds": 23.413,
+      "AllocatedBytes": 2716064
+    },
+    {
+      "Operation": "ack-100",
+      "Events": 1000,
+      "Milliseconds": 20.3755,
+      "AllocatedBytes": 1900656
+    },
+    {
+      "Operation": "ack-100",
+      "Events": 1000,
+      "Milliseconds": 19.1984,
+      "AllocatedBytes": 1897072
+    },
+    {
+      "Operation": "ack-100",
+      "Events": 1000,
+      "Milliseconds": 19.952,
+      "AllocatedBytes": 1898648
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 10000,
+      "Milliseconds": 1.5381,
+      "AllocatedBytes": 280352
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 10000,
+      "Milliseconds": 129.2898,
+      "AllocatedBytes": 27074776
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 10000,
+      "Milliseconds": 1.7082,
+      "AllocatedBytes": 280040
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 10000,
+      "Milliseconds": 115.1147,
+      "AllocatedBytes": 27071936
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 10000,
+      "Milliseconds": 0.9832,
+      "AllocatedBytes": 280040
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 10000,
+      "Milliseconds": 64.0361,
+      "AllocatedBytes": 27071936
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 10000,
+      "Milliseconds": 0.8386,
+      "AllocatedBytes": 280040
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 10000,
+      "Milliseconds": 58.1853,
+      "AllocatedBytes": 27071936
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 10000,
+      "Milliseconds": 0.8075,
+      "AllocatedBytes": 280040
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 10000,
+      "Milliseconds": 53.822,
+      "AllocatedBytes": 27071936
+    },
+    {
+      "Operation": "ack-100",
+      "Events": 10000,
+      "Milliseconds": 64.5874,
+      "AllocatedBytes": 13246264
+    },
+    {
+      "Operation": "ack-100",
+      "Events": 10000,
+      "Milliseconds": 63.0575,
+      "AllocatedBytes": 13249464
+    },
+    {
+      "Operation": "ack-100",
+      "Events": 10000,
+      "Milliseconds": 66.0334,
+      "AllocatedBytes": 13249752
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 50000,
+      "Milliseconds": 2.1717,
+      "AllocatedBytes": 280168
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 50000,
+      "Milliseconds": 193.1574,
+      "AllocatedBytes": 135330504
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 50000,
+      "Milliseconds": 0.5582,
+      "AllocatedBytes": 280576
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 50000,
+      "Milliseconds": 187.7859,
+      "AllocatedBytes": 135322128
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 50000,
+      "Milliseconds": 0.5978,
+      "AllocatedBytes": 280040
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 50000,
+      "Milliseconds": 186.4405,
+      "AllocatedBytes": 135322128
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 50000,
+      "Milliseconds": 0.6038,
+      "AllocatedBytes": 280040
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 50000,
+      "Milliseconds": 185.3991,
+      "AllocatedBytes": 135321920
+    },
+    {
+      "Operation": "pending-100",
+      "Events": 50000,
+      "Milliseconds": 0.6129,
+      "AllocatedBytes": 280040
+    },
+    {
+      "Operation": "recent-500",
+      "Events": 50000,
+      "Milliseconds": 185.4309,
+      "AllocatedBytes": 135321920
+    },
+    {
+      "Operation": "ack-100",
+      "Events": 50000,
+      "Milliseconds": 295.6615,
+      "AllocatedBytes": 63712976
+    },
+    {
+      "Operation": "ack-100",
+      "Events": 50000,
+      "Milliseconds": 293.0879,
+      "AllocatedBytes": 63715048
+    },
+    {
+      "Operation": "ack-100",
+      "Events": 50000,
+      "Milliseconds": 318.967,
+      "AllocatedBytes": 63715040
+    }
+  ],
+  "soak": {
+    "requestedSeconds": 10,
+    "elapsedSeconds": 10.1711031,
+    "cycles": 48,
+    "events": 10038,
+    "confirmed": 4800,
+    "pending": 5238,
+    "fileBytes": 5197736,
+    "rewriteDestinationBytes": 248546322,
+    "sha256": "9B416C25E2B1561D193423E1657E37EF0299B32934159F50E0BA71519B7FAC2B",
+    "integrity": "passed-after-reopening"
+  }
+}

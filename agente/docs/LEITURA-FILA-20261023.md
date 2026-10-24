@@ -51,4 +51,6 @@ Atualização posterior: o mesmo EXE 0.1.11 recebeu [homologação própria no c
 
 #48 continua aberta para crescimento do arquivo, retenção/compactação, confirmação custosa, append efetivamente interrompido, energia, tratamento de temporários e dias de carga. O [ensaio posterior de volume cheio](VOLUME-CHEIO-FILA-20261023.md), atividade #52, passou no CI/PowerShell 5.1 e no clone Windows 10 com os componentes reais em fila sintética; não equivale a disco de sistema cheio ou serviço instalado. API/autenticação/idempotência dependem da equipe (#44/#47), par exato do driver de #46. Sem Java, Angular, banco ou driver editados. Não equivale a integração ponta a ponta.
 
+Incremento posterior #53: [confirmação em fluxo no candidato 0.1.12](CONFIRMACAO-FILA-20261023.md) reduz memória retida sem montar a fila inteira em uma string. CI próprio aprovado; a leitura/escrita integral, crescimento/retencão e homologação própria do novo instalador no clone continuam com aceites separados.
+
 [Evidências, TRX e hashes](evidencias/leitura-fila-20261023/resumo.json); filas sintéticas grandes ficaram fora do Git.
