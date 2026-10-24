@@ -1,0 +1,52 @@
+[
+  {
+    "configuration": "Debug",
+    "artifactId": 12568285187,
+    "zipDigest": "sha256:0af9bd27863d879418668e72cad95fc3259d22d080c6d09a979857acc6f6e2cb",
+    "zipBytes": 218339,
+    "trxSha256": "A74AC15E5293C82B476101384F4989E2D8B74872D3579117702CBF83F6B17E6D",
+    "counters": "<Counters total=\"842\" executed=\"838\" passed=\"838\" failed=\"0\" error=\"0\" timeout=\"0\" aborted=\"0\" inconclusive=\"0\" passedButRunAborted=\"0\" notRunnable=\"0\" notExecuted=\"0\" disconnected=\"0\" warning=\"0\" completed=\"0\" inProgress=\"0\" pending=\"0\" xmlns=\"http://microsoft.com/schemas/VisualStudio/TeamTest/2010\" />",
+    "cases": [
+      {
+        "testName": "SafeUpload.Agent.Tests.AuditQueueDiagnosticConcurrencyTests.Consultas_com_gravacao_e_confirmacao_preservam_conjuntos_apos_reabertura",
+        "outcome": "Passed",
+        "duration": "00:00:01.5015543"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.AuditQueueDiagnosticConcurrencyTests.Prazo_real_do_pipe_cancela_espera_do_lock_sem_sucesso_parcial_e_permite_retomada(query: \"audit-retention-preview\")",
+        "outcome": "Passed",
+        "duration": "00:00:06.1123755"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.AuditQueueDiagnosticConcurrencyTests.Prazo_real_do_pipe_cancela_espera_do_lock_sem_sucesso_parcial_e_permite_retomada(query: \"audit-integrity\")",
+        "outcome": "Passed",
+        "duration": "00:00:06.0720250"
+      }
+    ]
+  },
+  {
+    "configuration": "Release",
+    "artifactId": 12568380482,
+    "zipDigest": "sha256:e54073456c4ebe55258f4998da9d3c57c7450a2f4f0d6f3a4e83a81570e6f776",
+    "zipBytes": 219007,
+    "trxSha256": "5BC0B26A27C74B82363D67945310BCB1B2E60B03EC92B45FB7A3C20DFB2DD8A4",
+    "counters": "<Counters total=\"842\" executed=\"838\" passed=\"838\" failed=\"0\" error=\"0\" timeout=\"0\" aborted=\"0\" inconclusive=\"0\" passedButRunAborted=\"0\" notRunnable=\"0\" notExecuted=\"0\" disconnected=\"0\" warning=\"0\" completed=\"0\" inProgress=\"0\" pending=\"0\" xmlns=\"http://microsoft.com/schemas/VisualStudio/TeamTest/2010\" />",
+    "cases": [
+      {
+        "testName": "SafeUpload.Agent.Tests.AuditQueueDiagnosticConcurrencyTests.Prazo_real_do_pipe_cancela_espera_do_lock_sem_sucesso_parcial_e_permite_retomada(query: \"audit-retention-preview\")",
+        "outcome": "Passed",
+        "duration": "00:00:06.0634048"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.AuditQueueDiagnosticConcurrencyTests.Prazo_real_do_pipe_cancela_espera_do_lock_sem_sucesso_parcial_e_permite_retomada(query: \"audit-integrity\")",
+        "outcome": "Passed",
+        "duration": "00:00:06.0681779"
+      },
+      {
+        "testName": "SafeUpload.Agent.Tests.AuditQueueDiagnosticConcurrencyTests.Consultas_com_gravacao_e_confirmacao_preservam_conjuntos_apos_reabertura",
+        "outcome": "Passed",
+        "duration": "00:00:01.0733348"
+      }
+    ]
+  }
+]
