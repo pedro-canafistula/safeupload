@@ -148,8 +148,7 @@ try {
     Require ($cleanIntegrity.queueBytes -eq (Get-Item -LiteralPath $queue).Length -and
         $cleanIntegrity.pendingEvents -eq $cleanIntegrity.validEvents -and $cleanIntegrity.dispatchedEvents -eq 0 -and
         $cleanIntegrity.pendingOverrides -eq 0 -and $cleanIntegrity.dispatchedOverrides -eq 0 -and
-        $null -ne $cleanIntegrity.oldestPendingUtc -and $cleanIntegrity.pendingWithoutTimestamp -eq 0)
-        'Installed service did not expose the synthetic offline backlog.'
+        $null -ne $cleanIntegrity.oldestPendingUtc -and $cleanIntegrity.pendingWithoutTimestamp -eq 0) 'Installed service did not expose the synthetic offline backlog.'
     # Only synthetic runner data: preserve both malformed and forward-version records.
     [IO.File]::AppendAllText($queue, '{SYNTHETIC_PRIVATE_CONTENT' + "`n" +
         '{"type":"future-runner-record","payload":"SYNTHETIC_PRIVATE_CONTENT"}' + "`n", [Text.UTF8Encoding]::new($false))
@@ -165,8 +164,7 @@ try {
     Require ($damagedIntegrity.queueBytes -eq (Get-Item -LiteralPath $queue).Length -and
         $damagedIntegrity.queueBytes -gt $cleanIntegrity.queueBytes -and
         $damagedIntegrity.pendingEvents -eq $cleanIntegrity.pendingEvents -and
-        $damagedIntegrity.oldestPendingUtc -eq $cleanIntegrity.oldestPendingUtc)
-        'Unknown or malformed lines distorted the pending inventory.'
+        $damagedIntegrity.oldestPendingUtc -eq $cleanIntegrity.oldestPendingUtc) 'Unknown or malformed lines distorted the pending inventory.'
     $result.auditIntegrity = [ordered]@{clean=$cleanIntegrity;damaged=$damagedIntegrity;queueHash=$integrityHash}
     $result.steps += 'audit-integrity distinguished malformed and unknown lines without changing queue bytes or disclosing contents'
     $emptyTemporaries = Read-AuditHealth 'audit-temporaries'
@@ -199,8 +197,7 @@ try {
     Require ($integrityAfterRestart.invalidLines -eq 1 -and $integrityAfterRestart.unknownRecords -eq 1) 'Restart lost integrity diagnostics.'
     Require ($integrityAfterRestart.queueBytes -eq $damagedIntegrity.queueBytes -and
         $integrityAfterRestart.pendingEvents -eq $damagedIntegrity.pendingEvents -and
-        $integrityAfterRestart.oldestPendingUtc -eq $damagedIntegrity.oldestPendingUtc)
-        'Restart changed the read-only backlog inventory.'
+        $integrityAfterRestart.oldestPendingUtc -eq $damagedIntegrity.oldestPendingUtc) 'Restart changed the read-only backlog inventory.'
     $result.auditIntegrity.afterRestart = $integrityAfterRestart
     $temporariesAfterRestart = Read-AuditHealth 'audit-temporaries'
     Require ($temporariesAfterRestart.candidateFiles -eq 1 -and $temporariesAfterRestart.totalBytes -eq $temporaryBytes -and
