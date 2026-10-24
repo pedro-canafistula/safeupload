@@ -1,0 +1,10 @@
+{
+  "version": "0.1.12",
+  "observedAtUtc": "2026-10-24T00:33:07.034Z",
+  "statusAuditing": true,
+  "policyVersion": 1,
+  "historyRows": 19,
+  "panelOpenedFromTray": true,
+  "executableLaunchedManuallyAfterBoot": false,
+  "panelLeftOpenForUninstall": true
+}

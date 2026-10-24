@@ -1,0 +1,11 @@
+{
+  "version": "0.1.12",
+  "observedAtUtc": "2026-10-24T00:26:36.925Z",
+  "status": "audit-policy-v1-five-categories",
+  "cleanLiveUpdate": true,
+  "cpfLiveUpdate": true,
+  "cpfMaskedPopup": true,
+  "historyRows": 19,
+  "firstOpen": "tray-context-menu",
+  "manualInitialUiLaunch": true
+}

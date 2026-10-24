@@ -23,7 +23,7 @@
   "installerVersion": "0.1.12",
   "installerSha256": "B12BF8730050EA0F5260A235D3E0BF770E61778F349B30AA928FFE1AD466D07B",
   "installerBytes": 84057087,
-  "vmHomologation": "pending",
+  "vmHomologation": "passed-own-windows10-clone",
   "files": [
     {
       "file": ".gitattributes",
@@ -195,5 +195,6 @@
       "bytes": 53,
       "sha256": "7E8C7FF4133CE628150C58D62479527D1DE9A5C687AAE4A151EA1F6EDB466674"
     }
-  ]
+  ],
+  "vmHomologationReport": "../../HOMOLOGACAO-WIN10-0112-20261023.md"
 }
