@@ -1,0 +1,6 @@
+Diagnostic directory: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\medicao-diagnosticos-20261024\queue-probe-f3f8e674c4e544868c03c53e13d43c75
+Scale 1000: 514890 bytes; integrity passed.
+Scale 10000: 5158890 bytes; integrity passed.
+Scale 50000: 25838890 bytes; integrity passed.
+{"requestedSeconds":120,"elapsedSeconds":120.4375429,"cycles":594,"events":10461,"confirmed":10460,"pending":1,"fileBytes":5439067,"rewriteDestinationBytes":2590734966,"sha256":"11215BA48C0F4595660DC5E34F72EA56003014605D6F1FCA411DCD29712DC194","integrity":"passed-after-reopening"}
+PASS: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\medicao-diagnosticos-20261024\queue-probe-f3f8e674c4e544868c03c53e13d43c75\result.json

@@ -1,0 +1,74 @@
+{
+  "issue": 56,
+  "result": "passed",
+  "measurements": [
+    {
+      "events": 1000,
+      "operation": "integrity-mixed",
+      "samples": 5,
+      "medianMs": 25.33,
+      "minMs": 24.19,
+      "maxMs": 28.37,
+      "meanAllocatedMiB": 2.58
+    },
+    {
+      "events": 1000,
+      "operation": "retention-preview-mixed",
+      "samples": 5,
+      "medianMs": 24.51,
+      "minMs": 24.06,
+      "maxMs": 28.61,
+      "meanAllocatedMiB": 2.58
+    },
+    {
+      "events": 10000,
+      "operation": "integrity-mixed",
+      "samples": 5,
+      "medianMs": 46.32,
+      "minMs": 42.41,
+      "maxMs": 73.54,
+      "meanAllocatedMiB": 25.8
+    },
+    {
+      "events": 10000,
+      "operation": "retention-preview-mixed",
+      "samples": 5,
+      "medianMs": 45.24,
+      "minMs": 42.48,
+      "maxMs": 60.58,
+      "meanAllocatedMiB": 25.81
+    },
+    {
+      "events": 50000,
+      "operation": "integrity-mixed",
+      "samples": 5,
+      "medianMs": 227.97,
+      "minMs": 216.56,
+      "maxMs": 239.47,
+      "meanAllocatedMiB": 129.04
+    },
+    {
+      "events": 50000,
+      "operation": "retention-preview-mixed",
+      "samples": 5,
+      "medianMs": 223.26,
+      "minMs": 216.84,
+      "maxMs": 228.0,
+      "meanAllocatedMiB": 129.04
+    }
+  ],
+  "soak": {
+    "requestedSeconds": 120,
+    "elapsedSeconds": 120.4375429,
+    "cycles": 594,
+    "events": 10461,
+    "confirmed": 10460,
+    "pending": 1,
+    "fileBytes": 5439067,
+    "rewriteDestinationBytes": 2590734966,
+    "sha256": "11215BA48C0F4595660DC5E34F72EA56003014605D6F1FCA411DCD29712DC194",
+    "integrity": "passed-after-reopening"
+  },
+  "rawResultSha256": "E3A2637DE64D48FC875A9BD6AF7BAB64396541BCA279F5E2BE98AEDB7F17AE7C",
+  "peakWorkingSetBytes": 118812672
+}

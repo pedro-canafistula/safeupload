@@ -1,0 +1,9 @@
+{
+  "commit": "6ae2a6f35adc154cc9ae6e9198ee8a152c3a31bd",
+  "programSha256": "AFBD6AA9BDB832AEA57B28E818C190209568641F4781DAA26F455A66D5EB83EB",
+  "projectSha256": "7BDC502781A818793EA3A59FD8E57679A01F5C9ACCE9D9901AA72CB017DE6027",
+  "configuration": "Release",
+  "requestedSoakSeconds": 120,
+  "command": "dotnet run --project agente/tools/QueueProbe/QueueProbe.csproj -c Release -- <owned-output> 120",
+  "issue": 56
+}
