@@ -198,91 +198,79 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         IReadOnlyCollection<AuditOverride> overrides, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(eventIds);
-
-        if (eventIds.Count == 0 && overrides.Count == 0)
-        {
-            return;
-        }
+        if (eventIds.Count == 0 && overrides.Count == 0) return;
 
         var ids = eventIds.ToHashSet();
-
+        var selectedOverrides = overrides.ToHashSet();
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!File.Exists(_queueFile))
-            {
-                return;
-            }
-
-            // Preserva os registros de justificativa e linhas desconhecidas: a
-            // confirmação de um lote de eventos não pode descartar outros tipos.
-            var builder = new StringBuilder();
-            await using (var stream = new FileStream(_queueFile, FileMode.Open,
-                FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-            using (var reader = new StreamReader(stream, Encoding.UTF8,
-                detectEncodingFromByteOrderMarks: true))
-            {
-                while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
-                {
-                    if (string.IsNullOrWhiteSpace(line))
-                    {
-                        builder.AppendLine(line);
-                        continue;
-                    }
-                    try
-                    {
-                        using var json = JsonDocument.Parse(line);
-                        if (json.RootElement.ValueKind != JsonValueKind.Object)
-                        {
-                            builder.AppendLine(line);
-                            continue;
-                        }
-                        bool selected;
-                        if (json.RootElement.TryGetProperty("type", out var type))
-                        {
-                            selected = type.ValueKind == JsonValueKind.String && type.GetString() == "override"
-                                && JsonSerializer.Deserialize<AuditOverride>(line, Options) is { } record
-                                && overrides.Contains(record);
-                        }
-                        else
-                        {
-                            selected = json.RootElement.TryGetProperty("eventId", out var id)
-                                && id.ValueKind == JsonValueKind.String && id.TryGetGuid(out var guid)
-                                && ids.Contains(guid);
-                        }
-                        if (!selected)
-                        {
-                            builder.AppendLine(line);
-                            continue;
-                        }
-                        var updated = JsonNode.Parse(line)!.AsObject();
-                        updated["dispatched"] = true;
-                        builder.Append(updated.ToJsonString(Options)).Append(Environment.NewLine);
-                    }
-                    catch (JsonException)
-                    {
-                        // Não converter nem apagar um registro que não entendemos.
-                        builder.AppendLine(line);
-                    }
-                }
-            }
-
+            if (!File.Exists(_queueFile)) return;
             var temporary = _queueFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            var created = false;
             try
             {
-                await File.WriteAllTextAsync(temporary, builder.ToString(), Utf8NoBom, cancellationToken)
-                    .ConfigureAwait(false);
+                // A cópia é produzida linha a linha: memória proporcional ao lote
+                // e à maior linha, sem reter o texto completo da fila. A leitura e
+                // a escrita ainda percorrem o arquivo inteiro; não é compactação.
+                await using (var output = new FileStream(temporary, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous))
+                {
+                    created = true;
+                    await using var writer = new StreamWriter(output, Utf8NoBom, bufferSize: 65536);
+                    await using var stream = new FileStream(_queueFile, FileMode.Open,
+                        FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    using var reader = new StreamReader(stream, Encoding.UTF8,
+                        detectEncodingFromByteOrderMarks: true);
+                    while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+                    {
+                        var updated = MarkSelectedLine(line, ids, selectedOverrides);
+                        await writer.WriteLineAsync(updated.AsMemory(), cancellationToken).ConfigureAwait(false);
+                    }
+                    await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+                // Não publicar antes de fechar todos os streams nem após cancelar.
                 cancellationToken.ThrowIfCancellationRequested();
                 File.Move(temporary, _queueFile, overwrite: true);
             }
             finally
             {
-                if (File.Exists(temporary)) File.Delete(temporary);
+                if (created && File.Exists(temporary)) File.Delete(temporary);
             }
         }
-        finally
+        finally { _writeLock.Release(); }
+    }
+
+    private static string MarkSelectedLine(string line, HashSet<Guid> ids,
+        HashSet<AuditOverride> overrides)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return line;
+        try
         {
-            _writeLock.Release();
+            using var json = JsonDocument.Parse(line);
+            if (json.RootElement.ValueKind != JsonValueKind.Object) return line;
+            bool selected;
+            if (json.RootElement.TryGetProperty("type", out var type))
+            {
+                selected = type.ValueKind == JsonValueKind.String && type.GetString() == "override"
+                    && JsonSerializer.Deserialize<AuditOverride>(line, Options) is { } record
+                    && overrides.Contains(record);
+            }
+            else
+            {
+                selected = json.RootElement.TryGetProperty("eventId", out var id)
+                    && id.ValueKind == JsonValueKind.String && id.TryGetGuid(out var guid)
+                    && ids.Contains(guid);
+            }
+            if (!selected) return line;
+            var updated = JsonNode.Parse(line)!.AsObject();
+            updated["dispatched"] = true;
+            return updated.ToJsonString(Options);
+        }
+        catch (JsonException)
+        {
+            // Não converter nem apagar um registro que não entendemos.
+            return line;
         }
     }
 
