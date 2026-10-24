@@ -75,6 +75,28 @@ jobs:
           name: csharp-${{ matrix.configuration }}
           path: artifacts/csharp/
 
+      - name: Cancelar varreduras reais em processos isolados
+        shell: pwsh
+        env:
+          BUILD_CONFIGURATION: ${{ matrix.configuration }}
+        run: |
+          New-Item -ItemType Directory -Path artifacts/queue-scan-cancel -Force | Out-Null
+          dotnet build agente/tools/QueueScanCancellationProbe/QueueScanCancellationProbe.csproj -c $env:BUILD_CONFIGURATION
+          if ($LASTEXITCODE -ne 0) { throw 'O ensaio de cancelamento nao compilou.' }
+          dotnet "agente/tools/QueueScanCancellationProbe/bin/$env:BUILD_CONFIGURATION/net10.0-windows/QueueScanCancellationProbe.dll" artifacts/queue-scan-cancel 3 *> artifacts/queue-scan-cancel.log
+          $probeExit = $LASTEXITCODE
+          Get-Content artifacts/queue-scan-cancel.log -Tail 20
+          if ($probeExit -ne 0) { throw 'Cancelamento sem evidencia suficiente ou recuperacao falhou; preservar recibos.' }
+      - name: Preservar recibos de cancelamento sem filas grandes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cancelamento-varredura-${{ matrix.configuration }}
+          path: |
+            artifacts/queue-scan-cancel/**/result.json
+            artifacts/queue-scan-cancel/**/failure.json
+            artifacts/queue-scan-cancel.log
+
   instalacao:
     name: Instalação real em Windows descartável
     runs-on: windows-2025
