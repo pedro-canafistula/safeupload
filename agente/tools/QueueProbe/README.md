@@ -26,3 +26,14 @@ de bytes de regravação usa o tamanho do destino, não instrumentação física
 Alocação é a diferença acumulada do processo, não memória viva nem pico por operação.
 Os testes `QueueLongevityTests` complementam o diagnóstico com HTTP em loopback,
 resposta perdida, 503, reabertura e falhas reais de compartilhamento de arquivos.
+
+Após as três confirmações por escala, também mede cinco consultas de integridade
+e cinco simulações de prazo, com 300 confirmados e o restante pendente. Confronta
+bytes, contagens e menor ocorrência com o histórico reaberto; corte explícito
+2030-01-01T00:00:00Z inclui os 300 confirmados sintéticos. SHA-256 antes/depois
+comprova que essas consultas não alteraram o arquivo no cenário medido.
+
+Essas medições chamam o Core diretamente, sem pipe, serviço, rede ou prazo de
+cinco segundos. O tempo inclui asserções; alocação é acumulada do processo.
+Não provam latência do serviço, bloqueio sob consultas concorrentes, orçamento
+para dias de carga ou elegibilidade para remover os registros contados.

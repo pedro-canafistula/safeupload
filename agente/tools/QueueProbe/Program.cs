@@ -62,8 +62,34 @@ try
         var all = await reopened.ReadRecentAsync(0, CancellationToken.None);
         Check(all.Count == count && all.Select(e => e.EventId).Distinct().Count() == count, "Scale queue lost or duplicated events");
         Check(all.Count(e => e.Dispatched) == 300, "Unexpected acknowledgement count");
+        // Direct Core calls deliberately measure full scans without the pipe deadline.
+        // Never report a timeout/partial scan as a successful inventory.
+        var diagnosticHashBefore = await Hash(file);
+        var diagnosticBytes = new FileInfo(file).Length;
+        var cutoff = new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var expectedOldestPending = all.Where(e => !e.Dispatched).Min(e => e.OccurredAtUtc);
+        for (var repeat = 0; repeat < 5; repeat++)
+        {
+            await Measure("integrity-mixed", count, async () =>
+                CheckInventory(await reopened.InspectIntegrityAsync(CancellationToken.None), count, diagnosticBytes, expectedOldestPending));
+            await Measure("retention-preview-mixed", count, async () =>
+            {
+                var preview = await reopened.PreviewRetentionAsync(cutoff, CancellationToken.None);
+                CheckInventory(preview.Integrity, count, diagnosticBytes, expectedOldestPending);
+                Check(preview.OccurredBeforeUtc == cutoff && preview.ConfirmedEventsBeforeCutoff == 300 &&
+                    preview.ConfirmedOverridesBeforeCutoff == 0 && preview.ConfirmedWithoutTimestamp == 0 &&
+                    preview.PreviewOnly && !preview.DeletionSupported &&
+                    preview.TimestampBasis == "record-occurrence-time", "Unexpected retention preview");
+            });
+        }
+        var diagnosticHashAfter = await Hash(file);
+        Check(diagnosticHashBefore == diagnosticHashAfter, "Diagnostics modified queue bytes");
         stages.Add(new { events = count, bytesBeforeAcknowledgement = bytes, seedMs,
-            acknowledged = 300, sha256 = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(file))) });
+            acknowledged = 300, sha256 = diagnosticHashAfter,
+            diagnostics = new { repeatsPerQuery = 5, queueBytes = diagnosticBytes,
+                pending = count - 300, confirmed = 300, occurredBeforeUtc = cutoff,
+                sha256Before = diagnosticHashBefore, sha256After = diagnosticHashAfter,
+                previewOnly = true, deletionSupported = false } });
         Console.WriteLine($"Scale {count}: {bytes} bytes; integrity passed.");
     }
 
@@ -110,7 +136,7 @@ try
         architecture = RuntimeInformation.ProcessArchitecture.ToString(), logicalProcessors = Environment.ProcessorCount,
         coreAssemblySha256 = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(typeof(LocalQueueAuditSink).Assembly.Location))),
         peakWorkingSetBytes = process.PeakWorkingSet64, freeDiskBytesAtEnd = drive.AvailableFreeSpace,
-        measurementNote = "Warm OS cache; five reads and three acknowledgements per size. Process-wide allocation deltas, not live heap or latency guarantees. Rewrite bytes are destination-length estimates, not physical disk writes. No crash, power-loss or full-disk simulation.",
+        measurementNote = "Warm OS cache; five reads, five integrity scans, five retention previews and three acknowledgements per size. Direct Core calls, no pipe deadline, network or service; five-second service budget is not enforced. Process-wide allocation deltas include assertions, not live heap or latency guarantees. Rewrite bytes are destination-length estimates, not physical disk writes. No crash, power-loss or full-disk simulation.",
         stages, samples, soak = soakResult };
     await File.WriteAllTextAsync(Path.Combine(root, "result.json"), JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
     Console.WriteLine(JsonSerializer.Serialize(soakResult));
@@ -146,6 +172,22 @@ async Task Measure(string operation, int count, Func<Task> action)
     samples.Add(new Sample(operation, count, elapsed, GC.GetTotalAllocatedBytes(precise: true) - allocated));
 }
 static void Check(bool condition, string message) { if (!condition) throw new InvalidDataException(message); }
+static async Task<string> Hash(string path)
+{
+    await using var stream = File.OpenRead(path);
+    return Convert.ToHexString(await SHA256.HashDataAsync(stream));
+}
+static void CheckInventory(AuditQueueIntegritySnapshot snapshot, int count, long bytes, DateTimeOffset oldest)
+{
+    Check(snapshot.FileExists && snapshot.QueueBytes == bytes && snapshot.LinesScanned == count &&
+        snapshot.ValidEvents == count && snapshot.PendingEvents == count - 300 &&
+        snapshot.DispatchedEvents == 300 && snapshot.ValidOverrides == 0 &&
+        snapshot.PendingOverrides == 0 && snapshot.DispatchedOverrides == 0 &&
+        snapshot.PendingWithoutTimestamp == 0 && snapshot.InvalidLines == 0 &&
+        snapshot.UnknownRecords == 0 && snapshot.BlankLines == 0 && snapshot.OldestPendingUtc == oldest &&
+        !snapshot.RequiresAttention && snapshot.Issues.Count == 0 && !snapshot.IssuesTruncated,
+        "Unexpected diagnostic inventory");
+}
 static AuditEvent Event(int index) => new(Guid.NewGuid(),
     new DateTimeOffset(2026, 10, 22, 12, 0, 0, TimeSpan.Zero).AddSeconds(index),
     "PC-SINTETICO", "usuario-sintetico", $"sintetico-{index}.txt", ".txt", 42,
