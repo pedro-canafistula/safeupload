@@ -63,7 +63,7 @@ promovido, e a linha inválida continua visível após reabertura.
 Local Release: **18/18 cenários de processo aprovados**. Local Debug: **18/18**.
 Regressão focada em **Debug e Release: 80 aprovados, zero falhas/ignorados por configuração**, incluindo dois
 casos novos e regressões de auditoria, justificativas, histórico, integridade,
-leitura limitada, confirmação em fluxo, retenção simulada e backlog. Resultado
+leitura limitada, confirmação em fluxo, retenção simulada e backlog.
 O recorte local não substitui a suíte completa.
 
 Fonte: `74a6cb9e06640933942971afe4454493a5e0a458`; integração no workflow:
