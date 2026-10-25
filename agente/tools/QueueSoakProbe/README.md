@@ -1,5 +1,10 @@
 # Coletor de operação prolongada da fila
 
+**Situação atual, por orientação do usuário em 25/10/2026:** o ensaio prolongado
+fica para depois do desenvolvimento, integração e homologação, com duração futura
+de 12 h a acordar. Nenhuma execução está em andamento. proposed-72h.json e seus
+recibos permanecem referências históricas reproduzíveis, não a próxima prioridade.
+
 Ferramenta do agente para preparar #48. Usa LocalQueueAuditSink real em subpasta
 nova e sintética. Não instala componentes, usa serviço/pipe/driver/API, abre a
 fila instalada, promove temporários, apaga dados ou altera retenção.

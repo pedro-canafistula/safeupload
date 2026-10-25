@@ -1,5 +1,11 @@
 # Perfil proposto para operação prolongada da fila — #48
 
+**Orientação posterior do usuário, 25/10/2026:** deixar este ensaio para depois de
+concluir desenvolvimento, integração e homologação. A duração futura considerada
+passa a ser 12 h, ainda sem execução. O perfil de 72 h abaixo é histórico; não deve
+ser iniciado por inferência. A prioridade volta às pendências de desenvolvimento
+do agente e suas integrações.
+
 25/10/2026. Fonte `8cf74192df24c7cb1ec029f234c5c05df9ee7e65`, base
 `a372e8f05b2bfa8e063492a6f0ee6889c9956dc1`, PR #49. **Planejamento estático:
 zero segundos de carga executados nesta entrega, ambiente ainda não acordado.**

@@ -12,6 +12,58 @@ namespace SafeUpload.Agent.Tests;
 public sealed class DispatcherReliabilityTests
 {
     [Theory]
+    [InlineData("{\"acceptedEvents\":1,\"acceptedOverrides\":1}")]
+    [InlineData("{\"AcceptedEvents\":1,\"ACCEPTEDOVERRIDES\":1}")]
+    [InlineData("{\"accepted\\u0045vents\":1,\"acceptedOverrides\":1}")]
+    [InlineData("{\"acceptedEvents\":1,\"acceptedOverrides\":1,\"futureMetadata\":{\"acceptedEvents\":0}}")]
+    [InlineData("{\"acceptedOverrides\":1,\"futureMetadata\":null,\"acceptedEvents\":1}")]
+    [InlineData("{\"acceptedEvents\":1,\"acceptedOverrides\":1,\"futureHint\":0,\"futureHint\":1}")]
+    public async Task Recibo_inequivoco_preserva_compatibilidade_de_nomes_e_campos_futuros(string body)
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        var audit = new AuditEvent(Guid.NewGuid(), DateTimeOffset.UtcNow, "PC-TESTE", "usuario",
+            "synthetic.txt", ".txt", 10, Verdict.Blocked, [], [], "teste", 1, "sintetico", null, 7, 1, false);
+        await sink.WriteAsync(audit, CancellationToken.None);
+        await sink.RecordOverrideAsync(audit.EventId.ToString(), "Justificativa sintética", CancellationToken.None);
+        await RunOneCycle(sink, new Handler(200, body));
+        Assert.Empty(await sink.ReadPendingAsync(100, CancellationToken.None));
+        Assert.Empty(await sink.ReadPendingOverridesAsync(100, CancellationToken.None));
+        Assert.Equal(2, (await File.ReadAllLinesAsync(workspace.QueueFile)).Length);
+    }
+
+    [Theory]
+    [InlineData("{\"acceptedEvents\":0,\"acceptedEvents\":1,\"acceptedOverrides\":1}")]
+    [InlineData("{\"acceptedEvents\":1,\"acceptedOverrides\":0,\"acceptedOverrides\":1}")]
+    [InlineData("{\"acceptedEvents\":0,\"ACCEPTEDEVENTS\":1,\"acceptedOverrides\":1}")]
+    [InlineData("{\"acceptedEvents\":1,\"acceptedOverrides\":0,\"AcceptedOverrides\":1}")]
+    [InlineData("{\"acceptedEvents\":1,\"acceptedEvents\":1,\"acceptedOverrides\":1}")]
+    [InlineData("{\"acceptedEvents\":0,\"accepted\\u0045vents\":1,\"acceptedOverrides\":1}")]
+    public async Task Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(string body)
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        var audit = new AuditEvent(Guid.NewGuid(), DateTimeOffset.UtcNow, "PC-TESTE", "usuario",
+            "synthetic.txt", ".txt", 10, Verdict.Blocked, [Category.Cpf], [], "teste", 1,
+            @"E:\destino", null, 7, 1, false);
+        await sink.WriteAsync(audit, CancellationToken.None);
+        await sink.RecordOverrideAsync(audit.EventId.ToString(), "Justificativa sintética", CancellationToken.None);
+        var before = await File.ReadAllBytesAsync(workspace.QueueFile);
+        var rejected = new Handler(200, body);
+        await RunOneCycle(sink, rejected);
+        Assert.Equal(before, await File.ReadAllBytesAsync(workspace.QueueFile));
+
+        var reopened = new LocalQueueAuditSink(workspace.QueueFile);
+        Assert.Equal(audit.EventId, Assert.Single(await reopened.ReadPendingAsync(100, CancellationToken.None)).EventId);
+        Assert.Single(await reopened.ReadPendingOverridesAsync(100, CancellationToken.None));
+        var accepted = new Handler(200, "{\"acceptedEvents\":1,\"acceptedOverrides\":1}");
+        await RunOneCycle(reopened, accepted);
+        Assert.Equal(rejected.Payload, accepted.Payload);
+        Assert.Empty(await reopened.ReadPendingAsync(100, CancellationToken.None));
+        Assert.Empty(await reopened.ReadPendingOverridesAsync(100, CancellationToken.None));
+    }
+
+    [Theory]
     [InlineData(503, "{}")]
     [InlineData(200, "{\"acceptedEvents\":0,\"acceptedOverrides\":0}")]
     [InlineData(200, "null")]

@@ -165,12 +165,11 @@ public sealed class HttpAgentDispatcher : BackgroundService
             return;
         }
 
-        var acknowledgement = await response.Content.ReadFromJsonAsync<SubmitResponse>(cancellationToken)
+        var acknowledgement = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken)
             .ConfigureAwait(false);
-        if (acknowledgement?.AcceptedEvents != pending.Count ||
-            acknowledgement.AcceptedOverrides != overrides.Count)
+        if (!IsCompleteAcknowledgement(acknowledgement, pending.Count, overrides.Count))
         {
-            _logger.LogWarning("Confirmação incompleta do lote. Registros continuam pendentes.");
+            _logger.LogWarning("Confirmação inválida ou incompleta do lote. Registros continuam pendentes.");
             return;
         }
 
@@ -206,6 +205,30 @@ public sealed class HttpAgentDispatcher : BackgroundService
         string AgentVersion,
         int PolicyVersion);
 
-    // Missing counts must not become zero and acknowledge an override-only batch.
-    private sealed record SubmitResponse(int? AcceptedEvents, int? AcceptedOverrides);
+    private static bool IsCompleteAcknowledgement(JsonElement receipt, int events, int overrides)
+    {
+        if (receipt.ValueKind != JsonValueKind.Object) return false;
+        bool sawEvents = false, sawOverrides = false;
+        foreach (var property in receipt.EnumerateObject())
+        {
+            // Preserve the web JSON reader's case-insensitive names, but never
+            // let a later occurrence replace an earlier acknowledgement count.
+            // JsonProperty.Name also decodes escaped property names before comparison.
+            if (property.Name.Equals("acceptedEvents", StringComparison.OrdinalIgnoreCase))
+            {
+                if (sawEvents || property.Value.ValueKind != JsonValueKind.Number ||
+                    !property.Value.TryGetInt32(out int count) || count != events) return false;
+                sawEvents = true;
+            }
+            else if (property.Name.Equals("acceptedOverrides", StringComparison.OrdinalIgnoreCase))
+            {
+                if (sawOverrides || property.Value.ValueKind != JsonValueKind.Number ||
+                    !property.Value.TryGetInt32(out int count) || count != overrides) return false;
+                sawOverrides = true;
+            }
+        }
+        // Missing fields cannot become zero and acknowledge an override-only batch.
+        // Unknown fields remain ignored for compatibility; only top-level counts count.
+        return sawEvents && sawOverrides;
+    }
 }
