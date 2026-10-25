@@ -1,0 +1,92 @@
+[
+  {
+    "case": "preserved",
+    "passed": true,
+    "expected": "analyzed-completed-run",
+    "observed": "analyzed-completed-run",
+    "report": "preserved.json",
+    "issues": []
+  },
+  {
+    "case": "missing-receipt",
+    "passed": true,
+    "expected": "incomplete-run",
+    "observed": "incomplete-run",
+    "report": "missing-receipt.json",
+    "issues": []
+  },
+  {
+    "case": "partial-tail",
+    "passed": true,
+    "expected": "invalid-evidence",
+    "observed": "invalid-evidence",
+    "report": "partial-tail.json",
+    "issues": [
+      "Unterminated trace tail."
+    ]
+  },
+  {
+    "case": "backwards-time",
+    "passed": true,
+    "expected": "invalid-evidence",
+    "observed": "invalid-evidence",
+    "report": "backwards-time.json",
+    "issues": [
+      "Nonmonotonic trace counters."
+    ]
+  },
+  {
+    "case": "pending-mismatch",
+    "passed": true,
+    "expected": "invalid-evidence",
+    "observed": "invalid-evidence",
+    "report": "pending-mismatch.json",
+    "issues": [
+      "Inconsistent pending counters."
+    ]
+  },
+  {
+    "case": "hash-mismatch",
+    "passed": true,
+    "expected": "invalid-evidence",
+    "observed": "invalid-evidence",
+    "report": "hash-mismatch.json",
+    "issues": [
+      "Receipt manifest mismatch."
+    ]
+  },
+  {
+    "case": "synthetic-gap",
+    "passed": true,
+    "expected": "analyzed-completed-run",
+    "observed": "analyzed-completed-run",
+    "report": "synthetic-gap.json",
+    "issues": []
+  },
+  {
+    "case": "missing-phase",
+    "passed": true,
+    "expected": "invalid-evidence",
+    "observed": "invalid-evidence",
+    "report": "missing-phase.json",
+    "issues": [
+      "Missing completed phases."
+    ]
+  },
+  {
+    "case": "duplicate-manifest",
+    "passed": true,
+    "expected": "invalid-evidence",
+    "observed": "invalid-evidence",
+    "report": "duplicate-manifest.json",
+    "issues": [
+      "Duplicate manifest filename."
+    ]
+  },
+  {
+    "case": "output-protection",
+    "passed": true,
+    "expected": "refuse-existing-and-inside",
+    "observed": "refused"
+  }
+]

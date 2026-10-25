@@ -92,3 +92,6 @@ retenção/recuperação. Confirmações deste coletor não passam por servidor 
 recibo durável/deduplicação. #44/#47 dependem de contrato e ambiente reais da equipe;
 #46 depende do par M2 identificado. Não se abriu listener 8426 ou alterou contrato.
 Nenhuma VM foi ligada, nenhum pacote reinstalado e nenhum merge realizado.
+
+Continuação: [análise independente das amostras e dez controles novos](ANALISE-COLETA-20261025.md),
+sem reexecutar este piloto ou modificar suas evidências. Não concede aceite de dias.

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "status": "invalid-evidence",
+  "receiptPresent": true,
+  "originalRunStatus": "passed",
+  "issues": [
+    "Nonmonotonic trace counters."
+  ],
+  "samples": 1,
+  "collectionIntervalMs": 100,
+  "initialGapMs": 43.1775,
+  "terminalGapMs": null,
+  "maxObservedGapMs": 43.1775,
+  "gapsOverInterval": 0,
+  "gapDetails": [],
+  "gapDetailsTruncated": false,
+  "terminalGapKnown": false,
+  "utcBacksteps": 0,
+  "maxSampledWorkingSetBytes": 38395904,
+  "maxSampledPrivateBytes": 11395072,
+  "minSampledFreeBytes": 541355982848,
+  "maxSampledQueueBytes": 509,
+  "appendOperations": 0,
+  "syntheticallyAcknowledgedEvents": 0,
+  "syntheticallyAcknowledgedOverrides": 0,
+  "maxLoggedOperationMs": 0.0,
+  "inputFiles": [
+    {
+      "file": "synthetic.marker",
+      "bytes": 28,
+      "sha256": "75C76C05D979D9ABD67F7E2A68A4F8BE02DBB665C3B0D1EA719C018F00CA4CF5"
+    },
+    {
+      "file": "samples.jsonl",
+      "bytes": 21979,
+      "sha256": "DFB79BF0A8241DF54ED864641136F224BC3AE6418F66ACED0A553DACC3992FA7"
+    },
+    {
+      "file": "operations.jsonl",
+      "bytes": 10195,
+      "sha256": "26CA992AF437BFD0CB8047A3112224EBC9BD945347163960FA4F8C8AA37879D9"
+    },
+    {
+      "file": "queue.jsonl",
+      "bytes": 34352,
+      "sha256": "1897A93B5BC8724D8E967371894EF169FFE82DDC4C1050399994CF6D02A40E0D"
+    },
+    {
+      "file": "profile.json",
+      "bytes": 242,
+      "sha256": "210D1B14009B1E2BC9237096A08BD8E85C29144CEF62B6820BA23A6D9E376D17"
+    },
+    {
+      "file": "result.json",
+      "bytes": 5061,
+      "sha256": "435100332A43054FF15EC7FDE164AC66D761818B2AC790F84677C46D72F365BD"
+    }
+  ],
+  "qualificationGranted": false,
+  "serviceQualified": false,
+  "realApiQualified": false,
+  "note": "Read-only trace consistency analysis, not a replay of queue metadata, authenticity proof, uptime measurement or new product qualification. Every observed interval exceeding the configured sampling interval is counted without assigning a fault or SLA. Gaps include scheduler, logging, queue work and verification; the tail is unknown without a receipt. Resource peaks are sampled values of the whole harness, not process maxima or service-only use. Input limit 256 MiB/file, 64 Ki characters/trace line; use stable controlled synthetic evidence."
+}

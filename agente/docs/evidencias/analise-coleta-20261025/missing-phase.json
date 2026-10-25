@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "status": "invalid-evidence",
+  "receiptPresent": true,
+  "originalRunStatus": "passed",
+  "issues": [
+    "Missing completed phases."
+  ],
+  "samples": 55,
+  "collectionIntervalMs": 100,
+  "initialGapMs": 43.1775,
+  "terminalGapMs": null,
+  "maxObservedGapMs": 125.68379999999996,
+  "gapsOverInterval": 54,
+  "gapDetails": [
+    {
+      "kind": "between-samples",
+      "fromMs": 43.1775,
+      "toMs": 156.4558,
+      "gapMs": 113.2783,
+      "excessOverIntervalMs": 13.278300000000002
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 156.4558,
+      "toMs": 265.9909,
+      "gapMs": 109.5351,
+      "excessOverIntervalMs": 9.5351
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 265.9909,
+      "toMs": 382.6098,
+      "gapMs": 116.6189,
+      "excessOverIntervalMs": 16.618899999999996
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 382.6098,
+      "toMs": 496.1723,
+      "gapMs": 113.5625,
+      "excessOverIntervalMs": 13.5625
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 496.1723,
+      "toMs": 621.8561,
+      "gapMs": 125.68379999999996,
+      "excessOverIntervalMs": 25.683799999999962
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 621.8561,
+      "toMs": 735.8074,
+      "gapMs": 113.95130000000006,
+      "excessOverIntervalMs": 13.95130000000006
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 735.8074,
+      "toMs": 845.1629,
+      "gapMs": 109.3555,
+      "excessOverIntervalMs": 9.355500000000006
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 845.1629,
+      "toMs": 953.8742,
+      "gapMs": 108.71129999999994,
+      "excessOverIntervalMs": 8.711299999999937
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 953.8742,
+      "toMs": 1062.6295,
+      "gapMs": 108.75530000000003,
+      "excessOverIntervalMs": 8.755300000000034
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 1062.6295,
+      "toMs": 1179.5123,
+      "gapMs": 116.88280000000009,
+      "excessOverIntervalMs": 16.88280000000009
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 1179.5123,
+      "toMs": 1284.6675,
+      "gapMs": 105.15519999999992,
+      "excessOverIntervalMs": 5.1551999999999225
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 1284.6675,
+      "toMs": 1392.6164,
+      "gapMs": 107.9489000000001,
+      "excessOverIntervalMs": 7.948900000000094
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 1392.6164,
+      "toMs": 1495.1691,
+      "gapMs": 102.55269999999996,
+      "excessOverIntervalMs": 2.552699999999959
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 1495.1691,
+      "toMs": 1604.9326,
+      "gapMs": 109.76350000000002,
+      "excessOverIntervalMs": 9.763500000000022
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 1604.9326,
+      "toMs": 1723.0055,
+      "gapMs": 118.07289999999989,
+      "excessOverIntervalMs": 18.07289999999989
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 1723.0055,
+      "toMs": 1831.6724,
+      "gapMs": 108.66689999999994,
+      "excessOverIntervalMs": 8.666899999999941
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 1831.6724,
+      "toMs": 1940.1096,
+      "gapMs": 108.43720000000008,
+      "excessOverIntervalMs": 8.437200000000075
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 1940.1096,
+      "toMs": 2058.3522,
+      "gapMs": 118.24259999999981,
+      "excessOverIntervalMs": 18.24259999999981
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 2058.3522,
+      "toMs": 2164.206,
+      "gapMs": 105.85380000000032,
+      "excessOverIntervalMs": 5.853800000000319
+    },
+    {
+      "kind": "between-samples",
+      "fromMs": 2164.206,
+      "toMs": 2282.1742,
+      "gapMs": 117.9681999999998,
+      "excessOverIntervalMs": 17.968199999999797
+    }
+  ],
+  "gapDetailsTruncated": true,
+  "terminalGapKnown": false,
+  "utcBacksteps": 0,
+  "maxSampledWorkingSetBytes": 60948480,
+  "maxSampledPrivateBytes": 29192192,
+  "minSampledFreeBytes": 541355319296,
+  "maxSampledQueueBytes": 33330,
+  "appendOperations": 64,
+  "syntheticallyAcknowledgedEvents": 62,
+  "syntheticallyAcknowledgedOverrides": 6,
+  "maxLoggedOperationMs": 35.1456,
+  "inputFiles": [
+    {
+      "file": "synthetic.marker",
+      "bytes": 28,
+      "sha256": "75C76C05D979D9ABD67F7E2A68A4F8BE02DBB665C3B0D1EA719C018F00CA4CF5"
+    },
+    {
+      "file": "samples.jsonl",
+      "bytes": 21986,
+      "sha256": "A38DB545696466A06E86F462D00CE92E0ED204C7C3830B27D5B982FEDA9F9692"
+    },
+    {
+      "file": "operations.jsonl",
+      "bytes": 10195,
+      "sha256": "26CA992AF437BFD0CB8047A3112224EBC9BD945347163960FA4F8C8AA37879D9"
+    },
+    {
+      "file": "queue.jsonl",
+      "bytes": 34352,
+      "sha256": "1897A93B5BC8724D8E967371894EF169FFE82DDC4C1050399994CF6D02A40E0D"
+    },
+    {
+      "file": "profile.json",
+      "bytes": 242,
+      "sha256": "210D1B14009B1E2BC9237096A08BD8E85C29144CEF62B6820BA23A6D9E376D17"
+    },
+    {
+      "file": "result.json",
+      "bytes": 4158,
+      "sha256": "49B9D856EA4E7B76CA6FCEEC1B5CD94283BEAE876283A1EB227D15E3FC11FF71"
+    }
+  ],
+  "qualificationGranted": false,
+  "serviceQualified": false,
+  "realApiQualified": false,
+  "note": "Read-only trace consistency analysis, not a replay of queue metadata, authenticity proof, uptime measurement or new product qualification. Every observed interval exceeding the configured sampling interval is counted without assigning a fault or SLA. Gaps include scheduler, logging, queue work and verification; the tail is unknown without a receipt. Resource peaks are sampled values of the whole harness, not process maxima or service-only use. Input limit 256 MiB/file, 64 Ki characters/trace line; use stable controlled synthetic evidence."
+}
