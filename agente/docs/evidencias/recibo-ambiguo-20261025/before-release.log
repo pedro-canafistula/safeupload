@@ -1,0 +1,73 @@
+Versão do VSTest 18.7.0 (x64)
+
+Iniciando execução de teste, espere...
+1 arquivos de teste no total corresponderam ao padrão especificado.
+[xUnit.net 00:00:03.67]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":1,\"acceptedOverrides\":0,\"Ac"···) [FAIL]
+[xUnit.net 00:00:03.68]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":0,\"ACCEPTEDEVENTS\":1,\"accep"···) [FAIL]
+[xUnit.net 00:00:03.69]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":0,\"accepted\\u0045vents\":1,\"···) [FAIL]
+[xUnit.net 00:00:03.70]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":0,\"acceptedEvents\":1,\"accep"···) [FAIL]
+[xUnit.net 00:00:03.72]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":1,\"acceptedEvents\":1,\"accep"···) [FAIL]
+[xUnit.net 00:00:03.73]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":1,\"acceptedOverrides\":0,\"ac"···) [FAIL]
+  Com falha SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":1,\"acceptedOverrides\":0,\"Ac"···) [159 ms]
+  Mensagem de erro:
+   Assert.Equal() Failure: Collections differ
+                        ↓ (pos 94)
+Expected: [···, 53, 54, 43, 48, 48, ···]
+Actual:   [···, 53, 54, 92, 117, 48, ···]
+                        ↑ (pos 94)
+  Rastreamento de pilha:
+     at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33
+--- End of stack trace from previous location ---
+  Com falha SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":0,\"ACCEPTEDEVENTS\":1,\"accep"···) [11 ms]
+  Mensagem de erro:
+   Assert.Equal() Failure: Collections differ
+                        ↓ (pos 94)
+Expected: [···, 57, 50, 43, 48, 48, ···]
+Actual:   [···, 57, 50, 92, 117, 48, ···]
+                        ↑ (pos 94)
+  Rastreamento de pilha:
+     at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33
+--- End of stack trace from previous location ---
+  Com falha SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":0,\"accepted\\u0045vents\":1,\"···) [8 ms]
+  Mensagem de erro:
+   Assert.Equal() Failure: Collections differ
+                        ↓ (pos 94)
+Expected: [···, 48, 53, 43, 48, 48, ···]
+Actual:   [···, 48, 53, 92, 117, 48, ···]
+                        ↑ (pos 94)
+  Rastreamento de pilha:
+     at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33
+--- End of stack trace from previous location ---
+  Com falha SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":0,\"acceptedEvents\":1,\"accep"···) [8 ms]
+  Mensagem de erro:
+   Assert.Equal() Failure: Collections differ
+                        ↓ (pos 94)
+Expected: [···, 48, 49, 43, 48, 48, ···]
+Actual:   [···, 48, 49, 92, 117, 48, ···]
+                        ↑ (pos 94)
+  Rastreamento de pilha:
+     at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33
+--- End of stack trace from previous location ---
+  Com falha SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":1,\"acceptedEvents\":1,\"accep"···) [16 ms]
+  Mensagem de erro:
+   Assert.Equal() Failure: Collections differ
+                        ↓ (pos 94)
+Expected: [···, 51, 54, 43, 48, 48, ···]
+Actual:   [···, 51, 54, 92, 117, 48, ···]
+                        ↑ (pos 94)
+  Rastreamento de pilha:
+     at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33
+--- End of stack trace from previous location ---
+  Com falha SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":1,\"acceptedOverrides\":0,\"ac"···) [8 ms]
+  Mensagem de erro:
+   Assert.Equal() Failure: Collections differ
+                        ↓ (pos 94)
+Expected: [···, 48, 57, 43, 48, 48, ···]
+Actual:   [···, 48, 57, 92, 117, 48, ···]
+                        ↑ (pos 94)
+  Rastreamento de pilha:
+     at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33
+--- End of stack trace from previous location ---
+Arquivo de resultados: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\recibo-ambiguo-20261025\before\before.trx
+
+Com falha! – Com falha:     6, Aprovado:     0, Ignorado:     0, Total:     6, Duração: 217 ms - SafeUpload.Agent.Tests.dll (net10.0)

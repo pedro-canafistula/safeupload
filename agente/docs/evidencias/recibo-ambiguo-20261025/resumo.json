@@ -1,0 +1,138 @@
+{
+  "date": "2026-10-25",
+  "sourceCommit": "f5d7b7845603bad23afae8beaea56c1aa3a16778",
+  "baseCommit": "9dafcef38f75a4d1b50e3f64930c718cf7457089",
+  "localBefore": {
+    "newAmbiguousCases": 6,
+    "failed": 6,
+    "expectedReproduction": true
+  },
+  "localAfter": {
+    "passed": 38,
+    "failed": 0,
+    "skipped": 0,
+    "newCasesPassed": 12
+  },
+  "agentCi": {
+    "runId": 40211375512,
+    "conclusion": "success",
+    "jobsPassed": 3,
+    "passedPerConfiguration": 931,
+    "failed": 0,
+    "skipped": 4,
+    "totalPerConfiguration": 935,
+    "newCasesPassedPerConfiguration": 12
+  },
+  "webCi": {
+    "runId": 40211378229,
+    "conclusion": "failure",
+    "jobsFailed": 3,
+    "integrationQualified": false
+  },
+  "installedArtifactDownloaded": false,
+  "hostOrPreservedVmModified": false,
+  "colleagueComponentsChanged": false,
+  "longRunPostponedUntilAfterIntegrationAndHomologation": true,
+  "futureLongRunHours": 12,
+  "longRunStarted": false,
+  "mergeAuthorized": false,
+  "notes": [
+    "Raw local/CI TRX and test logs preserved; CI ZIP digests checked for the two C# artifacts only.",
+    "Web excerpt logs are decoded connector text normalized on save, not original binary downloads.",
+    "Both CI TRX Counters have notExecuted=0, while four UnitTestResult outcomes are NotExecuted and logs report Skipped=4.",
+    "Quoted numeric counts are not numeric JSON acknowledgements in the strict reader; valid numeric counts/case-insensitive names/unknown fields remain supported.",
+    "Real API persistence/deduplication/authentication and M2 exact pair remain external acceptance dependencies."
+  ],
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 86,
+      "sha256": "2CD8D6C2F1D76EC60B9E30C27DAFCE65FDEC62B397C9AF3F0922537BEE8AD5A7"
+    },
+    {
+      "file": "after-build-release.log",
+      "bytes": 2516,
+      "sha256": "4C12AA243CCC0CCE832AB9F80BDFF3328BC35C89CB35022AA192AE1007E95A9B"
+    },
+    {
+      "file": "after-release.log",
+      "bytes": 436,
+      "sha256": "708644C651DF29CA71B30A0BC0184BB7FD5E3049A347AC39892C5FACD3593C39"
+    },
+    {
+      "file": "after-release.trx",
+      "bytes": 69049,
+      "sha256": "529515DC9DAEF153AB3D00EA1A3540F9778DB0CB013AA71773A71C7B86D83A3D"
+    },
+    {
+      "file": "agent-ci-jobs.json",
+      "bytes": 5272,
+      "sha256": "7D508D17668989943154220E7D1FB9458051356B93EDBCADCEC7CF4B507F7D48"
+    },
+    {
+      "file": "before-build-release.log",
+      "bytes": 2516,
+      "sha256": "987003059760E1BCD328A8011F5B578D5D729654BD440E510F0D835654259AC6"
+    },
+    {
+      "file": "before-release.log",
+      "bytes": 6898,
+      "sha256": "52C902411EFB61B5898F71853E596D646B71837346ED831372A698F35C927082"
+    },
+    {
+      "file": "before-release.trx",
+      "bytes": 25102,
+      "sha256": "51AFA9A6F7AF85354E931D40AA39637D219C82D9323F1E3855D1888F2D4641D8"
+    },
+    {
+      "file": "ci-csharp-verified.json",
+      "bytes": 597,
+      "sha256": "A9F51040D79D543BE605F28742B77CF853FAD059DEA6D98EAF5310FE6D601F32"
+    },
+    {
+      "file": "ci-runs.json",
+      "bytes": 508,
+      "sha256": "FFB99EAD9672B6F58288AE3DA75B074D848CB68279A14C33F41863B8A17401A6"
+    },
+    {
+      "file": "csharp-Debug.log",
+      "bytes": 3198,
+      "sha256": "F9B101043311FF752987929E3A99646431C0EB7ECB044620ABFD70BC3AC460D8"
+    },
+    {
+      "file": "csharp-Debug.trx",
+      "bytes": 1359985,
+      "sha256": "42259EFAA579C6E9343BDF1EE7FBF993DD4A3DC8C657B89D7217E03B70835C89"
+    },
+    {
+      "file": "csharp-Release.log",
+      "bytes": 3219,
+      "sha256": "9A84BF3F62D2D0B4545A206ECCD951EA2B2652A0EAB7A1E06BE301ADC3342650"
+    },
+    {
+      "file": "csharp-Release.trx",
+      "bytes": 1363725,
+      "sha256": "8B6E8D47D4305D9C8720125DB276DFA1A1A6C6DC320923BD015668BCA2D08CFD"
+    },
+    {
+      "file": "web-ci-jobs.json",
+      "bytes": 4024,
+      "sha256": "EE002826598730B7A33E25F90FDD8F68E5D9D42AE239F475C848DFD120C1B5EA"
+    },
+    {
+      "file": "web-contract-excerpt.log",
+      "bytes": 384,
+      "sha256": "0DF69A2674E541687462E6E7262D9DCD06A50A6E5B81DE2C8EE80CA57CEE054A"
+    },
+    {
+      "file": "web-installed-excerpt.log",
+      "bytes": 182,
+      "sha256": "932A90C0BC06BC66318442603FF1DC44AACA64F0D6FF3F0E35026009B5A632E6"
+    },
+    {
+      "file": "web-migration-excerpt.log",
+      "bytes": 2660,
+      "sha256": "B0F88CCF2B3236E55927B1AEE31401554847D3B027F1C42B73F9F3740863F0C2"
+    }
+  ]
+}

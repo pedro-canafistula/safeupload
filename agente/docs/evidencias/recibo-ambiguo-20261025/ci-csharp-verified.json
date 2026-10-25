@@ -1,0 +1,24 @@
+[
+  {
+    "name": "csharp-Debug",
+    "artifactId": 12605696807,
+    "zipBytes": 243066,
+    "zipSha256": "14C6FD902D51296B4DAD9762EE01450BB0292F30E3EE1F3E361D1D83C333C1A0",
+    "passed": 931,
+    "failed": 0,
+    "total": 935,
+    "newCasesPassed": 12,
+    "resultNotExecuted": 4
+  },
+  {
+    "name": "csharp-Release",
+    "artifactId": 12605652846,
+    "zipBytes": 243207,
+    "zipSha256": "5D2B23157BED36AD9CDC81A9207B772EC502C5CB2B6E8989C7D11EF75299F224",
+    "passed": 931,
+    "failed": 0,
+    "total": 935,
+    "newCasesPassed": 12,
+    "resultNotExecuted": 4
+  }
+]

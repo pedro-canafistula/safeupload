@@ -1,0 +1,204 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="9484a63d-5f2e-407c-95d4-4a33429e6956" name="lucas@COMPUTADOR-LUCA 2026-10-25 13:20:08" runUser="COMPUTADOR-LUCA\lucas" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-25T13:20:08.7456072-03:00" queuing="2026-10-25T13:20:08.7456073-03:00" start="2026-10-25T13:20:04.5226186-03:00" finish="2026-10-25T13:20:08.7514979-03:00" />
+  <TestSettings name="default" id="409b8569-ae74-48ed-ab2f-928fb64da886">
+    <Deployment runDeploymentRoot="lucas_COMPUTADOR-LUCA_2026-10-25_13_20_08" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="f9ced13a-0c68-419e-a2ee-31b6a68439cf" testId="e358b8a9-9bbe-803c-bbcf-9f0820fac858" testName="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:0,\&quot;ACCEPTEDEVENTS\&quot;:1,\&quot;accep&quot;···)" computerName="COMPUTADOR-LUCA" duration="00:00:00.0110699" startTime="2026-10-25T13:20:08.6241359-03:00" endTime="2026-10-25T13:20:08.6242208-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f9ced13a-0c68-419e-a2ee-31b6a68439cf">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Collections differ&#xD;
+                        ↓ (pos 94)&#xD;
+Expected: [···, 57, 50, 43, 48, 48, ···]&#xD;
+Actual:   [···, 57, 50, 92, 117, 48, ···]&#xD;
+                        ↑ (pos 94)</Message>
+          <StackTrace>   at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="961def25-2571-4d02-a1ba-259ad8b01d92" testId="e485e8f8-eb88-7517-e895-c45043adb833" testName="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:0,\&quot;acceptedEvents\&quot;:1,\&quot;accep&quot;···)" computerName="COMPUTADOR-LUCA" duration="00:00:00.0086689" startTime="2026-10-25T13:20:08.6305238-03:00" endTime="2026-10-25T13:20:08.6390989-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="961def25-2571-4d02-a1ba-259ad8b01d92">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Collections differ&#xD;
+                        ↓ (pos 94)&#xD;
+Expected: [···, 48, 49, 43, 48, 48, ···]&#xD;
+Actual:   [···, 48, 49, 92, 117, 48, ···]&#xD;
+                        ↑ (pos 94)</Message>
+          <StackTrace>   at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="9ecfaf91-f2ce-41fb-a983-eea6433b65ea" testId="320853c7-b292-bea8-600b-052d484bf5bb" testName="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:1,\&quot;acceptedOverrides\&quot;:0,\&quot;ac&quot;···)" computerName="COMPUTADOR-LUCA" duration="00:00:00.0085109" startTime="2026-10-25T13:20:08.6576201-03:00" endTime="2026-10-25T13:20:08.6656717-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9ecfaf91-f2ce-41fb-a983-eea6433b65ea">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Collections differ&#xD;
+                        ↓ (pos 94)&#xD;
+Expected: [···, 48, 57, 43, 48, 48, ···]&#xD;
+Actual:   [···, 48, 57, 92, 117, 48, ···]&#xD;
+                        ↑ (pos 94)</Message>
+          <StackTrace>   at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="9ae7a50e-96bd-4940-b40a-7a2f1e1dbc99" testId="1a07dfd5-0401-9c8f-12ac-85b1a2e5024e" testName="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:0,\&quot;accepted\\u0045vents\&quot;:1,\&quot;···)" computerName="COMPUTADOR-LUCA" duration="00:00:00.0087485" startTime="2026-10-25T13:20:08.6256620-03:00" endTime="2026-10-25T13:20:08.6297907-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9ae7a50e-96bd-4940-b40a-7a2f1e1dbc99">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Collections differ&#xD;
+                        ↓ (pos 94)&#xD;
+Expected: [···, 48, 53, 43, 48, 48, ···]&#xD;
+Actual:   [···, 48, 53, 92, 117, 48, ···]&#xD;
+                        ↑ (pos 94)</Message>
+          <StackTrace>   at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="7bb37063-33aa-4ad0-b3d3-881121e29b45" testId="f82b6c7a-4723-31ff-054e-eaaa82ab41e3" testName="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:1,\&quot;acceptedEvents\&quot;:1,\&quot;accep&quot;···)" computerName="COMPUTADOR-LUCA" duration="00:00:00.0167589" startTime="2026-10-25T13:20:08.6397899-03:00" endTime="2026-10-25T13:20:08.6565938-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7bb37063-33aa-4ad0-b3d3-881121e29b45">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Collections differ&#xD;
+                        ↓ (pos 94)&#xD;
+Expected: [···, 51, 54, 43, 48, 48, ···]&#xD;
+Actual:   [···, 51, 54, 92, 117, 48, ···]&#xD;
+                        ↑ (pos 94)</Message>
+          <StackTrace>   at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="f1d0c74b-01ac-49d8-a999-3a5be99bd9fd" testId="bdeb7228-766a-560c-ba8e-e3f3d37c61f8" testName="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:1,\&quot;acceptedOverrides\&quot;:0,\&quot;Ac&quot;···)" computerName="COMPUTADOR-LUCA" duration="00:00:00.1594506" startTime="2026-10-25T13:20:08.4539926-03:00" endTime="2026-10-25T13:20:08.6075887-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f1d0c74b-01ac-49d8-a999-3a5be99bd9fd">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Collections differ&#xD;
+                        ↓ (pos 94)&#xD;
+Expected: [···, 53, 54, 43, 48, 48, ···]&#xD;
+Actual:   [···, 53, 54, 92, 117, 48, ···]&#xD;
+                        ↑ (pos 94)</Message>
+          <StackTrace>   at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs:line 33&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:0,\&quot;ACCEPTEDEVENTS\&quot;:1,\&quot;accep&quot;···)" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\release\net10.0-windows\safeupload.agent.tests.dll" id="e358b8a9-9bbe-803c-bbcf-9f0820fac858">
+      <Execution id="f9ced13a-0c68-419e-a2ee-31b6a68439cf" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Release\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.DispatcherReliabilityTests" name="Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload" />
+    </UnitTest>
+    <UnitTest name="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:0,\&quot;accepted\\u0045vents\&quot;:1,\&quot;···)" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\release\net10.0-windows\safeupload.agent.tests.dll" id="1a07dfd5-0401-9c8f-12ac-85b1a2e5024e">
+      <Execution id="9ae7a50e-96bd-4940-b40a-7a2f1e1dbc99" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Release\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.DispatcherReliabilityTests" name="Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload" />
+    </UnitTest>
+    <UnitTest name="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:1,\&quot;acceptedOverrides\&quot;:0,\&quot;Ac&quot;···)" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\release\net10.0-windows\safeupload.agent.tests.dll" id="bdeb7228-766a-560c-ba8e-e3f3d37c61f8">
+      <Execution id="f1d0c74b-01ac-49d8-a999-3a5be99bd9fd" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Release\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.DispatcherReliabilityTests" name="Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload" />
+    </UnitTest>
+    <UnitTest name="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:0,\&quot;acceptedEvents\&quot;:1,\&quot;accep&quot;···)" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\release\net10.0-windows\safeupload.agent.tests.dll" id="e485e8f8-eb88-7517-e895-c45043adb833">
+      <Execution id="961def25-2571-4d02-a1ba-259ad8b01d92" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Release\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.DispatcherReliabilityTests" name="Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload" />
+    </UnitTest>
+    <UnitTest name="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:1,\&quot;acceptedEvents\&quot;:1,\&quot;accep&quot;···)" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\release\net10.0-windows\safeupload.agent.tests.dll" id="f82b6c7a-4723-31ff-054e-eaaa82ab41e3">
+      <Execution id="7bb37063-33aa-4ad0-b3d3-881121e29b45" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Release\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.DispatcherReliabilityTests" name="Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload" />
+    </UnitTest>
+    <UnitTest name="SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: &quot;{\&quot;acceptedEvents\&quot;:1,\&quot;acceptedOverrides\&quot;:0,\&quot;ac&quot;···)" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\release\net10.0-windows\safeupload.agent.tests.dll" id="320853c7-b292-bea8-600b-052d484bf5bb">
+      <Execution id="9ecfaf91-f2ce-41fb-a983-eea6433b65ea" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Release\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.DispatcherReliabilityTests" name="Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="e358b8a9-9bbe-803c-bbcf-9f0820fac858" executionId="f9ced13a-0c68-419e-a2ee-31b6a68439cf" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e485e8f8-eb88-7517-e895-c45043adb833" executionId="961def25-2571-4d02-a1ba-259ad8b01d92" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="320853c7-b292-bea8-600b-052d484bf5bb" executionId="9ecfaf91-f2ce-41fb-a983-eea6433b65ea" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1a07dfd5-0401-9c8f-12ac-85b1a2e5024e" executionId="9ae7a50e-96bd-4940-b40a-7a2f1e1dbc99" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f82b6c7a-4723-31ff-054e-eaaa82ab41e3" executionId="7bb37063-33aa-4ad0-b3d3-881121e29b45" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="bdeb7228-766a-560c-ba8e-e3f3d37c61f8" executionId="f1d0c74b-01ac-49d8-a999-3a5be99bd9fd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Resultados que não estão em uma lista" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="Todos os resultados carregados" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="6" executed="6" passed="0" failed="6" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.4+50e68bbb8b (64-bit .NET 10.0.13)&#xD;
+[xUnit.net 00:00:03.29]   Discovering: SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:03.44]   Discovered:  SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:03.47]   Starting:    SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:03.67]       Assert.Equal() Failure: Collections differ&#xD;
+[xUnit.net 00:00:03.67]                               ↓ (pos 94)&#xD;
+[xUnit.net 00:00:03.67]       Expected: [···, 53, 54, 43, 48, 48, ···]&#xD;
+[xUnit.net 00:00:03.67]       Actual:   [···, 53, 54, 92, 117, 48, ···]&#xD;
+[xUnit.net 00:00:03.67]                               ↑ (pos 94)&#xD;
+[xUnit.net 00:00:03.67]       Stack Trace:&#xD;
+[xUnit.net 00:00:03.67]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs(33,0): at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body)&#xD;
+[xUnit.net 00:00:03.67]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:03.69]       Assert.Equal() Failure: Collections differ&#xD;
+[xUnit.net 00:00:03.69]                               ↓ (pos 94)&#xD;
+[xUnit.net 00:00:03.69]       Expected: [···, 57, 50, 43, 48, 48, ···]&#xD;
+[xUnit.net 00:00:03.69]       Actual:   [···, 57, 50, 92, 117, 48, ···]&#xD;
+[xUnit.net 00:00:03.69]                               ↑ (pos 94)&#xD;
+[xUnit.net 00:00:03.69]       Stack Trace:&#xD;
+[xUnit.net 00:00:03.69]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs(33,0): at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body)&#xD;
+[xUnit.net 00:00:03.69]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:03.69]       Assert.Equal() Failure: Collections differ&#xD;
+[xUnit.net 00:00:03.69]                               ↓ (pos 94)&#xD;
+[xUnit.net 00:00:03.69]       Expected: [···, 48, 53, 43, 48, 48, ···]&#xD;
+[xUnit.net 00:00:03.69]       Actual:   [···, 48, 53, 92, 117, 48, ···]&#xD;
+[xUnit.net 00:00:03.69]                               ↑ (pos 94)&#xD;
+[xUnit.net 00:00:03.69]       Stack Trace:&#xD;
+[xUnit.net 00:00:03.69]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs(33,0): at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body)&#xD;
+[xUnit.net 00:00:03.69]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:03.70]       Assert.Equal() Failure: Collections differ&#xD;
+[xUnit.net 00:00:03.70]                               ↓ (pos 94)&#xD;
+[xUnit.net 00:00:03.70]       Expected: [···, 48, 49, 43, 48, 48, ···]&#xD;
+[xUnit.net 00:00:03.70]       Actual:   [···, 48, 49, 92, 117, 48, ···]&#xD;
+[xUnit.net 00:00:03.70]                               ↑ (pos 94)&#xD;
+[xUnit.net 00:00:03.70]       Stack Trace:&#xD;
+[xUnit.net 00:00:03.70]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs(33,0): at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body)&#xD;
+[xUnit.net 00:00:03.70]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:03.72]       Assert.Equal() Failure: Collections differ&#xD;
+[xUnit.net 00:00:03.72]                               ↓ (pos 94)&#xD;
+[xUnit.net 00:00:03.72]       Expected: [···, 51, 54, 43, 48, 48, ···]&#xD;
+[xUnit.net 00:00:03.72]       Actual:   [···, 51, 54, 92, 117, 48, ···]&#xD;
+[xUnit.net 00:00:03.72]                               ↑ (pos 94)&#xD;
+[xUnit.net 00:00:03.72]       Stack Trace:&#xD;
+[xUnit.net 00:00:03.72]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs(33,0): at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body)&#xD;
+[xUnit.net 00:00:03.72]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:03.73]       Assert.Equal() Failure: Collections differ&#xD;
+[xUnit.net 00:00:03.73]                               ↓ (pos 94)&#xD;
+[xUnit.net 00:00:03.73]       Expected: [···, 48, 57, 43, 48, 48, ···]&#xD;
+[xUnit.net 00:00:03.73]       Actual:   [···, 48, 57, 92, 117, 48, ···]&#xD;
+[xUnit.net 00:00:03.73]                               ↑ (pos 94)&#xD;
+[xUnit.net 00:00:03.73]       Stack Trace:&#xD;
+[xUnit.net 00:00:03.73]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\DispatcherReliabilityTests.cs(33,0): at SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(String body)&#xD;
+[xUnit.net 00:00:03.73]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:03.74]   Finished:    SafeUpload.Agent.Tests&#xD;
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="COMPUTADOR-LUCA" outcome="Error" timestamp="2026-10-25T13:20:08.6104399-03:00">
+        <Text>[xUnit.net 00:00:03.67]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":1,\"acceptedOverrides\":0,\"Ac"···) [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="COMPUTADOR-LUCA" outcome="Error" timestamp="2026-10-25T13:20:08.6246497-03:00">
+        <Text>[xUnit.net 00:00:03.68]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":0,\"ACCEPTEDEVENTS\":1,\"accep"···) [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="COMPUTADOR-LUCA" outcome="Error" timestamp="2026-10-25T13:20:08.6300258-03:00">
+        <Text>[xUnit.net 00:00:03.69]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":0,\"accepted\\u0045vents\":1,\"···) [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="COMPUTADOR-LUCA" outcome="Error" timestamp="2026-10-25T13:20:08.6393785-03:00">
+        <Text>[xUnit.net 00:00:03.70]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":0,\"acceptedEvents\":1,\"accep"···) [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="COMPUTADOR-LUCA" outcome="Error" timestamp="2026-10-25T13:20:08.6571200-03:00">
+        <Text>[xUnit.net 00:00:03.72]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":1,\"acceptedEvents\":1,\"accep"···) [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="COMPUTADOR-LUCA" outcome="Error" timestamp="2026-10-25T13:20:08.6659820-03:00">
+        <Text>[xUnit.net 00:00:03.73]     SafeUpload.Agent.Tests.DispatcherReliabilityTests.Recibo_ambiguo_preserva_bytes_e_reabertura_reenvia_o_mesmo_payload(body: "{\"acceptedEvents\":1,\"acceptedOverrides\":0,\"ac"···) [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>
