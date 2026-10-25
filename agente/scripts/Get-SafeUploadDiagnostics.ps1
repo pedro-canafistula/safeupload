@@ -9,6 +9,9 @@ The minifilter's communication port accepts a single client and the service hold
 driver while the product runs. The service relays read-only queries over the SYSTEM/Administrators-only pipe
 \\.\pipe\SafeUpload.Agent.Diagnostics:
 
+  communication-health  process-local policy/heartbeat/audit attempts and outcomes, without a driver.
+                        No URLs, identities, response bodies or exception messages. Counters reset on restart;
+                        success never proves API persistence, driver application or protection.
   audit-health  queue failure/recovery counters since service start (also without a driver).
                 No event contents, paths or exception messages. Successful retries do not restore lost events.
   audit-integrity  read-only scan of the current queue, including invalid lines and unknown record types.
@@ -49,7 +52,7 @@ driver while the product runs. The service relays read-only queries over the SYS
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('counters', 'deny-ring', 'm2-counters', 'm2-stage-streams', 'audit-health', 'audit-integrity', 'audit-temporaries', 'audit-temporary-classification', 'audit-retention-preview', 'help')]
+    [ValidateSet('counters', 'deny-ring', 'm2-counters', 'm2-stage-streams', 'communication-health', 'audit-health', 'audit-integrity', 'audit-temporaries', 'audit-temporary-classification', 'audit-retention-preview', 'help')]
     [string] $Query = 'counters',
 
     # deny-ring: return records with a sequence greater than this value.
@@ -97,6 +100,7 @@ function Invoke-DiagnosticsQuery([hashtable] $Request) {
 }
 
 switch ($Query) {
+    'communication-health' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'm2-counters' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'm2-stage-streams' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'counters' { Invoke-DiagnosticsQuery @{ query = 'counters' } }

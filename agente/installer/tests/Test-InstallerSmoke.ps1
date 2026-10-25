@@ -116,6 +116,12 @@ public static class SafeUploadInstallerPipeIdentity {
     for ($attempt=0; $attempt -lt 30 -and -not (Test-Path -LiteralPath $policy); $attempt++) { Start-Sleep -Seconds 1 }
     Require (Test-Path -LiteralPath $policy) 'The service did not create its protected local policy.'
     $policyHash=(Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash
+    $communication = Read-AuditHealth 'communication-health' -VerifyServiceIdentity
+    Require (-not $communication.configured -and $communication.operations.Count -eq 3 -and
+        @($communication.operations | Where-Object { $_.state -ne 'not_configured' -or $_.attempts -ne 0 }).Count -eq 0 -and
+        -not $communication.protectionQualified -and -not $communication.apiPersistenceQualified -and
+        -not $communication.policyAppliedToDriverQualified) 'Unconfigured communication diagnostics claimed remote success or protection.'
+    $result.communicationHealth = [ordered]@{before=$communication;identityBefore=$script:classificationServerIdentity}
     $result.steps += 'self-contained service and UI installed; SCM identity, arguments, SID and startup verified'
     $monitored = Join-Path $workRoot 'Escopo Monitorado'
     for ($attempt=0; $attempt -lt 30 -and -not (Test-Path -LiteralPath $monitored); $attempt++) { Start-Sleep -Seconds 1 }
@@ -320,6 +326,13 @@ public static class SafeUploadInstallerPipeIdentity {
     Restart-Service -Name SafeUploadAgent -ErrorAction Stop
     Start-Sleep -Seconds 3
     Require ((Get-Service SafeUploadAgent).Status -eq 'Running') 'The installed service did not survive restart.'
+    $communicationAfterRestart = Read-AuditHealth 'communication-health' -VerifyServiceIdentity
+    Require (-not $communicationAfterRestart.configured -and $communicationAfterRestart.operations.Count -eq 3 -and
+        @($communicationAfterRestart.operations | Where-Object { $_.state -ne 'not_configured' -or $_.attempts -ne 0 }).Count -eq 0 -and
+        $communicationAfterRestart.sinceUtc -ne $communication.sinceUtc) 'Communication diagnostics did not restart cleanly.'
+    $result.communicationHealth.afterRestart=$communicationAfterRestart
+    $result.communicationHealth.identityAfterRestart=$script:classificationServerIdentity
+    $result.steps += 'communication-health read from installed SYSTEM service without driver or API; unconfigured state and reset after restart verified'
     $integrityAfterRestart = Read-AuditHealth 'audit-integrity'
     Require ($integrityAfterRestart.invalidLines -eq 1 -and $integrityAfterRestart.unknownRecords -eq 1) 'Restart lost integrity diagnostics.'
     Require ($integrityAfterRestart.queueBytes -eq $damagedIntegrity.queueBytes -and

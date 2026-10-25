@@ -41,6 +41,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
     private readonly string _endpointId;
     private readonly TimeSpan _interval;
     private readonly ILogger<HttpAgentDispatcher> _logger;
+    private readonly ICommunicationObserver? _observer;
 
     /// <summary>Monta o despachante.</summary>
     public HttpAgentDispatcher(
@@ -49,7 +50,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
         HttpClient client,
         string endpointId,
         TimeSpan interval,
-        ILogger<HttpAgentDispatcher> logger)
+        ILogger<HttpAgentDispatcher> logger, ICommunicationObserver? observer = null)
     {
         ArgumentNullException.ThrowIfNull(auditSink);
         ArgumentNullException.ThrowIfNull(policyStore);
@@ -64,6 +65,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
         _endpointId = endpointId;
         _interval = interval;
         _logger = logger;
+        _observer = observer;
     }
 
     /// <inheritdoc />
@@ -115,14 +117,23 @@ public sealed class HttpAgentDispatcher : BackgroundService
             AgentVersion,
             policy.Version);
 
-        using var response = await _client
-            .PostAsJsonAsync("heartbeat", heartbeat, SendOptions, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
+        using var observation = new CommunicationObservation(_observer, CommunicationOperation.Heartbeat);
+        int? receivedStatus = null;
+        try
         {
-            _logger.LogWarning("Heartbeat recusado pelo servidor: {Status}.", (int)response.StatusCode);
+            using var response = await _client
+                .PostAsJsonAsync("heartbeat", heartbeat, SendOptions, cancellationToken)
+                .ConfigureAwait(false);
+            receivedStatus = (int)response.StatusCode;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                observation.Failure(CommunicationFailure.HttpRejected, (int)response.StatusCode);
+                _logger.LogWarning("Heartbeat recusado pelo servidor: {Status}.", (int)response.StatusCode);
+            }
+            else observation.Success((int)response.StatusCode);
         }
+        catch (Exception exception) { observation.Exception(exception, cancellationToken, receivedStatus); throw; }
     }
 
     internal async Task RunCycleAsync(CancellationToken cancellationToken)
@@ -152,42 +163,54 @@ public sealed class HttpAgentDispatcher : BackgroundService
             pending.Select(AgentAuditEvent.FromLocal).ToArray(),
             overrides.Select(AgentAuditOverride.FromLocal).ToArray());
 
-        using var response = await _client
-            .PostAsJsonAsync("events", payload, SendOptions, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
+        using var observation = new CommunicationObservation(_observer, CommunicationOperation.Audit);
+        int? receivedStatus = null;
+        try
         {
-            _logger.LogWarning(
-                "Servidor recusou {Count} evento(s): {Status}. Continuam pendentes.",
-                pending.Count,
-                (int)response.StatusCode);
-            return;
+            using var response = await _client
+                .PostAsJsonAsync("events", payload, SendOptions, cancellationToken)
+                .ConfigureAwait(false);
+            receivedStatus = (int)response.StatusCode;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                observation.Failure(CommunicationFailure.HttpRejected, (int)response.StatusCode);
+                _logger.LogWarning(
+                    "Servidor recusou {Count} evento(s): {Status}. Continuam pendentes.",
+                    pending.Count,
+                    (int)response.StatusCode);
+                return;
+            }
+
+            var acknowledgement = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken)
+                .ConfigureAwait(false);
+            if (!IsCompleteAcknowledgement(acknowledgement, pending.Count, overrides.Count))
+            {
+                observation.Failure(CommunicationFailure.InvalidResponse, (int)response.StatusCode);
+                _logger.LogWarning("Confirmação inválida ou incompleta do lote. Registros continuam pendentes.");
+                return;
+            }
+
+            // A valid receipt is communication success, independent of local queue confirmation.
+            observation.Success((int)response.StatusCode);
+
+            // Só marca como entregue o que o servidor confirmou ter aceitado. Marcar
+            // antes do 2xx trocaria uma falha de rede por perda silenciosa de
+            // trilha, que é o erro caro: o evento sumiria da fila sem nunca ter
+            // chegado ao painel.
+            var dispatched = new List<Guid>(pending.Count);
+            foreach (var auditEvent in pending)
+            {
+                dispatched.Add(auditEvent.EventId);
+            }
+
+            await _auditSink.MarkDispatchedAsync(dispatched, cancellationToken).ConfigureAwait(false);
+            if (_auditSink is IOverrideQueue overrideQueue)
+                await overrideQueue.MarkOverridesDispatchedAsync(overrides, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("{Count} evento(s) entregues ao Centro de Administração.", dispatched.Count);
         }
-
-        var acknowledgement = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken)
-            .ConfigureAwait(false);
-        if (!IsCompleteAcknowledgement(acknowledgement, pending.Count, overrides.Count))
-        {
-            _logger.LogWarning("Confirmação inválida ou incompleta do lote. Registros continuam pendentes.");
-            return;
-        }
-
-        // Só marca como entregue o que o servidor confirmou ter aceitado. Marcar
-        // antes do 2xx trocaria uma falha de rede por perda silenciosa de
-        // trilha, que é o erro caro: o evento sumiria da fila sem nunca ter
-        // chegado ao painel.
-        var dispatched = new List<Guid>(pending.Count);
-        foreach (var auditEvent in pending)
-        {
-            dispatched.Add(auditEvent.EventId);
-        }
-
-        await _auditSink.MarkDispatchedAsync(dispatched, cancellationToken).ConfigureAwait(false);
-        if (_auditSink is IOverrideQueue overrideQueue)
-            await overrideQueue.MarkOverridesDispatchedAsync(overrides, cancellationToken).ConfigureAwait(false);
-
-        _logger.LogInformation("{Count} evento(s) entregues ao Centro de Administração.", dispatched.Count);
+        catch (Exception exception) { observation.Exception(exception, cancellationToken, receivedStatus); throw; }
     }
 
     /// <summary>

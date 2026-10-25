@@ -35,16 +35,19 @@ public sealed class DiagnosticsPipeServer : BackgroundService
     private readonly string _pipeName;
     private readonly AuditQueueHealth? _auditHealth;
     private readonly LocalQueueAuditSink? _auditQueue;
+    private readonly CommunicationHealth? _communicationHealth;
 
     /// <param name="pipeName">Only tests pass a name; the service always uses <see cref="PipeName"/>.</param>
     public DiagnosticsPipeServer(DriverDiagnosticsSource source, ILogger<DiagnosticsPipeServer> logger,
-        string pipeName = PipeName, AuditQueueHealth? auditHealth = null, LocalQueueAuditSink? auditQueue = null)
+        string pipeName = PipeName, AuditQueueHealth? auditHealth = null, LocalQueueAuditSink? auditQueue = null,
+        CommunicationHealth? communicationHealth = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipeName = pipeName;
         _auditHealth = auditHealth;
         _auditQueue = auditQueue;
+        _communicationHealth = communicationHealth;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -128,6 +131,10 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                         // A queue exception can contain a path or record content. Never relay it.
                         return Error(query, "Audit scan failed (" + AuditQueueHealth.Classify(exception) + ").");
                     }
+                case "communication-health":
+                    return _communicationHealth is null ? Error(query, "Communication monitoring is unavailable.") :
+                        Ok(query, JsonSerializer.SerializeToNode(_communicationHealth.Read(), new JsonSerializerOptions
+                        { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
                 case "audit-health":
                     return _auditHealth is null ? Error(query, "Audit monitoring is unavailable.") :
                         Ok(query, JsonSerializer.SerializeToNode(_auditHealth.Read(), new JsonSerializerOptions
@@ -144,7 +151,8 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "m2-counters", "m2-stage-streams", "audit-health", "audit-integrity", "audit-temporaries", "audit-temporary-classification", "audit-retention-preview", "help"),
+                        ["queries"] = new JsonArray("counters", "deny-ring", "m2-counters", "m2-stage-streams", "communication-health", "audit-health", "audit-integrity", "audit-temporaries", "audit-temporary-classification", "audit-retention-preview", "help"),
+                        ["communicationHealth"] = "process-local attempts/results only; no API persistence, driver application or protection qualification; counters reset on service restart",
                         ["temporaryClassification"] = "explicit bounded content scan; structural validity never proves ownership, full copy, recovery eligibility or permission to replace the queue",
                         ["m2Diagnostics"] = "explicit pinned m2-e0df8d1c layout; no fallback, capability negotiation or proof of protection; names may include path tails",
                         ["retentionPreview"] = "requires occurredBeforeUtc in UTC; occurrence-age counts only, never deletion eligibility",

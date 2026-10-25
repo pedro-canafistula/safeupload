@@ -198,6 +198,22 @@ try {
         } $query ([scriptblock]::Create($dispatch[0].Extent.Text))
         Assert-True ($request.Count -eq 1 -and $request.query -eq $query)
     }
+    Test-Case 'Communication health stays administrative and sends a read-only query without extra fields' {
+        $client = Join-Path $PSScriptRoot '../../scripts/Get-SafeUploadDiagnostics.ps1'
+        $tokens=$null; $parseErrors=$null
+        $ast=[Management.Automation.Language.Parser]::ParseFile((Resolve-Path $client),[ref]$tokens,[ref]$parseErrors)
+        Assert-True ($parseErrors.Count -eq 0 -and $ast.ScriptRequirements.IsElevationRequired)
+        $dispatch=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.SwitchStatementAst] -and $n.Condition.Extent.Text -eq '$Query'},$true))
+        Assert-True ($dispatch.Count -eq 1)
+        $parameters=[scriptblock]::Create($ast.ParamBlock.Extent.Text+"`n`$Query")
+        Assert-True ((& $parameters -Query 'communication-health') -eq 'communication-health')
+        $request=& {
+            param($Query,$block)
+            function Invoke-DiagnosticsQuery($Request){return $Request}
+            . $block
+        } 'communication-health' ([scriptblock]::Create($dispatch[0].Extent.Text))
+        Assert-True ($request.Count -eq 1 -and $request.query -eq 'communication-health')
+    }
     $failed=@($results | Where-Object { -not $_.passed })
     $summary=[ordered]@{powershell=$PSVersionTable.PSVersion.ToString();total=$results.Count;passed=$results.Count-$failed.Count;failed=$failed.Count;tests=@($results)}
     if ($ResultsPath) { $summary | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $ResultsPath -Encoding UTF8 }

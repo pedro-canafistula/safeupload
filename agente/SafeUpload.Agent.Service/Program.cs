@@ -147,6 +147,7 @@ public static class Program
         // seja configurado.
         string adminBaseUrl = builder.Configuration["CentroAdministracao:BaseUrl"] ?? string.Empty;
         string endpointId = Environment.MachineName;
+        builder.Services.AddSingleton(new CommunicationHealth(!string.IsNullOrWhiteSpace(adminBaseUrl)));
 
         if (string.IsNullOrWhiteSpace(adminBaseUrl))
         {
@@ -185,7 +186,8 @@ public static class Program
                     new DurableHttpPolicyStore(
                         provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
                         endpointId,
-                        Path.Combine(AgentPaths.RootDirectory, "server-policy-cache.json")),
+                        Path.Combine(AgentPaths.RootDirectory, "server-policy-cache.json"),
+                        provider.GetRequiredService<CommunicationHealth>()),
                     TimeSpan.FromSeconds(30),
                     provider.GetRequiredService<ILogger<RefreshingPolicyStore>>()));
             builder.Services.AddSingleton<IPolicyStore>(provider => provider.GetRequiredService<RefreshingPolicyStore>());
@@ -198,7 +200,8 @@ public static class Program
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
                     endpointId,
                     TimeSpan.FromSeconds(intervalSeconds),
-                    provider.GetRequiredService<ILogger<HttpAgentDispatcher>>()));
+                    provider.GetRequiredService<ILogger<HttpAgentDispatcher>>(),
+                    provider.GetRequiredService<CommunicationHealth>()));
         }
 
         // O gatilho. A partir daqui a protecao existe sem interface nenhuma
