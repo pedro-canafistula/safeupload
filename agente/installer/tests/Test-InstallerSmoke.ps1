@@ -37,10 +37,21 @@ function Read-AuditEvents([string]$Path) {
         }
     } finally { $reader.Dispose() }
 }
-function Read-AuditHealth([string]$Query = 'audit-health', [string]$OccurredBeforeUtc) {
+function Read-AuditHealth([string]$Query = 'audit-health', [string]$OccurredBeforeUtc, [switch]$VerifyServiceIdentity) {
     $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', 'SafeUpload.Agent.Diagnostics', [IO.Pipes.PipeDirection]::InOut, [IO.Pipes.PipeOptions]::Asynchronous)
     try {
         $pipe.Connect(5000)
+        if ($VerifyServiceIdentity) {
+            [uint32]$diagnosticServerPid = 0
+            Require ([SafeUploadInstallerPipeIdentity]::GetNamedPipeServerProcessId($pipe.SafePipeHandle, [ref]$diagnosticServerPid)) 'Cannot identify diagnostics server process.'
+            $diagnosticService = Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'"
+            Require ($diagnosticServerPid -gt 0 -and $diagnosticService.ProcessId -eq $diagnosticServerPid -and
+                $diagnosticService.State -eq 'Running' -and $diagnosticService.StartName -eq 'LocalSystem') 'Diagnostics peer is not the installed LocalSystem service.'
+            $owner = Invoke-CimMethod -InputObject (Get-CimInstance Win32_Process -Filter "ProcessId=$diagnosticServerPid") -MethodName GetOwnerSid
+            Require ($owner.ReturnValue -eq 0 -and $owner.Sid -eq 'S-1-5-18') 'Diagnostics peer owner is not SYSTEM.'
+            $script:classificationServerIdentity = [ordered]@{serverPid=$diagnosticServerPid;scmPid=$diagnosticService.ProcessId;
+                serviceAccount=$diagnosticService.StartName;processOwnerSid=$owner.Sid}
+        }
         $request = @{query=$Query}
         if ($OccurredBeforeUtc) { $request.occurredBeforeUtc = $OccurredBeforeUtc }
         $payload = [Text.Encoding]::UTF8.GetBytes(($request | ConvertTo-Json -Compress) + "`n")
@@ -62,6 +73,17 @@ function Run-Installer([string]$Label, [string[]]$Additional) {
     return $process.ExitCode
 }
 try {
+    if (-not ('SafeUploadInstallerPipeIdentity' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class SafeUploadInstallerPipeIdentity {
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetNamedPipeServerProcessId(SafePipeHandle pipe, out uint processId);
+}
+'@
+    }
     Require ((Run-Installer 'rejected-http' @('/MODE=FileSystemWatcher', '/ADMINURL=http://remote.example.test/agent/')) -ne 0) 'Remote HTTP must be rejected.'
     Require (-not (Test-Path -LiteralPath $serviceKey)) 'Rejected setup registered a service.'
     Require ((Run-Installer 'rejected-driver' @('/MODE=Minifilter')) -ne 0) 'Missing minifilter must be rejected.'
@@ -207,6 +229,78 @@ try {
         (Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $integrityHash) 'Temporary inventory changed file bytes.'
     $result.auditTemporaries = [ordered]@{initial=$emptyTemporaries;inventory=$temporaries;temporaryHash=$temporaryHash;temporaryBytes=$temporaryBytes}
     $result.steps += 'audit-temporaries counted metadata without reading contents, skipped a junction and preserved queue and candidate bytes'
+    # New cases share this existing disposable installation/restart/removal cycle.
+    $classificationBaseline = @(Read-AuditEvents $queue | Sort-Object eventId | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 12 })
+    $completeRecord = $audit | ConvertTo-Json -Depth 12 | ConvertFrom-Json -DateKind String
+    $completeRecord.dispatched = $true # Conflicting copy must not supersede published pending event.
+    $completeLine = ($completeRecord | ConvertTo-Json -Compress -Depth 12) + [Environment]::NewLine
+    $classificationPaths = @{}
+    foreach ($kind in @('complete','suspicious','busy','denied')) {
+        $candidatePath = $queue + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+        $content = if ($kind -eq 'suspicious') { '{"type":"future","content":"SYNTHETIC_PRIVATE_CONTENT"}' + [Environment]::NewLine } else { $completeLine }
+        [IO.File]::WriteAllText($candidatePath, $content, [Text.UTF8Encoding]::new($false))
+        $classificationPaths[$kind] = $candidatePath
+    }
+    $classificationHashes = @{}
+    foreach ($path in $classificationPaths.Values) { $classificationHashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
+    $deniedPath = $classificationPaths.denied
+    $originalDacl = (Get-Acl -LiteralPath $deniedPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
+    $deniedAcl = [Security.AccessControl.FileSecurity]::new()
+    $deniedAcl.SetSecurityDescriptorSddlForm($originalDacl, [Security.AccessControl.AccessControlSections]::Access)
+    $systemSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+    $deniedAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($systemSid,
+        [Security.AccessControl.FileSystemRights]::ReadData, [Security.AccessControl.AccessControlType]::Deny))
+    $result.temporaryClassification = [ordered]@{queueSha256=$integrityHash;originalDacl=$originalDacl;deniedSid='S-1-5-18';daclRestored=$false}
+    $busyHandle = $null
+    try {
+        [IO.FileSystemAclExtensions]::SetAccessControl([IO.FileInfo]::new($deniedPath), $deniedAcl)
+        $deniedDacl = (Get-Acl -LiteralPath $deniedPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
+        $busyHandle = [IO.FileStream]::new($classificationPaths.busy, [IO.FileMode]::Open, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        $restrictedClassification = Read-AuditHealth 'audit-temporary-classification' -VerifyServiceIdentity
+        $restrictedPeer = $script:classificationServerIdentity
+        $result.temporaryClassification.restricted = $restrictedClassification
+        $result.temporaryClassification.restrictedPeer = $restrictedPeer
+        $result.temporaryClassification.deniedDacl = $deniedDacl
+        Require ($restrictedClassification.candidateEntries -eq 6 -and $restrictedClassification.inUseCandidates -eq 1 -and
+            $restrictedClassification.unavailableCandidates -eq 1 -and $restrictedClassification.structurallyCompleteCandidates -eq 1 -and
+            $restrictedClassification.suspiciousCandidates -eq 1 -and $restrictedClassification.unterminatedCandidates -eq 1 -and
+            $restrictedClassification.unsafeCandidates -eq 1 -and -not $restrictedClassification.complete) 'SYSTEM classification did not distinguish denial, sharing or unsafe candidates.'
+        Require ((Get-Acl -LiteralPath $deniedPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access) -eq $deniedDacl) 'Query changed candidate DACL.'
+    } finally {
+        if ($busyHandle) { $busyHandle.Dispose() }
+        $restoreAcl = [Security.AccessControl.FileSecurity]::new()
+        $restoreAcl.SetSecurityDescriptorSddlForm($originalDacl, [Security.AccessControl.AccessControlSections]::Access)
+        [IO.FileSystemAclExtensions]::SetAccessControl([IO.FileInfo]::new($deniedPath), $restoreAcl)
+    }
+    Require ((Get-Acl -LiteralPath $deniedPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access) -eq $originalDacl) 'Test did not restore original candidate DACL.'
+    $result.temporaryClassification.daclRestored = $true
+    $restoredClassification = Read-AuditHealth 'audit-temporary-classification' -VerifyServiceIdentity
+    $result.temporaryClassification.restored = $restoredClassification
+    $result.temporaryClassification.restoredPeer = $script:classificationServerIdentity
+    Require ($restoredClassification.candidateEntries -eq 6 -and $restoredClassification.structurallyCompleteCandidates -eq 3 -and
+        $restoredClassification.inUseCandidates -eq 0 -and $restoredClassification.unavailableCandidates -eq 0 -and
+        $restoredClassification.unsafeCandidates -eq 1 -and $restoredClassification.suspiciousCandidates -eq 1 -and
+        $restoredClassification.unterminatedCandidates -eq 1 -and $restoredClassification.requiresAttention -and -not $restoredClassification.complete) 'Classification did not recover after access restoration.'
+    foreach ($scan in @($restrictedClassification,$restoredClassification)) {
+        foreach ($flag in @('ownershipVerified','recoveryEligible','promotionSupported','deletionSupported')) {
+            Require (($scan.$flag -is [bool]) -and $scan.$flag -eq $false) 'Classification implied ownership or recovery capability.'
+        }
+        $scanJson = $scan | ConvertTo-Json -Depth 6
+        Require (-not $scanJson.Contains($dataRoot) -and -not $scanJson.Contains($audit.eventId) -and
+            -not $scanJson.Contains('SYNTHETIC_PRIVATE_CONTENT')) 'Classification disclosed private details.'
+        foreach ($path in $classificationPaths.Values) { Require (-not $scanJson.Contains([IO.Path]::GetFileName($path))) 'Classification disclosed candidate filename.' }
+    }
+    foreach ($path in $classificationPaths.Values) { Require ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -eq $classificationHashes[$path]) 'Classification changed candidate bytes.' }
+    Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $integrityHash) 'Classification changed published queue bytes.'
+    Require ((@(Read-AuditEvents $queue | Sort-Object eventId | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 12 }) -join "`n") -ceq
+        ($classificationBaseline -join "`n")) 'Classification changed published event IDs or metadata.'
+    $fixtureInventory = Read-AuditHealth 'audit-temporaries'
+    $result.temporaryClassification = [ordered]@{restricted=$restrictedClassification;restored=$restoredClassification;
+        restrictedPeer=$restrictedPeer;restoredPeer=$script:classificationServerIdentity;
+        deniedSid='S-1-5-18';originalDacl=$originalDacl;deniedDacl=$deniedDacl;daclRestored=$true;
+        queueSha256=$integrityHash;candidateHashes=@($classificationPaths.Values | ForEach-Object {
+            [ordered]@{name=[IO.Path]::GetFileName($_);sha256=$classificationHashes[$_]}})}
+    $result.steps += 'SYSTEM pipe identity verified; classification separated sharing/ACL denial, recovered after restoration and preserved bytes, IDs, metadata and DACL'
     Restart-Service -Name SafeUploadAgent -ErrorAction Stop
     Start-Sleep -Seconds 3
     Require ((Get-Service SafeUploadAgent).Status -eq 'Running') 'The installed service did not survive restart.'
@@ -222,9 +316,22 @@ try {
         $previewAfterRestart.confirmedEventsBeforeCutoff -eq 0 -and -not $previewAfterRestart.deletionSupported) 'Restart changed the read-only preview.'
     $result.auditRetentionPreview.afterRestart = $previewAfterRestart
     $temporariesAfterRestart = Read-AuditHealth 'audit-temporaries'
-    Require ($temporariesAfterRestart.candidateFiles -eq 1 -and $temporariesAfterRestart.totalBytes -eq $temporaryBytes -and
+    Require ($temporariesAfterRestart.candidateFiles -eq $fixtureInventory.candidateFiles -and $temporariesAfterRestart.totalBytes -eq $fixtureInventory.totalBytes -and
         $temporariesAfterRestart.skippedReparsePoints -eq 1) 'Restart lost temporary inventory.'
     $result.auditTemporaries.afterRestart = $temporariesAfterRestart
+    $classificationAfterRestart = Read-AuditHealth 'audit-temporary-classification' -VerifyServiceIdentity
+    foreach ($field in @('candidateEntries','structurallyCompleteCandidates','inUseCandidates','unavailableCandidates',
+        'unsafeCandidates','suspiciousCandidates','unterminatedCandidates','indeterminateCandidates','bytesRead',
+        'scanLimitReached','directoryTraversalBlocked','complete','requiresAttention',
+        'ownershipVerified','recoveryEligible','promotionSupported','deletionSupported')) {
+        Require ($classificationAfterRestart.$field -ceq $restoredClassification.$field) 'Restart changed candidate classification.'
+    }
+    foreach ($path in $classificationPaths.Values) { Require ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -eq $classificationHashes[$path]) 'Restart changed candidate bytes.' }
+    Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $integrityHash) 'Restart changed published queue bytes.'
+    Require ((@(Read-AuditEvents $queue | Sort-Object eventId | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 12 }) -join "`n") -ceq
+        ($classificationBaseline -join "`n")) 'Restart changed published IDs or metadata.'
+    $result.temporaryClassification.afterRestart = $classificationAfterRestart
+    $result.temporaryClassification.peerAfterRestart = $script:classificationServerIdentity
     $retained = @(Read-AuditEvents $queue | Where-Object eventId -eq $audit.eventId)
     Require ($retained.Count -eq 1 -and $retained[0].occurredAtUtc -eq $audit.occurredAtUtc -and
         -not $retained[0].dispatched) 'Restart lost, changed or duplicated the pending event.'
@@ -258,6 +365,9 @@ try {
     Require ([IO.File]::ReadAllText($sentinel) -eq 'synthetic data to preserve') 'Uninstall removed retained endpoint data.'
     Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $queueHash) 'Uninstall removed or changed the audit queue.'
     Require ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash -eq $temporaryHash) 'Uninstall removed or changed a temporary candidate.'
+    foreach ($path in $classificationPaths.Values) { Require ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -eq $classificationHashes[$path]) 'Uninstall removed or changed classification candidate.' }
+    Require ((Get-Acl -LiteralPath $deniedPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access) -eq $originalDacl) 'Uninstall changed restored candidate DACL.'
+    $result.temporaryClassification.preservedAfterUninstall = $true
     Require ((Get-Item -LiteralPath $temporaryLink).Attributes -band [IO.FileAttributes]::ReparsePoint) 'Uninstall removed a preserved junction.'
     $result.steps += 'service and startup removed; endpoint policy and data preserved'
     $result.status='passed'

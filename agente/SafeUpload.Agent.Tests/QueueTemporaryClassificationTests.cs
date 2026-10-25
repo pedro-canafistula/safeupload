@@ -1,6 +1,8 @@
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -109,6 +111,51 @@ public sealed class QueueTemporaryClassificationTests
         await new LocalQueueAuditSink(candidate).WriteAsync(item, CancellationToken.None);
         var result = await new LocalQueueAuditSink(workspace.QueueFile).ClassifyTemporaryFilesAsync(CancellationToken.None);
         Assert.Equal(1, result.StructurallyCompleteCandidates); Assert.False(result.RecoveryEligible);
+    }
+
+    [Fact]
+    public async Task ACL_negando_leitura_e_indisponivel_nao_em_uso_e_restaura_sem_alterar_bytes_ou_acl()
+    {
+        using var workspace = new TestWorkspace();
+        var candidate = Candidate(workspace);
+        await new LocalQueueAuditSink(candidate).WriteAsync(Event(), CancellationToken.None);
+        var before = await File.ReadAllBytesAsync(candidate);
+        var info = new FileInfo(candidate);
+        var originalDacl = info.GetAccessControl(AccessControlSections.Access)
+            .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+        var denied = new FileSecurity();
+        denied.SetSecurityDescriptorSddlForm(originalDacl, AccessControlSections.Access);
+        using var identity = WindowsIdentity.GetCurrent();
+        denied.AddAccessRule(new FileSystemAccessRule(identity.User!, FileSystemRights.ReadData, AccessControlType.Deny));
+        try
+        {
+            info.SetAccessControl(denied);
+            var deniedDacl = info.GetAccessControl(AccessControlSections.Access)
+                .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+            Assert.Throws<UnauthorizedAccessException>(() => File.ReadAllBytes(candidate));
+            var scan = await new LocalQueueAuditSink(workspace.QueueFile).ClassifyTemporaryFilesAsync(CancellationToken.None);
+            Assert.Equal(1, scan.UnavailableCandidates); Assert.Equal(0, scan.InUseCandidates);
+            Assert.Equal(0, scan.StructurallyCompleteCandidates); Assert.Equal(0, scan.BytesRead);
+            Assert.False(scan.Complete); Assert.True(scan.RequiresAttention);
+            Assert.False(scan.RecoveryEligible); Assert.False(scan.PromotionSupported); Assert.False(scan.DeletionSupported);
+            Assert.Equal(deniedDacl, info.GetAccessControl(AccessControlSections.Access)
+                .GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+            Assert.DoesNotContain(workspace.Root, JsonSerializer.Serialize(scan));
+            Assert.False(File.Exists(workspace.QueueFile));
+        }
+        finally
+        {
+            var restore = new FileSecurity();
+            restore.SetSecurityDescriptorSddlForm(originalDacl, AccessControlSections.Access);
+            info.SetAccessControl(restore);
+        }
+        Assert.Equal(originalDacl, info.GetAccessControl(AccessControlSections.Access)
+            .GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+        Assert.Equal(before, await File.ReadAllBytesAsync(candidate));
+        var recovered = await new LocalQueueAuditSink(workspace.QueueFile).ClassifyTemporaryFilesAsync(CancellationToken.None);
+        Assert.Equal(1, recovered.StructurallyCompleteCandidates); Assert.Equal(0, recovered.UnavailableCandidates);
+        Assert.True(recovered.Complete); Assert.False(recovered.RecoveryEligible);
+        Assert.Equal(before, await File.ReadAllBytesAsync(candidate));
     }
 
     [Theory]
