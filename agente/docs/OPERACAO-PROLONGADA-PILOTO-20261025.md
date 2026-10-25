@@ -12,7 +12,7 @@ e suas integrações em qualquer contexto. Mudança para outra frente exige pedi
 explícito; dependências de colegas são registradas, não implementadas por nós.
 O desenho do painel introduzido indevidamente em d18d3284 foi retirado por reversão
 dd8adf29, preservando histórico e todo o trabalho anterior. As seções correspondentes
-na descrição do PR #49 e na #44 também devem ser retiradas, preservando o restante.
+na descrição do PR #49 e na #44 também foram retiradas, preservando o restante.
 PR #42 permanece rascunho e intocado; nenhum merge autorizado.
 
 ## Lacuna e incremento entregue
