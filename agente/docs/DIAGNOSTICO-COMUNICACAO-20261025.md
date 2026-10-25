@@ -23,6 +23,8 @@ Cada operação inclui contadores, tentativas em andamento, horários UTC e últ
 
 Falhas usam categorias fechadas: `HttpRejected`, `TransportError`, `Timeout`, `InvalidResponse`, `UnexpectedError`. O novo snapshot não inclui URL, identificador de máquina, token, corpo HTTP, caminho, mensagem de exceção ou conteúdo de eventos. Isso não altera nem constitui revisão geral dos logs preexistentes.
 
+Complemento posterior: [sanitização dos logs de integração](LOGS-COMUNICACAO-20261025.md) cobre os registros do dispatcher, as falhas da atualização de política e os loggers HTTP automáticos do cliente administrativo. O restante dos logs conserva seu escopo próprio.
+
 Política registra `Remote`, `Memory`, `Disk` ou `Default`; `lastRemoteCachePersisted` só tem valor para carga remota válida concluída. Política remota válida com erro ao salvar cache continua sendo sucesso remoto, com persistência falsa. Consultas ao cache não contam como tentativa HTTP.
 
 Heartbeat com HTTP 2xx é sucesso de comunicação. Auditoria só registra sucesso após recibo completo válido; recibo ambíguo/incompleto ou JSON inválido mantém pendentes. Uma falha posterior ao atualizar a fila local não converte recibo válido em falha de comunicação: os diagnósticos da fila continuam responsáveis por essa etapa. Fila vazia não cria tentativa fictícia.

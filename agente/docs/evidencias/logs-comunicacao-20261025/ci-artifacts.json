@@ -1,0 +1,16 @@
+[
+  {
+    "id": 12616721517,
+    "name": "csharp-Debug",
+    "bytes": 250880,
+    "digest": "sha256:cd1a491b91515b99f1ea7848a6dd611eb3c5619686a22108c933f800fbe45a55",
+    "sourceCommit": "c3ba5a0aa5e928127c5285e773e8987f2686b187"
+  },
+  {
+    "id": 12616302246,
+    "name": "csharp-Release",
+    "bytes": 250883,
+    "digest": "sha256:e7d0e91fee4672806f3ba688a378d9fb9d197b731e888ce0a0fed087411d3c00",
+    "sourceCommit": "c3ba5a0aa5e928127c5285e773e8987f2686b187"
+  }
+]

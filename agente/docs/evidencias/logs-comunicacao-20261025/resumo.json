@@ -1,0 +1,137 @@
+{
+  "date": "2026-10-25",
+  "sourceCommit": "c3ba5a0aa5e928127c5285e773e8987f2686b187",
+  "baseCommit": "30545446607065cf2bc6b883b80b9970b6692dac",
+  "before": {
+    "expectedReproduction": true,
+    "passed": 0,
+    "total": 3,
+    "failed": 3
+  },
+  "after": {
+    "newCasesPassed": 5,
+    "skipped": 0,
+    "failed": 0,
+    "passed": 111
+  },
+  "agentCi": {
+    "installedReceiptDownloaded": false,
+    "conclusion": "success",
+    "jobsPassed": 3,
+    "totalPerConfiguration": 963,
+    "newCasesPassedPerConfiguration": 5,
+    "skipped": 4,
+    "runId": 40239657012,
+    "passedPerConfiguration": 959,
+    "failed": 0,
+    "installedSmokeJobPassed": true
+  },
+  "webCi": {
+    "integrationQualified": false,
+    "jobsFailed": 3,
+    "runId": 40239662246,
+    "conclusion": "failure"
+  },
+  "vmHomologationRepeated": false,
+  "installerDownloadedOrRunOnHost": false,
+  "colleagueComponentsChanged": false,
+  "longRunStarted": false,
+  "futureLongRunHours": 12,
+  "longRunPostponed": true,
+  "mergeAuthorized": false,
+  "notes": [
+    "Synthetic markers only; investigation did not establish actual credential exposure.",
+    "Raw local and CI TRX/test logs preserved without reserialization. Two C# ZIPs checked by size/digest and source SHA.",
+    "Web excerpts are decoded connector text normalized on save, not binary job-log downloads.",
+    "CI TRX Counters.notExecuted=0; four individual NotExecuted outcomes and four skips in each test log.",
+    "Closed metadata logging covers dispatcher and policy-refresh warnings plus named administration HTTP client; not a general audit of every product or external log.",
+    "HTTP request URIs and timeout unchanged. Receipt/cache/queue behavior and other HTTP client logs retained."
+  ],
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 86,
+      "sha256": "2CD8D6C2F1D76EC60B9E30C27DAFCE65FDEC62B397C9AF3F0922537BEE8AD5A7"
+    },
+    {
+      "file": "after-build.log",
+      "bytes": 3692,
+      "sha256": "D8407A676E9771187E3B5F19EE03EF1CD9C42771C122F20540380EEFCB0F4BC3"
+    },
+    {
+      "file": "after.log",
+      "bytes": 440,
+      "sha256": "09AD21A36B3C848F0BD89119964F7CF6E0AC21B60A201C104307FEC5EF6BECCB"
+    },
+    {
+      "file": "after.trx",
+      "bytes": 192729,
+      "sha256": "69E559996939BC543152E3C2C5E0CF7415D6E6E46560A2E5A50D4B75C9AA98F5"
+    },
+    {
+      "file": "agent-jobs.json",
+      "bytes": 8543,
+      "sha256": "EA397460E462BFDD01B9EDA2C8B12A03AC33F44603E40E030F0A9207ED490914"
+    },
+    {
+      "file": "before-build.log",
+      "bytes": 2516,
+      "sha256": "892B625678539E39B35148F707AA09EA5CBA0B235ACB0A9071BB9885FD34327F"
+    },
+    {
+      "file": "before.log",
+      "bytes": 21530,
+      "sha256": "D3895A65B87404ACB9EFD66E1638CFB710661AC62B103E9F0DCE7D852357495D"
+    },
+    {
+      "file": "before.trx",
+      "bytes": 52255,
+      "sha256": "85E1021D97C93E2D4366CC6A511D30E02F6E1A3C636002BC1153A9499E9F9A2A"
+    },
+    {
+      "file": "ci-artifacts.json",
+      "bytes": 471,
+      "sha256": "93B22907395288D69CAD45EEFA0CF1317DFEDA545D0AF2228907A8BCA816F7B9"
+    },
+    {
+      "file": "Debug-agente.trx",
+      "bytes": 1402485,
+      "sha256": "59D33CF5C4189E236C655A2FE7C29F915D8CBB363B32AD5D344693F1E25783B2"
+    },
+    {
+      "file": "Debug-test.log",
+      "bytes": 3585,
+      "sha256": "82DA7BC6C53405724894786743BA1AED3A8C8EA26F399DCC3C5EB5843F340F91"
+    },
+    {
+      "file": "Release-agente.trx",
+      "bytes": 1406337,
+      "sha256": "44CAD82697FA40D4A0DF6165D031ED3EFC4429F6788FC860AAE2CDBD43079485"
+    },
+    {
+      "file": "Release-test.log",
+      "bytes": 3608,
+      "sha256": "23AE66F9EA47F61FFA4A392873E0915F215016EE60A13089175D54FE7A168453"
+    },
+    {
+      "file": "web-agent-contract-excerpt.log",
+      "bytes": 592,
+      "sha256": "409AF40C26ED83A908F9F0B36DE8AEBB25F4413FDD2BB745D7D4031B24740C53"
+    },
+    {
+      "file": "web-installed-service-excerpt.log",
+      "bytes": 379,
+      "sha256": "F71485AAC00730074CB94D359C4133643F5D9F49B865B31CA203E97FD71A4AC9"
+    },
+    {
+      "file": "web-jobs.json",
+      "bytes": 6833,
+      "sha256": "EADA52291443AE15DB9B78FF4D27BB86A0816144A5B570E1C11045AE47AD8F98"
+    },
+    {
+      "file": "web-migration-excerpt.log",
+      "bytes": 2991,
+      "sha256": "C55DF6D56D91FA3F382C638A44A863F933767D46C408A83422C2B09BB74FEC4C"
+    }
+  ]
+}

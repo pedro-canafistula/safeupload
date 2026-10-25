@@ -1,0 +1,269 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="dde5e3e0-ef14-4293-b2a8-c6e8f78545cf" name="lucas@COMPUTADOR-LUCA 2026-10-25 19:17:44" runUser="COMPUTADOR-LUCA\lucas" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-25T19:17:44.8191971-03:00" queuing="2026-10-25T19:17:44.8191973-03:00" start="2026-10-25T19:17:40.6349490-03:00" finish="2026-10-25T19:17:44.8243395-03:00" />
+  <TestSettings name="default" id="9acda5b4-5357-4659-a7e3-5c8b1d0fd4a8">
+    <Deployment runDeploymentRoot="lucas_COMPUTADOR-LUCA_2026-10-25_19_17_44" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="085954e3-00cd-4b08-9a85-63fe0a6f5054" testId="8371d342-2476-2153-8c8b-e03713c9b3be" testName="SafeUpload.Agent.Tests.CommunicationLoggingTests.Falhas_inicial_e_periodica_da_politica_preservam_snapshot_sem_expor_excecao" computerName="COMPUTADOR-LUCA" duration="00:00:00.0160293" startTime="2026-10-25T19:17:44.7326252-03:00" endTime="2026-10-25T19:17:44.7408002-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="085954e3-00cd-4b08-9a85-63fe0a6f5054">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.All() Failure: 2 out of 3 items in the collection did not pass.&#xD;
+[1]: Item:  Entry { Text = Carga remota inicial falhou; política recuperada mantida., Exception = System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+             ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+               --- End of inner exception stack trace ---&#xD;
+               at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.RefreshAsync(CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 85&#xD;
+               at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.StartAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 70, Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+     Error: Assert.Null() Failure: Value is not null&#xD;
+            Expected: null&#xD;
+            Actual:   System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+             ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+               --- End of inner exception stack trace ---&#xD;
+               at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.RefreshAsync(CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 85&#xD;
+               at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.StartAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 70&#xD;
+[2]: Item:  Entry { Text = Falha na atualização de política; último snapshot mantido., Exception = System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+             ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+               --- End of inner exception stack trace ---&#xD;
+               at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.RefreshAsync(CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 85&#xD;
+               at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 99, Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+     Error: Assert.Null() Failure: Value is not null&#xD;
+            Expected: null&#xD;
+            Actual:   System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+             ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+               --- End of inner exception stack trace ---&#xD;
+               at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.RefreshAsync(CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 85&#xD;
+               at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 99</Message>
+          <StackTrace>   at SafeUpload.Agent.Tests.CommunicationLoggingTests.AssertSafe[T](Capture`1 log) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 73&#xD;
+   at SafeUpload.Agent.Tests.CommunicationLoggingTests.Falhas_inicial_e_periodica_da_politica_preservam_snapshot_sem_expor_excecao() in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 66&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="cdd60eb4-ad76-4ca1-b5b6-3e9308ff8e50" testId="ed774d1c-5c87-c762-fad3-d3cee3f9a116" testName="SafeUpload.Agent.Tests.CommunicationLoggingTests.Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta" computerName="COMPUTADOR-LUCA" duration="00:00:00.0119226" startTime="2026-10-25T19:17:44.7284836-03:00" endTime="2026-10-25T19:17:44.7286275-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="cdd60eb4-ad76-4ca1-b5b6-3e9308ff8e50">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.All() Failure: 3 out of 3 items in the collection did not pass.&#xD;
+[0]: Item:  Entry { Text = Despachante ativo: https://SEGREDO-SINTETICO-NAO-REGISTRAR@example.test/SEGREDO-SINTETICO-NAO-REGISTRAR/?token=SEGREDO-SINTETICO-NAO-REGISTRAR, a cada 3600 s, como SEGREDO-SINTETICO-NAO-REGISTRAR., Exception = , Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+     Error: Assert.DoesNotContain() Failure: Sub-string found&#xD;
+                                            ↓ (pos 27)&#xD;
+            String: ···"ante ativo: https://SEGREDO-SINTETICO-NAO"···&#xD;
+            Found:  "SEGREDO-SINTETICO-NAO-REGISTRAR"&#xD;
+[1]: Item:  Entry { Text = Heartbeat falhou; o envio da auditoria será tentado independentemente., Exception = System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+             ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+               --- End of inner exception stack trace ---&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta&gt;b__1_0(HttpRequestMessage _) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 24&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+               at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.SendHeartbeatAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 124&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 141, Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+     Error: Assert.Null() Failure: Value is not null&#xD;
+            Expected: null&#xD;
+            Actual:   System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+             ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+               --- End of inner exception stack trace ---&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta&gt;b__1_0(HttpRequestMessage _) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 24&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+               at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.SendHeartbeatAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 124&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 141&#xD;
+[2]: Item:  Entry { Text = Ciclo de despacho falhou. Nova tentativa na próxima volta., Exception = System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+             ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+               --- End of inner exception stack trace ---&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta&gt;b__1_0(HttpRequestMessage _) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 24&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+               at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.DispatchPendingAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 170&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 147&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 84, Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+     Error: Assert.Null() Failure: Value is not null&#xD;
+            Expected: null&#xD;
+            Actual:   System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+             ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+               --- End of inner exception stack trace ---&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta&gt;b__1_0(HttpRequestMessage _) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 24&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+               at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.DispatchPendingAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 170&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 147&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 84</Message>
+          <StackTrace>   at SafeUpload.Agent.Tests.CommunicationLoggingTests.AssertSafe[T](Capture`1 log) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 73&#xD;
+   at SafeUpload.Agent.Tests.CommunicationLoggingTests.Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta() in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 32&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="30867100-85c8-48fb-ae55-683c940df390" testId="a9c1d44d-8fee-62e5-88a6-c2c67b5134eb" testName="SafeUpload.Agent.Tests.CommunicationLoggingTests.Falha_sanitizada_de_heartbeat_mantem_envio_independente_da_auditoria" computerName="COMPUTADOR-LUCA" duration="00:00:00.1362591" startTime="2026-10-25T19:17:44.5847206-03:00" endTime="2026-10-25T19:17:44.7098174-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="30867100-85c8-48fb-ae55-683c940df390">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.All() Failure: 1 out of 2 items in the collection did not pass.&#xD;
+[0]: Item:  Entry { Text = Heartbeat falhou; o envio da auditoria será tentado independentemente., Exception = System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+             ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+               --- End of inner exception stack trace ---&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Falha_sanitizada_de_heartbeat_mantem_envio_independente_da_auditoria&gt;b__2_0(HttpRequestMessage request) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 44&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+               at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.SendHeartbeatAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 124&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 141, Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+     Error: Assert.Null() Failure: Value is not null&#xD;
+            Expected: null&#xD;
+            Actual:   System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+             ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+               --- End of inner exception stack trace ---&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Falha_sanitizada_de_heartbeat_mantem_envio_independente_da_auditoria&gt;b__2_0(HttpRequestMessage request) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 44&#xD;
+               at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+               at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.SendHeartbeatAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 124&#xD;
+               at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 141</Message>
+          <StackTrace>   at SafeUpload.Agent.Tests.CommunicationLoggingTests.AssertSafe[T](Capture`1 log) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 73&#xD;
+   at SafeUpload.Agent.Tests.CommunicationLoggingTests.Falha_sanitizada_de_heartbeat_mantem_envio_independente_da_auditoria() in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 52&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SafeUpload.Agent.Tests.CommunicationLoggingTests.Falhas_inicial_e_periodica_da_politica_preservam_snapshot_sem_expor_excecao" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\release\net10.0-windows\safeupload.agent.tests.dll" id="8371d342-2476-2153-8c8b-e03713c9b3be">
+      <Execution id="085954e3-00cd-4b08-9a85-63fe0a6f5054" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Release\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.CommunicationLoggingTests" name="Falhas_inicial_e_periodica_da_politica_preservam_snapshot_sem_expor_excecao" />
+    </UnitTest>
+    <UnitTest name="SafeUpload.Agent.Tests.CommunicationLoggingTests.Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\release\net10.0-windows\safeupload.agent.tests.dll" id="ed774d1c-5c87-c762-fad3-d3cee3f9a116">
+      <Execution id="cdd60eb4-ad76-4ca1-b5b6-3e9308ff8e50" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Release\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.CommunicationLoggingTests" name="Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta" />
+    </UnitTest>
+    <UnitTest name="SafeUpload.Agent.Tests.CommunicationLoggingTests.Falha_sanitizada_de_heartbeat_mantem_envio_independente_da_auditoria" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\release\net10.0-windows\safeupload.agent.tests.dll" id="a9c1d44d-8fee-62e5-88a6-c2c67b5134eb">
+      <Execution id="30867100-85c8-48fb-ae55-683c940df390" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Release\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.CommunicationLoggingTests" name="Falha_sanitizada_de_heartbeat_mantem_envio_independente_da_auditoria" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="8371d342-2476-2153-8c8b-e03713c9b3be" executionId="085954e3-00cd-4b08-9a85-63fe0a6f5054" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ed774d1c-5c87-c762-fad3-d3cee3f9a116" executionId="cdd60eb4-ad76-4ca1-b5b6-3e9308ff8e50" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a9c1d44d-8fee-62e5-88a6-c2c67b5134eb" executionId="30867100-85c8-48fb-ae55-683c940df390" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Resultados que não estão em uma lista" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="Todos os resultados carregados" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="3" executed="3" passed="0" failed="3" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.4+50e68bbb8b (64-bit .NET 10.0.13)&#xD;
+[xUnit.net 00:00:03.28]   Discovering: SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:03.45]   Discovered:  SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:03.47]   Starting:    SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:03.65]       Assert.All() Failure: 1 out of 2 items in the collection did not pass.&#xD;
+[xUnit.net 00:00:03.65]       [0]: Item:  Entry { Text = Heartbeat falhou; o envio da auditoria será tentado independentemente., Exception = System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+[xUnit.net 00:00:03.65]                    ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+[xUnit.net 00:00:03.65]                      --- End of inner exception stack trace ---&#xD;
+[xUnit.net 00:00:03.65]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Falha_sanitizada_de_heartbeat_mantem_envio_independente_da_auditoria&gt;b__2_0(HttpRequestMessage request) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 44&#xD;
+[xUnit.net 00:00:03.65]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+[xUnit.net 00:00:03.65]                      at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+[xUnit.net 00:00:03.65]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.SendHeartbeatAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 124&#xD;
+[xUnit.net 00:00:03.65]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 141, Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+[xUnit.net 00:00:03.65]            Error: Assert.Null() Failure: Value is not null&#xD;
+[xUnit.net 00:00:03.65]                   Expected: null&#xD;
+[xUnit.net 00:00:03.65]                   Actual:   System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+[xUnit.net 00:00:03.65]                    ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+[xUnit.net 00:00:03.65]                      --- End of inner exception stack trace ---&#xD;
+[xUnit.net 00:00:03.65]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Falha_sanitizada_de_heartbeat_mantem_envio_independente_da_auditoria&gt;b__2_0(HttpRequestMessage request) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 44&#xD;
+[xUnit.net 00:00:03.65]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+[xUnit.net 00:00:03.65]                      at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+[xUnit.net 00:00:03.65]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.SendHeartbeatAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 124&#xD;
+[xUnit.net 00:00:03.65]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 141&#xD;
+[xUnit.net 00:00:03.65]       Stack Trace:&#xD;
+[xUnit.net 00:00:03.65]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs(73,0): at SafeUpload.Agent.Tests.CommunicationLoggingTests.AssertSafe[T](Capture`1 log)&#xD;
+[xUnit.net 00:00:03.65]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs(52,0): at SafeUpload.Agent.Tests.CommunicationLoggingTests.Falha_sanitizada_de_heartbeat_mantem_envio_independente_da_auditoria()&#xD;
+[xUnit.net 00:00:03.65]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:03.66]       Assert.All() Failure: 3 out of 3 items in the collection did not pass.&#xD;
+[xUnit.net 00:00:03.66]       [0]: Item:  Entry { Text = Despachante ativo: https://SEGREDO-SINTETICO-NAO-REGISTRAR@example.test/SEGREDO-SINTETICO-NAO-REGISTRAR/?token=SEGREDO-SINTETICO-NAO-REGISTRAR, a cada 3600 s, como SEGREDO-SINTETICO-NAO-REGISTRAR., Exception = , Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+[xUnit.net 00:00:03.66]            Error: Assert.DoesNotContain() Failure: Sub-string found&#xD;
+[xUnit.net 00:00:03.66]                                                   ↓ (pos 27)&#xD;
+[xUnit.net 00:00:03.66]                   String: ···"ante ativo: https://SEGREDO-SINTETICO-NAO"···&#xD;
+[xUnit.net 00:00:03.66]                   Found:  "SEGREDO-SINTETICO-NAO-REGISTRAR"&#xD;
+[xUnit.net 00:00:03.66]       [1]: Item:  Entry { Text = Heartbeat falhou; o envio da auditoria será tentado independentemente., Exception = System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+[xUnit.net 00:00:03.66]                    ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+[xUnit.net 00:00:03.66]                      --- End of inner exception stack trace ---&#xD;
+[xUnit.net 00:00:03.66]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta&gt;b__1_0(HttpRequestMessage _) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 24&#xD;
+[xUnit.net 00:00:03.66]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+[xUnit.net 00:00:03.66]                      at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+[xUnit.net 00:00:03.66]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.SendHeartbeatAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 124&#xD;
+[xUnit.net 00:00:03.66]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 141, Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+[xUnit.net 00:00:03.66]            Error: Assert.Null() Failure: Value is not null&#xD;
+[xUnit.net 00:00:03.67]                   Expected: null&#xD;
+[xUnit.net 00:00:03.67]                   Actual:   System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+[xUnit.net 00:00:03.67]                    ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+[xUnit.net 00:00:03.67]                      --- End of inner exception stack trace ---&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta&gt;b__1_0(HttpRequestMessage _) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 24&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+[xUnit.net 00:00:03.67]                      at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.SendHeartbeatAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 124&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 141&#xD;
+[xUnit.net 00:00:03.67]       [2]: Item:  Entry { Text = Ciclo de despacho falhou. Nova tentativa na próxima volta., Exception = System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+[xUnit.net 00:00:03.67]                    ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+[xUnit.net 00:00:03.67]                      --- End of inner exception stack trace ---&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta&gt;b__1_0(HttpRequestMessage _) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 24&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+[xUnit.net 00:00:03.67]                      at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.DispatchPendingAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 170&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 147&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 84, Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+[xUnit.net 00:00:03.67]            Error: Assert.Null() Failure: Value is not null&#xD;
+[xUnit.net 00:00:03.67]                   Expected: null&#xD;
+[xUnit.net 00:00:03.67]                   Actual:   System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+[xUnit.net 00:00:03.67]                    ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+[xUnit.net 00:00:03.67]                      --- End of inner exception stack trace ---&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.&lt;&gt;c.&lt;Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta&gt;b__1_0(HttpRequestMessage _) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 24&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Tests.CommunicationLoggingTests.Handler.SendAsync(HttpRequestMessage request, CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs:line 87&#xD;
+[xUnit.net 00:00:03.67]                      at System.Net.Http.HttpClient.&lt;SendAsync&gt;g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.DispatchPendingAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 170&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.RunCycleAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 147&#xD;
+[xUnit.net 00:00:03.67]                      at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 84&#xD;
+[xUnit.net 00:00:03.67]       Stack Trace:&#xD;
+[xUnit.net 00:00:03.67]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs(73,0): at SafeUpload.Agent.Tests.CommunicationLoggingTests.AssertSafe[T](Capture`1 log)&#xD;
+[xUnit.net 00:00:03.67]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs(32,0): at SafeUpload.Agent.Tests.CommunicationLoggingTests.Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta()&#xD;
+[xUnit.net 00:00:03.67]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:03.68]       Assert.All() Failure: 2 out of 3 items in the collection did not pass.&#xD;
+[xUnit.net 00:00:03.68]       [1]: Item:  Entry { Text = Carga remota inicial falhou; política recuperada mantida., Exception = System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+[xUnit.net 00:00:03.68]                    ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+[xUnit.net 00:00:03.68]                      --- End of inner exception stack trace ---&#xD;
+[xUnit.net 00:00:03.68]                      at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.RefreshAsync(CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 85&#xD;
+[xUnit.net 00:00:03.68]                      at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.StartAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 70, Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+[xUnit.net 00:00:03.68]            Error: Assert.Null() Failure: Value is not null&#xD;
+[xUnit.net 00:00:03.68]                   Expected: null&#xD;
+[xUnit.net 00:00:03.68]                   Actual:   System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+[xUnit.net 00:00:03.68]                    ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+[xUnit.net 00:00:03.68]                      --- End of inner exception stack trace ---&#xD;
+[xUnit.net 00:00:03.68]                      at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.RefreshAsync(CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 85&#xD;
+[xUnit.net 00:00:03.68]                      at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.StartAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 70&#xD;
+[xUnit.net 00:00:03.68]       [2]: Item:  Entry { Text = Falha na atualização de política; último snapshot mantido., Exception = System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+[xUnit.net 00:00:03.68]                    ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+[xUnit.net 00:00:03.68]                      --- End of inner exception stack trace ---&#xD;
+[xUnit.net 00:00:03.68]                      at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.RefreshAsync(CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 85&#xD;
+[xUnit.net 00:00:03.68]                      at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 99, Values = System.Collections.Generic.KeyValuePair`2[System.String,System.Object][] }&#xD;
+[xUnit.net 00:00:03.68]            Error: Assert.Null() Failure: Value is not null&#xD;
+[xUnit.net 00:00:03.68]                   Expected: null&#xD;
+[xUnit.net 00:00:03.68]                   Actual:   System.Net.Http.HttpRequestException: https://example.test/SEGREDO-SINTETICO-NAO-REGISTRAR?token=SEGREDO-SINTETICO-NAO-REGISTRAR&#xD;
+[xUnit.net 00:00:03.68]                    ---&gt; System.IO.IOException: C:\SEGREDO-SINTETICO-NAO-REGISTRAR\queue.jsonl&#xD;
+[xUnit.net 00:00:03.68]                      --- End of inner exception stack trace ---&#xD;
+[xUnit.net 00:00:03.68]                      at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.RefreshAsync(CancellationToken token) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 85&#xD;
+[xUnit.net 00:00:03.68]                      at SafeUpload.Agent.Service.Policies.RefreshingPolicyStore.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Policy\RefreshingPolicyStore.cs:line 99&#xD;
+[xUnit.net 00:00:03.68]       Stack Trace:&#xD;
+[xUnit.net 00:00:03.68]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs(73,0): at SafeUpload.Agent.Tests.CommunicationLoggingTests.AssertSafe[T](Capture`1 log)&#xD;
+[xUnit.net 00:00:03.68]         C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationLoggingTests.cs(66,0): at SafeUpload.Agent.Tests.CommunicationLoggingTests.Falhas_inicial_e_periodica_da_politica_preservam_snapshot_sem_expor_excecao()&#xD;
+[xUnit.net 00:00:03.68]         --- End of stack trace from previous location ---&#xD;
+[xUnit.net 00:00:03.68]   Finished:    SafeUpload.Agent.Tests&#xD;
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="COMPUTADOR-LUCA" outcome="Error" timestamp="2026-10-25T19:17:44.7130335-03:00">
+        <Text>[xUnit.net 00:00:03.65]     SafeUpload.Agent.Tests.CommunicationLoggingTests.Falha_sanitizada_de_heartbeat_mantem_envio_independente_da_auditoria [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="COMPUTADOR-LUCA" outcome="Error" timestamp="2026-10-25T19:17:44.7290111-03:00">
+        <Text>[xUnit.net 00:00:03.66]     SafeUpload.Agent.Tests.CommunicationLoggingTests.Inicio_e_falhas_do_ciclo_nao_registram_URL_identidade_ou_excecao_bruta [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="COMPUTADOR-LUCA" outcome="Error" timestamp="2026-10-25T19:17:44.7411496-03:00">
+        <Text>[xUnit.net 00:00:03.68]     SafeUpload.Agent.Tests.CommunicationLoggingTests.Falhas_inicial_e_periodica_da_politica_preservam_snapshot_sem_expor_excecao [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>
