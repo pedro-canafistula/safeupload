@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Domain;
@@ -173,12 +174,11 @@ public sealed class HttpAgentDispatcher : BackgroundService
             return;
         }
 
-        var acknowledgement = await response.Content.ReadFromJsonAsync<SubmitResponse>(cancellationToken)
+        var acknowledgement = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken)
             .ConfigureAwait(false);
-        if (acknowledgement?.AcceptedEvents != pending.Count ||
-            acknowledgement.AcceptedOverrides != overrides.Count)
+        if (!IsCompleteAcknowledgement(acknowledgement, pending.Count, overrides.Count))
         {
-            _logger.LogWarning("Confirmação incompleta do lote. Registros continuam pendentes.");
+            _logger.LogWarning("Confirmação inválida ou incompleta do lote. Registros continuam pendentes.");
             return;
         }
 
@@ -220,5 +220,27 @@ public sealed class HttpAgentDispatcher : BackgroundService
         IReadOnlyList<AuditEvent> Events,
         IReadOnlyList<AuditOverride> Overrides);
 
-    private sealed record SubmitResponse(int AcceptedEvents, int AcceptedOverrides);
+    private static bool IsCompleteAcknowledgement(JsonElement receipt, int events, int overrides)
+    {
+        if (receipt.ValueKind != JsonValueKind.Object) return false;
+        bool sawEvents = false, sawOverrides = false;
+        foreach (var property in receipt.EnumerateObject())
+        {
+            // Decode escaped names and preserve case-insensitive matching, while rejecting duplicate counts.
+            if (property.Name.Equals("acceptedEvents", StringComparison.OrdinalIgnoreCase))
+            {
+                if (sawEvents || property.Value.ValueKind != JsonValueKind.Number ||
+                    !property.Value.TryGetInt32(out int count) || count != events) return false;
+                sawEvents = true;
+            }
+            else if (property.Name.Equals("acceptedOverrides", StringComparison.OrdinalIgnoreCase))
+            {
+                if (sawOverrides || property.Value.ValueKind != JsonValueKind.Number ||
+                    !property.Value.TryGetInt32(out int count) || count != overrides) return false;
+                sawOverrides = true;
+            }
+        }
+        // Both top-level counts must exist, even when the corresponding batch is empty.
+        return sawEvents && sawOverrides;
+    }
 }
