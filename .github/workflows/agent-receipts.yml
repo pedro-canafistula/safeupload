@@ -1,0 +1,51 @@
+name: Recibos de auditoria do agente
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'agente/**'
+      - '.github/workflows/agent-receipts.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'agente/**'
+      - '.github/workflows/agent-receipts.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  receipt-regression:
+    name: Recibos e cache (Release)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    env:
+      SAFEUPLOAD_MACHINE_TESTS: '0'
+    steps:
+      - name: Habilitar caminhos longos
+        run: git config --system core.longpaths true
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validar recibos e regressões relacionadas sem API ou serviço instalado
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts/agent-receipts -Force | Out-Null
+          dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj -c Release --filter 'FullyQualifiedName~DispatcherReliabilityTests|FullyQualifiedName~DurableHttpPolicyStoreTests|FullyQualifiedName~RefreshingPolicyStoreTests' --logger 'trx;LogFileName=receipts.trx' --results-directory artifacts/agent-receipts *> artifacts/agent-receipts/test.log
+          $testExit = $LASTEXITCODE
+          Get-Content artifacts/agent-receipts/test.log -Tail 30
+          if ($testExit -ne 0) { throw 'Falha no recorte do agente; preservar TRX e log.' }
+          [xml]$trx = Get-Content artifacts/agent-receipts/receipts.trx -Raw
+          $receipts = @($trx.SelectNodes("//*[local-name()='UnitTestResult']") | Where-Object { $_.GetAttribute('testName').Contains('DispatcherReliabilityTests.') })
+          if ($receipts.Count -lt 23 -or @($receipts | Where-Object { $_.GetAttribute('outcome') -ne 'Passed' }).Count -ne 0) {
+            throw 'Casos de recibo ausentes, ignorados ou não aprovados.'
+          }
+      - name: Preservar evidências inclusive em falha
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-receipts-release
+          path: artifacts/agent-receipts/
+          if-no-files-found: error
