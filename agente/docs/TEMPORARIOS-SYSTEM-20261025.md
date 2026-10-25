@@ -16,6 +16,10 @@ retornar um unavailableCandidate, zero inUse e zero bytes lidos, Complete=false,
 RequiresAttention=true e flags de recuperação falsas. O teste exige DACL idêntica
 antes/depois da consulta; restaura somente a DACL original em finally, confere
 bytes e repete a classificação com acesso restaurado. Não cria fila publicada.
+A restauração exige mesmas regras na mesma ordem (SID, máscara, allow/deny,
+herança/propagação), proprietário, grupo e proteção/canonicalidade. A marca
+auto-inherited do SDDL pode ser normalizada pelo Windows; os SDDL são registrados,
+sem confundir essa normalização com alteração de permissões pelo diagnóstico.
 
 O teste instalado integra o **mesmo ciclo já existente** de instalação/reinício/
 remoção do runner GitHub-hosted descartável. Não instala serviço no host nem usa
@@ -57,7 +61,14 @@ testes da classificação, sem necessidade de repetir a homologação Windows 10
 O novo caso de ACL passou localmente em Release e Debug, um teste por configuração.
 Nenhum outro teste local aprovado foi repetido sem necessidade. Sintaxe do smoke
 PowerShell e compilação do helper nativo de identidade verificadas no host;
-o smoke instalado não foi executado no host. A execução real aguarda CI.
+o smoke instalado não foi executado no host. A execução final aguarda CI.
+
+Primeiro CI, fonte `90bba2f4`: o novo caso de ACL falhou em Debug/Release e o
+smoke também parou no oráculo de restauração, comparando SDDL literal `D:` versus
+`D:AI`. O oráculo foi corrigido para comparar permissões e sua ordem, proprietário,
+grupo e proteção, mantendo comparação literal antes/depois de cada consulta.
+Os resultados reprovados e o recibo parcial do serviço serão preservados; essa
+tentativa não constitui aceite final da entrega.
 
 Reproduzir o caso isolado em Windows, com acesso para alterar a DACL do próprio
 arquivo temporário:

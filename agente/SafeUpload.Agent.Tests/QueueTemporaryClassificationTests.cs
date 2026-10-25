@@ -121,6 +121,7 @@ public sealed class QueueTemporaryClassificationTests
         await new LocalQueueAuditSink(candidate).WriteAsync(Event(), CancellationToken.None);
         var before = await File.ReadAllBytesAsync(candidate);
         var info = new FileInfo(candidate);
+        var originalPermissions = PermissionState(info);
         var originalDacl = info.GetAccessControl(AccessControlSections.Access)
             .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
         var denied = new FileSecurity();
@@ -149,8 +150,9 @@ public sealed class QueueTemporaryClassificationTests
             restore.SetSecurityDescriptorSddlForm(originalDacl, AccessControlSections.Access);
             info.SetAccessControl(restore);
         }
-        Assert.Equal(originalDacl, info.GetAccessControl(AccessControlSections.Access)
-            .GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+        // SetSecurityDescriptor may normalize the auto-inherited D:AI marker.
+        // Keep ACEs, owner/group and protection exact, not presentation flags.
+        Assert.Equal(originalPermissions, PermissionState(info));
         Assert.Equal(before, await File.ReadAllBytesAsync(candidate));
         var recovered = await new LocalQueueAuditSink(workspace.QueueFile).ClassifyTemporaryFilesAsync(CancellationToken.None);
         Assert.Equal(1, recovered.StructurallyCompleteCandidates); Assert.Equal(0, recovered.UnavailableCandidates);
@@ -283,6 +285,13 @@ public sealed class QueueTemporaryClassificationTests
         finally { await server.StopAsync(CancellationToken.None); }
     }
 
+    private static string PermissionState(FileInfo file)
+    {
+        var acl = file.GetAccessControl(AccessControlSections.Access | AccessControlSections.Owner | AccessControlSections.Group);
+        var rules = acl.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>()
+            .Select(r => $"{r.IdentityReference.Value}|{(int)r.FileSystemRights}|{r.AccessControlType}|{r.IsInherited}|{r.InheritanceFlags}|{r.PropagationFlags}");
+        return $"{acl.GetOwner(typeof(SecurityIdentifier))!.Value}|{acl.GetGroup(typeof(SecurityIdentifier))!.Value}|{acl.AreAccessRulesProtected}|{acl.AreAccessRulesCanonical}|{string.Join(';', rules)}";
+    }
     private static string Candidate(TestWorkspace workspace) => workspace.QueueFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
     private static async Task<string[]> Hashes(string[] paths)
     {

@@ -67,6 +67,16 @@ function Read-AuditHealth([string]$Query = 'audit-health', [string]$OccurredBefo
         } finally { $reader.Dispose() }
     } finally { $pipe.Dispose() }
 }
+function Read-TestCandidatePermissions([string]$Path) {
+    $acl = Get-Acl -LiteralPath $Path
+    $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | ForEach-Object {
+        [ordered]@{sid=$_.IdentityReference.Value;rights=[int]$_.FileSystemRights;type=[int]$_.AccessControlType;
+            inherited=$_.IsInherited;inheritance=[int]$_.InheritanceFlags;propagation=[int]$_.PropagationFlags} | ConvertTo-Json -Compress
+    })
+    [ordered]@{owner=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value;
+        group=$acl.GetGroup([Security.Principal.SecurityIdentifier]).Value;protected=$acl.AreAccessRulesProtected;
+        canonical=$acl.AreAccessRulesCanonical;rules=$rules} | ConvertTo-Json -Depth 5 -Compress
+}
 function Run-Installer([string]$Label, [string[]]$Additional) {
     $process = Start-Process $InstallerPath -WindowStyle Hidden -PassThru -Wait -ArgumentList (@(
         '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/LOG="' + (Join-Path $ResultsDirectory "$Label.log") + '"')) + $Additional)
@@ -245,12 +255,14 @@ public static class SafeUploadInstallerPipeIdentity {
     foreach ($path in $classificationPaths.Values) { $classificationHashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
     $deniedPath = $classificationPaths.denied
     $originalDacl = (Get-Acl -LiteralPath $deniedPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
+    $originalPermissions = Read-TestCandidatePermissions $deniedPath
     $deniedAcl = [Security.AccessControl.FileSecurity]::new()
     $deniedAcl.SetSecurityDescriptorSddlForm($originalDacl, [Security.AccessControl.AccessControlSections]::Access)
     $systemSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
     $deniedAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($systemSid,
         [Security.AccessControl.FileSystemRights]::ReadData, [Security.AccessControl.AccessControlType]::Deny))
-    $result.temporaryClassification = [ordered]@{queueSha256=$integrityHash;originalDacl=$originalDacl;deniedSid='S-1-5-18';daclRestored=$false}
+    $result.temporaryClassification = [ordered]@{queueSha256=$integrityHash;originalDacl=$originalDacl;
+        originalPermissions=$originalPermissions;deniedSid='S-1-5-18';daclRestored=$false}
     $busyHandle = $null
     try {
         [IO.FileSystemAclExtensions]::SetAccessControl([IO.FileInfo]::new($deniedPath), $deniedAcl)
@@ -272,8 +284,11 @@ public static class SafeUploadInstallerPipeIdentity {
         $restoreAcl.SetSecurityDescriptorSddlForm($originalDacl, [Security.AccessControl.AccessControlSections]::Access)
         [IO.FileSystemAclExtensions]::SetAccessControl([IO.FileInfo]::new($deniedPath), $restoreAcl)
     }
-    Require ((Get-Acl -LiteralPath $deniedPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access) -eq $originalDacl) 'Test did not restore original candidate DACL.'
+    $restoredDacl = (Get-Acl -LiteralPath $deniedPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
+    $restoredPermissions = Read-TestCandidatePermissions $deniedPath
+    Require ($restoredPermissions -ceq $originalPermissions) 'Test did not restore original candidate permissions.'
     $result.temporaryClassification.daclRestored = $true
+    $result.temporaryClassification.restoredDacl = $restoredDacl
     $restoredClassification = Read-AuditHealth 'audit-temporary-classification' -VerifyServiceIdentity
     $result.temporaryClassification.restored = $restoredClassification
     $result.temporaryClassification.restoredPeer = $script:classificationServerIdentity
@@ -298,6 +313,7 @@ public static class SafeUploadInstallerPipeIdentity {
     $result.temporaryClassification = [ordered]@{restricted=$restrictedClassification;restored=$restoredClassification;
         restrictedPeer=$restrictedPeer;restoredPeer=$script:classificationServerIdentity;
         deniedSid='S-1-5-18';originalDacl=$originalDacl;deniedDacl=$deniedDacl;daclRestored=$true;
+        restoredDacl=$restoredDacl;originalPermissions=$originalPermissions;restoredPermissions=$restoredPermissions;
         queueSha256=$integrityHash;candidateHashes=@($classificationPaths.Values | ForEach-Object {
             [ordered]@{name=[IO.Path]::GetFileName($_);sha256=$classificationHashes[$_]}})}
     $result.steps += 'SYSTEM pipe identity verified; classification separated sharing/ACL denial, recovered after restoration and preserved bytes, IDs, metadata and DACL'
@@ -366,7 +382,8 @@ public static class SafeUploadInstallerPipeIdentity {
     Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $queueHash) 'Uninstall removed or changed the audit queue.'
     Require ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash -eq $temporaryHash) 'Uninstall removed or changed a temporary candidate.'
     foreach ($path in $classificationPaths.Values) { Require ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -eq $classificationHashes[$path]) 'Uninstall removed or changed classification candidate.' }
-    Require ((Get-Acl -LiteralPath $deniedPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access) -eq $originalDacl) 'Uninstall changed restored candidate DACL.'
+    Require ((Read-TestCandidatePermissions $deniedPath) -ceq $originalPermissions) 'Uninstall changed candidate permissions.'
+    Require ((Get-Acl -LiteralPath $deniedPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access) -ceq $restoredDacl) 'Uninstall changed restored candidate DACL.'
     $result.temporaryClassification.preservedAfterUninstall = $true
     Require ((Get-Item -LiteralPath $temporaryLink).Attributes -band [IO.FileAttributes]::ReparsePoint) 'Uninstall removed a preserved junction.'
     $result.steps += 'service and startup removed; endpoint policy and data preserved'
