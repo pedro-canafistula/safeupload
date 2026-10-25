@@ -68,6 +68,27 @@ jobs:
             artifacts/queue-crash/**/result.json
             artifacts/queue-crash/**/failure.json
             artifacts/queue-crash.log
+      - name: Interromper append com prefixo real e operação pendente
+        shell: pwsh
+        env:
+          BUILD_CONFIGURATION: ${{ matrix.configuration }}
+        run: |
+          New-Item -ItemType Directory -Path artifacts/queue-append -Force | Out-Null
+          dotnet build agente/tools/QueueAppendInterruptionProbe/QueueAppendInterruptionProbe.csproj -c $env:BUILD_CONFIGURATION
+          if ($LASTEXITCODE -ne 0) { throw 'O ensaio de append nao compilou.' }
+          dotnet "agente/tools/QueueAppendInterruptionProbe/bin/$env:BUILD_CONFIGURATION/net10.0/QueueAppendInterruptionProbe.dll" artifacts/queue-append 3 *> artifacts/queue-append.log
+          $probeExit = $LASTEXITCODE
+          Get-Content artifacts/queue-append.log -Tail 24
+          if ($probeExit -ne 0) { throw 'Append sem cauda parcial comprovada ou recuperacao falhou.' }
+      - name: Preservar recibos de append sem filas sintéticas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: append-interrompido-${{ matrix.configuration }}
+          path: |
+            artifacts/queue-append/**/result.json
+            artifacts/queue-append/**/failure.json
+            artifacts/queue-append.log
       - name: Preservar resultados completos
         if: always()
         uses: actions/upload-artifact@v4
