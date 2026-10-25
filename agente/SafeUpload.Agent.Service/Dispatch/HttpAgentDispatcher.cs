@@ -1,7 +1,6 @@
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Domain;
