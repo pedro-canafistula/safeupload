@@ -1,0 +1,283 @@
+{
+  "driverCommit": "e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+  "path": "driver/SafeUpload.Minifilter/Communication.c",
+  "blob": "20bedb03813a6871bfddf60a9c12c88f434f1433",
+  "selectedLines": [
+    {
+      "lineNumber": 2771,
+      "text": "        if (command == SAFEUPLOAD_CONTROL_WRITER_STATE_STATUS) {"
+    },
+    {
+      "lineNumber": 2772,
+      "text": "            SAFEUPLOAD_CONTROL writerControl;"
+    },
+    {
+      "lineNumber": 2773,
+      "text": "            /* Built in the pool scratch buffer, like the deny-ring reply: with the appended first-origin"
+    },
+    {
+      "lineNumber": 2774,
+      "text": "             * diagnostics a local copy pushed this routine over the stack limit (C6262, t5-diag1). */"
+    },
+    {
+      "lineNumber": 2775,
+      "text": "            PSAFEUPLOAD_WRITER_STATE_STATUS writerStatus = (PSAFEUPLOAD_WRITER_STATE_STATUS)policy;"
+    },
+    {
+      "lineNumber": 2776,
+      "text": "            C_ASSERT( sizeof( SAFEUPLOAD_WRITER_STATE_STATUS ) <= sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );"
+    },
+    {
+      "lineNumber": 2777,
+      "text": ""
+    },
+    {
+      "lineNumber": 2778,
+      "text": "            if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL ) ||"
+    },
+    {
+      "lineNumber": 2779,
+      "text": "                OutputBuffer == NULL || OutputBufferLength != sizeof( *writerStatus )) {"
+    },
+    {
+      "lineNumber": 2780,
+      "text": "                status = STATUS_INVALID_BUFFER_SIZE;"
+    },
+    {
+      "lineNumber": 2781,
+      "text": "                leave;"
+    },
+    {
+      "lineNumber": 2782,
+      "text": "            }"
+    },
+    {
+      "lineNumber": 2783,
+      "text": "            RtlCopyMemory( &writerControl, InputBuffer, sizeof( writerControl ) );"
+    },
+    {
+      "lineNumber": 2784,
+      "text": "            if (writerControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||"
+    },
+    {
+      "lineNumber": 2785,
+      "text": "                writerControl.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||"
+    },
+    {
+      "lineNumber": 2786,
+      "text": "                writerControl.Command != command ||"
+    },
+    {
+      "lineNumber": 2787,
+      "text": "                writerControl.Reserved != 0) {"
+    },
+    {
+      "lineNumber": 2788,
+      "text": "                status = STATUS_REVISION_MISMATCH;"
+    },
+    {
+      "lineNumber": 2789,
+      "text": "                leave;"
+    },
+    {
+      "lineNumber": 2790,
+      "text": "            }"
+    },
+    {
+      "lineNumber": 2791,
+      "text": "#pragma warning( suppress: 6001 )"
+    },
+    {
+      "lineNumber": 2792,
+      "text": "            ProbeForWrite( OutputBuffer, sizeof( *writerStatus ), __alignof( SAFEUPLOAD_WRITER_STATE_STATUS ) );"
+    },
+    {
+      "lineNumber": 2793,
+      "text": "            SafeUploadStageWritersGetStatus( writerStatus );"
+    },
+    {
+      "lineNumber": 2835,
+      "text": "        if (command == SAFEUPLOAD_CONTROL_STAGE_STREAMS) {"
+    },
+    {
+      "lineNumber": 2836,
+      "text": "            PSAFEUPLOAD_STAGE_STREAMS streams = (PSAFEUPLOAD_STAGE_STREAMS)policy;"
+    },
+    {
+      "lineNumber": 2837,
+      "text": ""
+    },
+    {
+      "lineNumber": 2838,
+      "text": "            C_ASSERT( sizeof( SAFEUPLOAD_STAGE_STREAMS ) <= sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );"
+    },
+    {
+      "lineNumber": 2839,
+      "text": "            if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL ) ||"
+    },
+    {
+      "lineNumber": 2840,
+      "text": "                OutputBuffer == NULL || OutputBufferLength != sizeof( SAFEUPLOAD_STAGE_STREAMS )) {"
+    },
+    {
+      "lineNumber": 2841,
+      "text": "                status = STATUS_INVALID_BUFFER_SIZE;"
+    },
+    {
+      "lineNumber": 2842,
+      "text": "                leave;"
+    },
+    {
+      "lineNumber": 2843,
+      "text": "            }"
+    },
+    {
+      "lineNumber": 2844,
+      "text": "            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||"
+    },
+    {
+      "lineNumber": 2845,
+      "text": "                controlHeader.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||"
+    },
+    {
+      "lineNumber": 2846,
+      "text": "                controlHeader.Reserved != 0) {"
+    },
+    {
+      "lineNumber": 2847,
+      "text": "                status = STATUS_REVISION_MISMATCH;"
+    },
+    {
+      "lineNumber": 2848,
+      "text": "                leave;"
+    },
+    {
+      "lineNumber": 2849,
+      "text": "            }"
+    },
+    {
+      "lineNumber": 2850,
+      "text": "#pragma warning( suppress: 6001 )"
+    },
+    {
+      "lineNumber": 2851,
+      "text": "            ProbeForWrite( OutputBuffer, sizeof( SAFEUPLOAD_STAGE_STREAMS ), __alignof( SAFEUPLOAD_STAGE_STREAMS ) );"
+    },
+    {
+      "lineNumber": 2852,
+      "text": "            SafeUploadStageGetStreamSnapshot( streams );"
+    },
+    {
+      "lineNumber": 2853,
+      "text": "            RtlCopyMemory( OutputBuffer, streams, sizeof( *streams ) );"
+    },
+    {
+      "lineNumber": 2854,
+      "text": "            *ReturnOutputBufferLength = sizeof( *streams );"
+    },
+    {
+      "lineNumber": 2855,
+      "text": "            leave;"
+    },
+    {
+      "lineNumber": 2856,
+      "text": "        }"
+    },
+    {
+      "lineNumber": 2857,
+      "text": ""
+    },
+    {
+      "lineNumber": 2858,
+      "text": "        if (command == SAFEUPLOAD_CONTROL_DIAG_COUNTERS) {"
+    },
+    {
+      "lineNumber": 2859,
+      "text": "            PSAFEUPLOAD_DIAG_COUNTERS diagCounters = (PSAFEUPLOAD_DIAG_COUNTERS)policy;"
+    },
+    {
+      "lineNumber": 2860,
+      "text": ""
+    },
+    {
+      "lineNumber": 2861,
+      "text": "            C_ASSERT( sizeof( SAFEUPLOAD_DIAG_COUNTERS ) <= sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );"
+    },
+    {
+      "lineNumber": 2862,
+      "text": "            if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL ) ||"
+    },
+    {
+      "lineNumber": 2863,
+      "text": "                OutputBuffer == NULL || OutputBufferLength != sizeof( SAFEUPLOAD_DIAG_COUNTERS )) {"
+    },
+    {
+      "lineNumber": 2864,
+      "text": "                status = STATUS_INVALID_BUFFER_SIZE;"
+    },
+    {
+      "lineNumber": 2865,
+      "text": "                leave;"
+    },
+    {
+      "lineNumber": 2866,
+      "text": "            }"
+    },
+    {
+      "lineNumber": 2867,
+      "text": "            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||"
+    },
+    {
+      "lineNumber": 2868,
+      "text": "                controlHeader.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||"
+    },
+    {
+      "lineNumber": 2869,
+      "text": "                controlHeader.Reserved != 0) {"
+    },
+    {
+      "lineNumber": 2870,
+      "text": "                status = STATUS_REVISION_MISMATCH;"
+    },
+    {
+      "lineNumber": 2871,
+      "text": "                leave;"
+    },
+    {
+      "lineNumber": 2872,
+      "text": "            }"
+    },
+    {
+      "lineNumber": 2873,
+      "text": "#pragma warning( suppress: 6001 )"
+    },
+    {
+      "lineNumber": 2874,
+      "text": "            ProbeForWrite( OutputBuffer, sizeof( SAFEUPLOAD_DIAG_COUNTERS ), __alignof( SAFEUPLOAD_DIAG_COUNTERS ) );"
+    },
+    {
+      "lineNumber": 2875,
+      "text": "            SafeUploadDenyGetCounters( diagCounters );"
+    },
+    {
+      "lineNumber": 2876,
+      "text": "            SafeUploadStageGetLifetimeCounters( &diagCounters->Stage );"
+    },
+    {
+      "lineNumber": 2877,
+      "text": "            RtlCopyMemory( OutputBuffer, diagCounters, sizeof( *diagCounters ) );"
+    },
+    {
+      "lineNumber": 2878,
+      "text": "            *ReturnOutputBufferLength = sizeof( *diagCounters );"
+    },
+    {
+      "lineNumber": 2879,
+      "text": "            leave;"
+    },
+    {
+      "lineNumber": 2880,
+      "text": "        }"
+    }
+  ]
+}

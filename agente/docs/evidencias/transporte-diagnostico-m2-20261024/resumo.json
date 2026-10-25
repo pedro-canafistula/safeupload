@@ -1,0 +1,122 @@
+{
+  "issue": 60,
+  "source": "09e56f5c2c9b07c537ef4e317c7e05fcf8c1ea19",
+  "localDefaultPassed": 75,
+  "localFeaturePassed": 75,
+  "newCases": 28,
+  "ciRun": 40118521355,
+  "ciResult": "success",
+  "ciPassedPerConfiguration": 886,
+  "ciTotalPerConfiguration": 890,
+  "ciSkippedPerConfiguration": 4,
+  "functionalRun": 40118526116,
+  "functionalResult": "failure",
+  "realDriverTested": false,
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 86,
+      "sha256": "2CD8D6C2F1D76EC60B9E30C27DAFCE65FDEC62B397C9AF3F0922537BEE8AD5A7"
+    },
+    {
+      "file": "agent-contract.log",
+      "bytes": 233844,
+      "sha256": "F2C2202DF8B51BFC6FCCD8917D7B647E228849226D0DF2747ED0F77F89BCF739"
+    },
+    {
+      "file": "artifacts-final.json",
+      "bytes": 7429,
+      "sha256": "2FD8857DF8B1262F6B6128CAFF03360CDD6815ABB4CA1C86278B5C56A4847718"
+    },
+    {
+      "file": "backend-failures.json",
+      "bytes": 4860,
+      "sha256": "2541732D80E2283378651689BE1A38AC4DBB68AEF0F5EACF21C79F844F3EE8B5"
+    },
+    {
+      "file": "checks-final.json",
+      "bytes": 31649,
+      "sha256": "80FA9B9441B07B46FDB5CC40FB0E77F55D327A7F6A55ADF0032394844DFE6E5C"
+    },
+    {
+      "file": "ci-debug.log",
+      "bytes": 38427,
+      "sha256": "A995287E496AAA4D13D772EAC1B8D23FA789E04823F5412CAB197274661AC02D"
+    },
+    {
+      "file": "ci-Debug.trx",
+      "bytes": 1290618,
+      "sha256": "BBCB12019C48B2FE600FC9E3021BA866E3A5D7140C2C68147375EFC52C88F3E4"
+    },
+    {
+      "file": "ci-install.log",
+      "bytes": 33557,
+      "sha256": "9E151F6C56647BBECF0328E0F6CECD750081843E772BA3D4B4CA99D5B30DC9F5"
+    },
+    {
+      "file": "ci-release.log",
+      "bytes": 37777,
+      "sha256": "4321EE3AAB04B8EE8E6C8D9E7CCD46C2468473396260F1B34B5240EFA30124E4"
+    },
+    {
+      "file": "ci-Release.trx",
+      "bytes": 1294178,
+      "sha256": "CFD407A71E9929C4F5A05D39DCC8FFCAE20B749B4D11EE4B93D2FB78D97344FD"
+    },
+    {
+      "file": "ci-verification.json",
+      "bytes": 1459,
+      "sha256": "7B15839013BAAA8AC492D627A77C73005B2B79D4964F31A558609F7B60D6C40B"
+    },
+    {
+      "file": "installed-service.log",
+      "bytes": 229050,
+      "sha256": "494181EE96D8D2A22271D9719ECBCDA97309E51A96291C54484CA1F1D26E4D3E"
+    },
+    {
+      "file": "local-default.log",
+      "bytes": 2445,
+      "sha256": "2EE58D30B8D2884C9479D267530591F7EE9BAAA0870D4493D7FAD7751837672B"
+    },
+    {
+      "file": "local-default.trx",
+      "bytes": 126131,
+      "sha256": "3E21CB7EDD4F0C8032CCF5BEEFD33785414CD9EDC3EB74FA1F07B895A7A24F3F"
+    },
+    {
+      "file": "local-feature.log",
+      "bytes": 2459,
+      "sha256": "B843A2E60C9C0C8675DF409685D986D8014FF43570C64937BDE82808D5412B1C"
+    },
+    {
+      "file": "local-feature.trx",
+      "bytes": 126131,
+      "sha256": "4DF80A1E229AFFCFAAD600E065744468B37CD38D118D753F78A9943ACFAD5B84"
+    },
+    {
+      "file": "migration.log",
+      "bytes": 212912,
+      "sha256": "36F07D925A6FB56435F26F9432B42A3AEC57E77CE7AA41CCA38A1EF4414CAB5D"
+    },
+    {
+      "file": "native-reference.json",
+      "bytes": 8079,
+      "sha256": "839393678D1BF47699D2A492C2AB9B7997F4BDBB82C45D6633CFA48817464294"
+    },
+    {
+      "file": "run-agent-final.json",
+      "bytes": 15504,
+      "sha256": "BEAA2654F6ACC61CE41E9541D994D5ED4D9735C830AFA97B0BBD5D6A4178E065"
+    },
+    {
+      "file": "run-web-final.json",
+      "bytes": 15487,
+      "sha256": "0C957FC2297A192AFDA6FA87C7B43CC7D0500E4692B87A52AEFE024D70150CB5"
+    },
+    {
+      "file": "source.json",
+      "bytes": 749,
+      "sha256": "7B96EA9B1B40635543059AC3C63FA79A99F099FF977E9D0D9F89C1DFF3AAC10A"
+    }
+  ]
+}

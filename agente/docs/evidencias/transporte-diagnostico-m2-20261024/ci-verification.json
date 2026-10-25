@@ -1,0 +1,58 @@
+[
+  {
+    "artifactId": 12570268614,
+    "name": "csharp-Debug",
+    "bytes": 230010,
+    "digest": "sha256:3506074014657a51c13405f02084c347c55bc49c1b22b85ea5bcd8a324207888",
+    "digestVerified": true,
+    "config": "Debug",
+    "counters": {
+      "executed": "886",
+      "disconnected": "0",
+      "pending": "0",
+      "warning": "0",
+      "notExecuted": "0",
+      "passed": "886",
+      "failed": "0",
+      "total": "890",
+      "aborted": "0",
+      "inProgress": "0",
+      "error": "0",
+      "timeout": "0",
+      "completed": "0",
+      "inconclusive": "0",
+      "notRunnable": "0",
+      "passedButRunAborted": "0"
+    },
+    "newTransportCases": 28,
+    "newCasesPassed": true
+  },
+  {
+    "artifactId": 12569293646,
+    "name": "csharp-Release",
+    "bytes": 230261,
+    "digest": "sha256:c8f8379e367dca94a27c9143ec8f5a41816e6f329374a23b8e4844bef1a2352d",
+    "digestVerified": true,
+    "config": "Release",
+    "counters": {
+      "executed": "886",
+      "disconnected": "0",
+      "pending": "0",
+      "warning": "0",
+      "notExecuted": "0",
+      "passed": "886",
+      "failed": "0",
+      "total": "890",
+      "aborted": "0",
+      "inProgress": "0",
+      "error": "0",
+      "timeout": "0",
+      "completed": "0",
+      "inconclusive": "0",
+      "notRunnable": "0",
+      "passedButRunAborted": "0"
+    },
+    "newTransportCases": 28,
+    "newCasesPassed": true
+  }
+]

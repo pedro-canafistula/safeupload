@@ -1,0 +1,20 @@
+{
+  "files": [
+    {
+      "path": "agente/SafeUpload.Agent.Minifilter/M2DiagnosticClient.cs",
+      "sha256": "B4616472500F734A07DD9478F958DA89C251EFA89EE52459F230A1E500FDB6B1"
+    },
+    {
+      "path": "agente/SafeUpload.Agent.Minifilter/FilterPort.M2Diagnostics.cs",
+      "sha256": "E9D8E58C943B0047F8CCC81716C185759299150E5B64B7390D37ED674114FD57"
+    },
+    {
+      "path": "agente/SafeUpload.Agent.Tests/M2DiagnosticClientTests.cs",
+      "sha256": "E960E31DEA2A9B747AF4CB5813FDA576A6FC54D9ED7DD56D9733287806BB01A6"
+    }
+  ],
+  "driverReference": "e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+  "serviceWiringChanged": false,
+  "sourceCommit": "09e56f5c2c9b07c537ef4e317c7e05fcf8c1ea19",
+  "nativeExchangeTested": false
+}
