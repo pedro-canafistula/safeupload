@@ -117,6 +117,9 @@ jobs:
           ./agente/installer/tests/Test-InstallerEnvironment.ps1 -ResultsPath artifacts/installer-tests/environment.json
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -ExecutionPolicy Bypass -File agente/installer/tests/Test-InstallerContracts.ps1 -ResultsPath artifacts/installer-tests/ps51.json
           if ($LASTEXITCODE -ne 0) { throw 'Os contratos Windows PowerShell 5.1 falharam.' }
+          ./agente/scripts/tests/Test-M2DiagnosticsContracts.ps1 -ResultsPath artifacts/installer-tests/m2-ps7.json
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -ExecutionPolicy Bypass -File agente/scripts/tests/Test-M2DiagnosticsContracts.ps1 -ResultsPath artifacts/installer-tests/m2-ps51.json
+          if ($LASTEXITCODE -ne 0) { throw 'Os contratos M2 Windows PowerShell 5.1 falharam.' }
       - name: Gerar candidato 0.1.14 com compilador verificado
         shell: pwsh
         run: |
