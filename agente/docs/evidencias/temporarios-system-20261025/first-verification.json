@@ -1,0 +1,62 @@
+[
+  {
+    "artifact": "csharp-Debug",
+    "id": 12603842656,
+    "bytes": 240665,
+    "digest": "sha256:caaf369049600651affa4111a3b449f5dadbe259910d9fa3a44eaacf5d4862da",
+    "digestVerified": true,
+    "passed": "918",
+    "failed": "1",
+    "total": "923"
+  },
+  {
+    "artifact": "homologacao-agente-instalador",
+    "id": 12603289286,
+    "bytes": 83606255,
+    "digest": "sha256:27e9bf51b1bd273d824ddb189b17bba123da65228b5b49f61c21c7fa0b733f03",
+    "digestVerified": true,
+    "status": "failed",
+    "error": "Test did not restore original candidate DACL.",
+    "restrictedPeer": {
+      "serverPid": 8992,
+      "scmPid": 8992,
+      "serviceAccount": "LocalSystem",
+      "processOwnerSid": "S-1-5-18"
+    },
+    "restricted": {
+      "directoryExists": true,
+      "entriesExamined": 10,
+      "candidateEntries": 6,
+      "inUseCandidates": 1,
+      "unterminatedCandidates": 1,
+      "structurallyCompleteCandidates": 1,
+      "suspiciousCandidates": 1,
+      "unavailableCandidates": 1,
+      "indeterminateCandidates": 0,
+      "unsafeCandidates": 1,
+      "bytesRead": 655,
+      "scanLimitReached": false,
+      "directoryTraversalBlocked": false,
+      "complete": false,
+      "requiresAttention": true,
+      "ownershipVerified": false,
+      "recoveryEligible": false,
+      "promotionSupported": false,
+      "deletionSupported": false,
+      "candidateLimit": 16,
+      "fileByteLimit": 4194304,
+      "totalByteLimit": 16777216,
+      "lineByteLimit": 65536
+    }
+  },
+  {
+    "artifact": "csharp-Release",
+    "id": 12603223739,
+    "bytes": 239839,
+    "digest": "sha256:bd400b44a1d5f143a30d1bc1cb6d9edcb036e44218c003ae84d7a3ad409e6085",
+    "digestVerified": true,
+    "passed": "918",
+    "failed": "1",
+    "total": "923"
+  }
+]

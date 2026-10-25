@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "collectedUtc": "2026-10-25T15:14:22.2267208Z",
+  "observedServerPid": 31424,
+  "expectedServerPid": 31424,
+  "nativePeerPidMatched": true,
+  "systemServiceQualified": false,
+  "serviceInstalled": false,
+  "vmStarted": false,
+  "note": "Owned isolated pipe only, not SCM or SYSTEM qualification."
+}

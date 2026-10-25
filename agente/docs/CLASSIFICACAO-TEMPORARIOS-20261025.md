@@ -158,3 +158,9 @@ PR #42 preservado; nenhum Java, Angular, banco, driver, `sources/`, VM ou pacote
 aceite do pacote da VM. Sem merge; dependências #44/#46/#47 não foram resolvidas
 aqui. Nenhum workflow foi disparado manualmente; Functional web automático foi
 registrado acima, sem alterar componentes da equipe.
+
+Continuidade posterior: [TEMPORARIOS-SYSTEM-20261025.md](TEMPORARIOS-SYSTEM-20261025.md)
+registra acesso negado e consulta instalada LocalSystem no runner, com identidade
+do pipe, restauração, reinício e remoção. Os limites descritos acima pertencem
+ao aceite original; a nova evidência não representa homologação Windows 10/11,
+energia ou autorização para promover/excluir arquivos.

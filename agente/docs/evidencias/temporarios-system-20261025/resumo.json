@@ -1,0 +1,233 @@
+{
+  "issue": 48,
+  "scope": "tests-only",
+  "productionCodeChanged": false,
+  "initialSource": "90bba2f4a0b701e4fd26147fa5d52216e44ddb71",
+  "finalSource": "214d20696ffa7f974bbf709b2178ba3c42cdeb68",
+  "initialCiRun": 40205859101,
+  "initialCiResult": "failure",
+  "finalCiRun": 40206370352,
+  "finalCiResult": "success",
+  "ciCSharpPassedEach": 919,
+  "ciCSharpTotalEach": 923,
+  "ciCSharpSkippedEach": 4,
+  "newAclCasePassedEach": true,
+  "systemClassificationPassed": true,
+  "pipePeerMatchedScm": true,
+  "systemOwnerSid": "S-1-5-18",
+  "candidatesPreservedAfterUninstall": true,
+  "permissionsRestored": true,
+  "literalSddlRestorationPromised": false,
+  "permissionAceOrderVerified": true,
+  "localVmStarted": false,
+  "installedOnHost": false,
+  "functionalRun": 40206372720,
+  "functionalResult": "failure",
+  "sources": [
+    {
+      "file": "agente/SafeUpload.Agent.Tests/QueueTemporaryClassificationTests.cs",
+      "gitBlob": "278a560441fc6b55d6886e31d8e725522ddbd259"
+    },
+    {
+      "file": "agente/installer/tests/Test-InstallerSmoke.ps1",
+      "gitBlob": "205472b9f31b8685ded349630ec6287230b3e2cb"
+    }
+  ],
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 100,
+      "sha256": "2347FB62D552DC3723DE178EC4E54004A976B17743769EE42AD8239A109662F9"
+    },
+    {
+      "file": "acl-debug-final.log",
+      "bytes": 462,
+      "sha256": "56CC169D7C172C5D15A6D795F76832B3D86A6A32F78265F8083EE7159F0AF424"
+    },
+    {
+      "file": "acl-debug.log",
+      "bytes": 450,
+      "sha256": "771063D39EE021D6A9D15C72A2F0E82B94893FFE99FAF10AF0A44353F0EDC2D0"
+    },
+    {
+      "file": "acl-release-v2.log",
+      "bytes": 460,
+      "sha256": "C8A509B27859187A11160DF48B0DDC35449FD92B228F411A7CA57F995F9BBA91"
+    },
+    {
+      "file": "acl-release.log",
+      "bytes": 454,
+      "sha256": "49E3FE4BE9835F324D7CDF7108F448DAC78EDC6679967CC3B33BDAFA5AC60F80"
+    },
+    {
+      "file": "artifacts-final-csharp.json",
+      "bytes": 7667,
+      "sha256": "58F0200DAA67EE72CBBB399615C3E4BC8F390B5D9323CE795CBFA68E71CFD0A6"
+    },
+    {
+      "file": "artifacts-final.json",
+      "bytes": 8526,
+      "sha256": "E149BD1BBFBCF6569E169E48A3DE1C4DA8580920B9135E7F2295296F997DFD66"
+    },
+    {
+      "file": "artifacts-first.json",
+      "bytes": 3412,
+      "sha256": "CBC2F4F158C75E5595DC4A6F7260A3554623B1BEEAF17687E0138A3507B3E923"
+    },
+    {
+      "file": "build-debug-final.log",
+      "bytes": 1766,
+      "sha256": "2AFEFFCAC6BD42D39DA23A45BCE9FF7C9F1B8BCC8277F6961525F2FF6D1FAF4C"
+    },
+    {
+      "file": "build-debug.log",
+      "bytes": 1766,
+      "sha256": "16318145F137B2A97E6F3E43CA9D58A31D19CC99E8898505E78C99728207DDE3"
+    },
+    {
+      "file": "build-release-v2.log",
+      "bytes": 1780,
+      "sha256": "6BD5DD13A27E4E50265756A3FB9B50E2FAEA470CDCAF59CFEDFBAE6034D4A86D"
+    },
+    {
+      "file": "build-release.log",
+      "bytes": 1780,
+      "sha256": "D939F9512DFC71D560EFC0B9A43A1F424C7253E5E30E6D987B1D106D21BA809C"
+    },
+    {
+      "file": "ci-environment.json",
+      "bytes": 347,
+      "sha256": "4D0F6A7413177E99FEE4C0DC324F2E4FDBEF9F2799E996BC791434361B9B952F"
+    },
+    {
+      "file": "ci-os.json",
+      "bytes": 149,
+      "sha256": "5087196810A3A17AAE8DB532A81CE0C189318AC5BDB446AF944EEEC459231D5A"
+    },
+    {
+      "file": "ci-ps51.json",
+      "bytes": 9019,
+      "sha256": "6841BE6A9669AC036DE99FCC8A0C258E4C8DD602653C8C57875E1EA248FB2BC8"
+    },
+    {
+      "file": "ci-ps7.json",
+      "bytes": 5503,
+      "sha256": "9E8902E0FCC8149D1DB0141D76A7310A7A68DCEA85271D63E9A293E4C3E1C747"
+    },
+    {
+      "file": "final-csharp-verification.json",
+      "bytes": 609,
+      "sha256": "45E658F1CFEB16D1496F5F744223DAC3D5B6B34467B4C27BBA4A5449C2F1EA9A"
+    },
+    {
+      "file": "final-Debug.log",
+      "bytes": 3198,
+      "sha256": "B45CD72154510127F901C55ABDEE034C89B0AA4C21775C7C756314BC3F2F6404"
+    },
+    {
+      "file": "final-Debug.trx",
+      "bytes": 1340095,
+      "sha256": "EC0EF9CEAD46773DC1C892141D589CA14607E78A59D7E941C007F1CC674ADBE7"
+    },
+    {
+      "file": "final-installed-result.json",
+      "bytes": 20387,
+      "sha256": "2ACA50E43526C3DA05B8B227EE1A2126C2038AA375F5F5681AEC6AAA11CD84DE"
+    },
+    {
+      "file": "final-installed-verification.json",
+      "bytes": 1608,
+      "sha256": "B6D586C65BB4DC283F55C771F048AF1EB2A6F50E5A9D348FAC11F4558FC7EAEF"
+    },
+    {
+      "file": "final-Release.log",
+      "bytes": 3216,
+      "sha256": "EA0BA0F12570884A2257532277497D53D9B8C7F50D0DA13C4AC3BB328AF9EBD4"
+    },
+    {
+      "file": "final-Release.trx",
+      "bytes": 1343787,
+      "sha256": "6A672B635C1BFAFB6202B654EA02146A984E86843F9D5748D1C41C1CBCD64A14"
+    },
+    {
+      "file": "first-Debug.trx",
+      "bytes": 1341916,
+      "sha256": "063406AA55C5F84367987EF446C7CA231E7322C73B099D83E313EC95290A70E0"
+    },
+    {
+      "file": "first-installed-result.json",
+      "bytes": 14096,
+      "sha256": "6326A8066DEAE533C510D66941B4FDA6D4B9345D8D55237057376A91B302467D"
+    },
+    {
+      "file": "first-Release.trx",
+      "bytes": 1345608,
+      "sha256": "7D992FCDD64FAB401742FF661AF292EC56CFFE8952C8F7FB5E0413FBF652E7E5"
+    },
+    {
+      "file": "first-verification.json",
+      "bytes": 1816,
+      "sha256": "7151B4F14EAB3400732A55B28E6B3D3567185476A09693D92ED97D4A51F80E1B"
+    },
+    {
+      "file": "functional-web-failures.log",
+      "bytes": 3742,
+      "sha256": "DF0D08D5042E305A173EB030FB92BDA84B6F735BB4446A8E9A729CEAE42CC7E7"
+    },
+    {
+      "file": "identity-preflight.json",
+      "bytes": 334,
+      "sha256": "85E10EB6B96D07E8271DF8A4CEF3677CA2671025800858AD710973DBCE17C888"
+    },
+    {
+      "file": "identity-preflight.ps1",
+      "bytes": 2428,
+      "sha256": "52AC25C6D1777DA3F9EA53D37D71F787D7C259C09E45A9C8B6CFDE324C7D2255"
+    },
+    {
+      "file": "jobs-agent-final.json",
+      "bytes": 8457,
+      "sha256": "2388BDB4561E32594195AEDA3AA57E8355793BB7EFE2121DEB05D3453513FAD8"
+    },
+    {
+      "file": "jobs-web-final.json",
+      "bytes": 6747,
+      "sha256": "2A8961932026362A2EAFA18027B052F4AD5BD925FDB351E2D733FF58D3A6C2D5"
+    },
+    {
+      "file": "local-debug-final.trx",
+      "bytes": 3396,
+      "sha256": "2F11333271A17DDF7A2F5989AA5FD7FC8DB970ECBDBFC0EB4897FBD5A72E30A1"
+    },
+    {
+      "file": "local-debug.trx",
+      "bytes": 3396,
+      "sha256": "845C665E3897005BFDADF7B3A53634E1C310FF4789C6CD7C6593A009AAD92F32"
+    },
+    {
+      "file": "local-release-v2.trx",
+      "bytes": 3400,
+      "sha256": "DE200E7C5B07C2C24F365012EB87694BC97883D3BBEECA0474470981043BFB41"
+    },
+    {
+      "file": "local-release.trx",
+      "bytes": 3400,
+      "sha256": "88D0AD269128D71789B41BB6ADA0354FEB3D671F17A497BB6F3FA073460C0BB1"
+    },
+    {
+      "file": "run-agent-final.json",
+      "bytes": 15274,
+      "sha256": "A8ADBE103D23D260421682DC1700593B6A5B132D77D0222E221616FDD2153A5F"
+    },
+    {
+      "file": "run-agent-first.json",
+      "bytes": 15258,
+      "sha256": "FE3D157D5C91ED37B4DA706248EE363A2E1E830A3CD05B6A9E5C376F1D9F7FBC"
+    },
+    {
+      "file": "run-web-final.json",
+      "bytes": 15248,
+      "sha256": "DEEA6B3CC95C049E8CD769D705039202D5ADE04419F497946AEFEF05CE396BDB"
+    }
+  ]
+}

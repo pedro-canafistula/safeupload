@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="dd19624f-d15f-4563-937b-582368eaf5c1" name="lucas@COMPUTADOR-LUCA 2026-10-25 12:11:45" runUser="COMPUTADOR-LUCA\lucas" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-25T12:11:45.2427697-03:00" queuing="2026-10-25T12:11:45.2427698-03:00" start="2026-10-25T12:11:41.2143875-03:00" finish="2026-10-25T12:11:45.2470660-03:00" />
+  <TestSettings name="default" id="17352172-06a8-4fa9-9031-d80724fb66fb">
+    <Deployment runDeploymentRoot="lucas_COMPUTADOR-LUCA_2026-10-25_12_11_45" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="ff42fa73-30e3-40f5-891a-8db04408e01d" testId="7ddde1b6-25f6-bf3b-f198-192e2b1bc4eb" testName="SafeUpload.Agent.Tests.QueueTemporaryClassificationTests.ACL_negando_leitura_e_indisponivel_nao_em_uso_e_restaura_sem_alterar_bytes_ou_acl" computerName="COMPUTADOR-LUCA" duration="00:00:00.1014915" startTime="2026-10-25T12:11:45.0824749-03:00" endTime="2026-10-25T12:11:45.1684536-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ff42fa73-30e3-40f5-891a-8db04408e01d" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SafeUpload.Agent.Tests.QueueTemporaryClassificationTests.ACL_negando_leitura_e_indisponivel_nao_em_uso_e_restaura_sem_alterar_bytes_ou_acl" storage="c:\users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\safeupload.agent.tests\bin\debug\net10.0-windows\safeupload.agent.tests.dll" id="7ddde1b6-25f6-bf3b-f198-192e2b1bc4eb">
+      <Execution id="ff42fa73-30e3-40f5-891a-8db04408e01d" />
+      <TestMethod codeBase="C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SafeUpload.Agent.Tests.QueueTemporaryClassificationTests" name="ACL_negando_leitura_e_indisponivel_nao_em_uso_e_restaura_sem_alterar_bytes_ou_acl" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="7ddde1b6-25f6-bf3b-f198-192e2b1bc4eb" executionId="ff42fa73-30e3-40f5-891a-8db04408e01d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Resultados que não estão em uma lista" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="Todos os resultados carregados" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="1" executed="1" passed="1" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.4+50e68bbb8b (64-bit .NET 10.0.13)&#xD;
+[xUnit.net 00:00:03.24]   Discovering: SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:03.39]   Discovered:  SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:03.41]   Starting:    SafeUpload.Agent.Tests&#xD;
+[xUnit.net 00:00:03.56]   Finished:    SafeUpload.Agent.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

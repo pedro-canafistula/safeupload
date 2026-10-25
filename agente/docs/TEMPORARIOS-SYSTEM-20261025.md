@@ -61,14 +61,49 @@ testes da classificação, sem necessidade de repetir a homologação Windows 10
 O novo caso de ACL passou localmente em Release e Debug, um teste por configuração.
 Nenhum outro teste local aprovado foi repetido sem necessidade. Sintaxe do smoke
 PowerShell e compilação do helper nativo de identidade verificadas no host;
-o smoke instalado não foi executado no host. A execução final aguarda CI.
+o smoke instalado não foi executado no host. A versão final do caso isolado
+passou localmente em Debug; Release/Debug finais também foram conferidos no CI.
 
 Primeiro CI, fonte `90bba2f4`: o novo caso de ACL falhou em Debug/Release e o
 smoke também parou no oráculo de restauração, comparando SDDL literal `D:` versus
 `D:AI`. O oráculo foi corrigido para comparar permissões e sua ordem, proprietário,
 grupo e proteção, mantendo comparação literal antes/depois de cada consulta.
-Os resultados reprovados e o recibo parcial do serviço serão preservados; essa
+Os resultados reprovados e o recibo parcial do serviço foram preservados; essa
 tentativa não constitui aceite final da entrega.
+
+Fonte corrigida **`214d20696ffa7f974bbf709b2178ba3c42cdeb68`**.
+[CI final 40206370352](https://github.com/pedro-canafistula/safeupload/actions/runs/40206370352):
+**três jobs aprovados**, C# **919 aprovados, zero falhas e quatro ignorados em
+923 por configuração Debug/Release**. Novo caso de ACL Passed nos dois TRX.
+Contratos PS7/PS5.1 **44/44**, ambiente **4/4**. Três ZIPs finais (dois C# e
+instalação) verificados por tamanho/digest; três ZIPs da tentativa reprovada
+também conferidos e recibos/TRX preservados.
+
+O recibo final do smoke é **passed** em Windows Server 2025 Datacenter,
+10.0.26100, runner descartável. Pipe/SCM identificaram PID **6216** antes e
+**3196** depois do reinício, ambos com conta LocalSystem e SID **S-1-5-18**.
+Contagens com restrições: seis candidatos, um em cada classe esperada. Com
+acesso restaurado e após reinício: três estruturais, um suspeito, um sem LF e
+uma junction insegura, sem em uso/indisponíveis. Flags de recuperação falsas,
+RequiresAttention=true e Complete=false em todas as fases, como esperado.
+
+Quatro candidatos novos preservados por SHA-256, além do temporário/junction
+anteriores; fila, IDs/metadados, política e arquivos mantidos até a remoção.
+Permissões anteriores/restauradas coincidiram na ordem das regras e atributos
+verificados; SDDL literal diferiu pela normalização já registrada. Depois da
+consulta e da remoção, a DACL restaurada permaneceu literalmente inalterada.
+Não se transferiu esse aceite ao Windows 10/11 ou à VM local.
+
+[Manifesto, TRX, recibos originais e pré-teste de identidade](evidencias/temporarios-system-20261025/resumo.json).
+O pré-teste de pipe isolado valida somente a chamada nativa com processo próprio;
+seu systemServiceQualified=false não é o recibo do serviço instalado. Os JSONs
+de instalação/TRX foram copiados dos ZIPs verificados, sem reserialização.
+
+[Functional web final 40206372720](https://github.com/pedro-canafistula/safeupload/actions/runs/40206372720)
+reprovado: migration sem EmpresaRepository, agent-contract com C# aprovado mas
+backend não iniciado, installed-service com backend encerrado antes de iniciar.
+Excertos dos logs e IDs preservados. Nenhum Java/banco/painel foi editado e
+nenhum workflow foi redisparado manualmente. Não declarar PR inteiro aprovado.
 
 Reproduzir o caso isolado em Windows, com acesso para alterar a DACL do próprio
 arquivo temporário:
@@ -86,10 +121,10 @@ em finally; o agente não corrige permissões por conta própria. Erros conserva
 recibo parcial de teste e status de falha, nunca aceite parcial do produto.
 
 - [x] Negação real de ReadData diferenciada de compartilhamento no caso unitário.
-- [x] Bytes/DACL preservados e leitura restabelecida sem mudar a fila.
+- [x] Bytes e permissões preservados; DACL inalterada pela consulta, leitura restabelecida sem mudar a fila.
 - [x] Helper nativo e sintaxe PowerShell verificados sem instalação local.
-- [ ] Conferir execução instalada, identidade do pipe/SYSTEM e invariantes no CI.
-- [ ] Preservar TRX/recibo do runner e registrar resultado de Functional web.
+- [x] Conferir execução instalada, identidade do pipe/SYSTEM e invariantes no CI.
+- [x] Preservar TRX/recibo do runner e registrar resultado de Functional web.
 
 Sem Java, Angular, banco, driver, fontes sincronizadas ou VM alterados. O pacote
 0.1.14 homologado conserva seu aceite próprio; eventual rebuild do CI não o

@@ -1,0 +1,48 @@
+{
+  "artifact": "homologacao-agente-instalador",
+  "id": 12603779014,
+  "bytes": 83620173,
+  "digest": "sha256:34793e2b546f04208b5df5b5cde8f8006c2da7519311b4fc3bab4fcb98be9096",
+  "digestVerified": true,
+  "status": "passed",
+  "sourceCommit": "214d20696ffa7f974bbf709b2178ba3c42cdeb68",
+  "peerBefore": {
+    "serverPid": 6216,
+    "scmPid": 6216,
+    "serviceAccount": "LocalSystem",
+    "processOwnerSid": "S-1-5-18"
+  },
+  "peerAfter": {
+    "serverPid": 3196,
+    "scmPid": 3196,
+    "serviceAccount": "LocalSystem",
+    "processOwnerSid": "S-1-5-18"
+  },
+  "deniedCandidates": 1,
+  "busyCandidates": 1,
+  "completeBefore": 1,
+  "completeRestored": 3,
+  "completeAfterRestart": 3,
+  "permissionsRestored": true,
+  "rawDaclRepresentationEqual": false,
+  "candidatesPreservedAfterUninstall": true,
+  "candidateHashes": [
+    {
+      "name": "queue.jsonl.7b4e4ee9bdac4ee2a7246fe5c9ed5bf5.tmp",
+      "sha256": "60F2362CDBB4D20ED68B936374B0AC01735F69AD310D137A805A9D6251210EB9"
+    },
+    {
+      "name": "queue.jsonl.18642155b3bc4897a7bb412337a7c1b2.tmp",
+      "sha256": "C3D71723F39A39211D91935465FCFE9DA1302BFE87C745F3EF72B3A1D051EB8C"
+    },
+    {
+      "name": "queue.jsonl.a1bc1f71f1034b219087abdf2e939dde.tmp",
+      "sha256": "60F2362CDBB4D20ED68B936374B0AC01735F69AD310D137A805A9D6251210EB9"
+    },
+    {
+      "name": "queue.jsonl.c4daf2b6d6f34d319104b645cf01bed4.tmp",
+      "sha256": "60F2362CDBB4D20ED68B936374B0AC01735F69AD310D137A805A9D6251210EB9"
+    }
+  ],
+  "queueSha256": "9A28E428F8DF1559972901ADFA4F1822D86D21CC1C9A918B44E78578AAAE08AE"
+}

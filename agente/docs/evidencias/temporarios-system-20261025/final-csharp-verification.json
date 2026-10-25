@@ -1,0 +1,24 @@
+[
+  {
+    "artifact": "csharp-Release",
+    "id": 12603758888,
+    "bytes": 239175,
+    "digest": "sha256:fd3631cd575b61fabfc7f4beb8e4d2045be3f6740078128b9aaabb62a3b7a3b4",
+    "digestVerified": true,
+    "newAclCasePassed": true,
+    "passed": "919",
+    "failed": "0",
+    "total": "923"
+  },
+  {
+    "artifact": "csharp-Debug",
+    "id": 12603659138,
+    "bytes": 239456,
+    "digest": "sha256:6e68e7212a873cdb6ed2f6c068a91ce036050747f9719e93a7bf85b24a89fcc3",
+    "digestVerified": true,
+    "newAclCasePassed": true,
+    "passed": "919",
+    "failed": "0",
+    "total": "923"
+  }
+]
