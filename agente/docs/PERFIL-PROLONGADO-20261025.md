@@ -97,9 +97,11 @@ alterado e nenhum aceite de CI atribuído. A falha funcional anterior do backend
 
 ## Condições que ainda faltam para a execução
 
-Escolher uma máquina Windows e diretório isolados, com disponibilidade contínua e
-orçamento de CPU/memória/disco acordados; confirmar o perfil acima ou registrar a
-alteração desejada. A VM homologada não será usada por inferência. Identificar build,
+O usuário escolheu **outro Windows isolado**, em 25/10/2026. Não usar o computador
+atual ou a VM homologada por inferência. Ainda falta identificar essa máquina e
+diretório, disponibilidade contínua e orçamento de CPU/memória/disco; confirmar o
+perfil acima ou registrar a alteração desejada. A escolha do tipo de ambiente não
+prova sua disponibilidade nem autoriza instalar componentes. Identificar build,
 perfil e hashes antes de iniciar; preservar os arquivos ao parar. Nenhum job ou
 automação foi criado e a execução longa não está em andamento.
 
