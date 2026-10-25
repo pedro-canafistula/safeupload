@@ -1,0 +1,31 @@
+{
+  "fixtureDirectory": "C:\\Users\\lucas\\AppData\\Local\\Packages\\sandbox.{d79235ab-4014-44bd-a4d8-677a61417722}\\AC\\Temp\\safeupload-evidence-e8dd9defe67d417599cd904c4fc8ed1b",
+  "results": [
+    {
+      "name": "Regular bytes match and qualify nothing",
+      "passed": true
+    },
+    {
+      "name": "Same-length tampering fails and retains mismatch receipt",
+      "passed": true
+    },
+    {
+      "name": "Missing file fails",
+      "passed": true
+    },
+    {
+      "name": "Traversal is rejected before creating a receipt",
+      "passed": true
+    },
+    {
+      "name": "Empty manifest and duplicate names are rejected",
+      "passed": true
+    },
+    {
+      "name": "Existing output remains byte-identical",
+      "passed": true
+    }
+  ],
+  "passed": 6,
+  "total": 6
+}

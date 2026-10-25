@@ -1,0 +1,116 @@
+{
+  "readDateSaoPaulo": "2026-10-25",
+  "source": "GitHub connector GET; not external server state",
+  "refs": {
+    "main": "efe93cf75aa668f2870c0951b48b3ef2c6332226",
+    "policies": "e8afeb4d84df5a5e14f57c9392438e7eec7073a0",
+    "driver": "e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f"
+  },
+  "issues": [
+    {
+      "number": 43,
+      "url": "https://github.com/pedro-canafistula/safeupload/issues/43",
+      "state": "open",
+      "title": "Consolidar a base do agente Windows",
+      "updatedAt": "2026-10-25T01:06:15Z"
+    },
+    {
+      "number": 44,
+      "url": "https://github.com/pedro-canafistula/safeupload/issues/44",
+      "state": "open",
+      "title": "P0 — Aguardar API de políticas compatível e adaptar somente o agente",
+      "updatedAt": "2026-10-24T17:46:28Z"
+    },
+    {
+      "number": 45,
+      "url": "https://github.com/pedro-canafistula/safeupload/issues/45",
+      "state": "open",
+      "title": "P1 — Homologar instalador e auditoria do agente Windows",
+      "updatedAt": "2026-10-22T21:23:05Z"
+    },
+    {
+      "number": 46,
+      "url": "https://github.com/pedro-canafistula/safeupload/issues/46",
+      "state": "open",
+      "title": "P1 — Preparar integração M2 exclusivamente no agente",
+      "updatedAt": "2026-10-25T01:06:14Z"
+    },
+    {
+      "number": 47,
+      "url": "https://github.com/pedro-canafistula/safeupload/issues/47",
+      "state": "open",
+      "title": "P1 — Validar auditoria ponta a ponta com API da equipe",
+      "updatedAt": "2026-10-22T02:29:40Z"
+    },
+    {
+      "number": 48,
+      "url": "https://github.com/pedro-canafistula/safeupload/issues/48",
+      "state": "open",
+      "title": "P2 — Planejar operação prolongada e proteção da fila local",
+      "updatedAt": "2026-10-24T17:25:20Z"
+    }
+  ],
+  "commentsRead": [
+    {
+      "issue": 43,
+      "urls": [
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6365065888",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6366378448",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6367143885",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6367734897",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6371162478",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6371762720",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6372057945",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6372926031",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6377135168",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6377413316",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6377656911",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6378022496",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6378176753",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6386828987",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6386924013",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6387032513",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6387129609",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6387278384",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6387498231",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6391555011",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6391639309",
+        "https://github.com/pedro-canafistula/safeupload/issues/43#issuecomment-6391747911"
+      ]
+    },
+    {
+      "issue": 44,
+      "urls": [
+        "https://github.com/pedro-canafistula/safeupload/issues/44#issuecomment-6387498435"
+      ]
+    },
+    {
+      "issue": 46,
+      "urls": [
+        "https://github.com/pedro-canafistula/safeupload/issues/46#issuecomment-6387498021",
+        "https://github.com/pedro-canafistula/safeupload/issues/46#issuecomment-6391554859",
+        "https://github.com/pedro-canafistula/safeupload/issues/46#issuecomment-6391639145",
+        "https://github.com/pedro-canafistula/safeupload/issues/46#issuecomment-6391747736"
+      ]
+    },
+    {
+      "issue": 48,
+      "urls": [
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6365065428",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6371763170",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6372058353",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6372926398",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6377135464",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6377413572",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6377657168",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6378022694",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6378177022",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6386829237",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6386924265",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6387032277",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6387129352",
+        "https://github.com/pedro-canafistula/safeupload/issues/48#issuecomment-6387278101"
+      ]
+    }
+  ]
+}

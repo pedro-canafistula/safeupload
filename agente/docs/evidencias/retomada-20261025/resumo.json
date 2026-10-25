@@ -1,0 +1,78 @@
+{
+  "baseCommit": "ebabe031cdf55ef44fdf0e056bfff1f34d4f8677",
+  "collectedUtc": "2026-10-25T14:04:06.2613497Z",
+  "scope": "offline-preserved-evidence-only",
+  "agentTestsRerun": false,
+  "vmStarted": false,
+  "integrityPassedEachPowerShell": 50,
+  "newVerifierContractsPassedEachPowerShell": 6,
+  "finalReceipts": [
+    "integrity-ps7-v2.json",
+    "integrity-ps51-v2.json",
+    "contracts-ps7-v2.json",
+    "contracts-ps51-v2.json"
+  ],
+  "historicalReceipts": "Non-v2 receipts retain preliminary failures/intermediate runs; see report.",
+  "tools": [
+    {
+      "file": "agente/docs/evidence-tools/Test-PreservedEvidence.ps1",
+      "sha256": "177ABCE40E86F80402377050F8F408CA633020AEFFCE10DEF03A36CE18B49A44"
+    },
+    {
+      "file": "agente/docs/evidence-tools/Test-PreservedEvidenceContracts.ps1",
+      "sha256": "AA7C23B06A4BEC34DBBA7D4A4467AC1A32693B1BE8072A6418FCBCCE5CE05BEC"
+    }
+  ],
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 46,
+      "sha256": "BBA6C5630C583CA8D024B45F34C1474CA726D71CE93A4E74FE4939458B3ACF34"
+    },
+    {
+      "file": "contracts-ps51-final.json",
+      "bytes": 1263,
+      "sha256": "739DEE9CD3D757C921070E08D0BA2DBF2ECB07264AE243A963EB49DCBA765775"
+    },
+    {
+      "file": "contracts-ps51-v2.json",
+      "bytes": 1263,
+      "sha256": "67A6F9486248E76A4A8EF01ADDD42299BB562CD015617815CA3F46C5B15AABB4"
+    },
+    {
+      "file": "contracts-ps7-final.json",
+      "bytes": 817,
+      "sha256": "8E576BFF10BF560F997CB4803C51369CBD7F30DA4AAC5917E5AC9AB88BDF96F5"
+    },
+    {
+      "file": "contracts-ps7-v2.json",
+      "bytes": 817,
+      "sha256": "0F0ED8D0898EA227D0B032090AAFAE572B4CA44C75D1394D3CA030DC56EBD1FB"
+    },
+    {
+      "file": "contracts-ps7.json",
+      "bytes": 867,
+      "sha256": "B6E7661C711B82BCD93069D9F3EA55A435B176A636EF765AF2049BC52299C5A2"
+    },
+    {
+      "file": "integrity-ps51-v2.json",
+      "bytes": 21894,
+      "sha256": "0F66B9FDA8C390886E94ECB053BD267B2B152E7EA0674C5F7E6D12D29A7CD036"
+    },
+    {
+      "file": "integrity-ps7-v2.json",
+      "bytes": 11306,
+      "sha256": "4387C572559AC2342C4EEC4A7C7255739B01C0468524944C6CEF9E9A033F5DAB"
+    },
+    {
+      "file": "integrity-ps7.json",
+      "bytes": 11306,
+      "sha256": "35B8F6648FD4A32AB8505B49DEDCFA083739612F8B0C4BBDD66A708122D80DCA"
+    },
+    {
+      "file": "references.json",
+      "bytes": 5853,
+      "sha256": "B3C422C0B35AA49B8FF14EB80DA6E6E2ECD81FDABAFD4D49572B1988913ED2C1"
+    }
+  ]
+}
