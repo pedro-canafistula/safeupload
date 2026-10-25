@@ -21,6 +21,11 @@ driver while the product runs. The service relays read-only queries over the SYS
   audit-temporaries  metadata-only inventory of queue-name.GUID.tmp candidates, without content or filenames.
                      Reports bytes, unreadable candidates, skipped links and completeness; maximum 10000 entries.
                      Does not prove abandonment, delete files or recover incomplete confirmations.
+  audit-temporary-classification  Windows-only bounded content classification; in-use, unterminated,
+                     structurally complete, suspicious/unsupported, unavailable, indeterminate or unsafe.
+                     Exclusive candidate reads; no filenames/content/IDs. Never recovery/promotion/deletion.
+                     Up to 16 candidates/10000 entries, 4 MiB per file/16 MiB total, 64 KiB per line.
+                     Same queue lock and pipe deadline; partial scans are not healthy or recovery decisions.
   audit-retention-preview  same explicit integrity scan, with counts of valid confirmed lines strictly before
                            -OccurredBeforeUtc (ISO 8601 UTC, mandatory for this query). Uses occurrence time,
                            not confirmation time; duplicate lines count separately. Never deletion eligibility.
@@ -44,7 +49,7 @@ driver while the product runs. The service relays read-only queries over the SYS
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('counters', 'deny-ring', 'm2-counters', 'm2-stage-streams', 'audit-health', 'audit-integrity', 'audit-temporaries', 'audit-retention-preview', 'help')]
+    [ValidateSet('counters', 'deny-ring', 'm2-counters', 'm2-stage-streams', 'audit-health', 'audit-integrity', 'audit-temporaries', 'audit-temporary-classification', 'audit-retention-preview', 'help')]
     [string] $Query = 'counters',
 
     # deny-ring: return records with a sequence greater than this value.
@@ -99,6 +104,7 @@ switch ($Query) {
     'audit-health' { Invoke-DiagnosticsQuery @{ query = 'audit-health' } }
     'audit-integrity' { Invoke-DiagnosticsQuery @{ query = 'audit-integrity' } }
     'audit-temporaries' { Invoke-DiagnosticsQuery @{ query = 'audit-temporaries' } }
+    'audit-temporary-classification' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'audit-retention-preview' { Invoke-DiagnosticsQuery @{ query = $Query; occurredBeforeUtc = $cutoff.ToString('o') } }
     'deny-ring' {
         $cursor = $After

@@ -104,6 +104,7 @@ public sealed class DiagnosticsPipeServer : BackgroundService
             {
                 case "audit-integrity":
                 case "audit-temporaries":
+                case "audit-temporary-classification":
                 case "audit-retention-preview":
                     if (_auditQueue is null) return Error(query, "Audit storage is unavailable.");
                     DateTimeOffset cutoff = default;
@@ -114,6 +115,7 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                         object integrity = query switch
                         {
                             "audit-temporaries" => await _auditQueue.InspectTemporaryFilesAsync(cancellationToken).ConfigureAwait(false),
+                            "audit-temporary-classification" => await _auditQueue.ClassifyTemporaryFilesAsync(cancellationToken).ConfigureAwait(false),
                             "audit-retention-preview" => await _auditQueue.PreviewRetentionAsync(cutoff, cancellationToken).ConfigureAwait(false),
                             _ => await _auditQueue.InspectIntegrityAsync(cancellationToken).ConfigureAwait(false)
                         };
@@ -142,7 +144,8 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "m2-counters", "m2-stage-streams", "audit-health", "audit-integrity", "audit-temporaries", "audit-retention-preview", "help"),
+                        ["queries"] = new JsonArray("counters", "deny-ring", "m2-counters", "m2-stage-streams", "audit-health", "audit-integrity", "audit-temporaries", "audit-temporary-classification", "audit-retention-preview", "help"),
+                        ["temporaryClassification"] = "explicit bounded content scan; structural validity never proves ownership, full copy, recovery eligibility or permission to replace the queue",
                         ["m2Diagnostics"] = "explicit pinned m2-e0df8d1c layout; no fallback, capability negotiation or proof of protection; names may include path tails",
                         ["retentionPreview"] = "requires occurredBeforeUtc in UTC; occurrence-age counts only, never deletion eligibility",
                         ["denyRingCursor"] = "pass the previous reply's nextSequence minus one as after; 0 reads from the start",

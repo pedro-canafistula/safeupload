@@ -179,6 +179,25 @@ try {
             Assert-True ($request.Count -eq 1 -and $request.query -eq $query)
         }
     }
+    Test-Case 'Temporary classification is explicit and dispatches without extra fields' {
+        $client = Join-Path $PSScriptRoot '../../scripts/Get-SafeUploadDiagnostics.ps1'
+        $tokens = $null; $parseErrors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $client), [ref]$tokens, [ref]$parseErrors)
+        Assert-True ($parseErrors.Count -eq 0)
+        $dispatch = @($ast.FindAll({param($node)
+            $node -is [Management.Automation.Language.SwitchStatementAst] -and $node.Condition.Extent.Text -eq '$Query'
+        }, $true))
+        Assert-True ($dispatch.Count -eq 1)
+        $parameters = [scriptblock]::Create($ast.ParamBlock.Extent.Text + "`n`$Query")
+        $query = 'audit-temporary-classification'
+        Assert-True ((& $parameters -Query $query) -eq $query)
+        $request = & {
+            param($Query,$block)
+            function Invoke-DiagnosticsQuery($Request) { return $Request }
+            . $block
+        } $query ([scriptblock]::Create($dispatch[0].Extent.Text))
+        Assert-True ($request.Count -eq 1 -and $request.query -eq $query)
+    }
     $failed=@($results | Where-Object { -not $_.passed })
     $summary=[ordered]@{powershell=$PSVersionTable.PSVersion.ToString();total=$results.Count;passed=$results.Count-$failed.Count;failed=$failed.Count;tests=@($results)}
     if ($ResultsPath) { $summary | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $ResultsPath -Encoding UTF8 }
