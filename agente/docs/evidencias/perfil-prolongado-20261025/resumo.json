@@ -1,0 +1,113 @@
+{
+  "sourceCommit": "8cf74192df24c7cb1ec029f234c5c05df9ee7e65",
+  "baseCommit": "a372e8f05b2bfa8e063492a6f0ee6889c9956dc1",
+  "date": "2026-10-25",
+  "powerShellVersion": "7.6.5",
+  "controlsPassed": 8,
+  "requestedHours": 72,
+  "actualWorkloadSeconds": 0,
+  "executionAuthorized": false,
+  "environmentQualified": false,
+  "qualificationGranted": false,
+  "productionChanged": false,
+  "vmStarted": false,
+  "ciExecuted": false,
+  "notes": [
+    "Static planning only; no collector, build, product suite or homologation executed.",
+    "Sizing model is conditional on padded byte assumptions for the current fixed synthetic payload, not a throughput or physical IO measurement.",
+    "source-profile.json and source-profile-result.json preserve the exact reviewed source bytes. Contract cases serialize equivalent profile fields with different formatting; their hashes may differ.",
+    "Proposed execution still needs an agreed Windows environment, continuous availability and resource budget. No automation created."
+  ],
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 48,
+      "sha256": "758F81B44C7CF2A775FA71906861C3E165A05D8AF306C35428496ABEF235D6CC"
+    },
+    {
+      "file": "analyzer-limit-profile.json",
+      "bytes": 277,
+      "sha256": "4B80FA35D7EA4530985C60D07DCDC95DD7384C8DF3B9BFE1F7F1479F26664338"
+    },
+    {
+      "file": "analyzer-limit-result.json",
+      "bytes": 2148,
+      "sha256": "9E0EC2ACF04F37E9B7477C47C9EEEC6301F85E8E5A9E95824543B51D7F287B19"
+    },
+    {
+      "file": "cases.json",
+      "bytes": 1601,
+      "sha256": "9DBAE4028730EACFDF424A4991111982C75178E0A0E4C7D7CC1B82C4D36C281F"
+    },
+    {
+      "file": "invalid-duration-profile.json",
+      "bytes": 273,
+      "sha256": "E927258DBE2AD6BF97DBBF1F85B82B2D89C61CFE1F68F2F6E77C148029C59F8D"
+    },
+    {
+      "file": "invalid-duration-result.json",
+      "bytes": 1144,
+      "sha256": "9453E0419B1D030821A7DC7086F929D02CBBCFC8EE90971050232B626D01B28A"
+    },
+    {
+      "file": "proposed-profile.json",
+      "bytes": 277,
+      "sha256": "02FE5E2941A63645042650BDD31930E92EF1232C4B528BB9E7178A7181FD3765"
+    },
+    {
+      "file": "proposed-result.json",
+      "bytes": 2109,
+      "sha256": "7DA1AF9BD66D8C91F8B2240295189D237E979C858D963D4F1A045F9101A63B2F"
+    },
+    {
+      "file": "recovery-capacity-profile.json",
+      "bytes": 274,
+      "sha256": "29602EAC190EF31DAEAC8E4CD485D5303A8548AB86891A31A8678F984CF52F49"
+    },
+    {
+      "file": "recovery-capacity-result.json",
+      "bytes": 2193,
+      "sha256": "A5D675BF43D2F5A56F122F37BAD2D671726BB1B793ABB851780C3A1C4BD76159"
+    },
+    {
+      "file": "short-event-budget-profile.json",
+      "bytes": 275,
+      "sha256": "0EA9FFD8A92D82F3DEF8CDFE3D1F4907BD633BC2A402CEC6D5B708A460AE1142"
+    },
+    {
+      "file": "short-event-budget-result.json",
+      "bytes": 2136,
+      "sha256": "3D8B80D283284C83DC6D211D237628188B1F61055FD98660526D56198645EACB"
+    },
+    {
+      "file": "short-output-budget-profile.json",
+      "bytes": 275,
+      "sha256": "B6178103C54006194A568B1CE1772EF24356B26FD0C523587431362D7A531C1B"
+    },
+    {
+      "file": "short-output-budget-result.json",
+      "bytes": 2136,
+      "sha256": "B3743963F2EB674E700F0BAD23872B4986BFA30EABB2CDB3157252F00515D6F4"
+    },
+    {
+      "file": "source-profile-result.json",
+      "bytes": 2109,
+      "sha256": "7D37600F7E2BA44CCCF71D70FFDBD9553DE4E56A38FD2F858CA03B5D99E794DA"
+    },
+    {
+      "file": "source-profile.json",
+      "bytes": 266,
+      "sha256": "6C6D1C105216D32D00D56156EB517A3A6E49C86621F041DDF0D6A2BDC7ABEAEB"
+    },
+    {
+      "file": "unknown-field-profile.json",
+      "bytes": 304,
+      "sha256": "CD73F48D945CB713AF97C1E64EDC1BAB3867A9720E5F70AC9A12970FC83CFD1B"
+    },
+    {
+      "file": "unknown-field-result.json",
+      "bytes": 1139,
+      "sha256": "EFF2B73F740036AB1BF5F4951348EB643E15F97932D6BFAA4D51C71F95B1A0CD"
+    }
+  ]
+}

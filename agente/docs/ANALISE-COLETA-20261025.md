@@ -103,3 +103,6 @@ nenhum aceite de CI foi atribuído a esta entrega. A falha anterior de Functiona
 continua aberta. #48 permanece pendente de perfil/orçamento e execução real por dias;
 energia, escrita nativa, retenção/recuperação e API real continuam aceites próprios.
 PR #42 preservado e PR #49 em rascunho, sem merge.
+
+Continuação: [perfil prolongado proposto e cálculo de orçamento](PERFIL-PROLONGADO-20261025.md),
+sem iniciar carga ou conceder aceite por dias.

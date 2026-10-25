@@ -1,0 +1,69 @@
+[
+  {
+    "case": "proposed",
+    "passed": true,
+    "status": "compatible-under-model-assumptions",
+    "reasons": [],
+    "report": "proposed-result.json"
+  },
+  {
+    "case": "short-event-budget",
+    "passed": true,
+    "status": "profile-rejected",
+    "reasons": [
+      "event-budget-below-modeled-demand"
+    ],
+    "report": "short-event-budget-result.json"
+  },
+  {
+    "case": "short-output-budget",
+    "passed": true,
+    "status": "profile-rejected",
+    "reasons": [
+      "output-budget-below-modeled-demand"
+    ],
+    "report": "short-output-budget-result.json"
+  },
+  {
+    "case": "analyzer-limit",
+    "passed": true,
+    "status": "profile-rejected",
+    "reasons": [
+      "analysis-file-limit-exceeded"
+    ],
+    "report": "analyzer-limit-result.json"
+  },
+  {
+    "case": "recovery-capacity",
+    "passed": true,
+    "status": "profile-rejected",
+    "reasons": [
+      "nominal-recovery-capacity-insufficient",
+      "nominal-mixed-consumer-below-producer"
+    ],
+    "report": "recovery-capacity-result.json"
+  },
+  {
+    "case": "invalid-duration",
+    "passed": true,
+    "status": "profile-rejected",
+    "reasons": [
+      "invalid-field:phaseSeconds"
+    ],
+    "report": "invalid-duration-result.json"
+  },
+  {
+    "case": "unknown-field",
+    "passed": true,
+    "status": "profile-rejected",
+    "reasons": [
+      "unknown-profile-field"
+    ],
+    "report": "unknown-field-result.json"
+  },
+  {
+    "case": "output-preserved",
+    "passed": true,
+    "status": "existing-output-refused"
+  }
+]

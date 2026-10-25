@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "status": "profile-rejected",
+  "sourceProfileSha256": "4B80FA35D7EA4530985C60D07DCDC95DD7384C8DF3B9BFE1F7F1479F26664338",
+  "reasons": [
+    "analysis-file-limit-exceeded"
+  ],
+  "model": {
+    "modelVersion": 1,
+    "requestedActiveSeconds": 259200,
+    "requestedActiveHours": 72.0,
+    "eventsPerProducerPhaseUpper": 172801,
+    "totalEventsUpper": 345602,
+    "overridesUpper": 34560,
+    "collectionSamplesUpper": 4323,
+    "ackCyclesUpper": 2882,
+    "assumedEventLineBytes": 2048,
+    "assumedOverrideLineBytes": 1024,
+    "assumedOperationLineBytes": 1024,
+    "assumedSampleLineBytes": 2048,
+    "queueBytesUpperUnderAssumptions": 743182336,
+    "operationsBytesUpperUnderAssumptions": 356847616,
+    "samplesBytesUpperUnderAssumptions": 8853504,
+    "totalBytesIncludingMetadataReserve": 1110980608,
+    "outputBudgetBytes": 2147483648,
+    "outputMarginBytes": 1036503040,
+    "analyzerPerFileLimitBytes": 268435456,
+    "maxTemporaryQueueBytesUnderAssumptions": 743182336,
+    "rewriteDestinationBytesVeryLooseUpper": 4283702984704,
+    "nominalRecoveryCycles": 173,
+    "nominalRecoveryWaitMsExcludingWork": 10380000,
+    "minimumFreeBytes": 4294967296
+  },
+  "probeSourceSha256": "3E7D1483FC4D8EFF565DE0F9DB36FB161521EAC9F340E1B82AE255037C77561D",
+  "analyzerSourceSha256": "E20F462D69EE46BBD9174B0E2C1569EDDBB7D5239AFA285936F15FD80FBC124C",
+  "executionAuthorized": false,
+  "environmentQualified": false,
+  "qualificationGranted": false,
+  "note": "Static planning only. No queue, workload, drive probe, process, service, VM or network is started. Bounds rely on padded byte assumptions for the current fixed synthetic payload and minimum scheduling intervals; not hard serializer/IO quotas or physical disk writes. The rewrite estimate is a deliberately loose sum of possible destination sizes. Slow operations reduce throughput and can delay sampling or exceed phase deadlines; nominal consumer capacity does not guarantee recovery. Requested duration excludes setup/verification/teardown. An agreed environment, resource budget and actual run remain necessary."
+}

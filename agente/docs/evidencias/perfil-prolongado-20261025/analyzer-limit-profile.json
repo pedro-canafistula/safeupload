@@ -1,0 +1,11 @@
+{
+  "phaseSeconds": 86400,
+  "writeIntervalMs": 500,
+  "ackIntervalMs": 60000,
+  "sampleIntervalMs": 60000,
+  "batchSize": 1000,
+  "maxEvents": 400000,
+  "maxOutputBytes": 2147483648,
+  "minFreeBytes": 4294967296,
+  "seed": "safeupload-queue-soak-proposed-72h-v1"
+}

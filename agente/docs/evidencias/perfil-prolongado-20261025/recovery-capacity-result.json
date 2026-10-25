@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "status": "profile-rejected",
+  "sourceProfileSha256": "29602EAC190EF31DAEAC8E4CD485D5303A8548AB86891A31A8678F984CF52F49",
+  "reasons": [
+    "nominal-recovery-capacity-insufficient",
+    "nominal-mixed-consumer-below-producer"
+  ],
+  "model": {
+    "modelVersion": 1,
+    "requestedActiveSeconds": 259200,
+    "requestedActiveHours": 72.0,
+    "eventsPerProducerPhaseUpper": 8641,
+    "totalEventsUpper": 17282,
+    "overridesUpper": 1728,
+    "collectionSamplesUpper": 4323,
+    "ackCyclesUpper": 2882,
+    "assumedEventLineBytes": 2048,
+    "assumedOverrideLineBytes": 1024,
+    "assumedOperationLineBytes": 1024,
+    "assumedSampleLineBytes": 2048,
+    "queueBytesUpperUnderAssumptions": 37163008,
+    "operationsBytesUpperUnderAssumptions": 20647936,
+    "samplesBytesUpperUnderAssumptions": 8853504,
+    "totalBytesIncludingMetadataReserve": 68761600,
+    "outputBudgetBytes": 134217728,
+    "outputMarginBytes": 65456128,
+    "analyzerPerFileLimitBytes": 268435456,
+    "maxTemporaryQueueBytesUnderAssumptions": 37163008,
+    "rewriteDestinationBytesVeryLooseUpper": 214207578112,
+    "nominalRecoveryCycles": 8641,
+    "nominalRecoveryWaitMsExcludingWork": 518460000,
+    "minimumFreeBytes": 4294967296
+  },
+  "probeSourceSha256": "3E7D1483FC4D8EFF565DE0F9DB36FB161521EAC9F340E1B82AE255037C77561D",
+  "analyzerSourceSha256": "E20F462D69EE46BBD9174B0E2C1569EDDBB7D5239AFA285936F15FD80FBC124C",
+  "executionAuthorized": false,
+  "environmentQualified": false,
+  "qualificationGranted": false,
+  "note": "Static planning only. No queue, workload, drive probe, process, service, VM or network is started. Bounds rely on padded byte assumptions for the current fixed synthetic payload and minimum scheduling intervals; not hard serializer/IO quotas or physical disk writes. The rewrite estimate is a deliberately loose sum of possible destination sizes. Slow operations reduce throughput and can delay sampling or exceed phase deadlines; nominal consumer capacity does not guarantee recovery. Requested duration excludes setup/verification/teardown. An agreed environment, resource budget and actual run remain necessary."
+}

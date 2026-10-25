@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "status": "profile-rejected",
+  "sourceProfileSha256": "CD73F48D945CB713AF97C1E64EDC1BAB3867A9720E5F70AC9A12970FC83CFD1B",
+  "reasons": [
+    "unknown-profile-field"
+  ],
+  "model": null,
+  "probeSourceSha256": "3E7D1483FC4D8EFF565DE0F9DB36FB161521EAC9F340E1B82AE255037C77561D",
+  "analyzerSourceSha256": "E20F462D69EE46BBD9174B0E2C1569EDDBB7D5239AFA285936F15FD80FBC124C",
+  "executionAuthorized": false,
+  "environmentQualified": false,
+  "qualificationGranted": false,
+  "note": "Static planning only. No queue, workload, drive probe, process, service, VM or network is started. Bounds rely on padded byte assumptions for the current fixed synthetic payload and minimum scheduling intervals; not hard serializer/IO quotas or physical disk writes. The rewrite estimate is a deliberately loose sum of possible destination sizes. Slow operations reduce throughput and can delay sampling or exceed phase deadlines; nominal consumer capacity does not guarantee recovery. Requested duration excludes setup/verification/teardown. An agreed environment, resource budget and actual run remain necessary."
+}
