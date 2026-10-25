@@ -87,3 +87,32 @@ revalida conteúdo da fila, autentica manifestos ou protege contra troca malicio
 concorrente de caminhos. Usa o recibo da verificação do coletor como declaração,
 não como nova prova de execução. Limites de análise precisam ser considerados no
 perfil futuro antes de iniciar dias de carga.
+
+## Perfil prolongado proposto, ainda não executado
+
+proposed-72h.json define três fases de 24 h, um evento a cada dez segundos,
+confirmações/amostras a cada minuto, lote 1.000, teto de 20.000 eventos/128 MiB
+e parada quando o espaço livre ficar abaixo de 4 GiB. É proposta para um diretório
+sintético em máquina Windows disponível, não autorização para iniciar 72 h neste
+computador ou na VM preservada. As fases de confirmação são locais/sintéticas;
+não incluem HTTP/503/resposta perdida, processo reiniciado ou carga concorrente.
+
+```powershell
+pwsh -File agente/tools/QueueSoakProbe/Test-SoakProfile.ps1 -ProfilePath agente/tools/QueueSoakProbe/proposed-72h.json -OutputPath C:\Laboratorio\perfil-verificado-novo.json
+pwsh -File agente/tools/QueueSoakProbe/Test-SoakProfileContracts.ps1 -OutputParent C:\Laboratorio\Perfis
+```
+
+Esses comandos fazem cálculos e controles novos do planejamento; não executam o
+gerador, leem espaço real do disco ou qualificam a máquina. O modelo usa tamanhos
+por linha com margem para o payload sintético atual, limita número de operações e
+confronta teto de eventos/saída, limite do analisador e capacidade nominal de
+confirmação. As hipóteses estão no relatório; não são quotas de serialização ou
+medições de desempenho. O hash das fontes lidas ajuda a detectar mudança de versão.
+
+O resultado compatible-under-model-assumptions não autoriza execução ou demonstra
+viabilidade de CPU/I/O. Regravações podem somar muito mais bytes que o tamanho final
+da fila. O orçamento total deve considerar arquivos temporários e disco livre além
+do limiar de parada, e o equipamento precisa permanecer disponível durante todo o
+período. Só iniciar após acordo sobre ambiente, perfil e custo de recursos; usar o
+perfil efetivamente acordado e guardar seu recibo/hash. Ler limites e pendências em
+[PERFIL-PROLONGADO-20261025](../../docs/PERFIL-PROLONGADO-20261025.md).
