@@ -1,0 +1,5 @@
+*.json -text -diff
+*.jsonl -text -diff
+*.log -text -diff
+*.marker -text -diff
+.gitattributes -text -diff

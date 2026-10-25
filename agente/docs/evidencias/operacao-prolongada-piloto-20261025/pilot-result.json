@@ -1,0 +1,153 @@
+{
+  "status": "passed",
+  "error": null,
+  "startedAtUtc": "2026-10-25T15:44:21.7243146+00:00",
+  "finishedAtUtc": "2026-10-25T15:44:27.7814199+00:00",
+  "elapsedSeconds": 6.057133,
+  "profile": {
+    "phaseSeconds": 2,
+    "writeIntervalMs": 50,
+    "ackIntervalMs": 100,
+    "sampleIntervalMs": 100,
+    "batchSize": 10,
+    "maxEvents": 200,
+    "maxOutputBytes": 8388608,
+    "minFreeBytes": 2147483648,
+    "seed": "safeupload-queue-soak-pilot-v1"
+  },
+  "profileSha256": "210D1B14009B1E2BC9237096A08BD8E85C29144CEF62B6820BA23A6D9E376D17",
+  "coreAssemblySha256": "C3329C8F7902C895D1708D30238C41FFC1B00A869C9F5FA30498C84763534096",
+  "probeAssemblySha256": "F2AB73A625FB3BB13338BD4ADEC7194F0744E13660DE1A78034C735E98D7A08B",
+  "os": "Microsoft Windows 10.0.26300",
+  "framework": ".NET 10.0.13",
+  "architecture": "X64",
+  "samples": 55,
+  "events": 64,
+  "eventAck": 62,
+  "overrideAck": 6,
+  "phases": [
+    {
+      "phase": "offline",
+      "elapsedMs": 2032.6779,
+      "verificationMs": 32.5898,
+      "events": 32,
+      "eventAck": 0,
+      "overrideAck": 0,
+      "bytes": 16977,
+      "sha256": "6CCE3505642C2048992FEE3C5EF6EC3A2AB1BA220BD40E92974D24D7FD2D49F5",
+      "metadataVerified": true,
+      "integrity": {
+        "fileExists": true,
+        "linesScanned": 35,
+        "validEvents": 32,
+        "validOverrides": 3,
+        "invalidLines": 0,
+        "unknownRecords": 0,
+        "blankLines": 0,
+        "issues": [],
+        "issuesTruncated": false,
+        "queueBytes": 16977,
+        "pendingEvents": 32,
+        "dispatchedEvents": 0,
+        "pendingOverrides": 3,
+        "dispatchedOverrides": 0,
+        "oldestPendingUtc": "2026-01-01T00:00:01+00:00",
+        "pendingWithoutTimestamp": 0,
+        "requiresAttention": false
+      }
+    },
+    {
+      "phase": "recovery",
+      "elapsedMs": 2005.7621,
+      "verificationMs": 2.6903,
+      "events": 32,
+      "eventAck": 32,
+      "overrideAck": 3,
+      "bytes": 17174,
+      "sha256": "E90B5FFE21881DD26AD8BAD79D513781E2D62CD4DC5F90C58B972F94992E157B",
+      "metadataVerified": true,
+      "integrity": {
+        "fileExists": true,
+        "linesScanned": 35,
+        "validEvents": 32,
+        "validOverrides": 3,
+        "invalidLines": 0,
+        "unknownRecords": 0,
+        "blankLines": 0,
+        "issues": [],
+        "issuesTruncated": false,
+        "queueBytes": 17174,
+        "pendingEvents": 0,
+        "dispatchedEvents": 32,
+        "pendingOverrides": 0,
+        "dispatchedOverrides": 3,
+        "oldestPendingUtc": null,
+        "pendingWithoutTimestamp": 0,
+        "requiresAttention": false
+      }
+    },
+    {
+      "phase": "mixed",
+      "elapsedMs": 2009.3910999999998,
+      "verificationMs": 2.322,
+      "events": 64,
+      "eventAck": 62,
+      "overrideAck": 6,
+      "bytes": 34352,
+      "sha256": "1897A93B5BC8724D8E967371894EF169FFE82DDC4C1050399994CF6D02A40E0D",
+      "metadataVerified": true,
+      "integrity": {
+        "fileExists": true,
+        "linesScanned": 70,
+        "validEvents": 64,
+        "validOverrides": 6,
+        "invalidLines": 0,
+        "unknownRecords": 0,
+        "blankLines": 0,
+        "issues": [],
+        "issuesTruncated": false,
+        "queueBytes": 34352,
+        "pendingEvents": 2,
+        "dispatchedEvents": 62,
+        "pendingOverrides": 0,
+        "dispatchedOverrides": 6,
+        "oldestPendingUtc": "2026-01-01T00:01:03+00:00",
+        "pendingWithoutTimestamp": 0,
+        "requiresAttention": false
+      }
+    }
+  ],
+  "serviceQualified": false,
+  "physicalDurabilityQualified": false,
+  "realApiQualified": false,
+  "retentionChanged": false,
+  "deleted": false,
+  "note": "Sequential Core harness with synthetic confirmations. Samples include generator, logs and verification; not service-only resources. No HTTP, lost response, 503, crash, concurrent producer or power loss. Phase boundaries verify after a quiescent reopen, not process restart. Budget checks occur between operations, not a hard filesystem quota. Gaps include operation/verification time. No latency SLA. Long-duration qualification requires an agreed profile and actual completed duration.",
+  "files": [
+    {
+      "file": "operations.jsonl",
+      "bytes": 10195,
+      "sha256": "26CA992AF437BFD0CB8047A3112224EBC9BD945347163960FA4F8C8AA37879D9"
+    },
+    {
+      "file": "profile.json",
+      "bytes": 242,
+      "sha256": "210D1B14009B1E2BC9237096A08BD8E85C29144CEF62B6820BA23A6D9E376D17"
+    },
+    {
+      "file": "queue.jsonl",
+      "bytes": 34352,
+      "sha256": "1897A93B5BC8724D8E967371894EF169FFE82DDC4C1050399994CF6D02A40E0D"
+    },
+    {
+      "file": "samples.jsonl",
+      "bytes": 21986,
+      "sha256": "A38DB545696466A06E86F462D00CE92E0ED204C7C3830B27D5B982FEDA9F9692"
+    },
+    {
+      "file": "synthetic.marker",
+      "bytes": 28,
+      "sha256": "75C76C05D979D9ABD67F7E2A68A4F8BE02DBB665C3B0D1EA719C018F00CA4CF5"
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "sourceCommit": "52fc6497877993d3b5f17671bc0ee8ca28294fbf",
+  "baseline": "7327965b5538b590f9957b16ca89b7385dcd99f2",
+  "scopeCorrectionCommit": "dd8adf29",
+  "date": "2026-10-25",
+  "pilotStatus": "passed",
+  "actualSeconds": 6.057133,
+  "events": 64,
+  "overrides": 6,
+  "pendingEvents": 2,
+  "pendingOverrides": 0,
+  "samples": 55,
+  "guardsPassed": 3,
+  "productCodeChanged": false,
+  "productSuitesRerun": false,
+  "ciExecutedForThisTool": false,
+  "longDurationQualified": false,
+  "serviceQualified": false,
+  "realApiQualified": false,
+  "vmStarted": false,
+  "notes": [
+    "Build succeeded with 4 NU1900 warnings: NuGet vulnerability service unavailable; no package installation or upgrade.",
+    "Expected nonzero exits in guard logs are successful checks of refusal/incomplete status, not product crashes.",
+    "Source tool commit uses skip ci to avoid repeating product suites; no workflow changes and no claim of CI validation. Existing Functional web failure remains open.",
+    "Inner raw receipts retain their original filenames/hash references; outer manifest uses copied filename prefixes."
+  ],
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 110,
+      "sha256": "02B00690B17AD88A027948BE81F5636648E707A22A38ABF1E12238D3DAAF2B88"
+    },
+    {
+      "file": "budget-profile.json",
+      "bytes": 251,
+      "sha256": "AB3B03717AFADA605E01F4453BC3B2E0BD720EAAD26AA94DC5E571447F57F36B"
+    },
+    {
+      "file": "budget-queue.jsonl",
+      "bytes": 509,
+      "sha256": "67C119DA8F3EDC2ED058287BAE5E0421C80A270B8D9E6029E23C67B564EECED1"
+    },
+    {
+      "file": "budget-result.json",
+      "bytes": 2432,
+      "sha256": "8788E4E49512D7CEBC58B425EA834DFDAE67EE43889B624026650373B11030BD"
+    },
+    {
+      "file": "budget-synthetic.marker",
+      "bytes": 28,
+      "sha256": "75C76C05D979D9ABD67F7E2A68A4F8BE02DBB665C3B0D1EA719C018F00CA4CF5"
+    },
+    {
+      "file": "guards-event-budget.json",
+      "bytes": 251,
+      "sha256": "AB3B03717AFADA605E01F4453BC3B2E0BD720EAAD26AA94DC5E571447F57F36B"
+    },
+    {
+      "file": "guards-event-budget.log",
+      "bytes": 1047,
+      "sha256": "76F45D69C01964B9CF6DD32C0A93ACF3C586DD4949A7FB345E4EDC4D21C68B06"
+    },
+    {
+      "file": "guards-guards.json",
+      "bytes": 378,
+      "sha256": "1D564B5B1032E675A0A151CE1C11A39FEDB14104D4E0F406EA2D4E4A2F5A3835"
+    },
+    {
+      "file": "guards-installed-path.json",
+      "bytes": 253,
+      "sha256": "DCCDEE5DA7661DF96BE3E1E4C0942ABDE1D65E0AEAB70041701B93B6BE2380CD"
+    },
+    {
+      "file": "guards-installed-path.log",
+      "bytes": 807,
+      "sha256": "64B1D4C8132726B73C4A98B593F670D93801614469C0C97C9FD3FCB63CEC6E35"
+    },
+    {
+      "file": "guards-invalid-profile.json",
+      "bytes": 253,
+      "sha256": "AD35BC54AA1FB3221CC88688BCB9ACF307E71E664753CF82F1F164D234913E32"
+    },
+    {
+      "file": "guards-invalid-profile.log",
+      "bytes": 537,
+      "sha256": "9351F38C291C7FF9A19297C761E33D4C30632620BB77C3D7EBB08DDC13BCF56A"
+    },
+    {
+      "file": "pilot-operations.jsonl",
+      "bytes": 10195,
+      "sha256": "26CA992AF437BFD0CB8047A3112224EBC9BD945347163960FA4F8C8AA37879D9"
+    },
+    {
+      "file": "pilot-profile.json",
+      "bytes": 242,
+      "sha256": "210D1B14009B1E2BC9237096A08BD8E85C29144CEF62B6820BA23A6D9E376D17"
+    },
+    {
+      "file": "pilot-queue.jsonl",
+      "bytes": 34352,
+      "sha256": "1897A93B5BC8724D8E967371894EF169FFE82DDC4C1050399994CF6D02A40E0D"
+    },
+    {
+      "file": "pilot-result.json",
+      "bytes": 5059,
+      "sha256": "FBD88FF8DE7D40EFC1EFDB5A003647EF77E89C8BDFAC2A9AC92725F43B6A827F"
+    },
+    {
+      "file": "pilot-samples.jsonl",
+      "bytes": 21986,
+      "sha256": "A38DB545696466A06E86F462D00CE92E0ED204C7C3830B27D5B982FEDA9F9692"
+    },
+    {
+      "file": "pilot-synthetic.marker",
+      "bytes": 28,
+      "sha256": "75C76C05D979D9ABD67F7E2A68A4F8BE02DBB665C3B0D1EA719C018F00CA4CF5"
+    },
+    {
+      "file": "pilot.log",
+      "bytes": 513,
+      "sha256": "021C5D84B67E33798C90D64EE3C1CF9604FF6AEBFBD3EF0D50A828793613611D"
+    }
+  ]
+}

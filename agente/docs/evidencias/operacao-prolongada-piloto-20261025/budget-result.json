@@ -1,0 +1,62 @@
+{
+  "status": "incomplete",
+  "error": "InvalidDataException: Event budget reached; incomplete run.",
+  "startedAtUtc": "2026-10-25T15:44:58.9866898+00:00",
+  "finishedAtUtc": "2026-10-25T15:44:59.1090569+00:00",
+  "elapsedSeconds": 0.1223976,
+  "profile": {
+    "phaseSeconds": 2,
+    "writeIntervalMs": 50,
+    "ackIntervalMs": 100,
+    "sampleIntervalMs": 100,
+    "batchSize": 10,
+    "maxEvents": 1,
+    "maxOutputBytes": 8388608,
+    "minFreeBytes": 2147483648,
+    "seed": "safeupload-queue-soak-pilot-v1"
+  },
+  "profileSha256": "AB3B03717AFADA605E01F4453BC3B2E0BD720EAAD26AA94DC5E571447F57F36B",
+  "coreAssemblySha256": "C3329C8F7902C895D1708D30238C41FFC1B00A869C9F5FA30498C84763534096",
+  "probeAssemblySha256": "F2AB73A625FB3BB13338BD4ADEC7194F0744E13660DE1A78034C735E98D7A08B",
+  "os": "Microsoft Windows 10.0.26300",
+  "framework": ".NET 10.0.13",
+  "architecture": "X64",
+  "samples": 1,
+  "events": 1,
+  "eventAck": 0,
+  "overrideAck": 0,
+  "phases": [],
+  "serviceQualified": false,
+  "physicalDurabilityQualified": false,
+  "realApiQualified": false,
+  "retentionChanged": false,
+  "deleted": false,
+  "note": "Sequential Core harness with synthetic confirmations. Samples include generator, logs and verification; not service-only resources. No HTTP, lost response, 503, crash, concurrent producer or power loss. Phase boundaries verify after a quiescent reopen, not process restart. Budget checks occur between operations, not a hard filesystem quota. Gaps include operation/verification time. No latency SLA. Long-duration qualification requires an agreed profile and actual completed duration.",
+  "files": [
+    {
+      "file": "operations.jsonl",
+      "bytes": 108,
+      "sha256": "78F72DCBA28DF0424E7C51E32F3D167A02FDBFA123DAA937049BE04F48A813F4"
+    },
+    {
+      "file": "profile.json",
+      "bytes": 251,
+      "sha256": "AB3B03717AFADA605E01F4453BC3B2E0BD720EAAD26AA94DC5E571447F57F36B"
+    },
+    {
+      "file": "queue.jsonl",
+      "bytes": 509,
+      "sha256": "67C119DA8F3EDC2ED058287BAE5E0421C80A270B8D9E6029E23C67B564EECED1"
+    },
+    {
+      "file": "samples.jsonl",
+      "bytes": 371,
+      "sha256": "D4A6823E4F888149C5CCA80EE900A535DEC3C7522BEE609D2F0A63CB1506F0D2"
+    },
+    {
+      "file": "synthetic.marker",
+      "bytes": 28,
+      "sha256": "75C76C05D979D9ABD67F7E2A68A4F8BE02DBB665C3B0D1EA719C018F00CA4CF5"
+    }
+  ]
+}

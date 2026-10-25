@@ -1,0 +1,20 @@
+[
+  {
+    "case": "event-budget",
+    "passed": true,
+    "exitCode": -532462766,
+    "log": "event-budget.log"
+  },
+  {
+    "case": "invalid-profile",
+    "passed": true,
+    "exitCode": -532462766,
+    "log": "invalid-profile.log"
+  },
+  {
+    "case": "installed-path",
+    "passed": true,
+    "exitCode": -532462766,
+    "log": "installed-path.log"
+  }
+]
