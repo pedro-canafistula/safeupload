@@ -1,0 +1,17 @@
+[
+  {
+    "path": "outputs/SafeUpload-VM-kit.zip",
+    "sha256": "5F4AA866043A5F31A7312FDDAE087B81C1E5B9A3C4CCFFD75ECF3DD40E81AE83",
+    "driverEntries": []
+  },
+  {
+    "path": "outputs/SafeUpload-candidata-m2-a2900ee5.zip",
+    "sha256": "2769EF7657F9FE50D491BB61A336DE73CFB1758EC136F20D896D1AD79650A30C",
+    "driverEntries": []
+  },
+  {
+    "path": "outputs/m2-a2900ee5-source.zip",
+    "sha256": "FE99E1831F2CE6A47B38E59288F3D4013E20070F430191378AB6FC6F596AAFEC",
+    "driverEntries": []
+  }
+]

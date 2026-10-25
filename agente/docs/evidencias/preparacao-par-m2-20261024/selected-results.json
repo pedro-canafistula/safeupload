@@ -1,0 +1,98 @@
+[
+  {
+    "file": "migration.log",
+    "sha256": "DAFC2BCDEA13068DC88C7BA2947361E0013F4292DE615348CBE8A7125A035699",
+    "selectedLines": [
+      {
+        "line": 296,
+        "text": "2026-10-25T01:00:57.3902729Z 2026-10-25T01:00:57.349Z  WARN 2238 --- [safeupload-backend] [           main] o.s.w.c.s.GenericWebApplicationContext   : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}"
+      },
+      {
+        "line": 308,
+        "text": "2026-10-25T01:00:57.3937180Z Parameter 1 of constructor in com.safeupload.presentation.controller.AgentController required a bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' that could not be found."
+      },
+      {
+        "line": 313,
+        "text": "2026-10-25T01:00:57.3938393Z Consider defining a bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' in your configuration."
+      },
+      {
+        "line": 425,
+        "text": "2026-10-25T01:00:57.4229386Z Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}"
+      },
+      {
+        "line": 452,
+        "text": "2026-10-25T01:00:57.4280755Z Caused by: org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}"
+      },
+      {
+        "line": 949,
+        "text": "2026-10-25T01:00:57.6330120Z Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}"
+      },
+      {
+        "line": 976,
+        "text": "2026-10-25T01:00:57.6365906Z Caused by: org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}"
+      }
+    ]
+  },
+  {
+    "file": "agent-contract.log",
+    "sha256": "7E1FA152DD8D222CB09CD55F6469B595BC3CE6056BAF37E37A7BE410A77AFDF6",
+    "selectedLines": [
+      {
+        "line": 301,
+        "text": "2026-10-25T01:02:23.8873748Z Passed!  - Failed:     0, Passed:   893, Skipped:     4, Total:   897, Duration: 41 s - SafeUpload.Agent.Tests.dll (net10.0)"
+      },
+      {
+        "line": 1503,
+        "text": "2026-10-25T01:02:59.6388774Z \u001b[36;1m  if (-not $ready) { throw 'Backend não iniciou.' }\u001b[0m"
+      },
+      {
+        "line": 1518,
+        "text": "2026-10-25T01:04:30.8713375Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m  12 | \u001b[0m   if (-not $ready) { \u001b[36;1mthrow 'Backend não iniciou.'\u001b[0m }\u001b[0m"
+      },
+      {
+        "line": 1520,
+        "text": "2026-10-25T01:04:30.8716595Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[31;1m\u001b[31;1m\u001b[36;1m     | \u001b[31;1mBackend não iniciou.\u001b[0m"
+      }
+    ]
+  },
+  {
+    "file": "installed-service.log",
+    "sha256": "1E10FAA1CB1FDCE94F23E462BE4572FE19A093F3A491E8C340BBA90E3B244A75",
+    "selectedLines": [
+      {
+        "line": 1451,
+        "text": "2026-10-25T01:02:27.0656709Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m  57 | \u001b[0m … f ($process.HasExited) { \u001b[36;1mthrow 'Backend encerrou antes de iniciar.'\u001b[0m }\u001b[0m"
+      },
+      {
+        "line": 1453,
+        "text": "2026-10-25T01:02:27.0657856Z \u001b[31;1m\u001b[0m\u001b[36;1m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[0m\u001b[36;1m\u001b[31;1m\u001b[31;1m\u001b[36;1m     | \u001b[31;1mBackend encerrou antes de iniciar.\u001b[0m"
+      }
+    ]
+  },
+  {
+    "file": "ci-install.log",
+    "sha256": "5379FA3DE5C2CD4040C4C0635280701B6C810FCF71C43B7F411C58243D178158",
+    "selectedLines": [
+      {
+        "line": 221,
+        "text": "2026-10-25T01:00:52.2681764Z InstallerContracts: 43/43 passed (PowerShell 7.6.7)"
+      },
+      {
+        "line": 222,
+        "text": "2026-10-25T01:00:53.1973425Z InstallerEnvironment: 4/4 passed"
+      },
+      {
+        "line": 224,
+        "text": "2026-10-25T01:00:56.1804367Z InstallerContracts: 43/43 passed (PowerShell 5.1.26100.33648)"
+      },
+      {
+        "line": 225,
+        "text": "2026-10-25T01:00:56.5749903Z M2DiagnosticsContracts: 9/9 passed (PowerShell 7.6.7)"
+      },
+      {
+        "line": 226,
+        "text": "2026-10-25T01:00:57.8446226Z M2DiagnosticsContracts: 9/9 passed (PowerShell 5.1.26100.33648)"
+      }
+    ]
+  }
+]

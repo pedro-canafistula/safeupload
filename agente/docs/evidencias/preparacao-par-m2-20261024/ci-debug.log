@@ -1,0 +1,433 @@
+﻿2026-10-25T01:00:26.3803663Z Current runner version: '2.338.0'
+2026-10-25T01:00:26.3837475Z ##[group]Runner Image Provisioner
+2026-10-25T01:00:26.3838713Z Hosted Compute Agent
+2026-10-25T01:00:26.3839558Z Version: 20261021.618
+2026-10-25T01:00:26.3840394Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-10-25T01:00:26.3841358Z Build Date: 2026-10-21T00:45:21Z
+2026-10-25T01:00:26.3842257Z Worker ID: {c5ad66da-6535-4e7a-a2ec-653c078339e2}
+2026-10-25T01:00:26.3843199Z Region: westcentralus
+2026-10-25T01:00:26.3843921Z Cloud: Azure
+2026-10-25T01:00:26.3844583Z ##[endgroup]
+2026-10-25T01:00:26.3846324Z ##[group]Operating System
+2026-10-25T01:00:26.3847171Z Microsoft Windows Server 2025
+2026-10-25T01:00:26.3847987Z 10.0.26100
+2026-10-25T01:00:26.3848632Z Datacenter
+2026-10-25T01:00:26.3849333Z ##[endgroup]
+2026-10-25T01:00:26.3850017Z ##[group]Runner Image
+2026-10-25T01:00:26.3850956Z Image: windows-2025-vs2026
+2026-10-25T01:00:26.3851771Z Version: 20261021.278.1
+2026-10-25T01:00:26.3854338Z Included Software: https://github.com/actions/runner-images/blob/win25-vs2026/20261021.278/images/windows/Windows2025-VS2026-Readme.md
+2026-10-25T01:00:26.3856593Z Image Release: https://github.com/actions/runner-images/releases/tag/win25-vs2026%2F20261021.278
+2026-10-25T01:00:26.3857886Z ##[endgroup]
+2026-10-25T01:00:26.3859257Z ##[group]GITHUB_TOKEN Permissions
+2026-10-25T01:00:26.3862296Z Contents: read
+2026-10-25T01:00:26.3863069Z Metadata: read
+2026-10-25T01:00:26.3863789Z ##[endgroup]
+2026-10-25T01:00:26.3866408Z Secret source: Actions
+2026-10-25T01:00:26.3867525Z Cache mode: write
+2026-10-25T01:00:26.3868382Z Prepare workflow directory
+2026-10-25T01:00:26.4289919Z Prepare all required actions
+2026-10-25T01:00:26.4342506Z Getting action download info
+2026-10-25T01:00:26.6964402Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-25T01:00:26.8194537Z Download action repository 'actions/setup-dotnet@v4' (SHA:67a3573c9a986a3f9c594539f4ab511d57bb3ce9)
+2026-10-25T01:00:27.4010644Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-25T01:00:27.7409389Z Complete job name: Componentes C# Debug
+2026-10-25T01:00:28.0009699Z ##[group]Run git config --system core.longpaths true
+2026-10-25T01:00:28.0011458Z [36;1mgit config --system core.longpaths true[0m
+2026-10-25T01:00:28.0638328Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-25T01:00:28.0639425Z ##[endgroup]
+2026-10-25T01:00:28.9678813Z ##[group]Run actions/checkout@v4
+2026-10-25T01:00:28.9680030Z with:
+2026-10-25T01:00:28.9680817Z   repository: pedro-canafistula/safeupload
+2026-10-25T01:00:28.9688580Z   token: ***
+2026-10-25T01:00:28.9689372Z   ssh-strict: true
+2026-10-25T01:00:28.9690126Z   ssh-user: git
+2026-10-25T01:00:28.9690922Z   persist-credentials: true
+2026-10-25T01:00:28.9691747Z   clean: true
+2026-10-25T01:00:28.9692513Z   sparse-checkout-cone-mode: true
+2026-10-25T01:00:28.9693468Z   fetch-depth: 1
+2026-10-25T01:00:28.9694254Z   fetch-tags: false
+2026-10-25T01:00:28.9695395Z   show-progress: true
+2026-10-25T01:00:28.9696245Z   lfs: false
+2026-10-25T01:00:28.9696942Z   submodules: false
+2026-10-25T01:00:28.9697802Z   set-safe-directory: true
+2026-10-25T01:00:28.9698718Z   allow-unsafe-pr-checkout: false
+2026-10-25T01:00:28.9699632Z ##[endgroup]
+2026-10-25T01:00:29.1210524Z Syncing repository: pedro-canafistula/safeupload
+2026-10-25T01:00:29.1214600Z ##[group]Getting Git version info
+2026-10-25T01:00:29.1215964Z Working directory is 'D:\a\safeupload\safeupload'
+2026-10-25T01:00:29.1929789Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-25T01:00:29.2293769Z git version 2.56.0.windows.2
+2026-10-25T01:00:29.2338703Z ##[endgroup]
+2026-10-25T01:00:29.2359202Z Temporarily overriding HOME='D:\a\_temp\49116609-fbfc-4b1c-bedb-8a43845e9413' before making global git config changes
+2026-10-25T01:00:29.2361620Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-25T01:00:29.2370900Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\safeupload\safeupload
+2026-10-25T01:00:29.2780751Z Deleting the contents of 'D:\a\safeupload\safeupload'
+2026-10-25T01:00:29.2786701Z ##[group]Initializing the repository
+2026-10-25T01:00:29.2795174Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\safeupload\safeupload
+2026-10-25T01:00:29.4905394Z Initialized empty Git repository in D:/a/safeupload/safeupload/.git/
+2026-10-25T01:00:29.4962496Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/pedro-canafistula/safeupload
+2026-10-25T01:00:29.5699042Z ##[endgroup]
+2026-10-25T01:00:29.5700700Z ##[group]Disabling automatic garbage collection
+2026-10-25T01:00:29.5709185Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-10-25T01:00:29.6100543Z ##[endgroup]
+2026-10-25T01:00:29.6101809Z ##[group]Setting up auth
+2026-10-25T01:00:29.6115311Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-25T01:00:29.6540262Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-25T01:00:31.2390116Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-25T01:00:31.2782158Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-25T01:00:31.8359823Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-25T01:00:31.8758879Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-25T01:00:32.4709170Z [command]"C:\Program Files\Git\bin\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-10-25T01:00:32.5109069Z ##[endgroup]
+2026-10-25T01:00:32.5110112Z ##[group]Fetching the repository
+2026-10-25T01:00:32.5135461Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +02ae15d925edc76664f7948c8506d06758b52b5a:refs/remotes/origin/tarefa/consolidar-base-agente-windows
+2026-10-25T01:00:36.8192088Z From https://github.com/pedro-canafistula/safeupload
+2026-10-25T01:00:36.8193696Z  * [new ref]           02ae15d925edc76664f7948c8506d06758b52b5a -> origin/tarefa/consolidar-base-agente-windows
+2026-10-25T01:00:36.8237149Z ##[endgroup]
+2026-10-25T01:00:36.8238647Z ##[group]Determining the checkout info
+2026-10-25T01:00:36.8239349Z ##[endgroup]
+2026-10-25T01:00:36.8254196Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-10-25T01:00:36.8791471Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-10-25T01:00:36.9190475Z ##[group]Checking out the ref
+2026-10-25T01:00:36.9191444Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force -B tarefa/consolidar-base-agente-windows refs/remotes/origin/tarefa/consolidar-base-agente-windows
+2026-10-25T01:00:38.0336984Z Updating files:  12% (2670/21894)
+2026-10-25T01:00:38.0600721Z Updating files:  13% (2847/21894)
+2026-10-25T01:00:38.0833496Z Updating files:  14% (3066/21894)
+2026-10-25T01:00:38.1047536Z Updating files:  15% (3285/21894)
+2026-10-25T01:00:38.1281236Z Updating files:  16% (3504/21894)
+2026-10-25T01:00:38.1505850Z Updating files:  17% (3722/21894)
+2026-10-25T01:00:38.1721448Z Updating files:  18% (3941/21894)
+2026-10-25T01:00:38.1928023Z Updating files:  19% (4160/21894)
+2026-10-25T01:00:38.2155104Z Updating files:  20% (4379/21894)
+2026-10-25T01:00:38.2425607Z Updating files:  21% (4598/21894)
+2026-10-25T01:00:38.2744215Z Updating files:  22% (4817/21894)
+2026-10-25T01:00:38.3019486Z Updating files:  23% (5036/21894)
+2026-10-25T01:00:38.3295084Z Updating files:  24% (5255/21894)
+2026-10-25T01:00:38.3538638Z Updating files:  25% (5474/21894)
+2026-10-25T01:00:38.3798427Z Updating files:  26% (5693/21894)
+2026-10-25T01:00:38.4078752Z Updating files:  27% (5912/21894)
+2026-10-25T01:00:38.4657915Z Updating files:  28% (6131/21894)
+2026-10-25T01:00:38.5374739Z Updating files:  29% (6350/21894)
+2026-10-25T01:00:38.7168751Z Updating files:  30% (6569/21894)
+2026-10-25T01:00:38.7758454Z Updating files:  31% (6788/21894)
+2026-10-25T01:00:38.8608612Z Updating files:  32% (7007/21894)
+2026-10-25T01:00:38.9067435Z Updating files:  33% (7226/21894)
+2026-10-25T01:00:38.9732909Z Updating files:  34% (7444/21894)
+2026-10-25T01:00:39.0232854Z Updating files:  35% (7663/21894)
+2026-10-25T01:00:39.0468335Z Updating files:  35% (7812/21894)
+2026-10-25T01:00:39.1023129Z Updating files:  36% (7882/21894)
+2026-10-25T01:00:39.4112905Z Updating files:  37% (8101/21894)
+2026-10-25T01:00:39.4734370Z Updating files:  38% (8320/21894)
+2026-10-25T01:00:39.6413640Z Updating files:  39% (8539/21894)
+2026-10-25T01:00:39.6708214Z Updating files:  40% (8758/21894)
+2026-10-25T01:00:39.7096940Z Updating files:  41% (8977/21894)
+2026-10-25T01:00:39.7521935Z Updating files:  42% (9196/21894)
+2026-10-25T01:00:39.7906787Z Updating files:  43% (9415/21894)
+2026-10-25T01:00:39.8324150Z Updating files:  44% (9634/21894)
+2026-10-25T01:00:39.8705341Z Updating files:  45% (9853/21894)
+2026-10-25T01:00:39.9065749Z Updating files:  46% (10072/21894)
+2026-10-25T01:00:39.9463795Z Updating files:  47% (10291/21894)
+2026-10-25T01:00:39.9814968Z Updating files:  48% (10510/21894)
+2026-10-25T01:00:40.0145575Z Updating files:  49% (10729/21894)
+2026-10-25T01:00:40.0239070Z Updating files:  50% (10947/21894)
+2026-10-25T01:00:40.1985786Z Updating files:  50% (11003/21894)
+2026-10-25T01:00:40.2336760Z Updating files:  51% (11166/21894)
+2026-10-25T01:00:40.2941511Z Updating files:  52% (11385/21894)
+2026-10-25T01:00:40.3765422Z Updating files:  53% (11604/21894)
+2026-10-25T01:00:40.7806890Z Updating files:  54% (11823/21894)
+2026-10-25T01:00:40.8604390Z Updating files:  55% (12042/21894)
+2026-10-25T01:00:40.9393000Z Updating files:  56% (12261/21894)
+2026-10-25T01:00:41.0222193Z Updating files:  57% (12480/21894)
+2026-10-25T01:00:41.0256157Z Updating files:  58% (12699/21894)
+2026-10-25T01:00:41.0786335Z Updating files:  58% (12708/21894)
+2026-10-25T01:00:41.1130382Z Updating files:  59% (12918/21894)
+2026-10-25T01:00:41.1344332Z Updating files:  60% (13137/21894)
+2026-10-25T01:00:41.1560237Z Updating files:  61% (13356/21894)
+2026-10-25T01:00:41.1896261Z Updating files:  62% (13575/21894)
+2026-10-25T01:00:41.2430920Z Updating files:  63% (13794/21894)
+2026-10-25T01:00:41.3073276Z Updating files:  64% (14013/21894)
+2026-10-25T01:00:41.3481570Z Updating files:  65% (14232/21894)
+2026-10-25T01:00:41.6271452Z Updating files:  66% (14451/21894)
+2026-10-25T01:00:41.6812280Z Updating files:  67% (14669/21894)
+2026-10-25T01:00:41.7453138Z Updating files:  68% (14888/21894)
+2026-10-25T01:00:41.8122468Z Updating files:  69% (15107/21894)
+2026-10-25T01:00:42.1225769Z Updating files:  70% (15326/21894)
+2026-10-25T01:00:42.1370450Z Updating files:  70% (15496/21894)
+2026-10-25T01:00:42.1899512Z Updating files:  71% (15545/21894)
+2026-10-25T01:00:42.2412725Z Updating files:  72% (15764/21894)
+2026-10-25T01:00:42.3018414Z Updating files:  73% (15983/21894)
+2026-10-25T01:00:42.3407180Z Updating files:  74% (16202/21894)
+2026-10-25T01:00:42.3986118Z Updating files:  75% (16421/21894)
+2026-10-25T01:00:42.4435552Z Updating files:  76% (16640/21894)
+2026-10-25T01:00:42.4893384Z Updating files:  77% (16859/21894)
+2026-10-25T01:00:42.5353302Z Updating files:  78% (17078/21894)
+2026-10-25T01:00:42.5680250Z Updating files:  79% (17297/21894)
+2026-10-25T01:00:42.5900689Z Updating files:  80% (17516/21894)
+2026-10-25T01:00:42.6328057Z Updating files:  81% (17735/21894)
+2026-10-25T01:00:42.6758092Z Updating files:  82% (17954/21894)
+2026-10-25T01:00:42.7518225Z Updating files:  83% (18173/21894)
+2026-10-25T01:00:42.7922847Z Updating files:  84% (18391/21894)
+2026-10-25T01:00:42.8309764Z Updating files:  85% (18610/21894)
+2026-10-25T01:00:42.8805303Z Updating files:  86% (18829/21894)
+2026-10-25T01:00:42.9250301Z Updating files:  87% (19048/21894)
+2026-10-25T01:00:43.0419080Z Updating files:  88% (19267/21894)
+2026-10-25T01:00:43.0956769Z Updating files:  88% (19459/21894)
+2026-10-25T01:00:43.1373749Z Updating files:  89% (19486/21894)
+2026-10-25T01:00:43.1827234Z Updating files:  90% (19705/21894)
+2026-10-25T01:00:43.5685412Z Updating files:  91% (19924/21894)
+2026-10-25T01:00:43.6159184Z Updating files:  92% (20143/21894)
+2026-10-25T01:00:43.6554462Z Updating files:  93% (20362/21894)
+2026-10-25T01:00:43.6976360Z Updating files:  94% (20581/21894)
+2026-10-25T01:00:43.7371961Z Updating files:  95% (20800/21894)
+2026-10-25T01:00:43.7754771Z Updating files:  96% (21019/21894)
+2026-10-25T01:00:43.8121894Z Updating files:  97% (21238/21894)
+2026-10-25T01:00:43.8423864Z Updating files:  98% (21457/21894)
+2026-10-25T01:00:43.8917699Z Updating files:  99% (21676/21894)
+2026-10-25T01:00:43.8918332Z Updating files: 100% (21894/21894)
+2026-10-25T01:00:43.8918639Z Updating files: 100% (21894/21894), done.
+2026-10-25T01:00:43.9395313Z Switched to a new branch 'tarefa/consolidar-base-agente-windows'
+2026-10-25T01:00:43.9407538Z branch 'tarefa/consolidar-base-agente-windows' set up to track 'origin/tarefa/consolidar-base-agente-windows'.
+2026-10-25T01:00:43.9556565Z ##[endgroup]
+2026-10-25T01:00:43.9964652Z [command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H
+2026-10-25T01:00:44.0311980Z 02ae15d925edc76664f7948c8506d06758b52b5a
+2026-10-25T01:00:44.0705362Z ##[group]Run actions/setup-dotnet@v4
+2026-10-25T01:00:44.0705792Z with:
+2026-10-25T01:00:44.0706233Z   dotnet-version: 10.0.x
+2026-10-25T01:00:44.0706734Z   cache: false
+2026-10-25T01:00:44.0707007Z ##[endgroup]
+2026-10-25T01:00:44.2362529Z (node:2156) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-25T01:00:44.2363528Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-25T01:00:44.3216367Z [command]"C:\Program Files\PowerShell\7\pwsh.exe" -NoLogo -Sta -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -Command & 'D:\a\_actions\actions\setup-dotnet\v4\externals\install-dotnet.ps1' -SkipNonVersionedFiles -Runtime dotnet -Channel LTS
+2026-10-25T01:00:45.7787510Z dotnet-install: .NET Core Runtime with version '10.0.13' is already installed.
+2026-10-25T01:00:45.9023584Z [command]"C:\Program Files\PowerShell\7\pwsh.exe" -NoLogo -Sta -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -Command & 'D:\a\_actions\actions\setup-dotnet\v4\externals\install-dotnet.ps1' -SkipNonVersionedFiles -Channel 10.0
+2026-10-25T01:00:46.8174854Z dotnet-install: .NET Core SDK with version '10.0.402' is already installed.
+2026-10-25T01:00:46.9179394Z ##[group]Run dotnet build agente/tools/QueueProbe/QueueProbe.csproj -c $env:BUILD_CONFIGURATION
+2026-10-25T01:00:46.9180229Z [36;1mdotnet build agente/tools/QueueProbe/QueueProbe.csproj -c $env:BUILD_CONFIGURATION[0m
+2026-10-25T01:00:46.9180841Z [36;1mif ($LASTEXITCODE -ne 0) { throw 'O diagnostico de fila nao compilou.' }[0m
+2026-10-25T01:00:46.9250165Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-25T01:00:46.9250619Z env:
+2026-10-25T01:00:46.9250937Z   DOTNET_ROOT: C:\Program Files\dotnet
+2026-10-25T01:00:46.9251304Z   BUILD_CONFIGURATION: Debug
+2026-10-25T01:00:46.9251633Z ##[endgroup]
+2026-10-25T01:00:55.1887655Z   Determining projects to restore...
+2026-10-25T01:01:01.4143404Z   Restored D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj (in 5.35 sec).
+2026-10-25T01:01:01.4144524Z   Restored D:\a\safeupload\safeupload\agente\tools\QueueProbe\QueueProbe.csproj (in 5.35 sec).
+2026-10-25T01:01:08.5346004Z   SafeUpload.Agent.Core -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Core\bin\Debug\net10.0\SafeUpload.Agent.Core.dll
+2026-10-25T01:01:09.0050530Z   QueueProbe -> D:\a\safeupload\safeupload\agente\tools\QueueProbe\bin\Debug\net10.0\QueueProbe.dll
+2026-10-25T01:01:09.0148750Z 
+2026-10-25T01:01:09.0155948Z Build succeeded.
+2026-10-25T01:01:09.0165299Z     0 Warning(s)
+2026-10-25T01:01:09.0165649Z     0 Error(s)
+2026-10-25T01:01:09.0167230Z 
+2026-10-25T01:01:09.0168564Z Time Elapsed 00:00:17.81
+2026-10-25T01:01:09.4525991Z ##[group]Run New-Item -ItemType Directory -Path artifacts/csharp -Force | Out-Null
+2026-10-25T01:01:09.4527342Z [36;1mNew-Item -ItemType Directory -Path artifacts/csharp -Force | Out-Null[0m
+2026-10-25T01:01:09.4528125Z [36;1mwhoami /all > artifacts/csharp/identity.txt[0m
+2026-10-25T01:01:09.4529618Z [36;1mdotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj -c $env:BUILD_CONFIGURATION --logger 'trx;LogFileName=agente.trx' --results-directory artifacts/csharp *> artifacts/csharp/test.log[0m
+2026-10-25T01:01:09.4531154Z [36;1m$testExit = $LASTEXITCODE[0m
+2026-10-25T01:01:09.4531753Z [36;1mGet-Content artifacts/csharp/test.log -Tail 35[0m
+2026-10-25T01:01:09.4532681Z [36;1mif ($testExit -ne 0) { throw "A suíte C# completa falhou: $testExit. Preservar TRX e log." }[0m
+2026-10-25T01:01:09.4608905Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-25T01:01:09.4609381Z env:
+2026-10-25T01:01:09.4610088Z   DOTNET_ROOT: C:\Program Files\dotnet
+2026-10-25T01:01:09.4610623Z   BUILD_CONFIGURATION: Debug
+2026-10-25T01:01:09.4611083Z ##[endgroup]
+2026-10-25T01:02:17.1610317Z   Determining projects to restore...
+2026-10-25T01:02:17.1612385Z   Restored D:\a\safeupload\safeupload\agente\SafeUpload.Agent.App\SafeUpload.Agent.App.csproj (in 355 ms).
+2026-10-25T01:02:17.1614352Z   Restored D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Network\SafeUpload.Agent.Network.csproj (in 4.35 sec).
+2026-10-25T01:02:17.1616321Z   Restored D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Minifilter\SafeUpload.Agent.Minifilter.csproj (in 3 ms).
+2026-10-25T01:02:17.1618320Z   Restored D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj (in 8.55 sec).
+2026-10-25T01:02:17.1620273Z   Restored D:\a\safeupload\safeupload\agente\tools\QueueFullVolumeProbe\QueueFullVolumeProbe.csproj (in 8.13 sec).
+2026-10-25T01:02:17.1621452Z   Restored D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj (in 10.54 sec).
+2026-10-25T01:02:17.1622557Z   1 of 7 projects are up-to-date for restore.
+2026-10-25T01:02:17.1624478Z   SafeUpload.Agent.Core -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Core\bin\Debug\net10.0\SafeUpload.Agent.Core.dll
+2026-10-25T01:02:17.1626282Z   SafeUpload.Agent.Network -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Network\bin\Debug\net10.0-windows\SafeUpload.Agent.Network.dll
+2026-10-25T01:02:17.1628051Z   SafeUpload.Agent.Minifilter -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Minifilter\bin\Debug\net10.0-windows\SafeUpload.Agent.Minifilter.dll
+2026-10-25T01:02:17.1629344Z   SafeUpload.Agent.Service -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Service\bin\Debug\net10.0-windows\SafeUpload.Agent.Service.dll
+2026-10-25T01:02:17.1631878Z   QueueFullVolumeProbe -> D:\a\safeupload\safeupload\agente\tools\QueueFullVolumeProbe\bin\Debug\net10.0-windows\QueueFullVolumeProbe.dll
+2026-10-25T01:02:17.1632899Z   SafeUpload.Agent.App -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.App\bin\Debug\net10.0-windows\SafeUpload.Agent.App.dll
+2026-10-25T01:02:17.1634008Z   SafeUpload.Agent.Tests -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll
+2026-10-25T01:02:17.1636244Z Test run for D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll (.NETCoreApp,Version=v10.0)
+2026-10-25T01:02:17.1639701Z A total of 1 test files matched the specified pattern.
+2026-10-25T01:02:17.1640946Z [xUnit.net 00:00:02.04]     SafeUpload.Agent.Tests.TrafficDiversionTests.Politicas_dos_navegadores_sao_aplicadas_e_removidas [SKIP]
+2026-10-25T01:02:17.1642504Z [xUnit.net 00:00:02.04]     SafeUpload.Agent.Tests.TrafficDiversionTests.Filtro_bloqueia_saida_direta_do_navegador_e_some_ao_descartar [SKIP]
+2026-10-25T01:02:17.1644319Z [xUnit.net 00:00:02.04]     SafeUpload.Agent.Tests.TrafficDiversionTests.Executaveis_inexistentes_sao_ignorados [SKIP]
+2026-10-25T01:02:17.1648047Z   Skipped SafeUpload.Agent.Tests.TrafficDiversionTests.Politicas_dos_navegadores_sao_aplicadas_e_removidas [1 ms]
+2026-10-25T01:02:17.1649609Z   Skipped SafeUpload.Agent.Tests.TrafficDiversionTests.Filtro_bloqueia_saida_direta_do_navegador_e_some_ao_descartar [1 ms]
+2026-10-25T01:02:17.1650961Z   Skipped SafeUpload.Agent.Tests.TrafficDiversionTests.Executaveis_inexistentes_sao_ignorados [1 ms]
+2026-10-25T01:02:17.1652391Z [xUnit.net 00:00:04.13]     SafeUpload.Agent.Tests.MachineCertificateAuthorityTests.CA_da_maquina_e_aceita_pela_validacao_padrao_e_some_ao_remover [SKIP]
+2026-10-25T01:02:17.1653513Z   Skipped SafeUpload.Agent.Tests.MachineCertificateAuthorityTests.CA_da_maquina_e_aceita_pela_validacao_padrao_e_some_ao_remover [1 ms]
+2026-10-25T01:02:17.1654308Z Results File: D:\a\safeupload\safeupload\artifacts\csharp\agente.trx
+2026-10-25T01:02:17.1654591Z 
+2026-10-25T01:02:17.1655360Z Passed!  - Failed:     0, Passed:   893, Skipped:     4, Total:   897, Duration: 40 s - SafeUpload.Agent.Tests.dll (net10.0)
+2026-10-25T01:02:17.2168708Z ##[group]Run New-Item -ItemType Directory -Path artifacts/queue-crash -Force | Out-Null
+2026-10-25T01:02:17.2169610Z [36;1mNew-Item -ItemType Directory -Path artifacts/queue-crash -Force | Out-Null[0m
+2026-10-25T01:02:17.2170316Z [36;1mdotnet build agente/tools/QueueCrashProbe/QueueCrashProbe.csproj -c $env:BUILD_CONFIGURATION[0m
+2026-10-25T01:02:17.2171027Z [36;1mif ($LASTEXITCODE -ne 0) { throw 'O ensaio de interrupcao nao compilou.' }[0m
+2026-10-25T01:02:17.2171870Z [36;1mdotnet "agente/tools/QueueCrashProbe/bin/$env:BUILD_CONFIGURATION/net10.0/QueueCrashProbe.dll" artifacts/queue-crash 3 *> artifacts/queue-crash.log[0m
+2026-10-25T01:02:17.2172630Z [36;1m$probeExit = $LASTEXITCODE[0m
+2026-10-25T01:02:17.2173228Z [36;1mGet-Content artifacts/queue-crash.log -Tail 20[0m
+2026-10-25T01:02:17.2173813Z [36;1mif ($probeExit -ne 0) { throw 'Ensaio de interrupcao falhou; preservar recibos.' }[0m
+2026-10-25T01:02:17.2248373Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-25T01:02:17.2248827Z env:
+2026-10-25T01:02:17.2249140Z   DOTNET_ROOT: C:\Program Files\dotnet
+2026-10-25T01:02:17.2249507Z   BUILD_CONFIGURATION: Debug
+2026-10-25T01:02:17.2249827Z ##[endgroup]
+2026-10-25T01:02:18.2665491Z   Determining projects to restore...
+2026-10-25T01:02:18.9000415Z   Restored D:\a\safeupload\safeupload\agente\tools\QueueCrashProbe\QueueCrashProbe.csproj (in 316 ms).
+2026-10-25T01:02:18.9041941Z   1 of 2 projects are up-to-date for restore.
+2026-10-25T01:02:19.3103826Z   SafeUpload.Agent.Core -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Core\bin\Debug\net10.0\SafeUpload.Agent.Core.dll
+2026-10-25T01:02:19.8599710Z   QueueCrashProbe -> D:\a\safeupload\safeupload\agente\tools\QueueCrashProbe\bin\Debug\net10.0\QueueCrashProbe.dll
+2026-10-25T01:02:19.8748331Z 
+2026-10-25T01:02:19.8759670Z Build succeeded.
+2026-10-25T01:02:19.8760446Z     0 Warning(s)
+2026-10-25T01:02:19.8760996Z     0 Error(s)
+2026-10-25T01:02:19.8762337Z 
+2026-10-25T01:02:19.8764183Z Time Elapsed 00:00:02.03
+2026-10-25T01:02:51.2878510Z Diagnostic directory: D:\a\safeupload\safeupload\artifacts\queue-crash\queue-crash-87373887a1454b659a4a97c5c7ceaa34
+2026-10-25T01:02:51.2880477Z append-event #1: worker-operation-boundary; returned=True; invalid=0; temp=0
+2026-10-25T01:02:51.2882348Z append-event #2: worker-operation-boundary; returned=True; invalid=0; temp=0
+2026-10-25T01:02:51.2883674Z append-event #3: worker-operation-boundary; returned=True; invalid=0; temp=0
+2026-10-25T01:02:51.2884561Z append-override #1: worker-operation-boundary; returned=True; invalid=0; temp=0
+2026-10-25T01:02:51.2888193Z append-override #2: worker-operation-boundary; returned=True; invalid=0; temp=0
+2026-10-25T01:02:51.2889513Z append-override #3: worker-operation-boundary; returned=True; invalid=0; temp=0
+2026-10-25T01:02:51.2891261Z confirm-events #1: temporary-file-notification; returned=False; invalid=0; temp=1
+2026-10-25T01:02:51.2892340Z confirm-events #2: temporary-file-notification; returned=False; invalid=0; temp=1
+2026-10-25T01:02:51.2893289Z confirm-events #3: temporary-file-notification; returned=False; invalid=0; temp=1
+2026-10-25T01:02:51.2894277Z confirm-overrides #1: temporary-file-notification; returned=False; invalid=0; temp=1
+2026-10-25T01:02:51.2895272Z confirm-overrides #2: temporary-file-notification; returned=False; invalid=0; temp=1
+2026-10-25T01:02:51.2896242Z confirm-overrides #3: temporary-file-notification; returned=False; invalid=0; temp=1
+2026-10-25T01:02:51.2897391Z PASS: D:\a\safeupload\safeupload\artifacts\queue-crash\queue-crash-87373887a1454b659a4a97c5c7ceaa34\result.json
+2026-10-25T01:02:51.3405650Z ##[group]Run actions/upload-artifact@v4
+2026-10-25T01:02:51.3406138Z with:
+2026-10-25T01:02:51.3406488Z   name: interrupcao-fila-Debug
+2026-10-25T01:02:51.3407126Z   path: artifacts/queue-crash/**/result.json
+artifacts/queue-crash/**/failure.json
+artifacts/queue-crash.log
+
+2026-10-25T01:02:51.3407707Z   if-no-files-found: warn
+2026-10-25T01:02:51.3408026Z   compression-level: 6
+2026-10-25T01:02:51.3408312Z   overwrite: false
+2026-10-25T01:02:51.3408632Z   include-hidden-files: false
+2026-10-25T01:02:51.3408937Z env:
+2026-10-25T01:02:51.3409217Z   DOTNET_ROOT: C:\Program Files\dotnet
+2026-10-25T01:02:51.3409576Z ##[endgroup]
+2026-10-25T01:02:51.5357892Z (node:8316) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-25T01:02:51.5359240Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-25T01:02:51.5542152Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2026-10-25T01:02:51.5544282Z The least common ancestor is D:\a\safeupload\safeupload\artifacts. This will be the root directory of the artifact
+2026-10-25T01:02:51.5545343Z With the provided path, there will be 2 files uploaded
+2026-10-25T01:02:51.5550193Z Artifact name is valid!
+2026-10-25T01:02:51.5551017Z Root directory input is valid!
+2026-10-25T01:02:51.8814069Z Beginning upload of artifact content to blob storage
+2026-10-25T01:02:51.9038839Z (node:8316) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-25T01:02:52.1205799Z Uploaded bytes 2532
+2026-10-25T01:02:52.1777806Z Finished uploading artifact content to blob storage!
+2026-10-25T01:02:52.1779088Z SHA256 digest of uploaded artifact zip is 3a2f64ba9daac49ab2d72ccea43feed39b22211475063de545ac25975d633a97
+2026-10-25T01:02:52.1780795Z Finalizing artifact upload
+2026-10-25T01:02:52.6037318Z Artifact interrupcao-fila-Debug.zip successfully finalized. Artifact ID 12581562132
+2026-10-25T01:02:52.6038847Z Artifact interrupcao-fila-Debug has been successfully uploaded! Final size is 2532 bytes. Artifact ID is 12581562132
+2026-10-25T01:02:52.6050366Z Artifact download URL: https://github.com/pedro-canafistula/safeupload/actions/runs/40148901756/artifacts/12581562132
+2026-10-25T01:02:52.6397085Z ##[group]Run actions/upload-artifact@v4
+2026-10-25T01:02:52.6397693Z with:
+2026-10-25T01:02:52.6398074Z   name: csharp-Debug
+2026-10-25T01:02:52.6398417Z   path: artifacts/csharp/
+2026-10-25T01:02:52.6398755Z   if-no-files-found: warn
+2026-10-25T01:02:52.6399099Z   compression-level: 6
+2026-10-25T01:02:52.6399410Z   overwrite: false
+2026-10-25T01:02:52.6399774Z   include-hidden-files: false
+2026-10-25T01:02:52.6400329Z env:
+2026-10-25T01:02:52.6400625Z   DOTNET_ROOT: C:\Program Files\dotnet
+2026-10-25T01:02:52.6400997Z ##[endgroup]
+2026-10-25T01:02:52.8391863Z (node:3184) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-25T01:02:52.8392741Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-25T01:02:52.8465206Z With the provided path, there will be 3 files uploaded
+2026-10-25T01:02:52.8472555Z Artifact name is valid!
+2026-10-25T01:02:52.8475110Z Root directory input is valid!
+2026-10-25T01:02:53.1627619Z Beginning upload of artifact content to blob storage
+2026-10-25T01:02:53.2086438Z (node:3184) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-25T01:02:53.5949700Z Uploaded bytes 232851
+2026-10-25T01:02:53.6540269Z Finished uploading artifact content to blob storage!
+2026-10-25T01:02:53.6542586Z SHA256 digest of uploaded artifact zip is 77c1705b837cf8aa428ea09bae4f1f678d281b1d6de7d3d961ea9bb614fcd8d2
+2026-10-25T01:02:53.6545103Z Finalizing artifact upload
+2026-10-25T01:02:54.0594597Z Artifact csharp-Debug.zip successfully finalized. Artifact ID 12581607033
+2026-10-25T01:02:54.0596097Z Artifact csharp-Debug has been successfully uploaded! Final size is 232851 bytes. Artifact ID is 12581607033
+2026-10-25T01:02:54.0607276Z Artifact download URL: https://github.com/pedro-canafistula/safeupload/actions/runs/40148901756/artifacts/12581607033
+2026-10-25T01:02:54.0948911Z ##[group]Run New-Item -ItemType Directory -Path artifacts/queue-scan-cancel -Force | Out-Null
+2026-10-25T01:02:54.0949830Z [36;1mNew-Item -ItemType Directory -Path artifacts/queue-scan-cancel -Force | Out-Null[0m
+2026-10-25T01:02:54.0950706Z [36;1mdotnet build agente/tools/QueueScanCancellationProbe/QueueScanCancellationProbe.csproj -c $env:BUILD_CONFIGURATION[0m
+2026-10-25T01:02:54.0951476Z [36;1mif ($LASTEXITCODE -ne 0) { throw 'O ensaio de cancelamento nao compilou.' }[0m
+2026-10-25T01:02:54.0952552Z [36;1mdotnet "agente/tools/QueueScanCancellationProbe/bin/$env:BUILD_CONFIGURATION/net10.0-windows/QueueScanCancellationProbe.dll" artifacts/queue-scan-cancel 3 *> artifacts/queue-scan-cancel.log[0m
+2026-10-25T01:02:54.0953442Z [36;1m$probeExit = $LASTEXITCODE[0m
+2026-10-25T01:02:54.0953919Z [36;1mGet-Content artifacts/queue-scan-cancel.log -Tail 20[0m
+2026-10-25T01:02:54.0954666Z [36;1mif ($probeExit -ne 0) { throw 'Cancelamento sem evidencia suficiente ou recuperacao falhou; preservar recibos.' }[0m
+2026-10-25T01:02:54.1026645Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-25T01:02:54.1027109Z env:
+2026-10-25T01:02:54.1027452Z   DOTNET_ROOT: C:\Program Files\dotnet
+2026-10-25T01:02:54.1027837Z   BUILD_CONFIGURATION: Debug
+2026-10-25T01:02:54.1028214Z ##[endgroup]
+2026-10-25T01:02:55.1948149Z   Determining projects to restore...
+2026-10-25T01:02:55.8296347Z   Restored D:\a\safeupload\safeupload\agente\tools\QueueScanCancellationProbe\QueueScanCancellationProbe.csproj (in 317 ms).
+2026-10-25T01:02:55.8341826Z   1 of 2 projects are up-to-date for restore.
+2026-10-25T01:02:56.2597184Z   SafeUpload.Agent.Core -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Core\bin\Debug\net10.0\SafeUpload.Agent.Core.dll
+2026-10-25T01:02:56.6253992Z   QueueScanCancellationProbe -> D:\a\safeupload\safeupload\agente\tools\QueueScanCancellationProbe\bin\Debug\net10.0-windows\QueueScanCancellationProbe.dll
+2026-10-25T01:02:56.6378915Z 
+2026-10-25T01:02:56.6390946Z Build succeeded.
+2026-10-25T01:02:56.6392048Z     0 Warning(s)
+2026-10-25T01:02:56.6392839Z     0 Error(s)
+2026-10-25T01:02:56.6394008Z 
+2026-10-25T01:02:56.6394995Z Time Elapsed 00:00:01.89
+2026-10-25T01:03:21.3268158Z Diagnostic directory: D:\a\safeupload\safeupload\artifacts\queue-scan-cancel\scan-cancel-7681482c6583417e82501fd33707ab4b
+2026-10-25T01:03:21.3271543Z PASS: D:\a\safeupload\safeupload\artifacts\queue-scan-cancel\scan-cancel-7681482c6583417e82501fd33707ab4b\result.json
+2026-10-25T01:03:21.3740820Z ##[group]Run actions/upload-artifact@v4
+2026-10-25T01:03:21.3741497Z with:
+2026-10-25T01:03:21.3741823Z   name: cancelamento-varredura-Debug
+2026-10-25T01:03:21.3742528Z   path: artifacts/queue-scan-cancel/**/result.json
+artifacts/queue-scan-cancel/**/failure.json
+artifacts/queue-scan-cancel.log
+
+2026-10-25T01:03:21.3743179Z   if-no-files-found: warn
+2026-10-25T01:03:21.3743499Z   compression-level: 6
+2026-10-25T01:03:21.3743863Z   overwrite: false
+2026-10-25T01:03:21.3744157Z   include-hidden-files: false
+2026-10-25T01:03:21.3744541Z env:
+2026-10-25T01:03:21.3744840Z   DOTNET_ROOT: C:\Program Files\dotnet
+2026-10-25T01:03:21.3745177Z ##[endgroup]
+2026-10-25T01:03:21.5743634Z (node:8016) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-25T01:03:21.5744499Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-25T01:03:21.5908430Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2026-10-25T01:03:21.5912593Z The least common ancestor is D:\a\safeupload\safeupload\artifacts. This will be the root directory of the artifact
+2026-10-25T01:03:21.5913703Z With the provided path, there will be 8 files uploaded
+2026-10-25T01:03:21.5917053Z Artifact name is valid!
+2026-10-25T01:03:21.5918353Z Root directory input is valid!
+2026-10-25T01:03:21.9209138Z Beginning upload of artifact content to blob storage
+2026-10-25T01:03:21.9544835Z (node:8016) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-25T01:03:22.1649590Z Uploaded bytes 5701
+2026-10-25T01:03:22.2227319Z Finished uploading artifact content to blob storage!
+2026-10-25T01:03:22.2232065Z SHA256 digest of uploaded artifact zip is c6bc802a4ba1f0614624d557e4ec2cdfe22f107c9ab32ed63b2fdd49b88e3b2e
+2026-10-25T01:03:22.2233921Z Finalizing artifact upload
+2026-10-25T01:03:22.6409500Z Artifact cancelamento-varredura-Debug.zip successfully finalized. Artifact ID 12582251521
+2026-10-25T01:03:22.6410985Z Artifact cancelamento-varredura-Debug has been successfully uploaded! Final size is 5701 bytes. Artifact ID is 12582251521
+2026-10-25T01:03:22.6422532Z Artifact download URL: https://github.com/pedro-canafistula/safeupload/actions/runs/40148901756/artifacts/12582251521
+2026-10-25T01:03:22.6783692Z Post job cleanup.
+2026-10-25T01:03:22.8273917Z (node:9876) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-25T01:03:22.8274832Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-25T01:03:22.8611283Z Post job cleanup.
+2026-10-25T01:03:23.0476633Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-25T01:03:23.0845897Z git version 2.56.0.windows.2
+2026-10-25T01:03:23.0923279Z Temporarily overriding HOME='D:\a\_temp\071addad-dba4-4633-b9ba-8a74efb4005e' before making global git config changes
+2026-10-25T01:03:23.0924165Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-25T01:03:23.0934895Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\safeupload\safeupload
+2026-10-25T01:03:23.1351347Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-25T01:03:23.1794790Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-25T01:03:23.7864683Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-25T01:03:23.8221338Z http.https://github.com/.extraheader
+2026-10-25T01:03:23.8275723Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2026-10-25T01:03:23.8707463Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-25T01:03:24.4557404Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-25T01:03:24.4966192Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-25T01:03:25.0849785Z Cleaning up orphan processes
+2026-10-25T01:03:25.1354906Z Terminate orphan process: pid (6536) (VBCSCompiler)
+2026-10-25T01:03:25.1427718Z Terminate orphan process: pid (3624) (conhost)
+2026-10-25T01:03:25.1609509Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-dotnet@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

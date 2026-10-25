@@ -1,0 +1,143 @@
+{
+  "issue": 62,
+  "collectorSource": "6288643e93372295f80d7e80d7b7c03efa2ff263",
+  "ciSource": "02ae15d925edc76664f7948c8506d06758b52b5a",
+  "localM2PassedEachPowerShell": 9,
+  "ciM2PassedEachPowerShell": 9,
+  "ciRun": 40148901756,
+  "ciResult": "success",
+  "ciCSharpPassedPerConfiguration": 893,
+  "ciCSharpTotalPerConfiguration": 897,
+  "ciCSharpSkippedPerConfiguration": 4,
+  "functionalRun": 40148907061,
+  "functionalResult": "failure",
+  "realDriverTested": false,
+  "wrapperVmTested": false,
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 86,
+      "sha256": "2CD8D6C2F1D76EC60B9E30C27DAFCE65FDEC62B397C9AF3F0922537BEE8AD5A7"
+    },
+    {
+      "file": "agent-contract.log",
+      "bytes": 234092,
+      "sha256": "7E1FA152DD8D222CB09CD55F6469B595BC3CE6056BAF37E37A7BE410A77AFDF6"
+    },
+    {
+      "file": "artifacts-final.json",
+      "bytes": 7429,
+      "sha256": "611C572EA2CD68E8EDA42E71E33ED5F583E0A5DCBFB39DA648B90E2338D1A85C"
+    },
+    {
+      "file": "checks-final.json",
+      "bytes": 31649,
+      "sha256": "96A4125A4F9776FD8A60B3E7A36EBE2F17D49A9C71FFB6A00301535C340C47C4"
+    },
+    {
+      "file": "ci-debug.log",
+      "bytes": 38240,
+      "sha256": "7624DB635C90D1310D3F5C75D520138BC51B8B05DD9808058E75A6DD4036FE3A"
+    },
+    {
+      "file": "ci-Debug.trx",
+      "bytes": 1300547,
+      "sha256": "299CE5A811CC8988C3BBF4CD481539A6C792BA90B21D9CAB0B90B686B5A53DE3"
+    },
+    {
+      "file": "ci-install.log",
+      "bytes": 34106,
+      "sha256": "5379FA3DE5C2CD4040C4C0635280701B6C810FCF71C43B7F411C58243D178158"
+    },
+    {
+      "file": "ci-release.log",
+      "bytes": 38290,
+      "sha256": "6BE054E62B8C47871E3B7207A632359D1803A8FD619B11AB2E1B5EE1EA19636B"
+    },
+    {
+      "file": "ci-Release.trx",
+      "bytes": 1304135,
+      "sha256": "2C49DD89EC7BB588534C67DFAE50C4FCBB5FA969186D67CA90C90F25ABB6B29C"
+    },
+    {
+      "file": "ci-verification.json",
+      "bytes": 1467,
+      "sha256": "DBE8566314603ACE74CE8B92D8D96CCE771A066E52EBDCC421EA6A96D721360B"
+    },
+    {
+      "file": "driver-runs.json",
+      "bytes": 50,
+      "sha256": "7901AC1344BD9F7B5B1DCE177AE82444A38DCA126B6880DE305F104EA25B2258"
+    },
+    {
+      "file": "driver-tip.json",
+      "bytes": 19242,
+      "sha256": "174FB1BBF03B92D5C7A969B57242649869A0ADCAC2D94E1D8ACD40EAB6B4133B"
+    },
+    {
+      "file": "installed-service.log",
+      "bytes": 229857,
+      "sha256": "1E10FAA1CB1FDCE94F23E462BE4572FE19A093F3A491E8C340BBA90E3B244A75"
+    },
+    {
+      "file": "local-package-inventory.json",
+      "bytes": 516,
+      "sha256": "FCB911EE1135065475D3E7CB1B846E961BF05299844D9FABF61C6B765F099D91"
+    },
+    {
+      "file": "migration.log",
+      "bytes": 212419,
+      "sha256": "DAFC2BCDEA13068DC88C7BA2947361E0013F4292DE615348CBE8A7125A035699"
+    },
+    {
+      "file": "ps51.json",
+      "bytes": 2069,
+      "sha256": "5BB8EBAC1A3664DE0150AB9F4018DA48A74D9333F443FCC2CF5C02A7DB0EBEE5"
+    },
+    {
+      "file": "ps51.log",
+      "bytes": 64,
+      "sha256": "DB048A0A3B1D6BC35ECB15C542A6EA8403191DA27C3DE5A030332DA304A60810"
+    },
+    {
+      "file": "ps7.json",
+      "bytes": 1319,
+      "sha256": "B4EE8F98B39175CFEF538C859A03483ED65C7C25EB82D04BFFEED134E43832C1"
+    },
+    {
+      "file": "ps7.log",
+      "bytes": 55,
+      "sha256": "3DDFFBDAE582611EE951DDBAAB9E2167302BE0C8DB469AF4923EF10569424C1B"
+    },
+    {
+      "file": "releases.json",
+      "bytes": 4,
+      "sha256": "A5338D955B09046EC0B16F3A9625B7955C763AAE07DC722E474E6078745F932F"
+    },
+    {
+      "file": "run-agent-final.json",
+      "bytes": 15494,
+      "sha256": "DE0F8726635DA5C30695713C4338013972BC2BD1F8E80F6BA078BC46AEDF192C"
+    },
+    {
+      "file": "run-web-final.json",
+      "bytes": 15482,
+      "sha256": "D5C6A6F881C426FBD0DD586115415F228DB761550C8F34F277CF25019E02E712"
+    },
+    {
+      "file": "selected-results.json",
+      "bytes": 5725,
+      "sha256": "FCB634AF9FA9E08FB31CC5ACB3A499D4ABE0E16B103276D3CC38F9E32960BACE"
+    },
+    {
+      "file": "source.json",
+      "bytes": 1028,
+      "sha256": "69D902C2572E25E54BBD5AAECA48DA11F9E04FF88AC1131B8DEB99C36C14E4CA"
+    },
+    {
+      "file": "tracked-driver-binaries.json",
+      "bytes": 131,
+      "sha256": "E604EEC7AD1454CE9B33868478069748085821EC2835B7CAF4B7CA708649FE84"
+    }
+  ]
+}

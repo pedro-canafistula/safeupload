@@ -1,0 +1,125 @@
+{
+  "sha": "e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+  "node_id": "C_kwDOTFbp4doAKGUwZGY4ZDFjMWY4ODk0MThhMTMzZDNhZTY2YTg3YTZjNzZhN2JkNWY",
+  "commit": {
+    "author": {
+      "name": "victor bonato",
+      "email": "victorbonato69@gmail.com",
+      "date": "2026-10-22T23:07:43Z"
+    },
+    "committer": {
+      "name": "victor bonato",
+      "email": "victorbonato69@gmail.com",
+      "date": "2026-10-22T23:07:43Z"
+    },
+    "message": "T9 growing reservations: design accepted with conditions at revision 5; owner seed-wait decision pending\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_017SeEYy1VMgHPxyn4nwwMeR",
+    "tree": {
+      "sha": "51d550b1ce02e4a528cc5439a1d1b7dd32f6bae1",
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/git/trees/51d550b1ce02e4a528cc5439a1d1b7dd32f6bae1"
+    },
+    "url": "https://api.github.com/repos/pedro-canafistula/safeupload/git/commits/e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+    "comment_count": 0,
+    "verification": {
+      "verified": false,
+      "reason": "unsigned",
+      "signature": null,
+      "payload": null,
+      "verified_at": null
+    }
+  },
+  "url": "https://api.github.com/repos/pedro-canafistula/safeupload/commits/e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+  "html_url": "https://github.com/pedro-canafistula/safeupload/commit/e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+  "comments_url": "https://api.github.com/repos/pedro-canafistula/safeupload/commits/e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f/comments",
+  "author": {
+    "login": "victorbonato",
+    "id": 68497605,
+    "node_id": "MDQ6VXNlcjY4NDk3NjA1",
+    "avatar_url": "https://avatars.githubusercontent.com/u/68497605?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/victorbonato",
+    "html_url": "https://github.com/victorbonato",
+    "followers_url": "https://api.github.com/users/victorbonato/followers",
+    "following_url": "https://api.github.com/users/victorbonato/following{/other_user}",
+    "gists_url": "https://api.github.com/users/victorbonato/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/victorbonato/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/victorbonato/subscriptions",
+    "organizations_url": "https://api.github.com/users/victorbonato/orgs",
+    "repos_url": "https://api.github.com/users/victorbonato/repos",
+    "events_url": "https://api.github.com/users/victorbonato/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/victorbonato/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "committer": {
+    "login": "victorbonato",
+    "id": 68497605,
+    "node_id": "MDQ6VXNlcjY4NDk3NjA1",
+    "avatar_url": "https://avatars.githubusercontent.com/u/68497605?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/victorbonato",
+    "html_url": "https://github.com/victorbonato",
+    "followers_url": "https://api.github.com/users/victorbonato/followers",
+    "following_url": "https://api.github.com/users/victorbonato/following{/other_user}",
+    "gists_url": "https://api.github.com/users/victorbonato/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/victorbonato/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/victorbonato/subscriptions",
+    "organizations_url": "https://api.github.com/users/victorbonato/orgs",
+    "repos_url": "https://api.github.com/users/victorbonato/repos",
+    "events_url": "https://api.github.com/users/victorbonato/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/victorbonato/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "parents": [
+    {
+      "sha": "e188faaf909e89e19af33873f25e99a35147a7c0",
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/commits/e188faaf909e89e19af33873f25e99a35147a7c0",
+      "html_url": "https://github.com/pedro-canafistula/safeupload/commit/e188faaf909e89e19af33873f25e99a35147a7c0"
+    }
+  ],
+  "stats": {
+    "total": 82,
+    "additions": 80,
+    "deletions": 2
+  },
+  "files": [
+    {
+      "sha": "2314cedc17d2ec98489f6eb04f50d2101eba51a3",
+      "filename": "driver/POST-MVP-PLAN.md",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 0,
+      "changes": 2,
+      "blob_url": "https://github.com/pedro-canafistula/safeupload/blob/e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f/driver%2FPOST-MVP-PLAN.md",
+      "raw_url": "https://github.com/pedro-canafistula/safeupload/raw/e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f/driver%2FPOST-MVP-PLAN.md",
+      "contents_url": "https://api.github.com/repos/pedro-canafistula/safeupload/contents/driver%2FPOST-MVP-PLAN.md?ref=e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+      "patch": "@@ -798,6 +798,8 @@ Owner-approved runtime budget/default formulas are in Owner decisions. Bounded s\n - [x] T9: implement failure classes, bounded worker concurrency, notifications, single-handle snapshot and scanner-integrity controls;\n   [component evidence](evidence/2026-10-10/m2-agent-component-gates.json).\n - [x] T9: owner resolves all-zero card and exact PANOSE/Office-owner-file/PowerPoint-thumbnail choices; preserve the remaining content refusals.\n+- [x] T9 growing reservations: design accepted with conditions at revision 5 (2026-10-22; initial window, retirement receipt, custody leases, maintained totals, lane ordering, startup table;\n+  [design](docs/design/large-files/UX-LARGE-CONCURRENCY.md)). **Owner decision pending: the opener of a large existing file waits up to 120 s for its seed copy (recommended).** Implementation not started.\n - [ ] T9: qualify integrated identity-bound capacity grants, per-SID/total/free-space budgets, exact snapshot/orphan accounting, failed-prefix refusal,\n   legacy upgrade and startup recovery; [latest local source receipt](evidence/2026-10-16/ux-large5-local/result.md) is not Windows pair qualification.\n - [ ] T9: finish/qualify whole-file streaming, all required format/encoding/extraction coverage, seeding cost and capture/storage/parser bounds."
+    },
+    {
+      "sha": "529e8244a30b80721db1905d620d5d89966d6010",
+      "filename": "driver/docs/design/large-files/UX-LARGE-CONCURRENCY.md",
+      "status": "modified",
+      "additions": 4,
+      "deletions": 2,
+      "changes": 6,
+      "blob_url": "https://github.com/pedro-canafistula/safeupload/blob/e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f/driver%2Fdocs%2Fdesign%2Flarge-files%2FUX-LARGE-CONCURRENCY.md",
+      "raw_url": "https://github.com/pedro-canafistula/safeupload/raw/e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f/driver%2Fdocs%2Fdesign%2Flarge-files%2FUX-LARGE-CONCURRENCY.md",
+      "contents_url": "https://api.github.com/repos/pedro-canafistula/safeupload/contents/driver%2Fdocs%2Fdesign%2Flarge-files%2FUX-LARGE-CONCURRENCY.md?ref=e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+      "patch": "@@ -443,8 +443,10 @@ accounting-disabled startup.\n   single-winner strategy assertion with stronger concurrent accounting controls.\n - [x] T4/T9: initial independent review identified MM recursion, ledger retirement\n   and reentrant metadata dependencies; concrete mechanism addendum retained.\n-- [ ] T4/T9: accept this revision (3) before implementation; review coherent changed\n-  kernel against the conditions before its first VM boot.\n+- [x] T4/T9: design accepted with conditions at revision 5 ([review](../../../evidence/2026-10-22/t9-growing-rev5-review-sol-high.md), four reviews 2026-10-22).\n+  Before implementation: fixed-width wire layouts, schema and state transitions, slot incarnation and pending-creation representation, exact release/adoption evidence,\n+  maintained-total update rules, concrete pending bounds and the monotonic clock representation; the owner's seed-wait decision for that dependent behaviour.\n+  Review the coherent changed kernel against the conditions before its first VM boot.\n - [ ] T9 F5 regression: fresh budget-on state; overlapping distinct-name one-line files, Word temp/target saves, Excel SaveAs/edit/reopen, repetition with retained state;\n   successful exact reservations without the 1500 ms grace; record backend cause and application result.\n - [ ] T9 held/completed accounting: charge before and after proven retirement, retained oversized grants, shrink/truncate, live mappings and readers, copying hand-back,"
+    },
+    {
+      "sha": "4eb3786c671648ee3b05b7b4c0d0b01fedb333b0",
+      "filename": "driver/evidence/2026-10-22/t9-growing-rev5-review-sol-high.md",
+      "status": "added",
+      "additions": 74,
+      "deletions": 0,
+      "changes": 74,
+      "blob_url": "https://github.com/pedro-canafistula/safeupload/blob/e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f/driver%2Fevidence%2F2026-10-22%2Ft9-growing-rev5-review-sol-high.md",
+      "raw_url": "https://github.com/pedro-canafistula/safeupload/raw/e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f/driver%2Fevidence%2F2026-10-22%2Ft9-growing-rev5-review-sol-high.md",
+      "contents_url": "https://api.github.com/repos/pedro-canafistula/safeupload/contents/driver%2Fevidence%2F2026-10-22%2Ft9-growing-rev5-review-sol-high.md?ref=e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+      "patch": "@@ -0,0 +1,74 @@\n+# Independent review: T4/T9 growing reservations, revision 5 (2026-10-22)\n+\n+Reviewer gpt-6.1-sol, reasoning effort high, no fast tier; read-only. Reviewed e188faaf. Verdict ACCEPT WITH CONDITIONS (design acceptance only; not an implementation review, not qualification).\n+\n+**ACCEPT WITH CONDITIONS.** Revision 5 addresses the prior review’s findings 1–3 and 6 sufficiently for design acceptance. R3.1, the R3.4 compatibility matrix, R4.4 ordering and R4.5 startup remain accepted with their existing conditions. The implementation must establish the concrete transitions and evidence described below.\n+\n+Reviewed `e188faaf909e89e19af33873f25e99a35147a7c0` on `feat/driver-m2`, against the R4 review and current status plan. Read-only and offline: no repository writes, builds, tests or machine contact.\n+\n+1. **R5.1 — Accepted with implementation conditions: the custody inventory and leases can provide a stable basis for reduction.**  \n+   [UX-LARGE-CONCURRENCY.md:392](/home/victor/Work/safeupload-staging/driver/docs/design/large-files/UX-LARGE-CONCURRENCY.md:392)\n+\n+   Reserving a mutable slot at `ReservedMax`, rather than its momentary allocation, closes the zero-allocation snapshot race. Retaining that maximum during abandoned copying, limiting occupancy to four objects, requiring admission before another copy, and explicitly representing metadata-only accounting resolve the corresponding R4 omissions.\n+\n+   The implementation must preserve these details:\n+\n+   - Claim and persist the slot/reservation obligation **before native creation**. Until the new object’s identity is captured and persisted, the pending creation remains charged and prevents conflicting reuse or reduction. This requires restructuring the current snapshot path, which creates the file before `BeginSnapshot`: [StagedInspectionSnapshot.cs:30](/home/victor/Work/safeupload-staging/agente/SafeUpload.Agent.Service/Interception/StagedInspectionSnapshot.cs:30).\n+   - Join lease admission, closure, slot reuse and reduction through the same serialized accounting state. An old completion must not release a reused slot; validate the exact object and slot incarnation.\n+   - Enforce `ReservedMax` throughout copying. Lease closure must end mutation authority and settle outstanding writes before substituting measured allocation. A flush and identity query alone do not prevent a later write.\n+   - Interpret “final close” as exact object-lifetime/storage-release evidence. Closing an owned handle is insufficient while another handle, section or outstanding operation can retain storage. Uncertain release keeps the slot charged.\n+   - Enter metadata-only accounting only after every content slot and pending creation/copy obligation is resolved. Later content creation requires fresh admission.\n+\n+   With those constraints, reduction can safely retain open leases at their reserved maxima or retain the full debit; it need not wait under a lock spanning content I/O.\n+\n+2. **R5.2 — Accepted with implementation conditions: the separated proofs and durable reduction transaction are sound.**  \n+   [UX-LARGE-CONCURRENCY.md:407](/home/victor/Work/safeupload-staging/driver/docs/design/large-files/UX-LARGE-CONCURRENCY.md:407)\n+\n+   The receipt now explicitly binds the transfer, driver instance, allocation and destination generations, complete stage identity, authenticated connection and receipt sequence. Separating stage write retirement from agent-owned custody evidence corrects R4’s overstatement of the driver boundary.\n+\n+   The specified durable order is crash-safe: retain the old debit until acceptance persists; commit the accepted receipt, inventory, closed-growth state and resulting debit together; then update memory. Restart reconstructs the committed debit. Ambiguous persistence faults admission.\n+\n+   Implementation conditions:\n+\n+   - Define the receipt sequence’s scope and full wire validation before consumers are implemented.\n+   - Validate and commit against the **same current custody revision**, including outstanding leases and pending obligations. A measured inventory cannot become stale between validation and persistence.\n+   - Keep competing admission serialized until the durable result and maintained totals agree.\n+   - Persist enough accepted-receipt evidence for duplicate handling after restart. An exact duplicate changes nothing; conflicting measurements or stale-connection evidence authorize no reduction.\n+   - Treat subsequent reductions caused by independently proved object release as new accounting transitions using the retained proof—not another refund triggered by receipt delivery.\n+\n+   This is an accepted crash-safety contract, not verification that the current persistence implementation already supplies it.\n+\n+3. **R5.3 — Accepted: maintained accounting now covers the previously missed metadata callbacks.**  \n+   [UX-LARGE-CONCURRENCY.md:421](/home/victor/Work/safeupload-staging/driver/docs/design/large-files/UX-LARGE-CONCURRENCY.md:421)\n+\n+   Maintained hot/shared physical totals and bounded per-transfer lookup directly address both foreground directory enumeration and rebuilding hot allocations through `MetadataFiles`. Measuring the complete allocation path, including queue time, also corrects the earlier overly narrow performance criterion.\n+\n+   Every metadata mutation path must participate: creation, replacement overlap, failed residue, deletion, movement into completed/shared storage and interrupted maintenance. Debit must precede allocation; uncertain cleanup cannot decrement totals. Moving a record between accounting classes must preserve its charge without a gap.\n+\n+   Maintenance reconstruction must not reintroduce history-sized work under the admission gate. Verify the transitive callbacks and failure cleanup, not just the replacement for `Reserve`.\n+\n+4. **R5.3 — Accepted with protocol conditions: the deadline endpoints and recovery authority are now correctly separated.**  \n+   [UX-LARGE-CONCURRENCY.md:426](/home/victor/Work/safeupload-staging/driver/docs/design/large-files/UX-LARGE-CONCURRENCY.md:426)\n+\n+   Driver issuance through driver adoption is an appropriate whole-allocation interval. It includes queueing, preparation, seeding, persistence and reply delivery; retries preserve the remaining duration. Expiry may terminate the CREATE while unresolved allocation remains charged.\n+\n+   Before implementation, define the monotonic clock representation, concrete pending limits and terminal-resolution transitions. Bounds must cover retained work after cancellation or disconnect, so abandoning the driver waiter cannot create unbounded unresolved service work.\n+\n+   The required name-recovery proof is appropriate: exact intent/object identity **plus evidence that no CREATE can still adopt it**. A timeout, cancellation notification or missing waiter alone cannot supply that evidence. Bind resolution to the existing exact replay/abort/cleanup protocol, preserving its attachment-ambiguity holds: [T4-STAGE-LIFETIME.md:343](/home/victor/Work/safeupload-staging/driver/docs/design/lifetime/T4-STAGE-LIFETIME.md:343). Automatic recovery must also work when the initial reply was lost before the driver learned the allocation identity.\n+\n+   **The proposed 120 s wait remains a pending owner decision.** This review neither selects that value nor derives approval from `SeedTimeout`.\n+\n+5. **R5.4 — Accepted: the added controls cover the prior review’s missing boundaries.**  \n+   [UX-LARGE-CONCURRENCY.md:434](/home/victor/Work/safeupload-staging/driver/docs/design/large-files/UX-LARGE-CONCURRENCY.md:434)\n+\n+   The listed races, fifth-slot attempt, deletion-pending reader, physical-allocation cases, persistence crash points, identity substitutions, metadata latency and downgrade cases answer prior finding 6.\n+\n+   Make the controls distinguish the critical transitions: crash after reserved intent but before identity binding; stale lease completion after slot reuse; closing one reader while another retains storage; and metadata-only state across restart. Pending-limit controls should include cancellation/reconnect churn. Recovery controls must demonstrate fresh successful name use after exact resolution, alongside refusal to release an ambiguous allocation.\n+\n+   Retain the R4 controls and existing privacy, failed-prefix, budget-on T5 and qualification assertions.\n+\n+**Before implementation:** specify the fixed-width wire layouts, schema/state transitions, slot incarnation and pending-creation representation, exact release/adoption evidence, maintained-total update rules and concrete pending bounds. Obtain the owner’s allocation wait/failure decision before implementing that dependent behavior. Preserve the accepted lock order, metadata capability confinement, compatibility and startup requirements.\n+\n+**Before the first changed-kernel VM boot:** independently review the coherent implementation, including transitive MM dependencies, custody/reduction races, metadata I/O, connection rundown and mandatory local teardown. Require feature WDK Debug/Release builds with PREfast and ApiValidator at **zero warnings/errors**, both import gates passing, the complete feature agent Debug/Release × user/SYSTEM matrix, applicable PowerShell 5.1 parsing/native-signature checks and harness self-checks, and committed source with matched artifact hashes.\n+\n+Subsequent authorized VM work remains restricted to **`win10-debug3`**, with `SAFEUPLOAD_DEBUGGEE=win10-debug3` explicit, the existing disposable-overlay rules and separate restoration. Design acceptance, component verification and protected-pair qualification remain distinct results.\n\\ No newline at end of file"
+    }
+  ]
+}

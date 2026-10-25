@@ -1,0 +1,165 @@
+{
+  "total_count": 8,
+  "artifacts": [
+    {
+      "id": 12582521075,
+      "node_id": "MDg6QXJ0aWZhY3QxMjU4MjUyMTA3NQ==",
+      "name": "cancelamento-varredura-Release",
+      "size_in_bytes": 5705,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582521075",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582521075/zip",
+      "expired": false,
+      "digest": "sha256:590bbd37705e47c5a27cfedad12bd1eeef8b7eb856ef6c87c89d7791a97975b3",
+      "created_at": "2026-10-25T01:03:29Z",
+      "updated_at": "2026-10-25T01:03:29Z",
+      "expires_at": "2027-01-23T01:00:22Z",
+      "workflow_run": {
+        "id": 40148901756,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "02ae15d925edc76664f7948c8506d06758b52b5a"
+      }
+    },
+    {
+      "id": 12582521020,
+      "node_id": "MDg6QXJ0aWZhY3QxMjU4MjUyMTAyMA==",
+      "name": "csharp-Release",
+      "size_in_bytes": 232080,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582521020",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582521020/zip",
+      "expired": false,
+      "digest": "sha256:404d49323e0b8eb9501d8def1bd5dafbbd6cdf360ef73fd9b6251eafead85707",
+      "created_at": "2026-10-25T01:02:56Z",
+      "updated_at": "2026-10-25T01:02:56Z",
+      "expires_at": "2027-01-23T01:00:22Z",
+      "workflow_run": {
+        "id": 40148901756,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "02ae15d925edc76664f7948c8506d06758b52b5a"
+      }
+    },
+    {
+      "id": 12582406310,
+      "node_id": "MDg6QXJ0aWZhY3QxMjU4MjQwNjMxMA==",
+      "name": "interrupcao-fila-Release",
+      "size_in_bytes": 2538,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582406310",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582406310/zip",
+      "expired": false,
+      "digest": "sha256:8ee995380c0bc0e4051517cee3da704065c14faefdb3a7d85fe9cfcd15a3083e",
+      "created_at": "2026-10-25T01:02:55Z",
+      "updated_at": "2026-10-25T01:02:55Z",
+      "expires_at": "2027-01-23T01:00:22Z",
+      "workflow_run": {
+        "id": 40148901756,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "02ae15d925edc76664f7948c8506d06758b52b5a"
+      }
+    },
+    {
+      "id": 12582276480,
+      "node_id": "MDg6QXJ0aWZhY3QxMjU4MjI3NjQ4MA==",
+      "name": "fila-volume-cheio",
+      "size_in_bytes": 37648682,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582276480",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582276480/zip",
+      "expired": false,
+      "digest": "sha256:036ef183d2c2aef01c0fb2303456e6fe1a08436d181b66c058c476f9a92fdaf2",
+      "created_at": "2026-10-25T01:03:12Z",
+      "updated_at": "2026-10-25T01:03:12Z",
+      "expires_at": "2027-01-23T01:00:22Z",
+      "workflow_run": {
+        "id": 40148901756,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "02ae15d925edc76664f7948c8506d06758b52b5a"
+      }
+    },
+    {
+      "id": 12582251521,
+      "node_id": "MDg6QXJ0aWZhY3QxMjU4MjI1MTUyMQ==",
+      "name": "cancelamento-varredura-Debug",
+      "size_in_bytes": 5701,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582251521",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582251521/zip",
+      "expired": false,
+      "digest": "sha256:c6bc802a4ba1f0614624d557e4ec2cdfe22f107c9ab32ed63b2fdd49b88e3b2e",
+      "created_at": "2026-10-25T01:03:22Z",
+      "updated_at": "2026-10-25T01:03:22Z",
+      "expires_at": "2027-01-23T01:00:22Z",
+      "workflow_run": {
+        "id": 40148901756,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "02ae15d925edc76664f7948c8506d06758b52b5a"
+      }
+    },
+    {
+      "id": 12582116783,
+      "node_id": "MDg6QXJ0aWZhY3QxMjU4MjExNjc4Mw==",
+      "name": "homologacao-agente-instalador",
+      "size_in_bytes": 83616323,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582116783",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12582116783/zip",
+      "expired": false,
+      "digest": "sha256:5a5caede14725ef1cb54126a3f0b289f6773957903670a4b4bea724dfe8534fa",
+      "created_at": "2026-10-25T01:04:11Z",
+      "updated_at": "2026-10-25T01:04:11Z",
+      "expires_at": "2027-01-23T01:00:22Z",
+      "workflow_run": {
+        "id": 40148901756,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "02ae15d925edc76664f7948c8506d06758b52b5a"
+      }
+    },
+    {
+      "id": 12581607033,
+      "node_id": "MDg6QXJ0aWZhY3QxMjU4MTYwNzAzMw==",
+      "name": "csharp-Debug",
+      "size_in_bytes": 232851,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12581607033",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12581607033/zip",
+      "expired": false,
+      "digest": "sha256:77c1705b837cf8aa428ea09bae4f1f678d281b1d6de7d3d961ea9bb614fcd8d2",
+      "created_at": "2026-10-25T01:02:53Z",
+      "updated_at": "2026-10-25T01:02:53Z",
+      "expires_at": "2027-01-23T01:00:22Z",
+      "workflow_run": {
+        "id": 40148901756,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "02ae15d925edc76664f7948c8506d06758b52b5a"
+      }
+    },
+    {
+      "id": 12581562132,
+      "node_id": "MDg6QXJ0aWZhY3QxMjU4MTU2MjEzMg==",
+      "name": "interrupcao-fila-Debug",
+      "size_in_bytes": 2532,
+      "url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12581562132",
+      "archive_download_url": "https://api.github.com/repos/pedro-canafistula/safeupload/actions/artifacts/12581562132/zip",
+      "expired": false,
+      "digest": "sha256:3a2f64ba9daac49ab2d72ccea43feed39b22211475063de545ac25975d633a97",
+      "created_at": "2026-10-25T01:02:52Z",
+      "updated_at": "2026-10-25T01:02:52Z",
+      "expires_at": "2027-01-23T01:00:22Z",
+      "workflow_run": {
+        "id": 40148901756,
+        "repository_id": 1280764385,
+        "head_repository_id": 1280764385,
+        "head_branch": "tarefa/consolidar-base-agente-windows",
+        "head_sha": "02ae15d925edc76664f7948c8506d06758b52b5a"
+      }
+    }
+  ]
+}

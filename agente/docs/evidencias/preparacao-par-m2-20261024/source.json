@@ -1,0 +1,28 @@
+{
+  "vmStarted": false,
+  "ciCommit": "02ae15d925edc76664f7948c8506d06758b52b5a",
+  "files": [
+    {
+      "path": ".github/workflows/agent-homologacao.yml",
+      "sha256": "1CC108AA1BACAEE1E5B6F7EED2F986D86BB6904B51B2F5FB94155E981B011E4B"
+    },
+    {
+      "path": "agente/scripts/Test-SafeUploadM2Diagnostics.ps1",
+      "sha256": "5ABB1523E072C0999051D9A70366442FA039AA739377463CF5F330263094407E"
+    },
+    {
+      "path": "agente/scripts/support/SafeUpload.M2Diagnostics.psm1",
+      "sha256": "BB2FF9D2AB995BEB4864CA8F29A35939E866A4EAEE1B873DE27843ED1029822C"
+    },
+    {
+      "path": "agente/scripts/tests/Test-M2DiagnosticsContracts.ps1",
+      "sha256": "AAEA23484D0ADB6A00F05F1A00D81162B55745D7598A50D3AC0E3D99A707662D"
+    },
+    {
+      "path": "agente/scripts/Get-SafeUploadDiagnostics.ps1",
+      "sha256": "FF5B275AEDA32321A5406B057874F6456E6025FDD8B3438EA6B6848613401566"
+    }
+  ],
+  "collectorCommit": "6288643e93372295f80d7e80d7b7c03efa2ff263",
+  "nativeDriverTested": false
+}
