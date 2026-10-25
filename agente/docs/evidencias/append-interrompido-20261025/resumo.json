@@ -1,0 +1,174 @@
+{
+  "scope": "controlled-partial-append-owned-process-kill",
+  "issue": 48,
+  "sourceCommit": "74a6cb9e06640933942971afe4454493a5e0a458",
+  "ciCommit": "80701352bc52c3f517b2bf24cb02c219613b9926",
+  "ciRun": 40202627444,
+  "localProcessTrialsPassed": 36,
+  "ciProcessTrialsPassed": 36,
+  "localRegressionPassedPerConfiguration": 80,
+  "ciCSharpPassedPerConfiguration": 895,
+  "ciCSharpTotalPerConfiguration": 899,
+  "ciCSharpSkippedPerConfiguration": 4,
+  "uninstrumentedNativeWriteInterruptionProven": false,
+  "powerLossTested": false,
+  "vmStarted": false,
+  "partialRecordRecovered": false,
+  "partialTailPreservedAndDiagnosed": true,
+  "rawSyntheticDirectories": {
+    "localDebugRoot": "outputs/append-interruption-20261025/local-debug/append-interruption-0b0b477868f0478f8b7e959be08536ef",
+    "initialFailureRoot": "outputs/append-interruption-20261025/local-release/append-interruption-43a3006690834182b7868e9f900eca33",
+    "localReleaseRoot": "outputs/append-interruption-20261025/local-release-final/append-interruption-865c7a4774394d78a62478914b4a2e7b"
+  },
+  "sources": [
+    {
+      "file": "agente/SafeUpload.Agent.Core/Infrastructure/LocalQueueAuditSink.cs",
+      "gitBlob": "19a36d5d607be78803bd3f79079afc23efedf897"
+    },
+    {
+      "file": "agente/SafeUpload.Agent.Core/SafeUpload.Agent.Core.csproj",
+      "gitBlob": "30138b90d86d238b71a2987421132ca9d9579adb"
+    },
+    {
+      "file": "agente/SafeUpload.Agent.Tests/AppendInterruptionRecoveryTests.cs",
+      "gitBlob": "dd5690ff517c6613b9ef2901d8324d42473c494d"
+    },
+    {
+      "file": "agente/tools/QueueAppendInterruptionProbe/Program.cs",
+      "gitBlob": "b1c23cba9e6ea87e8648f66bd06240a7594fc558"
+    }
+  ],
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 82,
+      "sha256": "C26C97340FEBBBF73E27946E59288F7B51F613E41A5998FCA11F81E315C1A7DD"
+    },
+    {
+      "file": "artifacts.json",
+      "bytes": 6811,
+      "sha256": "1019726C69B3FB2D618EA3955C8D66D807129BAB7F658F86CFD499A022B666A5"
+    },
+    {
+      "file": "build-debug.log",
+      "bytes": 571,
+      "sha256": "D3BD89E833F5AF3F7C3746C456B241BC3B0855DCF30A284CECAFFC91DFA6176A"
+    },
+    {
+      "file": "build-release.log",
+      "bytes": 575,
+      "sha256": "12F75FCEC5E5BAC1FFBF7D2B906DEF26D1C5549ADB44F54DA26DE222ED0D74FE"
+    },
+    {
+      "file": "build-tests-debug.log",
+      "bytes": 1766,
+      "sha256": "455C4941AC5A4852ED1D68260B16E7FC72B2302DAC3AA09637953F21AA658D73"
+    },
+    {
+      "file": "ci-Debug-append.json",
+      "bytes": 25687,
+      "sha256": "DF99D10800D4EC797830762D55A0DCD254B32C7EF5548FBA5EC7FEE814148140"
+    },
+    {
+      "file": "ci-Debug-append.log",
+      "bytes": 1998,
+      "sha256": "9579FC18C819914B35D32AE05B755CE77DB5A887F50248ECE9C727BC431362DD"
+    },
+    {
+      "file": "ci-Debug.trx",
+      "bytes": 1303571,
+      "sha256": "AEDACA168172CE4FBEA481852AB495A998F6A86C50548E89C13D36DCD79C05A3"
+    },
+    {
+      "file": "ci-Release-append.json",
+      "bytes": 25689,
+      "sha256": "018C5D35046A32B7BA11750B1A288AC980695F8719E0297552DECAE8CC784906"
+    },
+    {
+      "file": "ci-Release-append.log",
+      "bytes": 1998,
+      "sha256": "90B2BBCD6F2D57E802E026BBE059568B29A09B541FC71450B73B0F0B33B606B1"
+    },
+    {
+      "file": "ci-Release.trx",
+      "bytes": 1307167,
+      "sha256": "2BFA641B2051BB50148C8576F5049A94180A7707DAD7D41BEE3BD4D853617613"
+    },
+    {
+      "file": "ci-verification.json",
+      "bytes": 2221,
+      "sha256": "B17148A84FD3ACC641DA2B9904DE22E83CD65ABEEB96BA55A82575CBE246C9DD"
+    },
+    {
+      "file": "initial-sharing-failure.json",
+      "bytes": 1484,
+      "sha256": "651C30DFCAF80FEC8478B80999BAFB798DE87F09C46DE3ABABCC7C5EFC89AFFD"
+    },
+    {
+      "file": "jobs.json",
+      "bytes": 8284,
+      "sha256": "923C0237362F2973C5B22E9CD0F668776FC27EC6951D45FE8B267BF61A7660A4"
+    },
+    {
+      "file": "local-debug.json",
+      "bytes": 25705,
+      "sha256": "EC11FD46EE500FAC39DAFF28B317C416B4E9AE92451B5EA8755DBC4D4D170848"
+    },
+    {
+      "file": "local-debug.trx",
+      "bytes": 137482,
+      "sha256": "29585BCCE4CD76B24B218C349B8A82A8F621537353DCCF69C3D8E8ED66D4F984"
+    },
+    {
+      "file": "local-release.json",
+      "bytes": 25702,
+      "sha256": "40591FF6B9DF842539BA8BFD65649B13CE12BC9E3CB19503F05E33BB39C9F67B"
+    },
+    {
+      "file": "local-release.trx",
+      "bytes": 137802,
+      "sha256": "1FB0EE84E53A0358EF221BB706CB057A49A6962019F1C10513E76EDCCCFE3BA7"
+    },
+    {
+      "file": "probe-debug.log",
+      "bytes": 2150,
+      "sha256": "1E4AAAB3E188EAB6105FC1847D4B2BC912F5D12271C4C099F939CC3E3FE4F136"
+    },
+    {
+      "file": "probe-release-final.log",
+      "bytes": 2166,
+      "sha256": "1AAD6242103E4A5FF664CAA3FA07B78BD737F1F8858444B52FEC6703812B76EA"
+    },
+    {
+      "file": "probe-release.log",
+      "bytes": 1644,
+      "sha256": "E17985CD4510F2180FA4C9897FEFA18522F52C0B60AEA1F166A06F4160305F5F"
+    },
+    {
+      "file": "protected-path-refusal.log",
+      "bytes": 847,
+      "sha256": "8BA2870F15429F29AF0D2AD79E5C4D66023A0523E8713631AF538677B2ED0695"
+    },
+    {
+      "file": "regression-debug.log",
+      "bytes": 456,
+      "sha256": "5FB08F3A38893CDBE720EA145832243F69A7798F46A0D0A7BE5C20880F16FF91"
+    },
+    {
+      "file": "regression-release-final.log",
+      "bytes": 146,
+      "sha256": "98033318F58B6BC71B9E4B6CBF7DBA2B4D80AB3015B12480D8279ADF3A2683C7"
+    },
+    {
+      "file": "regression-release-unsandboxed.log",
+      "bytes": 460,
+      "sha256": "C97BC06FA8BBBD04E37600487E70B10B199213EA86005E368686D5DD84BB0D01"
+    },
+    {
+      "file": "run-agent.json",
+      "bytes": 15245,
+      "sha256": "C10376419981A4BD696AEB15861E185DCB45E9537B487055A8E1EC0007D4C25D"
+    }
+  ],
+  "ciResult": "success"
+}

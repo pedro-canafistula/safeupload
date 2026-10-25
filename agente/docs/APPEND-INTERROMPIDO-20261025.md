@@ -64,8 +64,46 @@ Local Release: **18/18 cenários de processo aprovados**. Local Debug: **18/18**
 Regressão focada em **Debug e Release: 80 aprovados, zero falhas/ignorados por configuração**, incluindo dois
 casos novos e regressões de auditoria, justificativas, histórico, integridade,
 leitura limitada, confirmação em fluxo, retenção simulada e backlog. Resultado
-CI será registrado após conclusão; não declarar suíte completa aprovada
-a partir deste recorte.
+O recorte local não substitui a suíte completa.
+
+Fonte: `74a6cb9e06640933942971afe4454493a5e0a458`; integração no workflow:
+`80701352bc52c3f517b2bf24cb02c219613b9926`.
+[Execução CI 40202627444](https://github.com/pedro-canafistula/safeupload/actions/runs/40202627444).
+
+Jobs C# Debug/Release aprovados: **895 testes aprovados, zero falhas e quatro
+ignorados em 899 por configuração**. Os dois casos novos foram conferidos nos
+TRX originais. **18 cenários de append por configuração aprovados no CI**,
+36 adicionais aos 36 locais. Quatro ZIPs (C# e append em Debug/Release) baixados
+pelo conector GitHub e conferidos contra tamanho/digest publicados antes da
+extração; recibos agregados conferidos por contagem e invariantes. Os artefatos
+de append contêm os hashes dos assemblies efetivamente usados no runner.
+
+Resultado final do workflow: **três jobs aprovados**, inclusive instalação no
+Windows descartável do CI. A instalação não ocorreu no host ou clone local e
+não constitui nova homologação interativa do pacote 0.1.14. Nenhum workflow foi
+redisparado manualmente; o CI existente executou como regressão da fonte alterada.
+
+[Recibos originais, TRX, logs e hashes](evidencias/append-interrompido-20261025/resumo.json).
+As filas sintéticas permanecem fora do Git. O teste negativo recusou o caminho
+instalado antes de criar diretório/filho; log preservado. Não foi repetido
+Functional web sem alteração relevante do backend; suas dependências e falhas
+anteriores não foram resolvidas por esta entrega. Não declarar PR inteiro verde.
+
+Para reproduzir o recorte em ambiente Windows preparado, na raiz do repositório:
+
+```powershell
+$classes = @('AppendInterruptionRecoveryTests','AuditTrailTests','AuditQueueOverrideTests',
+    'AuditHistoryTests','AuditQueueIntegrityTests','QueueBoundedReadTests',
+    'QueueStreamingConfirmationTests','QueueLongevityTests','AuditQueueRetentionPreviewTests')
+$filter = ($classes | ForEach-Object { 'FullyQualifiedName~' + $_ }) -join '|'
+dotnet build agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj -c Release -m:1 -nr:false -p:UseSharedCompilation=false
+dotnet vstest agente/SafeUpload.Agent.Tests/bin/Release/net10.0-windows/SafeUpload.Agent.Tests.dll "--TestCaseFilter:$filter" '--logger:trx;LogFileName=append-release.trx' --ResultsDirectory:artifacts/append-release
+# Repetir em Debug se a fonte/ambiente justificar, preservando TRX/log/exit code.
+```
+
+O recorte local usa configuração padrão; não é aceite do build staged nem
+qualificação de par M2. Os hashes dos assemblies de cada execução ficam nos
+recibos originais; não presumir igualdade entre build local e CI.
 
 Primeiras tentativas: projeto novo exigiu restore de assets (dependências já no
 cache); a leitura ao vivo inicial usava ReadAllBytesAsync com compartilhamento
