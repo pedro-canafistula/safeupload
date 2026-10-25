@@ -1,0 +1,25 @@
+Versão do VSTest 18.7.0 (x64)
+
+Iniciando execução de teste, espere...
+1 arquivos de teste no total corresponderam ao padrão especificado.
+[xUnit.net 00:00:01.40]     SafeUpload.Agent.Tests.QueueTemporaryClassificationTests.Reparse_no_candidato_ou_ancestral_nao_segue_o_destino(ancestor: False) [FAIL]
+  Com falha SafeUpload.Agent.Tests.QueueTemporaryClassificationTests.Reparse_no_candidato_ou_ancestral_nao_segue_o_destino(ancestor: False) [5 ms]
+  Mensagem de erro:
+   System.IO.IOException : O cliente não tem o privilégio necessário. : 'C:\Users\lucas\AppData\Local\Temp\safeupload-testes\54c1a5c7d0454b77a02e529a8b1f92fc\queue.jsonl.5ef14dd5b9fb4f4c82efbdbbfd94537c.tmp'.
+  Rastreamento de pilha:
+     at Interop.Kernel32.CreateSymbolicLink(String symlinkFileName, String targetFileName, Boolean isDirectory)
+   at System.IO.File.CreateSymbolicLink(String path, String pathToTarget)
+   at SafeUpload.Agent.Tests.QueueTemporaryClassificationTests.Reparse_no_candidato_ou_ancestral_nao_segue_o_destino(Boolean ancestor) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\QueueTemporaryClassificationTests.cs:line 124
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:01.41]     SafeUpload.Agent.Tests.QueueTemporaryClassificationTests.Reparse_no_candidato_ou_ancestral_nao_segue_o_destino(ancestor: True) [FAIL]
+  Com falha SafeUpload.Agent.Tests.QueueTemporaryClassificationTests.Reparse_no_candidato_ou_ancestral_nao_segue_o_destino(ancestor: True) [4 ms]
+  Mensagem de erro:
+   System.IO.IOException : O cliente não tem o privilégio necessário. : 'C:\Users\lucas\AppData\Local\Temp\safeupload-testes\f85a980b233e47d7b6d06ab1ebd55b1e\link'.
+  Rastreamento de pilha:
+     at Interop.Kernel32.CreateSymbolicLink(String symlinkFileName, String targetFileName, Boolean isDirectory)
+   at System.IO.Directory.CreateSymbolicLink(String path, String pathToTarget)
+   at SafeUpload.Agent.Tests.QueueTemporaryClassificationTests.Reparse_no_candidato_ou_ancestral_nao_segue_o_destino(Boolean ancestor) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\QueueTemporaryClassificationTests.cs:line 124
+--- End of stack trace from previous location ---
+Arquivo de resultados: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\temporarios-classificacao-20261025\regression-release\classification-release.trx
+
+Com falha! – Com falha:     2, Aprovado:    69, Ignorado:     0, Total:    71, Duração: 6 s - SafeUpload.Agent.Tests.dll (net10.0)

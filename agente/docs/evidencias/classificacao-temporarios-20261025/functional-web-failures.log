@@ -1,0 +1,19 @@
+JOB migration
+2026-10-25T14:52:32.8816992Z 2026-10-25T14:52:32.868Z  WARN 2701 --- [safeupload-backend] [           main] o.s.w.c.s.GenericWebApplicationContext   : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}
+2026-10-25T14:52:32.9224666Z Parameter 1 of constructor in com.safeupload.presentation.controller.AgentController required a bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' that could not be found.
+2026-10-25T14:52:32.9228613Z Consider defining a bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' in your configuration.
+2026-10-25T14:52:32.9571704Z Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}
+2026-10-25T14:52:32.9649230Z Caused by: org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}
+2026-10-25T14:52:33.2172707Z Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'com.safeupload.presentation.controller.AgentController': Unsatisfied dependency expressed through constructor parameter 1: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}
+2026-10-25T14:52:33.2202843Z Caused by: org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type 'com.safeupload.infrastructure.repository.acesso.EmpresaRepository' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {}
+2026-10-25T14:52:33.2655861Z [ERROR] BUILD FAILURE
+2026-10-25T14:52:33.2671531Z ##[error]Process completed with exit code 1.
+JOB installed-service
+2026-10-25T14:53:53.0186590Z [31;1m[0m[36;1m[36;1m  57 | [0m … f ($process.HasExited) { [36;1mthrow 'Backend encerrou antes de iniciar.'[0m }[0m
+2026-10-25T14:53:53.0188402Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mBackend encerrou antes de iniciar.[0m
+2026-10-25T14:53:53.0483642Z ##[error]Process completed with exit code 1.
+JOB agent-contract
+2026-10-25T14:54:21.1607098Z [36;1m  if (-not $ready) { throw 'Backend não iniciou.' }[0m
+2026-10-25T14:55:52.4361758Z [31;1m[0m[36;1m[36;1m  12 | [0m   if (-not $ready) { [36;1mthrow 'Backend não iniciou.'[0m }[0m
+2026-10-25T14:55:52.4363897Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mBackend não iniciou.[0m
+2026-10-25T14:55:52.4599978Z ##[error]Process completed with exit code 1.

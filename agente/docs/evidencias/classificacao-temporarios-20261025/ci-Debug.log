@@ -1,0 +1,28 @@
+  Determining projects to restore...
+  Restored D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Minifilter\SafeUpload.Agent.Minifilter.csproj (in 577 ms).
+  Restored D:\a\safeupload\safeupload\agente\SafeUpload.Agent.App\SafeUpload.Agent.App.csproj (in 1.03 sec).
+  Restored D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Network\SafeUpload.Agent.Network.csproj (in 7.22 sec).
+  Restored D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj (in 8.62 sec).
+  Restored D:\a\safeupload\safeupload\agente\tools\QueueFullVolumeProbe\QueueFullVolumeProbe.csproj (in 9.28 sec).
+  Restored D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj (in 8.84 sec).
+  1 of 7 projects are up-to-date for restore.
+  SafeUpload.Agent.Core -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Core\bin\Debug\net10.0\SafeUpload.Agent.Core.dll
+  SafeUpload.Agent.Network -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Network\bin\Debug\net10.0-windows\SafeUpload.Agent.Network.dll
+  SafeUpload.Agent.Minifilter -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Minifilter\bin\Debug\net10.0-windows\SafeUpload.Agent.Minifilter.dll
+  SafeUpload.Agent.Service -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Service\bin\Debug\net10.0-windows\SafeUpload.Agent.Service.dll
+  SafeUpload.Agent.App -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.App\bin\Debug\net10.0-windows\SafeUpload.Agent.App.dll
+  QueueFullVolumeProbe -> D:\a\safeupload\safeupload\agente\tools\QueueFullVolumeProbe\bin\Debug\net10.0-windows\QueueFullVolumeProbe.dll
+  SafeUpload.Agent.Tests -> D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll
+Test run for D:\a\safeupload\safeupload\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:16.10]     SafeUpload.Agent.Tests.MachineCertificateAuthorityTests.CA_da_maquina_e_aceita_pela_validacao_padrao_e_some_ao_remover [SKIP]
+  Skipped SafeUpload.Agent.Tests.MachineCertificateAuthorityTests.CA_da_maquina_e_aceita_pela_validacao_padrao_e_some_ao_remover [1 ms]
+[xUnit.net 00:00:16.54]     SafeUpload.Agent.Tests.TrafficDiversionTests.Politicas_dos_navegadores_sao_aplicadas_e_removidas [SKIP]
+[xUnit.net 00:00:16.54]     SafeUpload.Agent.Tests.TrafficDiversionTests.Filtro_bloqueia_saida_direta_do_navegador_e_some_ao_descartar [SKIP]
+[xUnit.net 00:00:16.54]     SafeUpload.Agent.Tests.TrafficDiversionTests.Executaveis_inexistentes_sao_ignorados [SKIP]
+  Skipped SafeUpload.Agent.Tests.TrafficDiversionTests.Politicas_dos_navegadores_sao_aplicadas_e_removidas [1 ms]
+  Skipped SafeUpload.Agent.Tests.TrafficDiversionTests.Filtro_bloqueia_saida_direta_do_navegador_e_some_ao_descartar [1 ms]
+  Skipped SafeUpload.Agent.Tests.TrafficDiversionTests.Executaveis_inexistentes_sao_ignorados [1 ms]
+Results File: D:\a\safeupload\safeupload\artifacts\csharp\agente.trx
+
+Passed!  - Failed:     0, Passed:   918, Skipped:     4, Total:   922, Duration: 27 s - SafeUpload.Agent.Tests.dll (net10.0)

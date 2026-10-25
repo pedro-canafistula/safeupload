@@ -1,0 +1,26 @@
+[
+  {
+    "artifact": "csharp-Debug",
+    "id": 12603460609,
+    "bytes": 239474,
+    "digest": "sha256:c7f622f0289d86e14940f2681a7d5e1cc19c21e42fb601634ec581c029272776",
+    "digestVerified": true,
+    "classificationCasesPassed": 23,
+    "total": "922",
+    "passed": "918",
+    "failed": "0",
+    "symlinkFixtureCasesPassed": 2
+  },
+  {
+    "artifact": "csharp-Release",
+    "id": 12602759408,
+    "bytes": 238612,
+    "digest": "sha256:8cb9f1e0777caf4d83b4fca931aa71a9ee1a59a674ebd9ff93fcc6b7e161d7c3",
+    "digestVerified": true,
+    "classificationCasesPassed": 23,
+    "total": "922",
+    "passed": "918",
+    "failed": "0",
+    "symlinkFixtureCasesPassed": 2
+  }
+]

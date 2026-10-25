@@ -95,10 +95,10 @@ não promete SLA nem suportou automaticamente caminhos fora do contrato Windows.
 - [x] Cópia completa com confirmações conflitantes não substitui a fila válida.
 - [x] Preservação de hashes de fila/candidatos; IDs/metadados/pendentes anteriores mantidos após reabertura, append e confirmação normais.
 - [x] Em uso, sem LF, vazio, desconhecido, JSON/UTF-8 inválido, duplicatas de propriedades e limites têm estados conservadores distintos.
-- [x] Testes de orçamento de 16 MiB, linha/tamanho/candidatos, cancelamento, ausência e nomes fora do padrão.
+- [x] Testes de orçamento de 16 MiB, linha/tamanho/candidatos, cancelamento prévio, ausência e nomes fora do padrão.
 - [x] Hardlink/diretório recusados; symlinks e ancestral reparse têm testes exigindo ambiente preparado.
 - [x] Pipe real isolado sem driver e roteamento PowerShell sem campos indevidos.
-- [ ] Conferir CI da fonte final e recibos antes de declarar a entrega validada no runner.
+- [x] Conferir CI da fonte final e recibos, incluindo os dois testes de symlink no runner preparado.
 
 Local Release: **69 aprovados e duas falhas de privilégio em 71**, antes da
 criação das fixtures symlink. Primeira etapa anterior à inclusão desses casos:
@@ -108,6 +108,29 @@ cada**, incluindo novo contrato de despacho. Os dois testes que não puderam ser
 montados localmente continuam obrigatórios no CI; não foram convertidos em skips.
 Uma compilação inicial de teste falhou por inferência de lambda e foi corrigida
 antes das execuções finais; log preservado. Nenhuma falha foi ocultada.
+
+Fonte **`acaf3bd9bfdb7b39f2dde075ed8d8546a9278ab2`**.
+[CI do agente 40204229092](https://github.com/pedro-canafistula/safeupload/actions/runs/40204229092):
+**três jobs aprovados**, C# **918 aprovados, zero falhas e quatro ignorados em
+922 por configuração Debug/Release**. Todos os **23 casos novos passaram em
+ambas**, incluindo os dois symlinks. ZIPs C# conferidos por tamanho/digest antes
+da extração e resultados novos conferidos nos TRX originais. Contratos PS7/PS5.1
+**44/44 cada**, ambiente **4/4**, contratos M2 **9/9 cada**, controles/instalação
+gerais existentes aprovados. Não há aceite novo da consulta em VM ou serviço
+instalado LocalSystem: sua execução específica foi no Core/pipe isolado dos
+testes, além do roteamento PowerShell simulado.
+
+[Functional web 40204235168](https://github.com/pedro-canafistula/safeupload/actions/runs/40204235168)
+reprovado: migration sem EmpresaRepository; installed-service com backend
+encerrado antes de iniciar; agent-contract com backend que não iniciou. Trechos
+dos logs e IDs dos jobs preservados, sem corrigir backend fora do escopo. Não
+declarar integração ponta a ponta ou PR inteiro aprovado.
+
+[Manifesto de evidências, TRX, contratos e registros administrativos](evidencias/classificacao-temporarios-20261025/resumo.json).
+TRX de CI preservados como extraídos dos ZIPs; logs obtidos pelo conector são
+texto decodificado com terminadores normalizados, não cópia binária do stream.
+Os resultados locais com falha de privilégio permanecem ao lado dos resultados
+do runner, sem substituição retroativa.
 
 Reprodução: compilar `agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj`
 em Debug/Release; executar filtro `FullyQualifiedName~QueueTemporaryClassificationTests`.
@@ -125,7 +148,13 @@ Os relatos históricos continuam preservados, mesmo quando descrevem pendência
 que foi resolvida depois. Esta entrega não fecha #48: tratamento/recuperação de
 órfãos, retenção, energia e operação por dias continuam separados.
 
+Não houve ensaio de troca concorrente de caminhos/mapeamentos durante a consulta;
+guardas de handle e testes de vínculos estáticos não constituem prova contra
+administrador/kernel hostil. Tratamento de indisponibilidade é conservador,
+mas ACL de leitura negada não foi provocada especificamente nos testes novos.
+
 PR #42 preservado; nenhum Java, Angular, banco, driver, `sources/`, VM ou pacote
 0.1.14 homologado alterado. Rebuild do CI terá identidade própria e não herda o
-aceite do pacote da VM. Sem merge e sem redisparar Functional web sem mudança
-relevante no backend; dependências #44/#46/#47 não foram resolvidas aqui.
+aceite do pacote da VM. Sem merge; dependências #44/#46/#47 não foram resolvidas
+aqui. Nenhum workflow foi disparado manualmente; Functional web automático foi
+registrado acima, sem alterar componentes da equipe.

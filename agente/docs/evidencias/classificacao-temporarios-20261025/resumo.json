@@ -1,0 +1,192 @@
+{
+  "issue": 48,
+  "sourceCommit": "acaf3bd9bfdb7b39f2dde075ed8d8546a9278ab2",
+  "ciRun": 40204229092,
+  "ciResult": "success",
+  "ciCSharpPassedEach": 918,
+  "ciCSharpTotalEach": 922,
+  "ciCSharpSkippedEach": 4,
+  "newClassificationCasesPassedEach": 23,
+  "localReleasePassed": 69,
+  "localReleaseFailedFixturePrivilege": 2,
+  "localReleaseTotal": 71,
+  "localDebugPassed": 69,
+  "localDebugExcludedSymlinkCases": 2,
+  "powerShellPassedEach": 44,
+  "functionalRun": 40204235168,
+  "functionalResult": "failure",
+  "promotionImplemented": false,
+  "deletionImplemented": false,
+  "ownershipVerified": false,
+  "vmStarted": false,
+  "installedSystemClassificationTested": false,
+  "sources": [
+    {
+      "file": "agente/SafeUpload.Agent.Core/Infrastructure/AuditQueueTemporaryClassification.cs",
+      "gitBlob": "229dd7747b6c0133bdab88375d782f88fe7c4cbb"
+    },
+    {
+      "file": "agente/SafeUpload.Agent.Tests/QueueTemporaryClassificationTests.cs",
+      "gitBlob": "4ae76ea70e498078d0e07909c662b65da4682b0f"
+    },
+    {
+      "file": "agente/SafeUpload.Agent.Service/Diagnostics/DiagnosticsPipeServer.cs",
+      "gitBlob": "cc17c14bb3f0b6d769fe70f3cc6688ad6ac60886"
+    },
+    {
+      "file": "agente/scripts/Get-SafeUploadDiagnostics.ps1",
+      "gitBlob": "baafb6fbd6323272ebbaf2bd432fad423879f382"
+    },
+    {
+      "file": "agente/installer/tests/Test-InstallerContracts.ps1",
+      "gitBlob": "86426d8b7407f2a25e30ccd7dae7b338811c992d"
+    }
+  ],
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 82,
+      "sha256": "C26C97340FEBBBF73E27946E59288F7B51F613E41A5998FCA11F81E315C1A7DD"
+    },
+    {
+      "file": "artifacts.json",
+      "bytes": 7667,
+      "sha256": "D1440A5BC9646DA84ECF02E0CFDF8016CA03D6D7CFBAFFB4AD1E7BA2B22C0414"
+    },
+    {
+      "file": "build-debug.log",
+      "bytes": 1766,
+      "sha256": "1E5B8A716D621B4A862D90C723E99213CF0665FEEB850B1DF84835C25DDB0A7E"
+    },
+    {
+      "file": "build-release-final.log",
+      "bytes": 1780,
+      "sha256": "416DD50EFD7B714137F0C55AC4933885F2518183EF1DFA3821D74797B2785B38"
+    },
+    {
+      "file": "build-release-tests.log",
+      "bytes": 4036,
+      "sha256": "2BD0FEC4A09BFED957383895B3C49C3CA1453D9321389C8AA4D062EE2CBAAFA9"
+    },
+    {
+      "file": "build-release-v2.log",
+      "bytes": 1780,
+      "sha256": "B44242497FC56E3FFA3BAEE42B481652D53AC585DE7A9E9151184D285A6890D6"
+    },
+    {
+      "file": "ci-Debug.log",
+      "bytes": 3202,
+      "sha256": "EB14BDE24C66AE0744EF74C32E065945618D71AA20D07D7BE71C4740ADF7F885"
+    },
+    {
+      "file": "ci-Debug.trx",
+      "bytes": 1338569,
+      "sha256": "D3A8A5A93E69CF0D5F77282D0F060BF57B3F5141E1397FD6CE1BCD8779035BB1"
+    },
+    {
+      "file": "ci-install.log",
+      "bytes": 33774,
+      "sha256": "7C968D16D1BCC2430B6F90D9F1D991E60760AE4D0C48FB0F39AF43136FC7D3F5"
+    },
+    {
+      "file": "ci-Release.log",
+      "bytes": 3214,
+      "sha256": "A56F4E60CE52AC216448D7593D0E416FF3BDA7F227A5412231F0F1AEC1C82895"
+    },
+    {
+      "file": "ci-Release.trx",
+      "bytes": 1342257,
+      "sha256": "8CC450F73363DEBAA0F774769FACB2B1CE45E4953E4D377FD7CF0C514568DDC5"
+    },
+    {
+      "file": "ci-verification.json",
+      "bytes": 697,
+      "sha256": "0A1C7206C613A1D2BCC9D5E047A6048E91DDA0DB3C2A530EF4761726D332D581"
+    },
+    {
+      "file": "functional-web-failures.log",
+      "bytes": 3549,
+      "sha256": "E595A37BCCF3208B180D7FA139C848D35A382733A49F2530E8ADAE6F7AFC401A"
+    },
+    {
+      "file": "initial-18-release.trx",
+      "bytes": 32834,
+      "sha256": "B3DE86E9E29FCF65142C87A7D13BF3D1EACE0C8CFCFD8853EB5043BAAC7A281A"
+    },
+    {
+      "file": "issue48-before.json",
+      "bytes": 13406,
+      "sha256": "CC2CCBABE210C808B76B98AA248690AB61818857E7E5142ED15B8E6913893885"
+    },
+    {
+      "file": "issue48-checklist-updated.json",
+      "bytes": 14021,
+      "sha256": "34F6E60CA2957CCBEDA963CF97D02396594D381707896D5E595ECD2C0B132EF5"
+    },
+    {
+      "file": "jobs-agent-final.json",
+      "bytes": 8457,
+      "sha256": "811AB7F3EDA1C2A938D40023AF114152208BE4814AF1A573206895DC8DE426E7"
+    },
+    {
+      "file": "jobs-web-final.json",
+      "bytes": 6747,
+      "sha256": "17492BD7B51B2A34BDE0AD389DBF46E4EFF3D2FCC0614F4E3C47DBD4E2B55849"
+    },
+    {
+      "file": "local-debug-69.trx",
+      "bytes": 119982,
+      "sha256": "990F15055FD9ECE75AC52AD757CB362C6069DF7E225553F6E0BF8858FC59E297"
+    },
+    {
+      "file": "local-release-71.trx",
+      "bytes": 128129,
+      "sha256": "B67487A5837F2B040F2F1C39016BD3E63DF7A314E19FE99465DAD4C4512FE216"
+    },
+    {
+      "file": "new-release.log",
+      "bytes": 470,
+      "sha256": "8A4EFC7D035A1A582D40B53F5A4CCCF6EBF89F27295D9AD12A3FDEB680EFBB99"
+    },
+    {
+      "file": "ps51.json",
+      "bytes": 9018,
+      "sha256": "BC3E1E9A777EA05BCE8B87AB9637D49A175B5AE8A77739D4669C53890588033F"
+    },
+    {
+      "file": "ps51.log",
+      "bytes": 62,
+      "sha256": "604F19DFA007A812F4D7B604C789AA86BA8C21897C97C7487A0302C16C71B1B7"
+    },
+    {
+      "file": "ps7.json",
+      "bytes": 5503,
+      "sha256": "9EA391D59375AC7BB90C7E9B7437C01B429EB6B8B562CF342EF210DFD15650A1"
+    },
+    {
+      "file": "ps7.log",
+      "bytes": 53,
+      "sha256": "075A8BA40D2F3315411F944EDA6FEE2CAA146E13BFEF92C62944F9083B1551B6"
+    },
+    {
+      "file": "regression-debug.log",
+      "bytes": 470,
+      "sha256": "171943EABD71395A9F2EE6990075826F8A92288F5F1902312344D382009F9E36"
+    },
+    {
+      "file": "regression-release.log",
+      "bytes": 2737,
+      "sha256": "63B64F72B0DAFE54237CCE5531A20CC68978BA3EA662A7F9AEF640A40CCAEFD9"
+    },
+    {
+      "file": "run-agent-final.json",
+      "bytes": 15250,
+      "sha256": "02F4600C0280A31F16086D68143683152B530BFDA3CE21A30FB7A8F0A42CB05D"
+    },
+    {
+      "file": "run-web-final.json",
+      "bytes": 15236,
+      "sha256": "69BFF136C8BB54B8A063714B5C07EF9835327FB6BD574E9547AF36A78EB7FD47"
+    }
+  ]
+}
