@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Service.Diagnostics;
 
 namespace SafeUpload.Agent.Service.Dispatch;
 
@@ -72,10 +73,8 @@ public sealed class HttpAgentDispatcher : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "Despachante ativo: {BaseAddress}, a cada {Seconds:F0} s, como {EndpointId}.",
-            _client.BaseAddress,
-            _interval.TotalSeconds,
-            _endpointId);
+            "Despachante ativo; intervalo de {Seconds:F0} s. Consultar communication-health para resultados.",
+            _interval.TotalSeconds);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -92,7 +91,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
                 // Servidor fora do ar é estado esperado, não incidente: o que
                 // não pode acontecer é o laço morrer e o endpoint parar de
                 // tentar para sempre.
-                _logger.LogWarning(ex, "Ciclo de despacho falhou. Nova tentativa na próxima volta.");
+                CommunicationLog.Warning(_logger, CommunicationLogStage.DispatchCycle, ex);
             }
 
             try
@@ -142,7 +141,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Heartbeat falhou; o envio da auditoria será tentado independentemente.");
+            CommunicationLog.Warning(_logger, CommunicationLogStage.Heartbeat, exception);
         }
         await DispatchPendingAsync(cancellationToken).ConfigureAwait(false);
     }

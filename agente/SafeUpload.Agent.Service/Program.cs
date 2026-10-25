@@ -28,7 +28,7 @@ public static class Program
     public const string ServiceName = "SafeUploadAgent";
 
     /// <summary>Cliente nomeado usado para falar com o Centro de Administração.</summary>
-    private const string HttpClientName = "CentroAdministracao";
+    internal const string HttpClientName = "CentroAdministracao";
 
     /// <summary>Monta e executa o host.</summary>
     public static async Task Main(string[] args)
@@ -174,12 +174,7 @@ public static class Program
 
             // A rede só é consultada em segundo plano. Inspeções usam o último
             // snapshot validado mesmo durante timeout, falha ou reconexão.
-            builder.Services
-                .AddHttpClient(HttpClientName, client =>
-                {
-                    client.BaseAddress = adminUri;
-                    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
-                });
+            ConfigureAdministrationHttpClient(builder.Services, adminUri, timeoutSeconds);
 
             builder.Services.AddSingleton<RefreshingPolicyStore>(provider =>
                 new RefreshingPolicyStore(
@@ -269,6 +264,15 @@ public static class Program
         Console.Error.WriteLine("--seed-boot-policy must be the only argument.");
         return 2;
     }
+
+    // Named client only: default HTTP loggers can emit URI paths and host identities.
+    // Keep the bounded communication diagnostics and sanitized application logs instead.
+    internal static IHttpClientBuilder ConfigureAdministrationHttpClient(IServiceCollection services, Uri adminUri, int timeoutSeconds) =>
+        services.AddHttpClient(HttpClientName, client =>
+        {
+            client.BaseAddress = adminUri;
+            client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        }).RemoveAllLoggers();
 
     [SupportedOSPlatform("windows")]
     private static async Task<int> SeedBootPolicyAsync()
