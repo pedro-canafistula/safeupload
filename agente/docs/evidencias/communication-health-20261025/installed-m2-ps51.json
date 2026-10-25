@@ -1,0 +1,53 @@
+﻿{
+    "powershell":  "5.1.26100.33648",
+    "total":  9,
+    "passed":  9,
+    "failed":  0,
+    "tests":  [
+                  {
+                      "name":  "Two explicit queries produce only an unqualified receipt and preserve UInt64 JSON",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Empty stage list and empty WCHAR arrays remain arrays",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Unknown profiles and versions are rejected",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Legacy sizes and missing snapshots are rejected",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Qualification and atomic metadata cannot be promoted or coerced",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Invalid stage counts and truncation are rejected",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "Record identifiers, integer ranges and WCHAR limits are checked",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "A second-query failure emits no partial success",
+                      "passed":  true,
+                      "error":  null
+                  },
+                  {
+                      "name":  "The real collector parses without errors and keeps its elevation requirement",
+                      "passed":  true,
+                      "error":  null
+                  }
+              ]
+}

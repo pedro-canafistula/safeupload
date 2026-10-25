@@ -1,0 +1,191 @@
+{
+  "date": "2026-10-25",
+  "sourceCommit": "51f15f9565f87d127ed602cb89b0c00a864ad3a7",
+  "baseCommit": "9b30fa0ba0600ee01e508d0d6e417cc287adf58b",
+  "localInitial": {
+    "failure": "Test oracle expected IOException; Windows returned UnauthorizedAccessException for locked file. Raw failure retained.",
+    "total": 105,
+    "passed": 104,
+    "failed": 1
+  },
+  "localFinal": {
+    "newCasesPassed": 23,
+    "skipped": 0,
+    "passed": 106,
+    "failed": 0
+  },
+  "powershell": {
+    "ps7Passed": 45,
+    "ps51Passed": 45,
+    "failed": 0,
+    "persistentExecutionPolicyChanged": false
+  },
+  "agentCi": {
+    "skipped": 4,
+    "jobsPassed": 3,
+    "passedPerConfiguration": 954,
+    "failed": 0,
+    "runId": 40238780761,
+    "installedSystemSnapshotAndRestartPassed": true,
+    "conclusion": "success",
+    "totalPerConfiguration": 958,
+    "newCasesPassedPerConfiguration": 23
+  },
+  "webCi": {
+    "jobsFailed": 3,
+    "integrationQualified": false,
+    "conclusion": "failure",
+    "runId": 40238784095
+  },
+  "hostOrPreservedVmInstalled": false,
+  "colleagueComponentsChanged": false,
+  "longRunStarted": false,
+  "futureLongRunHours": 12,
+  "longRunPostponed": true,
+  "mergeAuthorized": false,
+  "notes": [
+    "Local and CI TRX/logs plus installed JSON receipts preserved as original bytes.",
+    "Three selected CI ZIPs checked by size/digest and source SHA; metadata in ci-artifacts.json. Installer ZIP downloaded only; EXE not extracted or run.",
+    "Web job excerpts are decoded connector text normalized on save, not original binary logs.",
+    "CI TRX Counters.notExecuted=0; individual outcomes and logs show four skips per configuration.",
+    "Snapshot metadata sanitization does not revise preexisting logs.",
+    "No real API persistence/authentication/deduplication or driver application qualified."
+  ],
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 86,
+      "sha256": "2CD8D6C2F1D76EC60B9E30C27DAFCE65FDEC62B397C9AF3F0922537BEE8AD5A7"
+    },
+    {
+      "file": "agent-jobs.json",
+      "bytes": 8543,
+      "sha256": "62BCAADD8CFD975FE4C400D2728A0EAD466F2096FC73458F96C479789F8D46D5"
+    },
+    {
+      "file": "build-final.log",
+      "bytes": 2516,
+      "sha256": "068D1FA65448DA521F758AD41DC114C40280FBDB9B79394A4E2FBC85256F3F07"
+    },
+    {
+      "file": "ci-artifacts.json",
+      "bytes": 723,
+      "sha256": "57111831B3742DE4A8D58CA9310E1E3F07A1B0F34F8FB32E0DA41B2F7344DD2F"
+    },
+    {
+      "file": "Debug-agente.trx",
+      "bytes": 1394997,
+      "sha256": "CB17199186FAB95B50639ADE7968C100394EB81C7D408FDC7610E2778A985ACC"
+    },
+    {
+      "file": "Debug-test.log",
+      "bytes": 3197,
+      "sha256": "0697EB2BBB41D07810DACA724F38791D395347760BE832827ED476FB432BC3BB"
+    },
+    {
+      "file": "installed-artifact-validation.json",
+      "bytes": 1232,
+      "sha256": "D50D0883AACFBC987715504A8CA3D55E265D4DC202C3ADA5F5F124AA18CFBCCA"
+    },
+    {
+      "file": "installed-environment.json",
+      "bytes": 347,
+      "sha256": "4D0F6A7413177E99FEE4C0DC324F2E4FDBEF9F2799E996BC791434361B9B952F"
+    },
+    {
+      "file": "installed-m2-ps51.json",
+      "bytes": 2070,
+      "sha256": "A1C919B98C8C88A5353701905253B828ABB8D3AC4DBA2C9B4A96015C4A261A75"
+    },
+    {
+      "file": "installed-m2-ps7.json",
+      "bytes": 1319,
+      "sha256": "860743C4E54D4BEEF8E4AA9A853F33754DA20F050D544B508B671D52469DBABE"
+    },
+    {
+      "file": "installed-ps51.json",
+      "bytes": 9266,
+      "sha256": "9AF18D6244B4078AECAF552F1715020E453251622BAAF1773379488789CE11DF"
+    },
+    {
+      "file": "installed-ps7.json",
+      "bytes": 5671,
+      "sha256": "B28E29570169BD60311AC64FFEA855AE5F3E0CC53F0630DAFE2D1C0666C8D8D1"
+    },
+    {
+      "file": "installed-result.json",
+      "bytes": 24785,
+      "sha256": "5A7F8DF8D1D3810DD9E2ACABCCC3F4FEA17330130F9481ED28342BCFCF11EA99"
+    },
+    {
+      "file": "local-final.log",
+      "bytes": 456,
+      "sha256": "4FA84BD9B9E540620F3E8830D31C57541E9866BA088B6AAEC7DA89B82F9AA70C"
+    },
+    {
+      "file": "local-final.trx",
+      "bytes": 184221,
+      "sha256": "4F4158254884869F32B615A4B82F97D33733D1D0709583E443067B410F68059D"
+    },
+    {
+      "file": "local-initial.log",
+      "bytes": 2255,
+      "sha256": "1039E2A0D2547D44C80644FFD7F7E2F8B2DB68445F5F867F790F29A5B8C8753A"
+    },
+    {
+      "file": "local-initial.trx",
+      "bytes": 186277,
+      "sha256": "12D55C7A9DC975A50A2EC75C71A67899A5E9EADD1E9E057837A23A028E4031ED"
+    },
+    {
+      "file": "local-v2.log",
+      "bytes": 450,
+      "sha256": "20F90DEF16E7E0576168034DD6B002DC7D78C02133C01EB17112306B846A11F6"
+    },
+    {
+      "file": "local-v2.trx",
+      "bytes": 184221,
+      "sha256": "8B109B6892D32FA3698579A0C87449AA2E1FA85DE120527AD3711513A1CE197F"
+    },
+    {
+      "file": "ps51.json",
+      "bytes": 9265,
+      "sha256": "3ED61F29A56B7767B804C62BF5B051F14A43DFD4ECCFEDEDCE8D14FD879488A1"
+    },
+    {
+      "file": "ps7.json",
+      "bytes": 5671,
+      "sha256": "AC6E9A96F3FC36867F03970784DCC944F95A45779F8AEA2EAE122A86D9CC8A42"
+    },
+    {
+      "file": "Release-agente.trx",
+      "bytes": 1398829,
+      "sha256": "93B9DC8FA363E5E5A25AC46BD5486EC34B470D123681AD87AD908EC51CEC2683"
+    },
+    {
+      "file": "Release-test.log",
+      "bytes": 3216,
+      "sha256": "DA4BA2FDD2D076002629BA317D4CB8A0306057A912C8025034A858117295AF5A"
+    },
+    {
+      "file": "web-agent-contract-excerpt.log",
+      "bytes": 1707,
+      "sha256": "CE46E30050062BEB9FA3771C8F92E329D48AAA4A564DD0C68BCBA93ACAC483C6"
+    },
+    {
+      "file": "web-installed-service-excerpt.log",
+      "bytes": 1062,
+      "sha256": "3016E7933911039919A65694FEC3D1A1478BEE88E93FBFDAAFC8B7A9916A967B"
+    },
+    {
+      "file": "web-jobs.json",
+      "bytes": 6833,
+      "sha256": "266FFB8DFEF914C3D74E5EAA753ED989EFBC0918EB390FAB6A8BEE7798E4000C"
+    },
+    {
+      "file": "web-migration-excerpt.log",
+      "bytes": 2991,
+      "sha256": "45824F0CED7650F77021DCB2FE90023C656F39C34076314EE0B32E6FB9E71005"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+2026-10-25T22:10:55.9970128Z [INFO] --- surefire:3.2.5:test (default-test) @ backend ---
+2026-10-25T22:10:58.8789387Z [INFO] --- jar:3.4.2:jar (default-jar) @ backend ---
+2026-10-25T22:11:00.2154281Z [INFO] Building jar: D:\a\safeupload\safeupload\web\back\target\backend-0.1.0.jar
+2026-10-25T22:11:00.2771197Z [INFO] --- spring-boot:3.3.4:repackage (repackage) @ backend ---
+2026-10-25T22:11:03.7980590Z [INFO] Replacing main artifact D:\a\safeupload\safeupload\web\back\target\backend-0.1.0.jar with repackaged archive, adding nested dependencies in BOOT-INF/.
+2026-10-25T22:11:03.7982723Z [INFO] The original artifact has been renamed to D:\a\safeupload\safeupload\web\back\target\backend-0.1.0.jar.original
+2026-10-25T22:11:03.9644614Z ##[group]Run $server = Start-Process java -WindowStyle Hidden -PassThru -ArgumentList @('-jar', 'web/back/target/backend-0.1.0.jar', '--server.port=18080', '--spring.datasource.url=jdbc:h2:mem:contract', '--spring.jpa.hibernate.ddl-auto=create-drop')
+2026-10-25T22:11:03.9646577Z [36;1m$server = Start-Process java -WindowStyle Hidden -PassThru -ArgumentList @('-jar', 'web/back/target/backend-0.1.0.jar', '--server.port=18080', '--spring.datasource.url=jdbc:h2:mem:contract', '--spring.jpa.hibernate.ddl-auto=create-drop')[0m
+2026-10-25T22:11:03.9650482Z [36;1m  if (-not $ready) { throw 'Backend não iniciou.' }[0m
+2026-10-25T22:12:35.2156798Z [31;1m[0m[36;1m[36;1m  12 | [0m   if (-not $ready) { [36;1mthrow 'Backend não iniciou.'[0m }[0m
+2026-10-25T22:12:35.2159368Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mBackend não iniciou.[0m
+2026-10-25T22:12:35.2381553Z ##[error]Process completed with exit code 1.

@@ -1,0 +1,23 @@
+[
+  {
+    "id": 12616665009,
+    "name": "csharp-Debug",
+    "bytes": 249296,
+    "digest": "sha256:020c3c36915c61ef9c25d2f1685f21a75d25eec35058af12c240ca40500a4604",
+    "sourceCommit": "51f15f9565f87d127ed602cb89b0c00a864ad3a7"
+  },
+  {
+    "id": 12616265201,
+    "name": "csharp-Release",
+    "bytes": 249616,
+    "digest": "sha256:5ff3dd0a7c64f625e1721edd13c6a38dd7e8e0e6012a6e2e1c30433aa8744219",
+    "sourceCommit": "51f15f9565f87d127ed602cb89b0c00a864ad3a7"
+  },
+  {
+    "id": 12615764606,
+    "name": "homologacao-agente-instalador",
+    "bytes": 83570668,
+    "digest": "sha256:feaa01d950e92878cc2deab9b21e9d2c1c155b0713b5ac3566c19290f5c29ff1",
+    "sourceCommit": "51f15f9565f87d127ed602cb89b0c00a864ad3a7"
+  }
+]

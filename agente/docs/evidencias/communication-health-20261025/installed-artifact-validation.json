@@ -1,0 +1,43 @@
+{
+  "status": "passed",
+  "scope": "static-package-only",
+  "version": "0.1.14",
+  "commit": "51f15f9565f87d127ed602cb89b0c00a864ad3a7",
+  "sourceDirty": false,
+  "installer": "D:\\a\\safeupload\\safeupload\\artifacts\\installer\\SafeUploadAgent-0.1.14-win-x64-setup.exe",
+  "installerSha256": "D12B508C6E8AD4986E4EE85723D78F62131BBB5985FB0EDA187532C2D45516DF",
+  "installerBytes": 84018545,
+  "payloadFiles": 724,
+  "checkedFilesIncludingManifest": 725,
+  "selfContained": true,
+  "signatureStatus": "NotSigned",
+  "runtime": [
+    {
+      "component": "service",
+      "version": "0.1.14+51f15f9565f87d127ed602cb89b0c00a864ad3a7",
+      "frameworks": [
+        {
+          "name": "Microsoft.NETCore.App",
+          "version": "10.0.14"
+        }
+      ]
+    },
+    {
+      "component": "ui",
+      "version": "0.1.14+51f15f9565f87d127ed602cb89b0c00a864ad3a7",
+      "frameworks": [
+        {
+          "name": "Microsoft.NETCore.App",
+          "version": "10.0.14"
+        },
+        {
+          "name": "Microsoft.WindowsDesktop.App",
+          "version": "10.0.14"
+        }
+      ]
+    }
+  ],
+  "installationTested": false,
+  "systemAccountTested": false,
+  "driverTested": false
+}

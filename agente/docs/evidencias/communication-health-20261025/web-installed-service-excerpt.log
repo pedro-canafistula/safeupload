@@ -1,0 +1,7 @@
+2026-10-25T22:09:46.4433763Z [INFO] Downloading from central: https://repo.maven.apache.org/maven2/com/mysql/mysql-connector-j/8.3.0/mysql-connector-j-8.3.0.pom
+2026-10-25T22:09:46.4760126Z [INFO] Downloaded from central: https://repo.maven.apache.org/maven2/com/mysql/mysql-connector-j/8.3.0/mysql-connector-j-8.3.0.pom (3.2 kB at 96 kB/s)
+2026-10-25T22:09:48.3926786Z [INFO] Downloading from central: https://repo.maven.apache.org/maven2/com/mysql/mysql-connector-j/8.3.0/mysql-connector-j-8.3.0.jar
+2026-10-25T22:09:48.4324927Z [INFO] Downloaded from central: https://repo.maven.apache.org/maven2/com/mysql/mysql-connector-j/8.3.0/mysql-connector-j-8.3.0.jar (2.5 MB at 4.2 MB/s)
+2026-10-25T22:10:39.1413621Z [31;1m[0m[36;1m[36;1m  57 | [0m … f ($process.HasExited) { [36;1mthrow 'Backend encerrou antes de iniciar.'[0m }[0m
+2026-10-25T22:10:39.1414745Z [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mBackend encerrou antes de iniciar.[0m
+2026-10-25T22:10:39.2057981Z ##[error]Process completed with exit code 1.

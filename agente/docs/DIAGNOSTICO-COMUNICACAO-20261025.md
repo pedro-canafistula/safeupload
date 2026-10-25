@@ -4,7 +4,7 @@ O comando administrativo `communication-health` permite distinguir tentativas, r
 
 ## Consulta
 
-Em PowerShell elevado, no diretório do agente instalado ou da árvore de desenvolvimento:
+Em PowerShell elevado, na raiz `agente/` da árvore de desenvolvimento, com o serviço desta fonte em execução. O script é uma ferramenta da árvore de desenvolvimento; não pressupor sua inclusão no payload do instalador:
 
 ```powershell
 .\scripts\Get-SafeUploadDiagnostics.ps1 -Query communication-health | ConvertTo-Json -Depth 10
@@ -43,4 +43,22 @@ O smoke existente foi ampliado para consultar o serviço SYSTEM instalado no run
 
 Validação local final: **106 aprovados, zero falhas**, incluindo **23 casos novos**; contratos **45/45** em PowerShell 7 e Windows PowerShell 5.1. Uma primeira execução teve um oráculo excessivamente estreito (`IOException`): Windows retornou `UnauthorizedAccessException` ao arquivo bloqueado. O teste passou a aceitar ambas as exceções esperadas; os bytes continuaram preservados. A primeira tentativa de PS 5.1 não executou devido à política local; a execução validada usou Bypass somente no processo, sem mudar política persistente.
 
-Evidências finais de CI e arquivos preservados serão vinculados após a execução automática do commit de implementação. Homologação Win10 0.1.14 e preparação M2 anteriores mantêm seu escopo original. O ensaio prolongado fica adiado para depois da integração e homologação, com duração futura de 12 horas; nenhuma execução foi iniciada.
+Build local Release aprovado, zero erros e um aviso NU1900 porque a consulta de vulnerabilidades ao NuGet estava indisponível.
+
+Fonte de implementação: `51f15f9565f87d127ed602cb89b0c00a864ad3a7`. [CI do agente 40238780761](https://github.com/pedro-canafistula/safeupload/actions/runs/40238780761) aprovado nos três jobs. Debug e Release: **954 aprovados, zero falhas e quatro ignorados em 958** por configuração; os 23 casos novos estão Passed nos dois TRX. O campo `Counters.notExecuted=0` do TRX não conta esses quatro skips: eles aparecem nos resultados individuais e no log. Contratos do runner: 45/45 em PS7 e PS5.1, ambiente 4/4, M2 9/9 em cada versão.
+
+O recibo do smoke instalado está `passed`. A consulta foi vinculada ao PID do SCM e ao SID SYSTEM S-1-5-18: **5696 antes / 2356 depois do reinício**. Sem URL de API, as três operações permaneceram `not_configured` com zero tentativas; `sinceUtc` mudou de `22:12:12.8497446Z` para `22:12:21.966497Z`. Isso comprova leitura e reinício no serviço instalado do runner Windows descartável, sem driver; falhas/sucessos HTTP configurados foram exercitados pelos testes sintéticos, não contra API real instalada. Os flags de qualificação permaneceram falsos.
+
+[Functional web 40238784095](https://github.com/pedro-canafistula/safeupload/actions/runs/40238784095) reprovado nos três jobs: migração sem `EmpresaRepository`, agent-contract sem backend iniciado, installed-service com backend encerrado antes de iniciar. Não atribuir aceite ponta a ponta ou PR inteiramente verde.
+
+[Evidências e manifesto](evidencias/communication-health-20261025/resumo.json): TRX/logs locais originais, inclusive a falha inicial do oráculo; TRX/logs Debug/Release e recibos JSON do runner preservados sem reserialização. Os três ZIPs de origem foram conferidos por tamanho/digest e associados ao SHA de implementação. Apenas os recibos selecionados foram extraídos; o instalador não foi executado nem extraído no computador de trabalho. Excertos dos jobs web são texto decodificado pelo conector e normalizado ao salvar, não cópias binárias dos logs. O manifesto é verificável por `agente/docs/evidence-tools/Test-PreservedEvidence.ps1`; não concede autenticidade nem qualificação adicional.
+
+## Dependências e coleta presencial ainda pendente
+
+* Par exato M2: pacote do driver compatível identificado por fonte/hash/arquitetura, assinatura e instruções da equipe; só então coletar as respostas reais e qualificar aplicação/enforcement (#46). A preparação de 24/10 não equivale à coleta contra driver real.
+* API real: contrato consultável de política, identidade/autenticação e teste conjunto de persistência/deduplicação (#44/#47). O novo snapshot ajuda a investigar essa etapa, sem concluí-la.
+* Windows 11 e cenários de distribuição/upgrade/repair/rollback/assinatura ainda exigem ambiente e pacote identificados (#45).
+* Queda de energia e interrupção de escrita nativa sem instrumentação continuam distintas do append controlado aprovado. Retenção e promoção/exclusão de temporários exigem regras alinhadas antes de implementação (#48).
+* Ensaio prolongado adiado para depois do desenvolvimento, integração e homologação, com duração futura de 12 horas. Nenhuma carga ou automação foi iniciada.
+
+Homologação Win10 0.1.14 e preparação M2 anteriores mantêm seu escopo original. Não ligar a VM nem reinstalar para repetir esses aceites; o candidato reconstruído pelo CI não herda a homologação do pacote anterior. Sem alterações Java/Angular/banco/driver. PR #42 preservado, PR #49 em rascunho, sem merge.

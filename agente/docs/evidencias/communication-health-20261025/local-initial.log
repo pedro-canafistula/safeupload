@@ -1,0 +1,21 @@
+Versão do VSTest 18.7.0 (x64)
+
+Iniciando execução de teste, espere...
+1 arquivos de teste no total corresponderam ao padrão especificado.
+[xUnit.net 00:00:03.68]     SafeUpload.Agent.Tests.CommunicationHealthTests.Recibo_valido_com_confirmacao_local_recusada_nao_vira_falha_de_comunicacao [FAIL]
+  Com falha SafeUpload.Agent.Tests.CommunicationHealthTests.Recibo_valido_com_confirmacao_local_recusada_nao_vira_falha_de_comunicacao [18 ms]
+  Mensagem de erro:
+   Assert.ThrowsAny() Failure: Exception type was not compatible
+Expected: typeof(System.IO.IOException)
+Actual:   typeof(System.UnauthorizedAccessException)
+---- System.UnauthorizedAccessException : Access to the path is denied.
+  Rastreamento de pilha:
+     at SafeUpload.Agent.Tests.CommunicationHealthTests.Recibo_valido_com_confirmacao_local_recusada_nao_vira_falha_de_comunicacao() in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\CommunicationHealthTests.cs:line 214
+--- End of stack trace from previous location ---
+----- Inner Stack Trace -----
+   at System.IO.FileSystem.MoveFile(String sourceFullPath, String destFullPath, Boolean overwrite)
+   at SafeUpload.Agent.Core.Infrastructure.LocalQueueAuditSink.RewriteDispatchedAsync(IReadOnlyCollection`1 eventIds, IReadOnlyCollection`1 overrides, CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Core\Infrastructure\LocalQueueAuditSink.cs:line 243
+   at SafeUpload.Agent.Service.Dispatch.HttpAgentDispatcher.DispatchPendingAsync(CancellationToken cancellationToken) in C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\Dispatch\HttpAgentDispatcher.cs:line 207
+Arquivo de resultados: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\communication-health-20261025\local\release.trx
+
+Com falha! – Com falha:     1, Aprovado:   104, Ignorado:     0, Total:   105, Duração: 322 ms - SafeUpload.Agent.Tests.dll (net10.0)

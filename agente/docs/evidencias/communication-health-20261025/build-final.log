@@ -1,0 +1,16 @@
+C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj : warning NU1900: Ocorreu um erro ao obter os dados de vulnerabilidade do pacote: Não é possível carregar o índice de serviço para a origem https://api.nuget.org/v3/index.json.
+  SafeUpload.Agent.Core -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Core\bin\Release\net10.0\SafeUpload.Agent.Core.dll
+  SafeUpload.Agent.Network -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Network\bin\Release\net10.0-windows\SafeUpload.Agent.Network.dll
+  SafeUpload.Agent.Minifilter -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Minifilter\bin\Release\net10.0-windows\SafeUpload.Agent.Minifilter.dll
+  SafeUpload.Agent.Service -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Service\bin\Release\net10.0-windows\SafeUpload.Agent.Service.dll
+  SafeUpload.Agent.App -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.App\bin\Release\net10.0-windows\SafeUpload.Agent.App.dll
+  QueueFullVolumeProbe -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\tools\QueueFullVolumeProbe\bin\Release\net10.0-windows\QueueFullVolumeProbe.dll
+  SafeUpload.Agent.Tests -> C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Tests\bin\Release\net10.0-windows\SafeUpload.Agent.Tests.dll
+
+Compilação com êxito.
+
+C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\consolidacao-agente-20261021\repositorio\agente\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj : warning NU1900: Ocorreu um erro ao obter os dados de vulnerabilidade do pacote: Não é possível carregar o índice de serviço para a origem https://api.nuget.org/v3/index.json.
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:07.09
