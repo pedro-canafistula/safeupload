@@ -1,0 +1,20 @@
+Synthetic directory: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\append-interruption-20261025\local-release-final\append-interruption-865c7a4774394d78a62478914b4a2e7b
+PASS event cut=1 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=1 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=1 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=4096 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=4096 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=4096 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=65536 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=65536 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=65536 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=1 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=1 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=1 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=4096 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=4096 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=4096 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=65536 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=65536 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=65536 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS receipt: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\append-interruption-20261025\local-release-final\append-interruption-865c7a4774394d78a62478914b4a2e7b\result.json

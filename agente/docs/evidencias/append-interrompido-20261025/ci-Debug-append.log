@@ -1,0 +1,20 @@
+Synthetic directory: D:\a\safeupload\safeupload\artifacts\queue-append\append-interruption-1f4c4adbf44949d0b9775ecb066a8591
+PASS event cut=1 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=1 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=1 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=4096 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=4096 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=4096 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=65536 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=65536 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS event cut=65536 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=1 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=1 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=1 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=4096 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=4096 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=4096 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=65536 repeat=1; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=65536 repeat=2; partial bytes observed before Kill; recovery preserved baseline.
+PASS override cut=65536 repeat=3; partial bytes observed before Kill; recovery preserved baseline.
+PASS receipt: D:\a\safeupload\safeupload\artifacts\queue-append\append-interruption-1f4c4adbf44949d0b9775ecb066a8591\result.json

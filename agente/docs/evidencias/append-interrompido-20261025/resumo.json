@@ -45,6 +45,11 @@
       "sha256": "C26C97340FEBBBF73E27946E59288F7B51F613E41A5998FCA11F81E315C1A7DD"
     },
     {
+      "file": "artifacts-final.json",
+      "bytes": 8526,
+      "sha256": "D6FABB1816FF3109023CC7F05D039A94FEF1089363E4909B3261225A728BA957"
+    },
+    {
       "file": "artifacts.json",
       "bytes": 6811,
       "sha256": "1019726C69B3FB2D618EA3955C8D66D807129BAB7F658F86CFD499A022B666A5"
@@ -103,6 +108,11 @@
       "file": "initial-sharing-failure.json",
       "bytes": 1484,
       "sha256": "651C30DFCAF80FEC8478B80999BAFB798DE87F09C46DE3ABABCC7C5EFC89AFFD"
+    },
+    {
+      "file": "jobs-final.json",
+      "bytes": 8457,
+      "sha256": "AD925331207D9CF1571D9861D8EAD4AD9BC6B14A766BE6E98BF94FCDC26896B6"
     },
     {
       "file": "jobs.json",
@@ -165,10 +175,20 @@
       "sha256": "C97BC06FA8BBBD04E37600487E70B10B199213EA86005E368686D5DD84BB0D01"
     },
     {
+      "file": "run-agent-final.json",
+      "bytes": 15248,
+      "sha256": "B63BA6F3A68F9FC7C7A93259A912F856F75665DFE268F0744941E98CC2393033"
+    },
+    {
       "file": "run-agent.json",
       "bytes": 15245,
       "sha256": "C10376419981A4BD696AEB15861E185DCB45E9537B487055A8E1EC0007D4C25D"
     }
   ],
-  "ciResult": "success"
+  "ciResult": "success",
+  "finalCiMetadata": [
+    "run-agent-final.json",
+    "jobs-final.json",
+    "artifacts-final.json"
+  ]
 }

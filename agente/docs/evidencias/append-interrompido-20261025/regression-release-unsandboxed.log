@@ -1,0 +1,7 @@
+Versão do VSTest 18.7.0 (x64)
+
+Iniciando execução de teste, espere...
+1 arquivos de teste no total corresponderam ao padrão especificado.
+Arquivo de resultados: C:\Users\lucas\.codex\.chatgpt-projects\g-p-6ac0482198d08191ade96dd8d5731b2b\outputs\append-interruption-20261025\regression-release\append-release.trx
+
+Aprovado!  – Com falha:     0, Aprovado:    80, Ignorado:     0, Total:    80, Duração: 2 s - SafeUpload.Agent.Tests.dll (net10.0)
