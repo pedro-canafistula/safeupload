@@ -132,13 +132,18 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                         { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
                 case "counters":
                     return Ok(query, _source.ReadCounters());
+                case "m2-counters":
+                    return Ok(query, _source.ReadM2Counters());
+                case "m2-stage-streams":
+                    return Ok(query, _source.ReadM2StageStreams());
                 case "deny-ring":
                     ulong after = request["after"]?.GetValue<ulong>() ?? 0;
                     return Ok(query, _source.ReadDenyRing(after));
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "audit-health", "audit-integrity", "audit-temporaries", "audit-retention-preview", "help"),
+                        ["queries"] = new JsonArray("counters", "deny-ring", "m2-counters", "m2-stage-streams", "audit-health", "audit-integrity", "audit-temporaries", "audit-retention-preview", "help"),
+                        ["m2Diagnostics"] = "explicit pinned m2-e0df8d1c layout; no fallback, capability negotiation or proof of protection; names may include path tails",
                         ["retentionPreview"] = "requires occurredBeforeUtc in UTC; occurrence-age counts only, never deletion eligibility",
                         ["denyRingCursor"] = "pass the previous reply's nextSequence minus one as after; 0 reads from the start",
                         ["connected"] = _source.IsConnected,

@@ -29,6 +29,9 @@ driver while the product runs. The service relays read-only queries over the SYS
   counters   refusal counters, how often a path that could not resolve a name answered "the whole volume may be in
              scope", and the writer-state status (registry entries and capacity, reclaim-worker passes, sections,
              stage streams).
+  m2-counters / m2-stage-streams  explicit pinned m2-e0df8d1c diagnostic profile, no automatic fallback.
+             Requires the service's existing driver connection. Success is not qualification or protection.
+             Stage names can contain path tails; nameCodeUnits preserves raw WCHAR units, while name is for display.
   deny-ring  the most recent operations the driver completed with an error status: status, operation, requesting
              process, flags, and the tail of the requested path or rename target. siteOffset is relative to the
              driver image base; resolve it against SafeUpload.pdb to name the refusing code.
@@ -41,7 +44,7 @@ driver while the product runs. The service relays read-only queries over the SYS
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('counters', 'deny-ring', 'audit-health', 'audit-integrity', 'audit-temporaries', 'audit-retention-preview', 'help')]
+    [ValidateSet('counters', 'deny-ring', 'm2-counters', 'm2-stage-streams', 'audit-health', 'audit-integrity', 'audit-temporaries', 'audit-retention-preview', 'help')]
     [string] $Query = 'counters',
 
     # deny-ring: return records with a sequence greater than this value.
@@ -89,6 +92,8 @@ function Invoke-DiagnosticsQuery([hashtable] $Request) {
 }
 
 switch ($Query) {
+    'm2-counters' { Invoke-DiagnosticsQuery @{ query = $Query } }
+    'm2-stage-streams' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'counters' { Invoke-DiagnosticsQuery @{ query = 'counters' } }
     'help' { Invoke-DiagnosticsQuery @{ query = 'help' } }
     'audit-health' { Invoke-DiagnosticsQuery @{ query = 'audit-health' } }

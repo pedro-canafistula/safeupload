@@ -8,7 +8,7 @@ namespace SafeUpload.Agent.Service.Diagnostics;
 /// the service holds it, so this is the only way to read driver state while the product runs. The interceptor
 /// binds the port while it is connected and unbinds it before the port closes.
 /// </summary>
-public sealed class DriverDiagnosticsSource
+public sealed partial class DriverDiagnosticsSource
 {
     private readonly object _gate = new();
     private FilterPort? _port;

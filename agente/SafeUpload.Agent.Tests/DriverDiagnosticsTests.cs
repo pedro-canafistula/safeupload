@@ -106,6 +106,16 @@ public sealed class DriverDiagnosticsTests
             Assert.False(counters["ok"]!.GetValue<bool>());
             Assert.Contains("not connected", counters["error"]!.GetValue<string>());
 
+            foreach (string query in new[] { "m2-counters", "m2-stage-streams" })
+            {
+                Assert.Contains(help["data"]!["queries"]!.AsArray(), node => node!.GetValue<string>() == query);
+                JsonObject reply = await ExchangeAsync(pipeName, "{\"query\":\"" + query + "\"}");
+                Assert.False(reply["ok"]!.GetValue<bool>());
+                Assert.Equal(query, reply["query"]!.GetValue<string>());
+                Assert.Contains("not connected", reply["error"]!.GetValue<string>());
+                Assert.False(reply.ContainsKey("data"));
+            }
+
             JsonObject unknown = await ExchangeAsync(pipeName, "{\"query\":\"nope\"}");
             Assert.False(unknown["ok"]!.GetValue<bool>());
 
