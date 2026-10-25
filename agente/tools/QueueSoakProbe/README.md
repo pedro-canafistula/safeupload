@@ -49,3 +49,41 @@ Para qualquer execução longa futura: guardar perfil aprovado e hashes, limites
 de parada e espaço para temporários de regravação; duração real, lacunas e status
 devem constar do aceite. Não chamar isso de qualificação instalada, API real,
 persistência física ou 72 h antes de obter essas evidências próprias.
+
+## Análise independente, sem executar a carga novamente
+
+Requer PowerShell 7.5+. Measure-ProbeEvidence.ps1 lê o recibo, confere seus hashes,
+percorre amostras/operações e compara contagens, ordem temporal e estados. Escreve
+somente um relatório novo fora da pasta de evidências; recusa sobrescrita, caminhos
+de dados instalados e ancestrais reparse. Usa dados sintéticos estáveis, sem escritor.
+
+```powershell
+pwsh -File agente/tools/QueueSoakProbe/Measure-ProbeEvidence.ps1 -EvidenceDirectory C:\Laboratorio\Fila\queue-soak-ID -OutputPath C:\Laboratorio\analise-nova.json
+pwsh -File agente/tools/QueueSoakProbe/Test-EvidenceAnalysis.ps1 -PreservedPilotDirectory agente/docs/evidencias/operacao-prolongada-piloto-20261025 -OutputParent C:\Laboratorio\Analise
+```
+
+Para o conjunto arquivado no repositório, usar -Prefix pilot- no analisador. O
+recibo original mantém os nomes sem prefixo; o parâmetro resolve suas cópias.
+Os controles novos analisam cópias do piloto preservado, sem reinstalar ou reexecutar
+o gerador. A fonte original é confrontada por hash antes/depois.
+
+O resultado distingue analyzed-completed-run, incomplete-run (recibo ausente ou
+de execução incompleta) e invalid-evidence. Inconsistência gera relatório e erro;
+incomplete-run não lança erro, por ser um diagnóstico válido de execução incompleta.
+Consumidores precisam examinar status; ausência de erro não significa ensaio aprovado.
+Nenhum estado concede qualificação de produto, serviço, API ou duração prolongada.
+
+Conta intervalos maiores que o intervalo configurado, incluindo início e fim,
+sem inventar quantidade de amostras perdidas nem atribuir falha/SLA. Atraso de
+agendamento, logging, operações e verificação também alongam intervalos. Guarda
+até 20 detalhes e sinaliza truncamento; máximos de memória/disco são apenas valores
+amostrados do processo completo. Sem recibo, a lacuna terminal é desconhecida.
+Relógio UTC regressivo é contado separadamente do tempo monotônico.
+
+Limites: 256 MiB por arquivo e 64 Ki caracteres por linha de trace; o analisador
+recusa volumes maiores explicitamente. Arquivos de perfil/recibo são lidos inteiros;
+traces são percorridos com linha limitada, sem armazenar todas as amostras. Não
+revalida conteúdo da fila, autentica manifestos ou protege contra troca maliciosa
+concorrente de caminhos. Usa o recibo da verificação do coletor como declaração,
+não como nova prova de execução. Limites de análise precisam ser considerados no
+perfil futuro antes de iniciar dias de carga.
