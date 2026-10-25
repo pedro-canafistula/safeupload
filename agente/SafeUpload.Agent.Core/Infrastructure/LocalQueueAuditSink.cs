@@ -45,6 +45,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
     // processos, mas o agente é instância única por sessão.
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly string _queueFile;
+    private readonly Func<string, FileStream>? _appendStreamFactory;
 
     /// <summary>Usa o caminho padrão do agente.</summary>
     public LocalQueueAuditSink() : this(AgentPaths.QueueFile)
@@ -56,6 +57,14 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(queueFile);
         _queueFile = queueFile;
+    }
+
+    // Internal fault-injection boundary for owned-process I/O probes only.
+    // Public constructors keep the native FileStream path unchanged.
+    internal LocalQueueAuditSink(string queueFile, Func<string, FileStream> appendStreamFactory)
+        : this(queueFile)
+    {
+        _appendStreamFactory = appendStreamFactory ?? throw new ArgumentNullException(nameof(appendStreamFactory));
     }
 
     /// <summary>Caminho do arquivo de fila, para exibição na interface.</summary>
@@ -142,7 +151,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
     // próximo evento diretamente, ele se perderia junto com a linha truncada.
     private async Task AppendLineAsync(string line, CancellationToken cancellationToken)
     {
-        await using var stream = new FileStream(_queueFile, FileMode.OpenOrCreate,
+        await using var stream = _appendStreamFactory?.Invoke(_queueFile) ?? new FileStream(_queueFile, FileMode.OpenOrCreate,
             FileAccess.ReadWrite, FileShare.Read, 4096, FileOptions.Asynchronous);
         if (stream.Length > 0)
         {
