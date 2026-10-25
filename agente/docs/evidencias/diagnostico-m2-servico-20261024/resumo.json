@@ -1,0 +1,138 @@
+{
+  "issue": 61,
+  "source": "23107f2066a37c9027e71a81a433fef16da26d6d",
+  "localDefaultPassed": 82,
+  "localFeaturePassed": 82,
+  "localPowerShellPassed": 43,
+  "newCases": 7,
+  "ciRun": 40148093248,
+  "ciResult": "success",
+  "ciPassedPerConfiguration": 893,
+  "ciTotalPerConfiguration": 897,
+  "ciSkippedPerConfiguration": 4,
+  "functionalRun": 40148095459,
+  "functionalResult": "failure",
+  "successfulRealDriverExchangeTested": false,
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 86,
+      "sha256": "2CD8D6C2F1D76EC60B9E30C27DAFCE65FDEC62B397C9AF3F0922537BEE8AD5A7"
+    },
+    {
+      "file": "agent-contract.log",
+      "bytes": 234179,
+      "sha256": "77778BB9F32FC204BC91FA7D5FAD89DF187FEE71DABC3DB8CC9DDAB830FAF843"
+    },
+    {
+      "file": "artifacts-final.json",
+      "bytes": 7429,
+      "sha256": "4CF4CFBD69729C485EAB35A7DF95A206F2C7BAF235DCFE9614E995B904B59D40"
+    },
+    {
+      "file": "backend-failures.json",
+      "bytes": 4860,
+      "sha256": "F9C10855600AF1102FA8AF7AABB5F1DBA2B306B1A1D606CE1EF37D07CCAC5AD4"
+    },
+    {
+      "file": "checks-final.json",
+      "bytes": 31649,
+      "sha256": "BAABCCA33D158C09EA6D3280A67A4598675F5C66B44D82BD6E2A940490F66706"
+    },
+    {
+      "file": "ci-debug.log",
+      "bytes": 38362,
+      "sha256": "CD224D5E4E8F31BDE2EBDF7AAE0A13814B276E964CC94519AF6A60A87B9C3A4E"
+    },
+    {
+      "file": "ci-Debug.trx",
+      "bytes": 1300547,
+      "sha256": "C018205D0201ED60A38A93FF7C35CED86E1239182F46513E704F2903089FAF06"
+    },
+    {
+      "file": "ci-install.log",
+      "bytes": 33494,
+      "sha256": "89DB3D8B00BD878F0371A54980ED368860285BB3E6468386612B8C6DEBBC8C4C"
+    },
+    {
+      "file": "ci-release.log",
+      "bytes": 38285,
+      "sha256": "AD83709F4277C86DEE28C9A8F2DD81E407ECA49A6A1F19DFF59F3FD794E9D3A3"
+    },
+    {
+      "file": "ci-Release.trx",
+      "bytes": 1304135,
+      "sha256": "FBC07E23457BF3AFF0CC26D5C96924132D23116736CAEBEFACE200DEDEBDF049"
+    },
+    {
+      "file": "ci-verification.json",
+      "bytes": 1453,
+      "sha256": "077BB680EA8545E891B28D5F2E4E4758D74B57C6C3B49FFFB6A31FAC663D031E"
+    },
+    {
+      "file": "installed-service.log",
+      "bytes": 229343,
+      "sha256": "EC29579C082F000251FD465AD7832F76D3792B24830588E64C48D3AC7F36D41E"
+    },
+    {
+      "file": "local-default.trx",
+      "bytes": 137488,
+      "sha256": "9C958CEBD7402E6BB54CA7D1D3AE480CB4690A0943CC9D6B7D5799C5BE10AAA9"
+    },
+    {
+      "file": "local-feature.log",
+      "bytes": 2449,
+      "sha256": "01030F5923DF9382489ACD8E4293DA7FB7C98A746A3DE49D1DBC92CC66565EF1"
+    },
+    {
+      "file": "local-feature.trx",
+      "bytes": 137488,
+      "sha256": "648C346D0B3956DDB24870EBFA37EEC2F23997F26650CD4CEF69C1CD93CD55FE"
+    },
+    {
+      "file": "local.log",
+      "bytes": 2433,
+      "sha256": "936174987CCC55263A52EE1C722B3BF8FA40712D87D5390D2562FA06759D445C"
+    },
+    {
+      "file": "migration.log",
+      "bytes": 212011,
+      "sha256": "E9E5C341728069F21B938A2E8E6013F05111F5D398C844466FD18BD5EB6584B3"
+    },
+    {
+      "file": "ps51.json",
+      "bytes": 8789,
+      "sha256": "5ECE27E253FA730CA46684F196764A036E506C54B431A2727D62390524246BC6"
+    },
+    {
+      "file": "ps51.log",
+      "bytes": 62,
+      "sha256": "AA07DA8E5791CA9BF5FFEB168CFBB41F716C8EA3EEEA6659A4402ACA06E008F3"
+    },
+    {
+      "file": "ps7.json",
+      "bytes": 5353,
+      "sha256": "48FF695F3A16BB48D8B7CD40CEB732D09815947AC18D9E218CBB5031E9831CF9"
+    },
+    {
+      "file": "ps7.log",
+      "bytes": 53,
+      "sha256": "EDF7BF9B33E8D5DBD8E13E5A2546C1CBEBB9249AF9DC495530F7C85E2A2B98E4"
+    },
+    {
+      "file": "run-agent-final.json",
+      "bytes": 15510,
+      "sha256": "55148B29943EFFBBFBFA716CA928435E1B03CF946E7A9A7C9AEA875D8E8EEF4C"
+    },
+    {
+      "file": "run-web-final.json",
+      "bytes": 15490,
+      "sha256": "B0F88522D84D94DDBF4BE438EBA68D6B3CBBE507E7A0E1FC79431417C860DB64"
+    },
+    {
+      "file": "source.json",
+      "bytes": 1532,
+      "sha256": "4DE94A410EA934F474FED4EE531634E6433004E5E47C1FFCFA84EF8DAD1C387E"
+    }
+  ]
+}

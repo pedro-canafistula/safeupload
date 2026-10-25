@@ -1,0 +1,58 @@
+[
+  {
+    "artifactId": 12581385974,
+    "name": "csharp-Release",
+    "bytes": 232155,
+    "digest": "sha256:f4f6ae2277240850d956bc74b72b2100cb333ff7678128b8db2aadd7f6263704",
+    "digestVerified": true,
+    "config": "Release",
+    "counters": {
+      "warning": "0",
+      "inconclusive": "0",
+      "passedButRunAborted": "0",
+      "passed": "893",
+      "completed": "0",
+      "failed": "0",
+      "error": "0",
+      "disconnected": "0",
+      "pending": "0",
+      "executed": "893",
+      "timeout": "0",
+      "inProgress": "0",
+      "total": "897",
+      "aborted": "0",
+      "notRunnable": "0",
+      "notExecuted": "0"
+    },
+    "newServiceCases": 7,
+    "newCasesPassed": true
+  },
+  {
+    "artifactId": 12581319549,
+    "name": "csharp-Debug",
+    "bytes": 231955,
+    "digest": "sha256:60b1ebfaf0f19fa8e70695fc0b4ac22297cb2644e13b9581f7cc50ddb0e0db9d",
+    "digestVerified": true,
+    "config": "Debug",
+    "counters": {
+      "warning": "0",
+      "inconclusive": "0",
+      "passedButRunAborted": "0",
+      "passed": "893",
+      "completed": "0",
+      "failed": "0",
+      "error": "0",
+      "disconnected": "0",
+      "pending": "0",
+      "executed": "893",
+      "timeout": "0",
+      "inProgress": "0",
+      "total": "897",
+      "aborted": "0",
+      "notRunnable": "0",
+      "notExecuted": "0"
+    },
+    "newServiceCases": 7,
+    "newCasesPassed": true
+  }
+]

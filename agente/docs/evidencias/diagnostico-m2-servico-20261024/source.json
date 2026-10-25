@@ -1,0 +1,37 @@
+{
+  "explicitDiagnosticServiceWiringChanged": true,
+  "automaticInspectionChanged": false,
+  "successfulNativeExchangeTested": false,
+  "sourceCommit": "23107f2066a37c9027e71a81a433fef16da26d6d",
+  "driverReference": "e0df8d1c1f889418a133d3ae66a87a6c76a7bd5f",
+  "files": [
+    {
+      "path": "agente/SafeUpload.Agent.Service/Diagnostics/DiagnosticsPipeServer.cs",
+      "sha256": "E5C2D3C72409B665C0FD227A312847217348EECE912BD3198CA92852B3722121"
+    },
+    {
+      "path": "agente/SafeUpload.Agent.Service/Diagnostics/DriverDiagnosticsSource.M2.cs",
+      "sha256": "9AB6905A846B2D884D8FA9936590C2D353691B58A38102ACE5BE62940676D858"
+    },
+    {
+      "path": "agente/SafeUpload.Agent.Service/Diagnostics/DriverDiagnosticsSource.cs",
+      "sha256": "F1A7D39427C46568A4569709B72CB497CAE01234BB0EEE695A13C3BF4A8534EA"
+    },
+    {
+      "path": "agente/SafeUpload.Agent.Tests/DriverDiagnosticsTests.cs",
+      "sha256": "FE6AD0B974BE1A3DA27449F392825E4796984A88392DE69C96FE95C24C1479C1"
+    },
+    {
+      "path": "agente/SafeUpload.Agent.Tests/M2ServiceDiagnosticsTests.cs",
+      "sha256": "FA469EF9C7668C3653C7D19E56713C63CD04D7450161D0D6A60202822D7D734B"
+    },
+    {
+      "path": "agente/installer/tests/Test-InstallerContracts.ps1",
+      "sha256": "286691EF0CE3A6E5FECBF583FF762C31F7085CEA8301C827EDC644980ED32E8B"
+    },
+    {
+      "path": "agente/scripts/Get-SafeUploadDiagnostics.ps1",
+      "sha256": "FF5B275AEDA32321A5406B057874F6456E6025FDD8B3438EA6B6848613401566"
+    }
+  ]
+}
