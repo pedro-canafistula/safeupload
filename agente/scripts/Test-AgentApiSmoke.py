@@ -22,9 +22,16 @@ def main():
         parser.error("Compile SafeUpload.Agent.ApiSmoke em Release antes de executar.")
     requests = []
     scenario = {"status": 200, "body": '{"status":"OK"}'}
+    stopping = threading.Event()
+
+    def require(condition, message):
+        # Não usar assert: python -O também deve detectar regressões.
+        if not condition:
+            raise RuntimeError(message)
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
+            current = scenario.copy()
             body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
             # JsonContent pode usar Transfer-Encoding chunked.
             if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
@@ -37,15 +44,26 @@ def main():
                     chunks.append(self.rfile.read(length))
                     self.rfile.read(2)
                 body = b"".join(chunks)
-            requests.append({"path": self.path, "body": json.loads(body)})
-            payload = scenario["body"].encode()
-            self.send_response(scenario["status"])
-            if scenario["status"] == 302:
+            requests.append({"method": "POST", "path": self.path, "body": json.loads(body)})
+            payload = current["body"].encode()
+            self.send_response(current["status"])
+            if current["status"] == 302:
                 self.send_header("Location", "/forbidden-followup")
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
-            self.wfile.write(payload)
+            self.wfile.flush()
+            # Cabeçalhos chegam imediatamente; o atraso é somente no corpo.
+            stopping.wait(current.get("body_delay", 0))
+            try:
+                self.wfile.write(payload)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass  # Esperado quando o cliente encerra por timeout/limite.
+
+        def do_GET(self):
+            # Um redirecionamento 302 seguido pelo cliente pode virar GET.
+            requests.append({"method": "GET", "path": self.path})
+            self.send_error(500)
 
         def log_message(self, *_):
             pass
@@ -57,30 +75,54 @@ def main():
     url = f"http://127.0.0.1:{server.server_port}/agent/"
     results = []
     try:
-        for name, status, body, expected_exit in [
-            ("heartbeat-confirmed", 200, '{"status":"OK"}', 0),
-            ("unauthorized", 401, "SYNTHETIC-SECRET", 1),
-            ("invalid-receipt", 200, '{"status":"WRONG"}', 1),
-            ("redirect-refused", 302, "", 1),
+        for name, status, body, expected_exit, category, prefix, delay in [
+            ("heartbeat-confirmed", 200, '{"status":"OK"}', 0, None, "", 0),
+            ("unauthorized", 401, "SYNTHETIC-SECRET", 1, "http_status", "", 0),
+            ("invalid-receipt", 200, '{"status":"WRONG"}', 1, "invalid_receipt", "", 0),
+            ("redirect-refused", 302, "", 1, "http_status", "", 0),
+            ("ambiguous-receipt", 200, '{"status":"OK","sta\\u0074us":"OK"}',
+             1, "invalid_receipt", "", 0),
+            ("oversized-receipt", 200, '{"status":"OK","padding":"' + "x" * 16384 + '"}',
+             1, "receipt_too_large", "", 0),
+            ("context-path-preserved", 200, '{"status":"OK"}', 0, None, "/context", 0),
+            ("future-field-accepted", 200, '{"status":"OK","future":true}', 0, None, "", 0),
+            ("body-timeout-after-headers", 200, '{"status":"OK"}', 1, "timeout", "", 7),
         ]:
-            scenario.update(status=status, body=body)
+            scenario.update(status=status, body=body, body_delay=delay)
             before = len(requests)
-            result = subprocess.run([args.dotnet, str(assembly), "--base-url", url,
+            target = f"http://127.0.0.1:{server.server_port}{prefix}/agent/"
+            result = subprocess.run([args.dotnet, str(assembly), "--base-url", target,
                                      "--registered-user-id", "23"], capture_output=True,
                                     text=True, timeout=15)
-            assert result.returncode == expected_exit, (name, result.stdout, result.stderr)
-            assert requests[before:] == [{"path": "/agent/api/heartbeat", "body": {"id_usuario_so": 23}}], name
-            assert "SYNTHETIC-SECRET" not in result.stderr, name
+            require(result.returncode == expected_exit, f"{name}: código de saída inesperado")
+            require(requests[before:] == [{"method": "POST", "path": prefix + "/agent/api/heartbeat",
+                                          "body": {"id_usuario_so": 23}}],
+                    f"{name}: tráfego inesperado, retentativa ou redirecionamento")
+            require("SYNTHETIC-SECRET" not in result.stdout + result.stderr,
+                    f"{name}: saída expôs conteúdo do servidor")
+            if category:
+                require(f"categoria={category};" in result.stderr, f"{name}: categoria incorreta")
             results.append({"case": name, "passed": True, "exit_code": result.returncode,
                             "requests": len(requests) - before})
-        before = len(requests)
-        invalid = subprocess.run([args.dotnet, str(assembly), "--base-url", url,
-                                  "--registered-user-id", "0"], capture_output=True, text=True, timeout=15)
-        assert invalid.returncode == 2 and len(requests) == before
-        results.append({"case": "invalid-id-no-http", "passed": True, "requests": 0})
+        for name, target, user_id in [
+            ("invalid-id-no-http", url, "0"),
+            ("invalid-id-format-no-http", url, "SID-23"),
+            ("secret-query-rejected-no-http", url + "?token=SYNTHETIC-SECRET", "23"),
+        ]:
+            before = len(requests)
+            invalid = subprocess.run([args.dotnet, str(assembly), "--base-url", target,
+                                      "--registered-user-id", user_id], capture_output=True,
+                                     text=True, timeout=15)
+            require(invalid.returncode == 2 and len(requests) == before,
+                    f"{name}: configuração inválida gerou tráfego ou código incorreto")
+            require("SYNTHETIC-SECRET" not in invalid.stdout + invalid.stderr,
+                    f"{name}: saída expôs configuração")
+            results.append({"case": name, "passed": True, "exit_code": invalid.returncode,
+                            "requests": 0})
         print(json.dumps({"mode": "synthetic-loopback-http", "java_tested": False,
                           "service_installed": False, "results": results}, indent=2))
     finally:
+        stopping.set()
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)

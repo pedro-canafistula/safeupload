@@ -1,6 +1,6 @@
 # Ponte do agente com o backend atual
 
-Preparação de 26/10/2026 sobre main `efe93cf75aa668f2870c0951b48b3ef2c6332226`. Escopo: somente C# do agente, utilitário de ensaio e testes. Sem alteração Java, Angular, banco, driver, workflow ou configuração padrão de produção. A nova ponte ainda não foi publicada nem homologada contra backend real.
+Preparação de 26/10/2026 sobre main `efe93cf75aa668f2870c0951b48b3ef2c6332226`. Escopo: somente C# do agente, utilitário de ensaio e testes. Sem alteração Java, Angular, banco, driver, workflow ou configuração padrão de produção. Ponte publicada no PR #64, ainda sem homologação contra backend real.
 
 ## O que foi implementado
 
@@ -99,4 +99,14 @@ O diff do PR #63 passa `git apply --check` sobre esta preparação, sem aplicaç
 4. Preservar o bloqueio/revisão do #63 e revisar composição antes de qualquer integração na main.
 5. Qualificar o par agente/driver e a visualização do backend no painel com seus responsáveis.
 
-Nenhuma alteração foi publicada: a conexão GitHub informa push=false. A branch local e o patch são uma preparação revisável, sem PR novo, merge, comentário ou mensagem à equipe.
+## Ampliação do ensaio HTTP local — 26/10/2026
+
+O script `agente/scripts/Test-AgentApiSmoke.py` agora executa 12 cenários contra o ApiSmoke real e servidor HTTP em loopback, sem mocks do HttpClient: confirmação válida, HTTP 401, recibo inválido, redirecionamento recusado, campos essenciais duplicados com escape JSON, recibo acima de 16 KiB, caminho de contexto preservado, campo futuro aceito, timeout do corpo após cabeçalhos, ID zero, ID com formato inválido e query com segredo sintético rejeitada antes do tráfego.
+
+Cada cenário HTTP exige exatamente um POST com o ID esperado e verifica a categoria da falha; GET inesperado também é contado para detectar redirecionamentos seguidos. Os três cenários de configuração exigem zero requisições e saída 2. Verifica ausência do marcador de segredo sintético nas duas saídas. As verificações continuam ativas em Python com `-O`.
+
+Validação Windows: build Release do ApiSmoke concluído, zero erros e quatro avisos NU1900 pela indisponibilidade da consulta de vulnerabilidades no NuGet. Ensaio ampliado executado com Python `-O`: **12/12 aprovados**. A primeira execução no ambiente restrito falhou no cenário inicial; a execução com acesso ao loopback passou. Não classificar essa restrição de execução como defeito do cliente.
+
+O binário usado é da fonte de produção `43d77e7e`; a ampliação altera somente o script e este documento. Não houve novo aceite contra Java/MySQL, instalação de serviço, execução do driver ou mudança de protocolo. A suíte Windows no CI do commit `43d77e7e` registrou 781 aprovados, zero falhas e quatro skips; os três jobs funcionais completos falharam no backend/contratos legados.
+
+Publicação: https://github.com/pedro-canafistula/safeupload/pull/64, em rascunho. A conta Git local permitiu o push. Falhas e contratos pendentes do backend são dependências externas; por decisão explícita do usuário, não serão corrigidos neste trabalho do agente. Nenhum merge ou comunicação à equipe foi executado.
