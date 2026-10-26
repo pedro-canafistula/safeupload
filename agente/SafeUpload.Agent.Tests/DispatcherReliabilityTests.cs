@@ -73,6 +73,48 @@ public sealed class DispatcherReliabilityTests
         public Task<Policy> LoadAsync(CancellationToken token) => Task.FromResult(LocalPolicyStore.CreateDefault());
     }
 
+    [Theory]
+    [InlineData(200, "{\"status\":\"OK\"}")]
+    [InlineData(404, "{}")]
+    [InlineData(200, "{\"status\":\"WRONG\"}")]
+    public async Task Registered_heartbeat_is_independent_from_policy_and_pending_audit(int status, string body)
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        await sink.RecordOverrideAsync(Guid.NewGuid().ToString(), "Justificativa de teste", CancellationToken.None);
+        var auditHandler = new Handler(200, "{\"acceptedEvents\":0,\"acceptedOverrides\":1}");
+        using var auditClient = new HttpClient(auditHandler) { BaseAddress = new Uri("http://localhost/agent/") };
+        var heartbeatHandler = new RegisteredHeartbeatHandler(status, body);
+        using var heartbeatClient = new HttpClient(heartbeatHandler) { BaseAddress = new Uri("http://localhost/agent/") };
+        using var dispatcher = new HttpAgentDispatcher(sink, new UnavailablePolicy(), auditClient, "PC-TESTE",
+            TimeSpan.FromSeconds(30), NullLogger<HttpAgentDispatcher>.Instance)
+        {
+            HeartbeatSender = new RegisteredAgentHeartbeat(new AgentApiClient(heartbeatClient), 23)
+        };
+        await dispatcher.RunCycleAsync(CancellationToken.None);
+        Assert.Equal("/agent/api/heartbeat", heartbeatHandler.Path);
+        Assert.Equal("{\"id_usuario_so\":23}", heartbeatHandler.Body);
+        Assert.Empty(await sink.ReadPendingOverridesAsync(100, CancellationToken.None));
+        Assert.NotNull(auditHandler.Payload);
+    }
+
+    private sealed class UnavailablePolicy : IPolicyStore
+    {
+        public Task<Policy> LoadAsync(CancellationToken token) => throw new InvalidOperationException("Heartbeat AgentApi não deve consultar política.");
+    }
+
+    private sealed class RegisteredHeartbeatHandler(int status, string body) : HttpMessageHandler
+    {
+        public string? Path { get; private set; }
+        public string? Body { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Path = request.RequestUri!.AbsolutePath;
+            Body = await request.Content!.ReadAsStringAsync(token);
+            return new((HttpStatusCode)status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        }
+    }
+
     private sealed class Handler(int status, string body) : HttpMessageHandler
     {
         public TaskCompletionSource Sent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

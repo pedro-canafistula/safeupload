@@ -142,6 +142,11 @@ public static class Program
         // seja configurado.
         string adminBaseUrl = builder.Configuration["CentroAdministracao:BaseUrl"] ?? string.Empty;
         string endpointId = Environment.MachineName;
+        var heartbeatConfiguration = AgentHeartbeatConfiguration.Parse(
+            builder.Configuration["CentroAdministracao:HeartbeatProtocol"],
+            builder.Configuration["CentroAdministracao:RegisteredUserId"]);
+        if (heartbeatConfiguration.RegisteredUserId is not null && string.IsNullOrWhiteSpace(adminBaseUrl))
+            throw new InvalidOperationException("Heartbeat AgentApi exige CentroAdministracao:BaseUrl.");
 
         if (string.IsNullOrWhiteSpace(adminBaseUrl))
         {
@@ -175,6 +180,18 @@ public static class Program
                     client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
                 });
 
+            if (heartbeatConfiguration.RegisteredUserId is not null)
+            {
+                // Cliente separado: não altera o transporte legado de política/auditoria.
+                builder.Services.AddHttpClient(HttpClientName + "AgentApi", client =>
+                {
+                    client.BaseAddress = adminUri;
+                    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+                })
+                .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+                .RemoveAllLoggers();
+            }
+
             builder.Services.AddSingleton<RefreshingPolicyStore>(provider =>
                 new RefreshingPolicyStore(
                     new DurableHttpPolicyStore(
@@ -193,7 +210,12 @@ public static class Program
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
                     endpointId,
                     TimeSpan.FromSeconds(intervalSeconds),
-                    provider.GetRequiredService<ILogger<HttpAgentDispatcher>>()));
+                    provider.GetRequiredService<ILogger<HttpAgentDispatcher>>())
+                {
+                    HeartbeatSender = heartbeatConfiguration.RegisteredUserId is null ? null :
+                        heartbeatConfiguration.CreateSender(
+                            provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName + "AgentApi"))
+                });
         }
 
         // O gatilho. A partir daqui a protecao existe sem interface nenhuma

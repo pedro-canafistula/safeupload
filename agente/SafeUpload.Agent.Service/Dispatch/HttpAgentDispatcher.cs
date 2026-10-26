@@ -43,6 +43,9 @@ public sealed class HttpAgentDispatcher : BackgroundService
     private readonly TimeSpan _interval;
     private readonly ILogger<HttpAgentDispatcher> _logger;
 
+    /// <summary>Seleção explícita de heartbeat. Nulo mantém o contrato anterior.</summary>
+    public IAgentHeartbeat? HeartbeatSender { get; init; }
+
     /// <summary>Monta o despachante.</summary>
     public HttpAgentDispatcher(
         IAuditSink auditSink,
@@ -107,6 +110,12 @@ public sealed class HttpAgentDispatcher : BackgroundService
 
     private async Task SendHeartbeatAsync(CancellationToken cancellationToken)
     {
+        if (HeartbeatSender is {} sender)
+        {
+            await sender.SendAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         var policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
 
         var heartbeat = new HeartbeatRequest(
