@@ -47,6 +47,87 @@ public sealed class StagedLargeFileTests : IDisposable
         else Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "one"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Admission_debits_replay_retirement_and_restart_preserve_exact_global_and_user_boundaries(bool restart)
+    {
+        // Three exact 16-MiB, four-copy slots plus each record's metadata and
+        // the shared metadata envelope. The fourth user has no global room.
+        long one = 16 * MiB * 4 + StagedSpaceBudget.MetadataBytes;
+        var options = new StagedSpaceOptions(true, 3 * one + StagedSpaceBudget.MetadataBytes, one, 0);
+        StagedSpaceBudget Open() => new(Stage, options, () => 2048 * MiB);
+        var budget = Open();
+        Guid[] ids = [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()];
+        string[] paths = ids.Select(id => Path.Combine(Stage, id.ToString("N") + ".txt")).ToArray();
+        for (int i = 0; i < ids.Length; ++i)
+            Assert.Equal(16 * MiB, budget.Reserve(ids[i], "user-" + i, paths[i]));
+        for (int replay = 0; replay < 5; ++replay)
+            for (int i = 0; i < ids.Length; ++i)
+                Assert.Equal(16 * MiB, budget.Reserve(ids[i], "user-" + i, paths[i]));
+        Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "fourth"));
+        if (restart) budget = Open();
+
+        // The seed never existed and no grant was issued. Exact absence may
+        // retire this intent, refunding only its user and its global charge.
+        budget.RequireFailedAllocationAbsent(ids[1], paths[1]);
+        if (restart) budget = Open();
+        Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "user-0"));
+        Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "user-2"));
+        Assert.Equal(16 * MiB, budget.Reserve(ids[1], "user-1", paths[1]));
+        Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "fourth"));
+
+        for (int i = 0; i < ids.Length; ++i) budget.RequireFailedAllocationAbsent(ids[i], paths[i]);
+        if (restart) budget = Open();
+        Assert.Empty(Directory.GetFiles(Path.Combine(Stage, ".space-reservations")));
+        for (int i = 0; i < ids.Length; ++i)
+            Assert.Equal(16 * MiB, budget.Reserve(Guid.NewGuid(), "replacement-" + i));
+        Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "fourth"));
+    }
+
+    [Fact]
+    public void Startup_aggregate_charge_overflow_refuses_without_altering_durable_reservations()
+    {
+        var budget = Budget();
+        budget.Reserve(Guid.NewGuid(), "one");
+        budget.Reserve(Guid.NewGuid(), "two");
+        long capacity = ((long.MaxValue - StagedSpaceBudget.MetadataBytes) / 4) / 65536 * 65536;
+        var evidence = new Dictionary<string, string>();
+        foreach (string path in Directory.GetFiles(Path.Combine(Stage, ".space-reservations"), "*.json"))
+        {
+            var record = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+            record["Capacity"] = capacity; // Each is valid alone; their sum cannot be represented.
+            string text = record.ToJsonString();
+            File.WriteAllText(path, text); evidence[path] = text;
+        }
+        Assert.Equal(2, evidence.Count);
+        Assert.Throws<OverflowException>(() => Budget());
+        foreach (var pair in evidence) Assert.Equal(pair.Value, File.ReadAllText(pair.Key));
+    }
+
+    [Fact]
+    public void Reconstructed_content_release_keeps_the_exact_user_metadata_debit_until_retirement()
+    {
+        long one = 16 * MiB * 4 + StagedSpaceBudget.MetadataBytes;
+        var options = new StagedSpaceOptions(true, 2 * one + 2 * StagedSpaceBudget.MetadataBytes, one, 0);
+        StagedSpaceBudget Open() => new(Stage, options, () => 2048 * MiB);
+        var budget = Open(); Guid id = Guid.NewGuid();
+        string stage = Path.Combine(Stage, id.ToString("N") + ".txt");
+        Assert.Equal(16 * MiB, budget.Reserve(id, "one", stage));
+        string path = Path.Combine(Stage, ".space-reservations", id.ToString("N") + ".json");
+        var record = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        record["ContentReleased"] = true; // Fixture of an already-durable content-only refund.
+        File.WriteAllText(path, record.ToJsonString());
+
+        budget = Open();
+        Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "one"));
+        Assert.Equal(16 * MiB, budget.Reserve(Guid.NewGuid(), "two"));
+        budget.RequireFailedAllocationAbsent(id, stage);
+        Assert.False(File.Exists(path));
+        Assert.Equal(16 * MiB, budget.Reserve(Guid.NewGuid(), "one"));
+        Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "one"));
+    }
+
     [Fact]
     public async Task Concurrent_same_user_reservations_cannot_double_spend_free_capacity()
     {

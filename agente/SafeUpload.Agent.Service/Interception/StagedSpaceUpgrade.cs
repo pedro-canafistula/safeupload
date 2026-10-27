@@ -44,7 +44,7 @@ public sealed partial class StagedSpaceBudget
                 string path = ValidateLegacyGuard(entry);
                 var record = new Reservation(id, LegacyOwner(entry), MinimumCapacity,
                     path, entry.StageIdentity, null, 1, LegacyGuard: true);
-                Persist(record, create: true); _reservations.Add(id, record);
+                Persist(record, create: true); AdoptReservation(record);
             }
         }, id => { lock (_gate) _legacySecuritySnapshots.Add(id); }, CancellationToken.None).GetAwaiter().GetResult();
         // Pending imported versions already own retained per-transfer metadata.

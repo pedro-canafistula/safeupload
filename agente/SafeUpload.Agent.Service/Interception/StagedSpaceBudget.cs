@@ -44,6 +44,10 @@ public sealed partial class StagedSpaceBudget
     internal TimeSpan SeedTimeout => _options.SeedTimeout;
     private readonly Func<long> _available;
     private readonly Dictionary<Guid, Reservation> _reservations = new();
+    // Reconstructed once from durable reservations. All later adoption/removal
+    // updates these under _gate, after the exact durable transition succeeds.
+    private long _reservationChargeBytes;
+    private readonly Dictionary<string, long> _reservationChargesBySid = new(StringComparer.Ordinal);
     private readonly HashSet<Guid> _liveSnapshots = new();
     private bool _faulted;
     private Dictionary<string, long>? _archiveAllocations;
@@ -96,8 +100,9 @@ public sealed partial class StagedSpaceBudget
                 record.StageIdentity is not null && record.StagePath is null ||
                 record.GrantIssued && record.StageIdentity is null ||
                 record.LegacyGuard && (record.Capacity != MinimumCapacity || record.GrantIssued) ||
-                !_reservations.TryAdd(record.Id, record))
+                _reservations.ContainsKey(record.Id))
                 throw new IOException("Invalid staging reservation.");
+            AdoptReservation(record);
         }
         // Validate all persisted locators before any exact-object cleanup can use them.
         if (legacyJournal is not null) UpgradeLegacyJournal(legacyJournal);
@@ -203,13 +208,8 @@ public sealed partial class StagedSpaceBudget
                 // The exact failed seed is gone and no reply was ever issued.
                 // Retry this stable allocation intent, retaining its metadata debit.
             }
-            long total = checked(_metadataBytes + _legacyJournalAllowance + _legacyNegativeAllowance), user = 0;
-            foreach (var record in _reservations.Values)
-            {
-                long charge = checked((record.ContentReleased ? 0 : record.Capacity * CopyCount) + _metadataBytes);
-                total = checked(total + charge);
-                if (record.Sid == sid) user = checked(user + charge);
-            }
+            long total = checked(_metadataBytes + _legacyJournalAllowance + _legacyNegativeAllowance + _reservationChargeBytes);
+            long user = _reservationChargesBySid.GetValueOrDefault(sid);
             long remaining = Math.Min(_options.TotalBytes - total, _options.PerUserBytes - user);
             // Available space is an additional live guard. Outstanding reservations may not yet
             // occupy any disk, so subtract ALL of them rather than counting free space twice.
@@ -226,7 +226,7 @@ public sealed partial class StagedSpaceBudget
             if (capacity < MinimumCapacity) throw new StagedSpaceException("Not enough staging space for this user. Finish or recover earlier saves and try again.");
             var reservation = new Reservation(id, sid, capacity, stagePath, null, null, 1);
             Persist(reservation, create: !reuse);
-            _reservations[id] = reservation;
+            AdoptReservation(reservation);
             return capacity;
         }
     }
@@ -446,7 +446,7 @@ public sealed partial class StagedSpaceBudget
             if (record.StagePath != path || record.StageIdentity is not null && record.StageIdentity != identity || record.GrantIssued)
                 throw new IOException("The seed object does not match its private reservation.");
             var next = record with { StageIdentity = identity };
-            Persist(next); _reservations[id] = next;
+            Persist(next); AdoptReservation(next);
         }
     }
 
@@ -510,7 +510,7 @@ public sealed partial class StagedSpaceBudget
             throw new IOException("Exact reservation metadata retirement is unresolved.", failure);
         // A crash before this removal only overcharges; restart reconstructs
         // absence after the durable metadata deletion. Repeated cleanup is a no-op.
-        _reservations.Remove(record.Id);
+        RemoveReservation(record);
     }
 
     internal void Bind(TransferJournalEntry entry)
@@ -531,7 +531,7 @@ public sealed partial class StagedSpaceBudget
                 record.StageIdentity is not null && record.StageIdentity != entry.StageIdentity)
                 throw new IOException("The capacity grant does not match the allocated object.");
             var bound = record with { StagePath = entry.Transfer.StagePath, StageIdentity = entry.StageIdentity, GrantIssued = true };
-            Persist(bound); _reservations[record.Id] = bound;
+            Persist(bound); AdoptReservation(bound);
             WriteGrant(bound);
         }
     }
@@ -548,7 +548,7 @@ public sealed partial class StagedSpaceBudget
                 StagedStageFile.TryDeleteExactAndConfirmAbsent(previous.Path, previous.Identity, out _))
             {
                 record = record with { Snapshot = null };
-                Persist(record); _reservations[id] = record;
+                Persist(record); AdoptReservation(record);
             }
             if (record.Snapshot is not null || !_liveSnapshots.Add(id))
                 throw new StagedSpaceException("An earlier inspection still owns staging space. Try again after it finishes.");
@@ -556,7 +556,7 @@ public sealed partial class StagedSpaceBudget
             {
                 var snapshot = new Snapshot(path, StagedDestinationFile.ReadIdentity(stream.SafeFileHandle));
                 var next = record with { Snapshot = snapshot };
-                Persist(next); _reservations[id] = next;
+                Persist(next); AdoptReservation(next);
                 return new SnapshotLease(this, id);
             }
             catch { _liveSnapshots.Remove(id); throw; }
@@ -612,7 +612,7 @@ public sealed partial class StagedSpaceBudget
                     {
                         if (!StagedStageFile.TryDeleteExactAndConfirmAbsent(snapshot.Path, snapshot.Identity, out _)) continue;
                         var next = record with { Snapshot = null };
-                        Persist(next); _reservations[record.Id] = next;
+                        Persist(next); AdoptReservation(next);
                     }
                     bool disposalComplete = entry.StageDeleted &&
                         (entry.UnboundCancellation is not null || entry.State is
@@ -639,7 +639,7 @@ public sealed partial class StagedSpaceBudget
                     DeleteGrant(record);
                     if (RetireCompletedMetadata(_reservations[record.Id], entry, journal, exactContentRelease: true)) continue;
                     var released = _reservations[record.Id] with { ContentReleased = true };
-                    Persist(released); _reservations[record.Id] = released;
+                    Persist(released); AdoptReservation(released);
                     RetireCompletedMetadata(released, entry, journal);
                 }
             }
@@ -686,6 +686,50 @@ public sealed partial class StagedSpaceBudget
         }
         if (!StagedStageFile.TryDeleteExactAndConfirmAbsent(path, identity, out var error, expectedLength: 64))
             throw new IOException("Exact capacity grant deletion remains pending.", error);
+    }
+
+    private long ReservationCharge(Reservation record) =>
+        checked((record.ContentReleased ? 0 : record.Capacity * CopyCount) + _metadataBytes);
+
+    // The constructor is not yet published; all other callers hold _gate.
+    // A failed in-memory adoption after persistence must fault admission rather
+    // than expose totals that disagree with durable custody. Restart rebuilds.
+    private void AdoptReservation(Reservation record)
+    {
+        try
+        {
+            bool exists = _reservations.TryGetValue(record.Id, out var prior);
+            if (exists && prior!.Sid != record.Sid)
+                throw new IOException("A reservation cannot change its charged user.");
+            long oldCharge = exists ? ReservationCharge(prior!) : 0;
+            long newCharge = ReservationCharge(record);
+            long total = checked(_reservationChargeBytes - oldCharge + newCharge);
+            long user = checked(_reservationChargesBySid.GetValueOrDefault(record.Sid) - oldCharge + newCharge);
+            if (total < newCharge || user < newCharge)
+                throw new IOException("Reservation accounting lost its prior debit.");
+            _reservations[record.Id] = record;
+            _reservationChargesBySid[record.Sid] = user;
+            _reservationChargeBytes = total;
+        }
+        catch { _faulted = true; throw; }
+    }
+
+    private void RemoveReservation(Reservation record)
+    {
+        try
+        {
+            if (!_reservations.TryGetValue(record.Id, out var current) || current != record)
+                throw new IOException("Reservation retirement lost its exact current record.");
+            long charge = ReservationCharge(record);
+            long total = checked(_reservationChargeBytes - charge);
+            long user = checked(_reservationChargesBySid.GetValueOrDefault(record.Sid) - charge);
+            if (total < 0 || user < 0) throw new IOException("Reservation retirement exceeds its debit.");
+            _reservations.Remove(record.Id);
+            if (user == 0) _reservationChargesBySid.Remove(record.Sid);
+            else _reservationChargesBySid[record.Sid] = user;
+            _reservationChargeBytes = total;
+        }
+        catch { _faulted = true; throw; }
     }
 
     private void RequireHealthy()

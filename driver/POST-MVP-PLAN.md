@@ -807,6 +807,8 @@ Owner-approved runtime budget/default formulas are in Owner decisions. Bounded s
 - [x] T9: owner resolves all-zero card and exact PANOSE/Office-owner-file/PowerPoint-thumbnail choices; preserve the remaining content refusals.
 - [x] T9 growing reservations: design accepted with conditions at revision 5 (2026-10-22; initial window, retirement receipt, custody leases, maintained totals, lane ordering, startup table;
   [design](docs/design/large-files/UX-LARGE-CONCURRENCY.md)). **Owner approved the 120 s allocation/seed wait on 2026-10-27.** Concrete protocol/accounting implementation is next.
+- [x] T9 prerequisite: maintained global/per-SID reservation totals replace the foreground reservation scan; reconstruction, durable adoption and exact retirement remain conservative.
+  [Independent scoped review](evidence/2026-10-27/t9-reservation-totals-review-sol-high.md) ACCEPT WITH CONDITIONS; local compile, 36 focused controls and T5 offline controls pass. Windows matrix pending; this does not fix whole-allowance grants or metadata callback scans.
 - [ ] T9: qualify integrated identity-bound capacity grants, per-SID/total/free-space budgets, exact snapshot/orphan accounting, failed-prefix refusal,
   legacy upgrade and startup recovery; [latest local source receipt](evidence/2026-10-16/ux-large5-local/result.md) is not Windows pair qualification.
 - [ ] T9: finish/qualify whole-file streaming, all required format/encoding/extraction coverage, seeding cost and capture/storage/parser bounds.
