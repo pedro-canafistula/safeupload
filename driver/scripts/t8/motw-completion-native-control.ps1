@@ -79,7 +79,7 @@ try {
     $source = Join-Path $files 'copy-source.txt'
     [IO.File]::Copy($download, $source)
     $zone = "[ZoneTransfer]`r`nZoneId=3`r`nHostUrl=https://example.invalid/safeupload-fixture`r`n"
-    [IO.File]::WriteAllText(($source + ':Zone.Identifier'), $zone, [Text.Encoding]::ASCII)
+    [SafeUpload.T8.MotwObserver]::SetZone($source, $zone, $false)
     foreach ($kind in @('ShellCopyHere', 'CopyItem', 'Robocopy')) {
         $targetDir = Join-Path $files $kind
         [void](New-Item -ItemType Directory -Path $targetDir)
@@ -96,8 +96,14 @@ try {
         }
         $observer.Mark(($kind + 'Returned'), $target)
         $clock.Restart()
-        while (-not ((Test-Path -LiteralPath $target) -and (Get-Item -LiteralPath $target).Length -eq 8 * 1024 * 1024 -and
-            (Test-Path -LiteralPath ($target + ':Zone.Identifier')))) {
+        while ($true) {
+            if (Test-Path -LiteralPath $target) {
+                $candidate = [SafeUpload.T8.MotwObserver]::State($target)
+                $tagProperty = $candidate.PSObject.Properties['Zone']
+                $lengthProperty = $candidate.PSObject.Properties['Length']
+                if ($null -ne $tagProperty -and $null -ne $lengthProperty -and
+                    $tagProperty.Value -ceq $zone -and $lengthProperty.Value -eq 8 * 1024 * 1024) { break }
+            }
             if ($clock.Elapsed.TotalSeconds -ge 30) { throw ($kind + ' did not finish with the tagged fixture') }
             Start-Sleep -Milliseconds 10
         }
@@ -110,7 +116,7 @@ try {
     # Receiving a completion notification is not a future-write cutoff.
     foreach ($path in @($download, (Join-Path $files 'ShellCopyHere\copy-source.txt'))) {
         $before = [SafeUpload.T8.MotwObserver]::State($path)
-        [IO.File]::AppendAllText(($path + ':Zone.Identifier'), 'ProbeLateField=owned-fixture', [Text.Encoding]::ASCII)
+        [SafeUpload.T8.MotwObserver]::SetZone($path, 'ProbeLateField=owned-fixture', $true)
         $after = [SafeUpload.T8.MotwObserver]::State($path)
         if ($before.Identity -ne $after.Identity -or $after.Zone -notmatch 'ProbeLateField=owned-fixture') { throw 'Late-tag fixture check failed' }
         $report.Cases += @{ Name = 'PostCompletionZoneWrite'; Path = $path; SameObject = $true; Succeeded = $true }

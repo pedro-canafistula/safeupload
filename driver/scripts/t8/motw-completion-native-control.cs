@@ -31,6 +31,39 @@ namespace SafeUpload.T8
         static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int informationClass,
             [Out] byte[] information, uint bytes);
 
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern SafeFileHandle CreateFileW(string path, uint access, uint share,
+            IntPtr security, uint disposition, uint flags, IntPtr template);
+
+        static FileStream OpenZone(string path, bool write, uint disposition)
+        {
+            // .NET Framework's string-path FileStream rejects ADS syntax.
+            // Native open preserves the actual Windows stream operation.
+            SafeFileHandle handle = CreateFileW(path + ":Zone.Identifier", write ? 0xC0000000u : 0x80000000u,
+                7, IntPtr.Zero, disposition, 0x00200000, IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                int error = Marshal.GetLastWin32Error(); handle.Dispose();
+                throw new Win32Exception(error);
+            }
+            try { return new FileStream(handle, write ? FileAccess.ReadWrite : FileAccess.Read); }
+            catch { handle.Dispose(); throw; }
+        }
+
+        public static void SetZone(string path, string text, bool append)
+        {
+            using (FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete))
+            using (FileStream zone = OpenZone(path, true, append ? 4u : 2u))
+            {
+                if (Identity(file) != Identity(zone)) throw new IOException("Zone fixture changed identity.");
+                if (append) zone.Position = zone.Length;
+                else zone.SetLength(0);
+                byte[] bytes = Encoding.ASCII.GetBytes(text);
+                zone.Write(bytes, 0, bytes.Length); zone.Flush(true);
+            }
+        }
+
         public MotwObserver(string root)
         {
             this.root = Path.GetFullPath(root);
@@ -58,14 +91,14 @@ namespace SafeUpload.T8
                     int zoneError = 0;
                     try
                     {
-                        using (FileStream tag = new FileStream(path + ":Zone.Identifier", FileMode.Open,
-                            FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                        using (FileStream tag = OpenZone(path, false, 3))
                         {
                             zoneIdentity = Identity(tag);
                             if (tag.Length > 65536) throw new IOException("Probe tag capture bound exceeded.");
                             using (StreamReader reader = new StreamReader(tag, Encoding.UTF8, true)) zone = reader.ReadToEnd();
                         }
                     }
+                    catch (Win32Exception error) { zoneError = error.NativeErrorCode; }
                     catch (IOException error) { zoneError = Marshal.GetHRForException(error) & 0xffff; }
                     using (FileStream after = new FileStream(path, FileMode.Open, FileAccess.Read,
                         FileShare.ReadWrite | FileShare.Delete))
@@ -129,6 +162,16 @@ namespace SafeUpload.T8
                 method.GetParameters()[1].ParameterType != typeof(int) ||
                 method.GetParameters()[2].ParameterType != typeof(byte[]) ||
                 method.GetParameters()[3].ParameterType != typeof(uint)) throw new Exception("Native signature mismatch.");
+            var create = typeof(MotwObserver).GetMethod("CreateFileW",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            if (create == null || create.ReturnType != typeof(SafeFileHandle) || create.GetParameters().Length != 7 ||
+                create.GetParameters()[0].ParameterType != typeof(string) ||
+                create.GetParameters()[1].ParameterType != typeof(uint) ||
+                create.GetParameters()[2].ParameterType != typeof(uint) ||
+                create.GetParameters()[3].ParameterType != typeof(IntPtr) ||
+                create.GetParameters()[4].ParameterType != typeof(uint) ||
+                create.GetParameters()[5].ParameterType != typeof(uint) ||
+                create.GetParameters()[6].ParameterType != typeof(IntPtr)) throw new Exception("Native stream signature mismatch.");
             if (!Stopwatch.IsHighResolution || Stopwatch.Frequency <= 0) throw new Exception("Monotonic clock unavailable.");
             var map = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>("{\"id\":1,\"result\":{}}");
             if (Convert.ToInt32(map["id"]) != 1) throw new Exception("CDP JSON control failed.");
