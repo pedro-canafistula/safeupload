@@ -7,7 +7,8 @@ export interface Usuario {
 }
 
 export interface ApiErro {
-  erro: string;
+  erro?: string;
+  mensagem?: string;
 }
 
 export type Verdict = 'Approved' | 'Blocked' | 'AllowedWithoutInspection' | 'Retained';
@@ -71,4 +72,3 @@ export const categoryLabels: Record<Category, string> = {
   Cpf: 'CPF', Cnpj: 'CNPJ', PaymentCard: 'Cartão de pagamento',
   Password: 'Senha em texto claro', Secret: 'Segredo/credencial'
 };
-
