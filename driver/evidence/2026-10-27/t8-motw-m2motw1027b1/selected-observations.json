@@ -1,0 +1,201 @@
+{
+  "RawSha256": "612fa89ef3cb447f650d63227ca64893a167d57a4ecf9a3981d7af75c73c45cc",
+  "Polls": 364,
+  "Timing": "observer receipt time; polling cannot prove first visibility or producer finality",
+  "Selected": [
+    {
+      "Milliseconds": 1653.1305,
+      "Event": "BeforeEdgeNavigation",
+      "Detail": "http://127.0.0.1:49949/artifact"
+    },
+    {
+      "Milliseconds": 2465.2555,
+      "Event": "CdpReceipt",
+      "Detail": "{\"method\":\"Browser.downloadWillBegin\",\"params\":{\"frameId\":\"D3FAC8C3E9FD34E8C8B3D8D8E8FB7AA6\",\"guid\":\"5d10faff-1389-4487-8ada-d995586c1a9b\",\"url\":\"http://127.0.0.1:49949/artifact\",\"suggestedFilename\":\"edge-clean.txt\"}}"
+    },
+    {
+      "Milliseconds": 2854.5113,
+      "Event": "FileState",
+      "Path": "C:\\T8\\motw-m2motw1027b1\\files\\downloads\\edge-clean.txt.crdownload",
+      "State": {
+        "Identity": "fy9j1kRj1kqdgwQAAAAEAAAAAAAAAAAA",
+        "SameObjectAfter": true,
+        "Length": 294912,
+        "Zone": null,
+        "ZoneError": 2,
+        "ZoneSameObject": true,
+        "Error": 0
+      }
+    },
+    {
+      "Milliseconds": 7095.115000000001,
+      "Event": "FileState",
+      "Path": "C:\\T8\\motw-m2motw1027b1\\files\\downloads\\edge-clean.txt",
+      "State": {
+        "Identity": "fy9j1kRj1kqdgwQAAAAEAAAAAAAAAAAA",
+        "SameObjectAfter": true,
+        "Length": 8388608,
+        "Zone": "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=http://127.0.0.1:49949/artifact\r\n",
+        "ZoneError": 0,
+        "ZoneSameObject": true,
+        "Error": 0
+      }
+    },
+    {
+      "Milliseconds": 7098.5865,
+      "Event": "CdpReceipt",
+      "Detail": "{\"method\":\"Browser.downloadProgress\",\"params\":{\"guid\":\"5d10faff-1389-4487-8ada-d995586c1a9b\",\"totalBytes\":8388608,\"receivedBytes\":8388608,\"state\":\"completed\",\"filePath\":\"C:\\\\T8\\\\motw-m2motw1027b1\\\\files\\\\downloads\\\\edge-clean.txt\"}}"
+    },
+    {
+      "Milliseconds": 7153.722900000001,
+      "Event": "EdgeCompletedObserved",
+      "Detail": {
+        "State": {
+          "Identity": "fy9j1kRj1kqdgwQAAAAEAAAAAAAAAAAA",
+          "SameObjectAfter": true,
+          "Length": 8388608,
+          "Zone": "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=http://127.0.0.1:49949/artifact\r\n",
+          "ZoneError": 0,
+          "ZoneSameObject": true,
+          "Error": 0
+        },
+        "Name": "EdgeDownload"
+      }
+    },
+    {
+      "Milliseconds": 7191.4382000000005,
+      "Event": "FileState",
+      "Path": "C:\\T8\\motw-m2motw1027b1\\files\\copy-source.txt",
+      "State": {
+        "Identity": "fy9j1kRj1kr+ggQAAAAHAAAAAAAAAAAA",
+        "SameObjectAfter": true,
+        "Length": 8388608,
+        "Zone": "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/safeupload-fixture\r\n",
+        "ZoneError": 0,
+        "ZoneSameObject": true,
+        "Error": 0
+      }
+    },
+    {
+      "Milliseconds": 7195.3526,
+      "Event": "BeforeShellCopyHere",
+      "Detail": "C:\\T8\\motw-m2motw1027b1\\files\\ShellCopyHere\\copy-source.txt"
+    },
+    {
+      "Milliseconds": 7533.1461,
+      "Event": "FileState",
+      "Path": "C:\\T8\\motw-m2motw1027b1\\files\\ShellCopyHere\\copy-source.txt",
+      "State": {
+        "Identity": "fy9j1kRj1krThAQAAAACAAAAAAAAAAAA",
+        "SameObjectAfter": true,
+        "Length": 8388608,
+        "Zone": "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/safeupload-fixture\r\n",
+        "ZoneError": 0,
+        "ZoneSameObject": true,
+        "Error": 0
+      }
+    },
+    {
+      "Milliseconds": 7539.9251,
+      "Event": "ShellCopyHereReturned",
+      "Detail": "C:\\T8\\motw-m2motw1027b1\\files\\ShellCopyHere\\copy-source.txt"
+    },
+    {
+      "Milliseconds": 7618.5113,
+      "Event": "ShellCopyHereCompleteStateObserved",
+      "Detail": {
+        "Identity": "fy9j1kRj1krThAQAAAACAAAAAAAAAAAA",
+        "SameObjectAfter": true,
+        "Length": 8388608,
+        "Zone": "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/safeupload-fixture\r\n",
+        "ZoneError": 0,
+        "ZoneSameObject": true,
+        "Error": 0
+      }
+    },
+    {
+      "Milliseconds": 7619.2779,
+      "Event": "BeforeCopyItem",
+      "Detail": "C:\\T8\\motw-m2motw1027b1\\files\\CopyItem\\copy-source.txt"
+    },
+    {
+      "Milliseconds": 7625.2128,
+      "Event": "CopyItemReturned",
+      "Detail": "C:\\T8\\motw-m2motw1027b1\\files\\CopyItem\\copy-source.txt"
+    },
+    {
+      "Milliseconds": 7637.1781,
+      "Event": "CopyItemCompleteStateObserved",
+      "Detail": {
+        "Identity": "fy9j1kRj1krWhAQAAAACAAAAAAAAAAAA",
+        "SameObjectAfter": true,
+        "Length": 8388608,
+        "Zone": "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/safeupload-fixture\r\n",
+        "ZoneError": 0,
+        "ZoneSameObject": true,
+        "Error": 0
+      }
+    },
+    {
+      "Milliseconds": 7637.979200000001,
+      "Event": "BeforeRobocopy",
+      "Detail": "C:\\T8\\motw-m2motw1027b1\\files\\Robocopy\\copy-source.txt"
+    },
+    {
+      "Milliseconds": 7640.8276000000005,
+      "Event": "FileState",
+      "Path": "C:\\T8\\motw-m2motw1027b1\\files\\CopyItem\\copy-source.txt",
+      "State": {
+        "Identity": "fy9j1kRj1krWhAQAAAACAAAAAAAAAAAA",
+        "SameObjectAfter": true,
+        "Length": 8388608,
+        "Zone": "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/safeupload-fixture\r\n",
+        "ZoneError": 0,
+        "ZoneSameObject": true,
+        "Error": 0
+      }
+    },
+    {
+      "Milliseconds": 7667.8648,
+      "Event": "RobocopyReturned",
+      "Detail": "C:\\T8\\motw-m2motw1027b1\\files\\Robocopy\\copy-source.txt"
+    },
+    {
+      "Milliseconds": 7672.5856,
+      "Event": "FileState",
+      "Path": "C:\\T8\\motw-m2motw1027b1\\files\\Robocopy\\copy-source.txt",
+      "State": {
+        "Identity": "fy9j1kRj1krYhAQAAAACAAAAAAAAAAAA",
+        "SameObjectAfter": true,
+        "Length": 8388608,
+        "Zone": "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/safeupload-fixture\r\n",
+        "ZoneError": 0,
+        "ZoneSameObject": true,
+        "Error": 0
+      }
+    },
+    {
+      "Milliseconds": 7679.5836,
+      "Event": "RobocopyCompleteStateObserved",
+      "Detail": {
+        "Identity": "fy9j1kRj1krYhAQAAAACAAAAAAAAAAAA",
+        "SameObjectAfter": true,
+        "Length": 8388608,
+        "Zone": "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/safeupload-fixture\r\n",
+        "ZoneError": 0,
+        "ZoneSameObject": true,
+        "Error": 0
+      }
+    },
+    {
+      "Milliseconds": 7690.868200000001,
+      "Event": "PostCompletionZoneWrite",
+      "Detail": "C:\\T8\\motw-m2motw1027b1\\files\\downloads\\edge-clean.txt"
+    },
+    {
+      "Milliseconds": 7694.2344,
+      "Event": "PostCompletionZoneWrite",
+      "Detail": "C:\\T8\\motw-m2motw1027b1\\files\\ShellCopyHere\\copy-source.txt"
+    }
+  ]
+}

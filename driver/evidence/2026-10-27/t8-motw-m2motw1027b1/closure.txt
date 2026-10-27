@@ -1,0 +1,9 @@
+OS=19045.2965
+Agent="C:\Program Files\SafeUpload\Agent-m2dev1022b\SafeUpload.Agent.Service.exe" --Interception:Mode=Minifilter --Interception:StagingPrototype=true --CentroAdministracao:BaseUrl=
+Driver=C:\Windows\system32\drivers\SafeUpload-m2dev1022b\SafeUpload.sys
+DriverState=Running
+{"Hash":"7BEF3FF2C8C6F5C74DEE9082B5EE0ABD026369D5DB60BC1A461070A53D685465","Path":"C:\\Windows\\system32\\drivers\\SafeUpload-m2dev1022b\\SafeUpload.sys"}
+OwnedEdgeProcesses=0
+LoopbackListener=0
+[{"Name":"WinDefend","Status":1,"StartType":3},{"Name":"WSearch","Status":1,"StartType":4}]
+NativeProbeProcessClosure=PASS

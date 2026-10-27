@@ -1,0 +1,28 @@
+﻿{
+    "Label":  "m2motw1027a1",
+    "Qualification":  false,
+    "ProductImplementation":  false,
+    "Identity":  "WIN10-DEBUGGED\\t5actor",
+    "Sid":  "S-1-5-21-316478115-1595729549-2803163825-1279",
+    "Root":  "C:\\T8\\motw-m2motw1027a1",
+    "OS":  "10.0.19045.0",
+    "Edge":  "154.0.4258.62",
+    "Mechanism":  "installed headed Edge; fresh profile; loopback HTTP attachment; CDP instrumentation",
+    "WholeVersionWitnessEstablished":  false,
+    "Cases":  [
+                  {
+                      "State":  {
+                                    "Error":  5397,
+                                    "Detail":  "The given path\u0027s format is not supported."
+                                },
+                      "Name":  "EdgeDownload"
+                  }
+              ],
+    "Failures":  [
+                     "Exception calling \"WriteAllText\" with \"3\" argument(s): \"The given path\u0027s format is not supported.\""
+                 ],
+    "BrowserPid":  5216,
+    "BrowserStartTicks":  639287229369717303,
+    "NativeProbeCompleted":  false,
+    "BrowserExited":  true
+}

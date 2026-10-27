@@ -1,0 +1,88 @@
+﻿{
+    "Label":  "m2motw1027b1",
+    "Qualification":  false,
+    "ProductImplementation":  false,
+    "Identity":  "WIN10-DEBUGGED\\t5actor",
+    "Sid":  "S-1-5-21-316478115-1595729549-2803163825-1279",
+    "Root":  "C:\\T8\\motw-m2motw1027b1",
+    "OS":  "10.0.19045.0",
+    "Edge":  "154.0.4258.62",
+    "Mechanism":  "installed headed Edge; fresh profile; loopback HTTP attachment; CDP instrumentation",
+    "WholeVersionWitnessEstablished":  false,
+    "Cases":  [
+                  {
+                      "State":  {
+                                    "Identity":  "fy9j1kRj1kqdgwQAAAAEAAAAAAAAAAAA",
+                                    "SameObjectAfter":  true,
+                                    "Length":  8388608,
+                                    "Zone":  "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=http://127.0.0.1:49949/artifact\r\n",
+                                    "ZoneError":  0,
+                                    "ZoneSameObject":  true,
+                                    "Error":  0
+                                },
+                      "Name":  "EdgeDownload"
+                  },
+                  {
+                      "Sha256":  "A3BAF030390CFD1A07F9BBE48C53D53E91B86E7DC5EA0BC01C9B551F21B7A544",
+                      "Name":  "ShellCopyHere",
+                      "State":  {
+                                    "Identity":  "fy9j1kRj1krThAQAAAACAAAAAAAAAAAA",
+                                    "SameObjectAfter":  true,
+                                    "Length":  8388608,
+                                    "Zone":  "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/safeupload-fixture\r\n",
+                                    "ZoneError":  0,
+                                    "ZoneSameObject":  true,
+                                    "Error":  0
+                                }
+                  },
+                  {
+                      "Sha256":  "A3BAF030390CFD1A07F9BBE48C53D53E91B86E7DC5EA0BC01C9B551F21B7A544",
+                      "Name":  "CopyItem",
+                      "State":  {
+                                    "Identity":  "fy9j1kRj1krWhAQAAAACAAAAAAAAAAAA",
+                                    "SameObjectAfter":  true,
+                                    "Length":  8388608,
+                                    "Zone":  "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/safeupload-fixture\r\n",
+                                    "ZoneError":  0,
+                                    "ZoneSameObject":  true,
+                                    "Error":  0
+                                }
+                  },
+                  {
+                      "Sha256":  "A3BAF030390CFD1A07F9BBE48C53D53E91B86E7DC5EA0BC01C9B551F21B7A544",
+                      "Name":  "Robocopy",
+                      "State":  {
+                                    "Identity":  "fy9j1kRj1krYhAQAAAACAAAAAAAAAAAA",
+                                    "SameObjectAfter":  true,
+                                    "Length":  8388608,
+                                    "Zone":  "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/safeupload-fixture\r\n",
+                                    "ZoneError":  0,
+                                    "ZoneSameObject":  true,
+                                    "Error":  0
+                                }
+                  },
+                  {
+                      "SameObject":  true,
+                      "Path":  "C:\\T8\\motw-m2motw1027b1\\files\\downloads\\edge-clean.txt",
+                      "Name":  "PostCompletionZoneWrite",
+                      "Succeeded":  true
+                  },
+                  {
+                      "SameObject":  true,
+                      "Path":  "C:\\T8\\motw-m2motw1027b1\\files\\ShellCopyHere\\copy-source.txt",
+                      "Name":  "PostCompletionZoneWrite",
+                      "Succeeded":  true
+                  }
+              ],
+    "Failures":  [
+
+                 ],
+    "BrowserPid":  3684,
+    "BrowserStartTicks":  639287231507373414,
+    "ServedBytes":  8388608,
+    "ServerFailures":  [
+
+                       ],
+    "NativeProbeCompleted":  true,
+    "BrowserExited":  true
+}

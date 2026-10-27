@@ -50,6 +50,15 @@ is recorded as observed; absent MOTW is not turned into successful Internet-zone
 support. A real Internet attachment/Office Protected View leg and a concrete
 pre-registration/finalization prototype remain required before a positive verdict.
 
+For operation-level follow-up, `explorer-paste-native-control.ps1` exercises an
+actual Explorer window through Win+E, selection, Ctrl+C and Ctrl+V. It records the
+window/PID, exact source/destination identities, complete hashes and tag state;
+it refuses navigation input unless the newly opened Explorer window is foreground.
+Run its `-SelfCheck` in a fresh PowerShell process before the real standard-user
+leg. Pair it and the Edge probe with an independently owned WPR FileIO session
+to retain CREATE/write/rename/ADS/cleanup events and available stacks. Trace and
+sample correlation still do not implement a producer or a finalization cutoff.
+
 Primary API references: [IAttachmentExecute::Save](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-iattachmentexecute-save)
 may attach security evidence to the file's ADS; [CDP Browser](https://chromedevtools.github.io/devtools-protocol/tot/Browser/)
 exposes download notifications, not SafeUpload object authority or a filesystem
