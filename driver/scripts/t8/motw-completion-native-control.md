@@ -12,6 +12,7 @@ Before execution, parse both PowerShell/source inputs using Windows PowerShell
 
 ```powershell
 & .\motw-completion-native-control.ps1 -SelfCheck
+& .\motw-completion-native-control.ps1 -CleanupSelfCheck
 & .\motw-completion-native-control.ps1 -Label <fresh-label>
 ```
 
@@ -41,6 +42,12 @@ loopback socket and observer and requests `Browser.close`; a failed close or oth
 error leaves the probe incomplete. Verify no process using that exact fresh profile
 remains before removing this run's fixtures. Never remove another profile or a
 previous failed attempt.
+
+If CDP never becomes available, cleanup also attempts a normal window close and
+then stops only the original PID/start-time-bound tree. `-CleanupSelfCheck` exercises
+that path with a newly created sleeping PowerShell process; it neither starts Edge
+nor injects input. It is a separate real process-lifetime control, not part of the
+signature-only `-SelfCheck` result.
 
 The probe reports `WholeVersionWitnessEstablished=False` even when all native
 operations complete. Polling and CDP receipt timestamps cannot prove first public

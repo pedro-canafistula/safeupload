@@ -7,7 +7,7 @@
   Evidence and the fresh profile remain for host collection and exact-run cleanup.
 #>
 [CmdletBinding()]
-param([string]$Label, [string]$RootParent = 'C:\T8', [switch]$SelfCheck)
+param([string]$Label, [string]$RootParent = 'C:\T8', [switch]$SelfCheck, [switch]$CleanupSelfCheck)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1 -or -not [Environment]::Is64BitProcess) {
@@ -17,6 +17,36 @@ Add-Type -Path (Join-Path $PSScriptRoot 'motw-completion-native-control.cs') -Re
     'System.dll', 'System.Core.dll', 'System.Net.Http.dll', 'System.Web.Extensions.dll')
 [SafeUpload.T8.MotwObserver]::SelfCheck()
 if ($SelfCheck) { 'T8MotwCompletionSignatureSelfCheck=PASS NativeCalls=False'; return }
+function Stop-OwnedProbeProcess([Diagnostics.Process]$ownedProcess, $receipt) {
+    if (-not $ownedProcess.WaitForExit(5000)) {
+        [void]$ownedProcess.CloseMainWindow()
+        if (-not $ownedProcess.WaitForExit(5000)) {
+            $current = Get-Process -Id $ownedProcess.Id -ErrorAction SilentlyContinue
+            if ($null -ne $current -and $current.StartTime.ToUniversalTime().Ticks -eq $receipt.BrowserStartTicks) {
+                & taskkill.exe /PID $ownedProcess.Id /T /F | Out-Null
+                if ($LASTEXITCODE -ne 0) { $receipt.Failures += 'Owned browser tree stop failed; preserve fixture' }
+                $receipt.BrowserForcedStop = $true
+            } elseif ($null -ne $current) { $receipt.Failures += 'Browser PID was reused; replacement untouched' }
+        }
+    }
+    if (-not $ownedProcess.WaitForExit(10000)) { $receipt.Failures += 'Owned browser did not exit; preserve fixture' }
+    $receipt.BrowserExited = $ownedProcess.HasExited
+}
+if ($CleanupSelfCheck) {
+    # Exercise the same no-CDP cleanup with only a process created by this test.
+    $child = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList @(
+        '-NoProfile', '-NonInteractive', '-Command', 'Start-Sleep -Seconds 60') -WindowStyle Hidden -PassThru
+    $proof = [ordered]@{ BrowserStartTicks=$child.StartTime.ToUniversalTime().Ticks; Failures=@() }
+    try {
+        Stop-OwnedProbeProcess $child $proof
+        if (-not $proof.BrowserExited -or $proof.Failures.Count) { throw 'Owned-process cleanup control failed' }
+        'T8MotwProcessCleanupSelfCheck=PASS OriginalProcessExited=True'
+    } finally {
+        if (-not $child.HasExited) { Stop-OwnedProbeProcess $child $proof }
+        $child.Dispose()
+    }
+    return
+}
 if ($Label -notmatch '^[A-Za-z0-9_-]{3,40}$') { throw 'A fresh bounded label is required' }
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -136,8 +166,9 @@ try {
     }
     if ($null -ne $server) { $server.Dispose() }
     if ($null -ne $browser) {
-        if (-not $browser.WaitForExit(10000)) { $report.Failures += 'Owned Edge browser did not exit; preserve fixture' }
-        $report.BrowserExited = $browser.HasExited
+        # CDP readiness may fail before a socket exists; never leave that
+        # original browser tree running just because Browser.close is unavailable.
+        Stop-OwnedProbeProcess $browser $report
     }
     if ($null -ne $observer) {
         $observer.Dispose()
